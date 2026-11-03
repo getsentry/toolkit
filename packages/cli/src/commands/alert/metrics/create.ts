@@ -6,17 +6,34 @@
 
 import type { SentryContext } from "../../../context.js";
 import { createMetricAlertRule } from "../../../lib/api-client.js";
+import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
+import {
+  aggregateParser,
+  choiceParser,
+  parseEnvironment,
+  parseOwner,
+  parseProjectList,
+  parseText,
+  parseWorkflowList,
+} from "../../../lib/completion-target.js";
 import { stringifyUnknown, ValidationError } from "../../../lib/errors.js";
 import { warning } from "../../../lib/formatters/colors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../../lib/mutate-command.js";
-import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
+import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
+import {
+  type OrgProjectTarget,
+  orgProjectTarget,
+} from "../../../lib/target-positional.js";
 import {
   METRIC_ALERT_DATASET_BRIEF,
+  METRIC_ALERT_DATASET_NAMES,
   parseMetricTriggers,
 } from "../../../types/metric-alert.js";
 import {
+  METRIC_ALERT_FIELD_COMPLETION,
+  METRIC_TIME_WINDOW_VALUES,
   normalizeProjectList,
   parseJsonObjectList,
   parseWorkflowIds,
@@ -25,6 +42,7 @@ import {
   validateMetricTimeWindow,
 } from "../mutation-utils.js";
 import { metricAlertStatusLabel } from "./status.js";
+import { MetricAlertCreateOutputSchema } from "../output-schemas.js";
 
 type CreateFlags = {
   readonly name: string;
@@ -59,11 +77,11 @@ function formatCreated(result: CreateResult): string {
 }
 
 function resolveMetricCreateOrg(
-  arg: string | undefined,
+  parsed: ParsedOrgProject,
   cwd: string,
 ): Promise<string> {
-  return resolveOrgOnlyFromArg(
-    arg,
+  return resolveOrgOnlyTarget(
+    parsed,
     cwd,
     "alert metrics create",
     "sentry alert metrics create <org>/",
@@ -101,7 +119,7 @@ export const createCommand = buildCommand({
   },
   output: {
     human: formatCreated,
-    jsonTransform: (result: CreateResult) => result,
+    schema: MetricAlertCreateOutputSchema,
   },
   parameters: {
     positional: {
@@ -110,65 +128,67 @@ export const createCommand = buildCommand({
         {
           placeholder: "target",
           brief: "Target project or organization",
-          parse: String,
+          parse: orgProjectTarget((parsed, { cwd }) =>
+            resolveMetricCreateOrg(parsed, cwd),
+          ),
         },
       ],
     },
     flags: {
       name: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Rule name",
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Metric query filter string",
       },
       aggregate: {
         kind: "parsed",
-        parse: String,
+        parse: aggregateParser(METRIC_ALERT_FIELD_COMPLETION),
         brief: "Aggregate expression (for example count(), p95(span.duration))",
       },
       dataset: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(METRIC_ALERT_DATASET_NAMES),
         brief: METRIC_ALERT_DATASET_BRIEF,
       },
       "time-window": {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(METRIC_TIME_WINDOW_VALUES, numberParser),
         brief: "Evaluation window in minutes",
       },
       trigger: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Trigger object JSON (repeatable, or pass one JSON array)",
       },
       project: {
         kind: "parsed",
-        parse: String,
+        parse: parseProjectList,
         variadic: true,
         optional: true,
         brief: "Project slug filter (repeatable or comma-separated)",
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironment,
         optional: true,
         brief: "Environment filter",
       },
       owner: {
         kind: "parsed",
-        parse: String,
+        parse: parseOwner,
         optional: true,
         brief: "Owner value accepted by Sentry API",
       },
       workflow: {
         kind: "parsed",
-        parse: String,
+        parse: parseWorkflowList,
         variadic: true,
         optional: true,
         brief: "Alert (workflow) id to notify (repeatable or comma-separated)",
@@ -177,8 +197,11 @@ export const createCommand = buildCommand({
     },
     aliases: { ...DRY_RUN_ALIASES, t: "trigger", p: "project" },
   },
-  async *func(this: SentryContext, flags: CreateFlags, arg: string) {
-    const { cwd } = this;
+  async *func(
+    this: SentryContext,
+    flags: CreateFlags,
+    target: OrgProjectTarget<string>,
+  ) {
     if (!flags.name.trim()) {
       throw new ValidationError("Rule name cannot be empty.", "name");
     }
@@ -211,7 +234,7 @@ export const createCommand = buildCommand({
       );
     }
 
-    const orgSlug = await resolveMetricCreateOrg(arg, cwd);
+    const orgSlug = await target.resolved;
 
     const body: Record<string, unknown> = {
       name: flags.name,

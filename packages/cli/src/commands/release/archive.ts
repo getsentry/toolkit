@@ -6,21 +6,22 @@
  * `sentry release restore`.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
 import {
   colorTag,
-  escapeMarkdownInline,
   mdKvTable,
   renderMarkdown,
-  safeCodeSpan,
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import type { SentryRelease } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import {
+  ReleaseUpdateOutputSchema,
+  type SentryRelease,
+} from "../../types/index.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release archive [<org>/]<version>";
 
@@ -32,15 +33,15 @@ const USAGE_HINT = "sentry release archive [<org>/]<version>";
 function formatReleaseArchived(data: Record<string, unknown>): string {
   if (data.dryRun) {
     return renderMarkdown(
-      `Would archive release ${safeCodeSpan(String(data.version))} (dry run)`,
+      `Would archive release ${inlineCode(String(data.version))} (dry run)`,
     );
   }
   const release = data as unknown as SentryRelease;
   const lines: string[] = [];
-  lines.push(`## Release Archived: ${escapeMarkdownInline(release.version)}`);
+  lines.push(`## Release Archived: ${text(release.version)}`);
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   kvRows.push(["Status", colorTag("muted", "Archived")]);
   lines.push(mdKvTable(kvRows));
   return renderMarkdown(lines.join("\n"));
@@ -71,16 +72,16 @@ export const archiveCommand = buildCommand({
   },
   output: {
     human: formatReleaseArchived,
+    schema: ReleaseUpdateOutputSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version to archive",
-          parse: parseOrgTarget,
-        },
+        releaseParameter(
+          USAGE_HINT,
+          "[<org>/]<version> - Release version to archive",
+        ),
       ],
     },
     flags: {
@@ -95,15 +96,9 @@ export const archiveCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string,
+    target: ReleaseTarget,
   ) {
-    const { cwd } = this;
-
-    const { version, org, detectedFrom } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+    const { version, org, detectedFrom } = await target.resolved;
 
     if (flags["dry-run"]) {
       yield new CommandOutput({ dryRun: true, version, org });

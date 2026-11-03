@@ -26,6 +26,22 @@ Null values remain null, and incomplete buckets remain marked as incomplete;
 recent buckets may still be waiting for ingestion or for the interval to end.
 Temporal output has no pagination cursor.
 
+In terminals with Kitty or Sixel graphics support, each numeric aggregate gets
+its own chart with a value axis, UTC time labels, and a colored aggregate legend,
+using the same presentation as dashboard charts. Null and incomplete buckets leave
+gaps; a table below the chart retains their timestamps, original values, and
+completeness reasons. Complete buckets have at least a baseline tick, including
+zero values. The interval and sampling or scan warnings appear in a compact
+caption below each chart. The full aggregate expression is included there when
+the legend abbreviates it. Ingestion details follow the results. All times are UTC;
+the query range in the header is distinct from the bucket-start labels on the axes.
+
+Other terminals use tables, as do series with strings, negative values, irregular
+bucket spacing, too many buckets to draw individually, or too little room for
+readable axes. The CLI never averages buckets to fit an Explore chart. Use
+`SENTRY_NO_GRAPHICS=1` or the graphics default setting to keep table output.
+Graphics do not change `--json` or `--fields`.
+
 ## Metrics
 
 Use `--metric` (`-m`) to query metrics by name. The CLI auto-resolves the metric's type and unit.

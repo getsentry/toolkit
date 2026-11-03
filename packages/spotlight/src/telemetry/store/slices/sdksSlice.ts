@@ -35,14 +35,13 @@ export const createSDKsSlice: StateCreator<
   storeSdkRecord: (sdk: Sdk) => {
     const sdks = get().sdks;
     const existingSdk = sdks.get(getSDKKey(sdk));
-    if (existingSdk) {
-      existingSdk.lastSeen = sdk.lastSeen;
-    } else {
-      const newSdks = new Map(sdks);
-      newSdks.set(getSDKKey(sdk), sdk);
-      set({ sdks: newSdks });
-    }
-    return existingSdk || sdk;
+    const record = existingSdk
+      ? { ...existingSdk, lastSeen: sdk.lastSeen }
+      : sdk;
+    const newSdks = new Map(sdks);
+    newSdks.set(getSDKKey(sdk), record);
+    set({ sdks: newSdks });
+    return record;
   },
-  getSdks: () => Array.from(get().sdks.values()),
+  getSdks: () => [...get().sdks.values()],
 });

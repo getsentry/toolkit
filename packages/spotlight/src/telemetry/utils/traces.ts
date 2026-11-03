@@ -5,7 +5,7 @@ export function groupSpans(spans: Map<string, Span>): Span[] {
   const tree: Span[] = [];
 
   // need to sort root(s) first
-  const sortedSpans = Array.from(spans.values()).sort((a, b) => {
+  const sortedSpans = [...spans.values()].sort((a, b) => {
     const parentComp = (a.parent_span_id ? 1 : 0) - (b.parent_span_id ? 1 : 0);
     return parentComp === 0 ? compareSpans(a, b) : parentComp;
   });

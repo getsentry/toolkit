@@ -23,12 +23,14 @@
  * @see https://cli.sentry.dev/exit-codes/ for full reference
  */
 
+import { ArgumentScannerError, ExitCode } from "@stricli/core";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
   buildBillingUrl,
   buildOrgSettingsUrl,
   buildSeerSettingsUrl,
 } from "./sentry-urls.js";
+import { getLoginCommand, getUrlLoginCommand } from "./app-identity.js";
 
 // ---------------------------------------------------------------------------
 // Exit code constants
@@ -151,14 +153,14 @@ export class HostScopeError extends CliError {
       super(
         `${sourceOrMessage}: ${destinationUrl}\n` +
           "Refusing to route requests to this host because no Sentry credentials are configured for it.\n" +
-          `To use this host, run: sentry auth login --url ${destinationUrl}`,
+          `To use this host, run: ${getUrlLoginCommand()} ${destinationUrl}`,
         EXIT.AUTH_HOST_SCOPE,
       );
     } else {
       super(
         `${sourceOrMessage}: ${destinationUrl}\n` +
           `Refusing to route requests here because it doesn't match the host your Sentry credentials are for (${tokenHost}).\n` +
-          `To use this host, run: sentry auth login --url ${destinationUrl}\n` +
+          `To use this host, run: ${getUrlLoginCommand()} ${destinationUrl}\n` +
           "To keep using your current credentials, remove this URL override.",
         EXIT.AUTH_HOST_SCOPE,
       );
@@ -271,9 +273,8 @@ export class AuthError extends CliError {
     options?: AuthErrorOptions,
   ) {
     const defaultMessages: Record<AuthErrorReason, string> = {
-      not_authenticated: "Not authenticated. Run 'sentry auth login' first.",
-      expired:
-        "Authentication expired. Run 'sentry auth login' to re-authenticate.",
+      not_authenticated: `Not authenticated. Run '${getLoginCommand()}' first.`,
+      expired: `Authentication expired. Run '${getLoginCommand()}' to re-authenticate.`,
       invalid: "Invalid authentication token.",
     };
     const exitCodes: Record<AuthErrorReason, number> = {
@@ -294,7 +295,7 @@ export class MalformedAuthTokenError extends AuthError {
     super(
       "invalid",
       "Invalid authentication token. Copy it again as a single line without spaces or control characters, " +
-        "or run 'sentry auth login' to replace stored credentials.",
+        `or run '${getLoginCommand()}' to replace stored credentials.`,
     );
     this.name = "MalformedAuthTokenError";
   }
@@ -845,11 +846,17 @@ export function formatError(error: unknown): string {
  * Get process exit code for an error.
  *
  * @param error - Any thrown value
- * @returns Exit code (from CliError.exitCode or 1 for other errors)
+ * @returns Exit code (from CliError.exitCode, Stricli's `InvalidArgument`
+ *   for an argument error the command wrapper threw, or 1 for other errors)
  */
 export function getExitCode(error: unknown): number {
   if (error instanceof CliError) {
     return error.exitCode;
+  }
+  // `boundArguments` positionals parse in the command wrapper, after
+  // Stricli's scanner; their errors exit like the scanner's
+  if (error instanceof ArgumentScannerError) {
+    return ExitCode.InvalidArgument;
   }
   return 1;
 }

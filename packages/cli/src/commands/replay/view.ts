@@ -13,18 +13,13 @@ import {
   resolveReplay,
 } from "../../lib/api-client.js";
 import {
-  detectSwappedViewArgs,
-  parseSlashSeparatedArg,
+  type ParsedOrgProject,
+  parseOrgProjectInput,
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
-import {
-  ApiError,
-  ContextError,
-  ResolutionError,
-  ValidationError,
-} from "../../lib/errors.js";
+import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
+import { ApiError, ResolutionError } from "../../lib/errors.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
@@ -33,18 +28,22 @@ import {
   type ReplayViewData,
   replayHint,
 } from "../../lib/formatters/replay.js";
-import { tryNormalizeHexId, validateHexId } from "../../lib/hex-id.js";
+import { ID_KINDS, parseIdArgument } from "../../lib/id-arguments.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
-import { resolveOrgOptionalFromArg } from "../../lib/resolve-target.js";
 import {
-  applySentryUrlContext,
-  parseSentryUrl,
-} from "../../lib/sentry-url-parser.js";
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
+import {
+  type ResolvedOrgOptionalTarget,
+  resolveOrgOptionalTarget,
+} from "../../lib/resolve-target.js";
+import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { buildReplayUrl } from "../../lib/sentry-web-urls.js";
 import type {
   ReplayActivityEvent,
@@ -61,12 +60,6 @@ type ViewFlags = {
   readonly fields?: string[];
 };
 
-type ParsedPositionalArgs = {
-  replayId: string;
-  targetArg: string | undefined;
-  warning?: string;
-};
-
 const USAGE_HINT =
   "sentry replay view [<org>/<project>/]<replay-id> | <replay-url>";
 const MAX_ACTIVITY_EVENTS = 6;
@@ -76,106 +69,84 @@ const MAX_RELATED_TRACES = 2;
 const log = logger.withTag("replay.view");
 
 /**
- * Parse a single positional argument as a replay target.
- *
- * Handles bare replay IDs, `<org>/<replay-id>`, `<org>/<project>/<replay-id>`,
- * and Sentry replay URLs. The single-slash case (`org/id`) needs special
- * handling because 32-char hex replay IDs look valid to the generic
- * `parseSlashSeparatedArg` which would misinterpret the org as a project.
- */
-function parseSingleArg(arg: string, usageHint: string): ParsedPositionalArgs {
-  const trimmed = arg.trim();
-  if (!trimmed) {
-    throw new ContextError("Replay ID", usageHint, []);
-  }
-
-  // Handle <org>/<replay-id> shorthand — must check before parseSlashSeparatedArg
-  // because replay IDs are 32-char hex strings that look valid to the generic
-  // slash parser's ID extraction, but with only one slash the "project" segment
-  // would be wrongly treated as the ID.
-  const slashIdx = trimmed.indexOf("/");
-  if (slashIdx !== -1 && trimmed.indexOf("/", slashIdx + 1) === -1) {
-    const org = trimmed.slice(0, slashIdx);
-    const replaySegment = trimmed.slice(slashIdx + 1);
-    const normalizedReplayId =
-      replaySegment && tryNormalizeHexId(replaySegment);
-    if (!normalizedReplayId) {
-      throw new ContextError("Replay ID", usageHint, []);
-    }
-    return { replayId: normalizedReplayId, targetArg: `${org}/` };
-  }
-
-  const { id: replayId, targetArg } = parseSlashSeparatedArg(
-    trimmed,
-    "Replay ID",
-    usageHint,
-  );
-  return { replayId, targetArg };
-}
-
-/**
- * Parse replay view positional arguments.
- *
- * Supports:
- * - `<replay-id>`
- * - `<org>/<replay-id>`
- * - `<org>/<project>/<replay-id>`
- * - `<target> <replay-id>`
- * - `<replay-url>`
+ * Parse `replay view` and `replay download` arguments: a replay ID in the
+ * forms every ID-taking command takes (see `id-arguments.ts`), or a replay
+ * URL.
  *
  * `usageHint` lets sibling replay commands show their own usage in errors.
+ * Has no side effects: a pasted URL's server is returned as `baseUrl`.
  */
-export function parsePositionalArgs(
-  args: string[],
+export function parseReplayArguments(
+  args: readonly string[],
   usageHint = USAGE_HINT,
-): ParsedPositionalArgs {
-  if (args.length === 0) {
-    throw new ContextError("Replay ID", usageHint, []);
-  }
-  if (args.length > 2) {
-    throw new ValidationError(
-      `Too many positional arguments (got ${args.length}, expected at most 2).\n\nUsage: ${usageHint}`,
-      "positional",
-    );
-  }
+): ReplayArgumentsInput {
+  const { target, id, baseUrl, warnings } = parseIdArgument(
+    args,
+    ID_KINDS.replay,
+    { usageHint },
+  );
+  const parsed = parseOrgProjectInput(target);
+  return {
+    replayId: id,
+    target: parsed.parsed,
+    baseUrl: baseUrl ?? parsed.baseUrl,
+    warnings,
+  };
+}
 
-  const first = args[0];
-  if (!first) {
-    throw new ContextError("Replay ID", usageHint, []);
-  }
+/** Parsed `replay view` and `replay download` arguments. */
+export type ReplayArgumentsInput = {
+  readonly replayId: string;
+  readonly target: ParsedOrgProject;
+  /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
+  readonly baseUrl?: string;
+  /** Warnings to log, such as for reversed arguments */
+  readonly warnings: readonly string[];
+};
 
-  const urlParsed = parseSentryUrl(first);
-  if (urlParsed) {
-    applySentryUrlContext(urlParsed.baseUrl);
-    if (urlParsed.replayId && urlParsed.org) {
-      return { replayId: urlParsed.replayId, targetArg: `${urlParsed.org}/` };
-    }
-    throw new ContextError("Replay ID", usageHint, [
-      "Pass a replay URL: https://sentry.io/organizations/{org}/explore/replays/{replayId}/",
-    ]);
-  }
+/** A replay ID and the org (and optional project) to look it up in. */
+export type ResolvedReplayTarget = ResolvedOrgOptionalTarget & {
+  readonly replayId: string;
+};
 
-  if (args.length === 1) {
-    return parseSingleArg(first, usageHint);
-  }
+/** The arguments of `replay view` and `replay download`. */
+export type ReplayArguments = BoundArguments<
+  ReplayArgumentsInput,
+  ResolvedReplayTarget
+>;
 
-  const second = args[1];
-  if (!second) {
-    throw new ContextError("Replay ID", usageHint, []);
-  }
-
-  const warning =
-    args.length === 2 ? detectSwappedViewArgs(first, second) : null;
-  if (warning) {
-    const normalizedReplayId = tryNormalizeHexId(first) ?? first;
-    return {
-      replayId: normalizedReplayId,
-      targetArg: second,
-      warning,
-    };
-  }
-
-  return { replayId: second, targetArg: first };
+/**
+ * Positional for `[<org>/<project>] <replay-id>` or a replay URL, shared by
+ * `replay view` and `replay download`.
+ */
+export function replayArguments(
+  command: "view" | "download",
+  usageHint: string,
+) {
+  const commandLog = logger.withTag(`replay.${command}`);
+  return boundArguments({
+    placeholder: "replay-id-or-url",
+    brief: "[<org>/<project>] <replay-id or trace-id> or <replay-url>",
+    kind: ORG_PROJECT_TARGET,
+    parse: (raw) => parseReplayArguments(raw, usageHint),
+    resolve: async (
+      input,
+      context: SentryContext,
+    ): Promise<ResolvedReplayTarget> => {
+      if (input.baseUrl) {
+        applySentryUrlContext(input.baseUrl);
+      }
+      for (const warning of input.warnings) {
+        commandLog.warn(warning);
+      }
+      const resolved = await resolveOrgOptionalTarget(
+        input.target,
+        context.cwd,
+        `replay ${command}`,
+      );
+      return { ...resolved, replayId: input.replayId };
+    },
+  });
 }
 
 type ReplayProjectScope = {
@@ -397,14 +368,7 @@ export const viewCommand = buildCommand({
     schema: ReplayViewOutputSchema,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "replay-id-or-url",
-        brief: "[<org>/<project>] <replay-id or trace-id> or <replay-url>",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: replayArguments("view", USAGE_HINT),
     flags: {
       web: {
         kind: "boolean",
@@ -415,21 +379,11 @@ export const viewCommand = buildCommand({
     },
     aliases: { ...FRESH_ALIASES, w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, ...args: string[]) {
+  async *func(this: SentryContext, flags: ViewFlags, target: ReplayArguments) {
     applyFreshFlag(flags);
-    const { cwd } = this;
 
-    const parsedArgs = parsePositionalArgs(args);
-    if (parsedArgs.warning) {
-      log.warn(parsedArgs.warning);
-    }
-
-    const replayId = validateHexId(parsedArgs.replayId, "replay ID");
-    const resolved = await resolveOrgOptionalFromArg(
-      parsedArgs.targetArg,
-      cwd,
-      "replay view",
-    );
+    const resolved = await target.resolved;
+    const { replayId } = resolved;
 
     let replay: ReplayDetails;
     try {

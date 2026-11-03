@@ -39,7 +39,7 @@ function encodeBookmark(
   return (
     CURSOR_PREFIX +
     Buffer.from(
-      JSON.stringify({ cursor: cursor ?? null, seen: Array.from(seen) }),
+      JSON.stringify({ cursor: cursor ?? null, seen: [...seen] }),
     ).toString("base64url")
   );
 }
@@ -126,7 +126,7 @@ export async function fetchAttributeTypePage(
             pending || next
               ? encodeBookmark(
                   next,
-                  Array.from(seen).filter((key) => keysOnPage.has(key)),
+                  [...seen].filter((key) => keysOnPage.has(key)),
                 )
               : undefined,
         };
@@ -170,6 +170,6 @@ export function attributeCursorAfter(
   const keysOnPage = page.pageKeys.get(pageId(replay)) ?? new Set<string>();
   return encodeBookmark(
     replay,
-    Array.from(seen).filter((key) => keysOnPage.has(key)),
+    [...seen].filter((key) => keysOnPage.has(key)),
   );
 }

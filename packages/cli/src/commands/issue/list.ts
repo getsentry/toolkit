@@ -15,12 +15,15 @@ import {
 } from "../../lib/api-client.js";
 import { extractRequiredScopes } from "../../lib/api-scope.js";
 import {
+  CURSOR_KEYWORDS,
   formatProjectTarget,
   looksLikeIssueShortId,
-  parseOrgProjectArg,
+  type ParsedOrgProject,
+  parseCursorFlag,
   rejectIssueCommandTokenListTarget,
 } from "../../lib/arg-parsing.js";
 
+import { choiceParser } from "../../lib/completion-target.js";
 import { getActiveEnvVarName, isEnvTokenActive } from "../../lib/db/auth.js";
 import {
   advancePaginationState,
@@ -58,12 +61,10 @@ import {
   appendQueryHint,
   buildListCommand,
   buildListLimitFlag,
-  CURSOR_KEYWORDS,
   LIST_BASE_ALIASES,
   LIST_MAX_LIMIT,
-  LIST_TARGET_POSITIONAL,
+  listTargetPositional,
   paginationHint,
-  parseCursorFlag,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
@@ -90,6 +91,7 @@ import {
   unscopedCountFilterKeys,
 } from "../../lib/search-query.js";
 import { isSaaS } from "../../lib/sentry-web-urls.js";
+import type { ListCommandTarget } from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   formatTimeRangeFlag,
@@ -1001,7 +1003,7 @@ async function handleOrganizationIssues(
 
 /** Options for {@link handleResolvedTargets}. */
 type ResolvedTargetsOptions = {
-  parsed: ReturnType<typeof parseOrgProjectArg>;
+  parsed: ParsedOrgProject;
   flags: ListFlags;
   cwd: string;
   timeRange: TimeRange;
@@ -1710,7 +1712,7 @@ export const listCommand = buildListCommand("issue", {
   },
   output: issueListOutput,
   parameters: {
-    positional: LIST_TARGET_POSITIONAL,
+    positional: listTargetPositional({ multi: true }),
     flags: {
       query: {
         kind: "parsed",
@@ -1722,7 +1724,7 @@ export const listCommand = buildListCommand("issue", {
       limit: buildListLimitFlag("issues"),
       sort: {
         kind: "parsed",
-        parse: parseSort,
+        parse: choiceParser(VALID_SORT_VALUES, parseSort),
         brief:
           "Sort by: recommended, date, new, freq, user (default: recommended on sentry.io, else date)",
         optional: true,
@@ -1753,7 +1755,11 @@ export const listCommand = buildListCommand("issue", {
       t: "period",
     },
   },
-  async *func(this: SentryContext, rawFlags: ListFlagsInput, target?: string) {
+  async *func(
+    this: SentryContext,
+    rawFlags: ListFlagsInput,
+    target: ListCommandTarget,
+  ) {
     const { cwd } = this;
     const log = logger.withTag("issue.list");
 
@@ -1765,11 +1771,11 @@ export const listCommand = buildListCommand("issue", {
       sort: rawFlags.sort ?? defaultIssueSort(),
     };
 
-    if (target) {
-      rejectIssueCommandTokenListTarget(target);
+    if (target.raw) {
+      rejectIssueCommandTokenListTarget(target.raw);
     }
 
-    const parsed = parseOrgProjectArg(target, { multi: true });
+    const { parsed } = await target.resolved;
 
     // Auto-recover: user passed an issue short ID (e.g., "ARMAX-3E" or a
     // lowercase/multi-segment variant like "javascript-react-mr-1b") instead

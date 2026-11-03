@@ -24,9 +24,9 @@ describe("WizardStore step progress", () => {
   test("pre-populates the checklist from CHECKLIST_VISIBLE_STEPS", () => {
     const store = new WizardStore();
     const snapshot = store.getSnapshot();
-    expect(snapshot.steps.map((entry) => entry.id)).toEqual(
-      CHECKLIST_VISIBLE_STEPS.slice(),
-    );
+    expect(snapshot.steps.map((entry) => entry.id)).toEqual([
+      ...CHECKLIST_VISIBLE_STEPS,
+    ]);
     expect(snapshot.steps.every((entry) => entry.status === "pending")).toBe(
       true,
     );

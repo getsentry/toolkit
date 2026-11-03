@@ -61,9 +61,7 @@ export function processProfileChunkEvent(
       : start_timestamp;
 
   // Reverse stacks to match the order expected by visualization (leaf first)
-  const reversedStacks = profile.stacks.map((s: number[]) =>
-    Array.from(s).reverse(),
-  );
+  const reversedStacks = profile.stacks.map((s: number[]) => [...s].reverse());
 
   const chunk: ProcessedProfileChunk = {
     profiler_id,

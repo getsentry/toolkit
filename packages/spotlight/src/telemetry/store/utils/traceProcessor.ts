@@ -89,14 +89,14 @@ export function processTransactionEvent(
           },
         },
       },
-      spans: Array.from(
-        new Map(
+      spans: [
+        ...new Map(
           [...(previous.spans ?? []), ...(event.spans ?? [])].map((span) => [
             span.span_id,
             span,
           ]),
         ).values(),
-      ),
+      ],
     };
   } else {
     trace.transactions.push(event);
@@ -178,7 +178,7 @@ export function processTransactionEvent(
 /** Rebuild from real spans so late parents replace placeholders and children are not appended twice. */
 export function rebuildSpanTree(trace: Trace): void {
   trace.spans = new Map(
-    Array.from(trace.spans)
+    [...trace.spans]
       .filter(([, span]) => span.op !== "orphan")
       .map(([id, span]) => [id, { ...span, children: undefined }]),
   );

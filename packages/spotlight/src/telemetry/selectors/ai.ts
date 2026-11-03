@@ -5,7 +5,7 @@ import {
 import type { AITrace, Span, Trace } from "../types.ts";
 
 export function getAIRootSpans(traces: Iterable<Trace>): Span[] {
-  return Array.from(traces).flatMap((trace) =>
+  return [...traces].flatMap((trace) =>
     extractAllAIRootSpans(trace.spanTree).map(({ span }) => span),
   );
 }

@@ -14,12 +14,12 @@ export function getSpans(
   traces: Iterable<Trace>,
   filter: SpanFilter = {},
 ): Span[] {
-  return Array.from(traces)
+  return [...traces]
     .filter(
       (trace) =>
         filter.traceId === undefined || trace.trace_id === filter.traceId,
     )
-    .flatMap((trace) => Array.from(trace.spans.values()));
+    .flatMap((trace) => [...trace.spans.values()]);
 }
 
 /** Groups spans by description, falling back to operation or ID. Durations are milliseconds. */
@@ -47,5 +47,5 @@ export function summarizeSpans(spans: Iterable<Span>): SpanSummary[] {
     group.spans.push(span);
     groups.set(description, group);
   }
-  return Array.from(groups.values());
+  return [...groups.values()];
 }

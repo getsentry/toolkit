@@ -60,7 +60,7 @@ export function validateRegionUrl(regionUrl: string, baseHost: string): string {
     !isSaaSTrustOrigin(regionUrl)
   ) {
     throw new UserInputError(
-      `Invalid regionUrl. The domain '${regionHost}' is not allowed. Allowed domains are: ${Array.from(SENTRY_ALLOWED_REGION_DOMAINS).join(", ")}`,
+      `Invalid regionUrl. The domain '${regionHost}' is not allowed. Allowed domains are: ${[...SENTRY_ALLOWED_REGION_DOMAINS].join(", ")}`,
     );
   }
 

@@ -271,12 +271,12 @@ describe("get_issue_details", () => {
 
       ### Tags
 
-      **environment**: development
-      **handled**: no
-      **level**: error
-      **mechanism**: cloudflare
-      **runtime.name**: cloudflare
-      **url**: https://mcp.sentry.dev/sse
+      **environment**: \`development\`
+      **handled**: \`no\`
+      **level**: \`error\`
+      **mechanism**: \`cloudflare\`
+      **runtime.name**: \`cloudflare\`
+      **url**: \`https://mcp.sentry.dev/sse\`
 
       ### Additional Context
 
@@ -444,8 +444,8 @@ describe("get_issue_details", () => {
 
       ### Tags
 
-      **level**: error
-      **environment**: production
+      **level**: \`error\`
+      **environment**: \`production\`
 
       ### Additional Context
 
@@ -899,12 +899,12 @@ describe("get_issue_details", () => {
 
       ### Tags
 
-      **environment**: development
-      **handled**: no
-      **level**: error
-      **mechanism**: cloudflare
-      **runtime.name**: cloudflare
-      **url**: https://mcp.sentry.dev/sse
+      **environment**: \`development\`
+      **handled**: \`no\`
+      **level**: \`error\`
+      **mechanism**: \`cloudflare\`
+      **runtime.name**: \`cloudflare\`
+      **url**: \`https://mcp.sentry.dev/sse\`
 
       ### Additional Context
 
@@ -1184,12 +1184,12 @@ describe("get_issue_details", () => {
 
       ### Tags
 
-      **environment**: development
-      **handled**: no
-      **level**: error
-      **mechanism**: cloudflare
-      **runtime.name**: cloudflare
-      **url**: https://mcp.sentry.dev/sse
+      **environment**: \`development\`
+      **handled**: \`no\`
+      **level**: \`error\`
+      **mechanism**: \`cloudflare\`
+      **runtime.name**: \`cloudflare\`
+      **url**: \`https://mcp.sentry.dev/sse\`
 
       ### Additional Context
 
@@ -1713,7 +1713,7 @@ describe("get_issue_details", () => {
       "# Issue MALFORMED-TAGS-001 in **sentry-mcp-evals**",
     );
     expect(result).toContain("### Tags");
-    expect(result).toContain("**level**: error");
+    expect(result).toContain("**level**: `error`");
     expect(result).not.toContain("**null**");
   });
 
@@ -1920,8 +1920,8 @@ describe("get_issue_details", () => {
 
       ### Tags
 
-      **level**: info
-      **transaction**: POST /oauth/token
+      **level**: \`info\`
+      **transaction**: \`POST /oauth/token\`
 
       ## Response Notes
 

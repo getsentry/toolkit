@@ -372,7 +372,7 @@ describe("profile graft missing parents", () => {
         })),
       });
       const intervals = () =>
-        Array.from(target.spans.values())
+        [...target.spans.values()]
           .filter(
             (span) => span.tags?.source === "profile" && span.op === "main",
           )
@@ -398,10 +398,10 @@ describe("profile graft missing parents", () => {
           { span_id: "second", parent_span_id: "missing" },
         ],
       });
-      const ids = Array.from(target.spans.keys());
+      const ids = [...target.spans.keys()];
       graftProfileSpans(target, source);
       expect(intervals()).toEqual(expected);
-      expect(Array.from(target.spans.keys())).toEqual(ids);
+      expect([...target.spans.keys()]).toEqual(ids);
     },
   );
 });

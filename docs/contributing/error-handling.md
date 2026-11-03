@@ -4,7 +4,7 @@ This document describes how errors are handled throughout the MCP server tool sy
 
 ## Error Types and Hierarchy
 
-### API Error Classes (from api-client/errors.ts)
+### API Error Classes (from `@sentry/toolkit-core/api-client/errors`)
 
 ```
 ApiError (base class)

@@ -238,9 +238,7 @@ export function createTelemetryReader(
     );
   // Legacy transaction child spans need not carry trace_id. Scope their owning trace first.
   const spans = (snapshot: TelemetrySnapshot, filter: TraceReadFilter) =>
-    traces(snapshot, filter).flatMap((trace) =>
-      Array.from(trace.spans.values()),
-    );
+    traces(snapshot, filter).flatMap((trace) => [...trace.spans.values()]);
   function events(snapshot: TelemetrySnapshot, filter: EventReadFilter) {
     return snapshot.events.filter(
       (event) =>
@@ -332,7 +330,7 @@ export function createTelemetryReader(
           named(
             getProfileFunctionSummaries(
               new Map(
-                Array.from(snapshot.profiles).filter(
+                [...snapshot.profiles].filter(
                   ([id, profile]) =>
                     (filter.traceId === undefined || id === filter.traceId) &&
                     within(profile.timestamp, filter),

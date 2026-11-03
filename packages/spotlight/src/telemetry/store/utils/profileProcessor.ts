@@ -65,9 +65,7 @@ export function processProfileEvent(
         ),
       })),
       frames: event.profile.frames,
-      stacks: event.profile.stacks.map((s: number[]) =>
-        Array.from(s).reverse(),
-      ),
+      stacks: event.profile.stacks.map((s: number[]) => [...s].reverse()),
       timestamp,
       active_thread_id: profileTxn.active_thread_id,
     };

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { marked } from "marked";
 
 const name = "sentry-cli";
@@ -14,14 +15,14 @@ function call(node, property) {
   return node.type === "CallExpression" && member(node.callee, property);
 }
 
-function rule(message, visitors) {
+function rule(message, visitors, schema = []) {
   return {
-    meta: { type: "problem", docs: { description: message }, schema: [] },
+    meta: { type: "problem", docs: { description: message }, schema },
     create(context) {
       const filename = context.filename.replaceAll("\\", "/");
       if (!filename.includes("/packages/cli/")) return {};
-      return visitors(context, filename, (node) =>
-        context.report({ node, message }),
+      return visitors(context, filename, (node, override = message) =>
+        context.report({ node, message: override }),
       );
     },
   };
@@ -56,11 +57,92 @@ function readsProperty(node, object, property) {
   );
 }
 
-/** Target positional types from `src/lib/target-positional.ts`. */
+const FUNCTION_TYPES = new Set([
+  "ArrowFunctionExpression",
+  "FunctionDeclaration",
+  "FunctionExpression",
+]);
+
+/**
+ * Top-level functions of a module by name: `function f() {}` and
+ * `const f = () => {}`, exported or not.
+ */
+function moduleFunctions(program) {
+  const functions = new Map();
+  for (const statement of program.body) {
+    const declaration =
+      statement.type === "ExportNamedDeclaration"
+        ? statement.declaration
+        : statement;
+    if (declaration?.type === "FunctionDeclaration" && declaration.id) {
+      functions.set(declaration.id.name, declaration);
+    }
+    if (declaration?.type === "VariableDeclaration") {
+      for (const declarator of declaration.declarations) {
+        if (
+          declarator.id.type === "Identifier" &&
+          FUNCTION_TYPES.has(declarator.init?.type)
+        )
+          functions.set(declarator.id.name, declarator.init);
+      }
+    }
+  }
+  return functions;
+}
+
+/** Whether a function reads its second parameter (the parsed `--fields`). */
+function readsFieldsParameter(fn) {
+  const fields = fn.params[1];
+  const name =
+    fields?.type === "AssignmentPattern" ? fields.left?.name : fields?.name;
+  return Boolean(name) && containsIdentifier(fn.body, name);
+}
+
+/** `jsonTransform: ...` properties anywhere under a node. */
+function jsonTransformProperties(node) {
+  const found = [];
+  someNode(node, (n) => {
+    if (
+      n.type === "Property" &&
+      (n.key?.name ?? n.key?.value) === "jsonTransform"
+    )
+      found.push(n);
+    return false;
+  });
+  return found;
+}
+
+/**
+ * Target positional types from `src/lib/target-positional.ts`, and
+ * `boundArguments` positionals (`BoundArguments` and the commands' aliases).
+ */
 const BOUND_TARGET_TYPES = new Set([
+  "ListCommandTarget",
   "OrgOptionalTarget",
   "OrgProjectTarget",
+  "OrgTarget",
   "ProjectBoundTarget",
+  "ReleaseTarget",
+  "AlertRuleArgument",
+  "BoundArguments",
+  "ConversationArguments",
+  "DashboardArguments",
+  "DashboardCreateArguments",
+  "DashboardListArguments",
+  "EventViewArguments",
+  "InitArguments",
+  "IntegrationArguments",
+  "IssuesArguments",
+  "LogListArguments",
+  "LogViewArguments",
+  "ProjectCreateArguments",
+  "ReplayArguments",
+  "SpanListArguments",
+  "SpanViewArguments",
+  "TraceLogsArguments",
+  "TraceViewArguments",
+  "TrialStartArguments",
+  "WidgetAddArguments",
 ]);
 
 function boundTargetParams(fn) {
@@ -139,6 +221,140 @@ function regexSource(node) {
   )
     return staticText(node.arguments[0]);
   return "";
+}
+
+/**
+ * Helpers that parse ID positionals by hand. Commands parse IDs with
+ * `parseIdArguments()` (src/lib/id-arguments.ts), so every command takes
+ * the same forms; issues take `issuePositional` or `issuesPositional`
+ * (src/commands/issue/positional.ts).
+ */
+const AD_HOC_ID_PARSING = new Set([
+  "parseSlashSeparatedArg",
+  "detectSwappedViewArgs",
+  "HEX_ID_RE",
+  "SPAN_ID_RE",
+]);
+
+/**
+ * Helpers that leave a target positional for `func` to parse:
+ * `withCompletionTarget` tags a parser that can leave the value raw, and the
+ * others parse a raw string (applying a pasted URL's server as they go).
+ * Commands take targets as bound positionals instead
+ * (src/lib/target-positional.ts, `boundArguments`), which parse before the
+ * command runs, carry the completion kind, and resolve on `target.resolved`.
+ */
+const UNBOUND_TARGET_PARSING = new Set([
+  "withCompletionTarget",
+  "parseOrgProjectArg",
+  "resolveOrgOnlyFromArg",
+  "resolveOrgOptionalFromArg",
+  "resolveProjectBoundFromArg",
+]);
+
+/** Whether `node` uses one of `names`; imports and `typeof` do not. */
+function usesName(node, names) {
+  return (
+    names.has(node.name) &&
+    node.parent?.type !== "ImportSpecifier" &&
+    node.parent?.type !== "TSTypeQuery"
+  );
+}
+
+/** Visitors reporting each use of one of `names` in a command file. */
+function bannedNames(file, names, report, message) {
+  if (!file.includes("/src/commands/")) return {};
+  return {
+    Identifier(node) {
+      if (usesName(node, names)) report(node, message);
+    },
+  };
+}
+
+const ID_ARGUMENT_PARSERS = new Set(["parseIdArguments", "parseIdArgument"]);
+
+/** Whether `node` is `ID_KINDS.<kind>`. */
+function isIdKind(node) {
+  return (
+    node?.type === "MemberExpression" &&
+    node.object.type === "Identifier" &&
+    node.object.name === "ID_KINDS"
+  );
+}
+
+/**
+ * Parameters exempt from shell completion coverage, shared with
+ * test/lib/completion-coverage.test.ts.
+ */
+const COMPLETION_EXEMPTIONS = JSON.parse(
+  readFileSync(
+    new URL("./completion-exemptions.json", import.meta.url),
+    "utf8",
+  ),
+).exemptions;
+
+/** Built-in conversions, which carry no completion kind. */
+const BUILTIN_PARSERS = new Set([
+  "String",
+  "Number",
+  "Boolean",
+  "BigInt",
+  "Date",
+  "parseInt",
+  "parseFloat",
+]);
+
+/** Objects whose static parsers (`JSON.parse`, `Number.parseInt`) are built-ins. */
+const BUILTIN_PARSER_OBJECTS = new Set(["JSON", "Number", "Date", "BigInt"]);
+
+/** The non-computed property `key` of an object literal. */
+function objectProperty(node, key) {
+  return node.properties.find(
+    (p) =>
+      p.type === "Property" &&
+      !p.computed &&
+      (p.key.name ?? p.key.value) === key,
+  );
+}
+
+/**
+ * The parameter an object literal defines, as the coverage test names it:
+ * `--name` for a flag, keyed by its name (flags can have a `placeholder`
+ * too), and `<placeholder>` for a positional, which sits in a tuple's
+ * `parameters` array or an array positional's `parameter`.
+ */
+function parameterName(node) {
+  const parent = node.parent;
+  if (
+    parent?.type === "Property" &&
+    parent.value === node &&
+    !parent.computed
+  ) {
+    const key = parent.key.name ?? parent.key.value;
+    if (key !== "parameter") return `--${key}`;
+  }
+  const placeholder = objectProperty(node, "placeholder")?.value;
+  if (placeholder?.type === "Literal" && typeof placeholder.value === "string")
+    return `<${placeholder.value}>`;
+  return undefined;
+}
+
+/** Why a `parse` value declares no completion kind, or `undefined`. */
+function untaggedParser(value) {
+  if (value.type === "Identifier" && BUILTIN_PARSERS.has(value.name))
+    return `\`${value.name}\` has no completion kind. Use parseText, textParser(${value.name}), or another tagged parser from src/lib/completion-target.ts.`;
+  if (
+    value.type === "MemberExpression" &&
+    value.object.type === "Identifier" &&
+    BUILTIN_PARSER_OBJECTS.has(value.object.name)
+  )
+    return `\`${value.object.name}.${value.property.name}\` has no completion kind. Wrap it in textParser() or choiceParser().`;
+  if (
+    value.type === "ArrowFunctionExpression" ||
+    value.type === "FunctionExpression"
+  )
+    return "An inline parser has no completion kind. Wrap it in textParser(), choiceParser(), or choiceListParser(), or use a bound parser.";
+  return undefined;
 }
 
 const rules = {
@@ -306,8 +522,77 @@ const rules = {
         FunctionDeclaration: check,
         FunctionExpression: check,
         ArrowFunctionExpression: check,
+        ...bannedNames(
+          file,
+          UNBOUND_TARGET_PARSING,
+          report,
+          "Take the target as a bound positional (src/lib/target-positional.ts, boundArguments) instead of parsing it in func.",
+        ),
       };
     },
+  ),
+  "no-ad-hoc-id-arguments": rule(
+    "Parse ID positionals with parseIdArguments() and an ID_KINDS kind.",
+    (_context, file, report) => {
+      if (!file.includes("/src/") || file.endsWith("/lib/id-arguments.ts"))
+        return {};
+      return {
+        ...bannedNames(file, AD_HOC_ID_PARSING, report),
+        CallExpression(node) {
+          if (
+            ID_ARGUMENT_PARSERS.has(node.callee.name) &&
+            !isIdKind(node.arguments[1])
+          )
+            report(node);
+        },
+      };
+    },
+  ),
+  "require-completion-parser": rule(
+    "Give every positional and value-taking flag a parser that declares its completion kind.",
+    (context, file, report) => {
+      if (!file.includes("/src/commands/") && !file.includes("/src/lib/"))
+        return {};
+      const exemptions =
+        context.options[0]?.exemptions ?? COMPLETION_EXEMPTIONS;
+      const exempt = (node) => {
+        const parameter = parameterName(node);
+        return exemptions.some(
+          (entry) =>
+            file.endsWith(`/packages/cli/${entry.file}`) &&
+            entry.parameter === parameter,
+        );
+      };
+      return {
+        ObjectExpression(node) {
+          const parse = objectProperty(node, "parse");
+          if (!parse) return;
+          // boundArguments({ kind, parse, resolve }): `kind` is the
+          // completion kind, and `parse` reads every argument at once.
+          if (objectProperty(node, "resolve")) {
+            if (!objectProperty(node, "kind") && !exempt(node))
+              report(
+                node,
+                "Give boundArguments a completion `kind` (ORG_PROJECT_TARGET, …).",
+              );
+            return;
+          }
+          const kind = objectProperty(node, "kind")?.value;
+          const parsedFlag =
+            kind?.type === "Literal" && kind.value === "parsed";
+          if (!parsedFlag && !objectProperty(node, "brief")) return;
+          const reason = untaggedParser(parse.value);
+          if (reason && !exempt(node)) report(parse.value, reason);
+        },
+      };
+    },
+    [
+      {
+        type: "object",
+        properties: { exemptions: { type: "array" } },
+        additionalProperties: false,
+      },
+    ],
   ),
   "no-generic-is-record": rule(
     "Use a shape-specific guard instead of isRecord().",
@@ -405,6 +690,43 @@ const rules = {
             },
             NewExpression(node) {
               if (MARKDOWN_STRUCTURE_RE.test(regexSource(node))) report(node);
+            },
+          }
+        : {},
+  ),
+  // A transform that drops `fields` makes `--fields` a silent no-op:
+  // https://github.com/getsentry/toolkit/issues/1808
+  "json-transform-uses-fields": rule(
+    "A jsonTransform replaces the default --fields filtering, so it must read its fields parameter.",
+    (_context, file, report) =>
+      file.includes("/src/")
+        ? {
+            Program(program) {
+              const functions = moduleFunctions(program);
+              // Exported jsonTransform* helpers are shared by several
+              // commands, so check them where they are defined.
+              for (const [fnName, fn] of functions) {
+                if (
+                  fnName.startsWith("jsonTransform") &&
+                  !readsFieldsParameter(fn)
+                )
+                  report(fn);
+              }
+              for (const property of jsonTransformProperties(program)) {
+                const value = property.value;
+                if (FUNCTION_TYPES.has(value.type)) {
+                  if (!readsFieldsParameter(value)) report(property);
+                } else if (value.type === "Identifier") {
+                  // Imported transforms are checked in their own module.
+                  const fn = functions.get(value.name);
+                  if (
+                    fn &&
+                    !value.name.startsWith("jsonTransform") &&
+                    !readsFieldsParameter(fn)
+                  )
+                    report(property);
+                }
+              }
             },
           }
         : {},

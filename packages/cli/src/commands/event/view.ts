@@ -18,17 +18,18 @@ import {
   resolveEventInOrg,
 } from "../../lib/api-client.js";
 import {
-  detectSwappedViewArgs,
-  looksLikeIssueShortId,
+  type IssueSelector,
+  issueSelectorHelp,
+  type ParsedOrgProject,
   ProjectSpecificationType,
-  parseOrgProjectArg,
-  parseSlashSeparatedArg,
+  parseOrgProjectInput,
+  parseSelector,
   spansFlag,
   splitNewlineArg,
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { ISSUE_TARGET } from "../../lib/completion-target.js";
 import {
   ApiError,
   AuthError,
@@ -46,18 +47,23 @@ import {
 import { formatEventDetails } from "../../lib/formatters/index.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
-import { HEX_ID_RE, normalizeHexId, validateHexId } from "../../lib/hex-id.js";
+import { validateHexId } from "../../lib/hex-id.js";
 import {
   handleRecoveryResult,
   recoverHexId,
   resolveRecoveryOrg,
 } from "../../lib/hex-id-recovery.js";
+import { ID_KINDS, parseIdArguments } from "../../lib/id-arguments.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
 import { resolveEffectiveOrg } from "../../lib/region.js";
 import { getReplayIdFromEvent } from "../../lib/replay-search.js";
 import {
@@ -67,13 +73,14 @@ import {
 } from "../../lib/resolve-target.js";
 import {
   applySentryUrlContext,
+  type ParsedSentryUrl,
   parseSentryUrl,
 } from "../../lib/sentry-url-parser.js";
 import { buildEventSearchUrl } from "../../lib/sentry-web-urls.js";
 import { getSpanTreeLines } from "../../lib/span-tree.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
-import { isAllDigits } from "../../lib/utils.js";
 import { EventViewOutputSchema, type SentryEvent } from "../../types/index.js";
+import { findSelectorIssue } from "../issue/utils.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -212,9 +219,9 @@ const USAGE_HINT = "sentry event view <org>/<project> <event-id>";
  *
  * When an agent pastes `"org/project/id1\nid2\nid3"` as a single arg,
  * this produces `["org/project/id1", "id2", "id3"]` — the first retains
- * the org/project prefix so `parsePositionalArgs` can extract the target.
+ * the org/project prefix so the target is still found (CLI-1HT).
  */
-export function expandNewlineArgs(args: string[]): string[] {
+export function expandNewlineArgs(args: readonly string[]): string[] {
   return args.flatMap(splitNewlineArg);
 }
 
@@ -225,6 +232,15 @@ export function expandNewlineArgs(args: string[]): string[] {
 const LATEST_EVENT_SENTINEL = "@latest";
 
 /**
+ * The selector `event view` uses when no event ID is given: the latest
+ * event of the most recent unresolved issue.
+ */
+const DEFAULT_SELECTOR: IssueSelector = "@latest";
+
+/** Usage hint for magic selectors */
+const SELECTOR_HINT = "sentry event view [<org>/[<project>/]]@latest";
+
+/**
  * Shared usage hint shown when a bare "latest" is passed without an issue.
  * There is no "latest event of a project" API — the latest-event lookup is
  * keyed by issue, so the user must supply an issue ID (or short ID).
@@ -232,282 +248,320 @@ const LATEST_EVENT_SENTINEL = "@latest";
 const BARE_LATEST_HINT = "sentry event view <issue-id>";
 
 /**
- * Parse a single positional arg for event view, handling issue short ID
- * detection both in bare form ("BRUNCHIE-APP-29") and org-prefixed form
- * ("figma/FULLSCREEN-2RN").
- *
- * Must run before `parseSlashSeparatedArg` because that function throws
- * ContextError for single-slash args like "org/SHORT-ID", which looks like
- * "org/project" with a missing event ID.
+ * The arguments of `event view`, parsed. Parsing has no side effects: the
+ * server of a pasted URL and the warnings are applied when they resolve.
  */
-function parseSingleArg(arg: string): ParsedPositionalArgs {
-  // Detect single-slash shortcuts ("org/SHORT-ID", "SHORT-ID/EVENT-ID",
-  // "project/EVENT-ID", "org/NUMERIC-ID") before parseSlashSeparatedArg,
-  // which throws ContextError for single-slash args.
-  const slashIdx = arg.indexOf("/");
-  if (slashIdx !== -1 && arg.indexOf("/", slashIdx + 1) === -1) {
-    const singleSlash = parseSingleSlashArg(
-      arg.slice(0, slashIdx),
-      arg.slice(slashIdx + 1),
-    );
-    if (singleSlash) {
-      return singleSlash;
+type EventViewInput = {
+  /**
+   * The event ID, as typed (validated when it resolves), or
+   * {@link LATEST_EVENT_SENTINEL} for an issue's latest event
+   */
+  eventId: string;
+  /** The org/project target argument; `undefined` to auto-detect */
+  targetArg: string | undefined;
+  /** `targetArg`, parsed */
+  target: ParsedOrgProject;
+  /** Numeric issue ID, from an issue URL or argument: its latest event */
+  issueId?: string;
+  /** Issue short ID (e.g. `BRUNCHIE-APP-29`) the event belongs to */
+  issueShortId?: string;
+  /**
+   * Magic selector (`@latest`, `@most_frequent`) picking the issue whose
+   * latest event to show, in the target's project or organization; also
+   * {@link DEFAULT_SELECTOR} when no event ID is given
+   */
+  selector?: IssueSelector;
+  /** More event IDs, as typed, from more arguments or lines */
+  extraEventIds?: string[];
+  /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
+  baseUrl?: string;
+  /** Warnings to log, such as for reversed arguments */
+  warnings: readonly string[];
+};
+
+/** `event view` arguments that name an issue before the event, if any. */
+type IssueInput = Omit<EventViewInput, "target" | "warnings" | "baseUrl">;
+
+/**
+ * Parse the arguments of `event view`.
+ *
+ * Event IDs take the forms every ID-taking command does (see
+ * `parseIdArguments` and `ID_KINDS.event`): `<event-id>`,
+ * `<org>/<project>/<event-id>`, `<target> <event-id> [<event-id>...]`,
+ * reversed arguments, and Sentry event URLs. A lone `<x>/<event-id>` names
+ * project `<x>`.
+ *
+ * Before those, `event view` takes an issue instead of, or with, an event:
+ * - `[<org>/[<project>/]]<issue-short-id>` or `...<numeric-issue-id>`: the
+ *   issue's latest event; also as the ID after a target
+ * - `[<org>/[<project>/]]<issue-short-id> <event-id>` and
+ *   `<issue-short-id>/<event-id>`: an event of the issue, whose project it is
+ *   looked up in
+ * - an issue URL without an event: the issue's latest event
+ * - a magic selector, `[<org>/[<project>/]]@latest` or `@most_frequent`,
+ *   also after a separate target: the selected issue's latest event
+ * - no event ID, alone or after `<org>/` or `<org>/<project>`: the same as
+ *   {@link DEFAULT_SELECTOR}
+ *
+ * @throws {ContextError} When the event ID is missing after a target that
+ *   cannot take a selector, or is `latest` without an issue
+ * @throws {ValidationError} When the target or an issue's event ID is
+ *   invalid
+ */
+export function parseEventViewInput(args: readonly string[]): EventViewInput {
+  const tokens = expandNewlineArgs(args);
+  const [first] = tokens;
+
+  let input: IssueInput;
+  let baseUrl: string | undefined;
+  let warnings: readonly string[] = [];
+  const url = first === undefined ? null : parseSentryUrl(first);
+  const issue =
+    args.length === 0
+      ? selectedIssue(DEFAULT_SELECTOR, undefined)
+      : url
+        ? issueFromUrl(url)
+        : (selectorInput(tokens) ?? issueForms(tokens));
+  if (issue) {
+    input = issue;
+    baseUrl = url?.baseUrl;
+  } else {
+    let parsed: ReturnType<typeof parseIdArguments>;
+    try {
+      parsed = parseIdArguments(tokens, ID_KINDS.event, {
+        usageHint: USAGE_HINT,
+        multiple: true,
+        needsProject: true,
+        validate: false,
+      });
+    } catch (error) {
+      // A target alone, without an event ID: the default selector there.
+      // An empty argument (`""`) is a missing event ID.
+      const latest =
+        error instanceof ContextError && args.length === 1
+          ? targetOnlyInput(tokens)
+          : null;
+      if (!latest) {
+        throw error;
+      }
+      parsed = latest;
     }
+    const [eventId, ...extraEventIds] = parsed.ids;
+    input =
+      eventId === undefined
+        ? selectedIssue(DEFAULT_SELECTOR, parsed.target)
+        : (issueFromEventId(eventId, parsed.target) ?? {
+            eventId,
+            targetArg: parsed.target,
+          });
+    if (extraEventIds.length > 0) {
+      input.extraEventIds = extraEventIds;
+    }
+    baseUrl = parsed.baseUrl;
+    warnings = parsed.warnings;
   }
 
-  const { id: eventId, targetArg } = parseSlashSeparatedArg(
-    arg,
-    "Event ID",
-    USAGE_HINT,
-  );
-
-  // Detect bare issue short ID passed as event ID (e.g., "BRUNCHIE-APP-29").
-  if (!targetArg && looksLikeIssueShortId(eventId)) {
-    return {
-      eventId: LATEST_EVENT_SENTINEL,
-      targetArg: undefined,
-      issueShortId: eventId,
-    };
-  }
-
-  // Reject bare "latest" (without the "@" prefix sentinel). There is no
-  // "latest event of a project" endpoint — the latest-event lookup is keyed
-  // by issue, so a bare "latest" has nothing to resolve against.
-  if (eventId.toLowerCase() === "latest") {
+  if (input.eventId.toLowerCase() === "latest") {
+    // There is no "latest event of a project" endpoint — the latest-event
+    // lookup is keyed by issue, so a bare "latest" has nothing to resolve
     throw new ContextError("Issue ID", BARE_LATEST_HINT, [
       "'latest' resolves the newest event of an issue — pass an issue ID, e.g. 'sentry event view 17370'",
+      `Or use the @latest selector for the latest event of the most recent unresolved issue: ${SELECTOR_HINT}`,
     ]);
   }
+  const target = parseOrgProjectInput(input.targetArg);
+  return {
+    ...input,
+    target: target.parsed,
+    baseUrl: baseUrl ?? target.baseUrl,
+    warnings,
+  };
+}
 
-  // Detect numeric issue ID (e.g., "17370") — treat as issueId and fetch latest event.
-  if (isAllDigits(eventId)) {
-    return { eventId: LATEST_EVENT_SENTINEL, targetArg, issueId: eventId };
-  }
+/** The latest event of the issue `selector` picks in `targetArg`. */
+function selectedIssue(
+  selector: IssueSelector,
+  targetArg: string | undefined,
+): IssueInput {
+  return { eventId: LATEST_EVENT_SENTINEL, targetArg, selector };
+}
 
-  return { eventId, targetArg };
+/** The selector a `[<org>/[<project>/]]@<selector>` argument ends in. */
+function selectorOf(token: string): IssueSelector | undefined {
+  return parseSelector(token.slice(token.lastIndexOf("/") + 1));
 }
 
 /**
- * Resolve a single-slash positional arg (`before/after`) to a parsed result,
- * or `null` when it isn't one of the recognized shortcut shapes and should
- * fall through to `parseSlashSeparatedArg`.
+ * The issue a magic selector picks where the event ID goes:
+ * `[<org>/[<project>/]]@<selector>`, or a bare selector after (or before)
+ * a separate target. `<x>/@<selector>` names org `<x>`, as it does for
+ * issue commands. `null` when no argument is a selector.
  *
- * Handled shapes:
- * - `org/SHORT-ID` → org-all + issue short ID (latest event)
- * - `SHORT-ID/EVENT-ID` → specific event via issue short ID
- * - `org/NUMERIC-ID` → org-all + numeric issue ID (latest event)
- * - `project/EVENT-ID` → project slug + hex event ID
- *
- * Extracted from `parseSingleArg` to keep it under the cognitive-complexity
- * limit.
+ * @throws {ValidationError} When a selector comes with event or issue IDs
  */
-function parseSingleSlashArg(
-  beforeSlash: string,
-  afterSlash: string,
-): ParsedPositionalArgs | null {
-  // "org/SHORT-ID" → auto-redirect to that issue's latest event.
-  // e.g., "figma/FULLSCREEN-2RN". Use "org/" (trailing slash) to signal
-  // OrgAll mode so downstream parseOrgProjectArg treats it as an org.
-  if (afterSlash && looksLikeIssueShortId(afterSlash)) {
-    return {
-      eventId: LATEST_EVENT_SENTINEL,
-      targetArg: `${beforeSlash}/`,
-      issueShortId: afterSlash,
-    };
+function selectorInput(tokens: readonly string[]): IssueInput | null {
+  const index = tokens.findIndex((token) => selectorOf(token) !== undefined);
+  const token = tokens[index];
+  const selector = token === undefined ? undefined : selectorOf(token);
+  if (token === undefined || selector === undefined) {
+    return null;
   }
-
-  // "SHORT-ID/EVENT-ID" → view a specific event identified by issue short ID.
-  // e.g., "CLI-G5/abc123def456abc123def456abc123de"
+  const slash = token.lastIndexOf("/");
+  const prefix = slash === -1 ? undefined : token.slice(0, slash);
+  const others = tokens.filter((_, i) => i !== index);
+  const [other] = others;
+  const otherIsId =
+    other !== undefined &&
+    (ID_KINDS.event.isId(other) || issueForm(other) !== null);
   if (
-    beforeSlash &&
-    looksLikeIssueShortId(beforeSlash) &&
-    afterSlash &&
-    HEX_ID_RE.test(normalizeHexId(afterSlash))
+    others.length > 1 ||
+    (other !== undefined && prefix !== undefined) ||
+    otherIsId
   ) {
-    return {
-      eventId: normalizeHexId(afterSlash),
-      targetArg: undefined,
-      issueShortId: beforeSlash,
-    };
+    throw new ValidationError(
+      `'${token}' selects one event; pass it alone or after a target, not with IDs: ${SELECTOR_HINT}`,
+      "positional",
+    );
   }
+  if (prefix === undefined) {
+    return selectedIssue(selector, other);
+  }
+  return selectedIssue(selector, prefix.includes("/") ? prefix : `${prefix}/`);
+}
 
-  // "org/NUMERIC-ID" → org-all + numeric issue ID (latest event).
-  // e.g., "my-org/17370". Mirrors bare "17370" and "my-org/my-project 17370",
-  // and matches how `sentry issue view org/numericId` already behaves.
-  if (beforeSlash && afterSlash && isAllDigits(afterSlash)) {
+/**
+ * `event view` arguments that name an `<org>/` or `<org>/<project>`
+ * target and no event ID, parsed with no IDs; `null` for anything else,
+ * which keeps the missing-event-ID error.
+ *
+ * @throws {ValidationError} When the target is invalid
+ */
+function targetOnlyInput(
+  tokens: readonly string[],
+): ReturnType<typeof parseIdArguments> | null {
+  // Only the target alone: after `<org>/<project>/`, an empty ID was
+  // typed, so it is a missing one
+  const [only, ...rest] = tokens;
+  const trimmed = only?.trim() ?? "";
+  if (
+    only === undefined ||
+    rest.length > 0 ||
+    (trimmed.endsWith("/") && trimmed.slice(0, -1).includes("/"))
+  ) {
+    return null;
+  }
+  const parsed = parseIdArguments(tokens, ID_KINDS.event, {
+    usageHint: USAGE_HINT,
+    multiple: true,
+    optional: true,
+    needsProject: true,
+    validate: false,
+  });
+  if (parsed.ids.length > 0 || parsed.target === undefined) {
+    return null;
+  }
+  const { parsed: target } = parseOrgProjectInput(parsed.target);
+  return target.type === ProjectSpecificationType.Explicit ||
+    target.type === ProjectSpecificationType.OrgAll
+    ? parsed
+    : null;
+}
+
+/**
+ * The issue in a Sentry URL without an event ID, whose latest event to
+ * show; `null` for an event URL.
+ *
+ * @throws {ContextError} When the URL names neither an event nor an issue
+ */
+function issueFromUrl(url: ParsedSentryUrl): IssueInput | null {
+  if (url.eventId && url.org) {
+    return null;
+  }
+  if (url.issueId && url.org) {
     return {
       eventId: LATEST_EVENT_SENTINEL,
-      targetArg: `${beforeSlash}/`,
-      issueId: afterSlash,
+      targetArg: `${url.org}/`,
+      issueId: url.issueId,
     };
   }
+  throw new ContextError("Event ID", USAGE_HINT, [
+    "Pass an event URL: https://sentry.io/organizations/{org}/issues/{id}/events/{eventId}/",
+    "Or an issue URL to view the latest event: https://sentry.io/organizations/{org}/issues/{id}/",
+  ]);
+}
 
-  // "project/EVENT-ID" → project slug + hex event ID.
-  // e.g., "my-project/abc123def456abc123def456abc123de"
-  if (afterSlash && HEX_ID_RE.test(normalizeHexId(afterSlash))) {
+/**
+ * The issue `event view` arguments name in their own forms, before any
+ * event ID; `null` when they name none.
+ *
+ * @throws {ValidationError} When the event ID after an issue short ID is
+ *   invalid: it must not fall back to the latest event
+ */
+function issueForms(tokens: readonly string[]): IssueInput | null {
+  const [first = "", second] = tokens;
+  // `[<org>/[<project>/]]<x>`: the last segment, and the target before it
+  // (`<org>/` names an org, `<org>/<project>` a project)
+  const slash = first.lastIndexOf("/");
+  const id = first.slice(slash + 1);
+  const prefix = slash === -1 ? undefined : first.slice(0, slash);
+  const target =
+    prefix === undefined || prefix.includes("/") ? prefix : `${prefix}/`;
+
+  if (second === undefined) {
+    // `<issue-short-id>/<event-id>`: the event of an issue. Short IDs are
+    // uppercase, and project slugs never are. `<org>/<issue-short-id>`
+    // comes first, then this, even for an all-digit event ID, and then
+    // `<org>/<numeric-issue-id>`.
+    const afterShortId =
+      prefix !== undefined &&
+      issueForm(prefix) === "short-id" &&
+      issueForm(id) !== "short-id";
+    if (
+      afterShortId &&
+      (ID_KINDS.event.isId(id) || issueForm(id) !== "numeric")
+    ) {
+      return {
+        eventId: ID_KINDS.event.validate(id),
+        targetArg: undefined,
+        issueShortId: prefix,
+      };
+    }
+    return issueFromEventId(id, target);
+  }
+  // `[<target>/]<issue-short-id> <event-id>`: the event of an issue. A
+  // second argument with a slash is a target: the arguments are reversed.
+  if (issueForm(id) === "short-id" && !second.includes("/")) {
     return {
-      eventId: normalizeHexId(afterSlash),
-      targetArg: beforeSlash,
+      // Issue shortcuts skip the event ID's recovery
+      eventId: ID_KINDS.event.validate(second),
+      targetArg: target,
+      issueShortId: id,
     };
   }
-
   return null;
 }
 
-/** Return type for parsePositionalArgs */
-type ParsedPositionalArgs = {
-  eventId: string;
-  targetArg: string | undefined;
-  /** Issue ID from a Sentry issue URL — triggers latest-event fetch */
-  issueId?: string;
-  /** Issue short ID detected from positional args (e.g., "BRUNCHIE-APP-29") */
-  issueShortId?: string;
-  /** Warning message if arguments appear to be in the wrong order */
-  warning?: string;
-  /** Additional event IDs from newline-separated input or extra positional args */
-  extraEventIds?: string[];
-};
-
 /**
- * Parse positional arguments for event view.
- *
- * Handles:
- * - `<event-id>` — event ID only (auto-detect org/project)
- * - `<target> <event-id>` — explicit target + event ID
- * - `[<org>/]<issue-short-id> <event-id>` — resolve the project from the issue
- * - `<sentry-event-url>` — extract eventId and org from a Sentry event URL
- *   (e.g., `https://sentry.example.com/organizations/my-org/issues/123/events/abc/`)
- * - `<sentry-issue-url>` — extract issueId and org; caller fetches latest event
- *   (e.g., `https://sentry.example.com/organizations/my-org/issues/123/`)
- *
- * For event URLs, the org is returned as `targetArg` in `"{org}/"` format
- * (OrgAll). Since event URLs don't contain a project slug, the caller
- * must fall back to auto-detection for the project.
- *
- * For issue URLs (no eventId segment), the `issueId` field is set so the
- * caller can fetch the latest event via `getLatestEvent(org, issueId)`.
- *
- * @returns Parsed event ID and optional target arg
+ * The issue named where an event ID goes (a short ID or a numeric issue
+ * ID), whose latest event to show; `null` for anything else.
  */
-// positional arg parsing has many format branches by design
-export function parsePositionalArgs(args: string[]): ParsedPositionalArgs {
-  if (args.length === 0) {
-    throw new ContextError("Event ID", USAGE_HINT, []);
+function issueFromEventId(
+  id: string,
+  targetArg: string | undefined,
+): IssueInput | null {
+  switch (issueForm(id)) {
+    case "short-id":
+      return { eventId: LATEST_EVENT_SENTINEL, targetArg, issueShortId: id };
+    case "numeric":
+      return { eventId: LATEST_EVENT_SENTINEL, targetArg, issueId: id };
+    default:
+      return null;
   }
+}
 
-  const first = args[0];
-  if (first === undefined) {
-    throw new ContextError("Event ID", USAGE_HINT, []);
-  }
-
-  // URL detection — extract eventId and org from Sentry event URLs
-  const urlParsed = parseSentryUrl(first);
-  if (urlParsed) {
-    applySentryUrlContext(urlParsed.baseUrl);
-    if (urlParsed.eventId && urlParsed.org) {
-      // Event URL: pass org as OrgAll target ("{org}/").
-      // Event URLs don't contain a project slug, so viewCommand falls
-      // back to auto-detect for the project while keeping the org context.
-      return { eventId: urlParsed.eventId, targetArg: `${urlParsed.org}/` };
-    }
-    if (urlParsed.issueId && urlParsed.org) {
-      // Issue URL without event ID — fetch the latest event for this issue.
-      // The caller uses issueId to fetch via getLatestEvent.
-      return {
-        eventId: LATEST_EVENT_SENTINEL,
-        targetArg: `${urlParsed.org}/`,
-        issueId: urlParsed.issueId,
-      };
-    }
-    // URL recognized but no eventId or issueId — not useful for event view
-    throw new ContextError("Event ID", USAGE_HINT, [
-      "Pass an event URL: https://sentry.io/organizations/{org}/issues/{id}/events/{eventId}/",
-      "Or an issue URL to view the latest event: https://sentry.io/organizations/{org}/issues/{id}/",
-    ]);
-  }
-
-  if (args.length === 1) {
-    return parseSingleArg(first);
-  }
-
-  // When newline expansion splits "org/project/id1\nid2" into multiple args,
-  // the first arg is "org/project/id1" (2+ slashes). Route it through the
-  // single-arg path to correctly extract org/project vs id, then collect the
-  // remaining args as extra event IDs (CLI-1HT).
-  const slashCount = (first.match(/\//g) ?? []).length;
-  if (slashCount >= 2) {
-    const parsed = parseSingleArg(first);
-    const extraEventIds = args.slice(1);
-    return { ...parsed, extraEventIds };
-  }
-
-  const second = args[1];
-  if (second === undefined) {
-    // Should not happen given length check, but TypeScript needs this
-    return { eventId: first, targetArg: undefined };
-  }
-
-  // Detect swapped args: user put ID first and target second
-  const swapWarning = detectSwappedViewArgs(first, second);
-  if (swapWarning) {
-    const extraEventIds = args.length > 2 ? args.slice(2) : undefined;
-    return {
-      eventId: first,
-      targetArg: second,
-      warning: swapWarning,
-      extraEventIds,
-    };
-  }
-
-  // An issue identifies the project; an explicit event ID must not be replaced
-  // by latest. Reuse the single-arg parser to preserve an optional org prefix.
-  const issueShortId =
-    slashCount === 1 ? first.slice(first.indexOf("/") + 1) : first;
-  if (looksLikeIssueShortId(issueShortId)) {
-    return {
-      ...parseSingleArg(first),
-      // Issue shortcuts run before the normal event-ID validation path.
-      eventId: validateHexId(second, "event ID"),
-    };
-  }
-
-  // Reject bare "latest" as second arg (e.g., "my-org/my-project latest").
-  // Even with an explicit project there is no "latest event of a project"
-  // endpoint — latest is resolved per-issue, so this has nothing to key on.
-  if (second.toLowerCase() === "latest") {
-    throw new ContextError("Issue ID", BARE_LATEST_HINT, [
-      "'latest' resolves the newest event of an issue — pass an issue ID, e.g. 'sentry event view 17370'",
-    ]);
-  }
-
-  // Detect numeric issue ID as second arg (e.g., "my-org/my-project 17370").
-  if (isAllDigits(second)) {
-    const extraEventIds = args.length > 2 ? args.slice(2) : undefined;
-    return {
-      eventId: LATEST_EVENT_SENTINEL,
-      targetArg: first,
-      issueId: second,
-      extraEventIds,
-    };
-  }
-
-  // Detect issue short ID as second arg (e.g., "my-org/my-project BRUNCHIE-APP-29").
-  // Auto-redirect to that issue's latest event instead of treating the short
-  // ID as an event hex ID (which would fail validation).
-  if (looksLikeIssueShortId(second)) {
-    const extraEventIds = args.length > 2 ? args.slice(2) : undefined;
-    return {
-      eventId: LATEST_EVENT_SENTINEL,
-      targetArg: first,
-      issueShortId: second,
-      extraEventIds,
-    };
-  }
-
-  // Two or more args - first is target, second is event ID.
-  // Any additional args are extra event IDs (from newline-separated input).
-  const extraEventIds = args.length > 2 ? args.slice(2) : undefined;
-  return { eventId: second, targetArg: first, extraEventIds };
+/** The issue ID forms `event view` tells apart from event IDs */
+function issueForm(value: string): "short-id" | "numeric" | null {
+  return ID_KINDS.issue.distinctForm(value);
 }
 
 /**
@@ -524,7 +578,7 @@ export function parsePositionalArgs(args: string[]): ParsedPositionalArgs {
  */
 async function validateAndRecoverEventId(
   rawEventId: string,
-  parsed: ReturnType<typeof parseOrgProjectArg>,
+  parsed: ParsedOrgProject,
   skipValidation: boolean,
 ): Promise<string> {
   if (skipValidation) {
@@ -547,6 +601,44 @@ async function validateAndRecoverEventId(
   }
 }
 
+/** `event view` arguments, with the event ID validated or recovered. */
+type ResolvedEventViewInput = Omit<EventViewInput, "baseUrl" | "warnings">;
+
+/** The arguments of `event view`. */
+type EventViewArguments = BoundArguments<
+  EventViewInput,
+  ResolvedEventViewInput
+>;
+
+/**
+ * Resolve `event view` arguments: apply a pasted URL's server, log the
+ * warnings, and validate the event ID or recover a malformed one. An issue
+ * shortcut's event ID needs neither: the issue finds the event.
+ */
+async function resolveEventViewInput(
+  input: EventViewInput,
+): Promise<ResolvedEventViewInput> {
+  const { baseUrl, warnings, ...resolved } = input;
+  if (baseUrl) {
+    applySentryUrlContext(baseUrl);
+  }
+  for (const warning of warnings) {
+    logger.withTag("event.view").warn(warning);
+  }
+  const skipValidation =
+    resolved.eventId === LATEST_EVENT_SENTINEL ||
+    resolved.issueId !== undefined ||
+    resolved.issueShortId !== undefined;
+  return {
+    ...resolved,
+    eventId: await validateAndRecoverEventId(
+      resolved.eventId,
+      resolved.target,
+      skipValidation,
+    ),
+  };
+}
+
 /**
  * Resolved target type for event commands.
  * @internal Exported for testing
@@ -563,7 +655,7 @@ export type ResolvedEventTarget = {
 
 /** Options for resolving the event target */
 type ResolveTargetOptions = {
-  parsed: ReturnType<typeof parseOrgProjectArg>;
+  parsed: ParsedOrgProject;
   eventId: string;
   cwd: string;
 };
@@ -868,7 +960,7 @@ export async function fetchEventWithContext(
       ];
 
       // Nudge the user when the event ID looks like an issue short ID
-      if (looksLikeIssueShortId(eventId)) {
+      if (issueForm(eventId) === "short-id") {
         suggestions.unshift(
           `This looks like an issue short ID. Try: sentry issue view ${eventId}`,
         );
@@ -915,13 +1007,86 @@ type IssueShortcutResult = {
 
 /** Options for resolving issue-based shortcuts */
 type IssueShortcutOptions = {
-  parsed: ReturnType<typeof parseOrgProjectArg>;
+  parsed: ParsedOrgProject;
   eventId: string;
   issueId: string | undefined;
   issueShortId: string | undefined;
+  /** Magic selector picking the issue whose latest event to show */
+  selector: IssueSelector | undefined;
   cwd: string;
   spans: number;
 };
+
+/**
+ * The organization, and project if any, a magic selector looks in: the
+ * target's, or the auto-detected organization, where issue commands look.
+ *
+ * @throws {ContextError} When no organization can be resolved
+ */
+async function resolveSelectorScope(
+  parsed: ParsedOrgProject,
+  selector: IssueSelector,
+  cwd: string,
+): Promise<{ org: string; project?: string }> {
+  switch (parsed.type) {
+    case ProjectSpecificationType.Explicit:
+      return {
+        org: await resolveEffectiveOrg(parsed.org),
+        project: parsed.project,
+      };
+    case ProjectSpecificationType.OrgAll:
+      return { org: await resolveEffectiveOrg(parsed.org) };
+    case ProjectSpecificationType.ProjectSearch:
+      return await resolveProjectBoundSlug(
+        parsed.projectSlug,
+        SELECTOR_HINT,
+        `sentry event view <org>/${parsed.projectSlug}/${selector}`,
+        parsed.originalSlug,
+      );
+    case ProjectSpecificationType.AutoDetect: {
+      const resolved = await resolveOrg({ cwd });
+      if (!resolved) {
+        throw new ContextError("Organization", SELECTOR_HINT);
+      }
+      return { org: resolved.org };
+    }
+    default: {
+      const _exhaustiveCheck: never = parsed;
+      throw new Error(`Unexpected target: ${JSON.stringify(_exhaustiveCheck)}`);
+    }
+  }
+}
+
+/**
+ * Fetch the latest event of the issue a magic selector picks, such as the
+ * most recent unresolved issue for `@latest`.
+ *
+ * @throws {ResolutionError} When no unresolved issue matches
+ */
+async function resolveSelectorEvent(
+  parsed: ParsedOrgProject,
+  selector: IssueSelector,
+  cwd: string,
+  spans: number,
+): Promise<IssueShortcutResult> {
+  const { org, project } = await resolveSelectorScope(parsed, selector, cwd);
+  setOrgProjectContext([org], project ? [project] : []);
+  const issue = await findSelectorIssue(selector, org, project);
+  logger
+    .withTag("event.view")
+    .info(`Fetching the latest event of ${issue.shortId} (${selector})...`);
+  const data = await fetchLatestEventData(
+    org,
+    issue.id,
+    spans,
+    issue.project?.slug ?? project,
+  );
+  return {
+    org,
+    data,
+    hint: `Showing the latest event of ${issue.shortId} (${selector}). Pass an event ID to view a specific one: ${USAGE_HINT}`,
+  };
+}
 
 /**
  * Best-effort project resolution for numeric issue shortcuts.
@@ -951,7 +1116,7 @@ async function tryResolveIssueProject(
  * slug so attachment lookup can use the project-scoped endpoint.
  */
 async function resolveIssueIdShortcut(
-  parsed: ReturnType<typeof parseOrgProjectArg>,
+  parsed: ParsedOrgProject,
   issueId: string,
   cwd: string,
   spans: number,
@@ -983,7 +1148,8 @@ async function resolveIssueIdShortcut(
 }
 
 /**
- * Handle issue-based shortcuts: issue URLs and issue short IDs.
+ * Handle issue-based shortcuts: issue URLs, issue short IDs, and magic
+ * selectors.
  *
  * Resolve the issue's project for an explicit event ID, or fetch the latest
  * event when no event was selected. Extracted from func() to reduce complexity.
@@ -993,8 +1159,13 @@ async function resolveIssueIdShortcut(
 async function resolveIssueShortcut(
   options: IssueShortcutOptions,
 ): Promise<IssueShortcutResult | null> {
-  const { parsed, eventId, issueId, issueShortId, cwd, spans } = options;
+  const { parsed, eventId, issueId, issueShortId, selector, cwd, spans } =
+    options;
   const log = logger.withTag("event.view");
+
+  if (selector) {
+    return await resolveSelectorEvent(parsed, selector, cwd, spans);
+  }
 
   // Issue URL / numeric issue ID shortcut: fetch the latest event directly
   // via the issue ID, bypassing project resolution (getLatestEvent only needs
@@ -1169,6 +1340,12 @@ export const viewCommand = buildCommand({
     brief: "View details of one or more events",
     fullDescription:
       "View detailed information about Sentry events by their IDs.\n\n" +
+      "Without an event ID, shows the latest event of the most recent unresolved issue (@latest)\n" +
+      "in the given org or project, or the auto-detected org.\n\n" +
+      "Magic selectors pick the issue whose latest event to show:\n" +
+      issueSelectorHelp() +
+      "  <org>/@selector  - Selector in an org: my-org/@latest\n" +
+      "  <org>/<project>/@selector - Selector in a project: my-org/my-project/@most_frequent\n\n" +
       "Pass an issue short ID followed by an event ID to resolve the project from the issue.\n" +
       "An issue short ID without an event ID shows its latest event.\n\n" +
       "Multiple event IDs can be passed as separate arguments or newline-separated\n" +
@@ -1192,6 +1369,15 @@ export const viewCommand = buildCommand({
       {
         description: "View the latest event for an issue",
         command: "sentry event view PROJ-ABC",
+      },
+      {
+        description:
+          "View the latest event of the most recent unresolved issue in a project",
+        command: "sentry event view my-org/my-project",
+      },
+      {
+        description: "View the latest event of the most frequent issue",
+        command: "sentry event view @most_frequent",
       },
       {
         description: "Open in the browser",
@@ -1222,15 +1408,15 @@ export const viewCommand = buildCommand({
     schema: EventViewOutputSchema,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/event-id",
-        brief:
-          "[<org>/<project>] <event-id> [<event-id>...] - Target (optional) and one or more event IDs",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: boundArguments({
+      placeholder: "org/project/event-id",
+      brief:
+        "[<org>/<project>] [<event-id>...] - Target (optional) and event IDs, or a selector (default: @latest)",
+      // Issue short IDs and selectors name an event too: their latest one
+      kind: ISSUE_TARGET,
+      parse: parseEventViewInput,
+      resolve: resolveEventViewInput,
+    }),
     flags: {
       web: {
         kind: "boolean",
@@ -1242,25 +1428,19 @@ export const viewCommand = buildCommand({
     },
     aliases: { ...FRESH_ALIASES, w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, ...args: string[]) {
+  async *func(this: SentryContext, flags: ViewFlags, args: EventViewArguments) {
     applyFreshFlag(flags);
     const { cwd } = this;
 
     const log = logger.withTag("event.view");
-
-    // Expand newline-separated args — agents paste multiple event IDs
-    // as a single newline-separated argument (CLI-1HT).
-    const expandedArgs = expandNewlineArgs(args);
-
-    // Parse positional args
-    const parsedArgs = parsePositionalArgs(expandedArgs);
-    if (parsedArgs.warning) {
-      log.warn(parsedArgs.warning);
-    }
-    const { targetArg, issueId, issueShortId, extraEventIds } = parsedArgs;
-    let { eventId } = parsedArgs;
-
-    const parsed = parseOrgProjectArg(targetArg);
+    const {
+      target: parsed,
+      eventId,
+      issueId,
+      issueShortId,
+      selector,
+      extraEventIds,
+    } = await args.resolved;
 
     // Handle issue-based shortcuts (issue URLs and short IDs) before
     // normal event resolution. When eventId is LATEST_EVENT_SENTINEL,
@@ -1270,6 +1450,7 @@ export const viewCommand = buildCommand({
       eventId,
       issueId,
       issueShortId,
+      selector,
       cwd,
       spans: flags.spans,
     });
@@ -1296,15 +1477,6 @@ export const viewCommand = buildCommand({
         ),
       };
     }
-
-    // Validate + attempt recovery. `skipValidation` is true when the ID is
-    // the LATEST_EVENT_SENTINEL or when resolveIssueShortcut already handled
-    // the request (issueId / issueShortId paths).
-    const skipValidation =
-      eventId === LATEST_EVENT_SENTINEL ||
-      issueId !== undefined ||
-      issueShortId !== undefined;
-    eventId = await validateAndRecoverEventId(eventId, parsed, skipValidation);
 
     const target = await resolveEventTarget({
       parsed,

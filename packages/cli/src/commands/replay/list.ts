@@ -4,6 +4,7 @@
  * List Session Replays from Sentry.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import {
   isReplaySortValue,
@@ -12,17 +13,18 @@ import {
 } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import {
+  choiceParser,
+  parseEnvironmentList,
+  textParser,
+} from "../../lib/completion-target.js";
+import {
   advancePaginationState,
   buildPaginationContextKey,
   hasPreviousPage,
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { toSearchQueryError } from "../../lib/errors.js";
-import {
-  escapeMarkdownCell,
-  formatRelativeTime,
-  formatTable,
-} from "../../lib/formatters/index.js";
+import { formatRelativeTime, formatTable } from "../../lib/formatters/index.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import type { Column } from "../../lib/formatters/table.js";
@@ -132,8 +134,8 @@ function replayUserLabel(replay: ReplayListItem): string {
 const REPLAY_COLUMNS: Column<ReplayListItem>[] = [
   {
     header: "ID",
-    value: (replay) => `\`${replay.id.slice(0, 8)}\``,
-    minWidth: 8,
+    value: (replay) => `\`${replay.id}\``,
+    minWidth: 32,
     shrinkable: false,
   },
   {
@@ -160,7 +162,7 @@ const REPLAY_COLUMNS: Column<ReplayListItem>[] = [
   },
   {
     header: "USER",
-    value: (replay) => escapeMarkdownCell(replayUserLabel(replay)),
+    value: (replay) => tableCell(replayUserLabel(replay)),
     minWidth: 16,
     truncate: true,
   },
@@ -326,7 +328,7 @@ export const listCommand = buildListCommand("replay", {
     flags: {
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of replays (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
         default: String(LIST_DEFAULT_LIMIT),
       },
@@ -338,14 +340,14 @@ export const listCommand = buildListCommand("replay", {
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironmentList,
         brief: "Filter by environment (repeatable, comma-separated)",
         variadic: true,
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: parseSort,
+        parse: choiceParser(Object.keys(SORT_MAP), parseSort),
         brief:
           "Sort by: date, oldest, duration, errors, activity, or a raw replay sort field",
         default: "date",

@@ -80,6 +80,7 @@ export const createEnvelopesSlice =
       }
 
       get().storeSdkRecord(sdk);
+      runtime.changes.sdk = sdk;
       if (runtime.generation !== generation)
         return finish(get().envelopes.size);
 
@@ -194,6 +195,6 @@ export const createEnvelopesSlice =
         if (failure?.status === "rejected") throw failure.reason;
         return count;
       },
-      getEnvelopes: () => Array.from(get().envelopes.values()),
+      getEnvelopes: () => [...get().envelopes.values()],
     };
   };

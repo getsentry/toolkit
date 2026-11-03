@@ -73,11 +73,23 @@ Every input returns an immutable receipt with `status`, `diagnostics`, `revision
 
 Branch on diagnostic `code` and `severity`, or ignored `reason`, rather than message text. Diagnostics can accompany successful partial processing. `itemIndex` and `spanIndex`, when present, are zero-based locations.
 
+Malformed span entries emit an `invalid_span` warning and increment `counts.skippedItems`.
+Their raw envelopes remain inspectable even when every span is malformed: supported span
+envelopes return `processed` with zero new telemetry counts. Normal retention limits and
+delivery deduplication still apply. The Node adapter also retains their decoded bytes
+within its decoded-history limits. Invalid envelope structure and malformed serialized
+JSON still return `invalid` without retaining the envelope.
+
 Delivery IDs deduplicate only while the corresponding envelope is retained. Eviction and `reset()` permit that delivery again. There is no content hashing: separately allocated envelopes without IDs are separate observations. Reusing the same parsed object or its explicit Spotlight envelope ID preserves its delivery identity within the retained window. Event-ID deduplication is separate from delivery deduplication.
 
 `ingestEnvelopes(iterable, { signal? })` returns receipts in input order and preserves valid neighbors of invalid inputs. It is not a transaction. `ingestPayloads(inputs)` does the same for Node inputs; each input carries its own signal and delivery ID. A batch occupies one queued operation, including while active. Items are copied as they are reached rather than copying the entire batch up front: keep queued batch items unchanged until their receipts resolve. Individual `ingestEnvelope` and `ingestPayload` calls copy their input before the first await. Cancellation returns `ignored/aborted`. `drain()` waits for operations already submitted at the call, excluding future work. `getStats()` reports pending operations, retained envelope count/bytes, revision, and disposal. `subscribe((snapshot, change) => ...)` returns an unsubscribe function; `change` identifies ingest, eviction, reset, or disposal and affected envelope IDs. Release timers and listeners with `dispose()`.
 
 An optional `enrichStacktrace(event, { signal })` hook receives a copied event. Observe its signal to cancel external work. A timeout reports a warning and keeps telemetry; abort, reset, disposal, or timeout prevent late hook writes from entering published state.
+
+Error enrichment runs concurrently within an envelope, but enriched errors update
+telemetry in input order. Cache hits and hook completion timing therefore cannot
+change the trace's identity or status during retention replay. Items that do not
+require enrichment still process immediately, ahead of those errors.
 
 ### Read APIs and JSON
 
@@ -110,7 +122,7 @@ Queries and resource summaries omit full span lists by default; opt in with `inc
 
 `readPage` supports `events`, `traces`, `logs`, and `spans`, defaults to 100 rows, and caps a page at 1000. It returns `status: "ok"`, `revision`, `items`, `total`, and optional `nextCursor`, or `status: "invalid"` with `invalid_query`, `invalid_cursor`, or `stale_cursor`. Cursors bind the collection, filters, order, limit, and snapshot revision. Keep the query unchanged between pages and restart after a stale cursor. `spanId` filtering on pages is supported for events only. Treat cursors as opaque.
 
-Snapshots preserve readonly maps and sets for in-process use. For JSON, use `serializeSnapshot(snapshot)` or `serializeTrace(trace)`: the schema version is `1`, maps become entry arrays, sets become value arrays, and span trees use IDs and `childSpanIds` instead of repeated object graphs. Unsupported non-wire values or unrelated cycles throw `TypeError`. These DTOs are export formats, not inputs to `ingestEnvelope`. Equivalent reads within the current revision reuse cached results; older snapshots remain stable after subsequent ingestion.
+Snapshots preserve readonly maps and sets for in-process use. Collections materialize on first access and reuse immutable graphs for unchanged records across revisions. Older snapshots remain stable even when first read after later ingestion or eviction. For JSON, use `serializeSnapshot(snapshot)` or `serializeTrace(trace)`: the schema version is `1`, maps become entry arrays, sets become value arrays, and span trees use IDs and `childSpanIds` instead of repeated object graphs. Unsupported non-wire values or unrelated cycles throw `TypeError`. These DTOs are export formats, not inputs to `ingestEnvelope`. Equivalent reads within the current revision reuse cached results.
 
 Use `serializeSummaries(reader.getProfileFunctionSummaries())` or pass compact query/resource summaries to export `{ schemaVersion: 1, summaries }`. Profile `traceIds` sets become string arrays. Summaries requested with `includeSpans: true` are rejected at both the type and runtime boundaries; export the complete span graph with `serializeTrace` instead.
 
@@ -165,8 +177,14 @@ timestamp units. Caller input is copied; read results are readonly.
 `reset()` clears captured data and decoded history, keeps subscriptions, and
 invalidates in-flight/queued work. `prune()` explicitly enforces retention.
 `dispose()` closes the instance; later ingestion returns `ignored/disposed`.
-Eviction rebuilds derived state from retained envelopes, with cost proportional
-to retained telemetry. Choose smaller limits for large profiles or heavy streams.
+Eviction removes independent deliveries directly. Shared event IDs, log IDs and
+trace IDs replay only their connected envelopes, preserving duplicate promotion
+and collection order. Retention still scans envelope metadata and copies top-level
+collections; it does not revisit every retained span for ordinary transactions or
+streamed traces. Evicting profile data or its associated traces uses full retained
+replay to preserve profile dependencies. Large connected traces and profiles can
+therefore require work proportional to their retained telemetry; choose retention
+limits appropriate to that workload.
 
 ### AI usage in incomplete traces
 
@@ -200,7 +218,7 @@ const pages = groupWebVitalPages([
 
 ## Ownership and adoption
 
-This Apache-2.0 implementation originated in [Spotlight](https://github.com/getsentry/spotlight/pull/1374). Toolkit owns subsequent shared processing changes. The Local receiver imports `@sentry/spotlight/node`; the Local browser app imports `@sentry/spotlight`. UI rendering, HTTP/SSE transport, sessions, and terminal formatting stay in their applications.
+This Apache-2.0 implementation originated in [Spotlight](https://github.com/getsentry/spotlight/pull/1374). Toolkit is the proposed home for subsequent shared processing changes; the package name and ownership await a recorded maintainer decision. The Local receiver imports `@sentry/spotlight/node`; the Local browser app imports `@sentry/spotlight`. UI rendering, HTTP/SSE transport, sessions, and terminal formatting stay in their applications.
 
 The package exports built JavaScript and declarations. Run `pnpm --filter @sentry/spotlight build` before direct source development in a consumer. Workspace build/test scripts prepare this dependency. The portable entry has no React or Node runtime dependency.
 

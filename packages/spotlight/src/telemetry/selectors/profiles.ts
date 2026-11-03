@@ -54,5 +54,5 @@ export function getProfileFunctionSummaries(
       }
     }
   }
-  return Array.from(aggregateCalls.values());
+  return [...aggregateCalls.values()];
 }

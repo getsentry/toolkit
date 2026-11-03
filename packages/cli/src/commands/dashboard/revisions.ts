@@ -4,12 +4,11 @@
  * List revision history for a Sentry dashboard with cursor-based pagination.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { paginate } from "../../lib/api/infrastructure.js";
 import { listDashboardRevisionsPaginated } from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseDashboardTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -17,7 +16,7 @@ import {
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { filterFields } from "../../lib/formatters/json.js";
-import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
+import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
@@ -28,14 +27,13 @@ import {
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
-import type { DashboardRevision } from "../../types/dashboard.js";
-import type { Writer } from "../../types/index.js";
 import {
-  withDashboardErrors,
-  parseDashboardPositionalArgs,
-  resolveDashboardId,
-  resolveOrgFromTarget,
-} from "./resolve.js";
+  type DashboardRevision,
+  DashboardRevisionSchema,
+} from "../../types/dashboard.js";
+import type { Writer } from "../../types/index.js";
+import { type DashboardArguments, dashboardArguments } from "./arguments.js";
+import { withDashboardErrors } from "./resolve.js";
 
 const PAGINATION_KEY = "dashboard-revisions";
 
@@ -69,11 +67,11 @@ function formatRevisionsHuman(result: RevisionsResult): string {
 
   const rows: RevisionRow[] = result.revisions.map((r) => ({
     id: r.id,
-    title: escapeMarkdownCell(r.title),
-    author: escapeMarkdownCell(
+    title: tableCell(r.title),
+    author: tableCell(
       r.createdBy?.name ?? r.createdBy?.email ?? r.createdBy?.id ?? "—",
     ),
-    created: `${escapeMarkdownCell(formatRelativeTime(r.dateCreated))}\n${colorTag("muted", r.dateCreated)}`,
+    created: `${tableCell(formatRelativeTime(r.dateCreated))}\n${colorTag("muted", r.dateCreated)}`,
   }));
 
   const columns: Column<RevisionRow>[] = [
@@ -143,33 +141,25 @@ export const revisionsCommand = buildCommand({
   output: {
     human: formatRevisionsHuman,
     jsonTransform: jsonTransformRevisions,
+    schema: DashboardRevisionSchema,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/dashboard",
-        brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: parseDashboardTarget,
-      },
-    },
+    positional: dashboardArguments({
+      placeholder: "org/dashboard",
+      usageHint: "sentry dashboard revisions <org>/ <id>",
+    }),
     flags: {
       limit: buildListLimitFlag("revisions"),
       cursor: LIST_CURSOR_FLAG,
     },
     aliases: { n: "limit", c: "cursor" },
   },
-  async *func(this: SentryContext, flags: RevisionsFlags, ...args: string[]) {
-    const { cwd } = this;
-
-    const { dashboardRef, targetArg } = parseDashboardPositionalArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard revisions <org>/ <id>",
-    );
-    const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
+  async *func(
+    this: SentryContext,
+    flags: RevisionsFlags,
+    target: DashboardArguments,
+  ) {
+    const { orgSlug, dashboardId } = await target.resolved;
 
     const contextKey = buildPaginationContextKey(
       "dashboard-revisions",

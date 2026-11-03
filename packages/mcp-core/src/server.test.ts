@@ -1,8 +1,9 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { McpServer as ModernMcpServer } from "@modelcontextprotocol/server";
+import { McpServer } from "@modelcontextprotocol/server";
 import { type Span, setUser, startSpan } from "@sentry/core";
 import {
+  eventFixture,
   issueFixture,
   mswServer,
   projectFixture,
@@ -10,7 +11,10 @@ import {
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
+import { ApiAuthenticationError } from "./api-client";
 import { UserInputError } from "./errors";
+import { apiServiceFromContext } from "./internal/tool-helpers/api";
 import { structuredResult } from "./internal/tool-helpers/results";
 import { buildServer } from "./server";
 import type { Skill } from "./skills";
@@ -22,7 +26,7 @@ import {
 } from "./test-utils/structured-content";
 import { createExecuteTool } from "./tools/special/execute-tool";
 import type { ToolConfig } from "./tools/types";
-import type { ServerContext } from "./types";
+import type { CredentialRouter, ServerContext } from "./types";
 import { LIB_VERSION } from "./version";
 
 // Mock the Sentry core module
@@ -42,6 +46,7 @@ vi.mock("@sentry/core", () => ({
   ),
   captureException: vi.fn(),
   captureMessage: vi.fn(),
+  getClient: vi.fn(),
 }));
 
 vi.mock("@sentry/core/server", () => ({
@@ -94,7 +99,7 @@ async function listRegisteredTools(server: ReturnType<typeof buildServer>) {
 }
 
 async function callRegisteredTool(
-  server: ReturnType<typeof buildServer> | ModernMcpServer,
+  server: ReturnType<typeof buildServer>,
   name: string,
   args: Record<string, unknown>,
 ) {
@@ -175,6 +180,253 @@ describe("buildServer", () => {
     ...options,
   });
 
+  describe("upstream 401", () => {
+    it("uses the token returned by onUpstreamUnauthorized for later calls", async () => {
+      const seenTokens: string[] = [];
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          accessToken: "expired-token",
+          onUpstreamUnauthorized: async () => "fresh-token",
+        },
+        tools: {
+          token_tool: createMockTool("token_tool", {
+            handler: async (_params, context) => {
+              seenTokens.push(context.accessToken);
+              if (context.accessToken === "expired-token") {
+                throw new ApiAuthenticationError("Unauthorized");
+              }
+              return "ok";
+            },
+          }),
+        },
+      });
+
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const client = new Client({
+        name: "server-test-client",
+        version: "1.0.0",
+      });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        await client.callTool({ name: "token_tool", arguments: {} });
+        await client.callTool({ name: "token_tool", arguments: {} });
+      } finally {
+        await client.close();
+        await server.close();
+      }
+
+      expect(seenTokens).toEqual(["expired-token", "fresh-token"]);
+    });
+  });
+
+  describe("credential routing", () => {
+    /**
+     * A router with one account per organization: `<org>-token`, refreshed
+     * to `<org>-fresh`. Calls without an organization use `default`.
+     */
+    function createRouter() {
+      const resolved: Array<string | null> = [];
+      const refreshed: string[] = [];
+      const tokens = new Map<string, string>();
+      const router: CredentialRouter = {
+        async resolve({ organizationSlug }) {
+          resolved.push(organizationSlug);
+          const id = organizationSlug ?? "default";
+          // Resolve out of order so overlapping calls interleave.
+          await new Promise((resolve) =>
+            setTimeout(resolve, id === "org-a" ? 20 : 0),
+          );
+          return {
+            id,
+            accessToken: tokens.get(id) ?? `${id}-token`,
+            refresh: async () => {
+              refreshed.push(id);
+              tokens.set(id, `${id}-fresh`);
+              return `${id}-fresh`;
+            },
+          };
+        },
+        async list() {
+          return [];
+        },
+      };
+      return { router, resolved, refreshed };
+    }
+
+    async function withClient<T>(
+      server: ReturnType<typeof buildServer>,
+      fn: (client: Client) => Promise<T>,
+    ): Promise<T> {
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "server-test-client", version: "1" });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        return await fn(client);
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    }
+
+    const orgTool = (handler: ToolConfig["handler"]) =>
+      createMockTool("org_tool", {
+        inputSchema: {
+          organizationSlug: z.string().optional(),
+          issueUrl: z.string().optional(),
+        },
+        handler,
+      });
+
+    it("sends each overlapping call's request with its own account's token", async () => {
+      const { router } = createRouter();
+      const seen: Array<{ org: string; authorization: string | null }> = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/:org/",
+          ({ params, request }) => {
+            seen.push({
+              org: String(params.org),
+              authorization: request.headers.get("authorization"),
+            });
+            return HttpResponse.json({
+              id: "1",
+              slug: params.org,
+              name: "Org",
+            });
+          },
+        ),
+      );
+      const server = buildServer({
+        context: { ...baseContext, credentialRouter: router },
+        tools: {
+          org_tool: orgTool(async (params, context) => {
+            const org = await apiServiceFromContext(context).getOrganization(
+              String(params.organizationSlug),
+            );
+            return org.slug;
+          }),
+        },
+      });
+
+      await withClient(server, (client) =>
+        Promise.all(
+          ["org-a", "org-b", "org-a", "org-b"].map((organizationSlug) =>
+            client.callTool({
+              name: "org_tool",
+              arguments: { organizationSlug },
+            }),
+          ),
+        ),
+      );
+
+      expect(seen).toHaveLength(4);
+      for (const { org, authorization } of seen) {
+        expect(authorization).toBe(`Bearer ${org}-token`);
+      }
+    });
+
+    it("routes by the organization of a Sentry URL parameter", async () => {
+      const { router, resolved } = createRouter();
+      const tokens: string[] = [];
+      const server = buildServer({
+        context: { ...baseContext, credentialRouter: router },
+        tools: {
+          org_tool: orgTool(async (_params, context) => {
+            tokens.push(context.accessToken);
+            return "ok";
+          }),
+        },
+      });
+
+      await withClient(server, (client) =>
+        client.callTool({
+          name: "org_tool",
+          arguments: { issueUrl: "https://org-b.sentry.io/issues/123/" },
+        }),
+      );
+
+      expect(resolved).toEqual(["org-b"]);
+      expect(tokens).toEqual(["org-b-token"]);
+    });
+
+    it("refreshes only the credential that got the 401", async () => {
+      const { router, refreshed } = createRouter();
+      const onUpstreamUnauthorized = vi.fn();
+      const tokens: string[] = [];
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          credentialRouter: router,
+          onUpstreamUnauthorized,
+        },
+        tools: {
+          org_tool: orgTool(async (_params, context) => {
+            tokens.push(context.accessToken);
+            if (context.accessToken === "org-b-token") {
+              throw new ApiAuthenticationError("Unauthorized");
+            }
+            return "ok";
+          }),
+        },
+      });
+
+      await withClient(server, async (client) => {
+        await client.callTool({
+          name: "org_tool",
+          arguments: { organizationSlug: "org-b" },
+        });
+        await client.callTool({
+          name: "org_tool",
+          arguments: { organizationSlug: "org-b" },
+        });
+        await client.callTool({
+          name: "org_tool",
+          arguments: { organizationSlug: "org-a" },
+        });
+      });
+
+      expect(tokens).toEqual(["org-b-token", "org-b-fresh", "org-a-token"]);
+      expect(refreshed).toEqual(["org-b"]);
+      expect(onUpstreamUnauthorized).not.toHaveBeenCalled();
+    });
+
+    it("routes and refreshes the inner tool of execute_sentry_tool", async () => {
+      const { router, resolved, refreshed } = createRouter();
+      const registry: Record<string, ToolConfig> = {
+        org_tool: orgTool(async (_params, context) => {
+          if (context.accessToken === "org-b-token") {
+            throw new ApiAuthenticationError("Unauthorized");
+          }
+          return "ok";
+        }),
+      };
+      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      const server = buildServer({
+        context: { ...baseContext, credentialRouter: router },
+        tools: registry,
+      });
+
+      await withClient(server, (client) =>
+        client.callTool({
+          name: "execute_sentry_tool",
+          arguments: {
+            name: "org_tool",
+            arguments: { organizationSlug: "org-b" },
+          },
+        }),
+      );
+
+      // The outer call targets no organization; the inner call targets org-b.
+      expect(resolved).toEqual([null, "org-b"]);
+      expect(refreshed).toEqual(["org-b"]);
+    });
+  });
+
   describe("tool failure telemetry", () => {
     it("invokes the tool's onError hook when its handler throws", async () => {
       const onError = vi.fn();
@@ -228,10 +480,9 @@ describe("buildServer", () => {
           handler: async ({ value }) => `v2:${String(value)}`,
         }),
       },
-      sdkVersion: "v2",
     });
 
-    expect(server).toBeInstanceOf(ModernMcpServer);
+    expect(server).toBeInstanceOf(McpServer);
     const registeredTools = (
       server as unknown as {
         _registeredTools: Record<
@@ -251,25 +502,184 @@ describe("buildServer", () => {
     });
   });
 
-  it.each(["v1", "v2"] as const)(
-    "explains how to recover a missing organizationSlug on SDK %s",
-    async (sdkVersion) => {
-      const server =
-        sdkVersion === "v2"
-          ? buildServer({ context: baseContext, sdkVersion })
-          : buildServer({ context: baseContext });
+  it("defaults a missing organizationSlug to the only organization", async () => {
+    const server = buildServer({ context: baseContext });
 
-      const result = await callRegisteredTool(server, "search_issues", {
-        query: "is:unresolved",
-        period: "1h",
-      });
+    const result = await callRegisteredTool(server, "search_issues", {
+      query: "is:unresolved",
+      period: "1h",
+    });
 
-      expect(result).toMatchObject({ isError: true });
+    expect(result.isError).toBeFalsy();
+    expect(getTextContent(result)).toContain(
+      "https://sentry-mcp-evals.sentry.io/issues/",
+    );
+  });
+
+  it("lists the organizations when a missing organizationSlug is ambiguous", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/",
+        () =>
+          HttpResponse.json([
+            { id: "1", slug: "org-a", name: "A" },
+            { id: "2", slug: "org-b", name: "B" },
+          ]),
+        { once: true },
+      ),
+    );
+    const server = buildServer({ context: baseContext });
+
+    const result = await callRegisteredTool(server, "search_issues", {
+      query: "is:unresolved",
+      period: "1h",
+    });
+
+    expect(result).toMatchObject({ isError: true });
+    const text = getTextContent(result);
+    expect(text).toContain(
+      "`search_issues(organizationSlug='org-a', period='1h')`",
+    );
+    expect(text).toContain("Other available organizations: org-b");
+  });
+
+  it("caps tool input elements", async () => {
+    const handler = vi.fn(
+      async ({ items }: Record<string, unknown>) =>
+        `count:${(items as string[]).length}`,
+    );
+    const createServer = () => {
+      const tools = {
+        list_tool: createMockTool("list_tool", {
+          inputSchema: { items: z.array(z.string()) },
+          handler,
+        }),
+      };
+      return buildServer({ context: baseContext, tools });
+    };
+
+    // The `items` key counts as one element, so this lands exactly on the cap.
+    const atLimit = Array.from(
+      { length: MAX_TOOL_INPUT_ELEMENTS - 1 },
+      () => "x",
+    );
+    const accepted = await callRegisteredTool(createServer(), "list_tool", {
+      items: atLimit,
+    });
+    expect(accepted.isError).toBeFalsy();
+    expect(getTextContent(accepted)).toBe(
+      `count:${MAX_TOOL_INPUT_ELEMENTS - 1}`,
+    );
+
+    const rejected = await callRegisteredTool(createServer(), "list_tool", {
+      items: [...atLimit, "x"],
+    });
+    expect(rejected).toMatchObject({ isError: true });
+    expect(getTextContent(rejected)).toContain(
+      `Invalid arguments for tool list_tool: arguments contain more than the maximum of ${MAX_TOOL_INPUT_ELEMENTS} elements`,
+    );
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  describe("lone surrogates in tool output", () => {
+    // Cutting 119 characters plus an emoji at 120 UTF-16 units keeps only the
+    // emoji's high surrogate. Strict JSON parsers such as serde_json in Codex
+    // reject that lone half and close the transport.
+    const lock = "\u{1F512}";
+    const cutText = `${"x".repeat(119)}${lock}`.slice(0, 120);
+    const replacedText = `${"x".repeat(119)}�`;
+
+    it("replaces a breadcrumb message cut inside an emoji", async () => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/events/latest/",
+          () =>
+            HttpResponse.json({
+              ...eventFixture,
+              entries: [
+                {
+                  type: "breadcrumbs",
+                  data: {
+                    values: [
+                      {
+                        timestamp: "2025-04-08T21:14:52.000Z",
+                        category: "console",
+                        level: "info",
+                        message: `${"x".repeat(119)}${lock} required`,
+                      },
+                    ],
+                  },
+                },
+              ],
+            }),
+          { once: true },
+        ),
+      );
+
+      const result = await callRegisteredTool(
+        buildServer({ context: baseContext }),
+        "execute_sentry_tool",
+        {
+          name: "get_issue_breadcrumbs",
+          arguments: {
+            organizationSlug: "sentry-mcp-evals",
+            issueId: "CLOUDFLARE-MCP-41",
+          },
+        },
+      );
+
       const text = getTextContent(result);
-      expect(text).toContain("Required. Call `find_organizations()`");
-      expect(text).not.toContain("period");
-    },
-  );
+      expect(text).toContain(`[console] ${replacedText}...`);
+      expect(text.isWellFormed()).toBe(true);
+    });
+
+    it("replaces them in structured and error output", async () => {
+      const createServer = () =>
+        buildServer({
+          context: baseContext,
+          tools: {
+            structured_tool: createMockTool("structured_tool", {
+              outputSchema: z.object({
+                title: z.string(),
+                previews: z.array(z.object({ preview: z.string() })),
+              }),
+              handler: async () =>
+                structuredResult({
+                  title: "unchanged",
+                  previews: [{ preview: "unchanged" }, { preview: cutText }],
+                }),
+            }),
+            failing_tool: createMockTool("failing_tool", {
+              handler: async () => {
+                throw new UserInputError(cutText);
+              },
+            }),
+          },
+        });
+
+      const structured = await callRegisteredTool(
+        createServer(),
+        "structured_tool",
+        {},
+      );
+      expect(getStructuredContent(structured)).toEqual({
+        title: "unchanged",
+        previews: [{ preview: "unchanged" }, { preview: replacedText }],
+      });
+      expect(getTextContent(structured)).toBe(
+        getGeneratedTextFromStructuredContent(structured),
+      );
+
+      const failed = await callRegisteredTool(
+        createServer(),
+        "failing_tool",
+        {},
+      );
+      expect(failed).toMatchObject({ isError: true });
+      expect(getTextContent(failed)).toContain(replacedText);
+      expect(getTextContent(failed).isWellFormed()).toBe(true);
+    });
+  });
 
   describe("telemetry context", () => {
     it("generates compatibility text for structured-only tool output", async () => {
@@ -1377,48 +1787,42 @@ describe("buildServer", () => {
       );
     });
 
-    it.each(["v1", "v2"] as const)(
-      "execute_sentry_tool rejects missing skills with unknown capabilities on SDK %s",
-      async (sdkVersion) => {
-        const upstreamRequest = vi.fn(() =>
-          HttpResponse.json(
-            { detail: "You do not have permission to perform this action." },
-            { status: 403 },
-          ),
-        );
-        mswServer.use(
-          http.get(
-            "https://us.sentry.io/api/0/projects/test-org/test-project/profiling/profiles/:profileId/",
-            upstreamRequest,
-          ),
-        );
-        const context: ServerContext = {
-          ...baseContext,
-          grantedSkills: new Set(["docs"]),
-          constraints: {
-            organizationSlug: "test-org",
-            projectSlug: "test-project",
-            regionUrl: "https://us.sentry.io",
-            projectCapabilities: null,
-          },
-        };
-        const server =
-          sdkVersion === "v2"
-            ? buildServer({ context, sdkVersion })
-            : buildServer({ context });
+    it("execute_sentry_tool rejects missing skills with unknown capabilities", async () => {
+      const upstreamRequest = vi.fn(() =>
+        HttpResponse.json(
+          { detail: "You do not have permission to perform this action." },
+          { status: 403 },
+        ),
+      );
+      mswServer.use(
+        http.get(
+          "https://us.sentry.io/api/0/projects/test-org/test-project/profiling/profiles/:profileId/",
+          upstreamRequest,
+        ),
+      );
+      const context: ServerContext = {
+        ...baseContext,
+        grantedSkills: new Set(["docs"]),
+        constraints: {
+          organizationSlug: "test-org",
+          projectSlug: "test-project",
+          regionUrl: "https://us.sentry.io",
+          projectCapabilities: null,
+        },
+      };
+      const server = buildServer({ context });
 
-        const result = await callRegisteredTool(server, "execute_sentry_tool", {
-          name: "get_profile_details",
-          arguments: { profileId: "00000000000040008000000000000001" },
-        });
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "get_profile_details",
+        arguments: { profileId: "00000000000040008000000000000001" },
+      });
 
-        expect(result).toMatchObject({ isError: true });
-        expect(getTextContent(result)).toContain(
-          'Tool "get_profile_details" is not available in this session',
-        );
-        expect(upstreamRequest).not.toHaveBeenCalled();
-      },
-    );
+      expect(result).toMatchObject({ isError: true });
+      expect(getTextContent(result)).toContain(
+        'Tool "get_profile_details" is not available in this session',
+      );
+      expect(upstreamRequest).not.toHaveBeenCalled();
+    });
 
     it("search_sentry_tools and execute_sentry_tool enforce project capabilities by default", async () => {
       const server = buildServer({
@@ -2539,7 +2943,16 @@ describe("buildServer", () => {
       expect(replayTool?.name).toBe("get_replay_details");
       expect(
         Object.keys(replayTool?.inputSchema.properties ?? {}).sort(),
-      ).toEqual(["regionUrl", "replayId", "replayUrl"]);
+      ).toEqual([
+        "categories",
+        "endOffsetSeconds",
+        "limit",
+        "regionUrl",
+        "replayId",
+        "replayUrl",
+        "skip",
+        "startOffsetSeconds",
+      ]);
     });
   });
 });

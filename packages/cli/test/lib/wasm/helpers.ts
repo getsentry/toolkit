@@ -38,9 +38,7 @@ export function fromHex(hex: string): Uint8Array {
 
 /** Render bytes as lowercase hex. */
 export function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 /** Join byte ranges into one buffer. */

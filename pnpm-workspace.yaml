@@ -30,7 +30,7 @@ overrides:
   "ajv@8.20.0>fast-uri": 3.1.8
   "express-rate-limit@8>ip-address": 10.7.4
   "js-yaml@3.15.2>argparse": 2.0.1
-  "@modelcontextprotocol/sdk": 1.32.0
+  "@modelcontextprotocol/sdk": 1.32.2
   fast-xml-parser: 5.7.2
   "picomatch@2.3.1": 2.3.2
   seroval: ^1.5.4
@@ -47,11 +47,11 @@ catalog:
   "@cloudflare/vitest-plugin": 1.4.6
   "@cloudflare/workers-oauth-provider": ^0.10.3
   "@cloudflare/workers-types": ^4.20260405.1
-  "@modelcontextprotocol/sdk": 1.32.0
-  "@modelcontextprotocol/server": 2.3.0
+  "@modelcontextprotocol/sdk": 1.32.2
+  "@modelcontextprotocol/server": 2.4.0
   "@radix-ui/react-accordion": ^1.2.20
   "@radix-ui/react-slot": ^1.2.3
-  "@sentry/api": 0.420.0
+  "@sentry/api": 0.437.0
   "@sentry/cloudflare": 11.6.0
   "@sentry/core": 11.6.0
   "@sentry/node": 11.6.0
@@ -64,8 +64,8 @@ catalog:
   "@types/react": ^19.1.8
   "@types/react-dom": ^19.1.6
   "@vitejs/plugin-react": ^4.6.0
-  "@vitest/coverage-v8": ^4.1.10
-  agents: 0.20.1
+  "@vitest/coverage-v8": ^5.0.5
+  agents: 0.32.0
   ai: ^6.0.64
   better-sqlite3: ^11.10.0
   chalk: ^5.4.1
@@ -77,6 +77,10 @@ catalog:
   hono: ^4.13.11
   lint-staged: ^15.5.2
   lucide-react: ^0.503.0
+  marked: ^15.0.12
+  mdast-util-from-markdown: ^2.0.2
+  mdast-util-gfm: ^3.1.0
+  micromark-extension-gfm: ^3.0.0
   # Keep Dynamic Worker tests on the same Miniflare/workerd runtime as Wrangler.
   miniflare: 5.20261019.1-beta
   msw: ^2.10.2
@@ -94,10 +98,10 @@ catalog:
   tsdown: ^0.12.9
   tsx: ^4.20.3
   tw-animate-css: ^1.3.4
-  typescript: ^5.8.3
+  typescript: ^5.9.3
   valibot: ^1.4.2
-  vite: ^6.4.4
-  vitest: ^4.1.11
+  vite: ^6.4.5
+  vitest: ^5.0.5
   vitest-evals: ^0.4.0
   workers-mcp: 0.1.0-3
   wrangler: 4.151.3
@@ -163,6 +167,6 @@ minimumReleaseAgeExclude:
   - "@oxlint/binding-win32-x64-msvc@1.87.0"
   - oxfmt@0.72.0
   - oxlint@1.87.0
-  - "@sentry/api@0.420.0"
+  - "@sentry/api@0.437.0"
   - miniflare@5.20261019.1-beta
   - wrangler@4.151.3

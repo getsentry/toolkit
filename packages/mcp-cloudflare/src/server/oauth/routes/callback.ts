@@ -51,7 +51,7 @@ function parseUpstreamScopes(scope: string | undefined): string[] | undefined {
   if (typeof scope !== "string") {
     return undefined;
   }
-  return Array.from(new Set(scope.split(/\s+/).filter(Boolean))).sort();
+  return [...new Set(scope.split(/\s+/).filter(Boolean))].sort();
 }
 
 function getUpstreamUserLabel(payload: {
@@ -141,7 +141,7 @@ export default new Hono<{ Bindings: Env }>().get("/", async (c) => {
         },
       },
       extra: {
-        queryKeys: Array.from(new URL(c.req.url).searchParams.keys()),
+        queryKeys: [...new URL(c.req.url).searchParams.keys()],
       },
       loggerScope: ["cloudflare", "oauth", "callback"],
     } as const;
@@ -168,7 +168,7 @@ export default new Hono<{ Bindings: Env }>().get("/", async (c) => {
         },
       },
       extra: {
-        queryKeys: Array.from(new URL(c.req.url).searchParams.keys()),
+        queryKeys: [...new URL(c.req.url).searchParams.keys()],
       },
       loggerScope: ["cloudflare", "oauth", "callback"],
     });
@@ -288,7 +288,7 @@ export default new Hono<{ Bindings: Env }>().get("/", async (c) => {
   const grantedScopes = await getScopesForSkills(validSkills);
 
   // Convert valid skills Set to array for OAuth props
-  const grantedSkills = Array.from(validSkills);
+  const grantedSkills = [...validSkills];
 
   const resource = (oauthReqInfo as AuthRequestWithSkills).resource;
   const resourceScope = parseResourceMcpConstraints(
@@ -334,7 +334,7 @@ export default new Hono<{ Bindings: Env }>().get("/", async (c) => {
       scope: oauthReqInfo.scope.join(" "),
       // Scopes derived from skills - for backward compatibility with old MCP clients
       // that don't support grantedSkills and only understand grantedScopes
-      grantedScopes: Array.from(grantedScopes),
+      grantedScopes: [...grantedScopes],
       // Scopes Sentry actually granted on the upstream token (from the token
       // response), which can differ from the skill-derived grantedScopes
       upstreamScopes: parseUpstreamScopes(payload.scope),

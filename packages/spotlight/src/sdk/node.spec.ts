@@ -1075,11 +1075,15 @@ test("diagnostic callbacks cannot bypass shared admission during core validation
       later.push(pipeline.ingestPayload({ body: fixture }));
     },
   });
-  const invalid = await pipeline.ingestEnvelope([
+  const result = await pipeline.ingestEnvelope([
     {},
     [[{ type: "span" }, { span_id: "invalid" }]],
   ]);
-  expect(invalid.status).toBe("invalid");
+  expect(result).toMatchObject({
+    status: "processed",
+    retained: true,
+    diagnostics: [{ code: "invalid_span", severity: "warning" }],
+  });
   expect(observed).toEqual([1]);
   expect(await Promise.all(later)).toMatchObject([
     { status: "ignored", reason: "queue_full" },

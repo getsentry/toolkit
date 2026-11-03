@@ -7,12 +7,18 @@
  * `sentry-cli sourcemaps resolve` command without mutating any files.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import { relative, resolve as resolvePath } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  choiceListParser,
+  parseDirectoryPath,
+  parseFilePath,
+  parseText,
+} from "../../lib/completion-target.js";
+import {
   colorTag,
-  escapeMarkdownCell,
   mdKvTable,
   renderMarkdown,
 } from "../../lib/formatters/markdown.js";
@@ -20,6 +26,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   assertDirectoryReadable,
   buildIgnoreMatcher,
+  DEFAULT_EXTENSIONS,
   resolveDirectorySourcemaps,
 } from "../../lib/sourcemap/inject.js";
 
@@ -57,7 +64,7 @@ type ResolveCommandResult = {
  */
 function describeMapStatus(file: ResolveFileEntry): string {
   if (file.mapPath) {
-    return escapeMarkdownCell(file.mapPath);
+    return tableCell(file.mapPath);
   }
   if (file.inline) {
     return colorTag("muted", "inline (data: URL)");
@@ -90,10 +97,10 @@ function formatResolveResult(data: ResolveCommandResult): string {
     lines.push("| --- | --- | --- |");
     for (const file of data.files) {
       const debugId = file.debugId
-        ? escapeMarkdownCell(file.debugId)
+        ? tableCell(file.debugId)
         : colorTag("muted", "—");
       lines.push(
-        `| ${escapeMarkdownCell(file.path)} | ${describeMapStatus(file)} | ${debugId} |`,
+        `| ${tableCell(file.path)} | ${describeMapStatus(file)} | ${debugId} |`,
       );
     }
   }
@@ -138,7 +145,7 @@ export const resolveCommand = buildCommand({
       parameters: [
         {
           brief: "Directory to scan for JS files",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "directory",
         },
       ],
@@ -146,20 +153,20 @@ export const resolveCommand = buildCommand({
     flags: {
       ext: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser([...DEFAULT_EXTENSIONS]),
         brief:
           "Comma-separated file extensions to process (default: .js,.cjs,.mjs)",
         optional: true,
       },
       ignore: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Comma-separated glob patterns to exclude (gitignore-style)",
         optional: true,
       },
       "ignore-file": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to a file with gitignore-style patterns to exclude",
         optional: true,
       },

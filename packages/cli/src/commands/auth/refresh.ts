@@ -12,6 +12,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceListParser } from "../../lib/completion-target.js";
 import {
   ENV_SOURCE_PREFIX,
   getActiveEnvVarName,
@@ -24,6 +25,7 @@ import { formatDuration } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { runInteractiveLogin } from "../../lib/interactive-login.js";
 import { resolveOAuthScopeString } from "../../lib/oauth.js";
+import { SENTRY_SCOPES } from "../../lib/api-scope.js";
 
 type RefreshFlags = {
   readonly json: boolean;
@@ -140,7 +142,7 @@ session (similar to \`gh auth refresh -s <scope>\`).
       },
       scope: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser(SENTRY_SCOPES),
         brief:
           "Re-authenticate with specific OAuth scopes (repeatable, comma-separated). " +
           "E.g. --scope project:read --scope org:read",

@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand/vanilla";
 import { graftProfileSpans } from "../../data/profiles.ts";
+import { mutableCopy } from "../../internal/readonly.ts";
 import type { EngineOptions, ProcessingRuntime } from "../../internal/types.ts";
 import type { SentryEvent, SentryLogEventItem, Trace } from "../../types.ts";
 import {
@@ -63,6 +64,17 @@ export const createEventsSlice =
   ): StateCreator<SentryStore, [], [], EventsSliceState & EventsSliceActions> =>
   (set, get) => {
     const pendingIds = new Map<string, number>();
+    // A committed engine state can back a lazy historical snapshot. Copy each
+    // touched trace graph once per envelope before the assembly helpers mutate it.
+    function writableTrace(id: string): Trace | undefined {
+      const trace = get().tracesById.get(id);
+      const changes = runtime.changes;
+      if (!changes.beforeSpans.has(id))
+        changes.beforeSpans.set(id, new Set(trace?.spans.keys()));
+      if (!trace || changes.mutableTraces.has(id)) return trace;
+      changes.mutableTraces.add(id);
+      return mutableCopy(trace);
+    }
     return {
       eventsById: new Map(),
 
@@ -72,6 +84,18 @@ export const createEventsSlice =
         if (!event.event_id) {
           event.event_id = generateUuidv4();
         }
+        const changes = runtime.changes;
+        changes.eventIds.add(event.event_id);
+        if (event.contexts?.trace?.trace_id)
+          changes.traceIds.add(event.contexts.trace.trace_id);
+        if (isLogEvent(event))
+          for (const [index, log] of (event.items ?? []).entries()) {
+            changes.logIds.add(log.id || `${event.event_id}:log:${index}`);
+            if (typeof log.trace_id === "string" && log.trace_id.trim())
+              changes.traceIds.add(log.trace_id);
+          }
+        if (isProfileEvent(event) || isProfileChunkEvent(event))
+          changes.hasProfiles = true;
 
         const { eventsById: _eventsById } = get();
         if (
@@ -80,8 +104,17 @@ export const createEventsSlice =
         )
           return;
         pendingIds.set(event.event_id, generation);
+        let releaseError: (() => void) | undefined;
         try {
           if (isErrorEvent(event)) {
+            // Enrichment stays concurrent, while error application follows wire
+            // order. Cache hits and hook completion timing must not change trace
+            // identity/status during replay. Synchronous non-errors still apply
+            // immediately, before any enriched error resumes.
+            const previousError = changes.errorCommit;
+            changes.errorCommit = new Promise<void>((resolve) => {
+              releaseError = resolve;
+            });
             for (const exception of event.exception?.values ?? [])
               exception.stacktrace?.frames?.reverse();
             try {
@@ -90,6 +123,7 @@ export const createEventsSlice =
             } catch {
               // Source context is optional; a failed adapter must not drop captured telemetry.
             }
+            await previousError;
             if (
               runtime.generation !== generation ||
               get().eventsById.has(event.event_id)
@@ -121,6 +155,7 @@ export const createEventsSlice =
             const { logsById, logsByTraceId, tracesById } = get();
             const existingLogIds = new Set(logsById.keys());
             const { processedLogs } = processLogItems(event, existingLogIds);
+            for (const log of processedLogs) changes.insertedLogs.add(log.id);
 
             // Update store with processed logs
             // Build up the Maps incrementally to avoid stale state capture
@@ -135,9 +170,7 @@ export const createEventsSlice =
                 typeof logItem.trace_id === "string" &&
                 logItem.trace_id.trim()
               ) {
-                const logSet =
-                  newLogsByTraceId.get(logItem.trace_id) ||
-                  new Set<SentryLogEventItem>();
+                const logSet = new Set(newLogsByTraceId.get(logItem.trace_id));
                 logSet.add(logItem);
                 newLogsByTraceId.set(logItem.trace_id, logSet);
                 // A log batch carries trace IDs on its individual records, not
@@ -145,13 +178,18 @@ export const createEventsSlice =
                 // discoverable until transactions or spans arrive later.
                 if (Number.isFinite(logItem.timestamp)) {
                   const trace =
-                    newTracesById.get(logItem.trace_id) ??
+                    (changes.mutableTraces.has(logItem.trace_id)
+                      ? newTracesById.get(logItem.trace_id)
+                      : writableTrace(logItem.trace_id)) ??
                     initializeTrace({
                       ...event,
                       timestamp: logItem.timestamp,
                       start_timestamp: undefined,
                       contexts: { trace: { trace_id: logItem.trace_id } },
                     });
+                  if (!newTracesById.has(logItem.trace_id))
+                    changes.insertedTraces.add(logItem.trace_id);
+                  changes.mutableTraces.add(logItem.trace_id);
                   trace.start_timestamp = Math.min(
                     trace.start_timestamp,
                     logItem.timestamp,
@@ -177,6 +215,8 @@ export const createEventsSlice =
           const { eventsById } = get();
           const newEventIds = new Map(eventsById);
           newEventIds.set(event.event_id, event);
+          changes.addedEvents++;
+          changes.insertedEvents.add(event.event_id);
           set({ eventsById: newEventIds });
           if (runtime.generation !== generation) return;
 
@@ -184,10 +224,12 @@ export const createEventsSlice =
           if (traceCtx?.trace_id) {
             const { tracesById, profilesByTraceId, profileChunksByProfilerId } =
               get();
-            const existingTrace = tracesById.get(traceCtx.trace_id);
+            const existingTrace = writableTrace(traceCtx.trace_id);
 
             // Initialize or get existing trace
             let trace = existingTrace ?? initializeTrace(event);
+            if (!existingTrace) changes.insertedTraces.add(traceCtx.trace_id);
+            changes.mutableTraces.add(traceCtx.trace_id);
 
             // Update timestamps for all events
             trace.start_timestamp = Math.min(
@@ -258,14 +300,33 @@ export const createEventsSlice =
           if (runtime.generation !== generation) return;
           if (isProfileEvent(event)) {
             const { profilesByTraceId, tracesById } = get();
-            const { profiles } = processProfileEvent(event, { tracesById });
+            const newTracesById = new Map(tracesById);
+            const transactions =
+              event.transactions ??
+              (event.transaction ? [event.transaction] : []);
+            const traceIds = new Set(
+              transactions.flatMap((transaction) =>
+                typeof transaction === "string" ? [] : [transaction.trace_id],
+              ),
+            );
+            for (const traceId of traceIds) {
+              changes.traceIds.add(traceId);
+              const trace = writableTrace(traceId);
+              if (trace) newTracesById.set(traceId, trace);
+            }
+            const { profiles } = processProfileEvent(event, {
+              tracesById: newTracesById,
+            });
 
             // Update store with processed profiles
             const newProfilesByTraceId = new Map(profilesByTraceId);
             for (const { traceId, profile } of profiles) {
               newProfilesByTraceId.set(traceId, profile);
             }
-            set({ profilesByTraceId: newProfilesByTraceId });
+            set({
+              profilesByTraceId: newProfilesByTraceId,
+              tracesById: newTracesById,
+            });
           }
 
           // Handle V2 profile chunks (continuous profiling)
@@ -300,7 +361,8 @@ export const createEventsSlice =
                   chunk.profiler_id,
                 );
                 if (!mergedProfile) continue;
-                const trace = { ...existingTrace };
+                changes.traceIds.add(existingTrace.trace_id);
+                const trace = writableTrace(existingTrace.trace_id)!;
                 graftProfileSpans(trace, mergedProfile);
                 newTracesById.set(trace.trace_id, trace);
                 newProfilesByTraceId.set(trace.trace_id, mergedProfile);
@@ -313,10 +375,11 @@ export const createEventsSlice =
             }
           }
         } finally {
+          releaseError?.();
           if (pendingIds.get(event.event_id) === generation)
             pendingIds.delete(event.event_id);
         }
       },
-      getEvents: () => Array.from(get().eventsById.values()),
+      getEvents: () => [...get().eventsById.values()],
     };
   };

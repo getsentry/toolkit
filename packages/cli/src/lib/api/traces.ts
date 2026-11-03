@@ -319,6 +319,8 @@ export type ListTraceItemAttributesOptions = {
   context?: boolean;
   /** Pagination cursor from a previous page's `nextCursor` */
   cursor?: string;
+  /** Aborts the request, including its retries */
+  signal?: AbortSignal;
 };
 
 /**
@@ -361,6 +363,7 @@ export async function listTraceItemAttributes(
     ...config,
     path: { organization_id_or_slug: orgSlug },
     query,
+    signal: options.signal,
   });
   return unwrapPaginatedResult<TraceItemAttributeDefinition[]>(
     result,
@@ -718,7 +721,7 @@ async function fetchSpansPage(
   const fullQuery = [projectFilter, options.query].filter(Boolean).join(" ");
 
   const fields = options.extraFields?.length
-    ? SPAN_FIELDS.concat(options.extraFields)
+    ? [...SPAN_FIELDS, ...options.extraFields]
     : SPAN_FIELDS;
 
   let projectParam: string | undefined;

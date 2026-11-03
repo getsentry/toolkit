@@ -8,7 +8,7 @@
     "build": "pnpm --filter @sentry/spotlight run build && tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "pnpm --filter @sentry/spotlight run build && pnpm --filter sentry exec node script/ensure-generated.mjs schema && vitest run",
+    "test": "pnpm --filter @sentry/spotlight run build && pnpm --filter sentry exec node script/ensure-generated.mjs schema grammar && vitest run",
     "test:integration": "pnpm run test src/App.integration.test.tsx",
     "typecheck": "pnpm --filter @sentry/spotlight run build && tsc -b",
     "sample": "tsx scripts/replay.ts"
@@ -56,6 +56,6 @@
     "oxlint": "^1.79.0",
     "typescript": "catalog:",
     "vite": "^8.3.3",
-    "vitest": "^4.1.9"
+    "vitest": "catalog:"
   }
 }

@@ -149,7 +149,7 @@ export default defineTool({
       experimentalMode: context.experimentalMode ?? false,
       availableToolNames: context.availableToolNames,
       directToolNames: context.directToolNames,
-      purpose: "to add a new human-visible issue comment",
+      purpose: "to add a new issue comment",
     });
     if (addNoteInstruction) {
       output.push("", "## Response Notes", "");

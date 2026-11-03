@@ -707,6 +707,76 @@ describe("buildApp", () => {
     expect(res.status).toBe(204);
   });
 
+  test("retains malformed-only span envelopes for raw inspection and stream replay", async () => {
+    const buffer = createLocalTelemetryBuffer(10);
+    const app = buildApp(buffer, { uiActions: true });
+    const body = '{}\n{"type":"span"}\n{"version":2,"items":[{}]}';
+    try {
+      const res = await app.request("/stream", {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body,
+      });
+      expect(res.status).toBe(204);
+      const retained = buffer.read({ all: true });
+      expect(retained).toHaveLength(1);
+      const envelope = retained[0]!.getParsedEnvelope().envelope;
+      expect(envelope[1]).toEqual([
+        [{ type: "span" }, { type: "span", version: 2, items: [{}] }],
+      ]);
+      const raw = await app.request(
+        `/envelope/${String(envelope[0].__spotlight_envelope_id)}`,
+      );
+      expect(raw.status).toBe(200);
+      expect(await raw.text()).toBe(body);
+      expect(buffer.pipeline.getEvents()).toEqual([]);
+      expect(buffer.pipeline.getTraces()).toEqual([]);
+
+      const stream = await app.request("/stream");
+      if (!stream.body) throw new Error("Expected an SSE replay body");
+      const reader = stream.body.getReader();
+      try {
+        const frame = new TextDecoder().decode((await reader.read()).value);
+        expect(frame).toContain("event: application/x-sentry-envelope");
+        expect(frame).toContain('"items":[{}]');
+      } finally {
+        await reader.cancel();
+      }
+    } finally {
+      buffer.dispose();
+    }
+  });
+
+  test.each([
+    {
+      body: '{}\n{"type":"span"}\n{"items":',
+      contentType: SENTRY_CONTENT_TYPE,
+      status: 400,
+    },
+    {
+      body: '{}\n{"type":"span"}\n{"version":2,"items":[{}]}',
+      contentType: "application/json",
+      status: 415,
+    },
+  ])(
+    "rejects invalid span transport input with $status and retains no envelope",
+    async ({ body, contentType, status }) => {
+      const buffer = createLocalTelemetryBuffer(10);
+      const app = buildApp(buffer);
+      try {
+        const res = await app.request("/stream", {
+          method: "POST",
+          headers: { "Content-Type": contentType },
+          body,
+        });
+        expect(res.status).toBe(status);
+        expect(buffer.read({ all: true })).toEqual([]);
+      } finally {
+        buffer.dispose();
+      }
+    },
+  );
+
   test("ingest via /api/:projectId/envelope/ returns 204", async () => {
     const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);

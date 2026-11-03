@@ -4,10 +4,11 @@
  * bundled WASM driver (`node-sqlite3-wasm`, Node < 22.15) behind one API.
  */
 
-import { chmodSync, existsSync, mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
+import { DB_FILENAME, resolveConfigDir } from "../config-dir.js";
 import { getEnv } from "../env.js";
 import { logger } from "../logger.js";
 
@@ -16,21 +17,16 @@ const _require = createRequire(import.meta.url);
 const log = logger.withTag("db");
 
 import { migrateFromJson } from "./migration.js";
+import { createResilientDatabase } from "./resilient.js";
 import { initSchema, runMigrations } from "./schema.js";
 import { Database } from "./sqlite.js";
 
-export const CONFIG_DIR_ENV_VAR = "SENTRY_CONFIG_DIR";
-
-/** Legacy config directory name under the user's home directory (`~/.sentry`). */
-const LEGACY_CONFIG_DIR_NAME = ".sentry";
-
-/** Sub-directory used under the XDG config base directory. */
-const XDG_CONFIG_SUBDIR = "sentry";
-
-/** Default config directory as shown to users (help text, docs). */
-export const DEFAULT_CONFIG_DIR_DISPLAY = `~/.config/${XDG_CONFIG_SUBDIR}`;
-
-const DB_FILENAME = "cli.db";
+export {
+  CONFIG_DIR_ENV_VAR,
+  DEFAULT_CONFIG_DIR_DISPLAY,
+  resolveConfigDir,
+  resolveXdgConfigDir,
+} from "../config-dir.js";
 
 /** 7-day TTL for cache entries (milliseconds) */
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -38,9 +34,9 @@ const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Probability of running cleanup on write operations */
 const CLEANUP_PROBABILITY = 0.1;
 
-/** Traced database wrapper (returned by getDatabase) */
+/** Wrapped database (returned by getDatabase) */
 let db: Database | null = null;
-/** Raw database without tracing (used for repair operations) */
+/** Raw, unwrapped database (used for repair operations) */
 let rawDb: Database | null = null;
 let dbOpenedPath: string | null = null;
 /**
@@ -81,64 +77,6 @@ function registerExitHandler(): void {
   });
 }
 
-/**
- * Resolve the config directory from an environment and home directory.
- *
- * Precedence:
- * 1. `SENTRY_CONFIG_DIR` — explicit override, always wins.
- * 2. Legacy `~/.sentry` — used when it already exists, so existing installs
- *    keep working without migration.
- * 3. XDG base directory — `$XDG_CONFIG_HOME/sentry`, falling back to
- *    `~/.config/sentry`. Per the XDG spec, a non-absolute `XDG_CONFIG_HOME`
- *    is ignored.
- *
- * Pure and side-effect free so it can be unit-tested directly.
- */
-export function resolveConfigDir(env: NodeJS.ProcessEnv, home: string): string {
-  const override = env[CONFIG_DIR_ENV_VAR];
-  if (override) {
-    return override;
-  }
-
-  const legacyDir = join(home, LEGACY_CONFIG_DIR_NAME);
-  // Only treat the legacy directory as a prior config install when it
-  // contains the actual database or the old JSON config. A bare
-  // `~/.sentry/bin` created by the curl installer should not block XDG.
-  if (
-    existsSync(legacyDir) &&
-    (existsSync(join(legacyDir, DB_FILENAME)) ||
-      existsSync(join(legacyDir, "config.json")))
-  ) {
-    return legacyDir;
-  }
-
-  return resolveXdgConfigDir(env, home);
-}
-
-/**
- * Resolve the XDG-compliant config directory, ignoring any legacy `~/.sentry`
- * install. This is the migration *target*: `resolveConfigDir` keeps returning
- * the legacy dir while it holds `cli.db`, so migration must compute the new
- * location directly. Honors `SENTRY_CONFIG_DIR` and an absolute
- * `XDG_CONFIG_HOME`, otherwise defaults to `~/.config/sentry`.
- */
-export function resolveXdgConfigDir(
-  env: NodeJS.ProcessEnv,
-  home: string,
-): string {
-  const override = env[CONFIG_DIR_ENV_VAR];
-  if (override) {
-    return override;
-  }
-
-  const xdgConfigHome = env.XDG_CONFIG_HOME;
-  const configHome =
-    xdgConfigHome && isAbsolute(xdgConfigHome)
-      ? xdgConfigHome
-      : join(home, ".config");
-  return join(configHome, XDG_CONFIG_SUBDIR);
-}
-
 export function getConfigDir(): string {
   return resolveConfigDir(getEnv(), homedir());
 }
@@ -147,8 +85,11 @@ export function getDbPath(): string {
   return join(getConfigDir(), DB_FILENAME);
 }
 
-function ensureConfigDir(): void {
-  mkdirSync(getConfigDir(), { recursive: true, mode: 0o700 });
+/** Create the config directory, owner-only, if needed, and return its path. */
+export function ensureConfigDir(): string {
+  const directory = getConfigDir();
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  return directory;
 }
 
 function setDbPermissions(): void {
@@ -223,17 +164,11 @@ export function getDatabase(): Database {
       migrateFromJson(rawDb);
     }
 
-    // Wrap with tracing proxy for automatic query instrumentation.
-    // Lazy-require telemetry to avoid top-level import of @sentry/node (~100ms).
-    // Shell completions set SENTRY_CLI_NO_TELEMETRY=1 to skip this entirely.
-    if (getEnv().SENTRY_CLI_NO_TELEMETRY === "1") {
-      db = rawDb;
-    } else {
-      const { createTracedDatabase } = _require("../telemetry.js") as {
-        createTracedDatabase: (d: Database) => Database;
-      };
-      db = createTracedDatabase(rawDb);
-    }
+    // Both wrappers repair schema errors and skip read-only writes; the traced
+    // one also adds query spans when telemetry is on.
+    db =
+      lazyTelemetry()?.createTracedDatabase(rawDb) ??
+      createResilientDatabase(rawDb);
     dbOpenedPath = dbPath;
     registerExitHandler();
 
@@ -244,6 +179,40 @@ export function getDatabase(): Database {
     rawDb = null;
     throw error;
   }
+}
+
+/**
+ * `true` in the `complete.cjs` bundle of the npm package and the standalone
+ * binary (defined in `script/bundle.ts` and `script/build.ts`), so esbuild
+ * drops the telemetry `require` below from that bundle. Undefined when running from source.
+ */
+declare const SENTRY_CLI_COMPLETION_BUILD: boolean | undefined;
+
+/**
+ * The telemetry module, required lazily so the database modules never import
+ * `@sentry/node` (~100ms). `undefined` when telemetry is off: the `__complete`
+ * fast path sets `SENTRY_CLI_NO_TELEMETRY=1` and never loads it.
+ */
+function lazyTelemetry(): typeof import("../telemetry.js") | undefined {
+  if (
+    (typeof SENTRY_CLI_COMPLETION_BUILD !== "undefined" &&
+      SENTRY_CLI_COMPLETION_BUILD) ||
+    getEnv().SENTRY_CLI_NO_TELEMETRY === "1"
+  ) {
+    return;
+  }
+  return _require("../telemetry.js") as typeof import("../telemetry.js");
+}
+
+/** Run a database operation in a `db.operation` span (telemetry's `withDbSpan`). */
+export function withDbSpan<T>(operation: string, fn: () => T): T {
+  const telemetry = lazyTelemetry();
+  return telemetry ? telemetry.withDbSpan(operation, fn) : fn();
+}
+
+/** Record a cache hit or miss (telemetry's `recordCacheHit`). */
+export function recordCacheHit(cacheName: string, hit: boolean): void {
+  lazyTelemetry()?.recordCacheHit(cacheName, hit);
 }
 
 /** Close the database connection (used for testing). */

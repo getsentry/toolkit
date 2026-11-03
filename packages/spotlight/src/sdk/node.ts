@@ -558,7 +558,7 @@ export function createTelemetryPipeline(
         : pendingCount() >= maxPending
           ? "queue_full"
           : undefined;
-      const entries = Array.from(inputs);
+      const entries = [...inputs];
       if (rejected)
         return Promise.resolve(
           Object.freeze(entries.map(() => ignored(rejected))),

@@ -13,5 +13,5 @@ export const createLogsSlice: StateCreator<
 > = (_set, get) => ({
   logsById: new Map(),
   logsByTraceId: new Map(),
-  getLogs: () => Array.from(get().logsById.values()),
+  getLogs: () => [...get().logsById.values()],
 });

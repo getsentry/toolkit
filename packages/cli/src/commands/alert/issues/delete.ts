@@ -6,8 +6,8 @@
 
 import type { SentryContext } from "../../../context.js";
 import { deleteIssueAlertRule } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { ContextError, ValidationError } from "../../../lib/errors.js";
+import { filterFieldsIfSet } from "../../../lib/formatters/json.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { logger } from "../../../lib/logger.js";
 import {
@@ -17,7 +17,9 @@ import {
   requireExplicitTarget,
 } from "../../../lib/mutate-command.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
-import { parseIssueRuleArg, resolveIssueAlertRule } from "./rule-resolve.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
+import { IssueAlertDeleteOutputSchema } from "../output-schemas.js";
 
 const USAGE_HINT =
   "sentry alert issues delete <org>/<project>/<rule-id-or-name>";
@@ -69,39 +71,34 @@ export const deleteCommand = buildDeleteCommand({
   },
   output: {
     human: formatDeleted,
-    jsonTransform: (r: DeleteResult) =>
-      r.dryRun
-        ? {
-            dryRun: true,
-            org: r.org,
-            project: r.project,
-            id: r.ruleId,
-            name: r.name,
-          }
-        : {
-            deleted: true,
-            org: r.org,
-            project: r.project,
-            id: r.ruleId,
-            name: r.name,
-          },
+    schema: IssueAlertDeleteOutputSchema,
+    jsonTransform: (r: DeleteResult, fields?: string[]) =>
+      filterFieldsIfSet(
+        {
+          ...(r.dryRun ? { dryRun: true } : { deleted: true }),
+          org: r.org,
+          project: r.project,
+          id: r.ruleId,
+          name: r.name,
+        },
+        fields,
+      ),
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/project/rule-id-or-name",
-          brief: "Rule id or name (same as view)",
-          parse: String,
-        },
+        issueRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
       ],
     },
   },
-  async *func(this: SentryContext, flags: DeleteFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: DeleteFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
-    const { ref, targetArg } = parseIssueRuleArg(arg, USAGE_HINT);
-    const parsed = parseOrgProjectArg(targetArg);
+    const { ref, target: parsed } = await ruleArg.resolved;
     requireExplicitTarget(parsed, "Issue alert target", USAGE_HINT);
     if (parsed.type !== "explicit") {
       throw new ValidationError(

@@ -202,7 +202,7 @@ test("malformed spans have diagnostics while mixed valid spans still process", a
       [[{ type: "span" }, { version: 2, items: [{}] }]],
     ]),
   ).toMatchObject({
-    status: "invalid",
+    status: "processed",
     diagnostics: [{ code: "invalid_span" }],
   });
   const input = spans("partial");

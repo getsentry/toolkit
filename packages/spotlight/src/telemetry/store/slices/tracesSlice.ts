@@ -13,5 +13,5 @@ export const createTracesSlice: StateCreator<
 > = (_, get) => ({
   tracesById: new Map(),
 
-  getTraces: () => Array.from(get().tracesById.values()),
+  getTraces: () => [...get().tracesById.values()],
 });

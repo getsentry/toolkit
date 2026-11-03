@@ -43,7 +43,7 @@ const api = new SentryApiService({
 });
 ```
 
-See `packages/mcp-server/src/api-utils.ts` and
+See `packages/mcp-core/src/api-utils.ts` and
 [adding-tools.md](adding-tools.md#step-2-implement-the-handler) for usage in
 tools.
 
@@ -79,11 +79,12 @@ fail to resolve for legacy mixed-case project slugs; keep them for display.
 
 Organization discovery uses `/api/0/organizations/`; a limit over 100 follows
 bounded pages through Sentry's Link cursors. Organization, team, and project
-lists use `@sentry/api` operations to build GET paths and queries. The MCP
-client still owns the request transport, token handling, retries, error
-types, and Zod response validation. Public SaaS hosts use `sentry.io` to list
-organizations across regions. Single-tenant hosts under `*.my.sentry.io` and
-self-hosted instances keep their configured host for this request.
+lists and most issue and event reads use `@sentry/api` operations to build GET
+paths and queries. The MCP client still owns the request transport, token
+handling, retries, error types, and Zod response validation. Public SaaS
+hosts use `sentry.io` to list organizations across regions. Single-tenant
+hosts under `*.my.sentry.io` and self-hosted instances keep their configured
+host for this request.
 
 User identity (`/api/0/auth/`, used by `whoami`) follows the same control-host
 routing. Organization-scoped requests continue to use the configured host or
@@ -257,17 +258,38 @@ try {
 
 See error patterns in [common-patterns.md](common-patterns.md#error-handling).
 
+`ApiError` and its subclasses live in the shared client,
+`@sentry/toolkit-core/api-client/errors`. `SentryApiService` sends requests
+through the shared request core, `@sentry/toolkit-core/api-client/core`,
+which builds them from `readErrorResponse` in
+`@sentry/toolkit-core/api-client/response`. The CLI reads raw error
+responses with the same helper and maps them to its own exit-coded
+`ApiError`. Endpoints that have moved to the shared client live in
+`@sentry/toolkit-core/api-client/endpoints/*`; `SentryApiService` calls
+them with its Zod schemas, and a malformed response throws
+`ApiResponseValidationError` from
+`@sentry/toolkit-core/api-client/validate`. See
+[`packages/toolkit-core/README.md`](../../packages/toolkit-core/README.md#api-client).
+
 ### Automatic Retries
 
-`SentryApiService.request()` transparently retries failed requests using the
-shared policy in `@sentry/toolkit-core/api-retry`. This page describes the
+`SentryApiService` sends every request, including `@sentry/api` operations,
+through the shared transport in `@sentry/toolkit-core/api-client/transport`, which
+retries failed requests using the shared policy in
+`@sentry/toolkit-core/api-client/retry`. `SentryApiService` never retries on top, so
+a request is retried by one layer only. This page describes the
 behavior; the values live only in code, so read them there instead of copying
 them here:
 
 - Which statuses retry, and for which methods: `RETRYABLE_STATUSES` in
-  [`api-retry.ts`](../../packages/toolkit-core/src/api-retry.ts). In short, a
+  [`retry.ts`](../../packages/toolkit-core/src/api-client/retry.ts). In short, a
   rate-limited request retries for any method, a transient server error only
   for an idempotent one, and other errors never.
+- Which writes count as idempotent: the ones the installed `@sentry/api`
+  catalog marks `idempotent`, from Sentry's `x-sentry-idempotent` extension.
+  The matcher is in
+  [`idempotent-operations.ts`](../../packages/toolkit-core/src/api-client/idempotent-operations.ts);
+  bumping `@sentry/api` is enough to pick up newly marked writes.
 - How many retries and how long they may wait: `REQUEST_RETRY_POLICY` in
   [`client.ts`](../../packages/mcp-core/src/api-client/client.ts).
 
@@ -280,14 +302,26 @@ Retries are:
   out than the single-wait cap fails at once with an `ApiRateLimitError` whose
   `retryAfterMs` and user message say when to retry.
 - **Abortable** — aborting the request's `signal` ends the wait.
-- **Fail-fast otherwise** — network and configuration errors are not retried.
+- **Network failures retry for idempotent requests** — when `fetch` itself
+  fails (DNS, connection refused or reset, socket timeout), only GET, HEAD,
+  OPTIONS, and writes Sentry marks idempotent retry, since any other write
+  may already have reached Sentry.
+- **Fail-fast otherwise** — configuration errors (such as a malformed token)
+  are not retried.
   A rate-limited tool call returns a **Rate Limited** message with the retry
   time, not an input error.
-- **Bypassed by `allowStatuses`** — a status the caller opts into is returned
-  as-is from `requestOnce`, never retried.
+- **Before `allowStatuses`** — a status the caller opts into is returned
+  as-is, after the transport has finished retrying it.
 
 Callers and tools need no changes: a retried request either resolves normally or
 throws the same error it would have thrown without retries.
+
+The CLI sends its requests through the shared transport in
+`@sentry/toolkit-core/api-client/transport`, configured in
+`packages/cli/src/lib/sentry-client.ts`. It follows the same shared rule; only
+the caps differ (`RETRY_POLICY`): the hosted MCP keeps its total wait short so
+a Workers request isn't held open, while the CLI can wait longer. The CLI also
+applies its own per-request timeout, which counts as a network failure.
 
 ## Best Practices
 
@@ -299,7 +333,7 @@ throws the same error it would have thrown without retries.
 
 ## References
 
-- API Client: `packages/mcp-server/src/api-client/`
+- API Client: `packages/mcp-core/src/api-client/`
 - Mock handlers: `packages/mcp-server-mocks/src/handlers/`
 - Fixtures: `packages/mcp-server-mocks/src/fixtures/`
-- API Utils: `packages/mcp-server/src/api-utils.ts`
+- API Utils: `packages/mcp-core/src/api-utils.ts`

@@ -205,7 +205,8 @@ export function assertOwnedCandidate(deployments, journal) {
   return journal.previous.version;
 }
 
-async function listDeployments(env) {
+/** Read deployment history for an existing Worker without exposing API responses. */
+export async function listDeployments(env, worker = WORKER) {
   if (
     !/^[0-9a-f]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID ?? "") ||
     !env.CLOUDFLARE_API_TOKEN
@@ -215,7 +216,7 @@ async function listDeployments(env) {
     );
   }
   const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER}/deployments?per_page=3`,
+    `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${encodeURIComponent(worker)}/deployments?per_page=3`,
     {
       headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` },
       signal: AbortSignal.timeout(15_000),
@@ -275,7 +276,8 @@ function runWrangler(args, env, spawn = spawnSync) {
     throw new DeploymentError("Cloudflare version transition failed");
 }
 
-export function parseUploadedVersion(output) {
+/** Identify the exact version uploaded for the intended Worker. */
+export function parseUploadedVersion(output, expectedWorker = WORKER) {
   if (typeof output !== "string" || output.length > 64_000) {
     throw new DeploymentError("Invalid Wrangler upload output");
   }
@@ -296,7 +298,7 @@ export function parseUploadedVersion(output) {
     session.command_line_args[1] !== "upload" ||
     !session.command_line_args.includes("--experimental-auto-create=false") ||
     success?.type !== "version-upload" ||
-    success.worker_name !== WORKER ||
+    success.worker_name !== expectedWorker ||
     success.worker_name_overridden !== false ||
     !UUID.test(success.version_id)
   ) {

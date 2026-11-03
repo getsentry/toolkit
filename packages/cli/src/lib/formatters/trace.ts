@@ -5,6 +5,7 @@
  * Includes flat span utilities for `span list` and `span view` commands.
  */
 
+import { tableCell, text } from "@sentry/toolkit-core/markdown";
 import type {
   SpanListItem,
   TraceSpan,
@@ -16,8 +17,6 @@ import { stringifyUnknown } from "../errors.js";
 import { filterFields } from "./json.js";
 import {
   colorTag,
-  escapeMarkdownCell,
-  escapeMarkdownInline,
   mdKvTable,
   mdRow,
   mdTableHeader,
@@ -78,7 +77,7 @@ export function buildTraceRowCells(
 ): [string, string, string, string] {
   return [
     `\`${item.trace}\``,
-    escapeMarkdownCell(item.transaction || "unknown"),
+    tableCell(item.transaction || "unknown"),
     formatTraceDuration(item["span.duration"]),
     formatRelativeTime(item.timestamp),
   ];
@@ -365,10 +364,7 @@ export function formatTraceSummary(summary: TraceSummary): string {
 
   if (summary.rootTransaction) {
     const opPrefix = summary.rootOp ? `[\`${summary.rootOp}\`] ` : "";
-    kvRows.push([
-      "Root",
-      `${opPrefix}${escapeMarkdownCell(summary.rootTransaction)}`,
-    ]);
+    kvRows.push(["Root", `${opPrefix}${tableCell(summary.rootTransaction)}`]);
   }
   kvRows.push(["Duration", formatTraceDuration(summary.duration)]);
   kvRows.push(["Spans", String(summary.spanCount)]);
@@ -524,7 +520,7 @@ export function spanListItemToFlatSpan(
  */
 const PROJECT_COLUMN: Column<FlatSpan> = {
   header: "Project",
-  value: (s) => escapeMarkdownCell(s.project_slug || "—"),
+  value: (s) => tableCell(s.project_slug || "—"),
   minWidth: 8,
 };
 
@@ -551,14 +547,14 @@ const TRACE_ID_COLUMN: Column<FlatSpan> = {
 const SPAN_TABLE_COLUMNS: Column<FlatSpan>[] = [
   {
     header: "Op",
-    value: (s) => escapeMarkdownCell(s.op || "—"),
+    value: (s) => tableCell(s.op || "—"),
     minWidth: 6,
   },
   {
     header: "Description",
     value: (s) => {
       const desc = s.description || "(no description)";
-      return escapeMarkdownCell(isDbSpanOp(s.op) ? colorizeSql(desc) : desc);
+      return tableCell(isDbSpanOp(s.op) ? colorizeSql(desc) : desc);
     },
     truncate: true,
   },
@@ -586,7 +582,7 @@ function buildExtraColumns(extraColumns: string[]): Column<FlatSpan>[] {
       if (v === undefined || v === null) {
         return "—";
       }
-      return escapeMarkdownCell(stringifyUnknown(v));
+      return tableCell(stringifyUnknown(v));
     },
   }));
 }
@@ -650,7 +646,7 @@ function buildSpanKvRows(span: TraceSpan, traceId: string): [string, string][] {
 
   const desc = span.description || span.transaction;
   if (desc) {
-    kvRows.push(["Description", escapeMarkdownCell(desc)]);
+    kvRows.push(["Description", tableCell(desc)]);
   }
 
   const durationMs = computeSpanDurationMs(span);
@@ -690,7 +686,7 @@ function formatAncestorChain(ancestors: TraceSpan[]): string {
     const aDesc = a.description || a.transaction || "(no description)";
     const colorizedDesc = isDbSpanOp(aOp) ? colorizeSql(aDesc) : aDesc;
     lines.push(
-      `${indent}${colorTag("muted", aOp)} — ${escapeMarkdownInline(colorizedDesc)} ${colorTag("muted", `(${a.span_id})`)}`,
+      `${indent}${colorTag("muted", aOp)} — ${text(colorizedDesc)} ${colorTag("muted", `(${a.span_id})`)}`,
     );
   }
   return `${renderMarkdown(lines.join("\n"))}\n`;
@@ -754,7 +750,7 @@ function appendAttributeRows(
   const shown = attrs.slice(0, MAX_DISPLAY_ATTRS);
   for (const attr of shown) {
     if (attr.value !== undefined && attr.value !== null && attr.value !== "") {
-      kvRows.push([attr.name, escapeMarkdownCell(String(attr.value))]);
+      kvRows.push([attr.name, tableCell(String(attr.value))]);
     }
   }
   if (attrs.length > MAX_DISPLAY_ATTRS) {

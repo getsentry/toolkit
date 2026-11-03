@@ -17,6 +17,7 @@ import {
   validateEnvelope,
 } from "./internal/envelopes.ts";
 import { readonlyCopy } from "./internal/readonly.ts";
+import { createEnvelopeChanges } from "./internal/types.ts";
 import {
   diagnostic as makeDiagnostic,
   receipt,
@@ -38,7 +39,39 @@ type RetainedEnvelope = {
   envelope: Envelope;
   receivedAtMs: number;
   bytes: number;
+  changes: Pick<
+    ReturnType<typeof createEnvelopeChanges>,
+    | "eventIds"
+    | "logIds"
+    | "traceIds"
+    | "hasProfiles"
+    | "sdk"
+    | "insertedEvents"
+    | "insertedLogs"
+    | "insertedTraces"
+  >;
 };
+type InsertionOrder = Pick<
+  ReturnType<typeof createEnvelopeChanges>,
+  "insertedEvents" | "insertedLogs" | "insertedTraces"
+>;
+
+function insertionOrder(changes: InsertionOrder): InsertionOrder {
+  return {
+    insertedEvents: changes.insertedEvents,
+    insertedLogs: changes.insertedLogs,
+    insertedTraces: changes.insertedTraces,
+  };
+}
+
+function clearProcessingScratch(
+  changes: ReturnType<typeof createEnvelopeChanges>,
+) {
+  changes.beforeSpans.clear();
+  changes.mutableTraces.clear();
+  changes.errorCommit = Promise.resolve();
+}
+
 const MiB = 1024 * 1024;
 function positive(value: number, name: string) {
   if (!Number.isSafeInteger(value) || value < 1)
@@ -70,6 +103,7 @@ export function createTelemetryStore(
   let queue: Promise<unknown> = Promise.resolve();
   let pruning: Promise<void> | undefined;
   let journal: RetainedEnvelope[] = [];
+  const dependencyCounts = new Map<string, number>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let lifetime = new AbortController();
   const identities = new WeakMap<object, string>();
@@ -242,25 +276,58 @@ export function createTelemetryStore(
         currentEnvelopeId = stringifyValue(envelope[0].__spotlight_envelope_id);
         currentSignal = signal;
         created.runtime.receivedAtMs = receivedAtMs;
+        created.runtime.changes = createEnvelopeChanges();
         return created.store.getState().ingestEnvelope(envelope);
       },
     };
   }
   let engine = makeEngine();
   function stable<T extends object>(value: T): T {
-    if (!stableCopies.has(value)) stableCopies.set(value, readonlyCopy(value));
+    if (!stableCopies.has(value)) readonlyCopy(value, stableCopies);
     return stableCopies.get(value) as T;
   }
   function stateSnapshot(): TelemetrySnapshot {
     const state = engine.store.getState();
+    const committedRevision = revision;
+    // Capture committed Maps, whose entries and trace graphs use copy-on-write.
+    // Delivery-only listeners need no history copies; browser reads materialize
+    // each category once and reuse frozen graphs for untouched records.
+    let envelopes: TelemetrySnapshot["envelopes"] | undefined;
+    let events: TelemetrySnapshot["events"] | undefined;
+    let traces: TelemetrySnapshot["traces"] | undefined;
+    let logs: TelemetrySnapshot["logs"] | undefined;
+    let sdks: TelemetrySnapshot["sdks"] | undefined;
+    let profiles: TelemetrySnapshot["profiles"] | undefined;
     return Object.freeze({
-      revision,
-      envelopes: Object.freeze(state.getEnvelopes().map(stable)),
-      events: Object.freeze(state.getEvents().map(stable)),
-      traces: readonlyCopy(state.getTraces()),
-      logs: Object.freeze(state.getLogs().map(stable)),
-      sdks: readonlyCopy(state.getSdks()),
-      profiles: readonlyCopy(state.profilesByTraceId),
+      revision: committedRevision,
+      get envelopes() {
+        return (envelopes ??= Object.freeze(
+          Array.from(state.envelopes.values(), stable),
+        ));
+      },
+      get events() {
+        return (events ??= Object.freeze(
+          Array.from(state.eventsById.values(), stable),
+        ));
+      },
+      get traces() {
+        return (traces ??= Object.freeze(
+          Array.from(state.tracesById.values(), stable),
+        ));
+      },
+      get logs() {
+        return (logs ??= Object.freeze(
+          Array.from(state.logsById.values(), stable),
+        ));
+      },
+      get sdks() {
+        return (sdks ??= Object.freeze(
+          Array.from(state.sdks.values(), stable),
+        ));
+      },
+      get profiles() {
+        return (profiles ??= stable(state.profilesByTraceId));
+      },
     });
   }
   let snapshot = stateSnapshot();
@@ -323,7 +390,9 @@ export function createTelemetryStore(
     epoch: number,
     signal?: AbortSignal,
   ) {
+    if (!active(epoch) || signal?.aborted) return false;
     const replacement = makeEngine();
+    const insertions = new Map<RetainedEnvelope, InsertionOrder>();
     for (const record of retained) {
       if (signal?.aborted) return false;
       await replacement.ingestEnvelope(
@@ -332,11 +401,218 @@ export function createTelemetryStore(
         signal,
       );
       if (!active(epoch) || signal?.aborted) return false;
+      insertions.set(record, insertionOrder(replacement.runtime.changes));
+      clearProcessingScratch(replacement.runtime.changes);
     }
+    if (!active(epoch) || signal?.aborted) return false;
     engine = replacement;
+    for (const [record, changes] of insertions)
+      updateInsertions(record, changes);
     const eventIds = engine.store.getState().eventsById;
     for (const key of enrichmentCache.keys())
       if (!eventIds.has(key)) enrichmentCache.delete(key);
+    return true;
+  }
+  function updateInsertions(record: RetainedEnvelope, changes: InsertionOrder) {
+    record.changes.insertedEvents = changes.insertedEvents;
+    record.changes.insertedLogs = changes.insertedLogs;
+    record.changes.insertedTraces = changes.insertedTraces;
+  }
+  function dependencies(record: RetainedEnvelope) {
+    return [
+      ...Array.from(record.changes.eventIds, (id) => `event:${id}`),
+      ...Array.from(record.changes.traceIds, (id) => `trace:${id}`),
+      ...Array.from(record.changes.logIds, (id) => `log:${id}`),
+    ];
+  }
+  function countDependencies(record: RetainedEnvelope, delta: number) {
+    for (const key of dependencies(record)) {
+      const count = (dependencyCounts.get(key) ?? 0) + delta;
+      if (count) dependencyCounts.set(key, count);
+      else dependencyCounts.delete(key);
+    }
+  }
+  function restoreJournal(retained: RetainedEnvelope[]) {
+    journal = retained;
+    dependencyCounts.clear();
+    for (const record of retained) countDependencies(record, 1);
+  }
+  function evictIndependent(
+    evicted: RetainedEnvelope[],
+    retained: RetainedEnvelope[],
+  ): boolean {
+    const state = engine.store.getState();
+    // Profiles can graft onto another envelope's traces (including future
+    // transactions). Keep canonical replay for that dependency graph, and for
+    // shared trace/event/log keys so dedup winners are correctly promoted.
+    if (
+      evicted.some(
+        (record) =>
+          record.changes.hasProfiles ||
+          [...record.changes.traceIds].some((id) =>
+            state.profilesByTraceId.has(id),
+          ),
+      )
+    )
+      return false;
+    const removedCounts = new Map<string, number>();
+    for (const record of evicted)
+      for (const key of dependencies(record))
+        removedCounts.set(key, (removedCounts.get(key) ?? 0) + 1);
+    for (const [key, count] of removedCounts)
+      if (dependencyCounts.get(key) !== count) return false;
+    const envelopes = new Map(state.envelopes);
+    const eventsById = new Map(state.eventsById);
+    const logsById = new Map(state.logsById);
+    const logsByTraceId = new Map(state.logsByTraceId);
+    const tracesById = new Map(state.tracesById);
+    for (const record of evicted) {
+      envelopes.delete(record.id);
+      for (const id of record.changes.eventIds) {
+        eventsById.delete(id);
+        enrichmentCache.delete(id);
+      }
+      for (const id of record.changes.logIds) logsById.delete(id);
+      for (const id of record.changes.traceIds) {
+        tracesById.delete(id);
+        logsByTraceId.delete(id);
+      }
+    }
+    // SDK order and lastSeen must match replay, even when the first or latest
+    // envelope from a source expires. This scans small SDK records, not spans.
+    const sdks = new Map<
+      string,
+      NonNullable<RetainedEnvelope["changes"]["sdk"]>
+    >();
+    for (const record of retained) {
+      const sdk = record.changes.sdk;
+      if (sdk) sdks.set(`${sdk.name}@${sdk.version}`, sdk);
+    }
+    engine.store.setState({
+      envelopes,
+      eventsById,
+      logsById,
+      logsByTraceId,
+      tracesById,
+      sdks,
+    });
+    return true;
+  }
+  async function rebuildAffected(
+    evicted: RetainedEnvelope[],
+    retained: RetainedEnvelope[],
+    epoch: number,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    const keys = new Set(evicted.flatMap(dependencies));
+    const affected = new Set(evicted);
+    // Expand through duplicate IDs and cross-envelope traces/logs. SDK identity
+    // is deliberately not a processing dependency shared by every delivery.
+    let expanded = true;
+    while (expanded) {
+      expanded = false;
+      for (const record of retained) {
+        if (affected.has(record)) continue;
+        const dependenciesOfRecord = dependencies(record);
+        if (!dependenciesOfRecord.some((key) => keys.has(key))) continue;
+        affected.add(record);
+        for (const key of dependenciesOfRecord) keys.add(key);
+        expanded = true;
+      }
+    }
+    const state = engine.store.getState();
+    // Keep the full canonical replay for profile dependencies, which also link
+    // traces through profiler IDs and profiles received before their traces.
+    if (
+      [...affected].some(
+        (record) =>
+          record.changes.hasProfiles ||
+          [...record.changes.traceIds].some((id) =>
+            state.profilesByTraceId.has(id),
+          ),
+      )
+    )
+      return false;
+    const replacement = makeEngine();
+    const insertions = new Map<RetainedEnvelope, InsertionOrder>();
+    for (const record of retained) {
+      if (!affected.has(record)) continue;
+      if (!active(epoch) || signal?.aborted) return false;
+      await replacement.ingestEnvelope(
+        record.envelope,
+        record.receivedAtMs,
+        signal,
+      );
+      if (!active(epoch) || signal?.aborted) return false;
+      insertions.set(record, insertionOrder(replacement.runtime.changes));
+      clearProcessingScratch(replacement.runtime.changes);
+    }
+    // Commit only after replay completes. A cancelled replay cannot mutate the
+    // live engine or the provenance used by the next retention operation.
+    for (const [record, changes] of insertions)
+      updateInsertions(record, changes);
+    const rebuilt = replacement.store.getState();
+    function merge<T>(
+      original: Map<string, T>,
+      updates: Map<string, T>,
+      prefix: string,
+    ) {
+      const result = new Map(original);
+      for (const key of keys)
+        if (key.startsWith(`${prefix}:`))
+          result.delete(key.slice(prefix.length + 1));
+      for (const [key, value] of updates) result.set(key, value);
+      return result;
+    }
+    function ordered<T>(
+      values: Map<string, T>,
+      category: "insertedEvents" | "insertedLogs" | "insertedTraces",
+    ) {
+      const result = new Map<string, T>();
+      for (const record of retained)
+        for (const id of record.changes[category])
+          if (values.has(id)) result.set(id, values.get(id)!);
+      return result;
+    }
+    const eventsById = ordered(
+      merge(state.eventsById, rebuilt.eventsById, "event"),
+      "insertedEvents",
+    );
+    const logsById = ordered(
+      merge(state.logsById, rebuilt.logsById, "log"),
+      "insertedLogs",
+    );
+    const tracesById = ordered(
+      merge(state.tracesById, rebuilt.tracesById, "trace"),
+      "insertedTraces",
+    );
+    const logsByTraceId = merge(
+      state.logsByTraceId,
+      rebuilt.logsByTraceId,
+      "trace",
+    );
+    const envelopes = new Map(
+      retained.map((record) => [record.id, record.envelope]),
+    );
+    const sdks = new Map<
+      string,
+      NonNullable<RetainedEnvelope["changes"]["sdk"]>
+    >();
+    for (const record of retained) {
+      const sdk = record.changes.sdk;
+      if (sdk) sdks.set(`${sdk.name}@${sdk.version}`, sdk);
+    }
+    engine.store.setState({
+      eventsById,
+      logsById,
+      tracesById,
+      logsByTraceId,
+      envelopes,
+      sdks,
+    });
+    for (const record of evicted)
+      for (const id of record.changes.eventIds)
+        if (!eventsById.has(id)) enrichmentCache.delete(id);
     return true;
   }
   async function enforceRetention(
@@ -355,19 +631,16 @@ export function createTelemetryStore(
     retained = retained.slice(trim);
     if (retained.length === journal.length) return [];
     const keep = new Set(retained.map((record) => record.id));
-    const evicted = journal
-      .filter((record) => !keep.has(record.id))
-      .map((record) => record.id);
-    if (!(await rebuild(retained, epoch, signal))) return [];
+    const evicted = journal.filter((record) => !keep.has(record.id));
+    if (!evictIndependent(evicted, retained)) {
+      const applied = await rebuildAffected(evicted, retained, epoch, signal);
+      if (!active(epoch) || signal?.aborted) return [];
+      if (!applied && !(await rebuild(retained, epoch, signal))) return [];
+    }
     if (!active(epoch)) return [];
+    for (const record of evicted) countDependencies(record, -1);
     journal = retained;
-    return evicted;
-  }
-  function spanKeys() {
-    const keys = new Set<string>();
-    for (const trace of engine.store.getState().tracesById.values())
-      for (const id of trace.spans.keys()) keys.add(`${trace.trace_id}:${id}`);
-    return keys;
+    return evicted.map((record) => record.id);
   }
   const reader = createTelemetryReader(() => snapshot);
   function ingestOne(
@@ -404,14 +677,11 @@ export function createTelemetryStore(
       );
     const supported = supportsEnvelope(input);
     const inputDiagnostics: Diagnostic[] = [];
-    let validSpans = 0;
     let invalidSpans = 0;
-    let otherItems = false;
     let candidates = 0;
     let skippedItems = 0;
     for (const [itemIndex, [header, payload]] of input[1].entries()) {
       if (header.type !== "span") {
-        otherItems = true;
         if (SUPPORTED_EVENT_TYPES.has(header.type)) candidates++;
         else skippedItems++;
         continue;
@@ -437,14 +707,13 @@ export function createTelemetryStore(
         version: "unknown",
         lastSeen: 0,
       }).length;
-      validSpans += valid;
       candidates += valid;
       invalidSpans += count - valid;
       if (count > valid)
         inputDiagnostics.push(
           makeDiagnostic(
             "invalid_span",
-            "Malformed span items were skipped; valid telemetry was retained.",
+            "Malformed span items were skipped during telemetry processing.",
             {
               severity: "warning",
               itemIndex,
@@ -452,23 +721,6 @@ export function createTelemetryStore(
           ),
         );
     }
-    if (invalidSpans > 0 && validSpans === 0 && !otherItems)
-      return Promise.resolve(
-        invalid(
-          "invalid_span",
-          "Span items are missing valid IDs or timestamps.",
-          inputDiagnostics.map((item) =>
-            makeDiagnostic(
-              item.code,
-              "Span items are missing valid IDs or timestamps.",
-              {
-                severity: "error",
-                itemIndex: item.itemIndex,
-              },
-            ),
-          ),
-        ),
-      );
     skippedItems += invalidSpans;
     let id: string;
     let envelope: Envelope;
@@ -521,7 +773,7 @@ export function createTelemetryStore(
       async function rollback() {
         working.store.getState().resetData();
         if (engine !== working) engine.store.getState().resetData();
-        journal = retainedBefore;
+        restoreJournal(retainedBefore);
         enrichmentCache = new Map(cacheBefore);
         await rebuild(journal, epoch);
         if (active(epoch)) {
@@ -535,9 +787,6 @@ export function createTelemetryStore(
         return ignored("duplicate", id, true);
       }
       const working = engine;
-      const beforeEvents = new Set(working.store.getState().eventsById.keys());
-      const beforeLogs = new Set(working.store.getState().logsById.keys());
-      const beforeSpans = spanKeys();
       let failed = false;
       try {
         await working.ingestEnvelope(
@@ -560,20 +809,40 @@ export function createTelemetryStore(
             );
       }
       const state = working.store.getState();
-      const addedEvents = Array.from(state.eventsById.keys()).filter(
-        (key) => !beforeEvents.has(key),
-      ).length;
+      const changes = working.runtime.changes;
+      const addedEvents = changes.addedEvents;
+      let addedSpans = 0;
+      for (const [traceId, before] of changes.beforeSpans)
+        for (const spanId of state.tracesById.get(traceId)?.spans.keys() ?? [])
+          if (!before.has(spanId)) addedSpans++;
       const counts: IngestCounts = {
         events: addedEvents,
-        logs: Array.from(state.logsById.keys()).filter(
-          (key) => !beforeLogs.has(key),
-        ).length,
-        spans: Array.from(spanKeys()).filter((key) => !beforeSpans.has(key))
-          .length,
+        logs: changes.insertedLogs.size,
+        spans: addedSpans,
         skippedItems,
         duplicateEvents: Math.max(0, candidates - addedEvents),
       };
-      journal = [...journal, { id, envelope, receivedAtMs, bytes }];
+      clearProcessingScratch(changes);
+      // The span comparison worklist is per-operation scratch space. Retaining
+      // it would keep a historical copy of every growing cross-envelope trace.
+      const record: RetainedEnvelope = {
+        id,
+        envelope,
+        receivedAtMs,
+        bytes,
+        changes: {
+          eventIds: changes.eventIds,
+          logIds: changes.logIds,
+          traceIds: changes.traceIds,
+          hasProfiles: changes.hasProfiles,
+          sdk: changes.sdk,
+          insertedEvents: changes.insertedEvents,
+          insertedLogs: changes.insertedLogs,
+          insertedTraces: changes.insertedTraces,
+        },
+      };
+      journal = [...journal, record];
+      countDependencies(record, 1);
       const afterEvicted = await enforceRetention(epoch, ingestOptions.signal);
       if (!active(epoch)) return ignored(disposed ? "disposed" : "reset", id);
       if (ingestOptions.signal?.aborted) {
@@ -669,7 +938,7 @@ export function createTelemetryStore(
       lifetime = new AbortController();
       clearTimer();
       engine.store.getState().resetData();
-      journal = [];
+      restoreJournal([]);
       enrichmentCache = new Map();
       engine = makeEngine();
       queue = Promise.resolve();

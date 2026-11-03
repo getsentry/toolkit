@@ -237,7 +237,7 @@ describe("parseOutput: binary output", () => {
     ]);
     const result = parseOutput<Uint8Array>(undefined, [png]);
     expect(result).toBeInstanceOf(Uint8Array);
-    expect(Array.from(result)).toEqual([
+    expect([...result]).toEqual([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]);
   });
@@ -247,7 +247,7 @@ describe("parseOutput: binary output", () => {
       "AB",
       new Uint8Array([0x00, 0xff]),
     ]);
-    expect(Array.from(result)).toEqual([0x41, 0x42, 0x00, 0xff]);
+    expect([...result]).toEqual([0x41, 0x42, 0x00, 0xff]);
   });
 
   test("still JSON-parses textual chunks", () => {

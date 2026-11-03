@@ -5,7 +5,7 @@ import { normalizePerformanceScore } from "../utils/webVitals.ts";
 export function getWebVitals(
   events: Iterable<SentryEvent>,
 ): SentryEventWithPerformanceData[] {
-  return Array.from(events)
+  return [...events]
     .filter(
       (event) => event.measurements && event.contexts?.trace?.op === "pageload",
     )

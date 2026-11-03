@@ -4,30 +4,56 @@
  * Create a new Sentry release.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
+import { looseObject } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
+import {
+  parseProjectList,
+  parseUrl,
+  parseVcsRef,
+} from "../../lib/completion-target.js";
 import {
   colorTag,
-  escapeMarkdownInline,
   mdKvTable,
   renderMarkdown,
-  safeCodeSpan,
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import type { SentryRelease } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import {
+  DryRunOutputField,
+  type SentryRelease,
+  SentryReleaseSchema,
+} from "../../types/index.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release create [<org>/]<version>";
 
+/**
+ * JSON output: the created release, or with `--dry-run` the release that
+ * would be created, in the same shape (`projects` as `{ slug }` objects).
+ */
+const ReleaseCreateOutputSchema = looseObject({
+  ...SentryReleaseSchema.entries,
+  dryRun: DryRunOutputField,
+});
+
+/** The release `--dry-run` reports: the request body, shaped like a release. */
+type ReleaseCreateDryRun = Pick<
+  SentryRelease,
+  "version" | "ref" | "url" | "dateReleased"
+> & {
+  dryRun: true;
+  projects: { slug: string }[];
+};
+
 function formatReleaseCreated(release: SentryRelease): string {
   const lines: string[] = [];
-  lines.push(`## Release Created: ${escapeMarkdownInline(release.version)}`);
+  lines.push(`## Release Created: ${text(release.version)}`);
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   kvRows.push([
     "Status",
     release.dateReleased
@@ -93,36 +119,36 @@ export const createCommand = buildCommand({
     ],
   },
   output: {
-    human: (data: Record<string, unknown>) => {
-      if (data.dryRun) {
-        const projects = (data.projects as string[]) || [];
+    human: (data: SentryRelease | ReleaseCreateDryRun) => {
+      if ("dryRun" in data && data.dryRun) {
+        const projects = data.projects.map((p) => p.slug);
         return renderMarkdown(
-          `Would create release ${safeCodeSpan(String(data.version))}` +
+          `Would create release ${inlineCode(data.version)}` +
             (projects.length > 0
               ? ` in projects: ${projects.join(", ")}`
               : "") +
-            (data.finalize ? " (finalized)" : "") +
+            (data.dateReleased ? " (finalized)" : "") +
             " (dry run)",
         );
       }
       return formatReleaseCreated(data as SentryRelease);
     },
+    schema: ReleaseCreateOutputSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version to create",
-          parse: parseOrgTarget,
-        },
+        releaseParameter(
+          USAGE_HINT,
+          "[<org>/]<version> - Release version to create",
+        ),
       ],
     },
     flags: {
       project: {
         kind: "parsed",
-        parse: String,
+        parse: parseProjectList,
         brief: "Associate with project(s), comma-separated",
         optional: true,
       },
@@ -133,13 +159,13 @@ export const createCommand = buildCommand({
       },
       ref: {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief: "Git ref (branch or tag name)",
         optional: true,
       },
       url: {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "URL to the release source",
         optional: true,
       },
@@ -158,15 +184,9 @@ export const createCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string,
+    target: ReleaseTarget,
   ) {
-    const { cwd } = this;
-
-    const { version, org } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+    const { version, org } = await target.resolved;
 
     const body: Parameters<typeof createRelease>[1] = { version };
     if (flags.project) {
@@ -184,16 +204,15 @@ export const createCommand = buildCommand({
 
     // Dry-run mode: show what would be created without calling the API
     if (flags["dry-run"]) {
-      yield new CommandOutput({
+      const preview: ReleaseCreateDryRun = {
         dryRun: true,
         version,
-        projects: flags.project
-          ? flags.project.split(",").map((p) => p.trim())
-          : [],
-        finalize: flags.finalize,
-        ref: flags.ref,
-        url: flags.url,
-      });
+        projects: (body.projects ?? []).map((slug) => ({ slug })),
+        ref: body.ref,
+        url: body.url,
+        dateReleased: body.dateReleased,
+      };
+      yield new CommandOutput<SentryRelease | ReleaseCreateDryRun>(preview);
       return { hint: "Dry run — no release was created." };
     }
 

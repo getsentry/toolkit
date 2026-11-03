@@ -36,7 +36,7 @@ import {
   type DebugFileUploadResult,
   uploadDebugFiles,
 } from "../../lib/api/debug-files.js";
-import { buildCommand } from "../../lib/command.js";
+import { buildCommand, numberParser } from "../../lib/command.js";
 import {
   createIl2cppLineMapping,
   createSourceBundle,
@@ -47,7 +47,13 @@ import {
   type PreparedDif,
   prepareDifs,
   scanPaths,
+  VALID_DIF_TYPES,
 } from "../../lib/dif/scan.js";
+import {
+  choiceParser,
+  parseFilePath,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -605,14 +611,14 @@ export const uploadCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Files or directories to scan for debug information files",
-        parse: String,
+        parse: parseFilePath,
         placeholder: "path",
       },
     },
     flags: {
       type: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(VALID_DIF_TYPES),
         brief:
           "Only upload files of this type (repeatable): dsym, elf, pe, pdb, " +
           "portablepdb, wasm, breakpad, sourcebundle, jvm",
@@ -621,7 +627,7 @@ export const uploadCommand = buildCommand({
       },
       id: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Only upload the object with this debug id (repeatable)",
         optional: true,
         variadic: true,
@@ -689,7 +695,7 @@ export const uploadCommand = buildCommand({
       },
       "wait-for": {
         kind: "parsed",
-        parse: Number,
+        parse: numberParser,
         brief: "Wait up to this many seconds for server-side processing",
         optional: true,
       },

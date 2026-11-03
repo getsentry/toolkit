@@ -5,6 +5,8 @@
  * project scoping, environment filtering, and rich terminal styling.
  */
 
+import { text } from "@sentry/toolkit-core/markdown";
+import { description, looseObject, optional, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import {
   type ListReleasesOptions,
@@ -13,14 +15,13 @@ import {
   listReleasesPaginated,
   type ReleaseSortValue,
 } from "../../lib/api-client.js";
+import type { ParsedOrgProject } from "../../lib/arg-parsing.js";
 import {
-  type ParsedOrgProject,
-  parseOrgProjectArg,
-} from "../../lib/arg-parsing.js";
-import {
-  colorTag,
-  escapeMarkdownInline,
-} from "../../lib/formatters/markdown.js";
+  choiceParser,
+  parseEnvironmentList,
+  parseRelativePeriod,
+} from "../../lib/completion-target.js";
+import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { sparkline } from "../../lib/formatters/sparkline.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
@@ -45,7 +46,8 @@ import {
   toNumericId,
 } from "../../lib/resolve-target.js";
 import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
-import type { SentryRelease } from "../../types/index.js";
+import type { ListCommandTarget } from "../../lib/target-positional.js";
+import { type SentryRelease, SentryReleaseSchema } from "../../types/index.js";
 import { fmtCrashFree } from "./view.js";
 
 const log = logger.withTag("release.list");
@@ -78,6 +80,9 @@ const SORT_ALIASES: Record<string, ReleaseSortValue> = {
 };
 
 const DEFAULT_SORT: ReleaseSortValue = "date";
+
+/** Release statuses `--status` filters by. */
+const RELEASE_STATUSES = ["open", "archived"];
 
 function parseSortFlag(value: string): ReleaseSortValue {
   if (VALID_SORT_VALUES.includes(value as ReleaseSortValue)) {
@@ -129,7 +134,7 @@ function extractSessionPoints(stats?: Record<string, unknown>): number[] {
  * Second line: muted "age | last-deploy-env".
  */
 function formatVersionCell(r: ReleaseWithOrg): string {
-  const version = escapeMarkdownInline(r.shortVersion || r.version);
+  const version = text(r.shortVersion || r.version);
   const org = r.orgSlug || "";
   const linked = org
     ? `[**${version}**](${buildReleaseUrl(org, r.version)})`
@@ -677,6 +682,13 @@ export const listCommand = buildListCommand("release", {
     human: formatListHuman,
     jsonTransform: (result: ListResult<ReleaseWithOrg>, fields?: string[]) =>
       jsonTransformListResult(result, fields),
+    schema: looseObject({
+      ...SentryReleaseSchema.entries,
+      orgSlug: optional(pipe(string(), description("Organization slug"))),
+      targetProject: optional(
+        pipe(string(), description("Project slug, when listing several")),
+      ),
+    }),
   },
   parameters: {
     positional: LIST_ORG_TARGET_POSITIONAL,
@@ -684,36 +696,40 @@ export const listCommand = buildListCommand("release", {
       limit: buildListLimitFlag("releases"),
       sort: {
         kind: "parsed" as const,
-        parse: parseSortFlag,
+        parse: choiceParser(VALID_SORT_VALUES, parseSortFlag),
         brief:
           "Sort: date, sessions, users, crash_free_sessions (cfs), crash_free_users (cfu)",
         default: DEFAULT_SORT,
       },
       environment: {
         kind: "parsed" as const,
-        parse: String,
+        parse: parseEnvironmentList,
         brief: "Filter by environment (repeatable, comma-separated)",
         variadic: true as const,
         optional: true as const,
       },
       period: {
         kind: "parsed" as const,
-        parse: String,
+        parse: parseRelativePeriod,
         brief: "Health stats period (e.g., 24h, 7d, 14d, 90d)",
         default: "90d",
       },
       status: {
         kind: "parsed" as const,
-        parse: String,
+        parse: choiceParser(RELEASE_STATUSES),
         brief: "Filter by status: open (default) or archived",
         default: "open",
       },
     },
     aliases: { ...LIST_BASE_ALIASES, s: "sort", e: "environment", t: "period" },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: ListCommandTarget,
+  ) {
     const { cwd } = this;
-    const parsed = parseOrgProjectArg(target);
+    const { parsed } = await target.resolved;
     // Flatten: -e prod,dev -e staging → ["prod", "dev", "staging"]
     const envFilter = flags.environment
       ? [...flags.environment]

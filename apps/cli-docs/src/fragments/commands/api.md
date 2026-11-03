@@ -13,6 +13,33 @@ bodies; streaming responses such as SSE are excluded.
 
 When querying the Events API (`/events/` endpoint), valid dataset values are: `spans`, `logs`, `errors`, `tracemetrics`, `profile_functions`, and `uptime_results`.
 
+## Pagination
+
+Each invocation fetches one server page. Repeat the same GET endpoint and filters
+with `--cursor next` (`-c next`) to continue, `--cursor prev` to revisit a page,
+or `--cursor first` to start again. The shared history expires after five minutes
+and is scoped to the request and authenticated identity. Keep the same query
+parameters and headers when navigating. The endpoint remains required.
+
+Raw server cursors and custom cursors from the CLI's shared paginator are also
+accepted. Custom cursors preserve the page size and skip rows already returned,
+including when navigating back to a bookmarked page. A cursor's encoded page
+size takes precedence over `per_page`. Mid-page bookmarks support array bodies
+and responses with a `data` array, such as the Events API; envelope metadata is
+preserved. Other response bodies remain unchanged for ordinary cursors.
+
+With `--json`, `pagination.nextCursor` is the CLI continuation and can retain a
+custom bookmark; pass it back through `--cursor` to resume exactly.
+`pagination.prevCursor` comes from the server, while `pagination.hasPrev`
+indicates a previously visited page in local history. `--fields` filters only
+the body and preserves this metadata.
+The pagination object is omitted when no continuation or local previous page is
+available. Its absence does not prove a complete or unsampled dataset.
+
+`--cursor` replaces cursor parameters from the endpoint and request fields. It is
+only supported for GET requests. `--dry-run` previews the resolved request;
+dry-runs and failed requests do not advance the saved history.
+
 ## Binary responses
 
 Endpoints that return binary data — image attachments, minidumps, debug files — are streamed to stdout as raw bytes, so you can redirect them straight to a file.

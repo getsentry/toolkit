@@ -3,7 +3,6 @@ import {
   getIssueAlertWorkflowDocument,
   getMetricAlertRule,
 } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
 import { buildCommand } from "../../../lib/command.js";
 import { ApiError } from "../../../lib/errors.js";
@@ -13,10 +12,11 @@ import {
 } from "../../../lib/formatters/alerts.js";
 import { filterFields } from "../../../lib/formatters/json.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
-import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
+import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
 import { buildMetricAlertsUrl } from "../../../lib/sentry-web-urls.js";
 import { isAllDigits } from "../../../lib/utils.js";
-import { parseMetricRuleArg, resolveMetricAlertRule } from "./rule-resolve.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
 
 const USAGE_HINT = "sentry alert metrics view <org>/<rule-id-or-name>";
 
@@ -71,11 +71,7 @@ export const viewCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/rule-id-or-name",
-          brief: "Metric alert rule ID or name",
-          parse: String,
-        },
+        metricRuleParameter(USAGE_HINT, "Metric alert rule ID or name"),
       ],
     },
     flags: {
@@ -87,10 +83,13 @@ export const viewCommand = buildCommand({
     },
     aliases: { w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
-    const { ref, targetArg } = parseMetricRuleArg(arg, USAGE_HINT);
-    const parsed = parseOrgProjectArg(targetArg);
+    const { ref, target: parsed } = await ruleArg.resolved;
 
     if (flags.web && parsed.type === "org-all") {
       await openInBrowser(
@@ -100,11 +99,7 @@ export const viewCommand = buildCommand({
       return;
     }
 
-    const org = await resolveOrgOnlyFromArg(
-      targetArg,
-      cwd,
-      "alert metrics view",
-    );
+    const org = await resolveOrgOnlyTarget(parsed, cwd, "alert metrics view");
 
     if (flags.web) {
       await openInBrowser(buildMetricAlertsUrl(org), "metric alert rules");

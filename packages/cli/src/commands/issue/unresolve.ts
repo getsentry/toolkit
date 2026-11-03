@@ -11,7 +11,7 @@ import { formatIssueDetails, muted } from "../../lib/formatters/index.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import type { SentryIssue } from "../../types/index.js";
-import { issueIdPositional, resolveIssue } from "./utils.js";
+import { type IssueTarget, issuePositional } from "./positional.js";
 
 const log = logger.withTag("issue.unresolve");
 
@@ -50,16 +50,14 @@ export const unresolveCommand = buildCommand({
     human: formatUnresolved,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: COMMAND }),
   },
-  async *func(this: SentryContext, _flags: UnresolveFlags, issueArg: string) {
-    const { cwd } = this;
-
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd,
-      command: COMMAND,
-    });
+  async *func(
+    this: SentryContext,
+    _flags: UnresolveFlags,
+    target: IssueTarget,
+  ) {
+    const { org, issue } = await target.resolved;
 
     const updated = await updateIssueStatus(issue.id, "unresolved", {
       orgSlug: org,

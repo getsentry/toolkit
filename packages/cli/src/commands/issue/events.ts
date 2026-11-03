@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { listIssueEvents } from "../../lib/api-client.js";
+import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -29,7 +30,8 @@ import {
   formatEventsHuman,
   jsonTransformEvents,
 } from "../event/shared-events.js";
-import { buildCommandHint, issueIdPositional, resolveIssue } from "./utils.js";
+import { type IssueTarget, issuePositional } from "./positional.js";
+import { buildCommandHint } from "./utils.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -71,8 +73,7 @@ export const eventsCommand = buildListCommand("issue", {
     fullDescription:
       "List events belonging to a Sentry issue.\n\n" +
       "Issue formats:\n" +
-      "  @latest          - Most recent unresolved issue\n" +
-      "  @most_frequent   - Issue with highest event frequency\n" +
+      issueSelectorHelp() +
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7\n" +
       "  <project>-suffix - Project + suffix: cli-G\n" +
       "  ID               - Short ID: CLI-G\n" +
@@ -114,20 +115,16 @@ export const eventsCommand = buildListCommand("issue", {
     schema: IssueEventSchema,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: COMMAND_NAME }),
     flags: EVENTS_FLAGS,
     aliases: EVENTS_ALIASES,
   },
-  async *func(this: SentryContext, flags: EventsFlags, issueArg: string) {
-    const { cwd } = this;
+  async *func(this: SentryContext, flags: EventsFlags, target: IssueTarget) {
+    const issueArg = target.raw ?? "";
     const timeRange = flags.period;
 
     // Resolve issue using shared resolution logic (supports @latest, short IDs, etc.)
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd,
-      command: COMMAND_NAME,
-    });
+    const { org, issue } = await target.resolved;
 
     // Org is required for region-routed events endpoint
     if (!org) {

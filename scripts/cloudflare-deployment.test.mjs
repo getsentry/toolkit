@@ -72,6 +72,13 @@ test("extracts only a confirmed upload of the production Worker", () => {
     ),
     candidateVersion,
   );
+  const docsUpload = `${JSON.stringify(session)}\n${JSON.stringify({ ...success, worker_name: "docs-mcp" })}\n`;
+  assert.equal(parseUploadedVersion(docsUpload, "docs-mcp"), candidateVersion);
+  assert.throws(() => parseUploadedVersion(docsUpload), /production Worker/);
+  assert.throws(
+    () => parseUploadedVersion(docsUpload, "sentry-mcp-canary"),
+    /production Worker/,
+  );
   assert.throws(
     () =>
       parseUploadedVersion(

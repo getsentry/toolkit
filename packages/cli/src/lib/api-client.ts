@@ -13,6 +13,7 @@
  * - repositories: repository listing
  * - integrations: installed integration listing and removal
  * - issues: issue listing, lookup, status updates
+ * - issue-tags: issue tag distributions
  * - events: event retrieval and resolution
  * - replays: replay listing and detail lookup
  * - traces: trace details and transactions
@@ -88,12 +89,18 @@ export {
   appendSearchParams,
   autoPaginate,
   buildSearchParams,
+  consumePage,
+  decodePageCursor,
   isTextualContentType,
   ORG_FANOUT_CONCURRENCY,
+  type PagePosition,
   type PaginatedResponse,
   parseLinkHeader,
+  type PreparedRawApiRequest,
+  prepareRawApiRequest,
   rawApiRequest,
 } from "./api/infrastructure.js";
+export { getIssueTag } from "./api/issue-tags.js";
 export {
   buildIssueListCollapse,
   getIssue,

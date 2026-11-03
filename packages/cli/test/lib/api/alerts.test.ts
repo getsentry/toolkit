@@ -604,6 +604,38 @@ describe("createMetricAlertRule", () => {
     ]);
   });
 
+  test("drops empty trigger actions from detector conditions", async () => {
+    let sentBody: Record<string, unknown> = {};
+    globalThis.fetch = mockFetch(async (input, init) => {
+      sentBody = (await new Request(input!, init).json()) as Record<
+        string,
+        unknown
+      >;
+      return Response.json(metricDetector({ id: "1" }), { status: 201 });
+    });
+
+    await createMetricAlertRule("test-org", {
+      name: "Error spike",
+      query: "is:unresolved",
+      aggregate: "count()",
+      dataset: "errors",
+      timeWindow: 5,
+      triggers: [
+        { label: "critical", alertThreshold: 11, actions: [] },
+        { label: "warning", alertThreshold: 5, actions: [] },
+      ],
+      projects: ["backend"],
+    });
+
+    expect(
+      (sentBody.conditionGroup as Record<string, unknown>).conditions,
+    ).toEqual([
+      { type: "gt", comparison: 11, conditionResult: 75 },
+      { type: "gt", comparison: 5, conditionResult: 50 },
+      { type: "lte", comparison: 11, conditionResult: 0 },
+    ]);
+  });
+
   test("passes native detector conditions through unchanged", async () => {
     let sentBody: Record<string, unknown> = {};
     globalThis.fetch = mockFetch(async (input, init) => {

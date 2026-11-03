@@ -399,7 +399,8 @@ describe("429 rate limiting", () => {
       if (calls > 1) {
         return jsonResponse({ ok: true });
       }
-      // Server clock an hour behind ours: the Date header keeps the wait at 1s.
+      // Server clock an hour behind ours: the Date header bounds the wait to
+      // the 1s window (plus jitter) instead of an hour.
       const serverNow = Math.floor(Date.now() / 1000) - 3600;
       return jsonResponse(
         { detail: "Limit is 40 requests in 1 seconds" },
@@ -420,7 +421,7 @@ describe("429 rate limiting", () => {
 
     expect(res.status).toBe(200);
     expect(calls).toBe(2);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(900);
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 
   test("throws RateLimitError with the wait when it exceeds the cap", async () => {
@@ -465,7 +466,7 @@ describe("429 rate limiting", () => {
 
     expect(error).toBeInstanceOf(RateLimitError);
     expect((error as RateLimitError).format()).toContain("Retry in 1 second;");
-    // MAX_RETRIES = 2 → attempts 0, 1, 2.
+    // RETRY_POLICY.maxRetries = 2 → attempts 0, 1, 2.
     expect(calls).toBe(3);
   });
 
@@ -580,7 +581,7 @@ describe("fetchWithTimeout internal timeout classification", () => {
       expect((thrown as TimeoutError).message).toContain(
         "Request timed out after",
       );
-      // MAX_RETRIES = 2 → attempts 0, 1, 2.
+      // RETRY_POLICY.maxRetries = 2 → attempts 0, 1, 2.
       expect(calls).toBe(3);
     } finally {
       restore();

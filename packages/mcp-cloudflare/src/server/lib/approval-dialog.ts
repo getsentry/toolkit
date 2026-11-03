@@ -64,7 +64,7 @@ async function signData(key: CryptoKey, data: string): Promise<string> {
     enc.encode(data),
   );
   // Convert ArrayBuffer to hex string
-  return Array.from(new Uint8Array(signatureBuffer))
+  return [...new Uint8Array(signatureBuffer)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
@@ -215,14 +215,14 @@ async function getApprovedClientsFromCookie(
 function filterApprovableSkillIds(input: unknown): string[] {
   if (!Array.isArray(input)) return [];
 
-  return Array.from(
-    new Set(
+  return [
+    ...new Set(
       input.filter(
         (skill): skill is string =>
           typeof skill === "string" && APPROVABLE_SKILL_IDS.has(skill),
       ),
     ),
-  );
+  ];
 }
 
 /**
@@ -1130,9 +1130,9 @@ export async function parseRedirectApproval(
     (await getApprovedClientsFromCookie(cookieHeader, cookieSecret)) || [];
 
   // Add the newly approved client ID (avoid duplicates)
-  const updatedApprovedClients = Array.from(
-    new Set([...existingApprovedClients, clientId]),
-  );
+  const updatedApprovedClients = [
+    ...new Set([...existingApprovedClients, clientId]),
+  ];
 
   // Sign the updated approval list
   const payload = JSON.stringify(updatedApprovedClients);

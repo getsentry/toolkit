@@ -271,7 +271,7 @@ export function graftProfileSpans(
   profile: SentryProfileWithTraceMeta,
 ) {
   trace.spans = new Map(
-    Array.from(trace.spans)
+    [...trace.spans]
       .filter(
         ([, span]) => span.tags?.source !== "profile" && span.op !== "orphan",
       )

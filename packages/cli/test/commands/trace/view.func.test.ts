@@ -8,6 +8,7 @@
  * the func() body without real HTTP calls or database access.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   flattenSpanTree,
@@ -649,6 +650,39 @@ describe("viewCommand.func", () => {
     ).rejects.toThrow(ContextError);
   });
 
+  test("a missing trace ID fails to parse, before any lookup", async () => {
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+
+    const error = await func
+      .call(context, { json: false, web: false, spans: 100 }, "my-org/web")
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ContextError,
+    );
+    expect(resolveOrgAndProjectSpy).not.toHaveBeenCalled();
+    expect(getDetailedTraceSpy).not.toHaveBeenCalled();
+  });
+
+  test("recovers a malformed trace ID when it resolves", async () => {
+    getDetailedTraceSpy.mockResolvedValue(sampleSpans);
+
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+    await func.call(
+      context,
+      { json: true, web: false, spans: 100 },
+      "my-org/aaaa1111bbbb2222cccc3333dddd4444ios",
+    );
+
+    expect(getDetailedTraceSpy).toHaveBeenCalledWith(
+      "my-org",
+      "aaaa1111bbbb2222cccc3333dddd4444",
+      expect.anything(),
+    );
+  });
+
   test("resolves project search target", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [
@@ -683,7 +717,7 @@ describe("viewCommand.func", () => {
       "test-org/test-project",
     );
 
-    // Command should complete (warning goes to consola, not stdout)
+    // Command should complete (warning goes to the logger, not stdout)
     expect(getDetailedTraceSpy).toHaveBeenCalled();
   });
 

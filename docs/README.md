@@ -31,7 +31,9 @@ Shared telemetry processing for the receiver and browser UI lives in [`@sentry/s
 
 For package-specific rules, see the root [AGENTS.md](../AGENTS.md) and the
 [CLI AGENTS.md](../packages/cli/AGENTS.md). `packages/toolkit-core/` contains
-shared primitives used by both products.
+shared primitives used by both products. `packages/logger/` is the structured
+logger the CLI uses, published to npm as `@sentry/logger`; see its
+[README](../packages/logger/README.md).
 
 ## Ownership
 

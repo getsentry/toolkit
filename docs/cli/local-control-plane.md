@@ -247,8 +247,11 @@ the loopback receiver. Other browser origins cannot change retention. Remote HTT
 Standalone spans and version 2 span containers populate trace waterfalls as they
 arrive. Child spans remain visible before their parent or segment arrives; the
 segment supplies the trace name once available. Typed span attributes supply
-operation and HTTP metadata. Unsupported containers are retained without trace processing. Envelopes containing
-only malformed spans are rejected; valid items in mixed envelopes are retained. Legacy
+operation and HTTP metadata. Unsupported containers are retained without trace processing.
+Malformed spans emit an `invalid_span` warning and are skipped during trace processing;
+their envelopes remain available in raw JSON and downloads, including envelopes with
+no valid spans. Valid items in mixed envelopes still populate their normal views.
+Invalid envelope structure and malformed serialized JSON are rejected. Legacy
 standalone spans and transaction envelopes remain supported.
 
 Exception event titles use the current SDK exception type and message, including

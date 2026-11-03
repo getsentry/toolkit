@@ -10,6 +10,8 @@
  * - Cross-org project search (e.g., sentry)
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
+import { description, looseObject, optional, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import {
   getProject,
@@ -24,8 +26,8 @@ import {
   explicitProjectSlugs,
   formatProjectTarget,
   type ParsedOrgProject,
-  parseListTarget,
 } from "../../lib/arg-parsing.js";
+import { parsePlatform } from "../../lib/completion-target.js";
 import { getDefaultOrganization } from "../../lib/db/defaults.js";
 import {
   advancePaginationState,
@@ -35,7 +37,6 @@ import {
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { ResolutionError, withAuthGuard } from "../../lib/errors.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import {
   CommandOutput,
   type OutputConfig,
@@ -45,7 +46,7 @@ import {
   buildListCommand,
   buildListLimitFlag,
   LIST_BASE_ALIASES,
-  NAMED_LIST_TARGET_POSITIONAL,
+  listTargetPositional,
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
@@ -71,8 +72,9 @@ import {
   resolveAllTargets,
 } from "../../lib/resolve-target.js";
 import { getApiBaseUrl } from "../../lib/sentry-client.js";
+import type { ListCommandTarget } from "../../lib/target-positional.js";
 import { shellQuote } from "../../lib/utils.js";
-import type { SentryProject } from "../../types/index.js";
+import { type SentryProject, SentryProjectSchema } from "../../types/index.js";
 
 /** Extended result type with optional title shown above the table. */
 type ProjectListResult = ListResult<ProjectWithOrg> & { title?: string };
@@ -309,7 +311,7 @@ async function resolveOrgsForAutoDetect(cwd: string): Promise<OrgResolution> {
 const PROJECT_COLUMNS: Column<ProjectWithOrg>[] = [
   { header: "ORG", value: (p) => p.orgSlug || "" },
   { header: "PROJECT", value: (p) => p.slug || "" },
-  { header: "NAME", value: (p) => escapeMarkdownCell(p.name) },
+  { header: "NAME", value: (p) => tableCell(p.name) },
   { header: "PLATFORM", value: (p) => p.platform || "" },
 ];
 
@@ -920,24 +922,32 @@ export const listCommand = buildListCommand("project", {
       return parts.join("");
     },
     jsonTransform: jsonTransformListResult,
+    schema: looseObject({
+      ...SentryProjectSchema.entries,
+      orgSlug: optional(pipe(string(), description("Organization slug"))),
+    }),
   } satisfies OutputConfig<ListResult<ProjectWithOrg>>,
   parameters: {
-    positional: NAMED_LIST_TARGET_POSITIONAL,
+    positional: listTargetPositional({ names: true, multi: true }),
     flags: {
       limit: buildListLimitFlag("projects"),
       platform: {
         kind: "parsed",
-        parse: String,
+        parse: parsePlatform,
         brief: "Filter by platform (e.g., javascript, python)",
         optional: true,
       },
     },
     aliases: { ...LIST_BASE_ALIASES, p: "platform" },
   },
-  async *func(this: SentryContext, cliFlags: ListFlags, rawTarget?: string) {
+  async *func(
+    this: SentryContext,
+    cliFlags: ListFlags,
+    target: ListCommandTarget,
+  ) {
     const { cwd } = this;
 
-    const { parsed, filter } = parseListTarget(rawTarget, { multi: true });
+    const { parsed, filter } = await target.resolved;
     const flags: ProjectListFlags = { ...cliFlags, filter };
 
     const result = await dispatchOrgScopedList({

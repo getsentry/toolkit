@@ -1,7 +1,7 @@
 [
   {
     "name": "add_issue_note",
-    "description": "Add a human-visible comment to a Sentry issue's activity feed.\n\nUse this tool when the user explicitly asks to leave a note/comment, or when a triage workflow needs to record a user-approved explanation.\n\n<examples>\nadd_issue_note(organizationSlug='my-organization', issueId='PROJECT-123', text='Investigating with the payments team.')\nadd_issue_note(issueUrl='https://my-organization.sentry.io/issues/PROJECT-123/', text='Resolved by deploy 1.2.3.')\n</examples>\n\n<hints>\n- This mutates visible Sentry issue state by posting a comment.\n- Do not use this for private scratch notes, secrets, credentials, or unapproved content.\n</hints>",
+    "description": "Add a comment to a Sentry issue's activity feed.\n\nUse this tool to record findings, context, or decisions on an issue.\n\n<examples>\nadd_issue_note(organizationSlug='my-organization', issueId='PROJECT-123', text='Investigating with the payments team.')\nadd_issue_note(issueUrl='https://my-organization.sentry.io/issues/PROJECT-123/', text='Resolved by deploy 1.2.3.')\n</examples>\n\n<hints>\n- This mutates visible Sentry issue state by posting a comment.\n- Do not use this for private scratch notes, secrets, credentials, or unapproved content.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5474,7 +5474,7 @@
   },
   {
     "name": "get_replay_details",
-    "description": "Get high-level information about a specific Sentry replay by URL or replay ID.\n\nUSE THIS TOOL WHEN USERS:\n- Share a replay URL\n- Ask what happened in a specific replay\n- Want a concise replay summary plus the next issue or trace lookups to run\n\n<examples>\n### With replay URL\n```\nget_replay_details(replayUrl='https://my-organization.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/')\n```\n\n### With organization and replay ID\n```\nget_replay_details(organizationSlug='my-organization', replayId='7e07485f-12f9-416b-8b14-26260799b51f')\n```\n</examples>",
+    "description": "Get a Sentry replay's summary and a timeline of what the user did: page loads and navigations, clicks (including dead and rage clicks), inputs and key presses, console warnings and errors, failed requests, and feedback.\n\nUSE THIS TOOL WHEN USERS:\n- Share a replay URL\n- Ask what happened in a replay, or what a user saw and clicked\n- Need the moments before an error, a dead click, or the end of a session\n\n<examples>\nget_replay_details(replayUrl='https://my-organization.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/')\nget_replay_details(organizationSlug='my-organization', replayId='7e07485f-12f9-416b-8b14-26260799b51f', startOffsetSeconds=-10)\nget_replay_details(replayUrl='...', categories=['click', 'network'], startOffsetSeconds=60, endOffsetSeconds=90)\n</examples>\n\n<hints>\n- Offsets are seconds from the replay start; negative offsets count back from the end, so startOffsetSeconds=-10 shows the last 10 seconds\n- The timeline header counts every recorded event, so you can see what to ask for next\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5496,6 +5496,63 @@
             {
               "type": "string",
               "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "categories": {
+          "description": "Timeline categories to show. Default: notable events only (navigations, clicks, inputs, console warnings and errors, failed requests, feedback). Naming a category shows all of its events, such as every request for 'network' or every log level for 'console'.",
+          "anyOf": [
+            {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "navigation",
+                  "click",
+                  "input",
+                  "console",
+                  "network",
+                  "other"
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "startOffsetSeconds": {
+          "description": "Start of the timeline window in seconds from the replay start. Negative values count back from the replay end.",
+          "type": ["number", "null"]
+        },
+        "endOffsetSeconds": {
+          "description": "End of the timeline window in seconds from the replay start. Negative values count back from the replay end.",
+          "type": ["number", "null"]
+        },
+        "limit": {
+          "description": "Maximum timeline events to return (1-200, default 50).",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skip": {
+          "description": "Number of matching timeline events to skip. Use the value a previous response gives to continue past the limit.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
             },
             {
               "type": "null"
@@ -7568,6 +7625,57 @@
     "surface": "direct"
   },
   {
+    "name": "submit_feedback_to_sentry_team",
+    "description": "Report friction with the Sentry MCP server to its maintainers.\n\nUse this tool when you need to:\n- Report that no Sentry MCP tool could do what the user asked\n- Report a tool that failed, returned wrong data, or was confusing\n- Suggest an improvement to the Sentry MCP tools\n\n<examples>\nsubmit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')\n</examples>\n\n<hints>\n- Call at most once per task, after you finish or give up.\n- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.\n- Do not include secrets, credentials, or personal data.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "A short phrase naming what the user asked you to do."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["missing", "broken", "confusing", "idea"],
+          "description": "missing: no tool could do it; broken: a tool failed or returned something wrong; confusing: a tool or its docs were unclear; idea: a suggestion."
+        },
+        "impact": {
+          "type": "string",
+          "enum": ["blocked", "worked_around", "friction"],
+          "description": "blocked: you could not finish; worked_around: you finished another way; friction: you finished, but it was harder than it should be."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "description": "What you tried, including tool calls and any error, and what went wrong."
+        },
+        "toolName": {
+          "description": "The Sentry MCP tool the feedback is about, if any.",
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "required": ["task", "kind", "impact", "description"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "feedbackId": {
+          "type": "string",
+          "description": "ID of the feedback sent to the Sentry MCP maintainers."
+        }
+      },
+      "required": ["feedbackId"],
+      "additionalProperties": false
+    },
+    "requiredScopes": [],
+    "skills": ["inspect", "seer", "docs", "triage", "project-management"],
+    "surface": "catalog"
+  },
+  {
     "name": "unlink_issue",
     "description": "Remove an external ticket or GitHub pull request reference from a Sentry issue by URL.\nRemoves only the Sentry association. It does not delete the external ticket or the Sentry issue, or change resolution status.\nSupports native integrations and installed Sentry Apps. Repeating the request is safe: not_linked means the association is absent, whether removed by this call or already absent.\n<examples>\nunlink_issue(organizationSlug='my-org', issueId='PROJECT-123', externalIssueUrl='https://github.com/example/repo/issues/42')\n</examples>",
     "inputSchema": {
@@ -8978,6 +9086,25 @@
           },
           "required": ["id", "name", "email"],
           "additionalProperties": false
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": ["string", "null"]
+              },
+              "email": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "name", "email"],
+            "additionalProperties": false
+          }
         },
         "sessionConstraints": {
           "anyOf": [

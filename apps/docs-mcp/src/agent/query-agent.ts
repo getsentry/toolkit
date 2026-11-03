@@ -52,10 +52,10 @@ function canonicalizeDocsUrl(value: string): string {
 
   url.search = "";
   url.hash = "";
-  url.pathname = url.pathname
+  const pathname = url.pathname
     .replace(TRAILING_MD_RE, "")
-    .replace(TRAILING_SLASHES_RE, "")
-    .concat("/");
+    .replace(TRAILING_SLASHES_RE, "");
+  url.pathname = `${pathname}/`;
   return url.toString();
 }
 

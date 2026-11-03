@@ -65,7 +65,7 @@ function plain(value: unknown, ancestors = new Set<object>()): JsonValue {
       ]);
     if (value instanceof Set)
       return Array.from(value, (item) => plain(item, ancestors));
-    if (value instanceof Uint8Array) return Array.from(value);
+    if (value instanceof Uint8Array) return [...value];
     if (Array.isArray(value))
       return value.map((item) =>
         item === undefined ? null : plain(item, ancestors),
@@ -148,9 +148,9 @@ export function serializeTrace(trace: ProcessedTrace): SerializedTrace {
             configurable: true,
           });
         }
-      existing.childSpanIds = Array.from(
-        new Set([...existing.childSpanIds, ...serialized.childSpanIds]),
-      );
+      existing.childSpanIds = [
+        ...new Set([...existing.childSpanIds, ...serialized.childSpanIds]),
+      ];
     } else byId.set(span.span_id, serialized);
     for (const child of span.children ?? []) queue.push(child);
     if (span.transaction) enqueueTransaction(span.transaction);
@@ -177,7 +177,7 @@ export function serializeTrace(trace: ProcessedTrace): SerializedTrace {
     trace_id: trace.trace_id,
     transactions: transactions.map(transactionJson),
     rootTransaction: rootTransaction ? transactionJson(rootTransaction) : null,
-    spans: Array.from(byId),
+    spans: [...byId],
     spanTree: trace.spanTree.map((span) => span.span_id),
   };
 }

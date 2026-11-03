@@ -99,7 +99,8 @@ async function resolveCommand(path: string[]): Promise<ResolvedCommand> {
   const key = path.join(".");
   let cached = commandCache.get(key);
   if (!cached) {
-    const { routes } = await import("../app.js");
+    const { loadSdkApp } = await import("../sdk-app.js");
+    const { routes } = await loadSdkApp(path);
     // Walk route tree: routes → sub-route → command
     // oxlint-disable-next-line typescript/no-explicit-any -- Stricli's RoutingTarget union requires runtime duck-typing
     let target: any = routes;
@@ -619,7 +620,8 @@ export function buildRunner(options?: SentryOptions) {
     if (hasStreamingFlag(args)) {
       return executeWithStream<unknown>(options, async (ctx, span) => {
         const { run: stricliRun } = await import("@stricli/core");
-        const { app } = await import("../app.js");
+        const { loadSdkApp } = await import("../sdk-app.js");
+        const { app } = await loadSdkApp(args);
         const { buildContext } = await import("../context.js");
         // oxlint-disable-next-line typescript/no-explicit-any -- fakeProcess duck-types the process interface
         const process_ = ctx.context.process as any;
@@ -629,7 +631,8 @@ export function buildRunner(options?: SentryOptions) {
 
     return executeWithCapture<unknown>(options, async (ctx, span) => {
       const { run: stricliRun } = await import("@stricli/core");
-      const { app } = await import("../app.js");
+      const { loadSdkApp } = await import("../sdk-app.js");
+      const { app } = await loadSdkApp(args);
       const { buildContext } = await import("../context.js");
       // oxlint-disable-next-line typescript/no-explicit-any -- fakeProcess duck-types the process interface
       const process_ = ctx.context.process as any;

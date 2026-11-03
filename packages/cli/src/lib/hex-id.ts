@@ -182,6 +182,13 @@ export function validateHexId(value: string, label: string): string {
   return normalized;
 }
 
+/** Non-throwing check: whether {@link validateSpanId} accepts `value`. */
+export function isSpanId(value: string): boolean {
+  return SPAN_ID_RE.test(
+    value.trim().toLowerCase().replace(DASH_GLOBAL_RE, ""),
+  );
+}
+
 /**
  * Validate that a string is a 16-character hexadecimal span ID.
  * Trims whitespace and normalizes to lowercase before validation.

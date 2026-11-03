@@ -9,11 +9,13 @@ import { createTracesSlice } from "../store/slices/tracesSlice.ts";
 import type { SentryStore } from "../store/types.ts";
 
 import type { EngineOptions, ProcessingRuntime } from "./types.ts";
+import { createEnvelopeChanges } from "./types.ts";
 
 export function createEngine(options: EngineOptions = {}) {
   const runtime: ProcessingRuntime = {
     generation: 0,
     receivedAtMs: Date.now(),
+    changes: createEnvelopeChanges(),
   };
   const store = createStore<SentryStore>()((...args) => ({
     ...createEventsSlice(options, runtime)(...args),

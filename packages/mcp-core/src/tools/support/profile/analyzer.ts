@@ -139,7 +139,7 @@ export function analyzeHotPathsFromFlamegraph(
   }
 
   // Convert merged stacks to hot paths
-  const hotPaths = Array.from(mergedStacks.values()).map((merged) => {
+  const hotPaths = [...mergedStacks.values()].map((merged) => {
     // Reconstruct call stack - keep all frames, filter during formatting
     // Store leaf-to-root for efficient merging (reverse the API order)
     const callStack = reconstructCallStack(

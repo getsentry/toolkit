@@ -4,6 +4,7 @@
  * Associate commits with a release using auto-discovery or local git history.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import {
   NO_REPO_INTEGRATIONS_MESSAGE,
@@ -12,7 +13,11 @@ import {
   setCommitsWithRefs,
 } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
+import {
+  parseFilePath,
+  parseGitRef,
+  parseRepoCommitList,
+} from "../../lib/completion-target.js";
 import { getDatabase } from "../../lib/db/index.js";
 import { clearMetadata, getMetadata, setMetadata } from "../../lib/db/utils.js";
 import {
@@ -20,12 +25,7 @@ import {
   ValidationError,
   validationError,
 } from "../../lib/errors.js";
-import {
-  escapeMarkdownInline,
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   getCommitLog,
@@ -33,8 +33,8 @@ import {
   isShallowRepository,
 } from "../../lib/git.js";
 import { logger } from "../../lib/logger.js";
-import type { SentryRelease } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import { type SentryRelease, SentryReleaseSchema } from "../../types/index.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const log = logger.withTag("release.set-commits");
 
@@ -334,10 +334,10 @@ function parseLocalScope(flags: {
 
 function formatCommitsSet(release: SentryRelease): string {
   const lines: string[] = [];
-  lines.push(`## Commits Set: ${escapeMarkdownInline(release.version)}`);
+  lines.push(`## Commits Set: ${text(release.version)}`);
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   kvRows.push(["Commits", String(release.commitCount ?? 0)]);
   lines.push(mdKvTable(kvRows));
   return renderMarkdown(lines.join("\n"));
@@ -396,16 +396,13 @@ export const setCommitsCommand = buildCommand({
   },
   output: {
     human: formatCommitsSet,
+    schema: SentryReleaseSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version",
-          parse: parseOrgTarget,
-        },
+        releaseParameter(USAGE_HINT, "[<org>/]<version> - Release version"),
       ],
     },
     flags: {
@@ -427,21 +424,21 @@ export const setCommitsCommand = buildCommand({
       },
       commit: {
         kind: "parsed",
-        parse: String,
+        parse: parseRepoCommitList,
         brief:
           "Explicit commit as REPO@SHA or REPO@PREV..SHA (comma-separated)",
         optional: true,
       },
       path: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Filter commits to these paths (comma-separated). Implies --local.",
         optional: true,
       },
       from: {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRef,
         brief:
           "Read the local range <ref>..HEAD (e.g. previous release tag). Implies --local.",
         optional: true,
@@ -467,15 +464,11 @@ export const setCommitsCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string,
+    target: ReleaseTarget,
   ) {
     const { cwd } = this;
 
-    const { version, org } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+    const { version, org } = await target.resolved;
 
     // Clear mode: remove all commits regardless of other flags.
     // The server only clears commits when it receives an explicitly-empty

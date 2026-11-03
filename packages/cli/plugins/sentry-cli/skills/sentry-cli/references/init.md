@@ -19,8 +19,7 @@ Initialize Sentry in your project (experimental)
 
 | Argument | Description |
 |----------|-------------|
-| `[<target>]` | &lt;org&gt;/&lt;project&gt;, &lt;org&gt;/, &lt;project&gt;, or a directory path |
-| `[<directory>]` | Project directory (default: current directory) |
+| `[<target>] [<directory>]` | Optional target (&lt;org&gt;/&lt;project&gt;, &lt;org&gt;/, or &lt;project&gt;) and directory (default: current directory) |
 
 **Flags:**
 - `-y, --yes - Accept non-interactive defaults (requires --features outside a TTY)`

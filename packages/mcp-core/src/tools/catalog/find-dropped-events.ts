@@ -9,8 +9,7 @@ import {
 } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-
-const DROPPED_EVENTS_DATASETS = ["spans", "logs", "metrics", "errors"] as const;
+import { DROPPED_EVENTS_DATASETS } from "../../utils/events-datasets";
 
 const DROP_OUTCOMES = [
   "rate_limited",

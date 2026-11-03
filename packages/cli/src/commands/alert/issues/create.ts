@@ -9,8 +9,15 @@ import {
   createIssueAlertRule,
   resolveErrorDetectorId,
 } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
+import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
+import {
+  choiceListParser,
+  choiceParser,
+  parseEnvironment,
+  parseOwner,
+  parseText,
+} from "../../../lib/completion-target.js";
 import {
   ContextError,
   stringifyUnknown,
@@ -18,14 +25,26 @@ import {
 } from "../../../lib/errors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../../lib/mutate-command.js";
-import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import {
+  type ResolvedTarget,
+  resolveProjectBoundTargets,
+} from "../../../lib/resolve-target.js";
+import {
+  type OrgProjectTarget,
+  orgProjectTarget,
+} from "../../../lib/target-positional.js";
+import {
+  ISSUE_MATCH_MODES,
+  ISSUE_TRIGGER_NAMES,
   matchToLogicType,
+  parseIssueConditions,
   parseJsonObjectList,
   parseMatchMode,
   triggerLogicType,
-  validateIssueRuleArrays,
+  validateIssueActions,
+  validateIssueTriggers,
 } from "../mutation-utils.js";
+import { IssueAlertCreateOutputSchema } from "../output-schemas.js";
 
 const USAGE_HINT =
   "sentry alert issues create <target> --name <name> --condition <json> --action <json>";
@@ -61,6 +80,33 @@ function formatCreated(result: CreateResult): string {
   return `Created issue alert rule ${result.id ?? "(unknown id)"} in ${result.org}/${result.project}: ${result.name} (${result.status ?? "active"}).`;
 }
 
+/**
+ * Resolve the create target to exactly one project.
+ *
+ * @throws {ContextError} When no project is found
+ * @throws {ValidationError} When the target matches several projects
+ */
+async function resolveCreateTarget(
+  parsed: ParsedOrgProject,
+  cwd: string,
+): Promise<ResolvedTarget> {
+  const { targets } = await resolveProjectBoundTargets(parsed, {
+    cwd,
+    usageHint: USAGE_HINT,
+  });
+  const [target, ...others] = targets;
+  if (!target) {
+    throw new ContextError("Organization and project", USAGE_HINT);
+  }
+  if (others.length > 0) {
+    throw new ValidationError(
+      "Provide a target that resolves to exactly one project for create.",
+      "target",
+    );
+  }
+  return target;
+}
+
 export const createCommand = buildCommand({
   docs: {
     brief: "Create an issue alert rule",
@@ -69,14 +115,16 @@ export const createCommand = buildCommand({
       "<org>/<project>, an auto-detected project, or a bare project search when " +
       "it resolves to exactly one project.\n\n" +
       "Required fields:\n" +
-      "  --name, --condition (>=1), --action (>=1)\n\n" +
+      "  --name, --action (>=1), and --condition (>=1) or --filter (>=1)\n\n" +
       "Optional fields:\n" +
       "  --frequency, --environment, --filter, --filter-match, --owner\n\n" +
       "Conditions and actions are workflow-native JSON (this targets the\n" +
       "org-scoped workflows endpoint):\n" +
-      "  --condition  a trigger data-condition: {type, comparison, conditionResult}\n" +
+      "  --condition  a trigger data-condition: {type, comparison, conditionResult},\n" +
+      `               or a trigger name: ${ISSUE_TRIGGER_NAMES.join(", ")}\n` +
       "  --action     an action: {type, data, config}\n" +
       "  --filter     an action-filter condition (same shape as --condition)\n\n" +
+      "Without --condition, the alert checks its --filter conditions on every event.\n\n" +
       "Match mode: --filter-match all|any controls how the action-filter\n" +
       "conditions combine. Issue-alert triggers always evaluate as 'any-short'\n" +
       "(they fire on a single error detector), so there is no trigger match flag.",
@@ -92,11 +140,22 @@ export const createCommand = buildCommand({
         command:
           'sentry alert issues create my-org/my-project --name \'High Priority\' --condition \'{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}\' --frequency 30 --dry-run',
       },
+      {
+        description: "Alert on new issues and regressions, using trigger names",
+        command:
+          'sentry alert issues create my-org/my-project --name \'New or Regressed\' --condition first-seen,regression --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
+      },
+      {
+        description:
+          "Alert when an issue sees more than 50 events in a day (filters only, checked on every event)",
+        command:
+          'sentry alert issues create my-org/my-project --name \'Busy Issues\' --filter \'{"type":"event_frequency_count","comparison":{"value":50,"interval":"1d"},"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\' --frequency 1440',
+      },
     ],
   },
   output: {
     human: formatCreated,
-    jsonTransform: (result: CreateResult) => result,
+    schema: IssueAlertCreateOutputSchema,
   },
   parameters: {
     positional: {
@@ -106,7 +165,9 @@ export const createCommand = buildCommand({
           placeholder: "target",
           brief:
             "<org>/<project>, auto-detected project, or <project> (search)",
-          parse: String,
+          parse: orgProjectTarget((parsed, { cwd }) =>
+            resolveCreateTarget(parsed, cwd),
+          ),
           optional: true as const,
         },
       ],
@@ -114,19 +175,20 @@ export const createCommand = buildCommand({
     flags: {
       name: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Rule name",
       },
       condition: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser(ISSUE_TRIGGER_NAMES),
         variadic: true,
         optional: true,
-        brief: "Condition object JSON (repeatable, or pass one JSON array)",
+        brief:
+          "Trigger condition JSON or name such as first-seen (repeatable, or pass one JSON array)",
       },
       action: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Action object JSON (repeatable, or pass one JSON array)",
@@ -139,26 +201,28 @@ export const createCommand = buildCommand({
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironment,
         optional: true,
         brief: "Environment filter",
       },
       filter: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Filter object JSON (repeatable, or pass one JSON array)",
       },
       "filter-match": {
         kind: "parsed",
-        parse: (value: string) => parseMatchMode(value, "filter-match"),
+        parse: choiceParser(ISSUE_MATCH_MODES, (value) =>
+          parseMatchMode(value, "filter-match"),
+        ),
         optional: true,
         brief: "Filter match mode: all or any",
       },
       owner: {
         kind: "parsed",
-        parse: String,
+        parse: parseOwner,
         optional: true,
         brief: "Owner (team:user style value accepted by Sentry API)",
       },
@@ -174,9 +238,8 @@ export const createCommand = buildCommand({
   async *func(
     this: SentryContext,
     flags: CreateFlags,
-    arg: string | undefined,
+    target: OrgProjectTarget<ResolvedTarget>,
   ) {
-    const { cwd } = this;
     if (!flags.name.trim()) {
       throw new ValidationError("Rule name cannot be empty.", "name");
     }
@@ -187,30 +250,16 @@ export const createCommand = buildCommand({
       );
     }
 
-    const conditions = parseJsonObjectList(flags.condition, "condition");
+    const conditions = parseIssueConditions(flags.condition);
     const actions = parseJsonObjectList(flags.action, "action");
     const filters = parseJsonObjectList(flags.filter, "filter");
-    validateIssueRuleArrays(conditions, actions, "conditions");
-    validateIssueRuleArrays(conditions, actions, "actions");
+    validateIssueTriggers(conditions, filters);
+    validateIssueActions(actions);
 
-    const parsed = parseOrgProjectArg(arg);
-    const { targets } = await resolveProjectBoundTargets(parsed, {
-      cwd,
-      usageHint: USAGE_HINT,
-    });
-    if (targets.length === 0) {
-      throw new ContextError("Organization and project", USAGE_HINT);
-    }
-    if (targets.length !== 1) {
-      throw new ValidationError(
-        "Provide a target that resolves to exactly one project for create.",
-        "target",
-      );
-    }
-    const target = targets[0] as (typeof targets)[number];
+    const { org, project } = await target.resolved;
 
     // Issue alerts fire on a project's error detector; connect via detector_ids.
-    const detectorId = await resolveErrorDetectorId(target.org, target.project);
+    const detectorId = await resolveErrorDetectorId(org, project);
 
     // Assemble the workflow-shaped body. The user supplies workflow-native
     // conditions/actions; the CLI only builds the envelope (triggers +
@@ -221,7 +270,7 @@ export const createCommand = buildCommand({
       config: { frequency: flags.frequency },
       triggers: {
         logicType: triggerLogicType(),
-        conditions,
+        conditions: conditions ?? [],
       },
       actionFilters: [
         {
@@ -240,8 +289,8 @@ export const createCommand = buildCommand({
 
     if (flags["dry-run"]) {
       yield new CommandOutput({
-        org: target.org,
-        project: target.project,
+        org,
+        project,
         name: flags.name,
         dryRun: true,
         body,
@@ -249,10 +298,10 @@ export const createCommand = buildCommand({
       return { hint: "Dry run - no issue alert rule was created." };
     }
 
-    const created = await createIssueAlertRule(target.org, body);
+    const created = await createIssueAlertRule(org, body);
     yield new CommandOutput({
-      org: target.org,
-      project: target.project,
+      org,
+      project,
       id: stringifyUnknown(created.id ?? ""),
       name: stringifyUnknown(created.name ?? flags.name),
       status: stringifyUnknown(
