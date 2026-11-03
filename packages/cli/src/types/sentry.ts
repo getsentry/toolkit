@@ -39,6 +39,7 @@ import {
   vGroupEventsResponseDict,
   vIssueEventDetailsResponse,
   vOrganizationProjectResponseDict,
+  vOrganizationTraceMetaResponse,
   vOrganizationSummary,
   vOrgReleaseResponse,
 } from "@sentry/api/valibot";
@@ -771,31 +772,7 @@ export type ReplayContext = {
 };
 
 /** High-level metadata returned by the organization trace-meta endpoint. */
-export const TraceMetaSchema = pipe(
-  object({
-    logs: pipe(number(), description("Log entry count")),
-    errors: pipe(number(), description("Error count")),
-    performance_issues: pipe(number(), description("Performance issue count")),
-    span_count: pipe(number(), description("Span count")),
-    transaction_child_count_map: pipe(
-      array(
-        object({
-          "transaction.event_id": pipe(
-            nullable(string()),
-            description("Transaction event ID"),
-          ),
-          "count()": pipe(number(), description("Transaction child count")),
-        }),
-      ),
-      description("Per-transaction child counts"),
-    ),
-    span_count_map: pipe(
-      record(string(), number()),
-      description("Span counts grouped by operation"),
-    ),
-  }),
-  description("Trace metadata"),
-);
+export const TraceMetaSchema = vOrganizationTraceMetaResponse;
 
 export type TraceMeta = InferOutput<typeof TraceMetaSchema>;
 
