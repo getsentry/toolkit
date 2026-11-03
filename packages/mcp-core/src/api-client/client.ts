@@ -59,6 +59,20 @@ import {
   type UptimeMonitorFields,
 } from "@sentry/toolkit-core/api-client/endpoints/uptime-monitors";
 import {
+  getFlamegraph,
+  getProfileChunks,
+  getTransactionProfile,
+} from "@sentry/toolkit-core/api-client/endpoints/profiling";
+import {
+  getLatestBaseSnapshot,
+  getSnapshot,
+  getSnapshotImage,
+} from "@sentry/toolkit-core/api-client/endpoints/snapshots";
+import {
+  getTrace,
+  getTraceMeta,
+} from "@sentry/toolkit-core/api-client/endpoints/traces";
+import {
   getEventCommitters,
   getRelease,
   listReleaseCommits,
@@ -4766,27 +4780,14 @@ export class SentryApiService {
    * ```
    */
   async getTraceMeta(
-    {
-      organizationSlug,
-      traceId,
-      statsPeriod = "14d",
-    }: {
+    params: {
       organizationSlug: string;
       traceId: string;
       statsPeriod?: string;
     },
     opts?: RequestOptions,
   ): Promise<TraceMeta> {
-    const queryParams = new URLSearchParams();
-    queryParams.set("statsPeriod", statsPeriod);
-
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/trace-meta/${traceId}/` +
-        `?${queryParams.toString()}`,
-      undefined,
-      opts,
-    );
-    return TraceMetaSchema.parse(body);
+    return await getTraceMeta(this.target(opts?.host), params, TraceMetaSchema);
   }
 
   /**
@@ -4815,13 +4816,7 @@ export class SentryApiService {
    * ```
    */
   async getTrace(
-    {
-      organizationSlug,
-      traceId,
-      limit = 1000,
-      project = "-1",
-      statsPeriod = "14d",
-    }: {
+    params: {
       organizationSlug: string;
       traceId: string;
       limit?: number;
@@ -4830,20 +4825,7 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Trace> {
-    const queryParams = new URLSearchParams();
-    // Keep sending the endpoint's declared query parameters even though the
-    // current server implementation ignores `project` and paginates internally.
-    queryParams.set("limit", String(limit));
-    queryParams.set("project", project);
-    queryParams.set("statsPeriod", statsPeriod);
-
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/trace/${traceId}/` +
-        `?${queryParams.toString()}`,
-      undefined,
-      opts,
-    );
-    return TraceSchema.parse(body);
+    return await getTrace(this.target(opts?.host), params, TraceSchema);
   }
 
   /**
@@ -5019,12 +5001,7 @@ export class SentryApiService {
    * ```
    */
   async getFlamegraph(
-    {
-      organizationSlug,
-      projectId,
-      transactionName,
-      statsPeriod = "7d",
-    }: {
+    params: {
       organizationSlug: string;
       projectId: string | number;
       transactionName: string;
@@ -5032,40 +5009,26 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<Flamegraph> {
-    const queryParams = new URLSearchParams();
-    queryParams.set("project", projectId.toString());
-    // Escape backslashes first, then quotes for proper string escaping
-    const escapedTransaction = transactionName
-      .replace(/\\/g, "\\\\")
-      .replace(/"/g, '\\"');
-    queryParams.set(
-      "query",
-      `event.type:transaction transaction:"${escapedTransaction}"`,
+    return await getFlamegraph(
+      this.target(opts?.host),
+      params,
+      FlamegraphSchema,
     );
-    queryParams.set("statsPeriod", statsPeriod);
-
-    const path =
-      apiPath`/organizations/${organizationSlug}/profiling/flamegraph/` +
-      `?${queryParams.toString()}`;
-    const body = await this.requestJSON(path, undefined, opts);
-    return FlamegraphSchema.parse(body);
   }
 
   async getTransactionProfile(
-    {
-      organizationSlug,
-      projectSlugOrId,
-      profileId,
-    }: {
+    params: {
       organizationSlug: string;
       projectSlugOrId: string | number;
       profileId: string;
     },
     opts?: RequestOptions,
   ): Promise<TransactionProfile> {
-    const path = apiPath`/projects/${organizationSlug}/${projectSlugOrId}/profiling/profiles/${profileId}/`;
-    const body = await this.requestJSON(path, undefined, opts);
-    return TransactionProfileSchema.parse(body);
+    return await getTransactionProfile(
+      this.target(opts?.host),
+      params,
+      TransactionProfileSchema,
+    );
   }
 
   /**
@@ -5104,13 +5067,7 @@ export class SentryApiService {
    * ```
    */
   async getProfileChunk(
-    {
-      organizationSlug,
-      profilerId,
-      projectId,
-      start,
-      end,
-    }: {
+    params: {
       organizationSlug: string;
       profilerId: string;
       projectId: string | number;
@@ -5119,24 +5076,17 @@ export class SentryApiService {
     },
     opts?: RequestOptions,
   ): Promise<ProfileChunk> {
-    const queryParams = new URLSearchParams();
-    queryParams.set("profiler_id", profilerId);
-    queryParams.set("project", projectId.toString());
-    queryParams.set("start", start);
-    queryParams.set("end", end);
-
-    const path =
-      apiPath`/organizations/${organizationSlug}/profiling/chunks/` +
-      `?${queryParams.toString()}`;
-    const body = await this.requestJSON(path, undefined, opts);
-
+    const response = await getProfileChunks(
+      this.target(opts?.host),
+      params,
+      ProfileChunkResponseSchema,
+    );
     // Normalize the Sentry {chunk: ...} wrapper to the internal chunks array.
-    const response = ProfileChunkResponseSchema.parse(body);
     if (response.chunks.length === 0) {
       throw new ApiNotFoundError(
-        `No profile chunk found for profiler_id ${profilerId}`,
+        `No profile chunk found for profiler_id ${params.profilerId}`,
         undefined,
-        body,
+        response,
       );
     }
 
@@ -5144,7 +5094,7 @@ export class SentryApiService {
       ...response.chunks[0],
       // Sentry's frontend does the same query-param backfill for continuous
       // profile chunks because profiling-service may omit profiler_id.
-      profiler_id: response.chunks[0].profiler_id ?? profilerId,
+      profiler_id: response.chunks[0].profiler_id ?? params.profilerId,
     };
   }
 
@@ -5157,36 +5107,20 @@ export class SentryApiService {
     );
   }
 
-  async getSnapshotDetails({
-    organizationSlug,
-    snapshotId,
-    compactMetadata = true,
-  }: {
+  async getSnapshotDetails(params: {
     organizationSlug: string;
     snapshotId: string;
     compactMetadata?: boolean;
   }): Promise<unknown> {
-    const params = new URLSearchParams();
-    if (compactMetadata) {
-      params.set("compact_metadata", "true");
-    }
-    const path =
-      apiPath`/organizations/${organizationSlug}/preprodartifacts/snapshots/${snapshotId}/` +
-      `?${params.toString()}`;
-    return await this.requestJSON(path);
+    return await getSnapshot(this.target(), params);
   }
 
-  async getSnapshotImageDetail({
-    organizationSlug,
-    snapshotId,
-    imageIdentifier,
-  }: {
+  async getSnapshotImageDetail(params: {
     organizationSlug: string;
     snapshotId: string;
     imageIdentifier: string;
   }): Promise<unknown> {
-    const path = apiPath`/organizations/${organizationSlug}/preprodartifacts/snapshots/${snapshotId}/images/${imageIdentifier}/`;
-    return await this.requestJSON(path);
+    return await getSnapshotImage(this.target(), params);
   }
 
   async fetchImageByUrl(
@@ -5213,14 +5147,7 @@ export class SentryApiService {
     return { blob, contentType };
   }
 
-  async getLatestBaseSnapshot({
-    organizationSlug,
-    appId,
-    branch,
-    project,
-    projectSlug,
-    compactMetadata = true,
-  }: {
+  async getLatestBaseSnapshot(params: {
     organizationSlug: string;
     appId: string;
     branch?: string;
@@ -5228,15 +5155,6 @@ export class SentryApiService {
     projectSlug?: string;
     compactMetadata?: boolean;
   }): Promise<unknown> {
-    const params = new URLSearchParams();
-    params.set("app_id", appId);
-    if (branch) params.set("branch", branch);
-    if (project) params.set("project", project);
-    if (projectSlug) params.set("projectSlug", projectSlug);
-    if (compactMetadata) params.set("compact_metadata", "true");
-    const path =
-      apiPath`/organizations/${organizationSlug}/preprodartifacts/snapshots/latest-base/` +
-      `?${params.toString()}`;
-    return await this.requestJSON(path);
+    return await getLatestBaseSnapshot(this.target(), params);
   }
 }

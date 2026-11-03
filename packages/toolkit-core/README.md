@@ -72,6 +72,11 @@ the one exception.
   - `endpoints/uptime-monitors`: `listUptimeMonitors`, `getUptimeMonitor`,
     `listUptimeMonitorChecks`, `createUptimeMonitor`, `updateUptimeMonitor`,
     and `deleteUptimeMonitor`.
+  - `endpoints/traces`: `getTraceMeta` and `getTrace`.
+  - `endpoints/profiling`: `getFlamegraph`, `getTransactionProfile`, and
+    `getProfileChunks`.
+  - `endpoints/snapshots`: preprod snapshots (`getSnapshot`,
+    `getSnapshotImage`, `getLatestBaseSnapshot`), returned unvalidated.
 - `time-params` applies a time range to a query: `statsPeriod` or a
   `start`/`end` pair, or the `since`/`until` seconds `StatsMixin` endpoints
   read. It rejects a range that sets both or only one end.
