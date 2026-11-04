@@ -11,6 +11,7 @@ on:
         options:
           - cli
           - logger
+          - spotlight
       bump:
         description: Version bump type
         required: true
@@ -67,6 +68,9 @@ jobs:
               ;;
             logger)
               workspace=packages/logger
+              ;;
+            spotlight)
+              workspace=packages/spotlight
               ;;
             *)
               echo "::error::Unsupported product: $PRODUCT"

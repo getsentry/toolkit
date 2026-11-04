@@ -137,3 +137,22 @@ workspaces:
         includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
       - name: npm
         includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
+
+  packages/spotlight:
+    changelog:
+      policy: none
+    preReleaseCommand: bash -c 'cd packages/spotlight && npm version "$CRAFT_NEW_VERSION" --no-git-tag-version'
+    releaseBranchPrefix: release/spotlight
+    artifactProvider:
+      name: github
+      config:
+        artifacts:
+          Post-merge tasks:
+            - "/^sentry-spotlight-.*$/"
+    targets:
+      - name: github
+        tagPrefix: "spotlight@"
+        includeNames: '/^sentry-spotlight-\d.*\.tgz$/'
+      - name: npm
+        id: "@sentry/spotlight"
+        includeNames: '/^sentry-spotlight-\d.*\.tgz$/'

@@ -2,13 +2,13 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
-import { buildTraceGroups } from "@/lib/trace-model.ts";
+import { buildTraceGroups } from "@/test-fixtures/trace-groups.ts";
 import { TraceWorkspace } from "./trace-workspace.tsx";
 
 afterEach(cleanup);
 
-test("selects spans within the trace inspector and returns to the waterfall", () => {
-  const traces = buildTraceGroups(
+test("selects spans within the trace inspector and returns to the waterfall", async () => {
+  const traces = await buildTraceGroups(
     decodeEnvelope(
       JSON.stringify([
         {},
@@ -56,8 +56,8 @@ test("selects spans within the trace inspector and returns to the waterfall", ()
   expect(clearSpan).toHaveBeenCalledOnce();
 });
 
-test("a stale trace selection cannot drill into a duplicate span ID on a fallback trace", () => {
-  const traces = buildTraceGroups(
+test("a stale trace selection cannot drill into a duplicate span ID on a fallback trace", async () => {
+  const traces = await buildTraceGroups(
     decodeEnvelope(
       JSON.stringify([
         {},
@@ -94,8 +94,8 @@ test("a stale trace selection cannot drill into a duplicate span ID on a fallbac
   ).toBe("false");
 });
 
-test("drilling into a span and returning restores keyboard focus", () => {
-  const traces = buildTraceGroups(
+test("drilling into a span and returning restores keyboard focus", async () => {
+  const traces = await buildTraceGroups(
     decodeEnvelope(
       JSON.stringify([
         {},

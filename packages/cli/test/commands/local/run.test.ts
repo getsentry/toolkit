@@ -7,7 +7,7 @@
 
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import { createLocalTelemetryBuffer } from "../../../src/commands/local/telemetry-buffer.js";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -447,7 +447,7 @@ describe("sentry local run", () => {
     // Reproduces the case where the Spotlight desktop app (or another
     // `sentry local serve`) already owns the port: `run` must attach as an SSE
     // consumer instead of going silent for the whole session.
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const { server, port } = await tryListen(buildApp(buffer), 0, "127.0.0.1");
 
     // preload.ts mocks fetch to block external calls; this test talks to a
@@ -499,7 +499,7 @@ describe("sentry local run", () => {
   test("writes normalized NDJSON to stdout when following an existing server", async () => {
     // A one-command agent workflow uses `local run --format json`, including
     // when another process already owns the local receiver.
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const { server, port } = await tryListen(buildApp(buffer), 0, "127.0.0.1");
     const savedFetch = globalThis.fetch;
     const realFetch = (globalThis as { __originalFetch?: typeof fetch })

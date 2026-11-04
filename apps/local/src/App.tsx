@@ -45,7 +45,6 @@ import { Menu, Settings, Search } from "lucide-react";
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -95,7 +94,7 @@ import {
   type LocalFeedItem,
 } from "@/lib/spotlight.ts";
 import { createLocalTelemetryStore } from "@/lib/telemetry-store.ts";
-import { buildTraceGroups, traceIdForItem } from "@/lib/trace-model.ts";
+import { traceIdForItem } from "@/lib/trace-model.ts";
 import { workspaceNavigation } from "@/lib/workspace-navigation.ts";
 import {
   isErrorEvent,
@@ -403,7 +402,7 @@ export default function App() {
     () => saveConnectionHistory(recentConnections),
     [recentConnections],
   );
-  const traces = useMemo(() => buildTraceGroups(items), [items]);
+  const traces = telemetry.traceGroups;
   const searchQuery = workspaceQuery.query;
   const filterKey = `${workspaceView}:${streamUrl}`;
   const [eventFilterState, setEventFilterState] = useState<{

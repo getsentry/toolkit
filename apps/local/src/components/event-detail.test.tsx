@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
-import { buildTraceGroups } from "@/lib/trace-model.ts";
+import { buildTraceGroups } from "@/test-fixtures/trace-groups.ts";
 import { EventDetail } from "./event-detail.tsx";
 
 afterEach(() => {
@@ -176,7 +176,7 @@ test("span summaries use captured typed URL attributes without inventing request
   expect(summary.textContent).not.toContain("Status");
 });
 
-test("repeated parent updates keep one request summary and its waterfall", () => {
+test("repeated parent updates keep one request summary and its waterfall", async () => {
   const transaction = item("transaction", {
     transaction: "GET /orders",
     start_timestamp: 1,
@@ -184,7 +184,7 @@ test("repeated parent updates keep one request summary and its waterfall", () =>
     request: { status_code: 200 },
     contexts: { trace: { trace_id: "trace", span_id: "root" } },
   });
-  const [trace] = buildTraceGroups([transaction]);
+  const [trace] = await buildTraceGroups([transaction]);
   const { rerender } = render(<EventDetail item={transaction} trace={trace} />);
   for (let index = 0; index < 10; index += 1) {
     rerender(
@@ -217,14 +217,14 @@ test("captured context suppresses the empty-details message", () => {
   expect(screen.queryByText("No additional event details.")).toBeNull();
 });
 
-test("a related trace suppresses the empty-details message", () => {
+test("a related trace suppresses the empty-details message", async () => {
   const transaction = item("transaction", {
     transaction: "GET /trace",
     contexts: { trace: { trace_id: "trace", span_id: "root" } },
     start_timestamp: 1,
     timestamp: 2,
   });
-  const [trace] = buildTraceGroups([transaction]);
+  const [trace] = await buildTraceGroups([transaction]);
   render(<EventDetail item={item("event", {})} trace={trace} />);
   expect(screen.getByRole("region", { name: "Trace waterfall" })).toBeDefined();
   expect(screen.queryByText("No additional event details.")).toBeNull();

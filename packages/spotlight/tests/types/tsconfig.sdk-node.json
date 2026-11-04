@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.sdk-core.json",
+  "compilerOptions": { "types": ["node"] },
+  "files": ["sdk-node.ts"]
+}

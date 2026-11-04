@@ -5,7 +5,7 @@
  * feedSSELine, and parsePort.
  */
 
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import { createLocalTelemetryBuffer } from "../../../src/commands/local/telemetry-buffer.js";
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
 import { logger } from "../../../src/lib/logger.js";
@@ -263,7 +263,7 @@ describe("sentry local serve --open", () => {
   test("scoped serve opens the viewer with explicit session discovery", async () => {
     const daemon = await import("../../../src/commands/local/daemon.js");
     const { server, port } = await tryListen(
-      buildApp(createSpotlightBuffer(5)),
+      buildApp(createLocalTelemetryBuffer(5)),
       0,
       "127.0.0.1",
     );
@@ -346,7 +346,7 @@ describe("sentry local serve --open", () => {
     }
     globalThis.fetch = realFetch;
     const { server, port } = await tryListen(
-      buildApp(createSpotlightBuffer(10)),
+      buildApp(createLocalTelemetryBuffer(10)),
       0,
       "127.0.0.1",
     );
@@ -486,7 +486,7 @@ const TEST_ENVELOPE =
  * otherwise the subscriber misses it and the read hangs.
  */
 async function readFirstSSEEvent(streamPath: string): Promise<string> {
-  const buffer = createSpotlightBuffer(10);
+  const buffer = createLocalTelemetryBuffer(10);
   const app = buildApp(buffer);
 
   const res = await app.request(streamPath, {
@@ -651,7 +651,7 @@ describe("buildApp", () => {
   });
 
   test("health endpoint returns OK", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/health");
@@ -660,7 +660,7 @@ describe("buildApp", () => {
   });
 
   test("advertises session-only UI capabilities", async () => {
-    const app = buildApp(createSpotlightBuffer(10), { uiActions: true });
+    const app = buildApp(createLocalTelemetryBuffer(10), { uiActions: true });
 
     const res = await app.request("/capabilities");
 
@@ -672,7 +672,7 @@ describe("buildApp", () => {
   });
 
   test("clears buffered envelopes and exposes a retained raw envelope", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer, { uiActions: true });
     await app.request("/stream", {
       method: "POST",
@@ -694,7 +694,7 @@ describe("buildApp", () => {
   });
 
   test("ingest endpoint accepts envelopes and returns 204", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const envelope =
@@ -707,8 +707,78 @@ describe("buildApp", () => {
     expect(res.status).toBe(204);
   });
 
+  test("retains malformed-only span envelopes for raw inspection and stream replay", async () => {
+    const buffer = createLocalTelemetryBuffer(10);
+    const app = buildApp(buffer, { uiActions: true });
+    const body = '{}\n{"type":"span"}\n{"version":2,"items":[{}]}';
+    try {
+      const res = await app.request("/stream", {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body,
+      });
+      expect(res.status).toBe(204);
+      const retained = buffer.read({ all: true });
+      expect(retained).toHaveLength(1);
+      const envelope = retained[0]!.getParsedEnvelope().envelope;
+      expect(envelope[1]).toEqual([
+        [{ type: "span" }, { type: "span", version: 2, items: [{}] }],
+      ]);
+      const raw = await app.request(
+        `/envelope/${String(envelope[0].__spotlight_envelope_id)}`,
+      );
+      expect(raw.status).toBe(200);
+      expect(await raw.text()).toBe(body);
+      expect(buffer.pipeline.getEvents()).toEqual([]);
+      expect(buffer.pipeline.getTraces()).toEqual([]);
+
+      const stream = await app.request("/stream");
+      if (!stream.body) throw new Error("Expected an SSE replay body");
+      const reader = stream.body.getReader();
+      try {
+        const frame = new TextDecoder().decode((await reader.read()).value);
+        expect(frame).toContain("event: application/x-sentry-envelope");
+        expect(frame).toContain('"items":[{}]');
+      } finally {
+        await reader.cancel();
+      }
+    } finally {
+      buffer.dispose();
+    }
+  });
+
+  test.each([
+    {
+      body: '{}\n{"type":"span"}\n{"items":',
+      contentType: SENTRY_CONTENT_TYPE,
+      status: 400,
+    },
+    {
+      body: '{}\n{"type":"span"}\n{"version":2,"items":[{}]}',
+      contentType: "application/json",
+      status: 415,
+    },
+  ])(
+    "rejects invalid span transport input with $status and retains no envelope",
+    async ({ body, contentType, status }) => {
+      const buffer = createLocalTelemetryBuffer(10);
+      const app = buildApp(buffer);
+      try {
+        const res = await app.request("/stream", {
+          method: "POST",
+          headers: { "Content-Type": contentType },
+          body,
+        });
+        expect(res.status).toBe(status);
+        expect(buffer.read({ all: true })).toEqual([]);
+      } finally {
+        buffer.dispose();
+      }
+    },
+  );
+
   test("ingest via /api/:projectId/envelope/ returns 204", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const envelope =
@@ -722,7 +792,7 @@ describe("buildApp", () => {
   });
 
   test("ingest rejects oversized payloads with 413", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -737,7 +807,7 @@ describe("buildApp", () => {
   });
 
   test("CORS allows localhost origins", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/health", {
@@ -749,7 +819,7 @@ describe("buildApp", () => {
   });
 
   test("CORS allows the hosted local UI to read the event stream", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -764,7 +834,7 @@ describe("buildApp", () => {
   });
 
   test("CORS allows the configured Sentry Local preview to read the event stream", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
     const origin =
       "https://sentry-local-git-codex-featlocal-observability-workspace.sentry.dev";
@@ -779,7 +849,7 @@ describe("buildApp", () => {
   });
 
   test("CORS allows HTTPS Sentry Local preview branches to read the event stream", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
     const origin = "https://sentry-local-git-feature-branch.sentry.dev";
 
@@ -794,7 +864,7 @@ describe("buildApp", () => {
   });
 
   test("CORS blocks unrelated Sentry-hosted origins from reading the event stream", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -808,7 +878,7 @@ describe("buildApp", () => {
   });
 
   test("CORS permits the SSE resume header from the hosted local UI", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -832,7 +902,7 @@ describe("buildApp", () => {
   });
 
   test("rejects hosted-origin writes to the local receiver", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -848,7 +918,7 @@ describe("buildApp", () => {
   });
 
   test("rejects hosted-origin receiver controls", async () => {
-    const app = buildApp(createSpotlightBuffer(10), { uiActions: true });
+    const app = buildApp(createLocalTelemetryBuffer(10), { uiActions: true });
 
     const res = await app.request("/capabilities", {
       headers: { Origin: "https://local.sentry.dev" },
@@ -858,7 +928,7 @@ describe("buildApp", () => {
   });
 
   test("does not expose receiver controls without loopback authorization", async () => {
-    const app = buildApp(createSpotlightBuffer(10));
+    const app = buildApp(createLocalTelemetryBuffer(10));
 
     expect((await app.request("/capabilities")).status).toBe(403);
     expect((await app.request("/clear", { method: "DELETE" })).status).toBe(
@@ -867,7 +937,7 @@ describe("buildApp", () => {
   });
 
   test("CORS blocks lookalike hosted UI origins", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/health", {
@@ -877,7 +947,7 @@ describe("buildApp", () => {
   });
 
   test("CORS requires HTTPS for hosted Sentry preview origins", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -893,7 +963,7 @@ describe("buildApp", () => {
   });
 
   test("limits the configured Sentry Local preview to stream reads", async () => {
-    const app = buildApp(createSpotlightBuffer(10), { uiActions: true });
+    const app = buildApp(createLocalTelemetryBuffer(10), { uiActions: true });
     const origin =
       "https://sentry-local-git-codex-featlocal-observability-workspace.sentry.dev";
 
@@ -914,7 +984,7 @@ describe("buildApp", () => {
   });
 
   test("CORS blocks non-localhost origins", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/health", {
@@ -924,7 +994,7 @@ describe("buildApp", () => {
   });
 
   test("SSE stream endpoint returns event-stream content type", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -939,7 +1009,7 @@ describe("buildApp", () => {
   });
 
   test("advertises itself as a Spotlight sidecar via X-Powered-By", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/health");
@@ -950,7 +1020,7 @@ describe("buildApp", () => {
   });
 
   test("sets X-Powered-By on ingest responses too", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalTelemetryBuffer(10);
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {

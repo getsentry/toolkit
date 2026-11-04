@@ -6,8 +6,11 @@
  */
 
 import { randomBytes } from "node:crypto";
+import {
+  localEnvelopeContentType,
+  localIngestStatus,
+} from "./telemetry-buffer.js";
 import { Buffer } from "node:buffer";
-import { pushToSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
@@ -407,13 +410,7 @@ export function createLocalControlPlane({
       return c.body(null, 413);
     }
     const body = Buffer.from(arrayBuffer);
-    const rawEncoding = c.req.header("content-encoding");
-    const encoding =
-      rawEncoding === "gzip" ||
-      rawEncoding === "deflate" ||
-      rawEncoding === "br"
-        ? rawEncoding
-        : undefined;
+    const encoding = c.req.header("content-encoding");
     const browserBeacon =
       c.req.query("sentry_client")?.startsWith("sentry.javascript.browser") &&
       c.req.header("origin");
@@ -423,15 +420,17 @@ export function createLocalControlPlane({
         { error: "Session is closed; create a new session to capture events." },
         410,
       );
-    pushToSpotlightBuffer({
-      spotlightBuffer: sessionStore.getBuffer(reference),
+    const receipt = await sessionStore.getBuffer(reference).ingestPayload({
       body,
       contentType: browserBeacon
         ? SENTRY_CONTENT_TYPE
-        : (c.req.header("content-type") ?? ""),
+        : localEnvelopeContentType(c.req.header("content-type")),
       encoding,
       userAgent: c.req.header("user-agent"),
     });
+    const status = localIngestStatus(receipt);
+    if (status === 503) c.header("Retry-After", "1");
+    if (status !== 204) return c.body(null, status);
     sessionStore.recordActivity(reference);
     return c.body(null, 204);
   };
@@ -491,9 +490,17 @@ export function createLocalControlPlane({
       });
       const unsubscribeSession = sessionStore.subscribe(reference, (event) => {
         if (event.state === "retained" && event.action !== "reset") {
-          buffer.stream(readerId);
-          buffer.unsubscribe(readerId);
-          void sendSession(event).finally(finish);
+          void buffer
+            .drain()
+            .then(async () => {
+              buffer.stream(readerId);
+              buffer.unsubscribe(readerId);
+              await sendSession(event);
+            })
+            .catch((error: unknown) =>
+              logger.debug("Local session close failed", error),
+            )
+            .finally(finish);
         } else {
           void sendSession(event);
         }
@@ -502,6 +509,7 @@ export function createLocalControlPlane({
       try {
         const { state, expiresAt } = sessionStore.resolve(reference);
         if (state === "retained") {
+          await buffer.drain();
           buffer.stream(readerId);
           await sendSession({ state, expiresAt });
         } else {
@@ -525,7 +533,7 @@ export function createLocalControlPlane({
         : undefined;
     try {
       validateMaxEnvelopes(value);
-      sessionStore.setMaxEnvelopes(c.req.param("id") ?? "", value);
+      await sessionStore.setMaxEnvelopes(c.req.param("id") ?? "", value);
       return c.json(
         sessionStore.getRetention(c.req.param("id") ?? "").getSettings(),
       );
@@ -654,15 +662,15 @@ export function createLocalControlPlane({
     if (!sessionExists(c.req.param("id"))) {
       return c.body(null, 404);
     }
-    const container = sessionStore
+    const payload = sessionStore
       .getBuffer(c.req.param("id"))
-      .read({ envelopeId: c.req.param("envelopeId") })[0];
-    if (!container) {
+      .pipeline.getDecodedPayload(c.req.param("envelopeId"));
+    if (!payload) {
       return c.body(null, 404);
     }
     return c.json({
-      contentType: container.getContentType(),
-      data: Buffer.from(container.getData()).toString("base64"),
+      contentType: payload.contentType,
+      data: payload.body.toString("base64"),
       id: c.req.param("envelopeId"),
     });
   });

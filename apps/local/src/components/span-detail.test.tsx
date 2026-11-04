@@ -1,13 +1,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
-import { buildTraceGroups } from "@/lib/trace-model.ts";
+import { buildTraceGroups } from "@/test-fixtures/trace-groups.ts";
 import { SpanDetail } from "./span-detail.tsx";
 
 afterEach(cleanup);
 
-test("span inspection shows its own timing, attributes and JSON plus navigable trace telemetry", () => {
-  const [trace] = buildTraceGroups(
+test("span inspection shows its own timing, attributes and JSON plus navigable trace telemetry", async () => {
+  const [trace] = await buildTraceGroups(
     decodeEnvelope(
       JSON.stringify([
         {},

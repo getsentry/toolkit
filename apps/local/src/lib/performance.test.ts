@@ -1,11 +1,11 @@
 import { expect, test } from "vitest";
 import { decodeEnvelope } from "./spotlight.ts";
-import { buildTraceGroups } from "./trace-model.ts";
+import { buildTraceGroups } from "../test-fixtures/trace-groups.ts";
 import { spanInsights, webVitalPages } from "./performance.ts";
 import { parseProfile, profileMatchesTrace } from "./profiles.ts";
 const decode = (type: string, payload: unknown) =>
   decodeEnvelope(JSON.stringify([{}, [[{ type }, payload]]]), "fixture")[0]!;
-test("query analysis groups embedded and standalone executions without counting a copied span twice", () => {
+test("query analysis groups embedded and standalone executions without counting a copied span twice", async () => {
   const transaction = decode("transaction", {
     transaction: "GET /orders",
     start_timestamp: 1,
@@ -30,7 +30,7 @@ test("query analysis groups embedded and standalone executions without counting 
     timestamp: 1.1,
   });
   const [group] = spanInsights(
-    buildTraceGroups([transaction, copy]),
+    await buildTraceGroups([transaction, copy]),
     "queries",
   );
   expect(group).toMatchObject({ count: 1, averageMs: 100, totalMs: 100 });
@@ -98,7 +98,7 @@ test("continuous chunks and missing samples remain honest", () => {
   expect(parseProfile(decode("profile", {})).sampleCount).toBe(0);
 });
 
-test("profiles require captured IDs before associating standalone spans or logs", () => {
+test("profiles require captured IDs before associating standalone spans or logs", async () => {
   const chunk = decode("profile_chunk", {
     profiler_id: "unrelated",
     profile: { samples: [{ timestamp: 1000 }] },
@@ -112,13 +112,13 @@ test("profiles require captured IDs before associating standalone spans or logs"
     }),
     decode("log", { trace_id: "other", timestamp: 1, body: "Unrelated log" }),
   ]) {
-    expect(profileMatchesTrace(chunk, buildTraceGroups([item])[0]!)).toBe(
-      false,
-    );
+    expect(
+      profileMatchesTrace(chunk, (await buildTraceGroups([item]))[0]!),
+    ).toBe(false);
   }
 });
 
-test("legacy and continuous profiles retain real transaction associations", () => {
+test("legacy and continuous profiles retain real transaction associations", async () => {
   const transaction = decode("transaction", {
     event_id: "event",
     start_timestamp: 1,
@@ -128,7 +128,7 @@ test("legacy and continuous profiles retain real transaction associations", () =
       profile: { profiler_id: "profiler", profile_id: "legacy" },
     },
   });
-  const trace = buildTraceGroups([transaction])[0]!;
+  const trace = (await buildTraceGroups([transaction]))[0]!;
   for (const payload of [
     { transaction: { id: "event" } },
     { transactions: [{ trace_id: "t" }] },
@@ -147,7 +147,7 @@ test("legacy and continuous profiles retain real transaction associations", () =
   ).toBe(false);
 });
 
-test("large continuous profiles can be matched without exceeding argument limits", () => {
+test("large continuous profiles can be matched without exceeding argument limits", async () => {
   const transaction = decode("transaction", {
     event_id: "event",
     start_timestamp: 1000,
@@ -157,7 +157,7 @@ test("large continuous profiles can be matched without exceeding argument limits
       profile: { profiler_id: "profiler" },
     },
   });
-  const trace = buildTraceGroups([transaction])[0]!;
+  const trace = (await buildTraceGroups([transaction]))[0]!;
   const profile = {
     samples: Array.from({ length: 150_000 }, (_, index) => ({
       timestamp: 1000 + index / 100,
