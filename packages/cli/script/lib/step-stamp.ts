@@ -3,7 +3,7 @@
  *
  * A step that declares its inputs and outputs runs only when the content
  * hash of either differs from the stamp its last run left in
- * `src/generated/.stamps/`. Hashes, not mtimes: a checkout or a CI cache
+ * `src/generated/.stamps.json`, one entry per step. Hashes, not mtimes: a checkout or a CI cache
  * restore resets mtimes without changing content. The output hash catches
  * outputs that something else rewrote since, such as `generate:grammar`
  * run on its own or another branch's pipeline, and missing outputs never
@@ -15,11 +15,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
-const STAMP_DIR = "src/generated/.stamps";
+const STAMPS_PATH = "src/generated/.stamps.json";
 
 /** The files a step reads and the files it writes. */
 export type StepFiles = {
@@ -29,8 +29,11 @@ export type StepFiles = {
 
 type Stamp = { inputs: string; outputs: string };
 
+/** Each step's stamp, by step name. */
+type Stamps = Partial<Record<string, Stamp>>;
+
 /** The contents of `path`, or `undefined` if it does not exist. */
-async function readIfExists(path: string): Promise<Buffer | undefined> {
+async function readIfExists(path: string): Promise<Uint8Array | undefined> {
   try {
     return await readFile(path);
   } catch (error) {
@@ -54,13 +57,15 @@ async function digest(paths: readonly string[]): Promise<string | undefined> {
   return hash.digest("hex");
 }
 
-async function readStamp(path: string): Promise<Stamp | undefined> {
-  const content = await readIfExists(path);
+async function readStamps(): Promise<Stamps> {
+  const content = await readIfExists(STAMPS_PATH);
   try {
-    return content && (JSON.parse(content.toString("utf8")) as Stamp);
+    return content
+      ? (JSON.parse(new TextDecoder().decode(content)) as Stamps)
+      : {};
   } catch {
-    // A corrupt stamp only means the step runs again.
-    return;
+    // A corrupt stamp file only means every stamped step runs again.
+    return {};
   }
 }
 
@@ -78,9 +83,8 @@ export async function runUnlessUnchanged(
   files: StepFiles,
   step: () => Promise<void>,
 ): Promise<void> {
-  const stampPath = join(STAMP_DIR, `${name}.json`);
   const inputs = await digest(files.inputs);
-  const stamp = await readStamp(stampPath);
+  const stamp = (await readStamps())[name];
   if (
     inputs !== undefined &&
     stamp?.inputs === inputs &&
@@ -93,13 +97,11 @@ export async function runUnlessUnchanged(
   await step();
 
   const outputs = await digest(files.outputs);
-  if (inputs === undefined || outputs === undefined) {
-    await rm(stampPath, { force: true });
-    return;
-  }
-  await mkdir(STAMP_DIR, { recursive: true });
-  await writeFile(
-    stampPath,
-    `${JSON.stringify({ inputs, outputs } satisfies Stamp)}\n`,
-  );
+  const stamps = await readStamps();
+  stamps[name] =
+    inputs === undefined || outputs === undefined
+      ? undefined
+      : { inputs, outputs };
+  await mkdir(dirname(STAMPS_PATH), { recursive: true });
+  await writeFile(STAMPS_PATH, `${JSON.stringify(stamps, null, 2)}\n`);
 }
