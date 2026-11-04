@@ -7,10 +7,10 @@ import { PROJECT_TARGET_BRIEF } from "../../lib/list-command.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   type DroppedEventRow,
-  DroppedEventRowSchema,
   formatDroppedEvents,
   summarizeDroppedEvents,
 } from "../../lib/formatters/dropped-events.js";
+import { DroppedEventRowSchema } from "../../generated/output-schemas/dropped-events.js";
 import { withProgress } from "../../lib/polling.js";
 import { fetchProjectId } from "../../lib/resolve-target.js";
 import {
