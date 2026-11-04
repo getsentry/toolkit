@@ -1136,16 +1136,23 @@ describe("correctRefRepositories", () => {
     globalThis.fetch = reposResponse([
       repo("autonomousbusinessunits/platform"),
     ]);
-
-    expect(
-      await correctRefRepositories("test-org", REFS, invalidRepoError),
-    ).toEqual([
-      {
-        repository: "autonomousbusinessunits/platform",
-        commit: "def456",
-        previousCommit: "abc123",
-      },
-    ]);
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    try {
+      expect(
+        await correctRefRepositories("test-org", REFS, invalidRepoError),
+      ).toEqual([
+        {
+          repository: "autonomousbusinessunits/platform",
+          commit: "def456",
+          previousCommit: "abc123",
+        },
+      ]);
+      expect(stderr.mock.calls.join("")).toContain(
+        "Using 'autonomousbusinessunits/platform'",
+      );
+    } finally {
+      stderr.mockRestore();
+    }
   });
 
   test("keeps the error when Sentry has no matching repository", async () => {
@@ -1154,6 +1161,35 @@ describe("correctRefRepositories", () => {
     expect(
       await correctRefRepositories("test-org", REFS, invalidRepoError),
     ).toBeUndefined();
+  });
+
+  test("warns about no replacement when a later name has no match", async () => {
+    const refs = [
+      ...REFS,
+      { repository: "AutonomousBusinessUnits/missing", commit: "fed654" },
+    ];
+    const error = new ApiError(
+      "API request failed: 400 Bad Request",
+      400,
+      JSON.stringify({
+        refs: [
+          "Invalid repository names: AutonomousBusinessUnits/platform,AutonomousBusinessUnits/missing",
+        ],
+      }),
+      "organizations/test-org/releases/1.0.0/",
+    );
+    globalThis.fetch = reposResponse([
+      repo("autonomousbusinessunits/platform"),
+    ]);
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    try {
+      expect(
+        await correctRefRepositories("test-org", refs, error),
+      ).toBeUndefined();
+      expect(stderr.mock.calls.join("")).not.toContain("Using '");
+    } finally {
+      stderr.mockRestore();
+    }
   });
 
   test("ignores other errors without looking up repositories", async () => {

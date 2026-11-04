@@ -824,6 +824,7 @@ export async function correctRefRepositories(
     return;
   }
   const corrected: CommitRef[] = [];
+  const replaced: { from: string; to: string }[] = [];
   for (const [index, ref] of refs.entries()) {
     if (!names.includes(ref.repository)) {
       corrected.push(ref);
@@ -833,10 +834,15 @@ export async function correctRefRepositories(
     if (!match || match.name === ref.repository) {
       return;
     }
-    log.warn(
-      `Sentry organization '${orgSlug}' has no repository named '${ref.repository}'. Using '${match.name}', the same repository in Sentry.`,
-    );
+    replaced.push({ from: ref.repository, to: match.name });
     corrected.push({ ...ref, repository: match.name });
+  }
+  // Warn only once every rejected name has a match, so no warning claims a
+  // replacement that the caller never retries with.
+  for (const { from, to } of replaced) {
+    log.warn(
+      `Sentry organization '${orgSlug}' has no repository named '${from}'. Using '${to}', the same repository in Sentry.`,
+    );
   }
   return corrected;
 }
