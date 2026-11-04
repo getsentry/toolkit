@@ -11,14 +11,13 @@
  *
  * Inputs are listed by hand. A step only qualifies when that list is short
  * and stable: its own script, the source it reads, and the packages it
- * reads through (their `package.json`, which pins the installed version).
+ * reads through (their `package.json`, which names the installed version).
  */
 
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 const STAMP_DIR = "src/generated/.stamps";
 
@@ -30,44 +29,47 @@ export type StepFiles = {
 
 type Stamp = { inputs: string; outputs: string };
 
-/** Hash the paths and contents of `paths`, or `undefined` if one is missing. */
-async function digest(paths: readonly string[]): Promise<string | undefined> {
-  const hash = createHash("sha256");
-  for (const path of paths) {
-    if (!existsSync(path)) {
+/** The contents of `path`, or `undefined` if it does not exist. */
+async function readIfExists(path: string): Promise<Buffer | undefined> {
+  try {
+    return await readFile(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return;
     }
-    hash
-      .update(`${path}\0`)
-      .update(await readFile(path))
-      .update("\0");
+    throw error;
+  }
+}
+
+/** Hash the paths and contents of `paths`, or `undefined` if one is missing. */
+async function digest(paths: readonly string[]): Promise<string | undefined> {
+  const contents = await Promise.all(paths.map(readIfExists));
+  const hash = createHash("sha256");
+  for (const [index, content] of contents.entries()) {
+    if (content === undefined) {
+      return;
+    }
+    hash.update(`${paths[index]}\0`).update(content).update("\0");
   }
   return hash.digest("hex");
 }
 
 async function readStamp(path: string): Promise<Stamp | undefined> {
+  const content = await readIfExists(path);
   try {
-    return JSON.parse(await readFile(path, "utf8")) as Stamp;
+    return content && (JSON.parse(content.toString("utf8")) as Stamp);
   } catch {
+    // A corrupt stamp only means the step runs again.
     return;
   }
 }
 
 /**
- * The `package.json` of the package `specifier` resolves to from `from`.
- * Packages whose `exports` hide their `package.json` are found by walking
- * up from the resolved entry point.
+ * The `package.json` of package `name` as installed for `from`. As an
+ * input it stands for the package: it names the installed version.
  */
-export function packageManifest(specifier: string, from: string): string {
-  let dir = dirname(createRequire(resolve(from)).resolve(specifier));
-  while (!existsSync(join(dir, "package.json"))) {
-    const parent = dirname(dir);
-    if (parent === dir) {
-      throw new Error(`No package.json above ${specifier}`);
-    }
-    dir = parent;
-  }
-  return join(dir, "package.json");
+export function packageManifest(name: string, from: string): string {
+  return createRequire(resolve(from)).resolve(`${name}/package.json`);
 }
 
 /** Run `step` unless its inputs and outputs match the last run's stamp. */

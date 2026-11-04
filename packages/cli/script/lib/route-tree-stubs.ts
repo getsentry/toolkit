@@ -12,7 +12,6 @@
  * so the tree has to be loaded with a dynamic import after this.
  */
 
-import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 
 const STUBS = [
@@ -27,9 +26,16 @@ const STUBS = [
 /** Write a stub for each route-tree input that does not exist yet. */
 export async function writeRouteTreeStubs(): Promise<void> {
   await mkdir("src/generated", { recursive: true });
-  for (const [path, stub] of STUBS) {
-    if (!existsSync(path)) {
-      await writeFile(path, stub);
-    }
-  }
+  await Promise.all(
+    STUBS.map(async ([path, stub]) => {
+      try {
+        // `wx` fails with EEXIST rather than replace a generated file.
+        await writeFile(path, stub, { flag: "wx" });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+          throw error;
+        }
+      }
+    }),
+  );
 }

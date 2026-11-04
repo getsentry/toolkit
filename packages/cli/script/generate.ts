@@ -29,7 +29,7 @@
 
 import "./require-shim.mjs";
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { writeRouteTreeStubs } from "./lib/route-tree-stubs.js";
 import {
@@ -38,8 +38,12 @@ import {
   type StepFiles,
 } from "./lib/step-stamp.js";
 
-if (existsSync(".env.local")) {
+try {
   process.loadEnvFile(".env.local");
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw error;
+  }
 }
 
 type Options = { check: boolean };
