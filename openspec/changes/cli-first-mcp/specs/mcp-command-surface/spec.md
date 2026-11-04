@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Defines the MCP's tool surface as the CLI's commands: how agents discover
-them, how one is run, what each connection may do, and how completion helps
-agents build valid calls.
+Defines the MCP's tool surface as the CLI's commands: one tool per exposed
+command, how a call runs, what each connection may do, and how completion
+helps agents build valid calls.
 
 ## ADDED Requirements
 
@@ -17,56 +17,58 @@ NOT define Sentry operations of its own.
 
 - **WHEN** a Sentry capability is added for agents
 - **THEN** it is added as a CLI command
-- **THEN** it appears in `search_sentry` with no MCP code change
+- **THEN** it is listed as an MCP tool with no MCP code change
 
-### Requirement: Discovery through CLI introspection
+### Requirement: One tool per exposed command
 
-`search_sentry` SHALL return commands, their input schemas, and their
-permission classes from the CLI's introspection metadata. The stdio server
-SHALL read the route tree at runtime; the hosted server SHALL read the
-generated catalog, and SHALL list only commands its build can run.
+The MCP SHALL list one tool per exposed command, named from the command's
+path, with the command's brief and examples as its description and the
+command's parameters as its input schema, from the CLI's introspection
+metadata. It SHALL NOT add search or execute meta-tools; harnesses search
+the tool list themselves. The hosted server SHALL read the generated
+catalog, and SHALL list only commands its build can run.
 
-#### Scenario: Search finds a command
+#### Scenario: Tool list matches the catalog
 
-- **WHEN** an agent searches for "resolve an issue"
-- **THEN** the result includes `issue resolve` with its permission class
-- **WHEN** the agent asks for the schema of `issue resolve`
-- **THEN** the result is the command's parameters as JSON Schema
+- **WHEN** a connection lists tools
+- **THEN** the list has one tool per exposed command, such as `sentry_issue_list` for `sentry issue list`
+- **THEN** each tool's input schema is the command's `{ positional, flags }` JSON Schema
+- **THEN** the list has no `search_sentry`, `execute_sentry_read`, or `execute_sentry_write`
 
 ### Requirement: Execution runs only exposed commands
 
-The execute tools SHALL run only commands marked exposed, with
-parameters that validate against the command's schema, through the CLI SDK.
-It SHALL NOT run arbitrary code.
+Command tools SHALL run only commands marked exposed, with parameters that
+validate against the command's schema, through the CLI SDK. They SHALL NOT
+run arbitrary code.
 
 #### Scenario: Hidden command
 
-- **WHEN** an agent calls `execute_sentry_write` with `monitor run`
-- **THEN** the call fails without running anything
+- **WHEN** a connection lists tools
+- **THEN** there is no tool for `monitor run`, a hidden command
 
 #### Scenario: Invalid parameter value
 
 - **WHEN** an agent passes an organization slug that does not exist
-- **THEN** the call fails with completion candidates for that parameter
+- **THEN** the call fails with the allowed values or completion candidates for that parameter
 
-### Requirement: Execute tools split by permission class
+### Requirement: Annotations from the permission class
 
-Search mode SHALL offer one execute tool for read commands, annotated
-read-only, and one for write and destructive commands, annotated
-destructive. Each SHALL take the command path as a top-level argument. A
-read-only connection SHALL NOT list the write tool.
+Each command tool SHALL carry hints from its command's permission class:
+read commands `readOnlyHint`, write and destructive commands
+`destructiveHint`. `sentry api`, whose class comes from each call's method,
+SHALL be marked destructive, and read-only on a read-only connection. A
+read-only connection SHALL NOT list write tools.
 
 #### Scenario: A host allowlists reads
 
-- **WHEN** a host allowlists `execute_sentry_read`
-- **THEN** read commands run without approval
-- **WHEN** the agent calls `execute_sentry_read` with `issue resolve`
-- **THEN** the call is refused and names `execute_sentry_write`
+- **WHEN** a host allowlists the read-only tools
+- **THEN** read commands such as `sentry_issue_list` run without approval
+- **THEN** `sentry_issue_resolve` still asks for approval
 
 #### Scenario: Read-only connection lists tools
 
 - **WHEN** a read-only connection lists tools
-- **THEN** the list has `search_sentry` and `execute_sentry_read` and no write tool
+- **THEN** the list has the read command tools and `sentry_api`, and no write tools
 
 ### Requirement: Permission classes
 
@@ -97,14 +99,15 @@ constraints, or cached data SHALL be visible to another user's request.
 
 ### Requirement: Completion for agents
 
-`search_sentry`'s `complete` mode SHALL return completion candidates for a
-parameter, from the same completers as shell completion, with a data source
-suited to the host.
+Completion SHALL reach agents through parameter schema `examples` and
+validation errors, with no completion tool. A call with an invalid value
+SHALL fail with completion candidates for that parameter, from the same
+completers as shell completion, with a data source suited to the host.
 
 #### Scenario: Dataset field completion
 
-- **WHEN** an agent asks to complete `--field` of `explore` with `--dataset spans` and the prefix `span.d`
-- **THEN** the result includes span attribute keys that start with `span.d`
+- **WHEN** an agent calls `sentry_explore` with `--dataset spans` and a `--field` that does not exist, such as `span.dur`
+- **THEN** the error includes span attribute keys close to `span.dur`
 
 ### Requirement: Eval-gated catalog removal
 

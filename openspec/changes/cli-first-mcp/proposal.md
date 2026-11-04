@@ -24,24 +24,23 @@ introspection and run through the CLI SDK.
    capabilities are added as CLI commands only; no new hand-written MCP
    tools. Commands call the API through `@sentry/api`
    (`unify-sentry-api-layer`).
-2. **The MCP exposes the CLI's commands.** By default it lists three tools:
-   `search_sentry` finds commands, and `execute_sentry_read` and
-   `execute_sentry_write` run one command by name with JSON parameters
-   through `createSentrySDK()`. Execute is split by permission class so MCP
-   hosts can allowlist reads and ask before writes (#1254). No
-   sandbox is involved: the agent can only run commands that exist, with
-   parameters their schema accepts. Harnesses that search large tool lists
-   themselves can instead list every command as its own tool.
+2. **The MCP exposes the CLI's commands.** Each exposed command is its own
+   tool (`sentry_issue_list`), run with JSON parameters through
+   `createSentrySDK()`. There are no search or execute meta-tools:
+   harnesses search large tool lists themselves. Each tool carries its
+   command's permission class as hints, so MCP hosts can allowlist reads
+   and ask before writes (#1254). No sandbox is involved: the agent can
+   only run commands that exist, with parameters their schema accepts.
 3. **One introspection source.** Tool names, descriptions, and input schemas
-   come from the CLI's route tree (`lib/introspect.ts`) on stdio and from
-   metadata generated from it at build time on hosted.
+   come from metadata generated from the CLI's route tree
+   (`lib/introspect.ts`) at build time, on stdio and hosted.
 4. **Every published API route.** `sentry api` and `sentry schema` are
-   commands like any other, so search and execute
-   reach every published `@sentry/api` operation with no extra tool.
+   commands like any other, so their tools reach every published
+   `@sentry/api` operation with no extra tool.
 5. **Completion for agents.** The shell completion system
-   (`lib/complete.ts`, `lib/completion-target.ts`) answers completion
-   queries in `search_sentry` and suggests values when a parameter fails
-   validation: organization and project slugs, issue IDs, dataset fields
+   (`lib/complete.ts`, `lib/completion-target.ts`) suggests values when a
+   parameter fails validation, next to the static suggestions in each
+   parameter's schema `examples`: organization and project slugs, issue IDs, dataset fields
    and aggregates, and search query terms.
 6. **The CLI SDK runs on the hosted MCP.** Hosted creates one SDK instance
    per request with the OAuth grant's token and runs it with persistence
@@ -55,7 +54,7 @@ introspection and run through the CLI SDK.
 
 HTTP Code Mode (#1670), where the agent writes JavaScript that a sandbox
 runs, is not part of this plan's critical path. It can be added later as a
-third tool over the same SDK, for multi-step work that benefits from code.
+tool over the same SDK, for multi-step work that benefits from code.
 
 ## Capabilities
 
@@ -76,7 +75,7 @@ commands.
   commands (permission class, hosted availability); a no-persistence
   mode; per-request SDK state; a Workers build of the SDK.
 - `packages/mcp-core`: keeps MCP plumbing (registration, transports,
-  constraints, the two tool definitions). Loses the catalog tools, the
+  constraints, the command tool definitions). Loses the catalog tools, the
   `SentryApiService` endpoint wrappers they use, the search agents, and the
   agent provider configuration.
 - `packages/mcp-cloudflare`: runs commands through the CLI SDK, one

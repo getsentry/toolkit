@@ -99,65 +99,65 @@ when its command lands):
 About 20 tools have no command yet, and a few more are partial. Each gap
 is a command PR, grouped by domain.
 
-### Search mode: `search_sentry`, `execute_sentry_read`, `execute_sentry_write`
+### One tool per command
 
-The MCP hides the command tree behind one search tool and two execute
-tools, so the tool list stays small however many commands the CLI has
-(well over 100 leaf commands):
+Each exposed command is its own MCP tool, named from its path
+(`sentry issue list` → `sentry_issue_list`). Its description is the
+command's brief and examples, and its input schema is the catalog's
+`{ positional, flags }` JSON Schema. There is no `search_sentry` and no
+`execute_*` meta-tool: the CLI has well over 100 leaf commands, and the
+harnesses we target search large tool lists themselves (deferred loading,
+native tool search; see `docs/mcp/harnesses.md`). A search tool of our own
+would duplicate that search and put a dispatch hop in front of every call.
 
-- **`search_sentry`**
-  - `query`: free text. Returns ranked commands with path, brief,
-    permission class, and whether the host can run it.
-  - `command`: a command path such as `issue list`. Returns its input schema
-    (positionals and flags as JSON Schema, from introspection), examples,
-    and output fields.
-  - `complete`: a command, a parameter, the value typed so far, and the
-    other parameters. Returns completion candidates (see below).
-- **`execute_sentry_read`** and **`execute_sentry_write`** take
-  `{ command, params }`. The read tool runs only read commands and carries
-  `readOnlyHint: true`; the write tool runs write and destructive commands
-  and carries `destructiveHint: true`. Each:
-  1. validates `params` against the command's schema; an invalid slug,
-     enum value, or query key fails with completion candidates in the
-     error;
-  2. checks the command's permission class and the session's constraints;
-  3. calls the matching `createSentrySDK()` method and returns its data,
-     size-capped, with the next cursor for paginated commands. With
-     `format: "markdown"` it returns the command's plain markdown output
-     instead, for commands whose terminal rendering already summarizes
-     well, such as `issue view` or `trace view`.
+Each tool:
 
-  Commands that yield more than once are buffered into one result, as the
-  SDK does today. Streaming flags (`--follow`, tail) are rejected.
+1. validates its arguments against the command's schema; an invalid slug,
+   enum value, flag, or query key fails with the allowed values or
+   completion candidates in the error;
+2. checks the session's constraints and, for `sentry api`, the permission
+   class of the call;
+3. calls the command through `createSentrySDK()` and returns its JSON data,
+   size-capped (still valid JSON when cut), with the next cursor for
+   paginated commands. A `format: "markdown"` argument can return the
+   command's plain markdown output instead, for commands whose terminal
+   rendering already summarizes well, such as `issue view` or
+   `trace view` (#1892).
 
-Execute is split by permission class because MCP hosts allowlist and
-render approvals by tool name (#1254). With one dispatcher, allowlisting it
-allowlists every mutation, and denying it blocks every read. With the split,
-a host can auto-run `execute_sentry_read` and ask before
-`execute_sentry_write`, and `command` is a top-level argument, so the
-approval card shows which command runs. A read-only connection does not
-list the write tool at all.
+Commands that yield more than once are buffered into one result, as the
+SDK does today. Streaming flags (`--follow`, tail) are rejected, and so are
+flags that take a local path and `--web`.
 
-A second mode lists every exposed command as its own tool
-(`sentry_issue_list`, with the same schema and description). It is for
-harnesses that search large tool lists themselves. It comes from the same
-metadata, so both modes always agree, and each tool carries its own
-command's annotations. Search mode is the default.
+**Annotations come from the permission class.** MCP hosts allowlist and
+render approvals by tool name (#1254), so per-command tools give hosts the
+finest grain there is: read commands carry `readOnlyHint: true`, write and
+destructive commands carry `destructiveHint: true`, and a host can auto-run
+`sentry_issue_list` and ask before `sentry_project_delete`. `sentry api`
+takes its class from each call's `--method`, and no per-call hint exists, so
+it is one tool marked destructive; splitting it into GET and non-GET tools
+would add a tool without changing what a host can allowlist. A read-only
+connection (`--read-only`, hosted API Read) lists no write tools, and marks
+`sentry api` read-only while refusing every method but GET, HEAD, and
+OPTIONS.
+
+The schema is listed as is: the tools attach it as metadata to permissive
+Zod types, so `tools/list` shows the catalog's JSON Schema, the MCP SDK
+fills in no defaults, and the tool's own validator returns the errors.
 
 #### How this differs from Code Mode
 
-Code Mode (Cloudflare's term, and #1670) also hides tools behind search and
-execute, but its execute tool takes a program: the model writes JavaScript
+Code Mode (Cloudflare's term, and #1670) hides tools behind search and
+execute, and its execute tool takes a program: the model writes JavaScript
 that calls several operations, loops, and filters, and only the program's
 result goes back into context. That code is arbitrary, so it needs a sandbox.
 
-The execute tools run one known command per call. The agent cannot
+The command tools run one known command per call. The agent cannot
 run anything that is not a command, and the parameters are validated data,
 so there is nothing to sandbox. The cost is that multi-step work takes one
 model turn per call, and intermediate results pass through context. Command
 flags (`--limit`, `--fields`, queries) and `format` keep results small.
 If evals show multi-step tasks need it, Code Mode can be added later as a
-tool whose `sentry` object calls the same execute path, permission checks
+tool whose `sentry` object calls the same execution path, permission checks
 included.
 
 ### What is exposed
@@ -332,17 +332,19 @@ and project on hosted, from the session constraints.
 
 ### One introspection source
 
-`sentry mcp` reads the route tree at runtime with `lib/introspect.ts`. The
-build generates the same metadata as JSON (`command-catalog.json`: commands,
-JSON Schema for parameters, completion kinds, examples, output fields, the
-API operations from `command-api.json`, the permission class, and the
-exposure), and the hosted MCP reads that. A test fails when the two differ.
+The build generates the route tree's metadata (`lib/introspect.ts`) as JSON
+(`command-catalog.json`: commands, JSON Schema for parameters, completion
+kinds, examples, output fields, the API operations from `command-api.json`,
+the permission class, and the exposure). Both `sentry mcp` and the hosted
+MCP build their tools from it, so `sentry mcp` never loads the whole command
+tree to list tools (#1918). A test fails when the catalog and the route
+tree differ.
 
 ### API routes through `sentry api` and `sentry schema`
 
 `sentry schema` and `sentry api` are exposed commands, so agents search the
-published API with `execute_sentry_read({ command: "schema", ... })` and
-call any published operation with `sentry api`. The permission class of a
+published API with `sentry_schema` and call any published operation with
+`sentry_api`. The permission class of a
 `sentry api` call comes from its method, and hosted checks the path against
 the published operation list with #1807's shared matcher, as #1670's broker
 does. `sentry schema`'s index moves onto `@sentry/api`'s operation catalog
@@ -357,18 +359,25 @@ split into completers over a data source:
 - **stdio:** the SQLite cache, as for the shell, with a live API fallback.
 - **hosted:** the live API, uncached.
 
-`search_sentry`'s `complete` mode and the execute tools' validation
-errors return candidates with descriptions for the parameter in question:
-slugs, issue IDs, enum values, dataset fields and aggregates, and search
-query keys and values. This is how agents build valid queries without the
-catalog's embedded search agents.
+There is no completion tool. Completion reaches agents two ways:
+
+- **Schema `examples`.** The catalog puts static suggestions (sort orders,
+  datasets, cursor keywords) in each parameter's JSON Schema `examples`,
+  which every tool lists.
+- **Validation errors.** A call with an invalid value fails with candidates
+  for the parameter in question: the allowed values or flags today, and,
+  once the completers are wired in (#1895), slugs, issue IDs, dataset fields
+  and aggregates, and search query keys and values, with descriptions.
+
+This is how agents build valid queries without the catalog's embedded
+search agents.
 
 ### Embedded natural-language search agents are dropped
 
 `search_events`, `search_issues`, and `search_issue_events` translate
 natural language with a second model call. Under this plan the calling agent
-writes the query itself, using the query syntax in the command's
-`search_sentry` entry and completion for keys and values. Dropping them
+writes the query itself, using the query syntax in the command tool's
+description and completion for keys and values. Dropping them
 removes the MCP's OpenAI and Anthropic provider configuration (#1754 becomes
 moot).
 
@@ -402,7 +411,7 @@ move to `npx sentry mcp` later is out of scope here.
 The command surface ships next to the catalog:
 
 1. Extend #1675's harness to run the full `mcp-server-evals` suite on the
-   catalog, search mode, and the all-tools mode.
+   catalog and the command tools.
 2. Make the command surface the default when it matches or beats the
    catalog on task success, and record token cost and turn count next to
    it. Run more than one client and model.
@@ -426,6 +435,10 @@ The command surface ships next to the catalog:
   resolution hit the API on every call. Measure before adding a cache.
 - **Workers compatibility.** Unknown until the spike. Commands that fail
   stay stdio-only, so hosted coverage can lag stdio.
+- **Harnesses without tool search.** Every exposed command is listed:
+  81 tools and about 35,500 tokens of definitions today (#1890), against
+  about 46,900 for the catalog's 73 tools. Harnesses that load every tool
+  pay that up front; `--read-only` cuts it to 49 tools.
 - **Tool descriptions come from CLI help text.** Weak help text makes weak
   tools. Improving it improves both the CLI and the MCP.
 - **Unpublished endpoints.** Commands and `sentry api` can only reach what
@@ -437,8 +450,8 @@ The command surface ships next to the catalog:
    (`unify-sentry-api-layer` 8.5, 8.6), then release (8.10).
 1. Command metadata (permission class, exposure, generated catalog) and the
    parity commands, by domain.
-2. Search mode on stdio over `createSentrySDK()`, behind a flag, with
-   completion.
+2. Command tools on stdio over `createSentrySDK()`, behind a flag, with
+   completion through validation errors.
 3. The Workers spike, then a no-persistence mode and the module-state
    audit, then hosted on the SDK.
 4. Eval gate, default flip, catalog deletion.
@@ -448,8 +461,6 @@ that, a revert of the deletion PR restores it.
 
 ## Open Questions
 
-- Which mode each client should default to: search mode, or every command as
-  a tool for harnesses that search tools themselves.
 - Whether `get_sentry_mcp_info` and `onboarding_status_update` survive.
 - When to simplify hosted consent from skill checkboxes to API Read, API
   Write, and destructive.
