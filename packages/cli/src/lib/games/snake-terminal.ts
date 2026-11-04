@@ -64,27 +64,47 @@ const KEYS: Readonly<Record<string, SnakeKey>> = {
   " ": "pause",
   r: "restart",
   q: "quit",
-  "\x1b": "quit",
   "\x03": "quit",
 };
 
+const ESC = "\x1b";
+
 // oxlint-disable-next-line no-control-regex -- terminal key sequences start with \x1b
 const ESCAPE_SEQUENCE = /\x1b(?:\[[0-9;]*[@-~]|O[@-~])/y;
+// oxlint-disable-next-line no-control-regex -- terminal key sequences start with \x1b
+const ESCAPE_PREFIX = /\x1b(?:\[[0-9;]*|O)?$/y;
 
-/** Split a chunk of raw terminal input into keys. Other input is dropped. */
-export function parseKeys(chunk: string): SnakeKey[] {
+/**
+ * Split raw terminal input into keys. Other input is dropped, and so is
+ * Alt plus a key (escape followed by the key).
+ *
+ * `pending` is an escape sequence that the chunk ends before completing. A
+ * terminal can split one key across reads, so the caller prepends `pending`
+ * to the next chunk, and reads a lone escape as the Esc key only when nothing
+ * follows it.
+ */
+export function parseKeys(chunk: string): {
+  keys: SnakeKey[];
+  pending: string;
+} {
   const keys: SnakeKey[] = [];
   let index = 0;
   while (index < chunk.length) {
     ESCAPE_SEQUENCE.lastIndex = index;
-    const token = ESCAPE_SEQUENCE.exec(chunk)?.[0] ?? chunk.charAt(index);
+    ESCAPE_PREFIX.lastIndex = index;
+    const sequence = ESCAPE_SEQUENCE.exec(chunk)?.[0];
+    if (!sequence && ESCAPE_PREFIX.test(chunk)) {
+      return { keys, pending: chunk.slice(index) };
+    }
+    const token =
+      sequence ?? chunk.slice(index, index + (chunk[index] === ESC ? 2 : 1));
     const key = KEYS[token] ?? KEYS[token.toLowerCase()];
     if (key) {
       keys.push(key);
     }
     index += token.length;
   }
-  return keys;
+  return { keys, pending: "" };
 }
 
 const DEFAULT_COLUMNS = 80;
@@ -142,6 +162,8 @@ export function renderSnakeFrame(
 const ENTER_SCREEN = "\x1b[?1049h\x1b[?25l\x1b[2J";
 const LEAVE_SCREEN = "\x1b[?25h\x1b[?1049l";
 const CLEAR_SCREEN = "\x1b[2J";
+/** How long a lone escape waits for the rest of a split key sequence. */
+const ESCAPE_TIMEOUT_MS = 100;
 
 /**
  * Play Snake full-screen until the player quits. The terminal is restored on
@@ -160,6 +182,8 @@ export function playSnake(
   let state = createSnake(start.width, start.height);
   let best = 0;
   let timer: NodeJS.Timeout | undefined;
+  let pendingInput = "";
+  let escapeTimer: NodeJS.Timeout | undefined;
 
   const draw = () => {
     output.write(renderSnakeFrame(state, best, color));
@@ -208,6 +232,7 @@ export function playSnake(
   return new Promise((resolve) => {
     const quit = () => {
       clearTimeout(timer);
+      clearTimeout(escapeTimer);
       input.off("data", onData);
       output.off("resize", onResize);
       input.setRawMode(false);
@@ -217,7 +242,10 @@ export function playSnake(
     };
 
     const onData = (chunk: string) => {
-      for (const key of parseKeys(chunk)) {
+      clearTimeout(escapeTimer);
+      const { keys, pending } = parseKeys(pendingInput + chunk);
+      pendingInput = pending;
+      for (const key of keys) {
         if (key === "quit") {
           quit();
           return;
@@ -229,6 +257,14 @@ export function playSnake(
         } else {
           update(turnSnake(state, key));
         }
+      }
+      if (pending) {
+        escapeTimer = setTimeout(() => {
+          pendingInput = "";
+          if (pending === ESC) {
+            quit();
+          }
+        }, ESCAPE_TIMEOUT_MS);
       }
     };
 

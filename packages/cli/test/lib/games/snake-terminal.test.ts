@@ -42,14 +42,16 @@ function fakeTerminal() {
 }
 
 describe("parseKeys", () => {
+  const keysOf = (chunk: string) => parseKeys(chunk).keys;
+
   test("reads arrow keys in both cursor modes and letter keys", () => {
-    expect(parseKeys("\x1b[A\x1bOB\x1b[C\x1b[D")).toEqual([
+    expect(keysOf("\x1b[A\x1bOB\x1b[C\x1b[D")).toEqual([
       "up",
       "down",
       "right",
       "left",
     ]);
-    expect(parseKeys("wasdKJHL")).toEqual([
+    expect(keysOf("wasdKJHL")).toEqual([
       "up",
       "left",
       "down",
@@ -59,16 +61,21 @@ describe("parseKeys", () => {
       "left",
       "right",
     ]);
-    expect(parseKeys("p rq")).toEqual(["pause", "pause", "restart", "quit"]);
+    expect(keysOf("p rq")).toEqual(["pause", "pause", "restart", "quit"]);
+    expect(keysOf("\x03")).toEqual(["quit"]);
   });
 
-  test("reads a lone escape and ctrl+c as quit", () => {
-    expect(parseKeys("\x1b")).toEqual(["quit"]);
-    expect(parseKeys("\x03")).toEqual(["quit"]);
+  test("keeps an unfinished escape sequence pending", () => {
+    expect(parseKeys("\x1b")).toEqual({ keys: [], pending: "\x1b" });
+    expect(parseKeys("w\x1b[")).toEqual({ keys: ["up"], pending: "\x1b[" });
+    expect(parseKeys("\x1bO")).toEqual({ keys: [], pending: "\x1bO" });
   });
 
-  test("drops unknown keys and escape sequences", () => {
-    expect(parseKeys("x\x1b[1;5A\x1b[200~z")).toEqual([]);
+  test("drops unknown keys, escape sequences, and alt plus a key", () => {
+    expect(parseKeys("x\x1b[1;5A\x1b[200~z\x1bq")).toEqual({
+      keys: [],
+      pending: "",
+    });
   });
 });
 
@@ -113,6 +120,35 @@ describe("playSnake", () => {
     expect(writes.at(-1)).toBe("\x1b[?25h\x1b[?1049l");
     expect(input.listenerCount("data")).toBe(0);
     expect(output.listenerCount("resize")).toBe(0);
+  });
+
+  test("quits on a lone escape once no sequence follows", async () => {
+    const { input, terminal, press } = fakeTerminal();
+    const game = playSnake(terminal, { color: false });
+
+    press("\x1b");
+    await vi.advanceTimersByTimeAsync(50);
+    expect(input.rawMode).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(50);
+    await game;
+    expect(input.rawMode).toBe(false);
+  });
+
+  test("joins an arrow key split across reads", async () => {
+    const { input, terminal, press, headLine } = fakeTerminal();
+    const game = playSnake(terminal, { color: false });
+    press(RIGHT);
+    const start = headLine();
+
+    press("\x1b");
+    press("[A");
+    await vi.advanceTimersByTimeAsync(110);
+
+    expect(input.rawMode).toBe(true);
+    expect(headLine()).toBe(start - 1);
+    press("q");
+    await game;
   });
 
   test("keeps the pending step when the player steers", async () => {
