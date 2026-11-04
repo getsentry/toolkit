@@ -371,7 +371,8 @@ const customText: ApplicationText = {
     exc: unknown,
     ansiColor: boolean,
   ): string => {
-    const message = formatArgumentError(exc, ansiColor);
+    // Stricli quotes the raw input, which may be a pasted auth token
+    const message = redactCredentialText(formatArgumentError(exc, ansiColor));
     // Exit 252 never reaches reportCliError; record it for UX research
     reportArgumentError(exc, stripAnsi(message));
     return message;
