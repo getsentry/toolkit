@@ -11,8 +11,12 @@ import { ApiError, AuthError, ContextError } from "../../lib/errors.js";
 import { runInteractiveLogin } from "../../lib/interactive-login.js";
 import { ensureScopesForAction } from "../../lib/scope-recovery.js";
 
-/** Org slug: lowercase alphanumeric and hyphens, no leading/trailing hyphen. */
-const ORG_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+/**
+ * Org slug: lowercase alphanumeric, hyphens and underscores, starting and
+ * ending alphanumeric. New Sentry orgs can't use underscores, but older ones
+ * may have them.
+ */
+const ORG_SLUG_RE = /^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$/;
 
 /** Consent scope Sentry requires for every org auth token request. */
 const TOKEN_MANAGEMENT_SCOPE = "org:tokens";

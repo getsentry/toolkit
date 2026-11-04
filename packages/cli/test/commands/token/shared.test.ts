@@ -30,6 +30,13 @@ describe("parseOrgScopedArg", () => {
     });
   });
 
+  test("splits an org prefix with an underscore", () => {
+    expect(parseOrgScopedArg("my_org/ci", "Token name", USAGE)).toEqual({
+      orgSlug: "my_org",
+      value: "ci",
+    });
+  });
+
   test("keeps a bare value", () => {
     expect(parseOrgScopedArg("ci", "Token name", USAGE)).toEqual({
       value: "ci",
