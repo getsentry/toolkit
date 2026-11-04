@@ -32,6 +32,7 @@ import {
   fetchLatestFromGitHubWithSource,
   fetchLatestNightlyVersionWithSource,
 } from "./upgrade.js";
+import { reportCliError } from "./error-reporting.js";
 
 /** Target check interval: ~24 hours */
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -281,7 +282,7 @@ function checkForUpdateInBackgroundImpl(): void {
     }
   } catch (error) {
     // DB access failed - report to Sentry but don't crash CLI
-    Sentry.captureException(error);
+    reportCliError(error);
     return;
   }
 
@@ -412,14 +413,14 @@ function getUpdateNotificationWithCopy(
     try {
       markUpdateNotified();
     } catch (error) {
-      Sentry.captureException(error);
+      reportCliError(error);
     }
     notifiedThisProcess = true;
 
     return notification;
   } catch (error) {
     // DB access failed - report to Sentry but don't crash CLI
-    Sentry.captureException(error);
+    reportCliError(error);
     return null;
   }
 }

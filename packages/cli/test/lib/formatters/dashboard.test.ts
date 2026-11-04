@@ -1096,6 +1096,26 @@ describe("formatDashboardWithData", () => {
       expect(output).toContain("Broken Widget");
       expect(output).toContain("query failed: Query timeout exceeded");
     });
+
+    test("wraps a long API detail instead of clipping it", () => {
+      const detail =
+        "tags[view_ms,number] is invalid for parameter 1 in p50. Its a string type field";
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            title: "Broken Widget",
+            displayType: "line",
+            data: makeErrorData({
+              message: `API request failed: 400 Bad Request: ${detail}`,
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      for (const word of detail.split(" ")) {
+        expect(output).toContain(word);
+      }
+    });
   });
 
   describe("text widget", () => {

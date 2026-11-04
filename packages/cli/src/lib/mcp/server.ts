@@ -20,7 +20,6 @@ import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { startStdio } from "@sentry/mcp-core/transports/stdio";
 import type { CredentialRouter, ServerContext } from "@sentry/mcp-core/types";
 import {
-  captureException,
   consoleLoggingIntegration,
   flush,
   init,
@@ -34,6 +33,7 @@ import { logger } from "../logger.js";
 import { isTelemetryEnabled } from "../telemetry.js";
 import { redactTelemetryEnvelope } from "../telemetry/credential-redaction.js";
 import type { McpServerConfig } from "./config.js";
+import { reportCliError } from "../error-reporting.js";
 
 /** Credential wiring supplied by the CLI host. */
 export type McpServeOptions = {
@@ -319,7 +319,7 @@ export function installProcessHandlers(): (
     }
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- reporting must not block exit.
     try {
-      captureException(error);
+      reportCliError(error);
     } catch {
       // reporting must not block exit
     }

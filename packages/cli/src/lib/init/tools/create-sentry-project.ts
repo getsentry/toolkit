@@ -7,7 +7,6 @@
  * that auto-creates a personal team for eligible members.
  */
 
-import { captureException } from "@sentry/node";
 import {
   createProjectWithAutoTeam,
   createProjectWithDsn,
@@ -26,6 +25,7 @@ import type {
 } from "../types.js";
 import { formatToolError } from "./shared.js";
 import type { InitToolDefinition, ToolContext } from "./types.js";
+import { reportCliError } from "../../error-reporting.js";
 
 type ProjectData = {
   projectSlug: string;
@@ -93,7 +93,7 @@ async function resolveProjectCreation(opts: {
         platform &&
         err.detail?.includes("Invalid platform")
       ) {
-        captureException(err, {
+        reportCliError(err, {
           extra: {
             attemptedPlatform: platform,
             projectName: name,

@@ -82,6 +82,7 @@
       ],
       "rules": {
         "sentry-cli/no-silent-catch": "error",
+        "sentry-cli/no-raw-capture-exception": "error",
         "sentry-cli/no-process-exit": "error",
         "sentry-cli/no-stdout-write-in-commands": "error",
         "sentry-cli/no-process-stdout-in-commands": "error",
