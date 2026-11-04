@@ -196,6 +196,13 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
       "Control the TUI (terminal user interface) for `sentry init`. Set to `0` to disable the interactive TUI and use plain text logging output instead. Useful in CI/CD pipelines or environments without full terminal support.",
     example: "0",
   },
+  // -- Games --
+  {
+    name: "SENTRY_GAMES_API_URL",
+    description:
+      "Base URL of the service that serves the `sentry games leaderboard` scores. Defaults to `https://games.sentry.new`. Mainly useful for testing.",
+    example: "http://localhost:8787",
+  },
   // -- TLS / Certificates --
   {
     name: "NODE_EXTRA_CA_CERTS",

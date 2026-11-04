@@ -21,6 +21,8 @@ Toolkit contains the Sentry CLI, the Sentry MCP server, and shared code. Product
 toolkit/
 ├── apps/
 │   ├── cli-docs/            # CLI documentation site and generated command pages
+│   ├── docs-mcp/            # Private Docs MCP Worker
+│   ├── games-api/           # Public Worker for the sentry games leaderboard
 │   └── local/               # Sentry Local browser viewer
 ├── packages/
 │   ├── cli/                 # Sentry CLI (see packages/cli/AGENTS.md)
