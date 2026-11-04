@@ -90,6 +90,7 @@ import type {
   IssueIntegrationSchema,
   IssueListSchema,
   IssueSchema,
+  IssueTagKeyListSchema,
   IssueTagValuesSchema,
   MetricAlertRuleListSchema,
   MetricAlertRuleSchema,
@@ -315,6 +316,7 @@ export type ProfileFrame = z.infer<typeof ProfileFrameSchema>;
 
 // Issue tag values
 export type IssueTagValues = z.infer<typeof IssueTagValuesSchema>;
+export type IssueTagKeyList = z.infer<typeof IssueTagKeyListSchema>;
 
 // External issue links (Jira, GitHub, etc.)
 export type ExternalIssue = z.infer<typeof ExternalIssueSchema>;

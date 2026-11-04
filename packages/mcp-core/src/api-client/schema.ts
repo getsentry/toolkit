@@ -1505,6 +1505,15 @@ export const IssueTagValuesSchema = z
   }));
 
 /**
+ * Schema for the tag keys recorded on an issue, each with its event count.
+ *
+ * Upstream source of truth in getsentry/sentry:
+ * - `src/sentry/issues/endpoints/group_tags.py` (`GroupTagsEndpoint`)
+ * - `src/sentry/tagstore/types.py` (`TagKeySerializerResponse`)
+ */
+export const IssueTagKeyListSchema = z.array(IssueTagValuesSchema);
+
+/**
  * Schema for external issue link (e.g., Jira, GitHub Issues).
  *
  * Represents a link between a Sentry issue and an external issue tracking

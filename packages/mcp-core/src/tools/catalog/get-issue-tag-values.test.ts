@@ -10,6 +10,7 @@ import getIssueTagValues, {
 } from "./get-issue-tag-values.js";
 import { getServerContext } from "../../test-setup.js";
 import { UserInputError } from "../../errors.js";
+import { ApiNotFoundError } from "../../api-client/index.js";
 
 describe("get_issue_tag_values", () => {
   it("returns tag value distribution for an issue", async () => {
@@ -145,19 +146,77 @@ describe("get_issue_tag_values", () => {
     ).rejects.toThrow(UserInputError);
   });
 
-  it("throws error when tagKey is missing", async () => {
-    await expect(
-      getIssueTagValues.handler(
+  // Sentry returns this 404 for both a missing issue and a tag key the issue
+  // does not have. Production calls mostly hit the second case.
+  const notFoundResponse = () =>
+    HttpResponse.json(
+      { detail: "The requested resource does not exist" },
+      { status: 404 },
+    );
+
+  it("lists the issue's tag keys when the requested key is not on the issue", async () => {
+    const requests: URL[] = [];
+    const recordRequest = ({ request }: { request: Request }) => {
+      requests.push(new URL(request.url));
+    };
+    mswServer.events.on("request:start", recordRequest);
+
+    const error = await getIssueTagValues
+      .handler(
         {
           organizationSlug: "sentry-mcp-evals",
           issueId: "CLOUDFLARE-MCP-41",
-          tagKey: "",
+          tagKey: "transaction",
           regionUrl: null,
           issueUrl: undefined,
         },
         getServerContext(),
+      )
+      .catch((thrown: unknown) => thrown)
+      .finally(() => {
+        mswServer.events.removeListener("request:start", recordRequest);
+      });
+
+    expect(error).toBeInstanceOf(UserInputError);
+    expect((error as Error).message).toMatchInlineSnapshot(
+      `"Tag \`transaction\` not found on this issue. Available keys: \`browser\`, \`environment\`, \`handled\`, \`level\`, \`mechanism\`, \`runtime.name\`, \`url\`."`,
+    );
+    const tagList = requests.find((url) => url.pathname.endsWith("/tags/"));
+    expect(tagList?.searchParams.get("limit")).toBe("1");
+  });
+
+  it("reports a missing issue when the issue itself does not exist", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/:org/issues/:issueId/tags/:tagKey/",
+        notFoundResponse,
       ),
-    ).rejects.toThrow(UserInputError);
+      http.get(
+        "https://sentry.io/api/0/organizations/:org/issues/:issueId/tags/",
+        notFoundResponse,
+      ),
+    );
+
+    const error = await getIssueTagValues
+      .handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-404",
+          tagKey: "environment",
+          regionUrl: null,
+          issueUrl: undefined,
+        },
+        getServerContext(),
+      )
+      .catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(ApiNotFoundError);
+    expect((error as Error).message).toMatchInlineSnapshot(`
+      "The requested resource does not exist
+      Please verify these parameters are correct:
+        - organizationSlug: 'sentry-mcp-evals'
+        - issueId: 'CLOUDFLARE-MCP-404'"
+    `);
   });
 
   /**

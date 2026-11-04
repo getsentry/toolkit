@@ -5019,7 +5019,7 @@
   },
   {
     "name": "get_issue_tag_values",
-    "description": "Get tag value distribution for a specific Sentry issue.\n\nUse this tool when you need to:\n- Understand how an issue is distributed across different tag values\n- Get aggregate counts of unique tag values (e.g., 'how many unique URLs are affected')\n- Analyze which browsers, environments, or URLs are most impacted by an issue\n- View the tag distributions page data programmatically\n\nCommon tag keys:\n- `url`: Request URLs affected by the issue\n- `browser`: Browser types and versions\n- `browser.name`: Browser names only\n- `os`: Operating systems\n- `environment`: Deployment environments (production, staging, etc.)\n- `release`: Software releases\n- `device`: Device types\n- `user`: Affected users\n\n<examples>\n### Get URL distribution for an issue\n```\nget_issue_tag_values(organizationSlug='my-organization', issueId='PROJECT-123', tagKey='url')\n```\n\n### Get browser distribution using issue URL\n```\nget_issue_tag_values(issueUrl='https://sentry.io/issues/PROJECT-123/', tagKey='browser')\n```\n\n### Get environment distribution\n```\nget_issue_tag_values(organizationSlug='my-organization', issueId='PROJECT-123', tagKey='environment')\n```\n</examples>\n\n<hints>\n- If user provides a Sentry URL, pass the ENTIRE URL to issueUrl parameter unchanged\n- Common tag keys: url, browser, browser.name, os, environment, release, device, user\n- Tag keys are case-sensitive\n</hints>",
+    "description": "Get tag value distribution for a specific Sentry issue.\n\nUse this tool when you need to:\n- Understand how an issue is distributed across different tag values\n- Get aggregate counts of unique tag values (e.g., 'how many unique URLs are affected')\n- Analyze which browsers, environments, or URLs are most impacted by an issue\n- View the tag distributions page data programmatically\n\nTag keys depend on the issue's platform, SDK, and custom tags, so keys such as `browser` or `url` are missing from many issues. Read the keys from the `### Tags` section of `get_issue_details` before picking one. If the key is not on the issue, the error lists the keys it has.\n\n<examples>\n### Get environment distribution for an issue\n```\nget_issue_tag_values(organizationSlug='my-organization', issueId='PROJECT-123', tagKey='environment')\n```\n\n### Get release distribution using issue URL\n```\nget_issue_tag_values(issueUrl='https://sentry.io/issues/PROJECT-123/', tagKey='release')\n```\n</examples>\n\n<hints>\n- If user provides a Sentry URL, pass the ENTIRE URL to issueUrl parameter unchanged\n- Tag keys are case-sensitive\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5051,7 +5051,7 @@
         "tagKey": {
           "type": "string",
           "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$",
-          "description": "The tag key to get values for (e.g., 'url', 'browser', 'environment', 'release')."
+          "description": "The tag key to get values for, as listed in the issue's tags (e.g., 'environment', 'release')."
         },
         "fresh": {
           "description": "Bypass cached reads.",
