@@ -16,12 +16,10 @@ import {
 } from "../../../src/lib/api/debug-files.js";
 import { ApiError } from "../../../src/lib/errors.js";
 
-const { apiRequestToRegionMock, uploadMissingBufferChunksMock } = vi.hoisted(
-  () => ({
-    apiRequestToRegionMock: vi.fn(),
-    uploadMissingBufferChunksMock: vi.fn(() => Promise.resolve()),
-  }),
-);
+const { apiRequestToRegionMock, uploadChunkPayloadsMock } = vi.hoisted(() => ({
+  apiRequestToRegionMock: vi.fn(),
+  uploadChunkPayloadsMock: vi.fn(() => Promise.resolve()),
+}));
 
 vi.mock("../../../src/lib/region.js", () => ({
   resolveOrgRegion: vi.fn(async () => "https://us.sentry.io"),
@@ -47,7 +45,7 @@ vi.mock("../../../src/lib/api/chunk-upload.js", async (importOriginal) => {
       concurrency: 8,
       compression: ["gzip"],
     })),
-    uploadMissingBufferChunks: uploadMissingBufferChunksMock,
+    uploadChunkPayloads: uploadChunkPayloadsMock,
   };
 });
 
@@ -96,7 +94,7 @@ function setServerOptions(overrides: Record<string, unknown>): void {
 
 beforeEach(() => {
   apiRequestToRegionMock.mockReset();
-  uploadMissingBufferChunksMock.mockClear();
+  uploadChunkPayloadsMock.mockClear();
   vi.mocked(getChunkUploadOptions).mockResolvedValue(
     BASE_SERVER_OPTIONS as Awaited<ReturnType<typeof getChunkUploadOptions>>,
   );
@@ -212,7 +210,7 @@ describe("uploadDebugFiles", () => {
     await vi.runAllTimersAsync();
     const results = await promise;
 
-    expect(uploadMissingBufferChunksMock).toHaveBeenCalled();
+    expect(uploadChunkPayloadsMock).toHaveBeenCalled();
     expect(apiRequestToRegionMock).toHaveBeenCalledTimes(2);
     expect(results[0]?.state).toBe("created");
   });
@@ -418,10 +416,10 @@ describe("uploadDebugFiles", () => {
 
     // First call has the file's entry missing from response, so all its
     // chunks must have been queued for re-upload.
-    expect(uploadMissingBufferChunksMock).toHaveBeenCalled();
-    const firstCall = uploadMissingBufferChunksMock.mock.calls[0]?.[0];
-    const passedMissing = firstCall?.missingChecksums as Set<string>;
-    expect(passedMissing.size).toBeGreaterThan(0);
+    expect(uploadChunkPayloadsMock).toHaveBeenCalled();
+    const firstCall = uploadChunkPayloadsMock.mock.calls[0]?.[0];
+    const passedChunks = firstCall?.chunks as unknown[];
+    expect(passedChunks.length).toBeGreaterThan(0);
   });
 
   test("re-sends every chunk when entry state is not_found without missingChunks", async () => {
@@ -448,10 +446,10 @@ describe("uploadDebugFiles", () => {
       maxWaitMs: 60_000,
     });
 
-    const firstCall = uploadMissingBufferChunksMock.mock.calls[0]?.[0];
-    const passedMissing = firstCall?.missingChecksums as Set<string>;
+    const firstCall = uploadChunkPayloadsMock.mock.calls[0]?.[0];
+    const passedChunks = firstCall?.chunks as unknown[];
     // Must contain the file's chunk checksums, not be empty.
-    expect(passedMissing.size).toBeGreaterThan(0);
+    expect(passedChunks.length).toBeGreaterThan(0);
   });
 
   test("does not assemble oversized files but reports them as failures", async () => {

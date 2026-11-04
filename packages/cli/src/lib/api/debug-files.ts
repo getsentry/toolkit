@@ -28,13 +28,14 @@ import {
   type AssembleResponse,
   AssembleResponseSchema,
   type ChunkInfo,
+  type ChunkPayload,
   type ChunkServerOptions,
   DEFAULT_MAX_DIF_SIZE,
   getChunkUploadOptions,
   hashBuffer,
   pickUploadEncoding,
   type UploadEncoding,
-  uploadMissingBufferChunks,
+  uploadChunkPayloads,
 } from "./chunk-upload.js";
 import { apiRequestToRegion } from "./infrastructure.js";
 
@@ -274,7 +275,10 @@ function classifyEntry(
   return { held: true, terminal, missing: [] };
 }
 
-/** Upload any chunks the server reported missing, across all files. */
+/**
+ * Upload every chunk the server reported missing, across all files, in
+ * batched requests. A chunk shared by several files is sent once.
+ */
 async function uploadMissing(params: {
   chunked: ChunkedDif[];
   missingChecksums: Set<string>;
@@ -287,16 +291,26 @@ async function uploadMissing(params: {
   if (missingChecksums.size === 0) {
     return;
   }
+  const payloads: ChunkPayload[] = [];
+  const queued = new Set<string>();
   for (const cd of chunked) {
-    await uploadMissingBufferChunks({
-      chunks: cd.chunks,
-      missingChecksums,
-      content: cd.dif.content,
-      serverOptions,
-      encoding,
-      regionUrl,
-    });
+    for (const chunk of cd.chunks) {
+      if (!missingChecksums.has(chunk.sha1) || queued.has(chunk.sha1)) {
+        continue;
+      }
+      queued.add(chunk.sha1);
+      payloads.push({
+        sha1: chunk.sha1,
+        data: cd.dif.content.subarray(chunk.offset, chunk.offset + chunk.size),
+      });
+    }
   }
+  await uploadChunkPayloads({
+    chunks: payloads,
+    serverOptions,
+    encoding,
+    regionUrl,
+  });
 }
 
 /** POST one assemble request per batch and merge the keyed responses. */
@@ -489,17 +503,25 @@ export async function uploadDebugFiles(
   const effectiveMaxWaitMs = wait
     ? clampMaxWait(maxWaitMs, serverOptions.maxWait ?? 0)
     : maxWaitMs;
-  const deadline = Date.now() + effectiveMaxWaitMs;
   let response = await postAssemble(regionUrl, endpoint, bodies);
   let evaluation = evaluateAssembly(response, chunked, wait);
-  await uploadMissing({
-    chunked,
-    missingChecksums: evaluation.missingChecksums,
-    serverOptions,
-    encoding,
-    regionUrl,
-  });
+  if (evaluation.missingChecksums.size > 0) {
+    await uploadMissing({
+      chunked,
+      missingChecksums: evaluation.missingChecksums,
+      serverOptions,
+      encoding,
+      regionUrl,
+    });
+    // The server only starts assembling once it is asked again with the
+    // chunks in place, so re-assemble right after delivering them.
+    response = await postAssemble(regionUrl, endpoint, bodies);
+    evaluation = evaluateAssembly(response, chunked, wait);
+  }
 
+  // The wait budget covers server-side processing, not the chunk upload,
+  // which for large sets can itself take longer than the budget.
+  const deadline = Date.now() + effectiveMaxWaitMs;
   while (!evaluation.done) {
     if (Date.now() >= deadline) {
       if (wait) {
