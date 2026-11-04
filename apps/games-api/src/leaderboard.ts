@@ -1,22 +1,25 @@
+import * as Sentry from "@sentry/cloudflare";
+import {
+  MAX_SNAKE_SCORE,
+  PLAYER_HANDLE_REGEX,
+  SNAKE_SCORE_HANDLE_ATTRIBUTE,
+  SNAKE_SCORE_METRIC,
+} from "@sentry/toolkit-core/games";
 import { Hono } from "hono";
 import { z } from "zod";
+import { isWithinRateLimit } from "./rate-limiter";
 
 export type Env = {
+  SENTRY_DSN?: string;
   SENTRY_GAMES_READ_TOKEN?: string;
   GAMES_RATE_LIMITER?: RateLimit;
 };
-
-// Must match the CLI: PLAYER_HANDLE_REGEX in packages/cli/src/lib/games/player.ts,
-// and SNAKE_SCORE_METRIC and MAX_SNAKE_SCORE in packages/cli/src/lib/games/score.ts.
-const SNAKE_HANDLE_REGEX = /^[a-z]{2,12}-[a-z]{2,12}-\d{4}$/;
-const SNAKE_SCORE_METRIC = "snake.score";
-const MAX_SNAKE_SCORE = 10_000;
 
 const SENTRY_HOST = "https://us.sentry.io";
 const SENTRY_ORG_SLUG = "sentry";
 const SNAKE_PROJECT_ID = "4510776311808000";
 const SCORE_FIELD = `max(value,${SNAKE_SCORE_METRIC},distribution,-)`;
-const HANDLE_FIELD = "tags[handle,string]";
+const HANDLE_FIELD = `tags[${SNAKE_SCORE_HANDLE_ATTRIBUTE},string]`;
 const LEADERBOARD_PERIOD = "30d";
 const LEADERBOARD_SIZE = 10;
 const UPSTREAM_TIMEOUT_MS = 5000;
@@ -29,7 +32,7 @@ const LeaderboardSchema = z.object({
     .array(
       z.object({
         rank: z.number().int().min(1),
-        handle: z.string().regex(SNAKE_HANDLE_REGEX),
+        handle: z.string().regex(PLAYER_HANDLE_REGEX),
         score: z.number().int().min(1).max(MAX_SNAKE_SCORE),
       }),
     )
@@ -42,16 +45,13 @@ const UpstreamSchema = z.object({
   data: z.array(z.record(z.string(), z.unknown())),
 });
 
+// Carries only the status: a raw fetch error may hold the upstream URL,
+// headers or body.
 class UpstreamError extends Error {
   constructor(readonly status?: number) {
-    super("Snake leaderboard upstream failed");
+    super(`Snake leaderboard upstream failed (${status ?? "no response"})`);
+    this.name = "UpstreamError";
   }
-}
-
-// Failure details are deliberately dropped: errors may carry the upstream
-// URL, headers or body.
-function logUpstreamFailure(status?: number) {
-  console.warn("Snake leaderboard upstream failed", { status: status ?? null });
 }
 
 function buildUpstreamUrl(): string {
@@ -98,7 +98,7 @@ async function fetchLeaderboard(token: string): Promise<Leaderboard> {
   for (const row of parsed.data.data) {
     const handle = row[HANDLE_FIELD];
     const rawScore = row[SCORE_FIELD];
-    if (typeof handle !== "string" || !SNAKE_HANDLE_REGEX.test(handle)) {
+    if (typeof handle !== "string" || !PLAYER_HANDLE_REGEX.test(handle)) {
       continue;
     }
     if (typeof rawScore !== "number" || !Number.isFinite(rawScore)) continue;
@@ -147,31 +147,16 @@ export default new Hono<{ Bindings: Env }>().get(
   "/snake/leaderboard",
   async (c) => {
     const clientIP = c.req.header("CF-Connecting-IP");
-
-    // The rate limiter binding is optional; it is absent in local development.
-    if (c.env.GAMES_RATE_LIMITER && clientIP) {
-      try {
-        const hashBuffer = await crypto.subtle.digest(
-          "SHA-256",
-          new TextEncoder().encode(clientIP),
-        );
-        const hashHex = [...new Uint8Array(hashBuffer)]
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
-        const { success } = await c.env.GAMES_RATE_LIMITER.limit({
-          key: `games:ip:${hashHex.substring(0, 16)}`,
-        });
-        if (!success) {
-          return c.json({ error: "Too many requests" }, 429);
-        }
-      } catch {
-        console.warn("Snake leaderboard rate limiter failed");
-        return c.json({ error: "Leaderboard unavailable" }, 503);
-      }
+    if (
+      clientIP &&
+      !(await isWithinRateLimit(clientIP, c.env.GAMES_RATE_LIMITER, "games:ip"))
+    ) {
+      return c.json({ error: "Too many requests" }, 429);
     }
 
     const token = c.env.SENTRY_GAMES_READ_TOKEN;
     if (!token) {
+      Sentry.captureMessage("SENTRY_GAMES_READ_TOKEN is not set", "error");
       return c.json({ error: "Leaderboard unavailable" }, 503);
     }
 
@@ -184,9 +169,7 @@ export default new Hono<{ Bindings: Env }>().get(
     try {
       leaderboard = await fetchLeaderboard(token);
     } catch (error) {
-      logUpstreamFailure(
-        error instanceof UpstreamError ? error.status : undefined,
-      );
+      Sentry.captureException(error);
       return c.json({ error: "Leaderboard unavailable" }, 502);
     }
 

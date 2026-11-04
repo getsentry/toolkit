@@ -349,6 +349,37 @@ importers:
         specifier: 'catalog:'
         version: 4.156.1(@types/node@22.20.1)
 
+  apps/games-api:
+    dependencies:
+      '@sentry/cloudflare':
+        specifier: 'catalog:'
+        version: 11.6.0(@cloudflare/workers-types@4.20260405.1)(wrangler@4.156.1(@cloudflare/workers-types@4.20260405.1)(@types/node@24.13.5))
+      '@sentry/toolkit-core':
+        specifier: workspace:*
+        version: link:../../packages/toolkit-core
+      hono:
+        specifier: 'catalog:'
+        version: 4.13.13
+      zod:
+        specifier: ^4.6.6
+        version: 4.6.7
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 'catalog:'
+        version: 4.20260405.1
+      '@sentry/mcp-server-tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/mcp-server-tsconfig
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0)(msw@2.10.2(@types/node@24.13.5)(typescript@5.9.3))(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+      wrangler:
+        specifier: 'catalog:'
+        version: 4.156.1(@cloudflare/workers-types@4.20260405.1)(@types/node@24.13.5)
+
   apps/local:
     dependencies:
       '@hookform/resolvers':
@@ -432,7 +463,7 @@ importers:
     devDependencies:
       '@spotlightjs/spotlight':
         specifier: ^4.11.7
-        version: 4.11.8(@cfworker/json-schema@4.1.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(hono-rate-limiter@0.4.2(hono@4.13.8))
+        version: 4.11.8(@cfworker/json-schema@4.1.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(hono-rate-limiter@0.4.2(hono@4.13.13))
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -650,31 +681,6 @@ importers:
         specifier: 3.4.0
         version: 3.4.0
 
-  packages/games-api:
-    dependencies:
-      hono:
-        specifier: 'catalog:'
-        version: 4.13.13
-      zod:
-        specifier: ^4.6.6
-        version: 4.6.7
-    devDependencies:
-      '@cloudflare/workers-types':
-        specifier: 'catalog:'
-        version: 4.20260405.1
-      '@sentry/mcp-server-tsconfig':
-        specifier: workspace:*
-        version: link:../mcp-server-tsconfig
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vitest:
-        specifier: 'catalog:'
-        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0)(msw@2.10.2(@types/node@24.13.5)(typescript@5.9.3))(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
-      wrangler:
-        specifier: 'catalog:'
-        version: 4.156.1(@cloudflare/workers-types@4.20260405.1)(@types/node@24.13.5)
-
   packages/logger:
     devDependencies:
       '@types/node':
@@ -718,7 +724,7 @@ importers:
         version: 11.6.0(react-router@7.18.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
       agents:
         specifier: 'catalog:'
-        version: 0.32.0(@ai-sdk/provider@4.0.4)(@ai-sdk/react@3.0.232(react@19.2.8)(zod@4.6.7))(@babel/core@7.28.0)(@babel/runtime@7.28.4)(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7))(@modelcontextprotocol/server@2.4.0)(ai@6.0.64(zod@4.6.7))(chat@4.40.0(ai@6.0.64(zod@4.6.7))(zod@4.6.7))(react@19.2.8)(rolldown@1.2.14)(vite@6.4.5(@types/node@24.13.5)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.0))(zod@4.6.7)
+        version: 0.32.0(@ai-sdk/provider@4.0.4)(@ai-sdk/react@3.0.232(react@19.2.8)(zod@4.6.7))(@babel/core@7.28.0)(@babel/runtime@7.28.4)(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/server@2.4.0)(ai@6.0.64(zod@4.6.7))(chat@4.40.0(ai@6.0.64(zod@4.6.7))(zod@4.6.7))(react@19.2.8)(rolldown@1.2.14)(vite@6.4.5(@types/node@24.13.5)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.0))(zod@4.6.7)
       ai:
         specifier: 'catalog:'
         version: 6.0.64(zod@4.6.7)
@@ -6616,10 +6622,6 @@ packages:
     resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
     engines: {node: '>=16.9.0'}
 
-  hono@4.13.8:
-    resolution: {integrity: sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ==}
-    engines: {node: '>=16.9.0'}
-
   hookable@5.5.3:
     resolution: {integrity: sha512-Yc+BQe8SvoXH1643Qez1zqLRmbA5rCL+sSmk6TVos0LWVfNIB7PGncdlId77WzLGSIB5KaWgTaNTs2lNVEI6VQ==}
 
@@ -10786,25 +10788,9 @@ snapshots:
       pkce-challenge: 5.0.1
       zod: 4.6.7
 
-  '@hono/mcp@0.2.5(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7))(hono-rate-limiter@0.4.2(hono@4.13.13))(hono@4.13.8)(zod@4.6.7)':
+  '@hono/node-server@1.19.17(hono@4.13.13)':
     dependencies:
-      '@modelcontextprotocol/sdk': 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
-      hono: 4.13.8
-      hono-rate-limiter: 0.4.2(hono@4.13.13)
-      pkce-challenge: 5.0.1
-      zod: 4.6.7
-
-  '@hono/mcp@0.2.5(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7))(hono-rate-limiter@0.4.2(hono@4.13.8))(hono@4.13.8)(zod@4.6.7)':
-    dependencies:
-      '@modelcontextprotocol/sdk': 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
-      hono: 4.13.8
-      hono-rate-limiter: 0.4.2(hono@4.13.8)
-      pkce-challenge: 5.0.1
-      zod: 4.6.7
-
-  '@hono/node-server@1.19.17(hono@4.13.8)':
-    dependencies:
-      hono: 4.13.8
+      hono: 4.13.13
 
   '@hono/node-server@2.1.5(hono@4.13.13)':
     dependencies:
@@ -12367,7 +12353,7 @@ snapshots:
       '@sentry/core': 11.6.0
       dotenv: 17.4.2
       glob: 13.0.6
-      magic-string: 1.4.1
+      magic-string: 1.4.5
       oxc-parser: 0.152.0
       sentry: 0.45.0
       supports-color: 8.1.1
@@ -12849,8 +12835,8 @@ snapshots:
 
   '@spotlightjs/spotlight@4.11.8(@cfworker/json-schema@4.1.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(hono-rate-limiter@0.4.2(hono@4.13.13))':
     dependencies:
-      '@hono/mcp': 0.2.5(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7))(hono-rate-limiter@0.4.2(hono@4.13.13))(hono@4.13.8)(zod@4.6.7)
-      '@hono/node-server': 1.19.17(hono@4.13.8)
+      '@hono/mcp': 0.2.5(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7))(hono-rate-limiter@0.4.2(hono@4.13.13))(hono@4.13.13)(zod@4.6.7)
+      '@hono/node-server': 1.19.17(hono@4.13.13)
       '@jridgewell/trace-mapping': 0.3.31
       '@modelcontextprotocol/sdk': 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@sentry/core': 10.63.0
@@ -12859,34 +12845,7 @@ snapshots:
       chalk: 5.6.2
       eventsource: 4.1.1
       fast-fuzzy: 1.12.0
-      hono: 4.13.8
-      launch-editor: 2.14.1
-      logfmt: 1.4.0
-      mcp-proxy: 5.12.5
-      semver: 7.8.5
-      uuidv7: 1.2.1
-      yaml: 2.9.0
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@cfworker/json-schema'
-      - '@opentelemetry/core'
-      - '@opentelemetry/exporter-trace-otlp-http'
-      - hono-rate-limiter
-      - supports-color
-
-  '@spotlightjs/spotlight@4.11.8(@cfworker/json-schema@4.1.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(hono-rate-limiter@0.4.2(hono@4.13.8))':
-    dependencies:
-      '@hono/mcp': 0.2.5(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7))(hono-rate-limiter@0.4.2(hono@4.13.8))(hono@4.13.8)(zod@4.6.7)
-      '@hono/node-server': 1.19.17(hono@4.13.8)
-      '@jridgewell/trace-mapping': 0.3.31
-      '@modelcontextprotocol/sdk': 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
-      '@sentry/core': 10.63.0
-      '@sentry/node': 10.65.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))
-      anser: 2.3.5
-      chalk: 5.6.2
-      eventsource: 4.1.1
-      fast-fuzzy: 1.12.0
-      hono: 4.13.8
+      hono: 4.13.13
       launch-editor: 2.14.1
       logfmt: 1.4.0
       mcp-proxy: 5.12.5
@@ -13336,7 +13295,7 @@ snapshots:
     dependencies:
       humanize-ms: 1.2.1
 
-  agents@0.32.0(@ai-sdk/provider@4.0.4)(@ai-sdk/react@3.0.232(react@19.2.8)(zod@4.6.7))(@babel/core@7.28.0)(@babel/runtime@7.28.4)(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7))(@modelcontextprotocol/server@2.4.0)(ai@6.0.64(zod@4.6.7))(chat@4.40.0(ai@6.0.64(zod@4.6.7))(zod@4.6.7))(react@19.2.8)(rolldown@1.2.14)(vite@6.4.5(@types/node@24.13.5)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.0))(zod@4.6.7):
+  agents@0.32.0(@ai-sdk/provider@4.0.4)(@ai-sdk/react@3.0.232(react@19.2.8)(zod@4.6.7))(@babel/core@7.28.0)(@babel/runtime@7.28.4)(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/server@2.4.0)(ai@6.0.64(zod@4.6.7))(chat@4.40.0(ai@6.0.64(zod@4.6.7))(zod@4.6.7))(react@19.2.8)(rolldown@1.2.14)(vite@6.4.5(@types/node@24.13.5)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.0))(zod@4.6.7):
     dependencies:
       '@babel/plugin-proposal-decorators': 8.0.2(@babel/core@7.28.0)
       '@cfworker/json-schema': 4.1.1
@@ -13354,7 +13313,6 @@ snapshots:
     optionalDependencies:
       '@ai-sdk/provider': 4.0.4
       '@ai-sdk/react': 3.0.232(react@19.2.8)(zod@4.6.7)
-      '@modelcontextprotocol/sdk': 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@modelcontextprotocol/server': 2.4.0
       ai: 6.0.64(zod@4.6.7)
       chat: 4.40.0(ai@6.0.64(zod@4.6.7))(zod@4.6.7)
@@ -14914,13 +14872,7 @@ snapshots:
     dependencies:
       hono: 4.13.13
 
-  hono-rate-limiter@0.4.2(hono@4.13.8):
-    dependencies:
-      hono: 4.13.8
-
   hono@4.13.13: {}
-
-  hono@4.13.8: {}
 
   hookable@5.5.3: {}
 

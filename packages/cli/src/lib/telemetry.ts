@@ -42,6 +42,10 @@ import {
 import { ApiError, isUserError } from "./errors.js";
 import { attachSentryReporter, logger } from "./logger.js";
 import { sentryReporter } from "@sentry/logger";
+import {
+  SNAKE_SCORE_HANDLE_ATTRIBUTE,
+  SNAKE_SCORE_METRIC,
+} from "@sentry/toolkit-core/games";
 import { getSentryBaseUrl, isSentrySaasUrl } from "./sentry-urls.js";
 import { redactTelemetryEnvelope } from "./telemetry/credential-redaction.js";
 import { makeCompressedTransport } from "./telemetry/zstd-transport.js";
@@ -161,11 +165,11 @@ export function isTelemetryEnabled(): boolean {
 }
 
 /**
- * Attributes a `snake.score` metric may carry. Everything else the SDK adds
+ * Attributes a Snake score metric may carry. Everything else the SDK adds
  * (user.*, replay ids, ...) is dropped so a score cannot be linked to a user.
  */
 const SNAKE_SCORE_ATTRIBUTE_ALLOWLIST = new Set([
-  "handle",
+  SNAKE_SCORE_HANDLE_ATTRIBUTE,
   "sentry.release",
   "sentry.environment",
   "sentry.sdk.name",
@@ -174,7 +178,7 @@ const SNAKE_SCORE_ATTRIBUTE_ALLOWLIST = new Set([
 
 /** `beforeSendMetric` hook: allowlist attributes for anonymous game scores, pass other metrics through. */
 export function scrubAnonymousMetric(metric: Metric): Metric {
-  if (metric.name !== "snake.score") {
+  if (metric.name !== SNAKE_SCORE_METRIC) {
     return metric;
   }
   const attributes: Record<string, unknown> = {};

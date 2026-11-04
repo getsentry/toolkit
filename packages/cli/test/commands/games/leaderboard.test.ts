@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { leaderboardCommand } from "../../../src/commands/games/leaderboard.js";
 import { withEnv } from "../../../src/lib/env.js";
-import { CliError } from "../../../src/lib/errors.js";
+import { ApiError, CliError, EXIT } from "../../../src/lib/errors.js";
 import { getPlayerHandle } from "../../../src/lib/games/player.js";
 import { useTestConfigDir } from "../../helpers.js";
 import { createMockServer, type MockServer } from "../../mocks/server.js";
@@ -11,7 +11,7 @@ useTestConfigDir("test-games-leaderboard-");
 const PATH = "/v1/snake/leaderboard";
 
 async function run(
-  server: MockServer,
+  server: Pick<MockServer, "url">,
   flags: { json: boolean },
 ): Promise<string> {
   const chunks: string[] = [];
@@ -105,13 +105,24 @@ describe("games leaderboard", () => {
       { error: "secret internal detail" },
       (s) => run(s, { json: false }).catch((e: unknown) => e),
     );
-    expect(error).toBeInstanceOf(CliError);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).exitCode).toBe(EXIT.API);
     expect((error as Error).message).toBe(
       "Could not load the leaderboard. Try again later.",
     );
   });
 
+  test("fails with the API exit code when the server is unreachable", async () => {
+    const error = await run(
+      { url: "http://127.0.0.1:1" },
+      { json: false },
+    ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(CliError);
+    expect((error as CliError).exitCode).toBe(EXIT.API);
+  });
+
   test("--json returns the period and validated entries", async () => {
+    const handle = getPlayerHandle();
     const out = await withServer(
       200,
       {
@@ -119,13 +130,17 @@ describe("games leaderboard", () => {
         entries: [
           { rank: 1, handle: "brave-otter-4242", score: 57 },
           { rank: 2, handle: "bad handle", score: 3 },
+          { rank: 3, handle, score: 2 },
         ],
       },
       (s) => run(s, { json: true }),
     );
     expect(JSON.parse(out)).toEqual({
       period: "30d",
-      entries: [{ rank: 1, handle: "brave-otter-4242", score: 57 }],
+      entries: [
+        { rank: 1, handle: "brave-otter-4242", score: 57, you: false },
+        { rank: 3, handle, score: 2, you: true },
+      ],
     });
   });
 });

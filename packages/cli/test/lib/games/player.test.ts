@@ -1,8 +1,6 @@
+import { PLAYER_HANDLE_REGEX } from "@sentry/toolkit-core/games";
 import { describe, expect, test } from "vitest";
-import {
-  getPlayerHandle,
-  PLAYER_HANDLE_REGEX,
-} from "../../../src/lib/games/player.js";
+import { getPlayerHandle } from "../../../src/lib/games/player.js";
 import { getDatabase } from "../../../src/lib/db/index.js";
 import { setMetadata } from "../../../src/lib/db/utils.js";
 import { useTestConfigDir } from "../../helpers.js";

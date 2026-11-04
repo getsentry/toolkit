@@ -9,14 +9,17 @@
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
+import {
+  MAX_SNAKE_SCORE,
+  SNAKE_SCORE_HANDLE_ATTRIBUTE,
+  SNAKE_SCORE_METRIC,
+} from "@sentry/toolkit-core/games";
 import { logger } from "../logger.js";
 import { isTelemetryEnabled } from "../telemetry.js";
 import { getPlayerHandle } from "./player.js";
 
 const log = logger.withTag("games");
 
-export const SNAKE_SCORE_METRIC = "snake.score";
-export const MAX_SNAKE_SCORE = 10_000;
 const SCORE_FLUSH_TIMEOUT_MS = 3000;
 
 let pendingFlush: PromiseLike<void> = Promise.resolve();
@@ -44,7 +47,7 @@ export function reportSnakeScore(score: number): void {
         scope.setUser(null);
         Sentry.startNewTrace(() => {
           Sentry.metrics.distribution(SNAKE_SCORE_METRIC, score, {
-            attributes: { handle },
+            attributes: { [SNAKE_SCORE_HANDLE_ATTRIBUTE]: handle },
           });
         });
       });

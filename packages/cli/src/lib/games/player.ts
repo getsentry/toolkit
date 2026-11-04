@@ -7,13 +7,11 @@
  */
 
 import { randomInt } from "node:crypto";
+import { PLAYER_HANDLE_REGEX } from "@sentry/toolkit-core/games";
 import { getDatabase } from "../db/index.js";
 import { getMetadata, setMetadata } from "../db/utils.js";
 
 const PLAYER_HANDLE_KEY = "games.handle";
-
-/** Shape of a valid handle. Also used to vet handles received from the server. */
-export const PLAYER_HANDLE_REGEX = /^[a-z]{2,12}-[a-z]{2,12}-\d{4}$/;
 
 const ADJECTIVES = [
   "brave",

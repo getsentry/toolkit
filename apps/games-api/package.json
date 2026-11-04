@@ -6,13 +6,16 @@
   "license": "FSL-1.1-ALv2",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy --minify",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "test:watch": "vitest",
     "tsc": "tsc --noEmit"
   },
   "dependencies": {
+    "@sentry/cloudflare": "catalog:",
+    "@sentry/toolkit-core": "workspace:*",
     "hono": "catalog:",
     "zod": "catalog:"
   },

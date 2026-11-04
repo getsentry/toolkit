@@ -1,5 +1,6 @@
+import * as Sentry from "@sentry/cloudflare";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import app from "./index";
+import app from "./app";
 import type { Env } from "./leaderboard";
 
 const TOKEN = "sntrys_test_token_value";
@@ -37,6 +38,11 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+vi.mock("@sentry/cloudflare", () => ({
+  captureException: vi.fn(),
+  captureMessage: vi.fn(),
+}));
+
 const PATH = "/v1/snake/leaderboard";
 const REQ = { headers: { "CF-Connecting-IP": "192.0.2.1" } };
 
@@ -46,6 +52,8 @@ describe("games leaderboard route", () => {
   const cachePut = vi.fn();
 
   beforeEach(() => {
+    vi.mocked(Sentry.captureException).mockClear();
+    vi.mocked(Sentry.captureMessage).mockClear();
     fetchMock.mockReset();
     cacheMatch.mockReset().mockResolvedValue(undefined);
     cachePut.mockReset().mockResolvedValue(undefined);
@@ -203,6 +211,9 @@ describe("games leaderboard route", () => {
     expect(res.status).toBe(502);
     expect(text).not.toContain("secret-upstream-detail");
     expect(text).not.toContain(TOKEN);
+    const reported = vi.mocked(Sentry.captureException).mock.calls[0][0];
+    expect(String(reported)).toContain("Snake leaderboard upstream failed");
+    expect(String(reported)).not.toContain(TOKEN);
   });
 
   it("returns 503 when the token is not configured", async () => {
@@ -214,6 +225,7 @@ describe("games leaderboard route", () => {
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "Leaderboard unavailable" });
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(Sentry.captureMessage).toHaveBeenCalledOnce();
   });
 
   it("returns 429 when rate limited and skips upstream", async () => {
@@ -233,6 +245,20 @@ describe("games leaderboard route", () => {
     await app.request(PATH, REQ, makeEnv({ GAMES_RATE_LIMITER: { limit } }));
     expect(limit.mock.calls[0][0].key).toMatch(/^games:ip:[a-f0-9]{16}$/);
     expect(limit.mock.calls[0][0].key).not.toContain("192.0.2.1");
+  });
+
+  it("fails open when the rate limiter throws", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(upstreamBody([["brave-otter-4242", 57]])),
+    );
+    const limit = vi.fn().mockRejectedValue(new Error("limiter down"));
+    const res = await app.request(
+      PATH,
+      REQ,
+      makeEnv({ GAMES_RATE_LIMITER: { limit } }),
+    );
+    expect(res.status).toBe(200);
+    expect(Sentry.captureException).toHaveBeenCalledOnce();
   });
 
   it("fails open when the cache throws", async () => {
