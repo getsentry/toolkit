@@ -67,14 +67,6 @@
       "types": "./src/sentry-origin.ts",
       "default": "./src/sentry-origin.ts"
     },
-    "./api-client/response-cache": {
-      "types": "./src/api-client/response-cache/index.ts",
-      "default": "./src/api-client/response-cache/index.ts"
-    },
-    "./api-client/*": {
-      "types": "./src/api-client/*.ts",
-      "default": "./src/api-client/*.ts"
-    },
     "./markdown": {
       "types": "./src/markdown.ts",
       "default": "./src/markdown.ts"
@@ -87,20 +79,15 @@
   },
   "dependencies": {
     "@sentry/api": "catalog:",
-    "@sentry/search-syntax": "catalog:",
-    "@standard-schema/spec": "1.1.0",
-    "http-cache-semantics": "^4.2.0"
+    "@sentry/search-syntax": "catalog:"
   },
   "devDependencies": {
-    "@types/http-cache-semantics": "^4.2.0",
     "fast-check": "^4.8.0",
     "marked": "catalog:",
     "mdast-util-from-markdown": "catalog:",
     "mdast-util-gfm": "catalog:",
     "micromark-extension-gfm": "catalog:",
     "typescript": "catalog:",
-    "valibot": "^1.4.2",
-    "vitest": "catalog:",
-    "zod": "catalog:"
+    "vitest": "catalog:"
   }
 }

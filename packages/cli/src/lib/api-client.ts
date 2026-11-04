@@ -89,11 +89,11 @@ export {
   appendSearchParams,
   autoPaginate,
   buildSearchParams,
-  consumePage,
+  consumeCursorPage,
   decodePageCursor,
   isTextualContentType,
   ORG_FANOUT_CONCURRENCY,
-  type PagePosition,
+  type CursorPosition,
   type PaginatedResponse,
   parseLinkHeader,
   type PreparedRawApiRequest,
@@ -164,6 +164,7 @@ export {
   tryGetPrimaryDsn,
 } from "./api/projects.js";
 export {
+  correctRefRepositories,
   createRelease,
   createReleaseDeploy,
   deleteRelease,

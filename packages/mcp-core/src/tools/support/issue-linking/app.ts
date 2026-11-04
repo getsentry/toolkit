@@ -2,7 +2,7 @@
 import { z } from "zod";
 import type { SentryApiService } from "../../../api-client";
 import type { ExternalIssueList } from "../../../api-client/types";
-import { ApiClientError } from "@sentry/toolkit-core/api-client/errors";
+import { ApiClientError } from "@sentry/api/client";
 import { SentryAppExternalRequestOptionsSchema } from "../../../api-client/schema";
 import { UserInputError } from "../../../errors";
 
