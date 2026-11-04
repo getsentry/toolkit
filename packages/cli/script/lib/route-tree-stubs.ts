@@ -10,24 +10,21 @@
  * Scripts that load the route tree call {@link writeRouteTreeStubs} before
  * the first `import("../src/app.js")`. Static imports run before any code,
  * so the tree has to be loaded with a dynamic import after this.
+ *
+ * A script that only checks the tree, such as `check-fragments`, leaves its
+ * stubs behind. `ensure-generated.mjs` treats a file that still holds its
+ * stub (`route-tree-stub-files.mjs`) as missing, so the CLI never runs on
+ * one.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-
-const STUBS = [
-  ["src/generated/command-api.json", "{}\n"],
-  ["src/generated/top-level-routes.json", "{}\n"],
-  [
-    "src/generated/skill-content.ts",
-    "export const SKILL_FILES: ReadonlyMap<string, string> = new Map();\n",
-  ],
-] as const;
+import { ROUTE_TREE_STUBS } from "./route-tree-stub-files.mjs";
 
 /** Write a stub for each route-tree input that does not exist yet. */
 export async function writeRouteTreeStubs(): Promise<void> {
   await mkdir("src/generated", { recursive: true });
   await Promise.all(
-    STUBS.map(async ([path, stub]) => {
+    ROUTE_TREE_STUBS.map(async ([path, stub]) => {
       try {
         // `wx` fails with EEXIST rather than replace a generated file.
         await writeFile(path, stub, { flag: "wx" });
