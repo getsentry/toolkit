@@ -1171,6 +1171,100 @@ describe("search_events", () => {
     expect(result).toContain('"tags[sequence]": "42"');
   });
 
+  describe("timestamp filters in structured error queries", () => {
+    const query =
+      "level:error timestamp:>=2026-10-28T00:00:00 timestamp:<2026-10-29T00:00:00";
+
+    const runErrorSearch = () =>
+      runSearchEvents(
+        {
+          organizationSlug: "test-org",
+          regionUrl: null,
+          projectSlug: null,
+          dataset: "errors",
+          query,
+          fields: ["count()"],
+          sort: "-count()",
+          period: "30d",
+          limit: 10,
+          includeExplanation: false,
+        },
+        {
+          constraints: {
+            organizationSlug: null,
+            regionUrl: null,
+            projectSlug: null,
+          },
+          accessToken: "test-token",
+          userId: "1",
+        },
+        { lockDataset: true },
+      );
+
+    const captureEventsRequest = () => {
+      const requests: URLSearchParams[] = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            requests.push(new URL(request.url).searchParams);
+            return HttpResponse.json({ data: [{ "count()": 3 }] });
+          },
+        ),
+      );
+      return requests;
+    };
+
+    it("keeps the filters and the agent's absolute range over an explicit period", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse(
+          "errors",
+          "level:error",
+          ["count()"],
+          undefined,
+          "-count()",
+          {
+            start: "2026-10-28T00:00:00",
+            end: "2026-10-29T00:00:00",
+          },
+        ),
+      );
+      const requests = captureEventsRequest();
+
+      const result = await runErrorSearch();
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0].get("query")).toBe(query);
+      expect(requests[0].get("start")).toBe("2026-10-28T00:00:00");
+      expect(requests[0].get("end")).toBe("2026-10-29T00:00:00");
+      expect(requests[0].has("statsPeriod")).toBe(false);
+      expect(result).toContain("2026-10-28T00:00:00 to 2026-10-29T00:00:00");
+      expect(result).not.toContain("Last 30d");
+    });
+
+    it("restores dropped filters when the explicit period still applies", async () => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse(
+          "errors",
+          "level:error",
+          ["count()"],
+          undefined,
+          "-count()",
+          {
+            statsPeriod: "30d",
+          },
+        ),
+      );
+      const requests = captureEventsRequest();
+
+      await runErrorSearch();
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0].get("query")).toBe(query);
+      expect(requests[0].get("statsPeriod")).toBe("30d");
+    });
+  });
+
   it("should include the sort field even when caller's explicit fields omit it", async () => {
     // Sentry rejects requests whose sort column isn't in the selected fields,
     // so the handler must append the sort field before issuing the request.

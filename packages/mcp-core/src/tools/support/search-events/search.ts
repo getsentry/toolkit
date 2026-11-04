@@ -332,6 +332,14 @@ function preservesSearchTokens(originalQuery: string, repairedQuery: string) {
   );
 }
 
+const TIMESTAMP_FILTER_PATTERN = /^!?timestamp:/;
+
+function timestampFilterTokens(query: string): string[] {
+  return tokenizeSearchQuery(query).filter((token) =>
+    TIMESTAMP_FILTER_PATTERN.test(token),
+  );
+}
+
 function choosePreservingRepairedQuery(params: {
   originalQuery: string;
   repairedQuery?: string | null;
@@ -849,7 +857,7 @@ async function executeSearchEvents(
       lockDataset || shouldTrustStructuredTraceSearch
         ? inputDataset
         : parsed.dataset;
-    sentryQuery = shouldTrustStructuredTraceSearch
+    const rewrittenQuery = shouldTrustStructuredTraceSearch
       ? choosePreservingRepairedQuery({
           originalQuery: params.query ?? "",
           repairedQuery: parsed.query,
@@ -864,6 +872,16 @@ async function executeSearchEvents(
           )
         ? (params.query ?? "")
         : parsed.query || "";
+    // The agent tends to move `timestamp:` filters into `timeRange`, where an
+    // explicit `period` would replace them. Keep them in the query instead so
+    // the requested bounds are never silently dropped. Structured trace item
+    // searches already keep the original tokens, and logs reject these filters.
+    const requestedTimestampFilters =
+      dataset === "errors" ? timestampFilterTokens(params.query ?? "") : [];
+    sentryQuery = requestedTimestampFilters.reduce(
+      (query, filter) => appendSearchFilter(query, filter),
+      rewrittenQuery,
+    );
     sortParam =
       shouldTrustExplicitSearchParams && explicitSort
         ? explicitSort
@@ -871,10 +889,18 @@ async function executeSearchEvents(
     explanation = parsed.explanation;
     environment = params.environment ?? parsed.environment;
 
+    // An absolute range the agent read from those filters is more specific
+    // than a relative `period`, so `period` must not replace it.
+    const agentTimeRange = parseAgentTimeRange(parsed.timeRange);
+    const hasAgentAbsoluteRange =
+      requestedTimestampFilters.length > 0 &&
+      agentTimeRange?.start !== undefined;
     timeParams =
-      shouldTrustExplicitSearchParams && hasExplicitPeriod
+      shouldTrustExplicitSearchParams &&
+      hasExplicitPeriod &&
+      !hasAgentAbsoluteRange
         ? { statsPeriod: params.period }
-        : (parseAgentTimeRange(parsed.timeRange) ?? { statsPeriod: "14d" });
+        : (agentTimeRange ?? { statsPeriod: "14d" });
 
     if (dataset === "replays") {
       fields = [];
