@@ -4,8 +4,10 @@ import {
   type LocalFeedItem,
 } from "./spotlight.js";
 import { isErrorEvent } from "./workspace.js";
+import { addProfileSpans, profileSources } from "./profile-spans.ts";
 
 export type TraceSpan = {
+  sampled?: boolean;
   id: string;
   parentId?: string;
   operation?: string;
@@ -20,6 +22,7 @@ export type TraceSpan = {
 };
 
 export type TraceGroup = {
+  profileSpansTruncated?: boolean;
   id: string;
   title: string;
   items: LocalFeedItem[];
@@ -36,6 +39,7 @@ export type TraceGroup = {
 type MutableTraceGroup = Omit<TraceGroup, "roots" | "spans" | "itemCount"> & {
   spanMap: Map<string, TraceSpan>;
   titlePriority: number;
+  titleSpanId?: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -84,7 +88,7 @@ function getPayloadSpan(
   const description =
     getString(event.transaction) ??
     item.metadata?.route ??
-    item.metadata?.title ??
+    (item.metadata?.title !== item.type ? item.metadata?.title : undefined) ??
     operation ??
     item.type;
 
@@ -101,6 +105,87 @@ function getPayloadSpan(
     payload,
     metadata: item.metadata ?? getEventMetadata(payload, item.type),
     children: [],
+  };
+}
+
+function defined(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined),
+  );
+}
+
+function mergeSpan(
+  previous: TraceSpan | undefined,
+  next: TraceSpan,
+): TraceSpan {
+  if (!previous) return next;
+  // Completion time decides conflicting captured values. Name quality is
+  // independent: a later partial delivery must not erase an earlier name.
+  // Raw feed items stay untouched.
+  const rank = (span: TraceSpan) =>
+    (span.description.trim() &&
+    span.description !== span.operation &&
+    span.description !== span.id &&
+    span.description !== span.item.type
+      ? 2
+      : 0) + (span.item.type === "transaction" ? 1 : 0);
+  const [primary, secondary] =
+    (previous.endTimestamp ?? -Infinity) > (next.endTimestamp ?? -Infinity)
+      ? [previous, next]
+      : [next, previous];
+  const description =
+    rank(secondary) > rank(primary)
+      ? secondary.description
+      : primary.description;
+  const merge = (left: unknown, right: unknown) => ({
+    ...defined(isRecord(left) ? left : {}),
+    ...defined(isRecord(right) ? right : {}),
+  });
+  const payload = merge(secondary.payload, primary.payload);
+  for (const key of ["data", "attributes", "contexts"]) {
+    const left = isRecord(secondary.payload)
+      ? secondary.payload[key]
+      : undefined;
+    const right = isRecord(primary.payload) ? primary.payload[key] : undefined;
+    if (isRecord(left) || isRecord(right)) payload[key] = merge(left, right);
+  }
+  const leftTrace = getTraceContext(secondary.payload);
+  const rightTrace = getTraceContext(primary.payload);
+  if (Object.keys(leftTrace).length || Object.keys(rightTrace).length) {
+    const contexts = isRecord(payload.contexts) ? payload.contexts : {};
+    payload.contexts = {
+      ...contexts,
+      trace: {
+        ...merge(leftTrace, rightTrace),
+        data: merge(leftTrace.data, rightTrace.data),
+      },
+    };
+  }
+  const starts = [previous.startTimestamp, next.startTimestamp].filter(
+    (value): value is number => value !== undefined,
+  );
+  const ends = [previous.endTimestamp, next.endTimestamp].filter(
+    (value): value is number => value !== undefined,
+  );
+  const startTimestamp = starts.length ? Math.min(...starts) : undefined;
+  const endTimestamp = ends.length ? Math.max(...ends) : undefined;
+  const durationMs = getDurationMs(startTimestamp, endTimestamp);
+  return {
+    ...secondary,
+    ...primary,
+    description,
+    parentId: primary.parentId ?? secondary.parentId,
+    operation: primary.operation ?? secondary.operation,
+    startTimestamp,
+    endTimestamp,
+    durationMs,
+    payload,
+    metadata: {
+      ...defined(secondary.metadata),
+      ...defined(primary.metadata),
+      title: description,
+      durationMs,
+    },
   };
 }
 
@@ -194,8 +279,10 @@ export function buildTraceGroups(
   items: readonly LocalFeedItem[],
 ): TraceGroup[] {
   const traces = new Map<string, MutableTraceGroup>();
+  const profiles = profileSources(items);
 
   for (const item of items) {
+    if (item.type === "profile" || item.type === "profile_chunk") continue;
     const traceId = traceIdForItem(item);
     if (!traceId) {
       continue;
@@ -225,21 +312,37 @@ export function buildTraceGroups(
     if (item.type === "transaction" || item.type === "span") {
       const rootSpan = getPayloadSpan(item.payload, item);
       if (rootSpan) {
-        trace.spanMap.set(rootSpan.id, rootSpan);
+        const merged = mergeSpan(trace.spanMap.get(rootSpan.id), rootSpan);
+        trace.spanMap.set(rootSpan.id, merged);
         const isSegment =
           isRecord(item.payload) && item.payload.is_segment === true;
         if (item.type === "transaction" || isSegment) {
           // A local segment can have a remote parent absent from this receiver.
-          const priority = rootSpan.parentId ? 1 : 2;
-          if (priority > trace.titlePriority) {
-            trace.title = item.metadata?.title ?? rootSpan.description;
+          const named =
+            merged.description.trim() &&
+            merged.description !== merged.operation &&
+            merged.description !== merged.id &&
+            merged.description !== merged.item.type;
+          const priority = (merged.parentId ? 1 : 2) * 10 + (named ? 1 : 0);
+          if (
+            priority > trace.titlePriority ||
+            (priority === trace.titlePriority &&
+              trace.titleSpanId === merged.id)
+          ) {
+            trace.title = named
+              ? merged.description.trim()
+              : (merged.operation ?? merged.id);
             trace.titlePriority = priority;
+            trace.titleSpanId = merged.id;
           }
         }
       }
     }
     for (const childSpan of getChildSpans(item.payload, item)) {
-      trace.spanMap.set(childSpan.id, childSpan);
+      trace.spanMap.set(
+        childSpan.id,
+        mergeSpan(trace.spanMap.get(childSpan.id), childSpan),
+      );
     }
   }
 
@@ -251,11 +354,37 @@ export function buildTraceGroups(
       for (const span of spans) {
         span.children = [];
       }
+      // Parent links form a functional graph. Break one edge per cycle for
+      // display, preserving the wire parentId and visiting each node once.
+      const visited = new Set<string>();
+      const cycleRoots = new Set<string>();
+      for (const span of spans) {
+        const path: string[] = [];
+        const positions = new Map<string, number>();
+        let current: TraceSpan | undefined = span;
+        while (current && !visited.has(current.id)) {
+          const position = positions.get(current.id);
+          if (position !== undefined) {
+            let rootId = current.id;
+            for (let index = position; index < path.length; index++) {
+              if (path[index]! < rootId) rootId = path[index]!;
+            }
+            cycleRoots.add(rootId);
+            break;
+          }
+          positions.set(current.id, path.length);
+          path.push(current.id);
+          current = current.parentId
+            ? trace.spanMap.get(current.parentId)
+            : undefined;
+        }
+        for (const id of path) visited.add(id);
+      }
       for (const span of spans) {
         const parent = span.parentId
           ? trace.spanMap.get(span.parentId)
           : undefined;
-        if (parent && parent !== span) {
+        if (parent && parent !== span && !cycleRoots.has(span.id)) {
           parent.children.push(span);
         } else {
           roots.push(span);
@@ -279,6 +408,7 @@ export function buildTraceGroups(
         durationMs: trace.durationMs,
       };
     })
+    .map((trace) => addProfileSpans(trace, profiles))
     .sort(
       (left, right) => (right.endTimestamp ?? 0) - (left.endTimestamp ?? 0),
     );

@@ -24,11 +24,14 @@ import type { Server } from "node:http";
 import { basename } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { serve } from "@hono/node-server";
+import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import {
-  createSpotlightBuffer,
-  pushToSpotlightBuffer,
-} from "@spotlightjs/spotlight/sdk";
-import { Hono } from "hono";
+  ingestReceiverEnvelope,
+  readReceiverBody,
+  receiverEnvelopeId,
+  type ReceiverEnvelope,
+} from "./receiver-ingest.js";
+import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import type { SentryContext } from "../../context.js";
@@ -215,23 +218,26 @@ export function buildSSEHandler(
   useBase64 = false,
 ) {
   const base64Indicator = useBase64 ? ";base64" : "";
-  return (container: {
-    getParsedEnvelope: () => {
-      envelope: [Record<string, unknown>, unknown[]];
-    } | null;
-    getContentType: () => string;
-  }) => {
+  return (container: ReceiverEnvelope) => {
     try {
+      const envelopeId = receiverEnvelopeId(container);
       const parsed = container.getParsedEnvelope();
-      if (!parsed) {
-        return;
+      let data: string;
+      try {
+        data = parsed
+          ? JSON.stringify(parsed.envelope)
+          : container.getData().toString("utf8");
+      } catch {
+        logger.debug(
+          "Local receiver is streaming raw data because decoded JSON could not serialize.",
+        );
+        data = container.getData().toString("utf8");
       }
-      const envelopeId = spotlightEnvelopeId(parsed.envelope[0]);
       stream
         .writeSSE({
           id: envelopeId || undefined,
           event: `${container.getContentType()}${base64Indicator}`,
-          data: JSON.stringify(parsed.envelope),
+          data,
         })
         .catch((err: unknown) => {
           logger.debug(
@@ -367,7 +373,7 @@ export function buildApp(
         : undefined;
     try {
       validateMaxEnvelopes(value);
-      retention.resize(value);
+      await retention.resize(value);
       return c.json(retention.getSettings());
     } catch (error) {
       if (error instanceof RetentionLimitError)
@@ -406,23 +412,9 @@ export function buildApp(
     }
   });
 
-  const ingest = async (c: {
-    req: {
-      arrayBuffer: () => Promise<ArrayBuffer>;
-      header: (name: string) => string | undefined;
-      query: (name: string) => string | undefined;
-    };
-    body: (data: null, status: number) => Response;
-  }) => {
-    const contentLength = Number(c.req.header("content-length") ?? 0);
-    if (contentLength > MAX_BODY_BYTES) {
-      return c.body(null, 413);
-    }
-    const arrayBuf = await c.req.arrayBuffer();
-    if (arrayBuf.byteLength > MAX_BODY_BYTES) {
-      return c.body(null, 413);
-    }
-    const body = Buffer.from(arrayBuf);
+  const ingest = async (c: Context) => {
+    const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
+    if (typeof body === "number") return c.body(null, body);
     // Browser SDKs using sendBeacon() set Content-Type to text/plain to
     // avoid CORS preflight. Detect this via the sentry_client query param
     // and override to the canonical Sentry envelope content type.
@@ -433,25 +425,18 @@ export function buildApp(
     ) {
       contentType = SENTRY_CONTENT_TYPE;
     }
-    const rawEncoding = c.req.header("content-encoding");
-    const contentEncoding = (
-      rawEncoding === "gzip" ||
-      rawEncoding === "deflate" ||
-      rawEncoding === "br"
-        ? rawEncoding
-        : undefined
-    ) as "gzip" | "deflate" | "br" | undefined;
+    const contentEncoding = c.req.header("content-encoding");
     const userAgent = c.req.header("user-agent");
 
-    pushToSpotlightBuffer({
-      spotlightBuffer,
+    const status = await ingestReceiverEnvelope(spotlightBuffer, {
       body,
       encoding: contentEncoding,
       contentType,
       userAgent,
     });
 
-    return c.body(null, 204);
+    if (status === 503) c.header("Retry-After", "1");
+    return c.body(null, status);
   };
 
   app.post("/stream", ingest);

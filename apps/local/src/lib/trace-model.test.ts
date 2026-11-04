@@ -442,3 +442,244 @@ test("child spans retain their own raw payload independently of the transaction"
     payload,
   );
 });
+
+test.each([true, false])(
+  "merges partial duplicate roots without losing details (transaction first: %s)",
+  (transactionFirst) => {
+    const decode = (type: string, payload: unknown) =>
+      decodeEnvelope(JSON.stringify([{}, [[{ type }, payload]]]), type);
+    const transaction = decode("transaction", {
+      transaction: "GET /orders",
+      start_timestamp: 1,
+      timestamp: 2,
+      contexts: {
+        trace: {
+          trace_id: "t",
+          span_id: "root",
+          op: "http.server",
+          data: { "http.response_content_length": 123 },
+        },
+      },
+      request: { method: "GET" },
+    });
+    const segment = decode("span", {
+      version: 2,
+      items: [
+        {
+          trace_id: "t",
+          span_id: "root",
+          is_segment: true,
+          start_timestamp: 1.2,
+          end_timestamp: 1.8,
+          attributes: { "sentry.origin": { value: "auto.http" } },
+        },
+      ],
+    });
+    const [trace] = buildTraceGroups(
+      transactionFirst
+        ? [...transaction, ...segment]
+        : [...segment, ...transaction],
+    );
+    expect(trace?.title).toBe("GET /orders");
+    expect(trace?.spans).toHaveLength(1);
+    expect(trace?.spans[0]).toMatchObject({
+      description: "GET /orders",
+      operation: "http.server",
+      startTimestamp: 1,
+      endTimestamp: 2,
+      durationMs: 1000,
+      metadata: { method: "GET", origin: "auto.http" },
+      payload: {
+        contexts: { trace: { data: { "http.response_content_length": 123 } } },
+        attributes: { "sentry.origin": { value: "auto.http" } },
+      },
+    });
+    expect(transaction[0]?.payload).not.toHaveProperty("attributes");
+    expect(segment[0]?.payload).not.toHaveProperty("contexts");
+  },
+);
+
+test("cycles keep every captured span reachable without changing declared parent IDs", () => {
+  const items = decodeEnvelope(
+    JSON.stringify([
+      {},
+      [
+        [
+          { type: "span" },
+          {
+            version: 2,
+            items: [
+              { span_id: "a", parent_span_id: "b" },
+              { span_id: "b", parent_span_id: "a" },
+              { span_id: "child", parent_span_id: "b" },
+              { span_id: "self", parent_span_id: "self" },
+            ].map((span) => ({
+              ...span,
+              trace_id: "cycle",
+              start_timestamp: 1,
+              end_timestamp: 2,
+            })),
+          },
+        ],
+      ],
+    ]),
+    "cycle",
+  );
+  const [trace] = buildTraceGroups(items);
+  const pending = [...trace!.roots];
+  const seen = new Set<string>();
+  while (pending.length) {
+    const span = pending.pop()!;
+    expect(seen.has(span.id)).toBe(false);
+    seen.add(span.id);
+    pending.push(...span.children);
+  }
+  expect([...seen].sort()).toEqual(["a", "b", "child", "self"]);
+  expect(trace?.spans.find((span) => span.id === "a")?.parentId).toBe("b");
+  expect(trace?.spans.find((span) => span.id === "b")?.parentId).toBe("a");
+});
+
+test.each([true, false])(
+  "blank segment names cannot replace a captured trace title (named first: %s)",
+  (namedFirst) => {
+    const named = {
+      span_id: "named",
+      name: "GET /orders",
+      start_timestamp: 1,
+      end_timestamp: 2,
+    };
+    const blank = {
+      span_id: "blank",
+      name: "   ",
+      start_timestamp: 2,
+      end_timestamp: 3,
+    };
+    const items = decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "span" },
+            {
+              version: 2,
+              items: (namedFirst ? [named, blank] : [blank, named]).map(
+                (span) => ({
+                  ...span,
+                  trace_id: "titles",
+                  is_segment: true,
+                  attributes: { "sentry.op": { value: "http.server" } },
+                }),
+              ),
+            },
+          ],
+        ],
+      ]),
+      "titles",
+    );
+    expect(buildTraceGroups(items)[0]?.title).toBe("GET /orders");
+  },
+);
+
+test.each([true, false])(
+  "duplicate spans use the latest completion for captured values (draft first: %s)",
+  (draftFirst) => {
+    const draft = {
+      trace_id: "updates",
+      span_id: "chat",
+      description: "Chat",
+      op: "gen_ai.chat",
+      start_timestamp: 1,
+      timestamp: 2,
+      status: "ok",
+      data: { response: "Draft", model: "captured-model" },
+    };
+    const final = {
+      ...draft,
+      timestamp: 3,
+      status: "internal_error",
+      data: { response: "Final" },
+    };
+    const partial = {
+      trace_id: "updates",
+      span_id: "chat",
+      start_timestamp: 1,
+      timestamp: 4,
+      status: undefined,
+      data: { response: undefined, partial: true },
+    };
+    const decode = (payload: unknown, id: string) =>
+      decodeEnvelope(JSON.stringify([{}, [[{ type: "span" }, payload]]]), id);
+    const initial = draftFirst ? [draft, final] : [final, draft];
+    const entries = initial.flatMap((payload, index) =>
+      decode(payload, String(index)),
+    );
+    const [completed] = buildTraceGroups(entries);
+    expect(completed?.spans[0]).toMatchObject({
+      description: "Chat",
+      endTimestamp: 3,
+      metadata: { spanStatus: "internal_error" },
+      payload: {
+        timestamp: 3,
+        status: "internal_error",
+        data: { response: "Final", model: "captured-model" },
+      },
+    });
+    const [updated] = buildTraceGroups([
+      ...entries,
+      ...decode(partial, "partial"),
+    ]);
+    expect(updated?.spans[0]).toMatchObject({
+      description: "Chat",
+      operation: "gen_ai.chat",
+      endTimestamp: 4,
+      metadata: { spanStatus: "internal_error" },
+      payload: {
+        timestamp: 4,
+        status: "internal_error",
+        data: { response: "Final", model: "captured-model", partial: true },
+      },
+    });
+  },
+);
+
+test.each([false, true])(
+  "equal-priority trace titles update only for the chosen root (same root: %s)",
+  (sameRoot) => {
+    const items = decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "span" },
+            {
+              version: 2,
+              items: [
+                {
+                  span_id: "root",
+                  name: "GET /first",
+                  start_timestamp: 1,
+                  end_timestamp: 2,
+                },
+                {
+                  span_id: sameRoot ? "root" : "other-root",
+                  name: "GET /later",
+                  start_timestamp: 1,
+                  end_timestamp: 3,
+                },
+              ].map((span) => ({
+                ...span,
+                trace_id: "stable-title",
+                is_segment: true,
+                attributes: { "sentry.op": { value: "http.server" } },
+              })),
+            },
+          ],
+        ],
+      ]),
+      "titles",
+    );
+    expect(buildTraceGroups(items)[0]?.title).toBe(
+      sameRoot ? "GET /later" : "GET /first",
+    );
+  },
+);
