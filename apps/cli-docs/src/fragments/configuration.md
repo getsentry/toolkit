@@ -100,7 +100,7 @@ When telemetry can't be sent, for example while offline or when a firewall block
 
 After the first failed send, the CLI stops sending for 5 minutes, so an unreachable Sentry delays a command's exit by about 3 seconds at most. Long-running commands, such as `sentry mcp` and `sentry local`, then try one send every 5 minutes, and send what they stored once one succeeds.
 
-Opting out deletes the cache on the next run. The library (`createSentrySDK`) never caches telemetry, and neither does `sentry mcp` when `--sentry-dsn` or `SENTRY_DSN` sends its telemetry elsewhere.
+Opting out deletes the cache on the next run. The library (`createSentrySDK`) never caches telemetry.
 
 ## Global Options
 

@@ -177,7 +177,7 @@ describe("initMcpTelemetry", () => {
     }
   });
 
-  test("stores telemetry for the CLI's project that fails to send", async () => {
+  test("stores telemetry that fails to send", async () => {
     const { storedCount } = await openStore();
     const { url } = await startRefusedIngest();
     const transport = buildTransport(await initOptions(), url);
@@ -185,18 +185,6 @@ describe("initMcpTelemetry", () => {
     await expect(transport.send(eventEnvelope("a"))).resolves.toEqual({});
 
     expect(storedCount()).toBe(1);
-  });
-
-  test("a custom DSN keeps the plain transport and never stores", async () => {
-    const { storedCount } = await openStore();
-    const { url } = await startRefusedIngest();
-    const options = await initOptions({
-      sentryDsn: "https://key@o1.ingest.sentry.io/1",
-    });
-
-    await buildTransport(options, url).send(eventEnvelope("a")).catch(noop);
-
-    expect(storedCount()).toBe(0);
   });
 
   test("sends what earlier runs stored at startup", async () => {

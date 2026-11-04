@@ -251,7 +251,6 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     "app.upstream.host": config.sentryHost,
     "app.url.full": config.mcpUrl,
   };
-
   // Unsent telemetry shares the CLI's store, so opting out clears it, as in
   // `withTelemetry()`.
   const storeTelemetry = isTelemetryEnabled();
