@@ -862,28 +862,53 @@ export function getExitCode(error: unknown): number {
 }
 
 /**
- * Sentry's search-query parser emits a 400 whose detail begins with this phrase
- * when the user's `--query` cannot be parsed (e.g. `is:403`, `lastSeen:>=-24h`,
- * an empty `status:`). The server is telling us the user-supplied query is
- * malformed — a user input error, not the CLI constructing a bad request.
+ * Issue search wraps search-query parser failures in this phrase
+ * (e.g. `is:403`, `lastSeen:>=-24h`, an empty `status:`). The server is telling
+ * us the user-supplied query is malformed — a user input error, not the CLI
+ * constructing a bad request.
  */
 const SEARCH_QUERY_PARSE_MARKER = "Error parsing search query";
+
+/**
+ * The Events endpoint (explore, spans, logs, traces) returns the same parser
+ * failures unwrapped, as raised by `sentry/api/event_search.py`. Only
+ * grammar-level messages are listed: they describe text that could not be
+ * parsed, which the CLI's own `key:value` scope terms never produce.
+ */
+const EVENTS_SEARCH_PARSE_ERRORS: readonly RegExp[] = [
+  /^Parse error at '/,
+  /^Invalid quote at '/,
+  /^Search terms cannot end with an escape character/,
+  /^Unexpected escape character: /,
+  /^Lists should not have empty values/,
+  /^Empty string after '/,
+  /^"is:" queries are not supported in this search/,
+  /^Invalid value for "is" search/,
+  /^"in" syntax invalid for "is" search/,
+  /^Boolean statements containing "OR" or "AND" are not supported/,
+  /^Invalid format for "has" search/,
+  /^\S+: Invalid (?:date|boolean|number): /,
+];
 
 /**
  * Whether an {@link ApiError} is a Sentry search-query parse failure (HTTP 400
  * whose detail reports an unparseable query). The CLI preserves the server's
  * detail when re-wrapping list errors (`enrichIssueListError` in
- * `commands/issue/list.ts` prepends the original detail), so a substring match
- * is robust to that wrapping.
+ * `commands/issue/list.ts` prepends the original detail), so the issue-search
+ * marker is matched as a substring.
  *
  * Shared by the three 4xx classifiers so they agree on these 400s:
  * `classifySilenced` (Sentry capture), {@link isUserError} (upgrade nudge), and
  * `isUserApiError` (span attribution).
  */
 export function isSearchQueryParseError(error: ApiError): boolean {
+  const detail = error.detail;
+  if (error.status !== 400 || !detail) {
+    return false;
+  }
   return (
-    error.status === 400 &&
-    (error.detail?.includes(SEARCH_QUERY_PARSE_MARKER) ?? false)
+    detail.includes(SEARCH_QUERY_PARSE_MARKER) ||
+    EVENTS_SEARCH_PARSE_ERRORS.some((pattern) => pattern.test(detail))
   );
 }
 

@@ -1348,6 +1348,47 @@ describe("sentry explore", () => {
     });
   });
 
+  describe("search syntax errors", () => {
+    const detail =
+      "Invalid quote at '*\"POST': quotes must enclose text or be escaped.";
+
+    test("reports an unparseable --query as a query ValidationError", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      queryEventsSpy.mockRejectedValue(
+        new ApiError("Bad request", 400, detail),
+      );
+      const { context } = createContext();
+
+      const error = await func
+        .call(
+          context,
+          {
+            ...DEFAULT_FLAGS,
+            dataset: "spans",
+            query: 'span.description:*"POST',
+          },
+          "test-org/",
+        )
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({ field: "query" });
+      expect((error as Error).message).toContain(detail);
+      expect((error as Error).message).toContain("Check your --query syntax");
+    });
+
+    test("keeps the ApiError when the CLI built the query", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const original = new ApiError("Bad request", 400, detail);
+      queryEventsSpy.mockRejectedValue(original);
+      const { context } = createContext();
+
+      await expect(
+        func.call(context, { ...DEFAULT_FLAGS, dataset: "spans" }, "test-org/"),
+      ).rejects.toBe(original);
+    });
+  });
+
   describe("metrics dataset validation", () => {
     test("rejects standard aggregates on metrics dataset", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
