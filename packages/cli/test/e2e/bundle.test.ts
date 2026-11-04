@@ -71,7 +71,11 @@ async function runReadingScripts(args: string[]) {
       "--",
       ...args,
     ],
-    { cwd: ROOT_DIR },
+    {
+      cwd: ROOT_DIR,
+      // Signed out, so no command calls the API
+      env: { ...process.env, SENTRY_AUTH_TOKEN: "", SENTRY_TOKEN: "" },
+    },
   );
   const scripts = JSON.parse(
     stderr.slice(stderr.lastIndexOf("\n") + 1),
