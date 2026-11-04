@@ -26,6 +26,7 @@ toolkit/
 │   └── local/               # Sentry Local browser viewer
 ├── packages/
 │   ├── cli/                 # Sentry CLI (see packages/cli/AGENTS.md)
+│   ├── cli-codemod-v3-to-v4/ # @getsentry/cli-v3-to-v4 codemod (Codemod Registry)
 │   ├── logger/              # Structured logger (@sentry/logger on npm)
 │   ├── toolkit-core/        # Shared CLI/MCP primitives
 │   ├── mcp-core/            # Core MCP implementation (private)

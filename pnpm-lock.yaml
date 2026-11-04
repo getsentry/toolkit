@@ -681,6 +681,15 @@ importers:
         specifier: 3.4.0
         version: 3.4.0
 
+  packages/cli-codemod-v3-to-v4:
+    devDependencies:
+      '@codemod.com/jssg-types':
+        specifier: 1.6.3
+        version: 1.6.3
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   packages/logger:
     devDependencies:
       '@types/node':
@@ -1807,6 +1816,9 @@ packages:
 
   '@cloudflare/workers-types@4.20260405.1':
     resolution: {integrity: sha512-PokTmySa+D6MY01R1UfYH48korsN462NK/fl3aw47Hg7XuLuSo/RTpjT0vtWaJhJoFY5tHGOBBIbDcIc8wltLg==}
+
+  '@codemod.com/jssg-types@1.6.3':
+    resolution: {integrity: sha512-b5829ixO5TdGL5xg5YcL9YfiLC3WwFZU+8Zx78NpsHlJ1iySbqfA0g0psqNXv8ss/r7hdpy2KiBXm3GE6bN5bQ==}
 
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
@@ -10289,6 +10301,8 @@ snapshots:
   '@cloudflare/workers-oauth-provider@0.10.3(patch_hash=34910b67929c1888b1492384c514d6baeedc4a439f66e21375dee5af404834f8)': {}
 
   '@cloudflare/workers-types@4.20260405.1': {}
+
+  '@codemod.com/jssg-types@1.6.3': {}
 
   '@cspotcode/source-map-support@0.8.1':
     dependencies:

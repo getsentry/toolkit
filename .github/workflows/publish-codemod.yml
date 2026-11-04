@@ -1,0 +1,29 @@
+name: Publish codemod
+
+# Publishes packages/cli-codemod-v3-to-v4 to the Codemod Registry as
+# `@getsentry/cli-v3-to-v4`. Codemod authenticates the publish with this
+# workflow's GitHub Actions OIDC token, so no API key is stored here. The
+# `@getsentry` scope must be verified once on codemod.com; see
+# packages/cli-codemod-v3-to-v4/README.md.
+
+on:
+  push:
+    tags:
+      - "cli-v3-to-v4@v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to Codemod Registry
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: codemod/publish-action@dd6c8dbc5ceb1a6146feba41481d88b43da50024 # v1
+        with:
+          path: packages/cli-codemod-v3-to-v4

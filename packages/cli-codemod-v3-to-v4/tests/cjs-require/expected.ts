@@ -1,0 +1,1 @@
+const SentryCli = require('sentry');
