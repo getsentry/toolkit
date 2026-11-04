@@ -1,1 +1,1 @@
-const SentryCli = require('sentry');
+const SentryCli = require('sentry').default;

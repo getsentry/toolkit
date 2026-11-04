@@ -145,13 +145,20 @@ const codemod: Codemod<L> = async (root) => {
     // The declarator may be the direct parent, or one level up when the require
     // is the object of a member expression (`require(...).default`).
     let decl = call.parent();
+    const bare = decl?.kind() === "variable_declarator";
     if (decl?.kind() === "member_expression") decl = decl.parent();
     if (decl?.kind() === "variable_declarator") {
       const id = decl.field("name");
       if (id?.kind() === "identifier") bindings.add(id.text());
     }
     const q = src.text()[0];
-    edits.push(replaceNode(src, `${q}sentry${q}`));
+    // v3 set `module.exports` to the class itself; v4's CJS module object only
+    // exposes the factory as `.default`/`createSentrySDK`, so add `.default`.
+    edits.push(
+      bare
+        ? replaceNode(call, `require(${q}sentry${q}).default`)
+        : replaceNode(src, `${q}sentry${q}`),
+    );
   }
 
   // Only touch files that actually import the v3 wrapper.
@@ -342,21 +349,18 @@ const codemod: Codemod<L> = async (root) => {
 
     let argsOut: string;
     if (reshape) {
-      const parts: string[] = [];
-      if (a[0]) parts.push(`${reshape.key}: ${a[0].text()}`);
-      if (reshape.spread && a[1]) {
-        if (a[1].kind() === "object") {
-          const inner = a[1]
-            .text()
-            .replace(/^\{\s*/, "")
-            .replace(/\s*\}$/, "")
-            .trim();
-          if (inner) parts.push(inner);
-        } else {
-          parts.push(`...${a[1].text()}`);
-        }
+      const lead = a[0] ? `${reshape.key}: ${a[0].text()}` : "";
+      const opts = reshape.spread ? a[1] : undefined;
+      if (opts?.kind() === "object" && opts.children().some(named)) {
+        // Keep the user's object text verbatim (layout and comments, so a
+        // trailing `// …` can't swallow the closing brace); prepend the key.
+        argsOut = `{ ${lead ? `${lead},` : ""}${opts.text().slice(1)}`;
+      } else {
+        const parts = [lead];
+        if (opts && opts.kind() !== "object") parts.push(`...${opts.text()}`);
+        const kept = parts.filter(Boolean);
+        argsOut = kept.length ? `{ ${kept.join(", ")} }` : "";
       }
-      argsOut = parts.length ? `{ ${parts.join(", ")} }` : "";
     } else {
       argsOut = a.map((n) => n.text()).join(", ");
     }
