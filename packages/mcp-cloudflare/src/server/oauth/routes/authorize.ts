@@ -21,6 +21,7 @@ import {
   createResourceValidationError,
   getAuthorizationServerIssuer,
   getUpstreamAuthorizeUrl,
+  promptRequestsAccountSelection,
   validateResourceParameter,
 } from "../helpers";
 import { parseResourceMcpConstraints } from "../resource-scope";
@@ -44,6 +45,7 @@ async function redirectToUpstream(
   oauthReqInfo: AuthRequest | AuthRequestWithSkills,
   headers: HeadersInit = {},
   stateOverride?: string,
+  forcePrompt = false,
 ) {
   const responseHeaders = new Headers(headers);
   responseHeaders.set(
@@ -57,6 +59,7 @@ async function redirectToUpstream(
       client_id: env.SENTRY_CLIENT_ID,
       redirect_uri: new URL("/oauth/callback", request.url).href,
       state: stateOverride ?? btoa(JSON.stringify(oauthReqInfo)),
+      force_prompt: forcePrompt,
     }),
   );
 
@@ -228,6 +231,10 @@ export default new Hono<{ Bindings: Env }>()
       state: { oauthReqInfo: oauthReqInfoWithResource },
       cookieSecret: c.env.COOKIE_SECRET,
       defaultSkills,
+      // Clients such as Copilot CLI send an OIDC `prompt` to add another account.
+      defaultSwitchAccount: promptRequestsAccountSelection(
+        requestUrl.searchParams.get("prompt"),
+      ),
     });
 
     const registrationMethodTelemetry =
@@ -266,7 +273,7 @@ export default new Hono<{ Bindings: Env }>()
       return c.text("Invalid request", 400);
     }
 
-    const { state, headers, skills, decision } = result;
+    const { state, headers, skills, decision, switchAccount } = result;
 
     if (!state.oauthReqInfo) {
       return c.text("Invalid request", 400);
@@ -381,5 +388,6 @@ export default new Hono<{ Bindings: Env }>()
       oauthReqWithSkills,
       headers,
       signedState,
+      switchAccount,
     );
   });

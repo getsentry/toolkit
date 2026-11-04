@@ -37,6 +37,14 @@ function expectSkillUnchecked(html: string, skillId: string): void {
   expect(skillInputAttributes(html, skillId)).not.toContain("checked");
 }
 
+function switchAccountInputAttributes(html: string): string {
+  const match = html.match(
+    /<input type="checkbox" name="switch_account" value="1"([^>]*)>/,
+  );
+  expect(match).not.toBeNull();
+  return match?.[1] ?? "";
+}
+
 function extractCookiePair(setCookie: string, cookieName: string): string {
   const marker = `${cookieName}=`;
   const start = setCookie.indexOf(marker);
@@ -127,6 +135,43 @@ describe("oauth authorize routes", () => {
       expect(html).toContain("<form");
       expect(html).toContain('name="state"');
     });
+
+    it.each([
+      [undefined, false],
+      ["none", false],
+      ["select_account", true],
+      ["consent", true],
+      ["login", true],
+      ["login consent", true],
+    ])(
+      "preselects switching accounts for prompt=%s: %s",
+      async (prompt, checked) => {
+        mockOAuthProvider.parseAuthRequest.mockResolvedValueOnce({
+          clientId: "test-client",
+          redirectUri: "https://example.com/callback",
+          scope: ["read"],
+          state: "orig",
+        });
+        mockOAuthProvider.lookupClient.mockResolvedValueOnce({
+          clientId: "test-client",
+          clientName: "Test Client",
+          redirectUris: ["https://example.com/callback"],
+          tokenEndpointAuthMethod: "client_secret_basic",
+        });
+
+        const url = new URL("http://localhost/oauth/authorize");
+        if (prompt) url.searchParams.set("prompt", prompt);
+        const response = await app.fetch(new Request(url), testEnv as Env);
+
+        expect(response.status).toBe(200);
+        const attributes = switchAccountInputAttributes(await response.text());
+        if (checked) {
+          expect(attributes).toContain("checked");
+        } else {
+          expect(attributes).not.toContain("checked");
+        }
+      },
+    );
 
     it("renders only the requested redirect URI when the client has multiple registered URIs", async () => {
       mockOAuthProvider.parseAuthRequest.mockResolvedValueOnce({
@@ -465,6 +510,46 @@ describe("oauth authorize routes", () => {
       );
       expect((decodedState.req as any).scope).toEqual(["read", "write"]);
     });
+
+    it.each([
+      ["1", "1"],
+      [null, null],
+    ])(
+      "forwards switch_account=%s to Sentry as force_prompt=%s",
+      async (switchAccount, forcePrompt) => {
+        const oauthReqInfo = {
+          clientId: "test-client",
+          redirectUri: "https://example.com/callback",
+          scope: ["read"],
+          state: "original-state",
+        };
+        const formData = new FormData();
+        const signedState = await signState(
+          {
+            req: { oauthReqInfo },
+            iat: Date.now(),
+            exp: Date.now() + 10 * 60 * 1000,
+          },
+          testEnv.COOKIE_SECRET!,
+        );
+        formData.append("state", signedState);
+        formData.append("skill", "triage");
+        if (switchAccount) formData.append("switch_account", switchAccount);
+
+        const response = await app.fetch(
+          new Request("http://localhost/oauth/authorize", {
+            method: "POST",
+            body: formData,
+          }),
+          testEnv as Env,
+        );
+
+        expect(response.status).toBe(302);
+        const redirectUrl = new URL(response.headers.get("location")!);
+        expect(redirectUrl.hostname).toBe("sentry.io");
+        expect(redirectUrl.searchParams.get("force_prompt")).toBe(forcePrompt);
+      },
+    );
 
     it("uses submitted skills rather than remembered skills for redirect state", async () => {
       mockOAuthProvider.lookupClient.mockResolvedValue({
