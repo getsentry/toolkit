@@ -50,7 +50,7 @@ import {
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { getCachedCompletionEntities } from "../../src/lib/db/completion-cache.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
-import { ApiError, AuthError } from "../../src/lib/errors.js";
+import { ApiError, AuthError, TimeoutError } from "../../src/lib/errors.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
 // --- Shared test setup ---
@@ -1398,6 +1398,27 @@ describe("infrastructure.ts", () => {
           "context",
         ),
       ).toThrow(authError);
+    });
+
+    test("keeps a TimeoutError and its hint, prefixed with the operation", () => {
+      const timeout = new TimeoutError(
+        "Request timed out after 30s.",
+        "If the problem persists, check https://status.sentry.io.",
+      );
+      let thrown: unknown;
+      try {
+        unwrapResult(
+          { data: undefined, error: timeout, response: undefined },
+          "Failed to create release",
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(TimeoutError);
+      expect((thrown as TimeoutError).message).toBe(
+        "Failed to create release: Request timed out after 30s.",
+      );
+      expect((thrown as TimeoutError).hint).toBe(timeout.hint);
     });
 
     test("returns data on success", () => {

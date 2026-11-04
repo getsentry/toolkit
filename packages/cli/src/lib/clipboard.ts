@@ -115,6 +115,7 @@ export function setupCopyKeyListener(
     if (key === CTRL_C) {
       stdin.setRawMode(false);
       stdin.pause();
+      // oxlint-disable-next-line sentry-cli/no-process-exit -- Ctrl+C in raw mode: exit 130 like SIGINT would.
       process.exit(130);
     }
   };

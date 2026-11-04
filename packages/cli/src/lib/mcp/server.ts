@@ -20,7 +20,6 @@ import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { startStdio } from "@sentry/mcp-core/transports/stdio";
 import type { CredentialRouter, ServerContext } from "@sentry/mcp-core/types";
 import {
-  captureException,
   consoleLoggingIntegration,
   flush,
   init,
@@ -34,6 +33,7 @@ import { logger } from "../logger.js";
 import { isTelemetryEnabled } from "../telemetry.js";
 import { redactTelemetryEnvelope } from "../telemetry/credential-redaction.js";
 import type { McpServerConfig } from "./config.js";
+import { reportCliError } from "../error-reporting.js";
 
 /** Credential wiring supplied by the CLI host. */
 export type McpServeOptions = {
@@ -301,6 +301,7 @@ export function installProcessHandlers(): (
   let exiting = false;
   function exitAfterError(error: unknown, label: string): void {
     if (exiting) {
+      // oxlint-disable-next-line sentry-cli/no-process-exit -- a second fatal error while the first one is exiting.
       process.exit(1);
     }
     exiting = true;
@@ -318,13 +319,15 @@ export function installProcessHandlers(): (
     }
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- reporting must not block exit.
     try {
-      captureException(error);
+      reportCliError(error);
     } catch {
       // reporting must not block exit
     }
 
     // Don't depend on flush finishing — exit even if it hangs or rejects.
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- fatal error: exit even when the flush hangs.
     setTimeout(() => process.exit(1), SENTRY_FLUSH_TIMEOUT_MS).unref();
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- fatal error: exit once the flush settles.
     void flush(SENTRY_FLUSH_TIMEOUT_MS).finally(() => process.exit(1));
   }
 
@@ -337,6 +340,7 @@ export function installProcessHandlers(): (
     exiting = true;
     console.error(`${signal} received, shutting down...`);
     await flush(SENTRY_FLUSH_TIMEOUT_MS);
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- signal shutdown, after the flush.
     process.exit(0);
   }
 

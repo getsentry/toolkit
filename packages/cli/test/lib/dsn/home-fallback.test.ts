@@ -13,13 +13,17 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { fakeHome } = vi.hoisted(() => ({ fakeHome: { path: "" } }));
+const { fakeHome, fakeTmp } = vi.hoisted(() => ({
+  fakeHome: { path: "" },
+  fakeTmp: { path: "" },
+}));
 
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
   return {
     ...actual,
     homedir: () => fakeHome.path,
+    tmpdir: () => fakeTmp.path || actual.tmpdir(),
   };
 });
 
@@ -42,6 +46,7 @@ describe("DSN detection from $HOME fallback", () => {
 
   afterEach(() => {
     fakeHome.path = "";
+    fakeTmp.path = "";
     delete process.env.SENTRY_DSN;
   });
 
@@ -115,6 +120,78 @@ describe("DSN detection from $HOME fallback", () => {
     const result = await detectDsn(project);
     expect(result?.raw).toBe(projectDsn);
     expect(result?.source).toBe("code");
+  });
+
+  describe("when a stray project marker sits directly in $HOME", () => {
+    // A ~/package.json or a dotfiles ~/.git makes $HOME the project root
+    // with reason "language" / "vcs" instead of "fallback". The scan must
+    // still be skipped — otherwise it walks ~/Library, cloud-storage and
+    // FUSE mounts, and can pick up an unrelated DSN from anywhere in $HOME.
+    const strayDsn = "https://stray@o444.ingest.sentry.io/444";
+
+    beforeEach(() => {
+      mkdirSync(join(home, "notes"), { recursive: true });
+      writeFileSync(
+        join(home, "notes", "old-demo.ts"),
+        `Sentry.init({ dsn: "${strayDsn}" });`,
+      );
+    });
+
+    test.each([
+      ["language marker", "package.json"],
+      ["build-system marker", "Makefile"],
+    ])("skips the scan with a %s in $HOME", async (_label, marker) => {
+      writeFileSync(join(home, marker), "");
+
+      expect(await detectDsn(home)).toBeNull();
+      expect((await detectAllDsns(home)).all).toHaveLength(0);
+    });
+
+    test("skips the scan with a VCS root at $HOME", async () => {
+      mkdirSync(join(home, ".git"), { recursive: true });
+
+      expect(await detectDsn(home)).toBeNull();
+      expect((await detectAllDsns(home)).all).toHaveLength(0);
+    });
+
+    test("skips the scan when a marker-less subdirectory walks up to $HOME", async () => {
+      writeFileSync(join(home, "package.json"), "{}");
+      const workspace = join(home, ".agent", "workspaces", "w1");
+      mkdirSync(workspace, { recursive: true });
+
+      expect(await detectDsn(workspace)).toBeNull();
+      expect((await detectAllDsns(workspace)).all).toHaveLength(0);
+    });
+  });
+
+  describe("from a shared temp root", () => {
+    test("does not scan the temp root itself", async () => {
+      const tmpRoot = join(getConfigDir(), "tmp");
+      fakeTmp.path = tmpRoot;
+      const mount = join(tmpRoot, ".mount_app");
+      mkdirSync(mount, { recursive: true });
+      writeFileSync(
+        join(mount, "config.ts"),
+        `Sentry.init({ dsn: "https://mnt@o555.ingest.sentry.io/555" });`,
+      );
+
+      expect(await detectDsn(tmpRoot)).toBeNull();
+      expect((await detectAllDsns(tmpRoot)).all).toHaveLength(0);
+    });
+
+    test("still scans a project directory inside the temp root", async () => {
+      const tmpRoot = join(getConfigDir(), "tmp");
+      fakeTmp.path = tmpRoot;
+      const project = join(tmpRoot, "checkout");
+      mkdirSync(join(project, ".git"), { recursive: true });
+      const projectDsn = "https://code@o666.ingest.sentry.io/666";
+      writeFileSync(
+        join(project, "config.ts"),
+        `Sentry.init({ dsn: "${projectDsn}" });`,
+      );
+
+      expect((await detectDsn(project))?.raw).toBe(projectDsn);
+    });
   });
 
   describe("from an ancestor of $HOME", () => {

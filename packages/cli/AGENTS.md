@@ -161,7 +161,7 @@ Top-level layout:
   `dashboard`, `debug-files`, `docs`, `dsn`, `event`, `feedback`, `integration`, `issue`, `local`,
   `log`, `monitor`, `org`, `platform`, `proguard`, `project`, `react-native`,
   `release`, `replay`, `repo`, `snapshots`, `sourcemap`, `span`, `status`,
-  `team`, `trace`, `trial`) plus standalone command files (`api.ts`,
+  `team`, `token`, `trace`, `trial`) plus standalone command files (`api.ts`,
   `explore.ts`, `help.ts`, `info.ts`, `init.ts`, `mcp.ts`, `schema.ts`,
   `wasm-split.ts`, plus the hidden `bash-hook.ts`, `send-event.ts`, and
   `send-envelope.ts`).
@@ -820,7 +820,10 @@ Use `"date"` for timestamp-based sort (not `"time"`). Export sort types from the
 
 ### Generated Docs & Skills
 
-All command docs and skill files are generated via `pnpm run generate:docs` (which runs `generate:banner`, `generate:completions`, `generate:command-docs`, `generate:skill`, then `generate:docs-sections`). This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
+All command docs and skill files are generated via `pnpm run generate:docs`. This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
+
+- **One process**: the `generate:*` scripts (except `generate:grammar`, a plain Node script) call `script/generate.ts`, which runs the requested steps in one process so the route tree loads once. Phase 1 writes what the tree imports (API schema, grammars, output-schema field data, banner), runs those steps concurrently, and must not load the tree; its steps must not read each other's outputs. Phase 2 stubs the generated files the tree imports (`script/lib/route-tree-stubs.ts`), then runs each step's exported `emit()`. Scripts that load the tree without generating, such as `check-fragments`, leave those stubs behind, so `ensure-generated.mjs` treats a file that still holds its stub (`script/lib/route-tree-stub-files.mjs`) as missing. Phase-2 modules may import the tree statically, because the runner imports them only after the stubs exist. A new generator exports `emit()` and gets a step in `script/generate.ts`, with no stub code of its own. A phase-2 step may also declare `prepare`, which the runner calls as the run begins: `command-api` uses it to parse `src/` in a worker thread (`script/lib/command-api-analysis.ts`) during phase 1 and the tree load. The worker reads the API schema once the `schema` step finishes, and `command-api` runs last because its `emit` waits for that worker. In `package.json`, call the runner (`tsx script/generate.ts <steps>`) rather than chaining `pnpm run generate:*`. `docs` names every step but `sdk`, including `schema`, so callers need not run `generate:schema` first.
+- **Skipped steps**: a phase-1 step with `files` in `script/generate.ts` runs only when the content hash of its inputs or outputs differs from its entry in `src/generated/.stamps.json` (`script/lib/step-stamp.ts`). When such a step starts reading a new file or package, add it to that step's inputs. `output-schemas` and the phase-2 steps have no stamp: their inputs are the source they import, which is no short list.
 
 - **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
@@ -984,6 +987,22 @@ can only shrink, the same ratchet the old JSON baseline provided, with no
 separate script or baseline file to maintain. Fix a grandfathered catch by
 adding logging/re-throwing and deleting its suppression line; only add a new
 suppression for a genuinely intentional silent catch, with a real reason.
+
+Report errors to Sentry with `reportCliError(error, { tags, extra, level })`
+from `src/lib/error-reporting.ts`, never `captureException` directly. A raw
+capture skips the 4xx/network silencing and the `api_error` context, so user
+errors pile into one issue with no detail (CLI-10). The
+`no-raw-capture-exception` CLI Oxlint rule enforces this.
+
+### Process Exit
+
+Do not end the CLI with `process.exit()`, including forced-exit timers. A
+forced exit drops pending telemetry and piped output. When a process stays
+alive after its command, release the handle that keeps the event loop alive
+(`close-dispatcher.ts` is the example), or fix the dependency that owns it.
+The `no-process-exit` CLI Oxlint rule enforces this. Only signal, fatal error,
+and broken stream handlers exit directly, each with a disable comment that
+says why.
 
 ### Auto-Recovery for Wrong Entity Types
 

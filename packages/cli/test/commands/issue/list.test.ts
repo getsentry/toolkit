@@ -59,6 +59,7 @@ import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import {
   ApiError,
   ResolutionError,
+  TimeoutError,
   ValidationError,
 } from "../../../src/lib/errors.js";
 import type { TimeRange } from "../../../src/lib/time-range.js";
@@ -250,6 +251,42 @@ describe("issue list: error propagation", () => {
       expect(error).toBeInstanceOf(ApiError);
       expect((error as ApiError).status).toBe(400);
       expect((error as Error).message).toContain("Failed to fetch issues");
+    }
+  });
+
+  test("keeps a TimeoutError, with its hint, when every fetch times out", async () => {
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      return (
+        mockDefaultProject(req.url) ??
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    });
+    listIssuesAllPagesMock.mockRejectedValue(
+      new TimeoutError("Request timed out after 30s.", "Check status."),
+    );
+
+    const { context } = createContext();
+
+    try {
+      await func.call(context, {
+        limit: 10,
+        sort: "date",
+        period: parsePeriod("90d"),
+        json: false,
+      });
+      expect.unreachable("Should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(TimeoutError);
+      expect((error as TimeoutError).message).toContain(
+        "Failed to fetch issues",
+      );
+      expect((error as TimeoutError).hint).toBe("Check status.");
+    } finally {
+      listIssuesAllPagesMock.mockReset();
     }
   });
 

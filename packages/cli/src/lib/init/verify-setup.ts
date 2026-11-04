@@ -14,7 +14,7 @@
 
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { resolve } from "node:path";
-import { addBreadcrumb, captureException, setTag } from "@sentry/node";
+import { addBreadcrumb, setTag } from "@sentry/node";
 import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { BUFFER_SIZE, shutdownServer } from "../../commands/local/run.js";
 import { buildApp, tryListen } from "../../commands/local/server.js";
@@ -22,6 +22,7 @@ import { detectDevCommand } from "../dev-script.js";
 import { logger } from "../logger.js";
 import type { WorkflowRunResult } from "./types.js";
 import type { WizardUI } from "./ui/types.js";
+import { reportCliError } from "../error-reporting.js";
 
 /** Verification timeout in seconds. */
 const VERIFY_TIMEOUT_S = 15;
@@ -577,7 +578,7 @@ function reportOutcome(outcome: VerifyOutcome, ctx: ReportContext): void {
   if (outcome.kind === "errored") {
     const scrubbed = scrubOutputLine(outcome.errorLine).slice(0, 200);
     ui.log.warn(`Could not verify — startup error: ${scrubbed}`);
-    captureException(new Error("init verification: startup error"), {
+    reportCliError(new Error("init verification: startup error"), {
       tags: { ...telemetryTags, "wizard.verify": "startup_error" },
       extra: {
         ...telemetryExtra,
@@ -596,7 +597,7 @@ function reportOutcome(outcome: VerifyOutcome, ctx: ReportContext): void {
       `Could not verify — dev server exited with code ${outcome.code}`,
     );
     logger.debug(`Last output: ${getLines().slice(-3).join(" | ")}`);
-    captureException(new Error("init verification failed"), {
+    reportCliError(new Error("init verification failed"), {
       tags: { ...telemetryTags, "wizard.verify": "child_exited" },
       extra: { ...telemetryExtra, exitCode: outcome.code },
     });
@@ -605,7 +606,7 @@ function reportOutcome(outcome: VerifyOutcome, ctx: ReportContext): void {
 
   const verifyTag = outcome.kind === "silent" ? "silent" : "timeout";
   ui.log.warn(`Could not verify — no output within ${VERIFY_TIMEOUT_S}s`);
-  captureException(new Error("init verification failed"), {
+  reportCliError(new Error("init verification failed"), {
     tags: { ...telemetryTags, "wizard.verify": verifyTag },
     extra: telemetryExtra,
   });

@@ -12,14 +12,21 @@ import {
   queryAllWidgets,
   restoreDashboardRevision,
 } from "../../../src/lib/api/dashboards.js";
+import { ApiError } from "../../../src/lib/errors.js";
 import type {
   DashboardDetail,
   DashboardWidget,
 } from "../../../src/types/dashboard.js";
 
-const { apiRequestToRegionMock, resolveOrgRegionMock } = vi.hoisted(() => ({
-  apiRequestToRegionMock: vi.fn(),
-  resolveOrgRegionMock: vi.fn(),
+const { apiRequestToRegionMock, reportCliErrorMock, resolveOrgRegionMock } =
+  vi.hoisted(() => ({
+    apiRequestToRegionMock: vi.fn(),
+    reportCliErrorMock: vi.fn(),
+    resolveOrgRegionMock: vi.fn(),
+  }));
+
+vi.mock("../../../src/lib/error-reporting.js", () => ({
+  reportCliError: reportCliErrorMock,
 }));
 
 vi.mock("../../../src/lib/region.js", async (importOriginal) => {
@@ -332,5 +339,60 @@ describe("widget sort resolution", () => {
         }),
       }),
     );
+  });
+});
+
+describe("widget query failures", () => {
+  const REGION = "https://us.sentry.io";
+  const dashboard = makeDashboard([
+    {
+      title: "Slow screens",
+      displayType: "table",
+      widgetType: "spans",
+      queries: [
+        {
+          fields: ["p50(tags[view_ms,number])"],
+          columns: [],
+          aggregates: ["p50(tags[view_ms,number])"],
+          conditions: "",
+          orderby: "",
+        },
+      ],
+    },
+  ]);
+
+  test("reports through the shared policy and keeps the API detail", async () => {
+    const error = new ApiError(
+      "API request failed: 400 Bad Request",
+      400,
+      "tags[view_ms,number] is invalid for parameter 1 in p50.\nIts a string type field.",
+      "/organizations/test-org/events/",
+    );
+    apiRequestToRegionMock.mockReset();
+    apiRequestToRegionMock.mockRejectedValue(error);
+    reportCliErrorMock.mockReset();
+
+    const results = await queryAllWidgets(REGION, "test-org", dashboard);
+
+    expect(reportCliErrorMock).toHaveBeenCalledWith(error);
+    expect(results.get(0)).toEqual({
+      type: "error",
+      message:
+        "API request failed: 400 Bad Request: tags[view_ms,number] is invalid for parameter 1 in p50. Its a string type field.",
+    });
+  });
+
+  test("does not repeat a status-text detail", async () => {
+    apiRequestToRegionMock.mockReset();
+    apiRequestToRegionMock.mockRejectedValue(
+      new ApiError("API request failed: 404 Not Found", 404, "Not Found"),
+    );
+
+    const results = await queryAllWidgets(REGION, "test-org", dashboard);
+
+    expect(results.get(0)).toEqual({
+      type: "error",
+      message: "API request failed: 404 Not Found",
+    });
   });
 });

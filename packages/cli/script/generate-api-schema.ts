@@ -1,35 +1,38 @@
-#!/usr/bin/env tsx
 /**
  * Generate the CLI discovery index from the installed SDK's operation catalog.
  *
- * Usage: tsx script/generate-api-schema.ts
+ * Usage: tsx script/generate.ts schema
  * Outputs: src/generated/api-schema.json and src/generated/idempotent-operations.json
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { operations } from "@sentry/api/operations";
-import { selectIdempotentWrites } from "@sentry/toolkit-core/api-client/idempotent-operations";
+import { selectIdempotentWrites } from "@sentry/api/client";
 import { projectApiOperations } from "./lib/api-schema.js";
 
 const OUTPUT_PATH = "src/generated/api-schema.json";
 const IDEMPOTENT_OUTPUT_PATH = "src/generated/idempotent-operations.json";
-const endpoints = projectApiOperations(operations);
 
-await mkdir(dirname(OUTPUT_PATH), { recursive: true });
-await writeFile(OUTPUT_PATH, JSON.stringify(endpoints, null, 2));
+/** Write the endpoint index and the idempotent write operations. */
+export async function emit(): Promise<void> {
+  const endpoints = projectApiOperations(operations);
 
-console.log(
-  `Generated ${OUTPUT_PATH} (${endpoints.length} endpoints, ${Math.round(JSON.stringify(endpoints).length / 1024)}KB)`,
-);
+  await mkdir(dirname(OUTPUT_PATH), { recursive: true });
+  await writeFile(OUTPUT_PATH, JSON.stringify(endpoints, null, 2));
 
-const idempotentOperations = selectIdempotentWrites(operations);
+  console.log(
+    `Generated ${OUTPUT_PATH} (${endpoints.length} endpoints, ${Math.round(JSON.stringify(endpoints).length / 1024)}KB)`,
+  );
 
-await writeFile(
-  IDEMPOTENT_OUTPUT_PATH,
-  JSON.stringify(idempotentOperations, null, 2),
-);
+  const idempotentOperations = selectIdempotentWrites(operations);
 
-console.log(
-  `Generated ${IDEMPOTENT_OUTPUT_PATH} (${idempotentOperations.length} operations)`,
-);
+  await writeFile(
+    IDEMPOTENT_OUTPUT_PATH,
+    JSON.stringify(idempotentOperations, null, 2),
+  );
+
+  console.log(
+    `Generated ${IDEMPOTENT_OUTPUT_PATH} (${idempotentOperations.length} operations)`,
+  );
+}

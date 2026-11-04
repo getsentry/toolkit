@@ -10,8 +10,6 @@ import {
   listOrganizationTeams,
   listProjectTeams as sdkListProjectTeams,
 } from "@sentry/api";
-// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node";
 
 import type { SentryTeam } from "../../types/index.js";
 
@@ -23,6 +21,7 @@ import {
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
+import { reportCliError } from "../error-reporting.js";
 
 /**
  * List teams in an organization.
@@ -120,7 +119,7 @@ export async function createTeam(
   try {
     await addMemberToTeam(orgSlug, team.slug, "me");
   } catch (error) {
-    Sentry.captureException(error, {
+    reportCliError(error, {
       extra: { orgSlug, teamSlug: team.slug, context: "auto-add member" },
     });
     logger.warn(

@@ -352,7 +352,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Generate CLI docs
-        run: pnpm --filter sentry run generate:schema && pnpm --filter sentry run generate:docs
+        run: pnpm --filter sentry run generate:docs
       - name: Set docs release
         run: |
           release=$(node -p 'require("./packages/cli/package.json").version')

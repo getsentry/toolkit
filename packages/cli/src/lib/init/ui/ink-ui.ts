@@ -1136,6 +1136,7 @@ export class InkUI implements WizardUI {
       // Safety valve: teardown already started but hasn't finished
       // (or something is stuck). Force-exit so the user isn't trapped.
       setTag("wizard.outcome", "abandoned");
+      // oxlint-disable-next-line sentry-cli/no-process-exit -- a second Ctrl+C while teardown is stuck must not trap the user.
       process.exit(130);
     }
     this.cancelRequested = true;
@@ -1152,6 +1153,7 @@ export class InkUI implements WizardUI {
     // Defer exit by one tick so the event loop can flush the
     // stdout writes from tearDown (alternate-screen escape +
     // cancellation report) before the process terminates.
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- Ctrl+C cancels the wizard; exit 130 after teardown.
     setImmediate(() => process.exit(130));
   }
 

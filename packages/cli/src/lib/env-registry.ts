@@ -137,6 +137,12 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     selfHosted: true,
     devGuide: "Sentry OAuth app client ID",
   },
+  {
+    name: "SENTRY_SETUP_CODE",
+    description:
+      "Private, short-lived code for headless OAuth authentication with sentry auth bootstrap or the installer. Each code can be redeemed once.",
+    devGuide: "One-time setup code for headless authentication",
+  },
   // -- Custom headers --
   {
     name: "SENTRY_CUSTOM_HEADERS",

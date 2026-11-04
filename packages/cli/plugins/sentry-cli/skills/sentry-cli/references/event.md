@@ -39,7 +39,7 @@ View details of one or more events
 | `location` | string \| null |  |
 | `user` | object \| null |  |
 | `tags` | array |  |
-| `platform` | string |  |
+| `platform` | string \| null |  |
 | `dateReceived` | string \| null |  |
 | `contexts` | object \| null |  |
 | `size` | number \| null |  |
@@ -51,7 +51,7 @@ View details of one or more events
 | `type` | string |  |
 | `metadata` | object |  |
 | `errors` | array |  |
-| `occurrence` | object \| object \| null |  |
+| `occurrence` | object \| null |  |
 | `_meta` | object |  |
 | `crashFile` | string \| null |  |
 | `culprit` | string \| null |  |

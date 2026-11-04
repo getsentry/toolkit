@@ -105,6 +105,7 @@ export const COMMAND_MANIFEST: Readonly<Record<string, ManifestEntry>> = {
   release: route(() => import("./commands/release/index.js"), "releaseRoute"),
   repo: route(() => import("./commands/repo/index.js"), "repoRoute"),
   team: route(() => import("./commands/team/index.js"), "teamRoute"),
+  token: route(() => import("./commands/token/index.js"), "tokenRoute"),
   integration: route(
     () => import("./commands/integration/index.js"),
     "integrationRoute",
@@ -183,6 +184,7 @@ export const COMMAND_MANIFEST: Readonly<Record<string, ManifestEntry>> = {
   releases: hidden(() => import("./commands/release/list.js"), "listCommand"),
   repos: hidden(() => import("./commands/repo/list.js"), "listCommand"),
   teams: hidden(() => import("./commands/team/list.js"), "listCommand"),
+  tokens: hidden(() => import("./commands/token/list.js"), "listCommand"),
   logs: hidden(() => import("./commands/log/list.js"), "listCommand"),
   monitors: hidden(() => import("./commands/monitor/list.js"), "listCommand"),
   spans: hidden(() => import("./commands/span/list.js"), "listCommand"),

@@ -420,25 +420,67 @@ export async function uploadMissingChunks(params: {
  * Same wire format as {@link uploadChunk} but reads from a buffer
  * instead of a file handle.
  */
-async function uploadBufferChunk(params: {
-  chunk: ChunkInfo;
-  content: Buffer;
+/** One chunk's bytes, keyed by its checksum, ready to upload. */
+export type ChunkPayload = {
+  sha1: string;
+  data: Buffer;
+};
+
+/**
+ * Group chunks into upload requests of at most `chunksPerRequest` chunks and
+ * `maxRequestSize` bytes (a chunk larger than the cap still travels alone).
+ * Debug file sets can hold tens of thousands of small files, so one request
+ * per chunk would take minutes; the server accepts repeated `file` fields.
+ */
+export function batchChunkPayloads(
+  chunks: readonly ChunkPayload[],
+  serverOptions: Pick<
+    ChunkServerOptions,
+    "chunksPerRequest" | "maxRequestSize"
+  >,
+): ChunkPayload[][] {
+  const maxChunks = Math.max(1, serverOptions.chunksPerRequest);
+  const maxBytes = Math.max(1, serverOptions.maxRequestSize);
+  const batches: ChunkPayload[][] = [];
+  let batch: ChunkPayload[] = [];
+  let bytes = 0;
+  for (const chunk of chunks) {
+    if (
+      batch.length > 0 &&
+      (batch.length >= maxChunks || bytes + chunk.data.length > maxBytes)
+    ) {
+      batches.push(batch);
+      batch = [];
+      bytes = 0;
+    }
+    batch.push(chunk);
+    bytes += chunk.data.length;
+  }
+  if (batch.length > 0) {
+    batches.push(batch);
+  }
+  return batches;
+}
+
+/** POST one batch of chunks as a multipart request, one field per chunk. */
+async function uploadChunkBatch(params: {
+  batch: readonly ChunkPayload[];
   encoding: UploadEncoding | undefined;
   fetch: (url: string, init: RequestInit) => Promise<Response>;
   url: string;
 }): Promise<void> {
-  const { chunk, content, encoding, fetch: authFetch, url } = params;
-
-  const buf = content.subarray(chunk.offset, chunk.offset + chunk.size);
-  const payload = await encodeChunk(buf, encoding);
+  const { batch, encoding, fetch: authFetch, url } = params;
 
   const fieldName = encoding === "gzip" ? "file_gzip" : "file";
   const form = new FormData();
-  form.append(
-    fieldName,
-    new Blob([payload], { type: "application/octet-stream" }),
-    chunk.sha1,
-  );
+  for (const chunk of batch) {
+    const payload = await encodeChunk(chunk.data, encoding);
+    form.append(
+      fieldName,
+      new Blob([payload], { type: "application/octet-stream" }),
+      chunk.sha1,
+    );
+  }
 
   const init: RequestInit = { method: "POST", body: form };
   if (encoding === "zstd") {
@@ -457,6 +499,40 @@ async function uploadBufferChunk(params: {
       url,
     );
   }
+}
+
+/**
+ * Upload chunks in batched requests (see {@link batchChunkPayloads}), with
+ * `concurrency` requests in flight at once.
+ */
+export async function uploadChunkPayloads(params: {
+  chunks: readonly ChunkPayload[];
+  serverOptions: ChunkServerOptions;
+  encoding: UploadEncoding | undefined;
+  regionUrl: string;
+}): Promise<void> {
+  const { chunks, serverOptions, encoding, regionUrl } = params;
+  if (chunks.length === 0) {
+    return;
+  }
+
+  const limit = pLimit(serverOptions.concurrency);
+  // Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
+  // explicitly: the server-provided URL need not match the catalog path.
+  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
+
+  await Promise.all(
+    batchChunkPayloads(chunks, serverOptions).map((batch) =>
+      limit(() =>
+        uploadChunkBatch({
+          batch,
+          encoding,
+          fetch: authFetch,
+          url: serverOptions.url,
+        }),
+      ),
+    ),
+  );
 }
 
 /**
@@ -482,30 +558,17 @@ export async function uploadMissingBufferChunks(params: {
     encoding,
     regionUrl,
   } = params;
-  const missingChunks = chunks.filter((c) => missingChecksums.has(c.sha1));
-
-  if (missingChunks.length === 0) {
-    return;
-  }
-
-  const limit = pLimit(serverOptions.concurrency);
-  // Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
-  // explicitly: the server-provided URL need not match the catalog path.
-  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
-
-  await Promise.all(
-    missingChunks.map((chunk) =>
-      limit(() =>
-        uploadBufferChunk({
-          chunk,
-          content,
-          encoding,
-          fetch: authFetch,
-          url: serverOptions.url,
-        }),
-      ),
-    ),
-  );
+  await uploadChunkPayloads({
+    chunks: chunks
+      .filter((c) => missingChecksums.has(c.sha1))
+      .map((c) => ({
+        sha1: c.sha1,
+        data: content.subarray(c.offset, c.offset + c.size),
+      })),
+    serverOptions,
+    encoding,
+    regionUrl,
+  });
 }
 
 /**

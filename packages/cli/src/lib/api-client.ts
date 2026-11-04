@@ -89,11 +89,11 @@ export {
   appendSearchParams,
   autoPaginate,
   buildSearchParams,
-  consumePage,
+  consumeCursorPage,
   decodePageCursor,
   isTextualContentType,
   ORG_FANOUT_CONCURRENCY,
-  type PagePosition,
+  type CursorPosition,
   type PaginatedResponse,
   parseLinkHeader,
   type PreparedRawApiRequest,
@@ -164,9 +164,11 @@ export {
   tryGetPrimaryDsn,
 } from "./api/projects.js";
 export {
+  correctRefRepositories,
   createRelease,
   createReleaseDeploy,
   deleteRelease,
+  explainSetCommitsError,
   getRelease,
   type ListReleasesOptions,
   listProjectEnvironments,
@@ -198,6 +200,11 @@ export {
   listIntegrations,
   listIntegrationsPaginated,
 } from "./api/integrations.js";
+export {
+  createOrgAuthToken,
+  deleteOrgAuthToken,
+  listOrgAuthTokens,
+} from "./api/org-auth-tokens.js";
 export {
   listAllRepositories,
   listRepositories,

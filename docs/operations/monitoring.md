@@ -165,6 +165,7 @@ Current MCP spans also use related OpenTelemetry attributes outside the `mcp.*` 
 - `gen_ai.tool.name` - The tool name
 - `jsonrpc.request.id` - The JSON-RPC request ID
 - `rpc.response.status_code` - The JSON-RPC response status or error code
+- `error.type` - Why a failed tool span failed: `tool_error` for an `isError` tool result (set by the Sentry SDK), or `unknown_tool` for a call to a tool name the server does not register
 - `network.transport` - Transport protocol (`pipe` for stdio, `tcp` or `quic` for HTTP)
 - `gen_ai.tool.call.arguments.<key>` - Per-key effective tool arguments after constraints
 - `gen_ai.tool.call.result` - Tool result payload when explicitly recorded for low-risk structured outputs

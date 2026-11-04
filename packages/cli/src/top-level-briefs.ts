@@ -36,6 +36,7 @@ export const TOP_LEVEL_BRIEFS = {
   release: "Work with Sentry releases",
   repo: "Work with Sentry repositories",
   team: "Work with Sentry teams",
+  token: "Manage org auth tokens",
   integration: "Work with Sentry integrations",
   issue: "Manage Sentry issues",
   event: "View, list, and send Sentry events",

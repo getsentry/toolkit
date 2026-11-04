@@ -8,6 +8,7 @@
 import { open, readFile, stat } from "node:fs/promises";
 import { dirname, relative, resolve as resolvePath, sep } from "node:path";
 import ignore from "ignore";
+import picomatch from "picomatch";
 import { NODE_MODULES_DIRNAME } from "../constants.js";
 import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -76,7 +77,73 @@ export type InjectDirectoryOptions = {
   ignorePatterns?: string[];
   /** Pre-built ignore matcher (takes precedence over ignorePatterns). */
   ignoreMatcher?: ReturnType<typeof ignore>;
+  /** Keep only pairs this filter accepts. See {@link UploadTarget.include}. */
+  include?: PathFilter;
 };
+
+/**
+ * Predicate over a POSIX path relative to the scanned directory.
+ * Returns `true` to keep the file.
+ */
+export type PathFilter = (relativePath: string) => boolean;
+
+/**
+ * A directory to scan, resolved from a `sourcemap upload` target.
+ */
+export type UploadTarget = {
+  /** Directory to walk. */
+  dir: string;
+  /**
+   * Set only when the target was a glob such as `.next/static/**`. A pair is
+   * kept when the glob matches its JS file or its external `.map` file, so
+   * both `dist/*.js` and `dist/*.map` select the same pairs.
+   *
+   * Hidden directories are walked and left to the glob, which matches a dot
+   * segment only when the pattern names it, like the `glob` package the
+   * bundler plugins expand `sourcemaps.assets` with.
+   */
+  include?: PathFilter;
+};
+
+/**
+ * Resolve a `sourcemap upload` target into a directory plus an optional
+ * glob filter.
+ *
+ * Bundler plugins pass their `sourcemaps.assets` option straight through,
+ * and that option is documented as a glob (`.next/static/**`). The walk
+ * starts at the glob's static base (`.next/static`) and the rest of the
+ * pattern filters the pairs.
+ *
+ * A path that exists as a directory always wins, so a literal directory
+ * with glob characters in its name (Next.js `app/[locale]`) still works.
+ *
+ * @param target - Directory path or glob pattern from the command line
+ * @returns The directory to scan and, for globs, the filter to apply
+ */
+export async function resolveUploadTarget(
+  target: string,
+): Promise<UploadTarget> {
+  const scan = picomatch.scan(target);
+  if (!scan.isGlob || (await isDirectory(target))) {
+    return { dir: target };
+  }
+  return { dir: scan.base || ".", include: picomatch(scan.glob) };
+}
+
+/** Whether `path` exists and is a directory. */
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch (err) {
+    log.debug(`could not stat upload target ${path}`, err);
+    return false;
+  }
+}
+
+/** POSIX path of `path` relative to `absDir`, for glob and ignore matching. */
+function relativePosix(absDir: string, path: string): string {
+  return relative(absDir, path).replaceAll("\\", "/");
+}
 
 /**
  * Scan a directory for JS + sourcemap pairs and inject debug IDs.
@@ -98,7 +165,12 @@ export async function injectDirectory(
 
   const ig =
     options.ignoreMatcher ?? (await buildIgnoreMatcher(options.ignorePatterns));
-  const filePairs = await discoverFilePairs(dir, extensions, ig);
+  const filePairs = await discoverFilePairs(
+    dir,
+    extensions,
+    ig,
+    options.include,
+  );
 
   const results: InjectResult[] = [];
   for (const { jsPath, map } of filePairs) {
@@ -568,6 +640,7 @@ export async function discoverFilePairs(
   dir: string,
   extensions: Set<string> = DEFAULT_EXTENSIONS,
   ignoreMatcher?: ReturnType<typeof ignore>,
+  include?: PathFilter,
 ): Promise<FilePair[]> {
   // `walkFiles` requires an absolute cwd. CLI callers pass
   // user-supplied positional args like `./dist` directly through to
@@ -579,21 +652,26 @@ export async function discoverFilePairs(
     cwd: absDir,
     extensions,
     alwaysSkipDirs: SOURCEMAP_SKIP_DIRS,
-    hidden: false,
+    hidden: include !== undefined,
     respectGitignore: false,
     maxFileSize: Number.POSITIVE_INFINITY,
   })) {
-    if (ignoreMatcher) {
-      // Use POSIX relative path for gitignore-style matching
-      const rel = relative(absDir, entry.absolutePath).replaceAll("\\", "/");
-      if (ignoreMatcher.ignores(rel)) {
-        continue;
-      }
+    const rel = relativePosix(absDir, entry.absolutePath);
+    if (ignoreMatcher?.ignores(rel)) {
+      continue;
     }
     const map = await findCompanionMap(entry.absolutePath);
-    if (map && isMapInsideDir(map, absDir, entry.absolutePath)) {
-      pairs.push({ jsPath: entry.absolutePath, map });
+    if (!(map && isMapInsideDir(map, absDir, entry.absolutePath))) {
+      continue;
     }
+    if (
+      include &&
+      !include(rel) &&
+      !(map.kind === "external" && include(relativePosix(absDir, map.mapPath)))
+    ) {
+      continue;
+    }
+    pairs.push({ jsPath: entry.absolutePath, map });
   }
   return pairs;
 }
@@ -691,11 +769,21 @@ export async function diagnoseEmptyDiscovery(
     cwd: absDir,
     extensions,
     alwaysSkipDirs: SOURCEMAP_SKIP_DIRS,
-    hidden: false,
+    hidden: options.include !== undefined,
     respectGitignore: false,
     maxFileSize: Number.POSITIVE_INFINITY,
   })) {
-    if (entry.absolutePath.endsWith(".map")) {
+    const isMap = entry.absolutePath.endsWith(".map");
+    if (options.include) {
+      const rel = relativePosix(absDir, entry.absolutePath);
+      const matched =
+        options.include(rel) ||
+        (isMap && options.include(rel.slice(0, -".map".length)));
+      if (!matched) {
+        continue;
+      }
+    }
+    if (isMap) {
       mapFiles += 1;
     } else {
       jsFiles += 1;
