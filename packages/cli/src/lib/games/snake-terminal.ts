@@ -65,6 +65,7 @@ const KEYS: Readonly<Record<string, SnakeKey>> = {
   r: "restart",
   q: "quit",
   "\x03": "quit",
+  "\x1b": "quit",
 };
 
 const ESC = "\x1b";
@@ -76,28 +77,37 @@ const ESCAPE_PREFIX = /\x1b(?:\[[0-9;]*|O)?$/y;
 
 /**
  * Split raw terminal input into keys. Other input is dropped, and so is
- * Alt plus a key (escape followed by the key).
+ * Alt plus a key (escape followed by the key in the same read).
  *
- * `pending` is an escape sequence that the chunk ends before completing. A
- * terminal can split one key across reads, so the caller prepends `pending`
- * to the next chunk, and reads a lone escape as the Esc key only when nothing
- * follows it.
+ * The returned `pending` is an escape sequence that the chunk ends before
+ * completing, because a terminal can split one key across reads. The caller
+ * passes it back with the next chunk. When that chunk does not complete it,
+ * a lone escape is the Esc key and a partial sequence is dropped.
  */
-export function parseKeys(chunk: string): {
-  keys: SnakeKey[];
-  pending: string;
-} {
+export function parseKeys(
+  chunk: string,
+  pending = "",
+): { keys: SnakeKey[]; pending: string } {
+  const input = pending + chunk;
+  ESCAPE_SEQUENCE.lastIndex = 0;
+  ESCAPE_PREFIX.lastIndex = 0;
+  if (pending && !ESCAPE_SEQUENCE.test(input) && !ESCAPE_PREFIX.test(input)) {
+    const key = KEYS[pending];
+    const rest = parseKeys(chunk);
+    return { ...rest, keys: key ? [key, ...rest.keys] : rest.keys };
+  }
+
   const keys: SnakeKey[] = [];
   let index = 0;
-  while (index < chunk.length) {
+  while (index < input.length) {
     ESCAPE_SEQUENCE.lastIndex = index;
     ESCAPE_PREFIX.lastIndex = index;
-    const sequence = ESCAPE_SEQUENCE.exec(chunk)?.[0];
-    if (!sequence && ESCAPE_PREFIX.test(chunk)) {
-      return { keys, pending: chunk.slice(index) };
+    const sequence = ESCAPE_SEQUENCE.exec(input)?.[0];
+    if (!sequence && ESCAPE_PREFIX.test(input)) {
+      return { keys, pending: input.slice(index) };
     }
-    const token =
-      sequence ?? chunk.slice(index, index + (chunk[index] === ESC ? 2 : 1));
+    const altKey = input[index] === ESC && input[index + 1] !== ESC;
+    const token = sequence ?? input.slice(index, index + (altKey ? 2 : 1));
     const key = KEYS[token] ?? KEYS[token.toLowerCase()];
     if (key) {
       keys.push(key);
@@ -243,7 +253,7 @@ export function playSnake(
 
     const onData = (chunk: string) => {
       clearTimeout(escapeTimer);
-      const { keys, pending } = parseKeys(pendingInput + chunk);
+      const { keys, pending } = parseKeys(chunk, pendingInput);
       pendingInput = pending;
       for (const key of keys) {
         if (key === "quit") {

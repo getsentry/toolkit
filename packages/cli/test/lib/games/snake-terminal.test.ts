@@ -69,6 +69,34 @@ describe("parseKeys", () => {
     expect(parseKeys("\x1b")).toEqual({ keys: [], pending: "\x1b" });
     expect(parseKeys("w\x1b[")).toEqual({ keys: ["up"], pending: "\x1b[" });
     expect(parseKeys("\x1bO")).toEqual({ keys: [], pending: "\x1bO" });
+    expect(parseKeys("[A", "\x1b")).toEqual({ keys: ["up"], pending: "" });
+    expect(parseKeys("5A", "\x1b[1;")).toEqual({ keys: [], pending: "" });
+  });
+
+  test("reads a pending escape that the next chunk does not continue as Esc", () => {
+    expect(parseKeys("w", "\x1b")).toEqual({
+      keys: ["quit", "up"],
+      pending: "",
+    });
+    expect(parseKeys(UP, "\x1b")).toEqual({
+      keys: ["quit", "up"],
+      pending: "",
+    });
+    expect(parseKeys("\x1b", "\x1b")).toEqual({
+      keys: ["quit"],
+      pending: "\x1b",
+    });
+    expect(parseKeys(`\x1b${RIGHT}`)).toEqual({
+      keys: ["quit", "right"],
+      pending: "",
+    });
+  });
+
+  test("drops a partial sequence that the next chunk does not complete", () => {
+    expect(parseKeys("\x1bOD", "\x1b[")).toEqual({
+      keys: ["left"],
+      pending: "",
+    });
   });
 
   test("drops unknown keys, escape sequences, and alt plus a key", () => {
@@ -131,6 +159,16 @@ describe("playSnake", () => {
     expect(input.rawMode).toBe(true);
 
     await vi.advanceTimersByTimeAsync(50);
+    await game;
+    expect(input.rawMode).toBe(false);
+  });
+
+  test("quits on an escape that the next read does not continue", async () => {
+    const { input, terminal, press } = fakeTerminal();
+    const game = playSnake(terminal, { color: false });
+
+    press("\x1b");
+    press("w");
     await game;
     expect(input.rawMode).toBe(false);
   });
