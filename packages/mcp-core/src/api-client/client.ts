@@ -155,6 +155,7 @@ import {
   IssueIntegrationListSchema,
   IssueListSchema,
   IssueSchema,
+  IssueTagKeyListSchema,
   IssueTagValuesSchema,
   MetricAlertRuleListSchema,
   MetricAlertRuleSchema,
@@ -231,6 +232,7 @@ import type {
   IssueCommentList,
   IssueIntegrationList,
   IssueList,
+  IssueTagKeyList,
   IssueTagValues,
   MetricAlertRule,
   MetricAlertRuleList,
@@ -3341,6 +3343,38 @@ export class SentryApiService {
       throwOnError: true,
     });
     return IssueTagValuesSchema.parse(data);
+  }
+
+  /**
+   * Lists the tag keys recorded on an issue's events, with the number of
+   * events that carry each key.
+   *
+   * `@sentry/api` has no operation for this private endpoint. `limit` caps the
+   * top values Sentry returns per key; one is enough here because callers
+   * only need the keys.
+   *
+   * @param params.organizationSlug Organization identifier
+   * @param params.issueId Issue identifier (short ID or numeric ID)
+   * @param opts Request options
+   * @returns The issue's tag keys. Throws ApiNotFoundError when the issue does not exist.
+   */
+  async listIssueTags(
+    {
+      organizationSlug,
+      issueId,
+    }: {
+      organizationSlug: string;
+      issueId: string;
+    },
+    opts?: RequestOptions,
+  ): Promise<IssueTagKeyList> {
+    const body = await this.requestJSON(
+      apiPath`/organizations/${organizationSlug}/issues/${issueId}/tags/` +
+        "?limit=1",
+      undefined,
+      opts,
+    );
+    return IssueTagKeyListSchema.parse(body);
   }
 
   /**
