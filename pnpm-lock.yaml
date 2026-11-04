@@ -679,9 +679,6 @@ importers:
       '@cloudflare/workers-oauth-provider':
         specifier: 'catalog:'
         version: 0.10.3(patch_hash=34910b67929c1888b1492384c514d6baeedc4a439f66e21375dee5af404834f8)
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.2
-        version: 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
         version: 2.4.0
