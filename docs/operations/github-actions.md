@@ -1,7 +1,7 @@
 # GitHub Actions
 
 Toolkit CI covers the CLI, MCP, and shared packages. The Cloudflare deployment
-workflows below serve the MCP and Docs MCP Workers; CLI release and docs
+workflows below serve the MCP, Docs MCP, and Games API Workers; CLI release and docs
 workflows are listed in the [CLI guide](../cli/README.md).
 
 `pnpm build` builds the MCP workspace; `pnpm build:cli` builds the imported CLI
@@ -55,6 +55,16 @@ It preserves runtime variables and secrets and keeps public URLs disabled.
 Private service-binding functionality must be checked through a real consumer.
 Disconnect the old Init Workers Builds connection before merging this workflow
 for its first deployment. See the [Docs MCP cutover guide](../../apps/docs-mcp/README.md#deployment-ownership).
+
+### deploy-games-api.yml
+
+Uses the same successful `Test` push gate and tested `main` revision to deploy
+the public `sentry-games-api` Worker. It runs on the Sentry Internal Cloudflare
+account, so it reads `GAMES_API_CLOUDFLARE_API_TOKEN` and
+`GAMES_API_CLOUDFLARE_ACCOUNT_ID` from `production` instead of the MCP
+credentials. It keeps runtime variables and secrets, then requests the public
+leaderboard until it returns `200`. See the
+[Games API README](../../apps/games-api/README.md#deployment-ownership).
 
 ### recover-cloudflare-deployment.yml
 
