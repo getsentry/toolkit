@@ -521,6 +521,15 @@ describe("serveMcp account routing", () => {
     );
     expect(refreshedWith).toEqual(["b-token-refresh"]);
   });
+
+  test("--commands serves the account that knows the session's org", async () => {
+    loginTwoAccounts();
+    const { options } = await start(["--commands", "b-org/"]);
+
+    expect(options.credentialRouter).toBeUndefined();
+    expect(options.accessToken).toBe("b-token");
+    expect(options.tools).toBeDefined();
+  });
 });
 
 describe("serveMcp deprecated --access-token", () => {

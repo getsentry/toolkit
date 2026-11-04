@@ -8,6 +8,7 @@ import { UserInputError } from "../errors";
 import type { CommandCatalogEntry } from "../command-catalog";
 import type { ServerContext } from "../types";
 import {
+  API_WRITE_SKILLS,
   agentParameters,
   type CommandRuntime,
   callPermission,
@@ -20,8 +21,11 @@ import { pinConstraints } from "./constraints";
 import type { CommandCall } from "./types";
 import { validateJsonSchema } from "./validate";
 
-/** Pagination keywords that need the CLI's stored cursor stack. */
-const CURSOR_KEYWORDS = new Set(["next", "prev"]);
+/**
+ * Pagination keywords that need the CLI's stored cursor stack, with their
+ * aliases (`last`, `previous`).
+ */
+const CURSOR_KEYWORDS = new Set(["next", "prev", "last", "previous"]);
 
 export type SessionPolicy = {
   runtime: CommandRuntime;
@@ -62,15 +66,23 @@ function refuse(entry: CommandCatalogEntry, reason: string): UserInputError {
 
 /** The arguments of a command tool call, as its input schema accepts them. */
 type CommandParams = {
-  positional?: string[];
-  flags?: Record<string, unknown>;
+  positional?: string[] | null;
+  flags?: unknown;
 };
 
 /** Drop the injected `json` flag, and refuse flags the MCP does not pass through. */
 function readFlags(
   entry: CommandCatalogEntry,
-  rawFlags: Record<string, unknown> = {},
+  rawFlags: unknown,
 ): Record<string, unknown> {
+  if (rawFlags === undefined || rawFlags === null) {
+    return {};
+  }
+  if (typeof rawFlags !== "object" || Array.isArray(rawFlags)) {
+    throw new UserInputError(
+      `Invalid arguments for \`${commandName(entry)}\`:\n- flags: must be an object`,
+    );
+  }
   const flags: Record<string, unknown> = {};
   for (const [name, value] of Object.entries(rawFlags)) {
     if (isInjectedFlag(name) || value === undefined || value === null) {
@@ -116,7 +128,8 @@ export function prepareCommandCall({
     throw refuse(entry, unavailable);
   }
 
-  const positional = params?.positional;
+  // `null` (some clients send it for an unset field) means none.
+  const positional = params?.positional ?? undefined;
   const flags = readFlags(entry, params?.flags);
   const errors = validateJsonSchema(
     agentParameters(entry),
@@ -133,6 +146,20 @@ export function prepareCommandCall({
     throw refuse(
       entry,
       `this session is read-only, and this call is a ${permission} call`,
+    );
+  }
+  // Write tools are listed only for their skills; `sentry api` is listed for
+  // every skill, so its writes are checked here.
+  const granted = context.grantedSkills;
+  if (
+    entry.permission === "method" &&
+    permission !== "read" &&
+    granted &&
+    !API_WRITE_SKILLS.some((skill) => granted.has(skill))
+  ) {
+    throw refuse(
+      entry,
+      `this ${permission} call needs the ${API_WRITE_SKILLS.join(" or ")} skill`,
     );
   }
 

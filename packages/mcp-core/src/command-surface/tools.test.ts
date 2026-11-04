@@ -79,6 +79,31 @@ describe("command tools: listing", () => {
     );
   });
 
+  it("grants writes only to the skill that covers them", () => {
+    const { tools } = setup();
+    expect(tools.sentry_issue_list?.skills).toContain("inspect");
+    expect(tools.sentry_issue_resolve?.skills).toEqual(["triage"]);
+    expect(tools.sentry_issue_plan?.skills).toEqual(["seer"]);
+    expect(tools.sentry_project_delete?.skills).toEqual(["project-management"]);
+    expect(tools.sentry_api?.skills).toContain("inspect");
+  });
+
+  it("refuses sentry api writes without a write skill", async () => {
+    const { call, calls } = setup();
+    const inspectOnly = createTestContext({
+      grantedSkills: new Set(["inspect"]),
+    });
+    await call("api", { positional: ["organizations/"] }, inspectOnly);
+    await expect(
+      call(
+        "api",
+        { positional: ["projects/acme/web/"], flags: { method: "DELETE" } },
+        inspectOnly,
+      ),
+    ).rejects.toThrow("needs the triage or project-management skill");
+    expect(calls).toHaveLength(1);
+  });
+
   it("names tools from the command path", () => {
     const { tools } = setup();
     expect(tools.sentry_issue_list).toBeDefined();
@@ -216,6 +241,12 @@ describe("command tools: arguments", () => {
       "body.json",
       "it reads or writes a path on the local machine",
     ],
+    [
+      "status show",
+      "url",
+      "http://169.254.169.254",
+      "it fetches a host the caller picks",
+    ],
   ])("refuses %s --%s", async (command, flag, value, reason) => {
     const { call } = setup();
     await expect(
@@ -225,11 +256,23 @@ describe("command tools: arguments", () => {
     );
   });
 
-  it("refuses stored-cursor keywords when hosted", async () => {
-    const { call } = setup({ runtime: "hosted" });
-    await expect(
-      call("issue list", { flags: { cursor: "next" } }),
-    ).rejects.toThrow("Pass the nextCursor value");
+  it.each(["next", "prev", "last", "previous"])(
+    "refuses the stored-cursor keyword %s when hosted",
+    async (cursor) => {
+      const { call } = setup({ runtime: "hosted" });
+      await expect(call("issue list", { flags: { cursor } })).rejects.toThrow(
+        "Pass the nextCursor value",
+      );
+    },
+  );
+
+  it("treats null flags and positionals as none", async () => {
+    const { call, calls } = setup();
+    await call("org list", { positional: null, flags: null });
+    expect(calls[0]).toMatchObject({ positional: [], flags: {} });
+    await expect(call("org list", { flags: "limit=5" })).rejects.toThrow(
+      "flags: must be an object",
+    );
   });
 });
 
@@ -289,6 +332,22 @@ describe("command tools: session constraints", () => {
     ["org view", ["other"], org],
     ["issue view", ["other/WEB-1"], org],
     ["issue view", ["https://other.sentry.io/issues/1/"], org],
+    ["project view", ["https://sentry.io/settings/other/projects/web/"], org],
+    [
+      "project view",
+      ["https://sentry.io/settings/acme/projects/api/"],
+      project,
+    ],
+    [
+      "project view",
+      ["https://acme.sentry.io/settings/projects/api/"],
+      project,
+    ],
+    [
+      "feedback view",
+      ["https://acme.sentry.io/feedback/?feedbackSlug=api:1"],
+      project,
+    ],
     ["release view", ["other/1.0.0"], org],
     ["attribute list", ["other/web"], org],
     ["attribute list", ["api"], project],
@@ -349,9 +408,29 @@ describe("command tools: session constraints", () => {
       project,
     );
     expect(calls).toHaveLength(2);
+    await call(
+      "project view",
+      { positional: ["https://sentry.io/settings/acme/projects/web/"] },
+      project,
+    );
+    expect(calls).toHaveLength(3);
     await expect(
       call("api", { positional: ["issues/1/"] }, org),
     ).rejects.toThrow("not scoped to an organization");
+    await expect(
+      call(
+        "api",
+        { positional: ["organizations/acme/../../projects/other/web/"] },
+        org,
+      ),
+    ).rejects.toThrow("outside this session's scope");
+    await expect(
+      call("api", { positional: ["organizations/acme/%2e%2e/other/"] }, org),
+    ).rejects.toThrow("outside this session's scope");
+    await call("api", { positional: ["teams/acme/backend/projects/"] }, org);
+    await expect(
+      call("api", { positional: ["teams/other/backend/"] }, org),
+    ).rejects.toThrow("outside this session's scope");
   });
 });
 

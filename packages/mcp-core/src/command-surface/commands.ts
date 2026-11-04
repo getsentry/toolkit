@@ -1,9 +1,11 @@
 /**
  * Command names and the per-call rules that do not depend on the session:
- * which flags agents may pass, and the permission class of a call.
+ * which flags agents may pass, the permission class of a call, and the
+ * skills that grant a command.
  */
 
 import type { CommandCatalogEntry, JsonSchema } from "../command-catalog";
+import { ALL_SKILLS, type Skill } from "../skills";
 
 /** Where the server runs: the hosted one keeps no CLI state between calls. */
 export type CommandRuntime = "stdio" | "hosted";
@@ -22,6 +24,31 @@ const STREAMING_FLAGS = new Set(["follow", "refresh", "watch"]);
 
 /** Flags that open a browser on the machine that runs the command. */
 const BROWSER_FLAGS = new Set(["web"]);
+
+/**
+ * Flags that make the command fetch a host the caller picks, by command
+ * (`sentry status show --url`). Agents could probe internal hosts with them.
+ */
+const HOST_FLAGS: Record<string, readonly string[]> = {
+  "sentry status show": ["url"],
+};
+
+/**
+ * The skills that grant a write or destructive command, by command name
+ * prefix; other writes need `project-management`.
+ */
+const WRITE_SKILLS: [prefix: string, skill: Skill][] = [
+  ["issue explain", "seer"],
+  ["issue plan", "seer"],
+  ["issue ", "triage"],
+  ["feedback ", "triage"],
+];
+
+/** Skills that grant writes through `sentry api`. */
+export const API_WRITE_SKILLS: readonly Skill[] = [
+  "triage",
+  "project-management",
+];
 
 /** HTTP methods that only read. */
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -50,7 +77,23 @@ export function refusedFlagReason(
   if (BROWSER_FLAGS.has(flag)) {
     return "it opens a browser";
   }
+  if (HOST_FLAGS[entry.path]?.includes(flag)) {
+    return "it fetches a host the caller picks";
+  }
   return;
+}
+
+/**
+ * The skills that grant `entry`: every skill for reads and `sentry api`
+ * (whose writes need {@link API_WRITE_SKILLS}), one write skill otherwise.
+ */
+export function commandSkills(entry: CommandCatalogEntry): Skill[] {
+  if (entry.permission === "read" || entry.permission === "method") {
+    return ALL_SKILLS;
+  }
+  const name = `${commandName(entry)} `;
+  const match = WRITE_SKILLS.find(([prefix]) => name.startsWith(prefix));
+  return [match ? match[1] : "project-management"];
 }
 
 /** Whether the executor drops `flag` because it sets the flag itself. */

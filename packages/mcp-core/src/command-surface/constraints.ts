@@ -35,29 +35,47 @@ function outside(
   );
 }
 
-/** The organization a Sentry URL names: its subdomain or `/organizations/<org>/`. */
-function urlOrganization(value: string): string | undefined {
+/**
+ * The organization and project a Sentry web URL names, read the way the
+ * CLI's URL parser reads them: the org from `/organizations/<org>/`,
+ * `/settings/<org>/`, or an `<org>.sentry.io` subdomain; the project from
+ * `.../projects/<project>/` or a feedback link's `feedbackSlug=<project>:<id>`.
+ */
+function urlTarget(value: string): { org?: string; project?: string } {
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    return;
+    return {};
   }
-  const fromPath = /\/organizations\/([^/]+)/.exec(url.pathname)?.[1];
-  if (fromPath) {
-    return fromPath;
-  }
+  const segments = url.pathname.split("/").filter(Boolean);
   const [subdomain, ...rest] = url.hostname.split(".");
-  // `acme.sentry.io`, but not `sentry.io`, `us.sentry.io`, or a self-hosted host.
-  return rest.join(".") === "sentry.io" &&
-    subdomain &&
-    !/^(?:us|de)$/.test(subdomain)
-    ? subdomain
-    : undefined;
+  // `acme.sentry.io`, but not `sentry.io`, a region host (`us.sentry.io`),
+  // or a self-hosted host.
+  const subdomainOrg =
+    rest.join(".") === "sentry.io" && subdomain && subdomain.length > 2
+      ? subdomain
+      : undefined;
+  const pathOrg =
+    (segments[0] === "organizations" ||
+      (segments[0] === "settings" && segments[1] !== "projects")) &&
+    segments[1]
+      ? segments[1]
+      : undefined;
+  const projectsAt = segments.indexOf("projects");
+  const project =
+    (projectsAt >= 0 ? segments[projectsAt + 1] : undefined) ??
+    url.searchParams.get("feedbackSlug")?.split(":")[0] ??
+    undefined;
+  return {
+    org: pathOrg ?? subdomainOrg,
+    ...(project ? { project } : {}),
+  };
 }
 
 /**
- * Refuse a Sentry URL for another organization.
+ * Refuse a Sentry URL for another organization, or for another project in a
+ * project session.
  *
  * @returns Whether `value` is a URL
  */
@@ -69,8 +87,11 @@ function checkUrl(
   if (!URL_PATTERN.test(value)) {
     return false;
   }
-  const urlOrg = urlOrganization(value);
-  if (urlOrg && urlOrg !== session.org) {
+  const target = urlTarget(value);
+  if (
+    (target.org && target.org !== session.org) ||
+    (session.project && target.project && target.project !== session.project)
+  ) {
     throw outside(entry, value, session);
   }
   return true;
@@ -186,27 +207,38 @@ function pinTarget(
 function apiEndpointTarget(
   endpoint: string,
 ): { org: string; project?: string } | undefined {
-  let path = endpoint;
-  if (URL_PATTERN.test(endpoint)) {
-    try {
-      path = new URL(endpoint).pathname;
-    } catch {
-      return;
-    }
+  // Resolve the path as the request will (`..`, `%2e%2e`), so a dot segment
+  // cannot leave the organization it names first.
+  let segments: string[];
+  try {
+    const base = "https://sentry.invalid/api/0/";
+    const url = URL_PATTERN.test(endpoint)
+      ? new URL(endpoint)
+      : new URL(endpoint.replace(/^\/+(?:api\/0\/)?/, ""), base);
+    segments = url.pathname.split("/").filter(Boolean);
+  } catch {
+    return;
   }
-  path = path.replace(/^\/+/, "").replace(/^api\/0\//, "");
-  const orgPath = /^organizations\/([^/?]+)(?:\/projects\/([^/?]+))?/.exec(
-    path,
-  );
-  if (orgPath?.[1]) {
-    return orgPath[2]
-      ? { org: orgPath[1], project: orgPath[2] }
-      : { org: orgPath[1] };
+  if (segments[0] === "api" && segments[1] === "0") {
+    segments.splice(0, 2);
   }
-  const project = /^projects\/([^/?]+)\/([^/?]+)/.exec(path);
-  return project?.[1] && project[2]
-    ? { org: project[1], project: project[2] }
-    : undefined;
+  // The prefixes the CLI reads a target from (`parseOrgProjectFromApiPath`).
+  const [prefix, org, ...tail] = segments;
+  if (!org) {
+    return;
+  }
+  if (prefix === "organizations") {
+    return tail[0] === "projects" && tail[1]
+      ? { org, project: tail[1] }
+      : { org };
+  }
+  if (prefix === "projects") {
+    return tail[0] ? { org, project: tail[0] } : { org };
+  }
+  if (prefix === "teams") {
+    return { org };
+  }
+  return;
 }
 
 function pinApiEndpoint(
@@ -217,7 +249,7 @@ function pinApiEndpoint(
   const target = apiEndpointTarget(endpoint);
   if (!target) {
     throw new UserInputError(
-      `\`${commandName(entry)}\` was called with ${JSON.stringify(endpoint)}, which is not scoped to an organization. In this session, use an endpoint under organizations/${session.org}/${session.project ? ` or projects/${session.org}/${session.project}/` : ""}.`,
+      `\`${commandName(entry)}\` was called with ${JSON.stringify(endpoint)}, which is not scoped to an organization. In this session, use an endpoint under organizations/${session.org}/, teams/${session.org}/${session.project ? `, or projects/${session.org}/${session.project}/` : ""}.`,
     );
   }
   if (

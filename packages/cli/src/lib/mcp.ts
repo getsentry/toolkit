@@ -441,31 +441,29 @@ export async function serveMcp(
     resolveMcpCredentialWithLogin(config),
   );
 
-  if (config.commands) {
-    // The startup account only: calls are not routed between stored logins.
-    // A stored login is refreshed before each call when it is near expiry.
-    const getToken =
-      pin.kind === "stored" && !deprecatedToken
-        ? () =>
-            withEnv(credentialEnv, async () => {
-              const refreshed = await resolveCliMcpCredential(config, { pin });
-              return refreshed.token;
-            })
-        : async () => token;
-    const { createCliCommandTools } = await import("./mcp/command-surface.js");
-    await serveMcpStdio(config, {
-      accessToken: token,
-      env,
-      tools: createCliCommandTools({ config, cwd, getToken }),
-    });
-    return;
-  }
   // A static token (`--access-token`, `SENTRY_AUTH_TOKEN`) is the only
   // credential; a stored login can route calls to the other stored logins.
   const router =
     pin.kind === "stored" && !deprecatedToken
       ? createRouter(config, credentialEnv, pin)
       : undefined;
+
+  if (config.commands) {
+    // One account for the session: the stored login that knows
+    // `--organization-slug`, else the startup account. Calls are not routed
+    // between logins, and the router refreshes a token near expiry.
+    const target = { organizationSlug: config.organizationSlug ?? null };
+    const getToken = router
+      ? async () => (await router.resolve(target)).accessToken
+      : async () => token;
+    const { createCliCommandTools } = await import("./mcp/command-surface.js");
+    await serveMcpStdio(config, {
+      accessToken: await getToken(),
+      env,
+      tools: createCliCommandTools({ config, cwd, getToken }),
+    });
+    return;
+  }
 
   if (router && !config.organizationSlug) {
     await serveMcpStdio(config, {

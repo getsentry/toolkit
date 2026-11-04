@@ -17,13 +17,13 @@ import {
   type JsonSchema,
 } from "../command-catalog";
 import { defineTool } from "../internal/tool-helpers/define";
-import { ALL_SKILLS } from "../skills";
 import type { ToolRegistry } from "../tools/catalog-runtime/availability";
 import type { ToolConfig } from "../tools/types";
 import {
   agentParameters,
   type CommandRuntime,
   commandName,
+  commandSkills,
   refusedFlagReason,
 } from "./commands";
 import {
@@ -131,7 +131,7 @@ function createCommandTool(
 ) {
   return defineTool({
     name: commandToolName(entry),
-    skills: ALL_SKILLS,
+    skills: commandSkills(entry),
     requiredScopes: [],
     description: describeCommand(entry, policy),
     inputSchema: inputShape(agentParameters(entry)),
