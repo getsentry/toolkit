@@ -1,7 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { type Span, getActiveSpan } from "@sentry/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildServer } from "./server";
 import type { Skill } from "./skills";
 import { getStructuredContent } from "./test-utils/structured-content";
@@ -12,11 +11,6 @@ import type { ServerContext } from "./types";
 
 vi.mock("@sentry/core/server", () => ({
   wrapMcpServerWithSentry: vi.fn((server) => server),
-}));
-
-vi.mock("@sentry/core", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@sentry/core")>()),
-  getActiveSpan: vi.fn(),
 }));
 
 const ALL_SKILLS = new Set<Skill>([
@@ -128,77 +122,30 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
     );
   });
 
-  describe("calls to unregistered tools", () => {
-    // Sentry's MCP instrumentation leaves the span status unset for -32602
-    // errors, so these calls used to be recorded as successful spans.
-    afterEach(() => {
-      vi.mocked(getActiveSpan).mockReset();
+  it("tells clients that the gateway tools were removed", async () => {
+    const error = await withClient(getContext(), (client) =>
+      client.callTool({
+        name: "execute_sentry_tool",
+        arguments: { name: "whoami", arguments: {} },
+      }),
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: -32602,
+      message:
+        "MCP error -32602: Tool execute_sentry_tool was removed from the Sentry MCP server. Call Sentry tools directly by name. If they are missing from your tool list, reconnect the Sentry MCP server to refresh it.",
     });
+  });
+});
 
-    function mockActiveSpan() {
-      const span = { setAttributes: vi.fn(), setStatus: vi.fn() };
-      vi.mocked(getActiveSpan).mockReturnValue(span as unknown as Span);
-      return span;
-    }
+// telem/unknown-tool.test.ts covers the span these calls produce.
+it("keeps the SDK's not-found error for other unknown tools", async () => {
+  const error = await withClient(getContext(), (client) =>
+    client.callTool({ name: "not_a_sentry_tool", arguments: {} }),
+  ).catch((caught: unknown) => caught);
 
-    it("tells clients that the gateway tools were removed and marks the span failed", async () => {
-      const span = mockActiveSpan();
-
-      const error = await withClient(
-        getContext({ transport: "http" }),
-        (client) =>
-          client.callTool({
-            name: "execute_sentry_tool",
-            arguments: { name: "whoami", arguments: {} },
-          }),
-      ).catch((caught: unknown) => caught);
-
-      expect(error).toMatchObject({
-        code: -32602,
-        message:
-          "MCP error -32602: Tool execute_sentry_tool was removed from the Sentry MCP server. Call Sentry tools directly by name. If they are missing from your tool list, reconnect the Sentry MCP server to refresh it.",
-      });
-      expect(span.setStatus).toHaveBeenCalledWith({
-        code: 2,
-        message: "not_found",
-      });
-      expect(span.setAttributes).toHaveBeenCalledWith(
-        expect.objectContaining({
-          "error.type": "unknown_tool",
-          "app.transport": "http",
-        }),
-      );
-    });
-
-    it("keeps the SDK's not-found error for other unknown tools", async () => {
-      const span = mockActiveSpan();
-
-      const error = await withClient(getContext(), (client) =>
-        client.callTool({ name: "not_a_sentry_tool", arguments: {} }),
-      ).catch((caught: unknown) => caught);
-
-      expect(error).toMatchObject({
-        code: -32602,
-        message: "MCP error -32602: Tool not_a_sentry_tool not found",
-      });
-      expect(span.setAttributes).toHaveBeenCalledWith(
-        expect.objectContaining({ "error.type": "unknown_tool" }),
-      );
-    });
-
-    it("does not mark registered tools", async () => {
-      const span = mockActiveSpan();
-
-      await withClient(getContext(), (client) =>
-        client.callTool({ name: "whoami", arguments: {} }),
-      );
-
-      expect(span.setAttributes).not.toHaveBeenCalledWith(
-        expect.objectContaining({ "error.type": "unknown_tool" }),
-      );
-      expect(span.setStatus).not.toHaveBeenCalledWith(
-        expect.objectContaining({ code: 2 }),
-      );
-    });
+  expect(error).toMatchObject({
+    code: -32602,
+    message: "MCP error -32602: Tool not_a_sentry_tool not found",
   });
 });

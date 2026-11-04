@@ -115,17 +115,19 @@ function markUnknownToolCalls(
 ): void {
   // The SDK has no hook for unknown tool names, so this wraps its tools/call
   // handler in the Protocol's private handler map.
-  const handlers = (
-    server.server as unknown as {
-      _requestHandlers?: Map<string, RequestHandler>;
-    }
-  )._requestHandlers;
-  const handleToolsCall = handlers?.get("tools/call");
-  if (!handlers || !handleToolsCall) {
+  // If an SDK upgrade changes it, this is a no-op.
+  const handlers = (server.server as unknown as { _requestHandlers?: unknown })
+    ._requestHandlers;
+  if (!(handlers instanceof Map)) {
+    return;
+  }
+  const requestHandlers = handlers as Map<string, RequestHandler>;
+  const handleToolsCall = requestHandlers.get("tools/call");
+  if (typeof handleToolsCall !== "function") {
     return;
   }
 
-  handlers.set("tools/call", async (request, ctx) => {
+  requestHandlers.set("tools/call", async (request, ctx) => {
     const name = request.params?.name;
     if (typeof name !== "string" || registeredToolNames.has(name)) {
       return await handleToolsCall(request, ctx);
@@ -301,11 +303,16 @@ export function buildServer({
     },
     { maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS },
   );
+  const toolCallSpanAttributes = getToolCallSpanAttributes(
+    contextWithModes,
+    experimentalMode,
+  );
   const registrations = configureServer({
     server,
     context: contextWithModes,
     experimentalMode,
     tools: customTools,
+    toolCallSpanAttributes,
   });
   for (const { name, config, handler } of registrations) {
     server.registerTool(name, config, handler);
@@ -316,7 +323,7 @@ export function buildServer({
     markUnknownToolCalls(
       server,
       new Set(registrations.map(({ name }) => name)),
-      getToolCallSpanAttributes(contextWithModes, experimentalMode),
+      toolCallSpanAttributes,
     );
   }
   return wrapMcpServerWithSentry(server);
@@ -334,19 +341,17 @@ function configureServer({
   context,
   experimentalMode = false,
   tools: customTools,
+  toolCallSpanAttributes,
 }: {
   server: McpServer;
   context: ServerContext;
   experimentalMode?: boolean;
   tools?: ToolRegistry;
+  toolCallSpanAttributes: Record<string, SpanAttributeValue>;
 }) {
   const registrations = [];
   const registry: ToolRegistry = customTools ?? tools;
 
-  const toolCallSpanAttributes = getToolCallSpanAttributes(
-    context,
-    experimentalMode,
-  );
   const availableTools = getAvailableTools({
     tools: registry,
     context,
