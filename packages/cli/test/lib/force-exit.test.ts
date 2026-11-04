@@ -77,6 +77,27 @@ describe("force-exit safety net", () => {
     expect(exitSpy).toHaveBeenCalledWith(10);
   });
 
+  test("exits after pending output flushes without a drain event", async () => {
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation(() => undefined as never);
+    vi.spyOn(process.stdout, "writableLength", "get").mockReturnValue(1000);
+    const writeSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((_chunk, callback) => {
+        setImmediate(callback as () => void);
+        return true;
+      });
+    process.env.NODE_ENV = "production";
+
+    scheduleForceExit(Promise.resolve(false));
+    await settle();
+    await settle();
+
+    expect(writeSpy).toHaveBeenCalledWith("", expect.any(Function));
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
   test("does nothing in the test environment even on macOS", async () => {
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     const exitSpy = vi

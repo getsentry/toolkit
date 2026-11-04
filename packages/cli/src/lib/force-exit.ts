@@ -36,7 +36,11 @@ export function scheduleForceExit(
 
 /**
  * `process.exit()` drops stdout and stderr data that a pipe has not taken
- * yet, on Linux and macOS. Wait until both streams drain.
+ * yet, on Linux and macOS. Wait until both streams flush.
+ *
+ * `drain` fires only after a `write()` returned `false`, so data below the
+ * high-water mark can stay pending without it. The callback of an empty write
+ * runs after all earlier writes, or with an error when the stream is closed.
  */
 function exitAfterOutputDrains(): void {
   const pending = [process.stdout, process.stderr].filter(
@@ -46,8 +50,7 @@ function exitAfterOutputDrains(): void {
     pending.map(
       (stream) =>
         new Promise((resolve) => {
-          stream.once("drain", resolve);
-          stream.once("close", resolve);
+          stream.write("", resolve);
         }),
     ),
   ).then(() => process.exit(process.exitCode ?? 0));
