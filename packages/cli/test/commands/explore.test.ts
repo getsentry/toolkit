@@ -1365,21 +1365,22 @@ describe("sentry explore", () => {
       expect((error as Error).message).not.toContain("attribute list");
     });
 
-    const rejectedArgument = (fn: string, argument: string) => ({
+    const rejectedArgument = (fn: string, argument: string, hint?: string) => ({
       code: "invalid_function_argument",
-      functionArgument: { function: fn, argument },
+      functionArgument: { function: fn, argument, hint },
     });
     const rejectedArgumentError = (
       detail: string,
       fn: string,
       argument: string,
+      hint?: string,
     ) =>
       new ApiError(
         "Bad request",
         400,
         detail,
         undefined,
-        rejectedArgument(fn, argument),
+        rejectedArgument(fn, argument, hint),
       );
 
     test.each([
@@ -1395,7 +1396,7 @@ describe("sentry explore", () => {
         "tags[cart.total,number]; to check the key and its type, run: sentry attribute list <org>/ cart.total --dataset spans",
       ],
       [
-        "transaction.duration on transactions",
+        "the server's hint for transaction.duration on transactions",
         {
           dataset: "transactions",
           field: ["transaction", "sum(transaction.duration)"],
@@ -1405,9 +1406,21 @@ describe("sentry explore", () => {
           "transaction.duration is invalid for parameter 1 in sum. Its a string type field, but it must be one of these types: {'number', 'duration'}",
           "sum",
           "transaction.duration",
+          "Use span.duration instead of transaction.duration on the spans dataset.",
         ),
         '--field "sum(transaction.duration)" for dataset "spans"',
-        "Use span.duration instead of transaction.duration.",
+        "Use span.duration instead of transaction.duration on the spans dataset.",
+      ],
+      [
+        "a generic hint for transaction.duration when the server sends none",
+        { dataset: "transactions", field: ["sum(transaction.duration)"] },
+        rejectedArgumentError(
+          "transaction.duration is invalid for parameter 1 in sum. Its a string type field, but it must be one of these types: {'number', 'duration'}",
+          "sum",
+          "transaction.duration",
+        ),
+        '--field "sum(transaction.duration)" for dataset "spans"',
+        'sum() does not accept transaction.duration on dataset "spans"',
       ],
       [
         "a timestamp aggregate on spans",

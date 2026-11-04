@@ -233,8 +233,8 @@ export type ApiRequestOptions<T = unknown> = {
 
 /**
  * Structured fields of a JSON error body: its string `code` (e.g.
- * `invalid_search_query`) and the rejected `function` and `argument`
- * (sent with `invalid_function_argument`).
+ * `invalid_search_query`) and the rejected `function` and `argument`, with an
+ * optional `hint` (sent with `invalid_function_argument`).
  */
 function readErrorFields(body: unknown): {
   code?: string;
@@ -251,10 +251,14 @@ function readErrorFields(body: unknown): {
   ) {
     return { code };
   }
-  return {
-    code,
-    functionArgument: { function: fields.function, argument: fields.argument },
+  const functionArgument: FunctionArgument = {
+    function: fields.function,
+    argument: fields.argument,
   };
+  if (typeof fields.hint === "string") {
+    functionArgument.hint = fields.hint;
+  }
+  return { code, functionArgument };
 }
 
 const CONNECT_TIMEOUT_HINT =

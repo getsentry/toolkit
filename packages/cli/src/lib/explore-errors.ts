@@ -28,7 +28,8 @@ const INVALID_FUNCTION_ARGUMENT_CODE = "invalid_function_argument";
 /**
  * Match narrow backend diagnostics without maintaining an aggregate catalog.
  * Beyond the specific corrections, a 400 whose structured fields name this
- * expression's own function and argument gets a generic hint.
+ * expression's own function and argument gets the server's hint, or a generic
+ * one when the server sent none.
  */
 function recoveryHint(
   detail: string,
@@ -72,11 +73,10 @@ function recoveryHint(
   ) {
     return;
   }
-  const { argument } = rejected;
-  // `--dataset transactions` queries spans, which keep durations in span.duration.
-  if (dataset === "spans" && argument === "transaction.duration") {
-    return "Use span.duration instead of transaction.duration. Transactions are queried as spans, which store their duration in span.duration.";
+  if (rejected.hint) {
+    return rejected.hint;
   }
+  const { argument } = rejected;
   const problem = `${parsed.name}() does not accept ${argument} on dataset "${dataset}": it may not exist there, or may not have the type ${parsed.name}() needs.`;
   return ATTRIBUTE_DATASETS.has(dataset)
     ? `${problem} Reference a numeric custom attribute with its type, e.g. tags[${argument},number]; to check the key and its type, run: sentry attribute list <org>/ ${argument} --dataset ${dataset}`
