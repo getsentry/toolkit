@@ -137,7 +137,7 @@ export const ParamSpanId = z
 // Platform names agents sent in production that Sentry rejects with
 // `{"platform":["Invalid platform"]}`, mapped to the ID Sentry accepts. Every
 // value must be in GETTING_STARTED_DOCS_PLATFORMS in getsentry/sentry
-// src/sentry/models/project.py.
+// src/sentry/models/project.py (checked against master on 2026-11-04).
 const PLATFORM_ALIASES: ReadonlyMap<string, string> = new Map([
   ["react", "javascript-react"],
   ["cocoa", "apple"],
