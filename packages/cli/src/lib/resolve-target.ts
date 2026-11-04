@@ -1776,8 +1776,7 @@ async function resolveSoleAccountTarget(): Promise<ResolvedTarget | null> {
     return null;
   }
   try {
-    const orgs = await listOrganizations();
-    const org = orgs.length === 1 ? orgs[0] : undefined;
+    const org = await fetchSoleOrganization();
     if (!org) {
       return null;
     }
@@ -1789,6 +1788,39 @@ async function resolveSoleAccountTarget(): Promise<ResolvedTarget | null> {
     return toAccountTarget(org, project, "your only accessible org/project");
   } catch (error) {
     log.debug("Account-based auto-detect failed", error);
+    return null;
+  }
+}
+
+/** The account's only accessible organization, or `undefined` for zero or several. */
+async function fetchSoleOrganization(): Promise<
+  SentryOrganization | undefined
+> {
+  const orgs = await listOrganizations();
+  return orgs.length === 1 ? orgs[0] : undefined;
+}
+
+/**
+ * Last-resort org resolution for authenticated users: when the account can
+ * reach exactly one organization, it is the only possible org for an
+ * org-scoped command, so use it instead of failing auto-detection (CLI-3B).
+ *
+ * Returns `null` when not authenticated, when the lookup fails, or when the
+ * account has zero or several organizations. Never throws and never prompts.
+ */
+async function resolveSoleOrg(): Promise<ResolvedOrg | null> {
+  if (!isAuthenticated()) {
+    return null;
+  }
+  try {
+    const org = await fetchSoleOrganization();
+    if (!org) {
+      return null;
+    }
+    setOrgProjectContext([org.slug], []);
+    return { org: org.slug, detectedFrom: "your only accessible organization" };
+  } catch (error) {
+    log.debug("Account-based org auto-detect failed", error);
     return null;
   }
 }
@@ -2513,6 +2545,8 @@ export type MultiTargetResolutionResult = {
   footer?: string;
   skippedSelfHosted?: number;
   detectedDsns?: DetectedDsn[];
+  /** Set instead of `targets` when `orgWideFallback` applied. */
+  soleOrg?: string;
 };
 
 /** Options for {@link resolveProjectBoundTargets}. */
@@ -2536,6 +2570,12 @@ export type ResolveProjectBoundTargetsOptions = {
    * (e.g. "CLI-123") before attempting cross-org project search.
    */
   checkIssueShortId?: boolean;
+  /**
+   * Auto-detect mode only: when nothing is detected and the account can reach
+   * exactly one organization, return it as `soleOrg` (with no targets) instead
+   * of asking for a project. For commands that can run org-wide.
+   */
+  orgWideFallback?: boolean;
 };
 
 /**
@@ -2563,11 +2603,22 @@ export async function resolveProjectBoundTargets(
     projectSearchResolution,
     enrichProjectIds,
     checkIssueShortId,
+    orgWideFallback,
   } = opts;
 
   switch (parsed.type) {
     case "auto-detect": {
       const result = await resolveAllTargets({ cwd, usageHint });
+      if (
+        orgWideFallback &&
+        result.targets.length === 0 &&
+        !result.skippedSelfHosted
+      ) {
+        const sole = await resolveSoleOrg();
+        if (sole) {
+          return { targets: [], soleOrg: sole.org };
+        }
+      }
       // Only guide when there is genuinely no context. If DSNs WERE found but
       // could not be resolved (self-hosted / no access), `skippedSelfHosted` is
       // set — preserve the empty result so the caller surfaces the
@@ -2789,7 +2840,7 @@ export async function resolveOrgOptionalTarget(
 
   // auto-detect: resolve org only (no project required)
   if (parsed.type === "auto-detect") {
-    const resolved = await resolveOrg({ cwd });
+    const resolved = (await resolveOrg({ cwd })) ?? (await resolveSoleOrg());
     if (!resolved) {
       throw new ContextError("Organization", usageHint, [
         "SENTRY_ORG environment variable",
@@ -2839,7 +2890,7 @@ export async function resolveOrgOnlyTarget(
   usageHint = `sentry ${commandName} <target>`,
 ): Promise<string> {
   if (parsed.type === "auto-detect") {
-    const resolved = await resolveOrg({ cwd });
+    const resolved = (await resolveOrg({ cwd })) ?? (await resolveSoleOrg());
     if (!resolved) {
       throw new ContextError("Organization", usageHint);
     }
