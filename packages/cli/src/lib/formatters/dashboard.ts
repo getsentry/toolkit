@@ -1566,7 +1566,13 @@ function buildTimeAxis(opts: {
   const tickPositions = new Set(labels.map((l) => l.pos));
   const axisChars = buildAxisChars(chartWidth, incomplete);
   for (const pos of tickPositions) {
-    if (pos >= 0 && pos < chartWidth) {
+    // Keep the dashed marker when a tick lands on an incomplete column; a
+    // one-character column would otherwise lose its only marker.
+    if (
+      pos >= 0 &&
+      pos < chartWidth &&
+      axisChars[pos] !== INCOMPLETE_AXIS_CHAR
+    ) {
       axisChars[pos] = "┬";
     }
   }

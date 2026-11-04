@@ -773,6 +773,30 @@ describe("formatDashboardWithData", () => {
       );
     });
 
+    test("keeps the dashed marker when a tick lands on the last column", () => {
+      // 73 one-hour buckets on a narrow widget: each column is one character
+      // wide and the final tick sits on the incomplete column.
+      const hourly = Array.from({ length: 73 }, (_, i) => ({
+        timestamp: 1_700_000_000 + i * 3600,
+        value: 5 + (i % 7),
+        ...(i >= 71 ? { incomplete: true } : {}),
+      }));
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "bar",
+            layout: { x: 0, y: 0, w: 3, h: 3 },
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values: hourly }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      const axisLine = output.split("\n").find((line) => line.includes("└"));
+      expect(axisLine).toContain("┄");
+    });
+
     test("dashes the axis under incomplete stacked bar columns", () => {
       const data = makeDashboardData({
         widgets: [
