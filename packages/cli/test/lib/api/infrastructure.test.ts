@@ -181,8 +181,6 @@ describe("throwApiError", () => {
       "SENTRY_AUTH_TOKEN",
       "SENTRY_TOKEN",
       "SENTRY_FORCE_ENV_TOKEN",
-      // Hints name `npx -y sentry` when npm launched the process.
-      "npm_command",
       "HTTPS_PROXY",
       "https_proxy",
       "HTTP_PROXY",

@@ -19,8 +19,6 @@ import {
   type TransportCache,
 } from "@sentry/toolkit-core/api-client/transport";
 import { computeInvalidationPrefixes } from "@sentry/toolkit-core/api-client/response-cache";
-import { SENTRY_STATUS_PAGE_URL } from "./api/status-page.js";
-import { getStatusCommand } from "./app-identity.js";
 import { formatAuthHeader } from "./auth-header.js";
 import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
@@ -240,30 +238,16 @@ function resolveTimeoutMs(fullUrl: string): number {
   return REQUEST_TIMEOUT_MS;
 }
 
-/**
- * The step that checks whether the Sentry server at `baseUrl` is up:
- * `sentry status` (the status page, or `/_health/` on self-hosted) when this
- * program has that command, else the URL to check by hand.
- */
-export function buildServerCheckStep(baseUrl: string): string {
-  const statusCommand = getStatusCommand();
-  if (isSentrySaasUrl(baseUrl)) {
-    return statusCommand
-      ? `Check Sentry's status with: ${statusCommand}`
-      : `Check Sentry's status at: ${SENTRY_STATUS_PAGE_URL}`;
-  }
-  return statusCommand
-    ? `Check the server's health with: ${statusCommand} --url ${baseUrl}`
-    : `Test the connection with: curl -I ${baseUrl}/api/0/`;
-}
-
 /** Next steps for a request that got no response in time. */
 function buildTimeoutHint(idempotent: boolean): string {
   const baseUrl = getApiBaseUrl();
   const retry = idempotent
     ? "Try again."
     : "The change may still have been applied; check before trying again.";
-  return `The Sentry API at ${baseUrl} did not respond in time. ${retry}\n  ${buildServerCheckStep(baseUrl)}`;
+  const check = isSentrySaasUrl(baseUrl)
+    ? "Check Sentry's status with: sentry status"
+    : `Check the server's health with: sentry status --url ${baseUrl}`;
+  return `The Sentry API at ${baseUrl} did not respond in time. ${retry}\n  ${check}`;
 }
 
 /** Pass custom TLS options (CA certs for corporate proxies) to each fetch. */

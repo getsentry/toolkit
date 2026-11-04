@@ -46,7 +46,6 @@ import {
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import {
-  buildServerCheckStep,
   getApiBaseUrl,
   getDefaultSdkConfig,
   getSdkConfig,
@@ -306,15 +305,11 @@ function buildNetworkErrorDetail(error: unknown): string {
     ? NETWORK_CAUSE_HINTS[networkCause.code]
     : undefined;
   const steps = [causeHint ?? "Check your network connection and try again."];
-  if (isSentrySaasUrl(baseUrl)) {
-    steps.push(buildServerCheckStep(baseUrl));
-  } else {
-    // `sentry status --url` would fail the same way; curl shows why.
-    steps.push(
-      describeUrlSource(),
-      `Test the connection with: curl -I ${baseUrl}/api/0/`,
-    );
-  }
+  steps.push(
+    isSentrySaasUrl(baseUrl)
+      ? "Check Sentry's status with: sentry status"
+      : describeUrlSource(),
+  );
   return [`Unable to reach Sentry at ${baseUrl}: ${cause}`, "", ...steps].join(
     "\n  ",
   );

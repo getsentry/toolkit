@@ -67,13 +67,3 @@ export function getLoginCommand(): string {
 export function getUrlLoginCommand(): string {
   return `${getLoginCommand()} --url`;
 }
-
-/**
- * Command that checks a Sentry server's status (`sentry status`), or
- * undefined when this program has no `status` command (`sentry-mcp`).
- */
-export function getStatusCommand(): string | undefined {
-  return identity.packageName === "sentry"
-    ? `${getInvocationCommand()} status`
-    : undefined;
-}
