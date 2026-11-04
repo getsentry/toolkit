@@ -260,6 +260,7 @@ describe("TABLE_SCHEMAS persistence", () => {
       "project_cache",
       "project_root_cache",
       "repo_cache",
+      "telemetry_envelope_queue",
     ]);
   });
 });
@@ -330,6 +331,18 @@ describe("runMigrations", () => {
       }
     ).version;
     expect(version).toBe(CURRENT_SCHEMA_VERSION);
+    db.close();
+  });
+
+  test("v20 -> v21 adds telemetry_envelope_queue", () => {
+    const db = new Database(join(getTestDir(), "test.db"));
+    createDatabaseWithMissingTables(db, ["telemetry_envelope_queue"]);
+    db.query("UPDATE schema_version SET version = 20").run();
+
+    runMigrations(db);
+
+    expect(tableExists(db, "telemetry_envelope_queue")).toBe(true);
+    expect(getSchemaIssues(db)).toEqual([]);
     db.close();
   });
 

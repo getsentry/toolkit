@@ -48,7 +48,7 @@ import {
 import { makeNodeTransport } from "@sentry/node";
 
 /** `@sentry/node` v11 no longer re-exports this type from its entry point. */
-type NodeTransportOptions = Parameters<typeof makeNodeTransport>[0];
+export type NodeTransportOptions = Parameters<typeof makeNodeTransport>[0];
 
 type HttpModule = NonNullable<NodeTransportOptions["httpModule"]>;
 

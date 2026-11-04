@@ -48,6 +48,12 @@ import {
 } from "@sentry/toolkit-core/games";
 import { getSentryBaseUrl, isSentrySaasUrl } from "./sentry-urls.js";
 import { redactTelemetryEnvelope } from "./telemetry/credential-redaction.js";
+import { clearStoredEnvelopes } from "./telemetry/offline-store.js";
+import {
+  makeStoringTransport,
+  STORED_ENVELOPES_PER_RUN,
+  type StoringTransport,
+} from "./telemetry/offline-transport.js";
 import { makeCompressedTransport } from "./telemetry/zstd-transport.js";
 
 export type { Span } from "@sentry/core";
@@ -215,8 +221,17 @@ export async function withTelemetry<T>(
   const enabled = isTelemetryEnabled();
   const client = initSentry(enabled, options);
   if (!client?.getOptions().enabled) {
+    // Opting out also discards telemetry stored by earlier runs. Library mode
+    // never touches the store: it belongs to the CLI, not the host.
+    if (!(enabled || options?.libraryMode)) {
+      clearStoredEnvelopes();
+    }
     return await callback(undefined);
   }
+
+  // Retry telemetry that earlier runs failed to send. The sends run in the
+  // background; the exit flush in createBeforeExitHandler waits for them.
+  storingTransport?.sendStored(STORED_ENVELOPES_PER_RUN);
 
   // Initialize user and instance context
   await initTelemetryContext();
@@ -494,6 +509,9 @@ const hasGetSystemErrorMap = (() => {
 /** Current beforeExit handler, tracked so it can be replaced on re-init */
 let currentBeforeExitHandler: (() => void) | null = null;
 
+/** Transport of the current client, unless library mode left the store out. */
+let storingTransport: StoringTransport | undefined;
+
 let manualHttpTracing = false;
 
 /**
@@ -665,8 +683,15 @@ export function initSentry(
     // smaller payloads, faster compress/decompress on both sides.
     // Automatic gzip fallback when running on Node < 22.15, where
     // `node:zlib`'s zstd support is unavailable.
+    // Outside library mode, envelopes that fail to send are stored for the
+    // next run (telemetry/offline-transport.ts). Library mode must not write
+    // the host's disk or add work to its process.
     transport: (transportOptions) => {
-      const transport = makeCompressedTransport(transportOptions);
+      storingTransport = libraryMode
+        ? undefined
+        : makeStoringTransport(transportOptions);
+      const transport =
+        storingTransport ?? makeCompressedTransport(transportOptions);
       return {
         // The SDK adds log scope attributes after beforeSendLog and skips
         // beforeSend for internal errors. Redact at the final delivery boundary.

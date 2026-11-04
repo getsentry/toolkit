@@ -92,6 +92,14 @@ export SENTRY_DISABLE_TIPS=1   # per-session, overrides the stored preference
 
 Only the tips are removed. Pagination hints, dry-run and cancellation notices, and the cache-age footer (`cached · 3m ago · use -f to refresh`) are still shown.
 
+## Telemetry
+
+The CLI sends usage data and error reports about itself to Sentry. To opt out, set `SENTRY_CLI_NO_TELEMETRY=1` or `DO_NOT_TRACK=1`, or run `sentry cli defaults telemetry off`.
+
+When telemetry can't be sent, for example while offline or when a firewall blocks Sentry, the CLI keeps it in its local database and sends up to 10 stored envelopes on each later run. The cache holds at most 100 envelopes and 4 MiB, dropping the oldest first, and discards anything older than 4 days. After the first failed send, the CLI stops sending for the rest of that run, so an unreachable Sentry delays its exit by about 3 seconds at most.
+
+Opting out deletes the cache on the next run. The library (`createSentrySDK`) never caches telemetry.
+
 ## Global Options
 
 These flags are accepted by every command. They are not shown in individual command `--help` output, but are always available.
