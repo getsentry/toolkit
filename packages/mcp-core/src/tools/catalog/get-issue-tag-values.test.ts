@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { mswServer } from "@sentry/mcp-server-mocks";
 import {
@@ -13,6 +13,8 @@ import { UserInputError } from "../../errors.js";
 import { ApiNotFoundError } from "../../api-client/index.js";
 
 describe("get_issue_tag_values", () => {
+  afterEach(() => mswServer.resetHandlers());
+
   it("returns tag value distribution for an issue", async () => {
     const result = await getIssueTagValues.handler(
       {
@@ -218,6 +220,82 @@ describe("get_issue_tag_values", () => {
         - issueId: 'CLOUDFLARE-MCP-404'"
     `);
   });
+
+  const callForEnvironment = () =>
+    getIssueTagValues
+      .handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+          tagKey: "environment",
+          regionUrl: null,
+          issueUrl: undefined,
+        },
+        getServerContext(),
+      )
+      .catch((thrown: unknown) => thrown);
+
+  const originalNotFoundMessage = `
+      "The requested resource does not exist
+      Please verify these parameters are correct:
+        - organizationSlug: 'sentry-mcp-evals'
+        - issueId: 'CLOUDFLARE-MCP-41'
+        - tagKey: 'environment'"
+    `;
+
+  it("keeps the not-found error when the issue lists the key", async () => {
+    // Sentry 404s for a key whose recorded values are all empty strings.
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/:org/issues/:issueId/tags/:tagKey/",
+        notFoundResponse,
+      ),
+    );
+
+    const error = await callForEnvironment();
+
+    expect(error).toBeInstanceOf(ApiNotFoundError);
+    expect((error as Error).message).toMatchInlineSnapshot(
+      originalNotFoundMessage,
+    );
+  });
+
+  it.each([
+    [
+      "is rate limited",
+      () =>
+        HttpResponse.json(
+          { detail: "You are attempting to use this endpoint too frequently." },
+          { status: 429 },
+        ),
+    ],
+    [
+      "fails on the server",
+      () => HttpResponse.json({ detail: "Internal Error" }, { status: 500 }),
+    ],
+    ["returns an unexpected body", () => HttpResponse.json({ tags: [] })],
+  ])(
+    "keeps the not-found error when listing the tag keys %s",
+    async (_label, listResponse) => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/:org/issues/:issueId/tags/:tagKey/",
+          notFoundResponse,
+        ),
+        http.get(
+          "https://sentry.io/api/0/organizations/:org/issues/:issueId/tags/",
+          listResponse,
+        ),
+      );
+
+      const error = await callForEnvironment();
+
+      expect(error).toBeInstanceOf(ApiNotFoundError);
+      expect((error as Error).message).toMatchInlineSnapshot(
+        originalNotFoundMessage,
+      );
+    },
+  );
 
   /**
    * These assert against the input schema rather than the handler because the

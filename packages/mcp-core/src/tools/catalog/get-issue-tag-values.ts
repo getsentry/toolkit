@@ -1,7 +1,12 @@
 import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { z } from "zod";
-import { ApiNotFoundError, type SentryApiService } from "../../api-client";
-import { UserInputError } from "../../errors";
+import {
+  ApiClientError,
+  ApiNotFoundError,
+  type IssueTagKeyList,
+  type SentryApiService,
+} from "../../api-client";
+import { ConfigurationError, UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
@@ -16,6 +21,7 @@ import {
   ParamOrganizationSlug,
   ParamRegionUrl,
 } from "../../schema";
+import { logIssue } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
@@ -48,7 +54,7 @@ export default defineTool({
     "- Analyze which browsers, environments, or URLs are most impacted by an issue",
     "- View the tag distributions page data programmatically",
     "",
-    "Tag keys depend on the issue's platform, SDK, and custom tags, so keys such as `browser` or `url` are missing from many issues. Read the keys from the `### Tags` section of `get_issue_details` before picking one. If the key is not on the issue, the error lists the keys it has.",
+    "Tag keys depend on the issue's platform, SDK, and custom tags, so keys such as `browser` or `url` are missing from many issues. The `### Tags` section of `get_issue_details` shows the tags on one of the issue's events, which is a good place to pick a key from. If the key is not on the issue, the error lists the keys it has.",
     "",
     "<examples>",
     "### Get environment distribution for an issue",
@@ -181,18 +187,33 @@ async function explainTagValuesNotFound({
   tagKey: string;
   error: ApiNotFoundError;
 }): Promise<Error> {
-  let tags: Awaited<ReturnType<typeof apiService.listIssueTags>>;
+  const originalError = () =>
+    enhanceNotFoundError(error, { organizationSlug, issueId, tagKey });
+
+  let tags: IssueTagKeyList;
   try {
     tags = await apiService.listIssueTags({ organizationSlug, issueId });
   } catch (listError) {
     if (listError instanceof ApiNotFoundError) {
       return enhanceNotFoundError(listError, { organizationSlug, issueId });
     }
-    throw listError;
+    // The list only refines the 404, so a failed list (rate limit, server
+    // error, unexpected body) must not replace it with a worse error.
+    if (
+      !(listError instanceof ApiClientError) &&
+      !(listError instanceof ConfigurationError)
+    ) {
+      logIssue(listError, {
+        loggerScope: ["tools", "get-issue-tag-values", "list-tags"],
+        contexts: { request: { organizationSlug, issueId } },
+      });
+    }
+    return originalError();
   }
 
+  // Sentry also 404s for a listed key whose values are all empty.
   if (tags.some((tag) => tag.key === tagKey)) {
-    return enhanceNotFoundError(error, { organizationSlug, issueId, tagKey });
+    return originalError();
   }
 
   const notFound = `Tag ${inlineCode(tagKey)} not found on this issue.`;
@@ -200,7 +221,11 @@ async function explainTagValuesNotFound({
     return new UserInputError(`${notFound} The issue has no tags.`);
   }
   const keys = [...tags]
-    .sort((a, b) => b.totalValues - a.totalValues || a.key.localeCompare(b.key))
+    .sort(
+      (a, b) =>
+        (b.totalValues ?? 0) - (a.totalValues ?? 0) ||
+        a.key.localeCompare(b.key),
+    )
     .slice(0, MAX_LISTED_TAG_KEYS)
     .map((tag) => inlineCode(tag.key));
   const more =

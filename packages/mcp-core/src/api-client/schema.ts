@@ -1507,11 +1507,19 @@ export const IssueTagValuesSchema = z
 /**
  * Schema for the tag keys recorded on an issue, each with its event count.
  *
+ * Only the keys are parsed; the top values Sentry returns with each key are
+ * dropped so one unusual value cannot fail the whole list.
+ *
  * Upstream source of truth in getsentry/sentry:
  * - `src/sentry/issues/endpoints/group_tags.py` (`GroupTagsEndpoint`)
  * - `src/sentry/tagstore/types.py` (`TagKeySerializerResponse`)
  */
-export const IssueTagKeyListSchema = z.array(IssueTagValuesSchema);
+export const IssueTagKeyListSchema = z.array(
+  z.object({
+    key: z.string(),
+    totalValues: z.number().nullish(),
+  }),
+);
 
 /**
  * Schema for external issue link (e.g., Jira, GitHub Issues).
