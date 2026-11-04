@@ -34,7 +34,13 @@ export const snakeCommand = buildCommand({
       );
     }
 
-    const { playSnake } = await import("../../lib/games/snake-terminal.js");
-    await playSnake({ input: this.stdin, output }, { color: !isPlainOutput() });
+    const [{ playSnake }, { reportSnakeScore }] = await Promise.all([
+      import("../../lib/games/snake-terminal.js"),
+      import("../../lib/games/score.js"),
+    ]);
+    await playSnake(
+      { input: this.stdin, output },
+      { color: !isPlainOutput(), onGameOver: reportSnakeScore },
+    );
   },
 });

@@ -650,6 +650,31 @@ importers:
         specifier: 3.4.0
         version: 3.4.0
 
+  packages/games-api:
+    dependencies:
+      hono:
+        specifier: 'catalog:'
+        version: 4.13.13
+      zod:
+        specifier: ^4.6.6
+        version: 4.6.7
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 'catalog:'
+        version: 4.20260405.1
+      '@sentry/mcp-server-tsconfig':
+        specifier: workspace:*
+        version: link:../mcp-server-tsconfig
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0)(msw@2.10.2(@types/node@24.13.5)(typescript@5.9.3))(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+      wrangler:
+        specifier: 'catalog:'
+        version: 4.156.1(@cloudflare/workers-types@4.20260405.1)(@types/node@24.13.5)
+
   packages/logger:
     devDependencies:
       '@types/node':
