@@ -9,13 +9,14 @@
  * cache-age hint.
  *
  * Bodies are compressed with the toolkit-core codec and kept in a
- * filesystem store under `~/.sentry/cache/responses/` (see
+ * filesystem store under `~/.sentry/cache/api-responses/` (see
  * `response-cache-store.ts`), separate from the config SQLite database, which
  * stores small structured data (tokens, org slugs, cursors).
  *
  * @module
  */
 
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   buildCacheKey as buildIdentityCacheKey,
@@ -59,6 +60,15 @@ export async function buildCacheKey(
 
 /** Get the response cache directory path */
 function getCacheDir(): string {
+  return join(getConfigDir(), "cache", "api-responses");
+}
+
+/**
+ * The directory CLI versions before `@sentry/api` 0.446.0 cached into. Their
+ * entries can hold the raw `Authorization` header in the stored cache policy,
+ * so it is deleted rather than migrated.
+ */
+function getLegacyCacheDir(): string {
   return join(getConfigDir(), "cache", "responses");
 }
 
@@ -74,6 +84,9 @@ function getStore(): FileStore {
   const dir = getCacheDir();
   if (current?.dir !== dir) {
     current = { dir, store: createFileStore({ dir }) };
+    rm(getLegacyCacheDir(), { recursive: true, force: true }).catch((error) => {
+      log.debug("Failed to delete the legacy response cache", error);
+    });
   }
   return current.store;
 }
