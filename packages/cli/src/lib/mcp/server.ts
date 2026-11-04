@@ -301,6 +301,7 @@ export function installProcessHandlers(): (
   let exiting = false;
   function exitAfterError(error: unknown, label: string): void {
     if (exiting) {
+      // oxlint-disable-next-line sentry-cli/no-process-exit -- a second fatal error while the first one is exiting.
       process.exit(1);
     }
     exiting = true;
@@ -324,7 +325,9 @@ export function installProcessHandlers(): (
     }
 
     // Don't depend on flush finishing — exit even if it hangs or rejects.
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- fatal error: exit even when the flush hangs.
     setTimeout(() => process.exit(1), SENTRY_FLUSH_TIMEOUT_MS).unref();
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- fatal error: exit once the flush settles.
     void flush(SENTRY_FLUSH_TIMEOUT_MS).finally(() => process.exit(1));
   }
 
@@ -337,6 +340,7 @@ export function installProcessHandlers(): (
     exiting = true;
     console.error(`${signal} received, shutting down...`);
     await flush(SENTRY_FLUSH_TIMEOUT_MS);
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- signal shutdown, after the flush.
     process.exit(0);
   }
 

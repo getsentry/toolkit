@@ -14,6 +14,7 @@
 export function scheduleForceExit(): void {
   if (process.platform === "darwin" && process.env.NODE_ENV !== "test") {
     setTimeout(() => {
+      // oxlint-disable-next-line sentry-cli/no-process-exit -- the macOS-only backstop for #1237. Do not widen it (more platforms, longer waits, waiting on flushes); release the handle instead.
       process.exit(process.exitCode ?? 0);
     }, 100).unref();
   }
