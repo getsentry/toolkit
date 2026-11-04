@@ -739,11 +739,7 @@ type CommitRef = {
 export async function setCommitsWithRefs(
   orgSlug: string,
   version: string,
-  refs: Array<{
-    repository: string;
-    commit: string;
-    previousCommit?: string;
-  }>,
+  refs: CommitRef[],
 ): Promise<SentryRelease> {
   const encodedOrg = encodeApiPathSegment(orgSlug);
   if (encodedOrg === null) {
@@ -763,6 +759,106 @@ export async function setCommitsWithRefs(
     },
   );
   return data;
+}
+
+/**
+ * Field of the {@link ValidationError} for a `--commit` repository the org
+ * doesn't have, so this user configuration error can be told apart (CLI-2SK).
+ */
+const COMMIT_REPOSITORY_FIELD = "commit.repository";
+
+/**
+ * The server rejects refs whose repository the org doesn't have with a 400
+ * whose detail is `{"refs":["Invalid repository names: a,b"]}` (Sentry
+ * `Release.set_refs`, which matches names exactly).
+ */
+const INVALID_REPOSITORY_NAMES_RE = /Invalid repository names: ([^"\]]+)/;
+
+/**
+ * Turn the server's "Invalid repository names" 400 from {@link setCommitsWithRefs}
+ * into an error that says how to fix it: connect a source code integration
+ * when the org has no repositories, use the exact Sentry name when the
+ * repository exists under a different name (case, GitLab display names), or
+ * add the repository in Sentry otherwise.
+ *
+ * Any other error is returned unchanged. Repository lookups are best-effort:
+ * when they fail, the error still links to the repository settings.
+ *
+ * @param orgSlug - Organization slug
+ * @param version - Release version
+ * @param refs - The refs that were sent
+ * @param error - The error thrown by {@link setCommitsWithRefs}
+ * @returns The error to throw
+ */
+export async function explainSetCommitsError(
+  orgSlug: string,
+  version: string,
+  refs: CommitRef[],
+  error: unknown,
+): Promise<unknown> {
+  if (!(error instanceof ApiError && error.status === 400)) {
+    return error;
+  }
+  const invalid = error.detail?.match(INVALID_REPOSITORY_NAMES_RE)?.[1];
+  if (!invalid) {
+    return error;
+  }
+  const names = invalid.split(",").map((n) => n.trim());
+  const ref = refs.find((r) => names.includes(r.repository)) ?? refs[0];
+  const repository = ref?.repository ?? names[0] ?? "";
+  const commit = ref?.previousCommit
+    ? `${ref.previousCommit}..${ref.commit}`
+    : (ref?.commit ?? "<commit-sha>");
+  const target = `${orgSlug}/${version}`;
+  const commitExample = (name: string) =>
+    `sentry release set-commits ${target} --commit '${name}@${commit}'`;
+  const headline = `Sentry organization '${orgSlug}' has no repository named '${repository}'.`;
+
+  let match: SentryRepository | undefined;
+  let candidates: SentryRepository[] = [];
+  let hasRepositories: boolean | undefined;
+  try {
+    const found = await findSentryRepository(orgSlug, repository);
+    match = found.match;
+    candidates = found.candidates;
+    hasRepositories =
+      found.foundAnyRepos || (await orgHasRepositories(orgSlug));
+  } catch (lookupError) {
+    log.debug(
+      "Could not look up repositories for the --commit error",
+      lookupError,
+    );
+  }
+
+  if (match) {
+    return validationError(
+      `${headline} It has '${match.name}'. --commit needs the repository name exactly as Sentry shows it.`,
+      [commitExample(match.name)],
+      COMMIT_REPOSITORY_FIELD,
+    );
+  }
+  if (hasRepositories === false) {
+    return validationError(
+      `${headline} It has no repositories yet, so it cannot associate commits.`,
+      [`sentry integration list ${orgSlug}/`],
+      COMMIT_REPOSITORY_FIELD,
+      connectIntegrationHint(orgSlug),
+    );
+  }
+  const suggestions = [...new Set(candidates.map((r) => r.name))].slice(
+    0,
+    MAX_REPO_SUGGESTIONS,
+  );
+  const didYouMean =
+    suggestions.length > 0
+      ? ` It has similarly named repositories: ${suggestions.join(", ")}.`
+      : "";
+  return validationError(
+    `${headline}${didYouMean}`,
+    [...suggestions.map(commitExample), `sentry repo list ${orgSlug}/`],
+    COMMIT_REPOSITORY_FIELD,
+    `Add the repository to Sentry through your source code integration: ${buildRepositorySettingsUrl(orgSlug)}`,
+  );
 }
 
 /**
