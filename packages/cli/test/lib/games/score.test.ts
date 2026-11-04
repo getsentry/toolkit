@@ -1,7 +1,10 @@
 import { type Client, getCurrentScope, metrics } from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getPlayerHandle } from "../../../src/lib/games/player.js";
-import { reportSnakeScore } from "../../../src/lib/games/score.js";
+import {
+  reportSnakeScore,
+  waitForSnakeScores,
+} from "../../../src/lib/games/score.js";
 import {
   isTelemetryEnabled,
   scrubAnonymousMetric,
@@ -52,10 +55,31 @@ describe("reportSnakeScore", () => {
     expect(flush).toHaveBeenCalledTimes(1);
   });
 
-  test("does not throw when the flush fails", async () => {
+  test("lets the command wait until the score is sent", async () => {
+    let sent: (value: boolean) => void = () => undefined;
+    flush.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        sent = resolve;
+      }),
+    );
+    reportSnakeScore(12);
+
+    let waited = false;
+    const wait = waitForSnakeScores().then(() => {
+      waited = true;
+    });
+    await Promise.resolve();
+    expect(waited).toBe(false);
+
+    sent(true);
+    await wait;
+    expect(waited).toBe(true);
+  });
+
+  test("does not throw or reject when the flush fails", async () => {
     flush.mockRejectedValueOnce(new Error("network down"));
     expect(() => reportSnakeScore(12)).not.toThrow();
-    await Promise.resolve();
+    await expect(waitForSnakeScores()).resolves.toBeUndefined();
   });
 
   test("is skipped when telemetry is disabled", () => {
