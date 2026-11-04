@@ -56,23 +56,25 @@ function listOf(
 
 /**
  * The longest prefix of a list result that fits in `maxChars`, found by
- * binary search over the serialized size.
+ * binary search over the serialized size. `nextCursor` is dropped: it points
+ * past the whole page, so following it would skip the dropped items.
  */
 function truncateList(payload: Payload, maxChars: number): string | undefined {
   const list = listOf(payload.result);
   if (!list) {
     return;
   }
+  const { nextCursor, ...rest } = payload;
   const total = list.items.length;
   const render = (count: number) =>
     JSON.stringify({
-      ...payload,
+      ...rest,
       result: list.rebuild(list.items.slice(0, count)),
       truncated: {
         returned: count,
         total,
-        hint: payload.nextCursor
-          ? "The result was too large, so the items after these were dropped, and nextCursor skips them. Ask again with a lower limit, or fewer fields (fields)."
+        hint: nextCursor
+          ? "The result was too large, so the items after these were dropped, and no nextCursor is returned because it would skip them. Ask again with a lower limit, or fewer fields (fields), to page through them."
           : "The result was too large, so the items after these were dropped. Ask for fewer items (limit) or fewer fields (fields).",
       },
     });
@@ -99,9 +101,11 @@ function truncateText(
   text: string,
   maxChars: number,
 ): string {
+  // The cursor would skip what was cut, as in `truncateList`.
+  const { nextCursor: _skipped, ...rest } = payload;
   const render = (length: number) =>
     JSON.stringify({
-      ...payload,
+      ...rest,
       result: text.slice(0, length),
       truncated: {
         characters: text.length,

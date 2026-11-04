@@ -150,6 +150,15 @@ function pinTarget(
     if (segments[0] !== session.org) {
       throw outside(entry, value, session);
     }
+    // `<org>/` (every project) becomes the session's project.
+    if (
+      session.project &&
+      kind === "org/project" &&
+      title === "org/project" &&
+      value === `${session.org}/`
+    ) {
+      return `${session.org}/${session.project}`;
+    }
     // `<org>/<project>/...`, or `<org>/<project>/<suffix>` under a
     // one-word title (`feedback`, `issue`).
     const namesProject =
@@ -238,14 +247,19 @@ export function pinConstraints(
   }
   const session: Session = { org, project: constraints.projectSlug ?? null };
 
-  // `--project` (`release create`, `alert metrics create`)
-  const { project } = flags;
-  if (
-    session.project &&
-    typeof project === "string" &&
-    project !== session.project
-  ) {
-    throw outside(entry, project, session);
+  // `--project` (`release create`, `alert metrics create`): one slug, or
+  // several, repeated or comma-separated.
+  if (session.project) {
+    for (const item of [flags.project].flat()) {
+      if (typeof item !== "string") {
+        continue;
+      }
+      for (const slug of item.split(",")) {
+        if (slug.trim() && slug.trim() !== session.project) {
+          throw outside(entry, item, session);
+        }
+      }
+    }
   }
   for (const value of Object.values(flags)) {
     for (const item of [value].flat()) {

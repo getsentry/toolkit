@@ -257,6 +257,18 @@ describe("command tools: session constraints", () => {
     ]);
   });
 
+  it("pins every project of an organization to the session's project", async () => {
+    const { call, calls } = setup();
+    await call("issue list", { positional: ["acme/"] }, project);
+    await call("explore", { positional: ["acme/"] }, project);
+    await call("issue list", { positional: ["acme/"] }, org);
+    expect(calls.map((c) => c.positional)).toEqual([
+      ["acme/web"],
+      ["acme/web"],
+      ["acme/"],
+    ]);
+  });
+
   it("keeps ids that name no target", async () => {
     const { call, calls } = setup();
     await call("agent-conversation view", { positional: ["conv-1"] }, org);
@@ -297,16 +309,21 @@ describe("command tools: session constraints", () => {
     },
   );
 
-  it("refuses a --project flag for another project", async () => {
-    const { call } = setup();
-    await expect(
-      call(
-        "release create",
-        { positional: ["acme/1.0.0"], flags: { project: "api" } },
-        project,
-      ),
-    ).rejects.toThrow("outside this session's scope");
-  });
+  it.each([
+    ["release create", ["acme/1.0.0"], "api"],
+    ["release create", ["acme/1.0.0"], "web,api"],
+    ["alert metrics edit", ["acme/rule"], ["web", "api"]],
+    ["alert metrics edit", ["acme/rule"], ["web,api"]],
+  ])(
+    "refuses %s with --project %j for another project",
+    async (command, positional, projectFlag) => {
+      const { call, calls } = setup();
+      await expect(
+        call(command, { positional, flags: { project: projectFlag } }, project),
+      ).rejects.toThrow("outside this session's scope");
+      expect(calls).toEqual([]);
+    },
+  );
 
   it("checks sentry api endpoints against the session", async () => {
     const { call, calls } = setup();
@@ -377,6 +394,27 @@ describe("command tools: results", () => {
     expect(text.length).toBeLessThanOrEqual(2_000);
     expect(result.truncated).toMatchObject({ total: 100 });
     expect(result.result.data).toHaveLength(result.truncated.returned);
+  });
+
+  it("drops nextCursor when a page is cut, since it would skip items", async () => {
+    const data = Array.from({ length: 100 }, (_, id) => ({
+      id,
+      title: "x".repeat(100),
+    }));
+    const { tools } = setup(
+      { maxResultChars: 2_000 },
+      { data, hasMore: true, nextCursor: "0:100:0" },
+    );
+    const result = JSON.parse(
+      (await tools.sentry_issue_list?.handler(
+        {} as never,
+        createTestContext(),
+      )) as string,
+    );
+
+    expect(result.truncated.returned).toBeLessThan(100);
+    expect(result).not.toHaveProperty("nextCursor");
+    expect(result.truncated.hint).toContain("lower limit");
   });
 
   it("cuts a large single value to valid JSON within the cap", async () => {
