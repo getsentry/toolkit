@@ -20,7 +20,7 @@
 import { writeFile } from "node:fs/promises";
 import ts from "typescript";
 import { routes } from "../src/app.js";
-import { extractSchemaFields } from "../src/lib/formatters/output.js";
+import type { SchemaFieldInfo } from "../src/lib/formatters/output.js";
 import {
   type Command,
   type FlagDef,
@@ -238,7 +238,7 @@ function derivePositional(command: Command): PositionalInfo {
 }
 
 // ---------------------------------------------------------------------------
-// Return Type Generation from __jsonSchema
+// Return Type Generation from __jsonFields
 // ---------------------------------------------------------------------------
 
 /** Map a single schema field type name to a TypeScript type node. */
@@ -306,20 +306,16 @@ function propertySignature(
 }
 
 /**
- * Build the result type from a command's __jsonSchema.
- * Returns null if no schema is attached.
+ * Build the result type from a command's __jsonFields.
+ * Returns null if no output schema is attached.
  */
 function buildReturnType(
   command: Command,
   typeName: string,
 ): ts.TypeAliasDeclaration | null {
-  const schema = (command as any).__jsonSchema;
-  if (!schema) {
-    return null;
-  }
-
-  const fields = extractSchemaFields(schema);
-  if (fields.length === 0) {
+  const fields: readonly SchemaFieldInfo[] | undefined = (command as any)
+    .__jsonFields;
+  if (!fields?.length) {
     return null;
   }
 
@@ -801,7 +797,7 @@ const sdkType = exportedObjectType(SDK_TYPE_NAME, [
 
 /** Sections shared verbatim by the implementation file and the published declarations. */
 const sharedTypes = [
-  "// --- Return types (derived from __jsonSchema) ---",
+  "// --- Return types (derived from __jsonFields) ---",
   "",
   returnTypes.length > 0
     ? printNodes(returnTypes)

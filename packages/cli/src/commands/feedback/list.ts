@@ -51,11 +51,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  type FeedbackListResult,
-  type SentryFeedback,
-  SentryFeedbackSchema,
-} from "../../types/index.js";
+import type { FeedbackListResult, SentryFeedback } from "../../types/index.js";
+import { SentryFeedbackSchema } from "../../generated/output-schemas/feedback.js";
 
 const DEFAULT_PERIOD = "14d";
 const DEFAULT_STATUS: FeedbackStatus = "unresolved";

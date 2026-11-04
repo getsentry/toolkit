@@ -76,7 +76,7 @@ import {
   type TraceTargetInput,
   warnIfNormalized,
 } from "../../lib/trace-target.js";
-import { FlatSpanSchema } from "../../types/index.js";
+import { FlatSpanSchema } from "../../generated/output-schemas/span.js";
 
 type ListFlags = {
   readonly limit: number;

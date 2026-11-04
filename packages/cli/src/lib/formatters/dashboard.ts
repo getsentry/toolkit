@@ -14,7 +14,6 @@ import wrapAnsi from "wrap-ansi";
 
 import type { InferOutput } from "valibot";
 import type {
-  DashboardViewOutputSchema,
   ScalarResult,
   TableResult,
   TimeseriesResult,
@@ -354,6 +353,7 @@ import {
   formatCompactWithUnit,
   formatWithUnit,
 } from "./numbers.js";
+import type { DashboardViewOutputSchema } from "../../output-schemas/dashboard.js";
 
 /**
  * Format a value as a short Y-axis tick label (max ~4 chars).

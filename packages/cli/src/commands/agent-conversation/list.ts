@@ -43,10 +43,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  type ConversationListItem,
-  ConversationListItemSchema,
-} from "../../types/conversation.js";
+import type { ConversationListItem } from "../../types/conversation.js";
+import { ConversationListItemSchema } from "../../generated/output-schemas/agent-conversation.js";
 
 const CONVERSATION_SORT_FIELDS = [
   "conversation.age",

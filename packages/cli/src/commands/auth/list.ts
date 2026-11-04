@@ -19,7 +19,7 @@ import {
 } from "../../lib/formatters/accounts.js";
 import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
-import { AccountSummarySchema } from "../../types/account.js";
+import { AccountSummarySchema } from "../../generated/output-schemas/account.js";
 
 export const listCommand = buildCommand({
   exposure: "stdio-only",

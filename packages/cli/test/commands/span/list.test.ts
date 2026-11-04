@@ -55,11 +55,10 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 });
 
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
-import { extractSchemaFields } from "../../../src/lib/formatters/output.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
-import { FlatSpanSchema } from "../../../src/types/index.js";
+import { FlatSpanSchema } from "../../../src/generated/output-schemas/span.js";
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 
@@ -622,7 +621,7 @@ describe("listCommand.func (trace mode)", () => {
       VALID_TRACE_ID,
     );
 
-    const documented = extractSchemaFields(FlatSpanSchema).map((f) => f.name);
+    const documented = FlatSpanSchema.fields.map((f) => f.name);
     const [span] = JSON.parse(getStdout()).data;
     expect(documented).toEqual(expect.arrayContaining(Object.keys(span)));
   });

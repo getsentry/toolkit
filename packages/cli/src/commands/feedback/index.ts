@@ -5,6 +5,7 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { listCommand } from "./list.js";
 import { resolveCommand } from "./resolve.js";
 import { spamCommand } from "./spam.js";
@@ -22,7 +23,7 @@ export const feedbackRoute = buildRouteMap({
   aliases: { reopen: "unresolve" },
   defaultCommand: "view",
   docs: {
-    brief: "Manage User Feedback",
+    brief: topLevelBrief("feedback"),
     fullDescription:
       "Search, inspect, and manage modern User Feedback from your Sentry organization.\n\n" +
       "Commands:\n" +
