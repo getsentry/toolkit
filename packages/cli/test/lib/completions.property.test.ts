@@ -278,7 +278,7 @@ describe("property: flag names", () => {
   test("hidden flags are excluded", () => {
     for (const command of Object.values(generatedTargets.commands)) {
       // The global --log-level is hidden; the parser still accepts it
-      expect(command.flagNames).not.toHaveProperty("--log-level");
+      expect(command.flagNames ?? {}).not.toHaveProperty("--log-level");
     }
   });
 });

@@ -31,6 +31,10 @@
       "types": "./src/metric-monitor.ts",
       "default": "./src/metric-monitor.ts"
     },
+    "./games": {
+      "types": "./src/games.ts",
+      "default": "./src/games.ts"
+    },
     "./mcp-limits": {
       "types": "./src/mcp-limits.ts",
       "default": "./src/mcp-limits.ts"
