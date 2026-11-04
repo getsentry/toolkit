@@ -68,7 +68,7 @@ View details of one or more events
 | `resolvedWith` | array |  |
 | `nextEventID` | string \| null |  |
 | `previousEventID` | string \| null |  |
-| `formatted` | object |  |
+| `formatted` | object | The ``formatted`` field the mixin adds to a response when ``?llmFormat`` is requested. ``content`` is text for the text formats and a serialized JSON object for ``json``, so the response shape is the same whichever format a caller asks for. |
 | `trace` | object \| null | Trace context, or null when unavailable |
 | `attachments` | array | Event attachments; each includes metadata and an absolute authenticated download URL |
 
