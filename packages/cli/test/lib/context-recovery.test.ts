@@ -23,6 +23,7 @@ import { ContextError, EXIT } from "../../src/lib/errors.js";
 import { parseOrgProjectArg } from "../../src/lib/arg-parsing.js";
 import {
   guideOrgProjectFailure,
+  resolveOrg,
   resolveOrgOnlyTarget,
 } from "../../src/lib/resolve-target.js";
 import { resetCacheState } from "../../src/lib/response-cache.js";
@@ -542,6 +543,13 @@ describe.skipIf(process.platform === "win32")(
           "explore",
         ),
       ).resolves.toBe("test-org");
+    });
+
+    test("the shared org resolver falls back to the only org", async () => {
+      await expect(resolveOrg({ cwd: getConfigDir() })).resolves.toEqual({
+        org: "test-org",
+        detectedFrom: "your only accessible organization",
+      });
     });
 
     test("org-scoped commands still ask when several orgs are accessible", async () => {
