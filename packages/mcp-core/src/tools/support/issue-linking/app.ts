@@ -343,9 +343,7 @@ export async function linkAppIssue(
     (existing[0] &&
       !areEquivalentAppIssueUrls(existing[0].webUrl, params.externalIssueUrl))
   ) {
-    throw new UserInputError(
-      `This Sentry issue is already linked to another '${appSlug}' issue. Unlink it explicitly before linking a replacement.`,
-    );
+    throw linkedToAnotherIssue(appSlug);
   }
   const expectedExternalIssueUrl =
     existing[0]?.webUrl ?? params.externalIssueUrl;
@@ -375,13 +373,51 @@ export async function linkAppIssue(
     };
   } catch (error) {
     if (error instanceof ApiClientError && error.status === 409) {
-      throw new UserInputError(
-        "The App link conflicted with the current association or callback URL. Check the current link and use the provider's exact canonical issue URL, including its title path. Unlink an existing different issue explicitly before replacing it; retry if another link operation was in progress.",
-        { cause: error },
-      );
+      return await resolveLinkConflict(api, params, appSlug, error);
     }
     throw error;
   }
+}
+
+/**
+ * Sentry compares the callback's `webUrl` to the guard exactly, after the App
+ * has run, so a bare key or another title path for the right issue gets a 409.
+ * Accept only an association already stored for the same issue; never retry
+ * without the guard.
+ */
+async function resolveLinkConflict(
+  api: AppIssueLinkApi,
+  params: AppIssueLinkParams,
+  appSlug: string,
+  error: ApiClientError,
+) {
+  const links = (await api.getIssueExternalLinks(params)).filter(
+    (link) => link.serviceType === appSlug,
+  );
+  const current = links.length === 1 ? links[0] : undefined;
+  if (
+    current &&
+    areEquivalentAppIssueUrls(current.webUrl, params.externalIssueUrl)
+  ) {
+    return {
+      url: current.webUrl,
+      displayName: current.displayName,
+      provider: appSlug,
+      status: "already_linked" as const,
+    };
+  }
+  if (links.length > 0) throw linkedToAnotherIssue(appSlug, error);
+  throw new UserInputError(
+    `Sentry did not link the issue because the '${appSlug}' App returned a different URL than externalIssueUrl. Pass the issue URL exactly as the App returns it (for Linear, including its title path); do not build or edit the path. Retry if another link operation was in progress.`,
+    { cause: error },
+  );
+}
+
+function linkedToAnotherIssue(appSlug: string, cause?: Error) {
+  return new UserInputError(
+    `This Sentry issue is already linked to another '${appSlug}' issue. Unlink it explicitly before linking a replacement.`,
+    { cause },
+  );
 }
 
 /** Remove the matching App association by ID without invoking the provider. */
