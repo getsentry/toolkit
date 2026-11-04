@@ -169,6 +169,9 @@ export class HostScopeError extends CliError {
   }
 }
 
+/** A function argument named by a Sentry 400 error body. */
+export type FunctionArgument = { function: string; argument: string };
+
 /**
  * API request errors from Sentry.
  *
@@ -176,7 +179,7 @@ export class HostScopeError extends CliError {
  * @param status - HTTP status code
  * @param detail - Detailed error message from API response
  * @param endpoint - API endpoint that failed
- * @param options - `enriched403` and `code`, documented on the fields below
+ * @param options - Structured error fields, documented on the fields below
  */
 export class ApiError extends CliError {
   readonly status: number;
@@ -188,6 +191,12 @@ export class ApiError extends CliError {
    * (e.g. `invalid_search_query`).
    */
   readonly code?: string;
+
+  /**
+   * Function and argument the server rejected, sent with code
+   * `invalid_function_argument` (e.g. `p75` and `cart.total`).
+   */
+  readonly functionArgument?: FunctionArgument;
 
   /**
    * Set by centralized 403 enrichment in `infrastructure.ts`.
@@ -204,7 +213,12 @@ export class ApiError extends CliError {
     {
       enriched403 = false,
       code,
-    }: { enriched403?: boolean; code?: string } = {},
+      functionArgument,
+    }: {
+      enriched403?: boolean;
+      code?: string;
+      functionArgument?: FunctionArgument;
+    } = {},
   ) {
     super(message, EXIT.API);
     this.name = "ApiError";
@@ -213,6 +227,7 @@ export class ApiError extends CliError {
     this.endpoint = endpoint;
     this.enriched403 = enriched403;
     this.code = code;
+    this.functionArgument = functionArgument;
   }
 
   override format(): string {

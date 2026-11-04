@@ -40,6 +40,7 @@ import { getEnv } from "../env.js";
 import {
   ApiError,
   CliError,
+  type FunctionArgument,
   stringifyUnknown,
   TimeoutError,
 } from "../errors.js";
@@ -230,12 +231,30 @@ export type ApiRequestOptions<T = unknown> = {
   idempotent?: boolean;
 };
 
-/** The string `code` of a JSON error body, e.g. `invalid_search_query`. */
-function readErrorCode(body: unknown): string | undefined {
-  if (body === null || typeof body !== "object" || !("code" in body)) {
-    return undefined;
+/**
+ * Structured fields of a JSON error body: its string `code` (e.g.
+ * `invalid_search_query`) and the rejected `function` and `argument`
+ * (sent with `invalid_function_argument`).
+ */
+function readErrorFields(body: unknown): {
+  code?: string;
+  functionArgument?: FunctionArgument;
+} {
+  if (body === null || typeof body !== "object") {
+    return {};
   }
-  return typeof body.code === "string" ? body.code : undefined;
+  const fields = body as Record<string, unknown>;
+  const code = typeof fields.code === "string" ? fields.code : undefined;
+  if (
+    typeof fields.function !== "string" ||
+    typeof fields.argument !== "string"
+  ) {
+    return { code };
+  }
+  return {
+    code,
+    functionArgument: { function: fields.function, argument: fields.argument },
+  };
 }
 
 const CONNECT_TIMEOUT_HINT =
@@ -371,7 +390,7 @@ export function throwApiError(
     status,
     enrichDetail(status, detail, hasUsableDetail),
     undefined,
-    { enriched403: is403, code: readErrorCode(error) },
+    { enriched403: is403, ...readErrorFields(error) },
   );
 }
 
@@ -858,7 +877,7 @@ async function throwRawApiError(
     response.status,
     enrichDetail(response.status, detail, detail !== undefined),
     endpoint,
-    { enriched403: is403, code: readErrorCode(body.json) },
+    { enriched403: is403, ...readErrorFields(body.json) },
   );
 }
 
