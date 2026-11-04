@@ -125,6 +125,22 @@ function positionalKind(
 }
 
 /**
+ * The `<org>/<project>/<id>` form the CLI reads a GitHub-style
+ * (`[<org>/]<project>#<id>`) or `<project>:<id>` issue reference as, with
+ * the session's organization when it names none; else `value`.
+ */
+function issueSlashForm(value: string, org: string): string {
+  const hash = value.indexOf("#");
+  if (hash > 0) {
+    const prefix = value.slice(0, hash);
+    const id = value.slice(hash + 1);
+    return prefix.includes("/") ? `${prefix}/${id}` : `${org}/${prefix}/${id}`;
+  }
+  const colon = /^([^:/]+):([^/]+)$/.exec(value);
+  return colon ? `${org}/${colon[1]}/${colon[2]}` : value;
+}
+
+/**
  * Check one positional that names a target, and rewrite a bare project
  * (`web`, a project search across organizations) to `<org>/web`.
  *
@@ -141,6 +157,17 @@ function pinTarget(
 ): string {
   if (URL_PATTERN.test(value)) {
     return value;
+  }
+  if (kind === "issue") {
+    const slashForm = issueSlashForm(value, session.org);
+    if (slashForm !== value) {
+      try {
+        pinTarget(entry, slashForm, kind, catalogTitle, leading, session);
+      } catch {
+        throw outside(entry, value, session);
+      }
+      return value;
+    }
   }
   // `target` is `<org>/`, `<org>/<project>`, or `<project>`.
   const title = catalogTitle === "target" ? "org/project" : catalogTitle;
@@ -247,14 +274,19 @@ function pinApiEndpoint(
   session: Session,
 ): void {
   const target = apiEndpointTarget(endpoint);
-  if (!target) {
+  // A project session takes only endpoints that name its project: an
+  // organization-wide one (`organizations/<org>/issues/`) spans every project.
+  if (!target || (session.project && !target.project)) {
+    const scope = session.project
+      ? `projects/${session.org}/${session.project}/ or organizations/${session.org}/projects/${session.project}/`
+      : `organizations/${session.org}/, projects/${session.org}/, or teams/${session.org}/`;
     throw new UserInputError(
-      `\`${commandName(entry)}\` was called with ${JSON.stringify(endpoint)}, which is not scoped to an organization. In this session, use an endpoint under organizations/${session.org}/, teams/${session.org}/${session.project ? `, or projects/${session.org}/${session.project}/` : ""}.`,
+      `\`${commandName(entry)}\` was called with ${JSON.stringify(endpoint)}, which is not scoped to ${session.project ? "a project" : "an organization"}. In this session, use an endpoint under ${scope}.`,
     );
   }
   if (
     target.org !== session.org ||
-    (session.project && target.project && target.project !== session.project)
+    (session.project && target.project !== session.project)
   ) {
     throw outside(entry, endpoint, session);
   }

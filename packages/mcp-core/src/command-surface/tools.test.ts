@@ -312,6 +312,18 @@ describe("command tools: session constraints", () => {
     ]);
   });
 
+  it("keeps GitHub-style and colon issue references in the session", async () => {
+    const { call, calls } = setup();
+    await call("issue view", { positional: ["acme/web#G"] }, project);
+    await call("issue view", { positional: ["web:G"] }, project);
+    await call("issue view", { positional: ["#G"] }, project);
+    expect(calls.map((c) => c.positional)).toEqual([
+      ["acme/web#G"],
+      ["web:G"],
+      ["#G"],
+    ]);
+  });
+
   it("keeps ids that name no target", async () => {
     const { call, calls } = setup();
     await call("agent-conversation view", { positional: ["conv-1"] }, org);
@@ -355,6 +367,10 @@ describe("command tools: session constraints", () => {
     ["feedback view", ["other/WEB-1"], org],
     ["feedback view", ["acme/api/1"], project],
     ["issue view", ["acme/api/G"], project],
+    ["issue view", ["acme/api#G"], project],
+    ["issue view", ["api#G"], project],
+    ["issue view", ["api:G"], project],
+    ["issue view", ["other/web#G"], org],
     ["agent-conversation view", ["conv-1", "other/conv-2"], org],
     ["agent-conversation view", ["other", "conv-1"], org],
   ])(
@@ -435,6 +451,15 @@ describe("command tools: session constraints", () => {
     await expect(
       call("api", { positional: ["teams/other/backend/"] }, org),
     ).rejects.toThrow("outside this session's scope");
+    for (const endpoint of [
+      "organizations/acme/issues/",
+      "teams/acme/backend/projects/",
+      "projects/acme/",
+    ]) {
+      await expect(
+        call("api", { positional: [endpoint] }, project),
+      ).rejects.toThrow("not scoped to a project");
+    }
   });
 });
 
