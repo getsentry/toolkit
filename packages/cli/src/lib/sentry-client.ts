@@ -10,15 +10,15 @@
 
 import type { SentryClient } from "@sentry/api";
 import { getTraceData } from "@sentry/node";
-import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
 import {
+  computeInvalidationPrefixes,
   createApiTransport,
   extractUrlPath,
   getValidatedResponseSource,
   type ResponseBodyMode,
+  type RetryPolicy,
   type TransportCache,
-} from "@sentry/toolkit-core/api-client/transport";
-import { computeInvalidationPrefixes } from "@sentry/toolkit-core/api-client/response-cache";
+} from "@sentry/api/client";
 import { formatAuthHeader } from "./auth-header.js";
 import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
@@ -85,7 +85,7 @@ const ENDPOINT_TIMEOUT_OVERRIDES: TimeoutOverride[] = [
 
 /**
  * Caps for automatic retries. Which statuses and methods retry is the shared
- * rule in `@sentry/toolkit-core/api-client/retry`.
+ * rule in `@sentry/api/client`.
  *
  * `maxDelayMs` caps the jittered backoff and the server-requested wait
  * (`Retry-After`, rate-limit reset); a longer server-requested wait is not
@@ -307,7 +307,7 @@ async function withHttpSpan(
 /**
  * The CLI's transport options: stored credentials, host-scope checks, the
  * response cache, and the CLI's error classes. Retries, timeouts, the 401
- * refresh, and redirect validation are in `@sentry/toolkit-core/api-client/transport`.
+ * refresh, and redirect validation are in `@sentry/api/client`.
  */
 function createCliTransport(credential: CredentialContext | undefined) {
   return createApiTransport<CredentialContext>({
@@ -367,7 +367,7 @@ function createCliTransport(credential: CredentialContext | undefined) {
 /**
  * Create a fetch function with authentication, timeout, retry, caching, and 401 refresh.
  *
- * This wraps the native fetch with `@sentry/toolkit-core/api-client/transport`:
+ * This wraps the native fetch with `@sentry/api/client`:
  * - **Response caching** for GET requests (checked before hitting the network)
  * - Auth token injection (Bearer token)
  * - Request timeout via AbortController

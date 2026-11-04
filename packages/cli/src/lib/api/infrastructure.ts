@@ -14,16 +14,16 @@ import {
   type SdkResult,
   SentryApiError,
 } from "@sentry/api";
-import { readErrorResponse } from "@sentry/toolkit-core/api-client/response";
-import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import {
   API_MAX_PER_PAGE,
   decodePageCursor as decodeCursorPosition,
   fetchAllPages as fetchEveryPage,
   type FetchAllPagesFailure,
-  type PagePosition,
+  type CursorPosition,
   paginate as paginateFrom,
-} from "@sentry/toolkit-core/api-client/pagination";
+  readErrorResponse,
+} from "@sentry/api/client";
+import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
@@ -414,13 +414,10 @@ export const MAX_PAGINATION_PAGES = Math.max(
  */
 export { API_MAX_PER_PAGE };
 
-export {
-  consumePage,
-  type PagePosition,
-} from "@sentry/toolkit-core/api-client/pagination";
+export { consumeCursorPage, type CursorPosition } from "@sentry/api/client";
 
 /** Decode a shared cursor, reporting unreadable legacy bookmarks through the CLI logger. */
-export function decodePageCursor(raw: string | undefined): PagePosition {
+export function decodePageCursor(raw: string | undefined): CursorPosition {
   return decodeCursorPosition(raw, (message) => logger.warn(message));
 }
 
@@ -506,7 +503,7 @@ export async function autoPaginate<T>(
  * This is the only supported way to build a limit-bounded list; the
  * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops
  * (#1458, #1608). Page sizing and resume-safe cursors live in
- * `@sentry/toolkit-core/api-client/pagination`, shared with the MCP; this wrapper sets
+ * `@sentry/api/client`, shared with the MCP; this wrapper sets
  * the CLI's page cap and default limit and logs the CLI's warnings.
  *
  * Callers own region resolution and query building inside `fetchPage`, and

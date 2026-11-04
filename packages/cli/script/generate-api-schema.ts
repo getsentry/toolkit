@@ -9,7 +9,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { operations } from "@sentry/api/operations";
-import { selectIdempotentWrites } from "@sentry/toolkit-core/api-client/idempotent-operations";
+import { selectIdempotentWrites } from "@sentry/api/client";
 import { projectApiOperations } from "./lib/api-schema.js";
 
 const OUTPUT_PATH = "src/generated/api-schema.json";
