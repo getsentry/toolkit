@@ -1511,6 +1511,7 @@ describe("infrastructure.ts", () => {
               code: "invalid_function_argument",
               function: "p75",
               argument: "cart.total",
+              hint: "Use cart.amount instead of cart.total.",
             }),
             {
               status: 400,
@@ -1527,7 +1528,11 @@ describe("infrastructure.ts", () => {
 
       expect(error).toMatchObject({
         code: "invalid_function_argument",
-        functionArgument: { function: "p75", argument: "cart.total" },
+        functionArgument: {
+          function: "p75",
+          argument: "cart.total",
+          hint: "Use cart.amount instead of cart.total.",
+        },
       });
     });
 

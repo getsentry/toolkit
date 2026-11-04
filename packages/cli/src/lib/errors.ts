@@ -169,8 +169,12 @@ export class HostScopeError extends CliError {
   }
 }
 
-/** A function argument named by a Sentry 400 error body. */
-export type FunctionArgument = { function: string; argument: string };
+/** A function argument named by a Sentry 400 error body, with the server's suggested fix. */
+export type FunctionArgument = {
+  function: string;
+  argument: string;
+  hint?: string;
+};
 
 /**
  * API request errors from Sentry.
@@ -194,7 +198,8 @@ export class ApiError extends CliError {
 
   /**
    * Function and argument the server rejected, sent with code
-   * `invalid_function_argument` (e.g. `p75` and `cart.total`).
+   * `invalid_function_argument` (e.g. `p75` and `cart.total`), plus its
+   * `hint` when the server suggests a fix.
    */
   readonly functionArgument?: FunctionArgument;
 

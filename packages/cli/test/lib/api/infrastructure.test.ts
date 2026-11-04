@@ -336,13 +336,18 @@ describe("throwApiError", () => {
           code: "invalid_function_argument",
           function: "p75",
           argument: "cart.total",
+          hint: "Use cart.amount instead of cart.total.",
         },
         mockResponse,
         "Failed to list events",
       ),
     ).toThrow(
       expect.objectContaining({
-        functionArgument: { function: "p75", argument: "cart.total" },
+        functionArgument: {
+          function: "p75",
+          argument: "cart.total",
+          hint: "Use cart.amount instead of cart.total.",
+        },
       }),
     );
   });
