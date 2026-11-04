@@ -1,10 +1,10 @@
 /**
- * `sentry mcp --commands`: serve CLI commands through mcp-core's command
- * surface (`search_sentry`, `execute_sentry_read`, `execute_sentry_write`).
+ * `sentry mcp --commands`: serve each exposed CLI command as its own MCP tool
+ * through mcp-core's command surface.
  *
- * `search_sentry` reads the generated command catalog, and each execute call
- * runs through `createSentrySDK().run()`, which loads only the top-level route
- * the call runs, never the whole command tree.
+ * The tools come from the generated command catalog, and each call runs
+ * through `createSentrySDK().run()`, which loads only the top-level route the
+ * call runs, never the whole command tree.
  *
  * Loaded only in commands mode. `@sentry/mcp-server` does not bundle command
  * handlers, so its bundle replaces this module with a stub.

@@ -171,10 +171,10 @@ export const mcpCommand = buildCommand({
         "Enable forward-looking tool variants and experimental features",
       ),
       commands: booleanFlag(
-        "Serve CLI commands through search_sentry, execute_sentry_read, and execute_sentry_write instead of the tool catalog (preview)",
+        "Serve each CLI command as its own tool (sentry_issue_list, ...) instead of the tool catalog (preview)",
       ),
       "read-only": booleanFlag(
-        "With --commands: list no write tool and refuse write calls",
+        "With --commands: list no write tools and refuse write calls",
       ),
       "agent-provider": stringFlag(
         "LLM provider for AI-powered search: openai, azure-openai, anthropic, or openrouter",

@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it, vi } from "vitest";
+import { type CommandCatalogEntry, commandCatalog } from "../command-catalog";
 import { buildServer } from "../server";
 import { createTestContext } from "../test-utils/context";
 import type { Constraints, ServerContext } from "../types";
@@ -28,115 +29,105 @@ function setup(
   });
   // The registry's handlers are typed per tool; tests call them loosely.
   const call = async (
-    name: string,
-    params: Record<string, unknown>,
+    command: string,
+    params: Record<string, unknown> = {},
     context: ServerContext = createTestContext(),
   ): Promise<Record<string, unknown>> => {
-    const tool = tools[name];
+    const tool = tools[toolName(command)];
     if (!tool) {
-      throw new Error(`no tool ${name}`);
+      throw new Error(`no tool for ${command}`);
     }
     return JSON.parse((await tool.handler(params as never, context)) as string);
   };
   return { tools, calls, call };
 }
 
+/** `issue list` → `sentry_issue_list`. */
+function toolName(command: string): string {
+  return `sentry ${command}`.replace(/[ -]/g, "_");
+}
+
+/** The catalog's exposed commands with JSON output, as tool names. */
+function exposedToolNames(include: (entry: CommandCatalogEntry) => boolean) {
+  return commandCatalog.commands
+    .filter(
+      (entry) =>
+        entry.exposure === "exposed" &&
+        entry.parameters.properties?.flags?.properties?.json &&
+        include(entry),
+    )
+    .map((entry) => entry.path.replace(/[ -]/g, "_"))
+    .sort();
+}
+
 function constrained(constraints: Constraints): ServerContext {
   return createTestContext({ constraints });
 }
 
-describe("search_sentry", () => {
-  it("ranks commands by the query", async () => {
-    const { call } = setup();
-    const { commands } = (await call("search_sentry", {
-      query: "list issues",
-    })) as { commands: { command: string; tool: string }[] };
-
-    expect(commands[0]).toMatchObject({
-      command: "issue list",
-      permission: "read",
-      tool: "execute_sentry_read",
-    });
-  });
-
-  it("returns a command's schema without the flags agents cannot pass", async () => {
-    const { call } = setup();
-    const result = await call("search_sentry", {
-      command: "sentry issue view",
-    });
-    const flags = (
-      result.params as { properties: { flags: { properties: object } } }
-    ).properties.flags.properties;
-
-    expect(result).toMatchObject({
-      command: "issue view",
-      tool: "execute_sentry_read",
-    });
-    expect(Object.keys(flags)).toContain("fields");
-    expect(Object.keys(flags)).not.toContain("json");
-    expect(Object.keys(flags)).not.toContain("web");
-    expect(result.examples).toEqual(expect.any(Array));
-  });
-
-  it("explains how sentry api picks its execute tool", async () => {
-    const { call } = setup();
-    expect(await call("search_sentry", { command: "api" })).toMatchObject({
-      permission: "method",
-      tool: expect.stringContaining("execute_sentry_write otherwise"),
-    });
-  });
-
-  it("marks commands this session cannot run", async () => {
-    const { call } = setup({ runtime: "hosted", readOnly: true });
-    expect(
-      await call("search_sentry", { command: "sourcemap upload" }),
-    ).toMatchObject({
-      unavailable: expect.stringContaining("stdio server"),
-    });
-    expect(
-      await call("search_sentry", { command: "issue resolve" }),
-    ).toMatchObject({
-      unavailable: "this session is read-only",
-    });
-  });
-
-  it("refuses a hidden command", async () => {
-    const { call } = setup();
-    await expect(
-      call("search_sentry", { command: "auth login" }),
-    ).rejects.toThrow('No command "auth login" is available to agents');
-  });
-
-  it("offers the complete mode only with a completer", async () => {
-    expect(setup().tools.search_sentry?.inputSchema).not.toHaveProperty(
-      "complete",
+describe("command tools: listing", () => {
+  it("lists one tool per exposed command", () => {
+    expect(Object.keys(setup().tools).sort()).toEqual(
+      exposedToolNames(() => true),
     );
+  });
 
-    const complete = vi.fn(async () => [{ value: "acme/" }]);
-    const { tools, call } = setup({ complete });
-    expect(tools.search_sentry?.inputSchema).toHaveProperty("complete");
-    expect(
-      await call("search_sentry", {
-        command: "issue list",
-        complete: { parameter: "positional[0]", value: "ac" },
-      }),
-    ).toEqual({ command: "issue list", candidates: [{ value: "acme/" }] });
-    expect(complete).toHaveBeenCalledWith(
-      { command: "issue list", parameter: "positional[0]", value: "ac" },
-      expect.anything(),
+  it("lists only read tools and sentry api when read-only", () => {
+    expect(Object.keys(setup({ readOnly: true }).tools).sort()).toEqual(
+      exposedToolNames(
+        (entry) => entry.permission === "read" || entry.permission === "method",
+      ),
     );
+  });
+
+  it("names tools from the command path", () => {
+    const { tools } = setup();
+    expect(tools.sentry_issue_list).toBeDefined();
+    expect(tools.sentry_agent_conversation_list).toBeDefined();
+    // Hidden and stdio-only commands are not tools.
+    expect(tools.sentry_auth_login).toBeUndefined();
+    expect(tools.sentry_sourcemap_upload).toBeUndefined();
+  });
+
+  it("describes a command with its brief and usable examples", () => {
+    const description = setup().tools.sentry_issue_view?.description ?? "";
+    expect(description).toMatch(/^View details of/);
+    expect(description).toContain("sentry issue view FRONT-ABC");
+    // Examples that pipe output elsewhere are dropped.
+    expect(description).not.toContain("| jq");
+  });
+
+  it("gives sentry api the hints of its session", () => {
+    expect(setup().tools.sentry_api?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+    });
+    expect(
+      setup({ readOnly: true }).tools.sentry_api?.annotations,
+    ).toMatchObject({ readOnlyHint: true, destructiveHint: false });
   });
 });
 
-describe("execute tools: permission classes", () => {
-  it("runs a read command with the read tool", async () => {
+describe("command tools: permission classes", () => {
+  it("marks read, write, and destructive commands", () => {
+    const { tools } = setup();
+    expect(
+      [
+        tools.sentry_issue_list,
+        tools.sentry_issue_resolve,
+        tools.sentry_project_delete,
+      ].map((tool) => tool?.annotations),
+    ).toEqual([
+      { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+      { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    ]);
+  });
+
+  it("runs a read command", async () => {
     const { call, calls } = setup();
-    await call("execute_sentry_read", {
-      command: "issue list",
-      params: {
-        positional: ["acme/web"],
-        flags: { limit: 5, query: "is:unresolved" },
-      },
+    await call("issue list", {
+      positional: ["acme/web"],
+      flags: { limit: 5, query: "is:unresolved" },
     });
     expect(calls).toEqual([
       {
@@ -147,26 +138,12 @@ describe("execute tools: permission classes", () => {
     ]);
   });
 
-  it("refuses a write command in the read tool", async () => {
+  it("runs write and destructive commands", async () => {
     const { call, calls } = setup();
-    await expect(
-      call("execute_sentry_read", {
-        command: "issue resolve",
-        params: { positional: ["WEB-1"] },
-      }),
-    ).rejects.toThrow("run it with execute_sentry_write");
-    expect(calls).toEqual([]);
-  });
-
-  it("runs write and destructive commands with the write tool", async () => {
-    const { call, calls } = setup();
-    await call("execute_sentry_write", {
-      command: "issue resolve",
-      params: { positional: ["WEB-1"] },
-    });
-    await call("execute_sentry_write", {
-      command: "project delete",
-      params: { positional: ["acme/web"], flags: { yes: true } },
+    await call("issue resolve", { positional: ["WEB-1"] });
+    await call("project delete", {
+      positional: ["acme/web"],
+      flags: { yes: true },
     });
     expect(calls.map((c) => c.path.join(" "))).toEqual([
       "issue resolve",
@@ -174,91 +151,58 @@ describe("execute tools: permission classes", () => {
     ]);
   });
 
-  it("refuses a read command in the write tool", async () => {
-    const { call } = setup();
-    await expect(
-      call("execute_sentry_write", { command: "org list" }),
-    ).rejects.toThrow("run it with execute_sentry_read");
-  });
-
-  it("gives sentry api the class of its method", async () => {
+  it("runs sentry api with any method", async () => {
     const { call, calls } = setup();
-    await call("execute_sentry_read", {
-      command: "api",
-      params: { positional: ["organizations/"] },
-    });
-    await expect(
-      call("execute_sentry_read", {
-        command: "api",
-        params: {
-          positional: ["organizations/acme/releases/"],
-          flags: { method: "POST" },
-        },
-      }),
-    ).rejects.toThrow("is a write call here; run it with execute_sentry_write");
-    await call("execute_sentry_write", {
-      command: "api",
-      params: {
-        positional: ["projects/acme/web/"],
-        flags: { method: "delete" },
-      },
+    await call("api", { positional: ["organizations/"] });
+    await call("api", {
+      positional: ["projects/acme/web/"],
+      flags: { method: "delete" },
     });
     expect(calls.map((c) => c.flags.method)).toEqual([undefined, "delete"]);
   });
 
-  it("lists no write tool on a read-only connection and refuses writes", async () => {
-    const { tools, call } = setup({ readOnly: true });
-    expect(Object.keys(tools).sort()).toEqual([
-      "execute_sentry_read",
-      "search_sentry",
-    ]);
+  it("refuses sentry api writes when read-only", async () => {
+    const { call, calls } = setup({ readOnly: true });
+    await call("api", { positional: ["organizations/"] });
     await expect(
-      call("execute_sentry_read", {
-        command: "api",
-        params: {
-          positional: ["organizations/acme/releases/"],
-          flags: { method: "PUT" },
-        },
+      call("api", {
+        positional: ["organizations/acme/releases/"],
+        flags: { method: "PUT" },
       }),
-    ).rejects.toThrow("this session is read-only");
+    ).rejects.toThrow(
+      "this session is read-only, and this call is a write call",
+    );
+    expect(calls).toHaveLength(1);
   });
 });
 
-describe("execute tools: params", () => {
-  it("rejects invalid params with what to pass instead", async () => {
+describe("command tools: arguments", () => {
+  it("rejects invalid arguments with what to pass instead", async () => {
     const { call, calls } = setup();
-    const error = await call("execute_sentry_read", {
-      command: "agent-conversation list",
-      params: { flags: { limit: "ten", sort: "oldest", colour: "red" } },
+    const error = await call("agent-conversation list", {
+      flags: { limit: "ten", sort: "oldest", colour: "red" },
     }).catch((e: Error) => e);
 
     expect(error).toBeInstanceOf(Error);
     const message = (error as Error).message;
-    expect(message).toContain(
-      "params.flags.limit: expected number, got string",
+    expect(message).toContain("flags.limit: expected number, got string");
+    expect(message).toMatch(
+      /flags\.sort: "oldest" is not allowed \(expected one of: /,
     );
     expect(message).toMatch(
-      /params\.flags\.sort: "oldest" is not allowed \(expected one of: /,
-    );
-    expect(message).toMatch(
-      /params\.flags\.colour: unknown \(expected one of: .*query/,
+      /flags\.colour: unknown \(expected one of: .*query/,
     );
     expect(calls).toEqual([]);
   });
 
   it("requires positionals the command needs", async () => {
     const { call } = setup();
-    await expect(
-      call("execute_sentry_read", { command: "api" }),
-    ).rejects.toThrow("params.positional: required");
+    await expect(call("api")).rejects.toThrow("positional: required");
   });
 
   it("ignores json, which is always on", async () => {
     const { call, calls } = setup();
-    await call("execute_sentry_read", {
-      command: "org list",
-      params: { flags: { json: true } },
-    });
+    await call("org list", { flags: { json: true } });
     expect(calls[0]?.flags).toEqual({});
   });
 
@@ -275,50 +219,27 @@ describe("execute tools: params", () => {
   ])("refuses %s --%s", async (command, flag, value, reason) => {
     const { call } = setup();
     await expect(
-      call("execute_sentry_read", {
-        command,
-        params: { positional: ["x"], flags: { [flag]: value } },
-      }),
+      call(command, { positional: ["x"], flags: { [flag]: value } }),
     ).rejects.toThrow(
       `\`--${flag}\` is not available to agents, because ${reason}`,
     );
   });
 
-  it("refuses stdio-only commands when hosted, and runs them on stdio", async () => {
-    const hosted = setup({ runtime: "hosted" });
-    await expect(
-      hosted.call("execute_sentry_write", {
-        command: "sourcemap upload",
-        params: { positional: ["dist"] },
-      }),
-    ).rejects.toThrow("runs only on the stdio server");
-
-    const stdio = setup();
-    await stdio.call("execute_sentry_write", {
-      command: "sourcemap upload",
-      params: { positional: ["dist"] },
-    });
-    expect(stdio.calls).toHaveLength(1);
-  });
-
   it("refuses stored-cursor keywords when hosted", async () => {
     const { call } = setup({ runtime: "hosted" });
     await expect(
-      call("execute_sentry_read", {
-        command: "issue list",
-        params: { flags: { cursor: "next" } },
-      }),
+      call("issue list", { flags: { cursor: "next" } }),
     ).rejects.toThrow("Pass the nextCursor value");
   });
 });
 
-describe("execute tools: session constraints", () => {
+describe("command tools: session constraints", () => {
   const org = constrained({ organizationSlug: "acme", projectSlug: null });
   const project = constrained({ organizationSlug: "acme", projectSlug: "web" });
 
   it("passes the session's target as the default", async () => {
     const { call, calls } = setup();
-    await call("execute_sentry_read", { command: "issue list" }, project);
+    await call("issue list", {}, project);
     expect(calls[0]).toMatchObject({
       org: "acme",
       project: "web",
@@ -328,11 +249,7 @@ describe("execute tools: session constraints", () => {
 
   it("pins a bare project to the session's organization", async () => {
     const { call, calls } = setup();
-    await call(
-      "execute_sentry_read",
-      { command: "issue list", params: { positional: ["web"] } },
-      org,
-    );
+    await call("issue list", { positional: ["web"] }, org);
     expect(calls[0]?.positional).toEqual(["acme/web"]);
   });
 
@@ -347,13 +264,9 @@ describe("execute tools: session constraints", () => {
     "refuses %s %j outside the session",
     async (command, positional, context) => {
       const { call, calls } = setup();
-      await expect(
-        call(
-          "execute_sentry_read",
-          { command, params: { positional } },
-          context,
-        ),
-      ).rejects.toThrow("outside this session's scope");
+      await expect(call(command, { positional }, context)).rejects.toThrow(
+        "outside this session's scope",
+      );
       expect(calls).toEqual([]);
     },
   );
@@ -362,11 +275,8 @@ describe("execute tools: session constraints", () => {
     const { call } = setup();
     await expect(
       call(
-        "execute_sentry_write",
-        {
-          command: "release create",
-          params: { positional: ["acme/1.0.0"], flags: { project: "api" } },
-        },
+        "release create",
+        { positional: ["acme/1.0.0"], flags: { project: "api" } },
         project,
       ),
     ).rejects.toThrow("outside this session's scope");
@@ -375,40 +285,27 @@ describe("execute tools: session constraints", () => {
   it("checks sentry api endpoints against the session", async () => {
     const { call, calls } = setup();
     await call(
-      "execute_sentry_read",
-      {
-        command: "api",
-        params: { positional: ["/api/0/organizations/acme/issues/"] },
-      },
+      "api",
+      { positional: ["/api/0/organizations/acme/issues/"] },
       org,
     );
     expect(calls).toHaveLength(1);
     await expect(
-      call(
-        "execute_sentry_read",
-        { command: "api", params: { positional: ["projects/other/web/"] } },
-        org,
-      ),
+      call("api", { positional: ["projects/other/web/"] }, org),
     ).rejects.toThrow("outside this session's scope");
     await expect(
-      call(
-        "execute_sentry_read",
-        { command: "api", params: { positional: ["issues/1/"] } },
-        org,
-      ),
+      call("api", { positional: ["issues/1/"] }, org),
     ).rejects.toThrow("not scoped to an organization");
   });
 });
 
-describe("execute tools: results", () => {
+describe("command tools: results", () => {
   it("lifts nextCursor out of a list envelope", async () => {
     const { call } = setup(
       {},
       { data: [{ id: "1" }], hasMore: true, nextCursor: "0:25:0" },
     );
-    expect(
-      await call("execute_sentry_read", { command: "issue list" }),
-    ).toEqual({
+    expect(await call("issue list", {})).toEqual({
       command: "issue list",
       nextCursor: "0:25:0",
       result: { data: [{ id: "1" }], hasMore: true },
@@ -417,7 +314,7 @@ describe("execute tools: results", () => {
 
   it("returns several yields as one result", async () => {
     const { call } = setup({}, [{ a: 1 }, { b: 2 }]);
-    expect(await call("execute_sentry_read", { command: "org list" })).toEqual({
+    expect(await call("org list", {})).toEqual({
       command: "org list",
       result: [{ a: 1 }, { b: 2 }],
     });
@@ -432,8 +329,8 @@ describe("execute tools: results", () => {
       { maxResultChars: 2_000 },
       { data, hasMore: false },
     );
-    const text = (await tools.execute_sentry_read?.handler(
-      { command: "issue list" } as never,
+    const text = (await tools.sentry_issue_list?.handler(
+      {} as never,
       createTestContext(),
     )) as string;
     const result = JSON.parse(text);
@@ -448,8 +345,8 @@ describe("execute tools: results", () => {
       { maxResultChars: 500 },
       { body: "x".repeat(2_000) },
     );
-    const text = (await tools.execute_sentry_read?.handler(
-      { command: "org list" } as never,
+    const text = (await tools.sentry_org_list?.handler(
+      {} as never,
       createTestContext(),
     )) as string;
     const parsed = JSON.parse(text);
@@ -513,26 +410,39 @@ describe("buildServer with the command tools", () => {
     }
   }
 
-  it("lists the search and execute tools with their hints", async () => {
+  it("lists every command tool with the catalog's schema and hints", async () => {
     const tools = await listTools({});
-    expect(
-      Object.fromEntries(
-        tools.map((tool) => [tool.name, tool.annotations?.readOnlyHint]),
-      ),
-    ).toEqual({
-      search_sentry: true,
-      execute_sentry_read: true,
-      execute_sentry_write: false,
-    });
-    const write = tools.find((tool) => tool.name === "execute_sentry_write");
-    expect(write?.annotations?.destructiveHint).toBe(true);
-    expect(write?.inputSchema.required).toEqual(["command"]);
+    expect(tools.map((tool) => tool.name).sort()).toEqual(
+      exposedToolNames(() => true),
+    );
+
+    const issueList = tools.find((tool) => tool.name === "sentry_issue_list");
+    if (!issueList) {
+      throw new Error("sentry_issue_list is not listed");
+    }
+    expect(issueList.annotations).toMatchObject({ readOnlyHint: true });
+    const flags = (
+      issueList.inputSchema.properties as {
+        flags: { properties: Record<string, { default?: unknown }> };
+      }
+    ).flags.properties;
+    expect(flags.query).toBeDefined();
+    expect(flags.limit?.default).toBe(25);
+    expect(flags.json).toBeUndefined();
+
+    const api = tools.find((tool) => tool.name === "sentry_api");
+    expect(api?.annotations?.destructiveHint).toBe(true);
+    expect(api?.inputSchema.required).toEqual(["positional"]);
   });
 
-  it("lists no write tool when read-only", async () => {
+  it("lists no write tools when read-only", async () => {
     const names = (await listTools({ readOnly: true })).map(
       (tool) => tool.name,
     );
-    expect(names.sort()).toEqual(["execute_sentry_read", "search_sentry"]);
+    expect(names.sort()).toEqual(
+      exposedToolNames(
+        (entry) => entry.permission === "read" || entry.permission === "method",
+      ),
+    );
   });
 });

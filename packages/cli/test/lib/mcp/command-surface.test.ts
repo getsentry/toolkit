@@ -1,5 +1,5 @@
 /**
- * `sentry mcp --commands` runs execute calls through the CLI SDK. These run
+ * `sentry mcp --commands` runs command tool calls through the CLI SDK. These run
  * real commands (`sentry api --dry-run` and argument errors), so no request
  * leaves the process.
  */
@@ -11,9 +11,9 @@ import type { McpServerConfig } from "../../../src/lib/mcp/config.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 // The SDK loads only the route a call runs (`sdk-app.ts`); the full command
-// tree must never load for an execute call.
+// tree must never load for a command tool call.
 vi.mock("../../../src/app.js", () => {
-  throw new Error("an execute call loaded the full command tree (app.ts)");
+  throw new Error("a command tool call loaded the full command tree (app.ts)");
 });
 
 const config = {
@@ -32,11 +32,9 @@ function tools() {
   });
 }
 
-async function execute(
-  name: "execute_sentry_read" | "execute_sentry_write",
-  params: Record<string, unknown>,
-): Promise<unknown> {
-  const tool = tools()[name];
+/** Call the `sentry api` tool. */
+async function api(params: Record<string, unknown>): Promise<unknown> {
+  const tool = tools().sentry_api;
   return JSON.parse((await tool?.handler(params as never, context)) as string);
 }
 
@@ -45,12 +43,9 @@ describe("createCliCommandTools", () => {
 
   test("runs a write call through the SDK with parsed flags", async () => {
     expect(
-      await execute("execute_sentry_write", {
-        command: "api",
-        params: {
-          positional: ["organizations/acme/releases/"],
-          flags: { method: "POST", "dry-run": true, field: ["version=1.0.0"] },
-        },
+      await api({
+        positional: ["organizations/acme/releases/"],
+        flags: { method: "POST", "dry-run": true, field: ["version=1.0.0"] },
       }),
     ).toEqual({
       command: "api",
@@ -65,24 +60,18 @@ describe("createCliCommandTools", () => {
 
   test("runs a read call, with a boolean flag turned off", async () => {
     expect(
-      await execute("execute_sentry_read", {
-        command: "api",
-        params: {
-          positional: ["organizations/"],
-          flags: { "dry-run": true, verbose: false },
-        },
+      await api({
+        positional: ["organizations/"],
+        flags: { "dry-run": true, verbose: false },
       }),
     ).toMatchObject({ result: { method: "GET", body: null } });
   });
 
   test("reports a failing command with its own message", async () => {
     await expect(
-      execute("execute_sentry_write", {
-        command: "api",
-        params: {
-          positional: ["organizations/"],
-          flags: { method: "BREW", "dry-run": true },
-        },
+      api({
+        positional: ["organizations/"],
+        flags: { method: "BREW", "dry-run": true },
       }),
     ).rejects.toThrow(/`api` failed: .*BREW/);
   });

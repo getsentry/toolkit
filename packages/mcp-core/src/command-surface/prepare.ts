@@ -1,7 +1,7 @@
 /**
- * Everything an execute call is checked against before it runs: exposure,
- * refused flags, the parameter schema, the permission class of the tool it
- * came through, and the session's constraints.
+ * Everything a command tool call is checked against before it runs:
+ * exposure, refused flags, the parameter schema, read-only sessions, and the
+ * session's constraints.
  */
 
 import { UserInputError } from "../errors";
@@ -9,7 +9,6 @@ import type { CommandCatalogEntry } from "../command-catalog";
 import type { ServerContext } from "../types";
 import {
   agentParameters,
-  type CallPermission,
   type CommandRuntime,
   callPermission,
   commandName,
@@ -21,14 +20,6 @@ import { pinConstraints } from "./constraints";
 import type { CommandCall } from "./types";
 import { validateJsonSchema } from "./validate";
 
-/** The execute tools, by the permission classes they run. */
-export type ExecuteToolKind = "read" | "write";
-
-export const EXECUTE_TOOL_NAMES: Record<ExecuteToolKind, string> = {
-  read: "execute_sentry_read",
-  write: "execute_sentry_write",
-};
-
 /** Pagination keywords that need the CLI's stored cursor stack. */
 const CURSOR_KEYWORDS = new Set(["next", "prev"]);
 
@@ -37,11 +28,6 @@ export type SessionPolicy = {
   /** Refuse write and destructive calls (`--read-only`, hosted API Read). */
   readOnly: boolean;
 };
-
-/** The execute tool for a permission class. */
-export function executeToolFor(permission: CallPermission): ExecuteToolKind {
-  return permission === "read" ? "read" : "write";
-}
 
 /**
  * Why the session cannot run `entry` at all, or `undefined` when it can.
@@ -52,8 +38,8 @@ export function unavailableReason(
   entry: CommandCatalogEntry,
   policy: SessionPolicy,
 ): string | undefined {
-  if (entry.exposure === "stdio-only" && policy.runtime === "hosted") {
-    return "it needs the local machine, so it runs only on the stdio server (`sentry mcp`)";
+  if (entry.exposure !== "exposed") {
+    return "it needs the local machine";
   }
   if (!entry.parameters.properties?.flags?.properties?.json) {
     return "it has no JSON output";
@@ -74,8 +60,8 @@ function refuse(entry: CommandCatalogEntry, reason: string): UserInputError {
   );
 }
 
-/** The `params` of an execute call, as the tool's input schema accepts it. */
-type ExecuteParams = {
+/** The arguments of a command tool call, as its input schema accepts them. */
+type CommandParams = {
   positional?: string[];
   flags?: Record<string, unknown>;
 };
@@ -107,22 +93,20 @@ function readFlags(
 }
 
 /**
- * Check an execute call and build the call to run.
+ * Check a command tool call and build the call to run.
  *
  * @throws {UserInputError} When the command is unavailable, the params fail
- *   the schema, the permission class belongs to the other execute tool, or a
- *   target is outside the session's constraints
+ *   the schema, a read-only session gets a write call, or a target is
+ *   outside the session's constraints
  */
 export function prepareCommandCall({
   entry,
   params,
-  tool,
   policy,
   context,
 }: {
   entry: CommandCatalogEntry;
-  params: ExecuteParams | undefined;
-  tool: ExecuteToolKind;
+  params: CommandParams | undefined;
   policy: SessionPolicy;
   context: ServerContext;
 }): CommandCall {
@@ -137,25 +121,18 @@ export function prepareCommandCall({
   const errors = validateJsonSchema(
     agentParameters(entry),
     positional === undefined ? { flags } : { positional, flags },
-    "params",
   );
   if (errors.length > 0) {
     throw new UserInputError(
-      `Invalid params for \`${name}\`:\n${errors.map((error) => `- ${error}`).join("\n")}\nCall search_sentry with command "${name}" for its parameters.`,
+      `Invalid arguments for \`${name}\`:\n${errors.map((error) => `- ${error}`).join("\n")}`,
     );
   }
 
   const permission = callPermission(entry, flags);
-  const needed = executeToolFor(permission);
-  if (policy.readOnly && needed === "write") {
+  if (policy.readOnly && permission !== "read") {
     throw refuse(
       entry,
       `this session is read-only, and this call is a ${permission} call`,
-    );
-  }
-  if (needed !== tool) {
-    throw new UserInputError(
-      `\`${name}\` is a ${permission} call here; run it with ${EXECUTE_TOOL_NAMES[needed]}, not ${EXECUTE_TOOL_NAMES[tool]}.`,
     );
   }
 

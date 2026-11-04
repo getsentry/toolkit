@@ -43,8 +43,8 @@ Per-Tool Breakdown:
 ...
 ```
 
-**Measure the command surface** (`sentry mcp --commands`: `search_sentry`,
-`execute_sentry_read`, `execute_sentry_write`) instead of the tool catalog:
+**Measure the command surface** (`sentry mcp --commands`: one tool per
+exposed CLI command) instead of the tool catalog:
 
 ```bash
 pnpm run measure-tokens -- --commands

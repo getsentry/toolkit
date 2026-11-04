@@ -18,6 +18,11 @@ function list(values: readonly string[]): string {
     : shown;
 }
 
+/** The path of a property: `flags.limit`, or `flags` at the top level. */
+function child(path: string, name: string): string {
+  return path ? `${path}.${name}` : name;
+}
+
 function typeOf(value: unknown): string {
   if (value === null) {
     return "null";
@@ -80,11 +85,11 @@ function validateObject(
   const properties = schema.properties ?? {};
   for (const name of schema.required ?? []) {
     if (value[name] === undefined) {
-      errors.push(`${path}.${name}: required`);
+      errors.push(`${child(path, name)}: required`);
     }
   }
   for (const [name, item] of Object.entries(value)) {
-    const itemPath = `${path}.${name}`;
+    const itemPath = child(path, name);
     const itemSchema = properties[name];
     if (!itemSchema) {
       if (schema.additionalProperties === false) {
@@ -125,15 +130,14 @@ function validateValue(
 }
 
 /**
- * Every way `value` fails `schema`, as `path: problem` lines, with paths
- * starting at `root` (`params.flags.limit`).
+ * Every way an object `value` fails `schema`, as `path: problem` lines
+ * (`flags.limit: expected number, got string`).
  */
 export function validateJsonSchema(
   schema: JsonSchema,
-  value: unknown,
-  root: string,
+  value: Record<string, unknown>,
 ): string[] {
   const errors: string[] = [];
-  validateValue(schema, value, root, errors);
+  validateObject(schema, value, "", errors);
   return errors;
 }

@@ -1,19 +1,15 @@
 /**
- * Command lookup and the per-call rules that do not depend on the session:
+ * Command names and the per-call rules that do not depend on the session:
  * which flags agents may pass, and the permission class of a call.
  */
 
-import type {
-  CommandCatalog,
-  CommandCatalogEntry,
-  JsonSchema,
-} from "../command-catalog";
+import type { CommandCatalogEntry, JsonSchema } from "../command-catalog";
 
-/** Where the server runs: stdio can serve commands that need the local machine. */
+/** Where the server runs: the hosted one keeps no CLI state between calls. */
 export type CommandRuntime = "stdio" | "hosted";
 
 /** What one call may do to Sentry. */
-export type CallPermission = "read" | "write" | "destructive";
+type CallPermission = "read" | "write" | "destructive";
 
 /**
  * Flags the executor sets itself: it always asks for JSON. Callers that pass
@@ -30,7 +26,7 @@ const BROWSER_FLAGS = new Set(["web"]);
 /** HTTP methods that only read. */
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/** The command name agents use: the catalog path without `sentry `. */
+/** The command name without `sentry ` (`issue list`). */
 export function commandName(entry: CommandCatalogEntry): string {
   return entry.path.replace(/^sentry /, "");
 }
@@ -38,20 +34,6 @@ export function commandName(entry: CommandCatalogEntry): string {
 /** Path segments for the SDK (`["issue", "list"]`). */
 export function commandSegments(entry: CommandCatalogEntry): string[] {
   return commandName(entry).split(" ");
-}
-
-/**
- * Find a command by name. Accepts `issue list` and `sentry issue list`, with
- * any spacing. Hidden commands are not in the catalog, so they are never
- * found.
- */
-export function findCommand(
-  catalog: CommandCatalog,
-  input: string,
-): CommandCatalogEntry | undefined {
-  const words = input.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const name = (words[0] === "sentry" ? words.slice(1) : words).join(" ");
-  return catalog.commands.find((entry) => commandName(entry) === name);
 }
 
 /** Why a flag cannot be passed through the MCP, or `undefined` when it can. */

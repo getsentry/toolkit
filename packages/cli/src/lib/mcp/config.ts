@@ -41,9 +41,9 @@ export type McpServerConfig = {
   agentProvider?: McpAgentProvider;
   agentProviderFromFlag: boolean;
   experimental: boolean;
-  /** Serve CLI commands (`search_sentry` and the execute tools) instead of the tool catalog. */
+  /** Serve each CLI command as its own tool instead of the tool catalog. */
   commands: boolean;
-  /** With `commands`: list no write tool, and refuse write calls. */
+  /** With `commands`: list no write tools, and refuse write calls. */
   readOnly: boolean;
   /** Skills granted for this session. */
   finalSkills: Set<Skill>;

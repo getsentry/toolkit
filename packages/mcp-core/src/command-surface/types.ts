@@ -24,22 +24,3 @@ export type CommandRunner = (
   call: CommandCall,
   context: ServerContext,
 ) => Promise<unknown>;
-
-/** One completion candidate for a parameter. */
-export type CompletionCandidate = { value: string; description?: string };
-
-/** What `search_sentry`'s `complete` mode asks for. */
-export type CompletionRequest = {
-  /** Command name, such as `issue list`. */
-  command: string;
-  /** `positional[0]` or a flag name such as `query`. */
-  parameter: string;
-  /** The value typed so far. */
-  value: string;
-};
-
-/** Completes parameter values; wired up by the completion work (#1895). */
-export type CommandCompleter = (
-  request: CompletionRequest,
-  context: ServerContext,
-) => Promise<CompletionCandidate[]>;
