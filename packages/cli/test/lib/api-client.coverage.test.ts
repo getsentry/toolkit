@@ -1453,6 +1453,34 @@ describe("infrastructure.ts", () => {
       }
     });
 
+    test("keeps the error body's code next to its detail", async () => {
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              detail: "Invalid quote at '*\"POST'",
+              code: "invalid_search_query",
+            }),
+            {
+              status: 400,
+              statusText: "Bad Request",
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+      );
+
+      const error = await apiRequestToRegion(
+        "https://sentry.io",
+        "/test/",
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        detail: "Invalid quote at '*\"POST'",
+        code: "invalid_search_query",
+      });
+    });
+
     test("JSON-stringifies error body without detail field", async () => {
       globalThis.fetch = mockFetch(
         async () =>

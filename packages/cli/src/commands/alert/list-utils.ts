@@ -46,7 +46,7 @@ export function throwAlertListFetchFailure(
     error.status,
     error.detail,
     error.endpoint,
-    error.enriched403,
+    { enriched403: error.enriched403 },
   );
 }
 

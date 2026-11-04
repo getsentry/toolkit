@@ -1123,13 +1123,9 @@ function enrichIssueListError(
       const detail = error.enriched403
         ? appendProjectMembershipHint(error.detail)
         : build403Detail(error.detail);
-      throw new ApiError(
-        error.message,
-        error.status,
-        detail,
-        error.endpoint,
-        true,
-      );
+      throw new ApiError(error.message, error.status, detail, error.endpoint, {
+        enriched403: true,
+      });
     }
   }
   throw error;
@@ -1341,7 +1337,7 @@ async function handleResolvedTargets(
         first.status,
         detail,
         first.endpoint,
-        first.enriched403 || first.status === 403,
+        { enriched403: first.enriched403 || first.status === 403 },
       );
     }
 

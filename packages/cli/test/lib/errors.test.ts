@@ -624,29 +624,24 @@ describe("isSearchQueryParseError", () => {
     );
   });
 
-  test.each([
-    "Parse error at '\n774ed' (column 12). This is commonly caused by unmatched parentheses. Enclose any text in double quotes.",
-    "Invalid quote at '*\"POST': quotes must enclose text or be escaped.",
-    "Search terms cannot end with an escape character",
-    "Empty string after 'release:'",
-    '"is:" queries are not supported in this search.',
-    "Invalid value for \"is\" search, valid values are ['archived', 'unresolved']",
-    "timestamp: Invalid date: >-15m. Expected +/-duration (e.g. +1h) or ISO 8601-like (e.g. 2026-11-03T10:00:38.16).",
-  ])("true for an unwrapped Events search parser detail: %s", (detail) => {
-    expect(isSearchQueryParseError(new ApiError("bad", 400, detail))).toBe(
-      true,
+  test("true for a 400 with the invalid_search_query code", () => {
+    const error = new ApiError(
+      "bad",
+      400,
+      "Invalid quote at '*\"POST': quotes must enclose text or be escaped.",
+      "/organizations/my-org/events/",
+      { code: "invalid_search_query" },
     );
+    expect(isSearchQueryParseError(error)).toBe(true);
   });
 
-  test.each([
-    "orderby must also be in the selected columns or groupby",
-    "Invalid query. Project(s) web do not exist or are not actively selected.",
-    "p75: column argument invalid: title is not a numeric column",
-    "Unknown function p10",
-  ])("false for a non-parser Events 400: %s", (detail) => {
-    expect(isSearchQueryParseError(new ApiError("bad", 400, detail))).toBe(
-      false,
+  test("false for a parser-looking Events 400 without the code", () => {
+    const error = new ApiError(
+      "bad",
+      400,
+      "Invalid quote at '*\"POST': quotes must enclose text or be escaped.",
     );
+    expect(isSearchQueryParseError(error)).toBe(false);
   });
 
   test("false for a 400 without a query parse detail", () => {

@@ -205,6 +205,23 @@ describe("throwApiError", () => {
     }
   });
 
+  test("HTTP error keeps the body's code", () => {
+    const mockResponse = new Response("", {
+      status: 400,
+      statusText: "Bad Request",
+    });
+
+    expect(() =>
+      throwApiError(
+        { detail: "Invalid query syntax", code: "invalid_search_query" },
+        mockResponse,
+        "Failed to list events",
+      ),
+    ).toThrow(
+      expect.objectContaining({ status: 400, code: "invalid_search_query" }),
+    );
+  });
+
   test("HTTP error without detail uses stringified error", () => {
     const mockResponse = new Response("", {
       status: 500,
