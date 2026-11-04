@@ -24,6 +24,7 @@ import {
   consoleLoggingIntegration,
   flush,
   init,
+  setCurrentClient,
   vercelAIIntegration,
   zodErrorsIntegration,
 } from "@sentry/node";
@@ -248,7 +249,7 @@ export function initMcpTelemetry(config: McpServerConfig): void {
   // Always the CLI's own project, never a DSN from the environment: an MCP
   // server started from a project shell or IDE inherits the app's SENTRY_DSN.
   // Only the CLI's telemetry opt-outs turn it off.
-  init({
+  const client = init({
     dsn: SENTRY_CLI_DSN,
     enabled: isTelemetryEnabled(),
     tracesSampleRate: 1,
@@ -284,6 +285,13 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     // The retired package fixed this at build time; keep the same value.
     environment: "stdio",
   });
+  // `buildCommand` runs this inside its pre-init `exec` span, and v11 loses
+  // the scope that span forked when init switches the context strategy, so
+  // every span, log, and flush would find no client. Same fix as
+  // `initSentry()` in telemetry.ts.
+  if (client) {
+    setCurrentClient(client);
+  }
 }
 
 /**
