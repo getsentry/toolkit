@@ -18,10 +18,8 @@ import {
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
-import {
-  type IssueAlertDeleteOutput,
-  IssueAlertDeleteOutputSchema,
-} from "../output-schemas.js";
+import type { IssueAlertDeleteOutput } from "../../../output-schemas/alert.js";
+import { IssueAlertDeleteOutputSchema } from "../../../generated/output-schemas/alert.js";
 
 const USAGE_HINT =
   "sentry alert issues delete <org>/<project>/<rule-id-or-name>";

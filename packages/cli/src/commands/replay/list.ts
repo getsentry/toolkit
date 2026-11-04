@@ -59,11 +59,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  REPLAY_LIST_FIELDS,
-  type ReplayListItem,
-  ReplayListItemOutputSchema,
-} from "../../types/index.js";
+import { REPLAY_LIST_FIELDS, type ReplayListItem } from "../../types/index.js";
+import { ReplayListItemOutputSchema } from "../../generated/output-schemas/replay.js";
 
 type ListFlags = {
   readonly environment?: readonly string[];

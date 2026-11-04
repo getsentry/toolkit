@@ -59,7 +59,7 @@ import { CONFIG_DIR_ENV_VAR } from "../../../src/lib/db/index.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { withEnv } from "../../../src/lib/env.js";
 import { classifySilenced } from "../../../src/lib/error-reporting.js";
-import { EXIT, isUserError } from "../../../src/lib/errors.js";
+import { ApiError, EXIT, isUserError } from "../../../src/lib/errors.js";
 import type { SentryDeploy, SentryRelease } from "../../../src/types/index.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
@@ -417,7 +417,28 @@ describe("setCommitsAuto", () => {
       name: "ApiError",
       status: 404,
       message: expect.stringMatching(/No repository integrations/),
+      endpoint: "organizations/test-org/repos/",
+      detail: expect.stringMatching(
+        /Connect GitHub, GitLab, Bitbucket, or Azure DevOps.*\/settings\/integrations\/\?category=source%20code%20management[\s\S]*--local/,
+      ),
     });
+  });
+
+  test("leaves --local out of the no-integration error outside a git checkout", async () => {
+    mockIsInsideGitWorkTree.mockReturnValue(false);
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    const error = await setCommitsAuto("test-org", "1.0.0", "/tmp").catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).detail).not.toContain("--local");
   });
 
   test.each([

@@ -5,14 +5,6 @@
  * Supports monorepos with multiple detected projects.
  */
 
-import {
-  description,
-  looseObject,
-  nullable,
-  object,
-  pipe,
-  string,
-} from "valibot";
 import type { SentryContext } from "../../context.js";
 import {
   getProject,
@@ -47,11 +39,9 @@ import {
   orgProjectTarget,
   type TargetContext,
 } from "../../lib/target-positional.js";
-import {
-  type SentryProject,
-  SentryProjectSchema,
-  type WithOutputFields,
-} from "../../types/index.js";
+import type { SentryProject, WithOutputFields } from "../../types/index.js";
+import { ProjectViewOutputSchema } from "../../generated/output-schemas/project.js";
+import type { ProjectViewOutputFields } from "../../output-schemas/project.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -96,11 +86,6 @@ async function handleWebView(resolvedTargets: ResolvedTarget[]): Promise<void> {
     "project",
   );
 }
-
-/** The field the command adds to each project in its JSON output. */
-const ProjectViewOutputFields = object({
-  dsn: pipe(nullable(string()), description("Primary DSN")),
-});
 
 /**
  * A project entry enriched with its DSN and optional detection source.
@@ -376,10 +361,7 @@ export const viewCommand = buildCommand({
   output: {
     human: formatProjectViewHuman,
     jsonTransform: jsonTransformProjectView,
-    schema: looseObject({
-      ...SentryProjectSchema.entries,
-      ...ProjectViewOutputFields.entries,
-    }),
+    schema: ProjectViewOutputSchema,
   },
   parameters: {
     positional: {

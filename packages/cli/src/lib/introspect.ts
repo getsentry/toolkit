@@ -31,10 +31,7 @@ import {
   getCompletionTarget,
 } from "./completion-target.js";
 import type { ApiReference, CommandApiReference } from "./api-schema.js";
-import {
-  extractSchemaFields,
-  type SchemaFieldInfo,
-} from "./formatters/output.js";
+import type { SchemaFieldInfo } from "./formatters/output.js";
 import { fuzzyMatch } from "./fuzzy.js";
 
 // ---------------------------------------------------------------------------
@@ -71,11 +68,11 @@ export type Command = {
     aliases?: Record<string, string>;
   };
   /**
-   * JSON output schema attached by `buildCommand` when `output.schema` is set.
-   * Non-standard property — Stricli doesn't know about it, but introspection
-   * reads it to populate {@link CommandInfo.jsonFields}.
+   * JSON output fields attached by `buildCommand` when `output.schema` is
+   * set. Non-standard property — Stricli doesn't know about it, but
+   * introspection reads it to populate {@link CommandInfo.jsonFields}.
    */
-  __jsonSchema?: import("valibot").GenericSchema;
+  __jsonFields?: readonly SchemaFieldInfo[];
   /**
    * Primary Stricli custom usage line, retained by `buildCommand` for
    * introspection because Stricli does not expose it on the built command.
@@ -348,9 +345,6 @@ export function buildCommandInfo(
     Record<string, ApiAccess>
   > = generatedCommandApiAccess as Record<string, ApiAccess>,
 ): CommandInfo {
-  const jsonFields = cmd.__jsonSchema
-    ? extractSchemaFields(cmd.__jsonSchema)
-    : undefined;
   const positionals = extractPositionals(cmd.parameters.positional);
   const [positional] = positionals;
   if (cmd.__primaryUsage && positional && positionals.length === 1) {
@@ -370,7 +364,7 @@ export function buildCommandInfo(
       (example) =>
         `# ${example.description}\n${exampleSteps(example).join("\n")}`,
     ),
-    jsonFields: jsonFields?.length ? jsonFields : undefined,
+    jsonFields: cmd.__jsonFields?.length ? [...cmd.__jsonFields] : undefined,
     ...(cmd.__destructive ? { destructive: true as const } : {}),
     permission: commandPermission({
       destructive: cmd.__destructive,

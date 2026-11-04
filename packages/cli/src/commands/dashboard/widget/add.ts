@@ -25,7 +25,6 @@ import {
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
   assignDefaultLayout,
-  DashboardWidgetChangeOutputSchema,
   DEFAULT_WIDGET_TYPE,
   DISPLAY_TYPES,
   FALLBACK_LAYOUT,
@@ -53,6 +52,7 @@ import {
   WIDGET_FIELD_COMPLETION,
   type WidgetQueryFlags,
 } from "../resolve.js";
+import { DashboardWidgetChangeOutputSchema } from "../../../generated/output-schemas/dashboard.js";
 
 /** What `--query`, `--sort`, and `--group-by` complete: a spans widget's by default. */
 const FIELD_COMPLETION: DatasetCompletion = {

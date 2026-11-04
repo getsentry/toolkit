@@ -5,14 +5,6 @@
  */
 
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
-import {
-  description,
-  looseObject,
-  object,
-  optional,
-  pipe,
-  string,
-} from "valibot";
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
@@ -24,28 +16,17 @@ import {
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import {
-  ReleaseUpdateOutputFields,
-  type SentryRelease,
-  SentryReleaseSchema,
-  type WithOutputFields,
-} from "../../types/index.js";
+import type { SentryRelease, WithOutputFields } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { ReleaseFinalizeOutputSchema } from "../../generated/output-schemas/release.js";
+import type { ReleaseFinalizeOutputFields } from "../../output-schemas/release.js";
 
 const USAGE_HINT = "sentry release finalize [<org>/]<version>";
-
-/** Fields `--dry-run` prints instead of the finalized release. */
-const FinalizeOutputFields = object({
-  ...ReleaseUpdateOutputFields.entries,
-  released: optional(
-    pipe(string(), description("Release date to set (--dry-run)")),
-  ),
-});
 
 /** JSON output: the finalized release, or the `--dry-run` preview. */
 type FinalizeOutput = WithOutputFields<
   SentryRelease,
-  typeof FinalizeOutputFields
+  typeof ReleaseFinalizeOutputFields
 >;
 
 function formatReleaseFinalized(release: FinalizeOutput): string {
@@ -92,10 +73,7 @@ export const finalizeCommand = buildCommand({
   },
   output: {
     human: formatReleaseFinalized,
-    schema: looseObject({
-      ...SentryReleaseSchema.entries,
-      ...FinalizeOutputFields.entries,
-    }),
+    schema: ReleaseFinalizeOutputSchema,
   },
   parameters: {
     positional: {

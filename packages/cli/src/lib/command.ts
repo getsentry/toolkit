@@ -60,8 +60,6 @@ import {
   CommandOutput,
   type CommandReturn,
   type CommandYield,
-  extractSchemaFieldPaths,
-  extractSchemaFields,
   formatSchemaForHelp,
   type HumanRenderer,
   type OutputConfig,
@@ -444,17 +442,14 @@ export function applyOrgProjectFlags(
  */
 // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig type is erased at the builder level
 function buildFieldsFlag(outputConfig?: OutputConfig<any>) {
-  if (!outputConfig?.schema) {
+  const schema = outputConfig?.schema;
+  if (!schema?.fields.length) {
     return FIELDS_FLAG;
   }
-  const schemaFields = extractSchemaFields(outputConfig.schema);
-  if (schemaFields.length === 0) {
-    return FIELDS_FLAG;
-  }
-  const fieldNames = schemaFields.map((f) => f.name).join(", ");
+  const fieldNames = schema.fields.map((f) => f.name).join(", ");
   return {
     ...FIELDS_FLAG,
-    parse: choiceListParser(extractSchemaFieldPaths(outputConfig.schema)),
+    parse: choiceListParser(schema.paths),
     brief: `${FIELDS_FLAG.brief}. Available: ${fieldNames}`,
   };
 }
@@ -469,11 +464,8 @@ function enrichDocsWithSchema(
   // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig type is erased at the builder level
   outputConfig?: OutputConfig<any>,
 ): CommandDocumentation {
-  if (!outputConfig?.schema) {
-    return docs;
-  }
-  const schemaFields = extractSchemaFields(outputConfig.schema);
-  if (schemaFields.length === 0) {
+  const schemaFields = outputConfig?.schema?.fields;
+  if (!schemaFields?.length) {
     return docs;
   }
   const jsonFieldsDoc = formatSchemaForHelp(schemaFields);
@@ -1002,12 +994,12 @@ export function buildCommand<
       builderArgs.permission;
   }
 
-  // Attach the JSON schema to the built command as a non-standard property.
+  // Attach the JSON fields to the built command as a non-standard property.
   // introspect.ts reads this to populate CommandInfo.jsonFields for help
   // output and SKILL.md generation.
   if (outputConfig?.schema) {
-    (cmd as unknown as Record<string, unknown>).__jsonSchema =
-      outputConfig.schema;
+    (cmd as unknown as Record<string, unknown>).__jsonFields =
+      outputConfig.schema.fields;
   }
 
   // Expose the unwrapped generator for internal dispatchers (e.g. bare

@@ -100,6 +100,7 @@
         "sentry-cli/no-examples-in-full-description": "error",
         "sentry-cli/no-regex-markdown-parsing": "error",
         "sentry-cli/json-transform-uses-fields": "error",
+        "sentry-cli/no-runtime-output-schema-imports": "error",
         "no-restricted-imports": [
           "error",
           {

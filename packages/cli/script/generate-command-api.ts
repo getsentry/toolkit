@@ -18,11 +18,13 @@ const OUTPUT_PATH = "src/generated/command-api.json";
 const ACCESS_OUTPUT_PATH = "src/generated/command-api-access.json";
 
 // The route tree imports these generated files. Bootstrap before importing it;
-// generate:skill replaces its stub later in the same generate:docs pipeline.
+// generate:top-level-routes and generate:skill replace their stubs later in
+// the same generate:docs pipeline.
 await mkdir("src/generated", { recursive: true });
 for (const [path, stub] of [
   [OUTPUT_PATH, "{}\n"],
   [ACCESS_OUTPUT_PATH, "{}\n"],
+  ["src/generated/top-level-routes.json", "{}\n"],
   [
     "src/generated/skill-content.ts",
     "export const SKILL_FILES: [string, string][] = [];\n",

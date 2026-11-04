@@ -20,12 +20,13 @@ import {
   introspectAllCommands,
   introspectCommand,
 } from "../lib/help.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 export const helpCommand = buildCommand({
   exposure: "exposed",
   auth: false,
   docs: {
-    brief: "Display help for a command",
+    brief: topLevelBrief("help"),
     fullDescription:
       "Display help information. Run 'sentry' for an overview, 'sentry help' " +
       "to list every command, " +
