@@ -28,7 +28,6 @@ const PURE_SENTRY_IMPORTS = [
  */
 const COMPLETION_PACKAGES = new Set([
   ...PURE_SENTRY_IMPORTS,
-  "@sentry/toolkit-core/auth-token",
   // `errors.ts` (exit codes)
   "@stricli/core",
   // `db/accounts.ts` account IDs

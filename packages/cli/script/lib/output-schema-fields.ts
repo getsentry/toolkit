@@ -213,11 +213,11 @@ export function extractSchemaFieldPaths(schema: GenericSchema): string[] {
  * `getDescription` does not recurse, and the description may sit under one or
  * more wrapper schemas — e.g. `optional(nullable(pipe(string(), description(...))))`
  * places it two `.wrapped` levels down. Walk the wrapper chain until a
- * description is found, so a CLI `pipe(apiField, description(...))` wins over
- * the description `@sentry/api` gives the field.
+ * description is found.
  *
- * API descriptions can span lines, which would break the field tables, so
- * whitespace runs collapse to one space.
+ * Since `@sentry/api` 1.19.0, fields spread from its schemas carry their
+ * OpenAPI description, which can span several lines. `--help` and the
+ * skill reference table show each field on one line, so collapse whitespace.
  */
 function findDescription(schema: ValibotSchemaNode): string | undefined {
   let node: ValibotSchemaNode | undefined = schema;

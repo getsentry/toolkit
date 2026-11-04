@@ -14,34 +14,31 @@ import {
 } from "../../script/lib/output-schema-fields.js";
 
 describe("extractSchemaFields", () => {
-  /** An `@sentry/api/valibot` field: its description sits inside the wrapper. */
-  const apiField = optional(pipe(string(), description("API description")));
+  // `@sentry/api` 1.19.0+ wraps each described field as
+  // `optional(pipe(schema, description(...)))`, keeping the OpenAPI
+  // description's line breaks.
+  const apiField = optional(
+    pipe(
+      object({ content: string() }),
+      description("First line.\n\nSecond   paragraph\nwraps."),
+    ),
+  );
 
-  test("uses the description the API schema gives a field", () => {
-    expect(extractSchemaFields(object({ id: apiField }))).toEqual([
-      {
-        name: "id",
-        type: "string",
-        description: "API description",
-        optional: true,
-      },
-    ]);
+  test("collapses a multi-line API description to one line", () => {
+    const [field] = extractSchemaFields(object({ formatted: apiField }));
+    expect(field).toEqual({
+      name: "formatted",
+      type: "object",
+      description: "First line. Second paragraph wraps.",
+      optional: true,
+    });
   });
 
-  test("prefers a CLI description around the API field", () => {
-    const schema = object({
-      id: optional(pipe(apiField.wrapped, description("CLI description"))),
-    });
-    expect(extractSchemaFields(schema)[0]?.description).toBe("CLI description");
-  });
-
-  test("puts a multi-line description on one line", () => {
-    const schema = object({
-      id: pipe(string(), description("First line.\n\nSecond  line.\n")),
-    });
-    expect(extractSchemaFields(schema)[0]?.description).toBe(
-      "First line. Second line.",
+  test("prefers a description the CLI adds over the API's", () => {
+    const [field] = extractSchemaFields(
+      object({ formatted: pipe(apiField, description("CLI description")) }),
     );
+    expect(field?.description).toBe("CLI description");
   });
 });
 

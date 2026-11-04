@@ -16,6 +16,7 @@ import {
 } from "@sentry/api";
 import {
   API_MAX_PER_PAGE,
+  buildSentryApiUrl,
   decodePageCursor as decodeCursorPosition,
   fetchAllPages as fetchEveryPage,
   type FetchAllPagesFailure,
@@ -23,7 +24,6 @@ import {
   paginate as paginateFrom,
   readErrorResponse,
 } from "@sentry/api/client";
-import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
@@ -40,6 +40,7 @@ import { getEnv } from "../env.js";
 import {
   ApiError,
   CliError,
+  type FunctionArgument,
   stringifyUnknown,
   TimeoutError,
 } from "../errors.js";
@@ -230,6 +231,32 @@ export type ApiRequestOptions<T = unknown> = {
   idempotent?: boolean;
 };
 
+/**
+ * Structured fields of a JSON error body: its string `code` (e.g.
+ * `invalid_search_query`) and the rejected `function` and `argument`
+ * (sent with `invalid_function_argument`).
+ */
+function readErrorFields(body: unknown): {
+  code?: string;
+  functionArgument?: FunctionArgument;
+} {
+  if (body === null || typeof body !== "object") {
+    return {};
+  }
+  const fields = body as Record<string, unknown>;
+  const code = typeof fields.code === "string" ? fields.code : undefined;
+  if (
+    typeof fields.function !== "string" ||
+    typeof fields.argument !== "string"
+  ) {
+    return { code };
+  }
+  return {
+    code,
+    functionArgument: { function: fields.function, argument: fields.argument },
+  };
+}
+
 const CONNECT_TIMEOUT_HINT =
   "The connection timed out. Check network access and firewall rules on this machine.";
 
@@ -363,7 +390,7 @@ export function throwApiError(
     status,
     enrichDetail(status, detail, hasUsableDetail),
     undefined,
-    is403,
+    { enriched403: is403, ...readErrorFields(error) },
   );
 }
 
@@ -850,7 +877,7 @@ async function throwRawApiError(
     response.status,
     enrichDetail(response.status, detail, detail !== undefined),
     endpoint,
-    is403,
+    { enriched403: is403, ...readErrorFields(body.json) },
   );
 }
 
