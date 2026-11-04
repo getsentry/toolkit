@@ -56,11 +56,13 @@ function formatTokenCreated(result: CreateResult): string {
     ["ID", result.id],
     ["Scopes", result.scopes.join(", ")],
   ];
-  // Keep the one-time secret outside the table, which hard-wraps long cells.
-  const token = result.token ? `\n\nToken:\n\n${inlineCode(result.token)}` : "";
-  return renderMarkdown(
-    `## Org auth token created in ${text(result.org)}\n\n${mdKvTable(rows)}${token}`,
+  const summary = renderMarkdown(
+    `## Org auth token created in ${text(result.org)}\n\n${mdKvTable(rows)}`,
   );
+  // Print the one-time secret raw, on its own line: the table hard-wraps
+  // long cells, and a rendered code span pads it with spaces that a copy
+  // would pick up.
+  return result.token ? `${summary}\n\nToken:\n\n${result.token}` : summary;
 }
 
 export const createCommand = buildCommand({
