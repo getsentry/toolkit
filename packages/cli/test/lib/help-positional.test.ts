@@ -221,6 +221,24 @@ describe("help recovery on argument parse errors", () => {
       stderrWrite.mockRestore();
     }
   });
+
+  test("argument parse errors don't echo pasted auth tokens", async () => {
+    const stderrWrite = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      await runCommand([
+        "token",
+        "delete",
+        "my-org/sntrys_eyJpYXQiOjE3MDB9_abc",
+      ]);
+      const stderr = stderrWrite.mock.calls.map(([s]) => String(s)).join("");
+      expect(stderr).toContain("looks like a token value, not a token ID");
+      expect(stderr).not.toContain("sntrys_");
+    } finally {
+      stderrWrite.mockRestore();
+    }
+  });
 });
 
 describe("help command unchanged", () => {

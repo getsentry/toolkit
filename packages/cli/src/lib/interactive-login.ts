@@ -5,8 +5,6 @@
  * Used by both the `auth login` command and auto-auth in bin.ts.
  */
 
-// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node";
 import { openBrowser } from "./browser.js";
 import { setupCopyKeyListener } from "./clipboard.js";
 import { getAccountRow } from "./db/accounts.js";
@@ -17,6 +15,7 @@ import { renderInlineMarkdown } from "./formatters/markdown.js";
 import { logger } from "./logger.js";
 import { completeOAuthFlow, performDeviceFlow } from "./oauth.js";
 import { generateQRCode } from "./qrcode.js";
+import { reportCliError } from "./error-reporting.js";
 
 const log = logger.withTag("auth.login");
 
@@ -288,7 +287,7 @@ export async function runInteractiveLogin(
         });
       } catch (error) {
         // Report to Sentry but don't block auth - user info is not critical
-        Sentry.captureException(error);
+        reportCliError(error);
       }
     } else if (!options?.newAccount) {
       // The active account's credentials were replaced in place; without
@@ -297,7 +296,7 @@ export async function runInteractiveLogin(
       try {
         clearUserInfo();
       } catch (error) {
-        Sentry.captureException(error);
+        reportCliError(error);
       }
     }
 

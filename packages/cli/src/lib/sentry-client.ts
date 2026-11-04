@@ -10,15 +10,15 @@
 
 import type { SentryClient } from "@sentry/api";
 import { getTraceData } from "@sentry/node";
-import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
 import {
+  computeInvalidationPrefixes,
   createApiTransport,
   extractUrlPath,
   getValidatedResponseSource,
   type ResponseBodyMode,
+  type RetryPolicy,
   type TransportCache,
-} from "@sentry/toolkit-core/api-client/transport";
-import { computeInvalidationPrefixes } from "@sentry/toolkit-core/api-client/response-cache";
+} from "@sentry/api/client";
 import { formatAuthHeader } from "./auth-header.js";
 import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
@@ -51,6 +51,7 @@ import {
 import { extractInputUrl } from "./fetch-input.js";
 import { isIdempotentOperation } from "./idempotent-operations.js";
 import { logger } from "./logger.js";
+import { isSentrySaasUrl } from "./sentry-urls.js";
 import {
   clearLastCacheHitAge,
   invalidateCachedResponsesMatching,
@@ -85,7 +86,7 @@ const ENDPOINT_TIMEOUT_OVERRIDES: TimeoutOverride[] = [
 
 /**
  * Caps for automatic retries. Which statuses and methods retry is the shared
- * rule in `@sentry/toolkit-core/api-client/retry`.
+ * rule in `@sentry/api/client`.
  *
  * `maxDelayMs` caps the jittered backoff and the server-requested wait
  * (`Retry-After`, rate-limit reset); a longer server-requested wait is not
@@ -237,6 +238,18 @@ function resolveTimeoutMs(fullUrl: string): number {
   return REQUEST_TIMEOUT_MS;
 }
 
+/** Next steps for a request that got no response in time. */
+function buildTimeoutHint(idempotent: boolean): string {
+  const baseUrl = getApiBaseUrl();
+  const retry = idempotent
+    ? "Try again."
+    : "The change may still have been applied; check before trying again.";
+  const check = isSentrySaasUrl(baseUrl)
+    ? "Check Sentry's status with: sentry status"
+    : `Check the server's health with: sentry status --url ${baseUrl}`;
+  return `The Sentry API at ${baseUrl} did not respond in time. ${retry}\n  ${check}`;
+}
+
 /** Pass custom TLS options (CA certs for corporate proxies) to each fetch. */
 async function fetchWithCustomTls(
   input: Request | string | URL,
@@ -307,7 +320,7 @@ async function withHttpSpan(
 /**
  * The CLI's transport options: stored credentials, host-scope checks, the
  * response cache, and the CLI's error classes. Retries, timeouts, the 401
- * refresh, and redirect validation are in `@sentry/toolkit-core/api-client/transport`.
+ * refresh, and redirect validation are in `@sentry/api/client`.
  */
 function createCliTransport(credential: CredentialContext | undefined) {
   return createApiTransport<CredentialContext>({
@@ -342,9 +355,7 @@ function createCliTransport(credential: CredentialContext | undefined) {
       timeout: ({ timeoutMs, idempotent }) =>
         new TimeoutError(
           `Request timed out after ${Math.round(timeoutMs / 1000)}s.`,
-          idempotent
-            ? "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io."
-            : "The Sentry API did not respond in time. The change may still have been applied; check before trying again. If the problem persists, check https://status.sentry.io.",
+          buildTimeoutHint(idempotent),
         ),
       // TLS certificate errors are deterministic — don't retry
       fatal: (error) =>
@@ -367,7 +378,7 @@ function createCliTransport(credential: CredentialContext | undefined) {
 /**
  * Create a fetch function with authentication, timeout, retry, caching, and 401 refresh.
  *
- * This wraps the native fetch with `@sentry/toolkit-core/api-client/transport`:
+ * This wraps the native fetch with `@sentry/api/client`:
  * - **Response caching** for GET requests (checked before hitting the network)
  * - Auth token injection (Bearer token)
  * - Request timeout via AbortController

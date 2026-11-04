@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Generate the Graphics Banner
  *
@@ -16,7 +15,7 @@
  * Output is a committed module (like `src/generated/skill-content.ts`) so the
  * runtime never needs to read the asset from disk.
  *
- * Usage:   tsx script/generate-banner-image.ts
+ * Usage:   tsx script/generate.ts banner
  * Output:  src/generated/banner-image.ts
  */
 
@@ -119,7 +118,8 @@ function encodePngBase64(mask: PNG): string {
   return PNG.sync.write(out, { deflateLevel: 9 }).toString("base64");
 }
 
-async function main(): Promise<void> {
+/** Write `src/generated/banner-image.ts` from the banner mask. */
+export async function emit(): Promise<void> {
   const png = PNG.sync.read(readFileSync(MASK_PATH));
   const pngBase64 = encodePngBase64(png);
 
@@ -149,8 +149,3 @@ export const BANNER_IMAGE = {
     `Wrote ${OUT_PATH} (${png.width}x${png.height}, png ${pngBase64.length} base64 bytes)\n`,
   );
 }
-
-main().catch((err) => {
-  process.stderr.write(`generate-banner-image failed: ${String(err)}\n`);
-  process.exit(1);
-});

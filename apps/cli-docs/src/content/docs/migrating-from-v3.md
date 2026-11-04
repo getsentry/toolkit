@@ -601,7 +601,8 @@ Configuration precedence is unchanged in spirit and fully backward compatible:
 
 1. CLI flags
 2. `SENTRY_ORG` / `SENTRY_PROJECT` env vars (`SENTRY_PROJECT` accepts
-   `org/project`)
+   `org/project`). Without `SENTRY_ORG`, the org embedded in an org auth
+   token (`sntrys_…`) is used, as in v3
 3. Stored defaults (`sentry auth login` / `sentry cli defaults`)
 4. DSN auto-detection from your source and `.env` files
 5. Directory-name inference

@@ -29,6 +29,7 @@ export const PLURAL_TO_SINGULAR: Readonly<Record<string, string>> = {
   releases: "release",
   repos: "repo",
   teams: "team",
+  tokens: "token",
   logs: "log",
   monitors: "monitor",
   replays: "replay",

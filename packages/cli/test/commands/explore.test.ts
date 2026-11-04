@@ -175,6 +175,7 @@ let queryEventsTimeSeriesSpy: ReturnType<typeof spyOn>;
 let queryMetricsMetaSpy: ReturnType<typeof spyOn>;
 let listReplaysSpy: ReturnType<typeof spyOn>;
 let resolveTargetSpy: ReturnType<typeof spyOn>;
+let resolveProjectIdSpy: ReturnType<typeof spyOn>;
 let resolveCursorSpy: ReturnType<typeof spyOn>;
 let advancePaginationStateSpy: ReturnType<typeof spyOn>;
 let hasPreviousPageSpy: ReturnType<typeof spyOn>;
@@ -205,6 +206,9 @@ beforeEach(async () => {
   // Default: resolveOrgOptionalTarget returns org-only (auto-detect)
   resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalTarget");
   resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+  // Default: the project ID can't be resolved, so queries fall back to slugs.
+  resolveProjectIdSpy = vi.spyOn(resolveTarget, "resolveLogProjectId");
+  resolveProjectIdSpy.mockResolvedValue(undefined);
 
   resolveCursorSpy = vi.spyOn(paginationDb, "resolveCursor").mockReturnValue({
     cursor: undefined,
@@ -224,6 +228,7 @@ afterEach(() => {
   queryMetricsMetaSpy.mockRestore();
   listReplaysSpy.mockRestore();
   resolveTargetSpy.mockRestore();
+  resolveProjectIdSpy.mockRestore();
   resolveCursorSpy.mockRestore();
   advancePaginationStateSpy.mockRestore();
   hasPreviousPageSpy.mockRestore();
@@ -297,7 +302,7 @@ describe("sentry explore", () => {
       );
     });
 
-    test("`<org>/<project>` adds project:<slug> to query automatically", async () => {
+    test("`<org>/<project>` falls back to project:<slug> without a project ID", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "my-org", project: "cli" });
       const { context } = createContext();
 
@@ -373,6 +378,87 @@ describe("sentry explore", () => {
 
       await expect(func.call(context, DEFAULT_FLAGS)).rejects.toThrow(
         "Organization",
+      );
+    });
+  });
+
+  describe("project scoping", () => {
+    test("scopes table queries by project ID instead of project:<slug>", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "my-org", project: "cli" });
+      resolveProjectIdSpy.mockResolvedValue(42);
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        { ...DEFAULT_FLAGS, query: "level:error", environment: ["prod"] },
+        "my-org/cli",
+      );
+
+      expect(resolveProjectIdSpy).toHaveBeenCalledWith("my-org", "cli");
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "my-org",
+        expect.objectContaining({
+          projectId: 42,
+          query: "environment:prod (level:error)",
+        }),
+      );
+    });
+
+    test("scopes time series by project ID", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "my-org", project: "cli" });
+      resolveProjectIdSpy.mockResolvedValue(42);
+      const { context } = createContext();
+
+      await func.call(context, TIME_SERIES_FLAGS, "my-org/cli");
+
+      expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
+        "my-org",
+        expect.objectContaining({ projectId: 42, query: undefined }),
+      );
+    });
+
+    test("passes the project ID to --metric discovery", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "my-org", project: "cli" });
+      resolveProjectIdSpy.mockResolvedValue(42);
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "tracemetrics",
+          metric: "llm.token_usage",
+        },
+        "my-org/cli",
+      );
+
+      expect(queryMetricsMetaSpy).toHaveBeenCalledWith("my-org", {
+        statsPeriod: "24h",
+        project: "cli",
+        projectId: 42,
+      });
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "my-org",
+        expect.objectContaining({ projectId: 42, query: undefined }),
+      );
+    });
+
+    test("does not resolve a project ID for org-wide or replay queries", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "my-org" });
+      const { context } = createContext();
+      await func.call(context, DEFAULT_FLAGS, "my-org/");
+
+      resolveTargetSpy.mockResolvedValue({ org: "my-org", project: "cli" });
+      await func.call(
+        context,
+        { ...DEFAULT_FLAGS, dataset: "replays" },
+        "my-org/cli",
+      );
+
+      expect(resolveProjectIdSpy).not.toHaveBeenCalled();
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "my-org",
+        expect.objectContaining({ projectId: undefined }),
       );
     });
   });
@@ -1419,6 +1505,55 @@ describe("sentry explore", () => {
           "test-org/",
         ),
       ).rejects.toBe(original);
+    });
+  });
+
+  describe("search syntax errors", () => {
+    const detail =
+      "Invalid quote at '*\"POST': quotes must enclose text or be escaped.";
+    const flags = {
+      ...DEFAULT_FLAGS,
+      dataset: "spans",
+      query: 'span.description:*"POST',
+    };
+    const parseError = (code?: string) =>
+      new ApiError("Bad request", 400, detail, undefined, { code });
+
+    test("reports an unparseable --query as a query ValidationError", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      queryEventsSpy.mockRejectedValue(parseError("invalid_search_query"));
+      const { context } = createContext();
+
+      const error = await func
+        .call(context, flags, "test-org/")
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({ field: "query" });
+      expect((error as Error).message).toContain(detail);
+      expect((error as Error).message).toContain("Check your --query syntax");
+    });
+
+    test("keeps the ApiError when the CLI built the query", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const original = parseError("invalid_search_query");
+      queryEventsSpy.mockRejectedValue(original);
+      const { context } = createContext();
+
+      await expect(
+        func.call(context, { ...DEFAULT_FLAGS, dataset: "spans" }, "test-org/"),
+      ).rejects.toBe(original);
+    });
+
+    test("keeps the ApiError when the 400 has no code", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const original = parseError();
+      queryEventsSpy.mockRejectedValue(original);
+      const { context } = createContext();
+
+      await expect(func.call(context, flags, "test-org/")).rejects.toBe(
+        original,
+      );
     });
   });
 

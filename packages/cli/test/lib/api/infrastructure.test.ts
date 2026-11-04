@@ -165,11 +165,112 @@ describe("throwApiError", () => {
       expect(error).toBeInstanceOf(ApiError);
       const apiError = error as ApiError;
       expect(apiError.detail).toContain("fetch failed");
-      expect(apiError.detail).toContain("Unable to reach Sentry API");
+      expect(apiError.detail).toContain("Unable to reach Sentry at");
       expect(apiError.detail).toContain(
-        "Check your internet connection and try again",
+        "Check your network connection and try again",
       );
+      expect(apiError.cause).toBeInstanceOf(TypeError);
     }
+  });
+
+  describe("network failure guidance", () => {
+    useTestConfigDir("api-network-guidance-");
+    useEnvSandbox([
+      "SENTRY_URL",
+      "SENTRY_HOST",
+      "SENTRY_AUTH_TOKEN",
+      "SENTRY_TOKEN",
+      "SENTRY_FORCE_ENV_TOKEN",
+      "HTTPS_PROXY",
+      "https_proxy",
+      "HTTP_PROXY",
+      "http_proxy",
+    ]);
+
+    function fetchFailed(code: string, message: string): TypeError {
+      const cause = Object.assign(new Error(message), { code });
+      return new TypeError("fetch failed", { cause });
+    }
+
+    function detailFor(error: unknown): string {
+      try {
+        throwApiError(error, undefined, "Failed to create release");
+      } catch (thrown) {
+        return (thrown as ApiError).detail ?? "";
+      }
+      throw new Error("expected throwApiError to throw");
+    }
+
+    test("self-hosted ECONNREFUSED names the URL, errno, and next step", () => {
+      process.env.SENTRY_URL = "https://sentry.example.com";
+      const detail = detailFor(
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
+      );
+      expect(detail).toContain(
+        "Unable to reach Sentry at https://sentry.example.com",
+      );
+      expect(detail).toContain("connect ECONNREFUSED 10.0.0.1:443");
+      expect(detail).toContain("The server refused the connection");
+      expect(detail).toContain("SENTRY_URL");
+      expect(detail).not.toContain("Check Sentry's status");
+    });
+
+    test("names SENTRY_HOST as the override when it is the one set", () => {
+      process.env.SENTRY_HOST = "https://sentry.example.com";
+      process.env.SENTRY_URL = "https://other.example.com";
+      const detail = detailFor(
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
+      );
+      expect(detail).toContain(
+        "Unable to reach Sentry at https://sentry.example.com",
+      );
+      expect(detail).toContain("This URL comes from SENTRY_HOST");
+    });
+
+    test("a self-hosted login without SENTRY_URL names its own server", () => {
+      setAuthToken("self-hosted-token", undefined, undefined, {
+        host: "https://sentry.example.com",
+        newAccount: true,
+      });
+      const detail = detailFor(
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
+      );
+      expect(detail).toContain(
+        "Unable to reach Sentry at https://sentry.example.com",
+      );
+      expect(detail).toContain("sentry auth login --url");
+      expect(detail).not.toContain("Check Sentry's status");
+    });
+
+    test("a proxy variable does not replace the errno hint (fetch ignores it)", () => {
+      process.env.SENTRY_URL = "https://sentry.example.com";
+      process.env.HTTPS_PROXY = "http://user:secret@proxy.internal:3128";
+      const detail = detailFor(
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
+      );
+      expect(detail).toContain("The server refused the connection");
+      expect(detail).not.toContain("proxy");
+      expect(detail).not.toContain("secret");
+    });
+
+    test("a cause without an errno still replaces 'fetch failed'", () => {
+      process.env.SENTRY_URL = "https://sentry.example.com:9";
+      const detail = detailFor(
+        new TypeError("fetch failed", { cause: new Error("bad port") }),
+      );
+      expect(detail).toContain(": bad port");
+      expect(detail).toContain("Check your network connection");
+    });
+
+    test("SaaS DNS failure points at DNS and `sentry status`", () => {
+      const detail = detailFor(
+        fetchFailed("ENOTFOUND", "getaddrinfo ENOTFOUND us.sentry.io"),
+      );
+      expect(detail).toContain("getaddrinfo ENOTFOUND us.sentry.io");
+      expect(detail).toContain("hostname could not be resolved");
+      expect(detail).toContain("Check Sentry's status with: sentry status");
+      expect(detail).not.toContain("Check your network connection");
+    });
   });
 
   test("network failure with non-Error produces readable message", () => {
@@ -203,6 +304,23 @@ describe("throwApiError", () => {
       expect(apiError.status).toBe(400);
       expect(apiError.detail).toBe("Invalid query syntax");
     }
+  });
+
+  test("HTTP error keeps the body's code", () => {
+    const mockResponse = new Response("", {
+      status: 400,
+      statusText: "Bad Request",
+    });
+
+    expect(() =>
+      throwApiError(
+        { detail: "Invalid query syntax", code: "invalid_search_query" },
+        mockResponse,
+        "Failed to list events",
+      ),
+    ).toThrow(
+      expect.objectContaining({ status: 400, code: "invalid_search_query" }),
+    );
   });
 
   test("HTTP error without detail uses stringified error", () => {

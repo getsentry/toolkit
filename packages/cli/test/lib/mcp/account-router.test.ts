@@ -1,4 +1,4 @@
-import { ConfigurationError } from "@sentry/toolkit-core/api-client/errors";
+import { ConfigurationError } from "@sentry/api/client";
 import { describe, expect, test } from "vitest";
 import {
   clearAuth,

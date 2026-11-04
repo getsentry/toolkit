@@ -44,6 +44,7 @@ import { createDsnFingerprint } from "../../lib/dsn/index.js";
 import {
   ApiError,
   ContextError,
+  TimeoutError,
   toSearchQueryError,
   ValidationError,
   withAuthGuard,
@@ -1123,13 +1124,9 @@ function enrichIssueListError(
       const detail = error.enriched403
         ? appendProjectMembershipHint(error.detail)
         : build403Detail(error.detail);
-      throw new ApiError(
-        error.message,
-        error.status,
-        detail,
-        error.endpoint,
-        true,
-      );
+      throw new ApiError(error.message, error.status, detail, error.endpoint, {
+        enriched403: true,
+      });
     }
   }
   throw error;
@@ -1218,7 +1215,7 @@ async function handleResolvedTargets(
 ): Promise<IssueListResult> {
   const { parsed, flags, cwd, timeRange, projectSearchResolution } = options;
 
-  const { targets, footer, skippedSelfHosted, detectedDsns } =
+  const { targets, footer, skippedSelfHosted, detectedDsns, soleOrg } =
     await resolveProjectBoundTargets(parsed, {
       cwd,
       usageHint: USAGE_HINT,
@@ -1226,7 +1223,14 @@ async function handleResolvedTargets(
       projectSearchResolution,
       enrichProjectIds: true,
       checkIssueShortId: true,
+      orgWideFallback: true,
     });
+
+  // No detected context, and the account has a single organization: list it
+  // org-wide, the same as `sentry issue list <org>/` (CLI-3B).
+  if (soleOrg) {
+    return await handleOrganizationIssues({ org: soleOrg, flags, timeRange });
+  }
 
   if (targets.length === 0) {
     if (skippedSelfHosted) {
@@ -1341,8 +1345,13 @@ async function handleResolvedTargets(
         first.status,
         detail,
         first.endpoint,
-        first.enriched403 || first.status === 403,
+        { enriched403: first.enriched403 || first.status === 403 },
       );
+    }
+
+    // Keep the timeout's status-page hint and exit code.
+    if (first instanceof TimeoutError) {
+      throw new TimeoutError(`${prefix}: ${first.message}`, first.hint);
     }
 
     throw new Error(`${prefix}: ${first.message}`);

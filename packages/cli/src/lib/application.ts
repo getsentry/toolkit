@@ -216,7 +216,10 @@ function buildApplicationText(options: ArgumentHintOptions): ApplicationText {
       exc: unknown,
       ansiColor: boolean,
     ): string => {
-      const message = formatArgumentError(options, exc, ansiColor);
+      // Stricli quotes the raw input, which may be a pasted auth token
+      const message = redactCredentialText(
+        formatArgumentError(options, exc, ansiColor),
+      );
       // Exit 252 never reaches reportCliError; record it for UX research
       reportArgumentError(exc, stripAnsi(message));
       return message;
