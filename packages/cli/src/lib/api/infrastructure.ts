@@ -16,6 +16,7 @@ import {
 } from "@sentry/api";
 import {
   API_MAX_PER_PAGE,
+  buildSentryApiUrl,
   decodePageCursor as decodeCursorPosition,
   fetchAllPages as fetchEveryPage,
   type FetchAllPagesFailure,
@@ -23,7 +24,6 @@ import {
   paginate as paginateFrom,
   readErrorResponse,
 } from "@sentry/api/client";
-import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";

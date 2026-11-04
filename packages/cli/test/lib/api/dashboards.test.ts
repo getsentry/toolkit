@@ -264,6 +264,19 @@ describe("queryAllWidgets", () => {
     expect(results.get(1)).toEqual({ type: "text", content: "Second" });
     expect(results.get(2)).toEqual({ type: "text", content: "Third" });
   });
+
+  test("reports a widget with a null display type as unsupported", async () => {
+    const dashboard = makeDashboard([
+      { title: "Legacy", displayType: null, widgetType: "error-events" },
+    ]);
+
+    const results = await queryAllWidgets(UNUSED_URL, UNUSED_ORG, dashboard);
+
+    expect(results.get(0)).toEqual({
+      type: "unsupported",
+      reason: "Widget has no display type",
+    });
+  });
 });
 
 describe("widget sort resolution", () => {
