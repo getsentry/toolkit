@@ -75,9 +75,6 @@ const SKILL_DESCRIPTION =
  */
 const ROUTE_ORDER = ["help", "auth", "org", "project", "issue", "event", "api"];
 
-/** Routes that stay in `sentry help` but not in the skill, because agents cannot use them. */
-const HUMAN_ONLY_ROUTES = new Set(["games"]);
-
 /**
  * Flags that are globally injected and should be omitted from compact index
  * and only mentioned once in the Global Options section.
@@ -578,9 +575,7 @@ async function generateAllSkillFiles(
 ): Promise<GeneratedFiles> {
   const files: GeneratedFiles = new Map();
   const version = await getPackageVersion();
-  const routeInfos = extractAllRoutes(routeMap).filter(
-    (route) => !HUMAN_ONLY_ROUTES.has(route.name),
-  );
+  const routeInfos = extractAllRoutes(routeMap);
   const prerequisites = await loadPrerequisites();
   const supplementary = await generateSupplementarySections();
   const agentGuidance = await loadAgentGuidance();

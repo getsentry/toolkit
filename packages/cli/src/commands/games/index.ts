@@ -5,7 +5,6 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
-import { topLevelBrief } from "../../top-level-briefs.js";
 import { snakeCommand } from "./snake.js";
 
 export const gamesRoute = buildRouteMap({
@@ -13,7 +12,7 @@ export const gamesRoute = buildRouteMap({
     snake: snakeCommand,
   },
   docs: {
-    brief: topLevelBrief("games"),
+    brief: "Terminal games",
     fullDescription: "Small games to play in your terminal while you wait.",
   },
 });
