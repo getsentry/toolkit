@@ -1025,6 +1025,47 @@ describe("update_issue", () => {
     expect(result).toContain("**Comment not posted**");
   });
 
+  it("treats a duplicate comment as already present on the no-changes path", async () => {
+    const currentIssue = createIssue({
+      status: "resolved",
+      statusDetails: {},
+    });
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(currentIssue),
+      ),
+      http.post(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/notes/",
+        () =>
+          HttpResponse.json(
+            { detail: "You have already posted that comment." },
+            { status: 400 },
+          ),
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+        reason: "Resolving because fix deployed",
+      },
+      serverContext,
+    );
+
+    expect(result).toContain("No changes were needed.");
+    expect(result).toContain(
+      '**Comment already present**: "Resolving because fix deployed"',
+    );
+    expect(result).not.toContain("**Comment not posted**");
+  });
+
   it("strips null bytes from reason before posting as a comment", () => {
     // prepareToolParams runs the Zod schema (including transforms) the same
     // way the MCP server does at runtime, so this exercises the full parse path.

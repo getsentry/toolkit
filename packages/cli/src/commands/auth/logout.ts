@@ -11,6 +11,11 @@ import {
 } from "../../lib/account-selection.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  ACCOUNT_SERVER_TARGET,
+  completingParser,
+  parseAccountSelector,
+} from "../../lib/completion-target.js";
+import {
   type AccountSummary,
   getAccountRow,
   isAccountOnServer,
@@ -123,7 +128,7 @@ export const logoutCommand = buildCommand({
     flags: {
       url: {
         kind: "parsed",
-        parse: parseLoginUrl,
+        parse: completingParser(ACCOUNT_SERVER_TARGET, parseLoginUrl),
         brief:
           "Only match accounts on this server (disambiguates the same email on several servers)",
         optional: true,
@@ -135,7 +140,7 @@ export const logoutCommand = buildCommand({
         placeholder: "account",
         brief:
           "Accounts to log out of (email, username, user ID, or account ID; comma-separated), or 'all'",
-        parse: String,
+        parse: parseAccountSelector,
       },
     },
   },
@@ -147,7 +152,7 @@ export const logoutCommand = buildCommand({
     const accounts = listAccounts();
     if (accounts.length === 0) {
       assertNotEnvOnly();
-      return yield new CommandOutput<LogoutResult>({
+      return yield new CommandOutput({
         loggedOut: false,
         message: "Not currently authenticated.",
       });
@@ -181,7 +186,7 @@ export const logoutCommand = buildCommand({
       targets = active ? [active] : [];
     }
     if (targets.length === 0) {
-      return yield new CommandOutput<LogoutResult>({
+      return yield new CommandOutput({
         loggedOut: false,
         message:
           "No account is active. Run 'sentry auth list' and pass an account to log out of, or 'all'.",
@@ -227,7 +232,7 @@ async function* finishLogout(
   if (removed.some((a) => a.active) && activeAccount) {
     pointDefaultUrlAtAccount(activeAccount.host);
   }
-  yield new CommandOutput<LogoutResult>({
+  yield new CommandOutput({
     loggedOut: removed.length > 0,
     ...(removed.length === 0 ? { message: "No stored account matched." } : {}),
     configPath,

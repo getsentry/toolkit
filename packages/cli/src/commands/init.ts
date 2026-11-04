@@ -26,6 +26,12 @@ import {
   parseOrgProjectInput,
 } from "../lib/arg-parsing.js";
 import { buildCommand } from "../lib/command.js";
+import {
+  choiceListParser,
+  ORG_PROJECT_OR_DIRECTORY_TARGET,
+  parseTeam,
+  parseText,
+} from "../lib/completion-target.js";
 import { refreshToken } from "../lib/db/auth.js";
 import { ContextError, ValidationError } from "../lib/errors.js";
 import { warmOrgDetection } from "../lib/init/org-prefetch.js";
@@ -44,6 +50,7 @@ import {
 } from "../lib/positional-parse.js";
 import { classifyProjectSearchTarget } from "../lib/resolve-target.js";
 import { applySentryUrlContext } from "../lib/sentry-url-parser.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("init");
 
@@ -351,7 +358,7 @@ export const initCommand = buildCommand<
   SentryContext
 >({
   docs: {
-    brief: "Initialize Sentry in your project (experimental)",
+    brief: topLevelBrief("init"),
     customUsage: ["[<target>] [<directory>]"],
     fullDescription:
       "EXPERIMENTAL: This command may modify your source files.\n\n" +
@@ -400,6 +407,7 @@ export const initCommand = buildCommand<
   parameters: {
     positional: boundArguments({
       placeholder: "target/directory",
+      kind: ORG_PROJECT_OR_DIRECTORY_TARGET,
       brief:
         "Optional target (<org>/<project>, <org>/, or <project>) and directory (default: current directory)",
       parse: parseInitInput,
@@ -414,7 +422,7 @@ export const initCommand = buildCommand<
       "dry-run": DRY_RUN_FLAG,
       features: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser(SUPPORTED_FEATURE_NAMES),
         brief:
           "Features to enable: errors,tracing,logs,replay,profiling,crons,agent-tracing,mcp-observability",
         variadic: true,
@@ -422,13 +430,13 @@ export const initCommand = buildCommand<
       },
       team: {
         kind: "parsed",
-        parse: String,
+        parse: parseTeam,
         brief: "Team slug to create the project under",
         optional: true,
       },
       app: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "App to initialize in a monorepo (required with --yes when multiple apps are detected)",
         optional: true,

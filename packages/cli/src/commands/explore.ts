@@ -16,11 +16,21 @@ import type { SentryContext } from "../context.js";
 import {
   isReplaySortValue,
   listReplays,
+  REPLAY_SORT_FIELDS,
   queryEvents,
   queryEventsTimeSeries,
   queryMetricsMeta,
 } from "../lib/api-client.js";
 import { validateLimit } from "../lib/arg-parsing.js";
+import {
+  choiceParser,
+  DATASET_FIELDS,
+  type DatasetCompletion,
+  fieldOrAggregateParser,
+  parseEnvironmentList,
+  parseText,
+  textParser,
+} from "../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -54,7 +64,7 @@ import {
   targetPatternExplanation,
 } from "../lib/list-command.js";
 import { logger } from "../lib/logger.js";
-import { resolveMetricField } from "../lib/metrics-transform.js";
+import { resolveMetricField, VALID_AGGS } from "../lib/metrics-transform.js";
 import { withProgress } from "../lib/polling.js";
 import {
   DEFAULT_REPLAY_EXPLORE_FIELDS,
@@ -64,6 +74,7 @@ import {
   listSupportedReplayFields,
   parseReplayEnvironmentFilter,
 } from "../lib/replay-search.js";
+import { resolveLogProjectId } from "../lib/resolve-target.js";
 import { sanitizeQuery } from "../lib/search-query.js";
 import { shellQuote } from "../lib/utils.js";
 import {
@@ -78,6 +89,7 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../lib/time-range.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("explore");
 
@@ -105,6 +117,34 @@ const DATASETS = buildDatasetParser(
   ["errors", "spans", "tracemetrics", "logs", "replays"],
   [...LEGACY_TRANSACTION_DATASETS],
 );
+
+/**
+ * What `--field` completes on each dataset: attribute or tag keys and
+ * aggregates, or the replay fields the CLI renders. `transaction(s)`
+ * queries spans.
+ */
+const FIELD_COMPLETION: DatasetCompletion = {
+  datasets: {
+    ...DATASET_FIELDS,
+    replays: { fields: listSupportedReplayFields() },
+  },
+  aliases: {
+    ...DATASETS.aliases,
+    ...Object.fromEntries(
+      [...LEGACY_TRANSACTION_DATASETS].map((name) => [name, "spans"]),
+    ),
+  },
+  default: DEFAULT_DATASET,
+};
+
+/** What `--sort` completes: `--field`'s, but replays sort by their own fields. */
+const SORT_COMPLETION: DatasetCompletion = {
+  ...FIELD_COMPLETION,
+  datasets: {
+    ...FIELD_COMPLETION.datasets,
+    replays: { fields: REPLAY_SORT_FIELDS },
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -446,17 +486,24 @@ function buildEnvironmentQuery(
   return `environment:[${environment.join(",")}]`;
 }
 
-/** Resolve the shared dataset and filters for tabular and temporal queries. */
+/**
+ * Resolve the shared dataset and filters for tabular and temporal queries.
+ *
+ * A resolved `projectId` scopes the request through the `project` param;
+ * `project:<slug>` is only the fallback because it matches just the projects
+ * the requester is a member of (#1317).
+ */
 function resolveEventsQuery(
   dataset: string,
   query: string | undefined,
   project: string | undefined,
   environment: string[] | undefined,
+  projectId: number | undefined,
 ) {
   const userQuery = sanitizeQuery(query, { allowBoolean: true });
   const legacyTransactions = LEGACY_TRANSACTION_DATASETS.has(dataset);
   const scope = [
-    project ? `project:${project}` : undefined,
+    project && projectId === undefined ? `project:${project}` : undefined,
     buildEnvironmentQuery(environment),
     legacyTransactions ? IS_TRANSACTION_FILTER : undefined,
   ]
@@ -511,8 +558,8 @@ function validateTimeSeriesFlags(flags: ExploreFlags): void {
  * sort, and returns a fetch function that calls `listReplays`. For all other
  * datasets it translates `--environment` values into `environment:...` query
  * filter terms, resolves the sort with {@link resolveEventsSort} (which also
- * selects the sort column), prepends `project:<slug>` to the query, and
- * returns a `queryEvents` fetch.
+ * selects the sort column), scopes the project by ID (falling back to a
+ * `project:<slug>` query term), and returns a `queryEvents` fetch.
  */
 function resolveDatasetConfig(params: {
   dataset: string;
@@ -520,9 +567,11 @@ function resolveDatasetConfig(params: {
   flags: ExploreFlags;
   org: string;
   project: string | undefined;
+  projectId: number | undefined;
   environment: string[] | undefined;
 }): DatasetConfig {
-  const { dataset, fieldList, flags, org, project, environment } = params;
+  const { dataset, fieldList, flags, org, project, projectId, environment } =
+    params;
   if (dataset === "replays") {
     const userQuery = sanitizeQuery(flags.query);
     const unsupportedField = fieldList.find(
@@ -572,6 +621,7 @@ function resolveDatasetConfig(params: {
     flags.query,
     project,
     environment,
+    projectId,
   );
 
   // Every Events dataset honors sort as long as the sort column is selected.
@@ -591,6 +641,7 @@ function resolveDatasetConfig(params: {
         fields,
         dataset: resolved.dataset,
         query,
+        projectId,
         sort,
         limit,
         cursor,
@@ -627,7 +678,7 @@ function buildResultHint(rowCount: number, nav: string): string | undefined {
 
 export const exploreCommand = buildListCommand("explore", {
   docs: {
-    brief: "Query aggregate event data (Explore)",
+    brief: topLevelBrief("explore"),
     fullDescription:
       "Query the Sentry Explore API for aggregate event data.\n\n" +
       "Supports arbitrary fields including columns (title, project),\n" +
@@ -646,7 +697,7 @@ export const exploreCommand = buildListCommand("explore", {
       "  replays  Session replay search\n\n" +
       "Events queries support AND, OR, and parentheses. Project, environment, " +
       "and transaction scope apply to the entire query.\n\n" +
-      "A <org>/<project> target adds project:<slug> to the query. " +
+      "A <org>/<project> target scopes the query to that project. " +
       targetPatternExplanation(),
     examples: [
       {
@@ -767,7 +818,7 @@ export const exploreCommand = buildListCommand("explore", {
     flags: {
       field: {
         kind: "parsed",
-        parse: String,
+        parse: fieldOrAggregateParser(FIELD_COMPLETION),
         brief:
           'API field or aggregate (repeatable). E.g., title, "count()", "p50(span.duration)"',
         variadic: true,
@@ -775,55 +826,56 @@ export const exploreCommand = buildListCommand("explore", {
       },
       metric: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Metric name for --dataset metrics. Auto-resolves type/unit via API.",
         optional: true,
       },
       agg: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser([...VALID_AGGS]),
         brief: "Aggregation for --metric (sum, avg, count, p50, p95, etc.)",
         default: "sum",
       },
       dataset: {
         kind: "parsed",
-        parse: DATASETS.parse,
+        parse: choiceParser(DATASETS.names, DATASETS.parse),
         brief: `Dataset to query (${DATASETS.names.join(", ")}; transaction(s) routes to spans)`,
         default: DEFAULT_DATASET,
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Search query (Sentry search syntax)",
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: String,
+        parse: fieldOrAggregateParser(SORT_COMPLETION),
         brief: 'Sort field (prefix with - for desc, e.g., "-count()")',
         optional: true,
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironmentList,
         brief: "Environment filter (repeatable, comma-separated)",
         variadic: true,
         optional: true,
       },
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         placeholder: "number",
         brief: `Number of table rows (1-${LIST_MAX_LIMIT}, default: ${DEFAULT_LIMIT})`,
         optional: true,
       },
       "time-series": {
         kind: "parsed",
-        parse: (value: string) =>
+        parse: textParser((value: string) =>
           value === "" || value === "auto"
             ? "auto"
             : parseTimeSeriesInterval(value),
+        ),
         placeholder: "auto|interval",
         brief:
           "Query time series (default: auto; optional bucket duration, e.g., 15m)",
@@ -872,6 +924,11 @@ export const exploreCommand = buildListCommand("explore", {
         ? parsePeriod(flags.period)
         : flags.period;
     const environment = parseReplayEnvironmentFilter(flags.environment);
+    // Events queries scope by numeric ID; replays take the slug directly.
+    const projectId =
+      project && (flags.metric || dataset !== "replays")
+        ? await resolveLogProjectId(org, project)
+        : undefined;
 
     // --metric auto mode: resolve metric name → tracemetrics aggregate
     if (flags.metric) {
@@ -891,6 +948,7 @@ export const exploreCommand = buildListCommand("explore", {
           queryMetricsMeta(org, {
             ...metaParams,
             project,
+            projectId,
           }),
       );
 
@@ -921,6 +979,7 @@ export const exploreCommand = buildListCommand("explore", {
         flags.query,
         project,
         environment,
+        projectId,
       );
       const timeParams = timeRangeToApiParams(timeRange);
       const interval = resolveTimeSeriesInterval(
@@ -937,6 +996,7 @@ export const exploreCommand = buildListCommand("explore", {
             fields: fieldList,
             dataset: resolved.dataset,
             query: resolved.query,
+            projectId,
             interval,
             ...timeParams,
           }).catch((error: unknown): never => {
@@ -967,6 +1027,7 @@ export const exploreCommand = buildListCommand("explore", {
       flags,
       org,
       project,
+      projectId,
       environment,
     });
 

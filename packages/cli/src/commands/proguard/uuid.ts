@@ -9,6 +9,7 @@
 import { readFile } from "node:fs/promises";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { computeProguardUuid } from "../../lib/proguard.js";
@@ -54,7 +55,7 @@ export const uuidCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the ProGuard mapping file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -99,7 +100,7 @@ export const uuidCommand = buildCommand({
     }
 
     const uuid = computeProguardUuid(content);
-    yield new CommandOutput<ProguardUuidResult>({ path, uuid });
+    yield new CommandOutput({ path, uuid });
     return {};
   },
 });

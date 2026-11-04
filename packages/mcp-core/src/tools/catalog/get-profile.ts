@@ -85,7 +85,8 @@ export default defineTool({
   hideInExperimentalMode: true, // Replaced by get_sentry_resource in experimental mode
 
   description: [
-    "Analyze CPU profiling data to identify performance bottlenecks and detect regressions.",
+    "Analyze aggregated CPU profiling data (flamegraph) for a transaction to identify performance bottlenecks and detect regressions.",
+    "For one specific profile by ID or URL, use get_profile_details.",
     "",
     "USE THIS TOOL WHEN:",
     "- User asks why a specific endpoint/transaction is slow",

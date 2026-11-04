@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { listTransactions } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { choiceParser, textParser } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -29,6 +30,7 @@ import {
   paginationHint,
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import { resolveLogProjectId } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
@@ -42,10 +44,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  type TransactionListItem,
-  TransactionListItemSchema,
-} from "../../types/index.js";
+import type { TransactionListItem } from "../../types/index.js";
+import { TransactionListItemSchema } from "../../generated/output-schemas/trace.js";
 
 type ListFlags = {
   readonly limit: number;
@@ -172,13 +172,13 @@ function formatTraceListHuman(result: TraceListResult): string {
 function jsonTransformTraceList(
   result: TraceListResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<TransactionListItem> {
   const items =
     fields && fields.length > 0
       ? result.traces.map((t) => filterFields(t, fields))
       : result.traces;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<TransactionListItem> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: !!result.hasPrev,
@@ -245,7 +245,7 @@ export const listCommand = buildListCommand("trace", {
     flags: {
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of traces (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
         default: String(LIST_DEFAULT_LIMIT),
       },
@@ -257,7 +257,7 @@ export const listCommand = buildListCommand("trace", {
       },
       sort: {
         kind: "parsed",
-        parse: parseSort,
+        parse: choiceParser(VALID_SORT_VALUES, parseSort),
         brief: "Sort by: date, duration",
         default: "date" as const,
       },

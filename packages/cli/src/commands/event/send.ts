@@ -14,6 +14,7 @@ import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   buildEventFromFlags,
+  KNOWN_USER_FIELDS,
   type SendEventFlags,
 } from "../../lib/envelope/event-builder.js";
 import {
@@ -24,9 +25,20 @@ import {
   readFileBytes,
   sendEnvelopeRequest,
 } from "../../lib/envelope/transport.js";
+import {
+  choiceParser,
+  parseEnvironment,
+  parseFilePath,
+  parsePlatform,
+  parseRelease,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ConfigError, ValidationError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
+
+/** `--user` keys with their own User field, offered as `<key>:` prefixes. */
+const USER_FIELD_PREFIXES = [...KNOWN_USER_FIELDS].map((key) => `${key}:`);
 
 const log = logger.withTag("event.send");
 
@@ -204,21 +216,21 @@ built entirely from the file contents.
         brief:
           "Optional DSN/project target followed by JSON event file path(s)",
         placeholder: "target-or-file",
-        parse: String,
+        parse: parseFilePath,
         optional: true,
       },
     },
     flags: {
       message: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Event message (repeat for multi-line)",
         variadic: true,
         optional: true,
       },
       "message-arg": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Arguments for message template (repeat for multiple)",
         variadic: true,
         optional: true,
@@ -232,45 +244,45 @@ built entirely from the file contents.
       },
       release: {
         kind: "parsed",
-        parse: String,
+        parse: parseRelease,
         brief: "Release version",
         optional: true,
       },
       dist: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Distribution identifier",
         optional: true,
       },
       env: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironment,
         brief: "Environment name (e.g. production, staging)",
         optional: true,
       },
       platform: {
         kind: "parsed",
-        parse: String,
+        parse: parsePlatform,
         brief: "Platform identifier (default: other)",
         optional: true,
       },
       tag: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Tag as KEY:VALUE (repeat for multiple)",
         variadic: true,
         optional: true,
       },
       extra: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Extra data as KEY:VALUE (repeat for multiple)",
         variadic: true,
         optional: true,
       },
       user: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(USER_FIELD_PREFIXES),
         brief:
           "User info as KEY:VALUE — id, email, username, ip_address, or custom",
         variadic: true,
@@ -278,14 +290,14 @@ built entirely from the file contents.
       },
       fingerprint: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Custom fingerprint part (repeat for multiple)",
         variadic: true,
         optional: true,
       },
       timestamp: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Event timestamp (Unix epoch, ISO 8601, or RFC 2822)",
         optional: true,
       },
@@ -297,7 +309,7 @@ built entirely from the file contents.
       },
       logfile: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Path to a log file — last 100 lines are attached as breadcrumbs",
         optional: true,
@@ -358,7 +370,7 @@ built entirely from the file contents.
           dsnComponents,
         );
         await sendEnvelopeRequest(dsn, body);
-        yield new CommandOutput<SendEventResult>({ eventId, file });
+        yield new CommandOutput({ eventId, file });
       }
     } else {
       if (flags.raw) {
@@ -385,7 +397,7 @@ built entirely from the file contents.
         );
       }
       await sendEnvelopeRequest(dsn, body);
-      yield new CommandOutput<SendEventResult>({
+      yield new CommandOutput({
         eventId: event.event_id ?? "",
       });
     }

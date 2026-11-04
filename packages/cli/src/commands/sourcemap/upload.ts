@@ -17,6 +17,13 @@ import {
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  choiceListParser,
+  parseDirectoryPath,
+  parseFilePath,
+  parseRelease,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -25,10 +32,12 @@ import {
   assertDirectoryReadable,
   buildEmptyDiscoveryError,
   buildIgnoreMatcher,
+  DEFAULT_EXTENSIONS,
   diagnoseEmptyDiscovery,
   discoverFilePairs,
-  type InjectResult,
   injectDirectory,
+  type InjectResult,
+  resolveUploadTarget,
 } from "../../lib/sourcemap/inject.js";
 
 /** Result type for the upload command. */
@@ -220,6 +229,10 @@ export const uploadCommand = buildCommand({
         command: "sentry sourcemap upload ./dist",
       },
       {
+        description: "Upload only the files a glob matches",
+        command: "sentry sourcemap upload '.next/static/**'",
+      },
+      {
         description: "Associate with a release",
         command: "sentry sourcemap upload ./dist --release 1.0.0",
       },
@@ -253,8 +266,8 @@ export const uploadCommand = buildCommand({
       kind: "tuple",
       parameters: [
         {
-          brief: "Directory containing sourcemaps",
-          parse: String,
+          brief: "Directory containing sourcemaps, or a glob like 'dist/**'",
+          parse: parseDirectoryPath,
           placeholder: "directory",
         },
       ],
@@ -262,46 +275,46 @@ export const uploadCommand = buildCommand({
     flags: {
       release: {
         kind: "parsed",
-        parse: String,
+        parse: parseRelease,
         brief: "Release version to associate with the upload",
         optional: true,
       },
       dist: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Distribution identifier to disambiguate builds within a release",
         optional: true,
       },
       "url-prefix": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "URL prefix for uploaded files",
         optional: true,
         default: "~/",
       },
       ext: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser([...DEFAULT_EXTENSIONS]),
         brief:
           "Comma-separated file extensions to process (default: .js,.cjs,.mjs)",
         optional: true,
       },
       ignore: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Comma-separated glob patterns to exclude (gitignore-style)",
         optional: true,
       },
       "ignore-file": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to a file with gitignore-style patterns to exclude",
         optional: true,
       },
       "strip-prefix": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Strip a prefix from uploaded file paths (e.g. 'build/')",
         optional: true,
       },
@@ -347,7 +360,8 @@ export const uploadCommand = buildCommand({
     // Validate the directory and discover pairs read-only first so we
     // don't write debug IDs when the upload won't proceed (empty dir,
     // typoed path, missing credentials).
-    await assertDirectoryReadable(dir);
+    const target = await resolveUploadTarget(dir);
+    await assertDirectoryReadable(target.dir);
 
     const extensions = flags.ext?.split(",").map((e) => e.trim());
     const extSet = extensions
@@ -362,17 +376,25 @@ export const uploadCommand = buildCommand({
       flags["ignore-file"],
     );
 
-    const pairs = await discoverFilePairs(dir, extSet, ignoreMatcher);
+    const pairs = await discoverFilePairs(
+      target.dir,
+      extSet,
+      ignoreMatcher,
+      target.include,
+    );
 
     if (pairs.length === 0) {
       if (!flags["allow-empty"]) {
-        const diag = await diagnoseEmptyDiscovery(dir, { extensions });
+        const diag = await diagnoseEmptyDiscovery(target.dir, {
+          extensions,
+          include: target.include,
+        });
         throw buildEmptyDiscoveryError(dir, diag);
       }
       // --allow-empty: nothing to upload, so don't require Sentry
       // credentials. This makes the flag actually usable in the
       // library-only / conditional-release-skip cases the docs name.
-      yield new CommandOutput<UploadCommandResult>({
+      yield new CommandOutput({
         release: flags.release,
         dist: flags.dist,
         filesUploaded: 0,
@@ -408,15 +430,16 @@ export const uploadCommand = buildCommand({
           injected: false,
           debugId: "",
         }))
-      : await injectDirectory(dir, {
+      : await injectDirectory(target.dir, {
           extensions,
           ignoreMatcher,
+          include: target.include,
         });
 
     const urlPrefix = flags["url-prefix"] ?? "~/";
 
     // Build artifact file list with paths relative to the upload directory
-    const resolvedDir = resolve(dir);
+    const resolvedDir = resolve(target.dir);
     // Normalize --strip-prefix to end with "/" so it strips at directory
     // boundaries. Without this, "build" would strip from "build/app.js"
     // leaving "/app.js" instead of "app.js".
@@ -460,7 +483,7 @@ export const uploadCommand = buildCommand({
       (f) => f.type === "minified_source",
     ).length;
 
-    yield new CommandOutput<UploadCommandResult>({
+    yield new CommandOutput({
       org,
       project,
       release: flags.release,

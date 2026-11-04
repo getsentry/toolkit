@@ -275,20 +275,24 @@ const ID_COMMANDS: readonly IdCommand[] = [
       const input = parsed as {
         eventId: string;
         target: ParsedTarget;
+        selector?: string;
         extraEventIds?: readonly string[];
         warnings: readonly string[];
         baseUrl?: string;
       };
       return {
         target: describeTarget(input.target),
-        ids: [input.eventId, ...(input.extraEventIds ?? [])],
+        // A selector (the default without an ID) names no event ID
+        ids: input.selector
+          ? []
+          : [input.eventId, ...(input.extraEventIds ?? [])],
         warnings: input.warnings,
         ...(input.baseUrl ? { baseUrl: input.baseUrl } : {}),
       };
     },
     slashTarget: "project",
     multiple: true,
-    optional: false,
+    optional: true,
     url: EVENT_URL,
     separateTarget: true,
   },

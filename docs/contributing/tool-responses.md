@@ -107,8 +107,18 @@ Translate upstream API shapes into user-facing terms:
   identifiers needed for follow-up.
 - Drop empty, nullish, or unknown placeholder values before rendering details.
 - Cap long repeated lists and say how many additional items were omitted.
+- Truncate long text with plain `slice`. A cut can leave half of an emoji, and
+  strict JSON clients such as Codex reject that lone surrogate, so the server
+  replaces it with U+FFFD in every tool response. Formatters do not need
+  surrogate-aware slicing.
 - Prefer shared helpers for dates, actors, IDs, and unknown values. If a helper
   emits noisy placeholders for a domain-specific field, filter before calling it.
+- Render untrusted values with `@sentry/toolkit-core/markdown`, chosen by what
+  the value is: `inlineCode` for identifiers, slugs, queries, and short values,
+  `codeBlock` for multi-line data such as messages and stack traces, and `text`
+  for values that should read as prose. Each keeps the value inside its line or
+  block, so upstream data cannot add headings, list items, or links. Prefer
+  `inlineCode`: it needs no escaping, so the model reads the value unchanged.
 
 When changing Sentry API endpoint usage, validate the upstream behavior in
 `~/src/sentry` as required by [../../AGENTS.md](../../AGENTS.md). API schemas
@@ -125,9 +135,45 @@ omits the section. Commit lookup is optional: failures do not prevent issue
 details from loading, but unexpected server or response-validation failures
 are reported to Sentry.
 
+For metric issues, `Metric Alert Details` comes from the occurrence's
+`evidenceData`, which the event API returns camelCased
+(`dataSources[].queryObj.snubaQuery`, `detectorId`). It shows the Metric
+Monitor ID, dataset, aggregate, query, interval, environment, evaluated window,
+value, and threshold. Response Notes replace the stacktrace and trace hints with
+`get_metric_monitor_details` and a pre-filled `search_errors`, `search_logs`,
+`search_traces`, or `search_metrics` call for the monitor's query.
+
 The event API's legacy `context` field (extra data) can be `null`. Issue details
 must still load; omit the `Extra Data` section for null or empty values while
 preserving the event's error, stacktrace, and structured `contexts` data.
+
+## Selected Event Package Versions
+
+Use `get_sentry_resource` with `resourceType: "event"` (or an event URL) and
+`packageNames: ["example-package", "@example/client"]` to inspect dependency
+versions recorded with that event. The catalog tool `get_issue_details` accepts
+the same selection with an explicit `eventId`.
+
+- Selection is optional: omitting it preserves the ordinary response.
+- Accept 1–10 exact, case-sensitive names, each up to 256 characters. Duplicate
+  names produce one entry; package names are not normalized across ecosystems.
+- Use the existing response's `packages` map without extra API calls. In experimental
+  mode, include `event.packageVersions` in `structuredContent`: a
+  `metadataAvailable` flag and selected `packages` entries with `name`, `status`,
+  `version`, and `truncated`. Status is `recorded`, `not_listed`, or
+  `version_not_recorded`; unavailable metadata has an empty selection. The server
+  generates equivalent JSON text. When returning Markdown, append the same
+  selection after local event formatting.
+- Missing, null, and empty maps mean metadata is unavailable. In a populated map,
+  distinguish a name not listed from a null or blank version. Neither proves a
+  dependency was absent from the application.
+- Truncate versions after 256 characters with an explicit marker. In Markdown,
+  render package names and versions as code spans with `inlineCode` from
+  `@sentry/toolkit-core/markdown`, which keeps them inside
+  their list entries; structured strings stay raw. Do not render unrelated
+  packages.
+- Package selection requires an exact event; issue/latest-event and other resource
+  lookups reject it.
 
 ## Structured Content
 

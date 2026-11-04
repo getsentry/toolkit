@@ -14,6 +14,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parsePlatform } from "../../lib/completion-target.js";
 import { OutputError } from "../../lib/errors.js";
 import { muted } from "../../lib/formatters/colors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -58,7 +59,7 @@ export const listCommand = buildCommand({
     flags: {
       search: {
         kind: "parsed",
-        parse: String,
+        parse: parsePlatform,
         brief: "Filter platforms by substring",
         optional: true,
       },
@@ -68,7 +69,7 @@ export const listCommand = buildCommand({
   // Stricli requires AsyncGenerator but this is synchronous (in-memory data)
   async *func(this: SentryContext, flags: PlatformsFlags) {
     if (!flags.search) {
-      return yield new CommandOutput<readonly string[]>(VALID_PLATFORMS);
+      return yield new CommandOutput(VALID_PLATFORMS);
     }
 
     const term = flags.search.toLowerCase();
@@ -81,6 +82,6 @@ export const listCommand = buildCommand({
       throw new OutputError([] satisfies readonly string[]);
     }
 
-    return yield new CommandOutput<readonly string[]>(matches);
+    return yield new CommandOutput(matches);
   },
 });

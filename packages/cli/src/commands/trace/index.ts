@@ -5,6 +5,7 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { listCommand } from "./list.js";
 import { logsCommand } from "./logs.js";
 import { viewCommand } from "./view.js";
@@ -17,7 +18,7 @@ export const traceRoute = buildRouteMap({
   },
   defaultCommand: "view",
   docs: {
-    brief: "View distributed traces",
+    brief: topLevelBrief("trace"),
     fullDescription:
       "View and explore distributed traces from your Sentry projects.\n\n" +
       "Commands:\n" +

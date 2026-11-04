@@ -12,6 +12,11 @@ import {
 } from "../../lib/account-selection.js";
 import { buildCommand } from "../../lib/command.js";
 import {
+  ACCOUNT_SERVER_TARGET,
+  completingParser,
+  parseAccountSelector,
+} from "../../lib/completion-target.js";
+import {
   type AccountSummary,
   getAccountRow,
   isAccountOnServer,
@@ -104,7 +109,7 @@ export const switchCommand = buildCommand({
     flags: {
       url: {
         kind: "parsed",
-        parse: parseLoginUrl,
+        parse: completingParser(ACCOUNT_SERVER_TARGET, parseLoginUrl),
         brief:
           "Only consider accounts on this server (disambiguates the same email on several servers)",
         optional: true,
@@ -116,7 +121,7 @@ export const switchCommand = buildCommand({
         {
           placeholder: "account",
           brief: "Email, username, user ID, or account ID to switch to",
-          parse: String,
+          parse: parseAccountSelector,
           optional: true,
         },
       ],
@@ -141,7 +146,7 @@ export const switchCommand = buildCommand({
     const active = activeRow ? toAccountSummary(activeRow) : target;
     pointDefaultUrlAtAccount(active.host);
     const switched = !target.active;
-    yield new CommandOutput<AccountSwitchResult>({
+    yield new CommandOutput({
       switched,
       account: { ...active, active: true },
     });

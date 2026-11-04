@@ -452,6 +452,19 @@ export function getAllEndpoints(): readonly ApiEndpoint[] {
   return schema;
 }
 
+/** The prefix `api` adds to an endpoint, left out of completed paths. */
+const API_PATH_PREFIX = /^\/api\/0\//;
+
+/**
+ * Every schema path without its `/api/0/` prefix, each once: the endpoints
+ * `sentry api <endpoint>` completes (see `CompletionValues.apiPaths`).
+ */
+export function getApiCompletionPaths(): string[] {
+  return [
+    ...new Set(schema.map(({ path }) => path.replace(API_PATH_PREFIX, ""))),
+  ];
+}
+
 /** Get resource summary: name, endpoint count, and methods for each resource */
 export function getResourceSummaries(): ResourceSummary[] {
   const map = new Map<

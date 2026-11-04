@@ -4,7 +4,7 @@
  * Deliberately kept out of `platforms.ts`: that module is statically
  * imported by `complete.ts`'s shell-completion fast path (no Stricli boot,
  * no heavy deps), and pulling in the markdown/table formatters here would
- * drag chalk/marked/cli-highlight/string-width/wrap-ansi into every
+ * drag chalk/marked/string-width/wrap-ansi into every
  * `__complete` invocation. Only `project create`'s error message and
  * `platform list` need this rendering — neither is on the completion path.
  */

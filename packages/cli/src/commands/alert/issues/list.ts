@@ -10,13 +10,18 @@
  * - project-search → find project by slug across all orgs
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../../context.js";
 import { buildProjectAliasMap } from "../../../lib/alias.js";
 import type { IssueAlertRule } from "../../../lib/api/alerts.js";
 import { paginate } from "../../../lib/api/infrastructure.js";
 import { listIssueAlertsPaginated } from "../../../lib/api-client.js";
-import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
+import {
+  type ParsedOrgProject,
+  parseCursorFlag,
+} from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
+import { parseText } from "../../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildMultiTargetContextKey,
@@ -35,10 +40,7 @@ import {
   ValidationError,
   withAuthGuard,
 } from "../../../lib/errors.js";
-import {
-  colorTag,
-  escapeMarkdownCell,
-} from "../../../lib/formatters/markdown.js";
+import { colorTag } from "../../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../../lib/formatters/table.js";
 import {
@@ -48,7 +50,6 @@ import {
   LIST_MAX_LIMIT,
   LIST_TARGET_POSITIONAL,
   paginationHint,
-  parseCursorFlag,
   targetPatternExplanation,
 } from "../../../lib/list-command.js";
 import { logger } from "../../../lib/logger.js";
@@ -451,7 +452,7 @@ function formatIssueAlertListHuman(result: IssueAlertListResult): string {
 
   const tableRows: Row[] = rows.map(({ rule: r, target }) => ({
     id: r.id,
-    name: escapeMarkdownCell(r.name ?? "(untitled)"),
+    name: tableCell(r.name ?? "(untitled)"),
     ...(isMultiProject && {
       project: `${target.org}/${target.project}`,
     }),
@@ -540,7 +541,7 @@ export const listCommand = buildListCommand("alert issues", {
       limit: buildListLimitFlag("issue alert rules"),
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Filter rules by name",
         optional: true,
       },

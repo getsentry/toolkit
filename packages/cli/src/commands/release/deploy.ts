@@ -5,37 +5,46 @@
  * Environment is the first positional arg (required), deploy name is optional second.
  */
 
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { createReleaseDeploy } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
-import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+  parseEnvironment,
+  parseText,
+  parseUrl,
+} from "../../lib/completion-target.js";
+import { ContextError, ValidationError } from "../../lib/errors.js";
+import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import type { SentryDeploy } from "../../types/index.js";
+import type { SentryDeploy, WithOutputFields } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { ReleaseDeployOutputSchema } from "../../generated/output-schemas/release.js";
+import type { ReleaseDeployOutputFields } from "../../output-schemas/release.js";
 
 const USAGE_HINT =
   "sentry release deploy [<org>/]<version> <environment> [name]";
 
-function formatDeployCreated(data: Record<string, unknown>): string {
-  if (data.dryRun) {
+/** JSON output: the created deploy, or the `--dry-run` preview. */
+type DeployOutput = WithOutputFields<
+  SentryDeploy,
+  typeof ReleaseDeployOutputFields
+>;
+
+function formatDeployCreated(deploy: DeployOutput): string {
+  if (deploy.dryRun) {
     return renderMarkdown(
-      `Would create deploy for ${safeCodeSpan(String(data.environment))} environment (dry run)`,
+      `Would create deploy for ${inlineCode(deploy.environment)} environment (dry run)`,
     );
   }
-  const deploy = data as unknown as SentryDeploy;
   const lines: string[] = [];
   lines.push("## Deploy Created");
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["ID", deploy.id]);
-  kvRows.push(["Environment", safeCodeSpan(deploy.environment)]);
+  kvRows.push(["ID", deploy.id ?? "—"]);
+  kvRows.push(["Environment", inlineCode(deploy.environment)]);
   kvRows.push(["Name", deploy.name || "—"]);
   kvRows.push(["URL", deploy.url || "—"]);
   kvRows.push([
@@ -102,6 +111,7 @@ export const deployCommand = buildCommand({
   },
   output: {
     human: formatDeployCreated,
+    schema: ReleaseDeployOutputSchema,
   },
   parameters: {
     positional: {
@@ -111,13 +121,13 @@ export const deployCommand = buildCommand({
         {
           placeholder: "environment",
           brief: "Deploy environment (e.g. production)",
-          parse: String,
+          parse: parseEnvironment,
         },
         {
           placeholder: "name",
           brief:
             'Optional deploy name (quote multi-word names, e.g. "Deploy #42")',
-          parse: String,
+          parse: parseText,
           optional: true,
         },
       ],
@@ -125,19 +135,19 @@ export const deployCommand = buildCommand({
     flags: {
       url: {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "URL for the deploy",
         optional: true,
       },
       started: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Deploy start time (ISO 8601)",
         optional: true,
       },
       finished: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Deploy finish time (ISO 8601)",
         optional: true,
       },

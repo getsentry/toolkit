@@ -22,7 +22,7 @@ pnpm install
 SENTRY_CLIENT_ID=your-sentry-oauth-client-id
 ```
 
-Dev mode (`pnpm run cli`) falls back to the CLI's public sentry.io client ID when `SENTRY_CLIENT_ID` is unset. Set it to use self-hosted Sentry or your own OAuth app. `pnpm run build` and `pnpm run bundle` require it. Get the client ID from your Sentry OAuth application settings.
+Dev mode (`pnpm run cli`), `pnpm run build` and `pnpm run bundle` fall back to the CLI's public sentry.io client ID when `SENTRY_CLIENT_ID` is unset. Set it to use self-hosted Sentry or your own OAuth app. Get the client ID from your Sentry OAuth application settings.
 
 **Note:** No client secret is needed - the CLI uses OAuth 2.0 Device Authorization Grant (RFC 8628) which is designed for public clients.
 
@@ -84,7 +84,7 @@ The table below lists the most common development variables. For the complete re
 | `SENTRY_FORCE_ENV_TOKEN` | Force env token to take priority over stored OAuth token | — |
 | `SENTRY_HOST` | Sentry instance URL (for self-hosted, takes precedence) | `https://sentry.io` |
 | `SENTRY_URL` | Alias for `SENTRY_HOST` | `https://sentry.io` |
-| `SENTRY_CLIENT_ID` | Sentry OAuth app client ID | (required for build) |
+| `SENTRY_CLIENT_ID` | Sentry OAuth app client ID | Public sentry.io client ID |
 | `SENTRY_CONFIG_DIR` | Override credentials/cache directory (XDG default: ~/.config/sentry/) | `~/.config/sentry/` |
 | `SENTRY_LOG_LEVEL` | Diagnostic log level (`error`, `warn`, `log`, `info`, `debug`, `trace`) | `info` |
 | `SENTRY_CLI_NO_TELEMETRY` | Disable CLI telemetry (error tracking) | — |

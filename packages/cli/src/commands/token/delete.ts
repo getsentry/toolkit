@@ -7,16 +7,13 @@
  * flags and enforces the non-interactive guard before `func()` runs.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { deleteOrgAuthToken, listOrgAuthTokens } from "../../lib/api-client.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import { selectAccountForOrg } from "../../lib/db/auth.js";
 import { ResolutionError, ValidationError } from "../../lib/errors.js";
-import {
-  escapeMarkdownInline,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+import { renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { ID_KINDS, parseIdArguments } from "../../lib/id-arguments.js";
 import { logger } from "../../lib/logger.js";
@@ -65,8 +62,8 @@ type DeleteResult = {
 };
 
 function formatTokenDeleted(result: DeleteResult): string {
-  const label = `org auth token ${safeCodeSpan(result.name)} (id ${result.id})`;
-  const org = `**${escapeMarkdownInline(result.org)}**`;
+  const label = `org auth token ${inlineCode(result.name)} (id ${result.id})`;
+  const org = `**${text(result.org)}**`;
   if (result.dryRun) {
     return renderMarkdown(`Would revoke ${label} in ${org}. (dry run)`);
   }

@@ -90,6 +90,29 @@ List projects
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Project ID |
+| `slug` | string | Project slug |
+| `name` | string | Project name |
+| `platform` | string \| null | Platform |
+| `platforms` | array | Platforms seen in events |
+| `dateCreated` | string | Creation date (ISO 8601) |
+| `firstEvent` | string \| null | First event date (ISO 8601) |
+| `status` | string | Project status |
+| `isBookmarked` | boolean | Whether you bookmarked it |
+| `isMember` | boolean | Whether you are a member |
+| `hasAccess` | boolean | Whether you have access |
+| `features` | array | Enabled features |
+| `team` | object \| null | Owning team |
+| `teams` | array | Teams with access |
+| `environments` | array | Environments seen |
+| `latestRelease` | object \| null | Latest release |
+| `organization` | object | Organization (detail responses only) |
+| `orgSlug` | string | Organization slug |
+
 **Examples:**
 
 ```bash
@@ -137,6 +160,29 @@ View details of a project
 **Flags:**
 - `-w, --web - Open in browser`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Project ID |
+| `slug` | string | Project slug |
+| `name` | string | Project name |
+| `platform` | string \| null | Platform |
+| `platforms` | array | Platforms seen in events |
+| `dateCreated` | string | Creation date (ISO 8601) |
+| `firstEvent` | string \| null | First event date (ISO 8601) |
+| `status` | string | Project status |
+| `isBookmarked` | boolean | Whether you bookmarked it |
+| `isMember` | boolean | Whether you are a member |
+| `hasAccess` | boolean | Whether you have access |
+| `features` | array | Enabled features |
+| `team` | object \| null | Owning team |
+| `teams` | array | Teams with access |
+| `environments` | array | Environments seen |
+| `latestRelease` | object \| null | Latest release |
+| `organization` | object | Organization (detail responses only) |
+| `dsn` | string \| null | Primary DSN |
 
 **Examples:**
 

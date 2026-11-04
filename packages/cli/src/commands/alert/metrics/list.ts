@@ -10,13 +10,20 @@
  * - project-search → find project across orgs, use its org
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../../context.js";
 import type { MetricAlertRule } from "../../../lib/api/alerts.js";
 import { paginate } from "../../../lib/api/infrastructure.js";
 import { listMetricAlertsPaginated } from "../../../lib/api-client.js";
-import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
+import {
+  type ParsedOrgProject,
+  parseCursorFlag,
+} from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
-import { ORG_PROJECT_TARGET } from "../../../lib/completion-target.js";
+import {
+  ORG_PROJECT_TARGET,
+  parseText,
+} from "../../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildMultiOrgContextKey,
@@ -30,10 +37,7 @@ import {
   ValidationError,
   withAuthGuard,
 } from "../../../lib/errors.js";
-import {
-  colorTag,
-  escapeMarkdownCell,
-} from "../../../lib/formatters/markdown.js";
+import { colorTag } from "../../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../../lib/formatters/table.js";
 import {
@@ -42,7 +46,6 @@ import {
   LIST_BASE_ALIASES,
   LIST_MAX_LIMIT,
   paginationHint,
-  parseCursorFlag,
   targetPatternExplanation,
 } from "../../../lib/list-command.js";
 import { logger } from "../../../lib/logger.js";
@@ -460,7 +463,7 @@ function formatMetricAlertListHuman(result: MetricAlertListResult): string {
 
   const tableRows: Row[] = rows.map(({ rule: r, orgSlug }) => ({
     id: r.id,
-    name: escapeMarkdownCell(r.name ?? "(untitled)"),
+    name: tableCell(r.name ?? "(untitled)"),
     ...(isMultiOrg && { org: orgSlug }),
     aggregate: r.aggregate,
     dataset: r.dataset,
@@ -535,7 +538,7 @@ export const listCommand = buildListCommand("alert metrics", {
       limit: buildListLimitFlag("metric alert rules"),
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Filter rules by name",
         optional: true,
       },

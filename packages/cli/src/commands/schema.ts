@@ -12,6 +12,7 @@ import {
   findEndpointsByIdentifier,
   findEndpointsByPath,
   getAllEndpoints,
+  getAllResources,
   getEndpointsByResource,
   getResourceSummaries,
   parseEndpointQuery,
@@ -20,6 +21,7 @@ import {
   searchEndpoints,
 } from "../lib/api-schema.js";
 import { buildCommand } from "../lib/command.js";
+import { choiceParser, parseText } from "../lib/completion-target.js";
 import { OutputError, ResolutionError } from "../lib/errors.js";
 import { bold, cyan, muted, yellow } from "../lib/formatters/colors.js";
 import { filterFields } from "../lib/formatters/json.js";
@@ -32,6 +34,8 @@ import { CommandOutput } from "../lib/formatters/output.js";
 import { fuzzyMatch } from "../lib/fuzzy.js";
 import { getCommandApiReferences, type RouteMap } from "../lib/introspect.js";
 import { filterByName, isGlobFilter } from "../lib/list-filter.js";
+import { getRoutes } from "../lib/route-registry.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 // ---------------------------------------------------------------------------
 // Output data types
@@ -438,7 +442,7 @@ type SchemaFlags = {
 export const schemaCommand = buildCommand({
   auth: false,
   docs: {
-    brief: "Browse the Sentry API schema",
+    brief: topLevelBrief("schema"),
     fullDescription:
       "Browse and search the Sentry API schema. Shows available resources, " +
       "operations, and endpoint details. Search by API concepts or CLI command paths; " +
@@ -506,7 +510,7 @@ export const schemaCommand = buildCommand({
       },
       search: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Search endpoints by keyword",
         optional: true,
       },
@@ -517,7 +521,8 @@ export const schemaCommand = buildCommand({
       parameter: {
         brief:
           "API concept, CLI command path, exact operation ID, or METHOD /path",
-        parse: String,
+        // The first word completes the API resources; the rest are free
+        parse: choiceParser(getAllResources()),
         placeholder: "query",
       },
     },
@@ -542,9 +547,8 @@ export const schemaCommand = buildCommand({
       });
     }
 
-    const { routes } = await import("../app.js");
     const references = getCommandApiReferences(
-      routes as unknown as RouteMap,
+      getRoutes() as unknown as RouteMap,
       parseEndpointQuery(query).text,
     );
 

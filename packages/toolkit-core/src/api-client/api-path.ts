@@ -37,3 +37,9 @@ export function apiPath(
     return acc + literal + encoded;
   }, "");
 }
+
+/** `path` with `query` appended, or `path` alone when `query` is empty. */
+export function withQuery(path: string, query: URLSearchParams): string {
+  const queryString = query.toString();
+  return queryString ? `${path}?${queryString}` : path;
+}

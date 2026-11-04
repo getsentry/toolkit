@@ -23,8 +23,12 @@ import { buildCommand } from "../../lib/command.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { success } from "../../lib/formatters/colors.js";
-import { CommandOutput } from "../../lib/formatters/output.js";
+import {
+  CommandOutput,
+  type CommandYield,
+} from "../../lib/formatters/output.js";
 import { logger as log } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import {
   type BoundArguments,
   boundArguments,
@@ -74,6 +78,21 @@ export type TrialStartInput = {
 export type ResolvedTrialStart = {
   readonly name: string;
   readonly org: string;
+};
+
+/**
+ * Data `trial start` yields: the plan trial's URL and QR code first, then
+ * the started trial.
+ */
+type TrialStartOutput = {
+  name?: string;
+  category?: string;
+  organization?: string;
+  lengthDays?: number | null;
+  started?: boolean;
+  url?: string;
+  qr?: string;
+  opened?: boolean;
 };
 
 /** The arguments of `trial start`. */
@@ -230,7 +249,7 @@ async function promptOpenBrowser(url: string): Promise<boolean> {
 
   // Prompt to open browser if interactive TTY (stdin for input, stderr for display)
   if (isatty(0) && isatty(2)) {
-    const confirmed = await logger.prompt("Open in browser?", {
+    const confirmed = await prompt("Open in browser?", {
       type: "confirm",
       initial: true,
     });
@@ -264,7 +283,7 @@ async function promptOpenBrowser(url: string): Promise<boolean> {
 async function* handlePlanTrial(
   orgSlug: string,
   json: boolean,
-): AsyncGenerator<unknown, void, undefined> {
+): AsyncGenerator<CommandYield<TrialStartOutput>, void, undefined> {
   const logger = log.withTag("trial");
 
   // Check if plan trial is actually available
@@ -313,16 +332,7 @@ async function* handlePlanTrial(
 }
 
 /** Format start result as human-readable output */
-function formatStartResult(data: {
-  name?: string;
-  category?: string;
-  organization?: string;
-  lengthDays?: number | null;
-  started?: boolean;
-  url?: string;
-  qr?: string;
-  opened?: boolean;
-}): string {
+function formatStartResult(data: TrialStartOutput): string {
   // Intermediate URL + QR code yield for plan trials
   if (data.url && data.qr && !data.category) {
     return `\n  ${data.url}\n\n${data.qr}`;

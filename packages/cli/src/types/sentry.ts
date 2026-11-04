@@ -14,6 +14,8 @@
  */
 
 import type {
+  EventAttachmentDetailsResponse,
+  GroupEventsResponseDict as SdkGroupEventsList,
   IssueEventDetailsResponse,
   DeployResponse as SdkDeployResponse,
   GetOrganizationIssueResponse as SdkIssueDetail,
@@ -24,17 +26,22 @@ import type {
   OrgReleaseResponse as SdkReleaseResponse,
   BaseTeam as SdkTeam,
 } from "@sentry/api";
+import type { EventViewAttachmentFields } from "../output-schemas/event.js";
+import type { SentryIntegrationSchema } from "../output-schemas/integration.js";
+import type {
+  MonitorConfigSchema,
+  SentryMonitorSchema,
+} from "../output-schemas/monitor.js";
+import type { WithOutputFields } from "../output-schemas/output.js";
+import type { ReleaseUpdateOutputFields } from "../output-schemas/release.js";
+import type {
+  RepositoryProviderSchema,
+  SentryRepositorySchema,
+} from "../output-schemas/repo.js";
 import type {
   SentryIssueIdentity,
   SentryNamedResource,
 } from "@sentry/toolkit-core/resource-identity";
-import {
-  vBaseTeam,
-  vEventAttachmentDetailsResponse,
-  vGetOrganizationIssueResponse,
-  vGroupEventsResponseDict,
-  vIssueEventDetailsResponse,
-} from "@sentry/api/valibot";
 import {
   array,
   boolean,
@@ -48,7 +55,6 @@ import {
   object,
   optional,
   partial,
-  pick,
   pipe,
   record,
   string,
@@ -200,176 +206,6 @@ export type SentryIssue = Omit<Partial<SdkIssueDetail>, "metadata"> &
     filtered?: SdkIssueList[number]["filtered"];
   };
 
-/**
- * Valibot schema describing the key fields of a {@link SentryIssue} for JSON output.
- *
- * This is a documentation-oriented schema — it describes the commonly-available
- * fields that appear in `--json` output, used by the help system and SKILL.md
- * generation to inform agents and users about available `--fields` selections.
- *
- * Not a validation schema — the actual API response may include additional
- * SDK-derived fields not listed here. Fields listed as optional may still be
- * present in most responses; optionality reflects the TypeScript type.
- */
-/**
- * Derived from the auto-generated `vGetOrganizationIssueResponse` schema.
- *
- * The generated schema makes all API-documented fields required. We widen it
- * with `.partial()` so only the core identifiers (id, shortId, title) are
- * required — matching how the CLI uses partial API responses and test mocks.
- * Extra fields not in the OpenAPI spec (substatus, priority, isUnhandled,
- * seerFixabilityScore) are added via `.extend()`.
- */
-export const SentryIssueSchema = pipe(
-  looseObject({
-    ...partial(
-      pick(vGetOrganizationIssueResponse, [
-        "id",
-        "shortId",
-        "title",
-        "culprit",
-        "count",
-        "userCount",
-        "firstSeen",
-        "lastSeen",
-        "level",
-        "status",
-        "permalink",
-        "project",
-        "metadata",
-        "assignedTo",
-      ]),
-    ).entries,
-    id: pipe(string(), description("Numeric issue ID")),
-    shortId: pipe(
-      string(),
-      description("Human-readable short ID (e.g. PROJ-ABC)"),
-    ),
-    title: pipe(string(), description("Issue title")),
-    culprit: optional(
-      pipe(
-        vGetOrganizationIssueResponse.entries.culprit,
-        description("Culprit string"),
-      ),
-    ),
-    count: optional(
-      pipe(
-        vGetOrganizationIssueResponse.entries.count,
-        description("Total event count"),
-      ),
-    ),
-    userCount: optional(
-      pipe(
-        vGetOrganizationIssueResponse.entries.userCount,
-        description("Number of affected users"),
-      ),
-    ),
-    firstSeen: optional(
-      pipe(
-        vGetOrganizationIssueResponse.entries.firstSeen,
-        description("First occurrence (ISO 8601)"),
-      ),
-    ),
-    lastSeen: optional(
-      pipe(
-        vGetOrganizationIssueResponse.entries.lastSeen,
-        description("Most recent occurrence (ISO 8601)"),
-      ),
-    ),
-    level: optional(
-      pipe(
-        vGetOrganizationIssueResponse.entries.level,
-        description("Severity level"),
-      ),
-    ),
-    status: optional(
-      pipe(
-        vGetOrganizationIssueResponse.entries.status,
-        description("Issue status"),
-      ),
-    ),
-    permalink: optional(
-      pipe(
-        vGetOrganizationIssueResponse.entries.permalink,
-        description("URL to the issue in Sentry"),
-      ),
-    ),
-    project: optional(
-      pipe(
-        vGetOrganizationIssueResponse.entries.project,
-        description("Project info"),
-      ),
-    ),
-    metadata: optional(
-      pipe(
-        vGetOrganizationIssueResponse.entries.metadata,
-        description("Issue metadata"),
-      ),
-    ),
-    assignedTo: optional(
-      pipe(
-        vGetOrganizationIssueResponse.entries.assignedTo,
-        description("Assigned user or team"),
-      ),
-    ),
-    priority: optional(pipe(string(), description("Triage priority"))),
-    platform: optional(pipe(string(), description("Platform"))),
-    substatus: optional(
-      pipe(nullable(string()), description("Issue substatus")),
-    ),
-    isUnhandled: optional(
-      pipe(boolean(), description("Whether the issue is unhandled")),
-    ),
-    seerFixabilityScore: optional(
-      pipe(nullable(number()), description("Seer AI fixability score (0-1)")),
-    ),
-  }),
-  description("Sentry issue"),
-);
-
-/**
- * Documentation-oriented schema for `issue view` JSON output.
- *
- * The view command's jsonTransform spreads all issue fields at the top level
- * and adds enrichment fields (`event`, `org`, `replayIds`, `trace`). This
- * schema describes that flattened shape for `--help`, `sentry help issue view`,
- * and SKILL.md field table generation.
- */
-export const IssueViewOutputSchema = pipe(
-  looseObject({
-    ...SentryIssueSchema.entries,
-    event: optional(
-      pipe(
-        nullable(unknown()),
-        description(
-          "Latest event for the issue (full detail). Select named fields with " +
-            "`--fields event.id,event.title` to avoid pulling the whole payload; " +
-            "the `request` entry may include live session data.",
-        ),
-      ),
-    ),
-    org: optional(pipe(nullable(string()), description("Organization slug"))),
-    replayIds: optional(
-      pipe(array(string()), description("Related Session Replay IDs")),
-    ),
-    trace: optional(
-      pipe(
-        nullable(
-          object({
-            traceId: pipe(
-              string(),
-              description("Trace ID from the latest event"),
-            ),
-            spans: pipe(array(unknown()), description("Span tree data")),
-          }),
-        ),
-        description("Trace context from the latest event's span tree"),
-      ),
-    ),
-  }),
-  description("Issue view output"),
-);
-
 // Event
 
 /**
@@ -420,44 +256,11 @@ export type SentryEvent = Omit<
   culprit?: string | null;
 };
 
-const EventViewAttachmentSchema = looseObject({
-  ...vEventAttachmentDetailsResponse.entries,
-  download: pipe(
-    string(),
-    url(),
-    description("Absolute authenticated API URL for the attachment bytes"),
-  ),
-});
-
-/**
- * Documentation schema for the flattened `event view` JSON output.
- *
- * Event API fields remain optional because responses vary by event type. The
- * CLI always adds `trace` and `attachments`; multi-event output is an array of
- * this shape.
- */
-export const EventViewOutputSchema = pipe(
-  looseObject({
-    ...partial(vIssueEventDetailsResponse).entries,
-    eventID: pipe(string(), description("UUID-format event ID")),
-    trace: pipe(
-      nullable(
-        object({
-          traceId: pipe(string(), description("Trace ID")),
-          spans: pipe(array(unknown()), description("Span tree data")),
-        }),
-      ),
-      description("Trace context, or null when unavailable"),
-    ),
-    attachments: pipe(
-      array(EventViewAttachmentSchema),
-      description(
-        "Event attachments; each includes metadata and an absolute authenticated download URL",
-      ),
-    ),
-  }),
-  description("Event view output"),
-);
+/** An event attachment with its authenticated download URL. */
+export type EventViewAttachment = WithOutputFields<
+  EventAttachmentDetailsResponse,
+  typeof EventViewAttachmentFields
+>;
 
 // Issue Event (list endpoint)
 
@@ -468,113 +271,7 @@ export const EventViewOutputSchema = pipe(
  * minimal event metadata without stacktraces, breadcrumbs, or contexts.
  * Use {@link SentryEvent} for full event details from the detail endpoint.
  */
-export type IssueEvent = {
-  /** Internal event ID (numeric string) */
-  id: string;
-  /** Event type (e.g., "error", "default", "transaction") */
-  "event.type": string;
-  /** The group (issue) ID this event belongs to */
-  groupID: string | null;
-  /** UUID-format event ID */
-  eventID: string;
-  /** Project ID (numeric string) */
-  projectID: string;
-  /** Event message */
-  message: string;
-  /** Event title (typically the error type + message) */
-  title: string;
-  /** Source location (file:line) where the event originated */
-  location: string | null;
-  /** The culprit (function/module that caused the error) */
-  culprit: string | null;
-  /** User context if available */
-  user: {
-    id?: string | null;
-    email?: string | null;
-    username?: string | null;
-    ip_address?: string | null;
-    name?: string | null;
-  } | null;
-  /** Event tags */
-  tags: Array<{ key: string; value: string }>;
-  /** Platform (e.g., "python", "javascript") */
-  platform: string | null;
-  /** ISO 8601 timestamp when the event was created */
-  dateCreated: string;
-  /** Crash file URL if available */
-  crashFile: string | null;
-  /** Event metadata */
-  metadata: Record<string, unknown> | null;
-};
-
-/**
- * Valibot schema for {@link IssueEvent} — used for `--fields` documentation in `--help`.
- *
- * Derived from the auto-generated `vGroupEventsResponseDict` element schema.
- * All generated fields are widened to optional via `.partial()`, then the core
- * identifiers (id, event.type, eventID) are re-required via `.extend()`.
- */
-const _IssueEventElement = vGroupEventsResponseDict.item;
-export const IssueEventSchema = pipe(
-  looseObject({
-    ...partial(_IssueEventElement).entries,
-    id: pipe(string(), description("Internal event ID")),
-    "event.type": pipe(
-      string(),
-      description("Event type (error, default, transaction)"),
-    ),
-    groupID: optional(
-      pipe(_IssueEventElement.entries.groupID, description("Group (issue) ID")),
-    ),
-    eventID: pipe(string(), description("UUID-format event ID")),
-    projectID: optional(
-      pipe(_IssueEventElement.entries.projectID, description("Project ID")),
-    ),
-    message: optional(
-      pipe(_IssueEventElement.entries.message, description("Event message")),
-    ),
-    title: optional(
-      pipe(_IssueEventElement.entries.title, description("Event title")),
-    ),
-    location: optional(
-      pipe(
-        _IssueEventElement.entries.location,
-        description("Source location (file:line)"),
-      ),
-    ),
-    culprit: optional(
-      pipe(
-        _IssueEventElement.entries.culprit,
-        description("Culprit function/module"),
-      ),
-    ),
-    user: optional(
-      pipe(_IssueEventElement.entries.user, description("User context")),
-    ),
-    tags: optional(
-      pipe(_IssueEventElement.entries.tags, description("Event tags")),
-    ),
-    platform: optional(
-      pipe(
-        _IssueEventElement.entries.platform,
-        description("Platform (python, javascript, etc.)"),
-      ),
-    ),
-    dateCreated: optional(
-      pipe(
-        _IssueEventElement.entries.dateCreated,
-        description("ISO 8601 creation timestamp"),
-      ),
-    ),
-    crashFile: optional(
-      pipe(_IssueEventElement.entries.crashFile, description("Crash file URL")),
-    ),
-    metadata: optional(
-      pipe(_IssueEventElement.entries.metadata, description("Event metadata")),
-    ),
-  }),
-  description("Issue event (list endpoint)"),
-);
+export type IssueEvent = SdkGroupEventsList[number];
 
 // Project Keys (DSN)
 
@@ -735,6 +432,12 @@ export type IssueSubstatus = (typeof ISSUE_SUBSTATUSES)[number];
 export type SentryRelease = Partial<SdkReleaseResponse> & {
   version: string;
 };
+
+/** The updated release, or the `--dry-run` preview. */
+export type ReleaseUpdateOutput = WithOutputFields<
+  SentryRelease,
+  typeof ReleaseUpdateOutputFields
+>;
 
 // Deploy
 
@@ -1231,76 +934,11 @@ export type SpansResponse = InferOutput<typeof SpansResponseSchema>;
 
 // Repository
 
-/** Repository provider (e.g., GitHub, GitLab) */
-export const RepositoryProviderSchema = object({
-  id: string(),
-  name: string(),
-});
-
 export type RepositoryProvider = InferOutput<typeof RepositoryProviderSchema>;
-
-/** A repository connected to a Sentry organization */
-export const SentryRepositorySchema = pipe(
-  looseObject({
-    // Core identifiers (required)
-    id: pipe(string(), description("Repository ID")),
-    name: pipe(string(), description("Repository name")),
-    url: pipe(nullable(string()), description("Repository URL")),
-    provider: pipe(
-      RepositoryProviderSchema,
-      description("Version control provider"),
-    ),
-    status: pipe(string(), description("Integration status")),
-    // Optional metadata
-    dateCreated: optional(
-      pipe(string(), description("Creation date (ISO 8601)")),
-    ),
-    integrationId: optional(pipe(string(), description("Integration ID"))),
-    externalSlug: optional(
-      nullable(pipe(string(), description("External slug (e.g. org/repo)"))),
-    ),
-    externalId: optional(nullable(pipe(string(), description("External ID")))),
-  }),
-  description("Sentry repository"),
-);
 
 export type SentryRepository = InferOutput<typeof SentryRepositorySchema>;
 
 // Integrations
-
-/** Provider summary embedded in an installed integration. */
-export const IntegrationProviderSchema = looseObject({
-  key: pipe(string(), description("Provider key (e.g. github, slack)")),
-  name: pipe(string(), description("Provider display name")),
-});
-
-/**
- * An integration installed on a Sentry organization.
- *
- * Returned by `/organizations/{org}/integrations/`. The list includes
- * integrations that are pending deletion, so `organizationIntegrationStatus`
- * can be `active`, `disabled`, or `pending_deletion`.
- */
-export const SentryIntegrationSchema = pipe(
-  looseObject({
-    id: pipe(string(), description("Integration ID")),
-    name: pipe(string(), description("Integration name (e.g. GitHub org)")),
-    domainName: pipe(
-      nullable(string()),
-      description("External domain (e.g. github.com/getsentry)"),
-    ),
-    provider: pipe(IntegrationProviderSchema, description("Provider")),
-    status: pipe(string(), description("Integration status")),
-    organizationIntegrationStatus: pipe(
-      string(),
-      description("Status of the install in this organization"),
-    ),
-    externalId: optional(
-      pipe(string(), description("Provider-side installation ID")),
-    ),
-  }),
-  description("Installed Sentry integration"),
-);
 
 export type SentryIntegration = InferOutput<typeof SentryIntegrationSchema>;
 
@@ -1343,150 +981,11 @@ export type OrgAuthToken = InferOutput<typeof OrgAuthTokenSchema>;
 
 // Cron Monitor
 
-/**
- * Configuration of a cron monitor's expected schedule and thresholds.
- *
- * Returned by the `/organizations/{org}/monitors/` endpoint. The `schedule`
- * field is either a crontab string (when `schedule_type` is `"crontab"`) or a
- * `[value, unit]` tuple (when `"interval"`). Other fields are nullable because
- * the API returns `null` for unset thresholds.
- */
-export const MonitorConfigSchema = pipe(
-  looseObject({
-    schedule_type: optional(
-      pipe(string(), description("Schedule type: 'crontab' or 'interval'")),
-    ),
-    schedule: optional(
-      pipe(
-        union([string(), array(union([string(), number()]))]),
-        description("Crontab string or [value, unit] interval tuple"),
-      ),
-    ),
-    timezone: optional(
-      nullable(
-        pipe(string(), description("Schedule timezone (tz database string)")),
-      ),
-    ),
-    checkin_margin: optional(
-      nullable(
-        pipe(
-          number(),
-          description("Allowed minutes after the expected check-in time"),
-        ),
-      ),
-    ),
-    max_runtime: optional(
-      nullable(
-        pipe(
-          number(),
-          description("Allowed minutes a check-in may run before timing out"),
-        ),
-      ),
-    ),
-    failure_issue_threshold: optional(
-      nullable(
-        pipe(
-          number(),
-          description("Consecutive failures before an issue is created"),
-        ),
-      ),
-    ),
-    recovery_threshold: optional(
-      nullable(
-        pipe(
-          number(),
-          description("Consecutive successes before an issue is resolved"),
-        ),
-      ),
-    ),
-  }),
-  description("Monitor configuration"),
-);
-
 export type MonitorConfig = InferOutput<typeof MonitorConfigSchema>;
-
-/**
- * A cron monitor configured in a Sentry organization.
- *
- * Cron monitors are not modeled by the `@sentry/api` types this project
- * re-exports, so this is a hand-written internal schema (Pattern B). Core
- * identifiers (id, slug, name, status) are required; richer fields are widened
- * to optional and `.passthrough()` preserves any unmodeled API fields.
- */
-export const SentryMonitorSchema = pipe(
-  looseObject({
-    id: pipe(string(), description("Monitor ID")),
-    slug: pipe(string(), description("Monitor slug")),
-    name: pipe(string(), description("Monitor name")),
-    status: pipe(
-      string(),
-      description("Monitor status (e.g. active, disabled)"),
-    ),
-    isMuted: optional(
-      pipe(boolean(), description("Whether the monitor is muted")),
-    ),
-    config: optional(
-      pipe(MonitorConfigSchema, description("Schedule configuration")),
-    ),
-    dateCreated: optional(
-      pipe(string(), description("Creation date (ISO 8601)")),
-    ),
-    project: optional(
-      pipe(
-        looseObject({
-          id: optional(pipe(string(), description("Project ID"))),
-          slug: optional(pipe(string(), description("Project slug"))),
-          name: optional(pipe(string(), description("Project name"))),
-        }),
-        description("Owning project"),
-      ),
-    ),
-  }),
-  description("Sentry monitor"),
-);
 
 export type SentryMonitor = InferOutput<typeof SentryMonitorSchema>;
 
 // Team
-
-/**
- * A team in a Sentry organization.
- *
- * Derived from the auto-generated `vBaseTeam` schema, picking only the
- * fields used in CLI output. All picked fields are widened to optional via
- * `.partial()`, then core identifiers (id, slug, name) are re-required.
- */
-export const SentryTeamSchema = looseObject({
-  ...partial(
-    pick(vBaseTeam, [
-      "id",
-      "slug",
-      "name",
-      "dateCreated",
-      "isMember",
-      "teamRole",
-      "memberCount",
-    ]),
-  ).entries,
-  id: pipe(string(), description("Team ID")),
-  slug: pipe(string(), description("Team slug")),
-  name: pipe(string(), description("Team name")),
-  dateCreated: optional(
-    pipe(
-      vBaseTeam.entries.dateCreated,
-      description("Creation date (ISO 8601)"),
-    ),
-  ),
-  isMember: optional(
-    pipe(vBaseTeam.entries.isMember, description("Whether you are a member")),
-  ),
-  teamRole: optional(
-    pipe(vBaseTeam.entries.teamRole, description("Your role in the team")),
-  ),
-  memberCount: optional(
-    pipe(vBaseTeam.entries.memberCount, description("Number of members")),
-  ),
-});
 
 /**
  * A Sentry team.
@@ -1496,7 +995,7 @@ export const SentryTeamSchema = looseObject({
  * hasAccess, isPending, memberCount, avatar) are widened to optional so test
  * mocks and partial list-endpoint responses can omit them.
  *
- * `SentryTeamSchema` above is kept separately as the `--fields` / SKILL.md
+ * `SentryTeamSchema` (`output-schemas/team.ts`) is the `--fields` / SKILL.md
  * documentation schema — it is NOT used for runtime validation (team list
  * responses are cast `as unknown as SentryTeam[]` in `api/teams.ts`), so the
  * schema and type are allowed to diverge: the schema curates a user-facing

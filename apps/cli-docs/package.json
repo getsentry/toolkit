@@ -6,7 +6,7 @@
     "dependencies": ["sentry"]
   },
   "scripts": {
-    "ci:prepare": "pnpm --filter sentry run generate:schema && pnpm --filter sentry run generate:docs",
+    "ci:prepare": "pnpm --filter sentry run generate:docs",
     "dev": "astro dev",
     "build": "astro build",
     "test": "node --test test/*.test.mjs",

@@ -42,7 +42,6 @@ export type {
 } from "./dashboard.js";
 export {
   DashboardDetailSchema,
-  DashboardListItemSchema,
   DashboardWidgetLayoutSchema,
   DashboardWidgetQuerySchema,
   DashboardWidgetSchema,
@@ -53,11 +52,6 @@ export type {
   FeedbackMetadata,
   FeedbackViewResult,
   SentryFeedback,
-} from "./feedback.js";
-export {
-  FeedbackMetadataSchema,
-  FeedbackViewOutputSchema,
-  SentryFeedbackSchema,
 } from "./feedback.js";
 // OAuth types and schemas
 export type {
@@ -86,28 +80,23 @@ export type {
   ReplayRelatedIssue,
   ReplayRelatedTrace,
   ReplaySdk,
+  ReplayStringProjectId,
   ReplayUser,
 } from "./replay.js";
 export {
   REPLAY_LIST_FIELDS,
-  ReplayActivityEventSchema,
   ReplayBrowserSchema,
-  ReplayDetailsOutputSchema,
   ReplayDetailsResponseSchema,
   ReplayDetailsSchema,
   ReplayDeviceSchema,
   ReplayGeoSchema,
   ReplayIdsByResourceSchema,
-  ReplayListItemOutputSchema,
   ReplayListItemSchema,
   ReplayListResponseSchema,
   ReplayOsSchema,
   ReplayOtaUpdatesSchema,
-  ReplayRelatedIssueSchema,
-  ReplayRelatedTraceSchema,
   ReplaySdkSchema,
   ReplayUserSchema,
-  ReplayViewOutputSchema,
 } from "./replay.js";
 export type {
   AutofixResponse,
@@ -156,6 +145,7 @@ export type {
   SentryMonitor,
   SentryOrganization,
   SentryProject,
+  ReleaseUpdateOutput,
   SentryRelease,
   SentryRepository,
   SentryTeam,
@@ -179,25 +169,15 @@ export {
   CustomerTrialInfoSchema,
   DetailedLogsResponseSchema,
   DetailedSentryLogSchema,
-  EventViewOutputSchema,
+  type EventViewAttachment,
   ISSUE_LEVELS,
   ISSUE_STATUSES,
-  IssueEventSchema,
-  IssueViewOutputSchema,
   LogsResponseSchema,
-  MonitorConfigSchema,
   OrgAuthTokenSchema,
   ProductTrialSchema,
   RegionSchema,
-  RepositoryProviderSchema,
-  SentryIntegrationSchema,
-  SentryIssueSchema,
   SentryLogSchema,
-  SentryMonitorSchema,
-  SentryRepositorySchema,
-  SentryTeamSchema,
   SentryUserSchema,
-  SpanListItemSchema,
   SpansResponseSchema,
   TraceItemAttributeSchema,
   TraceItemDetailSchema,
@@ -208,6 +188,8 @@ export {
   TransactionsResponseSchema,
   UserRegionsResponseSchema,
 } from "./sentry.js";
+
+export type { WithOutputFields } from "../output-schemas/output.js";
 
 // I/O types
 

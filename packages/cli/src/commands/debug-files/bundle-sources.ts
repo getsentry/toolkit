@@ -20,6 +20,7 @@ import { basename, dirname, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
 import { createSourceBundle } from "../../lib/dif/index.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -102,7 +103,7 @@ export const bundleSourcesCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the debug information file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -110,7 +111,7 @@ export const bundleSourcesCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Output path for the source bundle ZIP (default: <path>.src.zip)",
         optional: true,
@@ -152,7 +153,7 @@ export const bundleSourcesCommand = buildCommand({
       // this.process === the global process in production (see buildContext);
       // using it here keeps the exit-code observable in tests.
       this.process.exitCode = 1;
-      yield new CommandOutput<BundleSourcesResult>({
+      yield new CommandOutput({
         path,
         outputPath: null,
         debugId: result.debugId,
@@ -173,7 +174,7 @@ export const bundleSourcesCommand = buildCommand({
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, result.bundle);
 
-    yield new CommandOutput<BundleSourcesResult>({
+    yield new CommandOutput({
       path,
       outputPath,
       debugId: result.debugId,

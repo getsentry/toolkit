@@ -11,15 +11,12 @@
  * - Migration checks
  */
 
-import { createRequire } from "node:module";
 import { uuidv7 } from "uuidv7";
 import { getEnv } from "../env.js";
 import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { storedCredentialIdentity } from "./identity-hash.js";
 import type { Database } from "./sqlite.js";
-
-const _require = createRequire(import.meta.url);
 
 export const CURRENT_SCHEMA_VERSION = 20;
 
@@ -759,6 +756,7 @@ export type RepairAttemptResult<T> =
  * 2. Runs repairSchema() to fix missing tables/columns
  * 3. Retries the original operation
  *
+ * @param db - The raw (unwrapped) connection to repair
  * @param operation - The failed operation to retry after repair
  * @param error - The error that triggered the repair attempt
  * @returns An object indicating whether repair was attempted and the result.
@@ -767,6 +765,7 @@ export type RepairAttemptResult<T> =
  *          like stmt.get() that legitimately return undefined).
  */
 export function tryRepairAndRetry<T>(
+  db: Database,
   operation: () => T,
   error: unknown,
 ): RepairAttemptResult<T> {
@@ -789,13 +788,7 @@ export function tryRepairAndRetry<T>(
   let repairSucceeded = false;
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    // Dynamic imports to avoid circular dependencies with db/index.js
-    const { getRawDatabase } = _require("./index.js") as {
-      getRawDatabase: () => Database;
-    };
-
-    const rawDb = getRawDatabase();
-    const { fixed } = repairSchema(rawDb);
+    const { fixed } = repairSchema(db);
 
     if (fixed.length > 0) {
       logger.info(`Auto-repaired database: ${fixed.join(", ")}`);

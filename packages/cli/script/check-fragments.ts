@@ -20,26 +20,15 @@
  *   tsx script/check-fragments.ts --strict   # Errors for missing subcommands
  */
 
-import { mkdirSync, readdirSync } from "node:fs";
-import { access, readFile, writeFile } from "node:fs/promises";
+import { readdirSync } from "node:fs";
+import { access, readFile } from "node:fs/promises";
 import type { RouteInfo, RouteMap } from "../src/lib/introspect.js";
 import { findFragmentCommandIssues } from "./fragment-commands.js";
+import { writeRouteTreeStubs } from "./lib/route-tree-stubs.js";
 import { markdownHeadings } from "./markdown.js";
 import { DOCS_FRAGMENTS } from "./paths.js";
 
-// Ensure skill-content stub exists (see generate-command-docs.ts for rationale)
-const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
-const skillContentExists = await access(SKILL_CONTENT_PATH).then(
-  () => true,
-  () => false,
-);
-if (!skillContentExists) {
-  mkdirSync("src/generated", { recursive: true });
-  await writeFile(
-    SKILL_CONTENT_PATH,
-    "export const SKILL_FILES: [string, string][] = [];\n",
-  );
-}
+await writeRouteTreeStubs();
 
 const { routes } = await import("../src/app.js");
 const { extractAllRoutes } = await import("../src/lib/introspect.js");

@@ -15,12 +15,15 @@ import {
 } from "../../lib/api-client.js";
 import { extractRequiredScopes } from "../../lib/api-scope.js";
 import {
+  CURSOR_KEYWORDS,
   formatProjectTarget,
   looksLikeIssueShortId,
   type ParsedOrgProject,
+  parseCursorFlag,
   rejectIssueCommandTokenListTarget,
 } from "../../lib/arg-parsing.js";
 
+import { choiceParser } from "../../lib/completion-target.js";
 import { getActiveEnvVarName, isEnvTokenActive } from "../../lib/db/auth.js";
 import {
   advancePaginationState,
@@ -41,6 +44,7 @@ import { createDsnFingerprint } from "../../lib/dsn/index.js";
 import {
   ApiError,
   ContextError,
+  TimeoutError,
   toSearchQueryError,
   ValidationError,
   withAuthGuard,
@@ -50,20 +54,15 @@ import {
   shouldAutoCompact,
   writeIssueTable,
 } from "../../lib/formatters/index.js";
-import {
-  CommandOutput,
-  type OutputConfig,
-} from "../../lib/formatters/output.js";
+import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   appendQueryHint,
   buildListCommand,
   buildListLimitFlag,
-  CURSOR_KEYWORDS,
   LIST_BASE_ALIASES,
   LIST_MAX_LIMIT,
   listTargetPositional,
   paginationHint,
-  parseCursorFlag,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
@@ -73,6 +72,7 @@ import {
   type FetchResult as FetchResultOf,
   jsonTransformListResult,
   type ListCommandMeta,
+  type ListJson,
   type ListResult,
   type ModeHandler,
   trimWithGroupGuarantee,
@@ -102,12 +102,9 @@ import {
 } from "../../lib/time-range.js";
 import { tipsSuppressed } from "../../lib/tips.js";
 import { shellQuote } from "../../lib/utils.js";
-import {
-  type SentryIssue,
-  SentryIssueSchema,
-  type Writer,
-} from "../../types/index.js";
+import type { SentryIssue, Writer } from "../../types/index.js";
 import { resolveIssue } from "./utils.js";
+import { SentryIssueSchema } from "../../generated/output-schemas/issue.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "issue-list";
@@ -1349,6 +1346,11 @@ async function handleResolvedTargets(
       );
     }
 
+    // Keep the timeout's status-page hint and exit code.
+    if (first instanceof TimeoutError) {
+      throw new TimeoutError(`${prefix}: ${first.message}`, first.hint);
+    }
+
     throw new Error(`${prefix}: ${first.message}`);
   }
 
@@ -1603,7 +1605,7 @@ function formatIssueListHuman(result: IssueListResult): string {
 function jsonTransformIssueList(
   result: IssueListResult,
   fields?: string[],
-): unknown {
+): ListJson<SentryIssue> {
   const transformed = jsonTransformListResult(result, fields);
   // Only inject into empty paginated envelopes — helps agents discover
   // query syntax when their search returned nothing.
@@ -1622,7 +1624,7 @@ function jsonTransformIssueList(
 }
 
 /** Output configuration for the issue list command. */
-const issueListOutput: OutputConfig<IssueListResult> = {
+const issueListOutput = {
   human: formatIssueListHuman,
   jsonTransform: jsonTransformIssueList,
   schema: SentryIssueSchema,
@@ -1723,7 +1725,7 @@ export const listCommand = buildListCommand("issue", {
       limit: buildListLimitFlag("issues"),
       sort: {
         kind: "parsed",
-        parse: parseSort,
+        parse: choiceParser(VALID_SORT_VALUES, parseSort),
         brief:
           "Sort by: recommended, date, new, freq, user (default: recommended on sentry.io, else date)",
         optional: true,

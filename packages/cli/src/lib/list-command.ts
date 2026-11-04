@@ -13,31 +13,21 @@
  *   buildOrgListCommand
  */
 
-import { createRequire } from "node:module";
 import type { Aliases, Command, CommandContext } from "@stricli/core";
+import type { GenericSchema } from "valibot";
 import type { SentryContext } from "../context.js";
-
-const _require = createRequire(import.meta.url);
-
-import type { ListTargetOptions } from "./arg-parsing.js";
+import { type ListTargetOptions, parseCursorFlag } from "./arg-parsing.js";
 import {
   buildCommand,
   type CommandDocumentation,
   numberParser,
+  type SentryCommandFunction,
 } from "./command.js";
 import { ORG_PROJECT_TARGET, ORG_TARGET } from "./completion-target.js";
 import { disableOrgCache } from "./db/regions.js";
-import { logger } from "./logger.js";
-
-const log = logger.withTag("list-command");
-
 import { disableDsnCache } from "./dsn/index.js";
 import { warning } from "./formatters/colors.js";
-import {
-  CommandOutput,
-  type CommandReturn,
-  type OutputConfig,
-} from "./formatters/output.js";
+import { CommandOutput, type OutputConfig } from "./formatters/output.js";
 import {
   dispatchOrgScopedList,
   jsonTransformListResult,
@@ -51,6 +41,7 @@ import {
   skippedArgument,
 } from "./positional-parse.js";
 import { disableResponseCache } from "./response-cache.js";
+import { type CliRoutes, findRoutes } from "./route-registry.js";
 import { type ListCommandTarget, listTarget } from "./target-positional.js";
 import { PERIOD_BRIEF, parsePeriod } from "./time-range.js";
 import { shellQuote } from "./utils.js";
@@ -239,51 +230,6 @@ export function applyFreshFlag(flags: { readonly fresh: boolean }): void {
   }
 }
 
-/** Matches strings that are all digits — used to detect invalid cursor values */
-const ALL_DIGITS_RE = /^\d+$/;
-
-/**
- * Navigation keywords accepted by `--cursor`.
- *
- * - `"next"` / `"last"` — advance to the next page
- * - `"prev"` / `"previous"` — go back to the previous page
- * - `"first"` — jump back to the first page
- *
- * `"last"` is a silent alias for `"next"` preserved for muscle-memory compat.
- */
-export const CURSOR_KEYWORDS = new Set([
-  "next",
-  "last",
-  "prev",
-  "previous",
-  "first",
-]);
-
-/**
- * Parse and validate a `--cursor` flag value.
- *
- * Accepts navigation keywords (`"next"`, `"prev"`, `"previous"`, `"first"`,
- * `"last"`) and opaque Sentry cursor strings (e.g. `"1735689600:0:0"`).
- * Rejects bare integers early — they are never valid cursors and would
- * produce a cryptic 400 from the API.
- *
- * Shared by {@link LIST_CURSOR_FLAG} and commands that define their own
- * cursor flag with a custom `brief`.
- *
- * @throws Error when value is a bare integer
- */
-export function parseCursorFlag(value: string): string {
-  if (CURSOR_KEYWORDS.has(value)) {
-    return value;
-  }
-  if (ALL_DIGITS_RE.test(value)) {
-    throw new Error(
-      `'${value}' is not a valid cursor. Cursors look like "1735689600:0:0". Use "next" / "prev" to navigate pages.`,
-    );
-  }
-  return value;
-}
-
 /**
  * The `--cursor` / `-c` flag shared by all list commands.
  *
@@ -445,7 +391,8 @@ export const LIST_BASE_ALIASES: Aliases<string> = { n: "limit", c: "cursor" };
 // Level B: subcommand interception for plural aliases
 // ---------------------------------------------------------------------------
 
-let _subcommandsByRoute: Map<string, Set<string>> | undefined;
+/** Subcommand names by route group, per registered route map. */
+const subcommandsByRoutes = new WeakMap<CliRoutes, Map<string, Set<string>>>();
 
 /**
  * Entry shape returned by Stricli's getAllEntries().
@@ -475,39 +422,32 @@ function collectChildNames(parent: {
 /**
  * Get the subcommand names for a given singular route (e.g. "project" → {"list", "view"}).
  *
- * Lazily walks the Stricli route map on first call. Uses `require()` to break
- * the circular dependency: list-command → app → commands → list-command.
+ * Walks the registered route map once and caches the result for it. With no
+ * route map registered (a command's `func` called directly, as in unit
+ * tests), there are no subcommands to intercept.
  */
 function getSubcommandsForRoute(routeName: string): Set<string> {
-  if (!_subcommandsByRoute) {
-    _subcommandsByRoute = new Map();
-
-    try {
-      const { routes } = _require("../app.js") as {
-        routes: { getAllEntries: () => readonly RouteEntry[] };
-      };
-
-      for (const entry of routes.getAllEntries()) {
-        const target = entry.target as unknown as Record<string, unknown>;
-        if (typeof target?.getAllEntries === "function") {
-          _subcommandsByRoute.set(
-            entry.name.original,
-            collectChildNames(
-              target as { getAllEntries: () => readonly RouteEntry[] },
-            ),
-          );
-        }
-      }
-    } catch (error) {
-      // In test environments (vitest), require("../app.js") may fail because
-      // Node's ESM resolver can't resolve .js→.ts for transitive imports.
-      // Gracefully degrade: interceptSubcommand will treat all targets as
-      // plain values (no subcommand interception).
-      log.debug("Failed to load app routes for subcommand detection", error);
-    }
+  const routes = findRoutes();
+  if (!routes) {
+    return new Set();
   }
-
-  return _subcommandsByRoute.get(routeName) ?? new Set();
+  let byRoute = subcommandsByRoutes.get(routes);
+  if (!byRoute) {
+    byRoute = new Map();
+    for (const entry of routes.getAllEntries()) {
+      const target = entry.target as unknown as Record<string, unknown>;
+      if (typeof target?.getAllEntries === "function") {
+        byRoute.set(
+          entry.name.original,
+          collectChildNames(
+            target as { getAllEntries: () => readonly RouteEntry[] },
+          ),
+        );
+      }
+    }
+    subcommandsByRoutes.set(routes, byRoute);
+  }
+  return byRoute.get(routeName) ?? new Set();
 }
 
 /**
@@ -553,26 +493,6 @@ function isSubcommandName(arg: string, routeName: string): boolean {
 /** Base flags type (mirrors command.ts) */
 type BaseFlags = Readonly<Partial<Record<string, unknown>>>;
 
-/** Base args type (mirrors command.ts) */
-type BaseArgs = readonly unknown[];
-
-/**
- * Command function type that returns an async generator.
- *
- * Mirrors `SentryCommandFunction` from `command.ts`. All command functions
- * are async generators — non-streaming commands yield once and return.
- */
-type ListCommandFunction<
-  FLAGS extends BaseFlags,
-  ARGS extends BaseArgs,
-  CONTEXT extends CommandContext,
-> = (
-  this: CONTEXT,
-  flags: FLAGS,
-  ...args: ARGS
-  // void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
-) => AsyncGenerator<unknown, CommandReturn | void, undefined>;
-
 /**
  * Options for controlling which flags {@link buildListCommand} auto-injects.
  *
@@ -608,14 +528,16 @@ export function buildListCommand<
   const FLAGS extends BaseFlags = NonNullable<unknown>,
   const ARGS extends readonly unknown[] = [],
   const CONTEXT extends CommandContext = CommandContext,
+  OUTPUT = never,
+  SCHEMA extends GenericSchema = GenericSchema,
+  TRANSFORMED = unknown,
 >(
   routeName: string,
   builderArgs: {
     readonly parameters?: Record<string, unknown>;
     readonly docs: CommandDocumentation;
-    readonly func: ListCommandFunction<FLAGS, ARGS, CONTEXT>;
-    // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig is generic but type is erased at the builder level
-    readonly output?: OutputConfig<any>;
+    readonly func: SentryCommandFunction<FLAGS, ARGS, CONTEXT, NoInfer<OUTPUT>>;
+    readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED>;
     readonly auth?: boolean;
   },
   options?: ListCommandOptions,
@@ -689,7 +611,7 @@ export function buildListCommand<
     return originalFunc.call(this, flags, ...(finalArgs as unknown as ARGS));
   } as typeof originalFunc;
 
-  return buildCommand({
+  return buildCommand<FLAGS, ARGS, CONTEXT, OUTPUT, SCHEMA, TRANSFORMED>({
     ...builderArgs,
     parameters: mergedParams,
     func: wrappedFunc,
@@ -762,14 +684,17 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
   docs: OrgListCommandDocs,
   routeName: string,
 ): Command<SentryContext> {
+  // `OrgListConfig.schema` checks the entity against the schema; the generic
+  // `TWithOrg` can't be checked here, so the schema's type is erased.
+  const output: OutputConfig<ListResult<TWithOrg>> = {
+    human: (result: ListResult<TWithOrg>) => formatListHuman(result, config),
+    jsonTransform: (result: ListResult<TWithOrg>, fields?: string[]) =>
+      jsonTransformListResult(result, fields),
+    schema: config.schema,
+  };
   return buildListCommand(routeName, {
     docs,
-    output: {
-      human: (result: ListResult<TWithOrg>) => formatListHuman(result, config),
-      jsonTransform: (result: ListResult<TWithOrg>, fields?: string[]) =>
-        jsonTransformListResult(result, fields),
-      schema: config.schema,
-    } satisfies OutputConfig<ListResult<TWithOrg>>,
+    output,
     parameters: {
       positional: config.namesOf
         ? NAMED_LIST_ORG_TARGET_POSITIONAL

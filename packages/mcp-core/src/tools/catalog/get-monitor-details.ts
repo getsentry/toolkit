@@ -76,7 +76,7 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["project:read"],
   description: [
-    "Get details for a Sentry cron monitor.",
+    "Get details and recent check-ins for a Sentry cron monitor (scheduled job).",
     "",
     "Use this tool when you need to:",
     "- Inspect a monitor's schedule, status, owner, project, and environments",

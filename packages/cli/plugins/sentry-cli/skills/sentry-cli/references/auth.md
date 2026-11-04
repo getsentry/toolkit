@@ -15,6 +15,21 @@ Authenticate with Sentry
 
 List stored accounts
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Account ID |
+| `active` | boolean | Whether commands use this account |
+| `host` | string | Sentry server URL |
+| `userId` | string | User ID |
+| `email` | string | User email |
+| `username` | string | Username |
+| `name` | string | User display name |
+| `usable` | boolean | Whether the credential can still be used or refreshed |
+| `expiresAt` | number | Token expiry (Unix milliseconds) |
+| `envVar` | string | Env var providing the token, if not stored |
+
 **Examples:**
 
 ```bash

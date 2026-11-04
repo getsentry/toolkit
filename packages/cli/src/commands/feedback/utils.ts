@@ -2,7 +2,7 @@
  * Shared resolution utilities for modern User Feedback commands.
  */
 
-import { listFeedback } from "../../lib/api-client.js";
+import { listFeedback, updateIssueStatus } from "../../lib/api-client.js";
 import type { IssueSelector } from "../../lib/arg-parsing.js";
 import {
   ApiError,
@@ -127,4 +127,18 @@ export async function resolveFeedback(
   }
 
   return { org, feedback: issue as SentryFeedback };
+}
+
+/**
+ * Set the status of Feedback that {@link resolveFeedback} returned. The
+ * Issues API answers with the updated issue, which is still that Feedback.
+ */
+export async function updateFeedbackStatus(
+  { org, feedback }: ResolvedFeedback,
+  status: "resolved" | "unresolved" | "ignored",
+): Promise<SentryFeedback> {
+  const updated = await updateIssueStatus(feedback.id, status, {
+    orgSlug: org,
+  });
+  return updated as SentryFeedback;
 }

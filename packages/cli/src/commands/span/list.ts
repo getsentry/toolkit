@@ -19,7 +19,11 @@ import {
   parseOrgProjectInput,
   validateLimit,
 } from "../../lib/arg-parsing.js";
-import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
+import {
+  choiceParser,
+  ORG_PROJECT_TARGET,
+  textParser,
+} from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -46,6 +50,7 @@ import {
   paginationHint,
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   type BoundArguments,
@@ -71,7 +76,7 @@ import {
   type TraceTargetInput,
   warnIfNormalized,
 } from "../../lib/trace-target.js";
-import { SpanListItemSchema } from "../../types/index.js";
+import { FlatSpanSchema } from "../../generated/output-schemas/span.js";
 
 type ListFlags = {
   readonly limit: number;
@@ -384,12 +389,15 @@ function formatSpanListHuman(data: SpanListData): string {
  * Produces a `{ data: [...], hasMore, nextCursor? }` envelope matching the
  * standard paginated list format. Applies `--fields` filtering per element.
  */
-function jsonTransformSpanList(data: SpanListData, fields?: string[]): unknown {
+function jsonTransformSpanList(
+  data: SpanListData,
+  fields?: string[],
+): ListEnvelope<FlatSpan> {
   const items =
     fields && fields.length > 0
       ? data.flatSpans.map((item) => filterFields(item, fields))
       : data.flatSpans;
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<FlatSpan> = {
     data: items,
     hasMore: data.hasMore,
     hasPrev: !!data.hasPrev,
@@ -653,7 +661,7 @@ export const listCommand = buildListCommand("span", {
   output: {
     human: formatSpanListHuman,
     jsonTransform: jsonTransformSpanList,
-    schema: SpanListItemSchema,
+    schema: FlatSpanSchema,
   },
   parameters: {
     positional: boundArguments({
@@ -666,7 +674,7 @@ export const listCommand = buildListCommand("span", {
     flags: {
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of spans (<=${LIST_MAX_LIMIT})`,
         default: String(LIST_DEFAULT_LIMIT),
       },
@@ -679,7 +687,7 @@ export const listCommand = buildListCommand("span", {
       },
       sort: {
         kind: "parsed",
-        parse: parseSort,
+        parse: choiceParser(VALID_SORT_VALUES, parseSort),
         brief: `Sort order: ${VALID_SORT_VALUES.join(", ")}`,
         default: DEFAULT_SORT,
       },

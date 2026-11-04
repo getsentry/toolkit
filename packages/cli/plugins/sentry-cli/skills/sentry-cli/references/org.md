@@ -26,6 +26,27 @@ List organizations
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-a, --account <value> - Only list organizations of this account (email, username, or account id; <who>:<server> for one server; env:SENTRY_AUTH_TOKEN)`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Organization ID |
+| `slug` | string | Organization slug |
+| `name` | string | Organization name |
+| `dateCreated` | string | Creation date (ISO 8601) |
+| `status` | object | Organization status |
+| `isEarlyAdopter` | boolean | Whether the org is an early adopter |
+| `require2FA` | boolean | Whether members must use 2FA |
+| `features` | array | Enabled features |
+| `avatar` | object | Avatar |
+| `links` | object | Organization and region URLs |
+| `hasAuthProvider` | boolean | Whether SSO is configured |
+| `allowMemberInvite` | boolean | Whether members can invite |
+| `allowMemberProjectCreation` | boolean | Whether members can create projects |
+| `orgRole` | string | Your role in the organization |
+| `region` | string | Region, when orgs span several (e.g. US, EU) |
+| `account` | object | Account the org was listed under, across accounts |
+
 **Examples:**
 
 ```bash
@@ -61,6 +82,25 @@ View details of an organization
 **Flags:**
 - `-w, --web - Open in browser`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Organization ID |
+| `slug` | string | Organization slug |
+| `name` | string | Organization name |
+| `dateCreated` | string | Creation date (ISO 8601) |
+| `status` | object | Organization status |
+| `isEarlyAdopter` | boolean | Whether the org is an early adopter |
+| `require2FA` | boolean | Whether members must use 2FA |
+| `features` | array | Enabled features |
+| `avatar` | object | Avatar |
+| `links` | object | Organization and region URLs |
+| `hasAuthProvider` | boolean | Whether SSO is configured |
+| `allowMemberInvite` | boolean | Whether members can invite |
+| `allowMemberProjectCreation` | boolean | Whether members can create projects |
+| `orgRole` | string | Your role in the organization |
 
 **Examples:**
 

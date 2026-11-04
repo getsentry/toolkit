@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { marked } from "marked";
 
 const name = "sentry-cli";
@@ -14,9 +15,9 @@ function call(node, property) {
   return node.type === "CallExpression" && member(node.callee, property);
 }
 
-function rule(message, visitors) {
+function rule(message, visitors, schema = []) {
   return {
-    meta: { type: "problem", docs: { description: message }, schema: [] },
+    meta: { type: "problem", docs: { description: message }, schema },
     create(context) {
       const filename = context.filename.replaceAll("\\", "/");
       if (!filename.includes("/packages/cli/")) return {};
@@ -54,6 +55,61 @@ function readsProperty(node, object, property) {
       n.object.type === "Identifier" &&
       n.object.name === object,
   );
+}
+
+const FUNCTION_TYPES = new Set([
+  "ArrowFunctionExpression",
+  "FunctionDeclaration",
+  "FunctionExpression",
+]);
+
+/**
+ * Top-level functions of a module by name: `function f() {}` and
+ * `const f = () => {}`, exported or not.
+ */
+function moduleFunctions(program) {
+  const functions = new Map();
+  for (const statement of program.body) {
+    const declaration =
+      statement.type === "ExportNamedDeclaration"
+        ? statement.declaration
+        : statement;
+    if (declaration?.type === "FunctionDeclaration" && declaration.id) {
+      functions.set(declaration.id.name, declaration);
+    }
+    if (declaration?.type === "VariableDeclaration") {
+      for (const declarator of declaration.declarations) {
+        if (
+          declarator.id.type === "Identifier" &&
+          FUNCTION_TYPES.has(declarator.init?.type)
+        )
+          functions.set(declarator.id.name, declarator.init);
+      }
+    }
+  }
+  return functions;
+}
+
+/** Whether a function reads its second parameter (the parsed `--fields`). */
+function readsFieldsParameter(fn) {
+  const fields = fn.params[1];
+  const name =
+    fields?.type === "AssignmentPattern" ? fields.left?.name : fields?.name;
+  return Boolean(name) && containsIdentifier(fn.body, name);
+}
+
+/** `jsonTransform: ...` properties anywhere under a node. */
+function jsonTransformProperties(node) {
+  const found = [];
+  someNode(node, (n) => {
+    if (
+      n.type === "Property" &&
+      (n.key?.name ?? n.key?.value) === "jsonTransform"
+    )
+      found.push(n);
+    return false;
+  });
+  return found;
 }
 
 /**
@@ -226,6 +282,81 @@ function isIdKind(node) {
     node.object.type === "Identifier" &&
     node.object.name === "ID_KINDS"
   );
+}
+
+/**
+ * Parameters exempt from shell completion coverage, shared with
+ * test/lib/completion-coverage.test.ts.
+ */
+const COMPLETION_EXEMPTIONS = JSON.parse(
+  readFileSync(
+    new URL("./completion-exemptions.json", import.meta.url),
+    "utf8",
+  ),
+).exemptions;
+
+/** Built-in conversions, which carry no completion kind. */
+const BUILTIN_PARSERS = new Set([
+  "String",
+  "Number",
+  "Boolean",
+  "BigInt",
+  "Date",
+  "parseInt",
+  "parseFloat",
+]);
+
+/** Objects whose static parsers (`JSON.parse`, `Number.parseInt`) are built-ins. */
+const BUILTIN_PARSER_OBJECTS = new Set(["JSON", "Number", "Date", "BigInt"]);
+
+/** The non-computed property `key` of an object literal. */
+function objectProperty(node, key) {
+  return node.properties.find(
+    (p) =>
+      p.type === "Property" &&
+      !p.computed &&
+      (p.key.name ?? p.key.value) === key,
+  );
+}
+
+/**
+ * The parameter an object literal defines, as the coverage test names it:
+ * `--name` for a flag, keyed by its name (flags can have a `placeholder`
+ * too), and `<placeholder>` for a positional, which sits in a tuple's
+ * `parameters` array or an array positional's `parameter`.
+ */
+function parameterName(node) {
+  const parent = node.parent;
+  if (
+    parent?.type === "Property" &&
+    parent.value === node &&
+    !parent.computed
+  ) {
+    const key = parent.key.name ?? parent.key.value;
+    if (key !== "parameter") return `--${key}`;
+  }
+  const placeholder = objectProperty(node, "placeholder")?.value;
+  if (placeholder?.type === "Literal" && typeof placeholder.value === "string")
+    return `<${placeholder.value}>`;
+  return undefined;
+}
+
+/** Why a `parse` value declares no completion kind, or `undefined`. */
+function untaggedParser(value) {
+  if (value.type === "Identifier" && BUILTIN_PARSERS.has(value.name))
+    return `\`${value.name}\` has no completion kind. Use parseText, textParser(${value.name}), or another tagged parser from src/lib/completion-target.ts.`;
+  if (
+    value.type === "MemberExpression" &&
+    value.object.type === "Identifier" &&
+    BUILTIN_PARSER_OBJECTS.has(value.object.name)
+  )
+    return `\`${value.object.name}.${value.property.name}\` has no completion kind. Wrap it in textParser() or choiceParser().`;
+  if (
+    value.type === "ArrowFunctionExpression" ||
+    value.type === "FunctionExpression"
+  )
+    return "An inline parser has no completion kind. Wrap it in textParser(), choiceParser(), or choiceListParser(), or use a bound parser.";
+  return undefined;
 }
 
 const rules = {
@@ -419,6 +550,52 @@ const rules = {
       };
     },
   ),
+  "require-completion-parser": rule(
+    "Give every positional and value-taking flag a parser that declares its completion kind.",
+    (context, file, report) => {
+      if (!file.includes("/src/commands/") && !file.includes("/src/lib/"))
+        return {};
+      const exemptions =
+        context.options[0]?.exemptions ?? COMPLETION_EXEMPTIONS;
+      const exempt = (node) => {
+        const parameter = parameterName(node);
+        return exemptions.some(
+          (entry) =>
+            file.endsWith(`/packages/cli/${entry.file}`) &&
+            entry.parameter === parameter,
+        );
+      };
+      return {
+        ObjectExpression(node) {
+          const parse = objectProperty(node, "parse");
+          if (!parse) return;
+          // boundArguments({ kind, parse, resolve }): `kind` is the
+          // completion kind, and `parse` reads every argument at once.
+          if (objectProperty(node, "resolve")) {
+            if (!objectProperty(node, "kind") && !exempt(node))
+              report(
+                node,
+                "Give boundArguments a completion `kind` (ORG_PROJECT_TARGET, …).",
+              );
+            return;
+          }
+          const kind = objectProperty(node, "kind")?.value;
+          const parsedFlag =
+            kind?.type === "Literal" && kind.value === "parsed";
+          if (!parsedFlag && !objectProperty(node, "brief")) return;
+          const reason = untaggedParser(parse.value);
+          if (reason && !exempt(node)) report(parse.value, reason);
+        },
+      };
+    },
+    [
+      {
+        type: "object",
+        properties: { exemptions: { type: "array" } },
+        additionalProperties: false,
+      },
+    ],
+  ),
   "no-generic-is-record": rule(
     "Use a shape-specific guard instead of isRecord().",
     (_context, file, report) =>
@@ -518,6 +695,73 @@ const rules = {
             },
           }
         : {},
+  ),
+  // A transform that drops `fields` makes `--fields` a silent no-op:
+  // https://github.com/getsentry/toolkit/issues/1808
+  "json-transform-uses-fields": rule(
+    "A jsonTransform replaces the default --fields filtering, so it must read its fields parameter.",
+    (_context, file, report) =>
+      file.includes("/src/")
+        ? {
+            Program(program) {
+              const functions = moduleFunctions(program);
+              // Exported jsonTransform* helpers are shared by several
+              // commands, so check them where they are defined.
+              for (const [fnName, fn] of functions) {
+                if (
+                  fnName.startsWith("jsonTransform") &&
+                  !readsFieldsParameter(fn)
+                )
+                  report(fn);
+              }
+              for (const property of jsonTransformProperties(program)) {
+                const value = property.value;
+                if (FUNCTION_TYPES.has(value.type)) {
+                  if (!readsFieldsParameter(value)) report(property);
+                } else if (value.type === "Identifier") {
+                  // Imported transforms are checked in their own module.
+                  const fn = functions.get(value.name);
+                  if (
+                    fn &&
+                    !value.name.startsWith("jsonTransform") &&
+                    !readsFieldsParameter(fn)
+                  )
+                    report(property);
+                }
+              }
+            },
+          }
+        : {},
+  ),
+  "no-runtime-output-schema-imports": rule(
+    "src/output-schemas/ is build-only: use `import type` from it, and import the field data from src/generated/output-schemas/.",
+    (_context, file, report) => {
+      if (!file.includes("/src/") || file.includes("/src/output-schemas/"))
+        return {};
+      const buildOnly = (source) =>
+        typeof source === "string" &&
+        /(?:^|\/)output-schemas\//.test(source) &&
+        !/(?:^|\/)generated\/output-schemas\//.test(source);
+      // Only `import type` / `export type` is erased whole. Under
+      // `verbatimModuleSyntax`, `import { type X }` still loads the module.
+      return {
+        ImportDeclaration(node) {
+          if (buildOnly(node.source.value) && node.importKind !== "type")
+            report(node);
+        },
+        ExportNamedDeclaration(node) {
+          if (buildOnly(node.source?.value) && node.exportKind !== "type")
+            report(node);
+        },
+        ExportAllDeclaration(node) {
+          if (buildOnly(node.source.value) && node.exportKind !== "type")
+            report(node);
+        },
+        ImportExpression(node) {
+          if (buildOnly(node.source.value)) report(node);
+        },
+      };
+    },
   ),
   "no-skipped-tests": rule(
     "Do not leave disabled tests in the suite.",

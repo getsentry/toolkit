@@ -4,16 +4,18 @@
  * List an organization's active org auth tokens.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
+import { OrgAuthTokenSchema } from "../../generated/output-schemas/token.js";
 import { listOrgAuthTokens } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { selectAccountForOrg } from "../../lib/db/auth.js";
-import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
+import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { type OrgTarget, orgTarget } from "../../lib/target-positional.js";
-import { type OrgAuthToken, OrgAuthTokenSchema } from "../../types/index.js";
+import type { OrgAuthToken } from "../../types/index.js";
 import {
   ensureTokenScopes,
   explainTokenForbidden,
@@ -27,7 +29,7 @@ type ListFlags = {
 
 const TOKEN_COLUMNS: Column<OrgAuthToken>[] = [
   { header: "ID", value: (t) => t.id },
-  { header: "NAME", value: (t) => escapeMarkdownCell(t.name) },
+  { header: "NAME", value: (t) => tableCell(t.name) },
   { header: "SCOPES", value: (t) => t.scopes.join(", ") },
   {
     header: "ENDS WITH",

@@ -19,10 +19,16 @@ import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
+import {
+  parseFilePath,
+  parseText,
+  parseUrl,
+} from "../lib/completion-target.js";
 import { ValidationError } from "../lib/errors.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { formatBuildId, uuidToBytes } from "../lib/wasm/build-id.js";
 import { splitWasm } from "../lib/wasm/split.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 /** Flags accepted by `sentry wasm-split`. */
 type WasmSplitFlags = {
@@ -50,7 +56,7 @@ type WasmSplitResult = {
 
 export const wasmSplitCommand = buildCommand({
   docs: {
-    brief: "Add build ids to WebAssembly modules and split out debug data",
+    brief: topLevelBrief("wasm-split"),
     fullDescription:
       "Add a build id to a WebAssembly module and optionally split its debug " +
       "data into a companion file. Sentry matches a wasm stack frame to its " +
@@ -104,7 +110,7 @@ export const wasmSplitCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the wasm file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "input",
         },
       ],
@@ -112,13 +118,13 @@ export const wasmSplitCommand = buildCommand({
     flags: {
       out: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to the output wasm file (default: modify input in place)",
         optional: true,
       },
       "debug-out": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Path to the output debug wasm file (default: debug data stays in the input)",
         optional: true,
@@ -143,13 +149,13 @@ export const wasmSplitCommand = buildCommand({
       },
       "build-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Explicit build id to use, as a UUID",
         optional: true,
       },
       "external-dwarf-url": {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "URL for browsers to fetch the separate DWARF debug symbol file",
         optional: true,
       },
@@ -198,7 +204,7 @@ export const wasmSplitCommand = buildCommand({
       return {};
     }
 
-    yield new CommandOutput<WasmSplitResult>({
+    yield new CommandOutput({
       buildId: formatBuildId(result.buildId),
       input,
       ...(result.moduleChanged ? { output } : {}),

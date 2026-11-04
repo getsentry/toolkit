@@ -9,6 +9,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { listIssueEvents } from "../../lib/api-client.js";
+import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -23,7 +24,6 @@ import {
   serializeTimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import { IssueEventSchema } from "../../types/index.js";
 import { type IssueTarget, issuePositional } from "../issue/positional.js";
 import { buildCommandHint } from "../issue/utils.js";
 import {
@@ -34,6 +34,7 @@ import {
   formatEventsHuman,
   jsonTransformEvents,
 } from "./shared-events.js";
+import { IssueEventSchema } from "../../generated/output-schemas/event.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -78,8 +79,7 @@ export const listCommand = buildListCommand("event", {
     fullDescription:
       "List events belonging to a Sentry issue.\n\n" +
       "Issue formats:\n" +
-      "  @latest          - Most recent unresolved issue\n" +
-      "  @most_frequent   - Issue with highest event frequency\n" +
+      issueSelectorHelp() +
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7\n" +
       "  <project>-suffix - Project + suffix: cli-G\n" +
       "  ID               - Short ID: CLI-G\n" +

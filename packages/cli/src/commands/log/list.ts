@@ -21,7 +21,7 @@ import {
   parseOrgProjectInput,
   validateLimit,
 } from "../../lib/arg-parsing.js";
-import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
+import { ORG_PROJECT_TARGET, textParser } from "../../lib/completion-target.js";
 import {
   AuthError,
   stringifyUnknown,
@@ -51,6 +51,7 @@ import {
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   type BoundArguments,
@@ -78,7 +79,7 @@ import {
   warnIfNormalized,
 } from "../../lib/trace-target.js";
 import { getUpdateNotification } from "../../lib/version-check.js";
-import { SentryLogSchema } from "../../types/index.js";
+import { SentryLogSchema } from "../../generated/output-schemas/log.js";
 
 type ListFlags = {
   readonly limit: number;
@@ -493,7 +494,7 @@ async function* yieldFollowItems<T extends LogLike>(
   let contextSent = !extraFields?.length;
   for await (const batch of generator) {
     if (!contextSent && batch.length > 0) {
-      yield new CommandOutput<LogOutput>({
+      yield new CommandOutput({
         logs: batch,
         hasMore: false,
         extraFields,
@@ -501,7 +502,7 @@ async function* yieldFollowItems<T extends LogLike>(
       contextSent = true;
     } else {
       for (const item of batch) {
-        yield new CommandOutput<LogOutput>(item);
+        yield new CommandOutput(item);
       }
     }
   }
@@ -522,7 +523,7 @@ async function* yieldTraceFollowItems<T extends LogLike>(
   for await (const batch of generator) {
     if (!contextSent && batch.length > 0) {
       // First non-empty batch: yield as LogListResult to set trace context
-      yield new CommandOutput<LogOutput>({
+      yield new CommandOutput({
         logs: batch,
         traceId,
         hasMore: false,
@@ -530,7 +531,7 @@ async function* yieldTraceFollowItems<T extends LogLike>(
       contextSent = true;
     } else {
       for (const item of batch) {
-        yield new CommandOutput<LogOutput>(item);
+        yield new CommandOutput(item);
       }
     }
   }
@@ -737,7 +738,10 @@ function createLogRenderer(): HumanRenderer<LogOutput> {
  * {@link LogLike} items (follow mode). Single-fetch yields a JSON envelope
  * with `data` and `hasMore`; follow mode yields one JSON object per line (JSONL).
  */
-function jsonTransformLogOutput(data: LogOutput, fields?: string[]): unknown {
+function jsonTransformLogOutput(
+  data: LogOutput,
+  fields?: string[],
+): ListEnvelope<LogLike> | Partial<LogLike> {
   if (isLogListResult(data)) {
     // Batch (single-fetch): return envelope with data + hasMore
     const logList = data;
@@ -832,7 +836,7 @@ export const listCommand = buildListCommand(
       flags: {
         limit: {
           kind: "parsed",
-          parse: parseLimit,
+          parse: textParser(parseLimit),
           brief: `Number of log entries (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
           default: "100", // Logs are high-volume; 25 is too stingy for debugging
         },
@@ -845,7 +849,7 @@ export const listCommand = buildListCommand(
         },
         follow: {
           kind: "parsed",
-          parse: parseFollow,
+          parse: textParser(parseFollow),
           brief: "Stream logs (optionally specify poll interval in seconds)",
           optional: true,
           inferEmpty: true,

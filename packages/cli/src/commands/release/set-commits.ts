@@ -4,6 +4,7 @@
  * Associate commits with a release using auto-discovery or local git history.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import {
   NO_REPO_INTEGRATIONS_MESSAGE,
@@ -12,6 +13,11 @@ import {
   setCommitsWithRefs,
 } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
+import {
+  parseFilePath,
+  parseGitRef,
+  parseRepoCommitList,
+} from "../../lib/completion-target.js";
 import { getDatabase } from "../../lib/db/index.js";
 import { clearMetadata, getMetadata, setMetadata } from "../../lib/db/utils.js";
 import {
@@ -19,21 +25,18 @@ import {
   ValidationError,
   validationError,
 } from "../../lib/errors.js";
-import {
-  escapeMarkdownInline,
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   getCommitLog,
   getRepositoryName,
+  isInsideGitWorkTree,
   isShallowRepository,
 } from "../../lib/git.js";
 import { logger } from "../../lib/logger.js";
 import type { SentryRelease } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { SentryReleaseSchema } from "../../generated/output-schemas/release.js";
 
 const log = logger.withTag("release.set-commits");
 
@@ -61,6 +64,17 @@ function setCommitsFromLocal(
   options: { depth?: number; paths?: string[]; from?: string },
 ): Promise<SentryRelease> {
   const { depth, paths, from } = options;
+  if (!isInsideGitWorkTree(cwd)) {
+    throw validationError(
+      `Cannot read local commits: ${cwd} is not a git checkout.`,
+      [
+        `sentry release set-commits ${org}/${version} --commit owner/repo@<commit-sha>`,
+        `sentry release set-commits ${org}/${version} --auto`,
+      ],
+      "local",
+      "--local reads git history, so it needs the .git directory. Builds that exclude it (Docker, Vercel) can pass the commit with --commit.",
+    );
+  }
   const shallow = isShallowRepository(cwd);
   if (shallow) {
     log.warn(
@@ -194,8 +208,13 @@ async function setCommitsDefault(
       return await setCommitsFromLocal(org, version, cwd, { depth });
     }
     if (error instanceof ValidationError && error.field === "repository") {
+      // Without a git checkout there is no local history to fall back to,
+      // and the auto-discovery error says how to recover.
+      if (!isInsideGitWorkTree(cwd)) {
+        throw error;
+      }
       log.warn(
-        `Auto-discovery failed: ${error.message}. ` +
+        `Auto-discovery failed: ${error.message}\n\n` +
           "Falling back to local git history.",
       );
       return await setCommitsFromLocal(org, version, cwd, { depth });
@@ -333,10 +352,10 @@ function parseLocalScope(flags: {
 
 function formatCommitsSet(release: SentryRelease): string {
   const lines: string[] = [];
-  lines.push(`## Commits Set: ${escapeMarkdownInline(release.version)}`);
+  lines.push(`## Commits Set: ${text(release.version)}`);
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   kvRows.push(["Commits", String(release.commitCount ?? 0)]);
   lines.push(mdKvTable(kvRows));
   return renderMarkdown(lines.join("\n"));
@@ -348,7 +367,8 @@ export const setCommitsCommand = buildCommand({
     fullDescription:
       "Associate commits with a release.\n\n" +
       "Use --auto to let Sentry discover commits via your repository integration\n" +
-      "(requires a local git checkout — matches the origin remote against Sentry repos),\n" +
+      "(matches the origin remote against Sentry repos; without a git checkout it\n" +
+      "uses the repository and commit from CI variables such as GITHUB_REPOSITORY),\n" +
       "or --local to read commits from the local git history.\n" +
       "With no flag, tries --auto first and falls back to --local on failure.\n\n" +
       "For monorepos, --path restricts commits to one or more subtrees\n" +
@@ -395,6 +415,7 @@ export const setCommitsCommand = buildCommand({
   },
   output: {
     human: formatCommitsSet,
+    schema: SentryReleaseSchema,
   },
   parameters: {
     positional: {
@@ -407,7 +428,7 @@ export const setCommitsCommand = buildCommand({
       auto: {
         kind: "boolean",
         brief:
-          "Auto-discover commits via repository integration (needs local git checkout)",
+          "Auto-discover commits via repository integration (needs a git checkout or CI repository variables)",
         default: false,
       },
       local: {
@@ -422,21 +443,21 @@ export const setCommitsCommand = buildCommand({
       },
       commit: {
         kind: "parsed",
-        parse: String,
+        parse: parseRepoCommitList,
         brief:
           "Explicit commit as REPO@SHA or REPO@PREV..SHA (comma-separated)",
         optional: true,
       },
       path: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Filter commits to these paths (comma-separated). Implies --local.",
         optional: true,
       },
       from: {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRef,
         brief:
           "Read the local range <ref>..HEAD (e.g. previous release tag). Implies --local.",
         optional: true,

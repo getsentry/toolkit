@@ -20,6 +20,12 @@ import {
   rawApiRequest,
 } from "../lib/api-client.js";
 import { buildCommand } from "../lib/command.js";
+import {
+  choiceParser,
+  parseApiEndpoint,
+  parseFilePath,
+  parseText,
+} from "../lib/completion-target.js";
 import { applyCustomHeaders } from "../lib/custom-headers.js";
 import { getIdentityFingerprint } from "../lib/db/auth.js";
 import {
@@ -49,6 +55,7 @@ import {
 } from "../lib/sixel.js";
 import { imageBytesToSixel } from "../lib/sixel-image.js";
 import { setOrgProjectContext } from "../lib/telemetry.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("api");
 
@@ -1591,7 +1598,7 @@ export function resolveBinaryTtyOutput(
 export const apiCommand = buildCommand({
   output: { human: formatApiResponse, jsonTransform: formatApiResponseJson },
   docs: {
-    brief: "Make an authenticated API request",
+    brief: topLevelBrief("api"),
     fullDescription:
       "Make a raw API request to the Sentry API. Similar to 'gh api' for GitHub. " +
       "The endpoint is relative to /api/0/ (do not include the prefix). " +
@@ -1692,7 +1699,7 @@ export const apiCommand = buildCommand({
       parameters: [
         {
           brief: "API endpoint relative to /api/0/, or an absolute HTTP(S) URL",
-          parse: String,
+          parse: parseApiEndpoint,
           placeholder: "endpoint",
         },
       ],
@@ -1700,7 +1707,7 @@ export const apiCommand = buildCommand({
     flags: {
       method: {
         kind: "parsed",
-        parse: parseMethod,
+        parse: choiceParser(VALID_METHODS, parseMethod),
         brief: "The HTTP method for the request",
         default: "GET" as const,
         placeholder: "method",
@@ -1708,35 +1715,35 @@ export const apiCommand = buildCommand({
       cursor: LIST_CURSOR_FLAG,
       data: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Inline JSON body for the request (like curl -d)",
         optional: true,
         placeholder: "json",
       },
       field: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Add a typed parameter (key=value, key[sub]=value, key[]=value)",
         variadic: true,
         optional: true,
       },
       "raw-field": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Add a string parameter without JSON parsing",
         variadic: true,
         optional: true,
       },
       header: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Add a HTTP request header in key:value format",
         variadic: true,
         optional: true,
       },
       input: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           'The file to use as body for the HTTP request (use "-" to read from standard input)',
         optional: true,

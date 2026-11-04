@@ -6,7 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { getLatestEvent, listReplayIdsForIssue } from "../../lib/api-client.js";
-import { spansFlag } from "../../lib/arg-parsing.js";
+import { issueSelectorHelp, spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
 import { stringifyUnknown } from "../../lib/errors.js";
@@ -24,15 +24,16 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import { resolveEffectiveOrg } from "../../lib/region.js";
 import {
   collectReplayIds,
   getReplayIdFromEvent,
 } from "../../lib/replay-search.js";
 import { getSpanTreeLines } from "../../lib/span-tree.js";
 import type { SentryEvent } from "../../types/index.js";
-import { IssueViewOutputSchema } from "../../types/index.js";
 import { type IssuesArguments, issuesPositional } from "./positional.js";
 import { mapIssueArgsConcurrently, resolveIssue } from "./utils.js";
+import { IssueViewOutputSchema } from "../../generated/output-schemas/issue.js";
 
 const log = logger.withTag("issue.view");
 
@@ -122,6 +123,91 @@ async function buildIssueSpanData(
   return { trace: null };
 }
 
+/** Issue-scoped data fetched alongside (or after) the issue itself. */
+type IssueDetails = Pick<
+  SingleIssueViewData,
+  "replayIds" | "spanTreeLines" | "trace"
+> & {
+  /** Latest event, or `undefined` when it could not be fetched. */
+  event: SentryEvent | undefined;
+};
+
+/**
+ * Fetch the latest event, related replays, and optional span tree for an issue.
+ *
+ * The span tree only depends on the latest event, so its trace request starts
+ * as soon as the event arrives instead of also waiting on the replay lookup.
+ * Never rejects: every request is best-effort.
+ *
+ * @param orgSlug - Organization slug, or `undefined` when no org is known
+ * @param issueId - Numeric issue ID
+ * @param spans - Span tree depth (`0` skips the trace request)
+ */
+async function fetchIssueDetails(
+  orgSlug: string | undefined,
+  issueId: string,
+  spans: number,
+): Promise<IssueDetails> {
+  if (!orgSlug) {
+    return {
+      event: undefined,
+      replayIds: [],
+      ...(await buildIssueSpanData(undefined, undefined, spans)),
+    };
+  }
+
+  const [{ event, spanData }, relatedReplayIds] = await Promise.all([
+    tryGetLatestEvent(orgSlug, issueId).then(async (latest) => ({
+      event: latest,
+      spanData: await buildIssueSpanData(orgSlug, latest, spans),
+    })),
+    tryListReplayIdsForIssue(orgSlug, issueId),
+  ]);
+  const replayIds = collectReplayIds([
+    event ? getReplayIdFromEvent(event) : undefined,
+    ...relatedReplayIds,
+  ]);
+  return { event, replayIds, ...spanData };
+}
+
+/** Issue details started before the issue itself resolved. */
+type PrefetchedIssueDetails = {
+  /** Org slug the requests were sent to */
+  org: string;
+  /** Numeric issue ID the requests were sent for */
+  issueId: string;
+  /** In-flight details; never rejects */
+  details: Promise<IssueDetails>;
+};
+
+/**
+ * Start the latest-event, replay, and trace requests before the issue resolves
+ * when the argument already names the org and numeric ID (`org/123456789`).
+ *
+ * Otherwise `issue view org/123` runs issue → latest event → trace strictly in
+ * series. On high-latency connections that waterfall takes seconds and trips
+ * Sentry's Consecutive HTTP detector (CLI-3F5). Other argument forms need the
+ * issue response to learn the numeric ID. Pasted URLs are skipped too: their
+ * server is only applied once `resolveIssue` runs.
+ *
+ * @param issueArg - Parsed issue argument
+ * @param spans - Span tree depth (`0` skips the trace request)
+ */
+async function prefetchIssueDetails(
+  { parsed, baseUrl }: IssueArgument,
+  spans: number,
+): Promise<PrefetchedIssueDetails | undefined> {
+  if (parsed.type !== "explicit-org-numeric" || baseUrl) {
+    return;
+  }
+  const org = await resolveEffectiveOrg(parsed.org);
+  return {
+    org,
+    issueId: parsed.numericId,
+    details: fetchIssueDetails(org, parsed.numericId, spans),
+  };
+}
+
 /**
  * Resolve one issue and attach latest event, replays, and optional span tree.
  */
@@ -130,30 +216,25 @@ async function buildSingleIssueViewData(
   cwd: string,
   spans: number,
 ): Promise<SingleIssueViewData> {
+  const prefetched = await prefetchIssueDetails(issueArg, spans);
   const { org: orgSlug, issue } = await resolveIssue({
     issueArg,
     cwd,
     command: "view",
   });
 
-  const [event, relatedReplayIds] = orgSlug
-    ? await Promise.all([
-        tryGetLatestEvent(orgSlug, issue.id),
-        tryListReplayIdsForIssue(orgSlug, issue.id),
-      ])
-    : [undefined, []];
-  const replayIds = collectReplayIds([
-    event ? getReplayIdFromEvent(event) : undefined,
-    ...relatedReplayIds,
-  ]);
-  const spanData = await buildIssueSpanData(orgSlug, event, spans);
+  // A merged issue resolves to a different ID than the one requested, so the
+  // prefetched details would belong to the old issue.
+  const { event, ...details } =
+    prefetched && prefetched.org === orgSlug && prefetched.issueId === issue.id
+      ? await prefetched.details
+      : await fetchIssueDetails(orgSlug, issue.id, spans);
 
   return {
     org: orgSlug ?? null,
     issue,
     event: event ?? null,
-    replayIds,
-    ...spanData,
+    ...details,
   };
 }
 
@@ -239,8 +320,7 @@ export const viewCommand = buildCommand({
       "View detailed information about Sentry issues by ID or short ID. " +
       "The latest event is automatically included for full context.\n\n" +
       "Issue formats:\n" +
-      "  @latest         - Most recent unresolved issue\n" +
-      "  @most_frequent  - Issue with highest event frequency\n" +
+      issueSelectorHelp(15) +
       "  <org>/ID        - Explicit org: sentry/EXTENSION-7, sentry/cli-G\n" +
       "  <org>/@selector - Selector with org: my-org/@latest\n" +
       "  <project>-suffix - Project + suffix: cli-G, spotlight-electron-4Y\n" +

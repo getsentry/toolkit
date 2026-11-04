@@ -11,6 +11,7 @@
  * the bundled `symbolic` WASM module (see `src/lib/dif/`).
  */
 
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { existsSync } from "node:fs";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
@@ -19,12 +20,9 @@ import {
   listSources,
   selectBundledObject,
 } from "../../lib/dif/index.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
-import {
-  colorTag,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+import { colorTag, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { readDebugFile } from "./read-file.js";
@@ -81,7 +79,7 @@ function formatPrintSources(data: PrintSourcesResult): string {
   }
 
   const sections = data.objects.map((object) => {
-    const header = `${object.fileFormat} ${safeCodeSpan(object.debugId)}`;
+    const header = `${object.fileFormat} ${inlineCode(object.debugId)}`;
     if (object.enumerationError !== null) {
       return `${header} — ${colorTag("muted", `could not read sources: ${object.enumerationError}`)}`;
     }
@@ -89,7 +87,7 @@ function formatPrintSources(data: PrintSourcesResult): string {
       return `${header} — ${colorTag("muted", "no referenced sources")}`;
     }
     const lines = object.files.map(
-      (file) => `- ${safeCodeSpan(file.path)} — ${describeSource(file)}`,
+      (file) => `- ${inlineCode(file.path)} — ${describeSource(file)}`,
     );
     const count = object.files.length;
     return `${header} — ${count} source file${count === 1 ? "" : "s"}:\n\n${lines.join("\n")}`;
@@ -132,7 +130,7 @@ export const printSourcesCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the debug information file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -191,7 +189,7 @@ export const printSourcesCommand = buildCommand({
       );
     }
 
-    yield new CommandOutput<PrintSourcesResult>({ path, objects });
+    yield new CommandOutput({ path, objects });
 
     if (objects.length === 0) {
       return { hint: `No objects found in '${path}'. Try: ${USAGE_HINT}` };

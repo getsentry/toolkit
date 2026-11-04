@@ -7,6 +7,7 @@
 import type { SentryContext } from "../../context.js";
 import { getProject, listConversations } from "../../lib/api-client.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { parseText, textParser } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -29,6 +30,7 @@ import {
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import { toNumericId } from "../../lib/resolve-target.js";
 import {
@@ -41,10 +43,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  type ConversationListItem,
-  ConversationListItemSchema,
-} from "../../types/conversation.js";
+import type { ConversationListItem } from "../../types/conversation.js";
+import { ConversationListItemSchema } from "../../generated/output-schemas/agent-conversation.js";
 
 const CONVERSATION_SORT_FIELDS = [
   "conversation.age",
@@ -108,13 +108,13 @@ function formatListHuman(result: ConversationListResult): string {
 function jsonTransform(
   result: ConversationListResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<ConversationListItem> {
   const items =
     fields && fields.length > 0
       ? result.conversations.map((c) => filterFields(c, fields))
       : result.conversations;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<ConversationListItem> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: !!result.hasPrev,
@@ -208,13 +208,13 @@ export const listCommand = buildListCommand("agent-conversation", {
     flags: {
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of conversations (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
         default: String(LIST_DEFAULT_LIMIT),
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Any matching span selects its conversation; totals include all spans in selected projects and time range",
         optional: true,
@@ -283,7 +283,7 @@ export const listCommand = buildListCommand("agent-conversation", {
     const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
     const hasMore = !!nextCursor;
 
-    yield new CommandOutput<ConversationListResult>({
+    yield new CommandOutput({
       conversations,
       hasMore,
       hasPrev,

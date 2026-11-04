@@ -39,6 +39,7 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
 import {
   type BoundArguments,
   boundArguments,
@@ -271,7 +272,7 @@ function formatIdList(ids: string[]): string {
 
 /**
  * Warn about IDs that weren't found in the API response.
- * Uses the consola logger for structured output to stderr.
+ * Uses the logger for structured output to stderr.
  *
  * @param logIds - All requested IDs
  * @param logs - Logs actually returned by the API
@@ -306,11 +307,11 @@ async function handleWebOpen(orgSlug: string, logIds: string[]): Promise<void> {
       );
       return;
     }
-    const confirmed = await log.prompt(`Open ${logIds.length} browser tabs?`, {
+    const confirmed = await prompt(`Open ${logIds.length} browser tabs?`, {
       type: "confirm",
       initial: false,
     });
-    // consola prompt returns Symbol(clack:cancel) on Ctrl+C — a truthy value.
+    // The prompt returns Symbol(clack:cancel) on Ctrl+C — a truthy value.
     // Strictly check for `true` to avoid opening tabs on cancel.
     if (confirmed !== true) {
       return;

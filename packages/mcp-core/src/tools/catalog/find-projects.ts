@@ -30,7 +30,7 @@ export default defineTool({
   skills: ALL_SKILLS, // Foundational tool - available to all skills
   requiredScopes: ["project:read"],
   description: [
-    "Find projects in Sentry.",
+    "List or search projects in a Sentry organization.",
     "",
     "Use this tool when you need to:",
     "- View projects in a Sentry organization",

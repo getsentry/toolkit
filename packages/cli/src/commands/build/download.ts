@@ -17,6 +17,7 @@ import {
   toBinaryDownloadUrl,
 } from "../../lib/api/preprod-artifacts.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath, parseText } from "../../lib/completion-target.js";
 import { ContextError, ResolutionError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -80,7 +81,7 @@ export const downloadCommand = buildCommand({
       parameters: [
         {
           brief: "ID of the build to download",
-          parse: String,
+          parse: parseText,
           placeholder: "build-id",
         },
       ],
@@ -88,7 +89,7 @@ export const downloadCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Output path (default: preprod_artifact_<build-id>.<ext> in the current directory)",
         optional: true,
@@ -131,7 +132,7 @@ export const downloadCommand = buildCommand({
     const regionUrl = await resolveOrgRegion(org);
     await downloadBuildArtifact(regionUrl, url, output);
 
-    yield new CommandOutput<BuildDownloadResult>({
+    yield new CommandOutput({
       buildId,
       org,
       output,

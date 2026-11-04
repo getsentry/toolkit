@@ -27,7 +27,8 @@ the one exception.
 - `errors` holds `ApiError` and its status subclasses, `createApiError`, and
   the `UserInputError` and `ConfigurationError` the client throws. The MCP
   re-exports them from `packages/mcp-core/src/errors.ts`.
-- `api-path` builds API paths with every identifier segment encoded.
+- `api-path` builds API paths with every identifier segment encoded, and
+  `withQuery` appends a query string when it is not empty.
 - `validate` checks a response with any
   [Standard Schema](https://standardschema.dev) validator the host passes in:
   Zod in the MCP, valibot in the CLI. Shared code depends only on the
@@ -51,8 +52,37 @@ the one exception.
   operations where they exist. Each takes an `ApiTarget` (the core and an
   origin) and the host's schema, and returns that schema's output. The host
   picks the origin, such as the control host for the current user.
-  `endpoints/organizations` has `getAuthenticatedUser`, `listOrganizations`,
-  and `getOrganization`.
+  Writes, and reads not yet on a `@sentry/api` operation, call the core
+  directly. Wrappers by domain:
+  - `endpoints/organizations`: `getAuthenticatedUser`, `listOrganizations`,
+    `getOrganization`, and `updateAgenticOnboardingStatus`.
+  - `endpoints/teams`: `listTeams` and `createTeam`.
+  - `endpoints/projects`: `listProjects`, `getProject`, `createProject`,
+    `updateProject`, and the project's teams (`listProjectTeams`,
+    `addProjectTeam`, `removeProjectTeam`).
+  - `endpoints/client-keys`: `listClientKeys`, `createClientKey`, and
+    `updateClientKey`.
+  - `endpoints/repositories`: `listRepositories` and
+    `linkProjectRepository`.
+  - `endpoints/dashboards`: `listDashboards` and `getDashboard`.
+  - `endpoints/releases`: `listReleases`, `getRelease`,
+    `listReleaseDeploys`, `listReleaseCommits`, and `getEventCommitters`.
+  - `endpoints/monitors`: cron monitors (`listMonitors`, `getMonitor`,
+    `deleteMonitorEnvironment`, `listMonitorCheckIns`, `getMonitorStats`).
+  - `endpoints/uptime-monitors`: `listUptimeMonitors`, `getUptimeMonitor`,
+    `listUptimeMonitorChecks`, `createUptimeMonitor`, `updateUptimeMonitor`,
+    and `deleteUptimeMonitor`.
+  - `endpoints/traces`: `getTraceMeta` and `getTrace`.
+  - `endpoints/profiling`: `getFlamegraph`, `getTransactionProfile`, and
+    `getProfileChunks`.
+  - `endpoints/snapshots`: preprod snapshots (`getSnapshot`,
+    `getSnapshotImage`, `getLatestBaseSnapshot`), returned unvalidated.
+  - `endpoints/replays`: `searchReplays`, `getReplay`, `listIssueReplayIds`,
+    and `visitReplayRecordingSegments`, which follows the cursor up to a
+    segment limit.
+- `time-params` applies a time range to a query: `statsPeriod` or a
+  `start`/`end` pair, or the `since`/`until` seconds `StatsMixin` endpoints
+  read. It rejects a range that sets both or only one end.
 - `pagination`, `retry`, `transport`, and `response-cache` are described in
   the sections below. The `node:zlib` body codec stays outside, at
   `response-cache/codec`, since browsers lack it.
@@ -156,6 +186,23 @@ its encoding and original size; `decode` returns `undefined` for an entry this
 runtime cannot read, such as zstd on older Node, so the caller treats it as a
 miss. It is a separate entry point so the policy above stays free of Node
 APIs.
+
+## Markdown
+
+`markdown` builds Markdown for untrusted values. Pick the helper by what the
+value is: `inlineCode` for identifiers and short values, `codeBlock` for
+multi-line data, and `text` for values that should read as prose. Each keeps
+the value inside the line or block it is placed in, so the value cannot add
+headings, list items, links, or other structure. `inlineCode` and `codeBlock`
+need no escaping; `text` escapes with backslashes only and has no runtime
+dependencies. The property tests parse each helper's output with `marked`, the
+parser the CLI renders with (same version, from the workspace catalog), and
+with micromark, the CommonMark reference parser, and check that any input
+round-trips as the same literal value.
+
+`tableCell` is `text` plus escaped pipes, for a value in a GFM table cell. The
+CLI and MCP both import these helpers, so their output escapes the same way. Escaped text never becomes a literal autolink: a URL in upstream data
+stays plain text.
 
 ## Resource identity
 

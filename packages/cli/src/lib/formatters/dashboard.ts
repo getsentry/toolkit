@@ -12,12 +12,11 @@ import chalk from "chalk";
 import stringWidth from "string-width";
 import wrapAnsi from "wrap-ansi";
 
+import type { InferOutput } from "valibot";
 import type {
-  DashboardWidgetQuery,
   ScalarResult,
   TableResult,
   TimeseriesResult,
-  WidgetDataResult,
 } from "../../types/dashboard.js";
 import { stringifyUnknown } from "../errors.js";
 import { encodeImageToKitty } from "../kitty-image.js";
@@ -43,33 +42,22 @@ import { downsample, sparkline } from "./sparkline.js";
 // Data type yielded by dashboard view command
 // ---------------------------------------------------------------------------
 
-/** Full dashboard state with resolved widget data, yielded as CommandOutput. */
-export type DashboardViewData = {
-  id: string;
-  title: string;
-  period: string;
-  fetchedAt: string;
-  url: string;
-  dateCreated?: string;
-  environment?: string[];
+/**
+ * Full dashboard state with resolved widget data, yielded as CommandOutput:
+ * the JSON output ({@link DashboardViewOutputSchema}) plus the human-only
+ * rendering options the command strips from it (`jsonExclude`).
+ */
+export type DashboardViewData = InferOutput<
+  typeof DashboardViewOutputSchema
+> & {
   /** Renderer selected by --renderer; omitted for API/JSON output. */
   rendererPreference?: GraphicsRendererPreference;
   /** Whether the default high-DPI graphics width cap should apply. */
   graphicsCap?: boolean;
-  widgets: DashboardViewWidget[];
 };
 
 /** A widget with its resolved data result */
-export type DashboardViewWidget = {
-  title: string;
-  displayType: string;
-  widgetType?: string;
-  /** Markdown content for text widgets (from API passthrough field) */
-  description?: string;
-  layout?: { x: number; y: number; w: number; h: number };
-  queries?: DashboardWidgetQuery[];
-  data: WidgetDataResult;
-};
+export type DashboardViewWidget = DashboardViewData["widgets"][number];
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -365,6 +353,7 @@ import {
   formatCompactWithUnit,
   formatWithUnit,
 } from "./numbers.js";
+import type { DashboardViewOutputSchema } from "../../output-schemas/dashboard.js";
 
 /**
  * Format a value as a short Y-axis tick label (max ~4 chars).

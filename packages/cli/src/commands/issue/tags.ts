@@ -5,11 +5,10 @@
  * because that endpoint ignores them.
  */
 
-import { vGetOrganizationIssueTagResponse } from "@sentry/api/valibot";
-import { description, object, pipe } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { getIssueTag } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseEnvironment, parseTagKey } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { formatIssueTags } from "../../lib/formatters/issue-tags.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -25,6 +24,7 @@ import {
   requireIssueArgument,
 } from "./positional.js";
 import { buildCommandHint, resolveIssue } from "./utils.js";
+import { IssueTagsOutputSchema } from "../../generated/output-schemas/issue.js";
 
 type TagsFlags = {
   /** Emit the API response as JSON instead of a human table; defaults to false. */
@@ -72,21 +72,7 @@ export const tagsCommand = buildCommand({
   },
   output: {
     human: formatIssueTags,
-    schema: object({
-      ...vGetOrganizationIssueTagResponse.entries,
-      totalValues: pipe(
-        vGetOrganizationIssueTagResponse.entries.totalValues,
-        description(
-          "Total retained events, including missing tag values; not a lifetime count",
-        ),
-      ),
-      topValues: pipe(
-        vGetOrganizationIssueTagResponse.entries.topValues,
-        description(
-          "Up to 9 values ordered by count, with nullable counts and first/last seen timestamps",
-        ),
-      ),
-    }),
+    schema: IssueTagsOutputSchema,
   },
   parameters: {
     positional: {
@@ -96,14 +82,14 @@ export const tagsCommand = buildCommand({
         {
           placeholder: "key",
           brief: "Tag key, e.g. release, server_name, browser.name",
-          parse: String,
+          parse: parseTagKey,
         },
       ],
     },
     flags: {
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironment,
         brief: "Filter to one environment (default: all environments)",
         optional: true,
       },

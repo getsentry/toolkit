@@ -12,6 +12,7 @@ import { type Column, formatTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import type { SentryDeploy } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { SentryDeploySchema } from "../../generated/output-schemas/release.js";
 
 const USAGE_HINT = "sentry release deploys [<org>/]<version>";
 
@@ -52,6 +53,7 @@ export const deploysCommand = buildCommand({
   },
   output: {
     human: formatDeployList,
+    schema: SentryDeploySchema,
   },
   parameters: {
     positional: {

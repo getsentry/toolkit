@@ -117,6 +117,33 @@ describe("completion seeding from API responses", () => {
     ]);
   });
 
+  test("issue details store their tag keys, scoped and unscoped", async () => {
+    await seedCompletions(
+      `${API}/issues/123/`,
+      json({
+        shortId: "CLI-1A",
+        tags: [
+          { key: "browser.name", name: "Browser.Name" },
+          { name: "No key" },
+        ],
+      }),
+    );
+    await seedCompletions(
+      "https://sentry.io/api/0/issues/456/",
+      json({
+        shortId: "CLI-2B",
+        permalink: "https://acme.sentry.io/issues/456/",
+        tags: [{ key: "release", name: "Release" }],
+      }),
+    );
+    await seedCompletions(`${API}/issues/`, json([{ shortId: "CLI-3C" }]));
+
+    expect(getCachedCompletionEntities("tag-key", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "release", label: "Release" },
+      { orgSlug: "acme", value: "browser.name", label: "Browser.Name" },
+    ]);
+  });
+
   test("dashboards are stored by numeric ID only", async () => {
     await seedCompletions(
       `${API}/dashboards/`,
@@ -128,6 +155,201 @@ describe("completion seeding from API responses", () => {
 
     expect(getCachedCompletionEntities("dashboard", ["acme"])).toEqual([
       { orgSlug: "acme", value: "12", label: "Errors" },
+    ]);
+  });
+
+  test("team lists are stored as slugs and as team:<id> owners", async () => {
+    await seedCompletions(
+      `${API}/teams/`,
+      json([{ id: "7", slug: "backend", name: "Backend" }]),
+    );
+
+    expect(getCachedCompletionEntities("team", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "backend", label: "Backend" },
+    ]);
+    expect(getCachedCompletionEntities("owner", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "team:7", label: "#backend" },
+    ]);
+  });
+
+  test("environments, releases, monitors, and workflows keep the value their flags read", async () => {
+    await seedCompletions(
+      "https://us.sentry.io/api/0/projects/acme/cli/environments/",
+      json([{ id: "1", name: "production" }]),
+    );
+    await seedCompletions(
+      `${API}/releases/`,
+      json([{ version: "cli@1.2.0+abc", shortVersion: "1.2.0" }]),
+    );
+    await seedCompletions(
+      `${API}/monitors/nightly/`,
+      json({ slug: "nightly", name: "Nightly job" }),
+    );
+    await seedCompletions(
+      `${API}/workflows/`,
+      json([{ id: "42", name: "Page on-call" }]),
+    );
+
+    expect(getCachedCompletionEntities("environment", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "production", label: undefined },
+    ]);
+    expect(getCachedCompletionEntities("release", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "cli@1.2.0+abc", label: "1.2.0" },
+    ]);
+    expect(getCachedCompletionEntities("monitor", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "nightly", label: "Nightly job" },
+    ]);
+    expect(getCachedCompletionEntities("workflow", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "42", label: "Page on-call" },
+    ]);
+  });
+
+  test("integrations by ID and installed Sentry Apps by slug", async () => {
+    await seedCompletions(
+      `${API}/integrations/`,
+      json([{ id: "99", name: "acme-jira", provider: { name: "Jira" } }]),
+    );
+    await seedCompletions(
+      `${API}/sentry-app-installations/`,
+      json([{ app: { slug: "linear", name: "Linear" } }]),
+    );
+
+    expect(getCachedCompletionEntities("integration", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "99", label: "Jira: acme-jira" },
+    ]);
+    expect(getCachedCompletionEntities("sentry-app", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "linear", label: "Linear" },
+    ]);
+  });
+
+  test("Sentry App issue-link forms are stored as name= and their fixed choices", async () => {
+    await seedCompletions(
+      `${API}/sentry-app-components/?filter=issue-link`,
+      json([
+        {
+          type: "issue-link",
+          sentryApp: { slug: "tracker" },
+          schema: {
+            link: {
+              uri: "/link",
+              required_fields: [
+                {
+                  name: "priority",
+                  type: "select",
+                  choices: [
+                    ["high", "High"],
+                    [2, "Low"],
+                  ],
+                },
+              ],
+              optional_fields: [{ name: "note", type: "text" }],
+            },
+          },
+        },
+        { type: "alert-rule-action", schema: { link: {} } },
+      ]),
+    );
+
+    expect(getCachedCompletionEntities("app-link-field", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "priority=", label: "tracker, required" },
+      { orgSlug: "acme", value: "priority=high", label: "tracker, required" },
+      { orgSlug: "acme", value: "priority=2", label: "tracker, required" },
+      { orgSlug: "acme", value: "note=", label: "tracker" },
+    ]);
+  });
+
+  test("client keys are stored by public DSN", async () => {
+    await seedCompletions(
+      "https://us.sentry.io/api/0/projects/acme/cli/keys/",
+      json([
+        { name: "Default", dsn: { public: "https://k@o1.ingest.sentry.io/1" } },
+      ]),
+    );
+
+    expect(getCachedCompletionEntities("dsn", ["acme"])).toEqual([
+      {
+        orgSlug: "acme",
+        value: "https://k@o1.ingest.sentry.io/1",
+        label: "Default",
+      },
+    ]);
+  });
+
+  test("attribute keys are stored by the dataset the request names", async () => {
+    const attributes = (dataset: string) =>
+      `${API}/trace-items/attributes/?dataset=${dataset}&attributeType=number`;
+    await seedCompletions(
+      attributes("spans"),
+      json([
+        {
+          key: "span.duration",
+          name: "span.duration",
+          attributeType: "number",
+        },
+        {
+          key: "tags[cart.total,number]",
+          name: "cart.total",
+          attributeType: "number",
+        },
+      ]),
+    );
+    await seedCompletions(
+      attributes("logs"),
+      json([{ key: "severity", name: "severity", attributeType: "string" }]),
+    );
+    // Datasets nothing completes, and requests that name none, store nothing
+    await seedCompletions(
+      attributes("preprod"),
+      json([{ key: "app.size", name: "app.size", attributeType: "number" }]),
+    );
+    await seedCompletions(
+      `${API}/trace-items/attributes/`,
+      json([{ key: "span.op", name: "span.op", attributeType: "string" }]),
+    );
+
+    expect(getCachedCompletionEntities("span-attribute", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "span.duration", label: "number" },
+      {
+        orgSlug: "acme",
+        value: "tags[cart.total,number]",
+        label: "cart.total (number)",
+      },
+    ]);
+    expect(getCachedCompletionEntities("log-attribute", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "severity", label: "string" },
+    ]);
+    expect(getCachedCompletionEntities("metric-attribute", ["acme"])).toEqual(
+      [],
+    );
+  });
+
+  test("attribute keys Sentry defines are stored ahead of the user's", async () => {
+    const attribute = (key: string, source: string) => ({
+      key,
+      name: key,
+      attributeType: "string",
+      attributeSource: { source_type: source },
+    });
+    const userKeys = Array.from({ length: MAX_ENTITIES_PER_ORG }, (_, i) =>
+      attribute(`app.${String(i).padStart(3, "0")}`, "user"),
+    );
+    await seedCompletions(
+      `${API}/trace-items/attributes/?dataset=spans`,
+      json([
+        ...userKeys,
+        attribute("span.op", "sentry"),
+        attribute("span.description", "sentry"),
+      ]),
+    );
+
+    const values = getCachedCompletionEntities("span-attribute", ["acme"]).map(
+      (e) => e.value,
+    );
+    expect(values).toHaveLength(MAX_ENTITIES_PER_ORG);
+    expect(values.slice(0, 3)).toEqual([
+      "span.op",
+      "span.description",
+      "app.000",
     ]);
   });
 

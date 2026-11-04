@@ -15,6 +15,7 @@ import { basename } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { uploadDartSymbolMap } from "../../lib/api/dart-symbols.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath, parseText } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -195,7 +196,7 @@ export const uploadCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the dart symbol map JSON file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -203,7 +204,7 @@ export const uploadCommand = buildCommand({
     flags: {
       "debug-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Debug ID (UUID) from the companion native debug file",
       },
       "no-upload": {
@@ -240,7 +241,7 @@ export const uploadCommand = buildCommand({
 
     // 3. --no-upload: validate only, no auth needed
     if (flags["no-upload"]) {
-      yield new CommandOutput<DartSymbolMapUploadResult>({
+      yield new CommandOutput({
         path: mappingPath,
         debugId: flags["debug-id"],
         uploaded: false,
@@ -275,7 +276,7 @@ export const uploadCommand = buildCommand({
     });
 
     // 6. Yield result
-    yield new CommandOutput<DartSymbolMapUploadResult>({
+    yield new CommandOutput({
       org,
       project,
       path: mappingPath,

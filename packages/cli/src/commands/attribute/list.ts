@@ -21,6 +21,12 @@ import {
   parseAttributeTypes,
 } from "../../lib/attribute-search.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import {
+  choiceListParser,
+  choiceParser,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { buildDatasetParser, datasetDisplayName } from "../../lib/datasets.js";
 import {
   advancePaginationState,
@@ -283,7 +289,7 @@ export const listCommand = buildListCommand("attribute", {
           placeholder: "filter",
           brief:
             "Text in attribute names and/or has:<key> terms, e.g. 'gen_ai has:http.method'",
-          parse: String,
+          parse: parseText,
           optional: true,
         },
       ],
@@ -291,13 +297,13 @@ export const listCommand = buildListCommand("attribute", {
     flags: {
       dataset: {
         kind: "parsed",
-        parse: DATASETS.parse,
+        parse: choiceParser(DATASETS.names, DATASETS.parse),
         brief: `Dataset to list attributes for (${DATASETS.names.join(", ")})`,
         default: DEFAULT_DATASET,
       },
       type: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser(ATTRIBUTE_TYPES),
         brief: `Only show attributes of these types: ${ATTRIBUTE_TYPES.join(", ")}. Repeat the flag for each type or pass a comma-separated list (e.g. --type string,number)`,
         variadic: true,
         optional: true,
@@ -305,8 +311,9 @@ export const listCommand = buildListCommand("attribute", {
       period: LIST_PERIOD_FLAG,
       limit: {
         ...buildListLimitFlag("attributes"),
-        parse: (value: string) =>
+        parse: textParser((value: string) =>
           validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT),
+        ),
       },
     },
     aliases: {

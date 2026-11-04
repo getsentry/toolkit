@@ -19,7 +19,7 @@ import {
   type TransportCache,
 } from "@sentry/toolkit-core/api-client/transport";
 import { computeInvalidationPrefixes } from "@sentry/toolkit-core/api-client/response-cache";
-import { formatAuthHeader, normalizeAuthToken } from "./auth-header.js";
+import { formatAuthHeader } from "./auth-header.js";
 import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
 import {
@@ -51,17 +51,16 @@ import {
 import { extractInputUrl } from "./fetch-input.js";
 import { isIdempotentOperation } from "./idempotent-operations.js";
 import { logger } from "./logger.js";
+import { isSentrySaasUrl } from "./sentry-urls.js";
 import {
   clearLastCacheHitAge,
   invalidateCachedResponsesMatching,
   lookupCachedResponse,
   storeCachedResponse,
 } from "./response-cache.js";
-import { normalizeOrigin } from "./sentry-urls.js";
 import { isManualHttpTracing, withTracingSpan } from "./telemetry.js";
-import { parseSntrysClaim } from "./token-claims.js";
 import {
-  isHostTrustedForClaim,
+  assertCredentialScope,
   isRequestOriginTrustedForContext,
 } from "./token-host.js";
 
@@ -157,29 +156,7 @@ function prepareHeaders(
   // Host-scoping guard (defense in depth). Primary rejection happens at the
   // URL-arg / rc-shim entry points; this catches any code path that mutated
   // SENTRY_HOST/SENTRY_URL without going through those guards.
-  if (!isRequestOriginTrustedForContext(input, credential)) {
-    throw new HostScopeError(
-      "Credentials",
-      normalizeOrigin(input) ?? "<unknown host>",
-      credential.host,
-    );
-  }
-
-  // sntrys_ claim check — defense-in-depth for users with access to
-  // multiple Sentry instances. The claim is unsigned (see token-claims.ts);
-  // fail-open on parse errors. Uses isHostTrustedForClaim so multi-region
-  // fan-out via the control silo's region URLs still works.
-  const claimUrl = parseSntrysClaim(normalizeAuthToken(credential.token))?.url;
-  if (
-    claimUrl &&
-    !isHostTrustedForClaim(input, claimUrl, credential.identity)
-  ) {
-    throw new HostScopeError(
-      "Credentials",
-      normalizeOrigin(input) ?? "<unknown host>",
-      claimUrl,
-    );
-  }
+  assertCredentialScope(input, credential);
 
   if (isManualHttpTracing()) {
     const traceData = getTraceData();
@@ -259,6 +236,18 @@ function resolveTimeoutMs(fullUrl: string): number {
     }
   }
   return REQUEST_TIMEOUT_MS;
+}
+
+/** Next steps for a request that got no response in time. */
+function buildTimeoutHint(idempotent: boolean): string {
+  const baseUrl = getApiBaseUrl();
+  const retry = idempotent
+    ? "Try again."
+    : "The change may still have been applied; check before trying again.";
+  const check = isSentrySaasUrl(baseUrl)
+    ? "Check Sentry's status with: sentry status"
+    : `Check the server's health with: sentry status --url ${baseUrl}`;
+  return `The Sentry API at ${baseUrl} did not respond in time. ${retry}\n  ${check}`;
 }
 
 /** Pass custom TLS options (CA certs for corporate proxies) to each fetch. */
@@ -366,9 +355,7 @@ function createCliTransport(credential: CredentialContext | undefined) {
       timeout: ({ timeoutMs, idempotent }) =>
         new TimeoutError(
           `Request timed out after ${Math.round(timeoutMs / 1000)}s.`,
-          idempotent
-            ? "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io."
-            : "The Sentry API did not respond in time. The change may still have been applied; check before trying again. If the problem persists, check https://status.sentry.io.",
+          buildTimeoutHint(idempotent),
         ),
       // TLS certificate errors are deterministic — don't retry
       fatal: (error) =>

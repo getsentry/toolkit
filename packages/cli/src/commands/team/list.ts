@@ -10,31 +10,32 @@
  * - Cross-org project search (e.g., sentry)
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import {
   listProjectTeams,
   listTeams,
   listTeamsPaginated,
 } from "../../lib/api-client.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import {
   buildOrgListCommand,
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
-import type { OrgListConfig } from "../../lib/org-list.js";
-import { type SentryTeam, SentryTeamSchema } from "../../types/index.js";
+import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
+import type { SentryTeam } from "../../types/index.js";
+import { TeamListItemSchema } from "../../generated/output-schemas/team.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "team-list";
 
 /** Team with its organization context for display */
-type TeamWithOrg = SentryTeam & { orgSlug?: string };
+type TeamWithOrg = WithOrg<SentryTeam>;
 
 /** Column definitions for the team table. */
 const TEAM_COLUMNS: Column<TeamWithOrg>[] = [
   { header: "ORG", value: (t) => t.orgSlug || "" },
   { header: "SLUG", value: (t) => t.slug },
-  { header: "NAME", value: (t) => escapeMarkdownCell(t.name) },
+  { header: "NAME", value: (t) => tableCell(t.name) },
   {
     header: "MEMBERS",
     value: (t) => String(t.memberCount ?? ""),
@@ -43,7 +44,11 @@ const TEAM_COLUMNS: Column<TeamWithOrg>[] = [
 ];
 
 /** Shared config that plugs into the org-list framework. */
-const teamListConfig: OrgListConfig<SentryTeam, TeamWithOrg> = {
+const teamListConfig: OrgListConfig<
+  SentryTeam,
+  TeamWithOrg,
+  typeof TeamListItemSchema
+> = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "teams",
   commandPrefix: "sentry team list",
@@ -54,7 +59,7 @@ const teamListConfig: OrgListConfig<SentryTeam, TeamWithOrg> = {
   searchesNames: true,
   displayTable: (teams: TeamWithOrg[]) => formatTable(teams, TEAM_COLUMNS),
   listForProject: (org, project) => listProjectTeams(org, project),
-  schema: SentryTeamSchema,
+  schema: TeamListItemSchema,
 };
 
 const docs: OrgListCommandDocs = {

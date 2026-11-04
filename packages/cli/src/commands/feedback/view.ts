@@ -27,8 +27,8 @@ import {
   getReplayIdFromEvent,
 } from "../../lib/replay-search.js";
 import type { FeedbackViewResult, SentryEvent } from "../../types/index.js";
-import { FeedbackViewOutputSchema } from "../../types/index.js";
 import { type FeedbackTarget, feedbackPositional } from "./positional.js";
+import { FeedbackViewOutputSchema } from "../../generated/output-schemas/feedback.js";
 
 const log = logger.withTag("feedback.view");
 
@@ -82,8 +82,8 @@ async function tryListAttachments(
 function jsonTransformFeedbackView(
   data: FeedbackViewResult,
   fields?: string[],
-): unknown {
-  const result: Record<string, unknown> = {
+) {
+  const result = {
     ...data.feedback,
     org: data.org,
     event: data.event,

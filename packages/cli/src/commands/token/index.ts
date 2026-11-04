@@ -1,4 +1,5 @@
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { createCommand } from "./create.js";
 import { deleteCommand } from "./delete.js";
 import { listCommand } from "./list.js";
@@ -10,7 +11,7 @@ export const tokenRoute = buildRouteMap({
     delete: deleteCommand,
   },
   docs: {
-    brief: "Manage org auth tokens",
+    brief: topLevelBrief("token"),
     fullDescription:
       "Create, list, and revoke org auth tokens: the org:ci tokens used to upload " +
       "source maps, debug files, and releases from CI.\n\n" +

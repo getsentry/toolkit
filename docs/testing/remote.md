@@ -382,7 +382,7 @@ Opens at `http://localhost:6274`
 **Basic verification:**
 
 1. List tools → Verify expected tools available
-2. Call `execute_sentry_tool` with `name="whoami"` and `arguments={}` → Verify authentication
+2. Call `whoami` → Verify authentication
 3. Call `find_organizations` → Verify data access
 
 **Parameter testing:**
@@ -588,7 +588,6 @@ pnpm -w run cli "who am I?"
 pnpm -w run cli "list tools" | jq '.tools[] | .name'
 
 # Verify the session grant includes the capability for the tool you need.
-# Project-management tools are catalog-only; find them with search_sentry_tools.
 # Example: create_project requires project-management and is hidden in project-scoped sessions.
 
 # Rebuild and restart
@@ -647,7 +646,7 @@ pnpm dev
 # Example: Don't query all projects repeatedly
 
 # For testing, use mocked responses instead
-cd packages/mcp-server
+cd packages/mcp-core
 pnpm test
 ```
 

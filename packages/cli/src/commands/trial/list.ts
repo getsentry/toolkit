@@ -22,40 +22,19 @@ import {
   getTrialStatus,
   type TrialStatus,
 } from "../../lib/trials.js";
-import {
-  type CustomerTrialInfo,
-  ProductTrialSchema,
-  type Writer,
-} from "../../types/index.js";
+import type { CustomerTrialInfo, Writer } from "../../types/index.js";
+import { TrialListEntrySchema } from "../../generated/output-schemas/trial.js";
+import type { TrialListEntryOutput } from "../../output-schemas/trial.js";
 
 type ListFlags = {
   readonly json: boolean;
   readonly fields?: string[];
 };
 
-/**
- * Enriched trial entry for display.
- * Adds derived fields (name, displayName, status, daysRemaining) to the raw API data.
- */
-type TrialListEntry = {
-  /** CLI-friendly name (e.g., "seer") or "plan" for plan-level trials */
-  name: string;
+/** A trial for display: the JSON fields plus its human-only display name. */
+type TrialListEntry = TrialListEntryOutput & {
   /** Human-readable product name (e.g., "Seer") or plan upgrade name */
   displayName: string;
-  /** API category name (e.g., "seerUsers"), or "plan" for plan-level trials */
-  category: string;
-  /** Derived status */
-  status: TrialStatus;
-  /** Days remaining for active trials, null otherwise */
-  daysRemaining: number | null;
-  /** Raw isStarted flag from API */
-  isStarted: boolean;
-  /** Trial length in days, null if not set */
-  lengthDays: number | null;
-  /** ISO date string when trial started, null if not started */
-  startDate: string | null;
-  /** ISO date string when trial ends, null if not started */
-  endDate: string | null;
 };
 
 /** Status display labels with color indicators */
@@ -217,7 +196,7 @@ export const listCommand = buildCommand({
   output: {
     human: formatTrialListHuman,
     jsonExclude: ["displayName"],
-    schema: ProductTrialSchema,
+    schema: TrialListEntrySchema,
   },
   parameters: {
     positional: {

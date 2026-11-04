@@ -13,6 +13,7 @@ import type { SentryContext } from "../../context.js";
 import type { ProguardMapping } from "../../lib/api/proguard.js";
 import { uploadProguardMappings } from "../../lib/api/proguard.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath, parseText } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -190,14 +191,14 @@ export const uploadCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Paths to ProGuard/R8 mapping files",
-        parse: String,
+        parse: parseFilePath,
         placeholder: "path",
       },
     },
     flags: {
       uuid: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Force a specific UUID instead of computing from file content " +
           "(only valid with a single file)",
@@ -263,7 +264,7 @@ export const uploadCommand = buildCommand({
 
     // 6. --no-upload: just print UUIDs and return (no auth needed)
     if (flags["no-upload"]) {
-      yield new CommandOutput<ProguardUploadResult>({
+      yield new CommandOutput({
         mappings: uniqueMappings.map((m) => ({ path: m.path, uuid: m.uuid })),
         filesUploaded: 0,
       });
@@ -293,7 +294,7 @@ export const uploadCommand = buildCommand({
     });
 
     // 9. Yield result
-    yield new CommandOutput<ProguardUploadResult>({
+    yield new CommandOutput({
       org,
       project,
       mappings: uniqueMappings.map((m) => ({ path: m.path, uuid: m.uuid })),

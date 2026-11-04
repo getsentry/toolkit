@@ -5,17 +5,13 @@
  * returns the value in the create response.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { createOrgAuthToken } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import { selectAccountForOrg } from "../../lib/db/auth.js";
-import {
-  escapeMarkdownInline,
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
 import {
@@ -52,20 +48,18 @@ type TokenCreateTarget = BoundPositional<
 function formatTokenCreated(result: CreateResult): string {
   if (result.dryRun) {
     return renderMarkdown(
-      `Would create org auth token ${safeCodeSpan(result.name)} in **${escapeMarkdownInline(result.org)}**. (dry run)`,
+      `Would create org auth token ${inlineCode(result.name)} in **${text(result.org)}**. (dry run)`,
     );
   }
   const rows: [string, string][] = [
-    ["Name", escapeMarkdownInline(result.name)],
+    ["Name", text(result.name)],
     ["ID", result.id],
     ["Scopes", result.scopes.join(", ")],
   ];
   // Keep the one-time secret outside the table, which hard-wraps long cells.
-  const token = result.token
-    ? `\n\nToken:\n\n${safeCodeSpan(result.token)}`
-    : "";
+  const token = result.token ? `\n\nToken:\n\n${inlineCode(result.token)}` : "";
   return renderMarkdown(
-    `## Org auth token created in ${escapeMarkdownInline(result.org)}\n\n${mdKvTable(rows)}${token}`,
+    `## Org auth token created in ${text(result.org)}\n\n${mdKvTable(rows)}${token}`,
   );
 }
 

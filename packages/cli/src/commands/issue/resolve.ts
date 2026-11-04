@@ -25,8 +25,10 @@ import {
   updateIssueStatus,
 } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import { formatIssueDetails, muted } from "../../lib/formatters/index.js";
+import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import type { SentryIssue } from "../../types/index.js";
@@ -87,8 +89,11 @@ function formatResolved(result: ResolveResult): string {
   return `${head}\n\n${formatIssueDetails(issue)}`;
 }
 
-function jsonTransform(result: ResolveResult): unknown {
-  return { ...result.issue, resolved_in: result.spec ?? undefined };
+function jsonTransform(result: ResolveResult, fields?: string[]): unknown {
+  return filterFieldsIfSet(
+    { ...result.issue, resolved_in: result.spec ?? undefined },
+    fields,
+  );
 }
 
 export const resolveCommand = buildCommand({
@@ -149,7 +154,10 @@ export const resolveCommand = buildCommand({
     flags: {
       in: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser([
+          RESOLVE_NEXT_RELEASE_SENTINEL,
+          RESOLVE_COMMIT_SENTINEL,
+        ]),
         brief: `Resolve in a release, next release, or commit ('<version>' | '${RESOLVE_NEXT_RELEASE_SENTINEL}' | '${RESOLVE_COMMIT_SENTINEL}' | '${RESOLVE_COMMIT_EXPLICIT_PREFIX}<repo>@<sha>')`,
         optional: true,
       },
@@ -193,7 +201,7 @@ export const resolveCommand = buildCommand({
     log.debug(
       `Resolved ${updated.shortId} ${describeSpec(statusDetails ?? null)}`,
     );
-    yield new CommandOutput<ResolveResult>({
+    yield new CommandOutput({
       issue: updated,
       spec: statusDetails ?? null,
     });

@@ -23,6 +23,7 @@
 import type { SentryContext } from "../../context.js";
 import { type MergeIssuesResult, mergeIssues } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseIssueReference } from "../../lib/completion-target.js";
 import {
   ApiError,
   CliError,
@@ -30,6 +31,7 @@ import {
   ValidationError,
 } from "../../lib/errors.js";
 import { muted } from "../../lib/formatters/index.js";
+import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import type { IssueArgument } from "../../lib/issue-arguments.js";
 import { logger } from "../../lib/logger.js";
@@ -70,19 +72,22 @@ function formatMerged(result: MergeCommandResult): string {
   return `${head}\n${children}\n\nSee: ${url}`;
 }
 
-function jsonTransform(result: MergeCommandResult): unknown {
-  return {
-    org: result.org,
-    parent: {
-      shortId: result.parentShortId,
-      id: result.raw.parent,
-      url: buildIssueUrl(result.org, result.raw.parent),
+function jsonTransform(result: MergeCommandResult, fields?: string[]): unknown {
+  return filterFieldsIfSet(
+    {
+      org: result.org,
+      parent: {
+        shortId: result.parentShortId,
+        id: result.raw.parent,
+        url: buildIssueUrl(result.org, result.raw.parent),
+      },
+      children: result.childShortIds.map((shortId, i) => ({
+        shortId,
+        id: result.raw.children[i] ?? "",
+      })),
     },
-    children: result.childShortIds.map((shortId, i) => ({
-      shortId,
-      id: result.raw.children[i] ?? "",
-    })),
-  };
+    fields,
+  );
 }
 
 /**
@@ -302,7 +307,7 @@ export const mergeCommand = buildCommand({
     flags: {
       into: {
         kind: "parsed",
-        parse: String,
+        parse: parseIssueReference,
         brief:
           "Prefer this issue as the canonical parent (included in the merge if not already listed)",
         optional: true,
@@ -367,7 +372,7 @@ export const mergeCommand = buildCommand({
       );
     }
 
-    yield new CommandOutput<MergeCommandResult>({
+    yield new CommandOutput({
       org,
       parentShortId,
       childShortIds,
