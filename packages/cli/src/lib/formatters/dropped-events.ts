@@ -1,17 +1,38 @@
-import type { DroppedEventRow } from "../../output-schemas/dropped-events.js";
-import type { DroppedEventsResponse } from "../../types/index.js";
-import { outcomeLabel } from "../../types/index.js";
+import type { ListOrganizationEventsDroppedResponse } from "@sentry/api";
+import type { DroppedEventRow } from "../../output-schemas/event.js";
 import { bold } from "./colors.js";
 import { fmtCount } from "./numbers.js";
 import { type Column, formatTable } from "./table.js";
 
 export type { DroppedEventRow };
 
+/** Human-readable label for a drop outcome code. */
+function outcomeLabel(outcome: string): string {
+  switch (outcome) {
+    case "client_discard":
+      return "Client Discard";
+    case "filtered":
+      return "Inbound Filter";
+    case "invalid":
+      return "Invalid or Malformed";
+    case "rate_limited":
+      return "Rate Limited";
+    case "abuse":
+      return "Abuse Limit";
+    case "cardinality_limited":
+      return "Cardinality Limit";
+    default:
+      return outcome;
+  }
+}
+
 function shareRatio(events: number, total: number): number {
   return total === 0 ? 0 : events / total;
 }
 
-function sumCounts(buckets: DroppedEventsResponse["droppedEvents"]): number {
+function sumCounts(
+  buckets: ListOrganizationEventsDroppedResponse["droppedEvents"],
+): number {
   return buckets.reduce((sum, bucket) => sum + bucket.count, 0);
 }
 
@@ -22,7 +43,7 @@ function sumCounts(buckets: DroppedEventsResponse["droppedEvents"]): number {
  * flyout.
  */
 export function summarizeDroppedEvents(
-  response: DroppedEventsResponse,
+  response: ListOrganizationEventsDroppedResponse,
 ): DroppedEventRow[] {
   const total =
     sumCounts(response.droppedEvents) + sumCounts(response.acceptedEvents);
@@ -39,11 +60,12 @@ export function summarizeDroppedEvents(
       existing.events += bucket.count;
     } else {
       // Tags are per (outcome, reason), stable across a reason's buckets, so
-      // take them from the first bucket seen.
+      // take them from the first bucket seen. Sentry added them in
+      // getsentry/sentry#127850; older self-hosted servers omit them.
       reasons.set(bucket.reason, {
         events: bucket.count,
         category: bucket.category,
-        tags: bucket.tags,
+        tags: bucket.tags ?? [],
       });
     }
   }

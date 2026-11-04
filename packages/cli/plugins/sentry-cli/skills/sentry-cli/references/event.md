@@ -252,7 +252,7 @@ Analytics for events Sentry dropped
 
 **Flags:**
 - `-d, --dataset <value> - Dropped-data type: errors, spans, logs, metrics - (default: "errors")`
-- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "24h")`
+- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "7d")`
 
 **JSON Fields** (use `--json --fields` to select specific fields):
 

@@ -3,26 +3,25 @@ import { getDroppedEvents } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { choiceParser } from "../../lib/completion-target.js";
 import { buildDatasetParser } from "../../lib/datasets.js";
-import { PROJECT_TARGET_BRIEF } from "../../lib/list-command.js";
+import {
+  LIST_PERIOD_FLAG,
+  PERIOD_ALIASES,
+  PROJECT_TARGET_BRIEF,
+} from "../../lib/list-command.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   type DroppedEventRow,
   formatDroppedEvents,
   summarizeDroppedEvents,
 } from "../../lib/formatters/dropped-events.js";
-import { DroppedEventRowSchema } from "../../generated/output-schemas/dropped-events.js";
+import { DroppedEventRowSchema } from "../../generated/output-schemas/event.js";
 import { withProgress } from "../../lib/polling.js";
 import { fetchProjectId } from "../../lib/resolve-target.js";
 import {
   type ProjectBoundTarget,
   projectBoundTarget,
 } from "../../lib/target-positional.js";
-import {
-  PERIOD_BRIEF,
-  parsePeriod,
-  type TimeRange,
-  timeRangeToApiParams,
-} from "../../lib/time-range.js";
+import { type TimeRange, timeRangeToApiParams } from "../../lib/time-range.js";
 
 const { parse: parseDataset, names: DATASET_NAMES } = buildDatasetParser([
   "errors",
@@ -31,11 +30,8 @@ const { parse: parseDataset, names: DATASET_NAMES } = buildDatasetParser([
   "tracemetrics",
 ]);
 
-/** Default time period, matching the explore command. */
-const DEFAULT_PERIOD = "24h";
-
 type AnalyticsFlags = {
-  dataset: string;
+  dataset: ReturnType<typeof parseDataset>;
   period: TimeRange;
   json?: boolean;
   fields?: string[];
@@ -99,14 +95,9 @@ export const analyticsCommand = buildCommand({
         brief: `Dropped-data type: ${DATASET_NAMES.join(", ")}`,
         default: "errors",
       },
-      period: {
-        kind: "parsed",
-        parse: parsePeriod,
-        brief: PERIOD_BRIEF,
-        default: DEFAULT_PERIOD,
-      },
+      period: LIST_PERIOD_FLAG,
     },
-    aliases: { d: "dataset", t: "period" },
+    aliases: { ...PERIOD_ALIASES, d: "dataset" },
   },
   async *func(
     this: SentryContext,

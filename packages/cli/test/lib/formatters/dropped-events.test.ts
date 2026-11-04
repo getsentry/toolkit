@@ -1,13 +1,15 @@
+import type { ListOrganizationEventsDroppedResponse } from "@sentry/api";
 import { describe, expect, test } from "vitest";
 import {
   formatDroppedEvents,
   summarizeDroppedEvents,
 } from "../../../src/lib/formatters/dropped-events.js";
-import type { DroppedEventsResponse } from "../../../src/types/index.js";
 
 function bucket(
-  overrides: Partial<DroppedEventsResponse["droppedEvents"][number]>,
-): DroppedEventsResponse["droppedEvents"][number] {
+  overrides: Partial<
+    ListOrganizationEventsDroppedResponse["droppedEvents"][number]
+  >,
+): ListOrganizationEventsDroppedResponse["droppedEvents"][number] {
   return {
     type: "error",
     category: "error",
@@ -23,8 +25,14 @@ function bucket(
 
 describe("summarizeDroppedEvents", () => {
   test("collapses buckets into one row per (outcome, reason)", () => {
-    const response: DroppedEventsResponse = {
-      meta: { dataset: "errors", start: 0, end: 10, interval: 1 },
+    const response: ListOrganizationEventsDroppedResponse = {
+      meta: {
+        dataset: "errors",
+        start: 0,
+        end: 10,
+        interval: 1,
+        suppressedDrops: [],
+      },
       droppedEvents: [
         bucket({ reason: "key_quota", count: 3 }),
         bucket({ reason: "key_quota", count: 2 }),
@@ -41,8 +49,14 @@ describe("summarizeDroppedEvents", () => {
   });
 
   test("sorts by outcome volume, then reason volume", () => {
-    const response: DroppedEventsResponse = {
-      meta: { dataset: "errors", start: 0, end: 10, interval: 1 },
+    const response: ListOrganizationEventsDroppedResponse = {
+      meta: {
+        dataset: "errors",
+        start: 0,
+        end: 10,
+        interval: 1,
+        suppressedDrops: [],
+      },
       droppedEvents: [
         bucket({ outcome: "filtered", reason: "a", count: 1 }),
         bucket({ outcome: "rate_limited", reason: "b", count: 10 }),
@@ -57,8 +71,14 @@ describe("summarizeDroppedEvents", () => {
   });
 
   test("share is the slice over total dropped plus accepted", () => {
-    const response: DroppedEventsResponse = {
-      meta: { dataset: "errors", start: 0, end: 10, interval: 1 },
+    const response: ListOrganizationEventsDroppedResponse = {
+      meta: {
+        dataset: "errors",
+        start: 0,
+        end: 10,
+        interval: 1,
+        suppressedDrops: [],
+      },
       droppedEvents: [bucket({ count: 25 })],
       acceptedEvents: [bucket({ outcome: "accepted", count: 75 })],
     };
@@ -66,6 +86,26 @@ describe("summarizeDroppedEvents", () => {
     const rows = summarizeDroppedEvents(response);
 
     expect(rows[0]!.share).toBeCloseTo(0.25);
+  });
+
+  test("defaults tags to [] when an older server omits them", () => {
+    const { tags: _tags, ...untagged } = bucket({ count: 3 });
+    const response = {
+      meta: {
+        dataset: "errors",
+        start: 0,
+        end: 10,
+        interval: 1,
+        suppressedDrops: [],
+      },
+      droppedEvents: [untagged],
+      acceptedEvents: [],
+    } as unknown as ListOrganizationEventsDroppedResponse;
+
+    const rows = summarizeDroppedEvents(response);
+
+    expect(rows[0]!.tags).toEqual([]);
+    expect(formatDroppedEvents(rows)).toContain("—");
   });
 });
 
@@ -75,8 +115,14 @@ describe("formatDroppedEvents", () => {
   });
 
   test("renders one section per outcome with a reason table", () => {
-    const response: DroppedEventsResponse = {
-      meta: { dataset: "errors", start: 0, end: 10, interval: 1 },
+    const response: ListOrganizationEventsDroppedResponse = {
+      meta: {
+        dataset: "errors",
+        start: 0,
+        end: 10,
+        interval: 1,
+        suppressedDrops: [],
+      },
       droppedEvents: [
         bucket({ outcome: "rate_limited", reason: "key_quota", count: 5 }),
         bucket({ outcome: "filtered", reason: "error_message", count: 2 }),

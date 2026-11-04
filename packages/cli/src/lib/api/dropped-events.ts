@@ -2,21 +2,20 @@
  * Dropped events API — events Sentry received but dropped before storage.
  *
  * Wraps the `events-dropped/` endpoint, which buckets dropped and accepted
- * volume by outcome and reason over a time range. Not yet in `@sentry/api`, so
- * it is called via `apiRequestToRegion` with a local Valibot schema.
+ * volume by outcome and reason over a time range.
  */
 
 import {
-  type DroppedEventsResponse,
-  DroppedEventsResponseSchema,
-} from "../../types/index.js";
-import { resolveOrgRegion } from "../region.js";
-import { apiRequestToRegion } from "./infrastructure.js";
+  type ListOrganizationEventsDroppedData,
+  type ListOrganizationEventsDroppedResponse,
+  listOrganizationEventsDropped,
+} from "@sentry/api";
+import { getOrgSdkConfig, unwrapResult } from "./infrastructure.js";
 
 /** Options for {@link getDroppedEvents}. */
 export type DroppedEventsOptions = {
   /** API-level dataset name. Callers resolve user-facing aliases first. */
-  dataset?: string;
+  dataset?: ListOrganizationEventsDroppedData["query"]["dataset"];
   /** Numeric project ID. Omit to span every project the token can read. */
   projectId?: string;
   /** Relative time period (e.g. "24h", "7d"). Mutually exclusive with start/end. */
@@ -36,22 +35,23 @@ export type DroppedEventsOptions = {
 export async function getDroppedEvents(
   orgSlug: string,
   options: DroppedEventsOptions = {},
-): Promise<DroppedEventsResponse> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion<DroppedEventsResponse>(
-    regionUrl,
-    `/organizations/${orgSlug}/events-dropped/`,
-    {
-      params: {
-        dataset: options.dataset ?? "errors",
-        project: options.projectId,
-        statsPeriod:
-          options.start || options.end ? undefined : options.statsPeriod,
-        start: options.start,
-        end: options.end,
-      },
-      schema: DroppedEventsResponseSchema,
+): Promise<ListOrganizationEventsDroppedResponse> {
+  const config = await getOrgSdkConfig(orgSlug);
+  const result = await listOrganizationEventsDropped({
+    ...config,
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      dataset: options.dataset ?? "errors",
+      project:
+        options.projectId === undefined ? undefined : [options.projectId],
+      statsPeriod:
+        options.start || options.end ? undefined : options.statsPeriod,
+      start: options.start,
+      end: options.end,
     },
+  });
+  return unwrapResult<ListOrganizationEventsDroppedResponse>(
+    result,
+    "Failed to fetch dropped events",
   );
-  return data;
 }

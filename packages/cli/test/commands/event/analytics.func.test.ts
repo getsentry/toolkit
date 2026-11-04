@@ -1,3 +1,4 @@
+import type { ListOrganizationEventsDroppedResponse } from "@sentry/api";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { analyticsCommand } from "../../../src/commands/event/analytics.js";
 
@@ -17,7 +18,6 @@ import * as apiClient from "../../../src/lib/api-client.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
-import type { DroppedEventsResponse } from "../../../src/types/index.js";
 
 function createMockContext() {
   const stdoutWrite = vi.fn(() => true);
@@ -36,10 +36,16 @@ function boundTarget(org: string, project: string) {
 }
 
 function response(
-  overrides: Partial<DroppedEventsResponse> = {},
-): DroppedEventsResponse {
+  overrides: Partial<ListOrganizationEventsDroppedResponse> = {},
+): ListOrganizationEventsDroppedResponse {
   return {
-    meta: { dataset: "errors", start: 0, end: 10, interval: 1 },
+    meta: {
+      dataset: "errors",
+      start: 0,
+      end: 10,
+      interval: 1,
+      suppressedDrops: [],
+    },
     droppedEvents: [],
     acceptedEvents: [],
     ...overrides,

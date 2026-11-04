@@ -88,38 +88,4 @@ describe("getDroppedEvents", () => {
     expect(url.searchParams.get("start")).toBe("2026-01-01T00:00:00Z");
     expect(url.searchParams.get("end")).toBe("2026-01-02T00:00:00Z");
   });
-
-  test("parses a response whose accepted bucket omits tags", async () => {
-    mockOk({
-      meta: { dataset: "errors", start: 1, end: 2, interval: 3600 },
-      droppedEvents: [
-        {
-          type: "error",
-          category: "error",
-          outcome: "rate_limited",
-          reason: "key_quota",
-          start: 1,
-          end: 2,
-          count: 5,
-          tags: ["unintentional"],
-        },
-      ],
-      acceptedEvents: [
-        {
-          type: "error",
-          category: "error",
-          outcome: "accepted",
-          reason: "none",
-          start: 1,
-          end: 2,
-          count: 9,
-        },
-      ],
-    });
-
-    const result = await getDroppedEvents(ORG);
-
-    expect(result.acceptedEvents[0]!.tags).toEqual([]);
-    expect(result.droppedEvents[0]!.tags).toEqual(["unintentional"]);
-  });
 });

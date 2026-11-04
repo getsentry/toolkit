@@ -6,12 +6,15 @@ import {
   vEventAttachmentDetailsResponse,
   vGroupEventsResponseDict,
   vIssueEventDetailsResponse,
+  vListOrganizationEventsDroppedResponse,
 } from "@sentry/api/valibot";
 import {
   array,
   description,
+  type InferOutput,
   looseObject,
   nullable,
+  number,
   object,
   optional,
   partial,
@@ -141,3 +144,40 @@ export const IssueEventSchema = pipe(
   }),
   description("Issue event (list endpoint)"),
 );
+
+const _DroppedEventsBucket =
+  vListOrganizationEventsDroppedResponse.entries.droppedEvents.item.entries;
+
+/**
+ * One (outcome, reason) slice of dropped volume in `event analytics`: one
+ * JSON row, one table line.
+ */
+export const DroppedEventRowSchema = pipe(
+  object({
+    outcome: pipe(
+      _DroppedEventsBucket.outcome,
+      description("Drop outcome code (e.g. rate_limited, filtered)"),
+    ),
+    label: pipe(string(), description("Human-readable outcome label")),
+    reason: pipe(
+      _DroppedEventsBucket.reason,
+      description("Drop reason within the outcome (e.g. spike_protection)"),
+    ),
+    category: pipe(
+      _DroppedEventsBucket.category,
+      description("Data category (e.g. error, span)"),
+    ),
+    events: pipe(number(), description("Events dropped for this slice")),
+    share: pipe(
+      number(),
+      description("Fraction of total volume (0-1), not a percentage string"),
+    ),
+    tags: pipe(
+      _DroppedEventsBucket.tags,
+      description("Drop classification: intentional or unintentional"),
+    ),
+  }),
+  description("A dropped-events row: one outcome/reason slice"),
+);
+
+export type DroppedEventRow = InferOutput<typeof DroppedEventRowSchema>;
