@@ -11,6 +11,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   buildDifFilters,
+  debugIdMatches,
+  normalizeDebugId,
   prepareDifs,
   scanPaths,
 } from "../../../src/lib/dif/scan.js";
@@ -49,6 +51,19 @@ async function writeShaderFixture(
   }
   return path;
 }
+
+describe("normalizeDebugId with a bare 32-hex id", () => {
+  test("hyphenates it so both spellings compare equal", () => {
+    const stem = DXIL_NAME.replace(/\.dxil$/, "");
+    expect(normalizeDebugId(stem.toUpperCase())).toBe(DXIL_DEBUG_ID);
+    expect(normalizeDebugId(DXIL_DEBUG_ID)).toBe(DXIL_DEBUG_ID);
+    expect(debugIdMatches(stem, DXIL_DEBUG_ID)).toBe(true);
+    // Shorter or longer hex strings (a Breakpad id carries an age digit) are left alone.
+    expect(normalizeDebugId("0F13A5DA412AFBF7C8662048F3294F3D0")).toBe(
+      "0f13a5da412afbf7c8662048f3294f3d0",
+    );
+  });
+});
 
 describe("prepareDifs with DXIL shader binaries", () => {
   test("recognises a shader by its header and names it from the file stem", async () => {

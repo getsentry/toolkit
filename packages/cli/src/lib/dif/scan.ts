@@ -64,7 +64,7 @@ const TYPE_TO_FORMAT: Readonly<Record<string, string>> = {
 const DXIL_HEADER = Buffer.from("DXBC", "ascii");
 
 /** A DXIL file is named after its 32-hex compiler hash, which is its debug id. */
-const DXIL_STEM_RE = /^[0-9a-f]{32}$/i;
+const BARE_HEX32_RE = /^[0-9a-f]{32}$/;
 
 /** Accepted `--type` filter values. */
 export const VALID_DIF_TYPES: readonly string[] = Object.keys(TYPE_TO_FORMAT);
@@ -129,7 +129,17 @@ export type PreparedDif = {
  * @returns The normalized form.
  */
 export function normalizeDebugId(id: string): string {
-  return id.trim().toLowerCase().replace(/[{}]/g, "");
+  const normalized = id.trim().toLowerCase().replace(/[{}]/g, "");
+  // A bare 32-hex id (an Apple UUID without hyphens, or a DXIL shader's file
+  // stem) is the hyphenated id with the hyphens dropped; compare them as one.
+  return BARE_HEX32_RE.test(normalized)
+    ? hyphenateHex32(normalized)
+    : normalized;
+}
+
+/** `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` from 32 hex digits. */
+function hyphenateHex32(hex: string): string {
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 /**
@@ -730,12 +740,6 @@ function peekBufferFormat(content: Buffer): string {
   return detectFormat(new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES)));
 }
 
-/** The hyphenated debug id of a DXIL file named after its 32-hex compiler hash. */
-function dxilDebugId(hex: string): string {
-  const h = hex.toLowerCase();
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-}
-
 /**
  * Prepare a DXIL shader binary. Its debug id is the compiler hash the engine
  * uses as the file name; the code id and shader group come from the manifest
@@ -748,20 +752,17 @@ function dxilDif(
   filters: DifFilters,
   info?: ShaderInfo,
 ): PreparedDif[] {
-  const stem = basename(displayPath, extname(displayPath));
-  if (!DXIL_STEM_RE.test(stem)) {
+  const stem = basename(displayPath, extname(displayPath)).toLowerCase();
+  if (!BARE_HEX32_RE.test(stem)) {
     log.warn(
       `Skipping ${displayPath}: a DXIL file must be named after its 32-hex shader hash`,
     );
     return [];
   }
-  const debugId = dxilDebugId(stem);
-  // `--id` may be given as the bare file stem or in the hyphenated form.
+  // normalizeDebugId hyphenates the stem, so `--id` matches either spelling.
+  const debugId = normalizeDebugId(stem);
   if (
-    !(
-      formatMatches("dxil", filters.formats) &&
-      (idMatches(debugId, filters.ids) || idMatches(stem, filters.ids))
-    )
+    !(formatMatches("dxil", filters.formats) && idMatches(debugId, filters.ids))
   ) {
     return [];
   }
