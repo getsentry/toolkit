@@ -1,46 +1,23 @@
 /** Generate command/API relationships from source calls and the public route tree. */
 
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { glob } from "tinyglobby";
 import { routes } from "../src/app.js";
-import type { ApiEndpoint, ApiReference } from "../src/lib/api-schema.js";
+import type { ApiReference } from "../src/lib/api-schema.js";
 import {
   isCommand,
   publicTargetPaths,
   type RouteMap,
   type RouteTarget,
 } from "../src/lib/introspect.js";
-import { analyzeSourceApiUsage } from "./lib/source-api-usage.js";
+import { commandApiAnalysis } from "./lib/command-api-analysis.js";
 
 const OUTPUT_PATH = "src/generated/command-api.json";
 
 /** Write which API operations each public command calls. */
 export async function emit(): Promise<void> {
-  const files = await glob(["src/**/*.{ts,tsx}"], {
-    ignore: ["src/generated/**"],
-  });
-  const sources = new Map(
-    await Promise.all(
-      files
-        .sort()
-        .map(async (file) => [file, await readFile(file, "utf8")] as const),
-    ),
-  );
-  const endpoints = JSON.parse(
-    await readFile("src/generated/api-schema.json", "utf8"),
-  ) as ApiEndpoint[];
-  const analysis = analyzeSourceApiUsage(
-    sources,
-    endpoints
-      .filter((entry) => entry.fn)
-      .map((entry) => ({
-        functionName: entry.fn,
-        method: entry.method,
-        path: entry.path,
-      })),
-  );
+  const analysis = await commandApiAnalysis();
 
   const paths = publicTargetPaths(routes as unknown as RouteMap);
   const matched = new Set<RouteTarget>();

@@ -15,6 +15,8 @@
  *    generated files the tree imports but these steps produce
  *    (`lib/route-tree-stubs.ts`), loads the tree, then runs each step. Step
  *    modules import the tree statically, so they are imported only here.
+ *    Work a step can do without the tree starts first, in its `prepare`:
+ *    `command-api` parses `src/` in a worker thread while the tree loads.
  *
  * Steps run in the order below, whatever order they are named in. Like
  * `pnpm tsx`, the runner loads `.env.local` when it exists and installs
@@ -58,6 +60,11 @@ type Step = {
    * a skipped step's dependencies are never imported.
    */
   files?: () => StepFiles;
+  /**
+   * Phase 2 only: start work that needs no route tree, such as a worker
+   * thread, before the tree loads, so the two overlap. `emit` awaits it.
+   */
+  prepare?: () => Promise<void>;
 };
 
 const GRAMMAR_SCRIPT = "../../scripts/generate-parsers.mjs";
@@ -147,7 +154,6 @@ const PRE_TREE_STEPS: readonly Step[] = [
 
 /** Phase 2: steps that read the route tree. */
 const TREE_STEPS: readonly Step[] = [
-  { name: "command-api", load: () => import("./generate-command-api.js") },
   {
     name: "completions",
     load: () => import("./generate-completion-targets.js"),
@@ -160,6 +166,15 @@ const TREE_STEPS: readonly Step[] = [
   { name: "docs-sections", load: () => import("./generate-docs-sections.js") },
   { name: "skill", load: () => import("./generate-skill.js") },
   { name: "sdk", load: () => import("./generate-sdk.js") },
+  // Last: its emit waits for the worker `prepare` starts, and no step reads
+  // `command-api.json` back (only `sentry schema` does, at runtime).
+  {
+    name: "command-api",
+    load: () => import("./generate-command-api.js"),
+    prepare: async () => {
+      void (await import("./lib/command-api-analysis.js")).commandApiAnalysis();
+    },
+  },
 ];
 
 const STEP_NAMES = [...PRE_TREE_STEPS, ...TREE_STEPS].map((step) => step.name);
@@ -195,6 +210,9 @@ for (const step of preTreeSteps) {
 }
 
 if (treeSteps.length > 0) {
+  for (const step of treeSteps) {
+    await step.prepare?.();
+  }
   await writeRouteTreeStubs();
   await import("../src/app.js");
   for (const step of treeSteps) {
