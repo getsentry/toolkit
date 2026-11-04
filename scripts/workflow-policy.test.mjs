@@ -8,6 +8,10 @@ import { describe, it } from "node:test";
 // per-project matrix. See docs/operations/github-actions.md#package-ci-checks.
 const PULL_REQUEST_WORKFLOWS = new Map([
   ["test.yml", "Builds and runs the per-project matrix."],
+  [
+    "cli-build.yml",
+    "Builds the CLI release artifacts and runs the CLI E2E tests against them.",
+  ],
   ["eval.yml", "Runs AI evaluations against model providers."],
   [
     "install-scripts.yml",

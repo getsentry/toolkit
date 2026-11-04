@@ -24,6 +24,44 @@ Package-specific checks and exceptions live in `package.json#sentryCi`; see
 [Package CI checks](#package-ci-checks). The standalone smoke-test suite remains
 in its own workflow.
 
+`test.yml` and `cli-build.yml` read their exact Node 20, 22, and 24 versions
+from `.github/node-versions/`. The npm runtime job calls the self-contained
+`sentryCi.npmRuntime` build command once, then validates the same package on
+all three Node versions.
+
+When the CLI is selected, its lint, typecheck, and policy checks run in the
+project job. Unit tests run on Node 22 in three parallel shards, with the same
+test directories and coverage as `pnpm --filter sentry test:unit`. Shards install
+only the CLI and its workspace dependencies, retaining install scripts. Each
+uploads a Vitest blob report; `CLI coverage` requires a report from every shard
+before merging them into `packages/cli/coverage/lcov.info`.
+The merge job installs the CLI dependency set without install scripts; it does
+not build packages or rerun tests.
+
+The project and unit-test jobs each build their workspace dependencies and run
+`ci:prepare` once before using the prepared sources. Public build and test
+commands still prepare their own inputs for local use. The final `test` gate
+requires the unit shards and coverage merge whenever the CLI is selected, and
+requires them to be skipped otherwise. The CLI E2E tests run in
+[cli-build.yml](#cli-buildyml), against the artifacts that workflow builds.
+
+### cli-build.yml
+
+Runs on pull requests, pushes to `main` and `release/cli/**`, and manual
+dispatch. It builds the CLI artifacts that ship: `Build Binary` builds every
+target on `main` and release branches, and only `linux-x64` on pull requests.
+Pull request builds get no `SENTRY_AUTH_TOKEN`, so they upload no sourcemaps,
+and they skip the compressed release copies. `Build npm Package` packs the npm package, and `Test npm Package` validates that
+package on Node 20, 22, and 24 with `scripts/validate-npm-runtime.sh`.
+`E2E Tests (Node 24)` downloads the
+Linux binary, the npm package, and the generated sources from those jobs and
+runs `test/e2e` against them without building anything. `Build status` fails
+unless the builds, the npm package tests, and the E2E tests passed.
+
+Nightly delta patches and the GHCR nightly publish only on pushes to `main`.
+Releases take this workflow's artifacts (see `.craft.yml`), so a release ships
+the binaries and package that its E2E run tested.
+
 ### deploy.yml
 
 Runs after a successful `Test` push run on `main`. Checks out the tested commit
@@ -144,6 +182,10 @@ project:
 
 A new workflow fits only when the matrix job cannot run the check: another
 operating system, a deployment, secrets, or pull request comments and labels.
+The CLI's E2E tests and npm package checks are the exception: they must run
+against the binaries and npm package that `cli-build.yml` builds for nightlies
+and releases, so `packages/cli` sets `sentryCi.e2e` to `false`, leaves
+`sentryCi.npmRuntime` unset, and that workflow runs them.
 `scripts/workflow-policy.test.mjs` fails for a workflow that runs on pull
 requests unless its list names that workflow and the reason.
 
