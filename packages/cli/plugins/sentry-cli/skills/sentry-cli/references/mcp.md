@@ -35,7 +35,6 @@ Start a local Sentry MCP server
 - `--anthropic-base-url <value> - Anthropic API base URL`
 - `--anthropic-model <value> - Anthropic model (default: claude-sonnet-4-5)`
 - `--mcp-url <value> - MCP server URL reported in telemetry`
-- `--sentry-dsn <value> - DSN for the server's own telemetry`
 
 **Examples:**
 

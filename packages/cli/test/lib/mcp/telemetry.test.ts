@@ -19,6 +19,7 @@ useEnvSandbox([
   "DO_NOT_TRACK",
   "SENTRY_RELEASE",
   "SENTRY_DSN",
+  "DEFAULT_SENTRY_DSN",
 ]);
 
 const config: McpServerConfig = {
@@ -52,7 +53,7 @@ afterEach(() => {
 });
 
 describe("initMcpTelemetry", () => {
-  test("reports to the CLI's project when no DSN is configured", async () => {
+  test("reports to the CLI's project", async () => {
     const options = await initOptions();
     expect(options.dsn).toBe(SENTRY_CLI_DSN);
     expect(options.enabled).toBe(true);
@@ -65,33 +66,29 @@ describe("initMcpTelemetry", () => {
     expect(options.release).toBe(CLI_VERSION);
   });
 
-  test("honors the CLI's telemetry opt-out", async () => {
-    process.env.SENTRY_CLI_NO_TELEMETRY = "1";
+  test.each(["SENTRY_CLI_NO_TELEMETRY", "DO_NOT_TRACK"])(
+    "honors the CLI's telemetry opt-out (%s)",
+    async (name) => {
+      process.env[name] = "1";
+      const options = await initOptions();
+      expect(options.dsn).toBe(SENTRY_CLI_DSN);
+      expect(options.enabled).toBe(false);
+    },
+  );
+
+  // A server started from a project shell or IDE inherits the app's DSN.
+  test("ignores SENTRY_DSN and DEFAULT_SENTRY_DSN from the environment", async () => {
+    const appDsn = "https://key@o1.ingest.sentry.io/1";
+    process.env.SENTRY_DSN = appDsn;
+    process.env.DEFAULT_SENTRY_DSN = appDsn;
     const options = await initOptions();
     expect(options.dsn).toBe(SENTRY_CLI_DSN);
-    expect(options.enabled).toBe(false);
-  });
-
-  test("an explicit DSN wins and ignores the CLI opt-out", async () => {
-    process.env.SENTRY_CLI_NO_TELEMETRY = "1";
-    const dsn = "https://key@o1.ingest.sentry.io/1";
-    const options = await initOptions({ sentryDsn: dsn });
-    expect(options.dsn).toBe(dsn);
     expect(options.enabled).toBe(true);
-  });
-
-  test("an empty DSN turns telemetry off, even with SENTRY_DSN set", async () => {
-    process.env.SENTRY_DSN = "https://key@o1.ingest.sentry.io/1";
-    const { initMcpTelemetry } = await import("../../../src/lib/mcp/server.js");
-    initMcpTelemetry({ ...config, sentryDsn: "" });
-    expect(sentry.init).not.toHaveBeenCalled();
   });
 
   test("ignores SENTRY_RELEASE so the reported release stays ours", async () => {
     process.env.SENTRY_RELEASE = "spoofed";
-    const options = await initOptions({
-      sentryDsn: "https://key@o1.ingest.sentry.io/1",
-    });
+    const options = await initOptions();
     expect(options.release).toBe(CLI_VERSION);
   });
 
