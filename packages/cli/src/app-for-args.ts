@@ -3,24 +3,29 @@
  *
  * `app.ts` imports every command, so loading it runs every command module and
  * everything those import. When the first argument names a top-level route,
- * this builds the application with only that route, which
- * `generated/route-loaders.ts` loads on its own (see
- * `script/generate-route-loaders.ts`). Global flags before the route name
- * (`sentry --verbose issue list`) are skipped, and a bare `sentry --version`
- * loads only `help`. Everything else gets the full application: no
- * arguments, `--help` or another flag first, an unknown name (for the
- * suggestions), and the commands that read the whole command tree.
+ * this builds the application with only that route, which `COMMAND_MANIFEST`
+ * (`command-manifest.ts`) loads on its own. Global flags before the route
+ * name (`sentry --verbose issue list`) are skipped, and a bare
+ * `sentry --version` loads only `help`. The top-level help (`sentry`,
+ * `sentry help`, and `sentry --help`) loads only `help`, and stands in for
+ * the other routes with what the manifest says about them (see
+ * `root-help-routes.ts`). Everything else gets the full application: JSON
+ * help, `--help` before a route name or another flag first, an unknown name
+ * (for the suggestions), and the commands that read the whole command tree.
  */
 
 import {
   buildSentryApp,
   buildSentryRoutes,
   PLURAL_TO_SINGULAR,
+  type SentryRoutes,
 } from "./app-root.js";
+import { COMMAND_MANIFEST } from "./command-manifest.js";
 import type { CliApplication } from "./lib/application.js";
+import { getEnv } from "./lib/env.js";
 import { buildTopLevelFlags } from "./lib/global-flags.js";
 import type { CliRoutes } from "./lib/route-registry.js";
-import { ROUTE_LOADERS } from "./generated/route-loaders.js";
+import { buildRootHelpRoutes } from "./root-help-routes.js";
 
 /**
  * Top-level routes that read the whole command tree through `getRoutes()`:
@@ -35,7 +40,16 @@ const FULL_TREE_ROUTES: ReadonlySet<string> = new Set([
 
 /** Whether `name` is a top-level route of `app.ts`. */
 function isRoute(name: string): boolean {
-  return Object.hasOwn(ROUTE_LOADERS, name);
+  return Object.hasOwn(COMMAND_MANIFEST, name);
+}
+
+/** Load the command or route map of the top-level route `name`. */
+export async function loadRoute(name: string): Promise<SentryRoutes[string]> {
+  const entry = isRoute(name) ? COMMAND_MANIFEST[name] : undefined;
+  if (!entry) {
+    throw new Error(`No top-level route "${name}" in COMMAND_MANIFEST`);
+  }
+  return await entry.load();
 }
 
 /**
@@ -44,31 +58,53 @@ function isRoute(name: string): boolean {
  */
 const TOP_LEVEL_FLAGS = buildTopLevelFlags();
 
+/** The tokens before the route name, read the way the route scanner does. */
+type LeadingTokens = {
+  /** The first token that is neither a flag nor a global flag's value. */
+  readonly name: string | undefined;
+  /** The tokens after {@link name}. */
+  readonly rest: readonly string[];
+  /** `--version` came before the name. */
+  readonly version: boolean;
+  /** `--help` or `-h` came before the name. */
+  readonly help: boolean;
+  /** `--json` or `--fields` came before the name. */
+  readonly json: boolean;
+};
+
+/** Whether `token` is `--json` or `--fields`, which ask for JSON output. */
+function isJsonFlag(token: string): boolean {
+  return token === "--json" || /^--fields(=|$)/.test(token);
+}
+
 /**
  * Read the tokens before the route name the way the route scanner does:
- * skip global flags and their values, and note `--version`.
+ * skip global flags and their values, and note `--version` and `--help`.
  *
  * Returns `undefined` when a token the scanner handles differently comes
- * first (`--help`, `--`, any other flag), so the caller loads the full app.
+ * first (`--`, any other flag), so the caller loads the full app.
  */
-function scanLeadingTokens(
-  args: readonly string[],
-): { name: string | undefined; version: boolean } | undefined {
+function scanLeadingTokens(args: readonly string[]): LeadingTokens | undefined {
   let version = false;
+  let help = false;
+  let json = false;
   let expectValue = false;
-  for (const token of args) {
+  for (const [index, token] of args.entries()) {
     if (!token.startsWith("-")) {
       if (expectValue) {
         expectValue = false;
         continue;
       }
-      return { name: token, version };
+      return { name: token, rest: args.slice(index + 1), version, help, json };
     }
     // The scanner takes the token after a value flag as its value unless it
     // is a flag itself.
     expectValue = false;
+    json ||= isJsonFlag(token);
     if (token === "--version") {
       version = true;
+    } else if (token === "--help" || token === "-h") {
+      help = true;
     } else if (TOP_LEVEL_FLAGS.valueFlags.has(token)) {
       expectValue = true;
     } else if (
@@ -78,7 +114,36 @@ function scanLeadingTokens(
       return;
     }
   }
-  return { name: undefined, version };
+  return { name: undefined, rest: [], version, help, json };
+}
+
+/**
+ * Whether `args` print the top-level help in text: `sentry` or
+ * `sentry --help` (with global flags), or `sentry help` with only flags
+ * after it. JSON help lists every command with its flags, so it needs the
+ * full application.
+ */
+export function isRootHelpRequest(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv = getEnv(),
+): boolean {
+  const scanned = scanLeadingTokens(args);
+  if (
+    !scanned ||
+    scanned.version ||
+    scanned.json ||
+    env.SENTRY_OUTPUT_FORMAT === "json"
+  ) {
+    return false;
+  }
+  if (scanned.name === undefined) {
+    return true;
+  }
+  return (
+    scanned.name === "help" &&
+    !scanned.help &&
+    scanned.rest.every((token) => token.startsWith("-") && !isJsonFlag(token))
+  );
 }
 
 /**
@@ -96,12 +161,12 @@ export function routesForArgs(
   if (!scanned) {
     return;
   }
-  const { name, version } = scanned;
+  const { name, version, help } = scanned;
   if (name === undefined) {
     // `sentry --version` prints the version before it would run any command.
     return version ? ["help"] : undefined;
   }
-  if (FULL_TREE_ROUTES.has(name) || !isRoute(name)) {
+  if (help || FULL_TREE_ROUTES.has(name) || !isRoute(name)) {
     return;
   }
   const singular = PLURAL_TO_SINGULAR[name];
@@ -116,18 +181,21 @@ export function routesForArgs(
 export async function loadAppForArgs(
   args: readonly string[],
 ): Promise<{ app: CliApplication; routes: CliRoutes }> {
+  if (isRootHelpRequest(args)) {
+    const [help, { registerGraphicsBanner }] = await Promise.all([
+      loadRoute("help"),
+      import("./graphics-banner.js"),
+    ]);
+    registerGraphicsBanner();
+    const routes = buildRootHelpRoutes(help);
+    return { app: buildSentryApp(routes), routes };
+  }
   const names = routesForArgs(args);
   if (!names) {
     return await import("./app.js");
   }
   const loaded = await Promise.all(
-    names.map(async (name) => {
-      const load = ROUTE_LOADERS[name];
-      if (!load) {
-        throw new Error(`No loader for the top-level route "${name}"`);
-      }
-      return [name, await load()] as const;
-    }),
+    names.map(async (name) => [name, await loadRoute(name)] as const),
   );
   const routes = buildSentryRoutes(Object.fromEntries(loaded));
   return { app: buildSentryApp(routes), routes };

@@ -36,16 +36,14 @@ import {
   buildDashboardsListUrl,
   buildDashboardUrl,
 } from "../../lib/sentry-web-urls.js";
-import {
-  type DashboardListItem,
-  DashboardListItemSchema,
-} from "../../types/dashboard.js";
+import type { DashboardListItem } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {
   type DashboardListArguments,
   dashboardListArguments,
 } from "./arguments.js";
 import { withDashboardErrors } from "./resolve.js";
+import { DashboardListItemSchema } from "../../generated/output-schemas/dashboard.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "dashboard-list";

@@ -51,7 +51,7 @@ import type {
   ReplayRelatedIssue,
   ReplayRelatedTrace,
 } from "../../types/index.js";
-import { ReplayViewOutputSchema } from "../../types/index.js";
+import { ReplayViewOutputSchema } from "../../generated/output-schemas/replay.js";
 
 type ViewFlags = {
   readonly json: boolean;

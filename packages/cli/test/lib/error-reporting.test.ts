@@ -265,6 +265,18 @@ describe("classifySilenced", () => {
     expect(classifySilenced(err)).toBe("network_error");
   });
 
+  test("silences a fetch failure wrapped as ApiError(0) (CLI-29S)", () => {
+    const wrapped = new ApiError("Failed to create release: Network error", 0);
+    wrapped.cause = new TypeError("fetch failed");
+    expect(classifySilenced(wrapped)).toBe("network_error");
+  });
+
+  test("does NOT silence ApiError(0) wrapping a non-network error", () => {
+    const wrapped = new ApiError("Failed to create release: Network error", 0);
+    wrapped.cause = new Error("unable to open database file");
+    expect(classifySilenced(wrapped)).toBeNull();
+  });
+
   test("does NOT silence a TLS cert error wrapped as ApiError(0)", () => {
     // status 0 is shared by network failures and TLS cert errors; the latter
     // are actionable (missing CA) and must stay captured.

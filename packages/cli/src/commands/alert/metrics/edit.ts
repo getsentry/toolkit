@@ -44,10 +44,8 @@ import {
 } from "../mutation-utils.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
-import {
-  type MetricAlertEditOutput,
-  MetricAlertEditOutputSchema,
-} from "../output-schemas.js";
+import type { MetricAlertEditOutput } from "../../../output-schemas/alert.js";
+import { MetricAlertEditOutputSchema } from "../../../generated/output-schemas/alert.js";
 
 const USAGE_HINT =
   "sentry alert metrics edit <org>/<rule-id-or-name> --name <n> | --status active|disabled";

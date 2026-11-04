@@ -44,6 +44,7 @@ import { createDsnFingerprint } from "../../lib/dsn/index.js";
 import {
   ApiError,
   ContextError,
+  TimeoutError,
   toSearchQueryError,
   ValidationError,
   withAuthGuard,
@@ -101,12 +102,9 @@ import {
 } from "../../lib/time-range.js";
 import { tipsSuppressed } from "../../lib/tips.js";
 import { shellQuote } from "../../lib/utils.js";
-import {
-  type SentryIssue,
-  SentryIssueSchema,
-  type Writer,
-} from "../../types/index.js";
+import type { SentryIssue, Writer } from "../../types/index.js";
 import { resolveIssue } from "./utils.js";
+import { SentryIssueSchema } from "../../generated/output-schemas/issue.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "issue-list";
@@ -1346,6 +1344,11 @@ async function handleResolvedTargets(
         first.endpoint,
         first.enriched403 || first.status === 403,
       );
+    }
+
+    // Keep the timeout's status-page hint and exit code.
+    if (first instanceof TimeoutError) {
+      throw new TimeoutError(`${prefix}: ${first.message}`, first.hint);
     }
 
     throw new Error(`${prefix}: ${first.message}`);

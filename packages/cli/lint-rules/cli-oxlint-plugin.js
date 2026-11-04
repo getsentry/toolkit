@@ -731,6 +731,36 @@ const rules = {
           }
         : {},
   ),
+  "no-runtime-output-schema-imports": rule(
+    "src/output-schemas/ is build-only: use `import type` from it, and import the field data from src/generated/output-schemas/.",
+    (_context, file, report) => {
+      if (!file.includes("/src/") || file.includes("/src/output-schemas/"))
+        return {};
+      const buildOnly = (source) =>
+        typeof source === "string" &&
+        /(?:^|\/)output-schemas\//.test(source) &&
+        !/(?:^|\/)generated\/output-schemas\//.test(source);
+      // Only `import type` / `export type` is erased whole. Under
+      // `verbatimModuleSyntax`, `import { type X }` still loads the module.
+      return {
+        ImportDeclaration(node) {
+          if (buildOnly(node.source.value) && node.importKind !== "type")
+            report(node);
+        },
+        ExportNamedDeclaration(node) {
+          if (buildOnly(node.source?.value) && node.exportKind !== "type")
+            report(node);
+        },
+        ExportAllDeclaration(node) {
+          if (buildOnly(node.source.value) && node.exportKind !== "type")
+            report(node);
+        },
+        ImportExpression(node) {
+          if (buildOnly(node.source.value)) report(node);
+        },
+      };
+    },
+  ),
   "no-skipped-tests": rule(
     "Do not leave disabled tests in the suite.",
     (_context, file, report) =>

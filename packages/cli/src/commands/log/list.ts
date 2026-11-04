@@ -79,7 +79,7 @@ import {
   warnIfNormalized,
 } from "../../lib/trace-target.js";
 import { getUpdateNotification } from "../../lib/version-check.js";
-import { SentryLogSchema } from "../../types/index.js";
+import { SentryLogSchema } from "../../generated/output-schemas/log.js";
 
 type ListFlags = {
   readonly limit: number;

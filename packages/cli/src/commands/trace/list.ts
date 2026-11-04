@@ -44,10 +44,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  type TransactionListItem,
-  TransactionListItemSchema,
-} from "../../types/index.js";
+import type { TransactionListItem } from "../../types/index.js";
+import { TransactionListItemSchema } from "../../generated/output-schemas/trace.js";
 
 type ListFlags = {
   readonly limit: number;

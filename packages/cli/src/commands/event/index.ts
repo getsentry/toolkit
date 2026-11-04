@@ -1,4 +1,5 @@
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { listCommand } from "./list.js";
 import { sendCommand } from "./send.js";
 import { viewCommand } from "./view.js";
@@ -11,7 +12,7 @@ export const eventRoute = buildRouteMap({
   },
   defaultCommand: "view",
   docs: {
-    brief: "View, list, and send Sentry events",
+    brief: topLevelBrief("event"),
     fullDescription:
       "View, list, and send event data from Sentry.\n\n" +
       "Use 'sentry event view <event-id>' to view a specific event.\n" +

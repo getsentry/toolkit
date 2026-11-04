@@ -50,6 +50,7 @@ import {
 } from "../lib/positional-parse.js";
 import { classifyProjectSearchTarget } from "../lib/resolve-target.js";
 import { applySentryUrlContext } from "../lib/sentry-url-parser.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("init");
 
@@ -357,7 +358,7 @@ export const initCommand = buildCommand<
   SentryContext
 >({
   docs: {
-    brief: "Initialize Sentry in your project (experimental)",
+    brief: topLevelBrief("init"),
     customUsage: ["[<target>] [<directory>]"],
     fullDescription:
       "EXPERIMENTAL: This command may modify your source files.\n\n" +

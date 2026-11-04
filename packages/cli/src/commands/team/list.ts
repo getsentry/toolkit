@@ -22,7 +22,8 @@ import {
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
 import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
-import { type SentryTeam, SentryTeamSchema } from "../../types/index.js";
+import type { SentryTeam } from "../../types/index.js";
+import { TeamListItemSchema } from "../../generated/output-schemas/team.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "team-list";
@@ -46,7 +47,7 @@ const TEAM_COLUMNS: Column<TeamWithOrg>[] = [
 const teamListConfig: OrgListConfig<
   SentryTeam,
   TeamWithOrg,
-  typeof SentryTeamSchema
+  typeof TeamListItemSchema
 > = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "teams",
@@ -58,7 +59,7 @@ const teamListConfig: OrgListConfig<
   searchesNames: true,
   displayTable: (teams: TeamWithOrg[]) => formatTable(teams, TEAM_COLUMNS),
   listForProject: (org, project) => listProjectTeams(org, project),
-  schema: SentryTeamSchema,
+  schema: TeamListItemSchema,
 };
 
 const docs: OrgListCommandDocs = {

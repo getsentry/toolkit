@@ -13,7 +13,6 @@ import type {
   ReplayDetails,
   ReplayRelatedIssue,
   ReplayRelatedTrace,
-  ReplayViewOutputFields,
 } from "../../types/index.js";
 import { getReplayUserLabel } from "../replay-search.js";
 import { buildReplayUrl } from "../sentry-web-urls.js";
@@ -22,6 +21,7 @@ import {
   formatDurationCompactMs,
   formatDurationVerbose,
 } from "./time-utils.js";
+import type { ReplayViewOutputFields } from "../../output-schemas/replay.js";
 
 /**
  * Data bag assembled by replay view before rendering: the replay plus the

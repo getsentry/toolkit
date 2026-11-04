@@ -25,6 +25,7 @@ import {
   buildProjectIssuesUrl,
   buildProjectUrl,
   buildRepositorySettingsUrl,
+  buildSourceCodeIntegrationsUrl,
   buildSeerSettingsUrl,
   buildTraceUrl,
   getOrgBaseUrl,
@@ -434,6 +435,20 @@ describe("buildRepositorySettingsUrl properties", () => {
       property(slugArb, (orgSlug) => {
         const result = buildRepositorySettingsUrl(orgSlug);
         expect(result).toMatch(/\/settings\/(?:[^/]+\/)?repos\/$/);
+      }),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+});
+
+describe("buildSourceCodeIntegrationsUrl properties", () => {
+  test("output is the integration directory filtered to source code", async () => {
+    fcAssert(
+      property(slugArb, (orgSlug) => {
+        const result = buildSourceCodeIntegrationsUrl(orgSlug);
+        expect(result).toMatch(
+          /\/settings\/(?:[^/]+\/)?integrations\/\?category=source%20code%20management$/,
+        );
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
