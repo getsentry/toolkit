@@ -44,11 +44,11 @@ import {
   validateIssueActions,
   validateIssueTriggers,
 } from "../mutation-utils.js";
-import {
-  type IssueAlertCreateBody,
-  type IssueAlertCreateOutput,
-  IssueAlertCreateOutputSchema,
-} from "../output-schemas.js";
+import type {
+  IssueAlertCreateBody,
+  IssueAlertCreateOutput,
+} from "../../../output-schemas/alert.js";
+import { IssueAlertCreateOutputSchema } from "../../../generated/output-schemas/alert.js";
 
 const USAGE_HINT =
   "sentry alert issues create <target> --name <name> --condition <json> --action <json>";

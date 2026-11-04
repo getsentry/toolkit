@@ -34,8 +34,9 @@ import {
   isShallowRepository,
 } from "../../lib/git.js";
 import { logger } from "../../lib/logger.js";
-import { type SentryRelease, SentryReleaseSchema } from "../../types/index.js";
+import type { SentryRelease } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { SentryReleaseSchema } from "../../generated/output-schemas/release.js";
 
 const log = logger.withTag("release.set-commits");
 

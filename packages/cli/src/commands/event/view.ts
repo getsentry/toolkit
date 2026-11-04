@@ -79,12 +79,10 @@ import { buildEventSearchUrl } from "../../lib/sentry-web-urls.js";
 import { getSpanTreeLines } from "../../lib/span-tree.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import type { InferOutput } from "valibot";
-import {
-  type EventViewOutputFields,
-  EventViewOutputSchema,
-  type SentryEvent,
-} from "../../types/index.js";
+import type { SentryEvent } from "../../types/index.js";
 import { findSelectorIssue } from "../issue/utils.js";
+import { EventViewOutputSchema } from "../../generated/output-schemas/event.js";
+import type { EventViewOutputFields } from "../../output-schemas/event.js";
 
 type ViewFlags = {
   readonly json: boolean;

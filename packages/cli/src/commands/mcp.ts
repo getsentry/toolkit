@@ -21,6 +21,7 @@ import {
   type McpScope,
   parseMcpTarget,
 } from "../lib/mcp/args.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 /**
  * mcp-core's `ALL_SKILLS`, copied so the command tree does not import
@@ -68,7 +69,7 @@ export const mcpCommand = buildCommand({
   auth: false,
   skipRcUrlCheck: true,
   docs: {
-    brief: "Start a local Sentry MCP server",
+    brief: topLevelBrief("mcp"),
     fullDescription:
       "Serve the Sentry MCP tools over stdio, for MCP clients such as Claude Code, Cursor, or VS Code. " +
       "Uses the current Sentry CLI login, refreshing it as needed, and stays on the account it started with. " +

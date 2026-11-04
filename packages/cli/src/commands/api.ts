@@ -55,6 +55,7 @@ import {
 } from "../lib/sixel.js";
 import { imageBytesToSixel } from "../lib/sixel-image.js";
 import { setOrgProjectContext } from "../lib/telemetry.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("api");
 
@@ -1599,7 +1600,7 @@ export const apiCommand = buildCommand({
   permission: "method",
   output: { human: formatApiResponse, jsonTransform: formatApiResponseJson },
   docs: {
-    brief: "Make an authenticated API request",
+    brief: topLevelBrief("api"),
     fullDescription:
       "Make a raw API request to the Sentry API. Similar to 'gh api' for GitHub. " +
       "The endpoint is relative to /api/0/ (do not include the prefix). " +
