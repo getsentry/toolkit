@@ -49,15 +49,15 @@ jobs:
     environment: production
     needs: check
     if: ${{ needs.check.outputs.current == 'true' }}
-    env:
-      # The Worker runs on the Sentry Internal Cloudflare account, not on the
-      # account that CLOUDFLARE_ACCOUNT_ID names for the MCP Workers.
-      CLOUDFLARE_API_TOKEN: ${{ secrets.GAMES_API_CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.GAMES_API_CLOUDFLARE_ACCOUNT_ID }}
-      DEPLOYMENT_MARKER: games-api:${{ github.run_id }}:${{ github.run_attempt }}:${{ github.event.workflow_run.head_sha }}
-
+    # The Worker runs on the Sentry Internal Cloudflare account, not on the
+    # account that CLOUDFLARE_ACCOUNT_ID names for the MCP Workers. Only the
+    # steps that use the credentials get them, so install scripts cannot read
+    # them.
     steps:
       - name: Require Cloudflare credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.GAMES_API_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.GAMES_API_CLOUDFLARE_ACCOUNT_ID }}
         run: |
           if [[ -z "$CLOUDFLARE_API_TOKEN" || -z "$CLOUDFLARE_ACCOUNT_ID" ]]; then
             echo 'GAMES_API_CLOUDFLARE_API_TOKEN and GAMES_API_CLOUDFLARE_ACCOUNT_ID must be set in the production environment.' >&2
@@ -109,6 +109,10 @@ jobs:
 
       - name: Deploy Games API
         working-directory: apps/games-api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.GAMES_API_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.GAMES_API_CLOUDFLARE_ACCOUNT_ID }}
+          DEPLOYMENT_MARKER: games-api:${{ github.run_id }}:${{ github.run_attempt }}:${{ github.event.workflow_run.head_sha }}
         run: pnpm exec wrangler deploy --minify --keep-vars --message "$DEPLOYMENT_MARKER"
 
       - name: Smoke-test the leaderboard

@@ -44,7 +44,9 @@ game over
 
 Every other path returns `404 {"error":"Not found"}`. Errors are `429`
 (rate limited), `502` (Sentry query failed), and `503` (no token). The Worker
-reports `502` and `503` causes to Sentry when `SENTRY_DSN` is set.
+reports `502` and `503` causes to Sentry when `SENTRY_DSN` is set. These
+reports do not include the client IP, headers, cookies, bodies, or query
+strings.
 
 ## Changing the leaderboard
 
