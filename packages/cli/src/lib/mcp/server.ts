@@ -24,6 +24,7 @@ import {
   flush,
   init,
   makeNodeTransport,
+  setCurrentClient,
   vercelAIIntegration,
   zodErrorsIntegration,
 } from "@sentry/node";
@@ -253,7 +254,7 @@ export function initMcpTelemetry(config: McpServerConfig): void {
   // Without `--sentry-dsn`/`SENTRY_DSN`, report to the CLI's own project,
   // honoring the CLI's telemetry opt-outs.
   const useCliDsn = config.sentryDsn === undefined;
-  init({
+  const client = init({
     dsn: config.sentryDsn ?? SENTRY_CLI_DSN,
     enabled: !useCliDsn || isTelemetryEnabled(),
     tracesSampleRate: 1,
@@ -287,6 +288,13 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     // The retired package fixed this at build time; keep the same value.
     environment: "stdio",
   });
+  // `buildCommand` runs this inside its pre-init `exec` span, and v11 loses
+  // the scope that span forked when init switches the context strategy, so
+  // every span, log, and flush would find no client. Same fix as
+  // `initSentry()` in telemetry.ts.
+  if (client) {
+    setCurrentClient(client);
+  }
 }
 
 /**
