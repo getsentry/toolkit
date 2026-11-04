@@ -120,6 +120,18 @@ describe("renderSnakeFrame", () => {
     expect(frame).toContain("Bugs squashed 0  Best 3");
     expect(frame).toContain("Press an arrow key");
   });
+
+  test("keeps every line within the frame on the smallest board", () => {
+    const state = { ...createSnake(10, 6, () => 0), score: 12 };
+    const lines = renderSnakeFrame(state, 34, false)
+      // oxlint-disable-next-line no-control-regex -- strip the CSI sequences
+      .replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")
+      .split("\r\n");
+    for (const line of lines) {
+      expect(line.length).toBeLessThanOrEqual(12);
+    }
+    expect(lines).toContain(" Bugs squas");
+  });
 });
 
 describe("playSnake", () => {
@@ -218,6 +230,25 @@ describe("playSnake", () => {
     expect(onGameOver).toHaveBeenCalledTimes(2);
     expect(onGameOver).toHaveBeenCalledWith(0);
 
+    press("q");
+    await game;
+  });
+
+  test("waits for a larger terminal before it draws the board", async () => {
+    const { output, writes, terminal, press } = fakeTerminal();
+    output.columns = 11;
+    output.rows = 6;
+    const game = playSnake(terminal, { color: false });
+    expect(writes.at(-1)).toBe("\x1b[HTerminal to\x1b[K\x1b[J");
+
+    press(RIGHT);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(writes.at(-1)).toContain("Terminal to");
+
+    output.columns = 40;
+    output.rows = 20;
+    output.emit("resize");
+    expect(writes.at(-1)).toContain("Press an arrow key");
     press("q");
     await game;
   });

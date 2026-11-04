@@ -15,6 +15,7 @@ import {
   type SnakeDirection,
   type SnakeState,
   type SnakeStatus,
+  snakeTerminalRows,
   snakeTickMs,
   stepSnake,
   togglePause,
@@ -137,6 +138,20 @@ export function snakeBoardSize(
   return { width, height: terminalRows * 2 };
 }
 
+/** Whether the frame for `state` fits a terminal of `columns` × `rows`. */
+export function snakeFrameFits(
+  state: SnakeState,
+  columns: number,
+  rows: number,
+): boolean {
+  return (
+    state.width + 2 <= columns &&
+    snakeTerminalRows(state.height) + CHROME_ROWS <= rows
+  );
+}
+
+const TOO_SMALL_MESSAGE = "Terminal too small · esc to quit";
+
 const STATUS_HINT: Record<SnakeStatus, string> = {
   ready: "Press an arrow key to start · esc to quit",
   playing: "←↑↓→ steer · p pause · r restart · esc quit",
@@ -157,13 +172,19 @@ export function renderSnakeFrame(
   const accent = (text: string) =>
     color ? `\x1b[38;2;196;176;255m${text}\x1b[39m` : text;
   const edge = "─".repeat(state.width);
+  const score = `Bugs squashed ${state.score}`;
+  const bestLabel = `  Best ${best}`;
+  const scoreLine =
+    score.length + bestLabel.length <= state.width
+      ? `${accent(score)}${dim(bestLabel)}`
+      : accent(score.slice(0, state.width));
   const lines = [
     dim(`╭${edge}╮`),
     ...renderSnake(state, DEFAULT_SNAKE_PALETTE, color).map(
       (row) => `${dim("│")}${row}${dim("│")}`,
     ),
     dim(`╰${edge}╯`),
-    ` ${accent(`Bugs squashed ${state.score}`)}  ${dim(`Best ${best}`)}`,
+    ` ${scoreLine}`,
     ` ${dim(STATUS_HINT[state.status].slice(0, state.width))}`,
   ];
   return `\x1b[H${lines.join("\x1b[K\r\n")}\x1b[K\x1b[J`;
@@ -183,11 +204,10 @@ export function playSnake(
   { input, output }: SnakeTerminal,
   { color, onGameOver }: SnakeOptions,
 ): Promise<void> {
-  const boardSize = () =>
-    snakeBoardSize(
-      output.columns ?? DEFAULT_COLUMNS,
-      output.rows ?? DEFAULT_ROWS,
-    );
+  const columns = () => output.columns ?? DEFAULT_COLUMNS;
+  const rows = () => output.rows ?? DEFAULT_ROWS;
+  const boardSize = () => snakeBoardSize(columns(), rows());
+  const fits = () => snakeFrameFits(state, columns(), rows());
   const start = boardSize();
   let state = createSnake(start.width, start.height);
   let best = 0;
@@ -196,7 +216,11 @@ export function playSnake(
   let escapeTimer: NodeJS.Timeout | undefined;
 
   const draw = () => {
-    output.write(renderSnakeFrame(state, best, color));
+    output.write(
+      fits()
+        ? renderSnakeFrame(state, best, color)
+        : `\x1b[H${TOO_SMALL_MESSAGE.slice(0, columns())}\x1b[K\x1b[J`,
+    );
   };
 
   // At most one pending step. A turn must not restart it, or steering
@@ -259,6 +283,9 @@ export function playSnake(
         if (key === "quit") {
           quit();
           return;
+        }
+        if (!fits()) {
+          continue;
         }
         if (key === "pause") {
           update(togglePause(state));
