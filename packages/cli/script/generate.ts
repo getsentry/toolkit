@@ -9,7 +9,8 @@
  *
  * 1. Steps the route tree depends on: the API schema, the grammar parsers,
  *    the output-schema field data that commands import, and the banner.
- *    Nothing in this phase may load the route tree.
+ *    Nothing in this phase may load the route tree. A step that lists its
+ *    `files` is skipped when their content matches its last run.
  * 2. Steps that read the route tree. The runner writes stubs for the
  *    generated files the tree imports but these steps produce
  *    (`lib/route-tree-stubs.ts`), loads the tree, then runs each step. Step
@@ -28,8 +29,14 @@
 
 import "./require-shim.mjs";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { writeRouteTreeStubs } from "./lib/route-tree-stubs.js";
+import {
+  packageManifest,
+  runUnlessUnchanged,
+  type StepFiles,
+} from "./lib/step-stamp.js";
 
 if (existsSync(".env.local")) {
   process.loadEnvFile(".env.local");
@@ -41,24 +48,97 @@ type Step = {
   name: string;
   /** Import the step's module. Route-tree steps import the tree statically. */
   load: () => Promise<{ emit: (options: Options) => Promise<void> }>;
+  /**
+   * Phase 1 only: what the step reads and writes, so the runner can skip it
+   * when neither changed (`lib/step-stamp.ts`). Evaluated before `load`, so
+   * a skipped step's dependencies are never imported.
+   */
+  files?: () => StepFiles;
 };
+
+const GRAMMAR_SCRIPT = "../../scripts/generate-parsers.mjs";
 
 /** Compile the grammars; a plain Node script shared with other packages. */
 async function generateGrammar(): Promise<void> {
-  execFileSync(process.execPath, ["../../scripts/generate-parsers.mjs", "."], {
+  execFileSync(process.execPath, [GRAMMAR_SCRIPT, "."], {
     stdio: "inherit",
   });
 }
 
-/** Phase 1: steps whose outputs the route tree imports. */
+/** The API schema: the SDK's operation catalog, projected. */
+function schemaFiles(): StepFiles {
+  return {
+    inputs: [
+      fileURLToPath(import.meta.resolve("@sentry/api/operations")),
+      "script/generate-api-schema.ts",
+      "script/lib/api-schema.ts",
+      "../toolkit-core/src/api-client/idempotent-operations.ts",
+      "../toolkit-core/src/api-client/retry.ts",
+    ],
+    outputs: [
+      "src/generated/api-schema.json",
+      "src/generated/idempotent-operations.json",
+    ],
+  };
+}
+
+/** Each `grammar/<name>.pegjs` and its `.d.ts` become `<name>-grammar.*`. */
+function grammarFiles(): StepFiles {
+  const sources = readdirSync("grammar").sort();
+  const names = sources
+    .filter((file) => file.endsWith(".pegjs"))
+    .map((file) => file.slice(0, -".pegjs".length));
+  return {
+    inputs: [
+      ...sources.map((file) => `grammar/${file}`),
+      GRAMMAR_SCRIPT,
+      packageManifest("peggy", GRAMMAR_SCRIPT),
+      packageManifest("typescript", GRAMMAR_SCRIPT),
+    ],
+    outputs: names.flatMap((name) => [
+      `src/generated/${name}-grammar.js`,
+      `src/generated/${name}-grammar.d.ts`,
+    ]),
+  };
+}
+
+function bannerFiles(): StepFiles {
+  const script = "script/generate-banner-image.ts";
+  return {
+    inputs: [
+      "assets/banner-mask.png",
+      script,
+      packageManifest("pngjs", script),
+    ],
+    outputs: ["src/generated/banner-image.ts"],
+  };
+}
+
+/**
+ * Phase 1: steps whose outputs the route tree imports. `output-schemas`
+ * has no `files`: it loads `src/output-schemas/` and everything that
+ * imports, which is no short list.
+ */
 const PRE_TREE_STEPS: readonly Step[] = [
-  { name: "schema", load: () => import("./generate-api-schema.js") },
-  { name: "grammar", load: async () => ({ emit: generateGrammar }) },
+  {
+    name: "schema",
+    load: () => import("./generate-api-schema.js"),
+    files: schemaFiles,
+  },
+  {
+    name: "grammar",
+    load: async () => ({ emit: generateGrammar }),
+    files: grammarFiles,
+  },
   {
     name: "output-schemas",
     load: () => import("./generate-output-schemas.js"),
   },
-  { name: "banner", load: () => import("./generate-banner-image.js") },
+  {
+    name: "banner",
+    load: () => import("./generate-banner-image.js"),
+    files: bannerFiles,
+  },
 ];
 
 /** Phase 2: steps that read the route tree. */
@@ -100,7 +180,14 @@ const preTreeSteps = PRE_TREE_STEPS.filter((step) => requested.has(step.name));
 const treeSteps = TREE_STEPS.filter((step) => requested.has(step.name));
 
 for (const step of preTreeSteps) {
-  await (await step.load()).emit(options);
+  const emit = async () => {
+    await (await step.load()).emit(options);
+  };
+  if (step.files) {
+    await runUnlessUnchanged(step.name, step.files(), emit);
+  } else {
+    await emit();
+  }
 }
 
 if (treeSteps.length > 0) {
