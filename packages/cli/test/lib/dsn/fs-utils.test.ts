@@ -2,7 +2,7 @@
  * Tests for DSN file system utilities.
  *
  * Verifies that handleFileError correctly distinguishes expected filesystem
- * errors (silently ignored) from unexpected ones (reported to Sentry).
+ * errors (ignored, debug-logged) from unexpected ones (reported to Sentry).
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -118,11 +118,40 @@ describe("handleFileError", () => {
     });
   });
 
+  describe("unhealthy mounts and virtual filesystems (should NOT report)", () => {
+    // Real readdir failures seen in CLI-1ES: /proc (EINVAL), OneDrive FUSE
+    // (EIO), stale AppImage / FreeRDP mounts under /tmp (ENOTCONN), macOS
+    // .trace bundles (ECANCELED), Bun on cloud-storage dirs (EINTR).
+    test.each([
+      "EINVAL",
+      "EIO",
+      "ECANCELED",
+      "EINTR",
+      "EAGAIN",
+      "EBUSY",
+      "ESTALE",
+      "EHOSTDOWN",
+      "ELOOP",
+    ])("%s from scandir", (code) => {
+      const err = errnoError(code, `${code}: failed, scandir '/mnt/x'`);
+      (err as NodeJS.ErrnoException).syscall = "scandir";
+      handleFileError(err, { operation: "scan.walk.readdir", path: "/mnt/x" });
+      expect(reportCliError).not.toHaveBeenCalled();
+    });
+  });
+
   describe("unexpected errors (SHOULD report to Sentry)", () => {
-    test("EIO — I/O error", () => {
-      handleFileError(errnoError("EIO"), {
+    test.each(["EMFILE", "ENFILE", "EBADF"])(
+      "%s — descriptor misuse/exhaustion caused by the CLI",
+      (code) => {
+        handleFileError(errnoError(code), { operation: "scan.walk.readdir" });
+        expect(reportCliError).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    test("Node ERR_* codes — API misuse in our own code", () => {
+      handleFileError(errnoError("ERR_INVALID_ARG_TYPE"), {
         operation: "test",
-        path: "/disk-fail",
       });
       expect(reportCliError).toHaveBeenCalledTimes(1);
     });
@@ -144,7 +173,7 @@ describe("handleFileError", () => {
   });
 
   test("passes context tags and extras to Sentry", () => {
-    const error = errnoError("EIO");
+    const error = new Error("unexpected");
     handleFileError(error, {
       operation: "checkEnvForDsn",
       path: "/project/.env",
