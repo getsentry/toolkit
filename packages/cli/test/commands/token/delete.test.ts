@@ -82,6 +82,23 @@ describe("parseTokenArguments", () => {
       "Use the numeric ID from 'sentry token list'",
     );
   });
+
+  test("rejects pasted token values without echoing them", () => {
+    for (const value of [
+      "sntrys_eyJpYXQiOjE3MDB9_abc123",
+      "my-org/sntrys_eyJpYXQiOjE3MDB9_abc123",
+      "sntryu_0123456789abcdef",
+    ]) {
+      let message = "";
+      try {
+        parseTokenArguments([value]);
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain("looks like a token value, not a token ID");
+      expect(message).not.toContain("sntry");
+    }
+  });
 });
 
 describe("token delete", () => {

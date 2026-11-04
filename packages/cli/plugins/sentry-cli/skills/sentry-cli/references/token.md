@@ -83,7 +83,7 @@ Revoke an org auth token
 
 | Argument | Description |
 |----------|-------------|
-| `[<org>/]<token-id>` | [&lt;org&gt;/]&lt;token-id&gt; - Token to revoke |
+| `[<org>/]<token-id>` | [&lt;org&gt;/]&lt;token-id&gt; - Numeric ID from sentry token list (not the token value) |
 
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`
@@ -93,10 +93,10 @@ Revoke an org auth token
 **Examples:**
 
 ```bash
-# Revoke a token (auto-detect org)
+# Revoke token ID 12345 (auto-detect org)
 sentry token delete 12345
 
-# Preview revoking a token
+# Preview revoking token ID 12345
 sentry token delete my-org/12345 --dry-run
 
 # Revoke without the confirmation prompt

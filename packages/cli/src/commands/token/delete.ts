@@ -45,6 +45,9 @@ const USAGE = "[<org>/]<token-id>";
 const USAGE_HINT = `sentry token delete ${USAGE}`;
 const log = logger.withTag("token.delete");
 
+/** Sentry org (`sntrys_`) and user (`sntryu_`) auth token values. */
+const TOKEN_VALUE_PATTERN = /sntry[su]_/;
+
 type DeleteFlags = {
   readonly yes: boolean;
   readonly force: boolean;
@@ -97,6 +100,15 @@ type TokenArguments = BoundArguments<
  *   more than one ID is given
  */
 export function parseTokenArguments(args: readonly string[]): TokenInput {
+  // Token values are secrets: refuse them without echoing them back into
+  // the terminal, logs, or error reports.
+  if (args.some((arg) => TOKEN_VALUE_PATTERN.test(arg))) {
+    throw new ValidationError(
+      "That looks like a token value, not a token ID. Use the numeric ID " +
+        "from 'sentry token list'.",
+      "token-id",
+    );
+  }
   const { target, ids, baseUrl, warnings } = parseIdArguments(
     args,
     ID_KINDS.token,
@@ -140,17 +152,18 @@ export const deleteCommand = buildDeleteCommand({
     fullDescription:
       "Revoke an org auth token. Anything still using it (CI jobs, build " +
       "plugins) stops being able to upload right away.\n\n" +
-      "Find the token ID with `sentry token list`.\n\n" +
+      "Takes the token's numeric ID from `sentry token list`, not the token " +
+      "value, so the secret never needs to be pasted into a terminal.\n\n" +
       "Needs the org:write permission (org owners and managers). The first run " +
       "asks you to re-authorize so your CLI login can manage org auth tokens " +
       "(interactive runs only; skipped with --yes, --json, or --dry-run).",
     examples: [
       {
-        description: "Revoke a token (auto-detect org)",
+        description: "Revoke token ID 12345 (auto-detect org)",
         command: "sentry token delete 12345",
       },
       {
-        description: "Preview revoking a token",
+        description: "Preview revoking token ID 12345",
         command: "sentry token delete my-org/12345 --dry-run",
       },
       {
@@ -165,7 +178,8 @@ export const deleteCommand = buildDeleteCommand({
   parameters: {
     positional: boundArguments({
       placeholder: "org/token-id",
-      brief: "[<org>/]<token-id> - Token to revoke",
+      brief:
+        "[<org>/]<token-id> - Numeric ID from sentry token list (not the token value)",
       kind: ORG_TARGET,
       parse: parseTokenArguments,
       resolve: async (input, context: SentryContext) => {
