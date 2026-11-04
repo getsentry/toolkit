@@ -2,7 +2,7 @@
  * Version Check Logic Tests
  */
 
-import { setTimeout as sleep } from "node:timers/promises";
+import { setImmediate, setTimeout as sleep } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { UPGRADE_SOURCES } from "../../src/lib/binary.js";
 import { setReleaseChannel } from "../../src/lib/db/release-channel.js";
@@ -145,8 +145,8 @@ describe("shouldSuppressNotification", () => {
   });
 });
 
-// Note: shouldCheckForUpdate is now an internal function that reads from the DB.
-// Its probabilistic behavior is tested indirectly through maybeCheckForUpdateInBackground.
+// Note: shouldCheckForUpdate is an internal function that reads from the DB.
+// Its schedule is tested through maybeCheckForUpdateInBackground.
 
 describe("getUpdateNotification", () => {
   useTestConfigDir("test-version-notif-");
@@ -485,7 +485,6 @@ describe("maybeCheckForUpdateInBackground", () => {
       return new Response("{}");
     });
     setVersionCheckInfo("1.0.0");
-    vi.spyOn(Math, "random").mockReturnValue(0.5);
 
     for (let i = 0; i < 5; i++) {
       maybeCheckForUpdateInBackground();
@@ -493,6 +492,104 @@ describe("maybeCheckForUpdateInBackground", () => {
     await sleep(50);
 
     expect(requests).toBe(0);
+  });
+
+  describe("schedule", () => {
+    const HOUR_MS = 60 * 60 * 1000;
+    const INTERVAL_MS = 24 * HOUR_MS;
+    let now: number;
+    let checks: number[];
+    let failRequests: boolean;
+
+    beforeEach(() => {
+      now = Date.UTC(2026, 0, 1);
+      checks = [];
+      failRequests = false;
+      vi.spyOn(Date, "now").mockImplementation(() => now);
+      vi.spyOn(deltaUpgrade, "prefetchStablePatches").mockResolvedValue();
+      globalThis.fetch = mockFetch(async () => {
+        checks.push(now);
+        if (failRequests) {
+          throw new TypeError("fetch failed");
+        }
+        return new Response(
+          JSON.stringify([{ tag_name: "cli@99.0.0", draft: false }]),
+          { status: 200 },
+        );
+      });
+    });
+
+    /** Run one CLI command at the current time and let its check settle. */
+    async function runCommand(): Promise<void> {
+      const before = checks.length;
+      maybeCheckForUpdateInBackground();
+      // A check that started has called fetch by the next macrotask.
+      await setImmediate();
+      if (checks.length === before || failRequests) {
+        return;
+      }
+      await vi.waitFor(() => {
+        expect(getVersionCheckInfo().lastChecked).toBe(now);
+      });
+    }
+
+    test.each([
+      ["40 commands an hour", 40],
+      ["1 command an hour", 1],
+    ])("checks about once a day with %s", async (_label, runsPerHour) => {
+      // An uneven step varies the millisecond part, and so the jitter.
+      const step = HOUR_MS / runsPerHour + 137;
+      const start = now;
+      const end = now + 7 * INTERVAL_MS;
+      for (; now < end; now += step) {
+        await runCommand();
+      }
+
+      // The first run checks (nothing recorded yet), then once per
+      // interval ±20%: 7 days allow 6 to 9 checks. A per-run roll at 40
+      // runs an hour made about 165.
+      expect(checks[0]).toBe(start);
+      expect(checks.length).toBeGreaterThanOrEqual(6);
+      expect(checks.length).toBeLessThanOrEqual(9);
+      for (let i = 1; i < checks.length; i++) {
+        const gap = (checks[i] ?? 0) - (checks[i - 1] ?? 0);
+        expect(gap).toBeGreaterThanOrEqual(0.8 * INTERVAL_MS);
+        expect(gap).toBeLessThanOrEqual(1.2 * INTERVAL_MS + step);
+      }
+    });
+
+    test("checks when the last check is in the future", async () => {
+      now += HOUR_MS;
+      setVersionCheckInfo("1.0.0");
+      now -= HOUR_MS;
+
+      await runCommand();
+
+      expect(checks).toEqual([now]);
+      expect(getVersionCheckInfo().lastChecked).toBe(now);
+      now += HOUR_MS;
+      await runCommand();
+      expect(checks).toHaveLength(1);
+    });
+
+    test("retries a failed check on later runs until one succeeds", async () => {
+      setVersionCheckInfo("1.0.0");
+      const recorded = now;
+      now += 2 * INTERVAL_MS;
+      failRequests = true;
+
+      await runCommand();
+      now += 1000;
+      await runCommand();
+      expect(checks).toHaveLength(2);
+      expect(getVersionCheckInfo().lastChecked).toBe(recorded);
+
+      failRequests = false;
+      now += 1000;
+      await runCommand();
+      expect(checks).toHaveLength(3);
+      expect(getVersionCheckInfo().lastChecked).toBe(now);
+    });
   });
 
   test("checks without a terminal", async () => {
