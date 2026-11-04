@@ -387,6 +387,8 @@ export function addProfileSpans(
             node.endTimestamp = stop;
             node.durationMs =
               Math.round((stop - node.startTimestamp!) * 100_000) / 100;
+            node.payload = { ...record(node.payload), timestamp: stop };
+            node.metadata.durationMs = node.durationMs;
           }
           tail.end = stop;
           continue;

@@ -64,6 +64,12 @@ test("sampled functions fill observed intervals around captured work without rep
       (span) => span.startTimestamp! >= 1 && span.endTimestamp! <= 1.1,
     ),
   ).toBe(true);
+  expect(sampled.find((span) => span.startTimestamp === 1.06)).toMatchObject({
+    endTimestamp: 1.1,
+    durationMs: 40,
+    payload: { start_timestamp: 1.06, timestamp: 1.1 },
+    metadata: { durationMs: 40 },
+  });
   const seen = new Set<string>();
   const pending = [...trace.roots];
   while (pending.length) {
