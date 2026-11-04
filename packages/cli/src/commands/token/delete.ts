@@ -126,13 +126,23 @@ export function parseTokenArguments(args: readonly string[]): TokenInput {
   }
   let orgArg = target;
   let ref: TokenRef = { id: ids[0] ?? "" };
-  if (name !== undefined) {
-    const scoped =
-      target === undefined
-        ? parseOrgScopedArg(name, "Token ID or name", USAGE_HINT)
-        : { value: name };
-    orgArg = scoped.orgSlug ?? target;
+  // The grammar reads `<org>/<a>/<1>` as `<org>/<project>/<id>`, but tokens
+  // have no project: like `token create`, it's the org and a name with a slash.
+  const slashName =
+    target?.includes("/") && !target.endsWith("/") && args.length === 1
+      ? args[0]
+      : undefined;
+  const unscopedName = slashName ?? (target === undefined ? name : undefined);
+  if (unscopedName !== undefined) {
+    const scoped = parseOrgScopedArg(
+      unscopedName,
+      "Token ID or name",
+      USAGE_HINT,
+    );
+    orgArg = scoped.orgSlug;
     ref = { name: scoped.value };
+  } else if (name !== undefined) {
+    ref = { name };
   }
   const org = parseOrgInput(orgArg, USAGE_HINT);
   return { ...ref, org: baseUrl ? { ...org, baseUrl } : org, warnings };

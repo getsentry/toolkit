@@ -898,7 +898,7 @@ function parseOrgId(command: unknown, args: readonly string[]) {
   return { org: parsed.org.org, id: parsed.conversationId ?? parsed.id };
 }
 
-describe.each(ORG_ID_COMMANDS)("%s", (_name, command, id) => {
+describe.each(ORG_ID_COMMANDS)("%s", (name, command, id) => {
   test("a bare ID auto-detects the org", () => {
     expect(parseOrgId(command, [id])).toEqual({ org: undefined, id });
   });
@@ -911,13 +911,18 @@ describe.each(ORG_ID_COMMANDS)("%s", (_name, command, id) => {
     expect(parseOrgId(command, ["my-org", id])).toEqual({ org: "my-org", id });
   });
 
-  test("a project fails to parse: the ID is org-scoped", () => {
-    const error = parseError(command, [`my-org/web/${id}`]);
-    expect(error).toBeInstanceOf(ArgumentParseError);
-    expect((error as ArgumentParseError).exception).toBeInstanceOf(
-      ValidationError,
-    );
-  });
+  // A token name may hold a slash, so `my-org/web/7` names `web/7`
+  // (token/delete.test.ts)
+  test.skipIf(name === "token delete")(
+    "a project fails to parse: the ID is org-scoped",
+    () => {
+      const error = parseError(command, [`my-org/web/${id}`]);
+      expect(error).toBeInstanceOf(ArgumentParseError);
+      expect((error as ArgumentParseError).exception).toBeInstanceOf(
+        ValidationError,
+      );
+    },
+  );
 
   test("a missing ID fails to parse, before the command runs", () => {
     const error = parseError(command, []);

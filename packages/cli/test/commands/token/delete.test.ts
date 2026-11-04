@@ -92,6 +92,15 @@ describe("parseTokenArguments", () => {
     });
   });
 
+  test("a name with a slash keeps it, as in token create", () => {
+    for (const value of ["ci/2024", "ci/deploy"]) {
+      expect(parseTokenArguments([`my-org/${value}`])).toMatchObject({
+        name: value,
+        org: { org: "my-org" },
+      });
+    }
+  });
+
   test("a numeric argument is the ID", () => {
     const input = parseTokenArguments(["my-org/7"]);
     expect(input).toMatchObject({ id: "7", org: { org: "my-org" } });
