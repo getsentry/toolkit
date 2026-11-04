@@ -16,6 +16,12 @@ Use `--read-only` to request only read-only scopes — useful for tokens handed
 to AI agents or CI jobs that should not mutate Sentry state. Use `--scope` to
 request specific scopes (repeatable, comma-separated).
 
+## Setup codes
+
+`SENTRY_SETUP_CODE=... sentry auth bootstrap` exchanges a short-lived, single-use
+code supplied by Sentry for stored OAuth credentials. Use `--url` to confirm an
+HTTP instance and `--force` to replace the stored login for the issuing server.
+
 ## Self-hosted Sentry
 
 Pass `--url` to log in to a self-hosted instance. Setting `SENTRY_HOST` or
