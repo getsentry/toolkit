@@ -382,6 +382,26 @@ const rules = {
           }
         : {},
   ),
+  "no-process-exit": rule(
+    "Do not force the process to exit: it drops pending telemetry and piped " +
+      "output. Release the handle that keeps the event loop alive (see " +
+      "close-dispatcher.ts), or fix it in the dependency that owns it. " +
+      "Signal, fatal error, and broken stream handlers may exit, with a " +
+      "disable comment that says why.",
+    (_context, file, report) =>
+      file.includes("/src/")
+        ? {
+            MemberExpression(node) {
+              if (
+                member(node, "exit") &&
+                (node.object.name === "process" ||
+                  member(node.object, "process"))
+              )
+                report(node);
+            },
+          }
+        : {},
+  ),
   "no-stdout-write-in-commands": rule(
     "Yield CommandOutput instead of writing to stdout.",
     (_context, file, report) =>

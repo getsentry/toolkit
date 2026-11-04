@@ -478,39 +478,83 @@ describe("maybeCheckForUpdateInBackground", () => {
     abortPendingVersionCheck();
   });
 
-  test("respects probabilistic checking when recently checked", async () => {
-    // Set a recent lastChecked time by calling setVersionCheckInfo
-    // This will set lastChecked to "now"
+  test("does not check again right after a check", async () => {
+    let requests = 0;
+    globalThis.fetch = mockFetch(async () => {
+      requests += 1;
+      return new Response("{}");
+    });
     setVersionCheckInfo("1.0.0");
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
 
-    const infoBefore = getVersionCheckInfo();
-    expect(infoBefore.lastChecked).not.toBeNull();
-    expect(infoBefore.latestVersion).toBe("1.0.0");
-
-    // Call multiple times - with very recent check, probability is near 0
-    // so it's unlikely to trigger a new check
     for (let i = 0; i < 5; i++) {
       maybeCheckForUpdateInBackground();
     }
-
-    // Wait briefly
     await sleep(50);
-    abortPendingVersionCheck();
+
+    expect(requests).toBe(0);
   });
 
-  test("aborts cleanly when abortPendingVersionCheck is called", async () => {
-    // Start a background check
+  test("checks without a terminal", async () => {
+    // `cli upgrade --offline` and delta patches need the cached result, and
+    // agents and scripts never have a TTY.
+    let requests = 0;
+    globalThis.fetch = mockFetch(async () => {
+      requests += 1;
+      return new Response("{}");
+    });
+    const restoreTTY = withStderrTTY(false);
+    try {
+      maybeCheckForUpdateInBackground();
+      await sleep(10);
+    } finally {
+      restoreTTY();
+    }
+
+    expect(requests).toBeGreaterThan(0);
+  });
+
+  test("ends the request when the command ends and does not count it as a check", async () => {
+    const signals: AbortSignal[] = [];
+    globalThis.fetch = mockFetch(
+      async (input, init) =>
+        await new Promise<Response>((_resolve, reject) => {
+          const signal =
+            init?.signal ?? (input instanceof Request ? input.signal : null);
+          if (signal) {
+            signals.push(signal);
+            signal.addEventListener("abort", () => reject(signal.reason));
+          }
+        }),
+    );
+
     maybeCheckForUpdateInBackground();
-
-    // Immediately abort
+    await sleep(10);
     abortPendingVersionCheck();
+    await sleep(10);
 
-    // Should not throw and should clean up properly
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(getVersionCheckInfo().lastChecked).toBeNull();
+
+    maybeCheckForUpdateInBackground();
+    await sleep(10);
+
+    expect(signals).toHaveLength(2);
+  });
+
+  test("does not count a failed check as a check", async () => {
+    let requests = 0;
+    globalThis.fetch = mockFetch(async () => {
+      requests += 1;
+      throw new TypeError("fetch failed");
+    });
+
+    maybeCheckForUpdateInBackground();
     await sleep(50);
 
-    // Can start another check after aborting
-    expect(() => maybeCheckForUpdateInBackground()).not.toThrow();
-    abortPendingVersionCheck();
+    expect(requests).toBeGreaterThan(0);
+    expect(getVersionCheckInfo().lastChecked).toBeNull();
   });
 
   test("passes the Toolkit source from stable discovery to patch prefetch without legacy access", async () => {
