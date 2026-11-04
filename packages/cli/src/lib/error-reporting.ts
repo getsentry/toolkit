@@ -77,6 +77,21 @@ type SilenceReason =
   | "seer_unavailable_self_hosted";
 
 /**
+ * A raw network TypeError, or the ApiError(status 0) that SDK-backed calls
+ * wrap it in (original kept on `cause`, CLI-29S).
+ */
+function isRawOrWrappedNetworkError(error: unknown): boolean {
+  if (isNetworkError(error)) {
+    return true;
+  }
+  return (
+    error instanceof ApiError &&
+    error.status === 0 &&
+    isNetworkError(error.cause)
+  );
+}
+
+/**
  * Classify whether an error should be silenced.
  * Returns the reason string when silenced, `null` when it should be captured.
  *
@@ -93,7 +108,7 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   // offline" report, so drop it — same rationale as EPIPE/EBADF OS noise in
   // `beforeSend`. Note: TLS cert errors are wrapped as
   // ApiError(status 0), NOT matched here, so they stay captured/actionable.
-  if (isNetworkError(error)) {
+  if (isRawOrWrappedNetworkError(error)) {
     return "network_error";
   }
   // A ContextError means the user omitted a required value (no org/project

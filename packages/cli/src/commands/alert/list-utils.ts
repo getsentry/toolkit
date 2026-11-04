@@ -1,6 +1,6 @@
 /** Shared helpers for alert list commands. */
 
-import { ApiError, ValidationError } from "../../lib/errors.js";
+import { ApiError, TimeoutError, ValidationError } from "../../lib/errors.js";
 import { LIST_MAX_LIMIT } from "../../lib/list-command.js";
 import {
   type FetchGroupsOptions,
@@ -38,6 +38,9 @@ export function throwAlertListFetchFailure(
   prefix: string,
   error: Error,
 ): never {
+  if (error instanceof TimeoutError) {
+    throw new TimeoutError(`${prefix}: ${error.message}`, error.hint);
+  }
   if (!(error instanceof ApiError)) {
     throw new Error(`${prefix}: ${error.message}`);
   }

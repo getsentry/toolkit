@@ -44,6 +44,7 @@ import { createDsnFingerprint } from "../../lib/dsn/index.js";
 import {
   ApiError,
   ContextError,
+  TimeoutError,
   toSearchQueryError,
   ValidationError,
   withAuthGuard,
@@ -1343,6 +1344,11 @@ async function handleResolvedTargets(
         first.endpoint,
         first.enriched403 || first.status === 403,
       );
+    }
+
+    // Keep the timeout's status-page hint and exit code.
+    if (first instanceof TimeoutError) {
+      throw new TimeoutError(`${prefix}: ${first.message}`, first.hint);
     }
 
     throw new Error(`${prefix}: ${first.message}`);
