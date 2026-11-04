@@ -175,17 +175,19 @@ describe("find_dropped_events", () => {
           {
             path: ["interval"],
             message:
-              "Must be at most '1d' and divide one day evenly, e.g. '5m', '1h', '6h', or '1d'. For a total over a longer range, use '1d' and sum the buckets, or omit interval to let Sentry pick.",
+              "Must be at most '1d' and divide one day evenly, e.g. '1h', '6h', or '1d', with the range split into at most 1000 buckets. For a total over a longer range, use '1d' and sum the buckets, or omit interval to let Sentry pick.",
           },
         ]);
       },
     );
 
+    // A one-hour range keeps every case within Sentry's bucket-count limits,
+    // so only the interval rules decide whether Sentry accepts it.
     it.each(["23h", "30s"])(
       "rejects interval=%s, which Sentry's Outcomes query also refuses",
       (interval) => {
         expect(
-          inputSchema.safeParse({ ...baseParams, statsPeriod: "30d", interval })
+          inputSchema.safeParse({ ...baseParams, statsPeriod: "1h", interval })
             .success,
         ).toBe(false);
       },
@@ -195,7 +197,7 @@ describe("find_dropped_events", () => {
       "accepts interval=%s",
       (interval) => {
         expect(
-          inputSchema.safeParse({ ...baseParams, statsPeriod: "30d", interval })
+          inputSchema.safeParse({ ...baseParams, statsPeriod: "1h", interval })
             .data?.interval,
         ).toBe(interval);
       },

@@ -129,7 +129,7 @@ export default defineTool({
       .trim()
       .refine(isSupportedInterval, {
         message:
-          "Must be at most '1d' and divide one day evenly, e.g. '5m', '1h', '6h', or '1d'. For a total over a longer range, use '1d' and sum the buckets, or omit interval to let Sentry pick.",
+          "Must be at most '1d' and divide one day evenly, e.g. '1h', '6h', or '1d', with the range split into at most 1000 buckets. For a total over a longer range, use '1d' and sum the buckets, or omit interval to let Sentry pick.",
       })
       .describe(
         "Bucket size, at most '1d' and dividing one day evenly, e.g. '1h', '1d'. Use '1d' and sum the buckets for longer ranges. Omit to let Sentry pick for the range.",
