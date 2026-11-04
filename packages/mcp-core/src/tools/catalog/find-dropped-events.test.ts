@@ -7,6 +7,7 @@ import {
 } from "../../test-utils/structured-content.js";
 import findDroppedEvents, {
   findDroppedEventsOutputSchema,
+  resolveDroppedEventsInterval,
 } from "./find-dropped-events.js";
 
 const context = {
@@ -144,5 +145,75 @@ describe("find_dropped_events", () => {
     expect(captured?.get("dataset")).toBe("errors");
     expect(captured?.get("outcome")).toBe("rate_limited");
     expect(captured?.get("reason")).toBe("spike_protection");
+  });
+
+  it("replaces an interval Sentry rejects and says so", async () => {
+    let captured: URLSearchParams | undefined;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/events-dropped/",
+        ({ request }) => {
+          captured = new URL(request.url).searchParams;
+          return HttpResponse.json(DROPPED_EVENTS_RESPONSE);
+        },
+      ),
+    );
+
+    const result = await findDroppedEvents.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        dataset: "errors",
+        projectSlug: null,
+        statsPeriod: "30d",
+        start: null,
+        end: null,
+        interval: "30d",
+        outcome: null,
+        reason: null,
+      },
+      context,
+    );
+
+    expect(captured?.get("interval")).toBe("1d");
+    expect(getStructuredContent(result)).toMatchObject({
+      intervalNote: expect.stringContaining(
+        "Used interval '1d' instead of '30d'",
+      ),
+    });
+  });
+
+  describe("resolveDroppedEventsInterval", () => {
+    it.each([
+      // Accepted as-is.
+      ["1h", 7 * 86_400, "1h"],
+      ["1d", 30 * 86_400, "1d"],
+      // Longer than a day.
+      ["7d", 7 * 86_400, "1d"],
+      ["1w", undefined, "1d"],
+      // Does not divide a day.
+      ["23h", 30 * 86_400, "1d"],
+      ["50m", 86_400, "1h"],
+      ["45m", 86_400, "45m"],
+      // Too many buckets for the range.
+      ["1h", 90 * 86_400, "3h"],
+      ["1m", 86_400, "5m"],
+    ])("maps %s over %s seconds to %s", (interval, rangeSeconds, expected) => {
+      expect(
+        resolveDroppedEventsInterval(interval, rangeSeconds).interval,
+      ).toBe(expected);
+    });
+
+    it("keeps an accepted interval without a note", () => {
+      expect(resolveDroppedEventsInterval("1h", 86_400)).toEqual({
+        interval: "1h",
+      });
+    });
+
+    it("drops an interval that is not a duration", () => {
+      expect(resolveDroppedEventsInterval("hourly", 86_400)).toEqual({
+        intervalNote: expect.stringContaining("Ignored interval 'hourly'"),
+      });
+    });
   });
 });

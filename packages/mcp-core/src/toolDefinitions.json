@@ -2213,7 +2213,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Bucket size, e.g. '1h', '1d'. Omit to let Sentry pick for the range."
+              "description": "Bucket size from '1m' to '1d', e.g. '1h'. Omit to let Sentry pick for the range."
             },
             {
               "type": "null"
@@ -2267,6 +2267,10 @@
         },
         "interval": {
           "type": "number"
+        },
+        "intervalNote": {
+          "description": "Set when the requested interval was replaced or ignored.",
+          "type": "string"
         },
         "droppedEvents": {
           "type": "array",
