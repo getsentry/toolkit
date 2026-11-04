@@ -5,7 +5,11 @@
  * `makeOfflineTransport` from `@sentry/core`, backed by the SQLite store in
  * `offline-store.ts`. The SDK stores an envelope whose send throws, which
  * includes the request deadline. It returns any HTTP response as is, so a
- * 4xx or 5xx is dropped, and it never stores client reports.
+ * 4xx or 5xx is dropped, and it never stores client reports. Metrics
+ * (`trace_metric`) aren't stored either: they are sent as usual and dropped
+ * on failure. A long-running command emits runtime metrics every few
+ * seconds, and old ones are worth little; stored, they would push sessions
+ * and transactions out of the store's caps.
  *
  * On top of that:
  * - A per-transport circuit breaker. After the first network error or
@@ -23,6 +27,7 @@
  */
 
 import {
+  envelopeContainsItemType,
   makeOfflineTransport,
   type Transport,
   type TransportMakeRequestResponse,
@@ -164,6 +169,8 @@ export function makeStoringTransport(
       shift: () => Promise.resolve(undefined),
     }),
     shouldSend,
+    shouldStore: (envelope) =>
+      !envelopeContainsItemType(envelope, ["trace_metric"]),
   });
 
   return {

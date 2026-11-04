@@ -96,7 +96,7 @@ Only the tips are removed. Pagination hints, dry-run and cancellation notices, a
 
 The CLI sends usage data and error reports about itself to Sentry. To opt out, set `SENTRY_CLI_NO_TELEMETRY=1` or `DO_NOT_TRACK=1`, or run `sentry cli defaults telemetry off`.
 
-When telemetry can't be sent, for example while offline or when a firewall blocks Sentry, the CLI keeps it in its local database and sends up to 10 stored envelopes on each later run. The cache holds at most 100 envelopes and 4 MiB. When it's full, the oldest usage data goes first, then the oldest error reports. It discards error reports after 30 days and everything else after 4 days.
+When telemetry can't be sent, for example while offline or when a firewall blocks Sentry, the CLI keeps it in its local database and sends up to 10 stored envelopes on each later run. The cache holds at most 100 envelopes and 4 MiB. When it's full, the oldest usage data goes first, then the oldest error reports. It discards error reports after 30 days and everything else after 4 days. Metrics, such as timings, aren't cached: when they can't be sent, they're dropped.
 
 After the first failed send, the CLI stops sending for 5 minutes, so an unreachable Sentry delays a command's exit by about 3 seconds at most. Long-running commands, such as `sentry mcp` and `sentry local`, then try one send every 5 minutes, and send what they stored once one succeeds.
 

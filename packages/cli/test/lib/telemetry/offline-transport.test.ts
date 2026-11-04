@@ -133,6 +133,33 @@ describe("makeStoringTransport breaker", () => {
     expect(sent).toEqual(["a", "probe", "a", "during"]);
   });
 
+  test("drops runtime metrics instead of storing them", async () => {
+    const { clock, ingest, transport } = setup();
+    const metrics = createEnvelope({ event_id: "m" }, [
+      [{ type: "trace_metric" }, { items: [] }],
+    ] as never);
+
+    // A failed send opens the breaker but keeps nothing. The send rejects,
+    // which the SDK client catches.
+    await expect(transport.send(metrics)).rejects.toThrow("ECONNREFUSED");
+    expect(ingest.sent).toEqual(["m"]);
+    expect(storedEventIds()).toEqual([]);
+
+    // With the breaker open, metrics skip the network and are dropped too,
+    // while other envelopes are still stored.
+    await expect(transport.send(metrics)).rejects.toThrow("shouldSend");
+    await transport.send(eventEnvelope("a"));
+    expect(ingest.sent).toEqual(["m"]);
+    expect(storedEventIds()).toEqual(["a"]);
+
+    // A metrics envelope can still be the probe that closes the breaker.
+    ingest.up = true;
+    clock.now += BREAKER_COOLDOWN_MS;
+    await transport.send(metrics);
+    await vi.waitFor(() => expect(storedEventIds()).toEqual([]));
+    expect(ingest.sent).toEqual(["m", "m", "a"]);
+  });
+
   test("sendStored does nothing while the breaker is open", async () => {
     const { ingest, transport } = setup();
     await transport.send(eventEnvelope("a"));
