@@ -38,8 +38,7 @@ export type TraceGroup = {
 
 type MutableTraceGroup = Omit<TraceGroup, "roots" | "spans" | "itemCount"> & {
   spanMap: Map<string, TraceSpan>;
-  titlePriority: number;
-  titleSpanId?: string;
+  titleCandidates: Set<string>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -291,7 +290,7 @@ export function buildTraceGroups(
     const trace: MutableTraceGroup = traces.get(traceId) ?? {
       id: traceId,
       title: item.metadata?.title ?? item.type,
-      titlePriority: 0,
+      titleCandidates: new Set(),
       items: [],
       logCount: 0,
       errorCount: 0,
@@ -317,24 +316,7 @@ export function buildTraceGroups(
         const isSegment =
           isRecord(item.payload) && item.payload.is_segment === true;
         if (item.type === "transaction" || isSegment) {
-          // A local segment can have a remote parent absent from this receiver.
-          const named =
-            merged.description.trim() &&
-            merged.description !== merged.operation &&
-            merged.description !== merged.id &&
-            merged.description !== merged.item.type;
-          const priority = (merged.parentId ? 1 : 2) * 10 + (named ? 1 : 0);
-          if (
-            priority > trace.titlePriority ||
-            (priority === trace.titlePriority &&
-              trace.titleSpanId === merged.id)
-          ) {
-            trace.title = named
-              ? merged.description.trim()
-              : (merged.operation ?? merged.id);
-            trace.titlePriority = priority;
-            trace.titleSpanId = merged.id;
-          }
+          trace.titleCandidates.add(merged.id);
         }
       }
     }
@@ -349,6 +331,24 @@ export function buildTraceGroups(
   return [...traces.values()]
     .map((trace) => {
       updateTraceTiming(trace);
+      // A partial update can turn a former root into a child. Select from final
+      // merged spans rather than retaining a priority from an earlier delivery.
+      let titlePriority = -1;
+      for (const id of trace.titleCandidates) {
+        const span = trace.spanMap.get(id)!;
+        const named =
+          span.description.trim() &&
+          span.description !== span.operation &&
+          span.description !== span.id &&
+          span.description !== span.item.type;
+        const priority = (span.parentId ? 1 : 2) * 10 + (named ? 1 : 0);
+        if (priority > titlePriority) {
+          trace.title = named
+            ? span.description.trim()
+            : (span.operation ?? span.id);
+          titlePriority = priority;
+        }
+      }
       const spans = sortByTimestamp([...trace.spanMap.values()]);
       const roots: TraceSpan[] = [];
       for (const span of spans) {

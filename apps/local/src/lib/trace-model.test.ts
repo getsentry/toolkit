@@ -683,3 +683,64 @@ test.each([false, true])(
     );
   },
 );
+
+test.each([
+  [0, 1, 2],
+  [0, 2, 1],
+  [2, 0, 1],
+  [1, 0, 2],
+])(
+  "trace titles follow final parent links after reordered segment updates: %j",
+  (...order) => {
+    const captures = [
+      {
+        span_id: "child",
+        name: "Child operation",
+        start_timestamp: 1,
+        end_timestamp: 2,
+        is_segment: true,
+      },
+      {
+        span_id: "child",
+        parent_span_id: "parent",
+        start_timestamp: 1,
+        end_timestamp: 3,
+      },
+      {
+        span_id: "parent",
+        name: "Parent operation",
+        start_timestamp: 1,
+        end_timestamp: 4,
+        is_segment: true,
+      },
+    ];
+    const items = order.flatMap((index) =>
+      decodeEnvelope(
+        JSON.stringify([
+          {},
+          [
+            [
+              { type: "span" },
+              {
+                version: 2,
+                items: [
+                  {
+                    ...captures[index]!,
+                    trace_id: "late-parent",
+                    attributes: { "sentry.op": { value: "http.server" } },
+                  },
+                ],
+              },
+            ],
+          ],
+        ]),
+        `capture-${index}`,
+      ),
+    );
+    const trace = buildTraceGroups(items)[0]!;
+    expect(trace.title).toBe("Parent operation");
+    expect(trace.roots).toMatchObject([
+      { id: "parent", children: [{ id: "child" }] },
+    ]);
+  },
+);
