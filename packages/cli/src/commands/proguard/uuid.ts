@@ -100,7 +100,7 @@ export const uuidCommand = buildCommand({
     }
 
     const uuid = computeProguardUuid(content);
-    yield new CommandOutput<ProguardUuidResult>({ path, uuid });
+    yield new CommandOutput({ path, uuid });
     return {};
   },
 });

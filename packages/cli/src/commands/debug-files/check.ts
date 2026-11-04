@@ -174,7 +174,7 @@ export const checkCommand = buildCommand({
     }
 
     const usable = isUsable(archive);
-    yield new CommandOutput<DebugFilesCheckResult>({
+    yield new CommandOutput({
       path,
       fileFormat: archive.fileFormat,
       objects: archive.objects,

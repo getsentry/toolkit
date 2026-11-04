@@ -5,7 +5,16 @@
  */
 
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
-import { looseObject } from "valibot";
+import {
+  array,
+  description,
+  looseObject,
+  object,
+  optional,
+  pipe,
+  string,
+  union,
+} from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
@@ -25,28 +34,43 @@ import {
   DryRunOutputField,
   type SentryRelease,
   SentryReleaseSchema,
+  type WithOutputFields,
 } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT = "sentry release create [<org>/]<version>";
 
 /**
+ * The fields `--dry-run` changes on the release it reports: the `dryRun`
+ * flag, and `projects` as `{ slug }` objects instead of full projects.
+ */
+const ReleaseCreateOutputFields = object({
+  dryRun: DryRunOutputField,
+  projects: optional(
+    pipe(
+      union([
+        SentryReleaseSchema.entries.projects.wrapped,
+        array(object({ slug: pipe(string(), description("Project slug")) })),
+      ]),
+      description("Projects in the release (only slug with --dry-run)"),
+    ),
+  ),
+});
+
+/**
  * JSON output: the created release, or with `--dry-run` the release that
- * would be created, in the same shape (`projects` as `{ slug }` objects).
+ * would be created, in the same shape.
  */
 const ReleaseCreateOutputSchema = looseObject({
   ...SentryReleaseSchema.entries,
-  dryRun: DryRunOutputField,
+  ...ReleaseCreateOutputFields.entries,
 });
 
 /** The release `--dry-run` reports: the request body, shaped like a release. */
-type ReleaseCreateDryRun = Pick<
-  SentryRelease,
-  "version" | "ref" | "url" | "dateReleased"
-> & {
-  dryRun: true;
-  projects: { slug: string }[];
-};
+type ReleaseCreateDryRun = WithOutputFields<
+  Pick<SentryRelease, "version" | "ref" | "url" | "dateReleased">,
+  typeof ReleaseCreateOutputFields
+> & { projects: { slug: string }[] };
 
 function formatReleaseCreated(release: SentryRelease): string {
   const lines: string[] = [];
@@ -212,7 +236,7 @@ export const createCommand = buildCommand({
         url: body.url,
         dateReleased: body.dateReleased,
       };
-      yield new CommandOutput<SentryRelease | ReleaseCreateDryRun>(preview);
+      yield new CommandOutput(preview);
       return { hint: "Dry run — no release was created." };
     }
 

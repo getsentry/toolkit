@@ -122,6 +122,113 @@ test("GenAI queries omit overflowing totals without losing the other metric", as
 });
 
 test.each([
+  { field: "vercel.ai.response.text", value: "Hello world" },
+  { field: "vercel.ai.response.text", value: ["Hello", " ", "world"] },
+  { field: "gen_ai.response.text", value: ["Hello", " ", "world"] },
+])(
+  "Vercel AI queries expose response text from $field: $value",
+  async ({ field, value }) => {
+    const store = createTelemetryStore();
+    try {
+      await ingestSpans(store, [
+        span("root", {
+          "vercel.ai.operationId": "ai.generateText",
+          [field]: value,
+          "vercel.ai.response.finishReason": "stop",
+        }),
+      ]);
+      expect(store.getAITraces()[0]?.response).toMatchObject({
+        text: "Hello world",
+        finishReason: "stop",
+      });
+      expect(store.getSpans({ traceId: "ai-trace" })[0]?.data?.[field]).toEqual(
+        value,
+      );
+    } finally {
+      store.dispose();
+    }
+  },
+);
+
+test("Vercel AI queries prefer standard response text over its legacy alias", async () => {
+  const store = createTelemetryStore();
+  try {
+    await ingestSpans(store, [
+      span("root", {
+        "vercel.ai.operationId": "ai.generateText",
+        "gen_ai.response.text": "standard response",
+        "vercel.ai.response.text": "legacy response",
+      }),
+    ]);
+    expect(store.getAITraces()[0]?.response?.text).toBe("standard response");
+  } finally {
+    store.dispose();
+  }
+});
+
+test("Vercel AI queries pair the final legacy response text with its finish reason", async () => {
+  const store = createTelemetryStore();
+  try {
+    await ingestSpans(store, [
+      span("root", { "vercel.ai.operationId": "ai.generateText" }),
+      span(
+        "first",
+        {
+          "gen_ai.response.text": "first answer",
+          "gen_ai.response.finish_reasons": ["length"],
+        },
+        "root",
+      ),
+      span(
+        "final",
+        {
+          "vercel.ai.response.text": "final answer",
+          "vercel.ai.response.finishReason": "stop",
+        },
+        "root",
+      ),
+    ]);
+    expect(store.getAITraces()[0]?.response).toMatchObject({
+      text: "final answer",
+      finishReason: "stop",
+    });
+  } finally {
+    store.dispose();
+  }
+});
+
+test("Vercel AI queries preserve a paired response when a later text array is empty", async () => {
+  const store = createTelemetryStore();
+  try {
+    await ingestSpans(store, [
+      span("root", { "vercel.ai.operationId": "ai.generateText" }),
+      span(
+        "first",
+        {
+          "gen_ai.response.text": "recorded answer",
+          "gen_ai.response.finish_reasons": ["stop"],
+        },
+        "root",
+      ),
+      span(
+        "empty",
+        {
+          "gen_ai.response.text": [],
+          "gen_ai.response.finish_reasons": ["length"],
+        },
+        "root",
+      ),
+    ]);
+    expect(store.getAITraces()[0]?.response).toMatchObject({
+      text: "recorded answer",
+      finishReason: "stop",
+    });
+  } finally {
+    store.dispose();
+  }
+});
+
+test.each([
   "gen_ai.response.finish_reasons",
   "vercel.ai.response.finishReason",
 ])("Vercel AI queries keep final text paired with its %s", async (field) => {

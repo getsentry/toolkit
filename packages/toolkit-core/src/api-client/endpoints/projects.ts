@@ -5,7 +5,7 @@
  */
 
 import { listOrganizationProjects } from "@sentry/api";
-import { apiPath } from "../api-path.js";
+import { apiPath, withQuery } from "../api-path.js";
 import {
   type ApiTarget,
   type ListPage,
@@ -66,11 +66,12 @@ export async function getProject<T>(
   if (collapse) {
     query.set("collapse", collapse);
   }
-  const queryString = query.toString();
-  const path = apiPath`/projects/${organizationSlug}/${projectSlugOrId}/`;
   const body = await core.requestJson(
     origin,
-    `${path}${queryString ? `?${queryString}` : ""}`,
+    withQuery(
+      apiPath`/projects/${organizationSlug}/${projectSlugOrId}/`,
+      query,
+    ),
   );
   return validateResponse(schema, body);
 }

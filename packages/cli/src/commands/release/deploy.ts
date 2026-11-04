@@ -6,7 +6,14 @@
  */
 
 import { inlineCode } from "@sentry/toolkit-core/markdown";
-import { description, looseObject, optional, pipe, string } from "valibot";
+import {
+  description,
+  looseObject,
+  object,
+  optional,
+  pipe,
+  string,
+} from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createReleaseDeploy } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
@@ -24,24 +31,37 @@ import {
   DryRunOutputField,
   type SentryDeploy,
   SentryDeploySchema,
+  type WithOutputFields,
 } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 
 const USAGE_HINT =
   "sentry release deploy [<org>/]<version> <environment> [name]";
 
-function formatDeployCreated(data: Record<string, unknown>): string {
-  if (data.dryRun) {
+/**
+ * Fields `--dry-run` changes: it prints the deploy that would be created,
+ * which has no `id` yet, with its release `version`.
+ */
+const DeployOutputFields = object({
+  id: optional(SentryDeploySchema.entries.id),
+  dryRun: DryRunOutputField,
+  version: optional(pipe(string(), description("Release version (--dry-run)"))),
+});
+
+/** JSON output: the created deploy, or the `--dry-run` preview. */
+type DeployOutput = WithOutputFields<SentryDeploy, typeof DeployOutputFields>;
+
+function formatDeployCreated(deploy: DeployOutput): string {
+  if (deploy.dryRun) {
     return renderMarkdown(
-      `Would create deploy for ${inlineCode(String(data.environment))} environment (dry run)`,
+      `Would create deploy for ${inlineCode(deploy.environment)} environment (dry run)`,
     );
   }
-  const deploy = data as unknown as SentryDeploy;
   const lines: string[] = [];
   lines.push("## Deploy Created");
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["ID", deploy.id]);
+  kvRows.push(["ID", deploy.id ?? "—"]);
   kvRows.push(["Environment", inlineCode(deploy.environment)]);
   kvRows.push(["Name", deploy.name || "—"]);
   kvRows.push(["URL", deploy.url || "—"]);
@@ -111,11 +131,7 @@ export const deployCommand = buildCommand({
     human: formatDeployCreated,
     schema: looseObject({
       ...SentryDeploySchema.entries,
-      id: optional(SentryDeploySchema.entries.id),
-      dryRun: DryRunOutputField,
-      version: optional(
-        pipe(string(), description("Release version (--dry-run)")),
-      ),
+      ...DeployOutputFields.entries,
     }),
   },
   parameters: {

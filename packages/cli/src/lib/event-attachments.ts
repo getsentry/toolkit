@@ -7,7 +7,7 @@
 
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { EventAttachmentDetailsResponse } from "@sentry/api";
-import type { SentryEvent } from "../types/index.js";
+import type { EventViewAttachment, SentryEvent } from "../types/index.js";
 import { listEventAttachments } from "./api-client.js";
 import { renderMarkdown } from "./formatters/markdown.js";
 import { formatBytes } from "./formatters/numbers.js";
@@ -21,10 +21,6 @@ const log = logger.withTag("event.view");
 type EventWithOptionalProject = SentryEvent & {
   project?: string | { slug?: string | null } | null;
   projectSlug?: string | null;
-};
-
-export type EventViewAttachment = EventAttachmentDetailsResponse & {
-  download: string;
 };
 
 type AttachmentTarget = {

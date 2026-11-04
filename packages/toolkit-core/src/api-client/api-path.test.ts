@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { UserInputError } from "./errors.js";
-import { apiPath } from "./api-path.js";
+import { apiPath, withQuery } from "./api-path.js";
 
 /**
  * Resolves a path the way `fetch` does. Dot-segment normalization happens during URL
@@ -87,5 +87,14 @@ describe("apiPath", () => {
         expect(() => apiPath`/projects/o/p/keys/${value}/`).not.toThrow();
       }
     });
+  });
+});
+
+describe("withQuery", () => {
+  it("appends a non-empty query and leaves the path alone otherwise", () => {
+    expect(withQuery("/a/", new URLSearchParams({ q: "x y" }))).toBe(
+      "/a/?q=x+y",
+    );
+    expect(withQuery("/a/", new URLSearchParams())).toBe("/a/");
   });
 });

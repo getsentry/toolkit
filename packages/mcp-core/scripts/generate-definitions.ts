@@ -83,6 +83,7 @@ type DefinitionTool = {
   requiredScopes: string[];
   experimental?: boolean;
   hideInExperimentalMode?: boolean;
+  deprecated?: { replacedBy: readonly string[] };
 };
 
 type ToolSurface = "direct" | "catalog";
@@ -137,7 +138,7 @@ function generateToolDefinitions({
     },
   );
   const directEntries = visibleEntries.filter(([, tool]) =>
-    surfacesModule.isTopLevelToolName(tool.name, experimentalMode),
+    surfacesModule.isTopLevelTool(tool, experimentalMode),
   );
   const availableToolNames = toolNamesFromEntries(visibleEntries);
   const directToolNames = toolNamesFromEntries(directEntries);
@@ -179,6 +180,7 @@ function generateToolDefinitions({
       // Preserve skill catalog membership and call surface for UIs/docs.
       skills: t.skills,
       surface,
+      deprecated: t.deprecated,
     };
   });
   return defs.filter(isNonNull).sort(byName);
@@ -234,7 +236,7 @@ async function generateSkillDefinitions() {
   );
   const defaultDirectToolNames = toolNamesFromEntries(
     defaultVisibleEntries.filter(([, tool]) =>
-      surfacesModule.isTopLevelToolName(tool.name, false),
+      surfacesModule.isTopLevelTool(tool, false),
     ),
   );
 
@@ -265,9 +267,17 @@ async function generateSkillDefinitions() {
         return [toolKey, t.name];
       }),
     );
+    // Direct tools gated by other skills are not available to this skill.
     const availableToolNames = new Set([
       ...skillToolNames,
-      ...defaultDirectToolNames,
+      ...toolNamesFromEntries(
+        defaultVisibleEntries.filter(
+          ([, tool]) =>
+            defaultDirectToolNames.has(tool.name) &&
+            (tool.skills.includes(skill.id) ||
+              surfacesModule.isCatalogInfrastructureToolName(tool.name)),
+        ),
+      ),
     ]);
 
     for (const [, tool] of skillToolEntries) {
@@ -407,19 +417,24 @@ async function main() {
     writeJson(path.join(outDir, "toolDefinitions.json"), tools);
     writeJson(path.join(outDir, "skillDefinitions.json"), skills);
 
-    // Sync allowedTools in agent frontmatter with the direct MCP surface that
-    // is available under the default OAuth grant. Optional-skill tools remain
-    // available through search_sentry_tools/execute_sentry_tool when the user grants them,
-    // without advertising direct calls that many sessions cannot execute.
+    // Sync allowedTools in agent frontmatter with the direct MCP surface.
+    // With the catalog gateway, only default-grant tools are listed: optional
+    // skill tools stay reachable through execute_sentry_tool when granted.
+    // Without the gateway (EXPOSE_ALL_TOOLS), every direct tool is listed so
+    // tools from optional skills stay callable when the session grants them.
+    const gatewayIsDirect = surfacesModule.isTopLevelToolName(
+      "execute_sentry_tool",
+      false,
+    );
+    const isAgentAllowedTool = (tool: { skills: string[] }) =>
+      !gatewayIsDirect || isEnabledByDefaultSkills(tool);
     const directTools = tools.filter((tool) => tool.surface === "direct");
     const experimentalDirectTools = experimentalTools.filter(
       (tool) => tool.surface === "direct",
     );
-    const toolNames = directTools
-      .filter(isEnabledByDefaultSkills)
-      .map((t) => t.name);
+    const toolNames = directTools.filter(isAgentAllowedTool).map((t) => t.name);
     const experimentalToolNames = experimentalDirectTools
-      .filter(isEnabledByDefaultSkills)
+      .filter(isAgentAllowedTool)
       .map((t) => t.name);
 
     let agentsSynced = 0;

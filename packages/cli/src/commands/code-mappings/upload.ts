@@ -294,7 +294,7 @@ export const uploadCommand = buildCommand({
       }));
 
     // 7. Yield result
-    yield new CommandOutput<CodeMappingsUploadResult>({
+    yield new CommandOutput({
       org,
       project,
       repository,

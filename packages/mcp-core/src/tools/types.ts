@@ -89,6 +89,13 @@ export interface ToolConfig<
   requiredScopes: Scope[]; // LEGACY: Which API scopes needed (deprecated, for backward compatibility)
   experimental?: boolean; // Mark tool as experimental (only shown in experimental mode)
   hideInExperimentalMode?: boolean; // Hide tool when experimental mode is active (for tools replaced by unified tools)
+  /**
+   * Marks a name kept only for backward compatibility. Deprecated tools are
+   * never listed in tools/list (see isTopLevelTool in surfaces.ts) but stay
+   * callable through execute_sentry_tool. `replacedBy` names the tool or tools
+   * new callers should use instead.
+   */
+  deprecated?: { replacedBy: readonly string[] };
   requiredCapabilities?: (keyof ProjectCapabilities)[]; // Project capabilities required for this tool
   outputSchema?: z.ZodType;
   annotations: {

@@ -23,7 +23,7 @@ describe("/.mcp discovery routes", () => {
     });
   });
 
-  it("GET /.mcp/tools.json should return direct and catalog tool definitions", async () => {
+  it("GET /.mcp/tools.json should return direct tool definitions", async () => {
     const res = await app.request(
       "/.mcp/tools.json",
       {
@@ -42,6 +42,7 @@ describe("/.mcp discovery routes", () => {
       inputSchema: unknown;
       skills: string[];
       surface: "direct" | "catalog";
+      deprecated?: { replacedBy: string[] };
     }>;
     expect(Array.isArray(json)).toBe(true);
     expect(json.length).toBeGreaterThan(0);
@@ -53,24 +54,25 @@ describe("/.mcp discovery routes", () => {
         surface: "direct",
       }),
     );
-    expect(toolsByName.get("search_traces")).toEqual(
-      expect.objectContaining({
-        surface: "direct",
-      }),
-    );
-    expect(toolsByName.get("search_events")?.surface).not.toBe("direct");
     expect(toolsByName.get("get_issue_details")).toEqual(
       expect.objectContaining({
         inputSchema: expect.any(Object),
         skills: expect.arrayContaining(["inspect"]),
-        surface: "catalog",
+        surface: "direct",
       }),
     );
-    expect(toolsByName.get("get_trace_details")).toEqual(
-      expect.objectContaining({
-        skills: expect.arrayContaining(["inspect"]),
-        surface: "catalog",
-      }),
-    );
+    // EXPOSE_ALL_TOOLS lists every tool directly and drops the gateway.
+    // Deprecated tools stay catalog-only so harness search skips them.
+    for (const tool of json) {
+      expect([tool.name, tool.surface]).toEqual([
+        tool.name,
+        tool.deprecated ? "catalog" : "direct",
+      ]);
+    }
+    expect(toolsByName.get("search_events")?.deprecated).toEqual({
+      replacedBy: expect.arrayContaining(["search_errors", "search_logs"]),
+    });
+    expect(toolsByName.has("search_sentry_tools")).toBe(false);
+    expect(toolsByName.has("execute_sentry_tool")).toBe(false);
   });
 });

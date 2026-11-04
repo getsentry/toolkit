@@ -44,7 +44,11 @@ import {
   validateIssueActions,
   validateIssueTriggers,
 } from "../mutation-utils.js";
-import { IssueAlertCreateOutputSchema } from "../output-schemas.js";
+import {
+  type IssueAlertCreateBody,
+  type IssueAlertCreateOutput,
+  IssueAlertCreateOutputSchema,
+} from "../output-schemas.js";
 
 const USAGE_HINT =
   "sentry alert issues create <target> --name <name> --condition <json> --action <json>";
@@ -63,17 +67,7 @@ type CreateFlags = {
   readonly fields?: string[];
 };
 
-type CreateResult = {
-  org: string;
-  project: string;
-  id?: string;
-  name: string;
-  status?: string;
-  dryRun?: boolean;
-  body?: Record<string, unknown>;
-};
-
-function formatCreated(result: CreateResult): string {
+function formatCreated(result: IssueAlertCreateOutput): string {
   if (result.dryRun) {
     return `Would create issue alert rule '${result.name}' in ${result.org}/${result.project}.`;
   }
@@ -264,7 +258,7 @@ export const createCommand = buildCommand({
     // Assemble the workflow-shaped body. The user supplies workflow-native
     // conditions/actions; the CLI only builds the envelope (triggers +
     // action_filters + logic types), mirroring the backend dual-write mapping.
-    const body: Record<string, unknown> = {
+    const body: IssueAlertCreateBody = {
       name: flags.name,
       detectorIds: [detectorId],
       config: { frequency: flags.frequency },
@@ -294,7 +288,7 @@ export const createCommand = buildCommand({
         name: flags.name,
         dryRun: true,
         body,
-      } satisfies CreateResult);
+      } satisfies IssueAlertCreateOutput);
       return { hint: "Dry run - no issue alert rule was created." };
     }
 
@@ -307,6 +301,6 @@ export const createCommand = buildCommand({
       status: stringifyUnknown(
         created.status ?? (created.enabled === false ? "disabled" : "active"),
       ),
-    } satisfies CreateResult);
+    } satisfies IssueAlertCreateOutput);
   },
 });

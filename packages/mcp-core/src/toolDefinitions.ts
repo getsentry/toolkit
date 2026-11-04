@@ -18,6 +18,8 @@ export interface ToolDefinition {
   skills: Skill[];
   // Whether this tool is exposed directly or through the catalog.
   surface: ToolDefinitionSurface;
+  // Set on names kept for backward compatibility; lists the replacements.
+  deprecated?: { replacedBy: string[] };
 }
 
 const toolDefinitions = toolDefinitionsData as ToolDefinition[];

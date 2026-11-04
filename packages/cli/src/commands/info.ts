@@ -19,6 +19,7 @@ import {
 import { colorTag, renderMarkdown } from "../lib/formatters/markdown.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { logger } from "../lib/logger.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("info");
 
@@ -111,7 +112,7 @@ function formatInfo(data: InfoStatus): string {
 
 export const infoCommand = buildCommand({
   docs: {
-    brief: "Print configuration and verify authentication",
+    brief: topLevelBrief("info"),
     fullDescription:
       "Print the resolved Sentry server URL and default organization/project, " +
       "and verify authentication against the server.\n\n" +

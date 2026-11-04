@@ -113,14 +113,29 @@ Top-level layout:
 
 - **`src/bin.ts`** — entry point; **`src/app.ts`** — Stricli application setup;
   **`src/context.ts`** — dependency-injection context.
+- **`src/command-manifest.ts`** — every top-level route: how to load it and
+  whether help hides it. **`src/top-level-briefs.ts`** holds the brief of each
+  visible one; its route map or command sets `brief: topLevelBrief("<name>")`
+  instead of writing its own. The briefs stay out of the manifest so that
+  importing them does not pull every command's `import()` into the
+  `@sentry/mcp-server` bundle, which cannot split chunks. A new top-level
+  route goes in `app.ts` and the manifest, in the same place, and in
+  `top-level-briefs.ts` if visible; `test/lib/command-manifest.test.ts` fails
+  when they disagree. What
+  else the top-level help shows (visible subcommands, a command's usage line
+  and placeholder) derives from code, so `generate:top-level-routes` writes it
+  to `src/generated/top-level-routes.json` (part of `generate:docs`).
 - **`src/app-for-args.ts`** — picks the application for a run. When the first
-  argument names a top-level route, it loads only that route through
-  `src/generated/route-loaders.ts`, which `script/generate-route-loaders.ts`
-  writes from the route map and imports in `app.ts` (`generate:routes`, part of
-  `generate:docs`). Anything else, and `help`, `schema`, and `cli`, which read
-  the whole tree with `getRoutes()`, loads `app.ts`. Add commands to `app.ts`
-  only; a new top-level command that reads the whole tree goes in
-  `FULL_TREE_ROUTES`. Root route map settings live in `src/app-root.ts`.
+  argument after any global flags (`GLOBAL_FLAGS` in `src/lib/global-flags.ts`)
+  names a top-level route, it loads only that route through the manifest. A
+  bare `--version` loads only `help`. The text top-level help (`sentry`,
+  `sentry help`, `sentry --help`) loads only `help` and builds the other
+  routes as help-only stand-ins from the manifest and
+  `top-level-routes.json` (`src/root-help-routes.ts`).
+  Anything else, and `help <command>`, `schema`, and `cli`, which read the
+  whole tree with `getRoutes()`, loads `app.ts`. A new top-level command that
+  reads the whole tree goes in `FULL_TREE_ROUTES`. Root route map settings
+  live in `src/app-root.ts`.
 - **`src/chunk-main.ts`** — main script of the npm package (`dist/bin.cjs`)
   and the standalone binary. `script/lib/split-bundle.ts` builds the CLI
   (`src/bin.ts`) as code-split CommonJS chunks for both: every `import()` and
@@ -184,7 +199,7 @@ export const myCommand = buildCommand({
   },
   output: {
     human: formatMyData,                // (data: T) => string
-    jsonTransform: jsonTransformMyData, // optional: (data: T, fields?) => unknown
+    jsonTransform: jsonTransformMyData, // optional: (data: T, fields?) => typed JSON
     jsonExclude: ["humanOnlyField"],    // optional: strip keys from JSON
   },
   parameters: {
@@ -219,6 +234,34 @@ Formatting and rendering logic belongs in `src/lib/formatters/<domain>.ts`. If a
 Reference: `src/lib/formatters/replay.ts` (extracted from `replay/view.ts`), `src/lib/formatters/trace.ts`, `src/lib/formatters/human.ts`.
 
 Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output.
+
+### Declaring Command Output
+
+`output.schema` drives `--fields` completion, the JSON field table in `--help`, and the skill references. Nothing validates output against it, so declare each field once and derive the TypeScript type from the schema; the compiler then keeps the two in sync ([#1824](https://github.com/getsentry/toolkit/issues/1824)).
+
+- **API fields** keep their `@sentry/api` type and come from the generated `@sentry/api/valibot` schema (`vXxxResponse.entries`, wrapped in `pipe(field, description(…))` when it needs a description).
+- **Fields the CLI adds** (target context such as `org`/`orgSlug`, flags such as `dryRun`/`deleted`, computed values such as `url`, `trace`, `period`) are written once as a valibot `object` of output fields. Spread its `entries` into the schema, and get the type with `InferOutput<typeof Fields>`, or `WithOutputFields<ApiType, typeof Fields>` (`src/types/output.ts`) when the fields sit on (or override) an API object.
+- Type the `human` formatter's parameter (and `jsonTransform`'s, when set) with the derived type. `buildCommand`, `buildListCommand`, and `buildDeleteCommand` infer the output type from `output` and check every `CommandOutput` that `func` yields against it. Annotate a yield (`new CommandOutput<Output>(…)`) only when it builds a discriminated-union literal (`kind: "endpoints"`) that would otherwise widen to `string`.
+- Without `jsonTransform`, the data (each item, for array data) must also satisfy `output.schema`: a field the schema documents but the command doesn't produce, or documents with another type, is a compile error. Keep the data typed: an API response typed `Record<string, unknown>` can't satisfy a schema built from `@sentry/api/valibot`, so type it with its `@sentry/api` response type.
+- With `jsonTransform`, the schema describes the transform's item: each item of a `{ data: [...] }` envelope or an array, otherwise the result itself. Every field the schema documents must exist on that item with a matching type; optionality isn't compared, since `--fields` makes items `Partial`. So the transform must return a typed result, not `unknown` or `Record<string, unknown>`: return `ListJson<Item>` from `jsonTransformListResult`, type a hand-built envelope as `ListEnvelope<Item>` (`lib/org-list.ts`), and let a single object's type come from its spread with `filterFieldsIfSet`. The error names the mismatched fields under `~outputMismatch`.
+- An `OrgListConfig` checks its entity against `schema` when you pass the schema's type: `OrgListConfig<SentryTeam, TeamWithOrg, typeof SentryTeamSchema>`. Don't annotate an output config as `OutputConfig<T>` or check it with `satisfies OutputConfig<T>`: that erases the schema's type, and the check passes without comparing anything.
+- Reuse the shared fields: `DryRunOutputField`, `orgListItemSchema`/`WithOrg` (`lib/org-list.ts`) for org-scoped lists, `opaque<T>()` for a field the docs leave opaque but the code types (a full event payload).
+- Data only the human formatter needs (pre-rendered lines, a resolved target) stays out of the schema; keep it outside the derived type or strip it with `jsonExclude`.
+
+```typescript
+const DeployOutputFields = object({
+  dryRun: DryRunOutputField,
+  version: optional(pipe(string(), description("Release version (--dry-run)"))),
+});
+type DeployOutput = WithOutputFields<SentryDeploy, typeof DeployOutputFields>;
+
+output: {
+  human: (deploy: DeployOutput) => …,
+  schema: looseObject({ ...SentryDeploySchema.entries, ...DeployOutputFields.entries }),
+},
+```
+
+Reference: `src/commands/release/deploy.ts`, `src/commands/alert/output-schemas.ts`, `ReplayViewOutputFields` in `src/types/replay.ts`.
 
 ### Route Maps (Stricli)
 
@@ -259,7 +302,8 @@ with `getRoutes()` from `src/lib/route-registry.ts`, never by importing
 `app.ts`. Every command reaches `src/lib/` through `buildCommand`, so that
 import would pull every command into any bundle built from one of them.
 `app.ts` registers its map with `setRoutes()`; a test that needs the real tree
-imports `src/app.js`. A run whose first argument names a top-level route
+imports `src/app.js`. A run whose first argument after global flags names a
+top-level route
 registers a map with only that route (see `src/app-for-args.ts`), so code that
 needs routes other than the running one's must run under a `FULL_TREE_ROUTES`
 command. `test/lib/route-registry.test.ts` fails when a module in

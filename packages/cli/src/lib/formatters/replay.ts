@@ -7,11 +7,13 @@
 import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import type { ListProjectReplayRecordingSegmentsResponse } from "@sentry/api";
 
+import type { InferOutput } from "valibot";
 import type {
   ReplayActivityEvent,
   ReplayDetails,
   ReplayRelatedIssue,
   ReplayRelatedTrace,
+  ReplayViewOutputFields,
 } from "../../types/index.js";
 import { getReplayUserLabel } from "../replay-search.js";
 import { buildReplayUrl } from "../sentry-web-urls.js";
@@ -21,13 +23,12 @@ import {
   formatDurationVerbose,
 } from "./time-utils.js";
 
-/** Data bag assembled by replay view before rendering. */
-export type ReplayViewData = {
-  org: string;
+/**
+ * Data bag assembled by replay view before rendering: the replay plus the
+ * fields JSON output adds to it ({@link ReplayViewOutputFields}).
+ */
+export type ReplayViewData = InferOutput<typeof ReplayViewOutputFields> & {
   replay: ReplayDetails;
-  activity: ReplayActivityEvent[];
-  relatedIssues: ReplayRelatedIssue[];
-  relatedTraces: ReplayRelatedTrace[];
 };
 
 type MarkdownRow = [string, string];

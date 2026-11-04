@@ -82,6 +82,6 @@ export const queryCommand = buildCommand({
       },
       async () => await queryDocs(query, detectedContext),
     );
-    yield new CommandOutput<QueryOutput>({ ...result, detectedContext });
+    yield new CommandOutput({ ...result, detectedContext });
   },
 });

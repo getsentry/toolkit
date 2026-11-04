@@ -146,7 +146,7 @@ export const switchCommand = buildCommand({
     const active = activeRow ? toAccountSummary(activeRow) : target;
     pointDefaultUrlAtAccount(active.host);
     const switched = !target.active;
-    yield new CommandOutput<AccountSwitchResult>({
+    yield new CommandOutput({
       switched,
       account: { ...active, active: true },
     });

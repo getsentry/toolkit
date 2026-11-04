@@ -4,7 +4,13 @@
  * Create a new dashboard in a Sentry organization.
  */
 
-import { description, looseObject, pipe, string } from "valibot";
+import {
+  description,
+  type InferOutput,
+  looseObject,
+  pipe,
+  string,
+} from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createDashboard, getProject } from "../../lib/api-client.js";
 import {
@@ -30,10 +36,7 @@ import {
 import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
-import {
-  type DashboardDetail,
-  DashboardDetailSchema,
-} from "../../types/dashboard.js";
+import { DashboardDetailSchema } from "../../types/dashboard.js";
 import { withDashboardErrors } from "./resolve.js";
 
 type CreateFlags = {
@@ -41,7 +44,13 @@ type CreateFlags = {
   readonly fields?: string[];
 };
 
-type CreateResult = DashboardDetail & { url: string };
+/** JSON output: the created dashboard and its URL. */
+const CreateOutputSchema = looseObject({
+  ...DashboardDetailSchema.entries,
+  url: pipe(string(), description("Dashboard URL")),
+});
+
+type CreateResult = InferOutput<typeof CreateOutputSchema>;
 
 /** `dashboard create`'s positionals, parsed: the title and the target. */
 type CreateInput = {
@@ -185,10 +194,7 @@ export const createCommand = buildCommand({
   },
   output: {
     human: formatDashboardCreated,
-    schema: looseObject({
-      ...DashboardDetailSchema.entries,
-      url: pipe(string(), description("Dashboard URL")),
-    }),
+    schema: CreateOutputSchema,
   },
   parameters: {
     positional: boundArguments({
@@ -224,7 +230,7 @@ export const createCommand = buildCommand({
     );
     const url = buildDashboardUrl(orgSlug, dashboard.id);
 
-    yield new CommandOutput({ ...dashboard, url } as CreateResult);
+    yield new CommandOutput({ ...dashboard, url });
     return { hint: `Dashboard: ${url}` };
   },
 });

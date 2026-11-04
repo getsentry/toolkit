@@ -30,6 +30,8 @@ const AlertRuleKind = z
     "Which alert family to inspect. Numeric metric IDs are legacy alert-rule IDs, not monitor IDs. `all` performs an exact-name lookup.",
   );
 
+const LIST_HINT = "To list alert rules, use find_alert_rules.";
+
 type AlertRuleMatch =
   | {
       kind: "issue";
@@ -52,9 +54,10 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [
-    "Get details for a Sentry alert rule.",
+    "Get details for one Sentry alert rule by ID or exact name.",
     "",
     "Use this tool when you need to inspect an alert rule's exact conditions, query, triggers, and actions before explaining or planning changes.",
+    "To list or search alert rules, use find_alert_rules instead.",
     "",
     "<examples>",
     "get_alert_rule(organizationSlug='my-org', kind='metric', ruleIdOrName='12345')",
@@ -75,9 +78,13 @@ export default defineTool({
     kind: AlertRuleKind.default("all"),
     projectSlug: ParamProjectSlugOrAll.nullable().default(null),
     ruleIdOrName: z
-      .string()
+      .string({
+        // The SDK rejects a missing value before the handler runs, so this
+        // message is the only hint for callers that wanted a list.
+        error: `Required: one Alert ID or exact name. ${LIST_HINT}`,
+      })
       .trim()
-      .min(1)
+      .min(1, `Required: one Alert ID or exact name. ${LIST_HINT}`)
       .describe(
         "An Alert ID or exact name. Metric references accept legacy numeric alert-rule IDs or detector:123 for canonical monitor IDs.",
       ),
@@ -152,12 +159,12 @@ export default defineTool({
 
       if (matches.length === 0) {
         throw new UserInputError(
-          `Alert rule "${params.ruleIdOrName}" was not found.`,
+          `Alert rule "${params.ruleIdOrName}" was not found. ${LIST_HINT}`,
         );
       }
       if (matches.length > 1) {
         throw new UserInputError(
-          `Multiple alert rules named "${params.ruleIdOrName}" were found: ${matches.map(describeMatch).join(", ")}. Retry with the Alert ID and kind=issue, or use get_metric_monitor_details with the monitor ID.`,
+          `Multiple alert rules named "${params.ruleIdOrName}" were found: ${matches.map(describeMatch).join(", ")}. Retry with the Alert ID and kind=issue, or use get_metric_monitor_details with the monitor ID. ${LIST_HINT}`,
         );
       }
       const [found] = matches;

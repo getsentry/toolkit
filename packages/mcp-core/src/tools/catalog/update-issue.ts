@@ -670,7 +670,7 @@ export default defineTool({
     "- Provide `issueUrl` or `organizationSlug` + `issueId`.",
     "- At least one of `status` or `assignedTo` is required.",
     "- Omit `assignedTo` to leave assignment unchanged. Pass `null` to unassign; otherwise use `user:ID` or `team:ID_OR_SLUG`.",
-    "- Use `execute_sentry_tool(name='whoami', arguments={})` to find your user ID for self-assignment.",
+    "- Use the `whoami` tool to find your user ID for self-assignment.",
     "- Status values: `resolved`, `resolvedInNextRelease`, `unresolved`, `ignored`.",
     "- `status='ignored'` defaults to `ignoreMode='untilEscalating'`.",
     "- Ignore modes: `untilEscalating`, `forever`, `forDuration`, `untilOccurrenceCount`, `untilUserCount`.",

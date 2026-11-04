@@ -2,12 +2,12 @@
  * Modern Sentry User Feedback types and output schemas.
  */
 
-import type { EventAttachmentDetailsResponse } from "@sentry/api";
 import { vEventAttachmentDetailsResponse } from "@sentry/api/valibot";
 import {
   array,
   boolean,
   description,
+  type InferOutput,
   literal,
   looseObject,
   nullable,
@@ -16,10 +16,10 @@ import {
   optional,
   pipe,
   string,
-  unknown,
 } from "valibot";
 import type { SentryEvent, SentryIssue } from "./sentry.js";
 import { SentryIssueSchema } from "./sentry.js";
+import { opaque } from "./output.js";
 
 /** Metadata stored on a modern Feedback issue group. */
 export type FeedbackMetadata = {
@@ -86,17 +86,11 @@ export type FeedbackListResult = {
 };
 
 /** Data yielded by `feedback view` before JSON flattening. */
-export type FeedbackViewResult = {
-  /** Resolved organization slug, or null when unavailable. */
-  org: string | null;
+export type FeedbackViewResult = InferOutput<
+  typeof FeedbackViewOutputFields
+> & {
   /** The modern Feedback issue. */
   feedback: SentryFeedback;
-  /** Latest event for the Feedback issue. */
-  event: SentryEvent | null;
-  /** Related Session Replay IDs. */
-  replayIds: string[];
-  /** Attachments on the latest Feedback event. */
-  attachments: EventAttachmentDetailsResponse[];
 };
 
 /** Documentation schema for Feedback metadata. */
@@ -164,17 +158,29 @@ export const SentryFeedbackSchema = pipe(
   description("Sentry User Feedback"),
 );
 
+/**
+ * Fields `feedback view` adds to the Feedback issue in its JSON output; the
+ * rest of {@link FeedbackViewResult} is derived from them.
+ */
+export const FeedbackViewOutputFields = object({
+  /** Resolved organization slug, or null when unavailable. */
+  org: pipe(nullable(string()), description("Organization slug")),
+  event: pipe(
+    nullable(opaque<SentryEvent>()),
+    description("Latest feedback event"),
+  ),
+  replayIds: pipe(array(string()), description("Related Session Replay IDs")),
+  attachments: pipe(
+    array(vEventAttachmentDetailsResponse),
+    description("Attachments on the latest feedback event"),
+  ),
+});
+
 /** Documentation schema for flattened `feedback view` JSON output. */
 export const FeedbackViewOutputSchema = pipe(
   looseObject({
     ...SentryFeedbackSchema.entries,
-    org: pipe(nullable(string()), description("Organization slug")),
-    event: pipe(nullable(unknown()), description("Latest feedback event")),
-    replayIds: pipe(array(string()), description("Related Session Replay IDs")),
-    attachments: pipe(
-      array(vEventAttachmentDetailsResponse),
-      description("Attachments on the latest feedback event"),
-    ),
+    ...FeedbackViewOutputFields.entries,
   }),
   description("Feedback view output"),
 );

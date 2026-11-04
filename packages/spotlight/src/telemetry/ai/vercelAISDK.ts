@@ -31,6 +31,7 @@ const AI_RESPONSE_FINISH_REASON_FIELD = "vercel.ai.response.finishReason";
 const GEN_AI_RESPONSE_FINISH_REASONS_FIELD = "gen_ai.response.finish_reasons";
 const GEN_AI_RESPONSE_TOOL_CALLS_FIELD = "gen_ai.response.tool_calls";
 const AI_RESPONSE_TEXT_FIELD = "gen_ai.response.text";
+const VERCEL_AI_RESPONSE_TEXT_FIELD = "vercel.ai.response.text";
 const AI_RESPONSE_TOOL_CALLS_FIELD = "vercel.ai.response.toolCalls";
 
 // v1 operation names
@@ -420,9 +421,16 @@ function extractResponseData(
     extractFinishReason(span.data[AI_RESPONSE_FINISH_REASON_FIELD]) ??
     extractFinishReason(span.data[GEN_AI_RESPONSE_FINISH_REASONS_FIELD]);
 
-  const responseText = span.data[AI_RESPONSE_TEXT_FIELD];
-  if (responseText) {
-    trace.response.text = stringifyValue(responseText);
+  const responseText =
+    span.data[AI_RESPONSE_TEXT_FIELD] ??
+    span.data[VERCEL_AI_RESPONSE_TEXT_FIELD];
+  const text = Array.isArray(responseText)
+    ? responseText.map(stringifyValue).join("")
+    : responseText
+      ? stringifyValue(responseText)
+      : "";
+  if (text) {
+    trace.response.text = text;
     trace.response.finishReason = finishReason;
     state.finishReasonFromText = true;
   } else if (finishReason !== undefined && !state.finishReasonFromText) {

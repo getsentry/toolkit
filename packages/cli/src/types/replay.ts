@@ -402,23 +402,31 @@ export const ReplayRelatedTraceSchema = pipe(
   description("Replay-related trace"),
 );
 
+/**
+ * Fields `replay view` adds to the replay in its JSON output. The command's
+ * data type (`ReplayViewData`) is derived from them.
+ */
+export const ReplayViewOutputFields = object({
+  org: pipe(string(), description("Organization slug")),
+  activity: pipe(
+    array(ReplayActivityEventSchema),
+    description("Summarized replay activity"),
+  ),
+  relatedIssues: pipe(
+    array(ReplayRelatedIssueSchema),
+    description("Replay-related issues"),
+  ),
+  relatedTraces: pipe(
+    array(ReplayRelatedTraceSchema),
+    description("Replay-related traces"),
+  ),
+});
+
 /** Replay view output with related context and summarized activity. */
 export const ReplayViewOutputSchema = pipe(
   object({
     ...ReplayDetailsOutputSchema.entries,
-    org: pipe(string(), description("Organization slug")),
-    activity: pipe(
-      array(ReplayActivityEventSchema),
-      description("Summarized replay activity"),
-    ),
-    relatedIssues: pipe(
-      array(ReplayRelatedIssueSchema),
-      description("Replay-related issues"),
-    ),
-    relatedTraces: pipe(
-      array(ReplayRelatedTraceSchema),
-      description("Replay-related traces"),
-    ),
+    ...ReplayViewOutputFields.entries,
   }),
   description("Replay view output"),
 );
@@ -436,8 +444,15 @@ export type ReplayOs = InferOutput<typeof ReplayOsSchema>;
 export type ReplaySdk = InferOutput<typeof ReplaySdkSchema>;
 export type ReplayDevice = InferOutput<typeof ReplayDeviceSchema>;
 export type ReplayOtaUpdates = InferOutput<typeof ReplayOtaUpdatesSchema>;
-export type ReplayListItem = InferOutput<typeof ReplayListItemSchema>;
-export type ReplayDetails = InferOutput<typeof ReplayDetailsSchema>;
+/**
+ * `project_id` as the API layer returns it: the replay API sends a number,
+ * which `lib/api/replays.ts` normalizes to a string.
+ */
+export type ReplayStringProjectId = { project_id?: string | null };
+export type ReplayListItem = InferOutput<typeof ReplayListItemSchema> &
+  ReplayStringProjectId;
+export type ReplayDetails = InferOutput<typeof ReplayDetailsSchema> &
+  ReplayStringProjectId;
 export type ReplayListResponse = InferOutput<typeof ReplayListResponseSchema>;
 export type ReplayDetailsResponse = InferOutput<
   typeof ReplayDetailsResponseSchema

@@ -64,6 +64,6 @@ export const unresolveCommand = buildCommand({
     });
 
     log.debug(`Reopened ${updated.shortId}`);
-    yield new CommandOutput<SentryIssue>(updated);
+    yield new CommandOutput(updated);
   },
 });

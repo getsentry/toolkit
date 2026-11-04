@@ -24,6 +24,7 @@ import {
   buildOrgUrl,
   buildProjectIssuesUrl,
   buildProjectUrl,
+  buildRepositorySettingsUrl,
   buildSeerSettingsUrl,
   buildTraceUrl,
   getOrgBaseUrl,
@@ -421,6 +422,18 @@ describe("buildSeerSettingsUrl properties", () => {
       property(slugArb, (orgSlug) => {
         const result = buildSeerSettingsUrl(orgSlug);
         expect(result).toContain("/settings/seer/");
+      }),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+});
+
+describe("buildRepositorySettingsUrl properties", () => {
+  test("output is the settings repos path", async () => {
+    fcAssert(
+      property(slugArb, (orgSlug) => {
+        const result = buildRepositorySettingsUrl(orgSlug);
+        expect(result).toMatch(/\/settings\/(?:[^/]+\/)?repos\/$/);
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );

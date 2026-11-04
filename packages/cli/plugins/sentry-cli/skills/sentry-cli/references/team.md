@@ -37,6 +37,7 @@ List teams
 | `isMember` | boolean | Whether you are a member |
 | `teamRole` | string \| null | Your role in the team |
 | `memberCount` | number | Number of members |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 
