@@ -134,12 +134,26 @@ export const ParamSpanId = z
     "The span ID within a trace. Use this with a trace resource to focus on a specific span.",
   );
 
+// Platform names agents sent in production that Sentry rejects with
+// `{"platform":["Invalid platform"]}`, mapped to the ID Sentry accepts. Every
+// value must be in GETTING_STARTED_DOCS_PLATFORMS in getsentry/sentry
+// src/sentry/models/project.py.
+const PLATFORM_ALIASES: ReadonlyMap<string, string> = new Map([
+  ["react", "javascript-react"],
+  ["cocoa", "apple"],
+  ["cocoa-ios", "apple-ios"],
+  ["csharp", "dotnet"],
+  ["javascript-cloudflare", "node-cloudflare-workers"],
+  ["javascript-cloudflare-workers", "node-cloudflare-workers"],
+]);
+
 export const ParamPlatform = z
   .string()
   .toLowerCase()
   .trim()
+  .overwrite((platform) => PLATFORM_ALIASES.get(platform) ?? platform)
   .describe(
-    "The platform for the project. e.g., python, javascript, react, etc.",
+    "The Sentry platform ID for the project, e.g. javascript-react, javascript-nextjs, node, python-django, apple-ios, android, dotnet. Omit if unsure.",
   );
 
 export const ParamTransaction = z

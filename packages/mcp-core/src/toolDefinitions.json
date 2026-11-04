@@ -1210,7 +1210,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The platform for the project. e.g., python, javascript, react, etc."
+              "description": "The Sentry platform ID for the project, e.g. javascript-react, javascript-nextjs, node, python-django, apple-ios, android, dotnet. Omit if unsure."
             },
             {
               "type": "null"
@@ -9099,7 +9099,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The platform for the project. e.g., python, javascript, react, etc."
+              "description": "The Sentry platform ID for the project, e.g. javascript-react, javascript-nextjs, node, python-django, apple-ios, android, dotnet. Omit if unsure."
             },
             {
               "type": "null"
