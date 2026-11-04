@@ -121,6 +121,16 @@ export const leaderboardCommand = buildCommand({
       "Show the top Snake scores from the last 30 days.\n\n" +
       "Scores are anonymous. Each entry is a random player handle and a score. " +
       "Your own entry is marked `(you)`.",
+    examples: [
+      {
+        description: "Show the top Snake scores",
+        command: "sentry games leaderboard",
+      },
+      {
+        description: "Show the scores as JSON",
+        command: "sentry games leaderboard --json",
+      },
+    ],
   },
   auth: false,
   output: { human: formatLeaderboardHuman },
