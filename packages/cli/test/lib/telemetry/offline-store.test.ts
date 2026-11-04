@@ -30,6 +30,13 @@ function eventEnvelope(id: string, message = "hi"): Envelope {
   ] as never);
 }
 
+/** An envelope without an error event; the header ID only labels it. */
+function transactionEnvelope(id: string): Envelope {
+  return createEnvelope({ event_id: id }, [
+    [{ type: "transaction" }, { event_id: id, type: "transaction" }],
+  ] as never);
+}
+
 function eventIds(envelopes: Envelope[]): unknown[] {
   return envelopes.map((envelope) => envelope[0].event_id);
 }
@@ -100,7 +107,7 @@ describe.each(["node", "wasm"] as const)(
     test("keeps only the newest maxEntries envelopes", async () => {
       const { clock, store } = storeAt({ ...STORE_LIMITS, maxEntries: 3 });
       for (const id of ["a", "b", "c", "d", "e"]) {
-        await store.push(eventEnvelope(id));
+        await store.push(transactionEnvelope(id));
         clock.now += 1;
       }
 
@@ -127,20 +134,48 @@ describe.each(["node", "wasm"] as const)(
       expect(storedCount()).toBe(0);
     });
 
-    test("deletes envelopes older than maxAgeMs when reading", async () => {
+    test("over a cap, drops envelopes without an error before errors", async () => {
+      const { clock, store } = storeAt({ ...STORE_LIMITS, maxEntries: 3 });
+      await store.push(eventEnvelope("e1"));
+      clock.now += 1;
+      for (const id of ["t1", "t2"]) {
+        await store.push(transactionEnvelope(id));
+        clock.now += 1;
+      }
+      await store.push(eventEnvelope("e2"));
+      clock.now += 1;
+      await store.push(transactionEnvelope("t3"));
+
+      expect(eventIds(store.claim(10))).toEqual(["e1", "e2", "t3"]);
+    });
+
+    test("deletes envelopes without an error event after maxAgeMs", async () => {
       const { clock, store } = storeAt();
-      await store.push(eventEnvelope("old"));
+      await store.push(transactionEnvelope("old"));
       clock.now += STORE_LIMITS.maxAgeMs - 1;
-      await store.push(eventEnvelope("new"));
+      await store.push(transactionEnvelope("new"));
       clock.now += 2;
 
       expect(eventIds(store.claim(10))).toEqual(["new"]);
       expect(storedCount()).toBe(0);
     });
 
+    test("keeps errors until maxErrorAgeMs", async () => {
+      const { clock, store } = storeAt();
+      await store.push(eventEnvelope("error"));
+      await store.push(transactionEnvelope("transaction"));
+      clock.now += STORE_LIMITS.maxAgeMs + 1;
+      expect(eventIds(store.claim(10))).toEqual(["error"]);
+
+      await store.push(eventEnvelope("old error"));
+      clock.now += STORE_LIMITS.maxErrorAgeMs + 1;
+      expect(store.claim(10)).toEqual([]);
+      expect(storedCount()).toBe(0);
+    });
+
     test("a claimed envelope pushed back keeps its original age", async () => {
       const { clock, store } = storeAt();
-      await store.push(eventEnvelope("a"));
+      await store.push(transactionEnvelope("a"));
       clock.now += 3 * DAY_MS;
       const [claimed] = store.claim(1);
       await store.push(claimed as Envelope);

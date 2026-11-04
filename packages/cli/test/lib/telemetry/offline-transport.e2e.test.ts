@@ -163,15 +163,15 @@ describe("makeStoringTransport (e2e)", () => {
     expect(storedEventIds()).toEqual([]);
   });
 
-  test("stores an envelope that ingest answers with a 5xx", async () => {
+  test("drops an envelope that ingest answers with a 5xx and keeps sending", async () => {
     const ingest = await startMockIngest(() => ({ statusCode: 503 }));
     const transport = runTransport(ingest.url);
 
     await transport.send(eventEnvelope("a"));
     await transport.send(eventEnvelope("b"));
 
-    expect(ingest.captures).toHaveLength(1);
-    expect(storedEventIds()).toEqual(["a", "b"]);
+    expect(deliveredEventIds(ingest.captures)).toEqual(["a", "b"]);
+    expect(storedEventIds()).toEqual([]);
   });
 
   test("never stores client reports", async () => {

@@ -331,14 +331,16 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
   /**
    * Telemetry envelopes that failed to send, kept for a later run to retry
    * (`src/lib/telemetry/offline-store.ts`). `envelope` holds the serialized
-   * envelope bytes; `size` is their length, for the byte cap. Rows older than
-   * the store's max age are deleted on read. Dropping the table only loses
-   * telemetry that may never have been delivered anyway.
+   * envelope bytes; `size` is their length, for the byte cap. `is_error` is 1
+   * when the envelope has an error event, which is kept longer and dropped
+   * last over the caps. Rows past their max age are deleted on read. Dropping
+   * the table only loses telemetry that may never have been delivered anyway.
    */
   telemetry_envelope_queue: {
     columns: {
       id: { type: "INTEGER", primaryKey: true },
       created_at: { type: "INTEGER", notNull: true },
+      is_error: { type: "INTEGER", notNull: true, default: "0" },
       size: { type: "INTEGER", notNull: true },
       envelope: { type: "BLOB", notNull: true },
     },

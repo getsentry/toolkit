@@ -4,17 +4,20 @@
  * Wraps a transport factory (the zstd transport by default) with
  * `makeOfflineTransport` from `@sentry/core`, backed by the SQLite store in
  * `offline-store.ts`. The SDK stores an envelope whose send throws, which
- * includes the request deadline, and returns any HTTP response as is, so a
- * 4xx is dropped. It never stores client reports.
+ * includes the request deadline. It returns any HTTP response as is, so a
+ * 4xx or 5xx is dropped, and it never stores client reports.
  *
  * On top of that:
- * - A per-transport circuit breaker. After the first network error, timeout,
- *   or 5xx response, `shouldSend` returns false, so later envelopes go
- *   straight to the store with no network wait. With ingest stalled, the CLI
- *   then waits for at most one request deadline on exit instead of one per
- *   round of sends.
- * - {@link StoringTransport.sendStored}, which the next run calls at startup,
- *   in place of the SDK's own retries. Those run from unref'd timers (5 s
+ * - A per-transport circuit breaker. After the first network error or
+ *   timeout, `shouldSend` returns false, so later envelopes go straight to
+ *   the store with no network wait. With ingest stalled, a short command then
+ *   waits for at most one request deadline on exit instead of one per round
+ *   of sends. After {@link BREAKER_COOLDOWN_MS}, the next envelope is sent as
+ *   a probe: a response closes the breaker and sends a batch of stored
+ *   envelopes, and a failure opens it for another cooldown. Only long-running
+ *   commands (`sentry mcp`, `sentry local`) live long enough to probe.
+ * - {@link StoringTransport.sendStored}, which each run calls at startup, in
+ *   place of the SDK's own retries. Those run from unref'd timers (5 s
  *   backoff, 100 ms after a success) that rarely fire before a short command
  *   exits, and could extend the exit when they do.
  */
@@ -33,15 +36,35 @@ import {
 
 const log = logger.withTag("telemetry-store");
 
-/** Stored envelopes a run sends at startup. */
+/** Stored envelopes a run sends at startup, and after the breaker closes. */
 export const STORED_ENVELOPES_PER_RUN = 10;
+
+/**
+ * How long the breaker stays open before a probe.
+ *
+ * Short commands never live this long, so they keep one deadline and then
+ * disk. For a long-running process (`sentry mcp`, `sentry local`), a stalled
+ * ingest costs one deadline-bound request every 5 minutes, and what it
+ * stored goes out within 5 minutes of ingest or the network coming back,
+ * far inside the store's 4-day age limit.
+ */
+export const BREAKER_COOLDOWN_MS = 5 * 60 * 1000;
+
+/**
+ * Breaker state. `closed` sends; `open` stores until the cooldown since
+ * `openedAt` ends; `probing` stores while the one probe is in flight.
+ */
+type BreakerState =
+  | { kind: "closed" }
+  | { kind: "open"; openedAt: number }
+  | { kind: "probing" };
 
 /** A transport that can also send envelopes stored by earlier runs. */
 export type StoringTransport = Transport & {
   /**
    * Claim up to `limit` stored envelopes and send them in the background.
    * One that fails to send again goes back to the store with its original
-   * age. Does nothing once the breaker is open.
+   * age. Does nothing while the breaker is open.
    */
   sendStored(limit: number): void;
 };
@@ -51,20 +74,60 @@ export type StoringTransport = Transport & {
  *
  * @param options - Transport options from `Sentry.init`
  * @param makeTransport - Inner transport factory; carries the request deadline
+ * @param now - Clock for the breaker cooldown, injectable for tests
  */
 export function makeStoringTransport(
   options: NodeTransportOptions,
   makeTransport: (
     options: NodeTransportOptions,
   ) => Transport = makeCompressedTransport,
+  now: () => number = Date.now,
 ): StoringTransport {
   const store = createEnvelopeStore();
-  let ingestDown = false;
+  let breaker: BreakerState = { kind: "closed" };
 
-  function markIngestDown(reason: unknown): void {
-    if (!ingestDown) {
-      ingestDown = true;
+  function shouldSend(): boolean {
+    if (breaker.kind === "closed") {
+      return true;
+    }
+    if (
+      breaker.kind === "open" &&
+      now() - breaker.openedAt >= BREAKER_COOLDOWN_MS
+    ) {
+      breaker = { kind: "probing" };
+      return true;
+    }
+    return false;
+  }
+
+  function onFailure(reason: unknown): void {
+    if (breaker.kind !== "open") {
       log.debug("Telemetry ingest unreachable; storing envelopes", reason);
+    }
+    breaker = { kind: "open", openedAt: now() };
+  }
+
+  function onResponse(): void {
+    if (breaker.kind === "closed") {
+      return;
+    }
+    breaker = { kind: "closed" };
+    log.debug("Telemetry ingest reachable again; sending stored envelopes");
+    sendStored(STORED_ENVELOPES_PER_RUN);
+  }
+
+  function sendStored(limit: number): void {
+    if (breaker.kind !== "closed") {
+      return;
+    }
+    for (const envelope of store.claim(limit)) {
+      // Relay corrects item timestamps by the gap between `sent_at` and
+      // when it received the envelope, so a stale `sent_at` would shift
+      // them forward. The SDK's own retries reset it the same way.
+      envelope[0].sent_at = new Date().toISOString();
+      transport.send(envelope).then(undefined, (error: unknown) => {
+        log.debug("Failed to resend stored telemetry", error);
+      });
     }
   }
 
@@ -77,18 +140,13 @@ export function makeStoringTransport(
           try {
             response = await inner.send(envelope);
           } catch (error) {
-            markIngestDown(error);
+            onFailure(error);
             throw error;
           }
-          // The SDK returns 5xx responses like a 4xx, which would drop them,
-          // but an overloaded or unreachable ingest answers 502/503 through
-          // its load balancer. Throwing makes the SDK store the envelope.
-          const status = response.statusCode ?? 0;
-          if (status >= 500) {
-            const error = new Error(`Telemetry ingest responded ${status}`);
-            markIngestDown(error);
-            throw error;
-          }
+          // Any response, even a 4xx or 5xx, means ingest is reachable. The
+          // SDK records no outcome for a dropped 5xx, and the CLI's client
+          // reports show network errors, not 5xx, as the real loss.
+          onResponse();
           return response;
         },
         flush: (timeout) => inner.flush(timeout),
@@ -105,25 +163,12 @@ export function makeStoringTransport(
       // process alive past it, and those can chain while others are in flight.
       shift: () => Promise.resolve(undefined),
     }),
-    shouldSend: () => !ingestDown,
+    shouldSend,
   });
 
   return {
     send: (envelope) => transport.send(envelope),
     flush: (timeout) => transport.flush(timeout),
-    sendStored(limit) {
-      if (ingestDown) {
-        return;
-      }
-      for (const envelope of store.claim(limit)) {
-        // Relay corrects item timestamps by the gap between `sent_at` and
-        // when it received the envelope, so a stale `sent_at` would shift
-        // them forward. The SDK's own retries reset it the same way.
-        envelope[0].sent_at = new Date().toISOString();
-        transport.send(envelope).then(undefined, (error: unknown) => {
-          log.debug("Failed to resend stored telemetry", error);
-        });
-      }
-    },
+    sendStored,
   };
 }

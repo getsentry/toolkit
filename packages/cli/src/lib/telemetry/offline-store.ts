@@ -7,15 +7,17 @@
  * `telemetry_envelope_queue` as serialized envelope bytes, since attachments
  * can be binary.
  *
- * The store is capped by entry count and total bytes, dropping the oldest
- * rows first, and rows older than {@link STORE_LIMITS.maxAgeMs} are deleted
- * on read. Reads claim rows with `DELETE ... RETURNING`, so two CLI processes
- * never send the same envelope. Store failures never reach the CLI: each
+ * The store is capped by entry count and total bytes. Over a cap, it drops
+ * envelopes without an error event first, then errors, oldest first. Rows
+ * past their max age ({@link STORE_LIMITS}) are deleted on read and write.
+ * Reads claim rows with `DELETE ... RETURNING`, so two CLI processes never
+ * send the same envelope. Store failures never reach the CLI: each
  * operation logs at debug level and carries on.
  */
 
 import {
   type Envelope,
+  envelopeContainsItemType,
   type OfflineStore,
   parseEnvelope,
   serializeEnvelope,
@@ -26,30 +28,37 @@ import { logger } from "../logger.js";
 
 const log = logger.withTag("telemetry-store");
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Rows past their max age, given the limits and the current time. */
+const EXPIRED = "created_at < CASE WHEN is_error THEN ? ELSE ? END";
+
 /** Limits on what the store keeps. */
 export type StoreLimits = {
-  /** Most envelopes kept; the oldest beyond this are dropped. */
+  /** Most envelopes kept. */
   maxEntries: number;
-  /** Most serialized bytes kept across all envelopes; oldest dropped first. */
+  /** Most serialized bytes kept across all envelopes. */
   maxBytes: number;
-  /** Rows older than this (milliseconds since stored) are deleted on read. */
+  /** Max age, in milliseconds since stored, of an envelope with an error event. */
+  maxErrorAgeMs: number;
+  /** Max age of every other envelope. */
   maxAgeMs: number;
 };
 
 /**
  * Default limits.
  *
- * The max age stays under Relay's strictest limit on how old data may be:
- * sessions (`max_session_secs_in_past`) and transactions (the metrics
- * aggregator's `max_secs_in_past`) older than 5 days are dropped. Errors,
- * logs, spans, and metrics are accepted for the project's retention (90 days
- * by default), so 4 days keeps every item type deliverable with a day to
- * spare for clock skew.
+ * Relay drops sessions (`max_session_secs_in_past`) and transactions (the
+ * metrics aggregator's `max_secs_in_past`) older than 5 days, so envelopes
+ * without an error event keep 4 days, leaving a day for clock skew. Relay
+ * accepts an error event for the project's retention (90 days by default)
+ * and past that only replaces its timestamp, so errors keep 30 days.
  */
 export const STORE_LIMITS: StoreLimits = {
   maxEntries: 100,
   maxBytes: 4 * 1024 * 1024,
-  maxAgeMs: 4 * 24 * 60 * 60 * 1000,
+  maxErrorAgeMs: 30 * DAY_MS,
+  maxAgeMs: 4 * DAY_MS,
 };
 
 type StoredRow = {
@@ -60,7 +69,7 @@ type StoredRow = {
 
 /** The store's operations. */
 type EnvelopeStore = {
-  /** Store an envelope, then drop expired rows and the oldest over the caps. */
+  /** Store an envelope, then drop expired rows and the rows over the caps. */
   push: OfflineStore["push"];
   /**
    * Claim up to `limit` of the oldest unexpired envelopes, deleting them from
@@ -98,25 +107,34 @@ export function createEnvelopeStore(
   /** When each envelope claimed by this process was first stored. */
   const storedAt = new WeakMap<Envelope, number>();
 
+  /** Cutoffs for {@link EXPIRED}. */
+  function expiry(): [number, number] {
+    const current = now();
+    return [current - limits.maxErrorAgeMs, current - limits.maxAgeMs];
+  }
+
   function insert(envelope: Envelope): void {
     const bytes = toBytes(serializeEnvelope(envelope));
     const createdAt = storedAt.get(envelope) ?? now();
+    const isError = envelopeContainsItemType(envelope, ["event"]) ? 1 : 0;
     const db = getDatabase();
     db.transaction(() => {
       db.query(
-        "INSERT INTO telemetry_envelope_queue (created_at, size, envelope) VALUES (?, ?, ?)",
-      ).run(createdAt, bytes.byteLength, bytes);
+        "INSERT INTO telemetry_envelope_queue (created_at, is_error, size, envelope) VALUES (?, ?, ?, ?)",
+      ).run(createdAt, isError, bytes.byteLength, bytes);
+      // Keep errors first, then the newest: rows past either cap are the
+      // oldest envelopes without an error, then the oldest errors.
       db.query(
-        `DELETE FROM telemetry_envelope_queue WHERE created_at < ? OR id IN (
+        `DELETE FROM telemetry_envelope_queue WHERE ${EXPIRED} OR id IN (
           SELECT id FROM (
             SELECT id,
-              ROW_NUMBER() OVER newest AS position,
-              SUM(size) OVER newest AS total
+              ROW_NUMBER() OVER kept AS position,
+              SUM(size) OVER kept AS total
             FROM telemetry_envelope_queue
-            WINDOW newest AS (ORDER BY created_at DESC, id DESC)
+            WINDOW kept AS (ORDER BY is_error DESC, created_at DESC, id DESC)
           ) WHERE position > ? OR total > ?
         )`,
-      ).run(now() - limits.maxAgeMs, limits.maxEntries, limits.maxBytes);
+      ).run(...expiry(), limits.maxEntries, limits.maxBytes);
     })();
   }
 
@@ -124,9 +142,9 @@ export function createEnvelopeStore(
     return guarded("read stored telemetry", [], () => {
       const db = getDatabase();
       const rows = db.transaction(() => {
-        db.query(
-          "DELETE FROM telemetry_envelope_queue WHERE created_at < ?",
-        ).run(now() - limits.maxAgeMs);
+        db.query(`DELETE FROM telemetry_envelope_queue WHERE ${EXPIRED}`).run(
+          ...expiry(),
+        );
         return db
           .query(
             `DELETE FROM telemetry_envelope_queue WHERE id IN (
