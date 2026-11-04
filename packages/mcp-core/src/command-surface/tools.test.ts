@@ -391,7 +391,11 @@ describe("command tools: session constraints", () => {
       { positional: ["/api/0/organizations/acme/issues/"] },
       org,
     );
-    expect(calls).toHaveLength(1);
+    await call("api", { positional: ["api/0/organizations/acme/"] }, org);
+    expect(calls).toHaveLength(2);
+    await expect(
+      call("api", { positional: ["api/0/organizations/other/"] }, org),
+    ).rejects.toThrow("outside this session's scope");
     await expect(
       call("api", { positional: ["projects/other/web/"] }, org),
     ).rejects.toThrow("outside this session's scope");
@@ -407,13 +411,13 @@ describe("command tools: session constraints", () => {
       { positional: ["organizations/acme/projects/web/keys/"] },
       project,
     );
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     await call(
       "project view",
       { positional: ["https://sentry.io/settings/acme/projects/web/"] },
       project,
     );
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(4);
     await expect(
       call("api", { positional: ["issues/1/"] }, org),
     ).rejects.toThrow("not scoped to an organization");

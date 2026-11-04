@@ -214,7 +214,7 @@ function apiEndpointTarget(
     const base = "https://sentry.invalid/api/0/";
     const url = URL_PATTERN.test(endpoint)
       ? new URL(endpoint)
-      : new URL(endpoint.replace(/^\/+(?:api\/0\/)?/, ""), base);
+      : new URL(endpoint.replace(/^\/*(?:api\/0(?:\/|$))?/, ""), base);
     segments = url.pathname.split("/").filter(Boolean);
   } catch {
     return;
