@@ -784,6 +784,82 @@ test.each([
   });
 });
 
+test.each([
+  { embedded: false, streamedFirst: false },
+  { embedded: false, streamedFirst: true },
+  { embedded: true, streamedFirst: false },
+  { embedded: true, streamedFirst: true },
+])(
+  "captured names honor completion across envelope types: $embedded/$streamedFirst",
+  ({ embedded, streamedFirst }) => {
+    const transaction = decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "transaction" },
+            {
+              transaction: embedded ? "Parent" : "Before",
+              start_timestamp: 1,
+              timestamp: 2,
+              contexts: {
+                trace: {
+                  trace_id: "mixed-updates",
+                  span_id: embedded ? "parent" : "shared",
+                },
+              },
+              ...(embedded
+                ? {
+                    spans: [
+                      {
+                        span_id: "shared",
+                        parent_span_id: "parent",
+                        description: "Before",
+                        start_timestamp: 1,
+                        timestamp: 2,
+                      },
+                    ],
+                  }
+                : {}),
+            },
+          ],
+        ],
+      ]),
+      "transaction",
+    );
+    const streamed = decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "span" },
+            {
+              trace_id: "mixed-updates",
+              span_id: "shared",
+              name: "After",
+              ...(embedded ? { parent_span_id: "parent" } : {}),
+              start_timestamp: 1,
+              end_timestamp: 3,
+            },
+          ],
+        ],
+      ]),
+      "streamed",
+    );
+    const trace = buildTraceGroups(
+      streamedFirst
+        ? [...streamed, ...transaction]
+        : [...transaction, ...streamed],
+    )[0]!;
+    expect(trace.spans.find((span) => span.id === "shared")).toMatchObject({
+      description: "After",
+      metadata: { title: "After" },
+      endTimestamp: 3,
+    });
+    expect(trace.title).toBe(embedded ? "Parent" : "After");
+  },
+);
+
 test.each([false, true])(
   "equal-priority trace titles update only for the chosen root (same root: %s)",
   (sameRoot) => {

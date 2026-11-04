@@ -138,10 +138,7 @@ function mergeSpan(
     ].some(
       (value) => typeof value === "string" && value.trim() === description,
     );
-    return (
-      (named ? (captured ? 4 : 2) : 0) +
-      (span.item.type === "transaction" ? 1 : 0)
-    );
+    return named ? (captured ? 4 : 2) : 0;
   };
   const [primary, secondary] =
     (previous.endTimestamp ?? -Infinity) > (next.endTimestamp ?? -Infinity)
