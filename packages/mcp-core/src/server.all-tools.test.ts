@@ -121,4 +121,31 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
       "123456",
     );
   });
+
+  it("tells clients that the gateway tools were removed", async () => {
+    const error = await withClient(getContext(), (client) =>
+      client.callTool({
+        name: "execute_sentry_tool",
+        arguments: { name: "whoami", arguments: {} },
+      }),
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: -32602,
+      message:
+        "MCP error -32602: Tool execute_sentry_tool was removed from the Sentry MCP server. Call Sentry tools directly by name. If they are missing from your tool list, reconnect the Sentry MCP server to refresh it.",
+    });
+  });
+});
+
+// telem/unknown-tool.test.ts covers the span these calls produce.
+it("keeps the SDK's not-found error for other unknown tools", async () => {
+  const error = await withClient(getContext(), (client) =>
+    client.callTool({ name: "not_a_sentry_tool", arguments: {} }),
+  ).catch((caught: unknown) => caught);
+
+  expect(error).toMatchObject({
+    code: -32602,
+    message: "MCP error -32602: Tool not_a_sentry_tool not found",
+  });
 });

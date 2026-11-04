@@ -12,7 +12,7 @@
 import {
   createIdempotentOperationMatcher,
   type IdempotentOperation,
-} from "@sentry/toolkit-core/api-client/idempotent-operations";
+} from "@sentry/api/client";
 import generated from "../generated/idempotent-operations.json";
 
 /**

@@ -19,7 +19,7 @@
  */
 
 import { open, readFile, stat } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { basename, extname, resolve } from "node:path";
 import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
 import { type WalkEntry, walkFiles } from "../scan/index.js";
@@ -30,6 +30,7 @@ import {
   peekFormat,
   splitDebugFile,
 } from "./index.js";
+import { type ShaderInfo, ShaderManifestCache } from "./shader-manifest.js";
 import { DEFAULT_MAX_ZIP_TOTAL_SIZE, readZipDifEntries } from "./zip.js";
 
 const log = logger.withTag("dif.scan");
@@ -56,7 +57,14 @@ const TYPE_TO_FORMAT: Readonly<Record<string, string>> = {
   breakpad: "breakpad",
   sourcebundle: "sourcebundle",
   jvm: "sourcebundle",
+  dxil: "dxil",
 };
+
+/** Header every DXIL container (a compiled shader written by DXC) starts with. */
+const DXIL_HEADER = Buffer.from("DXBC", "ascii");
+
+/** A DXIL file is named after its 32-hex compiler hash, which is its debug id. */
+const BARE_HEX32_RE = /^[0-9a-f]{32}$/;
 
 /** Accepted `--type` filter values. */
 export const VALID_DIF_TYPES: readonly string[] = Object.keys(TYPE_TO_FORMAT);
@@ -108,6 +116,10 @@ export type PreparedDif = {
   debugId?: string;
   /** The object in `content` that passed the filters (for reporting). */
   objects: DifObjectInfo[];
+  /** Code id the server cannot derive from the file (DXIL: the Aftermath hash). */
+  codeId?: string;
+  /** Shader group of a DXIL file, from the manifest next to it. */
+  shaderGroup?: string;
 };
 
 /**
@@ -117,7 +129,17 @@ export type PreparedDif = {
  * @returns The normalized form.
  */
 export function normalizeDebugId(id: string): string {
-  return id.trim().toLowerCase().replace(/[{}]/g, "");
+  const normalized = id.trim().toLowerCase().replace(/[{}]/g, "");
+  // A bare 32-hex id (an Apple UUID without hyphens, or a DXIL shader's file
+  // stem) is the hyphenated id with the hyphens dropped; compare them as one.
+  return BARE_HEX32_RE.test(normalized)
+    ? hyphenateHex32(normalized)
+    : normalized;
+}
+
+/** `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` from 32 hex digits. */
+function hyphenateHex32(hex: string): string {
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 /**
@@ -397,7 +419,7 @@ async function peekHeader(path: string): Promise<PeekResult | null> {
       if (header.length === 0) {
         return null;
       }
-      const format = peekFormat(header);
+      const format = detectFormat(header);
       if (format === "unknown") {
         return null;
       }
@@ -475,6 +497,7 @@ export async function prepareDifs(
   const maxFileSize = options.maxFileSize ?? 0;
   const scanZips = options.scanZips ?? true;
   const maxZipTotalSize = options.maxZipTotalSize ?? DEFAULT_MAX_ZIP_TOTAL_SIZE;
+  const manifests = new ShaderManifestCache();
   let oversizedCount = 0;
 
   for (const path of paths) {
@@ -506,6 +529,7 @@ export async function prepareDifs(
       path,
       filters,
       maxFileSize,
+      manifests,
     );
     if (oversized) {
       oversizedCount += 1;
@@ -536,6 +560,7 @@ async function prepareFileDif(
   path: string,
   filters: DifFilters,
   maxFileSize: number,
+  manifests: ShaderManifestCache,
 ): Promise<{ difs: PreparedDif[]; oversized: boolean }> {
   const peeked = await peekHeader(path);
   if (!peeked) {
@@ -567,9 +592,12 @@ async function prepareFileDif(
     );
     return { difs: [], oversized: false };
   }
+  // A shader's code id and group come from the manifest next to it.
+  const shaderInfo =
+    peeked.format === "dxil" ? await manifests.lookup(path) : undefined;
   // readMatchedDif reports an oversized embedded PPDB (of a requested type) so
   // it too drives the exit code, matching the on-disk size gate above.
-  return await readMatchedDif(path, filters, maxFileSize);
+  return await readMatchedDif(path, filters, maxFileSize, shaderInfo);
 }
 
 /**
@@ -690,9 +718,76 @@ function embeddedPpdbDif(
   };
 }
 
+/**
+ * Detect a container format from leading header bytes: DXIL containers, which
+ * the object parser does not know, are recognised here; everything else is
+ * delegated to {@link peekFormat}.
+ */
+function detectFormat(header: Uint8Array): string {
+  return isDxil(header) ? "dxil" : peekFormat(header);
+}
+
+/** Whether the bytes start with the DXIL container header. */
+function isDxil(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= DXIL_HEADER.length &&
+    DXIL_HEADER.equals(bytes.subarray(0, DXIL_HEADER.length))
+  );
+}
+
 /** Detect the format of an in-memory buffer from its leading header bytes. */
 function peekBufferFormat(content: Buffer): string {
-  return peekFormat(new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES)));
+  return detectFormat(new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES)));
+}
+
+/**
+ * Prepare a DXIL shader binary. Its debug id is the compiler hash the engine
+ * uses as the file name; the code id and shader group come from the manifest
+ * row, when one was found. Shaders carry none of the symbol/debug/unwind/source
+ * features, so only the format and `--id` filters apply.
+ */
+function dxilDif(
+  displayPath: string,
+  content: Buffer,
+  filters: DifFilters,
+  info?: ShaderInfo,
+): PreparedDif[] {
+  const stem = basename(displayPath, extname(displayPath)).toLowerCase();
+  if (!BARE_HEX32_RE.test(stem)) {
+    log.warn(
+      `Skipping ${displayPath}: a DXIL file must be named after its 32-hex shader hash`,
+    );
+    return [];
+  }
+  // normalizeDebugId hyphenates the stem, so `--id` matches either spelling.
+  const debugId = normalizeDebugId(stem);
+  if (
+    !(formatMatches("dxil", filters.formats) && idMatches(debugId, filters.ids))
+  ) {
+    return [];
+  }
+  return [
+    {
+      path: displayPath,
+      content,
+      debugId,
+      objects: [
+        {
+          debugId,
+          codeId: info?.codeId ?? null,
+          arch: "any",
+          fileFormat: "dxil",
+          kind: "shader",
+          hasSymbols: false,
+          hasDebugInfo: false,
+          hasUnwindInfo: false,
+          hasSources: false,
+        },
+      ],
+      ...(info?.codeId ? { codeId: info.codeId } : {}),
+      ...(info?.shaderGroup ? { shaderGroup: info.shaderGroup } : {}),
+    },
+  ];
 }
 
 /**
@@ -715,7 +810,14 @@ function difFromBuffer(
   content: Buffer,
   filters: DifFilters,
   maxFileSize: number,
+  shaderInfo?: ShaderInfo,
 ): { difs: PreparedDif[]; oversized: boolean } {
+  if (isDxil(content)) {
+    return {
+      difs: dxilDif(displayPath, content, filters, shaderInfo),
+      oversized: false,
+    };
+  }
   const ppdb = embeddedPpdbDif(displayPath, content, filters, maxFileSize);
   return {
     difs: [...matchedDifs(displayPath, content, filters), ...ppdb.difs],
@@ -739,6 +841,7 @@ async function readMatchedDif(
   path: string,
   filters: DifFilters,
   maxFileSize: number,
+  shaderInfo?: ShaderInfo,
 ): Promise<{ difs: PreparedDif[]; oversized: boolean }> {
   let content: Buffer;
   try {
@@ -747,7 +850,7 @@ async function readMatchedDif(
     log.debug(`Skipping unreadable file: ${path}`, err);
     return { difs: [], oversized: false };
   }
-  return difFromBuffer(path, content, filters, maxFileSize);
+  return difFromBuffer(path, content, filters, maxFileSize, shaderInfo);
 }
 
 /**

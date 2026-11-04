@@ -20,7 +20,11 @@ import {
   setDefaultOrganization,
 } from "../../src/lib/db/defaults.js";
 import { ContextError, EXIT } from "../../src/lib/errors.js";
-import { guideOrgProjectFailure } from "../../src/lib/resolve-target.js";
+import { parseOrgProjectArg } from "../../src/lib/arg-parsing.js";
+import {
+  guideOrgProjectFailure,
+  resolveOrgOnlyTarget,
+} from "../../src/lib/resolve-target.js";
 import { resetCacheState } from "../../src/lib/response-cache.js";
 import { resetAuthenticatedFetch } from "../../src/lib/sentry-client.js";
 import issuesFixture from "../fixtures/issues.json";
@@ -500,3 +504,56 @@ describe("bounded target guidance", () => {
     expect(getDefaultProject()).toBeNull();
   });
 });
+
+describe.skipIf(process.platform === "win32")(
+  "single accessible organization",
+  () => {
+    beforeEach(() => {
+      organizations = organizationsFixture.slice(0, 1);
+    });
+
+    test("issue list lists the only org when no project is detected", async () => {
+      const result = await runCommand([
+        "issue",
+        "list",
+        "--json",
+        "--fields",
+        "id",
+      ]);
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout).data).toEqual([
+        { id: issuesFixture[0].id },
+      ]);
+      const issueRequests = requests.filter((url) =>
+        url.pathname.endsWith("/issues/"),
+      );
+      expect(issueRequests.map((url) => url.pathname)).toEqual([
+        "/api/0/organizations/test-org/issues/",
+      ]);
+      expect(issueRequests[0]?.searchParams.has("project")).toBe(false);
+      expect(getDefaultOrganization()).toBeNull();
+    });
+
+    test("org-scoped commands use the only org", async () => {
+      await expect(
+        resolveOrgOnlyTarget(
+          parseOrgProjectArg(undefined),
+          getConfigDir(),
+          "explore",
+        ),
+      ).resolves.toBe("test-org");
+    });
+
+    test("org-scoped commands still ask when several orgs are accessible", async () => {
+      organizations = organizationsFixture;
+      const error = await failure(
+        resolveOrgOnlyTarget(
+          parseOrgProjectArg(undefined),
+          getConfigDir(),
+          "explore",
+        ),
+      );
+      expect(error).toBeInstanceOf(ContextError);
+    });
+  },
+);

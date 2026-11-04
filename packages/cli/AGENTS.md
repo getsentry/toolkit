@@ -994,6 +994,16 @@ capture skips the 4xx/network silencing and the `api_error` context, so user
 errors pile into one issue with no detail (CLI-10). The
 `no-raw-capture-exception` CLI Oxlint rule enforces this.
 
+### Process Exit
+
+Do not end the CLI with `process.exit()`, including forced-exit timers. A
+forced exit drops pending telemetry and piped output. When a process stays
+alive after its command, release the handle that keeps the event loop alive
+(`close-dispatcher.ts` is the example), or fix the dependency that owns it.
+The `no-process-exit` CLI Oxlint rule enforces this. Only signal, fatal error,
+and broken stream handlers exit directly, each with a disable comment that
+says why.
+
 ### Auto-Recovery for Wrong Entity Types
 
 When a user provides the wrong type of identifier (e.g., an issue short ID
