@@ -16,6 +16,51 @@ import {
 
 const envelope = '{}\n{"type":"event"}\n{"message":"received"}';
 
+test.each([1, 2])(
+  "live SSE subscribers receive bursts beyond retention %i without manual flushing",
+  async (limit) => {
+    const retention = createLocalRetentionBuffer(limit);
+    const bodies = Array.from({ length: 8 }, (_, index) =>
+      envelope.replace("received", `delivery-${index}`),
+    );
+    expect(
+      await ingestReceiverEnvelope(retention.buffer, {
+        body: Buffer.from(bodies[0]!),
+      }),
+    ).toBe(204);
+    const frames: { id?: string; data: string }[] = [];
+    const reader = retention.buffer.subscribe(
+      buildSSEHandler({
+        writeSSE: async (frame) => {
+          frames.push(frame);
+        },
+      }),
+    );
+    try {
+      const statuses = await Promise.all(
+        bodies.slice(1).map((body) =>
+          ingestReceiverEnvelope(retention.buffer, {
+            body: Buffer.from(body),
+          }),
+        ),
+      );
+      expect(statuses).toEqual(Array(7).fill(204));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(
+        frames.map((frame) => JSON.parse(frame.data)[1][0][1].message),
+      ).toEqual(bodies.map((_, index) => `delivery-${index}`));
+      expect(new Set(frames.map((frame) => frame.id)).size).toBe(8);
+      expect(
+        retention.buffer
+          .read({ all: true })
+          .map((item) => item.getData().toString()),
+      ).toEqual(bodies.slice(-limit).reverse());
+    } finally {
+      retention.buffer.unsubscribe(reader);
+    }
+  },
+);
+
 test("adopting an indexed SDK container preserves its ID and filename index", () => {
   const sdk = createSpotlightBuffer(3);
   pushToSpotlightBuffer({

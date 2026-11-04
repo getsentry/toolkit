@@ -21,6 +21,11 @@ type Subscriber = {
   position: number;
   scheduled?: NodeJS.Immediate;
 };
+type RetainedEnvelope = {
+  item: ReceiverEnvelope;
+  arrivedAt: number;
+  position: number;
+};
 export type RetentionSettings = {
   maxEnvelopes: number;
   retainedEnvelopes: number;
@@ -101,10 +106,8 @@ export function createLocalRetentionBuffer(
   // Only raw retention and stream cursors live here; the SDK still decodes.
   const buffer = createSpotlightBuffer(1);
   const subscribers = new Map<string, Subscriber>();
-  const entries = new Map<
-    string,
-    { item: ReceiverEnvelope; arrivedAt: number; position: number }
-  >();
+  const entries = new Map<string, RetainedEnvelope>();
+  let newest: RetainedEnvelope | undefined;
   let position = 0;
   const listeners = new Set<(settings: RetentionSettings) => void>();
   const getSettings = (): RetentionSettings => ({
@@ -114,16 +117,15 @@ export function createLocalRetentionBuffer(
   buffer.put = (item) => {
     const id = prepareReceiverEnvelope(item);
     if (entries.has(id)) return;
-    entries.set(id, { item, arrivedAt: Date.now(), position: ++position });
+    // Replay pending subscription history before any entry can be evicted.
+    for (const readerId of subscribers.keys()) buffer.stream(readerId);
+    newest = { item, arrivedAt: Date.now(), position: ++position };
+    entries.set(id, newest);
     if (entries.size > maxEnvelopes) {
       const oldest = entries.keys().next().value;
       if (oldest !== undefined) entries.delete(oldest);
     }
-    for (const [readerId, subscriber] of subscribers) {
-      if (subscriber.scheduled) clearImmediate(subscriber.scheduled);
-      subscriber.scheduled = setImmediate(() => buffer.stream(readerId));
-      subscriber.scheduled.unref();
-    }
+    for (const readerId of subscribers.keys()) buffer.stream(readerId);
   };
   buffer.read = (filters = { timeWindow: 60 }) => {
     const candidates =
@@ -171,17 +173,31 @@ export function createLocalRetentionBuffer(
   buffer.stream = (id) => {
     const subscriber = subscribers.get(id);
     if (!subscriber) return;
-    for (const entry of entries.values()) {
-      if (entry.position <= subscriber.position) continue;
+    if (subscriber.scheduled) {
+      clearImmediate(subscriber.scheduled);
+      subscriber.scheduled = undefined;
+    }
+    if (subscriber.position >= position) return;
+    const deliver = (entry: RetainedEnvelope) => {
+      if (entry.position <= subscriber.position) return;
       subscriber.position = entry.position;
       try {
         subscriber.callback(entry.item);
       } catch (error) {
         logger.debug("Local receiver subscriber failed", error);
       }
+    };
+    // Live readers need only the new entry, regardless of retention capacity.
+    if (newest?.position === subscriber.position + 1) {
+      deliver(newest);
+    } else {
+      for (const entry of entries.values()) deliver(entry);
     }
   };
-  buffer.clear = buffer.reset = () => entries.clear();
+  buffer.clear = buffer.reset = () => {
+    entries.clear();
+    newest = undefined;
+  };
   return {
     buffer,
     getSettings,
