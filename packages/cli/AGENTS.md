@@ -148,6 +148,11 @@ Top-level layout:
   `node:` builtins and pure helpers (`test/script/cli-startup.test.ts` lists
   its modules). `script/lib/chunk-build.ts` holds the build steps both
   packages share: debug IDs, sourcemap upload, and the main script.
+  `test/e2e/bundle.test.ts` sets a budget for the JavaScript that some
+  commands read and for all the JavaScript the npm package ships. When a
+  change goes over a budget, make the change smaller or raise the budget and
+  give the reason in the PR. When a change makes a command smaller, lower its
+  budget.
 - **`src/index.ts`** — the library (`createSentrySDK`). It imports no command
   and no CLI runner: each SDK call loads only the top-level routes it runs
   (`src/sdk-app.ts`, the SDK's `app-for-args.ts`), from the same split chunks

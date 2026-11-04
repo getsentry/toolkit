@@ -6,7 +6,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -47,6 +47,56 @@ async function spawnCollect(
 
 const ROOT_DIR = join(import.meta.dirname, "../..");
 const INK_APP_PATH = join(ROOT_DIR, "dist/ink-app.js");
+
+/**
+ * Run the bundle with `args` and return the size in bytes of each JavaScript
+ * file the run read. `dist/bin.cjs` reads its chunks with readFileSync.
+ */
+async function runReadingScripts(args: string[]) {
+  const { stdout, stderr, exitCode } = await spawnCollect(
+    "node",
+    [
+      "-e",
+      `const fs = require("node:fs");
+      const readFileSync = fs.readFileSync;
+      const read = {};
+      fs.readFileSync = function (path, ...rest) {
+        const content = readFileSync.call(this, path, ...rest);
+        if (typeof path === "string" && /\\.[cm]?js$/.test(path)) read[path] = Buffer.byteLength(content);
+        return content;
+      };
+      process.on("exit", () => process.stderr.write("\\n" + JSON.stringify(read)));
+      process.argv.splice(1, 0, ${JSON.stringify(BUNDLE_BIN_PATH)});
+      require(process.argv[1]);`,
+      "--",
+      ...args,
+    ],
+    { cwd: ROOT_DIR },
+  );
+  const scripts = JSON.parse(
+    stderr.slice(stderr.lastIndexOf("\n") + 1),
+  ) as Record<string, number>;
+  return { stdout, exitCode, scripts };
+}
+
+const KB = 1024;
+
+/**
+ * Kilobytes of JavaScript each command may read, about 3% over what it read
+ * when the budget was set. Lower a budget when a change makes its command
+ * smaller.
+ */
+const COMMAND_LOAD_BUDGET_KB: Record<string, number> = {
+  "--version": 1620,
+  help: 1690,
+  "auth status": 1720,
+  "org list": 1790,
+  "issue list": 1940,
+  "help --json": 4150,
+};
+
+/** Kilobytes of JavaScript the npm package ships, read or not. */
+const PACKAGE_JS_BUDGET_KB = 18_310;
 
 describe("npm bundle", () => {
   beforeAll(async () => {
@@ -189,36 +239,17 @@ describe("npm bundle", () => {
   }, 15_000);
 
   test("__complete runs from dist/complete.cjs without loading the CLI", async () => {
-    // Print the JavaScript files the run read, so the test sees what a TAB
-    // press pays for. `dist/bin.cjs` reads its chunks with readFileSync.
-    const { stdout, stderr, exitCode } = await spawnCollect(
-      "node",
-      [
-        "-e",
-        `const fs = require("node:fs");
-        const readFileSync = fs.readFileSync;
-        const read = [];
-        fs.readFileSync = function (path, ...rest) {
-          if (typeof path === "string" && /\\.[cm]?js$/.test(path)) read.push(path);
-          return readFileSync.call(this, path, ...rest);
-        };
-        process.on("exit", () => process.stderr.write(JSON.stringify(read)));
-        process.argv.splice(1, 0, ${JSON.stringify(BUNDLE_BIN_PATH)});
-        require(process.argv[1]);`,
-        "__complete",
-        "issue",
-        "list",
-        "--period",
-        "",
-      ],
-      { cwd: ROOT_DIR },
-    );
+    const { stdout, exitCode, scripts } = await runReadingScripts([
+      "__complete",
+      "issue",
+      "list",
+      "--period",
+      "",
+    ]);
 
     expect(exitCode).toBe(0);
     expect(stdout).toContain("24h\tLast 24 hours");
-    const loaded = (JSON.parse(stderr) as string[]).map((path) =>
-      basename(path),
-    );
+    const loaded = Object.keys(scripts).map((path) => basename(path));
     expect(loaded).toContain("complete.cjs");
     expect(loaded).not.toContain("cli.cjs");
     expect(loaded.filter((name) => name.startsWith("chunk-"))).toEqual([]);
@@ -226,32 +257,15 @@ describe("npm bundle", () => {
 
   test("a command loads only its own chunks", async () => {
     // `dist/bin.cjs` runs `cli.cjs`, whose commands are chunks of their own
-    const { stdout, stderr, exitCode } = await spawnCollect(
-      "node",
-      [
-        "-e",
-        `const fs = require("node:fs");
-        const readFileSync = fs.readFileSync;
-        const read = new Set();
-        fs.readFileSync = function (path, ...rest) {
-          if (typeof path === "string" && /\\.[cm]?js$/.test(path)) read.add(path);
-          return readFileSync.call(this, path, ...rest);
-        };
-        process.on("exit", () => process.stderr.write("\\n" + JSON.stringify([...read])));
-        process.argv.splice(1, 0, ${JSON.stringify(BUNDLE_BIN_PATH)});
-        require(process.argv[1]);`,
-        "issue",
-        "list",
-        "--help",
-      ],
-      { cwd: ROOT_DIR, env: { ...process.env, SENTRY_CLI_NO_TELEMETRY: "1" } },
-    );
+    const { stdout, exitCode, scripts } = await runReadingScripts([
+      "issue",
+      "list",
+      "--help",
+    ]);
 
     expect(exitCode).toBe(0);
     expect(stdout).toContain("sentry issue list");
-    const read = JSON.parse(
-      stderr.slice(stderr.lastIndexOf("\n") + 1),
-    ) as string[];
+    const read = Object.keys(scripts);
     const chunks = readdirSync(join(ROOT_DIR, "dist")).filter(
       (name) => name.startsWith("chunk-") && name.endsWith(".cjs"),
     );
@@ -263,6 +277,33 @@ describe("npm bundle", () => {
     // Not every command: well under half of the CLI's chunks
     expect(readChunks.length).toBeLessThan(chunks.length / 2);
   }, 15_000);
+
+  test.each(Object.entries(COMMAND_LOAD_BUDGET_KB))(
+    "sentry %s reads at most %i KB of JavaScript",
+    async (command, budgetKb) => {
+      const { scripts } = await runReadingScripts(command.split(" "));
+      const readKb = Math.ceil(
+        Object.values(scripts).reduce((sum, bytes) => sum + bytes, 0) / KB,
+      );
+      expect(
+        readKb,
+        `sentry ${command} reads ${readKb} KB, over its ${budgetKb} KB budget`,
+      ).toBeLessThanOrEqual(budgetKb);
+    },
+    15_000,
+  );
+
+  test(`the npm package ships at most ${PACKAGE_JS_BUDGET_KB} KB of JavaScript`, () => {
+    const dist = join(ROOT_DIR, "dist");
+    const bytes = readdirSync(dist)
+      .filter((name) => /\.[cm]?js$/.test(name))
+      .reduce((sum, name) => sum + statSync(join(dist, name)).size, 0);
+    const packageKb = Math.ceil(bytes / KB);
+    expect(
+      packageKb,
+      `dist ships ${packageKb} KB of JavaScript, over its ${PACKAGE_JS_BUDGET_KB} KB budget`,
+    ).toBeLessThanOrEqual(PACKAGE_JS_BUDGET_KB);
+  });
 
   test("Ink sidecar can be imported and exports mountApp", async () => {
     // The Ink sidecar (dist/ink-app.js) is a pre-bundled self-contained ESM
