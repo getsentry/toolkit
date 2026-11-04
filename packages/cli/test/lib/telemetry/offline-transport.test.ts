@@ -8,6 +8,7 @@
 import { createEnvelope, type Envelope, parseEnvelope } from "@sentry/core";
 import { describe, expect, test, vi } from "vitest";
 import { getDatabase } from "../../../src/lib/db/index.js";
+import { createEnvelopeStore } from "../../../src/lib/telemetry/offline-store.js";
 import {
   BREAKER_COOLDOWN_MS,
   makeStoringTransport,
@@ -158,6 +159,38 @@ describe("makeStoringTransport breaker", () => {
     await transport.send(metrics);
     await vi.waitFor(() => expect(storedEventIds()).toEqual([]));
     expect(ingest.sent).toEqual(["m", "m", "a"]);
+  });
+
+  test("a response after a failure in the same batch doesn't drain more", async () => {
+    const store = createEnvelopeStore();
+    for (let i = 0; i < 25; i++) {
+      await store.push(eventEnvelope(`s${i}`));
+    }
+    let calls = 0;
+    const transport = makeStoringTransport(
+      { url: "http://127.0.0.1:9/api/0/envelope/", recordDroppedEvent: noop },
+      () => ({
+        // The first send of the batch fails at once; the rest answer a
+        // moment later, after the failure has opened the breaker.
+        send: async () => {
+          calls += 1;
+          if (calls === 1) {
+            throw new Error("connect ECONNREFUSED");
+          }
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          return { statusCode: 200 };
+        },
+        flush: () => Promise.resolve(true),
+      }),
+    );
+
+    transport.sendStored(10);
+
+    // One batch only: 9 delivered, the failed one requeued, 15 untouched.
+    await vi.waitFor(() => expect(calls).toBe(10));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls).toBe(10);
+    expect(storedEventIds()).toHaveLength(16);
   });
 
   test("sendStored does nothing while the breaker is open", async () => {

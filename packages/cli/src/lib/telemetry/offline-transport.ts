@@ -113,7 +113,11 @@ export function makeStoringTransport(
   }
 
   function onResponse(): void {
-    if (breaker.kind === "closed") {
+    // Only the probe's answer closes the breaker. A request that started
+    // while it was closed and answers after another one failed (say, in a
+    // parallel drain batch) leaves it open, so one run never drains more
+    // than one batch per recovery.
+    if (breaker.kind !== "probing") {
       return;
     }
     breaker = { kind: "closed" };
