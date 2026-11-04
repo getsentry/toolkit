@@ -282,6 +282,8 @@ describe("command tools: session constraints", () => {
     ["attribute list", ["api"], project],
     ["explore", ["other/"], org],
     ["feedback view", ["other/WEB-1"], org],
+    ["feedback view", ["acme/api/1"], project],
+    ["issue view", ["acme/api/G"], project],
     ["agent-conversation view", ["conv-1", "other/conv-2"], org],
     ["agent-conversation view", ["other", "conv-1"], org],
   ])(

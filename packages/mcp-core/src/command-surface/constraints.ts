@@ -150,11 +150,17 @@ function pinTarget(
     if (segments[0] !== session.org) {
       throw outside(entry, value, session);
     }
+    // `<org>/<project>/...`, or `<org>/<project>/<suffix>` under a
+    // one-word title (`feedback`, `issue`).
+    const namesProject =
+      titleSegments.length === 1
+        ? segments.length >= 3
+        : titleSegments[1] === "project" &&
+          segments.length >= titleSegments.length;
     const project = segments[1];
     if (
       session.project &&
-      titleSegments[1] === "project" &&
-      segments.length >= titleSegments.length &&
+      namesProject &&
       project &&
       project !== session.project
     ) {
