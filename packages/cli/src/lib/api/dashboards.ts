@@ -590,6 +590,14 @@ async function queryWidgetData(
     } satisfies TextResult;
   }
 
+  const { displayType } = widget;
+  if (displayType === null) {
+    return {
+      type: "unsupported",
+      reason: "Widget has no display type",
+    };
+  }
+
   const dataset = mapWidgetTypeToDataset(widget.widgetType);
   if (!dataset) {
     return {
@@ -600,7 +608,7 @@ async function queryWidgetData(
 
   try {
     // Chart types → timeseries
-    if (TIMESERIES_DISPLAY_TYPES.has(widget.displayType)) {
+    if (TIMESERIES_DISPLAY_TYPES.has(displayType)) {
       return await queryWidgetTimeseries(params);
     }
 
@@ -621,13 +629,13 @@ async function queryWidgetData(
     }
 
     // Table types → tabular
-    if (TABLE_DISPLAY_TYPES.has(widget.displayType)) {
+    if (TABLE_DISPLAY_TYPES.has(displayType)) {
       return await queryWidgetTable(params);
     }
 
     return {
       type: "unsupported",
-      reason: `Display type '${widget.displayType}' is not yet supported`,
+      reason: `Display type '${displayType}' is not yet supported`,
     };
   } catch (error) {
     Sentry.captureException(error);

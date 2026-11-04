@@ -124,7 +124,7 @@ function validateEnumsAndAggregates(
   }
 
   if (flags.display || flags.dataset) {
-    const effectiveDisplay = flags.display ?? existing.displayType;
+    const effectiveDisplay = flags.display ?? existing.displayType ?? undefined;
     const effectiveDataset = flags.dataset ?? existing.widgetType;
     validateWidgetEnums(effectiveDisplay, effectiveDataset);
   }

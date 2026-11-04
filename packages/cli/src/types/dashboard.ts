@@ -126,7 +126,7 @@ export const DashboardWidgetLayoutSchema = looseObject({
 export const DashboardWidgetSchema = looseObject({
   id: optional(string()),
   title: string(),
-  displayType: string(),
+  displayType: nullable(string()),
   widgetType: optional(string()),
   interval: optional(string()),
   queries: optional(array(DashboardWidgetQuerySchema)),
@@ -492,7 +492,8 @@ export function prepareWidgetQueries(
 ): DashboardWidget {
   let widget = inputWidget;
   // Clamp to per-display-type limit maximums
-  const maxLimit = MAX_LIMITS[widget.displayType];
+  const maxLimit =
+    widget.displayType === null ? undefined : MAX_LIMITS[widget.displayType];
   if (
     maxLimit !== undefined &&
     widget.limit !== undefined &&
