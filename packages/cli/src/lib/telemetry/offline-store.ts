@@ -115,6 +115,12 @@ export function createEnvelopeStore(
 
   function insert(envelope: Envelope): void {
     const bytes = toBytes(serializeEnvelope(envelope));
+    // It could never be kept, and inserting it would put every row over
+    // the byte cap in the trim below, emptying the store.
+    if (bytes.byteLength > limits.maxBytes) {
+      log.debug("Dropped unsent telemetry larger than the store's byte cap");
+      return;
+    }
     const createdAt = storedAt.get(envelope) ?? now();
     const isError = envelopeContainsItemType(envelope, ["event"]) ? 1 : 0;
     const db = getDatabase();

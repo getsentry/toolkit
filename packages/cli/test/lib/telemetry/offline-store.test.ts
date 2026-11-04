@@ -129,9 +129,11 @@ describe.each(["node", "wasm"] as const)(
       }
       expect(eventIds(store.claim(10))).toEqual(["b", "c"]);
 
-      // One envelope bigger than the cap is not kept at all.
+      // One envelope bigger than the cap is not kept, and doesn't push out
+      // the envelopes that fit.
+      await store.push(eventEnvelope("d"));
       await store.push(eventEnvelope("big", "x".repeat(size * 2)));
-      expect(storedCount()).toBe(0);
+      expect(eventIds(store.claim(10))).toEqual(["d"]);
     });
 
     test("over a cap, drops envelopes without an error before errors", async () => {
