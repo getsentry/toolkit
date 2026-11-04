@@ -8,7 +8,12 @@
  */
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import {
+  type AddressInfo,
+  createServer as createTcpServer,
+  type Server as TcpServer,
+  type Socket,
+} from "node:net";
 import { promisify } from "node:util";
 import { zstdDecompress } from "node:zlib";
 import { createEnvelope } from "@sentry/core";
@@ -33,7 +38,66 @@ type CapturedRequest = {
  * Without this, a `let server` shared across tests is overwritten by
  * the second test before the first one is closed — silent socket leak.
  */
-const startedServers: Server[] = [];
+const startedServers: (Server | TcpServer)[] = [];
+
+/**
+ * Start a server that accepts connections and never answers, like an
+ * ingest endpoint behind a stalled network path. `closed` resolves when
+ * the client gives up and its socket closes.
+ */
+function startStalledIngest(): Promise<{
+  url: string;
+  closed: Promise<void>;
+}> {
+  let onClosed: () => void = noop;
+  const closed = new Promise<void>((resolve) => {
+    onClosed = resolve;
+  });
+  const server = createTcpServer((socket: Socket) => {
+    socket.on("error", noop);
+    socket.on("close", () => onClosed());
+    // Read (and drop) the request so the client's hang-up is seen.
+    socket.resume();
+  });
+  startedServers.push(server);
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address() as AddressInfo;
+      resolve({
+        url: `http://127.0.0.1:${addr.port}/api/0/envelope/`,
+        closed,
+      });
+    });
+  });
+}
+
+/**
+ * Start an HTTP proxy that accepts the CONNECT tunnel and then goes
+ * silent. Routes the transport through the SDK's `makeNodeTransport`.
+ */
+function startStalledProxy(): Promise<{ url: string; closed: Promise<void> }> {
+  let onClosed: () => void = noop;
+  const closed = new Promise<void>((resolve) => {
+    onClosed = resolve;
+  });
+  const server = createServer();
+  server.on("connect", (_req, socket) => {
+    socket.on("error", noop);
+    socket.on("close", () => onClosed());
+    // HTTP servers allow half-open sockets: close ours when the client
+    // hangs up, so `closed` proves the client released its socket.
+    socket.on("end", () => socket.end());
+    socket.resume();
+    socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+  });
+  startedServers.push(server);
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address() as AddressInfo;
+      resolve({ url: `http://127.0.0.1:${addr.port}`, closed });
+    });
+  });
+}
 
 function startMockIngest(
   responder: (req: IncomingMessage) => {
@@ -143,5 +207,45 @@ describe("makeCompressedTransport (e2e)", () => {
       "60:error:organization",
     );
     expect(captures).toHaveLength(1);
+  });
+
+  test("aborts a request the server never answers", async () => {
+    const { url, closed } = await startStalledIngest();
+    const transport = makeCompressedTransport(
+      { url, recordDroppedEvent: noop },
+      100,
+    );
+    const envelope: any = createEnvelope({ event_id: "a" } as any, [
+      [{ type: "event" } as any, { message: "hi" } as any],
+    ]);
+
+    // Without a deadline this never settles, and its socket keeps the
+    // CLI process alive after the command finishes (#1956).
+    await expect(transport.send(envelope)).rejects.toThrow();
+    await closed;
+  });
+
+  test("aborts a request stalled behind a proxy", async () => {
+    const proxy = await startStalledProxy();
+    const savedProxy = process.env.http_proxy;
+    process.env.http_proxy = proxy.url;
+    try {
+      const transport = makeCompressedTransport(
+        { url: "http://127.0.0.1:9/api/0/envelope/", recordDroppedEvent: noop },
+        100,
+      );
+      const envelope: any = createEnvelope({ event_id: "a" } as any, [
+        [{ type: "event" } as any, { message: "hi" } as any],
+      ]);
+
+      await expect(transport.send(envelope)).rejects.toThrow();
+      await proxy.closed;
+    } finally {
+      if (savedProxy === undefined) {
+        delete process.env.http_proxy;
+      } else {
+        process.env.http_proxy = savedProxy;
+      }
+    }
   });
 });

@@ -267,7 +267,14 @@ export async function withTelemetry<T>(
  * and flushing pending events. Includes a re-entry guard since flush is async
  * and causes beforeExit to re-fire when complete.
  *
- * @param client - The Sentry client to flush
+ * It closes the client rather than only flushing it. The SDK flushes metrics
+ * and client reports on every `beforeExit`; when ingest is slow or
+ * unreachable, each failed send becomes a client report, and the runtime
+ * metrics timer keeps adding data, so the next `beforeExit` sends again and
+ * the process never exits (#1956). Closing removes those listeners and
+ * disables the client after this last flush.
+ *
+ * @param client - The Sentry client to close
  * @returns A handler function for process.on("beforeExit")
  *
  * @internal Exported for testing
@@ -285,11 +292,11 @@ export function createBeforeExitHandler(client: Sentry.NodeClient): () => void {
       Sentry.endSession();
     }
 
-    // Flush pending events before exit. Convert PromiseLike to Promise
-    // for proper error handling. The async work causes beforeExit to
+    // Flush pending events, then disable the client. Convert PromiseLike to
+    // Promise for proper error handling. The async work causes beforeExit to
     // re-fire when complete, which the isFlushing guard handles.
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-    Promise.resolve(client.flush(3000)).catch(() => {
+    Promise.resolve(client.close(3000)).catch(() => {
       // Ignore flush errors — telemetry should never block CLI exit
     });
   };
