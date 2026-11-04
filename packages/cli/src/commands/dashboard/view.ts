@@ -31,13 +31,13 @@ import {
   type TimeRange,
   timeRangeToSeconds,
 } from "../../lib/time-range.js";
-import {
-  DashboardViewOutputSchema,
-  type DashboardWidget,
-  type WidgetDataResult,
+import type {
+  DashboardWidget,
+  WidgetDataResult,
 } from "../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "./arguments.js";
 import { withDashboardErrors } from "./resolve.js";
+import { DashboardViewOutputSchema } from "../../generated/output-schemas/dashboard.js";
 
 /** Default auto-refresh interval in seconds */
 const DEFAULT_REFRESH_INTERVAL = 60;

@@ -19,7 +19,6 @@ import { CommandOutput } from "../../../lib/formatters/output.js";
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
   type DashboardWidget,
-  DashboardWidgetChangeOutputSchema,
   type DashboardWidgetQuery,
   DISPLAY_TYPES,
   FALLBACK_LAYOUT,
@@ -47,6 +46,7 @@ import {
   WIDGET_FIELD_COMPLETION,
   type WidgetQueryFlags,
 } from "../resolve.js";
+import { DashboardWidgetChangeOutputSchema } from "../../../generated/output-schemas/dashboard.js";
 
 type EditFlags = WidgetQueryFlags &
   WidgetLayoutFlags & {

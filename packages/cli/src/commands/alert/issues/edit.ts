@@ -40,10 +40,8 @@ import {
 } from "../mutation-utils.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
-import {
-  type IssueAlertEditOutput,
-  IssueAlertEditOutputSchema,
-} from "../output-schemas.js";
+import type { IssueAlertEditOutput } from "../../../output-schemas/alert.js";
+import { IssueAlertEditOutputSchema } from "../../../generated/output-schemas/alert.js";
 
 const USAGE_HINT =
   "sentry alert issues edit <org>/<project>/<rule-id-or-name> --name <name> | --status active|disabled";

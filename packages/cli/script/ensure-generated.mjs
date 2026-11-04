@@ -33,6 +33,7 @@ const GRAMMAR_OUTPUTS = [
 ];
 /** Produced by `generate:docs`; imported at runtime by `src/`. */
 const DOCS_OUTPUTS = [
+  "src/generated/output-schemas",
   "src/generated/command-api.json",
   "src/generated/skill-content.ts",
   "src/generated/completion-targets.json",

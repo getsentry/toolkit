@@ -42,11 +42,11 @@ import {
   validateMetricTimeWindow,
 } from "../mutation-utils.js";
 import { metricAlertStatusLabel } from "./status.js";
-import {
-  type MetricAlertCreateBody,
-  type MetricAlertCreateOutput,
-  MetricAlertCreateOutputSchema,
-} from "../output-schemas.js";
+import type {
+  MetricAlertCreateBody,
+  MetricAlertCreateOutput,
+} from "../../../output-schemas/alert.js";
+import { MetricAlertCreateOutputSchema } from "../../../generated/output-schemas/alert.js";
 
 type CreateFlags = {
   readonly name: string;

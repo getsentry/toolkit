@@ -10,7 +10,7 @@
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { uuidv7 } from "uuidv7";
 import type { InferOutput } from "valibot";
-import type { AccountSummarySchema } from "../../types/account.js";
+import type { AccountSummarySchema } from "../../output-schemas/account.js";
 import { normalizeUrl } from "../constants.js";
 import { ValidationError } from "../errors.js";
 import { fuzzyMatch } from "../fuzzy.js";

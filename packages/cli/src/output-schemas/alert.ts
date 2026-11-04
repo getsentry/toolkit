@@ -43,8 +43,7 @@ import {
   string,
   unknown,
 } from "valibot";
-import { DryRunOutputField } from "../../types/index.js";
-import type { WithOutputFields } from "../../types/output.js";
+import { DryRunOutputField, type WithOutputFields } from "./output.js";
 
 // Fields the CLI adds to every alert mutation's output.
 const org = pipe(string(), description("Organization slug"));

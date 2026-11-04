@@ -3,11 +3,12 @@
  */
 
 import type { InferOutput } from "valibot";
-import type { IssueViewOutputFields, SentryIssue } from "../../types/index.js";
+import type { SentryIssue } from "../../types/index.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { formatEventDetails, formatIssueDetails } from "./human.js";
 import { filterFieldsIfSet } from "./json.js";
 import { renderMarkdown } from "./markdown.js";
+import type { IssueViewOutputFields } from "../../output-schemas/issue.js";
 
 /**
  * Data rendered for one issue: the issue, and the fields JSON output adds to

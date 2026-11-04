@@ -8,7 +8,6 @@
 import { tableCell, text } from "@sentry/toolkit-core/markdown";
 import type { InferOutput } from "valibot";
 import type {
-  FlatSpanSchema,
   SpanListItem,
   TraceSpan,
   TransactionListItem,
@@ -29,6 +28,7 @@ import { colorizeSql, formatSqlBlock, isDbSpanOp } from "./sql.js";
 import { type Column, formatTable } from "./table.js";
 import { renderTextTable } from "./text-table.js";
 import { computeSpanDurationMs, formatRelativeTime } from "./time-utils.js";
+import type { FlatSpanSchema } from "../../output-schemas/span.js";
 
 /**
  * Format a duration in milliseconds to a human-readable string.
