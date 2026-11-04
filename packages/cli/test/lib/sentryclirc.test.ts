@@ -8,7 +8,18 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import {
+  formatAuthHeader,
+  normalizeAuthToken,
+} from "../../src/lib/auth-header.js";
+import {
+  getAuthConfig,
+  getRawEnvToken,
+  setAuthToken,
+} from "../../src/lib/db/auth.js";
 import { closeDatabase } from "../../src/lib/db/index.js";
+import { getEnv, withEnv } from "../../src/lib/env.js";
+import { MalformedAuthTokenError } from "../../src/lib/errors.js";
 import {
   captureEnvTokenHost,
   resetEnvTokenHostForTesting,
@@ -368,6 +379,110 @@ describe("applySentryCliRcEnvShim", () => {
     // (they're handled in the resolution chain, not via env shim)
     expect(readEnv("SENTRY_ORG")).toBe(orgBefore);
     expect(readEnv("SENTRY_PROJECT")).toBe(projBefore);
+  });
+
+  test("does not let an embedded NUL truncate an rc token into a valid prefix", async () => {
+    delete process.env.SENTRY_AUTH_TOKEN;
+    delete process.env.SENTRY_TOKEN;
+    writeRcFile(testDir, "[auth]\ntoken = synthetic-prefix\0synthetic-tail\n");
+
+    // Boot must not throw — help/login/logout stay reachable.
+    await expect(applySentryCliRcEnvShim(testDir)).resolves.toBeUndefined();
+
+    const stored = readEnv("SENTRY_AUTH_TOKEN");
+    // The printable prefix must not become a different, still-valid credential.
+    expect(stored).not.toBe("synthetic-prefix");
+    // The rc token stays selected — not silently dropped onto another identity.
+    expect(stored?.trim()).toBeTruthy();
+    expect(getRawEnvToken()?.trim()).toBeTruthy();
+    // And the surviving value still fails the shared token validator when used.
+    expect(() => normalizeAuthToken(stored ?? "")).toThrow(
+      MalformedAuthTokenError,
+    );
+    expect(() => formatAuthHeader(stored ?? "")).toThrow(
+      MalformedAuthTokenError,
+    );
+    // Provenance is still recorded for the env-token-ignored hint.
+    expect(getRcInjectedTokenSource()).toBe(join(testDir, CONFIG_FILENAME));
+  });
+
+  test("trims NUL edge padding like the shared token policy", async () => {
+    delete process.env.SENTRY_AUTH_TOKEN;
+    delete process.env.SENTRY_TOKEN;
+    writeRcFile(testDir, "[auth]\ntoken = \0edge-token\0\n");
+
+    await applySentryCliRcEnvShim(testDir);
+
+    // NULs at the edges are padding under the shared policy — the credential
+    // normalizes to the real token instead of truncating to an empty env var.
+    expect(normalizeAuthToken(readEnv("SENTRY_AUTH_TOKEN") ?? "")).toBe(
+      "edge-token",
+    );
+  });
+
+  test("keeps a NUL-only rc token selected instead of silently becoming anonymous", async () => {
+    delete process.env.SENTRY_AUTH_TOKEN;
+    delete process.env.SENTRY_TOKEN;
+    writeRcFile(testDir, "[auth]\ntoken = \0\n");
+
+    await applySentryCliRcEnvShim(testDir);
+
+    // Truncating to "" would look like an unset env var and fall through to
+    // another identity; the stored value must stay selected and still reject.
+    const stored = readEnv("SENTRY_AUTH_TOKEN");
+    expect(stored?.trim()).toBeTruthy();
+    expect(getRawEnvToken()?.trim()).toBeTruthy();
+    expect(() => normalizeAuthToken(stored ?? "")).toThrow(
+      MalformedAuthTokenError,
+    );
+  });
+
+  test("lets stored OAuth shadow an invalid rc token without rejecting it", async () => {
+    delete process.env.SENTRY_AUTH_TOKEN;
+    delete process.env.SENTRY_TOKEN;
+    setAuthToken("stored-oauth-token");
+    writeRcFile(testDir, "[auth]\ntoken = bad\0token\n");
+
+    await expect(applySentryCliRcEnvShim(testDir)).resolves.toBeUndefined();
+
+    // Stored OAuth still wins; the invalid env token is never validated.
+    expect(getAuthConfig()?.token).toBe("stored-oauth-token");
+    expect(getAuthConfig()?.source).toBe("oauth");
+    // But if it ever were selected, it would still reject rather than
+    // transmit a truncated prefix.
+    expect(() => normalizeAuthToken(getRawEnvToken() ?? "")).toThrow(
+      MalformedAuthTokenError,
+    );
+  });
+
+  test("explicit env token still wins over an invalid rc token", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "explicit-env-token";
+    writeRcFile(testDir, "[auth]\ntoken = bad\0token\n");
+
+    await applySentryCliRcEnvShim(testDir);
+    expect(readEnv("SENTRY_AUTH_TOKEN")).toBe("explicit-env-token");
+    expect(getRcInjectedTokenSource()).toBeUndefined();
+  });
+
+  test("matches in-memory SDK env: same validation outcome for a NUL token", async () => {
+    const raw = "synthetic-prefix\0synthetic-tail";
+    delete process.env.SENTRY_AUTH_TOKEN;
+    delete process.env.SENTRY_TOKEN;
+    writeRcFile(testDir, `[auth]\ntoken = ${raw}\n`);
+
+    await applySentryCliRcEnvShim(testDir);
+    // CLI path: the value that survived process.env storage still rejects.
+    expect(() => normalizeAuthToken(getRawEnvToken() ?? "")).toThrow(
+      MalformedAuthTokenError,
+    );
+    // SDK path: the same raw value in an in-memory env object (which stores
+    // NUL verbatim) rejects identically.
+    withEnv({ SENTRY_AUTH_TOKEN: raw }, () => {
+      expect(getEnv().SENTRY_AUTH_TOKEN).toBe(raw);
+      expect(() => normalizeAuthToken(getRawEnvToken() ?? "")).toThrow(
+        MalformedAuthTokenError,
+      );
+    });
   });
 });
 
