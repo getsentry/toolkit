@@ -68,6 +68,16 @@ export const EventViewOutputSchema = pipe(
   looseObject({
     ...partial(vIssueEventDetailsResponse).entries,
     eventID: pipe(string(), description("UUID-format event ID")),
+    // Overrides the API description, which is about the server's `?llmFormat`
+    // mixin. The CLI never requests that format.
+    formatted: optional(
+      pipe(
+        vIssueEventDetailsResponse.entries.formatted.wrapped,
+        description(
+          "Event rendered as Markdown, XML, or JSON; only returned for API requests with llmFormat",
+        ),
+      ),
+    ),
     ...EventViewOutputFields.entries,
   }),
   description("Event view output"),
@@ -89,55 +99,7 @@ export const IssueEventSchema = pipe(
       string(),
       description("Event type (error, default, transaction)"),
     ),
-    groupID: optional(
-      pipe(_IssueEventElement.entries.groupID, description("Group (issue) ID")),
-    ),
     eventID: pipe(string(), description("UUID-format event ID")),
-    projectID: optional(
-      pipe(_IssueEventElement.entries.projectID, description("Project ID")),
-    ),
-    message: optional(
-      pipe(_IssueEventElement.entries.message, description("Event message")),
-    ),
-    title: optional(
-      pipe(_IssueEventElement.entries.title, description("Event title")),
-    ),
-    location: optional(
-      pipe(
-        _IssueEventElement.entries.location,
-        description("Source location (file:line)"),
-      ),
-    ),
-    culprit: optional(
-      pipe(
-        _IssueEventElement.entries.culprit,
-        description("Culprit function/module"),
-      ),
-    ),
-    user: optional(
-      pipe(_IssueEventElement.entries.user, description("User context")),
-    ),
-    tags: optional(
-      pipe(_IssueEventElement.entries.tags, description("Event tags")),
-    ),
-    platform: optional(
-      pipe(
-        _IssueEventElement.entries.platform,
-        description("Platform (python, javascript, etc.)"),
-      ),
-    ),
-    dateCreated: optional(
-      pipe(
-        _IssueEventElement.entries.dateCreated,
-        description("ISO 8601 creation timestamp"),
-      ),
-    ),
-    crashFile: optional(
-      pipe(_IssueEventElement.entries.crashFile, description("Crash file URL")),
-    ),
-    metadata: optional(
-      pipe(_IssueEventElement.entries.metadata, description("Event metadata")),
-    ),
   }),
   description("Issue event (list endpoint)"),
 );
