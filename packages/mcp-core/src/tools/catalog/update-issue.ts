@@ -22,7 +22,7 @@ import {
   ParamReason,
   ParamRegionUrl,
 } from "../../schema";
-import { ApiValidationError } from "@sentry/toolkit-core/api-client/errors";
+import { ApiValidationError } from "@sentry/api/client";
 import { logIssue } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";

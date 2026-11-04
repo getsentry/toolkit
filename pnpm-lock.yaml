@@ -43,8 +43,8 @@ catalogs:
       specifier: ^1.2.3
       version: 1.2.3
     '@sentry/api':
-      specifier: 0.437.0
-      version: 0.437.0
+      specifier: 1.7.0
+      version: 1.7.0
     '@sentry/cloudflare':
       specifier: 11.6.0
       version: 11.6.0
@@ -483,7 +483,7 @@ importers:
         version: 1.46.0(ai@6.0.230(zod@4.6.7))(express@5.3.0)(zod@4.6.7)
       '@sentry/api':
         specifier: 'catalog:'
-        version: 0.437.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 1.7.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.6.0
@@ -829,7 +829,7 @@ importers:
         version: 2.4.0
       '@sentry/api':
         specifier: 'catalog:'
-        version: 0.437.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 1.7.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.6.0
@@ -1008,20 +1008,11 @@ importers:
     dependencies:
       '@sentry/api':
         specifier: 'catalog:'
-        version: 0.437.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 1.7.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/search-syntax':
         specifier: 'catalog:'
         version: 1.0.0
-      '@standard-schema/spec':
-        specifier: 1.1.0
-        version: 1.1.0
-      http-cache-semantics:
-        specifier: ^4.2.0
-        version: 4.2.0
     devDependencies:
-      '@types/http-cache-semantics':
-        specifier: ^4.2.0
-        version: 4.2.0
       fast-check:
         specifier: ^4.8.0
         version: 4.10.1
@@ -1040,15 +1031,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
-      valibot:
-        specifier: ^1.4.2
-        version: 1.4.2(typescript@5.9.3)
       vitest:
         specifier: 'catalog:'
         version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0)(msw@2.10.2(@types/node@24.13.5)(typescript@5.9.3))(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
-      zod:
-        specifier: ^4.6.6
-        version: 4.6.7
 
 packages:
 
@@ -4287,8 +4272,8 @@ packages:
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
 
-  '@sentry/api@0.437.0':
-    resolution: {integrity: sha512-asQE1+QuzdurQ6wIOsR1Xwd6hciF7buneQy74i7HcxWjy9Shz0Pyixm/Xs39mS2AK4GSQKRUgODn7vVddh1TqQ==}
+  '@sentry/api@1.7.0':
+    resolution: {integrity: sha512-MUJppKGa4GVCwsZF6aqhJL8izBfMvYly47whajmR3cUQgaEX09rdH1CqtMU0THWkUCnYOlftTKq6F1ubrjBIsw==}
     engines: {node: '>=22'}
     peerDependencies:
       typescript: '*'
@@ -12255,7 +12240,9 @@ snapshots:
 
   '@sec-ant/readable-stream@0.4.1': {}
 
-  '@sentry/api@0.437.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)':
+  '@sentry/api@1.7.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)':
+    dependencies:
+      http-cache-semantics: 4.2.0
     optionalDependencies:
       typescript: 5.9.3
       valibot: 1.4.2(typescript@5.9.3)

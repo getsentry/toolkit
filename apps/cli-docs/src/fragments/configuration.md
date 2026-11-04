@@ -127,7 +127,7 @@ We store credentials and caches in a SQLite database (`cli.db`) inside the confi
 - Region URL mappings
 - Project aliases (for monorepo support)
 
-API responses are cached separately, as compressed files under `cache/responses/` in the same config directory. Commands that accept `--fresh` (`-f`) skip cached responses for that run; set `SENTRY_NO_CACHE=1` to turn the cache off entirely.
+API responses are cached separately, as compressed files under `cache/api-responses/` in the same config directory. Commands that accept `--fresh` (`-f`) skip cached responses for that run; set `SENTRY_NO_CACHE=1` to turn the cache off entirely.
 
 See [Credential Storage](../commands/auth/#credential-storage) in the auth command docs for more details.
 

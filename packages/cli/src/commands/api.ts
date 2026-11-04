@@ -11,9 +11,9 @@ import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../context.js";
 import {
   appendSearchParams,
-  consumePage,
+  consumeCursorPage,
   decodePageCursor,
-  type PagePosition,
+  type CursorPosition,
   parseLinkHeader,
   type PreparedRawApiRequest,
   prepareRawApiRequest,
@@ -1268,7 +1268,7 @@ type ApiPagination = {
   /** Original cursor, including any bookmark, saved for backward navigation. */
   currentCursor: string | undefined;
   /** Shared decoded position; skip counts rows already returned to the caller. */
-  position: PagePosition;
+  position: CursorPosition;
 };
 
 /**
@@ -1870,7 +1870,7 @@ export const apiCommand = buildCommand({
         ? response.body
         : envelope?.data;
       if (Array.isArray(rows)) {
-        const page = consumePage<unknown>(
+        const page = consumeCursorPage<unknown>(
           { data: rows, ...pagination },
           navigation.position,
         );
