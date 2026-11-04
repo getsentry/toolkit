@@ -164,6 +164,7 @@ export {
   tryGetPrimaryDsn,
 } from "./api/projects.js";
 export {
+  correctRefRepositories,
   createRelease,
   createReleaseDeploy,
   deleteRelease,

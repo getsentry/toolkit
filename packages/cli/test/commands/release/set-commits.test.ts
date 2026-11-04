@@ -124,6 +124,9 @@ describe("release set-commits --commit", () => {
       "organizations/my-org/releases/1.0.0/",
     );
     setCommitsWithRefsSpy.mockRejectedValue(serverError);
+    const correctSpy = vi
+      .spyOn(apiClient, "correctRefRepositories")
+      .mockResolvedValue(undefined);
     const explainSpy = vi
       .spyOn(apiClient, "explainSetCommitsError")
       .mockResolvedValue(new ValidationError("explained", "commit.repository"));
@@ -151,7 +154,52 @@ describe("release set-commits --commit", () => {
       [{ repository: "owner/repo", commit: "abc123" }],
       serverError,
     );
+    correctSpy.mockRestore();
     explainSpy.mockRestore();
+  });
+
+  test("retries with Sentry's repository name when only the form differs", async () => {
+    resolveOrgSpy.mockResolvedValue({ org: "my-org" });
+    const serverError = new ApiError(
+      "API request failed: 400 Bad Request",
+      400,
+      JSON.stringify({ refs: ["Invalid repository names: Owner/Repo"] }),
+      "organizations/my-org/releases/1.0.0/",
+    );
+    setCommitsWithRefsSpy
+      .mockRejectedValueOnce(serverError)
+      .mockResolvedValueOnce(sampleRelease);
+    const corrected = [{ repository: "owner/repo", commit: "abc123" }];
+    const correctSpy = vi
+      .spyOn(apiClient, "correctRefRepositories")
+      .mockResolvedValue(corrected);
+
+    const { context } = createMockContext();
+    const func = await setCommitsCommand.loader();
+    await func.call(
+      context,
+      {
+        auto: false,
+        local: false,
+        clear: false,
+        commit: "Owner/Repo@abc123",
+        "initial-depth": 20,
+        json: true,
+      },
+      "1.0.0",
+    );
+
+    expect(correctSpy).toHaveBeenCalledWith(
+      "my-org",
+      [{ repository: "Owner/Repo", commit: "abc123" }],
+      serverError,
+    );
+    expect(setCommitsWithRefsSpy).toHaveBeenLastCalledWith(
+      "my-org",
+      "1.0.0",
+      corrected,
+    );
+    correctSpy.mockRestore();
   });
 
   test("parses REPO@PREV..SHA range", async () => {

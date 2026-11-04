@@ -45,6 +45,7 @@ const {
   createRelease,
   createReleaseDeploy,
   deleteRelease,
+  correctRefRepositories,
   explainSetCommitsError,
   getRelease,
   listReleaseDeploys,
@@ -1096,6 +1097,127 @@ describe("explainSetCommitsError", () => {
 
     expect(error).toMatchObject({ field: "commit.repository" });
     expect((error as Error).message).toMatch(/\/settings\/repos\//);
+  });
+});
+
+describe("correctRefRepositories", () => {
+  const REFS = [
+    {
+      repository: "AutonomousBusinessUnits/platform",
+      commit: "def456",
+      previousCommit: "abc123",
+    },
+  ];
+  const invalidRepoError = new ApiError(
+    "API request failed: 400 Bad Request",
+    400,
+    JSON.stringify({
+      refs: ["Invalid repository names: AutonomousBusinessUnits/platform"],
+    }),
+    "organizations/test-org/releases/1.0.0/",
+  );
+  const reposResponse = (repos: unknown[]) =>
+    mockFetch(
+      async () =>
+        new Response(JSON.stringify(repos), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+  const repo = (name: string) => ({
+    id: name,
+    name,
+    url: `https://github.com/${name}`,
+    provider: { id: "integrations:github", name: "GitHub" },
+    status: "active",
+  });
+
+  test("uses Sentry's name when only the case differs", async () => {
+    globalThis.fetch = reposResponse([
+      repo("autonomousbusinessunits/platform"),
+    ]);
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    try {
+      expect(
+        await correctRefRepositories("test-org", REFS, invalidRepoError),
+      ).toEqual([
+        {
+          repository: "autonomousbusinessunits/platform",
+          commit: "def456",
+          previousCommit: "abc123",
+        },
+      ]);
+      expect(stderr.mock.calls.join("")).toContain(
+        "Using 'autonomousbusinessunits/platform'",
+      );
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  test("keeps the error when Sentry has no matching repository", async () => {
+    globalThis.fetch = reposResponse([repo("AutonomousBusinessUnits/web")]);
+
+    expect(
+      await correctRefRepositories("test-org", REFS, invalidRepoError),
+    ).toBeUndefined();
+  });
+
+  test("warns about no replacement when a later name has no match", async () => {
+    const refs = [
+      ...REFS,
+      { repository: "AutonomousBusinessUnits/missing", commit: "fed654" },
+    ];
+    const error = new ApiError(
+      "API request failed: 400 Bad Request",
+      400,
+      JSON.stringify({
+        refs: [
+          "Invalid repository names: AutonomousBusinessUnits/platform,AutonomousBusinessUnits/missing",
+        ],
+      }),
+      "organizations/test-org/releases/1.0.0/",
+    );
+    globalThis.fetch = reposResponse([
+      repo("autonomousbusinessunits/platform"),
+    ]);
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    try {
+      expect(
+        await correctRefRepositories("test-org", refs, error),
+      ).toBeUndefined();
+      expect(stderr.mock.calls.join("")).not.toContain("Using '");
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  test("ignores other errors without looking up repositories", async () => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock;
+
+    expect(
+      await correctRefRepositories(
+        "test-org",
+        REFS,
+        new ApiError("API request failed: 400 Bad Request", 400, "Invalid SHA"),
+      ),
+    ).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("keeps the error when the lookup fails", async () => {
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(JSON.stringify({ detail: "boom" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    expect(
+      await correctRefRepositories("test-org", REFS, invalidRepoError),
+    ).toBeUndefined();
   });
 });
 
