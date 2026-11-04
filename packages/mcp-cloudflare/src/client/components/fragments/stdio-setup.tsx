@@ -102,11 +102,10 @@ export default function StdioSetup() {
               </dd>
 
               <dt className="font-medium text-slate-100">
-                <code>--sentry-dsn</code> / <code>SENTRY_DSN</code>
+                <code>SENTRY_CLI_NO_TELEMETRY</code> / <code>DO_NOT_TRACK</code>
               </dt>
               <dd className="text-slate-300">
-                Send telemetry elsewhere or disable it by passing an empty
-                value.
+                Set either to <code>1</code> to turn off the server's telemetry.
               </dd>
 
               <dt className="font-medium text-slate-100">

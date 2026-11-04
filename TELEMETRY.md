@@ -302,7 +302,7 @@ Attributes: `gen_ai.provider.name`, `gen_ai.request.model`,
 | ------------------------- | -------------------------------------------- | --------------------------------------- |
 | `VITE_SENTRY_DSN`         | Cloudflare Sentry telemetry                  | disabled when unset                     |
 | `VITE_SENTRY_ENVIRONMENT` | Cloudflare Sentry environment                | development                             |
-| `SENTRY_DSN`              | stdio and Node telemetry                     | disabled when unset                     |
+| `SENTRY_CLI_NO_TELEMETRY` | stdio telemetry off when `1`                 | on, to the CLI's project                |
 | `SENTRY_RELEASE`          | stdio release tag                            | unset                                   |
 | `SENTRY_HOST`             | upstream Sentry host and `app.upstream.host` | `sentry.io`                             |
 | `NODE_ENV`                | stdio environment                            | production fallback in packaged runtime |

@@ -2164,7 +2164,8 @@ export async function resolveConfiguredOrg(
 }
 
 /**
- * Resolve an org from arguments, environment, .sentryclirc, defaults, then DSN.
+ * Resolve an org from arguments, environment, .sentryclirc, defaults, then DSN,
+ * then the account's only accessible organization.
  * Configured context takes precedence over automatic detection.
  */
 export async function resolveOrg(
@@ -2187,10 +2188,14 @@ export async function resolveOrg(
       setOrgProjectContext([resolvedOrg], []);
       return { org: resolvedOrg, detectedFrom: result.detectedFrom };
     }
-    return result;
   } catch {
-    return null;
+    // Fall through to the account's organizations
   }
+
+  // 6. Authenticated last resort, like step 7 of resolveOrgAndProject: an
+  //    account with exactly one accessible org has no other org to pick
+  //    (CLI-3B). This only ever turns a null into a uniquely-determined org.
+  return await resolveSoleOrg();
 }
 
 /** Fetch and verify the full project selected by fuzzy recovery. */
@@ -2857,7 +2862,7 @@ export async function resolveOrgOptionalTarget(
 
   // auto-detect: resolve org only (no project required)
   if (parsed.type === "auto-detect") {
-    const resolved = (await resolveOrg({ cwd })) ?? (await resolveSoleOrg());
+    const resolved = await resolveOrg({ cwd });
     if (!resolved) {
       throw new ContextError("Organization", usageHint, [
         "SENTRY_ORG environment variable",
@@ -2907,7 +2912,7 @@ export async function resolveOrgOnlyTarget(
   usageHint = `sentry ${commandName} <target>`,
 ): Promise<string> {
   if (parsed.type === "auto-detect") {
-    const resolved = (await resolveOrg({ cwd })) ?? (await resolveSoleOrg());
+    const resolved = await resolveOrg({ cwd });
     if (!resolved) {
       throw new ContextError("Organization", usageHint);
     }

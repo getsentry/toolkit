@@ -275,7 +275,6 @@ describe("running `mcp`", () => {
       "--disable-skills",
       "--agent-provider",
       "--mcp-url",
-      "--sentry-dsn",
     ]) {
       expect(stdout).toContain(flag);
     }
