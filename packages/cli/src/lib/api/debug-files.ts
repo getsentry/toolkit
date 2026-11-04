@@ -52,6 +52,13 @@ export type DebugFileUpload = {
    * `skip_serializing_if none` in the wire format — omitted when absent.
    */
   debugId?: string;
+  /**
+   * Code id for file types the server cannot read it from (a DXIL shader's
+   * Aftermath hash). Omitted from the wire format when absent.
+   */
+  codeId?: string;
+  /** Shader group of a DXIL shader, stored with the file. Omitted when absent. */
+  shaderGroup?: string;
   /** Pre-read raw file content (chunked as-is). */
   content: Buffer;
 };
@@ -109,6 +116,22 @@ type DifAssembleResponse = InferOutput<typeof DifAssembleResponseSchema>;
 
 // ── Internal types ──────────────────────────────────────────────────
 
+/**
+ * Maximum number of files per assemble request. The server processes every
+ * file of a request before answering, and shader uploads bring tens of
+ * thousands of files, so one request for all of them ran for minutes.
+ */
+export const ASSEMBLE_BATCH_SIZE = 1000;
+
+/** One file's entry in the assemble request body. */
+type AssembleFileEntry = {
+  name: string;
+  debug_id?: string;
+  code_id?: string;
+  shader_group?: string;
+  chunks: string[];
+};
+
 /** Per-file chunk metadata computed before the assemble request. */
 type ChunkedDif = {
   /** The file being uploaded. */
@@ -141,19 +164,29 @@ type AssembleEvaluation = {
  */
 function buildAssembleBody(
   chunked: ChunkedDif[],
-): Record<string, { name: string; debug_id?: string; chunks: string[] }> {
-  const body: Record<
-    string,
-    { name: string; debug_id?: string; chunks: string[] }
-  > = {};
+): Record<string, AssembleFileEntry> {
+  const body: Record<string, AssembleFileEntry> = {};
   for (const cd of chunked) {
     body[cd.overallChecksum] = {
       name: cd.dif.name,
       ...(cd.dif.debugId ? { debug_id: cd.dif.debugId } : {}),
+      ...(cd.dif.codeId ? { code_id: cd.dif.codeId } : {}),
+      ...(cd.dif.shaderGroup ? { shader_group: cd.dif.shaderGroup } : {}),
       chunks: cd.chunks.map((c) => c.sha1),
     };
   }
   return body;
+}
+
+/** Split the files into assemble bodies of at most {@link ASSEMBLE_BATCH_SIZE}. */
+function buildAssembleBodies(
+  chunked: ChunkedDif[],
+): Record<string, AssembleFileEntry>[] {
+  const bodies: Record<string, AssembleFileEntry>[] = [];
+  for (let i = 0; i < chunked.length; i += ASSEMBLE_BATCH_SIZE) {
+    bodies.push(buildAssembleBody(chunked.slice(i, i + ASSEMBLE_BATCH_SIZE)));
+  }
+  return bodies;
 }
 
 /**
@@ -266,22 +299,26 @@ async function uploadMissing(params: {
   }
 }
 
-/** POST the assemble request and parse the keyed response. */
+/** POST one assemble request per batch and merge the keyed responses. */
 async function postAssemble(
   regionUrl: string,
   endpoint: string,
-  body: unknown,
+  bodies: readonly unknown[],
 ): Promise<DifAssembleResponse> {
-  const { data } = await apiRequestToRegion<DifAssembleResponse>(
-    regionUrl,
-    endpoint,
-    {
-      method: "POST",
-      body,
-      schema: DifAssembleResponseSchema,
-    },
-  );
-  return data;
+  const merged: DifAssembleResponse = {};
+  for (const body of bodies) {
+    const { data } = await apiRequestToRegion<DifAssembleResponse>(
+      regionUrl,
+      endpoint,
+      {
+        method: "POST",
+        body,
+        schema: DifAssembleResponseSchema,
+      },
+    );
+    Object.assign(merged, data);
+  }
+  return merged;
 }
 
 /** Build per-file results from the last-observed assemble response. */
@@ -444,7 +481,7 @@ export async function uploadDebugFiles(
 
   const regionUrl = await resolveOrgRegion(org);
   const endpoint = `projects/${org}/${project}/files/difs/assemble/`;
-  const body = buildAssembleBody(chunked);
+  const bodies = buildAssembleBodies(chunked);
 
   // Clamp the caller's requested wait to the server's advertised maximum.
   // Only in wait mode — in no-wait mode `maxWaitMs` is purely a hang guard for
@@ -453,7 +490,7 @@ export async function uploadDebugFiles(
     ? clampMaxWait(maxWaitMs, serverOptions.maxWait ?? 0)
     : maxWaitMs;
   const deadline = Date.now() + effectiveMaxWaitMs;
-  let response = await postAssemble(regionUrl, endpoint, body);
+  let response = await postAssemble(regionUrl, endpoint, bodies);
   let evaluation = evaluateAssembly(response, chunked, wait);
   await uploadMissing({
     chunked,
@@ -482,7 +519,7 @@ export async function uploadDebugFiles(
     }
 
     await new Promise((r) => setTimeout(r, ASSEMBLE_POLL_INTERVAL_MS));
-    response = await postAssemble(regionUrl, endpoint, body);
+    response = await postAssemble(regionUrl, endpoint, bodies);
     evaluation = evaluateAssembly(response, chunked, wait);
     await uploadMissing({
       chunked,

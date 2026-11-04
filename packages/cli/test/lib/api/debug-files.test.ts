@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getChunkUploadOptions } from "../../../src/lib/api/chunk-upload.js";
 import {
+  ASSEMBLE_BATCH_SIZE,
   type DebugFileUpload,
   uploadDebugFiles,
 } from "../../../src/lib/api/debug-files.js";
@@ -310,6 +311,86 @@ describe("uploadDebugFiles", () => {
     expect(apiRequestToRegionMock).toHaveBeenCalledTimes(1);
     expect(Object.keys(lastAssembleBody())).toHaveLength(2);
     expect(results).toHaveLength(2);
+  });
+
+  test("includes code_id and shader_group only when provided", async () => {
+    apiRequestToRegionMock.mockImplementation(
+      async (_url: string, _endpoint: string, init: { body: object }) => {
+        const body = init.body as Record<string, unknown>;
+        const data: Record<string, { state: string }> = {};
+        for (const key of Object.keys(body)) {
+          data[key] = { state: "ok" };
+        }
+        return { data };
+      },
+    );
+
+    await uploadDebugFiles({
+      ...SOLE,
+      difs: [
+        {
+          ...makeDif(
+            "shader.dxil",
+            "DXBC shader",
+            "a223507a-29b5-0f71-32d4-4901c2228311",
+          ),
+          codeId: "d9a5d2fa49f0cf6c",
+          shaderGroup: "Global/FSentryTestCS/0",
+        },
+      ],
+      wait: false,
+      maxWaitMs: 1000,
+    });
+    const [entry] = Object.values(lastAssembleBody()) as Record<
+      string,
+      unknown
+    >[];
+    expect(entry?.code_id).toBe("d9a5d2fa49f0cf6c");
+    expect(entry?.shader_group).toBe("Global/FSentryTestCS/0");
+
+    await uploadDebugFiles({
+      ...SOLE,
+      difs: [makeDif("libfoo.so", "ELF debug bytes", "abc123-def")],
+      wait: false,
+      maxWaitMs: 1000,
+    });
+    const [plain] = Object.values(lastAssembleBody()) as Record<
+      string,
+      unknown
+    >[];
+    expect(plain).not.toHaveProperty("code_id");
+    expect(plain).not.toHaveProperty("shader_group");
+  });
+
+  test("splits the assemble request into batches and merges the responses", async () => {
+    apiRequestToRegionMock.mockImplementation(
+      async (_url: string, _endpoint: string, init: { body: object }) => {
+        const body = init.body as Record<string, unknown>;
+        const data: Record<string, { state: string }> = {};
+        for (const key of Object.keys(body)) {
+          data[key] = { state: "ok" };
+        }
+        return { data };
+      },
+    );
+    const difs = Array.from({ length: ASSEMBLE_BATCH_SIZE + 1 }, (_, i) =>
+      makeDif(`f${i}.so`, `bytes ${i}`, `id-${i}`),
+    );
+
+    const results = await uploadDebugFiles({
+      ...SOLE,
+      difs,
+      wait: false,
+      maxWaitMs: 1000,
+    });
+
+    expect(apiRequestToRegionMock).toHaveBeenCalledTimes(2);
+    const sizes = apiRequestToRegionMock.mock.calls.map(
+      (call) => Object.keys(call[2].body as object).length,
+    );
+    expect(sizes).toEqual([ASSEMBLE_BATCH_SIZE, 1]);
+    expect(results).toHaveLength(ASSEMBLE_BATCH_SIZE + 1);
+    expect(results.every((r) => r.state === "ok")).toBe(true);
   });
 
   test("re-sends every chunk when server response omits a file's entry", async () => {
