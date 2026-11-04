@@ -7,7 +7,7 @@
  * and the body decompresses back to a valid envelope.
  */
 
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import {
   type AddressInfo,
   createServer as createTcpServer,
@@ -21,6 +21,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
   hasZstdSupport,
   makeCompressedTransport,
+  makeNodeTransportWithDeadline,
 } from "../../../src/lib/telemetry/zstd-transport.js";
 
 /** No-op for SDK callbacks that require a function but return nothing meaningful. */
@@ -38,7 +39,8 @@ type CapturedRequest = {
  * Without this, a `let server` shared across tests is overwritten by
  * the second test before the first one is closed — silent socket leak.
  */
-const startedServers: (Server | TcpServer)[] = [];
+// `http.Server` extends `net.Server`, so this holds both kinds.
+const startedServers: TcpServer[] = [];
 
 /**
  * Start a server that accepts connections and never answers, like an
@@ -247,5 +249,23 @@ describe("makeCompressedTransport (e2e)", () => {
         process.env.http_proxy = savedProxy;
       }
     }
+  });
+});
+
+describe("makeNodeTransportWithDeadline (e2e)", () => {
+  test("aborts a request the server never answers", async () => {
+    const { url, closed } = await startStalledIngest();
+    const transport = makeNodeTransportWithDeadline(
+      { url, recordDroppedEvent: noop },
+      100,
+    );
+    const envelope: any = createEnvelope({ event_id: "a" } as any, [
+      [{ type: "event" } as any, { message: "hi" } as any],
+    ]);
+
+    // `sentry mcp` keeps the SDK transport; without a deadline a stalled
+    // ingest socket outlives the client's disconnect (#1956).
+    await expect(transport.send(envelope)).rejects.toThrow();
+    await closed;
   });
 });

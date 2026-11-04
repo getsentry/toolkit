@@ -121,6 +121,25 @@ function withRequestDeadline(
 }
 
 /**
+ * The SDK's `makeNodeTransport` with the same per-request deadline as
+ * `makeCompressedTransport`, for hosts that keep the SDK transport
+ * (`sentry mcp`).
+ */
+export function makeNodeTransportWithDeadline(
+  options: NodeTransportOptions,
+  requestTimeoutMs = REQUEST_TIMEOUT_MS,
+): Transport {
+  const nativeHttpModule = /^https:/i.test(options.url) ? https : http;
+  return makeNodeTransport({
+    ...options,
+    httpModule: withRequestDeadline(
+      options.httpModule ?? nativeHttpModule,
+      requestTimeoutMs,
+    ),
+  });
+}
+
+/**
  * Factory for the SDK's `Sentry.init({ transport })` option.
  *
  * Falls back to `makeNodeTransport` when a proxy is configured (the SDK

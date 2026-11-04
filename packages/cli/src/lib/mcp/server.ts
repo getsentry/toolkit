@@ -20,10 +20,10 @@ import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { startStdio } from "@sentry/mcp-core/transports/stdio";
 import type { CredentialRouter, ServerContext } from "@sentry/mcp-core/types";
 import {
+  close,
   consoleLoggingIntegration,
   flush,
   init,
-  makeNodeTransport,
   vercelAIIntegration,
   zodErrorsIntegration,
 } from "@sentry/node";
@@ -32,6 +32,7 @@ import { CLI_VERSION, SENTRY_CLI_DSN } from "../constants.js";
 import { logger } from "../logger.js";
 import { isTelemetryEnabled } from "../telemetry.js";
 import { redactTelemetryEnvelope } from "../telemetry/credential-redaction.js";
+import { makeNodeTransportWithDeadline } from "../telemetry/zstd-transport.js";
 import type { McpServerConfig } from "./config.js";
 import { reportCliError } from "../error-reporting.js";
 
@@ -271,9 +272,11 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     },
     // Always the running release; an env override would misreport it.
     release: CLI_VERSION,
-    // Same credential redaction as the CLI's own telemetry.
+    // Same credential redaction and request deadline as the CLI's own
+    // telemetry: a stalled ingest socket must not keep the process alive
+    // after the client disconnects (#1956).
     transport: (transportOptions) => {
-      const transport = makeNodeTransport(transportOptions);
+      const transport = makeNodeTransportWithDeadline(transportOptions);
       return {
         send: (envelope) => transport.send(redactTelemetryEnvelope(envelope)),
         flush: (timeout) => transport.flush(timeout),
@@ -403,6 +406,9 @@ export async function serveMcpStdio(
     },
   );
   await connection.closed;
-  // Send what the session recorded before the caller releases the network.
-  await flush(SENTRY_FLUSH_TIMEOUT_MS);
+  // Send what the session recorded before the caller releases the network,
+  // then disable the client: the SDK otherwise flushes metrics and client
+  // reports again on every `beforeExit`, and a failed send queues a new
+  // client report, so the process never drains (#1956).
+  await close(SENTRY_FLUSH_TIMEOUT_MS);
 }
