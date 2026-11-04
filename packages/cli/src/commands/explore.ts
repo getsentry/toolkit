@@ -74,6 +74,7 @@ import {
   listSupportedReplayFields,
   parseReplayEnvironmentFilter,
 } from "../lib/replay-search.js";
+import { resolveLogProjectId } from "../lib/resolve-target.js";
 import { sanitizeQuery } from "../lib/search-query.js";
 import { shellQuote } from "../lib/utils.js";
 import {
@@ -485,17 +486,24 @@ function buildEnvironmentQuery(
   return `environment:[${environment.join(",")}]`;
 }
 
-/** Resolve the shared dataset and filters for tabular and temporal queries. */
+/**
+ * Resolve the shared dataset and filters for tabular and temporal queries.
+ *
+ * A resolved `projectId` scopes the request through the `project` param;
+ * `project:<slug>` is only the fallback because it matches just the projects
+ * the requester is a member of (#1317).
+ */
 function resolveEventsQuery(
   dataset: string,
   query: string | undefined,
   project: string | undefined,
   environment: string[] | undefined,
+  projectId: number | undefined,
 ) {
   const userQuery = sanitizeQuery(query, { allowBoolean: true });
   const legacyTransactions = LEGACY_TRANSACTION_DATASETS.has(dataset);
   const scope = [
-    project ? `project:${project}` : undefined,
+    project && projectId === undefined ? `project:${project}` : undefined,
     buildEnvironmentQuery(environment),
     legacyTransactions ? IS_TRANSACTION_FILTER : undefined,
   ]
@@ -550,8 +558,8 @@ function validateTimeSeriesFlags(flags: ExploreFlags): void {
  * sort, and returns a fetch function that calls `listReplays`. For all other
  * datasets it translates `--environment` values into `environment:...` query
  * filter terms, resolves the sort with {@link resolveEventsSort} (which also
- * selects the sort column), prepends `project:<slug>` to the query, and
- * returns a `queryEvents` fetch.
+ * selects the sort column), scopes the project by ID (falling back to a
+ * `project:<slug>` query term), and returns a `queryEvents` fetch.
  */
 function resolveDatasetConfig(params: {
   dataset: string;
@@ -559,9 +567,11 @@ function resolveDatasetConfig(params: {
   flags: ExploreFlags;
   org: string;
   project: string | undefined;
+  projectId: number | undefined;
   environment: string[] | undefined;
 }): DatasetConfig {
-  const { dataset, fieldList, flags, org, project, environment } = params;
+  const { dataset, fieldList, flags, org, project, projectId, environment } =
+    params;
   if (dataset === "replays") {
     const userQuery = sanitizeQuery(flags.query);
     const unsupportedField = fieldList.find(
@@ -611,6 +621,7 @@ function resolveDatasetConfig(params: {
     flags.query,
     project,
     environment,
+    projectId,
   );
 
   // Every Events dataset honors sort as long as the sort column is selected.
@@ -630,6 +641,7 @@ function resolveDatasetConfig(params: {
         fields,
         dataset: resolved.dataset,
         query,
+        projectId,
         sort,
         limit,
         cursor,
@@ -685,7 +697,7 @@ export const exploreCommand = buildListCommand("explore", {
       "  replays  Session replay search\n\n" +
       "Events queries support AND, OR, and parentheses. Project, environment, " +
       "and transaction scope apply to the entire query.\n\n" +
-      "A <org>/<project> target adds project:<slug> to the query. " +
+      "A <org>/<project> target scopes the query to that project. " +
       targetPatternExplanation(),
     examples: [
       {
@@ -912,6 +924,11 @@ export const exploreCommand = buildListCommand("explore", {
         ? parsePeriod(flags.period)
         : flags.period;
     const environment = parseReplayEnvironmentFilter(flags.environment);
+    // Events queries scope by numeric ID; replays take the slug directly.
+    const projectId =
+      project && (flags.metric || dataset !== "replays")
+        ? await resolveLogProjectId(org, project)
+        : undefined;
 
     // --metric auto mode: resolve metric name → tracemetrics aggregate
     if (flags.metric) {
@@ -931,6 +948,7 @@ export const exploreCommand = buildListCommand("explore", {
           queryMetricsMeta(org, {
             ...metaParams,
             project,
+            projectId,
           }),
       );
 
@@ -961,6 +979,7 @@ export const exploreCommand = buildListCommand("explore", {
         flags.query,
         project,
         environment,
+        projectId,
       );
       const timeParams = timeRangeToApiParams(timeRange);
       const interval = resolveTimeSeriesInterval(
@@ -977,6 +996,7 @@ export const exploreCommand = buildListCommand("explore", {
             fields: fieldList,
             dataset: resolved.dataset,
             query: resolved.query,
+            projectId,
             interval,
             ...timeParams,
           }).catch((error: unknown): never => {
@@ -1007,6 +1027,7 @@ export const exploreCommand = buildListCommand("explore", {
       flags,
       org,
       project,
+      projectId,
       environment,
     });
 

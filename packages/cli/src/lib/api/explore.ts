@@ -29,6 +29,12 @@ export type ExploreQueryOptions = {
   /** Sentry search query filter */
   query?: string;
   /**
+   * Numeric project ID, sent as the `project` param. `project:<slug>` in
+   * `query` only matches projects the requester is a member of, so a valid
+   * slug can 400 with "not actively selected" (#1317).
+   */
+  projectId?: number;
+  /**
    * Sort field. Prefix with `-` for descending.
    * Every Events dataset accepts it as long as the sort column is in
    * `fields`; resolve both with `resolveEventsSort` from
@@ -48,10 +54,10 @@ export type ExploreQueryOptions = {
   end?: string;
 };
 
-/** Options for an ungrouped time series, with project and environment filters in `query`. */
+/** Options for an ungrouped time series, with environment filters in `query`. */
 export type ExploreTimeSeriesQueryOptions = Pick<
   ExploreQueryOptions,
-  "fields" | "dataset" | "query" | "statsPeriod" | "start" | "end"
+  "fields" | "dataset" | "query" | "projectId" | "statsPeriod" | "start" | "end"
 > & {
   /** Bucket width as a duration, such as `5m`. Must be valid for the requested range. */
   interval: string;
@@ -98,6 +104,7 @@ export async function queryEventsTimeSeries(
         dataset: options.dataset ?? "errors",
         yAxis: options.fields,
         query: options.query || undefined,
+        project: options.projectId,
         interval: options.interval,
         statsPeriod:
           options.start || options.end
@@ -137,6 +144,7 @@ async function fetchEventsPage(
         dataset: options.dataset ?? "errors",
         field: options.fields,
         query: options.query || undefined,
+        project: options.projectId,
         sort: options.sort || undefined,
         per_page: perPage,
         statsPeriod:
@@ -178,15 +186,21 @@ export async function queryMetricsMeta(
     start?: string;
     end?: string;
     project?: string;
+    /** Numeric ID for `project`; when set, replaces the `project:<slug>` filter. */
+    projectId?: number;
   },
 ): Promise<MetricMeta[]> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  const query = options?.project ? `project:${options.project}` : undefined;
+  const query =
+    options?.project && options.projectId === undefined
+      ? `project:${options.project}`
+      : undefined;
 
   const baseOptions: ExploreQueryOptions = {
     fields: ["metric.name", "metric.type", "metric.unit"],
     dataset: "tracemetrics",
     query,
+    projectId: options?.projectId,
     statsPeriod:
       options?.start || options?.end
         ? undefined
