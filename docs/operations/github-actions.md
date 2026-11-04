@@ -112,16 +112,16 @@ workflow for one package duplicates that selection and is not a required check.
 Each step runs a package script. Without a `sentryCi` override, the first
 script that exists is used:
 
-| Field        | Default scripts                | Notes                                                                           |
-| ------------ | ------------------------------ | ------------------------------------------------------------------------------- |
-| `prepare`    | `ci:prepare`                   | Runs before the build.                                                          |
-| `build`      | `build`                        |                                                                                 |
-| `lint`       | `lint`                         |                                                                                 |
-| `typecheck`  | `typecheck`, `tsc`, `check`    |                                                                                 |
-| `test`       | `test:ci`, `test:unit`, `test` |                                                                                 |
-| `policy`     | `ci:policy`                    |                                                                                 |
-| `e2e`        | `ci:e2e`, `test:e2e`           | Runs on Node 24 after the other steps.                                          |
-| `npmRuntime` | none                           | Runs the script, packs the package, and runs its binary on Node 20, 22, and 24. |
+| Field        | Default scripts                | Notes                                                                                      |
+| ------------ | ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `prepare`    | `ci:prepare`                   | Runs before the build.                                                                     |
+| `build`      | `build`                        |                                                                                            |
+| `lint`       | `lint`                         |                                                                                            |
+| `typecheck`  | `typecheck`, `tsc`, `check`    |                                                                                            |
+| `test`       | `test:ci`, `test:unit`, `test` |                                                                                            |
+| `policy`     | `ci:policy`                    |                                                                                            |
+| `e2e`        | `ci:e2e`, `test:e2e`           | Runs on Node 24 after the other steps.                                                     |
+| `npmRuntime` | none                           | Runs the script, packs the package, and runs its binary on Node 20, 22, and 24 and on Bun. |
 
 Set a field to a script name to override it, or to `false` to skip it. The
 other fields are:
