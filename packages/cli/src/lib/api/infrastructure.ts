@@ -29,6 +29,7 @@ import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
 
 import { extractRequiredScopes } from "../api-scope.js";
+import { getUrlLoginCommand } from "../app-identity.js";
 import {
   type CredentialContext,
   getActiveEnvVarName,
@@ -45,6 +46,7 @@ import {
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import {
+  buildServerCheckStep,
   getApiBaseUrl,
   getDefaultSdkConfig,
   getSdkConfig,
@@ -284,7 +286,7 @@ function describeUrlSource(): string {
     const urlVar = getEnv().SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL";
     return `This URL comes from ${urlVar}. If it is not your Sentry server, set ${urlVar} to the right URL.`;
   }
-  return "This URL comes from your login. To use another server, run: sentry auth login --url <url>";
+  return `This URL comes from your login. To use another server, run: ${getUrlLoginCommand()} <url>`;
 }
 
 /**
@@ -305,10 +307,9 @@ function buildNetworkErrorDetail(error: unknown): string {
     : undefined;
   const steps = [causeHint ?? "Check your network connection and try again."];
   if (isSentrySaasUrl(baseUrl)) {
-    steps.push(
-      "If your network is fine, check https://status.sentry.io for an ongoing incident.",
-    );
+    steps.push(buildServerCheckStep(baseUrl));
   } else {
+    // `sentry status --url` would fail the same way; curl shows why.
     steps.push(
       describeUrlSource(),
       `Test the connection with: curl -I ${baseUrl}/api/0/`,

@@ -10,9 +10,11 @@ import {
   startSpan,
 } from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { setAppIdentity } from "../../src/lib/app-identity.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { RateLimitError, TimeoutError } from "../../src/lib/errors.js";
 import {
+  buildServerCheckStep,
   __injectTimeoutOverrideForTests,
   __resolveRequestTimeoutMsForTests,
   getSdkConfig,
@@ -20,6 +22,9 @@ import {
 } from "../../src/lib/sentry-client.js";
 import { initSentry } from "../../src/lib/telemetry.js";
 import { mockFetch, useEnvSandbox, useTestConfigDir } from "../helpers.js";
+
+// Hints name `npx -y sentry` when npm launched the process (`pnpm exec`).
+useEnvSandbox(["npm_command"]);
 
 useTestConfigDir("sentry-client-");
 
@@ -618,7 +623,7 @@ describe("fetchWithTimeout internal timeout classification", () => {
         "may still have been applied",
       );
       expect((error as TimeoutError).hint).toContain(
-        "check https://status.sentry.io",
+        "Check Sentry's status with: sentry status",
       );
       expect(calls).toBe(1);
     } finally {
@@ -659,13 +664,38 @@ describe("fetchWithTimeout internal timeout classification", () => {
         expect(error).toBeInstanceOf(TimeoutError);
         const hint = (error as TimeoutError).hint ?? "";
         expect(hint).toContain(
-          "check that https://sentry.example.com is healthy",
+          "Check the server's health with: sentry status --url https://sentry.example.com",
         );
         expect(hint).not.toContain("status.sentry.io");
       } finally {
         restore();
       }
     });
+  });
+});
+
+describe("buildServerCheckStep", () => {
+  afterEach(() => {
+    setAppIdentity({ name: "sentry", packageName: "sentry" });
+  });
+
+  test("names `sentry status`, with --url for a self-hosted server", () => {
+    expect(buildServerCheckStep("https://sentry.io")).toBe(
+      "Check Sentry's status with: sentry status",
+    );
+    expect(buildServerCheckStep("https://sentry.example.com")).toBe(
+      "Check the server's health with: sentry status --url https://sentry.example.com",
+    );
+  });
+
+  test("falls back to URLs in sentry-mcp, which has no status command", () => {
+    setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
+    expect(buildServerCheckStep("https://sentry.io")).toBe(
+      "Check Sentry's status at: https://status.sentry.io",
+    );
+    expect(buildServerCheckStep("https://sentry.example.com")).toBe(
+      "Test the connection with: curl -I https://sentry.example.com/api/0/",
+    );
   });
 });
 

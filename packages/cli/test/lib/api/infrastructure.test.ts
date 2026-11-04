@@ -181,6 +181,8 @@ describe("throwApiError", () => {
       "SENTRY_AUTH_TOKEN",
       "SENTRY_TOKEN",
       "SENTRY_FORCE_ENV_TOKEN",
+      // Hints name `npx -y sentry` when npm launched the process.
+      "npm_command",
       "HTTPS_PROXY",
       "https_proxy",
       "HTTP_PROXY",
@@ -212,7 +214,7 @@ describe("throwApiError", () => {
       expect(detail).toContain("connect ECONNREFUSED 10.0.0.1:443");
       expect(detail).toContain("The server refused the connection");
       expect(detail).toContain("SENTRY_URL");
-      expect(detail).not.toContain("status.sentry.io");
+      expect(detail).not.toContain("Check Sentry's status");
     });
 
     test("names SENTRY_HOST as the override when it is the one set", () => {
@@ -239,7 +241,7 @@ describe("throwApiError", () => {
         "Unable to reach Sentry at https://sentry.example.com",
       );
       expect(detail).toContain("sentry auth login --url");
-      expect(detail).not.toContain("status.sentry.io");
+      expect(detail).not.toContain("Check Sentry's status");
     });
 
     test("a proxy variable does not replace the errno hint (fetch ignores it)", () => {
@@ -262,13 +264,13 @@ describe("throwApiError", () => {
       expect(detail).toContain("Check your network connection");
     });
 
-    test("SaaS DNS failure points at DNS and the status page", () => {
+    test("SaaS DNS failure points at DNS and `sentry status`", () => {
       const detail = detailFor(
         fetchFailed("ENOTFOUND", "getaddrinfo ENOTFOUND us.sentry.io"),
       );
       expect(detail).toContain("getaddrinfo ENOTFOUND us.sentry.io");
       expect(detail).toContain("hostname could not be resolved");
-      expect(detail).toContain("https://status.sentry.io");
+      expect(detail).toContain("Check Sentry's status with: sentry status");
       expect(detail).not.toContain("Check your network connection");
     });
   });
