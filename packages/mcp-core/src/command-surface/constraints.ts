@@ -89,7 +89,7 @@ function positionalTitle(
 /**
  * The completion kind of positional `index`. A variadic positional has one
  * kind; only its first word names a target (`[<org/project>] <title>`),
- * except for issues, where every word is one.
+ * except for issues and `[<org>/]<id>` lists, where every word can.
  */
 function positionalKind(
   entry: CommandCatalogEntry,
@@ -100,27 +100,34 @@ function positionalKind(
     return kinds[index] ?? undefined;
   }
   const kind = kinds[0] ?? undefined;
-  return index === 0 || kind === "issue" ? kind : undefined;
+  return index === 0 || kind === "issue" || kind === "org" ? kind : undefined;
 }
 
 /**
  * Check one positional that names a target, and rewrite a bare project
  * (`web`, a project search across organizations) to `<org>/web`.
+ *
+ * @param leading - The first of several words, which the CLI reads as the
+ *   organization in `<org> <id>`
  */
 function pinTarget(
   entry: CommandCatalogEntry,
   value: string,
   kind: string,
-  title: string,
+  catalogTitle: string,
+  leading: boolean,
   session: Session,
 ): string {
   if (URL_PATTERN.test(value)) {
     return value;
   }
+  // `target` is `<org>/`, `<org>/<project>`, or `<project>`.
+  const title = catalogTitle === "target" ? "org/project" : catalogTitle;
   const segments = value.split("/");
   const titleSegments = title.split("/");
   if (segments.length === 1) {
-    if (kind === "org" && title === "org" && value !== session.org) {
+    const orgWord = title === "org" || (leading && titleSegments[0] === "org");
+    if (kind === "org" && orgWord && value !== session.org) {
       throw outside(entry, value, session);
     }
     if (kind === "org/project" && title === "org/project") {
@@ -131,8 +138,15 @@ function pinTarget(
     }
     return value;
   }
-  // `<org>/...`: a target whose first segment is the organization.
-  if (titleSegments[0] === "org" || kind === "issue" || kind === "dashboard") {
+  // `<org>/...`: a target whose first segment is the organization. A
+  // one-word title (`feedback`, `replay-id-or-url`) takes `<org>/...` too;
+  // a slashed title not led by `org` (`trace-id/span-id`) doesn't.
+  if (
+    titleSegments[0] === "org" ||
+    titleSegments.length === 1 ||
+    kind === "issue" ||
+    kind === "dashboard"
+  ) {
     if (segments[0] !== session.org) {
       throw outside(entry, value, session);
     }
@@ -166,9 +180,13 @@ function apiEndpointTarget(
     }
   }
   path = path.replace(/^\/+/, "").replace(/^api\/0\//, "");
-  const org = /^organizations\/([^/?]+)/.exec(path)?.[1];
-  if (org) {
-    return { org };
+  const orgPath = /^organizations\/([^/?]+)(?:\/projects\/([^/?]+))?/.exec(
+    path,
+  );
+  if (orgPath?.[1]) {
+    return orgPath[2]
+      ? { org: orgPath[1], project: orgPath[2] }
+      : { org: orgPath[1] };
   }
   const project = /^projects\/([^/?]+)\/([^/?]+)/.exec(path);
   return project?.[1] && project[2]
@@ -247,7 +265,14 @@ export function pinConstraints(
     const kind = positionalKind(entry, index);
     const title = positionalTitle(schema, index);
     return kind && title && TARGET_KINDS.has(kind)
-      ? pinTarget(entry, value, kind, title, session)
+      ? pinTarget(
+          entry,
+          value,
+          kind,
+          title,
+          index === 0 && positional.length > 1,
+          session,
+        )
       : value;
   });
 }

@@ -250,7 +250,25 @@ describe("command tools: session constraints", () => {
   it("pins a bare project to the session's organization", async () => {
     const { call, calls } = setup();
     await call("issue list", { positional: ["web"] }, org);
-    expect(calls[0]?.positional).toEqual(["acme/web"]);
+    await call("attribute list", { positional: ["web"] }, org);
+    expect(calls.map((c) => c.positional)).toEqual([
+      ["acme/web"],
+      ["acme/web"],
+    ]);
+  });
+
+  it("keeps ids that name no target", async () => {
+    const { call, calls } = setup();
+    await call("agent-conversation view", { positional: ["conv-1"] }, org);
+    await call(
+      "agent-conversation view",
+      { positional: ["acme", "conv-1"] },
+      org,
+    );
+    expect(calls.map((c) => c.positional)).toEqual([
+      ["conv-1"],
+      ["acme", "conv-1"],
+    ]);
   });
 
   it.each([
@@ -260,6 +278,12 @@ describe("command tools: session constraints", () => {
     ["issue view", ["other/WEB-1"], org],
     ["issue view", ["https://other.sentry.io/issues/1/"], org],
     ["release view", ["other/1.0.0"], org],
+    ["attribute list", ["other/web"], org],
+    ["attribute list", ["api"], project],
+    ["explore", ["other/"], org],
+    ["feedback view", ["other/WEB-1"], org],
+    ["agent-conversation view", ["conv-1", "other/conv-2"], org],
+    ["agent-conversation view", ["other", "conv-1"], org],
   ])(
     "refuses %s %j outside the session",
     async (command, positional, context) => {
@@ -293,6 +317,19 @@ describe("command tools: session constraints", () => {
     await expect(
       call("api", { positional: ["projects/other/web/"] }, org),
     ).rejects.toThrow("outside this session's scope");
+    await expect(
+      call(
+        "api",
+        { positional: ["organizations/acme/projects/api/keys/"] },
+        project,
+      ),
+    ).rejects.toThrow("outside this session's scope");
+    await call(
+      "api",
+      { positional: ["organizations/acme/projects/web/keys/"] },
+      project,
+    );
+    expect(calls).toHaveLength(2);
     await expect(
       call("api", { positional: ["issues/1/"] }, org),
     ).rejects.toThrow("not scoped to an organization");
