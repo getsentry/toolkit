@@ -1,9 +1,8 @@
 # Set up Sentry
 
 You are a coding agent adding Sentry to the user's project. Work through the
-steps below in order. Run the commands yourself. Stop and ask the user only
-where a step tells you to: logging in, choosing a Sentry project, choosing
-features, and anything that changes production configuration.
+steps below in order. Run the commands yourself. Stop and ask the user where a
+step tells you to, and before anything that changes production configuration.
 
 ## Use the docs, not your memory
 
@@ -21,8 +20,9 @@ sentry docs list "nextjs tracing"                         # matching doc pages
 
 Every docs.sentry.io page is also available as Markdown: add `.md` to its
 path, as in `https://docs.sentry.io/platforms/javascript/guides/nextjs.md`.
-Never write an SDK version number from memory. Install without a version so
-the package manager picks the current release.
+`sentry docs` needs a sentry.io login; with a self-hosted Sentry, read those
+`.md` pages instead. Never write an SDK version number from memory. Install
+without a version so the package manager picks the current release.
 
 ## 1. Install the Sentry CLI
 
@@ -40,8 +40,9 @@ irm https://cli.sentry.dev/install.ps1 | iex      # Windows PowerShell
 npm install -g sentry                             # any OS with Node.js 20+
 ```
 
-After an npm or Homebrew install, run `sentry cli setup` once to add shell
-completions and the Sentry agent skills.
+If your shell doesn't find `sentry` afterwards, start a new shell or run it by
+the path the installer printed. After an npm or Homebrew install, run
+`sentry cli setup` once to add shell completions and the Sentry agent skills.
 
 ## 2. Log in
 
@@ -110,10 +111,11 @@ sentry platform list --search nextjs
 sentry project create my-app:javascript-nextjs --json
 ```
 
-If the CLI can't tell which organization or team to use, it says so. Ask the
-user, then pass the organization as a prefix
-(`my-org/my-app:javascript-nextjs`) and the team with `--team <slug>`.
-`sentry org list` and `sentry team list my-org/` show the choices.
+If the CLI can't tell which organization to use, it says so. Ask the user,
+then pass the organization as a prefix (`my-org/my-app:javascript-nextjs`);
+`sentry org list` shows the choices. The CLI picks a team for the project; if
+the user wants a different one, pass `--team <slug>` (`sentry team list my-org/`
+lists them).
 
 Or use an existing project and read its DSN:
 
@@ -197,15 +199,18 @@ feature is configured, and the packages are in the manifest and lockfile.
 Then add a temporary line right after the SDK initializes that reports a test
 error, such as `Sentry.captureException(new Error("Sentry setup test"))`, or
 the SDK's equivalent in other languages. For server code, start the app
-through the CLI. `--verify` waits up to 30 seconds for the SDK to send an
-event, then stops the app:
+through the CLI. It sets `SENTRY_SPOTLIGHT`, which server SDKs read, and
+`--verify` waits up to 30 seconds for the SDK to send an event there, then
+stops the app:
 
 ```bash
 sentry local run --verify -- npm run dev
 ```
 
-For a browser app, load the page instead, or ask the user to. Then confirm
-that the issue reached Sentry. It can take a minute to show up:
+If it times out, the SDK may not read `SENTRY_SPOTLIGHT`; that doesn't mean
+the setup failed. For a browser app, load the page instead, or ask the user
+to. Either way, confirm that the issue reached Sentry. It can take a minute to
+show up:
 
 ```bash
 sentry issue list my-org/my-project --query "Sentry setup test" --period 1h

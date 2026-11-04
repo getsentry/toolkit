@@ -236,27 +236,6 @@ export function buildEventSearchUrl(orgSlug: string, eventId: string): string {
   return `${getSentryBaseUrl()}/organizations/${orgSlug}/issues/?query=event.id:${eventId}`;
 }
 
-/**
- * Build URL to the project-scoped Issues stream — where a project's errors
- * land. This is the destination a freshly-instrumented project wants to watch
- * for its first event, as opposed to {@link buildProjectUrl} (settings).
- *
- * @param orgSlug - Organization slug
- * @param projectId - Numeric project ID; when omitted the org-wide stream is
- *   returned (still correct, just unfiltered).
- * @returns Full URL to the Issues stream, filtered to the project when possible
- */
-export function buildProjectIssuesUrl(
-  orgSlug: string,
-  projectId?: string,
-): string {
-  const filter = projectId ? `?project=${projectId}` : "";
-  if (isSaaS()) {
-    return `${getOrgBaseUrl(orgSlug)}/issues/${filter}`;
-  }
-  return `${getSentryBaseUrl()}/organizations/${orgSlug}/issues/${filter}`;
-}
-
 // Settings URLs
 
 /**

@@ -1,5 +1,5 @@
 /**
- * Shared LLM provider resolution and chat for the eval frameworks.
+ * LLM provider resolution and chat for the skill-eval suite.
  *
  * The skill-eval suite sends single-shot chat completions to
  * Claude models. Provider selection is credential-driven:

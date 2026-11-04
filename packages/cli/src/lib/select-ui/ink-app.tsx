@@ -2,91 +2,53 @@
  * Ink select picker — the self-contained sidecar.
  *
  * Renders a filterable single-choice list for entity pickers (organization,
- * project, account). `text-import-plugin` bundles this file with its own
- * copies of ink and react into `ink-app.js`, which `ink-ui.ts` imports
- * lazily, so React never loads unless a picker is shown.
+ * project, account) inline in the terminal. `text-import-plugin` bundles this
+ * file with its own copies of ink and react into `ink-app.js`, which
+ * `ink-ui.ts` imports lazily, so React never loads unless a picker is shown.
  */
 
-import { Box, render as inkRender, Text } from "ink";
+import { Box, render as inkRender, Text, useInput, useWindowSize } from "ink";
 import { createElement, useCallback, useMemo, useRef, useState } from "react";
 import stringWidth from "string-width";
 import wrapAnsi from "wrap-ansi";
-import {
-  getInkFrameWidth,
-  ShortcutFooter,
-  useInkFrameSize,
-} from "./ink-frame.js";
-import {
-  type ShortcutBinding,
-  ShortcutHintProvider,
-  useInkShortcuts,
-} from "./ink-shortcuts.js";
 import {
   filterSelectOptions,
   removeLastFilterCharacter,
   sanitizeSelectFilterInput,
 } from "./select-filter.js";
-import type { PromptDetail, SelectPrompt } from "./types.js";
-
-// ──────────────────────────── Visual constants ────────────────────────
+import type { SelectOption, SelectPrompt } from "./types.js";
 
 /** Sentry blurple — primary brand accent. */
 const ACCENT = "#7553FF";
 /** De-emphasized text that still clears dark terminal backgrounds. */
 const MUTED = "#898294";
-/** Lowest-contrast treatment for borders, counters, and supporting details. */
+/** Lowest-contrast treatment for the position counter and shortcut keys. */
 const MUTED_DIM = "#68616F";
-const COLOR_SUCCESS = "#83da90";
 
 const ICONS = {
-  diamond: "\u25C6",
-  diamondOpen: "\u25C7",
-  separator: "\u250A",
-  verticalLine: "\u2502",
-  squareFilled: "\u25FC",
-  squareOpen: "\u25FB",
-  triangleRight: "\u25B6",
-  triangleRightOutline: "\u25B7",
-  triangleSmallRight: "\u25B8",
-  bullet: "\u2022",
+  diamondOpen: "◇",
+  triangleRight: "▶",
 } as const;
 
-// ─────────────────────────────── Prompts ──────────────────────────────
+type InkKey = Parameters<Parameters<typeof useInput>[0]>[1];
 
-type PromptAlignment = "start" | "center";
-type SelectPromptOptionData = SelectPrompt["options"][number];
-type CenteredSelectLayout = {
-  labelWidth: number;
-  width: number;
+/** A key binding; one with an `action` is listed in the footer. */
+type Shortcut = {
+  key: string;
+  action?: string;
+  match: (input: string, key: InkKey) => boolean;
+  run: (input: string, key: InkKey) => void;
 };
 
-function getCenteredSelectLayout(
-  options: SelectPromptOptionData[],
-): CenteredSelectLayout {
-  const labelWidth = Math.max(
-    0,
-    ...options.map((option) => stringWidth(option.label)),
-  );
-  const hintWidth = Math.max(
-    0,
-    ...options.map((option) => stringWidth(option.hint ?? "")),
-  );
-  return {
-    labelWidth,
-    width: 2 + labelWidth + (hintWidth > 0 ? hintWidth + 1 : 0),
-  };
-}
+/** Width of the icon column before the title and each option. */
+const ICON_COLUMN_WIDTH = 3;
 
 /**
- * Rows unavailable to option lists: workflow chrome reserves the tab and
- * shortcut footers, multiselects add their local controls, and centered
- * prompts additionally reserve intro padding and the full banner.
+ * Rows the picker draws besides its title and options: the margins above and
+ * below the title, the filter status, the shortcut footer, and one row of
+ * headroom so Ink never fills the terminal (which forces a full redraw).
  */
-const WORKFLOW_PROMPT_RESERVED_ROWS = 10;
-const WORKFLOW_MULTISELECT_RESERVED_ROWS = 12;
-const CENTERED_SELECT_RESERVED_ROWS = 20;
-const CENTERED_MULTISELECT_RESERVED_ROWS = 23;
-const WORKFLOW_ACTIVITY_RESERVED_ROWS = 7;
+const PICKER_CHROME_ROWS = 5;
 
 /**
  * Returns the half-open option range that keeps the highlighted item visible.
@@ -118,533 +80,114 @@ export function getOptionWindow(
   return [start, start + viewportSize];
 }
 
-function getPromptOptionCapacity({
-  terminalRows,
-  alignment,
-  kind,
-  occupiedRows,
-  messageRows,
-}: {
-  terminalRows: number;
-  alignment: PromptAlignment;
-  kind: "select" | "multiselect";
-  occupiedRows: number;
-  messageRows: number;
-}): number {
-  let reservedRows =
-    kind === "multiselect"
-      ? WORKFLOW_MULTISELECT_RESERVED_ROWS
-      : WORKFLOW_PROMPT_RESERVED_ROWS;
-  if (alignment === "center") {
-    reservedRows =
-      kind === "multiselect"
-        ? CENTERED_MULTISELECT_RESERVED_ROWS
-        : CENTERED_SELECT_RESERVED_ROWS;
-  }
-  const extraMessageRows = Math.max(0, messageRows - 1);
-  return terminalRows - reservedRows - occupiedRows - extraMessageRows;
-}
-
-function getPromptContentWidth(
-  terminalColumns: number,
-  alignment: PromptAlignment,
-): number {
-  const frameWidth = getInkFrameWidth(terminalColumns);
-  if (alignment === "center") {
-    return Math.min(frameWidth, 84);
-  }
-  return frameWidth >= 80 ? Math.floor((frameWidth - 1) * 0.6) : frameWidth;
-}
-
-function getPromptTextRows(text: string, availableWidth: number): number {
-  return wrapAnsi(text, Math.max(1, availableWidth), {
-    hard: true,
-    trim: false,
-    wordWrap: true,
-  }).split("\n").length;
-}
-
-function getPromptDetailWidth(
-  terminalColumns: number,
-  alignment: PromptAlignment,
-): number {
-  const leadingWidth = alignment === "start" ? 3 : 0;
-  return Math.max(
-    1,
-    getPromptContentWidth(terminalColumns, alignment) - leadingWidth,
-  );
-}
-
-function getPromptDetailsRows(
-  details: readonly PromptDetail[],
-  availableWidth: number,
-): number {
-  return details.reduce(
-    (rows, detail) => rows + getPromptTextRows(detail.text, availableWidth),
-    0,
-  );
-}
-
-function getStructuredSelectLayout({
-  alignment,
-  details,
-  footer,
-  occupiedRows,
-  optionCount,
-  promptTitle,
-  terminalColumns,
-  terminalRows,
-}: {
-  alignment: PromptAlignment;
-  details: readonly PromptDetail[];
-  footer?: PromptDetail;
-  occupiedRows: number;
-  optionCount: number;
-  promptTitle: string;
-  terminalColumns: number;
-  terminalRows: number;
-}): {
-  compact: boolean;
-  detailWidth: number;
-  maxVisibleDetailRows: number;
-  maxVisibleOptions: number;
-} {
-  const detailWidth = getPromptDetailWidth(terminalColumns, alignment);
-  const titleRows = getPromptTextRows(promptTitle, detailWidth);
-  const detailRows = getPromptDetailsRows(details, detailWidth);
-  const footerRows = footer ? getPromptTextRows(footer.text, detailWidth) : 0;
-  const optionRows = Math.max(1, optionCount);
-  const minimumOptionRows =
-    details.length > 0 && optionCount <= 2 ? optionRows : 1;
-  const availableRows = Math.max(
-    1,
-    terminalRows - WORKFLOW_ACTIVITY_RESERVED_ROWS - occupiedRows,
-  );
-  const naturalSpacingRows = 2 + (footer ? 1 : 0);
-  const naturalRows =
-    titleRows + detailRows + footerRows + optionRows + naturalSpacingRows;
-
-  if (naturalRows <= availableRows) {
-    return {
-      compact: false,
-      detailWidth,
-      maxVisibleDetailRows: detailRows + footerRows,
-      maxVisibleOptions: optionRows,
-    };
-  }
-
-  return {
-    compact: true,
-    detailWidth,
-    maxVisibleDetailRows: Math.max(
-      0,
-      availableRows - titleRows - minimumOptionRows,
-    ),
-    maxVisibleOptions: minimumOptionRows,
-  };
-}
-
-function getPromptMessageRows({
-  message,
-  terminalColumns,
-  alignment,
-  kind,
-  totalCount,
-}: {
-  message: string;
-  terminalColumns: number;
-  alignment: PromptAlignment;
-  kind: "select" | "multiselect";
-  totalCount: number;
-}): number {
-  let availableWidth = getPromptContentWidth(terminalColumns, alignment);
-  const countDigits = String(Math.max(1, totalCount)).length;
-
-  if (kind === "select") {
-    const positionWidth = stringWidth(
-      `(${"9".repeat(countDigits)}/${"9".repeat(countDigits)})`,
-    );
-    availableWidth -= positionWidth + (alignment === "center" ? 1 : 3);
-  } else if (alignment === "start") {
-    const count = "9".repeat(countDigits);
-    availableWidth -=
-      stringWidth(`${count}/${count} selected • ${count}/${count}`) + 4;
-  }
-
-  return wrapAnsi(message, Math.max(1, availableWidth), {
-    hard: true,
-    trim: false,
-    wordWrap: true,
-  }).split("\n").length;
-}
-
-function PromptDetails({
-  alignment,
-  details,
-}: {
-  alignment: PromptAlignment;
-  details: PromptDetail[];
-}): React.ReactNode {
-  const layoutProps =
-    alignment === "center"
-      ? ({ justifyContent: "center", width: "100%" } as const)
-      : ({ paddingLeft: 3 } as const);
-  return details.map((detail, index) => {
-    const color = detail.tone === "success" ? COLOR_SUCCESS : MUTED;
-    return (
-      <Box key={`${index}:${detail.text}`} {...layoutProps}>
-        <Text color={color}>{detail.text}</Text>
-      </Box>
-    );
-  });
-}
-
-function normalizeDetailWindowStart(start: number, itemCount: number): number {
-  return Math.min(Math.max(0, start), Math.max(0, itemCount - 1));
-}
-
-function getDetailWindowEnd(
-  start: number,
-  itemRows: readonly number[],
-  rowBudget: number,
-): number {
-  let usedRows = 0;
-  let end = normalizeDetailWindowStart(start, itemRows.length);
-  while (end < itemRows.length) {
-    const nextRows = itemRows[end] ?? 1;
-    if (usedRows + nextRows > rowBudget) {
-      break;
-    }
-    usedRows += nextRows;
-    end += 1;
-  }
-  return end;
-}
-
-function getPreviousDetailWindowStart(
-  start: number,
-  itemRows: readonly number[],
-  rowBudget: number,
-): number {
-  let previousStart = normalizeDetailWindowStart(start, itemRows.length);
-  let usedRows = 0;
-  while (previousStart > 0) {
-    const nextRows = itemRows[previousStart - 1] ?? 1;
-    if (usedRows + nextRows > rowBudget) {
-      break;
-    }
-    usedRows += nextRows;
-    previousStart -= 1;
-  }
-  return previousStart;
-}
-
-function getNextDetailWindowStart(
-  start: number,
-  itemRows: readonly number[],
-  rowBudget: number,
-): number {
-  const currentStart = normalizeDetailWindowStart(start, itemRows.length);
-  const windowEnd = getDetailWindowEnd(currentStart, itemRows, rowBudget);
-  const nextStart = windowEnd === currentStart ? currentStart + 1 : windowEnd;
-  return normalizeDetailWindowStart(nextStart, itemRows.length);
-}
-
 /**
- * Keeps the first detail pinned and pages the remaining details by their
- * wrapped row cost, reserving space for the footer and page indicator.
+ * Rows the title wraps to, leaving room for the icon and the widest
+ * ` (n/total)` position counter.
  */
-function usePromptDetailWindow(
-  promptDetails: PromptDetail[],
-  maxVisibleRows: number,
-  detailWidth: number,
-  footer?: PromptDetail,
-): {
-  detailShortcut: ShortcutBinding | null;
-  isWindowed: boolean;
-  visibleDetails: PromptDetail[];
-} {
-  const detailLayout = useMemo(() => {
-    const header = promptDetails[0];
-    const items = header ? promptDetails.slice(1) : promptDetails;
-    return {
-      header,
-      headerRows: header ? getPromptTextRows(header.text, detailWidth) : 0,
-      itemRows: items.map((detail) =>
-        getPromptTextRows(detail.text, detailWidth),
-      ),
-      items,
-    };
-  }, [detailWidth, promptDetails]);
-  const footerRows = footer ? getPromptTextRows(footer.text, detailWidth) : 0;
-  const allDetailRows =
-    detailLayout.headerRows +
-    detailLayout.itemRows.reduce((total, rows) => total + rows, 0) +
-    footerRows;
-  const isWindowed =
-    allDetailRows > maxVisibleRows && detailLayout.items.length > 0;
-  const indicatorRows = isWindowed
-    ? getPromptTextRows(
-        `${detailLayout.items.length}-${detailLayout.items.length}/${detailLayout.items.length} · pgup/pgdn`,
-        detailWidth,
-      )
-    : 0;
-  const itemRowBudget = Math.max(
-    0,
-    maxVisibleRows - detailLayout.headerRows - footerRows - indicatorRows,
-  );
-  const [windowStart, setWindowStart] = useState(0);
-  const normalizedStart = normalizeDetailWindowStart(
-    windowStart,
-    detailLayout.items.length,
-  );
-  const windowEnd = getDetailWindowEnd(
-    normalizedStart,
-    detailLayout.itemRows,
-    itemRowBudget,
-  );
-  const visibleDetails = isWindowed
-    ? [
-        ...(detailLayout.header === undefined ? [] : [detailLayout.header]),
-        ...detailLayout.items.slice(normalizedStart, windowEnd),
-        {
-          text: `${normalizedStart + 1}-${windowEnd}/${detailLayout.items.length} · pgup/pgdn`,
-        },
-      ]
-    : promptDetails;
-  const detailShortcut = useMemo<ShortcutBinding | null>(() => {
-    if (!isWindowed) {
-      return null;
-    }
-    return {
-      key: "pgup/pgdn",
-      action: "review features",
-      priority: 41,
-      showInFooter: false,
-      match: (_input, key) => key.pageUp || key.pageDown,
-      run: (_input, key) => {
-        const moveWindow = key.pageUp
-          ? getPreviousDetailWindowStart
-          : getNextDetailWindowStart;
-        setWindowStart((start) =>
-          moveWindow(start, detailLayout.itemRows, itemRowBudget),
-        );
-      },
-    };
-  }, [detailLayout, isWindowed, itemRowBudget]);
-
-  return { detailShortcut, isWindowed, visibleDetails };
+function getTitleRows(
+  title: string,
+  terminalColumns: number,
+  totalCount: number,
+): number {
+  const digits = "9".repeat(String(Math.max(1, totalCount)).length);
+  const counterWidth = stringWidth(` (${digits}/${digits})`);
+  const width = terminalColumns - ICON_COLUMN_WIDTH - counterWidth;
+  return wrapAnsi(title, Math.max(1, width), {
+    hard: true,
+    trim: false,
+    wordWrap: true,
+  }).split("\n").length;
 }
 
-function PromptFooter({
-  alignment,
-  compact,
-  detail,
-}: {
-  alignment: PromptAlignment;
-  compact: boolean;
-  detail?: PromptDetail;
-}): React.ReactNode {
-  if (!detail) {
-    return null;
-  }
-  return (
-    <Box flexDirection="column" marginTop={compact ? 0 : 1}>
-      <PromptDetails alignment={alignment} details={[detail]} />
-    </Box>
-  );
+/** How many options fit below the title; at least one. */
+function getOptionCapacity(terminalRows: number, titleRows: number): number {
+  return Math.max(1, terminalRows - PICKER_CHROME_ROWS - titleRows);
 }
 
 function SelectPromptHeader({
-  alignment,
-  compact,
-  detailsAreWindowed,
-  footer,
-  isOptionWindowed,
   highlighted,
+  isOptionWindowed,
   minTitleRows,
-  promptTitle,
+  title,
   totalCount,
-  visiblePromptDetails,
 }: {
-  alignment: PromptAlignment;
-  compact: boolean;
-  detailsAreWindowed: boolean;
-  footer?: PromptDetail;
-  isOptionWindowed: boolean;
   highlighted: number;
+  isOptionWindowed: boolean;
   minTitleRows?: number;
-  promptTitle: string;
+  title: string;
   totalCount: number;
-  visiblePromptDetails: PromptDetail[];
 }): React.ReactNode {
-  const position = isOptionWindowed ? (
-    <Text color={MUTED_DIM}>
-      ({highlighted + 1}/{totalCount})
-    </Text>
-  ) : null;
-  const detailRows = (
-    <>
-      <PromptDetails alignment={alignment} details={visiblePromptDetails} />
-      <PromptFooter
-        alignment={alignment}
-        compact={compact || detailsAreWindowed}
-        detail={footer}
-      />
-    </>
-  );
-
-  if (alignment === "center") {
-    return (
-      <Box flexDirection="column" marginBottom={compact ? 0 : 1} width="100%">
-        <Box
-          gap={1}
-          justifyContent="center"
-          minHeight={minTitleRows}
-          width="100%"
-        >
-          <Text bold>{promptTitle}</Text>
-          {position}
-        </Box>
-        {detailRows}
-      </Box>
-    );
-  }
-
   return (
-    <Box flexDirection="column" marginBottom={compact ? 0 : 1}>
-      <Box minHeight={minTitleRows}>
-        <Box flexShrink={0} width={3}>
-          <Text bold color={ACCENT}>
-            {ICONS.diamondOpen}
-          </Text>
-        </Box>
-        <Text bold>{promptTitle}</Text>
-        {position}
+    <Box marginBottom={1} minHeight={minTitleRows}>
+      <Box flexShrink={0} width={ICON_COLUMN_WIDTH}>
+        <Text bold color={ACCENT}>
+          {ICONS.diamondOpen}
+        </Text>
       </Box>
-      {detailRows}
+      <Text bold>{title}</Text>
+      {isOptionWindowed ? (
+        <Text color={MUTED_DIM}>{` (${highlighted + 1}/${totalCount})`}</Text>
+      ) : null}
     </Box>
   );
 }
 
-function SelectPromptArea({
-  alignment,
-  occupiedRows,
-  prompt,
+/** The footer's shortcut hints, dropping any that don't fit the width. */
+function ShortcutFooter({
+  columns,
+  shortcuts,
 }: {
-  alignment: PromptAlignment;
-  occupiedRows: number;
-  prompt: SelectPrompt;
+  columns: number;
+  shortcuts: readonly Shortcut[];
 }): React.ReactNode {
-  const { columns, rows } = useInkFrameSize();
-  const reservedRows = occupiedRows + (prompt.filterable ? 1 : 0);
-  const hasStructuredCopy =
-    (prompt.details?.length ?? 0) > 0 || prompt.footer !== undefined;
-  if (alignment === "start" && hasStructuredCopy) {
-    const layout = getStructuredSelectLayout({
-      alignment,
-      details: prompt.details ?? [],
-      footer: prompt.footer,
-      occupiedRows: reservedRows,
-      optionCount: prompt.options.length,
-      promptTitle: prompt.message,
-      terminalColumns: columns,
-      terminalRows: rows,
-    });
-    return (
-      <SelectPrompt
-        alignment={alignment}
-        compact={layout.compact}
-        detailWidth={layout.detailWidth}
-        maxVisibleDetailRows={layout.maxVisibleDetailRows}
-        maxVisibleOptions={layout.maxVisibleOptions}
-        prompt={prompt}
-      />
-    );
+  const availableWidth = Math.max(0, columns - 2);
+  let usedWidth = 0;
+  const hints: { key: string; action: string }[] = [];
+  for (const { key, action } of shortcuts) {
+    if (action === undefined) {
+      continue;
+    }
+    const gapWidth = hints.length === 0 ? 0 : 2;
+    const hintWidth = stringWidth(`${key} ${action}`);
+    if (usedWidth + gapWidth + hintWidth > availableWidth) {
+      continue;
+    }
+    usedWidth += gapWidth + hintWidth;
+    hints.push({ key, action });
   }
 
-  const promptMessage = [
-    prompt.message,
-    ...(prompt.details ?? []).map((detail) => detail.text),
-    ...(prompt.footer ? ["", prompt.footer.text] : []),
-  ].join("\n");
-  const messageRows = getPromptMessageRows({
-    message: promptMessage,
-    terminalColumns: columns,
-    alignment,
-    kind: prompt.kind,
-    totalCount: prompt.options.length,
-  });
-  const optionCapacity = getPromptOptionCapacity({
-    terminalRows: rows,
-    alignment,
-    kind: prompt.kind,
-    occupiedRows: reservedRows,
-    messageRows,
-  });
-  const optionLimit = Math.max(1, optionCapacity);
-  const minimumVisibleOptions =
-    (prompt.details?.length ?? 0) > 0 && prompt.options.length <= 2
-      ? prompt.options.length
-      : 1;
-  const maxVisibleDetailRows = Math.max(
-    0,
-    messageRows - 1 - Math.max(0, minimumVisibleOptions - optionCapacity),
-  );
   return (
-    <SelectPrompt
-      alignment={alignment}
-      compact={optionLimit < minimumVisibleOptions}
-      detailWidth={getPromptDetailWidth(columns, alignment)}
-      maxVisibleDetailRows={maxVisibleDetailRows}
-      maxVisibleOptions={Math.max(minimumVisibleOptions, optionLimit)}
-      prompt={prompt}
-    />
+    <Box height={1} paddingX={1}>
+      {hints.map((hint, index) => (
+        <Box key={hint.key} marginRight={index < hints.length - 1 ? 2 : 0}>
+          <Text bold color={MUTED_DIM}>
+            {hint.key}
+          </Text>
+          <Text dimColor> {hint.action}</Text>
+        </Box>
+      ))}
+    </Box>
   );
 }
 
-function SelectPrompt({
-  alignment,
-  compact,
-  detailWidth,
-  maxVisibleDetailRows,
-  maxVisibleOptions,
+/** Compact entity picker (organization, project, account). */
+export function SelectPicker({
   prompt,
 }: {
-  alignment: PromptAlignment;
-  compact: boolean;
-  detailWidth: number;
-  maxVisibleDetailRows: number;
-  maxVisibleOptions: number;
   prompt: SelectPrompt;
 }): React.ReactNode {
-  const isCentered = alignment === "center";
-  const promptWidth = isCentered ? "100%" : undefined;
-  const promptTitle = prompt.message;
-  const promptDetails = prompt.details ?? [];
-  const {
-    detailShortcut,
-    isWindowed: detailsAreWindowed,
-    visibleDetails: visiblePromptDetails,
-  } = usePromptDetailWindow(
-    promptDetails,
-    maxVisibleDetailRows,
-    detailWidth,
-    prompt.footer,
+  const { columns, rows } = useWindowSize();
+  const titleRows = getTitleRows(
+    prompt.message,
+    columns,
+    prompt.options.length,
   );
-  const { columns } = useInkFrameSize();
-  const centeredLayout = isCentered
-    ? getCenteredSelectLayout(prompt.options)
-    : null;
-  const centeredOptionsWidth = centeredLayout
-    ? Math.min(centeredLayout.width, getPromptContentWidth(columns, alignment))
-    : undefined;
+  const maxVisibleOptions = getOptionCapacity(rows, titleRows);
   const initialHighlighted = Math.min(
     Math.max(prompt.initialIndex, 0),
     Math.max(0, prompt.options.length - 1),
   );
   const [selection, setSelection] = useState({
-    prompt,
     query: "",
     highlighted: initialHighlighted,
   });
@@ -658,12 +201,6 @@ function SelectPrompt({
     },
     [],
   );
-  // Successive wizard prompts can replace each other without unmounting.
-  if (selection.prompt !== prompt) {
-    const next = { prompt, query: "", highlighted: initialHighlighted };
-    selectionRef.current = next;
-    setSelection(next);
-  }
   const { query, highlighted } = selection;
   const filteredOptions = filterSelectOptions(prompt.options, query);
   const totalCount = filteredOptions.length;
@@ -676,22 +213,13 @@ function SelectPrompt({
   const isWindowed = visibleOptions.length < totalCount;
   // Keep the title's height when filtering removes its window position counter.
   const minTitleRows =
-    prompt.filterable && prompt.options.length > maxVisibleOptions
-      ? getPromptMessageRows({
-          message: promptTitle,
-          terminalColumns: columns,
-          alignment,
-          kind: "select",
-          totalCount: prompt.options.length,
-        })
-      : undefined;
+    prompt.options.length > maxVisibleOptions ? titleRows : undefined;
 
-  const shortcuts = useMemo<ShortcutBinding[]>(
+  const shortcuts = useMemo<Shortcut[]>(
     () => [
       {
-        key: "\u2191\u2193",
+        key: "↑↓",
         action: "navigate",
-        priority: 40,
         match: (_input, key) => key.upArrow || key.downArrow,
         run: (_input, key) => {
           updateSelection((state) => {
@@ -710,11 +238,9 @@ function SelectPrompt({
           });
         },
       },
-      ...(detailShortcut ? [detailShortcut] : []),
       {
         key: "enter",
         action: "confirm",
-        priority: 42,
         match: (_input, key) => key.return,
         run: () => {
           const state = selectionRef.current;
@@ -729,7 +255,6 @@ function SelectPrompt({
       {
         key: "esc",
         action: query ? "clear filter" : "cancel",
-        priority: 43,
         match: (input, key) => key.escape || (key.ctrl && input === "c"),
         run: (input, key) => {
           if (key.ctrl && input === "c") {
@@ -745,115 +270,87 @@ function SelectPrompt({
           }
         },
       },
-      ...(prompt.filterable
-        ? ([
-            {
-              key: "backspace",
-              action: "delete",
-              showInFooter: false,
-              match: (_input, key) => key.backspace || key.delete,
-              run: () => {
-                updateSelection((state) => {
-                  if (!state.query) {
-                    return state;
-                  }
-                  return {
-                    ...state,
-                    query: removeLastFilterCharacter(state.query),
-                    highlighted: 0,
-                  };
-                });
-              },
-            },
-            {
-              key: "type",
-              action: "filter",
-              showInFooter: false,
-              match: (input, key) =>
-                !(key.ctrl || key.meta || key.tab) &&
-                sanitizeSelectFilterInput(input).length > 0,
-              run: (input) => {
-                const text = sanitizeSelectFilterInput(input);
-                updateSelection((state) => ({
-                  ...state,
-                  query: state.query + text,
-                  highlighted: 0,
-                }));
-              },
-            },
-          ] satisfies ShortcutBinding[])
-        : []),
+      {
+        key: "backspace",
+        match: (_input, key) => key.backspace || key.delete,
+        run: () => {
+          updateSelection((state) => {
+            if (!state.query) {
+              return state;
+            }
+            return {
+              ...state,
+              query: removeLastFilterCharacter(state.query),
+              highlighted: 0,
+            };
+          });
+        },
+      },
+      {
+        key: "type",
+        match: (input, key) =>
+          !(key.ctrl || key.meta || key.tab) &&
+          sanitizeSelectFilterInput(input).length > 0,
+        run: (input) => {
+          const text = sanitizeSelectFilterInput(input);
+          updateSelection((state) => ({
+            ...state,
+            query: state.query + text,
+            highlighted: 0,
+          }));
+        },
+      },
     ],
-    [detailShortcut, prompt, query, updateSelection],
+    [prompt, query, updateSelection],
   );
-  useInkShortcuts("select-prompt", shortcuts);
+  useInput((input, key) => {
+    shortcuts.find((shortcut) => shortcut.match(input, key))?.run(input, key);
+  });
 
   return (
-    <Box
-      flexDirection="column"
-      flexShrink={0}
-      marginTop={compact ? 0 : 1}
-      width={promptWidth}
-    >
-      <SelectPromptHeader
-        alignment={alignment}
-        compact={compact}
-        detailsAreWindowed={detailsAreWindowed}
-        footer={prompt.footer}
-        highlighted={highlighted}
-        isOptionWindowed={isWindowed}
-        minTitleRows={minTitleRows}
-        promptTitle={promptTitle}
-        totalCount={totalCount}
-        visiblePromptDetails={visiblePromptDetails}
-      />
-      <Box
-        justifyContent={isCentered ? "center" : "flex-start"}
-        minHeight={Math.min(prompt.options.length, maxVisibleOptions)}
-        width={promptWidth}
-      >
-        {totalCount === 0 ? (
-          <Text color={MUTED} wrap="truncate">
-            No matches
-          </Text>
-        ) : (
-          <Box flexDirection="column" width={centeredOptionsWidth}>
-            {visibleOptions.map((option, visibleIndex) => {
-              const idx = windowStart + visibleIndex;
-              const isCursor = idx === highlighted;
-              return (
+    <Box flexDirection="column">
+      <Box flexDirection="column" flexShrink={0} marginTop={1}>
+        <SelectPromptHeader
+          highlighted={highlighted}
+          isOptionWindowed={isWindowed}
+          minTitleRows={minTitleRows}
+          title={prompt.message}
+          totalCount={totalCount}
+        />
+        <Box minHeight={Math.min(prompt.options.length, maxVisibleOptions)}>
+          {totalCount === 0 ? (
+            <Text color={MUTED} wrap="truncate">
+              No matches
+            </Text>
+          ) : (
+            <Box flexDirection="column">
+              {visibleOptions.map((option, visibleIndex) => (
                 <SelectPromptOptionRow
-                  centered={isCentered}
-                  centeredLabelWidth={centeredLayout?.labelWidth}
-                  isCursor={isCursor}
+                  isCursor={windowStart + visibleIndex === highlighted}
                   key={option.value}
                   option={option}
                   query={query}
                 />
-              );
-            })}
-          </Box>
-        )}
-      </Box>
-      {prompt.filterable ? (
+              ))}
+            </Box>
+          )}
+        </Box>
         <SelectFilterStatus
-          centered={isCentered}
           matches={totalCount}
           query={query}
           total={prompt.options.length}
         />
-      ) : null}
+      </Box>
+      <ShortcutFooter columns={columns} shortcuts={shortcuts} />
     </Box>
   );
 }
 
 function SelectFilterStatus({
-  centered,
   matches,
   query,
   total,
 }: {
-  centered: boolean;
   matches: number;
   query: string;
   total: number;
@@ -863,9 +360,8 @@ function SelectFilterStatus({
     <Box
       gap={1}
       height={1}
-      justifyContent={centered ? "center" : "flex-start"}
       overflow="hidden"
-      paddingLeft={centered ? 0 : 3}
+      paddingLeft={ICON_COLUMN_WIDTH}
       width="100%"
     >
       <Box flexShrink={1}>
@@ -903,41 +399,17 @@ function SelectOptionText({
 }
 
 function SelectPromptOptionRow({
-  centered,
-  centeredLabelWidth,
   isCursor,
   option,
   query,
 }: {
-  centered: boolean;
-  centeredLabelWidth?: number;
   isCursor: boolean;
-  option: SelectPromptOptionData;
+  option: SelectOption<string>;
   query: string;
 }): React.ReactNode {
-  if (centered) {
-    return (
-      <Box flexDirection="row" height={1} overflow="hidden" width="100%">
-        <Box flexShrink={0} width={2}>
-          <Text color={ACCENT}>{isCursor ? ICONS.triangleRight : " "}</Text>
-        </Box>
-        <Box flexShrink={0} width={centeredLabelWidth}>
-          <Text bold={isCursor}>
-            <SelectOptionText query={query} text={option.label} />
-          </Text>
-        </Box>
-        {option.hint !== undefined && option.hint !== "" ? (
-          <Text color={MUTED}>
-            {" "}
-            <SelectOptionText query={query} text={option.hint} />
-          </Text>
-        ) : null}
-      </Box>
-    );
-  }
   return (
     <Box flexDirection="row" height={1} overflow="hidden">
-      <Box flexShrink={0} width={3}>
+      <Box flexShrink={0} width={ICON_COLUMN_WIDTH}>
         <Text color={ACCENT}>{isCursor ? ICONS.triangleRight : " "}</Text>
       </Box>
       {/* Keep the label when a long hint fills the row; the hint is clipped. */}
@@ -953,22 +425,6 @@ function SelectPromptOptionRow({
         </Text>
       ) : null}
     </Box>
-  );
-}
-
-/** Compact entity picker (organization, project, account). */
-export function SelectPicker({
-  prompt,
-}: {
-  prompt: SelectPrompt;
-}): React.ReactNode {
-  return (
-    <ShortcutHintProvider>
-      <Box flexDirection="column">
-        <SelectPromptArea alignment="start" occupiedRows={0} prompt={prompt} />
-        <ShortcutFooter color={MUTED_DIM} />
-      </Box>
-    </ShortcutHintProvider>
   );
 }
 

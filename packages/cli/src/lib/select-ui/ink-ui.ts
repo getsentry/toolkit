@@ -6,11 +6,12 @@
  * out of the main CLI bundle. {@link selectWithFilter} imports the sidecar
  * on first use and mounts the picker.
  *
- * **Stdin workaround.** Some runtimes accept `setRawMode(true)` on
- * `process.stdin` but never deliver `readable` events for terminal input
- * (oven-sh/bun#6862, vadimdemedes/ink#636), so arrow keys, Enter, and
- * Ctrl+C do nothing. The picker reads from a freshly opened `/dev/tty`
- * `ReadStream` instead, which is closed again after the selection.
+ * **Stdin.** The picker reads keys from a freshly opened `/dev/tty`
+ * `ReadStream` and closes it after the selection, so its raw-mode reads
+ * never touch `process.stdin`, which later prompts in the same run still
+ * use. It was added for runtimes whose `process.stdin` accepts
+ * `setRawMode(true)` but never delivers `readable` events
+ * (vadimdemedes/ink#636).
  */
 
 import { openSync } from "node:fs";
@@ -22,28 +23,7 @@ import type { SelectOptions, SelectPrompt } from "./types.js";
 
 const _require = createRequire(import.meta.url);
 
-/**
- * Resolve the Ink sidecar path/source for the current runtime context.
- *
- * The sidecar (`ink-app.js`) is a self-contained ESM bundle produced
- * by `text-import-plugin` during the esbuild step. It inlines ink,
- * react, and all local deps so it can run without `node_modules`.
- *
- * Three runtime contexts:
- *
- * 1. **Node SEA binary**: The sidecar is embedded as a SEA asset via
- *    fossilize's `--assets` flag. Extract with `node:sea.getAsset()`,
- *    write to a temp file, and `import()` it.
- *
- * 2. **Node/npm bundle** (`npx sentry`): The sidecar ships as
- *    `dist/ink-app.js` alongside the CJS bundle. The `text-import-plugin`
- *    emits a virtual module exporting the relative path `"./ink-app.js"`.
- *    Resolved via `import.meta.url` at runtime.
- *
- * 3. **Dev mode** (`pnpm run cli`): The absolute filesystem path to
- *    `ink-app.tsx` is resolved by the text-import-plugin at build time.
- *    In dev (tsx), it points to the source file directly.
- */
+// The sidecar's path for this runtime; `loadInkApp` explains each case.
 // @ts-expect-error: `with { type: "file" }` handled by text-import-plugin at build time
 import inkAppPath from "./ink-app.tsx" with { type: "file" };
 
@@ -51,8 +31,7 @@ import inkAppPath from "./ink-app.tsx" with { type: "file" };
  * Open a fresh `/dev/tty` `ReadStream` for Ink to consume. Returns
  * `null` when `/dev/tty` isn't available (non-TTY environment, or
  * platforms that don't expose it — Windows). The caller falls back
- * to `process.stdin` in that case, which works on Node but is
- * broken in Bun-compiled binaries (see module docstring).
+ * to `process.stdin` in that case.
  */
 function openFreshTtyForInk(): ReadStream | null {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
@@ -137,19 +116,7 @@ function createSelectPrompt(
   resolve: (value: string | null) => void,
 ): SelectPrompt {
   return {
-    kind: "select",
     message: stripAnsi(opts.message),
-    ...(opts.details
-      ? {
-          details: opts.details.map((detail) => ({
-            ...detail,
-            text: stripAnsi(detail.text),
-          })),
-        }
-      : {}),
-    ...(opts.footer
-      ? { footer: { ...opts.footer, text: stripAnsi(opts.footer.text) } }
-      : {}),
     options: opts.options.map((option) => ({
       value: option.value,
       label: option.label,
@@ -164,7 +131,6 @@ function createSelectPrompt(
             ),
           )
         : 0,
-    filterable: opts.filterable,
     resolve,
   };
 }
@@ -193,7 +159,7 @@ export async function selectWithFilter(
   process.once("SIGINT", cancel);
   try {
     instance = app.mountSelectPrompt(
-      createSelectPrompt({ ...opts, filterable: true }, resolveSelection),
+      createSelectPrompt(opts, resolveSelection),
       { stdin, exitOnCtrlC: false, patchConsole: false },
     );
     // Surface renderer failures instead of waiting forever for a selection.
@@ -236,6 +202,6 @@ export async function selectWithFilter(
 type InkInstance = {
   unmount: () => void;
   waitUntilExit: () => Promise<unknown>;
-  /** Clears the picker from the terminal once a choice is made. */
+  /** Clears the picker from the terminal when it closes. */
   clear: () => void;
 };

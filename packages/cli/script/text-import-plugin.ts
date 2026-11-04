@@ -1,30 +1,21 @@
 /**
- * esbuild plugin that polyfills Bun's `with { type: "text" }` and
+ * esbuild plugin for the `with { type: "text" }` and
  * `with { type: "file" }` import attributes (esbuild only supports
  * `json`).
  *
  * - `text` — intercepts the import, reads the file, and default-
- *   exports its contents as a string. Runtime behavior matches Bun's
- *   native handling.
+ *   exports its contents as a string (e.g. the grep worker source).
  * - `file` — pre-bundles the source file (TypeScript/TSX → JS) into
- *   a self-contained module and writes it into the esbuild output
- *   directory, then marks the import external so the
- *   `with { type: "file" }` clause survives in the bundled JS.
- *   Bun.compile downstream understands the attribute natively,
- *   embeds the file as a binary asset, and resolves the import to a
- *   virtual-filesystem path string at runtime.
+ *   a self-contained ESM module in the esbuild output directory, and
+ *   replaces the import with a module that default-exports its
+ *   relative filename (`"./ink-app.js"`). `src/lib/select-ui/ink-ui.ts`
+ *   resolves that against `import.meta.url` in the npm bundle; the
+ *   single-file executable ships the file as a SEA asset instead.
  *
- *   The pre-bundle step is critical for two reasons:
- *
- *   1. Bun's `/$bunfs/` virtual filesystem parses embedded files
- *      with its JavaScript parser, not its TypeScript parser, so
- *      raw `.tsx` files fail with `SyntaxError` on
- *      `import { type Foo }` and similar TS-only syntax.
- *   2. The embedded file runs from `/$bunfs/root/` at runtime,
- *      where neither `node_modules` nor sibling source files
- *      exist. Bundling inlines ALL dependencies (local modules
- *      like `ink-frame.tsx` and third-party packages like `ink`,
- *      `react`) so the file is fully self-contained.
+ *   Bundling inlines ALL dependencies (local modules like
+ *   `select-filter.ts` and packages like `ink` and `react`), because
+ *   the sidecar loads where neither `node_modules` nor sibling
+ *   source files exist.
  *
  *   Some of the inlined packages (e.g. `signal-exit`, used by Ink)
  *   are CJS modules that call `require("assert")` etc. esbuild
@@ -36,10 +27,7 @@
  *   Non-TypeScript files (plain `.js`) are copied verbatim.
  *
  * Used by `script/build.ts` (single-file executable) and
- * `script/bundle.ts` (CJS library bundle). The `text` branch
- * handles `with { type: "text" }` imports (e.g. worker source).
- * The `file` branch handles the Ink app component embedded via
- * `with { type: "file" }` in `src/lib/select-ui/ink-ui.ts`.
+ * `script/bundle.ts` (CJS library bundle).
  */
 
 import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
@@ -67,8 +55,7 @@ const REQUIRE_BANNER =
 /**
  * Pre-bundle a TypeScript/TSX source file into self-contained JS.
  * All dependencies (local modules AND npm packages) are inlined;
- * only `node:*` builtins are external since Bun resolves them
- * natively inside `/$bunfs/`.
+ * only `node:*` builtins stay external.
  */
 async function prebundleTs(sourcePath: string, outPath: string): Promise<void> {
   await esbuildBuild({

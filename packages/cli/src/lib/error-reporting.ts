@@ -551,7 +551,7 @@ export function enrichEventWithGroupingTags(
   event.tags["cli_error.class"] = exc.type;
 
   // Set kind from exception message prefix so server-side rules can group
-  // non-CliError exceptions (TypeError, Error, WizardCancelledError, etc.)
+  // non-CliError exceptions (TypeError, Error, etc.)
   // that bypass reportCliError (uncaught exceptions, unhandled rejections).
   if (exc.value) {
     event.tags["cli_error.kind"] = extractMessagePrefix(exc.value, 4);

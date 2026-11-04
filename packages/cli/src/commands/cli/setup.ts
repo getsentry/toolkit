@@ -50,7 +50,6 @@ import {
   detectAgent,
   detectAgentFromProcessTree,
 } from "../../lib/detect-agent.js";
-import { getEnv } from "../../lib/env.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { runInteractiveLogin } from "../../lib/interactive-login.js";
 import { interactivePromptsAllowed } from "../../lib/interactive-prompts.js";
@@ -829,7 +828,6 @@ export const setupCommand = buildCommand({
       flags.method !== "curl" ||
       flags.quiet ||
       flags["ensure-auth-scopes"] ||
-      getEnv().SENTRY_INIT === "1" ||
       !(interactivePromptsAllowed() && isatty(0) && isatty(1) && isatty(2))
     ) {
       return;

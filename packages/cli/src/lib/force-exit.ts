@@ -2,8 +2,8 @@
  * macOS/Bun can retain lingering handles after a command has finished its
  * work — keep-alive sockets, a fresh `/dev/tty` ReadStream, or a libuv
  * refcount quirk — keeping the event loop referenced so the process never
- * exits. This affects ordinary commands, not just the init wizard (see #1237,
- * #833).
+ * exits. This affects ordinary commands, not just interactive pickers (see
+ * #1237, #833).
  *
  * Schedule a force-exit safety net once the CLI's outer recovery middleware
  * has reached a terminal result. The unref'd timer only fires when another

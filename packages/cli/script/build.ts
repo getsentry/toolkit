@@ -309,10 +309,9 @@ async function compileAllTargets(
   // node:sea.getAsset() under the same keys.
   const assets = [...bundle.files];
 
-  // Add ink sidecar as asset if it exists (pre-bundled by text-import-plugin)
-  // The text-import-plugin pre-bundles the Ink sidecar into BUILD_DIR.
-  // Pass it to fossilize as a SEA asset so it's available at runtime
-  // via node:sea.getAsset(INK_SIDECAR_ASSET_KEY).
+  // text-import-plugin pre-bundles the Ink picker sidecar into BUILD_DIR.
+  // Pass it to fossilize as a SEA asset; `ink-ui.ts` reads it back with
+  // node:sea.getAsset("dist-build/ink-app.js").
   const INK_SIDECAR = `${BUILD_DIR}/ink-app.js`;
   if (existsSync(INK_SIDECAR)) {
     assets.push(INK_SIDECAR);

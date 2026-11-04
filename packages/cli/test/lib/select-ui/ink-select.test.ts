@@ -82,7 +82,6 @@ describe("inline filterable select", () => {
       expect.objectContaining({
         message: OPTIONS.message,
         options: OPTIONS.options,
-        filterable: true,
         initialIndex: 1,
       }),
       { stdin: terminal, exitOnCtrlC: false, patchConsole: false },

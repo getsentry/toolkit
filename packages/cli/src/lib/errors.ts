@@ -93,14 +93,9 @@ export const EXIT = {
   // 60–69: Command-specific
   /** Command produced output but should exit non-zero */
   OUTPUT_ERROR: 60,
-  /** Reserved: the removed `sentry init` wizard's generic error */
-  WIZARD: 61,
-  /** Reserved: the removed `sentry init` wizard's dependency install failure */
-  WIZARD_DEPS: 62,
-  /** Reserved: the removed `sentry init` wizard's codemod failure */
-  WIZARD_CODEMOD: 63,
+  // 61–63: reserved; the removed `sentry init` wizard used them.
   /** `sentry local run --verify` received no events from the SDK */
-  WIZARD_VERIFY: 64,
+  VERIFY_FAILED: 64,
 } as const;
 
 /**

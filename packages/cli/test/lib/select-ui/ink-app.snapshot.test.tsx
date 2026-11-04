@@ -126,9 +126,7 @@ describe("SelectPicker", () => {
   test("typing filters entity names and slugs and confirms the visible choice", async () => {
     const resolve = vi.fn();
     const prompt: SelectPrompt = {
-      kind: "select",
       message: "Choose an organization",
-      filterable: true,
       options: [
         { value: "backend", label: "Backend" },
         { value: "front-admin", label: "Administration", hint: "front-admin" },
@@ -152,9 +150,7 @@ describe("SelectPicker", () => {
   test("typing a typo filters and confirms the matching entity", async () => {
     const resolve = vi.fn();
     const prompt: SelectPrompt = {
-      kind: "select",
       message: "Choose a project",
-      filterable: true,
       options: [
         { value: "backend", label: "Backend" },
         { value: "frontend", label: "Frontend" },
@@ -176,10 +172,8 @@ describe("SelectPicker", () => {
   test("zero matches cannot be confirmed and Backspace restores matches", async () => {
     const resolve = vi.fn();
     const prompt: SelectPrompt = {
-      kind: "select",
-      message: "Choose a team",
-      filterable: true,
-      options: [{ value: "frontend", label: "Web team", hint: "Frontend" }],
+      message: "Select a project:",
+      options: [{ value: "frontend", label: "Web app", hint: "Frontend" }],
       initialIndex: 0,
       resolve,
     };
@@ -236,9 +230,7 @@ describe("SelectPicker", () => {
   ])("same-chunk paste and Enter $action", async ({ navigation, expected }) => {
     const resolve = vi.fn();
     const prompt: SelectPrompt = {
-      kind: "select",
       message: "Choose a project",
-      filterable: true,
       options: [
         { value: "backend", label: "Backend" },
         { value: "frontend-a", label: "Frontend A" },
@@ -258,9 +250,7 @@ describe("SelectPicker", () => {
   test("same-chunk paste and Enter cannot confirm a filter with no matches", async () => {
     const resolve = vi.fn();
     const prompt: SelectPrompt = {
-      kind: "select",
       message: "Choose an organization",
-      filterable: true,
       options: [{ value: "backend", label: "Backend" }],
       initialIndex: 0,
       resolve,
@@ -276,9 +266,7 @@ describe("SelectPicker", () => {
   test("same-chunk Backspace and Enter confirm a restored filter match", async () => {
     const resolve = vi.fn();
     const prompt: SelectPrompt = {
-      kind: "select",
-      message: "Choose a team",
-      filterable: true,
+      message: "Select a project:",
       options: [
         { value: "backend", label: "Backend" },
         { value: "frontend", label: "Frontend" },
@@ -302,9 +290,7 @@ describe("SelectPicker", () => {
     async ({ input }) => {
       const resolve = vi.fn();
       const prompt: SelectPrompt = {
-        kind: "select",
         message: "Choose a project",
-        filterable: true,
         options: [
           { value: "backend", label: "Backend" },
           { value: "frontend", label: "Frontend" },
@@ -325,9 +311,7 @@ describe("SelectPicker", () => {
   test("Esc clears the filter before cancelling, while Ctrl+C cancels directly", async () => {
     const resolve = vi.fn();
     const prompt: SelectPrompt = {
-      kind: "select",
-      message: "Choose a team",
-      filterable: true,
+      message: "Select a project:",
       options: [{ value: "frontend", label: "Frontend" }],
       initialIndex: 0,
       resolve,
@@ -348,9 +332,7 @@ describe("SelectPicker", () => {
   test("the compact project picker filters with the same keyboard controls", async () => {
     const resolve = vi.fn();
     const prompt: SelectPrompt = {
-      kind: "select",
       message: "Select a project:",
-      filterable: true,
       options: [
         { value: "backend", label: "Backend" },
         { value: "frontend-web", label: "Web", hint: "frontend-web" },
@@ -368,11 +350,9 @@ describe("SelectPicker", () => {
 
   test("filterable lists keep the query inside a narrow terminal", async () => {
     const prompt: SelectPrompt = {
-      kind: "select",
-      message: "Choose a team",
-      filterable: true,
+      message: "Select a project:",
       options: Array.from({ length: 20 }, (_, index) => ({
-        value: `team-${index}`,
+        value: `project-${index}`,
         label: `${index < 11 ? "Frontend" : "Backend"} ${index}`,
       })),
       initialIndex: 0,
@@ -385,7 +365,7 @@ describe("SelectPicker", () => {
     const frame = stripFinalLineBreak(stripAnsi(output.latestFrame()));
     expect(frame).toContain("/frontend");
     expect(frame).toContain("11 of 20");
-    expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(24);
+    expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(23);
     expect(frame.split(LINE_SPLIT_RE).every((line) => line.length <= 40)).toBe(
       true,
     );
@@ -395,12 +375,10 @@ describe("SelectPicker", () => {
     "keeps the filter row fixed with $optionCount options",
     async ({ optionCount }) => {
       const prompt: SelectPrompt = {
-        kind: "select",
-        message: "Which team should own this project?",
-        filterable: true,
+        message: "Select a project in acme-platforms:",
         options: Array.from({ length: optionCount }, (_, index) => ({
-          value: index === 0 ? "frontend" : `team-${index}`,
-          label: index === 0 ? "Frontend" : `Team ${index}`,
+          value: index === 0 ? "frontend" : `project-${index}`,
+          label: index === 0 ? "Frontend" : `Project ${index}`,
         })),
         initialIndex: 0,
         resolve: ignorePromptResolution,
@@ -425,18 +403,17 @@ describe("SelectPicker", () => {
           initialFilterRow = filterRow;
         }
         expect(filterRow).toBe(initialFilterRow);
-        expect(lines.length).toBeLessThanOrEqual(24);
+        expect(lines.length).toBeLessThanOrEqual(23);
       }
     },
   );
 
   test("long select prompts only render options that fit the terminal", async () => {
     const prompt: SelectPrompt = {
-      kind: "select",
-      message: "Which team should own this project?",
+      message: "Select a project in acme-platforms:",
       options: Array.from({ length: 20 }, (_value, index) => ({
-        value: `team-${index + 1}`,
-        label: `Team ${index + 1}`,
+        value: `project-${index + 1}`,
+        label: `Project ${index + 1}`,
       })),
       initialIndex: 0,
       resolve: ignorePromptResolution,
@@ -444,11 +421,11 @@ describe("SelectPicker", () => {
 
     const rendered = await renderPicker(prompt, 120, { rows: 24 });
     const frame = stripFinalLineBreak(stripAnsi(rendered.latestFrame()));
-    expect(frame).toContain("Which team should own this project?");
+    expect(frame).toContain("Select a project in acme-platforms:");
     expect(frame).toContain("(1/20)");
-    expect(frame).toContain("Team 1");
-    expect(frame).not.toContain("Team 20");
-    expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(24);
+    expect(frame).toContain("Project 1");
+    expect(frame).not.toContain("Project 20");
+    expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(23);
 
     const scrolledFrame = stripAnsi(
       (
@@ -459,20 +436,19 @@ describe("SelectPicker", () => {
       ).allOutput(),
     );
     expect(scrolledFrame).toContain("(8/20)");
-    expect(scrolledFrame).toContain("Team 8");
+    expect(scrolledFrame).toContain("Project 8");
   });
 
   test("long option hints stay on one terminal row", async () => {
     const prompt: SelectPrompt = {
-      kind: "select",
-      message: "Choose a team",
+      message: "Select a project:",
       options: [
         {
-          value: "team-1",
+          value: "project-1",
           label: "A",
-          hint: "This deliberately long team name would wrap onto another row UNIQUE_TAIL",
+          hint: "This deliberately long project name would wrap onto another row UNIQUE_TAIL",
         },
-        { value: "team-2", label: "Team 2" },
+        { value: "project-2", label: "Project 2" },
       ],
       initialIndex: 0,
       resolve: ignorePromptResolution,

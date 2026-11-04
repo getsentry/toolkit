@@ -57,9 +57,6 @@ const SUPPRESSED_ARGS = new Set([
   "-V",
   "--json",
   "token",
-  // `init` prints a guide for coding agents to follow, so keep update
-  // notices out of it.
-  "init",
 ]);
 
 /**

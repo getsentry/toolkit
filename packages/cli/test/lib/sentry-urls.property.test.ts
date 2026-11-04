@@ -22,7 +22,6 @@ import {
   buildLogsUrl,
   buildOrgSettingsUrl,
   buildOrgUrl,
-  buildProjectIssuesUrl,
   buildProjectUrl,
   buildRepositorySettingsUrl,
   buildSourceCodeIntegrationsUrl,
@@ -299,42 +298,6 @@ describe("buildEventSearchUrl properties", () => {
         const result = buildEventSearchUrl(orgSlug, eventId);
         const url = new URL(result);
         expect(url.searchParams.get("query")).toContain(eventId);
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-});
-
-describe("buildProjectIssuesUrl properties", () => {
-  test("with a project ID, output filters the Issues stream by project", async () => {
-    fcAssert(
-      property(tuple(slugArb, projectIdArb), ([orgSlug, projectId]) => {
-        const result = buildProjectIssuesUrl(orgSlug, projectId);
-        expect(result).toBe(
-          `${getOrgBaseUrl(orgSlug)}/issues/?project=${projectId}`,
-        );
-        expect(new URL(result).searchParams.get("project")).toBe(projectId);
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("without a project ID, output is the org-wide Issues stream", async () => {
-    fcAssert(
-      property(slugArb, (orgSlug) => {
-        const result = buildProjectIssuesUrl(orgSlug);
-        expect(result).toBe(`${getOrgBaseUrl(orgSlug)}/issues/`);
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("output is a valid URL that points at the Issues stream", async () => {
-    fcAssert(
-      property(tuple(slugArb, projectIdArb), ([orgSlug, projectId]) => {
-        const result = buildProjectIssuesUrl(orgSlug, projectId);
-        expect(() => new URL(result)).not.toThrow();
-        expect(new URL(result).pathname).toBe("/issues/");
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );

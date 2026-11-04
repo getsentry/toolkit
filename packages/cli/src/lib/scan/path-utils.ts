@@ -1,7 +1,6 @@
 /**
- * Internal path + pattern utilities shared by the grep and glob
- * engines. Not part of the public barrel — implementation details
- * factored out to prevent drift between the two engines.
+ * Internal path and pattern utilities for the grep engine. Not part
+ * of the public barrel.
  */
 
 import path from "node:path";
@@ -14,8 +13,8 @@ import picomatch from "picomatch";
  * `*.ts`) so the per-file call skips the `pattern.includes("/")` check
  * every time.
  *
- * Matches ripgrep's `--glob` semantics: patterns with `/` anchor to the relative path
- * from cwd, patterns without `/` match the basename anywhere.
+ * Matches ripgrep's `--glob` semantics: patterns with `/` anchor to the
+ * relative path from cwd, patterns without `/` match the basename anywhere.
  */
 export type CompiledMatcher = {
   test: (input: string) => boolean;
@@ -37,8 +36,8 @@ export function compileMatcher(pattern: string): CompiledMatcher {
 
 /**
  * Compile zero or more glob patterns. The input is the shape grep
- * and glob both accept on their options objects: `string | readonly
- * string[] | undefined`. Undefined returns an empty array so callers
+ * accepts on its options object: `string | readonly string[] |
+ * undefined`. Undefined returns an empty array so callers
  * can short-circuit on `.length === 0` without null-checks.
  */
 export function compileMatchers(
@@ -103,7 +102,7 @@ export function joinPosix(a: string, b: string): string {
  * `path.resolve` happily resolves an absolute path OR a relative one,
  * so a malicious `../../etc` would escape the sandbox. Callers that
  * accept untrusted input MUST confine it to `cwd` themselves before
- * forwarding to grep/glob. The engine explicitly trusts the passed value.
+ * forwarding it to grep. The engine trusts the passed value.
  */
 export function walkerRoot(cwd: string, sub: string | undefined): string {
   if (!sub) {

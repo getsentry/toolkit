@@ -81,6 +81,8 @@ function parsePatchedDependencies(source: string): Record<string, string> {
   return patches;
 }
 
+const require_ = createRequire(import.meta.url);
+
 /**
  * Resolve an installed package file to the copy THIS package actually uses.
  *
@@ -105,8 +107,6 @@ function parsePatchedDependencies(source: string): Record<string, string> {
  * @param subpath - Package subpath, e.g. `@sentry/core/build/cjs/index.js`.
  * @returns Absolute path to the resolved file, or null if unresolvable.
  */
-const require_ = createRequire(import.meta.url);
-
 function resolvePackageFile(subpath: string): string | null {
   const parts = subpath.split("/");
   const pkgName = subpath.startsWith("@")

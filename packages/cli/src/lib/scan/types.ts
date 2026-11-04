@@ -286,7 +286,7 @@ export type GrepOptions = {
   /**
    * Subdirectory under `cwd` to narrow the walk root. Path traversal
    * out of `cwd` is the caller's responsibility (the grep engine
-   * trusts this value — use `safePath` at adapter boundaries).
+   * trusts this value).
    */
   path?: string;
 

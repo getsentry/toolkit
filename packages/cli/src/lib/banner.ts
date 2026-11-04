@@ -1,8 +1,7 @@
 /**
  * Banner Formatting
  *
- * Standalone module for the Sentry ASCII banner, kept apart from `help.ts`
- * to avoid circular imports.
+ * The Sentry ASCII banner that `sentry help` prints.
  *
  * The banner is responsive: it renders the widest variant that fits the terminal
  * so it never wraps (which looks broken on narrow/split-pane terminals).

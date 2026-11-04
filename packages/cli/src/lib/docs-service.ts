@@ -4,32 +4,22 @@ import { customFetch } from "./custom-ca.js";
 import { refreshToken } from "./db/auth.js";
 import type { DocsProjectContext } from "./docs-context.js";
 import { ApiError, CliError, EXIT, HostScopeError } from "./errors.js";
-import { normalizeOrigin } from "./sentry-urls.js";
 import { getActiveTokenHost } from "./token-host.js";
 
 /** The hosted docs service, which only accepts sentry.io credentials. */
-const DEFAULT_DOCS_SERVICE_URL =
-  "https://sentry-init-agent.getsentry.workers.dev";
-
-/** `MASTRA_API_URL` points the docs commands at a local or staging service. */
-const DOCS_SERVICE_URL = process.env.MASTRA_API_URL ?? DEFAULT_DOCS_SERVICE_URL;
+const DOCS_SERVICE_URL = "https://sentry-init-agent.getsentry.workers.dev";
 
 const DOCS_REQUEST_TIMEOUT_MS = 120_000;
 
 /**
- * Refuse to send a self-hosted token to the hosted docs service, which
- * validates bearers against sentry.io.
+ * Refuse to send a self-hosted token to the docs service, which validates
+ * bearers against sentry.io.
  *
- * @throws {HostScopeError} When the active token belongs to a non-SaaS host
- *   and requests would go to the hosted service.
+ * @throws {HostScopeError} When the active token belongs to a non-SaaS host.
  */
 function assertDocsServiceAcceptsTokenHost(): void {
   const tokenHost = getActiveTokenHost();
-  const usesHostedService =
-    normalizeOrigin(DOCS_SERVICE_URL) ===
-    normalizeOrigin(DEFAULT_DOCS_SERVICE_URL);
-
-  if (tokenHost && usesHostedService && !isSaaSTrustOrigin(tokenHost)) {
+  if (tokenHost && !isSaaSTrustOrigin(tokenHost)) {
     throw new HostScopeError(
       "Hosted Sentry docs service",
       "https://sentry.io",

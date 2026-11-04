@@ -292,10 +292,9 @@ console.log("  -> dist/bin.cjs (CLI main script)");
 console.log("  -> dist/index.d.cts + dist/index.d.mts (type declarations)");
 
 // The `ink-app.js` sidecar (pre-bundled by text-import-plugin) ships
-// with the npm package so `npx sentry@latest init` can load the
-// interactive Ink UI on Node via dynamic import(). The sidecar is
-// self-contained ESM with all deps inlined — no runtime dependencies
-// needed.
+// with the npm package so the organization and project pickers can load
+// the Ink UI on Node via dynamic import(). The sidecar is self-contained
+// ESM with all deps inlined — no runtime dependencies needed.
 
 // Ship the DIF parser WASM as a sibling of the bundle. The runtime loads it
 // (non-SEA path) via new URL("./vendor/symbolic_bg.wasm", import.meta.url),

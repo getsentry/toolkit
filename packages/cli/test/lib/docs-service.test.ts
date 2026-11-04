@@ -25,9 +25,47 @@ describe("queryDocs", () => {
         languages: [],
         sentryConfigured: false,
       }),
-    ).rejects.toBeInstanceOf(HostScopeError);
+    ).rejects.toThrow(
+      expect.objectContaining({
+        constructor: HostScopeError,
+        message: expect.stringContaining(
+          "sentry auth login --url https://sentry.io",
+        ),
+      }),
+    );
     expect(refreshToken).not.toHaveBeenCalled();
     expect(customFetch).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    "https://sentry.io",
+    "https://us.sentry.io",
+    "https://de.sentry.io",
+  ])("sends a %s token to the hosted docs service", async (tokenHost) => {
+    customFetch.mockReset();
+    getActiveTokenHost.mockReturnValueOnce(tokenHost);
+    refreshToken.mockResolvedValue({ token: "test-token" });
+    customFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi
+        .fn()
+        .mockResolvedValue(
+          JSON.stringify({ answer: "Use tracesSampleRate.", sources: [] }),
+        ),
+    });
+
+    await expect(
+      queryDocs("How do I configure tracing?", {
+        frameworks: [],
+        languages: [],
+        sentryConfigured: false,
+      }),
+    ).resolves.toEqual({ answer: "Use tracesSampleRate.", sources: [] });
+    expect(customFetch).toHaveBeenCalledWith(
+      "https://sentry-init-agent.getsentry.workers.dev/api/docs/query",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   test("rejects a malformed bearer before calling the docs service", async () => {

@@ -4,14 +4,16 @@
  */
 
 import { execSync } from "node:child_process";
-import { mkdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   clearSentryCliRcCache,
   loadSentryCliRc,
 } from "../../src/lib/sentryclirc.js";
+import { useTestConfigDir } from "../helpers.js";
+
+const getConfigDir = useTestConfigDir("sentryclirc-fifo-");
 
 /** Create a FIFO (named pipe) at the given path using mkfifo(1). */
 function createFifo(path: string): void {
@@ -19,33 +21,15 @@ function createFifo(path: string): void {
 }
 
 describe("sentryclirc FIFO safety", () => {
-  let dir: string;
-  let originalHome: string | undefined;
-  let originalSentryConfigDir: string | undefined;
-
   beforeEach(() => {
-    // Clear both the load cache AND the cached global-paths singleton
-    // so this describe block sees the overridden env vars below.
+    // Point HOME at the test config dir too, so the loader can't reach the
+    // real `$HOME/.sentryclirc`, and drop the cached global paths.
+    vi.stubEnv("HOME", getConfigDir());
     clearSentryCliRcCache();
-    dir = join(
-      tmpdir(),
-      `sentryclirc-fifo-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    );
-    mkdirSync(dir, { recursive: true });
-    // Point both global fallback locations into `dir` so the loader
-    // can't reach the real user's `$HOME/.sentryclirc`.
-    originalHome = process.env.HOME;
-    originalSentryConfigDir = process.env.SENTRY_CONFIG_DIR;
-    process.env.HOME = dir;
-    process.env.SENTRY_CONFIG_DIR = dir;
   });
 
   afterEach(() => {
-    process.env.HOME = originalHome;
-    process.env.SENTRY_CONFIG_DIR = originalSentryConfigDir;
-    rmSync(dir, { recursive: true, force: true });
-    // Reset again so later test files don't inherit stale globalPaths
-    // pointing at the now-deleted temp dir.
+    vi.unstubAllEnvs();
     clearSentryCliRcCache();
   });
 
@@ -53,7 +37,7 @@ describe("sentryclirc FIFO safety", () => {
     // Simulate a 1Password-managed `.sentryclirc` (unusual but
     // possible). The walk-up should emit a null and move on — not
     // hang on the FIFO read.
-    const cwd = join(dir, "project");
+    const cwd = join(getConfigDir(), "project");
     mkdirSync(cwd);
     createFifo(join(cwd, ".sentryclirc"));
 
