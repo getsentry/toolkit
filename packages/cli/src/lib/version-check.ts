@@ -15,6 +15,7 @@ import { CLI_VERSION } from "./constants.js";
 import { getReleaseChannel } from "./db/release-channel.js";
 import {
   getVersionCheckInfo,
+  markVersionCheckStarted,
   markUpdateNotified,
   setVersionCheckInfo,
 } from "./db/version-check.js";
@@ -175,13 +176,16 @@ function shouldCheckForUpdate(): boolean {
   }
 
   const elapsed = Date.now() - lastChecked;
+  if (elapsed < CHECK_INTERVAL_MS * (1 - JITTER_FACTOR)) {
+    return false;
+  }
 
   // Add jitter to the interval (±20%)
   const jitter = (Math.random() - 0.5) * 2 * JITTER_FACTOR;
   const effectiveInterval = CHECK_INTERVAL_MS * (1 + jitter);
 
-  // Probability ramps up as we approach/exceed the interval
-  // At 0% of interval: ~0% chance
+  // Probability ramps up as we pass the interval
+  // At 80% of interval: ~55% chance
   // At 100% of interval: ~63% chance (1 - 1/e)
   // At 200% of interval: ~86% chance
   const probability = 1 - Math.exp(-elapsed / effectiveInterval);
@@ -266,6 +270,7 @@ function checkForUpdateInBackgroundImpl(): void {
     if (!shouldCheckForUpdate()) {
       return;
     }
+    markVersionCheckStarted();
   } catch (error) {
     // DB access failed - report to Sentry but don't crash CLI
     Sentry.captureException(error);

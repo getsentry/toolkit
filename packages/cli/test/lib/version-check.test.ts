@@ -513,6 +513,37 @@ describe("maybeCheckForUpdateInBackground", () => {
     abortPendingVersionCheck();
   });
 
+  test("does not check again after a check the command aborted", async () => {
+    let requests = 0;
+    globalThis.fetch = mockFetch(async () => {
+      requests += 1;
+      return await new Promise<Response>(() => {});
+    });
+
+    maybeCheckForUpdateInBackground();
+    abortPendingVersionCheck();
+    maybeCheckForUpdateInBackground();
+    await sleep(10);
+
+    expect(requests).toBe(1);
+    expect(getVersionCheckInfo().lastChecked).not.toBeNull();
+  });
+
+  test("does not check before most of the interval has passed", async () => {
+    let requests = 0;
+    globalThis.fetch = mockFetch(async () => {
+      requests += 1;
+      return new Response("{}");
+    });
+    setVersionCheckInfo("1.0.0");
+    vi.spyOn(Math, "random").mockReturnValue(0);
+
+    maybeCheckForUpdateInBackground();
+    await sleep(10);
+
+    expect(requests).toBe(0);
+  });
+
   test("passes the Toolkit source from stable discovery to patch prefetch without legacy access", async () => {
     const toolkitSource = UPGRADE_SOURCES[0]!;
     const requestedUrls: string[] = [];

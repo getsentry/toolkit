@@ -21,7 +21,7 @@ const KEY_LAST_NOTIFIED = "version_check.last_notified";
 const ALL_KEYS = [KEY_LAST_CHECKED, KEY_LATEST_VERSION, KEY_LAST_NOTIFIED];
 
 export type VersionCheckInfo = {
-  /** Unix timestamp (ms) of last check, or null if never checked */
+  /** Unix timestamp (ms) when the last check started, or null if never checked */
   lastChecked: number | null;
   /** Latest version string from GitHub, or null if never fetched */
   latestVersion: string | null;
@@ -69,6 +69,16 @@ export function markUpdateNotified(): void {
 export function clearVersionCheckCache(): void {
   const db = getDatabase();
   clearMetadata(db, ALL_KEYS);
+}
+
+/**
+ * Record that a check started. The CLI aborts a pending check when the
+ * command ends, so without this a short command leaves the timestamp old
+ * and the next run checks again.
+ */
+export function markVersionCheckStarted(): void {
+  const db = getDatabase();
+  setMetadata(db, { [KEY_LAST_CHECKED]: String(Date.now()) });
 }
 
 /**
