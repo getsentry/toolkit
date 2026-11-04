@@ -176,11 +176,18 @@ export class HostScopeError extends CliError {
  * @param status - HTTP status code
  * @param detail - Detailed error message from API response
  * @param endpoint - API endpoint that failed
+ * @param options - `enriched403` and `code`, documented on the fields below
  */
 export class ApiError extends CliError {
   readonly status: number;
   readonly detail?: string;
   readonly endpoint?: string;
+
+  /**
+   * Machine-readable `code` from the error body, when the server sent one
+   * (e.g. `invalid_search_query`).
+   */
+  readonly code?: string;
 
   /**
    * Set by centralized 403 enrichment in `infrastructure.ts`.
@@ -194,7 +201,10 @@ export class ApiError extends CliError {
     status: number,
     detail?: string,
     endpoint?: string,
-    enriched403 = false,
+    {
+      enriched403 = false,
+      code,
+    }: { enriched403?: boolean; code?: string } = {},
   ) {
     super(message, EXIT.API);
     this.name = "ApiError";
@@ -202,6 +212,7 @@ export class ApiError extends CliError {
     this.detail = detail;
     this.endpoint = endpoint;
     this.enriched403 = enriched403;
+    this.code = code;
   }
 
   override format(): string {
@@ -862,19 +873,28 @@ export function getExitCode(error: unknown): number {
 }
 
 /**
- * Sentry's search-query parser emits a 400 whose detail begins with this phrase
- * when the user's `--query` cannot be parsed (e.g. `is:403`, `lastSeen:>=-24h`,
- * an empty `status:`). The server is telling us the user-supplied query is
- * malformed — a user input error, not the CLI constructing a bad request.
+ * Issue search wraps search-query parser failures in this phrase
+ * (e.g. `is:403`, `lastSeen:>=-24h`, an empty `status:`). The server is telling
+ * us the user-supplied query is malformed — a user input error, not the CLI
+ * constructing a bad request.
  */
 const SEARCH_QUERY_PARSE_MARKER = "Error parsing search query";
 
 /**
+ * `code` the Events endpoint (explore, spans, logs, traces) sends next to
+ * `detail` when its search-query parser rejects the `query` parameter
+ * (getsentry/sentry#129957).
+ */
+const SEARCH_QUERY_PARSE_CODE = "invalid_search_query";
+
+/**
  * Whether an {@link ApiError} is a Sentry search-query parse failure (HTTP 400
- * whose detail reports an unparseable query). The CLI preserves the server's
+ * that reports an unparseable query). Events endpoints mark these with
+ * {@link SEARCH_QUERY_PARSE_CODE}; issue search only has the
+ * {@link SEARCH_QUERY_PARSE_MARKER} phrase. The CLI preserves the server's
  * detail when re-wrapping list errors (`enrichIssueListError` in
- * `commands/issue/list.ts` prepends the original detail), so a substring match
- * is robust to that wrapping.
+ * `commands/issue/list.ts` prepends the original detail), so the marker is
+ * matched as a substring.
  *
  * Shared by the three 4xx classifiers so they agree on these 400s:
  * `classifySilenced` (Sentry capture), {@link isUserError} (upgrade nudge), and
@@ -883,7 +903,8 @@ const SEARCH_QUERY_PARSE_MARKER = "Error parsing search query";
 export function isSearchQueryParseError(error: ApiError): boolean {
   return (
     error.status === 400 &&
-    (error.detail?.includes(SEARCH_QUERY_PARSE_MARKER) ?? false)
+    (error.code === SEARCH_QUERY_PARSE_CODE ||
+      (error.detail?.includes(SEARCH_QUERY_PARSE_MARKER) ?? false))
   );
 }
 

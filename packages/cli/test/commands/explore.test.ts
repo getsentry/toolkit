@@ -1434,6 +1434,55 @@ describe("sentry explore", () => {
     });
   });
 
+  describe("search syntax errors", () => {
+    const detail =
+      "Invalid quote at '*\"POST': quotes must enclose text or be escaped.";
+    const flags = {
+      ...DEFAULT_FLAGS,
+      dataset: "spans",
+      query: 'span.description:*"POST',
+    };
+    const parseError = (code?: string) =>
+      new ApiError("Bad request", 400, detail, undefined, { code });
+
+    test("reports an unparseable --query as a query ValidationError", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      queryEventsSpy.mockRejectedValue(parseError("invalid_search_query"));
+      const { context } = createContext();
+
+      const error = await func
+        .call(context, flags, "test-org/")
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({ field: "query" });
+      expect((error as Error).message).toContain(detail);
+      expect((error as Error).message).toContain("Check your --query syntax");
+    });
+
+    test("keeps the ApiError when the CLI built the query", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const original = parseError("invalid_search_query");
+      queryEventsSpy.mockRejectedValue(original);
+      const { context } = createContext();
+
+      await expect(
+        func.call(context, { ...DEFAULT_FLAGS, dataset: "spans" }, "test-org/"),
+      ).rejects.toBe(original);
+    });
+
+    test("keeps the ApiError when the 400 has no code", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const original = parseError();
+      queryEventsSpy.mockRejectedValue(original);
+      const { context } = createContext();
+
+      await expect(func.call(context, flags, "test-org/")).rejects.toBe(
+        original,
+      );
+    });
+  });
+
   describe("metrics dataset validation", () => {
     test("rejects standard aggregates on metrics dataset", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });

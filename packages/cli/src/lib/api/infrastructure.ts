@@ -230,6 +230,14 @@ export type ApiRequestOptions<T = unknown> = {
   idempotent?: boolean;
 };
 
+/** The string `code` of a JSON error body, e.g. `invalid_search_query`. */
+function readErrorCode(body: unknown): string | undefined {
+  if (body === null || typeof body !== "object" || !("code" in body)) {
+    return undefined;
+  }
+  return typeof body.code === "string" ? body.code : undefined;
+}
+
 const CONNECT_TIMEOUT_HINT =
   "The connection timed out. Check network access and firewall rules on this machine.";
 
@@ -363,7 +371,7 @@ export function throwApiError(
     status,
     enrichDetail(status, detail, hasUsableDetail),
     undefined,
-    is403,
+    { enriched403: is403, code: readErrorCode(error) },
   );
 }
 
@@ -850,7 +858,7 @@ async function throwRawApiError(
     response.status,
     enrichDetail(response.status, detail, detail !== undefined),
     endpoint,
-    is403,
+    { enriched403: is403, code: readErrorCode(body.json) },
   );
 }
 
