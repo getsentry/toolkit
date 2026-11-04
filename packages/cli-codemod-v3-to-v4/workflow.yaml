@@ -7,14 +7,23 @@ nodes:
     name: Apply AST Transformations
     type: automatic
     steps:
-      - name: "Scan matching typescript files and apply fixes"
+      - name: "Scan JavaScript and TypeScript files and apply fixes"
         js-ast-grep:
           js_file: scripts/codemod.ts
           base_path: "."
           language: "typescript"
           include:
-            - "**/*.{js,mjs,cjs,jsx,ts,mts,cts}"
-          exclude:
+            - "**/*.{js,mjs,cjs,ts,mts,cts}"
+          exclude: &exclude
             - "**/node_modules/**"
             - "**/dist/**"
             - "**/build/**"
+      # JSX needs the tsx grammar; the typescript grammar can't parse it.
+      - name: "Scan JSX and TSX files and apply fixes"
+        js-ast-grep:
+          js_file: scripts/codemod.ts
+          base_path: "."
+          language: "tsx"
+          include:
+            - "**/*.{jsx,tsx}"
+          exclude: *exclude

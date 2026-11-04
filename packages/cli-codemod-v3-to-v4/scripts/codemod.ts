@@ -99,6 +99,16 @@ const codemod: Codemod<L> = async (root) => {
     insertedText: text,
   });
 
+  /** Empty a call's argument list, keeping the parens: `X(null,\n)` → `X()`. */
+  const clearArgs = (call: Node): Edit => {
+    const r = call.field("arguments")!.range();
+    return {
+      startPos: r.start.index + 1,
+      endPos: r.end.index - 1,
+      insertedText: "",
+    };
+  };
+
   // 1) Rewrite the module specifier, keeping the user's binding name.
   //    ESM: `import X from "@sentry/cli"` (quote-agnostic, structural).
   for (const imp of rootNode.findAll({
@@ -196,21 +206,22 @@ const codemod: Codemod<L> = async (root) => {
     let options: Node | null = null;
     let ambiguous = false;
     if (a.length >= 2) {
-      // Drop the configFile positional (removed in v4).
-      edits.push({
-        startPos: a[0]!.range().start.index,
-        endPos: a[1]!.range().start.index,
-        insertedText: "",
-      });
       if (isNullish(a[1]!)) {
-        edits.push(replaceNode(a[1]!, "")); // `new X(cfg, null)` → `X()`
+        // `new X(cfg, null)` → `X()` (also drops any trailing comma).
+        edits.push(clearArgs(ne));
       } else {
+        // Drop the configFile positional (removed in v4).
+        edits.push({
+          startPos: a[0]!.range().start.index,
+          endPos: a[1]!.range().start.index,
+          insertedText: "",
+        });
         options = a[1]!;
       }
     } else if (a.length === 1) {
       const arg = a[0]!;
       if (isNullish(arg)) {
-        edits.push(replaceNode(arg, "")); // `new X(null)` → `X()`
+        edits.push(clearArgs(ne)); // `new X(null)` → `X()`
       } else if (arg.kind() === "object") {
         options = arg;
       } else {
@@ -237,23 +248,16 @@ const codemod: Codemod<L> = async (root) => {
         }
       }
       // v3 SentryCliOptions keys with no direct v4 `SentryOptions` equivalent.
-      // (`token`/`url`/`org`/`project` ARE first-class v4 options, so they're
-      // fine as-is; only flag the ones that need attention.)
+      // (`token`/`url`/`org`/`project`/`headers` ARE first-class v4 options, so
+      // they're fine as-is; only flag the ones that need attention.)
       const unmapped = keys.filter((k) =>
-        [
-          "apiKey",
-          "dsn",
-          "silent",
-          "customHeader",
-          "headers",
-          "vcsRemote",
-        ].includes(k),
+        ["apiKey", "dsn", "silent", "customHeader", "vcsRemote"].includes(k),
       );
       if (unmapped.length) {
         edits.push(
           todo(
             ne,
-            `verify these v3 options — they have no direct v4 SentryOptions equivalent: ${unmapped.join(", ")} (apiKey → rename to \`token\`; dsn → use SENTRY_DSN env; silent/customHeader/headers/vcsRemote were dropped)`,
+            `verify these v3 options — they have no direct v4 SentryOptions equivalent: ${unmapped.join(", ")} (apiKey → rename to \`token\`; customHeader → move the "Name: value" string into the \`headers\` object; dsn → use SENTRY_DSN env; silent/vcsRemote were dropped)`,
           ),
         );
       }
