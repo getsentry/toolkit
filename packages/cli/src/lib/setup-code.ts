@@ -1,6 +1,35 @@
 /** Read the issuing Sentry instance from a private setup code. */
 
-import { looseObject, safeParse, string } from "valibot";
+import {
+  boolean,
+  description,
+  type InferOutput,
+  literal,
+  looseObject,
+  number,
+  object,
+  optional,
+  pipe,
+  safeParse,
+  string,
+} from "valibot";
+import { pointDefaultUrlAtAccount } from "./account-selection.js";
+import { normalizeAuthToken } from "./auth-header.js";
+import {
+  getAccountIdToReplace,
+  hasStoredAuthCredentials,
+  setAuthToken,
+} from "./db/auth.js";
+import { getDbPath } from "./db/index.js";
+import { clearUserInfo, setUserInfo } from "./db/user.js";
+import { getEnv, withEnv } from "./env.js";
+import {
+  getBootConfiguredSentryUrl,
+  inheritEnvTokenHost,
+} from "./env-token-host.js";
+import { toLoginUser } from "./interactive-login.js";
+import { exchangeSetupCode } from "./oauth.js";
+import { registerLoginTrustAnchor } from "./token-host.js";
 import { ValidationError } from "./errors.js";
 import { normalizeHttpOrigin } from "./sentry-urls.js";
 
@@ -33,4 +62,106 @@ export function getSetupCodeHost(code: string): string {
   }
 
   return host;
+}
+
+/** Safe authentication result exposed to command output and field discovery. */
+export const BootstrapResultSchema = object({
+  method: literal("oauth"),
+  configPath: pipe(string(), description("Path to the stored CLI credentials")),
+  user: optional(
+    object({
+      id: optional(string()),
+      name: optional(string()),
+      email: optional(string()),
+      username: optional(string()),
+    }),
+  ),
+  expiresIn: optional(number()),
+  refreshEnabled: boolean(),
+});
+
+/** Public result of successful setup-code authentication. */
+export type BootstrapResult = InferOutput<typeof BootstrapResultSchema>;
+
+/** Redeem a private setup code, replacing only the issuing server's selected login. */
+export async function bootstrapAuthentication(
+  options: {
+    /** Explicit consent to replace an existing stored login. */
+    force?: boolean;
+    /** Explicit issuing instance URL, required for HTTP without a boot-time URL. */
+    url?: string;
+  } = {},
+): Promise<BootstrapResult> {
+  const code = getEnv().SENTRY_SETUP_CODE;
+
+  if (!code) {
+    throw new ValidationError(
+      "Set SENTRY_SETUP_CODE to the private code provided by Sentry.",
+      "setup-code",
+    );
+  }
+
+  const host = getSetupCodeHost(code);
+
+  if (options.url && normalizeHttpOrigin(options.url) !== host) {
+    throw new ValidationError(
+      "The setup code belongs to a different Sentry instance.",
+      "url",
+    );
+  }
+
+  if (
+    !host.startsWith("https://") &&
+    !options.url &&
+    getBootConfiguredSentryUrl() !== host
+  ) {
+    throw new ValidationError(
+      "HTTP setup requires an explicit --url or SENTRY_URL for the issuing instance.",
+      "url",
+    );
+  }
+
+  if (
+    (getAccountIdToReplace(host) !== undefined || hasStoredAuthCredentials()) &&
+    !options.force
+  ) {
+    throw new ValidationError(
+      "A stored login already exists. To replace it, run:\nSENTRY_SETUP_CODE='<setup-code>' sentry auth bootstrap --force",
+      "force",
+    );
+  }
+
+  if (options.url || getBootConfiguredSentryUrl() === host) {
+    registerLoginTrustAnchor(host);
+  }
+
+  const env = { ...getEnv(), SENTRY_HOST: host, SENTRY_URL: host };
+  inheritEnvTokenHost(env);
+
+  return await withEnv(env, async () => {
+    const token = await exchangeSetupCode(code, host);
+    const accessToken = normalizeAuthToken(token.access_token);
+    setAuthToken(accessToken, token.expires_in, token.refresh_token, {
+      host,
+    });
+    pointDefaultUrlAtAccount(host);
+
+    if (token.user) {
+      setUserInfo({
+        userId: token.user.id,
+        email: token.user.email ?? undefined,
+        name: token.user.name ?? undefined,
+      });
+    } else {
+      clearUserInfo();
+    }
+
+    return {
+      method: "oauth",
+      configPath: getDbPath(),
+      expiresIn: token.expires_in,
+      refreshEnabled: Boolean(token.refresh_token),
+      ...(token.user ? { user: toLoginUser(token.user) } : {}),
+    };
+  });
 }
