@@ -75,8 +75,16 @@ const unquote = (s: string) => s.replace(/^['"]|['"]$/g, "");
  * `releases.new(release, opts)` options, whose only key was `projects`
  * (a string array). `null` when `opts` has other keys to review by hand.
  */
+/** `n`'s text, parenthesized unless it can take a `.member` suffix as-is. */
+const operand = (n: Node) =>
+  /^(identifier|member_expression|subscript_expression|call_expression|array|parenthesized_expression|this)$/.test(
+    n.kind(),
+  )
+    ? n.text()
+    : `(${n.text()})`;
+
 const projectArg = (opts: Node): string | null => {
-  if (opts.kind() !== "object") return `${opts.text()}.projects?.join(",")`;
+  if (opts.kind() !== "object") return `${operand(opts)}.projects?.join(",")`;
   const props = opts.children().filter((c) => c.isNamed());
   if (props.length !== 1) return null;
   const [p] = props;
@@ -98,7 +106,7 @@ const projectArg = (opts: Node): string | null => {
   ) {
     return JSON.stringify(items.map((i) => unquote(i.text())).join(","));
   }
-  return `${v.text()}.join(",")`;
+  return `${operand(v)}.join(",")`;
 };
 
 const codemod: Codemod<L> = async (root) => {
