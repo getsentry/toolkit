@@ -262,8 +262,11 @@ const codemod: Codemod<L> = async (root) => {
     }
   }
 
-  // Only touch files that actually import the v3 wrapper.
-  if (bindings.size === 0) return null;
+  // No class binding (e.g. a type-only import): the specifier and type
+  // rewrites above are the whole migration.
+  if (bindings.size === 0) {
+    return edits.length ? rootNode.commitEdits(edits) : null;
+  }
 
   //    `X.SentryCli` on the v3 module object → `X.createSentrySDK`.
   const isModuleMember = (obj: Node | null) =>
