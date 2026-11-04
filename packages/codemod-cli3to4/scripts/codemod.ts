@@ -37,16 +37,10 @@ const RESHAPE: Record<
     /** v3 → v4 key renames applied inside an object-literal options arg. */
     rename?: Record<string, string>;
     todo?: string;
-    /** Only flag the call when it passes a v3 options argument. */
-    todoIfOptions?: string;
   }
 > = {
-  // v3 `new(release, { projects })`: v4 takes one comma-separated `project`.
-  new: {
-    key: "orgVersion",
-    todoIfOptions:
-      "v3 `projects` (array) is v4 `project` (comma-separated string) — add it to this call",
-  },
+  // v3 `new(release, { projects })`: see `projectArg` for the v4 `project`.
+  new: { key: "orgVersion" },
   finalize: { key: "orgVersion" },
   setCommits: {
     key: "orgVersion",
@@ -75,6 +69,37 @@ const identSafe = (s: string) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(s);
 const accessor = (name: string) =>
   identSafe(name) ? `.${name}` : `[${JSON.stringify(name)}]`;
 const unquote = (s: string) => s.replace(/^['"]|['"]$/g, "");
+
+/**
+ * The v4 `project` value (one comma-separated string) for v3's
+ * `releases.new(release, opts)` options, whose only key was `projects`
+ * (a string array). `null` when `opts` has other keys to review by hand.
+ */
+const projectArg = (opts: Node): string | null => {
+  if (opts.kind() !== "object") return `${opts.text()}.projects?.join(",")`;
+  const props = opts.children().filter((c) => c.isNamed());
+  if (props.length !== 1) return null;
+  const [p] = props;
+  if (
+    p!.kind() === "shorthand_property_identifier" &&
+    p!.text() === "projects"
+  ) {
+    return `projects.join(",")`;
+  }
+  const k = p!.kind() === "pair" ? p!.field("key") : null;
+  const v = p!.field("value");
+  if (!k || !v || unquote(k.text()) !== "projects") return null;
+  const items =
+    v.kind() === "array" ? v.children().filter((c) => c.isNamed()) : [];
+  // `["web", "api"]` → `"web,api"`; anything else is joined at runtime.
+  if (
+    items.length &&
+    items.every((i) => i.kind() === "string" && !/[\\,]/.test(i.text()))
+  ) {
+    return JSON.stringify(items.map((i) => unquote(i.text())).join(","));
+  }
+  return `${v.text()}.join(",")`;
+};
 
 const codemod: Codemod<L> = async (root) => {
   const rootNode = root.root();
@@ -280,21 +305,16 @@ const codemod: Codemod<L> = async (root) => {
     }
   }
 
-  //    v3 static helpers have no v4 equivalent.
-  for (const call of rootNode.findAll({
-    rule: { pattern: "$B.$STATIC()" },
-  })) {
+  //    v3's static `getVersion()`/`getPath()` are static members of the v4
+  //    factory too, so the calls carry over. `getPath()` now points at a
+  //    Node.js script rather than a native binary.
+  for (const call of rootNode.findAll({ rule: { pattern: "$B.getPath()" } })) {
     const b = call.getMatch("B");
-    const fn = call.getMatch("STATIC")?.text();
-    if (
-      b &&
-      bindings.has(b.text()) &&
-      (fn === "getVersion" || fn === "getPath")
-    ) {
+    if (b && (bindings.has(b.text()) || isModuleMember(b.field("object")))) {
       edits.push(
         todo(
           call,
-          `v4 has no static \`${fn}()\`; run \`sentry --version\` or resolve the \`sentry\` binary yourself`,
+          "v4 `getPath()` is a Node.js script, not a native binary: spawn it as `execFile(process.execPath, [getPath(), ...args])`, or call the SDK methods instead",
         ),
       );
     }
@@ -463,7 +483,18 @@ const codemod: Codemod<L> = async (root) => {
     const reshape = RESHAPE[method];
 
     let argsOut: string;
-    if (reshape) {
+    const project = method === "new" && a[1] ? projectArg(a[1]) : undefined;
+    if (method === "new" && a[1] && project === null) {
+      edits.push(
+        todo(
+          call,
+          "map v3 `projects` (array) to v4 `project` (comma-separated string) by hand",
+        ),
+      );
+    }
+    if (project && a[0]) {
+      argsOut = `{ orgVersion: ${a[0].text()}, project: ${project} }`;
+    } else if (reshape) {
       const lead = a[0] ? `${reshape.key}: ${a[0].text()}` : "";
       const opts = reshape.spread ? a[1] : undefined;
       if (opts?.kind() === "object" && opts.children().some(named)) {
@@ -484,9 +515,6 @@ const codemod: Codemod<L> = async (root) => {
     }
 
     if (reshape?.todo) edits.push(todo(call, reshape.todo));
-    if (reshape?.todoIfOptions && a[1]) {
-      edits.push(todo(call, reshape.todoIfOptions));
-    }
     edits.push(
       replaceNode(
         call,

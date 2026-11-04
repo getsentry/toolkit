@@ -16,7 +16,7 @@
     "packages/cli/CHANGELOG.md",
     "packages/cli/AGENTS.md",
     "packages/mcp-server-mocks/src/fixtures/**",
-    "packages/cli3to4/tests/**",
+    "packages/codemod-cli3to4/tests/**",
     "**/worker-configuration.d.ts",
     "**/tsconfig*.json"
   ]

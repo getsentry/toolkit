@@ -457,13 +457,15 @@ Mapping:
 | v3 (`@sentry/cli`) | v4 (`sentry`) |
 |--------------------|---------------|
 | `new SentryCli(configFile, { authToken })` | `createSentrySDK({ token })` (`configFile` dropped) |
-| `cli.releases.new(v)` | `sdk.release.create({ orgVersion: v })` |
+| `cli.releases.new(v, { projects })` | `sdk.release.create({ orgVersion: v, project: projects.join(",") })` |
 | `cli.releases.finalize(v)` | `sdk.release.finalize({ orgVersion: v })` |
 | `cli.releases.setCommits(v, o)` | `sdk.release["set-commits"]({ orgVersion: v, ...o })` |
 | `cli.releases.uploadSourceMaps(v, { include })` | `sdk.sourcemap.upload({ directory, release: v })` |
 | `cli.releases.newDeploy(v, { env, name, url })` | `sdk.release.deploy({ orgVersion: v, environment: env, name, url })` |
 | `cli.releases.proposeVersion()` | `sdk.release["propose-version"]()` |
 | `cli.execute(args)` | `sdk.run(...args)` |
+| `SentryCli.getVersion()` | `getVersion()` (also `createSentrySDK.getVersion()`) |
+| `SentryCli.getPath()` | `getPath()` (also `createSentrySDK.getPath()`); a Node.js script, not a native binary |
 
 Note the argument reshaping: the v3 `uploadSourceMaps` `include` array becomes
 the `directory` argument of `sourcemap.upload`, and the release is optional
@@ -484,7 +486,7 @@ git clone --depth 1 https://github.com/getsentry/toolkit /tmp/sentry-toolkit-src
 
 # From your project root (-t . targets the current directory)
 npx codemod@latest jssg run --language typescript \
-  /tmp/sentry-toolkit-src/packages/cli3to4/scripts/codemod.ts -t .
+  /tmp/sentry-toolkit-src/packages/codemod-cli3to4/scripts/codemod.ts -t .
 ```
 
 :::note
@@ -500,7 +502,7 @@ It rewrites `.js`/`.ts` files in place (the registry form also covers
 `.jsx`/`.tsx`). Review the diff afterward — argument
 shapes differ (especially for `uploadSourceMaps` and `newDeploy`), so the codemod
 flags those rather than guessing. See
-[`packages/cli3to4`](https://github.com/getsentry/toolkit/tree/main/packages/cli3to4)
+[`packages/codemod-cli3to4`](https://github.com/getsentry/toolkit/tree/main/packages/codemod-cli3to4)
 for the source and test fixtures.
 
 ## Output and scripting

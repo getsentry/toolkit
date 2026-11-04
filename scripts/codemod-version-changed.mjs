@@ -3,7 +3,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 /** The codemod manifest whose `version` decides whether to publish. */
-export const CODEMOD_MANIFEST = "packages/cli3to4/codemod.yaml";
+export const CODEMOD_MANIFEST = "packages/codemod-cli3to4/codemod.yaml";
 
 /** Read the top-level `version` from a codemod.yaml, or null when absent. */
 export function codemodVersion(manifest) {
