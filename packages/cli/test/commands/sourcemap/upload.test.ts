@@ -654,6 +654,22 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       );
     });
 
+    test("matches hidden directories only when the glob names them", async () => {
+      await writePair("app/.next/static/chunk");
+      await writePair("app/dist/main");
+
+      expect(
+        (await uploadedUrls(join(dir, "**", ".next", "**"))).sort(),
+      ).toEqual([
+        "~/app/.next/static/chunk.js",
+        "~/app/.next/static/chunk.js.map",
+      ]);
+      expect((await uploadedUrls(join(dir, "**", "*.js"))).sort()).toEqual([
+        "~/app/dist/main.js",
+        "~/app/dist/main.js.map",
+      ]);
+    });
+
     test("a directory whose name looks like a glob is used as-is", async () => {
       await writePair("[locale]/page");
 

@@ -97,6 +97,10 @@ export type UploadTarget = {
    * Set only when the target was a glob such as `.next/static/**`. A pair is
    * kept when the glob matches its JS file or its external `.map` file, so
    * both `dist/*.js` and `dist/*.map` select the same pairs.
+   *
+   * Hidden directories are walked and left to the glob, which matches a dot
+   * segment only when the pattern names it, like the `glob` package the
+   * bundler plugins expand `sourcemaps.assets` with.
    */
   include?: PathFilter;
 };
@@ -648,7 +652,7 @@ export async function discoverFilePairs(
     cwd: absDir,
     extensions,
     alwaysSkipDirs: SOURCEMAP_SKIP_DIRS,
-    hidden: false,
+    hidden: include !== undefined,
     respectGitignore: false,
     maxFileSize: Number.POSITIVE_INFINITY,
   })) {
@@ -765,7 +769,7 @@ export async function diagnoseEmptyDiscovery(
     cwd: absDir,
     extensions,
     alwaysSkipDirs: SOURCEMAP_SKIP_DIRS,
-    hidden: false,
+    hidden: options.include !== undefined,
     respectGitignore: false,
     maxFileSize: Number.POSITIVE_INFINITY,
   })) {
