@@ -5,21 +5,25 @@
  * Most generators read the route tree, and loading it through tsx is most of
  * what each of them costs. Run as separate `pnpm tsx` processes, they loaded
  * the tree once each and paid pnpm's startup every time. This runner loads it
- * once and runs every requested step in order, in two phases:
+ * once and runs every requested step in two phases:
  *
  * 1. Steps the route tree depends on: the API schema, the grammar parsers,
  *    the output-schema field data that commands import, and the banner.
- *    Nothing in this phase may load the route tree. A step that lists its
- *    `files` is skipped when their content matches its last run.
+ *    They are independent of each other and run concurrently; the grammar
+ *    compiles in a child process. Nothing in this phase may load the route
+ *    tree. A step that lists its `files` is skipped when their content
+ *    matches its last run.
  * 2. Steps that read the route tree. The runner writes stubs for the
  *    generated files the tree imports but these steps produce
- *    (`lib/route-tree-stubs.ts`), loads the tree, then runs each step. Step
- *    modules import the tree statically, so they are imported only here.
- *    Work a step can do without the tree starts first, in its `prepare`:
- *    `command-api` parses `src/` in a worker thread while the tree loads.
+ *    (`lib/route-tree-stubs.ts`), loads the tree, then runs each step in
+ *    the order below, whatever order they are named in. Step modules import
+ *    the tree statically, so they are imported only here.
  *
- * Steps run in the order below, whatever order they are named in. Like
- * `pnpm tsx`, the runner loads `.env.local` when it exists and installs
+ * Work a phase-2 step can do without the tree starts with the run, in its
+ * `prepare`: `command-api` parses `src/` in a worker thread while phase 1
+ * runs and the tree loads.
+ *
+ * Like `pnpm tsx`, the runner loads `.env.local` when it exists and installs
  * `require-shim.mjs` before any step.
  *
  * Usage:
@@ -30,9 +34,11 @@
  */
 
 import "./require-shim.mjs";
-import { execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { commandApiAnalysis } from "./lib/command-api-analysis.js";
 import { writeRouteTreeStubs } from "./lib/route-tree-stubs.js";
 import {
   packageManifest,
@@ -62,18 +68,27 @@ type Step = {
   files?: () => StepFiles;
   /**
    * Phase 2 only: start work that needs no route tree, such as a worker
-   * thread, before the tree loads, so the two overlap. `emit` awaits it.
+   * thread, as the run begins, so it overlaps phase 1 and the tree load.
+   * `after(name)` settles when that phase-1 step does (at once if it was
+   * not requested). `emit` awaits the work.
    */
-  prepare?: () => Promise<void>;
+  prepare?: (after: (name: string) => Promise<void>) => void;
 };
 
 const GRAMMAR_SCRIPT = "../../scripts/generate-parsers.mjs";
 
 /** Compile the grammars; a plain Node script shared with other packages. */
 async function generateGrammar(): Promise<void> {
-  execFileSync(process.execPath, [GRAMMAR_SCRIPT, "."], {
+  const child = spawn(process.execPath, [GRAMMAR_SCRIPT, "."], {
     stdio: "inherit",
   });
+  const [code, signal] = (await once(child, "exit")) as [
+    number | null,
+    NodeJS.Signals | null,
+  ];
+  if (code !== 0) {
+    throw new Error(`${GRAMMAR_SCRIPT} exited with ${signal ?? code}`);
+  }
 }
 
 /** The API schema: the SDK's operation catalog, projected. */
@@ -171,8 +186,8 @@ const TREE_STEPS: readonly Step[] = [
   {
     name: "command-api",
     load: () => import("./generate-command-api.js"),
-    prepare: async () => {
-      void (await import("./lib/command-api-analysis.js")).commandApiAnalysis();
+    prepare: (after) => {
+      void commandApiAnalysis(after("schema"));
     },
   },
 ];
@@ -198,7 +213,7 @@ for (const arg of args.filter((a) => a !== "--check")) {
 const preTreeSteps = PRE_TREE_STEPS.filter((step) => requested.has(step.name));
 const treeSteps = TREE_STEPS.filter((step) => requested.has(step.name));
 
-for (const step of preTreeSteps) {
+async function runPreTreeStep(step: Step): Promise<void> {
   const emit = async () => {
     await (await step.load()).emit(options);
   };
@@ -209,10 +224,15 @@ for (const step of preTreeSteps) {
   }
 }
 
+const preTreeRuns = new Map(
+  preTreeSteps.map((step) => [step.name, runPreTreeStep(step)] as const),
+);
+for (const step of treeSteps) {
+  step.prepare?.((name) => preTreeRuns.get(name) ?? Promise.resolve());
+}
+await Promise.all(preTreeRuns.values());
+
 if (treeSteps.length > 0) {
-  for (const step of treeSteps) {
-    await step.prepare?.();
-  }
   await writeRouteTreeStubs();
   await import("../src/app.js");
   for (const step of treeSteps) {

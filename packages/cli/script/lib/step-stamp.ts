@@ -32,6 +32,9 @@ type Stamp = { inputs: string; outputs: string };
 /** Each step's stamp, by step name. */
 type Stamps = Partial<Record<string, Stamp>>;
 
+/** The last pending write to the stamp file. */
+let stampWrites: Promise<void> = Promise.resolve();
+
 /** The contents of `path`, or `undefined` if it does not exist. */
 async function readIfExists(path: string): Promise<Uint8Array | undefined> {
   try {
@@ -84,11 +87,11 @@ export async function runUnlessUnchanged(
   step: () => Promise<void>,
 ): Promise<void> {
   const inputs = await digest(files.inputs);
-  const stamp = (await readStamps())[name];
+  const last = (await readStamps())[name];
   if (
     inputs !== undefined &&
-    stamp?.inputs === inputs &&
-    stamp.outputs === (await digest(files.outputs))
+    last?.inputs === inputs &&
+    last.outputs === (await digest(files.outputs))
   ) {
     console.log(`Skipped ${name}: inputs and outputs unchanged`);
     return;
@@ -97,11 +100,17 @@ export async function runUnlessUnchanged(
   await step();
 
   const outputs = await digest(files.outputs);
-  const stamps = await readStamps();
-  stamps[name] =
+  const stamp =
     inputs === undefined || outputs === undefined
       ? undefined
       : { inputs, outputs };
-  await mkdir(dirname(STAMPS_PATH), { recursive: true });
-  await writeFile(STAMPS_PATH, `${JSON.stringify(stamps, null, 2)}\n`);
+  // Steps run concurrently and share one file: chain the read-modify-write
+  // so no step's update overwrites another's.
+  stampWrites = stampWrites.then(async () => {
+    const stamps = await readStamps();
+    stamps[name] = stamp;
+    await mkdir(dirname(STAMPS_PATH), { recursive: true });
+    await writeFile(STAMPS_PATH, `${JSON.stringify(stamps, null, 2)}\n`);
+  });
+  await stampWrites;
 }

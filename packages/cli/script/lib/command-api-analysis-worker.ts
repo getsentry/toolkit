@@ -1,9 +1,10 @@
 /**
  * Worker Thread for the `command-api` Source Analysis
  *
- * Started by `command-api-analysis.ts`. Reads every source file and the
- * generated API schema, analyzes which operations each export reaches, and
- * posts the result (plain objects and Maps) back to the main thread.
+ * Started by `command-api-analysis.ts`. Loads the analyzer and reads every
+ * source file at once, then waits for the main thread's message that the
+ * API schema is written, reads it, analyzes which operations each export
+ * reaches, and posts the result (plain objects and Maps) back.
  */
 
 import { readFile } from "node:fs/promises";
@@ -22,6 +23,7 @@ const sources = new Map(
       .map(async (file) => [file, await readFile(file, "utf8")] as const),
   ),
 );
+await new Promise((resolve) => parentPort?.once("message", resolve));
 const endpoints = JSON.parse(
   await readFile("src/generated/api-schema.json", "utf8"),
 ) as ApiEndpoint[];
