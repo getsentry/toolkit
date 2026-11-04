@@ -38,7 +38,7 @@ import {
   type ParsedOrgProject,
   parseOrgProjectArg,
 } from "./arg-parsing.js";
-import { isAuthenticated } from "./db/auth.js";
+import { getAuthToken, isAuthenticated } from "./db/auth.js";
 import {
   getDefaultOrganization,
   getDefaultProject,
@@ -78,6 +78,7 @@ import { logger } from "./logger.js";
 import { resolveEffectiveOrg } from "./region.js";
 import { CONFIG_FILENAME, loadSentryCliRc } from "./sentryclirc.js";
 import { setOrgProjectContext, withTracingSpan } from "./telemetry.js";
+import { parseSntrysClaim } from "./token-claims.js";
 import { isAllDigits, shellQuote } from "./utils.js";
 
 const log = logger.withTag("resolve-target");
@@ -686,7 +687,12 @@ async function inferFromDirectoryName(cwd: string): Promise<ResolvedTargets> {
  * `/` distinguishes it from a plain project slug). When the combo form is
  * used, SENTRY_ORG is ignored.
  *
- * @returns Resolved org+project, org-only, or null if no env vars are set
+ * When no org is set, the org embedded in an org auth token (`sntrys_`) is
+ * used, matching legacy sentry-cli. Such a token only works for that org, so
+ * it is the only org that can succeed. This is what lets bundler-plugin and CI
+ * setups pass just a token and a project (CLI-3B).
+ *
+ * @returns Resolved org+project, org-only, or null if no org source is set
  */
 function resolveFromEnvVars(): {
   org: string;
@@ -723,6 +729,17 @@ function resolveFromEnvVars(): {
 
   if (envOrg) {
     return { org: envOrg, detectedFrom: "SENTRY_ORG env var" };
+  }
+
+  const tokenOrg = parseSntrysClaim(getAuthToken())?.org;
+  if (tokenOrg) {
+    return rawProject
+      ? {
+          org: tokenOrg,
+          project: rawProject,
+          detectedFrom: "org auth token / SENTRY_PROJECT env var",
+        }
+      : { org: tokenOrg, detectedFrom: "org auth token" };
   }
 
   return null;
