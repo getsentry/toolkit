@@ -7,6 +7,7 @@
 import { stat } from "node:fs/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
+import { reportCliError } from "../error-reporting.js";
 
 /**
  * Check if an error is an expected file system error that should be silently ignored.
@@ -67,7 +68,7 @@ export function handleFileError(
   context: { operation: string; path?: string },
 ): void {
   if (!isIgnorableFileError(error)) {
-    Sentry.captureException(error, {
+    reportCliError(error, {
       tags: {
         operation: context.operation,
       },

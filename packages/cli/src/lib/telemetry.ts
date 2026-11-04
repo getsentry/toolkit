@@ -73,7 +73,7 @@ async function initTelemetryContext(): Promise<void> {
   } catch (error) {
     // Context initialization is not critical - continue without it
     // But capture the error for debugging
-    Sentry.captureException(error);
+    reportCliError(error);
   }
 }
 

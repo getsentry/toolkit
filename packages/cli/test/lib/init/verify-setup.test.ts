@@ -7,11 +7,12 @@ import { createMockUI } from "./ui/mock-ui.js";
 
 const sentryMocks = vi.hoisted(() => ({
   addBreadcrumb: vi.fn(),
-  captureException: vi.fn(),
   setTag: vi.fn(),
 }));
+const { reportCliError } = vi.hoisted(() => ({ reportCliError: vi.fn() }));
 
 vi.mock("@sentry/node", () => sentryMocks);
+vi.mock("../../../src/lib/error-reporting.js", () => ({ reportCliError }));
 
 type FixtureProcesses = {
   shellPid: number;
@@ -24,7 +25,7 @@ let fixtureProcesses: FixtureProcesses | undefined;
 
 beforeEach(async () => {
   sentryMocks.addBreadcrumb.mockClear();
-  sentryMocks.captureException.mockClear();
+  reportCliError.mockClear();
   sentryMocks.setTag.mockClear();
   tmpDir = await mkdtemp(join(TEST_TMP_DIR, "verify-setup-test-"));
 });
@@ -154,7 +155,7 @@ describe("verifySetup", () => {
       kind: "log.info",
       message: "Skipping verification — could not detect a dev command",
     });
-    expect(sentryMocks.captureException).not.toHaveBeenCalled();
+    expect(reportCliError).not.toHaveBeenCalled();
     expect(sentryMocks.setTag).toHaveBeenCalledWith("wizard.verify", "skipped");
     expect(sentryMocks.addBreadcrumb).toHaveBeenCalledWith({
       category: "wizard.verify",
@@ -183,7 +184,7 @@ describe("verifySetup", () => {
       kind: "log.warn",
       message: "Skipping verification — could not start the dev command.",
     });
-    expect(sentryMocks.captureException).not.toHaveBeenCalled();
+    expect(reportCliError).not.toHaveBeenCalled();
     expect(sentryMocks.setTag).toHaveBeenCalledWith("wizard.verify", "skipped");
     expect(sentryMocks.addBreadcrumb).toHaveBeenCalledWith({
       category: "wizard.verify",

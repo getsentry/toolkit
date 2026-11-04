@@ -382,6 +382,26 @@ const rules = {
           }
         : {},
   ),
+  // A raw capture skips the 4xx silencing and `api_error` context that
+  // reportCliError() applies, so user errors pile into one issue (CLI-10).
+  "no-raw-capture-exception": rule(
+    "Report errors with reportCliError() from lib/error-reporting.js. A raw captureException skips the 4xx silencing and API error context.",
+    (_context, file, report) =>
+      file.includes("/src/") && !file.endsWith("/src/lib/error-reporting.ts")
+        ? {
+            ImportDeclaration(node) {
+              if (!String(node.source.value).startsWith("@sentry/")) return;
+              for (const specifier of node.specifiers) {
+                if (specifier.imported?.name === "captureException")
+                  report(specifier);
+              }
+            },
+            CallExpression(node) {
+              if (call(node, "captureException")) report(node);
+            },
+          }
+        : {},
+  ),
   "no-stdout-write-in-commands": rule(
     "Yield CommandOutput instead of writing to stdout.",
     (_context, file, report) =>

@@ -10,7 +10,6 @@ import { existsSync, unlinkSync } from "node:fs";
 import { chmod, copyFile, mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isatty } from "node:tty";
-import { captureException } from "@sentry/node";
 import type { SentryContext } from "../../context.js";
 import { installAgentSkills } from "../../lib/agent-skills.js";
 import { assertAutoLoginHostTrusted } from "../../lib/auto-auth.js";
@@ -67,6 +66,7 @@ import {
   type ShellInfo,
 } from "../../lib/shell.js";
 import { addToWindowsUserPath } from "../../lib/windows-path.js";
+import { reportCliError } from "../../lib/error-reporting.js";
 
 type SetupFlags = {
   readonly install: boolean;
@@ -507,7 +507,7 @@ async function bestEffort(
     await fn();
   } catch (error) {
     warn(stepName, error);
-    captureException(error, {
+    reportCliError(error, {
       level: "warning",
       tags: { "setup.step": stepName },
     });

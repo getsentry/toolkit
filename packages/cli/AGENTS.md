@@ -988,6 +988,12 @@ separate script or baseline file to maintain. Fix a grandfathered catch by
 adding logging/re-throwing and deleting its suppression line; only add a new
 suppression for a genuinely intentional silent catch, with a real reason.
 
+Report errors to Sentry with `reportCliError(error, { tags, extra, level })`
+from `src/lib/error-reporting.ts`, never `captureException` directly. A raw
+capture skips the 4xx/network silencing and the `api_error` context, so user
+errors pile into one issue with no detail (CLI-10). The
+`no-raw-capture-exception` CLI Oxlint rule enforces this.
+
 ### Auto-Recovery for Wrong Entity Types
 
 When a user provides the wrong type of identifier (e.g., an issue short ID

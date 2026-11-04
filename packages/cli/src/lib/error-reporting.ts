@@ -437,6 +437,13 @@ function setCliErrorContext(scope: Sentry.Scope, error: unknown): void {
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Call-site details added to a captured event. */
+export type ReportContext = {
+  level?: Sentry.SeverityLevel;
+  tags?: Record<string, string>;
+  extra?: Record<string, unknown>;
+};
+
 /**
  * Report an error to Sentry without rethrowing.
  *
@@ -445,11 +452,15 @@ function setCliErrorContext(scope: Sentry.Scope, error: unknown): void {
  * log is not a substitute: users do not run `--verbose`, so swallowed
  * unexpected failures must become Sentry issues.
  *
+ * This is the only place that calls `captureException`; the
+ * `sentry-cli/no-raw-capture-exception` lint rule enforces it.
+ *
  * - Silenced errors (network, expected auth, 4xx) emit a metric and return
  *   without calling `captureException`.
- * - Captured errors get grouping tags + structured context on a fresh scope.
+ * - Captured errors get grouping tags + structured context on a fresh scope,
+ *   plus the caller's `context`.
  */
-export function reportCliError(error: unknown): void {
+export function reportCliError(error: unknown, context?: ReportContext): void {
   const silenced = classifySilenced(error);
   if (silenced) {
     recordSilencedError(error, silenced);
@@ -459,7 +470,7 @@ export function reportCliError(error: unknown): void {
   Sentry.withScope((scope) => {
     setGroupingTags(scope, error);
     setCliErrorContext(scope, error);
-    Sentry.captureException(error);
+    Sentry.captureException(error, context);
   });
 }
 
