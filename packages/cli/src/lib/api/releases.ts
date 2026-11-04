@@ -23,7 +23,12 @@ import type {
 } from "../../types/index.js";
 import { getCiCheckout } from "../ci.js";
 import { getEnv } from "../env.js";
-import { ApiError, ValidationError, validationError } from "../errors.js";
+import {
+  ApiError,
+  buildValidationMessage,
+  ValidationError,
+  validationError,
+} from "../errors.js";
 import {
   getHeadCommit,
   getRepositoryName,
@@ -32,7 +37,10 @@ import {
 } from "../git.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
-import { buildRepositorySettingsUrl } from "../sentry-web-urls.js";
+import {
+  buildRepositorySettingsUrl,
+  buildSourceCodeIntegrationsUrl,
+} from "../sentry-web-urls.js";
 import {
   API_MAX_PER_PAGE,
   apiRequestToRegion,
@@ -613,6 +621,44 @@ function noMatchingRepositoryError(
   );
 }
 
+/** How an org with no repositories gets one: connect a source code integration. */
+function connectIntegrationHint(orgSlug: string): string {
+  return `Connect GitHub, GitLab, Bitbucket, or Azure DevOps to Sentry and add the repository: ${buildSourceCodeIntegrationsUrl(orgSlug)}`;
+}
+
+/** Whether the org has at least one repository from a source code integration. */
+async function orgHasRepositories(orgSlug: string): Promise<boolean> {
+  const page = await listRepositoriesPaginated(orgSlug, { perPage: 1 });
+  return page.data.length > 0;
+}
+
+/**
+ * Build the error for an org with no repositories at all. Nothing on the
+ * command line can fix that, so the error links to the integration directory,
+ * where the org connects GitHub, GitLab, Bitbucket, or Azure DevOps.
+ *
+ * Stays an {@link ApiError} with {@link NO_REPO_INTEGRATIONS_MESSAGE} so the
+ * default mode can recognize it and fall back to local git history.
+ */
+function noRepoIntegrationError(
+  orgSlug: string,
+  version: string,
+  cwd?: string,
+): ApiError {
+  const detail = buildValidationMessage(connectIntegrationHint(orgSlug), [
+    `sentry integration list ${orgSlug}/`,
+    ...(isInsideGitWorkTree(cwd)
+      ? [`sentry release set-commits ${orgSlug}/${version} --local`]
+      : []),
+  ]);
+  return new ApiError(
+    NO_REPO_INTEGRATIONS_MESSAGE,
+    404,
+    detail,
+    `organizations/${orgSlug}/repos/`,
+  );
+}
+
 /**
  * Set commits on a release using auto-discovery mode.
  *
@@ -664,20 +710,20 @@ export async function setCommitsAuto(
   // The name filter returns nothing for an org whose repositories all have
   // other names, so only report a missing integration when the org has none.
   if (!foundAnyRepos) {
-    const anyRepo = await listRepositoriesPaginated(orgSlug, { perPage: 1 });
-    if (anyRepo.data.length === 0) {
-      const endpoint = `organizations/${orgSlug}/releases/${encodeURIComponent(version)}/`;
-      throw new ApiError(
-        NO_REPO_INTEGRATIONS_MESSAGE,
-        404,
-        undefined,
-        endpoint,
-      );
+    if (!(await orgHasRepositories(orgSlug))) {
+      throw noRepoIntegrationError(orgSlug, version, cwd);
     }
   }
 
   throw noMatchingRepositoryError(orgSlug, version, checkout, candidates, cwd);
 }
+
+/** A `--commit` ref: repository plus commit or commit range. */
+type CommitRef = {
+  repository: string;
+  commit: string;
+  previousCommit?: string;
+};
 
 /**
  * Set commits on a release using explicit refs (repository + commit range).
