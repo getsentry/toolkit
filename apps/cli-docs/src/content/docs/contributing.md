@@ -69,6 +69,7 @@ toolkit/
 │       │   │   ├── dsn/         # list
 │       │   │   ├── event/       # list, send, view
 │       │   │   ├── feedback/    # list, resolve, spam, unresolve, view
+│       │   │   ├── games/       # snake
 │       │   │   ├── integration/ # delete, list
 │       │   │   ├── issue/       # archive, events, explain, link, list, merge, plan, resolve, tags, unlink, unresolve, view
 │       │   │   ├── local/       # close, create, list, reset, restart, retention, run, serve, start, status, stop, view

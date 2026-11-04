@@ -41,6 +41,7 @@ export const TOP_LEVEL_BRIEFS = {
   event: "View, list, and send Sentry events",
   explore: "Query aggregate event data (Explore)",
   feedback: "Manage User Feedback",
+  games: "Terminal games",
   log: "View Sentry logs",
   mcp: "Start a local Sentry MCP server",
   monitor: "Work with Sentry cron monitors",

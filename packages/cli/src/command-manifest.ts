@@ -117,6 +117,7 @@ export const COMMAND_MANIFEST: Readonly<Record<string, ManifestEntry>> = {
     () => import("./commands/feedback/index.js"),
     "feedbackRoute",
   ),
+  games: route(() => import("./commands/games/index.js"), "gamesRoute"),
   log: route(() => import("./commands/log/index.js"), "logRoute"),
   mcp: route(() => import("./commands/mcp.js"), "mcpCommand"),
   monitor: route(() => import("./commands/monitor/index.js"), "monitorRoute"),
