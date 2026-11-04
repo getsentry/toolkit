@@ -20,6 +20,29 @@ const DROP_OUTCOMES = [
   "cardinality_limited",
 ] as const;
 
+// Sentry parses `interval` with `^(\d+)([hdmsw]?)$` (no unit means seconds),
+// and its Outcomes query (`get_constrained_date_range` in
+// src/sentry/snuba/sessions_v2.py) rejects a bucket that is not a whole number
+// of minutes, is longer than one day, or does not divide one day evenly.
+const INTERVAL_UNIT_SECONDS: Record<string, number> = {
+  "": 1,
+  s: 1,
+  m: 60,
+  h: 3600,
+  d: 86_400,
+  w: 604_800,
+};
+const ONE_DAY_SECONDS = 86_400;
+
+function isSupportedInterval(value: string): boolean {
+  const match = /^(\d+)([hdmsw]?)$/.exec(value);
+  if (!match) {
+    return false;
+  }
+  const seconds = Number(match[1]) * INTERVAL_UNIT_SECONDS[match[2]];
+  return seconds > 0 && seconds % 60 === 0 && ONE_DAY_SECONDS % seconds === 0;
+}
+
 const droppedBucketSchema = z.object({
   outcome: z.string(),
   reason: z.string(),
@@ -61,7 +84,7 @@ export default defineTool({
     "",
     "<examples>",
     "find_dropped_events(organizationSlug='my-org', dataset='spans', projectSlug='my-project')",
-    "find_dropped_events(organizationSlug='my-org', dataset='logs', statsPeriod='30d')",
+    "find_dropped_events(organizationSlug='my-org', dataset='logs', statsPeriod='30d', interval='1d')",
     "find_dropped_events(organizationSlug='my-org', dataset='errors', outcome='rate_limited')",
     "</examples>",
     "",
@@ -104,8 +127,12 @@ export default defineTool({
     interval: z
       .string()
       .trim()
+      .refine(isSupportedInterval, {
+        message:
+          "Must be at most '1d' and divide one day evenly, e.g. '5m', '1h', '6h', or '1d'. For a total over a longer range, use '1d' and sum the buckets, or omit interval to let Sentry pick.",
+      })
       .describe(
-        "Bucket size, e.g. '1h', '1d'. Omit to let Sentry pick for the range.",
+        "Bucket size, at most '1d' and dividing one day evenly, e.g. '1h', '1d'. Use '1d' and sum the buckets for longer ranges. Omit to let Sentry pick for the range.",
       )
       .nullable()
       .default(null),

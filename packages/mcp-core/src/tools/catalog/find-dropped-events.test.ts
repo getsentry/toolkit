@@ -1,6 +1,7 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   assertStructuredOnlyResult,
   getStructuredContent,
@@ -144,5 +145,67 @@ describe("find_dropped_events", () => {
     expect(captured?.get("dataset")).toBe("errors");
     expect(captured?.get("outcome")).toBe("rate_limited");
     expect(captured?.get("reason")).toBe("spike_protection");
+  });
+
+  describe("interval", () => {
+    const inputSchema = z.object(findDroppedEvents.inputSchema);
+    const baseParams = {
+      organizationSlug: "sentry-mcp-evals",
+      dataset: "spans",
+    };
+
+    // Production calls sent interval equal to statsPeriod, and Sentry answered
+    // "The interval has to be less than one day." for every one of them.
+    it.each([
+      ["7d", "7d"],
+      ["30d", "30d"],
+      ["7d", "30d"],
+      ["1w", "90d"],
+    ])(
+      "rejects interval=%s with statsPeriod=%s before calling Sentry",
+      (interval, statsPeriod) => {
+        const result = inputSchema.safeParse({
+          ...baseParams,
+          statsPeriod,
+          interval,
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error?.issues).toMatchObject([
+          {
+            path: ["interval"],
+            message:
+              "Must be at most '1d' and divide one day evenly, e.g. '5m', '1h', '6h', or '1d'. For a total over a longer range, use '1d' and sum the buckets, or omit interval to let Sentry pick.",
+          },
+        ]);
+      },
+    );
+
+    it.each(["23h", "30s"])(
+      "rejects interval=%s, which Sentry's Outcomes query also refuses",
+      (interval) => {
+        expect(
+          inputSchema.safeParse({ ...baseParams, statsPeriod: "30d", interval })
+            .success,
+        ).toBe(false);
+      },
+    );
+
+    it.each(["1d", "24h", "6h", "1h", "5m", "1m"])(
+      "accepts interval=%s",
+      (interval) => {
+        expect(
+          inputSchema.safeParse({ ...baseParams, statsPeriod: "30d", interval })
+            .data?.interval,
+        ).toBe(interval);
+      },
+    );
+
+    it("lets Sentry pick when interval is omitted", () => {
+      expect(
+        inputSchema.safeParse({ ...baseParams, statsPeriod: "30d" }).data
+          ?.interval,
+      ).toBeNull();
+    });
   });
 });
