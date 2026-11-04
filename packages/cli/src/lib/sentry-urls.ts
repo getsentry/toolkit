@@ -339,6 +339,21 @@ export function buildRepositorySettingsUrl(orgSlug: string): string {
 }
 
 /**
+ * Build URL to the organization's integration directory, filtered to source
+ * code integrations (GitHub, GitLab, Bitbucket, Azure DevOps). Connecting one
+ * is how an org gets repositories that releases can associate commits with.
+ *
+ * @param orgSlug - Organization slug
+ * @returns Full URL to the source code integrations directory
+ */
+export function buildSourceCodeIntegrationsUrl(orgSlug: string): string {
+  const base = isSaaS()
+    ? `${getOrgBaseUrl(orgSlug)}/settings/integrations/`
+    : `${getSentryBaseUrl()}/settings/${orgSlug}/integrations/`;
+  return `${base}?category=source%20code%20management`;
+}
+
+/**
  * Build URL to billing page with optional product filter.
  *
  * @param orgSlug - Organization slug
