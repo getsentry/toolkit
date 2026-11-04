@@ -623,6 +623,57 @@ test.each([
 );
 
 test.each([true, false])(
+  "URL-only partial updates preserve captured HTTP names (named first: %s)",
+  (namedFirst) => {
+    const span = {
+      span_id: "http-root",
+      trace_id: "partial-http-title",
+      is_segment: true,
+      start_timestamp: 1,
+      attributes: {
+        "sentry.op": { value: "http.server" },
+        "url.full": { value: "https://example.test/orders/42" },
+      },
+    };
+    const capture = (payload: unknown, id: string) =>
+      decodeEnvelope(
+        JSON.stringify([
+          {},
+          [[{ type: "span" }, { version: 2, items: [payload] }]],
+        ]),
+        id,
+      );
+    const named = { ...span, name: "GET /orders/42", end_timestamp: 2 };
+    const partial = { ...span, end_timestamp: 3 };
+    const items = (namedFirst ? [named, partial] : [partial, named]).flatMap(
+      (payload, index) => capture(payload, `capture-${index}`),
+    );
+    expect(buildTraceGroups(items)[0]).toMatchObject({
+      title: "GET /orders/42",
+      spans: [
+        {
+          description: "GET /orders/42",
+          metadata: { title: "GET /orders/42" },
+          endTimestamp: 3,
+        },
+      ],
+    });
+    expect(
+      buildTraceGroups([
+        ...items,
+        ...capture(
+          { ...span, name: "POST /orders/42", end_timestamp: 4 },
+          "renamed",
+        ),
+      ])[0],
+    ).toMatchObject({
+      title: "POST /orders/42",
+      spans: [{ description: "POST /orders/42", endTimestamp: 4 }],
+    });
+  },
+);
+
+test.each([true, false])(
   "duplicate spans use the latest completion for captured values (draft first: %s)",
   (draftFirst) => {
     const draft = {
@@ -683,6 +734,55 @@ test.each([true, false])(
     });
   },
 );
+
+test.each([
+  [[0, 1, 2]],
+  [[0, 2, 1]],
+  [[1, 0, 2]],
+  [[1, 2, 0]],
+  [[2, 0, 1]],
+  [[2, 1, 0]],
+])("partial span fields follow captured completion order: %j", (order) => {
+  const captures = [
+    { name: "GET /first", end_timestamp: 2, data: { result: "old" } },
+    { end_timestamp: 4, data: { pending: true } },
+    { name: "POST /renamed", end_timestamp: 3, data: { result: "new" } },
+  ];
+  const items = order.flatMap((index) =>
+    decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "span" },
+            {
+              ...captures[index]!,
+              trace_id: "field-order",
+              span_id: "root",
+              is_segment: true,
+              start_timestamp: 1,
+              attributes: {
+                "sentry.op": { value: "http.server" },
+                "url.full": { value: "https://example.test/renamed" },
+              },
+            },
+          ],
+        ],
+      ]),
+      `capture-${index}`,
+    ),
+  );
+  expect(buildTraceGroups(items)[0]).toMatchObject({
+    title: "POST /renamed",
+    spans: [
+      {
+        description: "POST /renamed",
+        endTimestamp: 4,
+        payload: { data: { result: "new", pending: true } },
+      },
+    ],
+  });
+});
 
 test.each([false, true])(
   "equal-priority trace titles update only for the chosen root (same root: %s)",

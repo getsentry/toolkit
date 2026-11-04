@@ -38,6 +38,7 @@ export type TraceGroup = {
 
 type MutableTraceGroup = Omit<TraceGroup, "roots" | "spans" | "itemCount"> & {
   spanMap: Map<string, TraceSpan>;
+  spanUpdates: Map<string, TraceSpan[]>;
   titleCandidates: Set<string>;
 };
 
@@ -120,15 +121,28 @@ function mergeSpan(
 ): TraceSpan {
   if (!previous) return next;
   // Completion time decides conflicting captured values. Name quality is
-  // independent: a later partial delivery must not erase an earlier name.
+  // independent: a later fallback label must not erase a captured name.
   // Raw feed items stay untouched.
-  const rank = (span: TraceSpan) =>
-    (span.description.trim() &&
-    span.description !== span.operation &&
-    span.description !== span.id &&
-    span.description !== span.item.type
-      ? 2
-      : 0) + (span.item.type === "transaction" ? 1 : 0);
+  const rank = (span: TraceSpan) => {
+    const description = span.description.trim();
+    const named =
+      description &&
+      description !== span.operation &&
+      description !== span.id &&
+      description !== span.item.type;
+    const payload = isRecord(span.payload) ? span.payload : {};
+    const captured = [
+      payload.transaction,
+      payload.description,
+      payload.name,
+    ].some(
+      (value) => typeof value === "string" && value.trim() === description,
+    );
+    return (
+      (named ? (captured ? 4 : 2) : 0) +
+      (span.item.type === "transaction" ? 1 : 0)
+    );
+  };
   const [primary, secondary] =
     (previous.endTimestamp ?? -Infinity) > (next.endTimestamp ?? -Infinity)
       ? [previous, next]
@@ -296,6 +310,7 @@ export function buildTraceGroups(
       logCount: 0,
       errorCount: 0,
       spanMap: new Map(),
+      spanUpdates: new Map(),
     };
     if (!traces.has(traceId)) {
       traces.set(traceId, trace);
@@ -312,25 +327,41 @@ export function buildTraceGroups(
     if (item.type === "transaction" || item.type === "span") {
       const rootSpan = getPayloadSpan(item.payload, item);
       if (rootSpan) {
-        const merged = mergeSpan(trace.spanMap.get(rootSpan.id), rootSpan);
-        trace.spanMap.set(rootSpan.id, merged);
+        const updates = trace.spanUpdates.get(rootSpan.id) ?? [];
+        updates.push(rootSpan);
+        trace.spanUpdates.set(rootSpan.id, updates);
         const isSegment =
           isRecord(item.payload) && item.payload.is_segment === true;
         if (item.type === "transaction" || isSegment) {
-          trace.titleCandidates.add(merged.id);
+          trace.titleCandidates.add(rootSpan.id);
         }
       }
     }
     for (const childSpan of getChildSpans(item.payload, item)) {
-      trace.spanMap.set(
-        childSpan.id,
-        mergeSpan(trace.spanMap.get(childSpan.id), childSpan),
-      );
+      const updates = trace.spanUpdates.get(childSpan.id) ?? [];
+      updates.push(childSpan);
+      trace.spanUpdates.set(childSpan.id, updates);
     }
   }
 
   return [...traces.values()]
     .map((trace) => {
+      // Fold original captures in completion order: a partial update's maximum
+      // end time must not become the clock of older fields it merely retained.
+      for (const [id, updates] of trace.spanUpdates) {
+        updates.sort(
+          (left, right) =>
+            (left.endTimestamp ?? -Infinity) -
+            (right.endTimestamp ?? -Infinity),
+        );
+        trace.spanMap.set(
+          id,
+          updates.reduce<TraceSpan | undefined>(
+            (merged, update) => mergeSpan(merged, update),
+            undefined,
+          )!,
+        );
+      }
       updateTraceTiming(trace);
       // A partial update can turn a former root into a child. Select from final
       // merged spans rather than retaining a priority from an earlier delivery.
