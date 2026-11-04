@@ -580,6 +580,48 @@ test.each([true, false])(
   },
 );
 
+test.each([
+  ["GET /orders/42", "GET /orders/42"],
+  ["   ", "/orders/42"],
+  [undefined, "/orders/42"],
+])(
+  "HTTP segment trace titles prefer useful captured names over URLs: %j",
+  (name, title) => {
+    const items = decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "span" },
+            {
+              version: 2,
+              items: [
+                {
+                  span_id: "http-root",
+                  trace_id: "http-title",
+                  name,
+                  is_segment: true,
+                  start_timestamp: 1,
+                  end_timestamp: 2,
+                  attributes: {
+                    "sentry.op": { value: "http.server" },
+                    "url.full": { value: "https://example.test/orders/42" },
+                  },
+                },
+              ],
+            },
+          ],
+        ],
+      ]),
+      "http-title",
+    );
+    expect(buildTraceGroups(items)[0]).toMatchObject({
+      title,
+      spans: [{ description: title }],
+    });
+  },
+);
+
 test.each([true, false])(
   "duplicate spans use the latest completion for captured values (draft first: %s)",
   (draftFirst) => {
