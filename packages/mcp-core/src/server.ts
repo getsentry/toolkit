@@ -18,7 +18,14 @@
  * });
  * ```
  */
-import { type CallToolResult, McpServer } from "@modelcontextprotocol/server";
+import {
+  type CallToolResult,
+  type JSONRPCRequest,
+  McpServer,
+  ProtocolError,
+  ProtocolErrorCode,
+  type Result,
+} from "@modelcontextprotocol/server";
 import {
   getActiveSpan,
   type SpanAttributeValue,
@@ -47,12 +54,103 @@ import {
   type ToolRegistry,
 } from "./tools/catalog-runtime/availability";
 import tools from "./tools/index";
+import { isCatalogInfrastructureToolName } from "./tools/surfaces";
 import type { StructuredToolOutput } from "./tools/types";
 import type { ServerContext } from "./types";
 import { LIB_VERSION } from "./version";
 
 function getSkillGrantedAttributeName(skill: Skill): string {
   return `app.consent.skill.${skill.replaceAll("-", "_")}.granted`;
+}
+
+/**
+ * Request-scoped attributes for the active `tools/call` span.
+ */
+function getToolCallSpanAttributes(
+  context: ServerContext,
+  experimentalMode: boolean,
+): Record<string, SpanAttributeValue> {
+  const attributes: Record<string, SpanAttributeValue> = {
+    "app.server.mode.experimental": experimentalMode,
+  };
+  if (context.transport) {
+    attributes["app.transport"] = context.transport;
+  }
+  if (context.clientFamily) {
+    attributes["app.client.family"] = context.clientFamily;
+  }
+  if (context.constraints.organizationSlug) {
+    attributes["app.constraint.organization_slug"] =
+      context.constraints.organizationSlug;
+  }
+  if (context.constraints.projectSlug) {
+    attributes["app.constraint.project_slug"] = context.constraints.projectSlug;
+  }
+  for (const skill of [...(context.grantedSkills ?? [])].sort()) {
+    attributes[getSkillGrantedAttributeName(skill)] = true;
+  }
+  return attributes;
+}
+
+type RequestHandler = (
+  request: JSONRPCRequest,
+  ctx: unknown,
+) => Promise<Result>;
+
+/**
+ * Makes calls to tool names this server did not register visible.
+ *
+ * The SDK rejects them with a -32602 JSON-RPC error before any of our
+ * handlers run. Sentry's MCP instrumentation treats -32602 as a client error
+ * and leaves the `tools/call` span status unset, so these calls showed up as
+ * successful 0ms spans without our request attributes. This marks the span as
+ * failed with `error.type: unknown_tool`, which keeps the call out of Sentry
+ * Issues, and explains the removed gateway tools that older sessions still
+ * call.
+ */
+function markUnknownToolCalls(
+  server: McpServer,
+  registeredToolNames: ReadonlySet<string>,
+  spanAttributes: Record<string, SpanAttributeValue>,
+): void {
+  // The SDK has no hook for unknown tool names, so this wraps its tools/call
+  // handler in the Protocol's private handler map.
+  const handlers = (
+    server.server as unknown as {
+      _requestHandlers?: Map<string, RequestHandler>;
+    }
+  )._requestHandlers;
+  const handleToolsCall = handlers?.get("tools/call");
+  if (!handlers || !handleToolsCall) {
+    return;
+  }
+
+  handlers.set("tools/call", async (request, ctx) => {
+    const name = request.params?.name;
+    if (typeof name !== "string" || registeredToolNames.has(name)) {
+      return await handleToolsCall(request, ctx);
+    }
+
+    const activeSpan = getActiveSpan();
+    if (activeSpan) {
+      activeSpan.setAttributes({
+        ...spanAttributes,
+        "error.type": "unknown_tool",
+      });
+      activeSpan.setStatus({
+        code: 2, // error
+        message: "not_found",
+      });
+    }
+
+    if (isCatalogInfrastructureToolName(name)) {
+      throw new ProtocolError(
+        ProtocolErrorCode.InvalidParams,
+        `Tool ${name} was removed from the Sentry MCP server. Call Sentry tools directly by name. If they are missing from your tool list, reconnect the Sentry MCP server to refresh it.`,
+      );
+    }
+    return await handleToolsCall(request, ctx);
+  });
 }
 
 function isCallToolResult(output: unknown): output is CallToolResult {
@@ -215,6 +313,11 @@ export function buildServer({
   // Registration enables this by default, but each server's tool catalog is fixed.
   if (registrations.length > 0) {
     server.server.registerCapabilities({ tools: { listChanged: false } });
+    markUnknownToolCalls(
+      server,
+      new Set(registrations.map(({ name }) => name)),
+      getToolCallSpanAttributes(contextWithModes, experimentalMode),
+    );
   }
   return wrapMcpServerWithSentry(server);
 }
@@ -240,11 +343,10 @@ function configureServer({
   const registrations = [];
   const registry: ToolRegistry = customTools ?? tools;
 
-  // Get granted skills from context for tool filtering
-  const grantedSkills: Set<Skill> | undefined = context.grantedSkills
-    ? new Set<Skill>(context.grantedSkills)
-    : undefined;
-  const grantedSkillIds = grantedSkills ? [...grantedSkills].sort() : undefined;
+  const toolCallSpanAttributes = getToolCallSpanAttributes(
+    context,
+    experimentalMode,
+  );
   const availableTools = getAvailableTools({
     tools: registry,
     context,
@@ -296,35 +398,7 @@ function configureServer({
       // Get the active MCP server span and attach request-scoped attributes.
       const activeSpan = getActiveSpan();
 
-      if (activeSpan) {
-        activeSpan.setAttribute(
-          "app.server.mode.experimental",
-          experimentalMode,
-        );
-        if (context.transport) {
-          activeSpan.setAttribute("app.transport", context.transport);
-        }
-        if (context.clientFamily) {
-          activeSpan.setAttribute("app.client.family", context.clientFamily);
-        }
-        if (context.constraints.organizationSlug) {
-          activeSpan.setAttribute(
-            "app.constraint.organization_slug",
-            context.constraints.organizationSlug,
-          );
-        }
-        if (context.constraints.projectSlug) {
-          activeSpan.setAttribute(
-            "app.constraint.project_slug",
-            context.constraints.projectSlug,
-          );
-        }
-        if (grantedSkillIds?.length) {
-          for (const skill of grantedSkillIds) {
-            activeSpan.setAttribute(getSkillGrantedAttributeName(skill), true);
-          }
-        }
-      }
+      activeSpan?.setAttributes(toolCallSpanAttributes);
 
       if (context.userId) {
         const user = {
