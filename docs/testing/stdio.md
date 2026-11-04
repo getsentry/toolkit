@@ -385,10 +385,6 @@ my-org/my-project                 # Limit calls to this project
 --agent-provider=openai           # openai, azure-openai, or anthropic
 --openai-base-url=URL             # Custom OpenAI endpoint
 
-# Sentry reporting
---sentry-dsn=DSN                  # Custom Sentry DSN for telemetry
---sentry-dsn=                     # Disable telemetry
-
 # Help
 --help                            # Show all options
 --version, -v                     # Show version (-v alone; elsewhere it is --verbose)
@@ -411,8 +407,8 @@ MCP_DISABLE_SKILLS=seer
 # AI features
 OPENAI_API_KEY=your-key                  # For AI-powered search tools like search_errors/search_traces/search_issues
 
-# Sentry reporting
-SENTRY_DSN=your-dsn
+# Telemetry (always sent to the Sentry CLI's project)
+SENTRY_CLI_NO_TELEMETRY=1                # Turn it off (DO_NOT_TRACK=1 works too)
 ```
 
 **Priority:** Command-line flags override environment variables.

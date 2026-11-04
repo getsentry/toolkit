@@ -22,7 +22,6 @@ export type McpFlags = {
   /** Deprecated: an `http://` `SENTRY_URL`. */
   readonly "insecure-http": boolean;
   readonly "mcp-url"?: string;
-  readonly "sentry-dsn"?: string;
   readonly "openai-base-url"?: string;
   readonly "openai-model"?: string;
   readonly "anthropic-base-url"?: string;
@@ -151,9 +150,9 @@ function scopeFlag(
 
 /**
  * Split `--flag=value` into `--flag value` where Stricli does not read the
- * joined form: an empty value (`--sentry-dsn=` turns off the server's
- * telemetry) or one with a line break (a token pasted with its newline).
- * MCP client configurations have always passed both to `@sentry/mcp-server`.
+ * joined form: an empty value or one with a line break (a token pasted with
+ * its newline). MCP client configurations have always passed both to
+ * `@sentry/mcp-server`.
  */
 export function splitInlineFlagValues(args: readonly string[]): string[] {
   return args.flatMap((arg) => {
@@ -170,7 +169,6 @@ export function splitInlineFlagValues(args: readonly string[]): string[] {
 /** Values read from the environment. */
 export type McpEnvArgs = {
   mcpUrl?: string;
-  sentryDsn?: string;
   openaiModel?: string;
   anthropicModel?: string;
   agentProvider?: string;
@@ -184,7 +182,6 @@ export type McpMergedArgs = {
   insecureHttp: boolean;
   url?: string;
   mcpUrl?: string;
-  sentryDsn?: string;
   openaiBaseUrl?: string;
   openaiModel?: string;
   anthropicBaseUrl?: string;
@@ -210,9 +207,6 @@ export function parseMcpEnv(env: NodeJS.ProcessEnv): McpEnvArgs {
   const fromEnv: McpEnvArgs = {};
   if (env.MCP_URL) {
     fromEnv.mcpUrl = env.MCP_URL;
-  }
-  if (env.SENTRY_DSN || env.DEFAULT_SENTRY_DSN) {
-    fromEnv.sentryDsn = env.SENTRY_DSN || env.DEFAULT_SENTRY_DSN;
   }
   if (env.OPENAI_MODEL) {
     fromEnv.openaiModel = env.OPENAI_MODEL;
@@ -243,7 +237,6 @@ export function mergeMcpArgs(
     host: flags.host,
     insecureHttp: flags["insecure-http"],
     mcpUrl: flags["mcp-url"] ?? env.mcpUrl,
-    sentryDsn: flags["sentry-dsn"] ?? env.sentryDsn,
     openaiBaseUrl: flags["openai-base-url"],
     openaiModel: flags["openai-model"] ?? env.openaiModel,
     anthropicBaseUrl: flags["anthropic-base-url"],
