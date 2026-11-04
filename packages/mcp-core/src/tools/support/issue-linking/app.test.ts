@@ -407,6 +407,9 @@ describe("linkAppIssue", () => {
 
   // Production 409s: agents sent a bare key or a self-built title path, and
   // Linear's callback returned its own canonical URL for the same issue.
+  // Sentry stores nothing on that 409, so the recovery cases assume the App
+  // (Sentry's "legacy writers can race the callback") or a concurrent request
+  // stored the association by the time it is read back.
   it.each([
     {
       name: "canonical URL",
@@ -432,7 +435,7 @@ describe("linkAppIssue", () => {
   ])(
     "links the requested Linear issue from a $name",
     async ({ sent, callback, stored, expected }) => {
-      const actions = mockLinearCallback(sent, callback, stored);
+      const actions = mockLinearCallback({ sent, status: callback, stored });
       await expect(
         linkAppIssue(api, { ...params, externalIssueUrl: sent }),
       ).resolves.toMatchObject(expected);
@@ -447,6 +450,11 @@ describe("linkAppIssue", () => {
       error: "returned a different URL than externalIssueUrl",
     },
     {
+      name: "the read-back fails",
+      stored: 500,
+      error: "returned a different URL than externalIssueUrl",
+    },
+    {
       name: "another issue was stored",
       stored: [
         {
@@ -454,13 +462,19 @@ describe("linkAppIssue", () => {
           webUrl: "https://linear.app/example/issue/ENG-999/other",
         },
       ],
-      error: "already linked to another 'linear' issue",
+      error: "already linked to a different 'linear' issue URL",
+    },
+    {
+      name: "another link operation holds the lock",
+      detail: "This issue link is being updated. Try again.",
+      stored: [],
+      error: "Another link operation may be in progress",
     },
   ])(
     "rejects a guarded conflict without an unguarded retry when $name",
-    async ({ stored, error }) => {
+    async ({ stored, detail, error }) => {
       const sent = "https://linear.app/example/issue/ENG-123";
-      const actions = mockLinearCallback(sent, 409, stored);
+      const actions = mockLinearCallback({ sent, status: 409, stored, detail });
       await expect(
         linkAppIssue(api, { ...params, externalIssueUrl: sent }),
       ).rejects.toThrow(error);
@@ -469,17 +483,27 @@ describe("linkAppIssue", () => {
   );
 });
 
-/** Mock a Linear link whose guarded callback returns `status`, then `stored` links. */
-function mockLinearCallback(
-  sent: string,
-  status: number,
-  stored: (typeof association)[],
-) {
+/** Mock a Linear link whose guarded callback returns `status`, then `stored` links (or an HTTP status). */
+function mockLinearCallback({
+  sent,
+  status,
+  stored,
+  detail = "A different external issue would be linked. Unlink the existing issue first.",
+}: {
+  sent: string;
+  status: number;
+  stored: (typeof association)[] | number;
+  detail?: string;
+}) {
   mockDiscovery();
   let actions = 0;
   mswServer.use(
     http.get(`${base}/organizations/example/issues/123/external-issues/`, () =>
-      HttpResponse.json(actions ? stored : []),
+      !actions
+        ? HttpResponse.json([])
+        : typeof stored === "number"
+          ? HttpResponse.json({ detail: "Internal Error" }, { status: stored })
+          : HttpResponse.json(stored),
     ),
     http.get(
       `${base}/sentry-app-installations/installation/external-requests/`,
@@ -496,13 +520,7 @@ function mockLinearCallback(
           new URL(request.url).searchParams.get("expectedExternalIssueUrl"),
         ).toBe(sent);
         return status === 409
-          ? HttpResponse.json(
-              {
-                detail:
-                  "A different external issue would be linked. Unlink the existing issue first.",
-              },
-              { status },
-            )
+          ? HttpResponse.json({ detail }, { status })
           : HttpResponse.json(association, { status });
       },
     ),

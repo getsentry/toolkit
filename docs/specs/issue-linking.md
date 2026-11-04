@@ -54,11 +54,15 @@ canonical URL with the current title path, so a bare key URL or another title
 path for the same issue gets HTTP 409. Pass the URL exactly as the provider
 returns it. An existing equivalent reference uses its stored URL for the guard.
 
-After an HTTP 409, the client reads the issue's associations once. If the only
-association for the App is the requested issue (same workspace and key), it
-returns `already_linked` with the stored URL. Otherwise it reports the conflict:
-another issue must be explicitly unlinked first, and with no stored association
-the error asks for the provider's exact URL. No unguarded retry or
+Sentry stores nothing on any of these 409s. When the 409 says a different
+external issue would be linked, the client reads the issue's associations once.
+If the only association for the App is the requested issue (same workspace and
+key), it returns `already_linked` with the stored URL. That only happens when
+the App itself or a concurrent request wrote the association (Sentry's
+"legacy writers can race the callback"). Another stored URL must be explicitly
+unlinked first. With nothing stored, or when the read fails, the error asks for
+the issue's current URL from the provider. A 409 for a link operation already
+in progress (the backend lock) asks for a retry instead. No unguarded retry or
 direct-registration fallback is used. If an App callback returns a conflicting
 URL, its external effects cannot be rolled back, even though Sentry rejects the
 association. Accepting a bare key or another title path for a new link needs
