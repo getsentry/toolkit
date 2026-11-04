@@ -15,7 +15,7 @@ import {
   listProjectEnvironments as sdkListProjectEnvironments,
   updateOrganizationRelease,
 } from "@sentry/api";
-import { encodeApiPathSegment } from "@sentry/toolkit-core/api-path-segment";
+import { encodeApiPathSegment } from "@sentry/api/client";
 import type {
   SentryDeploy,
   SentryRelease,

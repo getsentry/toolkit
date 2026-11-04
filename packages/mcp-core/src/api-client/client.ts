@@ -15,7 +15,6 @@ import {
   listProjectEventAttachments,
   parseSentryLinkHeader,
 } from "@sentry/api";
-import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
 import { operations } from "@sentry/api/operations";
 import {
   ApiError,
@@ -34,6 +33,7 @@ import {
   readJsonResponse,
   type RetryPolicy,
   selectIdempotentWrites,
+  sentryBearerHeader,
 } from "@sentry/api/client";
 import {
   addProjectTeam,

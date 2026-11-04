@@ -7,18 +7,6 @@
     "node": ">=22.13"
   },
   "exports": {
-    "./api-request": {
-      "types": "./src/api-request.ts",
-      "default": "./src/api-request.ts"
-    },
-    "./api-path-segment": {
-      "types": "./src/api-path-segment.ts",
-      "default": "./src/api-path-segment.ts"
-    },
-    "./auth-token": {
-      "types": "./src/auth-token.ts",
-      "default": "./src/auth-token.ts"
-    },
     "./events-fields": {
       "types": "./src/events-fields.ts",
       "default": "./src/events-fields.ts"
