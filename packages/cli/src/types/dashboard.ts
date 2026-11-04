@@ -29,6 +29,7 @@ import {
   record,
   safeParse,
   string,
+  union,
   unknown,
   variant,
 } from "valibot";
@@ -896,11 +897,13 @@ export function prepareDashboardForUpdate(dashboard: DashboardDetail): {
 /**
  * Single bucket from the events-timeseries API.
  *
- * `timestamp` is epoch milliseconds. `value` is null for empty buckets.
+ * `timestamp` is epoch milliseconds. `value` is null for empty buckets, and
+ * the errors dataset returns an empty string for a string-typed aggregate
+ * (for example `max()` over a measurement no event carries).
  */
 export const EventsTimeseriesRowSchema = looseObject({
   timestamp: number(),
-  value: nullable(number()),
+  value: nullable(union([number(), string()])),
   incomplete: optional(boolean()),
 });
 
@@ -917,12 +920,13 @@ export const EventsTimeseriesGroupBySchema = looseObject({
  *
  * Ungrouped queries return one series per `yAxis`. Grouped queries
  * (`topEvents > 0`) return one series per group per `yAxis`, with the
- * group identified by `groupBy` and the catch-all group by `meta.isOther`.
+ * group identified by `groupBy` and the catch-all group by `meta.isOther`
+ * (which carries `groupBy: null`).
  */
 export const EventsTimeseriesSeriesSchema = looseObject({
   yAxis: string(),
   values: array(EventsTimeseriesRowSchema),
-  groupBy: optional(array(EventsTimeseriesGroupBySchema)),
+  groupBy: optional(nullable(array(EventsTimeseriesGroupBySchema))),
   meta: looseObject({
     valueType: optional(string()),
     valueUnit: optional(nullable(string())),

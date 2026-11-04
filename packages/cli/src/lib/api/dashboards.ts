@@ -381,6 +381,23 @@ function timeseriesLabel(
   return series.yAxis;
 }
 
+/**
+ * Coerce a bucket value to a number for the renderers.
+ *
+ * Empty buckets arrive as null, and string-typed aggregates on the errors
+ * dataset arrive as strings (empty when no event carries the field).
+ */
+function bucketValue(value: number | string | null): number {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (value === null || value === "") {
+    return 0;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 /** Sort key for a series: explicit order first, "Other" after everything. */
 function seriesSortKey(series: EventsTimeseriesSeries): number {
   if (series.meta.isOther) {
@@ -394,8 +411,8 @@ function seriesSortKey(series: EventsTimeseriesSeries): number {
  *
  * The response is `{ timeSeries: [...] }` with one entry per y-axis (and per
  * group when `topEvents` is set). Timestamps are converted from epoch
- * milliseconds to seconds and null buckets become 0 so the renderers see
- * the same shape they always have.
+ * milliseconds to seconds and null or string buckets become numbers so the
+ * renderers see the same shape they always have.
  *
  * @param raw - Raw JSON response from events-timeseries
  * @param yAxis - The aggregate function name(s) that were requested
@@ -421,7 +438,7 @@ function parseEventsTimeseriesResponse(
       label: timeseriesLabel(s, multipleAxes),
       values: s.values.map(({ timestamp, value }) => ({
         timestamp: Math.floor(timestamp / 1000),
-        value: value ?? 0,
+        value: bucketValue(value),
       })),
       unit: s.meta.valueUnit ?? null,
     })),

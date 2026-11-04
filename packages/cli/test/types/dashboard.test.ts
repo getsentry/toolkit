@@ -1017,6 +1017,20 @@ describe("EventsTimeseriesResponseSchema", () => {
     const result = safeParse(EventsTimeseriesResponseSchema, { data: [] });
     expect(result.success).toBe(false);
   });
+
+  test("accepts a null groupBy on the Other series and string values", () => {
+    const result = safeParse(EventsTimeseriesResponseSchema, {
+      timeSeries: [
+        {
+          yAxis: "max(measurements.custom.ratio)",
+          groupBy: null,
+          values: [{ timestamp: 1_700_000_000_000, value: "" }],
+          meta: { valueType: "string", valueUnit: null, isOther: true },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe("EventsTableResponseSchema", () => {

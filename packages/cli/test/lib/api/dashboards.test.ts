@@ -613,6 +613,58 @@ describe("queryAllWidgets timeseries", () => {
     ]);
   });
 
+  test("coerces string bucket values and accepts a null groupBy", async () => {
+    apiRequestToRegionMock.mockResolvedValue({
+      data: {
+        timeSeries: [
+          {
+            yAxis: "max(measurements.custom.ratio)",
+            groupBy: null,
+            values: [
+              { timestamp: 1_700_000_000_000, value: "" },
+              { timestamp: 1_700_003_600_000, value: "2.5" },
+              { timestamp: 1_700_007_200_000, value: "n/a" },
+            ],
+            meta: { valueType: "string", valueUnit: null, isOther: true },
+          },
+        ],
+      },
+    });
+    const dashboard = makeDashboard([
+      {
+        title: "Ratio",
+        displayType: "area",
+        widgetType: "error-events",
+        queries: [
+          {
+            aggregates: ["max(measurements.custom.ratio)"],
+            columns: [],
+            conditions: "",
+          },
+        ],
+      },
+    ]);
+
+    const results = await queryAllWidgets(REGION, ORG, dashboard, {
+      period: "1h",
+    });
+
+    expect(results.get(0)).toEqual({
+      type: "timeseries",
+      series: [
+        {
+          label: "Other",
+          unit: null,
+          values: [
+            { timestamp: 1_700_000_000, value: 0 },
+            { timestamp: 1_700_003_600, value: 2.5 },
+            { timestamp: 1_700_007_200, value: 0 },
+          ],
+        },
+      ],
+    });
+  });
+
   test("returns an error result for a malformed response", async () => {
     apiRequestToRegionMock.mockResolvedValue({
       data: { data: [[1_700_000_000, [{ count: 1 }]]] },
