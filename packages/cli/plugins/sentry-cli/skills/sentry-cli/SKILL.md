@@ -658,7 +658,7 @@ Manage org auth tokens
 
 - `sentry token list [<org>]` — List org auth tokens
 - `sentry token create <org/name>` — Create an org auth token
-- `sentry token delete [<org>/]<token-id>` — Revoke an org auth token
+- `sentry token delete [<org>/]<token-id-or-name>` — Revoke an org auth token
 
 → Full flags and examples: `references/token.md`
 

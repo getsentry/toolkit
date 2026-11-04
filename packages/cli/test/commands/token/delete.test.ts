@@ -77,10 +77,25 @@ function output(write: ReturnType<typeof vi.fn>): string {
 
 describe("parseTokenArguments", () => {
   // Shared org/ID forms and rejection cases live in argument-conventions.test.ts.
-  test("points non-numeric IDs to token list", () => {
-    expect(() => parseTokenArguments(["my-org/github-actions"])).toThrow(
-      "Use the numeric ID from 'sentry token list'",
-    );
+  test("takes a token name, with or without the org", () => {
+    expect(parseTokenArguments(["my-org/github-actions"])).toMatchObject({
+      name: "github-actions",
+      org: { org: "my-org" },
+    });
+    expect(parseTokenArguments(["github-actions"])).toMatchObject({
+      name: "github-actions",
+      org: {},
+    });
+    expect(parseTokenArguments(["my-org", "CI", "token"])).toMatchObject({
+      name: "CI token",
+      org: { org: "my-org" },
+    });
+  });
+
+  test("a numeric argument is the ID", () => {
+    const input = parseTokenArguments(["my-org/7"]);
+    expect(input).toMatchObject({ id: "7", org: { org: "my-org" } });
+    expect(input.name).toBeUndefined();
   });
 
   test("rejects pasted token values without echoing them", () => {
@@ -171,6 +186,36 @@ describe("token delete", () => {
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).detail).toContain("--dry-run");
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  test("revokes a token by name", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await deleteCommand.loader();
+    await func.call(context, yesFlags, "my-org/github-actions");
+
+    expect(deleteSpy).toHaveBeenCalledWith("my-org", "7");
+    expect(output(stdoutWrite)).toContain("Revoked org auth token");
+  });
+
+  test("refuses a name several tokens share", async () => {
+    listSpy.mockResolvedValue([...tokens, { ...tokens[0], id: "8" }]);
+    const { context } = createMockContext();
+    const func = await deleteCommand.loader();
+
+    await expect(
+      func.call(context, yesFlags, "my-org/github-actions"),
+    ).rejects.toThrow("(IDs 7, 8). Pass the ID instead");
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  test("fails before deleting when no token has the name", async () => {
+    const { context } = createMockContext();
+    const func = await deleteCommand.loader();
+
+    await expect(
+      func.call(context, yesFlags, "my-org/no-such-token"),
+    ).rejects.toThrow(ResolutionError);
     expect(deleteSpy).not.toHaveBeenCalled();
   });
 

@@ -73,7 +73,7 @@ sentry token create my-org/github-actions
 sentry token create my-org/github-actions --json
 ```
 
-### `sentry token delete [<org>/]<token-id>`
+### `sentry token delete [<org>/]<token-id-or-name>`
 
 Revoke an org auth token
 
@@ -83,7 +83,7 @@ Revoke an org auth token
 
 | Argument | Description |
 |----------|-------------|
-| `[<org>/]<token-id>` | [&lt;org&gt;/]&lt;token-id&gt; - Numeric ID from sentry token list (not the token value) |
+| `[<org>/]<token-id-or-name>` | [&lt;org&gt;/]&lt;token-id-or-name&gt; - ID or name from sentry token list (not the token value) |
 
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`
@@ -95,6 +95,9 @@ Revoke an org auth token
 ```bash
 # Revoke token ID 12345 (auto-detect org)
 sentry token delete 12345
+
+# Revoke the token named github-actions
+sentry token delete my-org/github-actions
 
 # Preview revoking token ID 12345
 sentry token delete my-org/12345 --dry-run

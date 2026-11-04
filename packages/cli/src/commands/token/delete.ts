@@ -1,7 +1,7 @@
 /**
  * sentry token delete
  *
- * Revoke an org auth token by ID.
+ * Revoke an org auth token by ID or name.
  *
  * Uses `buildDeleteCommand` — auto-injects `--yes`/`--force`/`--dry-run`
  * flags and enforces the non-interactive guard before `func()` runs.
@@ -36,9 +36,10 @@ import {
   DELETE_SCOPES,
   ensureTokenScopes,
   explainTokenForbidden,
+  parseOrgScopedArg,
 } from "./shared.js";
 
-const USAGE = "[<org>/]<token-id>";
+const USAGE = "[<org>/]<token-id-or-name>";
 const USAGE_HINT = `sentry token delete ${USAGE}`;
 const log = logger.withTag("token.delete");
 
@@ -73,40 +74,45 @@ function formatTokenDeleted(result: DeleteResult): string {
   return renderMarkdown(`Revoked ${label} in ${org}.`);
 }
 
-/** Parsed token ID, organization and argument warnings. */
-export type TokenInput = {
-  /** Numeric ID of the token to revoke. */
-  readonly id: string;
+/** The token to revoke: its numeric ID, or its name. */
+type TokenRef =
+  | { readonly id: string; readonly name?: undefined }
+  | { readonly name: string; readonly id?: undefined };
+
+/** Parsed token reference, organization and argument warnings. */
+export type TokenInput = TokenRef & {
   /** Organization input, including a pasted URL's server. */
   readonly org: OrgInput;
   /** Parser warnings to show when resolving the target. */
   readonly warnings: readonly string[];
 };
 
-/** A token ID bound to the organization that owns it. */
+/** A token reference bound to the organization that owns it. */
 type TokenArguments = BoundArguments<
   TokenInput,
-  { readonly org: string; readonly id: string }
+  { readonly org: string; readonly ref: TokenRef }
 >;
 
 /**
- * Parse one org-scoped token ID using the shared ID argument grammar.
+ * Parse one org-scoped token ID or name using the shared ID argument
+ * grammar. Like `token create`, `<org>/<name>` names the org when the part
+ * before the first `/` is an org slug.
  *
- * @throws {ContextError} When no ID is given
- * @throws {ValidationError} When the ID or organization is invalid, or
- *   more than one ID is given
+ * @throws {ContextError} When no ID or name is given
+ * @throws {ValidationError} When the organization is invalid, or more than
+ *   one ID is given
  */
 export function parseTokenArguments(args: readonly string[]): TokenInput {
   // Token values are secrets: refuse them without echoing them back into
   // the terminal, logs, or error reports.
   if (args.some((arg) => TOKEN_VALUE_PATTERN.test(arg))) {
     throw new ValidationError(
-      "That looks like a token value, not a token ID. Use the numeric ID " +
-        "from 'sentry token list'.",
+      "That looks like a token value, not a token ID or name. Use the ID " +
+        "or name from 'sentry token list'.",
       "token-id",
     );
   }
-  const { target, ids, baseUrl, warnings } = parseIdArguments(
+  const { target, ids, name, baseUrl, warnings } = parseIdArguments(
     args,
     ID_KINDS.token,
     { usageHint: USAGE_HINT, multiple: true },
@@ -118,25 +124,50 @@ export function parseTokenArguments(args: readonly string[]): TokenInput {
       "token-id",
     );
   }
-  const [id = ""] = ids;
-  const org = parseOrgInput(target, USAGE_HINT);
-  return { id, org: baseUrl ? { ...org, baseUrl } : org, warnings };
+  let orgArg = target;
+  let ref: TokenRef = { id: ids[0] ?? "" };
+  if (name !== undefined) {
+    const scoped =
+      target === undefined
+        ? parseOrgScopedArg(name, "Token ID or name", USAGE_HINT)
+        : { value: name };
+    orgArg = scoped.orgSlug ?? target;
+    ref = { name: scoped.value };
+  }
+  const org = parseOrgInput(orgArg, USAGE_HINT);
+  return { ...ref, org: baseUrl ? { ...org, baseUrl } : org, warnings };
 }
 
 /**
  * Find the token in the unpaginated list so confirmation can show its name.
  *
  * @throws {ResolutionError} When the org has no active token with this ID
+ *   or name
+ * @throws {ValidationError} When several tokens have this name
  */
-async function findToken(org: string, id: string): Promise<OrgAuthToken> {
+async function findToken(org: string, ref: TokenRef): Promise<OrgAuthToken> {
   const tokens = await listOrgAuthTokens(org);
-  const token = tokens.find((t) => t.id === id);
+  const matches =
+    ref.id === undefined
+      ? tokens.filter((t) => t.name === ref.name)
+      : tokens.filter((t) => t.id === ref.id);
+  const [token] = matches;
   if (!token) {
+    const label = ref.id ?? `'${ref.name}'`;
     throw new ResolutionError(
-      `Org auth token ${id}`,
+      `Org auth token ${label}`,
       `not found in ${org}`,
       `sentry token list ${org}`,
       ["It may already be revoked."],
+    );
+  }
+  // Names aren't unique, and revoking the wrong token breaks whatever uses it.
+  if (matches.length > 1) {
+    const ids = matches.map((t) => t.id).join(", ");
+    throw new ValidationError(
+      `${matches.length} org auth tokens in ${org} are named '${ref.name}' ` +
+        `(IDs ${ids}). Pass the ID instead: sentry token delete ${org}/<token-id>`,
+      "token-id",
     );
   }
   return token;
@@ -149,8 +180,10 @@ export const deleteCommand = buildDeleteCommand({
     fullDescription:
       "Revoke an org auth token. Anything still using it (CI jobs, build " +
       "plugins) stops being able to upload right away.\n\n" +
-      "Takes the token's numeric ID from `sentry token list`, not the token " +
-      "value, so the secret never needs to be pasted into a terminal.\n\n" +
+      "Takes the token's numeric ID or name from `sentry token list`, not " +
+      "the token value, so the secret never needs to be pasted into a " +
+      "terminal. Names aren't unique: when several tokens share one, pass " +
+      "the ID.\n\n" +
       "Needs the org:write permission (org owners and managers). The first run " +
       "asks you to re-authorize so your CLI login can manage org auth tokens " +
       "(interactive runs only; skipped with --yes, --json, or --dry-run).",
@@ -158,6 +191,10 @@ export const deleteCommand = buildDeleteCommand({
       {
         description: "Revoke token ID 12345 (auto-detect org)",
         command: "sentry token delete 12345",
+      },
+      {
+        description: "Revoke the token named github-actions",
+        command: "sentry token delete my-org/github-actions",
       },
       {
         description: "Preview revoking token ID 12345",
@@ -174,9 +211,9 @@ export const deleteCommand = buildDeleteCommand({
   },
   parameters: {
     positional: boundArguments({
-      placeholder: "org/token-id",
+      placeholder: "org/token-id-or-name",
       brief:
-        "[<org>/]<token-id> - Numeric ID from sentry token list (not the token value)",
+        "[<org>/]<token-id-or-name> - ID or name from sentry token list (not the token value)",
       kind: ORG_TARGET,
       parse: parseTokenArguments,
       resolve: async (input, context: SentryContext) => {
@@ -188,12 +225,14 @@ export const deleteCommand = buildDeleteCommand({
           context.cwd,
           USAGE_HINT,
         );
-        return { org, id: input.id };
+        const ref: TokenRef =
+          input.id === undefined ? { name: input.name } : { id: input.id };
+        return { org, ref };
       },
     }),
   },
   async *func(this: SentryContext, flags: DeleteFlags, target: TokenArguments) {
-    const { org, id } = await target.resolved;
+    const { org, ref } = await target.resolved;
 
     selectAccountForOrg(org);
     // Elevate before looking the token up and confirming, so an older login
@@ -205,11 +244,12 @@ export const deleteCommand = buildDeleteCommand({
 
     let token: OrgAuthToken;
     try {
-      token = await findToken(org, id);
+      token = await findToken(org, ref);
     } catch (error) {
       throw explainTokenForbidden(error, DELETE_SCOPES, scopeMissing);
     }
-    const result: DeleteResult = { deleted: false, org, id, name: token.name };
+    const { id, name } = token;
+    const result: DeleteResult = { deleted: false, org, id, name };
 
     if (flags["dry-run"]) {
       yield new CommandOutput({ ...result, dryRun: true });

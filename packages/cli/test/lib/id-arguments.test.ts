@@ -456,16 +456,30 @@ describe("org-scoped kinds without hex IDs", () => {
     }
   });
 
-  test.each(["integration", "token"] as const)("%s IDs are numeric", (name) => {
-    const kind = ID_KINDS[name];
-    expect(parse(kind, ["acme", "42"])).toEqual({
+  test("integration IDs are numeric", () => {
+    const { integration } = ID_KINDS;
+    expect(parse(integration, ["acme", "42"])).toEqual({
       target: "acme/",
       ids: ["42"],
       warnings: [],
     });
-    expect(() => parse(kind, ["acme/github"])).toThrow(
-      `Use the numeric ID from 'sentry ${name} list'`,
+    expect(() => parse(integration, ["acme/github"])).toThrow(
+      "Use the numeric ID from 'sentry integration list'",
     );
-    expect(() => parse(kind, ["acme/"])).toThrow(ContextError);
+    expect(() => parse(integration, ["acme/"])).toThrow(ContextError);
+  });
+
+  test("a token is a numeric ID or a name", () => {
+    const { token } = ID_KINDS;
+    expect(parse(token, ["acme", "42"])).toEqual({
+      target: "acme/",
+      ids: ["42"],
+      warnings: [],
+    });
+    expect(parse(token, ["CI token"])).toEqual({
+      ids: [],
+      name: "CI token",
+      warnings: [],
+    });
   });
 });
