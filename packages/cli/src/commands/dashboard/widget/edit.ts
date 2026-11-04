@@ -171,9 +171,19 @@ function buildReplacement(
   validateEnumsAndAggregates(flags, existing, mergedQueries);
   validateQueryConstraints(flags, existing, mergedQueries);
 
+  // Sentry returns null for a display type it doesn't recognize, and it
+  // won't accept null back.
+  const displayType = flags.display ?? existing.displayType;
+  if (displayType === null) {
+    throw new ValidationError(
+      "This widget has no display type Sentry recognizes. Pass --display to set one.",
+      "display",
+    );
+  }
+
   const raw: Record<string, unknown> = {
     title: flags["new-title"] ?? existing.title,
-    displayType: flags.display ?? existing.displayType,
+    displayType,
     queries: mergedQueries ?? existing.queries,
     layout: mergeLayout(flags, existing),
   };
