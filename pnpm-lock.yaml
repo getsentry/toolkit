@@ -681,7 +681,7 @@ importers:
         specifier: 3.4.0
         version: 3.4.0
 
-  packages/cli-codemod-v3-to-v4:
+  packages/cli3to4:
     devDependencies:
       '@codemod.com/jssg-types':
         specifier: 1.6.3

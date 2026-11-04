@@ -23,23 +23,43 @@ const METHOD_MAP: Record<string, [string, string]> = {
   setCommits: ["release", "set-commits"],
   uploadSourceMaps: ["sourcemap", "upload"],
   proposeVersion: ["release", "propose-version"],
-  // Note: `newDeploy` is handled separately (via the `run(...)` escape hatch),
-  // not here — the typed `release.deploy` method can't pass the required
-  // environment positional. See the transform below.
+  newDeploy: ["release", "deploy"],
+  listDeploys: ["release", "deploys"],
 };
 
 /** How each method's positional args fold into the v4 options object. */
 const RESHAPE: Record<
   string,
-  { key: string; spread?: boolean; todo?: string }
+  {
+    key: string;
+    /** Merge the v3 options argument into the v4 options object. */
+    spread?: boolean;
+    /** v3 → v4 key renames applied inside an object-literal options arg. */
+    rename?: Record<string, string>;
+    todo?: string;
+    /** Only flag the call when it passes a v3 options argument. */
+    todoIfOptions?: string;
+  }
 > = {
-  new: { key: "orgVersion" },
+  // v3 `new(release, { projects })`: v4 takes one comma-separated `project`.
+  new: {
+    key: "orgVersion",
+    todoIfOptions:
+      "v3 `projects` (array) is v4 `project` (comma-separated string) — add it to this call",
+  },
   finalize: { key: "orgVersion" },
   setCommits: {
     key: "orgVersion",
     spread: true,
-    todo: "verify set-commits options: v4 has no `ignoreMissing`/`ignoreEmpty` (both dropped); repo/commit map via the `commit` flag and `auto`/`local` are kept",
+    todo: 'verify set-commits options: v3 `repo`/`commit`/`previousCommit` become one `commit: "REPO@PREV..SHA"` string; `ignoreMissing`/`ignoreEmpty` were dropped; `auto` is kept',
   },
+  newDeploy: {
+    key: "orgVersion",
+    spread: true,
+    rename: { env: "environment" },
+    todo: "verify deploy options: v3 `env` is v4 `environment`; `started`/`finished` are ISO 8601 strings and `time` is a string of seconds (v3 took numbers); `projects` was dropped",
+  },
+  listDeploys: { key: "orgVersion" },
   // No spread: v3 `include` is a path array, but v4 `sourcemap.upload` takes a
   // single `directory` string — spreading would emit an invalid `include` key.
   uploadSourceMaps: {
@@ -99,6 +119,33 @@ const codemod: Codemod<L> = async (root) => {
     insertedText: text,
   });
 
+  /** An object literal's text with top-level keys renamed per `rename`. */
+  const renameKeys = (obj: Node, rename: Record<string, string>): string => {
+    const base = obj.range().start.index;
+    const out: [number, number, string][] = [];
+    for (const c of obj.children()) {
+      if (c.kind() === "pair") {
+        const k = c.field("key");
+        const to = k && rename[unquote(k.text())];
+        if (k && to) out.push([k.range().start.index, k.range().end.index, to]);
+      } else if (c.kind() === "shorthand_property_identifier") {
+        const to = rename[c.text()];
+        if (to) {
+          out.push([
+            c.range().start.index,
+            c.range().end.index,
+            `${to}: ${c.text()}`,
+          ]);
+        }
+      }
+    }
+    let text = obj.text();
+    for (const [start, end, to] of out.reverse()) {
+      text = text.slice(0, start - base) + to + text.slice(end - base);
+    }
+    return text;
+  };
+
   /** Empty a call's argument list, keeping the parens: `X(null,\n)` → `X()`. */
   const clearArgs = (call: Node): Edit => {
     const r = call.field("arguments")!.range();
@@ -110,7 +157,21 @@ const codemod: Codemod<L> = async (root) => {
   };
 
   // 1) Rewrite the module specifier, keeping the user's binding name.
-  //    ESM: `import X from "@sentry/cli"` (quote-agnostic, structural).
+  //    v3 exports the class as `SentryCli` (`import { SentryCli }`); v2 set
+  //    `module.exports` to it (`import X from` / bare `require`). v4 exports
+  //    the `createSentrySDK` factory as both its default and a named export.
+  const rewriteSource = (src: Node) => {
+    const q = src.text()[0];
+    edits.push(replaceNode(src, `${q}sentry${q}`));
+  };
+  /** Names used as `X.SentryCli`, i.e. bindings holding the v3 module object. */
+  const memberObjects = new Set(
+    rootNode
+      .findAll({ rule: { pattern: "$OBJ.SentryCli" } })
+      .map((m) => m.getMatch("OBJ")?.text() ?? ""),
+  );
+
+  //    ESM: `import X from`, `import * as X from`, `import { SentryCli } from`.
   for (const imp of rootNode.findAll({
     rule: {
       kind: "import_statement",
@@ -120,7 +181,6 @@ const codemod: Codemod<L> = async (root) => {
     const src = imp.field("source");
     if (!src || unquote(src.text()) !== "@sentry/cli") continue;
     const clause = imp.children().find((c) => c.kind() === "import_clause");
-    // Default import (`import X from`) or namespace import (`import * as X from`).
     const def = clause?.children().find((c) => c.kind() === "identifier");
     const nsId = clause
       ?.children()
@@ -129,40 +189,113 @@ const codemod: Codemod<L> = async (root) => {
       .find((c) => c.kind() === "identifier");
     if (def) bindings.add(def.text());
     if (nsId) {
-      // Namespace import: the v3 class is the module's default export, so it's
-      // constructed as `new X.default()` (or `new X()` if the module is callable).
+      // `new X.SentryCli()` (v3) or `new X.default()` (v2 via interop).
       bindings.add(nsId.text());
       nsBindings.add(nsId.text());
     }
-    const q = src.text()[0];
-    edits.push(replaceNode(src, `${q}sentry${q}`));
+    for (const spec of imp.findAll({ rule: { kind: "import_specifier" } })) {
+      const name = spec.field("name")?.text();
+      const local = spec.field("alias")?.text() ?? name;
+      if (!name || !local) continue;
+      const typeOnly = /^type\s/.test(spec.text()) ? "type " : "";
+      if (name === "SentryCli") {
+        bindings.add(local);
+        edits.push(replaceNode(spec, `${typeOnly}createSentrySDK as ${local}`));
+      } else if (name === "SentryCliOptions") {
+        edits.push(replaceNode(spec, `${typeOnly}SentryOptions as ${local}`));
+      } else {
+        edits.push(
+          todo(
+            imp,
+            `v4 has no \`${name}\` export; use the parameter types of the v4 SDK methods instead`,
+          ),
+        );
+      }
+    }
+    rewriteSource(src);
   }
-  //    CJS: `const X = require("@sentry/cli")` (metavar is quote-agnostic).
-  //    Also handles `const X = require("@sentry/cli").default` (member access).
+  //    CJS: `require("@sentry/cli")` bare, `.default`, `.SentryCli`, or
+  //    destructured (`const { SentryCli } = require(…)`).
   for (const call of rootNode.findAll({ rule: { pattern: "require($SRC)" } })) {
     const src = call.getMatch("SRC");
     if (!src || unquote(src.text()) !== "@sentry/cli") continue;
-    // The declarator may be the direct parent, or one level up when the require
-    // is the object of a member expression (`require(...).default`).
-    let decl = call.parent();
-    const bare = decl?.kind() === "variable_declarator";
-    if (decl?.kind() === "member_expression") decl = decl.parent();
-    if (decl?.kind() === "variable_declarator") {
-      const id = decl.field("name");
+    const parent = call.parent();
+    const member = parent?.kind() === "member_expression" ? parent : null;
+    const decl = member ? member.parent() : parent;
+    const id =
+      decl?.kind() === "variable_declarator" ? decl.field("name") : null;
+
+    if (id?.kind() === "object_pattern") {
+      for (const c of id.children()) {
+        if (
+          c.kind() === "shorthand_property_identifier_pattern" &&
+          c.text() === "SentryCli"
+        ) {
+          bindings.add("SentryCli");
+          edits.push(replaceNode(c, "createSentrySDK: SentryCli"));
+        } else if (c.kind() === "pair_pattern") {
+          const k = c.field("key");
+          const v = c.field("value");
+          if (k && unquote(k.text()) === "SentryCli" && v) {
+            bindings.add(v.text());
+            edits.push(replaceNode(k, "createSentrySDK"));
+          }
+        }
+      }
+      rewriteSource(src);
+    } else if (member) {
+      // `.default` stays valid; `.SentryCli` becomes `.createSentrySDK`
+      // (rewritten with the other `X.SentryCli` member accesses below).
       if (id?.kind() === "identifier") bindings.add(id.text());
+      rewriteSource(src);
+    } else if (id?.kind() === "identifier" && memberObjects.has(id.text())) {
+      // v3: the module object, used as `X.SentryCli`.
+      bindings.add(id.text());
+      nsBindings.add(id.text());
+      rewriteSource(src);
+    } else {
+      // v2: `module.exports` was the class itself; v4's CJS module object
+      // exposes the factory as `.default`/`createSentrySDK`, so add `.default`.
+      if (id?.kind() === "identifier") bindings.add(id.text());
+      const q = src.text()[0];
+      edits.push(replaceNode(call, `require(${q}sentry${q}).default`));
     }
-    const q = src.text()[0];
-    // v3 set `module.exports` to the class itself; v4's CJS module object only
-    // exposes the factory as `.default`/`createSentrySDK`, so add `.default`.
-    edits.push(
-      bare
-        ? replaceNode(call, `require(${q}sentry${q}).default`)
-        : replaceNode(src, `${q}sentry${q}`),
-    );
   }
 
   // Only touch files that actually import the v3 wrapper.
   if (bindings.size === 0) return null;
+
+  //    `X.SentryCli` on the v3 module object → `X.createSentrySDK`.
+  const isModuleMember = (obj: Node | null) =>
+    !!obj &&
+    (nsBindings.has(obj.text()) ||
+      /^require\(\s*["']@sentry\/cli["']\s*\)$/.test(obj.text()));
+  for (const m of rootNode.findAll({ rule: { pattern: "$OBJ.SentryCli" } })) {
+    const prop = m.field("property");
+    if (prop && isModuleMember(m.getMatch("OBJ"))) {
+      edits.push(replaceNode(prop, "createSentrySDK"));
+    }
+  }
+
+  //    v3 static helpers have no v4 equivalent.
+  for (const call of rootNode.findAll({
+    rule: { pattern: "$B.$STATIC()" },
+  })) {
+    const b = call.getMatch("B");
+    const fn = call.getMatch("STATIC")?.text();
+    if (
+      b &&
+      bindings.has(b.text()) &&
+      (fn === "getVersion" || fn === "getPath")
+    ) {
+      edits.push(
+        todo(
+          call,
+          `v4 has no static \`${fn}()\`; run \`sentry --version\` or resolve the \`sentry\` binary yourself`,
+        ),
+      );
+    }
+  }
 
   // 2) Collect instance variable names from `new <binding>(...)`.
   //    Matches `new X(...)` for any binding, plus `new X.default(...)` when X is
@@ -176,8 +309,8 @@ const codemod: Codemod<L> = async (root) => {
       return (
         !!obj &&
         !!prop &&
-        prop.text() === "default" &&
-        nsBindings.has(obj.text())
+        (prop.text() === "default" || prop.text() === "SentryCli") &&
+        isModuleMember(obj)
       );
     }
     return false;
@@ -321,27 +454,6 @@ const codemod: Codemod<L> = async (root) => {
     const method = methodNode.text();
     const a = argsOf(call);
 
-    if (method === "newDeploy") {
-      // The typed `release.deploy` SDK method collapses version/environment/name
-      // into a single positional token, so it can't supply the required
-      // environment. Emit the raw `run(...)` escape hatch (which forwards
-      // separate argv) and flag the parts the codemod can't derive.
-      const version = a[0]?.text();
-      edits.push(
-        todo(
-          call,
-          "release deploy needs <environment> (and optional [name]) as positionals plus --url/--started/--finished/--time flags from your v3 options — add them to this run() call",
-        ),
-      );
-      edits.push(
-        replaceNode(
-          call,
-          `${recv.text()}.run("release", "deploy"${version ? `, ${version}` : ""})`,
-        ),
-      );
-      continue;
-    }
-
     const map = METHOD_MAP[method];
     if (!map) continue;
     const [route, target] = map;
@@ -354,7 +466,10 @@ const codemod: Codemod<L> = async (root) => {
       if (opts?.kind() === "object" && opts.children().some(named)) {
         // Keep the user's object text verbatim (layout and comments, so a
         // trailing `// …` can't swallow the closing brace); prepend the key.
-        argsOut = `{ ${lead ? `${lead},` : ""}${opts.text().slice(1)}`;
+        const text = reshape.rename
+          ? renameKeys(opts, reshape.rename)
+          : opts.text();
+        argsOut = `{ ${lead ? `${lead},` : ""}${text.slice(1)}`;
       } else {
         const parts = [lead];
         if (opts && opts.kind() !== "object") parts.push(`...${opts.text()}`);
@@ -366,12 +481,33 @@ const codemod: Codemod<L> = async (root) => {
     }
 
     if (reshape?.todo) edits.push(todo(call, reshape.todo));
+    if (reshape?.todoIfOptions && a[1]) {
+      edits.push(todo(call, reshape.todoIfOptions));
+    }
     edits.push(
       replaceNode(
         call,
         `${recv.text()}${accessor(route)}${accessor(target)}(${argsOut})`,
       ),
     );
+  }
+
+  // 4c) `<instance>.sourceMaps.inject(opts)` → `<instance>.sourcemap.inject(opts)`.
+  for (const call of rootNode.findAll({
+    rule: { pattern: "$RECV.sourceMaps.inject($$$A)" },
+  })) {
+    const recv = call.getMatch("RECV");
+    if (!recv || !isInstance(recv)) continue;
+    const args = argsOf(call)
+      .map((n) => n.text())
+      .join(", ");
+    edits.push(
+      todo(
+        call,
+        "verify inject options: v4 takes one `directory` (v3 `paths` was an array — run once per directory), and `ignore`/`ext` are comma-separated strings; `ignoreFile`/`dryRun` are kept",
+      ),
+    );
+    edits.push(replaceNode(call, `${recv.text()}.sourcemap.inject(${args})`));
   }
 
   return edits.length ? rootNode.commitEdits(edits) : null;

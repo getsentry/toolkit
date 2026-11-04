@@ -418,7 +418,7 @@ v3's `@sentry/cli` package exported a `SentryCli` class for programmatic use:
 
 ```js
 // v3
-const SentryCli = require("@sentry/cli");
+const { SentryCli } = require("@sentry/cli");
 const cli = new SentryCli(null, { authToken: process.env.SENTRY_AUTH_TOKEN });
 await cli.releases.new("1.0.0");
 await cli.releases.uploadSourceMaps("1.0.0", { include: ["./dist"] });
@@ -484,7 +484,7 @@ git clone --depth 1 https://github.com/getsentry/toolkit /tmp/sentry-toolkit-src
 
 # From your project root (-t . targets the current directory)
 npx codemod@latest jssg run --language typescript \
-  /tmp/sentry-toolkit-src/packages/cli-codemod-v3-to-v4/scripts/codemod.ts -t .
+  /tmp/sentry-toolkit-src/packages/cli3to4/scripts/codemod.ts -t .
 ```
 
 :::note
@@ -492,14 +492,15 @@ Once the codemod is published to the [Codemod registry](https://codemod.com), th
 shorter form below will work — until then, use the run-from-source command above:
 
 ```bash
-npx codemod@latest @getsentry/cli-v3-to-v4
+npx codemod@latest @getsentry/cli3to4
 ```
 :::
 
-It rewrites `.js`/`.ts` files in place. Review the diff afterward — argument
+It rewrites `.js`/`.ts` files in place (the registry form also covers
+`.jsx`/`.tsx`). Review the diff afterward — argument
 shapes differ (especially for `uploadSourceMaps` and `newDeploy`), so the codemod
 flags those rather than guessing. See
-[`packages/cli-codemod-v3-to-v4`](https://github.com/getsentry/toolkit/tree/main/packages/cli-codemod-v3-to-v4)
+[`packages/cli3to4`](https://github.com/getsentry/toolkit/tree/main/packages/cli3to4)
 for the source and test fixtures.
 
 ## Output and scripting

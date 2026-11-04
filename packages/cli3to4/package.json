@@ -1,5 +1,5 @@
 {
-  "name": "@sentry/cli-codemod-v3-to-v4",
+  "name": "@sentry/cli3to4",
   "version": "0.1.0",
   "private": true,
   "description": "Codemod that migrates @sentry/cli v3 SDK usage to the v4 sentry package",
