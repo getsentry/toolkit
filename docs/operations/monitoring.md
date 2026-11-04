@@ -8,10 +8,11 @@ Different Sentry SDKs for different environments:
 
 - **Core server**: `@sentry/core` (platform-agnostic)
 - **Cloudflare Workers**: `@sentry/cloudflare`
-- **Node.js stdio**: `@sentry/node`. Without `--sentry-dsn`/`SENTRY_DSN`, the
-  stdio server reports to the Sentry CLI's project and honors the CLI's
-  opt-outs (`SENTRY_CLI_NO_TELEMETRY=1`, `DO_NOT_TRACK=1`, or
-  `sentry cli defaults telemetry off`).
+- **Node.js stdio**: `@sentry/node`. The stdio server always reports to the
+  Sentry CLI's project (`SENTRY_CLI_DSN`) and honors the CLI's opt-outs
+  (`SENTRY_CLI_NO_TELEMETRY=1`, `DO_NOT_TRACK=1`, or
+  `sentry cli defaults telemetry off`). It never reads `SENTRY_DSN`: a server
+  started from a project shell or IDE would inherit the app's DSN.
 - **React client**: `@sentry/react`
 
 ## Core Server Instrumentation
@@ -132,7 +133,8 @@ export default Sentry.withSentry((env) => getSentryConfig(env), {
 import * as Sentry from "@sentry/node";
 
 Sentry.init({
-  dsn: process.env.SENTRY_DSN,
+  dsn: SENTRY_CLI_DSN,
+  enabled: isTelemetryEnabled(),
   environment: process.env.NODE_ENV || "production",
   integrations: [Sentry.nodeProfilingIntegration()],
   tracesSampleRate: 0.1,
@@ -355,9 +357,8 @@ Interpretation:
 VITE_SENTRY_DSN=https://...@sentry.io/...
 VITE_SENTRY_ENVIRONMENT=production
 
-# Node.js (runtime)
-SENTRY_DSN=https://...@sentry.io/...
-NODE_ENV=production
+# Node.js stdio (runtime): telemetry goes to the CLI's project; opt out with
+SENTRY_CLI_NO_TELEMETRY=1
 ```
 
 ## Best Practices

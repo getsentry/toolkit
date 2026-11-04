@@ -220,20 +220,24 @@ async function serveStdio(args, extraEnv, { deletedCwd } = {}) {
 }
 
 test("serves MCP over stdio with SENTRY_AUTH_TOKEN", async () => {
-  // `--sentry-dsn=` (no telemetry) is a form MCP configs have always used.
   // Without a stored login, the env token needs no SENTRY_FORCE_ENV_TOKEN.
-  const { stderr } = await serveStdio(["--sentry-dsn="], {
+  const { stderr } = await serveStdio([], {
     SENTRY_AUTH_TOKEN: "sntryu_test",
   });
   assert.doesNotMatch(stderr, /deprecated/);
 });
 
+test("rejects the removed --sentry-dsn instead of serving", () => {
+  // Telemetry always goes to the CLI's project; opt out with
+  // SENTRY_CLI_NO_TELEMETRY=1 instead.
+  const result = run(["--sentry-dsn="], { SENTRY_AUTH_TOKEN: "sntryu_test" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /No flag registered for --sentry-dsn/);
+});
+
 test("serves the deprecated --access-token with a hint on stderr", async () => {
   const token = "sntryu_deprecated_flag_secret";
-  const { stderr } = await serveStdio(
-    [`--access-token=${token}`, "--sentry-dsn="],
-    {},
-  );
+  const { stderr } = await serveStdio([`--access-token=${token}`], {});
   assert.match(
     stderr,
     /--access-token is deprecated; set SENTRY_AUTH_TOKEN instead\./,
@@ -255,9 +259,11 @@ test(
 );
 
 test("exits after the client disconnects with telemetry on", async () => {
-  // An explicit DSN turns on the server's telemetry despite the CLI opt-out.
-  // Nothing listens on port 9, so no event leaves the machine.
-  await serveStdio(["--sentry-dsn=http://public@127.0.0.1:9/1"], {
+  // Telemetry always goes to the CLI's DSN. Nothing listens on the proxy's
+  // port 9, so no event leaves the machine.
+  await serveStdio([], {
     SENTRY_AUTH_TOKEN: "sntryu_test",
+    SENTRY_CLI_NO_TELEMETRY: "0",
+    https_proxy: "http://127.0.0.1:9",
   });
 });
