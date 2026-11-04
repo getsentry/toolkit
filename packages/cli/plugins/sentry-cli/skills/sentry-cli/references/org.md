@@ -33,15 +33,15 @@ List organizations
 | `id` | string | Organization ID |
 | `slug` | string | Organization slug |
 | `name` | string | Organization name |
-| `dateCreated` | string | Creation date (ISO 8601) |
+| `dateCreated` | string | When the organization was created (ISO 8601) |
 | `status` | object | Organization status |
-| `isEarlyAdopter` | boolean | Whether the org is an early adopter |
-| `require2FA` | boolean | Whether members must use 2FA |
-| `features` | array | Enabled features |
-| `avatar` | object | Avatar |
+| `isEarlyAdopter` | boolean | Whether the organization is an early adopter |
+| `require2FA` | boolean | Whether members must use two-factor authentication |
+| `features` | array | Features enabled for the organization |
+| `avatar` | object | Organization avatar |
 | `links` | object | Organization and region URLs |
-| `hasAuthProvider` | boolean | Whether SSO is configured |
-| `allowMemberInvite` | boolean | Whether members can invite |
+| `hasAuthProvider` | boolean | Whether SSO is configured for the organization |
+| `allowMemberInvite` | boolean | Whether members can invite other members |
 | `allowMemberProjectCreation` | boolean | Whether members can create projects |
 | `orgRole` | string | Your role in the organization |
 | `region` | string | Region, when orgs span several (e.g. US, EU) |
@@ -90,15 +90,15 @@ View details of an organization
 | `id` | string | Organization ID |
 | `slug` | string | Organization slug |
 | `name` | string | Organization name |
-| `dateCreated` | string | Creation date (ISO 8601) |
+| `dateCreated` | string | When the organization was created (ISO 8601) |
 | `status` | object | Organization status |
-| `isEarlyAdopter` | boolean | Whether the org is an early adopter |
-| `require2FA` | boolean | Whether members must use 2FA |
-| `features` | array | Enabled features |
-| `avatar` | object | Avatar |
+| `isEarlyAdopter` | boolean | Whether the organization is an early adopter |
+| `require2FA` | boolean | Whether members must use two-factor authentication |
+| `features` | array | Features enabled for the organization |
+| `avatar` | object | Organization avatar |
 | `links` | object | Organization and region URLs |
-| `hasAuthProvider` | boolean | Whether SSO is configured |
-| `allowMemberInvite` | boolean | Whether members can invite |
+| `hasAuthProvider` | boolean | Whether SSO is configured for the organization |
+| `allowMemberInvite` | boolean | Whether members can invite other members |
 | `allowMemberProjectCreation` | boolean | Whether members can create projects |
 | `orgRole` | string | Your role in the organization |
 

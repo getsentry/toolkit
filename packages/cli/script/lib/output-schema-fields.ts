@@ -213,14 +213,18 @@ export function extractSchemaFieldPaths(schema: GenericSchema): string[] {
  * `getDescription` does not recurse, and the description may sit under one or
  * more wrapper schemas — e.g. `optional(nullable(pipe(string(), description(...))))`
  * places it two `.wrapped` levels down. Walk the wrapper chain until a
- * description is found.
+ * description is found, so a CLI `pipe(apiField, description(...))` wins over
+ * the description `@sentry/api` gives the field.
+ *
+ * API descriptions can span lines, which would break the field tables, so
+ * whitespace runs collapse to one space.
  */
 function findDescription(schema: ValibotSchemaNode): string | undefined {
   let node: ValibotSchemaNode | undefined = schema;
   while (node) {
     const description = getDescription(node as unknown as GenericSchema);
     if (description !== undefined) {
-      return description;
+      return description.replace(/\s+/g, " ").trim();
     }
     node = node.wrapped;
   }
