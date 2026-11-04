@@ -820,7 +820,9 @@ Use `"date"` for timestamp-based sort (not `"time"`). Export sort types from the
 
 ### Generated Docs & Skills
 
-All command docs and skill files are generated via `pnpm run generate:docs` (which runs `generate:banner`, `generate:completions`, `generate:command-docs`, `generate:skill`, then `generate:docs-sections`). This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
+All command docs and skill files are generated via `pnpm run generate:docs`. This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
+
+- **One process**: the `generate:*` scripts (except `generate:grammar`, a plain Node script) call `script/generate.ts`, which runs the requested steps in one process so the route tree loads once. Phase 1 writes what the tree imports (API schema, grammars, output-schema field data, banner) and must not load the tree. Phase 2 stubs the generated files the tree imports (`script/lib/route-tree-stubs.ts`), then runs each step's exported `emit()`. Phase-2 modules may import the tree statically, because the runner imports them only after the stubs exist. A new generator exports `emit()` and gets a step in `script/generate.ts`, with no stub code of its own. In `package.json`, call the runner (`tsx script/generate.ts <steps>`) rather than chaining `pnpm run generate:*`. `docs` names every step but `sdk`.
 
 - **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
