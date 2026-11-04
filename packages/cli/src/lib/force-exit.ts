@@ -6,11 +6,12 @@
  * #833).
  *
  * Schedule a force-exit safety net once the CLI's outer recovery middleware
- * has reached a terminal result. On macOS, an unref'd timer arms when the
- * exit telemetry flush settles. It only fires when another handle keeps the
- * event loop alive past a drained command, so it stays a no-op on clean exits
- * and never arms for commands that intentionally keep running (their awaited
- * work never resolves, so this is never reached).
+ * has reached a terminal result. An unref'd timer arms when the exit
+ * telemetry flush settles. It only fires when another handle keeps the event
+ * loop alive past a drained command, so it stays a no-op on clean exits and
+ * never arms for commands that intentionally keep running (their awaited work
+ * never resolves, so this is never reached). Outside macOS, the timer is
+ * longer: it only catches ingest responses that stall after their headers.
  *
  * On every platform, the process exits when the flush does not settle in its
  * time limit. Open ingest requests would otherwise keep it alive, and on a
@@ -28,11 +29,18 @@ export function scheduleForceExit(
   void telemetryFlush.then((settled) => {
     if (!settled) {
       exitAfterOutputDrains();
-    } else if (process.platform === "darwin") {
-      setTimeout(exitAfterOutputDrains, 100).unref();
+      return;
     }
+    const lingerLimitMs =
+      process.platform === "darwin"
+        ? DARWIN_LINGER_LIMIT_MS
+        : DEFAULT_LINGER_LIMIT_MS;
+    setTimeout(exitAfterOutputDrains, lingerLimitMs).unref();
   });
 }
+
+const DARWIN_LINGER_LIMIT_MS = 100;
+const DEFAULT_LINGER_LIMIT_MS = 1000;
 
 /**
  * `process.exit()` drops stdout and stderr data that a pipe has not taken

@@ -49,8 +49,12 @@ describe("force-exit safety net", () => {
     expect(unref).toHaveBeenCalledOnce();
   });
 
-  test("does nothing outside macOS when the flush settles", async () => {
-    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+  test("schedules an unref'd 1s timer outside macOS when the flush settles", async () => {
+    const unref = vi.fn();
+    const timeout = { unref } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, "setTimeout")
+      .mockReturnValue(timeout);
     const exitSpy = vi
       .spyOn(process, "exit")
       .mockImplementation(() => undefined as never);
@@ -59,7 +63,8 @@ describe("force-exit safety net", () => {
     scheduleForceExit(Promise.resolve(true));
     await settle();
 
-    expect(setTimeoutSpy).not.toHaveBeenCalled();
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1000);
+    expect(unref).toHaveBeenCalledOnce();
     expect(exitSpy).not.toHaveBeenCalled();
   });
 

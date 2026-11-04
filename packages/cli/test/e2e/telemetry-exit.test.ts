@@ -72,9 +72,13 @@ function envelopeItemTypes(body: Buffer): string[] {
 
 /**
  * Start a mock ingest server that answers `200 {}` after `delayMs`, or never
- * when `delayMs` is `null`.
+ * when `delayMs` is `null`. With `stallBody`, it sends the headers and part of
+ * the body, then keeps the connection open.
  */
-async function startMockIngest(delayMs: number | null): Promise<MockIngest> {
+async function startMockIngest(
+  delayMs: number | null,
+  { stallBody = false } = {},
+): Promise<MockIngest> {
   const envelopes: ReceivedEnvelope[] = [];
   let responses = 0;
   const server: Server = createServer((req, res) => {
@@ -95,7 +99,11 @@ async function startMockIngest(delayMs: number | null): Promise<MockIngest> {
       setTimeout(() => {
         responses += 1;
         res.writeHead(200, { "content-type": "application/json" });
-        res.end("{}");
+        if (stallBody) {
+          res.write("{");
+        } else {
+          res.end("{}");
+        }
       }, delayMs);
     });
   });
@@ -199,6 +207,15 @@ describe("telemetry at exit", () => {
     expect(ingest.envelopes.flatMap((envelope) => envelope.types)).toEqual(
       expect.arrayContaining(["transaction", "session"]),
     );
+  }, 30_000);
+
+  test("exits when an ingest response stalls after its headers", async () => {
+    ingest = await startMockIngest(0, { stallBody: true });
+
+    const run = await runCli(ingest, ["release", "finalize", "1.0.0"]);
+
+    expect(run.hung).toBe(false);
+    expect(run.exitCode).toBe(NOT_AUTHENTICATED_EXIT_CODE);
   }, 30_000);
 
   test("process exits without waiting for flush timeout", async () => {
