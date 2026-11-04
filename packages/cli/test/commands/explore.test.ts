@@ -1365,13 +1365,34 @@ describe("sentry explore", () => {
       expect((error as Error).message).not.toContain("attribute list");
     });
 
+    const rejectedArgument = (fn: string, argument: string) => ({
+      code: "invalid_function_argument",
+      functionArgument: { function: fn, argument },
+    });
+    const rejectedArgumentError = (
+      detail: string,
+      fn: string,
+      argument: string,
+    ) =>
+      new ApiError(
+        "Bad request",
+        400,
+        detail,
+        undefined,
+        rejectedArgument(fn, argument),
+      );
+
     test.each([
       [
         "a string attribute in a numeric aggregate",
         { dataset: "spans", field: ["span.op", "p75(cart.total)"] },
-        "cart.total is invalid for parameter 1 in p75. Its a string type field, but it must be one of these types: {'number'}",
+        rejectedArgumentError(
+          "cart.total is invalid for parameter 1 in p75. Its a string type field, but it must be one of these types: {'number'}",
+          "p75",
+          "cart.total",
+        ),
         '--field "p75(cart.total)"',
-        "tags[cart.total,number]; to find it, run: sentry attribute list <org>/ cart.total --dataset spans --type number",
+        "tags[cart.total,number]; to check the key and its type, run: sentry attribute list <org>/ cart.total --dataset spans",
       ],
       [
         "transaction.duration on transactions",
@@ -1380,45 +1401,63 @@ describe("sentry explore", () => {
           field: ["transaction", "sum(transaction.duration)"],
           sort: "-sum(transaction.duration)",
         },
-        "transaction.duration is invalid for parameter 1 in sum. Its a string type field, but it must be one of these types: {'number', 'duration'}",
+        rejectedArgumentError(
+          "transaction.duration is invalid for parameter 1 in sum. Its a string type field, but it must be one of these types: {'number', 'duration'}",
+          "sum",
+          "transaction.duration",
+        ),
         '--field "sum(transaction.duration)" for dataset "spans"',
         "Use span.duration instead of transaction.duration.",
       ],
       [
         "a timestamp aggregate on spans",
         { dataset: "spans", field: ["min(timestamp)"] },
-        "timestamp is invalid for parameter 1 in min. Its a string type field, but it must be one of these types: {'number'}",
+        rejectedArgumentError(
+          "timestamp is invalid for parameter 1 in min. Its a string type field, but it must be one of these types: {'number'}",
+          "min",
+          "timestamp",
+        ),
         '--field "min(timestamp)"',
-        "min() needs a numeric attribute, and timestamp is not numeric",
+        'min() does not accept timestamp on dataset "spans"',
       ],
       [
         "a non-numeric errors column",
         { field: ["issue", "min(title)"] },
-        "min: column argument invalid: title is not a numeric column",
+        rejectedArgumentError(
+          "min(title): column argument invalid: title is not a numeric column",
+          "min",
+          "title",
+        ),
         '--field "min(title)" for dataset "errors"',
-        "min() needs a numeric column, and title is not numeric",
+        "Check the column name and its type.",
       ],
       [
         "an unknown errors column passed only through --sort",
         { field: ["device", "count()"], sort: "-avg(device.memory)" },
-        "avg: column argument invalid: device.memory is not a valid column",
+        rejectedArgumentError(
+          "avg(device.memory): column argument invalid: device.memory is not a valid column",
+          "avg",
+          "device.memory",
+        ),
         '--sort "-avg(device.memory)"',
-        "Check the column name.",
+        'avg() does not accept device.memory on dataset "errors"',
       ],
       [
         "an invalid conditional-count argument",
         { dataset: "logs", field: ["count_if(severity,equals,error)"] },
-        "severity is not a valid argument for count_if",
+        rejectedArgumentError(
+          "severity is not a valid argument for count_if",
+          "count_if",
+          "severity",
+        ),
         '--field "count_if(severity,equals,error)"',
         "sentry attribute list <org>/ severity --dataset logs",
       ],
     ])(
       "attributes %s to the user's expression",
-      async (_label, flags, detail, rejected, hint) => {
+      async (_label, flags, apiError, rejected, hint) => {
         resolveTargetSpy.mockResolvedValue({ org: "test-org" });
-        queryEventsSpy.mockRejectedValue(
-          new ApiError("Bad request", 400, detail),
-        );
+        queryEventsSpy.mockRejectedValue(apiError);
         const { context } = createContext();
 
         const error = await func
@@ -1426,7 +1465,7 @@ describe("sentry explore", () => {
           .catch((caught: unknown) => caught);
 
         expect(error).toBeInstanceOf(ValidationError);
-        expect((error as Error).message).toContain(detail);
+        expect((error as Error).message).toContain(apiError.detail);
         expect((error as Error).message).toContain(rejected);
         expect((error as Error).message).toContain(hint);
         expect((error as Error).message).not.toContain("timestamp_precise");
@@ -1455,11 +1494,18 @@ describe("sentry explore", () => {
         "a rejected argument the user did not pass",
         { dataset: "spans", field: ["p75(span.duration)"] },
         "cart.total is invalid for parameter 1 in p75. Its a string type field",
+        rejectedArgument("p75", "cart.total"),
       ],
       [
         "a rejected argument of a default field",
         { query: "level:error" },
-        "min: column argument invalid: title is not a numeric column",
+        "min(title): column argument invalid: title is not a numeric column",
+        rejectedArgument("min", "title"),
+      ],
+      [
+        "a rejected argument from a server that sends no code",
+        { dataset: "spans", field: ["p75(cart.total)"] },
+        "cart.total is invalid for parameter 1 in p75. Its a string type field",
       ],
       [
         "an unknown rejection",
@@ -1475,18 +1521,27 @@ describe("sentry explore", () => {
         },
         "Unknown function sum",
       ],
-    ])("preserves the API error for %s", async (_label, flags, detail) => {
-      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
-      const original = new ApiError("Bad request", 400, detail);
-      queryEventsSpy.mockRejectedValue(original);
-      const { context } = createContext();
+    ])(
+      "preserves the API error for %s",
+      async (_label, flags, detail, fields?) => {
+        resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+        const original = new ApiError(
+          "Bad request",
+          400,
+          detail,
+          undefined,
+          fields,
+        );
+        queryEventsSpy.mockRejectedValue(original);
+        const { context } = createContext();
 
-      await expect(
-        func.call(context, { ...DEFAULT_FLAGS, ...flags }, "test-org/"),
-      ).rejects.toBe(original);
-      expect(isUserError(original)).toBe(false);
-      expect(classifySilenced(original)).toBeNull();
-    });
+        await expect(
+          func.call(context, { ...DEFAULT_FLAGS, ...flags }, "test-org/"),
+        ).rejects.toBe(original);
+        expect(isUserError(original)).toBe(false);
+        expect(classifySilenced(original)).toBeNull();
+      },
+    );
 
     test("preserves non-400 errors even when their detail mentions a user field", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });

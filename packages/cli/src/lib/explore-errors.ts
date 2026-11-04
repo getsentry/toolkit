@@ -6,7 +6,7 @@
 
 import { parseFunction } from "@sentry/toolkit-core/events-fields";
 import { getSortField } from "@sentry/toolkit-core/events-sort";
-import { ApiError, validationError } from "./errors.js";
+import { ApiError, type FunctionArgument, validationError } from "./errors.js";
 
 /** User-authored expressions and the request they contributed to. */
 type ExploreErrorContext = {
@@ -22,13 +22,17 @@ type ExploreErrorContext = {
   userSort: string | undefined;
 };
 
+/** `code` of a 400 that names the function argument it rejected (getsentry/sentry#129954). */
+const INVALID_FUNCTION_ARGUMENT_CODE = "invalid_function_argument";
+
 /**
  * Match narrow backend diagnostics without maintaining an aggregate catalog.
- * Beyond the specific corrections, a diagnostic that names this expression's
- * own function and argument gets a generic hint.
+ * Beyond the specific corrections, a 400 whose structured fields name this
+ * expression's own function and argument gets a generic hint.
  */
 function recoveryHint(
   detail: string,
+  rejected: FunctionArgument | undefined,
   expression: string,
   dataset: string,
 ): string | undefined {
@@ -61,62 +65,26 @@ function recoveryHint(
     return "Aggregate functions depend on the dataset. Check the function name and selected dataset; sentry explore --help includes usage examples.";
   }
 
-  const rejected = rejectedArgument(detail);
   if (
     !rejected ||
-    rejected.name !== parsed.name ||
+    rejected.function !== parsed.name ||
     !parsed.arguments.includes(rejected.argument)
   ) {
     return;
   }
-  const { argument, reason } = rejected;
+  const { argument } = rejected;
   // `--dataset transactions` queries spans, which keep durations in span.duration.
   if (dataset === "spans" && argument === "transaction.duration") {
     return "Use span.duration instead of transaction.duration. Transactions are queried as spans, which store their duration in span.duration.";
   }
-  const lookup = `sentry attribute list <org>/ ${argument} --dataset ${dataset}`;
-  if (reason === "type") {
-    return ATTRIBUTE_DATASETS.has(dataset)
-      ? `${parsed.name}() needs a numeric attribute, and ${argument} is not numeric on dataset "${dataset}". Reference a numeric custom attribute with its type, e.g. tags[${argument},number]; to find it, run: ${lookup} --type number`
-      : `${parsed.name}() needs a numeric column, and ${argument} is not numeric on dataset "${dataset}".`;
-  }
+  const problem = `${parsed.name}() does not accept ${argument} on dataset "${dataset}": it may not exist there, or may not have the type ${parsed.name}() needs.`;
   return ATTRIBUTE_DATASETS.has(dataset)
-    ? `${parsed.name}() does not accept ${argument} on dataset "${dataset}". Check the attribute key; to find it, run: ${lookup}`
-    : `${parsed.name}() does not accept ${argument} on dataset "${dataset}". Check the column name.`;
+    ? `${problem} Reference a numeric custom attribute with its type, e.g. tags[${argument},number]; to check the key and its type, run: sentry attribute list <org>/ ${argument} --dataset ${dataset}`
+    : `${problem} Check the column name and its type.`;
 }
 
 /** Datasets whose custom attributes use `tags[name,type]` keys listed by `sentry attribute list`. */
 const ATTRIBUTE_DATASETS = new Set(["spans", "logs"]);
-
-/** Backend diagnostics that name the function and argument they rejected. */
-const REJECTED_ARGUMENT_PATTERNS: [RegExp, "type" | "invalid"][] = [
-  // e.g. "duration is invalid for parameter 1 in p75. Its a string type field, ..."
-  [/^(?<argument>.+?) is invalid for parameter \d+ in (?<name>\w+)\./, "type"],
-  // e.g. "min: column argument invalid: title is not a numeric column"
-  [
-    /^(?<name>\w+): column argument invalid: (?<argument>.+?) is not a numeric column/,
-    "type",
-  ],
-  // e.g. "avg: column argument invalid: memory is not a valid column"
-  [
-    /^(?<name>\w+): column argument invalid: (?<argument>.+?) is not a valid column/,
-    "invalid",
-  ],
-  // e.g. "severity is not a valid argument for count_if"
-  [/^(?<argument>.+?) is not a valid argument for (?<name>\w+)/, "invalid"],
-];
-
-/** The function and argument a backend diagnostic rejected, when it names them. */
-function rejectedArgument(
-  detail: string,
-): { name: string; argument: string; reason: "type" | "invalid" } | undefined {
-  for (const [pattern, reason] of REJECTED_ARGUMENT_PATTERNS) {
-    const groups = pattern.exec(detail)?.groups;
-    if (groups?.name && groups.argument) {
-      return { name: groups.name, argument: groups.argument, reason };
-    }
-  }
-}
 
 /**
  * Add a correction for a rejected user expression, preserving the server
@@ -142,8 +110,17 @@ export function toExploreFieldError(
     });
   }
 
+  const rejected =
+    error.code === INVALID_FUNCTION_ARGUMENT_CODE
+      ? error.functionArgument
+      : undefined;
   for (const { expression, value, flag } of expressions) {
-    const hint = recoveryHint(error.detail, expression, context.dataset);
+    const hint = recoveryHint(
+      error.detail,
+      rejected,
+      expression,
+      context.dataset,
+    );
     if (hint) {
       return validationError(
         `Sentry rejected --${flag} "${value}" for dataset "${context.dataset}".\n\n${error.detail}`,
