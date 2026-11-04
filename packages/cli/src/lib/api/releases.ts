@@ -775,6 +775,73 @@ const COMMIT_REPOSITORY_FIELD = "commit.repository";
 const INVALID_REPOSITORY_NAMES_RE = /Invalid repository names: ([^"\]]+)/;
 
 /**
+ * Repository names from the server's "Invalid repository names" 400, or
+ * `undefined` for any other error.
+ */
+function invalidRepositoryNames(error: unknown): string[] | undefined {
+  if (!(error instanceof ApiError && error.status === 400)) {
+    return;
+  }
+  const invalid = error.detail?.match(INVALID_REPOSITORY_NAMES_RE)?.[1];
+  return invalid?.split(",").map((n) => n.trim());
+}
+
+/**
+ * Replace `--commit` repository names that Sentry rejected with the name of
+ * the same repository in Sentry, when the names only differ (case, GitLab
+ * display names, or a name that matches the repository URL).
+ *
+ * Sentry matches `--commit` names exactly, while build tools pass what the
+ * host reports, such as `VERCEL_GIT_REPO_OWNER/VERCEL_GIT_REPO_SLUG`. Each
+ * replacement is logged as a warning so the caller can fix the name.
+ *
+ * @param orgSlug - Organization slug
+ * @param refs - The refs that were sent
+ * @param error - The error thrown by {@link setCommitsWithRefs}
+ * @returns The refs with Sentry's names, or `undefined` when the error is not
+ *   an "Invalid repository names" 400 or a rejected repository has no match
+ */
+export async function correctRefRepositories(
+  orgSlug: string,
+  refs: CommitRef[],
+  error: unknown,
+): Promise<CommitRef[] | undefined> {
+  const names = invalidRepositoryNames(error);
+  if (!names) {
+    return;
+  }
+  let matches: (SentryRepository | undefined)[];
+  try {
+    matches = await Promise.all(
+      refs.map(async (ref) =>
+        names.includes(ref.repository)
+          ? (await findSentryRepository(orgSlug, ref.repository)).match
+          : undefined,
+      ),
+    );
+  } catch (lookupError) {
+    log.debug("Could not look up repositories for --commit", lookupError);
+    return;
+  }
+  const corrected: CommitRef[] = [];
+  for (const [index, ref] of refs.entries()) {
+    if (!names.includes(ref.repository)) {
+      corrected.push(ref);
+      continue;
+    }
+    const match = matches[index];
+    if (!match || match.name === ref.repository) {
+      return;
+    }
+    log.warn(
+      `Sentry organization '${orgSlug}' has no repository named '${ref.repository}'. Using '${match.name}', the same repository in Sentry.`,
+    );
+    corrected.push({ ...ref, repository: match.name });
+  }
+  return corrected;
+}
+
+/**
  * Turn the server's "Invalid repository names" 400 from {@link setCommitsWithRefs}
  * into an error that says how to fix it: connect a source code integration
  * when the org has no repositories, use the exact Sentry name when the
@@ -796,14 +863,10 @@ export async function explainSetCommitsError(
   refs: CommitRef[],
   error: unknown,
 ): Promise<unknown> {
-  if (!(error instanceof ApiError && error.status === 400)) {
+  const names = invalidRepositoryNames(error);
+  if (!names) {
     return error;
   }
-  const invalid = error.detail?.match(INVALID_REPOSITORY_NAMES_RE)?.[1];
-  if (!invalid) {
-    return error;
-  }
-  const names = invalid.split(",").map((n) => n.trim());
   const ref = refs.find((r) => names.includes(r.repository)) ?? refs[0];
   const repository = ref?.repository ?? names[0] ?? "";
   const commit = ref?.previousCommit
