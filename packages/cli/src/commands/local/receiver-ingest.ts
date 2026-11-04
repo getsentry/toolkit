@@ -65,7 +65,6 @@ function stateFor(buffer: ReceiverBuffer): ReceiverState {
     const original = buffer[method].bind(buffer);
     buffer[method] = () => {
       state.generation++;
-      state.pending.clear();
       original();
     };
   }

@@ -289,6 +289,34 @@ test("clear cancels preceding admissions and preserves live subscribers and sett
   retention.buffer.unsubscribe(reader);
 });
 
+test.each(["clear", "reset"] as const)(
+  "%s keeps invalidated admissions counted until they settle",
+  async (method) => {
+    const retention = createLocalRetentionBuffer(3);
+    const active = ingestReceiverEnvelope(retention.buffer, {
+      body: gzipSync(envelope),
+      encoding: "gzip",
+    });
+    await Promise.resolve();
+    const queued = Array.from({ length: 63 }, () =>
+      ingestReceiverEnvelope(retention.buffer, { body: Buffer.from(envelope) }),
+    );
+    retention.buffer[method]();
+    const overflow = ingestReceiverEnvelope(retention.buffer, {
+      body: Buffer.from(envelope),
+    });
+    expect(await overflow).toBe(503);
+    expect(await active).toBe(503);
+    expect(await Promise.all(queued)).toEqual(Array(63).fill(503));
+    expect(retention.buffer.read({ all: true })).toHaveLength(0);
+    expect(
+      await ingestReceiverEnvelope(retention.buffer, {
+        body: Buffer.from(envelope),
+      }),
+    ).toBe(204);
+  },
+);
+
 test("retention changes include preceding compressed admissions and preserve cursors", async () => {
   const retention = createLocalRetentionBuffer(3);
   const writes = ["one", "two"].map((name) =>
