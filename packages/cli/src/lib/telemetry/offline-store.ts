@@ -107,10 +107,12 @@ export function createEnvelopeStore(
   /** When each envelope claimed by this process was first stored. */
   const storedAt = new WeakMap<Envelope, number>();
 
-  /** Cutoffs for {@link EXPIRED}. */
-  function expiry(): [number, number] {
+  function deleteExpired(db: ReturnType<typeof getDatabase>): void {
     const current = now();
-    return [current - limits.maxErrorAgeMs, current - limits.maxAgeMs];
+    db.query(`DELETE FROM telemetry_envelope_queue WHERE ${EXPIRED}`).run(
+      current - limits.maxErrorAgeMs,
+      current - limits.maxAgeMs,
+    );
   }
 
   function insert(envelope: Envelope): void {
@@ -128,10 +130,13 @@ export function createEnvelopeStore(
       db.query(
         "INSERT INTO telemetry_envelope_queue (created_at, is_error, size, envelope) VALUES (?, ?, ?, ?)",
       ).run(createdAt, isError, bytes.byteLength, bytes);
+      // Expired rows go first, in their own statement, so they don't count
+      // against the caps in the trim below.
+      deleteExpired(db);
       // Keep errors first, then the newest: rows past either cap are the
       // oldest envelopes without an error, then the oldest errors.
       db.query(
-        `DELETE FROM telemetry_envelope_queue WHERE ${EXPIRED} OR id IN (
+        `DELETE FROM telemetry_envelope_queue WHERE id IN (
           SELECT id FROM (
             SELECT id,
               ROW_NUMBER() OVER kept AS position,
@@ -140,7 +145,7 @@ export function createEnvelopeStore(
             WINDOW kept AS (ORDER BY is_error DESC, created_at DESC, id DESC)
           ) WHERE position > ? OR total > ?
         )`,
-      ).run(...expiry(), limits.maxEntries, limits.maxBytes);
+      ).run(limits.maxEntries, limits.maxBytes);
     })();
   }
 
@@ -148,9 +153,7 @@ export function createEnvelopeStore(
     return guarded("read stored telemetry", [], () => {
       const db = getDatabase();
       const rows = db.transaction(() => {
-        db.query(`DELETE FROM telemetry_envelope_queue WHERE ${EXPIRED}`).run(
-          ...expiry(),
-        );
+        deleteExpired(db);
         return db
           .query(
             `DELETE FROM telemetry_envelope_queue WHERE id IN (

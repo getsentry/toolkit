@@ -151,6 +151,18 @@ describe.each(["node", "wasm"] as const)(
       expect(eventIds(store.claim(10))).toEqual(["e1", "e2", "t3"]);
     });
 
+    test("expired rows don't count against the caps", async () => {
+      const { clock, store } = storeAt({ ...STORE_LIMITS, maxEntries: 2 });
+      for (const id of ["e1", "e2"]) {
+        await store.push(eventEnvelope(id));
+      }
+      clock.now += STORE_LIMITS.maxErrorAgeMs + 1;
+      // The expired errors would rank first and push this out of the cap.
+      await store.push(transactionEnvelope("t1"));
+
+      expect(eventIds(store.claim(10))).toEqual(["t1"]);
+    });
+
     test("deletes envelopes without an error event after maxAgeMs", async () => {
       const { clock, store } = storeAt();
       await store.push(transactionEnvelope("old"));
