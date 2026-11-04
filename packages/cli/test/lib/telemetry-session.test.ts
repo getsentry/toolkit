@@ -16,6 +16,8 @@ import * as Sentry from "@sentry/node";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createBeforeExitHandler,
+  EXIT_FLUSH_TIMEOUT_MS,
+  flushClientOnExit,
   markSessionCrashed,
 } from "../../src/lib/telemetry.js";
 
@@ -130,10 +132,49 @@ describe("createBeforeExitHandler", () => {
 
     handler();
 
-    expect(flushSpy).toHaveBeenCalledWith(3000);
+    expect(flushSpy).toHaveBeenCalledWith(EXIT_FLUSH_TIMEOUT_MS);
 
     getIsolationScopeSpy.mockRestore();
     flushSpy.mockRestore();
+  });
+});
+
+describe("flushClientOnExit", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  function mockNoSession(): void {
+    vi.spyOn(Sentry, "getIsolationScope").mockReturnValue({
+      getSession: () => null,
+    } as unknown as Sentry.Scope);
+  }
+
+  test("shares one flush with the beforeExit handler", async () => {
+    mockNoSession();
+    const flush = vi.fn(() => Promise.resolve(true));
+    const client = { flush } as unknown as Sentry.NodeClient;
+
+    const first = flushClientOnExit(client);
+    createBeforeExitHandler(client)();
+
+    expect(flushClientOnExit(client)).toBe(first);
+    expect(flush).toHaveBeenCalledOnce();
+    expect(await first).toBe(true);
+  });
+
+  test("resolves false when the flush does not settle in time", async () => {
+    vi.useFakeTimers();
+    mockNoSession();
+    const client = {
+      flush: () => new Promise<boolean>(() => undefined),
+    } as unknown as Sentry.NodeClient;
+
+    const flush = flushClientOnExit(client);
+    await vi.advanceTimersByTimeAsync(EXIT_FLUSH_TIMEOUT_MS);
+
+    expect(await flush).toBe(false);
   });
 });
 

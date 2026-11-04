@@ -164,10 +164,10 @@ export function isTelemetryEnabled(): boolean {
  *
  * Creates a Sentry span for the command execution and captures exceptions.
  * Session lifecycle is managed by the SDK's processSessionIntegration
- * (started during Sentry.init) and a beforeExit handler (registered in
- * initSentry) that ends healthy sessions and flushes events. This ensures
- * sessions are reliably tracked even for unhandled rejections and other
- * paths that bypass this function's try/catch.
+ * (started during Sentry.init) and {@link flushTelemetryOnExit}, which
+ * `runCli` calls when the command ends. A beforeExit handler (registered in
+ * initSentry) runs the same flush for unhandled rejections and other paths
+ * that bypass this function's try/catch.
  *
  * Telemetry can be disabled via:
  * - `SENTRY_CLI_NO_TELEMETRY=1` environment variable
@@ -260,12 +260,77 @@ export async function withTelemetry<T>(
 }
 
 /**
+ * Longest time the CLI waits for telemetry after the command ends.
+ *
+ * A new connection to ingest and one envelope request take about 200–250 ms
+ * on a good network (DNS, TCP, TLS, and the response). This bound covers a
+ * round trip about four times slower. Past it, the network is slow or blocks
+ * ingest, and the CLI exits and drops the rest.
+ */
+export const EXIT_FLUSH_TIMEOUT_MS = 1000;
+
+/** Exit flush of each client, so that every caller shares one flush. */
+const exitFlushes = new WeakMap<Sentry.NodeClient, Promise<boolean>>();
+
+/**
+ * End a healthy session and send all buffered telemetry in one batch.
+ *
+ * The session update, metrics, logs, client reports, and the `cli.command`
+ * transaction leave together, so the CLI waits for one round trip. Later
+ * calls for the same client return the first flush.
+ *
+ * @returns `true` when the flush settles, `false` when
+ *   {@link EXIT_FLUSH_TIMEOUT_MS} elapses first and requests are still open
+ *
+ * @internal Exported for testing
+ */
+export function flushClientOnExit(client: Sentry.NodeClient): Promise<boolean> {
+  const existing = exitFlushes.get(client);
+  if (existing) {
+    return existing;
+  }
+
+  // The SDK's processSessionIntegration ends only OK sessions, and only on
+  // beforeExit, which open requests delay. End it here (clean exit →
+  // 'exited'). Crashed and errored sessions keep their status.
+  const session = Sentry.getIsolationScope().getSession();
+  if (session?.status === "ok") {
+    Sentry.endSession();
+  }
+
+  const flushed = Promise.resolve(client.flush(EXIT_FLUSH_TIMEOUT_MS)).catch(
+    () => true,
+  );
+  const timedOut = new Promise<boolean>((resolve) => {
+    setTimeout(() => resolve(false), EXIT_FLUSH_TIMEOUT_MS).unref();
+  });
+  const flush = Promise.race([flushed, timedOut]);
+  exitFlushes.set(client, flush);
+  return flush;
+}
+
+/**
+ * Send all buffered telemetry when the command ends. See
+ * {@link flushClientOnExit}.
+ *
+ * @returns `true` when telemetry is off or the flush settles, `false` when
+ *   {@link EXIT_FLUSH_TIMEOUT_MS} elapses first
+ */
+export function flushTelemetryOnExit(): Promise<boolean> {
+  const client = Sentry.getClient<Sentry.NodeClient>();
+  if (!client?.getOptions().enabled) {
+    return Promise.resolve(true);
+  }
+  return flushClientOnExit(client);
+}
+
+/**
  * Create a beforeExit handler that ends healthy sessions and flushes events.
  *
- * The SDK's processSessionIntegration only ends non-OK sessions (crashed/errored).
- * This handler complements it by ending OK sessions (clean exit → 'exited')
- * and flushing pending events. Includes a re-entry guard since flush is async
- * and causes beforeExit to re-fire when complete.
+ * `runCli` flushes when the command ends. This handler covers the paths that
+ * skip it, such as unhandled rejections. It shares the flush of
+ * {@link flushClientOnExit}, so it does nothing after the exit flush and when
+ * beforeExit fires again.
  *
  * @param client - The Sentry client to flush
  * @returns A handler function for process.on("beforeExit")
@@ -273,25 +338,8 @@ export async function withTelemetry<T>(
  * @internal Exported for testing
  */
 export function createBeforeExitHandler(client: Sentry.NodeClient): () => void {
-  let isFlushing = false;
   return () => {
-    if (isFlushing) {
-      return;
-    }
-    isFlushing = true;
-
-    const session = Sentry.getIsolationScope().getSession();
-    if (session?.status === "ok") {
-      Sentry.endSession();
-    }
-
-    // Flush pending events before exit. Convert PromiseLike to Promise
-    // for proper error handling. The async work causes beforeExit to
-    // re-fire when complete, which the isFlushing guard handles.
-    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-    Promise.resolve(client.flush(3000)).catch(() => {
-      // Ignore flush errors — telemetry should never block CLI exit
-    });
+    void flushClientOnExit(client);
   };
 }
 
@@ -790,11 +838,8 @@ export function initSentry(
     attachSentryReporter(sentryReporter(Sentry.logger));
 
     // End healthy sessions and flush events when the event loop drains.
-    // The SDK's processSessionIntegration starts a session during init and
-    // registers its own beforeExit handler that ends non-OK (crashed/errored)
-    // sessions. We complement it by ending OK sessions (clean exit → 'exited')
-    // and flushing pending events. This covers unhandled rejections and other
-    // paths that bypass withTelemetry's try/catch.
+    // runCli already flushes when the command ends; this covers unhandled
+    // rejections and other paths that bypass it.
     // Ref: https://nodejs.org/api/process.html#event-beforeexit
     //
     // Skipped in library mode — the host owns the process lifecycle.

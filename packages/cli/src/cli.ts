@@ -328,7 +328,8 @@ export async function runCli(
   const { closeGlobalDispatcher } = await import("./lib/close-dispatcher.js");
   const { isTrialEligible, promptAndStartTrial } =
     await import("./lib/seer-trial.js");
-  const { withTelemetry } = await import("./lib/telemetry.js");
+  const { flushTelemetryOnExit, withTelemetry } =
+    await import("./lib/telemetry.js");
   const { startCleanupOldBinary } = await import("./lib/upgrade.js");
   const {
     abortPendingVersionCheck,
@@ -721,11 +722,12 @@ export async function runCli(
   } finally {
     // Abort any pending version check to allow clean exit
     abortPendingVersionCheck();
-    // Arm the backstop first so it fires regardless of what the dispatcher
-    // teardown does. The unref'd timer only triggers if the loop is still
-    // referenced after a drained command, so it's a no-op on clean exits
+    // Send the session, metrics, and client reports now, together with the
+    // cli.command transaction, so the exit waits for one round trip. Arm the
+    // backstop before the dispatcher teardown so it fires regardless of what
+    // the teardown does. It waits for the flush and is a no-op on clean exits
     // (a libuv refcount quirk on macOS keeps it worthwhile — see #1237).
-    scheduleForceExit();
+    scheduleForceExit(flushTelemetryOnExit());
     // Release undici's pooled keep-alive sockets so the event loop can drain
     // on its own — the root-cause fix. Never rejects (see close-dispatcher.ts).
     await closeGlobalDispatcher();

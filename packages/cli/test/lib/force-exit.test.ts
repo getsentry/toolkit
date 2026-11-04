@@ -26,8 +26,13 @@ afterEach(() => {
   }
 });
 
+/** Let the `.then()` on the flush promise run. */
+async function settle(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 describe("force-exit safety net", () => {
-  test("schedules an unref'd 100ms timer on macOS outside tests", () => {
+  test("schedules an unref'd 100ms timer on macOS outside tests", async () => {
     const unref = vi.fn();
     const timeout = { unref } as unknown as ReturnType<typeof setTimeout>;
     const setTimeoutSpy = vi
@@ -37,28 +42,53 @@ describe("force-exit safety net", () => {
     process.env.NODE_ENV = "production";
 
     scheduleForceExit();
+    await settle();
 
     expect(setTimeoutSpy).toHaveBeenCalledOnce();
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 100);
     expect(unref).toHaveBeenCalledOnce();
   });
 
-  test("does nothing outside macOS", () => {
+  test("does nothing outside macOS when the flush settles", async () => {
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation(() => undefined as never);
     process.env.NODE_ENV = "production";
 
-    scheduleForceExit();
+    scheduleForceExit(Promise.resolve(true));
+    await settle();
 
     expect(setTimeoutSpy).not.toHaveBeenCalled();
+    expect(exitSpy).not.toHaveBeenCalled();
   });
 
-  test("does nothing in the test environment even on macOS", () => {
+  test("exits on every platform when the flush times out", async () => {
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation(() => undefined as never);
+    process.env.NODE_ENV = "production";
+    process.exitCode = 10;
+
+    scheduleForceExit(Promise.resolve(false));
+    await settle();
+    process.exitCode = undefined;
+
+    expect(exitSpy).toHaveBeenCalledWith(10);
+  });
+
+  test("does nothing in the test environment even on macOS", async () => {
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation(() => undefined as never);
     setPlatform("darwin");
     process.env.NODE_ENV = "test";
 
-    scheduleForceExit();
+    scheduleForceExit(Promise.resolve(false));
+    await settle();
 
     expect(setTimeoutSpy).not.toHaveBeenCalled();
+    expect(exitSpy).not.toHaveBeenCalled();
   });
 });
