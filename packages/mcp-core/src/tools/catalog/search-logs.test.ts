@@ -22,6 +22,7 @@ it("search_logs runs the shared handler locked to logs", async () => {
         "regionUrl",
         "limit",
         "includeExplanation",
+        "timeSeries",
       ],
       "options": {
         "lockDataset": true,

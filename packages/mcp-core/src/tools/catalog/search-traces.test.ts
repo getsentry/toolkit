@@ -22,6 +22,7 @@ it("search_traces runs the shared handler locked to spans", async () => {
         "regionUrl",
         "limit",
         "includeExplanation",
+        "timeSeries",
       ],
       "options": {
         "lockDataset": true,

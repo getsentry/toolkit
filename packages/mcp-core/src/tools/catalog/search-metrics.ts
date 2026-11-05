@@ -1,7 +1,7 @@
 import { defineTool } from "../../internal/tool-helpers/define";
 import type { ServerContext } from "../../types";
 import {
-  buildDatasetSearchInputSchema,
+  buildTimeSeriesSearchInputSchema,
   runSearchEvents,
   searchToolBase,
 } from "../support/search-events/search";
@@ -28,7 +28,7 @@ export default defineTool({
     "- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.",
     "</hints>",
   ].join("\n"),
-  inputSchema: buildDatasetSearchInputSchema(),
+  inputSchema: buildTimeSeriesSearchInputSchema(),
   async handler(params, context: ServerContext) {
     return await runSearchEvents({ ...params, dataset: "metrics" }, context, {
       lockDataset: true,

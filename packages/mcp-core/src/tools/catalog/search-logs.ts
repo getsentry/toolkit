@@ -1,7 +1,7 @@
 import { defineTool } from "../../internal/tool-helpers/define";
 import type { ServerContext } from "../../types";
 import {
-  buildDatasetSearchInputSchema,
+  buildTimeSeriesSearchInputSchema,
   runSearchEvents,
   searchToolBase,
 } from "../support/search-events/search";
@@ -30,7 +30,7 @@ export default defineTool({
     "- Sentry search syntax for logs includes RE2 regex filters, never quoted: `message://^Timeout after \\d+ms//`.",
     "</hints>",
   ].join("\n"),
-  inputSchema: buildDatasetSearchInputSchema(),
+  inputSchema: buildTimeSeriesSearchInputSchema(),
   async handler(params, context: ServerContext) {
     return await runSearchEvents({ ...params, dataset: "logs" }, context, {
       lockDataset: true,

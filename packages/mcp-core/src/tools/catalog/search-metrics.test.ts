@@ -22,6 +22,7 @@ it("search_metrics runs the shared handler locked to metrics", async () => {
         "regionUrl",
         "limit",
         "includeExplanation",
+        "timeSeries",
       ],
       "options": {
         "lockDataset": true,
