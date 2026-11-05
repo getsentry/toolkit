@@ -1,0 +1,123 @@
+import { readFileSync } from "node:fs";
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { useTestConfigDir } from "../helpers.js";
+
+const { customFetch } = vi.hoisted(() => ({ customFetch: vi.fn() }));
+vi.mock("../../src/lib/custom-ca.js", () => ({ customFetch }));
+
+import {
+  DOCTREE_URL,
+  FRESH_FOR_MS,
+  loadDocsIndex,
+} from "../../src/lib/docs-index.js";
+import { CliError } from "../../src/lib/errors.js";
+
+const doctree = readFileSync(
+  new URL("../fixtures/docs/doctree.json", import.meta.url),
+  "utf8",
+);
+const ETAG = 'W/"abc123"';
+const T0 = 1_700_000_000_000;
+
+function okResponse(): Response {
+  return new Response(doctree, { status: 200, headers: { etag: ETAG } });
+}
+
+function requestHeaders(call: number): Record<string, string> {
+  return customFetch.mock.calls[call]?.[1]?.headers ?? {};
+}
+
+const getConfigDir = useTestConfigDir("docs-index-");
+
+let savedNoCache: string | undefined;
+beforeEach(() => {
+  customFetch.mockReset();
+  savedNoCache = process.env.SENTRY_NO_CACHE;
+  process.env.SENTRY_NO_CACHE = "0";
+});
+afterEach(() => {
+  process.env.SENTRY_NO_CACHE = savedNoCache;
+});
+
+describe("loadDocsIndex", () => {
+  test("downloads the doctree once and searches the cached copy after", async () => {
+    customFetch.mockResolvedValueOnce(okResponse());
+
+    const first = await loadDocsIndex({ now: T0 });
+    const second = await loadDocsIndex({ now: T0 + 60_000 });
+
+    expect(customFetch).toHaveBeenCalledOnce();
+    expect(customFetch.mock.calls[0]?.[0]).toBe(DOCTREE_URL);
+    expect(first.index.pages.map((page) => page.path)).toContain(
+      "/platforms/python/integrations/django",
+    );
+    expect(second.index).toEqual(first.index);
+    expect(second.index.postings.django?.length).toBe(1);
+    expect(await readdir(join(getConfigDir(), "cache", "docs"))).toEqual([
+      "index-v1.json",
+    ]);
+  });
+
+  test("revalidates a stale copy with its etag and keeps it on 304", async () => {
+    customFetch.mockResolvedValueOnce(okResponse());
+    await loadDocsIndex({ now: T0 });
+
+    customFetch.mockResolvedValueOnce(new Response(null, { status: 304 }));
+    const stale = await loadDocsIndex({ now: T0 + FRESH_FOR_MS + 1 });
+    // The 304 made the copy fresh again.
+    await loadDocsIndex({ now: T0 + FRESH_FOR_MS + 2 });
+
+    expect(customFetch).toHaveBeenCalledTimes(2);
+    expect(requestHeaders(1)["If-None-Match"]).toBe(ETAG);
+    expect(stale.warning).toBeUndefined();
+    expect(stale.index.pages.length).toBeGreaterThan(10);
+  });
+
+  test("--fresh revalidates a fresh copy", async () => {
+    customFetch.mockResolvedValueOnce(okResponse());
+    await loadDocsIndex({ now: T0 });
+
+    customFetch.mockResolvedValueOnce(new Response(null, { status: 304 }));
+    await loadDocsIndex({ now: T0 + 1, fresh: true });
+
+    expect(customFetch).toHaveBeenCalledTimes(2);
+  });
+
+  test("serves the stale copy with a warning when the refresh fails", async () => {
+    customFetch.mockResolvedValueOnce(okResponse());
+    await loadDocsIndex({ now: T0 });
+
+    customFetch.mockRejectedValueOnce(new TypeError("fetch failed"));
+    const loaded = await loadDocsIndex({ now: T0 + 3 * FRESH_FOR_MS });
+
+    expect(loaded.warning).toBe(
+      "Could not refresh the docs index; using a copy from 18 hours ago.",
+    );
+    expect(loaded.index.pages.length).toBeGreaterThan(10);
+  });
+
+  test("fails with an API error when there is no copy to fall back to", async () => {
+    customFetch.mockResolvedValueOnce(new Response("nope", { status: 503 }));
+
+    const error = await loadDocsIndex({ now: T0 }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(CliError);
+    expect((error as CliError).message).toContain("HTTP 503");
+  });
+
+  test("SENTRY_NO_CACHE=1 downloads every time and writes nothing", async () => {
+    process.env.SENTRY_NO_CACHE = "1";
+    customFetch.mockImplementation(async () => okResponse());
+
+    await loadDocsIndex({ now: T0 });
+    await loadDocsIndex({ now: T0 + 1 });
+
+    expect(customFetch).toHaveBeenCalledTimes(2);
+    expect(requestHeaders(1)["If-None-Match"]).toBeUndefined();
+    await expect(
+      readdir(join(getConfigDir(), "cache", "docs")),
+    ).rejects.toThrow();
+  });
+});

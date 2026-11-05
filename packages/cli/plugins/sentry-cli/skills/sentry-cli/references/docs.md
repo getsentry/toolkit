@@ -1,7 +1,7 @@
 ---
 name: sentry-cli-docs
 version: 0.49.0-dev.0
-description: Search and query current Sentry documentation
+description: Search the Sentry documentation
 requires:
   bins: ["sentry"]
   auth: true
@@ -9,58 +9,47 @@ requires:
 
 # Docs Commands
 
-Search and query current Sentry documentation
+Search the Sentry documentation
 
-### `sentry docs list <keywords...>`
+### `sentry docs <words...>`
 
-Find Sentry documentation pages by keyword
+Search the Sentry documentation
 
 **Arguments:**
 
 | Argument | Description |
 |----------|-------------|
-| `<keywords...>` | Documentation keywords |
+| `<words...>` | Words to search for |
 
 **Flags:**
-- `-n, --limit <value> - Maximum matches to return (1-20) - (default: "8")`
+- `-e, --regexp <value>... - Only pages whose title or URL path matches this regular expression (repeatable)`
+- `-n, --limit <value> - Maximum pages to return (1-50) - (default: "8")`
+- `-f, --fresh - Refresh the cached docs index before searching`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `results` | array | Matching pages, best match first |
+| `warnings` | array | What the search changed about the input, such as a corrected typo |
 
 **Examples:**
 
 ```bash
-# Search the documentation index
-sentry docs list "source maps"
+# Find pages by keywords
+sentry docs nextjs tracing
 
-# Limit the number of results
-sentry docs list "session replay privacy" --limit 5
+# Combine several topics
+sentry docs tracing cloudflare tanstack start
+
+# Match URL paths with a regular expression
+sentry docs -e 'guides/(nextjs|remix|sveltekit)/manual-setup$'
+
+# Combine a pattern and words
+sentry docs -e '/python/integrations/' celery
 
 # Output as JSON
-sentry docs list "source maps" --json
-```
-
-### `sentry docs query <question...>`
-
-Ask a cited question about Sentry documentation
-
-**Arguments:**
-
-| Argument | Description |
-|----------|-------------|
-| `<question...>` | Natural-language docs question |
-
-**Examples:**
-
-```bash
-# Ask a documentation question
-sentry docs "How do I configure tracing in Next.js?"
-
-# Use the explicit subcommand
-sentry docs query "How do I upload source maps?"
-
-# Use the search alias
-sentry docs search "How does session replay mask text?"
-
-# Output the answer as JSON
-sentry docs "How do I configure tracing?" --json
+sentry docs source maps vite --json
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.
