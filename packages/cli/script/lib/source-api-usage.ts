@@ -6,7 +6,7 @@ import {
   type SourceApiOperation,
 } from "@sentry/api/source-analysis";
 import { glob } from "tinyglobby";
-import { getAllEndpoints } from "../../src/lib/api-schema.js";
+import type { ApiEndpoint } from "../../src/lib/api-schema.js";
 
 export type { SourceApiOperation } from "@sentry/api/source-analysis";
 
@@ -79,7 +79,14 @@ export function analyzeSourceApiUsage(
   };
 }
 
-/** Analyze the CLI's own sources (`src/`, without tests or generated files) against the API catalog. */
+/**
+ * Analyze the CLI's own sources (`src/`, without tests or generated files)
+ * against the API catalog.
+ *
+ * It reads `api-schema.json` from disk rather than importing it:
+ * `command-api-analysis-worker.ts` imports this module before
+ * `script/generate.ts` has written the schema on a fresh checkout.
+ */
 export async function analyzeCliSources() {
   const files = await glob("src/**/*.{ts,tsx}", {
     ignore: ["src/generated/**", "**/*.test.ts"],
@@ -89,7 +96,10 @@ export async function analyzeCliSources() {
       files.map(async (file) => [file, await readFile(file, "utf-8")] as const),
     ),
   );
-  const operations = getAllEndpoints().flatMap((endpoint) =>
+  const endpoints = JSON.parse(
+    await readFile("src/generated/api-schema.json", "utf-8"),
+  ) as ApiEndpoint[];
+  const operations = endpoints.flatMap((endpoint) =>
     endpoint.fn
       ? [
           {
