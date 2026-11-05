@@ -13,7 +13,7 @@ import {
 } from "@sentry/api";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
 
-import { array, safeParse } from "valibot";
+import { array } from "valibot";
 
 import {
   type DashboardDetail,
@@ -24,6 +24,7 @@ import {
   type DashboardWidget,
   type ErrorResult,
   EventsTableResponseSchema,
+  type EventsTimeseriesResponse,
   EventsTimeseriesResponseSchema,
   type EventsTimeseriesSeries,
   mapWidgetTypeToDataset,
@@ -346,6 +347,9 @@ export function computeOptimalInterval(
   return best ?? VALID_INTERVALS[0];
 }
 
+/** Legend label for the catch-all series of a grouped query. */
+const OTHER_LABEL = "Other";
+
 /**
  * Build a human-readable label for one events-timeseries series.
  *
@@ -353,16 +357,20 @@ export function computeOptimalInterval(
  * grouped series are labelled by their group-by values joined with ",",
  * and ungrouped series are labelled by their `yAxis`. When a grouped
  * query has several y-axes the axis is appended so labels stay unique.
+ *
+ * A real group whose value is "Other" is labelled "Other ()" (as
+ * events-stats did) so it never collides with the catch-all series, which
+ * the renderers pin last and exclude from scaling by label.
  */
 function timeseriesLabel(
   series: EventsTimeseriesSeries,
   multipleAxes: boolean,
 ): string {
   if (series.meta.isOther) {
-    return multipleAxes ? `Other ${series.yAxis}` : "Other";
+    return multipleAxes ? `${OTHER_LABEL} ${series.yAxis}` : OTHER_LABEL;
   }
   if (series.groupBy && series.groupBy.length > 0) {
-    const group = series.groupBy
+    const joined = series.groupBy
       .map(({ value }) => {
         if (value === null || value === undefined) {
           return "(no value)";
@@ -376,6 +384,7 @@ function timeseriesLabel(
         return JSON.stringify(value);
       })
       .join(",");
+    const group = joined === OTHER_LABEL ? `${OTHER_LABEL} ()` : joined;
     return multipleAxes ? `${group} ${series.yAxis}` : group;
   }
   return series.yAxis;
@@ -414,21 +423,16 @@ function seriesSortKey(series: EventsTimeseriesSeries): number {
  * milliseconds to seconds and null or string buckets become numbers so the
  * renderers see the same shape they always have.
  *
- * @param raw - Raw JSON response from events-timeseries
+ * @param response - Validated events-timeseries response
  * @param yAxis - The aggregate function name(s) that were requested
  */
 function parseEventsTimeseriesResponse(
-  raw: unknown,
+  response: EventsTimeseriesResponse,
   yAxis: string[],
 ): TimeseriesResult {
-  const parsed = safeParse(EventsTimeseriesResponseSchema, raw);
-  if (!parsed.success) {
-    throw new Error("Unexpected events-timeseries response shape");
-  }
-
   const multipleAxes = yAxis.length > 1;
   // Keep the API order; the "Other" bucket has no order and renders last.
-  const ordered = [...parsed.output.timeSeries].sort(
+  const ordered = [...response.timeSeries].sort(
     (a, b) => seriesSortKey(a) - seriesSortKey(b),
   );
 
@@ -542,13 +546,13 @@ async function queryWidgetTimeseries(
       );
     }
 
-    const { data: raw } = await apiRequestToRegion<unknown>(
+    const { data } = await apiRequestToRegion<EventsTimeseriesResponse>(
       regionUrl,
       `/organizations/${orgSlug}/events-timeseries/`,
-      { params: reqParams },
+      { params: reqParams, schema: EventsTimeseriesResponseSchema },
     );
 
-    const parsed = parseEventsTimeseriesResponse(raw, aggregates);
+    const parsed = parseEventsTimeseriesResponse(data, aggregates);
     allSeries.push(...parsed.series);
   }
 

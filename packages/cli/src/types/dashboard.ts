@@ -11,6 +11,7 @@ import {
   isTracemetricsAggregate,
   parseFunction,
 } from "@sentry/toolkit-core/events-fields";
+import { vListOrganizationEventsTimeseriesResponse } from "@sentry/api/valibot";
 import {
   array,
   boolean,
@@ -894,25 +895,22 @@ export function prepareDashboardForUpdate(dashboard: DashboardDetail): {
 // used to fetch actual widget data for dashboard rendering.
 // ---------------------------------------------------------------------------
 
+const sdkTimeseriesResponse = vListOrganizationEventsTimeseriesResponse.entries;
+const sdkTimeseriesSeries = sdkTimeseriesResponse.timeSeries.item.entries;
+const sdkTimeseriesRow = sdkTimeseriesSeries.values.item.entries;
+
 /**
  * Single bucket from the events-timeseries API.
  *
- * `timestamp` is epoch milliseconds. `value` is null for empty buckets, and
- * the errors dataset returns an empty string for a string-typed aggregate
- * (for example `max()` over a measurement no event carries).
+ * Built from the `@sentry/api` schema. `timestamp` is epoch milliseconds and
+ * `value` is null for empty buckets.
  */
-export const EventsTimeseriesRowSchema = looseObject({
-  timestamp: number(),
+const EventsTimeseriesRowSchema = object({
+  ...sdkTimeseriesRow,
+  // The spec says `number | null`, but the errors dataset returns a string
+  // for string-typed aggregates (for example `max()` over a measurement no
+  // event carries), which arrives as "".
   value: nullable(union([number(), string()])),
-  incomplete: optional(boolean()),
-});
-
-export type EventsTimeseriesRow = InferOutput<typeof EventsTimeseriesRowSchema>;
-
-/** One group-by key/value pair attached to a grouped (topEvents) series. */
-export const EventsTimeseriesGroupBySchema = looseObject({
-  key: string(),
-  value: unknown(),
 });
 
 /**
@@ -920,20 +918,14 @@ export const EventsTimeseriesGroupBySchema = looseObject({
  *
  * Ungrouped queries return one series per `yAxis`. Grouped queries
  * (`topEvents > 0`) return one series per group per `yAxis`, with the
- * group identified by `groupBy` and the catch-all group by `meta.isOther`
- * (which carries `groupBy: null`).
+ * group identified by `groupBy` and the catch-all group by `meta.isOther`.
  */
-export const EventsTimeseriesSeriesSchema = looseObject({
-  yAxis: string(),
+const EventsTimeseriesSeriesSchema = object({
+  ...sdkTimeseriesSeries,
   values: array(EventsTimeseriesRowSchema),
-  groupBy: optional(nullable(array(EventsTimeseriesGroupBySchema))),
-  meta: looseObject({
-    valueType: optional(string()),
-    valueUnit: optional(nullable(string())),
-    interval: optional(number()),
-    order: optional(number()),
-    isOther: optional(boolean()),
-  }),
+  // The spec marks `groupBy` optional only, but the "Other" series sends
+  // `groupBy: null`.
+  groupBy: nullish(sdkTimeseriesSeries.groupBy.wrapped),
 });
 
 export type EventsTimeseriesSeries = InferOutput<
@@ -941,15 +933,9 @@ export type EventsTimeseriesSeries = InferOutput<
 >;
 
 /** Top-level response from the events-timeseries API. */
-export const EventsTimeseriesResponseSchema = looseObject({
+export const EventsTimeseriesResponseSchema = object({
+  ...sdkTimeseriesResponse,
   timeSeries: array(EventsTimeseriesSeriesSchema),
-  meta: optional(
-    looseObject({
-      dataset: optional(string()),
-      start: optional(number()),
-      end: optional(number()),
-    }),
-  ),
 });
 
 export type EventsTimeseriesResponse = InferOutput<

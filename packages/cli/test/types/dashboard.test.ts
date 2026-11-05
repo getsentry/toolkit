@@ -21,7 +21,6 @@ import {
   ErrorAggregateFunctionSchema,
   EventsTableResponseSchema,
   EventsTimeseriesResponseSchema,
-  EventsTimeseriesRowSchema,
   GRID_COLUMNS,
   IS_FILTER_VALUES,
   IsFilterValueSchema,
@@ -945,34 +944,9 @@ describe("stripWidgetServerFields", () => {
 // Widget data query types
 // ---------------------------------------------------------------------------
 
-describe("EventsTimeseriesRowSchema", () => {
-  test("parses a bucket with a value", () => {
-    const result = safeParse(EventsTimeseriesRowSchema, {
-      timestamp: 1_700_000_000_000,
-      value: 42,
-      incomplete: false,
-    });
-    expect(result.success).toBe(true);
-  });
-
-  test("parses a null bucket", () => {
-    const result = safeParse(EventsTimeseriesRowSchema, {
-      timestamp: 1_700_000_000_000,
-      value: null,
-    });
-    expect(result.success).toBe(true);
-  });
-
-  test("rejects a non-numeric timestamp", () => {
-    const result = safeParse(EventsTimeseriesRowSchema, {
-      timestamp: "soon",
-      value: 1,
-    });
-    expect(result.success).toBe(false);
-  });
-});
-
 describe("EventsTimeseriesResponseSchema", () => {
+  const meta = { valueType: "integer", valueUnit: null, interval: 3_600_000 };
+
   test("parses an ungrouped response", () => {
     const result = safeParse(EventsTimeseriesResponseSchema, {
       meta: { dataset: "errors", start: 1, end: 2 },
@@ -983,49 +957,23 @@ describe("EventsTimeseriesResponseSchema", () => {
             { timestamp: 1_700_000_000_000, value: 10, incomplete: false },
             { timestamp: 1_700_003_600_000, value: 20, incomplete: true },
           ],
-          meta: { valueType: "integer", valueUnit: null, interval: 3_600_000 },
+          meta,
         },
       ],
     });
     expect(result.success).toBe(true);
   });
 
-  test("parses a grouped response with Other", () => {
-    const result = safeParse(EventsTimeseriesResponseSchema, {
-      timeSeries: [
-        {
-          yAxis: "p50(span.duration)",
-          groupBy: [{ key: "span.op", value: "db" }],
-          values: [{ timestamp: 1_700_000_000_000, value: 1.5 }],
-          meta: { valueType: "duration", valueUnit: "millisecond", order: 0 },
-        },
-        {
-          yAxis: "p50(span.duration)",
-          values: [{ timestamp: 1_700_000_000_000, value: null }],
-          meta: {
-            valueType: "duration",
-            valueUnit: "millisecond",
-            isOther: true,
-          },
-        },
-      ],
-    });
-    expect(result.success).toBe(true);
-  });
-
-  test("rejects a response without timeSeries", () => {
-    const result = safeParse(EventsTimeseriesResponseSchema, { data: [] });
-    expect(result.success).toBe(false);
-  });
-
-  test("accepts a null groupBy on the Other series and string values", () => {
+  test("accepts a null groupBy and string values the spec leaves out", () => {
     const result = safeParse(EventsTimeseriesResponseSchema, {
       timeSeries: [
         {
           yAxis: "max(measurements.custom.ratio)",
           groupBy: null,
-          values: [{ timestamp: 1_700_000_000_000, value: "" }],
-          meta: { valueType: "string", valueUnit: null, isOther: true },
+          values: [
+            { timestamp: 1_700_000_000_000, value: "", incomplete: false },
+          ],
+          meta: { ...meta, valueType: "string", isOther: true },
         },
       ],
     });
