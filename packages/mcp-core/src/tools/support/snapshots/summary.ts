@@ -1,7 +1,11 @@
 import { z } from "zod";
 import type { SentryApiService } from "../../../api-client";
 import { formatToolCallInstruction } from "../../../internal/tool-helpers/tool-call-formatting";
-import type { SnapshotImageEntry, SnapshotVcsInfo } from "./formatting";
+import {
+  type SnapshotImageEntry,
+  type SnapshotVcsInfo,
+  snapshotDiffPercent,
+} from "./formatting";
 import {
   groupSnapshotImages,
   snapshotGroupsOf,
@@ -93,7 +97,7 @@ function pairImage(
 
 function diffPercent(diff: number | null | undefined): number | null {
   return typeof diff === "number" && Number.isFinite(diff)
-    ? Math.round(diff * 10000) / 100
+    ? snapshotDiffPercent(diff)
     : null;
 }
 

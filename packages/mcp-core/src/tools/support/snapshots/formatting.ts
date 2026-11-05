@@ -15,8 +15,12 @@ export interface SnapshotVcsInfo {
   pr_number?: number | null;
 }
 
+export function snapshotDiffPercent(diff: number): number {
+  return Math.round(diff * 10000) / 100;
+}
+
 export function formatSnapshotDiffPercent(diff: number): string {
-  return `${Math.round(diff * 10000) / 100}%`;
+  return `${snapshotDiffPercent(diff)}%`;
 }
 
 export function renderSnapshotImageContext(context: unknown): string[] {

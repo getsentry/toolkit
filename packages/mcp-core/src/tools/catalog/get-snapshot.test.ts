@@ -218,7 +218,7 @@ describe("get_snapshot", () => {
     expect(serialized).not.toContain("skipped.png");
   });
 
-  it("preserves the selectedSnapshot URL fallback when the image tool is unavailable", async () => {
+  it("points at the selectedSnapshot URL without imageIdentifier when get_snapshot_image is unavailable", async () => {
     setupSnapshotMock();
 
     const result = await getSnapshot.handler(
@@ -235,9 +235,10 @@ describe("get_snapshot", () => {
       },
     );
 
-    expect(getContent(result).responseNotes[0]).toContain(
-      'get_sentry_resource(url="https://sentry.sentry.io/preprod/snapshots/231949/?selectedSnapshot=<URL-encoded imageFileName>")',
-    );
+    expect(getContent(result).responseNotes).toEqual([
+      'Use the Sentry tool `get_sentry_resource(url="https://sentry.sentry.io/preprod/snapshots/231949/?selectedSnapshot=<URL-encoded imageFileName>")` to view one image preview.',
+      "Full-resolution snapshot image bytes are not available in this session",
+    ]);
   });
 
   it("skips non-object entries in image sections", async () => {
