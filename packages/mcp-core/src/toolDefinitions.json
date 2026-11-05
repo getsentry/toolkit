@@ -7649,6 +7649,254 @@
       },
       "required": ["organizationSlug"]
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "explanation": {
+          "type": ["string", "null"]
+        },
+        "executedSearch": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "string"
+            },
+            "query": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sort": {
+              "type": ["string", "null"]
+            },
+            "timeRange": {
+              "type": "object",
+              "properties": {
+                "statsPeriod": {
+                  "type": ["string", "null"]
+                },
+                "start": {
+                  "type": ["string", "null"]
+                },
+                "end": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["statsPeriod", "start", "end"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["dataset", "query", "fields", "sort", "timeRange"],
+          "additionalProperties": false
+        },
+        "url": {
+          "type": "string",
+          "description": "Opens these results in Sentry."
+        },
+        "presentationHint": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "resultType": {
+          "type": "string",
+          "enum": ["samples", "aggregates", "timeSeries"]
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {},
+                "description": "The requested fields, keyed by field name."
+              },
+              "links": {
+                "type": "object",
+                "properties": {
+                  "issueUrl": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["issueUrl"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["values", "links"],
+            "additionalProperties": false
+          }
+        },
+        "timeSeries": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "yAxis": {
+                  "type": "string"
+                },
+                "interval": {
+                  "description": "Bucket size; null when Sentry chose it for the range.",
+                  "type": ["string", "null"]
+                },
+                "total": {
+                  "description": "Sum of all buckets; null for non-additive aggregates.",
+                  "type": ["number", "null"]
+                },
+                "totalIncludesIncompleteBuckets": {
+                  "type": "boolean"
+                },
+                "peak": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "time": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": ["number", "string"]
+                        }
+                      },
+                      "required": ["time", "value"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Highest bucket that is no longer receiving data."
+                },
+                "ingestion": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string"
+                        },
+                        "delaySeconds": {
+                          "type": ["number", "null"]
+                        },
+                        "completeThrough": {
+                          "type": ["string", "null"]
+                        }
+                      },
+                      "required": ["status", "delaySeconds", "completeThrough"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "bucketCount": {
+                  "type": "number"
+                },
+                "buckets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "time": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": ["number", "string"]
+                      },
+                      "incomplete": {
+                        "type": "boolean",
+                        "description": "Data is still arriving, so the value may rise."
+                      },
+                      "outsideRetention": {
+                        "type": "boolean",
+                        "description": "Starts before the retention window, so older data is missing and the value will not change."
+                      }
+                    },
+                    "required": [
+                      "time",
+                      "value",
+                      "incomplete",
+                      "outsideRetention"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "The most recent buckets, oldest first."
+                }
+              },
+              "required": [
+                "yAxis",
+                "interval",
+                "total",
+                "totalIncludesIncompleteBuckets",
+                "peak",
+                "ingestion",
+                "bucketCount",
+                "buckets"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "query",
+        "explanation",
+        "executedSearch",
+        "url",
+        "presentationHint",
+        "notes",
+        "resultType",
+        "results",
+        "timeSeries",
+        "suggestedActions"
+      ],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "direct"
