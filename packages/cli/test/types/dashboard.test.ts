@@ -984,6 +984,8 @@ describe("EventsTimeseriesResponseSchema", () => {
     const result = safeParse(EventsTimeseriesResponseSchema, {
       meta: {
         dataset: "spans",
+        start: 1_700_000_000_000,
+        end: 1_700_003_600_000,
         ingestion: {
           status: "delayed",
           delaySeconds: 90,
@@ -1001,7 +1003,7 @@ describe("EventsTimeseriesResponseSchema", () => {
               incompleteReason: "ingestion_delay",
             },
           ],
-          meta: { valueType: "integer", valueUnit: null },
+          meta,
         },
       ],
     });

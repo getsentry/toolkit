@@ -940,17 +940,6 @@ export type EventsTimeseriesSeries = InferOutput<
   typeof EventsTimeseriesSeriesSchema
 >;
 
-/**
- * Ingestion status attached to an events-timeseries response.
- *
- * `completeThrough` is epoch milliseconds, like the bucket timestamps.
- */
-export const EventsTimeseriesIngestionSchema = looseObject({
-  status: string(),
-  delaySeconds: optional(number()),
-  completeThrough: optional(number()),
-});
-
 /** Top-level response from the events-timeseries API. */
 export const EventsTimeseriesResponseSchema = object({
   ...sdkTimeseriesResponse,
