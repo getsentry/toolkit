@@ -86,22 +86,22 @@ describe("search_attributes", () => {
 
       | Attribute | Type | Description | Added by Sentry | Deprecated | Replacement Attribute |
       | --- | --- | --- | --- | --- | --- |
-      | \`environment\` | string | The sentry environment.. EXAMPLE VALUES: production | yes | yes | sentry.environment |
-      | \`http.method\` | string | The HTTP method used.. EXAMPLE VALUES: GET | yes | yes | http.request.method |
-      | \`http.status_code\` | number | The status code of the HTTP response.. EXAMPLE VALUES: 404 | yes | yes | http.response.status_code |
-      | \`http.url\` | string | The URL of the resource that was fetched.. EXAMPLE VALUES: https://example.com/test?foo=bar#buzz | yes | yes | url.full |
-      | \`platform\` | string | The sdk platform that generated the event.. EXAMPLE VALUES: php | yes |  |  |
-      | \`project\` | string | The name of the project. In some pages of sentry.io, you can also filter on project using a dropdown..  | yes |  |  |
-      | \`release\` | string | The sentry release.. EXAMPLE VALUES: production | yes | yes | sentry.release |
-      | \`sdk.name\` | string | The sentry sdk name.. EXAMPLE VALUES: @sentry/react | yes |  |  |
-      | \`sdk.version\` | string | The sentry sdk version.. EXAMPLE VALUES: 7.0.0 | yes |  |  |
-      | \`span.description\` | string | Description of the span's operation..  | yes |  |  |
-      | \`span.duration\` | number | The total time taken by the span..  | yes |  |  |
-      | \`span.op\` | string | The operation of a span.. EXAMPLE VALUES: http.client | yes |  |  |
-      | \`span.status\` | string | The span's status (either "ok" or "error"). Older SDKs may set this to a more specific error, but this behaviour is deprecated.. EXAMPLE VALUES: ok | yes |  |  |
-      | \`transaction\` | string | The sentry transaction (segment name).. EXAMPLE VALUES: GET / | yes | yes | sentry.segment.name |
+      | \`environment\` | string | The sentry environment. EXAMPLE VALUES: production | yes | yes | sentry.environment |
+      | \`http.method\` | string | The HTTP method used. EXAMPLE VALUES: GET | yes | yes | http.request.method |
+      | \`http.status_code\` | number | The status code of the HTTP response. EXAMPLE VALUES: 404 | yes | yes | http.response.status_code |
+      | \`http.url\` | string | The URL of the resource that was fetched. EXAMPLE VALUES: https://example.com/test?foo=bar#buzz | yes | yes | url.full |
+      | \`platform\` | string | The sdk platform that generated the event. EXAMPLE VALUES: php | yes |  |  |
+      | \`project\` | string | The name of the project. In some pages of sentry.io, you can also filter on project using a dropdown.  | yes |  |  |
+      | \`release\` | string | The sentry release. EXAMPLE VALUES: production | yes | yes | sentry.release |
+      | \`sdk.name\` | string | The sentry sdk name. EXAMPLE VALUES: @sentry/react | yes |  |  |
+      | \`sdk.version\` | string | The sentry sdk version. EXAMPLE VALUES: 7.0.0 | yes |  |  |
+      | \`span.description\` | string | Description of the span's operation.  | yes |  |  |
+      | \`span.duration\` | number | The total time taken by the span.  | yes |  |  |
+      | \`span.op\` | string | The operation of a span. EXAMPLE VALUES: http.client | yes |  |  |
+      | \`span.status\` | string | The span's status (either "ok" or "error"). Older SDKs may set this to a more specific error, but this behaviour is deprecated. EXAMPLE VALUES: ok | yes |  |  |
+      | \`transaction\` | string | The sentry transaction (segment name). EXAMPLE VALUES: GET / | yes | yes | sentry.segment.name |
       | \`transaction.duration\` | number |  | yes |  |  |
-      | \`transaction.op\` | string | Operation of the containing transaction..  | yes |  |  |
+      | \`transaction.op\` | string | Operation of the containing transaction.  | yes |  |  |
       | \`transaction.status\` | string |  | yes |  |  |
       | \`user.email\` | string |  | yes |  |  |
       | \`user.id\` | string |  | yes |  |  |
@@ -113,15 +113,15 @@ describe("search_attributes", () => {
       | \`custom.score\` | number |  |  |  |  |
       | \`custom.tier\` | string |  |  |  |  |
       | \`device\` | string |  | yes |  |  |
-      | \`device.memory\` | number | The estimated total memory capacity of the device..  | yes |  |  |
+      | \`device.memory\` | number | The estimated total memory capacity of the device.  | yes |  |  |
       | \`deviceMemory\` | number |  | yes |  |  |
-      | \`geo.city\` | string | The city of the user's location.. EXAMPLE VALUES: Toronto | yes |  |  |
-      | \`geo.country_code\` | string | The country code of the user's location.. EXAMPLE VALUES: US | yes |  |  |
-      | \`geo.region\` | string | The region of the user's location.. EXAMPLE VALUES: Canada | yes | yes | user.geo.region |
-      | \`http.request.method\` | string | The HTTP method used.. EXAMPLE VALUES: GET | yes |  |  |
-      | \`kiosk.firmware\` | string | The firmware revision currently installed and running on the kiosk.. EXAMPLE VALUES: 4.1.3 | yes |  |  |
-      | \`kiosk.firmware_revision\` | string | The firmware revision downloaded and staged for the kiosk's next update. It is not installed until the kiosk restarts.. EXAMPLE VALUES: 4.2.0 | yes |  |  |
-      | \`os.name\` | string | Human readable operating system name.. EXAMPLE VALUES: Ubuntu | yes |  |  |
+      | \`geo.city\` | string | The city of the user's location. EXAMPLE VALUES: Toronto | yes |  |  |
+      | \`geo.country_code\` | string | The country code of the user's location. EXAMPLE VALUES: US | yes |  |  |
+      | \`geo.region\` | string | The region of the user's location. EXAMPLE VALUES: Canada | yes | yes | user.geo.region |
+      | \`http.request.method\` | string | The HTTP method used. EXAMPLE VALUES: GET | yes |  |  |
+      | \`kiosk.firmware\` | string | The firmware revision currently installed and running on the kiosk. EXAMPLE VALUES: 4.1.3 | yes |  |  |
+      | \`kiosk.firmware_revision\` | string | The firmware revision downloaded and staged for the kiosk's next update. It is not installed until the kiosk restarts. EXAMPLE VALUES: 4.2.0 | yes |  |  |
+      | \`os.name\` | string | Human readable operating system name. EXAMPLE VALUES: Ubuntu | yes |  |  |
       | \`user.username\` | string |  | yes |  |  |
 
       ## Response Notes
@@ -142,19 +142,19 @@ describe("search_attributes", () => {
 
       | Attribute | Type | Description | Added by Sentry | Deprecated | Replacement Attribute |
       | --- | --- | --- | --- | --- | --- |
-      | \`environment\` | string | The sentry environment.. EXAMPLE VALUES: production | yes | yes | sentry.environment |
-      | \`metric.name\` | string | The name of the metric.. EXAMPLE VALUES: http.request.duration | yes |  |  |
-      | \`metric.type\` | string | The type of the metric (counter, gauge, distribution).. EXAMPLE VALUES: distribution | yes |  |  |
-      | \`metric.unit\` | string | The unit of the metric value.. EXAMPLE VALUES: millisecond | yes |  |  |
-      | \`observed_timestamp\` | number | When Sentry received the metric sample..  | yes |  |  |
-      | \`project\` | string | The name of the project. In some pages of sentry.io, you can also filter on project using a dropdown..  | yes |  |  |
-      | \`timestamp_precise\` | number | When the metric sample was recorded, with nanosecond precision..  | yes |  |  |
-      | \`value\` | number | The recorded value of the metric sample..  | yes |  |  |
-      | \`fleet.deployment_region\` | string | The region the server is scheduled to move to in the next fleet deployment. It is not where the server runs now.. EXAMPLE VALUES: eu-west-1 | yes |  |  |
-      | \`fleet.region\` | string | The region the server is currently running in.. EXAMPLE VALUES: us-east-1 | yes |  |  |
-      | \`http.method\` | string | The HTTP method used.. EXAMPLE VALUES: GET | yes | yes | http.request.method |
+      | \`environment\` | string | The sentry environment. EXAMPLE VALUES: production | yes | yes | sentry.environment |
+      | \`metric.name\` | string | The name of the metric. EXAMPLE VALUES: http.request.duration | yes |  |  |
+      | \`metric.type\` | string | The type of the metric (counter, gauge, distribution). EXAMPLE VALUES: distribution | yes |  |  |
+      | \`metric.unit\` | string | The unit of the metric value. EXAMPLE VALUES: millisecond | yes |  |  |
+      | \`observed_timestamp\` | number | When Sentry received the metric sample.  | yes |  |  |
+      | \`project\` | string | The name of the project. In some pages of sentry.io, you can also filter on project using a dropdown.  | yes |  |  |
+      | \`timestamp_precise\` | number | When the metric sample was recorded, with nanosecond precision.  | yes |  |  |
+      | \`value\` | number | The recorded value of the metric sample.  | yes |  |  |
+      | \`fleet.deployment_region\` | string | The region the server is scheduled to move to in the next fleet deployment. It is not where the server runs now. EXAMPLE VALUES: eu-west-1 | yes |  |  |
+      | \`fleet.region\` | string | The region the server is currently running in. EXAMPLE VALUES: us-east-1 | yes |  |  |
+      | \`http.method\` | string | The HTTP method used. EXAMPLE VALUES: GET | yes | yes | http.request.method |
       | \`payload_size\` | number |  | yes |  |  |
-      | \`transaction\` | string | The sentry transaction (segment name).. EXAMPLE VALUES: GET / | yes | yes | sentry.segment.name |
+      | \`transaction\` | string | The sentry transaction (segment name). EXAMPLE VALUES: GET / | yes | yes | sentry.segment.name |
 
       ## Response Notes
 
