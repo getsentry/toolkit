@@ -9,6 +9,7 @@ import {
 export default defineTool({
   ...searchToolBase("search_errors"),
   name: "search_errors",
+  title: "Search Errors",
   description: [
     "Search Sentry error events: exceptions and crashes with stack traces. Use for error counts, statistics, trends, and individual error events.",
     "",

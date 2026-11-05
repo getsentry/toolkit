@@ -10,6 +10,7 @@ import { fetchSnapshotSummary } from "../support/snapshots/handlers";
 
 export default defineTool({
   name: "get_snapshot",
+  title: "Get Snapshot",
   skills: ["inspect"],
   requiredScopes: ["project:read"],
   description: ({ experimentalMode, availableToolNames, directToolNames }) => {

@@ -37,7 +37,8 @@ import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
 import { isUnauthorizedHandled } from "./internal/tool-helpers/credential-routing";
 import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
-import { MCP_SERVER_NAME } from "./constants";
+import { MCP_SERVER_INFO } from "./constants";
+import { buildServerInstructions } from "./server-instructions";
 import {
   formatErrorForUser,
   isExpectedToolError,
@@ -296,24 +297,40 @@ export function buildServer({
     ...context,
     experimentalMode,
   };
-  const server = new McpServer(
-    {
-      name: MCP_SERVER_NAME,
-      version: LIB_VERSION,
-    },
-    { maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS },
-  );
   const toolCallSpanAttributes = getToolCallSpanAttributes(
     contextWithModes,
     experimentalMode,
   );
   const registrations = configureServer({
-    server,
     context: contextWithModes,
     experimentalMode,
     tools: customTools,
     toolCallSpanAttributes,
   });
+  const server = new McpServer(
+    {
+      ...MCP_SERVER_INFO,
+      version: LIB_VERSION,
+    },
+    {
+      maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
+      instructions: buildServerInstructions(
+        new Set(registrations.map(({ name }) => name)),
+      ),
+    },
+  );
+  server.server.onerror = (error) => {
+    const transportLogOptions: LogIssueOptions = {
+      loggerScope: ["server", "transport"] as const,
+      contexts: {
+        transport: {
+          phase: "server.onerror",
+        },
+      },
+    };
+
+    logIssue(error, transportLogOptions);
+  };
   for (const { name, config, handler } of registrations) {
     server.registerTool(name, config, handler);
   }
@@ -337,13 +354,11 @@ export function buildServer({
  * captured in closures for tool handler execution.
  */
 function configureServer({
-  server,
   context,
   experimentalMode = false,
   tools: customTools,
   toolCallSpanAttributes,
 }: {
-  server: McpServer;
   context: ServerContext;
   experimentalMode?: boolean;
   tools?: ToolRegistry;
@@ -369,19 +384,6 @@ function configureServer({
     ),
   };
 
-  server.server.onerror = (error) => {
-    const transportLogOptions: LogIssueOptions = {
-      loggerScope: ["server", "transport"] as const,
-      contexts: {
-        transport: {
-          phase: "server.onerror",
-        },
-      },
-    };
-
-    logIssue(error, transportLogOptions);
-  };
-
   for (const { tool } of toolsToRegister) {
     const filteredInputSchema = getFilteredInputSchema(
       tool,
@@ -394,6 +396,7 @@ function configureServer({
     });
 
     const toolRegistration = {
+      title: tool.title,
       description: resolvedDescription,
       inputSchema: filteredInputSchema,
       outputSchema: tool.outputSchema,

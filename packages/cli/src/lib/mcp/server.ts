@@ -33,6 +33,12 @@ import { CLI_VERSION, SENTRY_CLI_DSN } from "../constants.js";
 import { logger } from "../logger.js";
 import { isTelemetryEnabled } from "../telemetry.js";
 import { redactTelemetryEnvelope } from "../telemetry/credential-redaction.js";
+import { clearStoredEnvelopes } from "../telemetry/offline-store.js";
+import {
+  makeStoringTransport,
+  STORED_ENVELOPES_PER_RUN,
+  type StoringTransport,
+} from "../telemetry/offline-transport.js";
 import { makeNodeTransportWithDeadline } from "../telemetry/zstd-transport.js";
 import type { McpServerConfig } from "./config.js";
 import { reportCliError } from "../error-reporting.js";
@@ -245,6 +251,13 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     "app.upstream.host": config.sentryHost,
     "app.url.full": config.mcpUrl,
   };
+  // Unsent telemetry shares the CLI's store, so opting out clears it, as in
+  // `withTelemetry()`.
+  const storeTelemetry = isTelemetryEnabled();
+  if (!storeTelemetry) {
+    clearStoredEnvelopes();
+  }
+  let storingTransport: StoringTransport | undefined;
 
   // Always the CLI's own project, never a DSN from the environment: an MCP
   // server started from a project shell or IDE inherits the app's SENTRY_DSN.
@@ -269,9 +282,17 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     release: CLI_VERSION,
     // Same credential redaction and request deadline as the CLI's own
     // telemetry: a stalled ingest socket must not keep the process alive
-    // after the client disconnects (#1956).
+    // after the client disconnects (#1956). Envelopes that fail to send are
+    // stored like the CLI's own.
     transport: (transportOptions) => {
-      const transport = makeNodeTransportWithDeadline(transportOptions);
+      if (storeTelemetry) {
+        storingTransport = makeStoringTransport(
+          transportOptions,
+          makeNodeTransportWithDeadline,
+        );
+      }
+      const transport =
+        storingTransport ?? makeNodeTransportWithDeadline(transportOptions);
       return {
         send: (envelope) => transport.send(redactTelemetryEnvelope(envelope)),
         flush: (timeout) => transport.flush(timeout),
@@ -292,6 +313,9 @@ export function initMcpTelemetry(config: McpServerConfig): void {
   if (client) {
     setCurrentClient(client);
   }
+  // Retry what earlier runs failed to send; `close()` on disconnect waits
+  // for it. The breaker sends another batch whenever ingest recovers.
+  storingTransport?.sendStored(STORED_ENVELOPES_PER_RUN);
 }
 
 /**

@@ -18,6 +18,7 @@ export default defineTool({
   experimental: true,
   includeInSkillDefinitions: false,
   name: "search_attributes",
+  title: "Search Attributes",
   // TODO: Edit this description to incoporate searching
   description: [
     "List span, log, or metric attribute keys in Sentry: which attributes exist, their types, short descriptions, examples, and whether they're deprecated.",

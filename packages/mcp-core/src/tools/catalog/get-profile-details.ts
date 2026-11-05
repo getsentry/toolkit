@@ -177,6 +177,7 @@ async function resolveProjectContext(
 
 export default defineTool({
   name: "get_profile_details",
+  title: "Get Profile Details",
   skills: ["inspect"],
   requiredScopes: ["event:read"],
   requiredCapabilities: ["profiles"],
