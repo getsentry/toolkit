@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Issue } from "../../api-client/types";
+import type { AssignedTo, Issue } from "../../api-client/types";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -674,6 +674,17 @@ function getReasonComment(
   };
 }
 
+/**
+ * Identifies an assignee by actor so two users with the same display name
+ * still count as different assignees.
+ */
+function getAssigneeKey(assignedTo: AssignedTo): string {
+  if (assignedTo && typeof assignedTo === "object" && assignedTo.id != null) {
+    return `${assignedTo.type}:${assignedTo.id}`;
+  }
+  return `name:${formatAssignedTo(assignedTo)}`;
+}
+
 export default defineTool({
   name: "update_issue",
   skills: ["triage"], // Only available in triage skill
@@ -874,8 +885,8 @@ export default defineTool({
     const updatedStatusDisplay = getIssueStatusDisplay(updatedIssue);
     const statusChanged = currentStatusDisplay !== updatedStatusDisplay;
     const assignmentChanged =
-      formatAssignedTo(currentIssue.assignedTo ?? null) !==
-      formatAssignedTo(updatedIssue.assignedTo ?? null);
+      getAssigneeKey(currentIssue.assignedTo ?? null) !==
+      getAssigneeKey(updatedIssue.assignedTo ?? null);
     const ignoreBehaviorChanged =
       currentIgnoreState?.behavior !== updatedIgnoreState?.behavior;
 

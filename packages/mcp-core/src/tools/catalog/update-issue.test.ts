@@ -183,6 +183,41 @@ describe("update_issue", () => {
     `);
   });
 
+  it("reports a reassignment between users with the same name", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () =>
+          HttpResponse.json(
+            createIssue({ assignedTo: { type: "user", id: "7", name: "Me" } }),
+          ),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () =>
+          HttpResponse.json(
+            createIssue({ assignedTo: { type: "user", id: "8", name: "Me" } }),
+          ),
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: undefined,
+        assignedTo: "user:8",
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    const output = structured(result);
+    expect(output.updated).toBe(true);
+    expect(output.changes.assignedTo).toEqual({ from: "Me", to: "Me" });
+  });
+
   it("unassigns an issue", async () => {
     let requestBody: Record<string, unknown> | undefined;
     const currentIssue = createIssue();
