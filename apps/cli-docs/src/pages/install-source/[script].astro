@@ -1,0 +1,48 @@
+---
+// Browsers that open /install or /install.ps1 are rewritten here (see the
+// Vercel config in .github/workflows/cli-build.yml); curl, wget, and irm
+// still get the raw script.
+import { createHash } from "node:crypto";
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import { Code } from "@astrojs/starlight/components";
+import bash from "../../../public/install?raw";
+import powershell from "../../../public/install.ps1?raw";
+
+export function getStaticPaths() {
+  const url = "https://cli.sentry.dev/install";
+  return [
+    {
+      params: { script: "install" },
+      props: {
+        code: bash,
+        lang: "bash",
+        run: `curl ${url} -fsS | bash`,
+        check: `curl -fsS ${url} | shasum -a 256`,
+      },
+    },
+    {
+      params: { script: "install.ps1" },
+      props: {
+        code: powershell,
+        lang: "powershell",
+        run: `irm ${url}.ps1 | iex`,
+        check: `iwr ${url}.ps1 -OutFile install.ps1; Get-FileHash install.ps1`,
+      },
+    },
+  ];
+}
+
+const { script } = Astro.params;
+const { code, lang, run, check } = Astro.props;
+const sha256 = createHash("sha256").update(code).digest("hex");
+---
+
+<StarlightPage frontmatter={{ title: "Install script", pagefind: false }}>
+  <p>
+    This is the script that <code>{run}</code> runs.
+    Its SHA-256 is <code>{sha256}</code>. Check that what you download matches with
+    <code>{check}</code>, or read
+    the <a href={`https://github.com/getsentry/toolkit/blob/main/packages/cli/${script}`}>source on GitHub</a>.
+  </p>
+  <Code code={code} lang={lang} title={script} />
+</StarlightPage>
