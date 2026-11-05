@@ -173,13 +173,15 @@ export async function getSnapshotSummary(
     imageIdentifier: "<imageFileName>",
   };
   responseNotes.push(
-    `${formatToolCallInstruction({
+    formatToolCallInstruction({
       toolName: "get_snapshot_image",
       arguments: imageArguments,
       showArguments: true,
       ...instructionContext,
-      fallbackInstruction: `Use the Sentry tool \`get_sentry_resource(url="${url}?selectedSnapshot=<URL-encoded imageFileName>")\``,
-    })} to view one image preview; pass its imageFileName as imageIdentifier.`,
+      purpose:
+        "to view one image preview; pass its imageFileName as imageIdentifier.",
+      fallbackInstruction: `Use the Sentry tool \`get_sentry_resource(url="${url}?selectedSnapshot=<URL-encoded imageFileName>")\` to view one image preview.`,
+    }),
     formatToolCallInstruction({
       toolName: "get_snapshot_image",
       arguments: { ...imageArguments, imageResolution: "full" },
