@@ -14,9 +14,12 @@ import {
 } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import { formatErrorResults } from "../support/search-events/formatters";
 import { searchIssueEventsAgent } from "../support/search-issue-events/agent";
 import { RECOMMENDED_FIELDS } from "../support/search-issue-events/config";
+import {
+  buildIssueEventResults,
+  searchIssueEventsOutputSchema,
+} from "../support/search-issue-events/results";
 import { parseIssueParams } from "../support/search-issue-events/utils";
 
 function buildIssueEventSearchRepairPrompt(params: {
@@ -128,6 +131,7 @@ export default defineTool({
         "Include explanation of how the query was translated or repaired",
       ),
   },
+  outputSchema: searchIssueEventsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -286,16 +290,19 @@ export default defineTool({
       ? `Events in issue ${issueId}: ${params.query}`
       : `Events in issue ${issueId}`;
 
-    return formatErrorResults({
-      eventData: eventsResponse,
-      inputQuery: naturalLanguageContext,
-      includeExplanation: params.includeExplanation,
-      apiService,
+    return buildIssueEventResults({
+      events: eventsResponse,
       organizationSlug,
+      issueId,
+      issueUrl: apiService.getIssueUrl(organizationSlug, issueId),
       explorerUrl,
-      sentryQuery: explorerQuery,
-      fields,
-      explanation,
+      inputQuery: naturalLanguageContext,
+      query,
+      timeRange: timeParams,
+      explanation: params.includeExplanation ? explanation : undefined,
+      experimentalMode: context.experimentalMode ?? false,
+      availableToolNames: context.availableToolNames,
+      directToolNames: context.directToolNames,
     });
   },
 });

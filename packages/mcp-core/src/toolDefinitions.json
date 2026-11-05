@@ -7736,6 +7736,216 @@
         }
       }
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "explanation": {
+          "type": ["string", "null"]
+        },
+        "executedSearch": {
+          "type": "object",
+          "properties": {
+            "issueId": {
+              "type": "string"
+            },
+            "query": {
+              "type": "string"
+            },
+            "timeRange": {
+              "type": "object",
+              "properties": {
+                "statsPeriod": {
+                  "type": ["string", "null"]
+                },
+                "start": {
+                  "type": ["string", "null"]
+                },
+                "end": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["statsPeriod", "start", "end"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["issueId", "query", "timeRange"],
+          "additionalProperties": false
+        },
+        "url": {
+          "type": "string",
+          "description": "Opens these results in Sentry."
+        },
+        "issueUrl": {
+          "type": "string"
+        },
+        "presentationHint": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "eventType": {
+                "type": ["string", "null"]
+              },
+              "title": {
+                "type": ["string", "null"]
+              },
+              "message": {
+                "type": ["string", "null"]
+              },
+              "culprit": {
+                "type": ["string", "null"]
+              },
+              "location": {
+                "type": ["string", "null"]
+              },
+              "platform": {
+                "type": ["string", "null"]
+              },
+              "dateCreated": {
+                "type": ["string", "null"]
+              },
+              "user": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": ["string", "null"]
+                      },
+                      "email": {
+                        "type": ["string", "null"]
+                      },
+                      "username": {
+                        "type": ["string", "null"]
+                      },
+                      "name": {
+                        "type": ["string", "null"]
+                      },
+                      "geo": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "countryCode": {
+                                "type": ["string", "null"]
+                              },
+                              "city": {
+                                "type": ["string", "null"]
+                              },
+                              "region": {
+                                "type": ["string", "null"]
+                              }
+                            },
+                            "required": ["countryCode", "city", "region"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["id", "email", "username", "name", "geo"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["key", "value"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "url",
+              "eventType",
+              "title",
+              "message",
+              "culprit",
+              "location",
+              "platform",
+              "dateCreated",
+              "user",
+              "tags"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Newest first; the issue events endpoint has no sort."
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "query",
+        "explanation",
+        "executedSearch",
+        "url",
+        "issueUrl",
+        "presentationHint",
+        "notes",
+        "events",
+        "suggestedActions"
+      ],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage"],
     "surface": "direct"
