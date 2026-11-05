@@ -387,7 +387,7 @@ jobs:
           rm -rf "$output_dir"
           mkdir -p "$output_dir/.vercel/output/static"
           cp -R apps/cli-docs/dist/. "$output_dir/.vercel/output/static/"
-          printf '%s\n' '{"version":3}' > "$output_dir/.vercel/output/config.json"
+          printf '%s\n' '{"version":3,"routes":[{"src":"^/install$","headers":{"Content-Type":"text/plain; charset=utf-8"},"continue":true}]}' > "$output_dir/.vercel/output/config.json"
           (cd "$output_dir" && zip -qr "$GITHUB_WORKSPACE/vercel.zip" .vercel)
       - name: Upload docs artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
