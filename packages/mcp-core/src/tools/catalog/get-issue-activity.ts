@@ -6,7 +6,7 @@ import {
   ensureIssueWithinProjectConstraint,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
-import { formatAvailableToolCallInstruction } from "../../internal/tool-helpers/tool-call-formatting";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import { isPlainObject } from "../../internal/type-guards";
 import {
   ParamIssueShortId,
@@ -16,12 +16,7 @@ import {
 } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import {
-  formatDate,
-  formatId,
-  formatUnknown,
-  readString,
-} from "./support/api-formatting";
+import { formatDate, formatId, readString } from "./support/api-formatting";
 import { formatActivityAuthor } from "./support/activity-formatting";
 
 function getActivityText(
@@ -40,22 +35,53 @@ function getActivityText(
   );
 }
 
-function formatActivity(activity: IssueActivity | IssueComment): string {
-  const actor = formatActivityAuthor(activity);
-  const date = formatDate(activity.dateCreated) ?? "unknown time";
+const issueActivityEntrySchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  author: z.string(),
+  dateCreated: z.string().nullable(),
+  commentId: z
+    .string()
+    .nullable()
+    .describe("Set when the comment ID differs from the activity ID."),
+  text: z.string().nullable(),
+  data: z
+    .record(z.string(), z.unknown())
+    .nullable()
+    .describe("Type-specific activity data, set only when there is no text."),
+});
+
+export const getIssueActivityOutputSchema = z.object({
+  organizationSlug: z.string(),
+  issueId: z.string(),
+  issueUrl: z.string(),
+  activity: z.array(issueActivityEntrySchema),
+  comments: z
+    .array(issueActivityEntrySchema)
+    .nullable()
+    .describe("Null when includeComments is false."),
+});
+
+function mapActivity(activity: IssueActivity | IssueComment) {
   const text = getActivityText(activity);
-  const details =
-    !text &&
-    isPlainObject(activity.data) &&
-    Object.keys(activity.data).length > 0
-      ? `\n  - Data: ${formatUnknown(activity.data)}`
-      : "";
   const commentId = activity.commentId;
-  const commentDetails =
-    commentId != null && String(commentId) !== String(activity.id)
-      ? `\n  - Comment ID: ${formatId(commentId)}`
-      : "";
-  return `- ${date}: ${activity.type ?? "activity"} by ${actor} (${formatId(activity.id)})${commentDetails}${text ? `\n  - ${text}` : ""}${details}`;
+  return {
+    id: formatId(activity.id),
+    type: activity.type ?? "activity",
+    author: formatActivityAuthor(activity),
+    dateCreated: formatDate(activity.dateCreated),
+    commentId:
+      commentId != null && String(commentId) !== String(activity.id)
+        ? formatId(commentId)
+        : null,
+    text,
+    data:
+      !text &&
+      isPlainObject(activity.data) &&
+      Object.keys(activity.data).length > 0
+        ? activity.data
+        : null,
+  };
 }
 
 export default defineTool({
@@ -88,6 +114,7 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
+  outputSchema: getIssueActivityOutputSchema,
   async handler(params, context: ServerContext) {
     const parsed = parseIssueParams({
       issueUrl: params.issueUrl,
@@ -125,37 +152,14 @@ export default defineTool({
         : Promise.resolve([]),
     ]);
 
-    const output = [
-      `# Activity for Issue ${parsed.issueId} in **${parsed.organizationSlug}**`,
-      "",
-      "## Activity",
-      "",
-      activity.length === 0
-        ? "No activity found."
-        : activity.slice(0, params.limit).map(formatActivity).join("\n"),
-    ];
-
-    if (params.includeComments) {
-      output.push("", "## Comments", "");
-      output.push(
-        comments.length === 0
-          ? "No comments found."
-          : comments.slice(0, params.limit).map(formatActivity).join("\n"),
-      );
-    }
-
-    const addNoteInstruction = formatAvailableToolCallInstruction({
-      toolName: "add_issue_note",
-      experimentalMode: context.experimentalMode ?? false,
-      availableToolNames: context.availableToolNames,
-      directToolNames: context.directToolNames,
-      purpose: "to add a new issue comment",
+    return structuredResult({
+      organizationSlug: parsed.organizationSlug,
+      issueId: parsed.issueId,
+      issueUrl: apiService.getIssueUrl(parsed.organizationSlug, parsed.issueId),
+      activity: activity.slice(0, params.limit).map(mapActivity),
+      comments: params.includeComments
+        ? comments.slice(0, params.limit).map(mapActivity)
+        : null,
     });
-    if (addNoteInstruction) {
-      output.push("", "## Response Notes", "");
-      output.push(`- ${addNoteInstruction}.`);
-    }
-
-    return `${output.join("\n")}\n`;
   },
 });

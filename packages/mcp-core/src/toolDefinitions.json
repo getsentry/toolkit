@@ -4900,6 +4900,140 @@
         }
       }
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "issueUrl": {
+          "type": "string"
+        },
+        "activity": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "author": {
+                "type": "string"
+              },
+              "dateCreated": {
+                "type": ["string", "null"]
+              },
+              "commentId": {
+                "description": "Set when the comment ID differs from the activity ID.",
+                "type": ["string", "null"]
+              },
+              "text": {
+                "type": ["string", "null"]
+              },
+              "data": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Type-specific activity data, set only when there is no text."
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "author",
+              "dateCreated",
+              "commentId",
+              "text",
+              "data"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "comments": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "author": {
+                    "type": "string"
+                  },
+                  "dateCreated": {
+                    "type": ["string", "null"]
+                  },
+                  "commentId": {
+                    "description": "Set when the comment ID differs from the activity ID.",
+                    "type": ["string", "null"]
+                  },
+                  "text": {
+                    "type": ["string", "null"]
+                  },
+                  "data": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Type-specific activity data, set only when there is no text."
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "author",
+                  "dateCreated",
+                  "commentId",
+                  "text",
+                  "data"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null when includeComments is false."
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "issueId",
+        "issueUrl",
+        "activity",
+        "comments"
+      ],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage"],
     "surface": "direct"

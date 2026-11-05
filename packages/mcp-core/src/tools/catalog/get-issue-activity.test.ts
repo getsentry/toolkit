@@ -2,7 +2,13 @@ import { mswServer } from "@sentry/mcp-server-mocks";
 import { afterEach, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import type { IssueActivity } from "../../api-client/types";
-import getIssueActivity from "./get-issue-activity.js";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content.js";
+import getIssueActivity, {
+  getIssueActivityOutputSchema,
+} from "./get-issue-activity.js";
 
 const context = {
   constraints: {
@@ -18,6 +24,11 @@ const params = {
   issueId: "CLOUDFLARE-MCP-41",
   includeComments: true,
   limit: 25,
+};
+
+type ActivityOutput = {
+  activity: Array<{ author: string; commentId: string | null }>;
+  comments: Array<{ author: string; commentId: string | null }> | null;
 };
 
 function mockActivity(activity: IssueActivity) {
@@ -39,26 +50,63 @@ describe("get_issue_activity", () => {
   it("serializes issue activity and comments", async () => {
     const result = await getIssueActivity.handler(params, context);
 
-    expect(result).toMatchInlineSnapshot(`
-      "# Activity for Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
-
-      ## Activity
-
-      - 2025-04-10T22:55:22.411Z: auto_set_ongoing by system (4633815464)
-        - Data: {"after_days":7}
-      - 2025-04-14T12:00:00.000Z: note by Jane Developer (Claude via MCP) (4633816000)
-        - Investigating after the latest deploy.
-
-      ## Comments
-
-      - 2025-04-14T12:00:00.000Z: note by Jane Developer (Claude via MCP) (4633816000)
-        - Investigating after the latest deploy.
-
-      ## Response Notes
-
-      - Use the Sentry tool \`add_issue_note\` to add a new issue comment.
-      "
+    assertStructuredOnlyResult(result);
+    const structuredContent = getStructuredContent(result);
+    expect(getIssueActivity.outputSchema).toBe(getIssueActivityOutputSchema);
+    expect(getIssueActivityOutputSchema.parse(structuredContent)).toEqual(
+      structuredContent,
+    );
+    expect(structuredContent).toMatchInlineSnapshot(`
+      {
+        "activity": [
+          {
+            "author": "system",
+            "commentId": null,
+            "data": {
+              "after_days": 7,
+            },
+            "dateCreated": "2025-04-10T22:55:22.411Z",
+            "id": "4633815464",
+            "text": null,
+            "type": "auto_set_ongoing",
+          },
+          {
+            "author": "Jane Developer (Claude via MCP)",
+            "commentId": null,
+            "data": null,
+            "dateCreated": "2025-04-14T12:00:00.000Z",
+            "id": "4633816000",
+            "text": "Investigating after the latest deploy.",
+            "type": "note",
+          },
+        ],
+        "comments": [
+          {
+            "author": "Jane Developer (Claude via MCP)",
+            "commentId": null,
+            "data": null,
+            "dateCreated": "2025-04-14T12:00:00.000Z",
+            "id": "4633816000",
+            "text": "Investigating after the latest deploy.",
+            "type": "note",
+          },
+        ],
+        "issueId": "CLOUDFLARE-MCP-41",
+        "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+        "organizationSlug": "sentry-mcp-evals",
+      }
     `);
+  });
+
+  it("returns null comments when comments are not requested", async () => {
+    const result = await getIssueActivity.handler(
+      { ...params, includeComments: false },
+      context,
+    );
+
+    const structuredContent = getStructuredContent<ActivityOutput>(result);
+    expect(structuredContent.comments).toBeNull();
+    expect(structuredContent.activity.length).toBeGreaterThan(0);
   });
 
   it.each([
@@ -84,10 +132,16 @@ describe("get_issue_activity", () => {
       const attribution = label
         ? `Jane Developer (${label})`
         : "Jane Developer";
-      const [activity, comments] = result.split("## Comments");
-      expect(activity).toContain(`by ${attribution} (activity-1)`);
-      expect(comments).toContain(`by ${attribution} (activity-1)`);
-      expect(result).not.toContain("Comment ID:");
+      const { activity, comments } =
+        getStructuredContent<ActivityOutput>(result);
+      expect(activity[0]).toMatchObject({
+        author: attribution,
+        commentId: null,
+      });
+      expect(comments?.[0]).toMatchObject({
+        author: attribution,
+        commentId: null,
+      });
     },
   );
 
@@ -99,46 +153,52 @@ describe("get_issue_activity", () => {
       dateCreated: "2025-04-14T12:00:00.000Z",
       source: "api",
       user: null,
-      sentry_app: { name: "Example App", slug: "example-app" },
+      sentry_app: {
+        name: "Example App",
+        slug: "example-app",
+        uuid: "app-uuid",
+      },
       data: { text: "Investigating after the latest deploy." },
-    });
+      backendOnlyField: "must-not-leak",
+    } as IssueActivity);
 
     const result = await getIssueActivity.handler(params, context);
-    expect(result).toMatchInlineSnapshot(`
-      "# Activity for Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
-
-      ## Activity
-
-      - 2025-04-14T12:00:00.000Z: note by Example App (activity-1)
-        - Comment ID: comment-1
-        - Investigating after the latest deploy.
-
-      ## Comments
-
-      - 2025-04-14T12:00:00.000Z: note by Example App (activity-1)
-        - Comment ID: comment-1
-        - Investigating after the latest deploy.
-
-      ## Response Notes
-
-      - Use the Sentry tool \`add_issue_note\` to add a new issue comment.
-      "
+    const structuredContent = getStructuredContent(result);
+    expect(getIssueActivityOutputSchema.parse(structuredContent)).toEqual(
+      structuredContent,
+    );
+    expect(structuredContent).toMatchInlineSnapshot(`
+      {
+        "activity": [
+          {
+            "author": "Example App",
+            "commentId": "comment-1",
+            "data": null,
+            "dateCreated": "2025-04-14T12:00:00.000Z",
+            "id": "activity-1",
+            "text": "Investigating after the latest deploy.",
+            "type": "note",
+          },
+        ],
+        "comments": [
+          {
+            "author": "Example App",
+            "commentId": "comment-1",
+            "data": null,
+            "dateCreated": "2025-04-14T12:00:00.000Z",
+            "id": "activity-1",
+            "text": "Investigating after the latest deploy.",
+            "type": "note",
+          },
+        ],
+        "issueId": "CLOUDFLARE-MCP-41",
+        "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+        "organizationSlug": "sentry-mcp-evals",
+      }
     `);
-    expect(result).not.toContain("by system");
-    expect(result).not.toContain("via API");
-  });
-
-  it("omits add_issue_note guidance when the tool is unavailable", async () => {
-    const result = await getIssueActivity.handler(params, {
-      ...context,
-      availableToolNames: new Set([
-        "get_issue_activity",
-        "execute_sentry_tool",
-      ]),
-      directToolNames: new Set(["execute_sentry_tool"]),
-    });
-
-    expect(result).not.toContain("Response Notes");
-    expect(result).not.toContain("add_issue_note");
+    const serialized = JSON.stringify(structuredContent);
+    expect(serialized).not.toContain("must-not-leak");
+    expect(serialized).not.toContain("app-uuid");
+    expect(serialized).not.toContain("via API");
   });
 });
