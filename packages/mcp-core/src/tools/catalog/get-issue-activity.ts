@@ -36,7 +36,13 @@ function getActivityText(
 }
 
 const MAX_DETAILS_LENGTH = 200;
-const EMAIL_PATTERN = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+
+const gitAuthorSchema = z
+  .object({
+    name: z.string().nullable(),
+    email: z.string().nullable(),
+  })
+  .nullable();
 
 const issueActivityEntrySchema = z.object({
   id: z.string(),
@@ -53,6 +59,7 @@ const issueActivityEntrySchema = z.object({
       id: z.string(),
       type: z.string().nullable(),
       name: z.string().nullable(),
+      email: z.string().nullable(),
     })
     .optional(),
   version: z
@@ -77,6 +84,7 @@ const issueActivityEntrySchema = z.object({
       id: z.string(),
       message: z.string().nullable().describe("First line only."),
       repository: z.string().nullable(),
+      author: gitAuthorSchema,
     })
     .optional(),
   pullRequest: z
@@ -84,13 +92,14 @@ const issueActivityEntrySchema = z.object({
       id: z.string(),
       title: z.string().nullable(),
       repository: z.string().nullable(),
+      author: gitAuthorSchema,
     })
     .optional(),
   details: z
     .string()
     .nullable()
     .describe(
-      `Other activity data as compact JSON without email fields, truncated after ${MAX_DETAILS_LENGTH} characters. Set only when no text or mapped field covers the entry.`,
+      `Other activity data as compact JSON, truncated after ${MAX_DETAILS_LENGTH} characters. Set only when no text or mapped field covers the entry.`,
     ),
 });
 
@@ -125,12 +134,11 @@ function mapAssignee(data: Record<string, unknown>) {
   if (typeof id !== "string" && typeof id !== "number") {
     return undefined;
   }
-  // Sentry copies the assignee's display name, which can be an email.
-  const name = readString(data, "assigneeName");
   return {
     id: formatId(id),
     type: readString(data, "assigneeType"),
-    name: name && EMAIL_PATTERN.test(name) ? null : name,
+    name: readString(data, "assigneeName"),
+    email: readString(data, "assigneeEmail"),
   };
 }
 
@@ -152,6 +160,16 @@ function mapIgnore(data: Record<string, unknown>) {
     : undefined;
 }
 
+function readGitAuthor(value: Record<string, unknown>) {
+  const author = value.author;
+  if (!isPlainObject(author)) {
+    return null;
+  }
+  const name = readString(author, "name");
+  const email = readString(author, "email");
+  return name || email ? { name, email } : null;
+}
+
 function mapCommit(data: Record<string, unknown>) {
   const commit = data.commit;
   if (!isPlainObject(commit) || commit.id == null) {
@@ -161,6 +179,7 @@ function mapCommit(data: Record<string, unknown>) {
     id: formatId(commit.id as string | number),
     message: readString(commit, "message")?.split("\n")[0] ?? null,
     repository: readRepositoryName(commit),
+    author: readGitAuthor(commit),
   };
 }
 
@@ -173,37 +192,12 @@ function mapPullRequest(data: Record<string, unknown>) {
     id: formatId(pullRequest.id as string | number),
     title: readString(pullRequest, "title"),
     repository: readRepositoryName(pullRequest),
+    author: readGitAuthor(pullRequest),
   };
 }
 
-/**
- * Drops email keys and email-looking values at any depth. Commit, pull
- * request, and group payloads embed user objects with email addresses.
- */
-function withoutEmails(value: unknown): unknown {
-  if (typeof value === "string") {
-    return EMAIL_PATTERN.test(value) ? undefined : value;
-  }
-  if (Array.isArray(value)) {
-    return value.map(withoutEmails).filter((item) => item !== undefined);
-  }
-  if (isPlainObject(value)) {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([key]) => !/email/i.test(key) && !EMAIL_PATTERN.test(key))
-        .map(([key, item]) => [key, withoutEmails(item)] as const)
-        .filter(([, item]) => item !== undefined),
-    );
-  }
-  return value;
-}
-
 function formatDetails(data: Record<string, unknown>): string | null {
-  const sanitized = withoutEmails(data) as Record<string, unknown>;
-  if (Object.keys(sanitized).length === 0) {
-    return null;
-  }
-  const json = JSON.stringify(sanitized);
+  const json = JSON.stringify(data);
   return json.length <= MAX_DETAILS_LENGTH
     ? json
     : `${json.slice(0, MAX_DETAILS_LENGTH)}...`;

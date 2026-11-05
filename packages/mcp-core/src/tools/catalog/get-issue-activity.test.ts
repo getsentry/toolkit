@@ -200,7 +200,7 @@ describe("get_issue_activity", () => {
     expect(serialized).not.toContain("via API");
   });
 
-  it("maps assignment data without the assignee email", async () => {
+  it("maps assignment data including the assignee email", async () => {
     mockActivity({
       id: "activity-assigned",
       type: "assigned",
@@ -226,6 +226,7 @@ describe("get_issue_activity", () => {
       .toMatchInlineSnapshot(`
       {
         "assignee": {
+          "email": "assignee@example.com",
           "id": "42",
           "name": "Sam Owner",
           "type": "user",
@@ -239,12 +240,9 @@ describe("get_issue_activity", () => {
         "type": "assigned",
       }
     `);
-    const serialized = JSON.stringify(structuredContent);
-    expect(serialized).not.toContain("assignee@example.com");
-    expect(serialized).not.toMatch(/email/i);
   });
 
-  it("maps resolved-in-commit and pull request data without authors", async () => {
+  it("maps resolved-in-commit and pull request data with their authors", async () => {
     const author = {
       id: "7",
       name: "Commit Author",
@@ -306,6 +304,10 @@ describe("get_issue_activity", () => {
           "author": "system",
           "commentId": null,
           "commit": {
+            "author": {
+              "email": "author@example.com",
+              "name": "Commit Author",
+            },
             "id": "abc123",
             "message": "fix: Handle null org",
             "repository": "getsentry/sentry-mcp",
@@ -323,6 +325,10 @@ describe("get_issue_activity", () => {
           "details": null,
           "id": "activity-pr",
           "pullRequest": {
+            "author": {
+              "email": "author@example.com",
+              "name": "Commit Author",
+            },
             "id": "99",
             "repository": "getsentry/sentry-mcp",
             "title": "Fix null org handling",
@@ -333,12 +339,13 @@ describe("get_issue_activity", () => {
       ]
     `);
     const serialized = JSON.stringify(structuredContent);
-    expect(serialized).not.toContain("author@example.com");
-    expect(serialized).not.toContain("Commit Author");
     expect(serialized).not.toContain("Longer body text");
+    // Internal ids and release lists stay out of the mapped payload.
+    expect(serialized).not.toContain("releases");
+    expect(serialized).not.toContain('"id":"7"');
   });
 
-  it("bounds other activity data and drops nested emails", async () => {
+  it("bounds other activity data and keeps the user data it carries", async () => {
     mockActivity({
       id: "activity-unmerge",
       type: "unmerge_destination",
@@ -349,7 +356,6 @@ describe("get_issue_activity", () => {
         source: {
           id: "123",
           assignedTo: { name: "Owner", email: "owner@example.com" },
-          contact: "contact@example.com",
           title: "x".repeat(300),
         },
       },
@@ -363,12 +369,11 @@ describe("get_issue_activity", () => {
       activity: Array<{ details: string | null }>;
     }>(result).activity;
     expect(entry!.details).toMatch(/^\{"fingerprints":/);
+    expect(entry!.details).toContain('"email":"owner@example.com"');
     expect(entry!.details!.length).toBe(203);
-    expect(entry!.details).not.toContain("example.com");
-    expect(entry!.details).not.toMatch(/email/i);
   });
 
-  it("drops assignee names and detail keys that are emails", async () => {
+  it("keeps assignee names and detail keys that are emails", async () => {
     mswServer.use(
       http.get("*/api/0/organizations/:org/issues/:issueId/activities/", () =>
         HttpResponse.json({
@@ -407,8 +412,14 @@ describe("get_issue_activity", () => {
       }>;
     }>(result);
     const [assigned, unmerge] = structuredContent.activity;
-    expect(assigned!.assignee).toEqual({ id: "43", type: "user", name: null });
-    expect(unmerge!.details).toBe('{"fingerprints":["abc"]}');
-    expect(JSON.stringify(structuredContent)).not.toContain("corp.com");
+    expect(assigned!.assignee).toEqual({
+      id: "43",
+      type: "user",
+      name: "jane@corp.com",
+      email: null,
+    });
+    expect(unmerge!.details).toBe(
+      '{"owner@corp.com":"123","fingerprints":["abc"]}',
+    );
   });
 });

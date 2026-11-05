@@ -4947,9 +4947,12 @@
                   },
                   "name": {
                     "type": ["string", "null"]
+                  },
+                  "email": {
+                    "type": ["string", "null"]
                   }
                 },
-                "required": ["id", "type", "name"],
+                "required": ["id", "type", "name", "email"],
                 "additionalProperties": false
               },
               "version": {
@@ -4995,9 +4998,29 @@
                   },
                   "repository": {
                     "type": ["string", "null"]
+                  },
+                  "author": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": ["string", "null"]
+                          },
+                          "email": {
+                            "type": ["string", "null"]
+                          }
+                        },
+                        "required": ["name", "email"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
-                "required": ["id", "message", "repository"],
+                "required": ["id", "message", "repository", "author"],
                 "additionalProperties": false
               },
               "pullRequest": {
@@ -5011,13 +5034,33 @@
                   },
                   "repository": {
                     "type": ["string", "null"]
+                  },
+                  "author": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": ["string", "null"]
+                          },
+                          "email": {
+                            "type": ["string", "null"]
+                          }
+                        },
+                        "required": ["name", "email"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
-                "required": ["id", "title", "repository"],
+                "required": ["id", "title", "repository", "author"],
                 "additionalProperties": false
               },
               "details": {
-                "description": "Other activity data as compact JSON without email fields, truncated after 200 characters. Set only when no text or mapped field covers the entry.",
+                "description": "Other activity data as compact JSON, truncated after 200 characters. Set only when no text or mapped field covers the entry.",
                 "type": ["string", "null"]
               }
             },
@@ -5070,9 +5113,12 @@
                       },
                       "name": {
                         "type": ["string", "null"]
+                      },
+                      "email": {
+                        "type": ["string", "null"]
                       }
                     },
-                    "required": ["id", "type", "name"],
+                    "required": ["id", "type", "name", "email"],
                     "additionalProperties": false
                   },
                   "version": {
@@ -5118,9 +5164,29 @@
                       },
                       "repository": {
                         "type": ["string", "null"]
+                      },
+                      "author": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": ["string", "null"]
+                              },
+                              "email": {
+                                "type": ["string", "null"]
+                              }
+                            },
+                            "required": ["name", "email"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     },
-                    "required": ["id", "message", "repository"],
+                    "required": ["id", "message", "repository", "author"],
                     "additionalProperties": false
                   },
                   "pullRequest": {
@@ -5134,13 +5200,33 @@
                       },
                       "repository": {
                         "type": ["string", "null"]
+                      },
+                      "author": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": ["string", "null"]
+                              },
+                              "email": {
+                                "type": ["string", "null"]
+                              }
+                            },
+                            "required": ["name", "email"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     },
-                    "required": ["id", "title", "repository"],
+                    "required": ["id", "title", "repository", "author"],
                     "additionalProperties": false
                   },
                   "details": {
-                    "description": "Other activity data as compact JSON without email fields, truncated after 200 characters. Set only when no text or mapped field covers the entry.",
+                    "description": "Other activity data as compact JSON, truncated after 200 characters. Set only when no text or mapped field covers the entry.",
                     "type": ["string", "null"]
                   }
                 },
