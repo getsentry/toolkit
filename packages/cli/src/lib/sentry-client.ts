@@ -13,6 +13,7 @@ import { getTraceData } from "@sentry/node";
 import {
   computeInvalidationPrefixes,
   createApiTransport,
+  type CredentialRequest,
   extractUrlPath,
   getValidatedResponseSource,
   type ResponseBodyMode,
@@ -40,6 +41,7 @@ import {
   getRemainingLifetimeRatio,
   REFRESH_THRESHOLD,
   refreshToken,
+  selectAccountForOrg,
 } from "./db/auth.js";
 import {
   ApiError,
@@ -317,6 +319,27 @@ async function withHttpSpan(
   );
 }
 
+/** Sentry org slugs are never entirely numeric, so digits are an org id. */
+const NUMERIC_ORG_ID = /^\d+$/;
+
+/**
+ * Use the stored account that knows the organization the request's path
+ * targets (`selectAccountForOrg`), so requests no command resolved an org
+ * for, such as `sentry api organizations/<org>/...`, still reach it. Only
+ * accounts on the request's server qualify: its URL is already built.
+ */
+function selectAccountForRequest({ url, scope }: CredentialRequest): void {
+  if (!scope) {
+    return;
+  }
+  const { organization } = scope;
+  selectAccountForOrg(
+    organization,
+    NUMERIC_ORG_ID.test(organization) ? organization : undefined,
+    { server: url },
+  );
+}
+
 /**
  * The CLI's transport options: stored credentials, host-scope checks, the
  * response cache, and the CLI's error classes. Retries, timeouts, the 401
@@ -325,7 +348,10 @@ async function withHttpSpan(
 function createCliTransport(credential: CredentialContext | undefined) {
   return createApiTransport<CredentialContext>({
     credentials: {
-      current: async () => {
+      current: async (request) => {
+        if (!credential) {
+          selectAccountForRequest(request);
+        }
         const current = credential ?? getCredentialContext();
         if (!current) {
           await refreshToken();
@@ -532,12 +558,15 @@ export function getSdkConfig(
 
 /**
  * Get SDK config for the default API (control silo or self-hosted).
+ *
+ * The credential is not pinned, so the transport can still pick the stored
+ * account that knows the organization a request's path names; it only picks
+ * among accounts on the server this base URL belongs to.
  */
 export function getDefaultSdkConfig(
   options: Pick<AuthenticatedFetchOptions, "bufferResponseBody"> = {},
 ) {
-  const credential = getCredentialContext();
-  return getSdkConfig(getApiBaseUrl(credential), { ...options, credential });
+  return getSdkConfig(getApiBaseUrl(), options);
 }
 
 /**

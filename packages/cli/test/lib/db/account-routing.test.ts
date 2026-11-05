@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { rawApiRequest } from "../../../src/lib/api/infrastructure.js";
 import { markPersistedDefaultUrl } from "../../../src/lib/constants.js";
 import {
   getActiveAccountId,
@@ -44,6 +45,7 @@ import {
 } from "../../../src/lib/sentryclirc.js";
 import {
   mintSntrysToken,
+  mockFetch,
   resetHostScopingState,
   useEnvSandbox,
   useTestConfigDir,
@@ -439,6 +441,61 @@ describe("organization-based selection", () => {
 
     expect(getAuthToken()).toBe("personal-token");
     expect(personal).not.toBe(work);
+  });
+});
+
+describe("requests whose path names an organization", () => {
+  let originalFetch: typeof globalThis.fetch;
+  let sent: Array<string | null>;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    sent = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      sent.push(new Request(input, init).headers.get("Authorization"));
+      return Response.json({});
+    });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("use the account that knows the org, like `sentry api`", async () => {
+    login("work-token", SAAS, "work");
+    seeOrg("work-org", SAAS);
+    const personal = login("personal-token", SAAS, "personal");
+    seeOrgList(SAAS, ["personal-org"]);
+
+    await rawApiRequest("organizations/work-org/issues/");
+    await rawApiRequest("projects/personal-org/web/");
+
+    // One invocation never mixes accounts.
+    expect(sent).toEqual(["Bearer work-token", "Bearer work-token"]);
+    expect(getActiveAccountId()).toBe(personal);
+  });
+
+  test("leave unscoped requests on the active account", async () => {
+    login("work-token", SAAS, "work");
+    seeOrg("work-org", SAAS);
+    login("personal-token", SAAS, "personal");
+    seeOrgList(SAAS, ["personal-org"]);
+
+    await rawApiRequest("users/me/");
+
+    expect(sent).toEqual(["Bearer personal-token"]);
+  });
+
+  test("only consider accounts on the request's server", async () => {
+    login("acme-token", ACME, "acme");
+    seeOrg("acme-org", ACME);
+    login("saas-token", SAAS, "saas");
+    seeOrgList(SAAS, ["saas-org"]);
+
+    await rawApiRequest("organizations/acme-org/");
+
+    expect(sent).toEqual(["Bearer saas-token"]);
+    expect(getEffectiveAccountRow()?.host).toBe(SAAS);
   });
 });
 
