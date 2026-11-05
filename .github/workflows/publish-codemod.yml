@@ -34,7 +34,8 @@ jobs:
   publish:
     name: Publish to Codemod Registry
     needs: check
-    if: github.event_name == 'workflow_dispatch' || needs.check.outputs.changed == 'true'
+    # Only main is published, also for manual runs from another branch.
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || needs.check.outputs.changed == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read

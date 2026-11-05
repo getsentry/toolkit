@@ -379,8 +379,23 @@ const codemod: Codemod<L> = async (root) => {
       if (l?.kind() === "identifier") instanceNames.add(l.text());
     }
   }
-  const isInstance = (recv: Node | null) =>
-    !!recv && recv.kind() === "identifier" && instanceNames.has(recv.text());
+  const newExprIds = new Set(newExprs.map((n) => n.id()));
+  /** An SDK instance: a variable from step 2, or `new X()` inline. */
+  const isInstance = (recv: Node | null): boolean => {
+    while (recv?.kind() === "parenthesized_expression") {
+      recv = recv.children().find(named) ?? null;
+    }
+    if (!recv) return false;
+    if (recv.kind() === "new_expression") return newExprIds.has(recv.id());
+    return recv.kind() === "identifier" && instanceNames.has(recv.text());
+  };
+  /** Replace a call after its receiver, so edits inside the receiver (an
+   *  inline `new X(…)`) still apply. */
+  const replaceAfter = (recv: Node, call: Node, text: string): Edit => ({
+    startPos: recv.range().end.index,
+    endPos: call.range().end.index,
+    insertedText: text,
+  });
 
   // 3) Constructor: `new X(configFile?, options?)` → `X(options?)`.
   for (const ne of newExprs) {
@@ -492,7 +507,7 @@ const codemod: Codemod<L> = async (root) => {
         "run(...) passes raw CLI args verbatim; remap v3 command names to v4 (releases→release, new→create, login→auth login, …) and verify flags. NOTE: v3's second `execute` arg (`live`) is dropped — v4 `run()` always captures and returns output (v3 `live:false` behavior); if you passed `live:true`/`'rejectOnError'` for streamed stdio, adjust accordingly",
       ),
     );
-    edits.push(replaceNode(call, `${recv!.text()}.run(${runArgs})`));
+    edits.push(replaceAfter(recv!, call, `.run(${runArgs})`));
   }
 
   // 4b) `<instance>.releases.<method>(...)` → `<instance>.<route>.<target>({…})`.
@@ -544,9 +559,10 @@ const codemod: Codemod<L> = async (root) => {
 
     if (reshape?.todo) edits.push(todo(call, reshape.todo));
     edits.push(
-      replaceNode(
+      replaceAfter(
+        recv,
         call,
-        `${recv.text()}${accessor(route)}${accessor(target)}(${argsOut})`,
+        `${accessor(route)}${accessor(target)}(${argsOut})`,
       ),
     );
   }
@@ -566,7 +582,7 @@ const codemod: Codemod<L> = async (root) => {
         "verify inject options: v4 takes one `directory` (v3 `paths` was an array — run once per directory), and `ignore`/`ext` are comma-separated strings; `ignoreFile`/`dryRun` are kept",
       ),
     );
-    edits.push(replaceNode(call, `${recv.text()}.sourcemap.inject(${args})`));
+    edits.push(replaceAfter(recv, call, `.sourcemap.inject(${args})`));
   }
 
   return edits.length ? rootNode.commitEdits(edits) : null;
