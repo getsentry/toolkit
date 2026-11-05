@@ -49,6 +49,14 @@ function commandToolName(entry: CommandCatalogEntry): string {
   return entry.path.replace(/[ -]/g, "_");
 }
 
+/** The display title of a command's tool: `sentry issue list` → `Issue List`. */
+function commandToolTitle(entry: CommandCatalogEntry): string {
+  return commandName(entry)
+    .split(/[ -]/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 /**
  * Hints from the command's permission class. `sentry api` takes the class of
  * each call's method, so it is marked destructive unless the session is
@@ -131,6 +139,7 @@ function createCommandTool(
 ) {
   return defineTool({
     name: commandToolName(entry),
+    title: commandToolTitle(entry),
     skills: commandSkills(entry),
     requiredScopes: [],
     description: describeCommand(entry, policy),

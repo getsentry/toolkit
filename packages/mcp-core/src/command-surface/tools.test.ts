@@ -113,6 +113,16 @@ describe("command tools: listing", () => {
     expect(tools.sentry_sourcemap_upload).toBeUndefined();
   });
 
+  it("titles each tool from its command path", () => {
+    const { tools } = setup();
+    expect(tools.sentry_issue_list?.title).toBe("Issue List");
+    expect(tools.sentry_agent_conversation_list?.title).toBe(
+      "Agent Conversation List",
+    );
+    const titles = Object.values(tools).map((tool) => tool.title);
+    expect(new Set(titles).size).toBe(titles.length);
+  });
+
   it("describes a command with its brief and usable examples", () => {
     const description = setup().tools.sentry_issue_view?.description ?? "";
     expect(description).toMatch(/^View details of/);
