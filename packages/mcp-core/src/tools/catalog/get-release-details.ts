@@ -7,72 +7,139 @@ import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { validateSlugOrId } from "../../utils/slug-validation";
+import { isPlainObject } from "../../internal/type-guards";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
-  compactLines,
   formatActor,
   formatDate,
   formatId,
-  formatUnknown,
+  readString,
 } from "./support/api-formatting";
 import { assertProjectListContainsConstraint } from "./support/project-constraints";
 
-function formatProjects(release: ReleaseDetails): string | null {
-  if (!release.projects || release.projects.length === 0) {
-    return null;
-  }
+const nullableString = z.string().nullable();
 
-  return release.projects
-    .map((project) => project.slug ?? project.name)
-    .join(", ");
+export const getReleaseDetailsOutputSchema = z.object({
+  release: z.object({
+    id: z.string(),
+    version: z.string(),
+    shortVersion: nullableString,
+    dateCreated: nullableString,
+    dateReleased: nullableString,
+    firstEvent: nullableString,
+    lastEvent: nullableString,
+    newIssues: z.number().nullable(),
+    projects: z.array(z.string()),
+    url: z.string(),
+    lastCommit: z
+      .object({
+        id: z.string(),
+        message: nullableString,
+        author: nullableString,
+        dateCreated: nullableString,
+      })
+      .nullable(),
+  }),
+  health: z
+    .object({
+      sessionsLowerBound: nullableString,
+      sessionsUpperBound: nullableString,
+      firstReleaseVersion: nullableString,
+      lastReleaseVersion: nullableString,
+      prevReleaseVersion: nullableString,
+      nextReleaseVersion: nullableString,
+      adoptionStages: z.array(
+        z.object({
+          project: z.string(),
+          stage: nullableString,
+          adopted: nullableString,
+          unadopted: nullableString,
+        }),
+      ),
+    })
+    .nullable()
+    .describe("Release health metadata. Null unless includeHealth is true."),
+  deploys: z
+    .array(
+      z.object({
+        id: z.string(),
+        environment: nullableString,
+        name: nullableString,
+        dateStarted: nullableString,
+        dateFinished: nullableString,
+        url: nullableString,
+      }),
+    )
+    .nullable()
+    .describe("Recent deploys. Null when includeDeploys is false."),
+  commits: z
+    .array(
+      z.object({
+        id: z.string(),
+        message: nullableString,
+        author: nullableString,
+        repository: nullableString,
+        dateCreated: nullableString,
+      }),
+    )
+    .nullable()
+    .describe("Recent commits. Null when includeCommits is false."),
+});
+
+type ReleaseHealth = NonNullable<
+  z.infer<typeof getReleaseDetailsOutputSchema>["health"]
+>;
+
+function toProjects(release: ReleaseDetails): string[] {
+  return (release.projects ?? []).map(
+    (project) => project.slug ?? project.name,
+  );
 }
 
-function formatDeploy(deploy: Deploy): string {
-  const lines = compactLines([
-    `### Deploy ${formatId(deploy.id)}`,
-    "",
-    deploy.environment ? `**Environment**: ${deploy.environment}` : null,
-    deploy.name ? `**Name**: ${deploy.name}` : null,
-    formatDate(deploy.dateStarted)
-      ? `**Started**: ${formatDate(deploy.dateStarted)}`
-      : null,
-    formatDate(deploy.dateFinished)
-      ? `**Finished**: ${formatDate(deploy.dateFinished)}`
-      : null,
-    deploy.url ? `**URL**: ${deploy.url}` : null,
-  ]);
-
-  return lines.join("\n");
+function toDeploy(deploy: Deploy) {
+  return {
+    id: formatId(deploy.id),
+    environment: deploy.environment || null,
+    name: deploy.name || null,
+    dateStarted: formatDate(deploy.dateStarted),
+    dateFinished: formatDate(deploy.dateFinished),
+    url: deploy.url || null,
+  };
 }
 
-function formatCommit(commit: Commit): string {
-  const author = commit.author ? formatActor(commit.author) : null;
-  const message = commit.message?.split("\n")[0] ?? "No commit message";
-  const repository = commit.repository?.name;
-  return compactLines([
-    `- \`${formatId(commit.id)}\`: ${message}`,
-    author ? `  - Author: ${author}` : null,
-    repository ? `  - Repository: ${repository}` : null,
-    formatDate(commit.dateCreated)
-      ? `  - Created: ${formatDate(commit.dateCreated)}`
-      : null,
-  ]).join("\n");
+function toCommit(commit: Commit) {
+  return {
+    id: formatId(commit.id),
+    message: commit.message?.split("\n")[0] || null,
+    author: commit.author ? formatActor(commit.author) : null,
+    repository: commit.repository?.name || null,
+    dateCreated: formatDate(commit.dateCreated),
+  };
 }
 
-function formatHealthOrMeta(release: ReleaseDetails): string[] {
-  const lines: string[] = [];
-  if (release.currentProjectMeta) {
-    for (const [key, value] of Object.entries(release.currentProjectMeta)) {
-      lines.push(`- **${key}**: ${formatUnknown(value)}`);
-    }
-  }
+function toHealth(release: ReleaseDetails): ReleaseHealth {
+  const meta = release.currentProjectMeta;
+  const adoptionStages = isPlainObject(release.adoptionStages)
+    ? Object.entries(release.adoptionStages).map(([project, value]) => {
+        const stage = isPlainObject(value) ? value : undefined;
+        return {
+          project,
+          stage: readString(stage, "stage"),
+          adopted: formatDate(readString(stage, "adopted")),
+          unadopted: formatDate(readString(stage, "unadopted")),
+        };
+      })
+    : [];
 
-  if (release.adoptionStages !== undefined) {
-    lines.push(
-      `- **adoptionStages**: ${formatUnknown(release.adoptionStages)}`,
-    );
-  }
-
-  return lines;
+  return {
+    sessionsLowerBound: formatDate(readString(meta, "sessionsLowerBound")),
+    sessionsUpperBound: formatDate(readString(meta, "sessionsUpperBound")),
+    firstReleaseVersion: readString(meta, "firstReleaseVersion"),
+    lastReleaseVersion: readString(meta, "lastReleaseVersion"),
+    prevReleaseVersion: readString(meta, "prevReleaseVersion"),
+    nextReleaseVersion: readString(meta, "nextReleaseVersion"),
+    adoptionStages,
+  };
 }
 
 export default defineTool({
@@ -88,6 +155,8 @@ export default defineTool({
     "- See deploys and environments for a release",
     "- See recent commits attached to a release",
     "- Gather release health metadata when a project is known",
+    "",
+    "To find issues introduced in a release, call search_issues with query `release:<version>`.",
     "",
     "<examples>",
     "get_release_details(organizationSlug='my-organization', releaseVersion='1.2.3')",
@@ -130,6 +199,7 @@ export default defineTool({
       .describe("Maximum number of deploys and commits to return, up to 50.")
       .default(10),
   },
+  outputSchema: getReleaseDetailsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -205,85 +275,36 @@ export default defineTool({
         : Promise.resolve([]),
     ]);
 
-    const releaseUrl = apiService.getReleaseUrl(
-      organizationSlug,
-      release.version,
-    );
-    const projects = formatProjects(release);
-    const author = release.lastCommit?.author
-      ? formatActor(release.lastCommit.author)
-      : null;
+    const lastCommit = release.lastCommit;
 
-    const output = compactLines([
-      `# Release ${release.version} in **${organizationSlug}**`,
-      "",
-      `**ID**: ${formatId(release.id)}`,
-      release.shortVersion
-        ? `**Short Version**: ${release.shortVersion}`
+    return structuredResult({
+      release: {
+        id: formatId(release.id),
+        version: release.version,
+        shortVersion: release.shortVersion || null,
+        dateCreated: formatDate(release.dateCreated),
+        dateReleased: formatDate(release.dateReleased),
+        firstEvent: formatDate(release.firstEvent),
+        lastEvent: formatDate(release.lastEvent),
+        newIssues: release.newGroups ?? null,
+        projects: toProjects(release),
+        url: apiService.getReleaseUrl(organizationSlug, release.version),
+        lastCommit: lastCommit
+          ? {
+              id: formatId(lastCommit.id),
+              message: lastCommit.message || null,
+              author: lastCommit.author ? formatActor(lastCommit.author) : null,
+              dateCreated: formatDate(lastCommit.dateCreated),
+            }
+          : null,
+      },
+      health: params.includeHealth ? toHealth(release) : null,
+      deploys: params.includeDeploys
+        ? deploys.slice(0, params.limit).map(toDeploy)
         : null,
-      formatDate(release.dateCreated)
-        ? `**Created**: ${formatDate(release.dateCreated)}`
+      commits: params.includeCommits
+        ? commits.slice(0, params.limit).map(toCommit)
         : null,
-      formatDate(release.dateReleased)
-        ? `**Released**: ${formatDate(release.dateReleased)}`
-        : null,
-      formatDate(release.firstEvent)
-        ? `**First Event**: ${formatDate(release.firstEvent)}`
-        : null,
-      formatDate(release.lastEvent)
-        ? `**Last Event**: ${formatDate(release.lastEvent)}`
-        : null,
-      release.newGroups !== undefined
-        ? `**New Issues**: ${release.newGroups}`
-        : null,
-      projects ? `**Projects**: ${projects}` : null,
-      `**URL**: [Open Release](${releaseUrl})`,
-    ]);
-
-    if (release.lastCommit) {
-      output.push("", "## Last Commit", "");
-      output.push(
-        compactLines([
-          `**Commit ID**: ${formatId(release.lastCommit.id)}`,
-          release.lastCommit.message
-            ? `**Message**: ${release.lastCommit.message}`
-            : null,
-          author ? `**Author**: ${author}` : null,
-          formatDate(release.lastCommit.dateCreated)
-            ? `**Created**: ${formatDate(release.lastCommit.dateCreated)}`
-            : null,
-        ]).join("\n"),
-      );
-    }
-
-    const healthLines = params.includeHealth ? formatHealthOrMeta(release) : [];
-    if (healthLines.length > 0) {
-      output.push("", "## Health And Project Metadata", "", ...healthLines);
-    }
-
-    if (params.includeDeploys) {
-      output.push("", "## Deploys", "");
-      output.push(
-        deploys.length === 0
-          ? "No deploys found."
-          : deploys.slice(0, params.limit).map(formatDeploy).join("\n\n"),
-      );
-    }
-
-    if (params.includeCommits) {
-      output.push("", "## Commits", "");
-      output.push(
-        commits.length === 0
-          ? "No commits found."
-          : commits.slice(0, params.limit).map(formatCommit).join("\n"),
-      );
-    }
-
-    output.push("", "## Response Notes", "");
-    output.push(
-      `- Search issues introduced in this release with query \`release:${release.version}\`.`,
-    );
-
-    return `${output.join("\n")}\n`;
+    });
   },
 });
