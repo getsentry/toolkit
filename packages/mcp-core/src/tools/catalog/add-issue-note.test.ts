@@ -69,6 +69,7 @@ describe("add_issue_note", () => {
     const serialized = JSON.stringify(structuredContent);
     expect(serialized).not.toContain("activity-1");
     expect(serialized).not.toContain("must-not-leak");
+    // Author attribution prefers the user name; email is only a fallback.
     expect(serialized).not.toContain("jane@example.com");
   });
 
