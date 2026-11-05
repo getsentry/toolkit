@@ -143,13 +143,18 @@ function buildHandlers(
 }
 
 function withTraceItemAttributeMetadata(
-  attributes: readonly { key: string; name: string }[],
+  attributes: readonly {
+    key: string;
+    name: string;
+    attributeSource?: { source_type: string };
+  }[],
   attributeType: "string" | "number" | "boolean",
 ) {
+  // Fixtures default to Sentry-set attributes; custom ones override the source.
   return attributes.map((attribute) => ({
+    attributeSource: { source_type: "sentry" },
     ...attribute,
     attributeType,
-    attributeSource: { source_type: "sentry" as const },
   }));
 }
 
