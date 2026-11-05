@@ -67,17 +67,23 @@ function summarizeSeries(
   let maximum: { value: number | string; timestamp: number } | undefined;
   let maximumValue = Number.NEGATIVE_INFINITY;
   for (const bucket of series.values) {
-    const numeric =
-      bucket.value == null || series.meta.valueType === "string"
-        ? Number.NaN
-        : Number(bucket.value);
-    if (!Number.isFinite(numeric)) {
+    if (bucket.value == null || series.meta.valueType === "string") {
       allNumeric = false;
       continue;
     }
-    total += numeric;
-    if (!bucket.incomplete && numeric > maximumValue && bucket.value != null) {
-      maximumValue = numeric;
+    const numeric = Number(bucket.value);
+    if (Number.isFinite(numeric)) {
+      total += numeric;
+    } else {
+      allNumeric = false;
+    }
+    const comparable = Number.isFinite(numeric)
+      ? numeric
+      : Date.parse(String(bucket.value));
+    const filling =
+      bucket.incomplete && bucket.incompleteReason !== "OUTSIDE_RETENTION";
+    if (!filling && Number.isFinite(comparable) && comparable > maximumValue) {
+      maximumValue = comparable;
       maximum = { value: bucket.value, timestamp: bucket.timestamp };
     }
   }
