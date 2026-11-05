@@ -6,14 +6,6 @@
  */
 
 import { inlineCode } from "@sentry/toolkit-core/markdown";
-import {
-  description,
-  looseObject,
-  object,
-  optional,
-  pipe,
-  string,
-} from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createReleaseDeploy } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
@@ -27,29 +19,19 @@ import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import {
-  DryRunOutputField,
-  type SentryDeploy,
-  SentryDeploySchema,
-  type WithOutputFields,
-} from "../../types/index.js";
+import type { SentryDeploy, WithOutputFields } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { ReleaseDeployOutputSchema } from "../../generated/output-schemas/release.js";
+import type { ReleaseDeployOutputFields } from "../../output-schemas/release.js";
 
 const USAGE_HINT =
   "sentry release deploy [<org>/]<version> <environment> [name]";
 
-/**
- * Fields `--dry-run` changes: it prints the deploy that would be created,
- * which has no `id` yet, with its release `version`.
- */
-const DeployOutputFields = object({
-  id: optional(SentryDeploySchema.entries.id),
-  dryRun: DryRunOutputField,
-  version: optional(pipe(string(), description("Release version (--dry-run)"))),
-});
-
 /** JSON output: the created deploy, or the `--dry-run` preview. */
-type DeployOutput = WithOutputFields<SentryDeploy, typeof DeployOutputFields>;
+type DeployOutput = WithOutputFields<
+  SentryDeploy,
+  typeof ReleaseDeployOutputFields
+>;
 
 function formatDeployCreated(deploy: DeployOutput): string {
   if (deploy.dryRun) {
@@ -129,10 +111,7 @@ export const deployCommand = buildCommand({
   },
   output: {
     human: formatDeployCreated,
-    schema: looseObject({
-      ...SentryDeploySchema.entries,
-      ...DeployOutputFields.entries,
-    }),
+    schema: ReleaseDeployOutputSchema,
   },
   parameters: {
     positional: {
@@ -231,7 +210,7 @@ export const deployCommand = buildCommand({
     }
 
     if (flags["dry-run"]) {
-      yield new CommandOutput<DeployOutput>({
+      yield new CommandOutput({
         dryRun: true,
         version,
         environment,
@@ -244,6 +223,6 @@ export const deployCommand = buildCommand({
     }
 
     const deploy = await createReleaseDeploy(org, version, body);
-    yield new CommandOutput<DeployOutput>(deploy);
+    yield new CommandOutput(deploy);
   },
 });

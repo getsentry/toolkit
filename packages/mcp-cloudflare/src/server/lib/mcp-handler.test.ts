@@ -298,7 +298,8 @@ describe("MCP Handler", () => {
       const toolNames = body.result?.tools.map((tool) => tool.name) ?? [];
 
       expect(toolNames).toContain("search_traces");
-      expect(toolNames).not.toContain("search_docs");
+      expect(toolNames).toContain("search_docs");
+      expect(toolNames).not.toContain("update_issue");
     });
 
     it("applies the authenticated MCP rate limit per user", async () => {
@@ -360,11 +361,8 @@ describe("MCP Handler", () => {
       const request = createMcpRequest(
         "tools/call",
         {
-          name: "execute_sentry_tool",
-          arguments: {
-            name: "whoami",
-            arguments: {},
-          },
+          name: "whoami",
+          arguments: {},
         },
         { headers: { "X-Sentry-Utm-Source": "plugin" } },
       );
@@ -596,11 +594,8 @@ describe("MCP Handler", () => {
       const request = createMcpRequest(
         "tools/call",
         {
-          name: "execute_sentry_tool",
-          arguments: {
-            name: "get_profile_details",
-            arguments: { profileId },
-          },
+          name: "get_profile_details",
+          arguments: { profileId },
         },
         { path: "/mcp/test-org/test-project" },
       );
@@ -890,38 +885,10 @@ describe("MCP Handler", () => {
       }>(response);
       const toolNames = body.result?.tools.map((tool) => tool.name) ?? [];
 
-      expect(toolNames).toContain("search_sentry_tools");
-      expect(toolNames).not.toContain("search_docs");
-      expect(toolNames).not.toContain("get_doc");
+      expect(toolNames).toContain("search_docs");
+      expect(toolNames).toContain("get_doc");
       expect(toolNames).not.toContain("get_issue_details");
-
-      const searchRequest = createMcpRequest("tools/call", {
-        name: "search_sentry_tools",
-        arguments: {
-          query: "documentation",
-          limit: 10,
-        },
-      });
-
-      const searchResponse = await mcpHandler.fetch!(
-        searchRequest,
-        createTestEnv(),
-        ctx,
-      );
-
-      expect(searchResponse.status).toBe(200);
-      const searchBody = await parseSSEResponse<{
-        result?: {
-          structuredContent?: { results?: Array<{ name: string }> };
-        };
-      }>(searchResponse);
-      const catalogToolNames =
-        searchBody.result?.structuredContent?.results?.map(
-          (tool) => tool.name,
-        ) ?? [];
-
-      expect(catalogToolNames).toContain("search_docs");
-      expect(catalogToolNames).toContain("get_doc");
+      expect(toolNames).not.toContain("search_sentry_tools");
     });
   });
 
@@ -933,16 +900,17 @@ describe("MCP Handler", () => {
       } as unknown as ExecutionContext;
     }
 
-    function callSearchSentryTools(query: string): Request {
+    function callPaddedTool(padding: string): Request {
       return createMcpRequest("tools/call", {
-        name: "search_sentry_tools",
-        arguments: { query, limit: 1 },
+        name: "get_sentry_mcp_info",
+        arguments: {},
+        _meta: { padding },
       });
     }
 
     it("accepts a tool call whose body is just under the size limit", async () => {
-      const emptyBodyBytes = (await callSearchSentryTools("").text()).length;
-      const request = callSearchSentryTools(
+      const emptyBodyBytes = (await callPaddedTool("").text()).length;
+      const request = callPaddedTool(
         "a".repeat(MAX_MCP_REQUEST_BODY_BYTES - emptyBodyBytes),
       );
 
@@ -962,9 +930,7 @@ describe("MCP Handler", () => {
     });
 
     it("rejects a body over the size limit with a declared Content-Length", async () => {
-      const request = callSearchSentryTools(
-        "a".repeat(MAX_MCP_REQUEST_BODY_BYTES),
-      );
+      const request = callPaddedTool("a".repeat(MAX_MCP_REQUEST_BODY_BYTES));
 
       const response = await handleSentryBearerMcpRequest(
         request,

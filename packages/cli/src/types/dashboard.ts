@@ -37,7 +37,11 @@ import {
 
 import { ValidationError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
-import { DryRunOutputField } from "./output.js";
+import type {
+  DashboardListItemSchema,
+  DashboardWidgetChangeOutputSchema,
+  DashboardWidgetDeleteOutputSchema,
+} from "../output-schemas/dashboard.js";
 
 // ---------------------------------------------------------------------------
 // Widget type and display type enums
@@ -122,7 +126,7 @@ export const DashboardWidgetLayoutSchema = looseObject({
 export const DashboardWidgetSchema = looseObject({
   id: optional(string()),
   title: string(),
-  displayType: string(),
+  displayType: nullable(string()),
   widgetType: optional(string()),
   interval: optional(string()),
   queries: optional(array(DashboardWidgetQuerySchema)),
@@ -131,20 +135,6 @@ export const DashboardWidgetSchema = looseObject({
   limit: optional(nullable(number())),
   dashboardId: optional(string()),
   dateCreated: optional(string()),
-});
-
-/** Schema for dashboard list items (lightweight, from GET /dashboards/) */
-export const DashboardListItemSchema = looseObject({
-  id: string(),
-  title: string(),
-  dateCreated: optional(string()),
-  createdBy: optional(
-    object({
-      name: optional(string()),
-      email: optional(string()),
-    }),
-  ),
-  widgetDisplay: optional(array(string())),
 });
 
 /** Schema for full dashboard detail (from GET /dashboards/{id}/) */
@@ -502,7 +492,8 @@ export function prepareWidgetQueries(
 ): DashboardWidget {
   let widget = inputWidget;
   // Clamp to per-display-type limit maximums
-  const maxLimit = MAX_LIMITS[widget.displayType];
+  const maxLimit =
+    widget.displayType === null ? undefined : MAX_LIMITS[widget.displayType];
   if (
     maxLimit !== undefined &&
     widget.limit !== undefined &&
@@ -1047,44 +1038,6 @@ export type UnsupportedResult = InferOutput<typeof UnsupportedResultSchema>;
 export type ErrorResult = InferOutput<typeof ErrorResultSchema>;
 export type WidgetDataResult = InferOutput<typeof WidgetDataResultSchema>;
 
-/**
- * JSON output of `dashboard view`: the dashboard with each widget's query
- * result. The type the command yields is derived from it
- * (`DashboardViewData` in `lib/formatters/dashboard.ts`).
- */
-export const DashboardViewOutputSchema = object({
-  id: pipe(string(), description("Dashboard ID")),
-  title: pipe(string(), description("Dashboard title")),
-  period: pipe(string(), description("Time range of the widget data")),
-  fetchedAt: pipe(
-    string(),
-    description("When the data was fetched (ISO 8601)"),
-  ),
-  url: pipe(string(), description("Dashboard URL")),
-  dateCreated: optional(
-    pipe(string(), description("Creation date (ISO 8601)")),
-  ),
-  environment: optional(
-    pipe(array(string()), description("Environment filter")),
-  ),
-  widgets: pipe(
-    array(
-      object({
-        title: pipe(string(), description("Widget title")),
-        displayType: pipe(string(), description("Display type")),
-        widgetType: optional(pipe(string(), description("Dataset"))),
-        description: optional(
-          pipe(string(), description("Markdown content of a text widget")),
-        ),
-        layout: optional(DashboardWidgetLayoutSchema),
-        queries: optional(array(DashboardWidgetQuerySchema)),
-        data: WidgetDataResultSchema,
-      }),
-    ),
-    description("Widgets with their query results"),
-  ),
-});
-
 // ---------------------------------------------------------------------------
 // Dataset mapping
 // ---------------------------------------------------------------------------
@@ -1154,42 +1107,10 @@ export const DashboardRevisionSchema = looseObject({
 
 export type DashboardRevision = InferOutput<typeof DashboardRevisionSchema>;
 
-/**
- * JSON output of `dashboard widget add` and `dashboard widget edit`, for
- * `--fields`: the saved dashboard, the added or edited widget, and its URL.
- */
-export const DashboardWidgetChangeOutputSchema = object({
-  dashboard: pipe(DashboardDetailSchema, description("The saved dashboard")),
-  widget: pipe(
-    DashboardWidgetSchema,
-    description("The added or edited widget"),
-  ),
-  url: pipe(string(), description("Dashboard URL")),
-});
-
 /** JSON output of `dashboard widget add` and `dashboard widget edit`. */
 export type DashboardWidgetChangeOutput = InferOutput<
   typeof DashboardWidgetChangeOutputSchema
 >;
-
-/**
- * JSON output of `dashboard widget delete`: the deleted (or, with
- * `--dry-run`, matched) widget and the dashboard's widget count.
- */
-export const DashboardWidgetDeleteOutputSchema = object({
-  dryRun: DryRunOutputField,
-  deleted: optional(
-    pipe(boolean(), description("True when the widget was deleted")),
-  ),
-  widgetTitle: pipe(string(), description("Title of the deleted widget")),
-  widgetCount: pipe(
-    number(),
-    description(
-      "Dashboard widget count after the delete (before it, with --dry-run)",
-    ),
-  ),
-  url: pipe(string(), description("Dashboard URL")),
-});
 
 /** JSON output of `dashboard widget delete`. */
 export type DashboardWidgetDeleteOutput = InferOutput<

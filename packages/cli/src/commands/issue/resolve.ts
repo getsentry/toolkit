@@ -201,7 +201,7 @@ export const resolveCommand = buildCommand({
     log.debug(
       `Resolved ${updated.shortId} ${describeSpec(statusDetails ?? null)}`,
     );
-    yield new CommandOutput<ResolveResult>({
+    yield new CommandOutput({
       issue: updated,
       spec: statusDetails ?? null,
     });

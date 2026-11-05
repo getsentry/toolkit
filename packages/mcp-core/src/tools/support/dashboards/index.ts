@@ -126,7 +126,7 @@ function formatWidget(widget: DashboardWidget, index: number): string {
     `### ${index + 1}. ${widget.title}`,
     "",
     `**ID**: ${formatId(widget.id)}`,
-    `**Display Type**: ${widget.displayType}`,
+    widget.displayType ? `**Display Type**: ${widget.displayType}` : null,
     widget.widgetType ? `**Widget Type**: ${widget.widgetType}` : null,
     widget.datasetSource ? `**Dataset**: ${widget.datasetSource}` : null,
     widget.interval ? `**Interval**: ${widget.interval}` : null,

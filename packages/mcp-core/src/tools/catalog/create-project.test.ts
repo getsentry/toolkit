@@ -5,6 +5,7 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, it, expect } from "vitest";
+import { z } from "zod";
 import createProject from "./create-project.js";
 
 const context = {
@@ -291,6 +292,35 @@ describe("create_project", () => {
       platform: "node",
     });
     expect(result).toContain("**Slug**: my-project");
+  });
+
+  it("sends Sentry's platform ID when the agent passes a rejected alias", async () => {
+    let createBody: unknown;
+    mswServer.use(
+      http.post(
+        "https://sentry.io/api/0/teams/sentry-mcp-evals/the-goats/projects/",
+        async ({ request }) => {
+          createBody = await request.json();
+          return HttpResponse.json({
+            ...projectFixture,
+            platform: "apple-ios",
+          });
+        },
+      ),
+    );
+
+    const params = z.object(createProject.inputSchema).parse({
+      organizationSlug: "sentry-mcp-evals",
+      teamSlug: "the-goats",
+      name: "cloudflare-mcp",
+      platform: "cocoa-ios",
+    });
+    await createProject.handler(params, context);
+
+    expect(createBody).toEqual({
+      name: "cloudflare-mcp",
+      platform: "apple-ios",
+    });
   });
 
   it("links a matching repository when provided", async () => {

@@ -20,7 +20,8 @@ import {
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
 import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
-import { type SentryMonitor, SentryMonitorSchema } from "../../types/index.js";
+import type { SentryMonitor } from "../../types/index.js";
+import { MonitorListItemSchema } from "../../generated/output-schemas/monitor.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "monitor-list";
@@ -59,7 +60,11 @@ const MONITOR_COLUMNS: Column<MonitorWithOrg>[] = [
 ];
 
 /** Shared config that plugs into the org-list framework. */
-const monitorListConfig: OrgListConfig<SentryMonitor, MonitorWithOrg> = {
+const monitorListConfig: OrgListConfig<
+  SentryMonitor,
+  MonitorWithOrg,
+  typeof MonitorListItemSchema
+> = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "monitors",
   commandPrefix: "sentry monitor list",
@@ -70,7 +75,7 @@ const monitorListConfig: OrgListConfig<SentryMonitor, MonitorWithOrg> = {
   searchesNames: true,
   displayTable: (monitors: MonitorWithOrg[]) =>
     formatTable(monitors, MONITOR_COLUMNS),
-  schema: SentryMonitorSchema,
+  schema: MonitorListItemSchema,
 };
 
 const docs: OrgListCommandDocs = {

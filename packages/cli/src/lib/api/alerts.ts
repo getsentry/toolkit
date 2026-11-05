@@ -17,6 +17,8 @@ import {
   listOrganizationDetectors,
   updateOrganizationDetector,
   updateOrganizationWorkflow,
+  type UpdateOrganizationDetectorResponse,
+  type UpdateOrganizationWorkflowResponse,
 } from "@sentry/api";
 import {
   METRIC_MONITOR_PRIORITY,
@@ -529,7 +531,7 @@ export async function updateIssueAlertRule(
   orgSlug: string,
   workflowId: string,
   body: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
+): Promise<UpdateOrganizationWorkflowResponse> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await updateOrganizationWorkflow({
     ...config,
@@ -537,13 +539,13 @@ export async function updateIssueAlertRule(
       organization_id_or_slug: orgSlug,
       workflow_id: Number(workflowId),
     },
-    // The SDK types conditions/actions as `unknown[]`; the CLI supplies the
-    // workflow-native body as a plain record, so cast into the typed arg.
+    // The CLI builds the camelCase workflow body as a plain record, so cast
+    // it into the SDK's typed body.
     body: body as unknown as Parameters<
       typeof updateOrganizationWorkflow
     >[0]["body"],
   });
-  return unwrapResult<Record<string, unknown>>(
+  return unwrapResult<UpdateOrganizationWorkflowResponse>(
     result,
     "Failed to update issue alert rule",
   );
@@ -564,8 +566,8 @@ export async function createIssueAlertRule(
   const result = await createOrganizationWorkflow({
     ...config,
     path: { organization_id_or_slug: orgSlug },
-    // The SDK types conditions/actions as `unknown[]`; the CLI supplies the
-    // workflow-native body as a plain record, so cast into the typed arg.
+    // The CLI builds the camelCase workflow body as a plain record, so cast
+    // it into the SDK's typed body.
     body: body as unknown as Parameters<
       typeof createOrganizationWorkflow
     >[0]["body"],
@@ -825,7 +827,7 @@ export async function putMetricAlertRule(
   orgSlug: string,
   ruleId: string,
   body: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
+): Promise<UpdateOrganizationDetectorResponse> {
   const config = await getOrgSdkConfig(orgSlug);
   const result = await updateOrganizationDetector({
     ...config,
@@ -836,14 +838,13 @@ export async function putMetricAlertRule(
       organization_id_or_slug: string;
       detector_id: number;
     },
-    // The SDK types the detector body with snake_case keys and opaque
-    // dataSources/conditions; the CLI supplies the camelCase document the
-    // endpoint's CamelSnakeSerializer expects, so cast into the typed arg.
+    // `buildDetectorBody` returns the camelCase detector document as a plain
+    // record, so cast it into the SDK's typed body.
     body: buildDetectorBody(body) as unknown as Parameters<
       typeof updateOrganizationDetector
     >[0]["body"],
   });
-  return unwrapResult<Record<string, unknown>>(
+  return unwrapResult<UpdateOrganizationDetectorResponse>(
     result,
     `Failed to update metric alert rule '${ruleId}'`,
   );

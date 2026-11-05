@@ -50,6 +50,7 @@ import {
   paginationHint,
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   type BoundArguments,
@@ -75,7 +76,7 @@ import {
   type TraceTargetInput,
   warnIfNormalized,
 } from "../../lib/trace-target.js";
-import { SpanListItemSchema } from "../../types/index.js";
+import { FlatSpanSchema } from "../../generated/output-schemas/span.js";
 
 type ListFlags = {
   readonly limit: number;
@@ -388,12 +389,15 @@ function formatSpanListHuman(data: SpanListData): string {
  * Produces a `{ data: [...], hasMore, nextCursor? }` envelope matching the
  * standard paginated list format. Applies `--fields` filtering per element.
  */
-function jsonTransformSpanList(data: SpanListData, fields?: string[]): unknown {
+function jsonTransformSpanList(
+  data: SpanListData,
+  fields?: string[],
+): ListEnvelope<FlatSpan> {
   const items =
     fields && fields.length > 0
       ? data.flatSpans.map((item) => filterFields(item, fields))
       : data.flatSpans;
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<FlatSpan> = {
     data: items,
     hasMore: data.hasMore,
     hasPrev: !!data.hasPrev,
@@ -657,7 +661,7 @@ export const listCommand = buildListCommand("span", {
   output: {
     human: formatSpanListHuman,
     jsonTransform: jsonTransformSpanList,
-    schema: SpanListItemSchema,
+    schema: FlatSpanSchema,
   },
   parameters: {
     positional: boundArguments({

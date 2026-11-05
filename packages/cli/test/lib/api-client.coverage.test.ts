@@ -50,7 +50,7 @@ import {
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { getCachedCompletionEntities } from "../../src/lib/db/completion-cache.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
-import { ApiError, AuthError } from "../../src/lib/errors.js";
+import { ApiError, AuthError, TimeoutError } from "../../src/lib/errors.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
 // --- Shared test setup ---
@@ -1400,6 +1400,27 @@ describe("infrastructure.ts", () => {
       ).toThrow(authError);
     });
 
+    test("keeps a TimeoutError and its hint, prefixed with the operation", () => {
+      const timeout = new TimeoutError(
+        "Request timed out after 30s.",
+        "If the problem persists, check https://status.sentry.io.",
+      );
+      let thrown: unknown;
+      try {
+        unwrapResult(
+          { data: undefined, error: timeout, response: undefined },
+          "Failed to create release",
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(TimeoutError);
+      expect((thrown as TimeoutError).message).toBe(
+        "Failed to create release: Request timed out after 30s.",
+      );
+      expect((thrown as TimeoutError).hint).toBe(timeout.hint);
+    });
+
     test("returns data on success", () => {
       const result = unwrapResult(
         { data: { foo: "bar" }, response: new Response() },
@@ -1451,6 +1472,68 @@ describe("infrastructure.ts", () => {
         expect(apiErr.status).toBe(400);
         expect(apiErr.detail).toBe("Invalid query");
       }
+    });
+
+    test("keeps the error body's code next to its detail", async () => {
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              detail: "Invalid quote at '*\"POST'",
+              code: "invalid_search_query",
+            }),
+            {
+              status: 400,
+              statusText: "Bad Request",
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+      );
+
+      const error = await apiRequestToRegion(
+        "https://sentry.io",
+        "/test/",
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        detail: "Invalid quote at '*\"POST'",
+        code: "invalid_search_query",
+      });
+    });
+
+    test("keeps the function and argument a 400 body rejected", async () => {
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              detail: "cart.total is invalid for parameter 1 in p75.",
+              code: "invalid_function_argument",
+              function: "p75",
+              argument: "cart.total",
+              hint: "Use cart.amount instead of cart.total.",
+            }),
+            {
+              status: 400,
+              statusText: "Bad Request",
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+      );
+
+      const error = await apiRequestToRegion(
+        "https://sentry.io",
+        "/test/",
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toMatchObject({
+        code: "invalid_function_argument",
+        functionArgument: {
+          function: "p75",
+          argument: "cart.total",
+          hint: "Use cart.amount instead of cart.total.",
+        },
+      });
     });
 
     test("JSON-stringifies error body without detail field", async () => {

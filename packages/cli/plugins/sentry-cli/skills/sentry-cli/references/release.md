@@ -36,24 +36,24 @@ List releases with adoption and health metrics
 |-------|------|-------------|
 | `id` | number | Release ID |
 | `version` | string | Release version |
-| `shortVersion` | string | Shortened version |
+| `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open, archived) |
-| `ref` | string \| null | VCS reference |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
-| `dateCreated` | string \| null | Creation date (ISO 8601) |
-| `dateReleased` | string \| null | Release date (ISO 8601) |
-| `firstEvent` | string \| null | First event date (ISO 8601) |
-| `lastEvent` | string \| null | Last event date (ISO 8601) |
-| `newGroups` | number | Number of new issues |
-| `commitCount` | number | Number of commits |
-| `deployCount` | number | Number of deploys |
-| `lastCommit` | object \| null | Most recent commit |
-| `lastDeploy` | object \| null | Most recent deploy |
-| `authors` | array | Commit authors |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage per project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
 | `orgSlug` | string | Organization slug |
 | `targetProject` | string | Project slug, when listing several |
 
@@ -104,24 +104,24 @@ View release details with health metrics
 |-------|------|-------------|
 | `id` | number | Release ID |
 | `version` | string | Release version |
-| `shortVersion` | string | Shortened version |
+| `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open, archived) |
-| `ref` | string \| null | VCS reference |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
-| `dateCreated` | string \| null | Creation date (ISO 8601) |
-| `dateReleased` | string \| null | Release date (ISO 8601) |
-| `firstEvent` | string \| null | First event date (ISO 8601) |
-| `lastEvent` | string \| null | Last event date (ISO 8601) |
-| `newGroups` | number | Number of new issues |
-| `commitCount` | number | Number of commits |
-| `deployCount` | number | Number of deploys |
-| `lastCommit` | object \| null | Most recent commit |
-| `lastDeploy` | object \| null | Most recent deploy |
-| `authors` | array | Commit authors |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage per project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
 
 **Examples:**
 
@@ -162,24 +162,24 @@ Create a release
 |-------|------|-------------|
 | `id` | number | Release ID |
 | `version` | string | Release version |
-| `shortVersion` | string | Shortened version |
+| `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open, archived) |
-| `ref` | string \| null | VCS reference |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
-| `dateCreated` | string \| null | Creation date (ISO 8601) |
-| `dateReleased` | string \| null | Release date (ISO 8601) |
-| `firstEvent` | string \| null | First event date (ISO 8601) |
-| `lastEvent` | string \| null | Last event date (ISO 8601) |
-| `newGroups` | number | Number of new issues |
-| `commitCount` | number | Number of commits |
-| `deployCount` | number | Number of deploys |
-| `lastCommit` | object \| null | Most recent commit |
-| `lastDeploy` | object \| null | Most recent deploy |
-| `authors` | array | Commit authors |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
-| `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage per project |
+| `projects` | array | Projects in the release (only slug with --dry-run) |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
 | `dryRun` | boolean | True when --dry-run made no change |
 
 **Examples:**
@@ -234,24 +234,24 @@ Finalize a release
 |-------|------|-------------|
 | `id` | number | Release ID |
 | `version` | string | Release version |
-| `shortVersion` | string | Shortened version |
+| `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open, archived) |
-| `ref` | string \| null | VCS reference |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
-| `dateCreated` | string \| null | Creation date (ISO 8601) |
-| `dateReleased` | string \| null | Release date (ISO 8601) |
-| `firstEvent` | string \| null | First event date (ISO 8601) |
-| `lastEvent` | string \| null | Last event date (ISO 8601) |
-| `newGroups` | number | Number of new issues |
-| `commitCount` | number | Number of commits |
-| `deployCount` | number | Number of deploys |
-| `lastCommit` | object \| null | Most recent commit |
-| `lastDeploy` | object \| null | Most recent deploy |
-| `authors` | array | Commit authors |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage per project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
 | `dryRun` | boolean | True when --dry-run made no change |
 | `org` | string | Organization slug (--dry-run) |
 | `released` | string | Release date to set (--dry-run) |
@@ -330,24 +330,24 @@ Archive a release
 |-------|------|-------------|
 | `id` | number | Release ID |
 | `version` | string | Release version |
-| `shortVersion` | string | Shortened version |
+| `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open, archived) |
-| `ref` | string \| null | VCS reference |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
-| `dateCreated` | string \| null | Creation date (ISO 8601) |
-| `dateReleased` | string \| null | Release date (ISO 8601) |
-| `firstEvent` | string \| null | First event date (ISO 8601) |
-| `lastEvent` | string \| null | Last event date (ISO 8601) |
-| `newGroups` | number | Number of new issues |
-| `commitCount` | number | Number of commits |
-| `deployCount` | number | Number of deploys |
-| `lastCommit` | object \| null | Most recent commit |
-| `lastDeploy` | object \| null | Most recent deploy |
-| `authors` | array | Commit authors |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage per project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
 | `dryRun` | boolean | True when --dry-run made no change |
 | `org` | string | Organization slug (--dry-run) |
 
@@ -383,24 +383,24 @@ Restore an archived release
 |-------|------|-------------|
 | `id` | number | Release ID |
 | `version` | string | Release version |
-| `shortVersion` | string | Shortened version |
+| `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open, archived) |
-| `ref` | string \| null | VCS reference |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
-| `dateCreated` | string \| null | Creation date (ISO 8601) |
-| `dateReleased` | string \| null | Release date (ISO 8601) |
-| `firstEvent` | string \| null | First event date (ISO 8601) |
-| `lastEvent` | string \| null | Last event date (ISO 8601) |
-| `newGroups` | number | Number of new issues |
-| `commitCount` | number | Number of commits |
-| `deployCount` | number | Number of deploys |
-| `lastCommit` | object \| null | Most recent commit |
-| `lastDeploy` | object \| null | Most recent deploy |
-| `authors` | array | Commit authors |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage per project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
 | `dryRun` | boolean | True when --dry-run made no change |
 | `org` | string | Organization slug (--dry-run) |
 
@@ -440,10 +440,10 @@ Create a deploy for a release
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | string | Deploy ID |
-| `environment` | string | Environment |
-| `name` | string \| null | Name |
-| `url` | string \| null | Deploy URL |
+| `id` | string | The ID of the deploy |
+| `environment` | string | The environment name |
+| `name` | string \| null | The optional name of the deploy |
+| `url` | string \| null | The optional URL that points to the deploy |
 | `dateStarted` | string \| null | Start date (ISO 8601) |
 | `dateFinished` | string | Finish date (ISO 8601) |
 | `dryRun` | boolean | True when --dry-run made no change |
@@ -482,10 +482,10 @@ List deploys for a release
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | string | Deploy ID |
-| `environment` | string | Environment |
-| `name` | string \| null | Name |
-| `url` | string \| null | Deploy URL |
+| `id` | string | The ID of the deploy |
+| `environment` | string | The environment name |
+| `name` | string \| null | The optional name of the deploy |
+| `url` | string \| null | The optional URL that points to the deploy |
 | `dateStarted` | string \| null | Start date (ISO 8601) |
 | `dateFinished` | string | Finish date (ISO 8601) |
 
@@ -513,7 +513,7 @@ Set commits for a release
 | `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version |
 
 **Flags:**
-- `--auto - Auto-discover commits via repository integration (needs local git checkout)`
+- `--auto - Auto-discover commits via repository integration (needs a git checkout or CI repository variables)`
 - `--local - Read commits from local git history`
 - `--clear - Clear all commits from the release`
 - `--commit <value> - Explicit commit as REPO@SHA or REPO@PREV..SHA (comma-separated)`
@@ -527,24 +527,24 @@ Set commits for a release
 |-------|------|-------------|
 | `id` | number | Release ID |
 | `version` | string | Release version |
-| `shortVersion` | string | Shortened version |
+| `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open, archived) |
-| `ref` | string \| null | VCS reference |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
-| `dateCreated` | string \| null | Creation date (ISO 8601) |
-| `dateReleased` | string \| null | Release date (ISO 8601) |
-| `firstEvent` | string \| null | First event date (ISO 8601) |
-| `lastEvent` | string \| null | Last event date (ISO 8601) |
-| `newGroups` | number | Number of new issues |
-| `commitCount` | number | Number of commits |
-| `deployCount` | number | Number of deploys |
-| `lastCommit` | object \| null | Most recent commit |
-| `lastDeploy` | object \| null | Most recent deploy |
-| `authors` | array | Commit authors |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage per project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
 
 **Examples:**
 

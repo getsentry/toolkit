@@ -64,6 +64,24 @@ curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
 The installer reports its own errors to Sentry. Set `SENTRY_CLI_NO_TELEMETRY=1`
 to turn this off; the CLI honors the same variable.
 
+### Verify the Install Script
+
+Each stable release attaches `install` and `install.ps1` to its
+[GitHub release](https://github.com/getsentry/toolkit/releases), and Sentry's
+release registry lists their SHA-256 checksums. To check the script against the
+registry before you run it:
+
+```bash
+curl -fsSL https://cli.sentry.dev/install -o install
+curl -fsSL https://release-registry.services.sentry.io/apps/sentry/latest -o release.json
+expected=$(jq -er '.files.install.checksums["sha256-hex"]' release.json)
+echo "$expected  install" | sha256sum -c - && bash install
+```
+
+On macOS, use `shasum -a 256 -c -` instead of `sha256sum -c -`. During a release the
+website can update before the registry does, so retry if the checksums differ
+right after a new version ships.
+
 ### Windows (PowerShell)
 
 On Windows, install the latest stable release from PowerShell:

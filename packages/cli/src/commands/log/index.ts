@@ -5,6 +5,7 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { listCommand } from "./list.js";
 import { viewCommand } from "./view.js";
 
@@ -15,7 +16,7 @@ export const logRoute = buildRouteMap({
   },
   defaultCommand: "view",
   docs: {
-    brief: "View Sentry logs",
+    brief: topLevelBrief("log"),
     fullDescription:
       "View and stream logs from your Sentry projects.\n\n" +
       "Commands:\n" +

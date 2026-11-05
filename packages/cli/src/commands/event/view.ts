@@ -44,7 +44,7 @@ import {
   loadEventAttachments,
 } from "../../lib/event-attachments.js";
 import { formatEventDetails } from "../../lib/formatters/index.js";
-import { filterFields } from "../../lib/formatters/json.js";
+import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { validateHexId } from "../../lib/hex-id.js";
 import {
@@ -79,12 +79,10 @@ import { buildEventSearchUrl } from "../../lib/sentry-web-urls.js";
 import { getSpanTreeLines } from "../../lib/span-tree.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import type { InferOutput } from "valibot";
-import {
-  type EventViewOutputFields,
-  EventViewOutputSchema,
-  type SentryEvent,
-} from "../../types/index.js";
+import type { SentryEvent } from "../../types/index.js";
 import { findSelectorIssue } from "../issue/utils.js";
+import { EventViewOutputSchema } from "../../generated/output-schemas/event.js";
+import type { EventViewOutputFields } from "../../output-schemas/event.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -162,20 +160,13 @@ export function formatEventView(data: EventViewData): string {
  * This preserves backward compatibility: single-event callers still get
  * a flat object, while multi-event callers get an array.
  */
-export function jsonTransformEventView(
-  data: EventViewData,
-  fields?: string[],
-): unknown {
-  const transform = (entry: SingleEventViewData): Record<string, unknown> => {
+export function jsonTransformEventView(data: EventViewData, fields?: string[]) {
+  const transform = (entry: SingleEventViewData) => {
     const fieldsOut: EventViewFields = {
       trace: entry.trace,
       attachments: entry.attachments ?? [],
     };
-    const result: Record<string, unknown> = { ...entry.event, ...fieldsOut };
-    if (fields && fields.length > 0) {
-      return filterFields(result, fields) as Record<string, unknown>;
-    }
-    return result;
+    return filterFieldsIfSet({ ...entry.event, ...fieldsOut }, fields);
   };
 
   // Use requestedCount (not events.length) to decide the shape so that

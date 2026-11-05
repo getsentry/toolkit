@@ -16,10 +16,8 @@ import {
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
 import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
-import {
-  type SentryIntegration,
-  SentryIntegrationSchema,
-} from "../../types/index.js";
+import type { SentryIntegration } from "../../types/index.js";
+import { IntegrationListItemSchema } from "../../generated/output-schemas/integration.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "integration-list";
@@ -40,7 +38,8 @@ const INTEGRATION_COLUMNS: Column<IntegrationWithOrg>[] = [
 /** Shared config that plugs into the org-list framework. */
 const integrationListConfig: OrgListConfig<
   SentryIntegration,
-  IntegrationWithOrg
+  IntegrationWithOrg,
+  typeof IntegrationListItemSchema
 > = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "integrations",
@@ -53,7 +52,7 @@ const integrationListConfig: OrgListConfig<
   namesOf: (integration) => [integration.name, integration.provider.name],
   displayTable: (integrations: IntegrationWithOrg[]) =>
     formatTable(integrations, INTEGRATION_COLUMNS),
-  schema: SentryIntegrationSchema,
+  schema: IntegrationListItemSchema,
 };
 
 const docs: OrgListCommandDocs = {

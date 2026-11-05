@@ -17,11 +17,9 @@ import {
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import {
-  type ReleaseUpdateOutput,
-  ReleaseUpdateOutputSchema,
-} from "../../types/index.js";
+import type { ReleaseUpdateOutput } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { ReleaseUpdateOutputSchema } from "../../generated/output-schemas/release.js";
 
 const USAGE_HINT = "sentry release archive [<org>/]<version>";
 
@@ -100,7 +98,7 @@ export const archiveCommand = buildCommand({
     const { version, org, detectedFrom } = await target.resolved;
 
     if (flags["dry-run"]) {
-      yield new CommandOutput<ReleaseUpdateOutput>({
+      yield new CommandOutput({
         dryRun: true,
         version,
         org,
@@ -111,7 +109,7 @@ export const archiveCommand = buildCommand({
     const release = await updateRelease(org, version, {
       status: "archived",
     });
-    yield new CommandOutput<ReleaseUpdateOutput>(release);
+    yield new CommandOutput(release);
     const hint = detectedFrom ? `Detected from ${detectedFrom}` : undefined;
     return { hint };
   },

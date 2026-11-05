@@ -30,16 +30,7 @@
  * how to render the result — JSON envelope, human table, or custom formatting.
  */
 
-import {
-  description,
-  type GenericSchema,
-  looseObject,
-  type ObjectEntries,
-  object,
-  optional,
-  pipe,
-  string,
-} from "valibot";
+import type { OrgListItemOutputFields } from "../output-schemas/org-list.js";
 import type { WithOutputFields } from "../types/index.js";
 import {
   API_MAX_PER_PAGE,
@@ -67,6 +58,11 @@ import {
   withAuthGuard,
 } from "./errors.js";
 import { filterFields } from "./formatters/json.js";
+import type {
+  OutputSchemaFields,
+  SchemaMatches,
+  SchemaOfFields,
+} from "./formatters/output.js";
 import { paginationHint } from "./list-command.js";
 import {
   fetchByName,
@@ -116,6 +112,26 @@ export type ListResult<T> = {
 };
 
 /**
+ * JSON envelope of a paginated list. `data` holds the items, which
+ * `--fields` may have filtered.
+ */
+export type ListEnvelope<T> = {
+  data: Partial<T>[];
+  hasMore: boolean;
+  hasPrev?: boolean;
+  nextCursor?: string;
+  errors?: unknown[];
+  /** Command-specific metadata ({@link ListResult.jsonExtra}) */
+  [extra: string]: unknown;
+};
+
+/**
+ * JSON output of {@link jsonTransformListResult}: the envelope when
+ * paginated, a flat array of items otherwise.
+ */
+export type ListJson<T> = ListEnvelope<T> | Partial<T>[];
+
+/**
  * Transform a {@link ListResult} into the standard JSON output format.
  *
  * Paginated responses produce a `{ data, hasMore, nextCursor?, errors?, ... }` envelope.
@@ -128,7 +144,7 @@ export type ListResult<T> = {
 export function jsonTransformListResult<T>(
   result: ListResult<T>,
   fields?: string[],
-): unknown {
+): ListJson<T> {
   const items =
     fields && fields.length > 0
       ? result.items.map((item) => filterFields(item, fields))
@@ -136,7 +152,7 @@ export function jsonTransformListResult<T>(
 
   // Paginated mode: wrap in envelope
   if (result.hasMore !== undefined) {
-    const envelope: Record<string, unknown> = {
+    const envelope: ListEnvelope<T> = {
       data: items,
       hasMore: result.hasMore,
     };
@@ -161,31 +177,14 @@ export function jsonTransformListResult<T>(
   return items;
 }
 
-/** An object schema (possibly piped) whose entries can be spread. */
-export type OrgListEntitySchema = GenericSchema & {
-  readonly entries: ObjectEntries;
-};
-
-/** The field `withOrg` adds to each item of an org-scoped list. */
-export const OrgListItemOutputFields = object({
-  orgSlug: optional(pipe(string(), description("Organization slug"))),
-});
-
-/** An item of an org-scoped list: the entity with the org it came from. */
+/**
+ * An item of an org-scoped list: the entity with the org it came from. Its
+ * output schema is `orgListItemSchema(entity)` (`output-schemas/org-list.ts`).
+ */
 export type WithOrg<TEntity> = WithOutputFields<
   TEntity,
   typeof OrgListItemOutputFields
 >;
-
-/** Output schema of an org-scoped list item: the entity's, plus `orgSlug`. */
-export function orgListItemSchema<TEntries extends ObjectEntries>(entity: {
-  readonly entries: TEntries;
-}) {
-  return looseObject({
-    ...entity.entries,
-    ...OrgListItemOutputFields.entries,
-  });
-}
 
 /**
  * Per-target (or per-org) fetch result for budget-aware list commands.
@@ -432,8 +431,14 @@ export type BaseListFlags = {
  *
  * @template TEntity   Raw entity type from the API (e.g., SentryTeam)
  * @template TWithOrg  Entity with orgSlug attached for display
+ * @template TSchema   Type of `schema`; pass it so the entity is checked
+ *   against the schema
  */
-export type OrgListConfig<TEntity, TWithOrg> = ListCommandMeta & {
+export type OrgListConfig<
+  TEntity,
+  TWithOrg,
+  TSchema extends OutputSchemaFields = OutputSchemaFields,
+> = ListCommandMeta & {
   /**
    * Fetch all entities for one org (non-paginated).
    * @returns Raw entities from the API
@@ -479,11 +484,13 @@ export type OrgListConfig<TEntity, TWithOrg> = ListCommandMeta & {
   listForProject?: (orgSlug: string, projectSlug: string) => Promise<TEntity[]>;
 
   /**
-   * Valibot object schema of the entity. `buildOrgListCommand` adds
-   * {@link OrgListItemOutputFields} and forwards it to `OutputConfig.schema`
-   * so `--help`, `sentry help`, and SKILL.md can document available fields.
+   * Output schema of a list item, `orgListItemSchema(entity)` in
+   * `src/output-schemas/`. `buildOrgListCommand` forwards it to
+   * `OutputConfig.schema` so `--help`, `sentry help`, and SKILL.md can
+   * document available fields. `TEntity` must satisfy it, like the data of a
+   * command without `jsonTransform`.
    */
-  schema?: OrgListEntitySchema;
+  schema?: TSchema & SchemaMatches<TEntity, SchemaOfFields<TSchema>>;
 
   /**
    * The names a name filter matches against (e.g. slug and display name).

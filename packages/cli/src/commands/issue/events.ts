@@ -21,7 +21,6 @@ import {
   serializeTimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import { IssueEventSchema } from "../../types/index.js";
 import {
   appendEventsFlags,
   EVENTS_ALIASES,
@@ -32,6 +31,7 @@ import {
 } from "../event/shared-events.js";
 import { type IssueTarget, issuePositional } from "./positional.js";
 import { buildCommandHint } from "./utils.js";
+import { IssueEventSchema } from "../../generated/output-schemas/event.js";
 
 // ---------------------------------------------------------------------------
 // Constants

@@ -21,11 +21,11 @@ import { buildDeleteCommand } from "../../../lib/mutate-command.js";
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
   type DashboardWidgetDeleteOutput,
-  DashboardWidgetDeleteOutputSchema,
   prepareDashboardForUpdate,
 } from "../../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import { withDashboardErrors, resolveWidgetIndex } from "../resolve.js";
+import { DashboardWidgetDeleteOutputSchema } from "../../../generated/output-schemas/dashboard.js";
 
 type DeleteFlags = {
   readonly index?: number;
@@ -118,7 +118,7 @@ export const deleteCommand = buildDeleteCommand(
 
       // Dry-run mode: show what would be removed without removing it
       if (flags["dry-run"]) {
-        yield new CommandOutput<DashboardWidgetDeleteOutput>({
+        yield new CommandOutput({
           dryRun: true,
           widgetTitle,
           widgetCount: widgets.length,
@@ -140,7 +140,7 @@ export const deleteCommand = buildDeleteCommand(
         () => updateDashboard(orgSlug, dashboardId, updateBody),
       );
 
-      yield new CommandOutput<DashboardWidgetDeleteOutput>({
+      yield new CommandOutput({
         deleted: true,
         widgetTitle,
         widgetCount: updated.widgets?.length ?? 0,

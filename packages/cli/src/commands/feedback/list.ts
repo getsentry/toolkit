@@ -32,7 +32,7 @@ import {
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
-import { jsonTransformListResult } from "../../lib/org-list.js";
+import { jsonTransformListResult, type ListJson } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   type ResolvedOrgOptionalTarget,
@@ -51,10 +51,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  type FeedbackListResult,
-  SentryFeedbackSchema,
-} from "../../types/index.js";
+import type { FeedbackListResult, SentryFeedback } from "../../types/index.js";
+import { SentryFeedbackSchema } from "../../generated/output-schemas/feedback.js";
 
 const DEFAULT_PERIOD = "14d";
 const DEFAULT_STATUS: FeedbackStatus = "unresolved";
@@ -121,7 +119,7 @@ function pageHint(
 function jsonTransformFeedbackList(
   result: FeedbackListResult,
   fields?: string[],
-): unknown {
+): ListJson<SentryFeedback> {
   return jsonTransformListResult(
     {
       items: result.feedback,

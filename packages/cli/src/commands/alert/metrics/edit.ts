@@ -44,11 +44,8 @@ import {
 } from "../mutation-utils.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
-import { metricAlertStatusLabel } from "./status.js";
-import {
-  type MetricAlertEditOutput,
-  MetricAlertEditOutputSchema,
-} from "../output-schemas.js";
+import type { MetricAlertEditOutput } from "../../../output-schemas/alert.js";
+import { MetricAlertEditOutputSchema } from "../../../generated/output-schemas/alert.js";
 
 const USAGE_HINT =
   "sentry alert metrics edit <org>/<rule-id-or-name> --name <n> | --status active|disabled";
@@ -329,7 +326,8 @@ export const editCommand = buildCommand({
       ...updated,
       org: orgSlug,
       id: stringifyUnknown(updated.id ?? rule.id),
-      status: metricAlertStatusLabel(updated.status),
+      // The detectors endpoint returns `enabled` rather than `status`.
+      status: updated.enabled === false ? "disabled" : "active",
     } satisfies MetricAlertEditOutput);
   },
 });

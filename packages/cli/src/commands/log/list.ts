@@ -6,8 +6,6 @@
  * Supports trace ID as a positional argument to filter logs by trace.
  */
 
-// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../../context.js";
 import {
   type LogSortDirection,
@@ -51,6 +49,7 @@ import {
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   type BoundArguments,
@@ -78,7 +77,8 @@ import {
   warnIfNormalized,
 } from "../../lib/trace-target.js";
 import { getUpdateNotification } from "../../lib/version-check.js";
-import { SentryLogSchema } from "../../types/index.js";
+import { SentryLogSchema } from "../../generated/output-schemas/log.js";
+import { reportCliError } from "../../lib/error-reporting.js";
 
 type ListFlags = {
   readonly limit: number;
@@ -411,7 +411,7 @@ async function fetchPoll<T extends LogLike>(
     if (error instanceof ValidationError) {
       throw error;
     }
-    Sentry.captureException(error);
+    reportCliError(error);
     const message = stringifyUnknown(error);
     config.onDiagnostic(`Error fetching logs: ${message}\n`);
     return;
@@ -493,7 +493,7 @@ async function* yieldFollowItems<T extends LogLike>(
   let contextSent = !extraFields?.length;
   for await (const batch of generator) {
     if (!contextSent && batch.length > 0) {
-      yield new CommandOutput<LogOutput>({
+      yield new CommandOutput({
         logs: batch,
         hasMore: false,
         extraFields,
@@ -501,7 +501,7 @@ async function* yieldFollowItems<T extends LogLike>(
       contextSent = true;
     } else {
       for (const item of batch) {
-        yield new CommandOutput<LogOutput>(item);
+        yield new CommandOutput(item);
       }
     }
   }
@@ -522,7 +522,7 @@ async function* yieldTraceFollowItems<T extends LogLike>(
   for await (const batch of generator) {
     if (!contextSent && batch.length > 0) {
       // First non-empty batch: yield as LogListResult to set trace context
-      yield new CommandOutput<LogOutput>({
+      yield new CommandOutput({
         logs: batch,
         traceId,
         hasMore: false,
@@ -530,7 +530,7 @@ async function* yieldTraceFollowItems<T extends LogLike>(
       contextSent = true;
     } else {
       for (const item of batch) {
-        yield new CommandOutput<LogOutput>(item);
+        yield new CommandOutput(item);
       }
     }
   }
@@ -737,7 +737,10 @@ function createLogRenderer(): HumanRenderer<LogOutput> {
  * {@link LogLike} items (follow mode). Single-fetch yields a JSON envelope
  * with `data` and `hasMore`; follow mode yields one JSON object per line (JSONL).
  */
-function jsonTransformLogOutput(data: LogOutput, fields?: string[]): unknown {
+function jsonTransformLogOutput(
+  data: LogOutput,
+  fields?: string[],
+): ListEnvelope<LogLike> | Partial<LogLike> {
   if (isLogListResult(data)) {
     // Batch (single-fetch): return envelope with data + hasMore
     const logList = data;

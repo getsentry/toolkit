@@ -139,6 +139,8 @@ const BOUND_TARGET_TYPES = new Set([
   "ReplayArguments",
   "SpanListArguments",
   "SpanViewArguments",
+  "TokenArguments",
+  "TokenCreateTarget",
   "TraceLogsArguments",
   "TraceViewArguments",
   "TrialStartArguments",
@@ -376,6 +378,46 @@ const rules = {
               if (
                 handler?.type === "ArrowFunctionExpression" &&
                 silentBody(handler.body, handler.params[0])
+              )
+                report(node);
+            },
+          }
+        : {},
+  ),
+  // A raw capture skips the 4xx silencing and `api_error` context that
+  // reportCliError() applies, so user errors pile into one issue (CLI-10).
+  "no-raw-capture-exception": rule(
+    "Report errors with reportCliError() from lib/error-reporting.js. A raw captureException skips the 4xx silencing and API error context.",
+    (_context, file, report) =>
+      file.includes("/src/") && !file.endsWith("/src/lib/error-reporting.ts")
+        ? {
+            ImportDeclaration(node) {
+              if (!String(node.source.value).startsWith("@sentry/")) return;
+              for (const specifier of node.specifiers) {
+                if (specifier.imported?.name === "captureException")
+                  report(specifier);
+              }
+            },
+            CallExpression(node) {
+              if (call(node, "captureException")) report(node);
+            },
+          }
+        : {},
+  ),
+  "no-process-exit": rule(
+    "Do not force the process to exit: it drops pending telemetry and piped " +
+      "output. Release the handle that keeps the event loop alive (see " +
+      "close-dispatcher.ts), or fix it in the dependency that owns it. " +
+      "Signal, fatal error, and broken stream handlers may exit, with a " +
+      "disable comment that says why.",
+    (_context, file, report) =>
+      file.includes("/src/")
+        ? {
+            MemberExpression(node) {
+              if (
+                member(node, "exit") &&
+                (node.object.name === "process" ||
+                  member(node.object, "process"))
               )
                 report(node);
             },
@@ -730,6 +772,36 @@ const rules = {
             },
           }
         : {},
+  ),
+  "no-runtime-output-schema-imports": rule(
+    "src/output-schemas/ is build-only: use `import type` from it, and import the field data from src/generated/output-schemas/.",
+    (_context, file, report) => {
+      if (!file.includes("/src/") || file.includes("/src/output-schemas/"))
+        return {};
+      const buildOnly = (source) =>
+        typeof source === "string" &&
+        /(?:^|\/)output-schemas\//.test(source) &&
+        !/(?:^|\/)generated\/output-schemas\//.test(source);
+      // Only `import type` / `export type` is erased whole. Under
+      // `verbatimModuleSyntax`, `import { type X }` still loads the module.
+      return {
+        ImportDeclaration(node) {
+          if (buildOnly(node.source.value) && node.importKind !== "type")
+            report(node);
+        },
+        ExportNamedDeclaration(node) {
+          if (buildOnly(node.source?.value) && node.exportKind !== "type")
+            report(node);
+        },
+        ExportAllDeclaration(node) {
+          if (buildOnly(node.source.value) && node.exportKind !== "type")
+            report(node);
+        },
+        ImportExpression(node) {
+          if (buildOnly(node.source.value)) report(node);
+        },
+      };
+    },
   ),
   "no-skipped-tests": rule(
     "Do not leave disabled tests in the suite.",

@@ -299,7 +299,7 @@ describe("createSentryProject", () => {
         403,
         "Your organization has disabled this feature for members.",
         undefined,
-        true,
+        { enriched403: true },
       ),
     );
 

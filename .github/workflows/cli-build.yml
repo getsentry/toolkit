@@ -352,7 +352,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Generate CLI docs
-        run: pnpm --filter sentry run generate:schema && pnpm --filter sentry run generate:docs
+        run: pnpm --filter sentry run generate:docs
       - name: Set docs release
         run: |
           release=$(node -p 'require("./packages/cli/package.json").version')
@@ -394,3 +394,15 @@ jobs:
         with:
           name: vercel
           path: vercel.zip
+      # The website serves these at cli.sentry.dev/install and /install.ps1.
+      # Releasing the same files as assets puts their checksums on GitHub and
+      # the release registry, so the served scripts can be checked against a
+      # source other than the website.
+      - name: Upload install scripts artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: install-scripts
+          path: |
+            apps/cli-docs/dist/install
+            apps/cli-docs/dist/install.ps1
+          if-no-files-found: error

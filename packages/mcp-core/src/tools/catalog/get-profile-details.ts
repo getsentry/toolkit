@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isLegacySpeedscopeProfile } from "../../api-client/types";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -17,6 +18,7 @@ import {
   validateSlugOrId,
 } from "../../utils/slug-validation";
 import {
+  formatLegacyProfileSummary,
   formatProfileChunkAnalysis,
   formatTransactionProfileAnalysis,
 } from "../support/profile/formatter";
@@ -181,7 +183,8 @@ export default defineTool({
   hideInExperimentalMode: true,
 
   description: [
-    "Inspect a specific Sentry profile in detail.",
+    "Inspect one specific Sentry profile in detail, by profile ID, profiler ID or URL.",
+    "For aggregated hot paths across a transaction, use get_profile.",
     "",
     "USE THIS TOOL WHEN:",
     "- User shares a transaction profile URL and wants the details",
@@ -351,6 +354,17 @@ export default defineTool({
           projectSlug,
           resolved.profileId,
         );
+
+      if (isLegacySpeedscopeProfile(profile)) {
+        const legacyTraceId = profile.metadata?.traceID;
+        return formatLegacyProfileSummary(profile, {
+          profileUrl,
+          projectSlug,
+          traceUrl: legacyTraceId
+            ? apiService.getTraceUrl(resolved.organizationSlug, legacyTraceId)
+            : undefined,
+        });
+      }
 
       const traceUrl = profile.transaction?.trace_id
         ? apiService.getTraceUrl(

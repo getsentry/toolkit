@@ -33,15 +33,15 @@ List spans in a project or trace
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | string | Span ID |
-| `parent_span` | string \| null | Parent span ID |
-| `span.op` | string \| null | Span operation (e.g. http.client, db) |
+| `span_id` | string | Span ID |
+| `trace_id` | string | Trace ID |
+| `parent_span_id` | string \| null | Parent span ID |
+| `op` | string | Span operation (e.g. http.client, db) |
 | `description` | string \| null | Span description |
-| `span.duration` | number \| null | Duration (ms) |
-| `timestamp` | string | Timestamp (ISO 8601) |
-| `project` | string | Project slug |
-| `transaction` | string \| null | Transaction name |
-| `trace` | string | Trace ID |
+| `duration_ms` | number | Duration (ms) |
+| `start_timestamp` | number | Start time (Unix seconds) |
+| `project_slug` | string | Project slug |
+| `transaction` | string | Transaction name |
 
 **Examples:**
 

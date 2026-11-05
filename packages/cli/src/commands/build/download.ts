@@ -132,7 +132,7 @@ export const downloadCommand = buildCommand({
     const regionUrl = await resolveOrgRegion(org);
     await downloadBuildArtifact(regionUrl, url, output);
 
-    yield new CommandOutput<BuildDownloadResult>({
+    yield new CommandOutput({
       buildId,
       org,
       output,

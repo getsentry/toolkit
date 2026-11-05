@@ -21,6 +21,7 @@ import { eventRoute } from "./commands/event/index.js";
 import { listCommand as eventListCommand } from "./commands/event/list.js";
 import { exploreCommand } from "./commands/explore.js";
 import { feedbackRoute } from "./commands/feedback/index.js";
+import { gamesRoute } from "./commands/games/index.js";
 import { helpCommand } from "./commands/help.js";
 import { infoCommand } from "./commands/info.js";
 import { initCommand } from "./commands/init.js";
@@ -58,16 +59,21 @@ import { listCommand as spanListCommand } from "./commands/span/list.js";
 import { statusRoute } from "./commands/status/index.js";
 import { teamRoute } from "./commands/team/index.js";
 import { listCommand as teamListCommand } from "./commands/team/list.js";
+import { tokenRoute } from "./commands/token/index.js";
+import { listCommand as tokenListCommand } from "./commands/token/list.js";
 import { traceRoute } from "./commands/trace/index.js";
 import { listCommand as traceListCommand } from "./commands/trace/list.js";
 import { trialRoute } from "./commands/trial/index.js";
 import { listCommand as trialListCommand } from "./commands/trial/list.js";
 import { wasmSplitCommand } from "./commands/wasm-split.js";
 import { buildSentryApp, buildSentryRoutes } from "./app-root.js";
-import { setGraphicsBanner } from "./lib/help.js";
-import { graphicsBanner, graphicsBannerExtraRows } from "./lib/sixel.js";
+import { registerGraphicsBanner } from "./graphics-banner.js";
 
-/** Top-level route map containing all CLI commands */
+/**
+ * Top-level route map containing all CLI commands. Keep it in the order and
+ * with the names of `COMMAND_MANIFEST` (`command-manifest.ts`), which lists
+ * the same modules for loading one route at a time.
+ */
 export const routes = buildSentryRoutes({
   help: helpCommand,
   alert: alertRoute,
@@ -91,12 +97,14 @@ export const routes = buildSentryRoutes({
   release: releaseRoute,
   repo: repoRoute,
   team: teamRoute,
+  token: tokenRoute,
   integration: integrationRoute,
   issue: issueRoute,
   event: eventRoute,
   events: eventListCommand,
   explore: exploreCommand,
   feedback: feedbackRoute,
+  games: gamesRoute,
   log: logRoute,
   mcp: mcpCommand,
   monitor: monitorRoute,
@@ -130,6 +138,7 @@ export const routes = buildSentryRoutes({
   releases: releaseListCommand,
   repos: repoListCommand,
   teams: teamListCommand,
+  tokens: tokenListCommand,
   logs: logListCommand,
   monitors: monitorListCommand,
   spans: spanListCommand,
@@ -140,10 +149,4 @@ export const routes = buildSentryRoutes({
 
 export const app = buildSentryApp(routes);
 
-// Help shows the kitty/sixel image banner on capable terminals. Registered
-// here rather than imported by `lib/help.ts`, so applications without it
-// (`@sentry/mcp-server`) leave the image code out of their bundle.
-setGraphicsBanner({
-  render: graphicsBanner,
-  extraRows: graphicsBannerExtraRows,
-});
+registerGraphicsBanner();

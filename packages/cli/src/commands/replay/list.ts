@@ -42,6 +42,7 @@ import {
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   getReplayUserLabel,
@@ -58,11 +59,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  REPLAY_LIST_FIELDS,
-  type ReplayListItem,
-  ReplayListItemOutputSchema,
-} from "../../types/index.js";
+import { REPLAY_LIST_FIELDS, type ReplayListItem } from "../../types/index.js";
+import { ReplayListItemOutputSchema } from "../../generated/output-schemas/replay.js";
 
 type ListFlags = {
   readonly environment?: readonly string[];
@@ -231,13 +229,13 @@ function formatReplayListHuman(result: ReplayListResult): string {
 function jsonTransformReplayList(
   result: ReplayListResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<ReplayListItem> {
   const items =
     fields && fields.length > 0
       ? result.replays.map((replay) => filterFields(replay, fields))
       : result.replays;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<ReplayListItem> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: result.hasPrev,

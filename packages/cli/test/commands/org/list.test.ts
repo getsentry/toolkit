@@ -16,7 +16,13 @@ import { resetAccountScopes } from "../../../src/lib/db/account-scope.js";
 import { getDatabase } from "../../../src/lib/db/index.js";
 import { getEnvTokenHost } from "../../../src/lib/env-token-host.js";
 import { setUserInfo } from "../../../src/lib/db/user.js";
-import { AuthError, ResolutionError } from "../../../src/lib/errors.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- vi.spyOn needs the module namespace
+import * as apiClient from "../../../src/lib/api-client.js";
+import {
+  AuthError,
+  ResolutionError,
+  TimeoutError,
+} from "../../../src/lib/errors.js";
 import {
   mintSntrysToken,
   resetHostScopingState,
@@ -260,6 +266,25 @@ describe("org list across stored accounts", () => {
     expect(slugsWithAccount(entries)).toEqual([["alpha", "jane@example.com"]]);
     // Only the rejected account's credentials are touched.
     expect(getAuthToken()).toBe("saas-token");
+  });
+
+  test("an account whose server times out is skipped; the others are still listed", async () => {
+    addAccount("slow-token", ACME, "jane@acme.com");
+    addAccount("saas-token", SAAS, "jane@example.com");
+    orgsByToken["saas-token"] = [org("alpha")];
+    const listOrgs = apiClient.listOrganizationsUncached;
+    vi.spyOn(apiClient, "listOrganizationsUncached").mockImplementation(
+      (...args) => {
+        if (getAuthToken() === "slow-token") {
+          throw new TimeoutError("Request timed out after 30s.");
+        }
+        return listOrgs(...args);
+      },
+    );
+
+    const entries = await runList();
+
+    expect(slugsWithAccount(entries)).toEqual([["alpha", "jane@example.com"]]);
   });
 
   test("fails when every account fails", async () => {

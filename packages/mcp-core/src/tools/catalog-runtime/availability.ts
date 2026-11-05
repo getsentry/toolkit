@@ -15,7 +15,7 @@ import type { ProjectCapabilities, ServerContext } from "../../types";
 import {
   isCatalogInfrastructureToolName,
   isOutsideCatalogToolName,
-  isTopLevelToolName,
+  isTopLevelTool,
 } from "../surfaces";
 import {
   type ToolConfig,
@@ -41,10 +41,12 @@ export interface CatalogContext {
 
 function getToolPlacement({
   key,
+  tool,
   experimentalMode,
   useDefaultSurfacePolicy,
 }: {
   key: string;
+  tool: ToolConfig<any>;
   experimentalMode: boolean;
   useDefaultSurfacePolicy: boolean;
 }): {
@@ -54,7 +56,7 @@ function getToolPlacement({
   if (useDefaultSurfacePolicy) {
     return {
       isCatalogTool: !isOutsideCatalogToolName(key),
-      isTopLevel: isTopLevelToolName(key, experimentalMode),
+      isTopLevel: isTopLevelTool(tool, experimentalMode),
     };
   }
 
@@ -173,6 +175,7 @@ export function getAvailableTools({
   for (const [key, tool] of Object.entries(tools)) {
     const placement = getToolPlacement({
       key,
+      tool,
       experimentalMode,
       useDefaultSurfacePolicy,
     });

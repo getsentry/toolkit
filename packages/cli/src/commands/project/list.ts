@@ -36,10 +36,7 @@ import {
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { ResolutionError, withAuthGuard } from "../../lib/errors.js";
-import {
-  CommandOutput,
-  type OutputConfig,
-} from "../../lib/formatters/output.js";
+import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import {
   buildListCommand,
@@ -60,7 +57,6 @@ import {
   jsonTransformListResult,
   type ListCommandMeta,
   type ListResult,
-  orgListItemSchema,
   type WithOrg,
 } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
@@ -75,7 +71,8 @@ import {
 import { getApiBaseUrl } from "../../lib/sentry-client.js";
 import type { ListCommandTarget } from "../../lib/target-positional.js";
 import { shellQuote } from "../../lib/utils.js";
-import { type SentryProject, SentryProjectSchema } from "../../types/index.js";
+import type { SentryProject } from "../../types/index.js";
+import { ProjectListItemSchema } from "../../generated/output-schemas/project.js";
 
 /** Extended result type with optional title shown above the table. */
 type ProjectListResult = ListResult<ProjectWithOrg> & { title?: string };
@@ -922,9 +919,10 @@ export const listCommand = buildListCommand("project", {
       }
       return parts.join("");
     },
-    jsonTransform: jsonTransformListResult,
-    schema: orgListItemSchema(SentryProjectSchema),
-  } satisfies OutputConfig<ListResult<ProjectWithOrg>>,
+    jsonTransform: (result: ListResult<ProjectWithOrg>, fields?: string[]) =>
+      jsonTransformListResult(result, fields),
+    schema: ProjectListItemSchema,
+  },
   parameters: {
     positional: listTargetPositional({ names: true, multi: true }),
     flags: {

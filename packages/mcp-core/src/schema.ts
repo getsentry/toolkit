@@ -79,6 +79,14 @@ export const ParamIssueShortId = z
   .trim()
   .describe("The Issue ID. e.g. `PROJECT-1Z43`");
 
+export const ParamPackageNames = z
+  .array(z.string().min(1).max(256))
+  .min(1)
+  .max(10)
+  .describe(
+    "Exact, case-sensitive package names recorded with a specific event (1–10 names, up to 256 characters each). Requires an event lookup. Only selected package versions are added; versions longer than 256 characters are truncated.",
+  );
+
 export const ParamIssueUrl = z
   .string()
   .url()
@@ -126,12 +134,26 @@ export const ParamSpanId = z
     "The span ID within a trace. Use this with a trace resource to focus on a specific span.",
   );
 
+// Platform names agents sent in production that Sentry rejects with
+// `{"platform":["Invalid platform"]}`, mapped to the ID Sentry accepts. Every
+// value must be in GETTING_STARTED_DOCS_PLATFORMS in getsentry/sentry
+// src/sentry/models/project.py (checked against master on 2026-11-04).
+const PLATFORM_ALIASES: ReadonlyMap<string, string> = new Map([
+  ["react", "javascript-react"],
+  ["cocoa", "apple"],
+  ["cocoa-ios", "apple-ios"],
+  ["csharp", "dotnet"],
+  ["javascript-cloudflare", "node-cloudflare-workers"],
+  ["javascript-cloudflare-workers", "node-cloudflare-workers"],
+]);
+
 export const ParamPlatform = z
   .string()
   .toLowerCase()
   .trim()
+  .overwrite((platform) => PLATFORM_ALIASES.get(platform) ?? platform)
   .describe(
-    "The platform for the project. e.g., python, javascript, react, etc.",
+    "The Sentry platform ID for the project, e.g. javascript-react, javascript-nextjs, node, python-django, apple-ios, android, dotnet. Omit if unsure.",
   );
 
 export const ParamTransaction = z
@@ -211,7 +233,7 @@ export const ParamAssignedTo = z
   .min(1)
   .nullable()
   .describe(
-    "The assignee in format 'user:ID' or 'team:ID_OR_SLUG' where ID is numeric. Pass null to unassign the issue. Example: 'user:123456', 'team:789', or 'team:my-team-slug'. Use `execute_sentry_tool(name='whoami', arguments={})` to find your user ID.",
+    "The assignee in format 'user:ID' or 'team:ID_OR_SLUG' where ID is numeric. Pass null to unassign the issue. Example: 'user:123456', 'team:789', or 'team:my-team-slug'. Use the `whoami` tool to find your user ID.",
   );
 
 export const ParamIgnoreDurationMinutes = z

@@ -7,8 +7,8 @@ import { expect, test } from "vitest";
 
 const ANY_IMPORT = /.*/;
 
-/** A route module path in `src/generated/route-loaders.ts`. */
-const ROUTE_MODULE_RE = /import\("\.\.\/([^"]+)"\)/g;
+/** A route module path in `src/command-manifest.ts`. */
+const ROUTE_MODULE_RE = /import\("\.\/([^"]+)"\)/g;
 const TS_EXTENSION_RE = /\.js$/;
 
 /**
@@ -28,7 +28,6 @@ const PURE_SENTRY_IMPORTS = [
  */
 const COMPLETION_PACKAGES = new Set([
   ...PURE_SENTRY_IMPORTS,
-  "@sentry/toolkit-core/auth-token",
   // `errors.ts` (exit codes)
   "@stricli/core",
   // `db/accounts.ts` account IDs
@@ -122,10 +121,10 @@ test("the CLI's main script loads only builtins", async () => {
   ]);
 });
 
-/** The modules of the top-level routes in `src/generated/route-loaders.ts`. */
+/** The modules of the top-level routes in `src/command-manifest.ts`. */
 async function routeModules(): Promise<string[]> {
   const loaders = await readFile(
-    join(import.meta.dirname, "../../src/generated/route-loaders.ts"),
+    join(import.meta.dirname, "../../src/command-manifest.ts"),
     "utf8",
   );
   return [...loaders.matchAll(ROUTE_MODULE_RE)].map(
@@ -135,7 +134,8 @@ async function routeModules(): Promise<string[]> {
 
 test.each([
   // `app-for-args.ts` loads only the route being run, so no route module of
-  // `app.ts` (each one a `ROUTE_LOADERS` import) may load before it picks one
+  // `app.ts` (each one a `COMMAND_MANIFEST` loader) may load before it picks
+  // one
   "app-for-args.ts",
   // The same for each SDK call
   "sdk-app.ts",

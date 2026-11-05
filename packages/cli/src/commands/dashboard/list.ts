@@ -30,21 +30,20 @@ import {
   buildListLimitFlag,
   paginationHint,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   buildDashboardsListUrl,
   buildDashboardUrl,
 } from "../../lib/sentry-web-urls.js";
-import {
-  type DashboardListItem,
-  DashboardListItemSchema,
-} from "../../types/dashboard.js";
+import type { DashboardListItem } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {
   type DashboardListArguments,
   dashboardListArguments,
 } from "./arguments.js";
 import { withDashboardErrors } from "./resolve.js";
+import { DashboardListItemSchema } from "../../generated/output-schemas/dashboard.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "dashboard-list";
@@ -186,13 +185,13 @@ function formatDashboardListHuman(result: DashboardListResult): string {
 function jsonTransformDashboardList(
   result: DashboardListResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<DashboardListItem> {
   const items =
     fields && fields.length > 0
       ? result.dashboards.map((d) => filterFields(d, fields))
       : result.dashboards;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<DashboardListItem> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: !!result.hasPrev,
