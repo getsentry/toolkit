@@ -81,16 +81,15 @@ export async function runSearchAttributes(
       importantInfo,
     });
 
-  if (!hasAgentProvider()) {
-    return listAttributes(
-      [
-        "Matching by `query` needs an AI provider, so these are the dataset's attributes instead.",
-      ],
-      [],
-    );
-  }
-
   if (query) {
+    if (!hasAgentProvider()) {
+      return listAttributes(
+        [
+          "Matching by `query` needs an AI provider, so these are the dataset's attributes instead.",
+        ],
+        [],
+      );
+    }
     return listAttributes(
       [
         "Matching by `query` is not available yet. Here are all of the dataset's attributes instead.",

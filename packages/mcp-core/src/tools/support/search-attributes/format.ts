@@ -1,4 +1,10 @@
 import type { TraceItemAttribute } from "../../../api-client";
+import { normalizeEventsDataset } from "../../../utils/events-datasets";
+import {
+  BASE_COMMON_FIELDS,
+  DATASET_FIELDS,
+  RECOMMENDED_FIELDS,
+} from "../search-events/config";
 import type { SearchAttributesDataset } from "./search";
 
 const DATASET_LABELS: Record<
@@ -19,7 +25,7 @@ const DATASET_LABELS: Record<
   },
 };
 
-const MAX_DESCRIPTION_LENGTH = 120;
+const MAX_DESCRIPTION_LENGTH = 255;
 
 interface QuerySettings {
   organizationSlug: string;
@@ -56,21 +62,44 @@ export function formatListResult({
     return formatNoneSeen(lines, labels.title.toLowerCase(), period);
   }
 
-  // Sort by key so related attributes (http.*, db.*) stay together.
-  const sorted = [...attributes].sort((a, b) => a.key.localeCompare(b.key));
+  lines.push(
+    "**Suggested presentation:** A table works well here, with each attribute's type, description, deprecation status, replacement attributes, and whether it's added by Sentry.",
+    "",
+    "Please tell the user each attribute's type, description, examples, whether they were added by sentry, and which attributes are deprecated and what replaces them.",
+    "",
+  );
+
+  const sorted = sortAttributes(attributes, dataset);
   const shown = sorted.slice(0, limit);
 
   lines.push(...formatAttributeTable(shown), "", "## Response Notes", "");
   if (shown.length < sorted.length) {
-    lines.push(
-      `- Showing ${shown.length} of ${sorted.length}. Pass a \`query\` to find specific attributes.`,
-    );
+    lines.push(`- Showing ${shown.length} of ${sorted.length}.`);
   }
   lines.push(
     `- Use a key with \`${labels.associatedTool}\` to query its values.`,
     ...notes.map((note) => `- ${note}`),
   );
   return lines.join("\n");
+}
+
+/**
+ * Search events' recommended fields first, then the rest. Both sort by key so
+ * related attributes (http.*, db.*) stay together.
+ */
+function sortAttributes(
+  attributes: TraceItemAttribute[],
+  dataset: SearchAttributesDataset,
+): TraceItemAttribute[] {
+  const recommended = new Set([
+    ...RECOMMENDED_FIELDS[normalizeEventsDataset(dataset)].basic,
+    ...Object.keys(DATASET_FIELDS[normalizeEventsDataset(dataset)]),
+    ...Object.keys(BASE_COMMON_FIELDS),
+  ]);
+  const group = ({ key }: TraceItemAttribute) => (recommended.has(key) ? 0 : 1);
+  return [...attributes].sort(
+    (a, b) => group(a) - group(b) || a.key.localeCompare(b.key),
+  );
 }
 
 function formatNoneSeen(lines: string[], noun: string, period: string): string {
@@ -99,7 +128,9 @@ function formatAttributeTable(attributes: TraceItemAttribute[]): string[] {
 function describeCell({ context }: TraceItemAttribute): string {
   const brief = flatten(context?.brief);
   if (brief) {
-    return truncate(brief, MAX_DESCRIPTION_LENGTH);
+    const description = truncate(brief, MAX_DESCRIPTION_LENGTH);
+    const examples = `EXAMPLE VALUES: ${context?.examples?.join(", ")}`;
+    return `${description}. ${context?.examples ? examples : ""}`;
   } else return "";
 }
 
