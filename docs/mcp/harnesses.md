@@ -59,9 +59,11 @@ search/execute pattern.
 Harnesses that defer tools still load the server `instructions` at session
 start, so that text is how the model learns when to search for Sentry tools.
 `buildServerInstructions` in `packages/mcp-core/src/server-instructions.ts`
-writes them from the registered tools: a fixed list of what Sentry covers, plus
-rules that name a tool only when the session registered it. Keep them under
-1,500 characters; Claude Code cuts server instructions at 4,096.
+writes them from the registered tools: one line on when to use Sentry, plus
+routing rules that name a tool only when the session registered it. Every line
+must change what the model does; leave out product description and anything a
+tool description covers. Keep them under 1,500 characters; Claude Code cuts
+server instructions at 4,096.
 
 ### Tier 1 Details
 

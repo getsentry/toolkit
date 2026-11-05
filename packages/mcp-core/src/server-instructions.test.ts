@@ -24,7 +24,7 @@ describe("buildServerInstructions", () => {
     expect(
       buildServerInstructions(new Set(["search_logs", "search_traces"])),
     ).toContain(
-      "- Use search_logs, search_traces for individual events, counts, and aggregates.",
+      "- search_logs, search_traces find individual events, counts, and aggregates.",
     );
   });
 
@@ -52,7 +52,7 @@ describe("buildServerInstructions", () => {
     );
 
     expect(instructions).toContain(
-      "find them with search_sentry_tools and run them with execute_sentry_tool",
+      "find the tool with search_sentry_tools and run it with execute_sentry_tool",
     );
     expect(instructions?.length).toBeLessThanOrEqual(
       MAX_SERVER_INSTRUCTIONS_LENGTH,

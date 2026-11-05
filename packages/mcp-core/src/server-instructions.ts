@@ -3,14 +3,16 @@
  *
  * Harnesses with tool search, such as Claude Code, load only tool names and
  * these instructions at session start, so this text decides when the model
- * reaches for Sentry tools at all. Keep it short: Claude Code cuts server
- * instructions at 4,096 characters. See docs/mcp/harnesses.md.
+ * reaches for Sentry tools at all. Every line is steering: it says when to
+ * use Sentry or how to route between tools. Leave out product description and
+ * anything a tool description already covers once loaded. Claude Code cuts
+ * server instructions at 4,096 characters. See docs/mcp/harnesses.md.
  */
 
 export const MAX_SERVER_INSTRUCTIONS_LENGTH = 1_500;
 
 const OVERVIEW =
-  "Sentry monitors errors and performance in the user's applications. Use these tools when the user asks about production behavior or their Sentry account: errors, exceptions, and crashes; Sentry issues and stack traces; traces, spans, and slow requests; logs; metrics; session replays; profiles; releases; cron, uptime, and metric monitors; alert rules; or Sentry SDK setup and docs.";
+  "Use Sentry tools for questions about the user's production apps or Sentry account: errors, crashes, issues, stack traces, traces, spans, slow requests, logs, metrics, replays, profiles, releases, monitors, alert rules, and Sentry SDK setup and docs.";
 
 const EVENT_SEARCH_TOOL_NAMES = [
   "search_errors",
@@ -36,12 +38,12 @@ export function buildServerInstructions(
   const rules: string[] = [];
   if (toolNames.has("get_sentry_resource")) {
     rules.push(
-      "When the user shares a Sentry URL, or an issue, event, trace, or replay ID, call get_sentry_resource first.",
+      "For a Sentry URL or an issue, event, trace, or replay ID, call get_sentry_resource first.",
     );
   }
   if (toolNames.has("find_organizations")) {
     rules.push(
-      "Tools pick the organization automatically when the user has only one. If a tool asks for organizationSlug, call find_organizations and pass the slug and regionUrl it returns.",
+      "Do not look up the organization first; tools default to it when the user has one. If a tool asks for organizationSlug, call find_organizations and pass the slug and regionUrl it returns.",
     );
   }
   const eventSearchTools = EVENT_SEARCH_TOOL_NAMES.filter((name) =>
@@ -50,12 +52,12 @@ export function buildServerInstructions(
   if (toolNames.has("search_issues")) {
     rules.push(
       eventSearchTools.length > 0
-        ? `Use search_issues for grouped problems ("what's broken", "top issues") and ${eventSearchTools.join(", ")} for individual events, counts, and aggregates.`
-        : `Use search_issues for grouped problems ("what's broken", "top issues").`,
+        ? `search_issues finds grouped problems ("what's broken", "top issues"); ${eventSearchTools.join(", ")} find individual events, counts, and aggregates.`
+        : `search_issues finds grouped problems ("what's broken", "top issues").`,
     );
   } else if (eventSearchTools.length > 0) {
     rules.push(
-      `Use ${eventSearchTools.join(", ")} for individual events, counts, and aggregates.`,
+      `${eventSearchTools.join(", ")} find individual events, counts, and aggregates.`,
     );
   }
   if (
@@ -63,7 +65,7 @@ export function buildServerInstructions(
     toolNames.has("execute_sentry_tool")
   ) {
     rules.push(
-      "More Sentry tools exist than are listed: find them with search_sentry_tools and run them with execute_sentry_tool.",
+      "For a Sentry task no listed tool covers, find the tool with search_sentry_tools and run it with execute_sentry_tool.",
     );
   }
 
