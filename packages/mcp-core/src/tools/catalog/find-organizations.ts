@@ -135,6 +135,7 @@ async function listAcrossAccounts(
 
 export default defineTool({
   name: "find_organizations",
+  title: "Find Organizations",
   skills: ALL_SKILLS, // Foundational tool - available to all skills
   requiredScopes: ["org:read"],
   description: [

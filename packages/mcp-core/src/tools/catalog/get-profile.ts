@@ -79,6 +79,7 @@ function resolveProfileParams(params: {
 
 export default defineTool({
   name: "get_profile",
+  title: "Get Transaction Profile",
   skills: ["inspect"],
   requiredScopes: ["event:read"],
   requiredCapabilities: ["profiles"],

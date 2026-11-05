@@ -17,6 +17,7 @@ const context: ServerContext = {
 const tools: Record<string, ToolConfig> = {
   static_tool: {
     name: "static_tool",
+    title: "Static Tool",
     description: "A tool fixed for the lifetime of the server",
     inputSchema: {},
     skills: ["inspect"],

@@ -396,6 +396,7 @@ function configureServer({
     });
 
     const toolRegistration = {
+      title: tool.title,
       description: resolvedDescription,
       inputSchema: filteredInputSchema,
       outputSchema: tool.outputSchema,

@@ -10,6 +10,7 @@ export const getSentryMcpInfoOutputSchema = z.object({
 
 export default defineTool({
   name: "get_sentry_mcp_info",
+  title: "Get Sentry MCP Info",
   description: [
     "Get information about the running Sentry MCP server.",
     "",

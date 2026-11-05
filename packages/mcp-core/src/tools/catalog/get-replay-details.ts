@@ -73,6 +73,7 @@ const MAX_REPLAY_SEGMENTS = 500;
 
 export default defineTool({
   name: "get_replay_details",
+  title: "Get Replay Details",
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read", "event:read"],
   requiredCapabilities: ["replays"],

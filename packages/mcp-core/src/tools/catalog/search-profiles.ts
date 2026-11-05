@@ -9,6 +9,7 @@ import {
 export default defineTool({
   ...searchToolBase("search_profiles"),
   name: "search_profiles",
+  title: "Search Profiles",
   description: [
     "Search Sentry profiles: transaction and continuous profile results, profile IDs, and profiled transactions. Use to find profiles to inspect.",
     "",
