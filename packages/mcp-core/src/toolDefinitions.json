@@ -5313,7 +5313,7 @@
                 "type": "string"
               },
               "name": {
-                "description": "Name on the report, falling back to the event user.",
+                "description": "Name the reporter entered, falling back to the event user's name. Null when Sentry only has an email or username.",
                 "type": ["string", "null"]
               },
               "email": {
@@ -5332,6 +5332,7 @@
                         "type": ["string", "null"]
                       },
                       "name": {
+                        "description": "Null when Sentry only has an email or username.",
                         "type": ["string", "null"]
                       },
                       "email": {

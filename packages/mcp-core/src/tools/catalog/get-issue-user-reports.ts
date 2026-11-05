@@ -23,17 +23,37 @@ function orNull(value: string | null | undefined): string | null {
   return value?.trim() || null;
 }
 
+/**
+ * Sentry fills display names from the email or username when no real name
+ * exists, so treat a name that just repeats one of those as missing.
+ */
+function realName(
+  value: string | null | undefined,
+  identities: Array<string | null>,
+): string | null {
+  const name = orNull(value);
+  if (!name) {
+    return null;
+  }
+  const lowered = name.toLowerCase();
+  return identities.some((identity) => identity?.toLowerCase() === lowered)
+    ? null
+    : name;
+}
+
 function mapEventUser(user: UserReport["user"]) {
   if (!user) {
     return null;
   }
   const id = orNull(user.id);
+  const username = orNull(user.username);
+  const email = orNull(user.email);
   const mapped = {
     // Older Sentry serializers can emit sentinel strings when no user ID exists.
     id: id && !["none", "null"].includes(id.toLowerCase()) ? id : null,
-    username: orNull(user.username),
-    name: orNull(user.name),
-    email: orNull(user.email),
+    username,
+    name: realName(user.name, [email, username]),
+    email,
     ipAddress: orNull(user.ipAddress),
   };
   return Object.values(mapped).some((value) => value !== null) ? mapped : null;
@@ -43,7 +63,10 @@ const eventUserSchema = z
   .object({
     id: z.string().nullable(),
     username: z.string().nullable(),
-    name: z.string().nullable(),
+    name: z
+      .string()
+      .nullable()
+      .describe("Null when Sentry only has an email or username."),
     email: z.string().nullable(),
     ipAddress: z.string().nullable(),
   })
@@ -60,7 +83,9 @@ export const getIssueUserReportsOutputSchema = z.object({
       name: z
         .string()
         .nullable()
-        .describe("Name on the report, falling back to the event user."),
+        .describe(
+          "Name the reporter entered, falling back to the event user's name. Null when Sentry only has an email or username.",
+        ),
       email: z
         .string()
         .nullable()
@@ -78,11 +103,19 @@ export const getIssueUserReportsOutputSchema = z.object({
 
 function mapUserReport(report: UserReport) {
   const user = mapEventUser(report.user);
+  const email = orNull(report.email) ?? user?.email ?? null;
   return {
     id: report.id,
     eventId: report.eventID,
-    name: orNull(report.name) ?? user?.name ?? null,
-    email: orNull(report.email) ?? user?.email ?? null,
+    name:
+      realName(report.name, [
+        email,
+        user?.email ?? null,
+        user?.username ?? null,
+      ]) ??
+      user?.name ??
+      null,
+    email,
     user,
     comments: report.comments,
     dateCreated: formatDate(report.dateCreated),

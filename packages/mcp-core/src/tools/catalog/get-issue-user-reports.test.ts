@@ -99,7 +99,9 @@ describe("get_issue_user_reports", () => {
               {
                 id: "11974229",
                 eventID: "157c1ee8f31e4e68a57b637dad557b34",
-                name: "",
+                // Sentry fills both names from the username when no real
+                // name exists.
+                name: "event-user",
                 email: "",
                 comments: "reported by event user",
                 dateCreated: "2026-06-22T04:20:21.987654Z",
@@ -107,7 +109,7 @@ describe("get_issue_user_reports", () => {
                   id: "user-456",
                   username: "event-user",
                   email: null,
-                  name: null,
+                  name: "event-user",
                   ipAddress: "203.0.113.7",
                   avatarUrl: "https://example.com/avatar.png",
                 },
@@ -165,5 +167,61 @@ describe("get_issue_user_reports", () => {
     `);
     // The avatar URL is presentation data, not user data the report stored.
     expect(JSON.stringify(structuredContent)).not.toContain("avatar.png");
+  });
+
+  it("returns null names when Sentry only copied the reporter email", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/:org/issues/:issueId/user-reports/",
+        () =>
+          HttpResponse.json([
+            {
+              id: "11974230",
+              eventID: "257c1ee8f31e4e68a57b637dad557b35",
+              name: "jane@example.com",
+              email: "jane@example.com",
+              comments: "no name given",
+              dateCreated: "2026-06-22T05:00:00.000000Z",
+              user: {
+                id: "user-789",
+                username: null,
+                email: "jane@example.com",
+                name: "jane@example.com",
+                ipAddress: "198.51.100.4",
+                avatarUrl: null,
+              },
+              event: {
+                id: "257c1ee8f31e4e68a57b637dad557b35",
+                eventID: "257c1ee8f31e4e68a57b637dad557b35",
+              },
+            },
+          ]),
+      ),
+    );
+
+    const result = await getIssueUserReports.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        issueId: "CLOUDFLARE-MCP-41",
+        cursor: null,
+        limit: 25,
+      },
+      context,
+    );
+
+    const [report] = getIssueUserReportsOutputSchema.parse(
+      getStructuredContent(result),
+    ).reports;
+    expect(report).toMatchObject({
+      name: null,
+      email: "jane@example.com",
+      user: {
+        id: "user-789",
+        name: null,
+        email: "jane@example.com",
+        ipAddress: "198.51.100.4",
+      },
+    });
   });
 });
