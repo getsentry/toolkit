@@ -5708,16 +5708,20 @@
                   "type": "number"
                 },
                 "estimatedTotalMs": {
-                  "type": "number"
+                  "type": "number",
+                  "description": "Total sampled duration of the main thread profile."
                 },
                 "userCodeMs": {
-                  "type": "number"
+                  "type": "number",
+                  "description": "Part of estimatedTotalMs where the sampled leaf frame is application code."
                 },
                 "libraryMs": {
-                  "type": "number"
+                  "type": "number",
+                  "description": "Part of estimatedTotalMs where the sampled leaf frame is library code."
                 },
                 "userCodePercent": {
-                  "type": "number"
+                  "type": "number",
+                  "description": "userCodeMs as a share of the total."
                 },
                 "frames": {
                   "type": "array",
@@ -5728,20 +5732,17 @@
                         "type": "string"
                       },
                       "file": {
-                        "type": "string"
+                        "type": ["string", "null"]
                       },
                       "line": {
-                        "type": "number"
+                        "type": ["number", "null"]
                       },
                       "isApplication": {
                         "type": "boolean"
                       },
-                      "sampleCount": {
-                        "type": "number"
-                      },
-                      "percentOfSamples": {
+                      "occurrences": {
                         "type": "number",
-                        "description": "Share of all samples whose stack includes this frame."
+                        "description": "Times this frame appears in the aggregated call tree, summed across calls. Not a sample count; it can exceed the number of samples."
                       },
                       "p75Ms": {
                         "type": "number"
@@ -5770,8 +5771,7 @@
                       "file",
                       "line",
                       "isApplication",
-                      "sampleCount",
-                      "percentOfSamples",
+                      "occurrences",
                       "p75Ms",
                       "p95Ms",
                       "p99Ms",
@@ -5865,10 +5865,10 @@
                         "type": "string"
                       },
                       "file": {
-                        "type": "string"
+                        "type": ["string", "null"]
                       },
                       "line": {
-                        "type": "number"
+                        "type": ["number", "null"]
                       },
                       "isApplication": {
                         "type": "boolean"

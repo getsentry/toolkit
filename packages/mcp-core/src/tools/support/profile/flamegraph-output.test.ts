@@ -116,6 +116,45 @@ describe("buildFlamegraphAnalysis", () => {
     ]);
   });
 
+  it("splits sampled time by leaf frame so the breakdown adds up to the total", () => {
+    const analysis = buildFlamegraphAnalysis(createMockFlamegraph(), {
+      focusOnUserCode: true,
+      maxHotPaths: 5,
+    });
+
+    // [0, 1, 2] ends in library code (100ms); [0, 1] ends in app code (60ms).
+    expect(analysis).toMatchObject({
+      estimatedTotalMs: 160,
+      userCodeMs: 60,
+      libraryMs: 100,
+      userCodePercent: 37.5,
+    });
+    expect(analysis.userCodeMs + analysis.libraryMs).toBe(
+      analysis.estimatedTotalMs,
+    );
+  });
+
+  it("maps placeholder file and line values to null", () => {
+    const flamegraph = createMockFlamegraph();
+    flamegraph.shared.frames[0] = {
+      ...flamegraph.shared.frames[0]!,
+      file: "",
+      line: 0,
+    };
+
+    const analysis = buildFlamegraphAnalysis(flamegraph, {
+      focusOnUserCode: true,
+      maxHotPaths: 5,
+    });
+
+    expect(analysis.frames[0]).toMatchObject({
+      name: "handle_request",
+      file: null,
+      line: null,
+      occurrences: 80,
+    });
+  });
+
   it("keeps library frames in hot path stacks when focusOnUserCode is false", () => {
     const analysis = buildFlamegraphAnalysis(createMockFlamegraph(), {
       focusOnUserCode: false,

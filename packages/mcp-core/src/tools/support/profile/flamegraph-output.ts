@@ -32,13 +32,14 @@ const changeTypeSchema = z.enum([
 
 const flamegraphFrameSchema = z.object({
   name: z.string(),
-  file: z.string(),
-  line: z.number(),
+  file: z.string().nullable(),
+  line: z.number().nullable(),
   isApplication: z.boolean(),
-  sampleCount: z.number(),
-  percentOfSamples: z
+  occurrences: z
     .number()
-    .describe("Share of all samples whose stack includes this frame."),
+    .describe(
+      "Times this frame appears in the aggregated call tree, summed across calls. Not a sample count; it can exceed the number of samples.",
+    ),
   p75Ms: z.number(),
   p95Ms: z.number(),
   p99Ms: z.number(),
@@ -56,10 +57,20 @@ const analysisSchema = z.object({
   platform: z.string().nullable(),
   profileCount: z.number(),
   sampleCount: z.number(),
-  estimatedTotalMs: z.number(),
-  userCodeMs: z.number(),
-  libraryMs: z.number(),
-  userCodePercent: z.number(),
+  estimatedTotalMs: z
+    .number()
+    .describe("Total sampled duration of the main thread profile."),
+  userCodeMs: z
+    .number()
+    .describe(
+      "Part of estimatedTotalMs where the sampled leaf frame is application code.",
+    ),
+  libraryMs: z
+    .number()
+    .describe(
+      "Part of estimatedTotalMs where the sampled leaf frame is library code.",
+    ),
+  userCodePercent: z.number().describe("userCodeMs as a share of the total."),
   frames: z
     .array(flamegraphFrameSchema)
     .describe(
@@ -93,8 +104,8 @@ const comparisonSchema = z.object({
   changes: z.array(
     z.object({
       name: z.string(),
-      file: z.string(),
-      line: z.number(),
+      file: z.string().nullable(),
+      line: z.number().nullable(),
       isApplication: z.boolean(),
       baselineMs: z.number(),
       currentMs: z.number(),
@@ -138,6 +149,14 @@ function roundPercent(value: number): number {
   return Math.round(value * digits) / digits;
 }
 
+/** The API fills missing file and line with "" and 0. */
+function frameLocation(frame: FlamegraphFrame): {
+  file: string | null;
+  line: number | null;
+} {
+  return { file: frame.file || null, line: frame.line || null };
+}
+
 function sumOf(values: number[] | undefined): number {
   return values?.reduce((a, b) => a + b, 0) ?? 0;
 }
@@ -152,24 +171,21 @@ export function buildFlamegraphAnalysis(
 ): FlamegraphAnalysis {
   const mainProfile = flamegraph.profiles[0];
   const sampleCount = sumOf(mainProfile?.sample_counts);
-  const totalSamples = flamegraph.profiles.reduce(
-    (sum, profile) => sum + sumOf(profile.sample_counts),
-    0,
-  );
 
-  // User/library breakdown over the top hotspots across both kinds of code.
+  // Split the main profile's sampled time by the leaf frame of each sample
+  // (API stacks read root to leaf). Frame-level sumDuration and sumSelfTime
+  // both overlap across nested frames, so they cannot be summed.
+  const totalNs = sumOf(mainProfile?.sample_durations_ns);
   let userCodeNs = 0;
-  let libraryNs = 0;
-  for (const hotspot of identifyHotspotFramesFromFlamegraph(flamegraph, {
-    focusOnUserCode: false,
-  })) {
-    if (hotspot.frame.is_application) {
-      userCodeNs += hotspot.frameInfo.sumDuration;
-    } else {
-      libraryNs += hotspot.frameInfo.sumDuration;
+  mainProfile?.samples.forEach((stack, index) => {
+    const leafIndex = stack.at(-1);
+    if (
+      leafIndex !== undefined &&
+      flamegraph.shared.frames[leafIndex]?.is_application
+    ) {
+      userCodeNs += mainProfile.sample_durations_ns[index] ?? 0;
     }
-  }
-  const breakdownTotal = userCodeNs + libraryNs;
+  });
 
   const outputFrames: FlamegraphAnalysis["frames"] = [];
   const outputIndexBySource = new Map<number, number>();
@@ -184,13 +200,9 @@ export function buildFlamegraphAnalysis(
     }
     outputFrames.push({
       name: frame.name,
-      file: frame.file,
-      line: frame.line,
+      ...frameLocation(frame),
       isApplication: frame.is_application,
-      sampleCount: frameInfo.count,
-      percentOfSamples: roundPercent(
-        totalSamples > 0 ? (frameInfo.count / totalSamples) * 100 : 0,
-      ),
+      occurrences: frameInfo.count,
       p75Ms: toMs(frameInfo.p75Duration),
       p95Ms: toMs(frameInfo.p95Duration),
       p99Ms: toMs(frameInfo.p99Duration),
@@ -234,16 +246,20 @@ export function buildFlamegraphAnalysis(
     },
   );
 
+  const estimatedTotalMs = toMs(totalNs);
+  const userCodeMs = toMs(userCodeNs);
+
   return {
     platform: flamegraph.platform || null,
     profileCount:
       flamegraph.shared.profiles.length || flamegraph.profiles.length,
     sampleCount,
-    estimatedTotalMs: toMs(sumOf(mainProfile?.sample_durations_ns)),
-    userCodeMs: toMs(userCodeNs),
-    libraryMs: toMs(libraryNs),
+    estimatedTotalMs,
+    userCodeMs,
+    // Derived from the rounded values so the two parts add up exactly.
+    libraryMs: Math.round((estimatedTotalMs - userCodeMs) * 100) / 100,
     userCodePercent: roundPercent(
-      breakdownTotal > 0 ? (userCodeNs / breakdownTotal) * 100 : 0,
+      totalNs > 0 ? (userCodeNs / totalNs) * 100 : 0,
     ),
     frames: outputFrames,
     topFunctions,
@@ -277,8 +293,7 @@ export function buildFlamegraphComparison(
     status: comparisonStatus(comparisons),
     changes: comparisons.slice(0, MAX_COMPARISON_CHANGES).map((comparison) => ({
       name: comparison.frame.name,
-      file: comparison.frame.file,
-      line: comparison.frame.line,
+      ...frameLocation(comparison.frame),
       isApplication: comparison.frame.is_application,
       baselineMs: toMs(comparison.baseline.sumDuration),
       currentMs: toMs(comparison.current.sumDuration),
