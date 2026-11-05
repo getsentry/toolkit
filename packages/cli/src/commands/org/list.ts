@@ -5,6 +5,8 @@
  * when several are logged in.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
+import type { InferOutput } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { resolveAccountSelector } from "../../lib/account-selection.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
@@ -31,10 +33,9 @@ import {
 } from "../../lib/db/auth.js";
 import { fetchEnvAccountUser } from "../../lib/env-account.js";
 import { getAllOrgRegions } from "../../lib/db/regions.js";
-import { ApiError, AuthError } from "../../lib/errors.js";
+import { ApiError, AuthError, TimeoutError } from "../../lib/errors.js";
 import { formatAccountLabel } from "../../lib/formatters/accounts.js";
 import { getNestedValue } from "../../lib/formatters/json.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../lib/formatters/table.js";
 import { filterByName } from "../../lib/list-filter.js";
@@ -46,7 +47,16 @@ import {
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
 import { withProgress } from "../../lib/polling.js";
-import type { SentryOrganization, Writer } from "../../types/index.js";
+import type {
+  SentryOrganization,
+  WithOutputFields,
+  Writer,
+} from "../../types/index.js";
+import { OrgListEntrySchema } from "../../generated/output-schemas/org.js";
+import type {
+  OrgListAccountSchema,
+  OrgListEntryFields,
+} from "../../output-schemas/org.js";
 
 type ListFlags = {
   readonly limit: number;
@@ -56,46 +66,13 @@ type ListFlags = {
   readonly fields?: string[];
 };
 
-/**
- * The account an organization was listed under (no secrets): a stored
- * account, or the env token's virtual account.
- */
-type OrgListAccount = {
-  /**
-   * What `--account` accepts: `<who>:<server>`, e.g.
-   * `jane@acme.com:sentry.io` (just `<who>` when no server is recorded), as
-   * `sentry auth login` does too; `env:SENTRY_AUTH_TOKEN` for the env token.
-   */
-  name: string;
-  id: string;
-  email?: string;
-  username?: string;
-  /**
-   * The server part of `name`: `host[:port]`, or the full origin such as
-   * `http://localhost:8000` for a non-HTTPS server.
-   */
-  server?: string;
-  /** The server's full origin, e.g. `https://sentry.io`. */
-  host?: string;
-  /** Human label, e.g. `Jane <jane@acme.com> on sentry.io`. */
-  label: string;
-  /** The variable providing the token, for the env token's account. */
-  envVar?: string;
-};
+type OrgListAccount = InferOutput<typeof OrgListAccountSchema>;
 
-/**
- * An organization enriched with an optional region display name and the
- * stored account it was listed under.
- *
- * The `region` field is only present when the user's orgs span multiple
- * regions (e.g. both US and EU). `account` is only present when orgs from
- * several stored accounts are listed. Both are included in JSON output as
- * well, providing context to machine consumers.
- */
-type OrgListEntry = SentryOrganization & {
-  region?: string;
-  account?: OrgListAccount;
-};
+/** An organization with the fields of {@link OrgListEntryFields}. */
+type OrgListEntry = WithOutputFields<
+  SentryOrganization,
+  typeof OrgListEntryFields
+>;
 
 /** One account's fetched orgs plus its slug → region URL cache. */
 type AccountOrgs = {
@@ -185,7 +162,7 @@ function formatOrgListHuman(entries: OrgListEntry[]): string {
     )
     .map(([header, path]) => ({
       header,
-      value: (e) => escapeMarkdownCell(cellOf(e, path) ?? ""),
+      value: (e) => tableCell(cellOf(e, path) ?? ""),
     }));
 
   const parts: string[] = [];
@@ -282,7 +259,13 @@ async function fetchOrgsAcrossAccounts(
       continue;
     }
     const error = result.reason;
-    if (!(error instanceof AuthError || error instanceof ApiError)) {
+    if (
+      !(
+        error instanceof AuthError ||
+        error instanceof ApiError ||
+        error instanceof TimeoutError
+      )
+    ) {
       throw error;
     }
     firstError ??= error;
@@ -442,7 +425,7 @@ export const listCommand = buildCommand({
       { description: "Output as JSON", command: "sentry org list --json" },
     ],
   },
-  output: { human: formatOrgListHuman },
+  output: { human: formatOrgListHuman, schema: OrgListEntrySchema },
   parameters: {
     flags: {
       limit: buildListLimitFlag("organizations"),

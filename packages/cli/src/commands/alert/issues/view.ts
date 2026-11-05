@@ -2,6 +2,7 @@ import type { SentryContext } from "../../../context.js";
 import { openInBrowser } from "../../../lib/browser.js";
 import { buildCommand } from "../../../lib/command.js";
 import { ContextError } from "../../../lib/errors.js";
+import { filterFieldsIfSet } from "../../../lib/formatters/json.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import { buildIssueAlertsUrl } from "../../../lib/sentry-web-urls.js";
@@ -61,11 +62,15 @@ export const viewCommand = buildCommand({
   },
   output: {
     human: formatIssueAlertView,
-    jsonTransform: (data: IssueAlertViewResult) => ({
-      ...data.rule,
-      org: data.target.org,
-      project: data.target.project,
-    }),
+    jsonTransform: (data: IssueAlertViewResult, fields?: string[]) =>
+      filterFieldsIfSet(
+        {
+          ...data.rule,
+          org: data.target.org,
+          project: data.target.project,
+        },
+        fields,
+      ),
   },
   parameters: {
     positional: {

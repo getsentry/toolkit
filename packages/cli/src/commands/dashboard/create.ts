@@ -29,7 +29,8 @@ import {
 import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
-import type { DashboardDetail } from "../../types/dashboard.js";
+import { DashboardCreateOutputSchema } from "../../generated/output-schemas/dashboard.js";
+import type { DashboardCreateOutput } from "../../output-schemas/dashboard.js";
 import { withDashboardErrors } from "./resolve.js";
 
 type CreateFlags = {
@@ -37,7 +38,7 @@ type CreateFlags = {
   readonly fields?: string[];
 };
 
-type CreateResult = DashboardDetail & { url: string };
+type CreateResult = DashboardCreateOutput;
 
 /** `dashboard create`'s positionals, parsed: the title and the target. */
 type CreateInput = {
@@ -181,6 +182,7 @@ export const createCommand = buildCommand({
   },
   output: {
     human: formatDashboardCreated,
+    schema: DashboardCreateOutputSchema,
   },
   parameters: {
     positional: boundArguments({
@@ -216,7 +218,7 @@ export const createCommand = buildCommand({
     );
     const url = buildDashboardUrl(orgSlug, dashboard.id);
 
-    yield new CommandOutput({ ...dashboard, url } as CreateResult);
+    yield new CommandOutput({ ...dashboard, url });
     return { hint: `Dashboard: ${url}` };
   },
 });

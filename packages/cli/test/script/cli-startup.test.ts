@@ -1,10 +1,15 @@
 /** Keep Sentry SDK dependencies out of the CLI's startup paths. */
 
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { expect, test } from "vitest";
 
 const ANY_IMPORT = /.*/;
+
+/** A route module path in `src/command-manifest.ts`. */
+const ROUTE_MODULE_RE = /import\("\.\/([^"]+)"\)/g;
+const TS_EXTENSION_RE = /\.js$/;
 
 /**
  * Hostname and origin predicates and the logger are pure and have no startup
@@ -23,7 +28,6 @@ const PURE_SENTRY_IMPORTS = [
  */
 const COMPLETION_PACKAGES = new Set([
   ...PURE_SENTRY_IMPORTS,
-  "@sentry/toolkit-core/auth-token",
   // `errors.ts` (exit codes)
   "@stricli/core",
   // `db/accounts.ts` account IDs
@@ -106,12 +110,44 @@ test("the __complete fast path loads only light modules", async () => {
   expect(sourceModules.length).toBeLessThanOrEqual(COMPLETION_MODULE_BUDGET);
 });
 
-test("the standalone binary's main script loads only builtins", async () => {
-  // It runs before every command, ahead of the CLI or completion chunk
-  const { metafile } = await bundleStartup("sea-main.ts", () => false);
+test("the CLI's main script loads only builtins", async () => {
+  // `dist/bin.cjs` and the standalone binary's main script run it before
+  // every command, ahead of the CLI or completion chunk
+  const { metafile } = await bundleStartup("chunk-main.ts", () => false);
   expect(Object.keys(metafile.inputs).sort()).toEqual([
+    "src/chunk-main.ts",
+    "src/lib/chunk-loader.ts",
     "src/lib/config-dir.ts",
-    "src/lib/sea-chunk.ts",
-    "src/sea-main.ts",
   ]);
+});
+
+/** The modules of the top-level routes in `src/command-manifest.ts`. */
+async function routeModules(): Promise<string[]> {
+  const loaders = await readFile(
+    join(import.meta.dirname, "../../src/command-manifest.ts"),
+    "utf8",
+  );
+  return [...loaders.matchAll(ROUTE_MODULE_RE)].map(
+    ([, module]) => `src/${module?.replace(TS_EXTENSION_RE, ".ts")}`,
+  );
+}
+
+test.each([
+  // `app-for-args.ts` loads only the route being run, so no route module of
+  // `app.ts` (each one a `COMMAND_MANIFEST` loader) may load before it picks
+  // one
+  "app-for-args.ts",
+  // The same for each SDK call
+  "sdk-app.ts",
+  // Importing the library loads no command at all, and no CLI runner
+  "index.ts",
+])("%s loads none of the commands", async (entry) => {
+  const routes = await routeModules();
+  const { metafile } = await bundleStartup(entry, () => true);
+  const inputs = Object.keys(metafile.inputs);
+
+  expect(routes.length).toBeGreaterThan(0);
+  expect(inputs).not.toContain("src/app.ts");
+  expect(inputs).not.toContain("src/cli.ts");
+  expect(inputs.filter((input) => routes.includes(input))).toEqual([]);
 });

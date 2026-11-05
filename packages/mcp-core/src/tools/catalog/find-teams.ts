@@ -30,7 +30,7 @@ export default defineTool({
   skills: ["inspect", "triage", "project-management"], // Team viewing and management
   requiredScopes: ["team:read"],
   description: [
-    "Find teams in an organization in Sentry.",
+    "List or search teams in a Sentry organization.",
     "",
     "Use this tool when you need to:",
     "- View teams in a Sentry organization",

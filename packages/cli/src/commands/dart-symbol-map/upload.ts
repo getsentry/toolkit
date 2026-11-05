@@ -241,7 +241,7 @@ export const uploadCommand = buildCommand({
 
     // 3. --no-upload: validate only, no auth needed
     if (flags["no-upload"]) {
-      yield new CommandOutput<DartSymbolMapUploadResult>({
+      yield new CommandOutput({
         path: mappingPath,
         debugId: flags["debug-id"],
         uploaded: false,
@@ -276,7 +276,7 @@ export const uploadCommand = buildCommand({
     });
 
     // 6. Yield result
-    yield new CommandOutput<DartSymbolMapUploadResult>({
+    yield new CommandOutput({
       org,
       project,
       path: mappingPath,

@@ -15,11 +15,32 @@ import {
   listProjectEnvironments as sdkListProjectEnvironments,
   updateOrganizationRelease,
 } from "@sentry/api";
-import { encodeApiPathSegment } from "@sentry/toolkit-core/api-path-segment";
-import type { SentryDeploy, SentryRelease } from "../../types/index.js";
-import { ApiError, ValidationError, validationError } from "../errors.js";
-import { getHeadCommit, getRepositoryName } from "../git.js";
+import { encodeApiPathSegment } from "@sentry/api/client";
+import type {
+  SentryDeploy,
+  SentryRelease,
+  SentryRepository,
+} from "../../types/index.js";
+import { getCiCheckout } from "../ci.js";
+import { getEnv } from "../env.js";
+import {
+  ApiError,
+  buildValidationMessage,
+  ValidationError,
+  validationError,
+} from "../errors.js";
+import {
+  getHeadCommit,
+  getRepositoryName,
+  isInsideGitWorkTree,
+  isSameRepository,
+} from "../git.js";
+import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
+import {
+  buildRepositorySettingsUrl,
+  buildSourceCodeIntegrationsUrl,
+} from "../sentry-web-urls.js";
 import {
   API_MAX_PER_PAGE,
   apiRequestToRegion,
@@ -31,6 +52,8 @@ import {
 } from "./infrastructure.js";
 import { getProject } from "./projects.js";
 import { listRepositoriesPaginated } from "./repositories.js";
+
+const log = logger.withTag("api.releases");
 
 /**
  * List releases in an organization with pagination control.
@@ -426,109 +449,281 @@ async function getPreviousReleaseCommit(
 export const NO_REPO_INTEGRATIONS_MESSAGE =
   "No repository integrations configured for this organization.";
 
+/** Where `--auto` found the repository and commit to associate. */
+type AutoCheckout = {
+  /** Repository path, e.g. `owner/repo`. */
+  repository: string;
+  /** Commit from the CI environment; read from git HEAD when absent. */
+  commit?: string;
+  /** Human-readable origin of `repository`, used in error messages. */
+  source: string;
+};
+
+/**
+ * Find the repository to match for `--auto`: the `origin` remote, or the
+ * repository and commit that the CI provider exposes when the build has no
+ * git checkout (Vercel, Docker builds that exclude `.git`).
+ *
+ * @throws {ValidationError} When neither source names a repository
+ */
+function resolveAutoCheckout(
+  orgSlug: string,
+  version: string,
+  cwd?: string,
+): AutoCheckout {
+  const remoteRepo = getRepositoryName(cwd);
+  if (remoteRepo) {
+    return { repository: remoteRepo, source: "the 'origin' git remote" };
+  }
+
+  const env = getEnv();
+  const ci = getCiCheckout(env);
+  if (ci) {
+    log.info(
+      `No 'origin' git remote found. Using ${ci.repository}@${ci.commit.slice(0, 12)} from ${ci.source}.`,
+    );
+    return { repository: ci.repository, commit: ci.commit, source: ci.source };
+  }
+
+  // Adding a remote or reading local history only helps in a git checkout;
+  // builds without .git (Vercel, Docker) can only pass the commit in.
+  const inGitCheckout = isInsideGitWorkTree(cwd);
+  const target = `${orgSlug}/${version}`;
+  let note: string | undefined;
+  if (env.VERCEL) {
+    note =
+      "Vercel builds have no .git directory, and --auto only reads VERCEL_GIT_* in production builds. Use --commit to associate commits from preview builds.";
+  } else if (!inGitCheckout) {
+    note =
+      "Docker builds often exclude .git (.dockerignore). Pass the commit in, for example with --commit owner/repo@$GIT_SHA.";
+  }
+  throw validationError(
+    "Could not determine the repository: there is no 'origin' git remote and no CI repository variables (GITHUB_REPOSITORY, CI_PROJECT_PATH, VERCEL_GIT_REPO_SLUG, ...). --auto needs one of them to match a Sentry repository.",
+    [
+      `sentry release set-commits ${target} --commit owner/repo@<commit-sha>`,
+      ...(inGitCheckout
+        ? [
+            "git remote add origin <url>",
+            `sentry release set-commits ${target} --local`,
+          ]
+        : []),
+    ],
+    "repository",
+    note,
+  );
+}
+
+/** Characters that GitLab slugs use where the display name has spaces. */
+const SLUG_SEPARATOR_RE = /[-_.]+/g;
+
+/**
+ * Search the org's repositories for the local repository.
+ *
+ * Asks the server to filter by name (orgs can have tens of thousands of
+ * repositories). The full path is tried first; GitLab names do not contain
+ * it (`Group / Project`), so the last path segment is tried next, then that
+ * segment with `-`, `_`, and `.` read as spaces, since GitLab derives the
+ * slug `my-project` from the display name `My Project`. Hits must match the
+ * exact name or the URL path, so a loose query cannot pick the wrong
+ * repository.
+ *
+ * @returns The match, whether any search returned repositories, and the
+ *   repositories that were returned (for "did you mean" hints)
+ */
+async function findSentryRepository(
+  orgSlug: string,
+  localRepo: string,
+): Promise<{
+  match?: SentryRepository;
+  foundAnyRepos: boolean;
+  candidates: SentryRepository[];
+}> {
+  const lastSegment = localRepo.split("/").at(-1) ?? localRepo;
+  const spacedSegment = lastSegment.replace(SLUG_SEPARATOR_RE, " ");
+  const queries = [...new Set([localRepo, lastSegment, spacedSegment])];
+  const candidates: SentryRepository[] = [];
+  let foundAnyRepos = false;
+
+  for (const query of queries) {
+    let cursor: string | undefined;
+    for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
+      const result = await listRepositoriesPaginated(orgSlug, {
+        cursor,
+        perPage: API_MAX_PER_PAGE,
+        query,
+      });
+      if (result.data.length > 0) {
+        foundAnyRepos = true;
+      }
+      const match = result.data.find((r) => isSameRepository(r, localRepo));
+      if (match) {
+        return { match, foundAnyRepos, candidates };
+      }
+      candidates.push(...result.data);
+      if (!result.nextCursor) {
+        break;
+      }
+      cursor = result.nextCursor;
+    }
+  }
+
+  return { foundAnyRepos, candidates };
+}
+
+/** HEAD of the local checkout, or `undefined` when there is none. */
+function readHeadCommit(cwd?: string): string | undefined {
+  try {
+    return getHeadCommit(cwd);
+  } catch (error) {
+    log.debug("Could not read HEAD for the --commit suggestion", error);
+    return;
+  }
+}
+
+/** How many similar repository names to suggest when nothing matches. */
+const MAX_REPO_SUGGESTIONS = 3;
+
+/**
+ * Build the error for an org that has repositories but none matching the
+ * local one: names similar repositories and links to the repository settings.
+ */
+function noMatchingRepositoryError(
+  orgSlug: string,
+  version: string,
+  checkout: AutoCheckout,
+  candidates: SentryRepository[],
+  cwd?: string,
+): ValidationError {
+  const suggestions = [...new Set(candidates.map((r) => r.name))].slice(
+    0,
+    MAX_REPO_SUGGESTIONS,
+  );
+  const commit = checkout.commit ?? readHeadCommit(cwd) ?? "<commit-sha>";
+  const target = `${orgSlug}/${version}`;
+  const examples = [
+    ...suggestions.map(
+      (name) =>
+        `sentry release set-commits ${target} --commit '${name}@${commit}'`,
+    ),
+    ...(isInsideGitWorkTree(cwd)
+      ? [`sentry release set-commits ${target} --local`]
+      : []),
+  ];
+  const didYouMean =
+    suggestions.length > 0
+      ? ` Sentry has similarly named repositories: ${suggestions.join(", ")}.`
+      : "";
+  return validationError(
+    `No Sentry repository matching '${checkout.repository}' (from ${checkout.source}).${didYouMean}`,
+    examples,
+    "repository",
+    `Add the repository to Sentry through your source code integration: ${buildRepositorySettingsUrl(orgSlug)}`,
+  );
+}
+
+/** How an org with no repositories gets one: connect a source code integration. */
+function connectIntegrationHint(orgSlug: string): string {
+  return `Connect GitHub, GitLab, Bitbucket, or Azure DevOps to Sentry and add the repository: ${buildSourceCodeIntegrationsUrl(orgSlug)}`;
+}
+
+/** Whether the org has at least one repository from a source code integration. */
+async function orgHasRepositories(orgSlug: string): Promise<boolean> {
+  const page = await listRepositoriesPaginated(orgSlug, { perPage: 1 });
+  return page.data.length > 0;
+}
+
+/**
+ * Build the error for an org with no repositories at all. Nothing on the
+ * command line can fix that, so the error links to the integration directory,
+ * where the org connects GitHub, GitLab, Bitbucket, or Azure DevOps.
+ *
+ * Stays an {@link ApiError} with {@link NO_REPO_INTEGRATIONS_MESSAGE} so the
+ * default mode can recognize it and fall back to local git history.
+ */
+function noRepoIntegrationError(
+  orgSlug: string,
+  version: string,
+  cwd?: string,
+): ApiError {
+  const detail = buildValidationMessage(connectIntegrationHint(orgSlug), [
+    `sentry integration list ${orgSlug}/`,
+    ...(isInsideGitWorkTree(cwd)
+      ? [`sentry release set-commits ${orgSlug}/${version} --local`]
+      : []),
+  ]);
+  return new ApiError(
+    NO_REPO_INTEGRATIONS_MESSAGE,
+    404,
+    detail,
+    `organizations/${orgSlug}/repos/`,
+  );
+}
+
 /**
  * Set commits on a release using auto-discovery mode.
  *
- * Looks up the org's repositories by the name from the local git remote URL to
- * find the corresponding Sentry repo, then sends a refs payload with the HEAD
- * commit SHA. This is the equivalent of the reference sentry-cli's `--auto`
- * mode.
+ * Finds the Sentry repository matching the local `origin` remote (or the
+ * repository the CI provider exposes when there is no git checkout), then
+ * sends a refs payload with the HEAD commit SHA. This is the equivalent of
+ * the reference sentry-cli's `--auto` mode.
  *
- * The lookup asks the server to filter by name instead of walking every page,
- * since orgs can have tens of thousands of repositories. Servers that ignore
- * the filter return every repository, which the exact name match still handles.
- *
- * Requires a GitHub/GitLab/Bitbucket integration configured in Sentry
- * AND a local git repository whose origin remote matches a Sentry repo.
+ * Requires a GitHub/GitLab/Bitbucket integration configured in Sentry.
  *
  * @param orgSlug - Organization slug
  * @param version - Release version
  * @param cwd - Working directory to discover git remote and HEAD from
  * @returns Updated release detail with commit count
  * @throws {ApiError} When the org has no repository integrations (404)
- * @throws {ValidationError} When local git remote is missing or doesn't match any Sentry repo
+ * @throws {ValidationError} When no repository can be determined or none matches a Sentry repo
  */
 export async function setCommitsAuto(
   orgSlug: string,
   version: string,
   cwd?: string,
 ): Promise<SentryRelease> {
-  const localRepo = getRepositoryName(cwd);
-  if (!localRepo) {
-    throw validationError(
-      "Could not determine the repository from the local git remote. --auto matches the 'origin' remote against your Sentry repositories, so it needs a git checkout with an 'origin' remote configured.",
-      [
-        "git remote add origin <url>",
-        "sentry release set-commits <version> --local",
-        "sentry release set-commits <version> --commit owner/repo@abc123",
-      ],
-      "repository",
-    );
-  }
+  const checkout = resolveAutoCheckout(orgSlug, version, cwd);
 
   // The previous release's commit only depends on the org and version, not
   // on which repository matches, so fetch it concurrently with the repository
   // lookup instead of after it. getPreviousReleaseCommit never rejects.
   const previousCommitPromise = getPreviousReleaseCommit(orgSlug, version);
 
-  const localRepoLower = localRepo.toLowerCase();
-  let cursor: string | undefined;
-  let foundAnyRepos = false;
+  const { match, foundAnyRepos, candidates } = await findSentryRepository(
+    orgSlug,
+    checkout.repository,
+  );
 
-  for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-    const result = await listRepositoriesPaginated(orgSlug, {
-      cursor,
-      perPage: API_MAX_PER_PAGE,
-      query: localRepo,
-    });
-
-    if (result.data.length > 0) {
-      foundAnyRepos = true;
+  if (match) {
+    const headCommit = checkout.commit ?? getHeadCommit(cwd);
+    const previousCommit = await previousCommitPromise;
+    const ref: {
+      repository: string;
+      commit: string;
+      previousCommit?: string;
+    } = { repository: match.name, commit: headCommit };
+    if (previousCommit) {
+      ref.previousCommit = previousCommit;
     }
-
-    const match = result.data.find(
-      (r) => r.name.toLowerCase() === localRepoLower,
-    );
-    if (match) {
-      const headCommit = getHeadCommit(cwd);
-      const previousCommit = await previousCommitPromise;
-      const ref: {
-        repository: string;
-        commit: string;
-        previousCommit?: string;
-      } = { repository: match.name, commit: headCommit };
-      if (previousCommit) {
-        ref.previousCommit = previousCommit;
-      }
-      return await setCommitsWithRefs(orgSlug, version, [ref]);
-    }
-
-    if (!result.nextCursor) {
-      break;
-    }
-    cursor = result.nextCursor;
+    return await setCommitsWithRefs(orgSlug, version, [ref]);
   }
 
   // The name filter returns nothing for an org whose repositories all have
   // other names, so only report a missing integration when the org has none.
   if (!foundAnyRepos) {
-    const anyRepo = await listRepositoriesPaginated(orgSlug, { perPage: 1 });
-    if (anyRepo.data.length === 0) {
-      const endpoint = `organizations/${orgSlug}/releases/${encodeURIComponent(version)}/`;
-      throw new ApiError(
-        NO_REPO_INTEGRATIONS_MESSAGE,
-        404,
-        undefined,
-        endpoint,
-      );
+    if (!(await orgHasRepositories(orgSlug))) {
+      throw noRepoIntegrationError(orgSlug, version, cwd);
     }
   }
 
-  throw new ValidationError(
-    `No Sentry repository matching '${localRepo}'.`,
-    "repository",
-  );
+  throw noMatchingRepositoryError(orgSlug, version, checkout, candidates, cwd);
 }
+
+/** A `--commit` ref: repository plus commit or commit range. */
+type CommitRef = {
+  repository: string;
+  commit: string;
+  previousCommit?: string;
+};
 
 /**
  * Set commits on a release using explicit refs (repository + commit range).
@@ -544,11 +739,7 @@ export async function setCommitsAuto(
 export async function setCommitsWithRefs(
   orgSlug: string,
   version: string,
-  refs: Array<{
-    repository: string;
-    commit: string;
-    previousCommit?: string;
-  }>,
+  refs: CommitRef[],
 ): Promise<SentryRelease> {
   const encodedOrg = encodeApiPathSegment(orgSlug);
   if (encodedOrg === null) {
@@ -568,6 +759,175 @@ export async function setCommitsWithRefs(
     },
   );
   return data;
+}
+
+/**
+ * Field of the {@link ValidationError} for a `--commit` repository the org
+ * doesn't have, so this user configuration error can be told apart (CLI-2SK).
+ */
+const COMMIT_REPOSITORY_FIELD = "commit.repository";
+
+/**
+ * The server rejects refs whose repository the org doesn't have with a 400
+ * whose detail is `{"refs":["Invalid repository names: a,b"]}` (Sentry
+ * `Release.set_refs`, which matches names exactly).
+ */
+const INVALID_REPOSITORY_NAMES_RE = /Invalid repository names: ([^"\]]+)/;
+
+/**
+ * Repository names from the server's "Invalid repository names" 400, or
+ * `undefined` for any other error.
+ */
+function invalidRepositoryNames(error: unknown): string[] | undefined {
+  if (!(error instanceof ApiError && error.status === 400)) {
+    return;
+  }
+  const invalid = error.detail?.match(INVALID_REPOSITORY_NAMES_RE)?.[1];
+  return invalid?.split(",").map((n) => n.trim());
+}
+
+/**
+ * Replace `--commit` repository names that Sentry rejected with the name of
+ * the same repository in Sentry, when the names only differ (case, GitLab
+ * display names, or a name that matches the repository URL).
+ *
+ * Sentry matches `--commit` names exactly, while build tools pass what the
+ * host reports, such as `VERCEL_GIT_REPO_OWNER/VERCEL_GIT_REPO_SLUG`. Each
+ * replacement is logged as a warning so the caller can fix the name.
+ *
+ * @param orgSlug - Organization slug
+ * @param refs - The refs that were sent
+ * @param error - The error thrown by {@link setCommitsWithRefs}
+ * @returns The refs with Sentry's names, or `undefined` when the error is not
+ *   an "Invalid repository names" 400 or a rejected repository has no match
+ */
+export async function correctRefRepositories(
+  orgSlug: string,
+  refs: CommitRef[],
+  error: unknown,
+): Promise<CommitRef[] | undefined> {
+  const names = invalidRepositoryNames(error);
+  if (!names) {
+    return;
+  }
+  let matches: (SentryRepository | undefined)[];
+  try {
+    matches = await Promise.all(
+      refs.map(async (ref) =>
+        names.includes(ref.repository)
+          ? (await findSentryRepository(orgSlug, ref.repository)).match
+          : undefined,
+      ),
+    );
+  } catch (lookupError) {
+    log.debug("Could not look up repositories for --commit", lookupError);
+    return;
+  }
+  const corrected: CommitRef[] = [];
+  const replaced: { from: string; to: string }[] = [];
+  for (const [index, ref] of refs.entries()) {
+    if (!names.includes(ref.repository)) {
+      corrected.push(ref);
+      continue;
+    }
+    const match = matches[index];
+    if (!match || match.name === ref.repository) {
+      return;
+    }
+    replaced.push({ from: ref.repository, to: match.name });
+    corrected.push({ ...ref, repository: match.name });
+  }
+  // Warn only once every rejected name has a match, so no warning claims a
+  // replacement that the caller never retries with.
+  for (const { from, to } of replaced) {
+    log.warn(
+      `Sentry organization '${orgSlug}' has no repository named '${from}'. Using '${to}', the same repository in Sentry.`,
+    );
+  }
+  return corrected;
+}
+
+/**
+ * Turn the server's "Invalid repository names" 400 from {@link setCommitsWithRefs}
+ * into an error that says how to fix it: connect a source code integration
+ * when the org has no repositories, use the exact Sentry name when the
+ * repository exists under a different name (case, GitLab display names), or
+ * add the repository in Sentry otherwise.
+ *
+ * Any other error is returned unchanged. Repository lookups are best-effort:
+ * when they fail, the error still links to the repository settings.
+ *
+ * @param orgSlug - Organization slug
+ * @param version - Release version
+ * @param refs - The refs that were sent
+ * @param error - The error thrown by {@link setCommitsWithRefs}
+ * @returns The error to throw
+ */
+export async function explainSetCommitsError(
+  orgSlug: string,
+  version: string,
+  refs: CommitRef[],
+  error: unknown,
+): Promise<unknown> {
+  const names = invalidRepositoryNames(error);
+  if (!names) {
+    return error;
+  }
+  const ref = refs.find((r) => names.includes(r.repository)) ?? refs[0];
+  const repository = ref?.repository ?? names[0] ?? "";
+  const commit = ref?.previousCommit
+    ? `${ref.previousCommit}..${ref.commit}`
+    : (ref?.commit ?? "<commit-sha>");
+  const target = `${orgSlug}/${version}`;
+  const commitExample = (name: string) =>
+    `sentry release set-commits ${target} --commit '${name}@${commit}'`;
+  const headline = `Sentry organization '${orgSlug}' has no repository named '${repository}'.`;
+
+  let match: SentryRepository | undefined;
+  let candidates: SentryRepository[] = [];
+  let hasRepositories: boolean | undefined;
+  try {
+    const found = await findSentryRepository(orgSlug, repository);
+    match = found.match;
+    candidates = found.candidates;
+    hasRepositories =
+      found.foundAnyRepos || (await orgHasRepositories(orgSlug));
+  } catch (lookupError) {
+    log.debug(
+      "Could not look up repositories for the --commit error",
+      lookupError,
+    );
+  }
+
+  if (match) {
+    return validationError(
+      `${headline} It has '${match.name}'. --commit needs the repository name exactly as Sentry shows it.`,
+      [commitExample(match.name)],
+      COMMIT_REPOSITORY_FIELD,
+    );
+  }
+  if (hasRepositories === false) {
+    return validationError(
+      `${headline} It has no repositories yet, so it cannot associate commits.`,
+      [`sentry integration list ${orgSlug}/`],
+      COMMIT_REPOSITORY_FIELD,
+      connectIntegrationHint(orgSlug),
+    );
+  }
+  const suggestions = [...new Set(candidates.map((r) => r.name))].slice(
+    0,
+    MAX_REPO_SUGGESTIONS,
+  );
+  const didYouMean =
+    suggestions.length > 0
+      ? ` It has similarly named repositories: ${suggestions.join(", ")}.`
+      : "";
+  return validationError(
+    `${headline}${didYouMean}`,
+    [...suggestions.map(commitExample), `sentry repo list ${orgSlug}/`],
+    COMMIT_REPOSITORY_FIELD,
+    `Add the repository to Sentry through your source code integration: ${buildRepositorySettingsUrl(orgSlug)}`,
+  );
 }
 
 /**

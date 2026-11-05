@@ -30,6 +30,7 @@ import {
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import { toNumericId } from "../../lib/resolve-target.js";
 import {
@@ -42,10 +43,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  type ConversationListItem,
-  ConversationListItemSchema,
-} from "../../types/conversation.js";
+import type { ConversationListItem } from "../../types/conversation.js";
+import { ConversationListItemSchema } from "../../generated/output-schemas/agent-conversation.js";
 
 const CONVERSATION_SORT_FIELDS = [
   "conversation.age",
@@ -109,13 +108,13 @@ function formatListHuman(result: ConversationListResult): string {
 function jsonTransform(
   result: ConversationListResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<ConversationListItem> {
   const items =
     fields && fields.length > 0
       ? result.conversations.map((c) => filterFields(c, fields))
       : result.conversations;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<ConversationListItem> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: !!result.hasPrev,
@@ -284,7 +283,7 @@ export const listCommand = buildListCommand("agent-conversation", {
     const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
     const hasMore = !!nextCursor;
 
-    yield new CommandOutput<ConversationListResult>({
+    yield new CommandOutput({
       conversations,
       hasMore,
       hasPrev,

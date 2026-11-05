@@ -276,6 +276,16 @@ export const ID_KINDS = {
     fromUrl: () => undefined,
     orgScoped: true,
   },
+  // A numeric ID, or a token's name, which may hold spaces and slashes
+  token: {
+    label: "Token ID",
+    isId: isAllDigits,
+    mayBeId: () => false,
+    validate: (value) => value,
+    fromUrl: () => undefined,
+    names: true,
+    orgScoped: true,
+  },
 } as const satisfies Record<string, IdKind>;
 
 /** How a command takes its IDs. */

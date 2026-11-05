@@ -6,40 +6,39 @@
  * `sentry release restore`.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   colorTag,
-  escapeMarkdownInline,
   mdKvTable,
   renderMarkdown,
-  safeCodeSpan,
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import type { SentryRelease } from "../../types/index.js";
+import type { ReleaseUpdateOutput } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { ReleaseUpdateOutputSchema } from "../../generated/output-schemas/release.js";
 
 const USAGE_HINT = "sentry release archive [<org>/]<version>";
 
 /**
  * Render the human-readable result of archiving a release.
  *
- * @param data - Either the dry-run preview object or the updated release.
+ * @param release - Either the dry-run preview or the updated release.
  */
-function formatReleaseArchived(data: Record<string, unknown>): string {
-  if (data.dryRun) {
+function formatReleaseArchived(release: ReleaseUpdateOutput): string {
+  if (release.dryRun) {
     return renderMarkdown(
-      `Would archive release ${safeCodeSpan(String(data.version))} (dry run)`,
+      `Would archive release ${inlineCode(release.version)} (dry run)`,
     );
   }
-  const release = data as unknown as SentryRelease;
   const lines: string[] = [];
-  lines.push(`## Release Archived: ${escapeMarkdownInline(release.version)}`);
+  lines.push(`## Release Archived: ${text(release.version)}`);
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   kvRows.push(["Status", colorTag("muted", "Archived")]);
   lines.push(mdKvTable(kvRows));
   return renderMarkdown(lines.join("\n"));
@@ -70,6 +69,7 @@ export const archiveCommand = buildCommand({
   },
   output: {
     human: formatReleaseArchived,
+    schema: ReleaseUpdateOutputSchema,
   },
   parameters: {
     positional: {
@@ -98,7 +98,11 @@ export const archiveCommand = buildCommand({
     const { version, org, detectedFrom } = await target.resolved;
 
     if (flags["dry-run"]) {
-      yield new CommandOutput({ dryRun: true, version, org });
+      yield new CommandOutput({
+        dryRun: true,
+        version,
+        org,
+      });
       return { hint: "Dry run — release was not archived." };
     }
 

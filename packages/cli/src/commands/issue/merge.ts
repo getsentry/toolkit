@@ -31,6 +31,7 @@ import {
   ValidationError,
 } from "../../lib/errors.js";
 import { muted } from "../../lib/formatters/index.js";
+import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import type { IssueArgument } from "../../lib/issue-arguments.js";
 import { logger } from "../../lib/logger.js";
@@ -71,19 +72,22 @@ function formatMerged(result: MergeCommandResult): string {
   return `${head}\n${children}\n\nSee: ${url}`;
 }
 
-function jsonTransform(result: MergeCommandResult): unknown {
-  return {
-    org: result.org,
-    parent: {
-      shortId: result.parentShortId,
-      id: result.raw.parent,
-      url: buildIssueUrl(result.org, result.raw.parent),
+function jsonTransform(result: MergeCommandResult, fields?: string[]): unknown {
+  return filterFieldsIfSet(
+    {
+      org: result.org,
+      parent: {
+        shortId: result.parentShortId,
+        id: result.raw.parent,
+        url: buildIssueUrl(result.org, result.raw.parent),
+      },
+      children: result.childShortIds.map((shortId, i) => ({
+        shortId,
+        id: result.raw.children[i] ?? "",
+      })),
     },
-    children: result.childShortIds.map((shortId, i) => ({
-      shortId,
-      id: result.raw.children[i] ?? "",
-    })),
-  };
+    fields,
+  );
 }
 
 /**
@@ -368,7 +372,7 @@ export const mergeCommand = buildCommand({
       );
     }
 
-    yield new CommandOutput<MergeCommandResult>({
+    yield new CommandOutput({
       org,
       parentShortId,
       childShortIds,

@@ -140,7 +140,8 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["org:read"],
   description: [
-    "Find Sentry cron monitors.",
+    "List or search Sentry cron monitors, which track scheduled jobs through check-ins.",
+    "For HTTP uptime checks use find_uptime_monitors; for metric thresholds use find_metric_monitors.",
     "",
     "Use this tool when you need to:",
     "- List cron monitors in an organization",

@@ -27,6 +27,7 @@ Examples:
 - Constrained parameters are removed from the tool schemas entirely and injected server-side, so a scoped session cannot override them or reach another organization
 - Resource identifiers you pass (event, attachment, replay, profile, and client key IDs) are format-validated and URL-encoded, so they cannot rewrite the scoped path either
 - If you don't provide a scope, tools work across your accessible organizations when supported
+- Without a scope, a tool call that omits `organizationSlug` uses your organization when you can access exactly one. With several, the call fails with a ready-to-run retry and the list of organizations; the server never picks one for you
 - Some tools are filtered when not useful: `find_organizations` is hidden when scoped to an org, and `find_projects` is hidden when scoped to a project
 
 ## Access verification

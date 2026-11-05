@@ -38,7 +38,7 @@ import {
   type ParsedOrgProject,
   parseOrgProjectArg,
 } from "./arg-parsing.js";
-import { isAuthenticated } from "./db/auth.js";
+import { getAuthToken, isAuthenticated } from "./db/auth.js";
 import {
   getDefaultOrganization,
   getDefaultProject,
@@ -78,6 +78,7 @@ import { logger } from "./logger.js";
 import { resolveEffectiveOrg } from "./region.js";
 import { CONFIG_FILENAME, loadSentryCliRc } from "./sentryclirc.js";
 import { setOrgProjectContext, withTracingSpan } from "./telemetry.js";
+import { parseSntrysClaim } from "./token-claims.js";
 import { isAllDigits, shellQuote } from "./utils.js";
 
 const log = logger.withTag("resolve-target");
@@ -686,7 +687,12 @@ async function inferFromDirectoryName(cwd: string): Promise<ResolvedTargets> {
  * `/` distinguishes it from a plain project slug). When the combo form is
  * used, SENTRY_ORG is ignored.
  *
- * @returns Resolved org+project, org-only, or null if no env vars are set
+ * When no org is set, the org embedded in an org auth token (`sntrys_`) is
+ * used, matching legacy sentry-cli. Such a token only works for that org, so
+ * it is the only org that can succeed. This is what lets bundler-plugin and CI
+ * setups pass just a token and a project (CLI-3B).
+ *
+ * @returns Resolved org+project, org-only, or null if no org source is set
  */
 function resolveFromEnvVars(): {
   org: string;
@@ -723,6 +729,17 @@ function resolveFromEnvVars(): {
 
   if (envOrg) {
     return { org: envOrg, detectedFrom: "SENTRY_ORG env var" };
+  }
+
+  const tokenOrg = parseSntrysClaim(getAuthToken())?.org;
+  if (tokenOrg) {
+    return rawProject
+      ? {
+          org: tokenOrg,
+          project: rawProject,
+          detectedFrom: "org auth token / SENTRY_PROJECT env var",
+        }
+      : { org: tokenOrg, detectedFrom: "org auth token" };
   }
 
   return null;
@@ -1776,8 +1793,7 @@ async function resolveSoleAccountTarget(): Promise<ResolvedTarget | null> {
     return null;
   }
   try {
-    const orgs = await listOrganizations();
-    const org = orgs.length === 1 ? orgs[0] : undefined;
+    const org = await fetchSoleOrganization();
     if (!org) {
       return null;
     }
@@ -1789,6 +1805,39 @@ async function resolveSoleAccountTarget(): Promise<ResolvedTarget | null> {
     return toAccountTarget(org, project, "your only accessible org/project");
   } catch (error) {
     log.debug("Account-based auto-detect failed", error);
+    return null;
+  }
+}
+
+/** The account's only accessible organization, or `undefined` for zero or several. */
+async function fetchSoleOrganization(): Promise<
+  SentryOrganization | undefined
+> {
+  const orgs = await listOrganizations();
+  return orgs.length === 1 ? orgs[0] : undefined;
+}
+
+/**
+ * Last-resort org resolution for authenticated users: when the account can
+ * reach exactly one organization, it is the only possible org for an
+ * org-scoped command, so use it instead of failing auto-detection (CLI-3B).
+ *
+ * Returns `null` when not authenticated, when the lookup fails, or when the
+ * account has zero or several organizations. Never throws and never prompts.
+ */
+async function resolveSoleOrg(): Promise<ResolvedOrg | null> {
+  if (!isAuthenticated()) {
+    return null;
+  }
+  try {
+    const org = await fetchSoleOrganization();
+    if (!org) {
+      return null;
+    }
+    setOrgProjectContext([org.slug], []);
+    return { org: org.slug, detectedFrom: "your only accessible organization" };
+  } catch (error) {
+    log.debug("Account-based org auto-detect failed", error);
     return null;
   }
 }
@@ -2115,7 +2164,8 @@ export async function resolveConfiguredOrg(
 }
 
 /**
- * Resolve an org from arguments, environment, .sentryclirc, defaults, then DSN.
+ * Resolve an org from arguments, environment, .sentryclirc, defaults, then DSN,
+ * then the account's only accessible organization.
  * Configured context takes precedence over automatic detection.
  */
 export async function resolveOrg(
@@ -2138,10 +2188,14 @@ export async function resolveOrg(
       setOrgProjectContext([resolvedOrg], []);
       return { org: resolvedOrg, detectedFrom: result.detectedFrom };
     }
-    return result;
   } catch {
-    return null;
+    // Fall through to the account's organizations
   }
+
+  // 6. Authenticated last resort, like step 7 of resolveOrgAndProject: an
+  //    account with exactly one accessible org has no other org to pick
+  //    (CLI-3B). This only ever turns a null into a uniquely-determined org.
+  return await resolveSoleOrg();
 }
 
 /** Fetch and verify the full project selected by fuzzy recovery. */
@@ -2513,6 +2567,8 @@ export type MultiTargetResolutionResult = {
   footer?: string;
   skippedSelfHosted?: number;
   detectedDsns?: DetectedDsn[];
+  /** Set instead of `targets` when `orgWideFallback` applied. */
+  soleOrg?: string;
 };
 
 /** Options for {@link resolveProjectBoundTargets}. */
@@ -2536,6 +2592,12 @@ export type ResolveProjectBoundTargetsOptions = {
    * (e.g. "CLI-123") before attempting cross-org project search.
    */
   checkIssueShortId?: boolean;
+  /**
+   * Auto-detect mode only: when nothing is detected and the account can reach
+   * exactly one organization, return it as `soleOrg` (with no targets) instead
+   * of asking for a project. For commands that can run org-wide.
+   */
+  orgWideFallback?: boolean;
 };
 
 /**
@@ -2563,11 +2625,22 @@ export async function resolveProjectBoundTargets(
     projectSearchResolution,
     enrichProjectIds,
     checkIssueShortId,
+    orgWideFallback,
   } = opts;
 
   switch (parsed.type) {
     case "auto-detect": {
       const result = await resolveAllTargets({ cwd, usageHint });
+      if (
+        orgWideFallback &&
+        result.targets.length === 0 &&
+        !result.skippedSelfHosted
+      ) {
+        const sole = await resolveSoleOrg();
+        if (sole) {
+          return { targets: [], soleOrg: sole.org };
+        }
+      }
       // Only guide when there is genuinely no context. If DSNs WERE found but
       // could not be resolved (self-hosted / no access), `skippedSelfHosted` is
       // set — preserve the empty result so the caller surfaces the

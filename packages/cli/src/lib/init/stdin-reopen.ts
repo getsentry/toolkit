@@ -20,10 +20,8 @@
  * flow), so `wizard-runner.ts` only installs this workaround when
  * `process.platform === "darwin"`. It comes with a side cost — opening a
  * second `tty.ReadStream` leaks a libuv handle that keeps the event loop
- * alive after the wizard completes (upstream oven-sh/bun#29126), so the
- * outer CLI pipeline pairs init with a
- * `setTimeout(process.exit, 100).unref()` safety net after recovery
- * middleware finishes.
+ * alive after the wizard completes (upstream oven-sh/bun#29126). The
+ * wizard no longer installs it (see `wizard-runner.ts`).
  */
 
 import { openSync } from "node:fs";

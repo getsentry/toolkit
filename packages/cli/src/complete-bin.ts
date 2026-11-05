@@ -2,9 +2,9 @@
  * Entry point of `sentry __complete`, which shell completion runs on every
  * TAB press.
  *
- * `bin.ts` imports it for `__complete`. The standalone binary embeds it as a
- * separate chunk that `sea-main.ts` runs, so a TAB press never compiles the
- * rest of the CLI. Keep its imports to `lib/complete.ts` and what that loads
+ * `bin.ts` imports it for `__complete`. The npm package and the standalone
+ * binary ship it as a separate bundle that `chunk-main.ts` runs, so a TAB
+ * press never loads the rest of the CLI. Keep its imports to `lib/complete.ts` and what that loads
  * (see `test/script/cli-startup.test.ts`).
  */
 

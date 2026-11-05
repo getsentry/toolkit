@@ -253,6 +253,8 @@ function buildDifList(
     difs.push({
       name: basename(file.path),
       debugId: file.debugId,
+      ...(file.codeId ? { codeId: file.codeId } : {}),
+      ...(file.shaderGroup ? { shaderGroup: file.shaderGroup } : {}),
       content: file.content,
     });
 
@@ -368,7 +370,7 @@ function* doDryRun(
   },
 ) {
   const { difs, missingIds, requireAll, oversizedCount } = params;
-  yield new CommandOutput<DebugFilesUploadResult>({
+  yield new CommandOutput({
     uploaded: false,
     files: difs.map((d) => ({ name: d.name, debugId: d.debugId })),
     filesUploaded: 0,
@@ -408,7 +410,7 @@ function* doNothingToUpload(
   },
 ) {
   const { missingIds, requireAll, oversizedCount, maxFileSize } = params;
-  yield new CommandOutput<DebugFilesUploadResult>({
+  yield new CommandOutput({
     uploaded: false,
     files: [],
     filesUploaded: 0,
@@ -464,7 +466,7 @@ async function* doUpload(
     (r) => r.state === "error" || r.state === "not_found",
   );
 
-  yield new CommandOutput<DebugFilesUploadResult>({
+  yield new CommandOutput({
     org: params.org,
     project: params.project,
     uploaded: true,
@@ -533,13 +535,13 @@ export const uploadCommand = buildCommand({
     fullDescription:
       "Scan files and directories for native debug information files and " +
       "upload them to Sentry using the chunk-upload protocol. Supports " +
-      "Mach-O/dSYM, ELF, PE/PDB, Portable PDB, WebAssembly, Breakpad, and " +
-      "source bundles. Directories are scanned recursively.\n\n" +
+      "Mach-O/dSYM, ELF, PE/PDB, Portable PDB, WebAssembly, Breakpad, source " +
+      "bundles, and DXIL shader binaries. Directories are scanned recursively.\n\n" +
       "Org/project are auto-detected from DSN, env vars, or config defaults.\n\n" +
       "Filters:\n" +
       "  --type     Only upload files of the given type (repeatable):\n" +
       "             dsym, elf, pe, pdb, portablepdb, wasm, breakpad,\n" +
-      "             sourcebundle, jvm\n" +
+      "             sourcebundle, jvm, dxil\n" +
       "  --id       Only upload the object with the given debug id (repeatable)\n" +
       "  --no-debug / --no-unwind / --no-sources   Drop files whose only\n" +
       "             useful feature is the named one\n" +
@@ -621,7 +623,7 @@ export const uploadCommand = buildCommand({
         parse: choiceParser(VALID_DIF_TYPES),
         brief:
           "Only upload files of this type (repeatable): dsym, elf, pe, pdb, " +
-          "portablepdb, wasm, breakpad, sourcebundle, jvm",
+          "portablepdb, wasm, breakpad, sourcebundle, jvm, dxil",
         optional: true,
         variadic: true,
       },

@@ -182,9 +182,9 @@ export function getDatabase(): Database {
 }
 
 /**
- * `true` in the npm package's `dist/complete.cjs` (defined in
- * `script/bundle.ts`), so esbuild drops the telemetry `require` below from
- * that bundle. Undefined when running from source.
+ * `true` in the `complete.cjs` bundle of the npm package and the standalone
+ * binary (defined in `script/bundle.ts` and `script/build.ts`), so esbuild
+ * drops the telemetry `require` below from that bundle. Undefined when running from source.
  */
 declare const SENTRY_CLI_COMPLETION_BUILD: boolean | undefined;
 

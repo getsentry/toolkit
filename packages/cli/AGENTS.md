@@ -113,12 +113,45 @@ Top-level layout:
 
 - **`src/bin.ts`** — entry point; **`src/app.ts`** — Stricli application setup;
   **`src/context.ts`** — dependency-injection context.
-- **`src/sea-main.ts`** — main script of the standalone binary. `script/build.ts`
-  embeds the CLI (`src/bin.ts`) and the completion engine (`src/complete-bin.ts`)
-  as separate SEA assets, and this bootstrap runs one of them through
-  `src/lib/sea-chunk.ts`, which keeps a V8 code cache for each under
-  `<config dir>/cache/code/`. It must import only `node:` builtins and pure
-  helpers (`test/script/cli-startup.test.ts` lists its modules).
+- **`src/command-manifest.ts`** — every top-level route: how to load it and
+  whether help hides it. **`src/top-level-briefs.ts`** holds the brief of each
+  visible one; its route map or command sets `brief: topLevelBrief("<name>")`
+  instead of writing its own. The briefs stay out of the manifest so that
+  importing them does not pull every command's `import()` into the
+  `@sentry/mcp-server` bundle, which cannot split chunks. A new top-level
+  route goes in `app.ts` and the manifest, in the same place, and in
+  `top-level-briefs.ts` if visible; `test/lib/command-manifest.test.ts` fails
+  when they disagree. What
+  else the top-level help shows (visible subcommands, a command's usage line
+  and placeholder) derives from code, so `generate:top-level-routes` writes it
+  to `src/generated/top-level-routes.json` (part of `generate:docs`).
+- **`src/app-for-args.ts`** — picks the application for a run. When the first
+  argument after any global flags (`GLOBAL_FLAGS` in `src/lib/global-flags.ts`)
+  names a top-level route, it loads only that route through the manifest. A
+  bare `--version` loads only `help`. The text top-level help (`sentry`,
+  `sentry help`, `sentry --help`) loads only `help` and builds the other
+  routes as help-only stand-ins from the manifest and
+  `top-level-routes.json` (`src/root-help-routes.ts`).
+  Anything else, and `help <command>`, `schema`, and `cli`, which read the
+  whole tree with `getRoutes()`, loads `app.ts`. A new top-level command that
+  reads the whole tree goes in `FULL_TREE_ROUTES`. Root route map settings
+  live in `src/app-root.ts`.
+- **`src/chunk-main.ts`** — main script of the npm package (`dist/bin.cjs`)
+  and the standalone binary. `script/lib/split-bundle.ts` builds the CLI
+  (`src/bin.ts`) as code-split CommonJS chunks for both: every `import()` and
+  every lazy `_require()` (telemetry, syntax highlighting, the field-list
+  parser) starts a chunk, so a command loads only its own code. The
+  completion engine (`src/complete-bin.ts`) is one file of its own. The main
+  script runs one of them through `src/lib/chunk-loader.ts`, which reads the
+  chunks from files next to it (npm) or from SEA assets (binary) and keeps a V8
+  code cache for each under `<config dir>/cache/code/`. It must import only
+  `node:` builtins and pure helpers (`test/script/cli-startup.test.ts` lists
+  its modules). `script/lib/chunk-build.ts` holds the build steps both
+  packages share: debug IDs, sourcemap upload, and the main script.
+- **`src/index.ts`** — the library (`createSentrySDK`). It imports no command
+  and no CLI runner: each SDK call loads only the top-level routes it runs
+  (`src/sdk-app.ts`, the SDK's `app-for-args.ts`), from the same split chunks
+  in `dist/index.cjs` and `dist/index.mjs`.
 - **`src/mcp-server.ts`** — entry point for the standalone `@sentry/mcp-server`
   bundle (built by `packages/mcp-server/script/bundle.ts`). It must not import anything that
   only the CLI needs; the bundle script fails on commands, markdown rendering,
@@ -128,7 +161,7 @@ Top-level layout:
   `dashboard`, `debug-files`, `docs`, `dsn`, `event`, `feedback`, `integration`, `issue`, `local`,
   `log`, `monitor`, `org`, `platform`, `proguard`, `project`, `react-native`,
   `release`, `replay`, `repo`, `snapshots`, `sourcemap`, `span`, `status`,
-  `team`, `trace`, `trial`) plus standalone command files (`api.ts`,
+  `team`, `token`, `trace`, `trial`) plus standalone command files (`api.ts`,
   `explore.ts`, `help.ts`, `info.ts`, `init.ts`, `mcp.ts`, `schema.ts`,
   `wasm-split.ts`, plus the hidden `bash-hook.ts`, `send-event.ts`, and
   `send-envelope.ts`).
@@ -166,7 +199,7 @@ export const myCommand = buildCommand({
   },
   output: {
     human: formatMyData,                // (data: T) => string
-    jsonTransform: jsonTransformMyData, // optional: (data: T, fields?) => unknown
+    jsonTransform: jsonTransformMyData, // optional: (data: T, fields?) => typed JSON
     jsonExclude: ["humanOnlyField"],    // optional: strip keys from JSON
   },
   parameters: {
@@ -186,6 +219,7 @@ export const myCommand = buildCommand({
 - Functions are `async *func()` generators — yield `new CommandOutput(data)`, return `{ hint }`.
 - `output.human` receives the same data object that gets serialized to JSON — no divergent-data paths.
 - The wrapper auto-injects `--json` and `--fields` flags. Do NOT add your own `json` flag.
+- A `jsonTransform` replaces the default `--fields` filtering, so it must apply its `fields` argument (`filterFieldsIfSet` from `lib/formatters/json.ts`, or per item for list envelopes). The `sentry-cli/json-transform-uses-fields` lint rule rejects one that never reads it ([#1808](https://github.com/getsentry/toolkit/issues/1808)). Drop a transform that only returns its input; the default path already filters.
 - Do NOT use `stdout.write()` or `if (flags.json)` branching — the wrapper handles it.
 
 ### Command File Structure
@@ -200,6 +234,51 @@ Formatting and rendering logic belongs in `src/lib/formatters/<domain>.ts`. If a
 Reference: `src/lib/formatters/replay.ts` (extracted from `replay/view.ts`), `src/lib/formatters/trace.ts`, `src/lib/formatters/human.ts`.
 
 Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output.
+
+### Declaring Command Output
+
+`output.schema` drives `--fields` completion, the JSON field table in `--help`, and the skill references. Nothing validates output against it, so declare each field once and derive the TypeScript type from the schema; the compiler then keeps the two in sync ([#1824](https://github.com/getsentry/toolkit/issues/1824)).
+
+The schemas live in `src/output-schemas/<area>.ts` (one module per top-level command), which only the build loads ([#1914](https://github.com/getsentry/toolkit/issues/1914)). `script/generate-output-schemas.ts` (part of `generate:docs`) reads each exported `…Schema` and writes its field list and `--fields` paths to the gitignored `src/generated/output-schemas/<area>.ts`, under the same export name. A command imports that data as its `output.schema`, so a run loads only its own route's field lists, and none of the schemas:
+
+- Import the schema data from `src/generated/output-schemas/`, and everything else from `src/output-schemas/` with `import type` only. Lint (`sentry-cli/no-runtime-output-schema-imports`) rejects a value import, or `import { type X }`, which `verbatimModuleSyntax` keeps as a runtime import.
+- Export the type the command needs next to its schema (`export type ReleaseDeleteOutput = InferOutput<typeof ReleaseDeleteOutputSchema>`), or `import type` the schema and write `typeof`.
+- A schema that also validates an API response at runtime (`SentryLogSchema`, `TransactionListItemSchema`, `ConversationListItemSchema`, `DashboardRevisionSchema`) stays where it is and is re-exported from its area's module.
+- `src/output-schemas/` must not import `src/generated/output-schemas/`: the generator loads the former to write the latter.
+
+- **API fields** keep their `@sentry/api` type and come from the generated `@sentry/api/valibot` schema (`vXxxResponse.entries`). They carry the OpenAPI description when the spec has one. Wrap a field in `pipe(field, description(…))` only when the spec has no description or its text doesn't suit CLI users; the wrapper wins.
+- **Fields the CLI adds** (target context such as `org`/`orgSlug`, flags such as `dryRun`/`deleted`, computed values such as `url`, `trace`, `period`) are written once as a valibot `object` of output fields. Spread its `entries` into the schema, and get the type with `InferOutput<typeof Fields>`, or `WithOutputFields<ApiType, typeof Fields>` (`src/output-schemas/output.ts`) when the fields sit on (or override) an API object.
+- Type the `human` formatter's parameter (and `jsonTransform`'s, when set) with the derived type. `buildCommand`, `buildListCommand`, and `buildDeleteCommand` infer the output type from `output` and check every `CommandOutput` that `func` yields against it. Annotate a yield (`new CommandOutput<Output>(…)`) only when it builds a discriminated-union literal (`kind: "endpoints"`) that would otherwise widen to `string`.
+- Without `jsonTransform`, the data (each item, for array data) must also satisfy `output.schema`: a field the schema documents but the command doesn't produce, or documents with another type, is a compile error. Keep the data typed: an API response typed `Record<string, unknown>` can't satisfy a schema built from `@sentry/api/valibot`, so type it with its `@sentry/api` response type.
+- With `jsonTransform`, the schema describes the transform's item: each item of a `{ data: [...] }` envelope or an array, otherwise the result itself. Every field the schema documents must exist on that item with a matching type; optionality isn't compared, since `--fields` makes items `Partial`. So the transform must return a typed result, not `unknown` or `Record<string, unknown>`: return `ListJson<Item>` from `jsonTransformListResult`, type a hand-built envelope as `ListEnvelope<Item>` (`lib/org-list.ts`), and let a single object's type come from its spread with `filterFieldsIfSet`. The error names the mismatched fields under `~outputMismatch`.
+- An `OrgListConfig` takes the item's schema data (`orgListItemSchema(Entity)`, exported from the area's module) and checks its entity against it when you pass its type: `OrgListConfig<SentryTeam, TeamWithOrg, typeof TeamListItemSchema>`. Don't annotate an output config as `OutputConfig<T>` or check it with `satisfies OutputConfig<T>`: that erases the schema's type, and the check passes without comparing anything.
+- Reuse the shared fields: `DryRunOutputField` and `opaque<T>()` (`src/output-schemas/output.ts`; `opaque` is for a field the docs leave opaque but the code types, such as a full event payload), and `orgListItemSchema` (`src/output-schemas/org-list.ts`) with `WithOrg` (`lib/org-list.ts`) for org-scoped lists.
+- Data only the human formatter needs (pre-rendered lines, a resolved target) stays out of the schema; keep it outside the derived type or strip it with `jsonExclude`.
+
+```typescript
+// src/output-schemas/release.ts
+export const ReleaseDeployOutputFields = object({
+  dryRun: DryRunOutputField,
+  version: optional(pipe(string(), description("Release version (--dry-run)"))),
+});
+export const ReleaseDeployOutputSchema = looseObject({
+  ...SentryDeploySchema.entries,
+  ...ReleaseDeployOutputFields.entries,
+});
+
+// src/commands/release/deploy.ts
+import { ReleaseDeployOutputSchema } from "../../generated/output-schemas/release.js";
+import type { ReleaseDeployOutputFields } from "../../output-schemas/release.js";
+
+type DeployOutput = WithOutputFields<SentryDeploy, typeof ReleaseDeployOutputFields>;
+
+output: {
+  human: (deploy: DeployOutput) => …,
+  schema: ReleaseDeployOutputSchema,
+},
+```
+
+Reference: `src/commands/release/deploy.ts`, `src/output-schemas/alert.ts`, `ReplayViewOutputFields` in `src/output-schemas/replay.ts`.
 
 ### Route Maps (Stricli)
 
@@ -240,7 +319,11 @@ with `getRoutes()` from `src/lib/route-registry.ts`, never by importing
 `app.ts`. Every command reaches `src/lib/` through `buildCommand`, so that
 import would pull every command into any bundle built from one of them.
 `app.ts` registers its map with `setRoutes()`; a test that needs the real tree
-imports `src/app.js`. `test/lib/route-registry.test.ts` fails when a module in
+imports `src/app.js`. A run whose first argument after global flags names a
+top-level route
+registers a map with only that route (see `src/app-for-args.ts`), so code that
+needs routes other than the running one's must run under a `FULL_TREE_ROUTES`
+command. `test/lib/route-registry.test.ts` fails when a module in
 `src/lib/` reaches `app.ts`; the only exception is `sdk-invoke.ts`, the
 library-mode runner that executes the whole application.
 
@@ -494,11 +577,11 @@ search grammar) import it when called, so the fast path only loads it for
 the arguments that need it.
 
 The fast path runs on every TAB press, so it loads only `src/lib/complete.ts`
-and what that module imports. `src/bin.ts` and the npm `dist/bin.cjs` check
-for `__complete` first and call `runCompletion` without loading `cli.ts`;
-the npm package ships it as the separate `dist/complete.cjs` bundle, and the
-standalone binary as a separate SEA asset (`src/complete-bin.ts`), so a TAB
-press never compiles the CLI bundle. That
+and what that module imports. `src/bin.ts` and the main script of both
+packages (`src/chunk-main.ts`) check for `__complete` first and run
+`runCompletion` without loading `cli.ts`: both ship it as a separate bundle
+(`src/complete-bin.ts`, `complete.cjs`) that shares no chunk with the CLI, so a
+TAB press never loads a CLI chunk. That
 graph must stay free of `@sentry/node`, telemetry, the API client, and the
 command tree: the database modules get spans and cache metrics through
 `withDbSpan` and `recordCacheHit` from `src/lib/db/index.ts`, which require
@@ -539,7 +622,7 @@ Reference: `project/create.ts`, `release/set-commits.ts` (`--path`), `auth/login
 
 All non-trivial human output must use the markdown rendering pipeline:
 
-- Build markdown strings with helpers: `mdKvTable()`, `colorTag()`, `escapeMarkdownCell()`, `renderMarkdown()`
+- Build markdown strings with helpers: `mdKvTable()`, `colorTag()`, `renderMarkdown()`, and `text()`, `tableCell()`, `inlineCode()` from `@sentry/toolkit-core/markdown`
 - **NEVER** use raw `muted()` / chalk in output strings — use `colorTag("muted", text)` inside markdown
 - Tree-structured output (box-drawing characters) that can't go through `renderMarkdown()` should use the `plainSafeMuted` pattern: `isPlainOutput() ? text : muted(text)`
 - `isPlainOutput()` precedence: `SENTRY_PLAIN_OUTPUT` > `NO_COLOR` > `FORCE_COLOR` (TTY only) > `!isTTY`
@@ -737,7 +820,10 @@ Use `"date"` for timestamp-based sort (not `"time"`). Export sort types from the
 
 ### Generated Docs & Skills
 
-All command docs and skill files are generated via `pnpm run generate:docs` (which runs `generate:banner`, `generate:completions`, `generate:command-docs`, `generate:skill`, then `generate:docs-sections`). This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
+All command docs and skill files are generated via `pnpm run generate:docs`. This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
+
+- **One process**: the `generate:*` scripts (except `generate:grammar`, a plain Node script) call `script/generate.ts`, which runs the requested steps in one process so the route tree loads once. Phase 1 writes what the tree imports (API schema, grammars, output-schema field data, banner), runs those steps concurrently, and must not load the tree; its steps must not read each other's outputs. Phase 2 stubs the generated files the tree imports (`script/lib/route-tree-stubs.ts`), then runs each step's exported `emit()`. Scripts that load the tree without generating, such as `check-fragments`, leave those stubs behind, so `ensure-generated.mjs` treats a file that still holds its stub (`script/lib/route-tree-stub-files.mjs`) as missing. Phase-2 modules may import the tree statically, because the runner imports them only after the stubs exist. A new generator exports `emit()` and gets a step in `script/generate.ts`, with no stub code of its own. A phase-2 step may also declare `prepare`, which the runner calls as the run begins: `command-api` uses it to parse `src/` in a worker thread (`script/lib/command-api-analysis.ts`) during phase 1 and the tree load. The worker reads the API schema once the `schema` step finishes, and `command-api` runs last because its `emit` waits for that worker. In `package.json`, call the runner (`tsx script/generate.ts <steps>`) rather than chaining `pnpm run generate:*`. `docs` names every step but `sdk`, including `schema`, so callers need not run `generate:schema` first.
+- **Skipped steps**: a phase-1 step with `files` in `script/generate.ts` runs only when the content hash of its inputs or outputs differs from its entry in `src/generated/.stamps.json` (`script/lib/step-stamp.ts`). When such a step starts reading a new file or package, add it to that step's inputs. `output-schemas` and the phase-2 steps have no stamp: their inputs are the source they import, which is no short list.
 
 - **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
@@ -901,6 +987,22 @@ can only shrink, the same ratchet the old JSON baseline provided, with no
 separate script or baseline file to maintain. Fix a grandfathered catch by
 adding logging/re-throwing and deleting its suppression line; only add a new
 suppression for a genuinely intentional silent catch, with a real reason.
+
+Report errors to Sentry with `reportCliError(error, { tags, extra, level })`
+from `src/lib/error-reporting.ts`, never `captureException` directly. A raw
+capture skips the 4xx/network silencing and the `api_error` context, so user
+errors pile into one issue with no detail (CLI-10). The
+`no-raw-capture-exception` CLI Oxlint rule enforces this.
+
+### Process Exit
+
+Do not end the CLI with `process.exit()`, including forced-exit timers. A
+forced exit drops pending telemetry and piped output. When a process stays
+alive after its command, release the handle that keeps the event loop alive
+(`close-dispatcher.ts` is the example), or fix the dependency that owns it.
+The `no-process-exit` CLI Oxlint rule enforces this. Only signal, fatal error,
+and broken stream handlers exit directly, each with a disable comment that
+says why.
 
 ### Auto-Recovery for Wrong Entity Types
 

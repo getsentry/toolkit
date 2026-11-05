@@ -166,7 +166,7 @@ export const bundleJvmCommand = buildCommand({
     }
 
     // 5. Yield result
-    yield new CommandOutput<BundleJvmResult>({
+    yield new CommandOutput({
       outputPath: result.outputPath,
       debugId: flags["debug-id"],
       fileCount: result.fileCount,

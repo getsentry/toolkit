@@ -11,8 +11,6 @@ import {
   listOrganizationDashboards,
   updateOrganizationDashboard,
 } from "@sentry/api";
-// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
 
 import { array, safeParse } from "valibot";
@@ -37,7 +35,8 @@ import {
   type TimeseriesResult,
   type WidgetDataResult,
 } from "../../types/dashboard.js";
-import { stringifyUnknown } from "../errors.js";
+import { reportCliError } from "../error-reporting.js";
+import { ApiError, stringifyUnknown } from "../errors.js";
 
 import { resolveOrgRegion } from "../region.js";
 
@@ -590,6 +589,14 @@ async function queryWidgetData(
     } satisfies TextResult;
   }
 
+  const { displayType } = widget;
+  if (displayType === null) {
+    return {
+      type: "unsupported",
+      reason: "Widget has no display type",
+    };
+  }
+
   const dataset = mapWidgetTypeToDataset(widget.widgetType);
   if (!dataset) {
     return {
@@ -600,7 +607,7 @@ async function queryWidgetData(
 
   try {
     // Chart types → timeseries
-    if (TIMESERIES_DISPLAY_TYPES.has(widget.displayType)) {
+    if (TIMESERIES_DISPLAY_TYPES.has(displayType)) {
       return await queryWidgetTimeseries(params);
     }
 
@@ -621,21 +628,39 @@ async function queryWidgetData(
     }
 
     // Table types → tabular
-    if (TABLE_DISPLAY_TYPES.has(widget.displayType)) {
+    if (TABLE_DISPLAY_TYPES.has(displayType)) {
       return await queryWidgetTable(params);
     }
 
     return {
       type: "unsupported",
-      reason: `Display type '${widget.displayType}' is not yet supported`,
+      reason: `Display type '${displayType}' is not yet supported`,
     };
   } catch (error) {
-    Sentry.captureException(error);
+    // Best-effort catch: the other widgets still render. Report through the
+    // shared policy so 401–499 failures are silenced and 400s keep API context.
+    reportCliError(error);
     return {
       type: "error",
-      message: stringifyUnknown(error),
+      message: widgetErrorMessage(error),
     } satisfies ErrorResult;
   }
+}
+
+/**
+ * One-line widget failure message. Keeps the API's `detail`, which explains
+ * why the widget's query was rejected; the status line alone does not.
+ */
+function widgetErrorMessage(error: unknown): string {
+  const message = stringifyUnknown(error);
+  const detail =
+    error instanceof ApiError
+      ? error.detail?.replace(/\s+/g, " ").trim()
+      : undefined;
+  // Bodyless responses fall back to the status text, already in the message.
+  return detail && !message.includes(detail)
+    ? `${message}: ${detail}`
+    : message;
 }
 
 /**

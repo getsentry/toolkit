@@ -124,6 +124,29 @@ tester.run("no-silent-catch", plugin.rules["no-silent-catch"], {
   ],
 });
 
+tester.run("no-process-exit", plugin.rules["no-process-exit"], {
+  valid: [
+    { filename: source, code: "process.exitCode = 1;" },
+    { filename: source, code: "this.process.exitCode = code;" },
+    {
+      // Tests may stub process.exit
+      filename: "/repo/packages/cli/test/example.test.ts",
+      code: "vi.spyOn(process, 'exit'); process.exit(1);",
+    },
+  ],
+  invalid: [
+    { filename: source, code: "process.exit(1);", errors: 1 },
+    { filename: commands, code: "this.process.exit(0);", errors: 1 },
+    {
+      // A forced-exit timer is still a forced exit
+      filename: source,
+      code: "setTimeout(() => process.exit(process.exitCode ?? 0), 1000).unref();",
+      errors: 1,
+    },
+    { filename: source, code: "setTimeout(process.exit, 100);", errors: 1 },
+  ],
+});
+
 tester.run("no-ad-hoc-id-arguments", plugin.rules["no-ad-hoc-id-arguments"], {
   valid: [
     {
@@ -470,6 +493,53 @@ tester.run(
       {
         filename: "/repo/packages/cli/script/example.ts",
         code: "const heading = new RegExp(`^#{1,4}\\\\s+${name}`, 'im');",
+        errors: 1,
+      },
+    ],
+  },
+);
+
+tester.run(
+  "json-transform-uses-fields",
+  plugin.rules["json-transform-uses-fields"],
+  {
+    valid: [
+      {
+        filename: commands,
+        code: "buildCommand({ output: { jsonTransform: (r, fields) => filterFieldsIfSet(r.items, fields) } });",
+      },
+      {
+        filename: commands,
+        code: "function toJson(r, fields) { return filterFieldsIfSet(r, fields); }\nbuildCommand({ output: { jsonTransform: toJson } });",
+      },
+      {
+        filename: commands,
+        code: "export function jsonTransformList(r, fields = []) { return filterFields(r, fields); }",
+      },
+      {
+        filename: commands,
+        code: "import { toJson } from './shared.js';\nbuildCommand({ output: { jsonTransform: toJson } });",
+      },
+    ],
+    invalid: [
+      {
+        filename: commands,
+        code: "buildCommand({ output: { jsonTransform: (r) => r } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ output: { jsonTransform: (r, fields) => ({ id: r.id }) } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function toJson(r) { return { id: r.id }; }\nbuildCommand({ output: { jsonTransform: toJson } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function jsonTransform(r) { return { id: r.id }; }\nbuildCommand({ output: { jsonTransform } });",
         errors: 1,
       },
     ],

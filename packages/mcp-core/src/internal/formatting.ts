@@ -5,6 +5,7 @@
  * for LLM consumption. Handles stacktraces, event details, issue summaries,
  * and contextual information with consistent formatting patterns.
  */
+import type { IssueEventDetailsResponse } from "@sentry/api";
 import { codeBlock, inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { z } from "zod";
 import type {
@@ -31,6 +32,7 @@ import type {
   TraceSpan,
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
+import { selectEventPackages } from "./event-packages";
 import { formatUnknown } from "./unknown-formatting";
 import {
   type CodeLocation,
@@ -1682,36 +1684,168 @@ function formatPrimitive(value: unknown): string | undefined {
   return isPrimitive(value) ? String(value) : undefined;
 }
 
+const METRIC_ISSUE_OCCURRENCE_TYPE = 8001;
+
+type MetricIssueEvidenceData = Extract<
+  NonNullable<IssueEventDetailsResponse["occurrence"]>,
+  { type: typeof METRIC_ISSUE_OCCURRENCE_TYPE }
+>["evidenceData"];
+type MetricIssueDataSource = MetricIssueEvidenceData["dataSources"][number];
+type MetricIssueSnubaQuery = MetricIssueDataSource["queryObj"]["snubaQuery"];
+type MetricIssueCondition = MetricIssueEvidenceData["conditions"][number];
+
 /**
- * Extracts the Snuba query from metric alert evidence data.
+ * Keys come from the generated `@sentry/api` metric occurrence type, so a
+ * renamed or misspelled evidence key fails tsc. Values stay `unknown`: the
+ * event is parsed with a loose Zod schema and older events can omit fields.
  */
-function getMetricAlertSnubaQuery(
-  evidenceData: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  const dataSources = evidenceData.data_sources;
+type Unverified<T> = { readonly [K in keyof T]?: unknown };
+
+function asUnverified<T>(value: unknown): Unverified<T> | undefined {
+  return isPlainObject(value) ? (value as Unverified<T>) : undefined;
+}
+
+type MetricAlertQuery = {
+  dataset?: string;
+  aggregate?: string;
+  query?: string;
+  timeWindowSeconds?: number;
+  environment?: string;
+  eventTypes: string[];
+};
+
+type MetricAlertContext = {
+  evidenceData: Unverified<MetricIssueEvidenceData>;
+  query?: MetricAlertQuery;
+  monitorId?: string;
+  alertRuleId?: string;
+};
+
+/**
+ * Reads metric alert evidence from a metric issue event. The event API
+ * camelCases occurrence payloads recursively, so evidence keys arrive as
+ * `dataSources[].queryObj.snubaQuery`, `detectorId`, and `alertId`.
+ */
+function getMetricAlertContext(event: Event): MetricAlertContext | undefined {
+  if (event.type !== "generic") {
+    return undefined;
+  }
+  const occurrence = (event as GenericEvent).occurrence;
+  const evidenceData = asUnverified<MetricIssueEvidenceData>(
+    occurrence?.evidenceData,
+  );
+  if (occurrence?.type !== METRIC_ISSUE_OCCURRENCE_TYPE || !evidenceData) {
+    return undefined;
+  }
+
+  return {
+    evidenceData,
+    query: getMetricAlertQuery(evidenceData),
+    monitorId: formatPrimitive(evidenceData.detectorId),
+    alertRuleId: formatPrimitive(evidenceData.alertId),
+  };
+}
+
+function getMetricAlertQuery(
+  evidenceData: Unverified<MetricIssueEvidenceData>,
+): MetricAlertQuery | undefined {
+  const dataSources = evidenceData.dataSources;
   if (!Array.isArray(dataSources)) {
     return undefined;
   }
 
   for (const dataSource of dataSources) {
-    if (!isPlainObject(dataSource)) {
+    const queryObj = asUnverified<MetricIssueDataSource["queryObj"]>(
+      asUnverified<MetricIssueDataSource>(dataSource)?.queryObj,
+    );
+    const snubaQuery = asUnverified<MetricIssueSnubaQuery>(
+      queryObj?.snubaQuery,
+    );
+    if (!snubaQuery) {
       continue;
     }
-    const queryObj = dataSource.query_obj;
-    if (!isPlainObject(queryObj)) {
-      continue;
-    }
-    const snubaQuery = queryObj.snuba_query;
-    if (isPlainObject(snubaQuery)) {
-      return snubaQuery;
-    }
+    const timeWindow = snubaQuery.timeWindow;
+    return {
+      dataset: formatPrimitive(snubaQuery.dataset),
+      aggregate: formatPrimitive(snubaQuery.aggregate),
+      query: formatPrimitive(snubaQuery.query)?.trim() || undefined,
+      timeWindowSeconds:
+        typeof timeWindow === "number" ? timeWindow : undefined,
+      environment: formatPrimitive(snubaQuery.environment),
+      eventTypes: Array.isArray(snubaQuery.eventTypes)
+        ? snubaQuery.eventTypes.filter(
+            (eventType): eventType is string => typeof eventType === "string",
+          )
+        : [],
+    };
   }
 
   return undefined;
 }
 
+type MetricAlertDatasetKind = "errors" | "logs" | "spans" | "metrics";
+
+/** Mirrors the Sentry UI's backend dataset -> detector dataset mapping. */
+function getMetricAlertDatasetKind(
+  query: MetricAlertQuery,
+): MetricAlertDatasetKind | undefined {
+  if (query.dataset === "events") {
+    return "errors";
+  }
+  if (query.dataset === "events_analytics_platform") {
+    if (query.eventTypes.includes("trace_item_log")) {
+      return "logs";
+    }
+    if (query.eventTypes.includes("trace_item_metric")) {
+      return "metrics";
+    }
+    return "spans";
+  }
+  return undefined;
+}
+
+const METRIC_ALERT_SEARCH_TOOLS: Record<
+  MetricAlertDatasetKind,
+  { toolName: string; label: string }
+> = {
+  errors: { toolName: "search_errors", label: "Errors" },
+  logs: { toolName: "search_logs", label: "Logs" },
+  spans: { toolName: "search_traces", label: "Spans" },
+  metrics: { toolName: "search_metrics", label: "Application metrics" },
+};
+
+/** Returns the window the monitor aggregated over for this occurrence. */
+function getMetricAlertEvaluatedWindow(
+  event: Event,
+  query: MetricAlertQuery | undefined,
+): { start: Date; end: Date } | undefined {
+  const dateCreated = (event as GenericEvent).dateCreated;
+  if (!dateCreated || query?.timeWindowSeconds == null) {
+    return undefined;
+  }
+  const end = new Date(dateCreated);
+  if (Number.isNaN(end.getTime())) {
+    return undefined;
+  }
+  return {
+    start: new Date(end.getTime() - query.timeWindowSeconds * 1000),
+    end,
+  };
+}
+
+function formatSearchFilterValue(value: string): string {
+  return /[\s"(),:]/.test(value) ? JSON.stringify(value) : value;
+}
+
+/** Smallest relative search period that reaches back to `start`. */
+function formatPeriodSince(start: Date, now: number): string {
+  const elapsedMs = Math.max(now - start.getTime(), 0);
+  const hours = Math.max(Math.ceil(elapsedMs / 3_600_000), 1);
+  return hours <= 48 ? `${hours}h` : `${Math.ceil(hours / 24)}d`;
+}
+
 function formatMetricAlertCondition(
-  condition: Record<string, unknown>,
+  condition: Unverified<MetricIssueCondition>,
 ): string | undefined {
   const comparison = condition.comparison;
   const formattedComparison = formatPrimitive(comparison);
@@ -1754,32 +1888,46 @@ function formatMetricAlertValue(value: unknown): string | undefined {
 }
 
 function formatMetricAlertDetails(
-  evidenceData: Record<string, unknown>,
+  event: Event,
+  context: MetricAlertContext,
 ): string {
+  const { evidenceData, query } = context;
   const parts: string[] = ["### Metric Alert Details", ""];
 
-  const snubaQuery = getMetricAlertSnubaQuery(evidenceData);
-  if (snubaQuery) {
-    if (snubaQuery.dataset != null) {
-      parts.push(`**Dataset**: ${formatUnknown(snubaQuery.dataset)}`);
+  if (context.monitorId) {
+    parts.push(`**Monitor ID**: ${context.monitorId}`);
+  }
+  if (context.alertRuleId) {
+    parts.push(`**Alert Rule ID**: ${context.alertRuleId}`);
+  }
+
+  if (query) {
+    const datasetKind = getMetricAlertDatasetKind(query);
+    const dataset = datasetKind
+      ? METRIC_ALERT_SEARCH_TOOLS[datasetKind].label
+      : query.dataset && inlineCode(query.dataset);
+    if (dataset) {
+      parts.push(`**Dataset**: ${dataset}`);
     }
-    if (snubaQuery.aggregate != null) {
-      parts.push(`**Aggregate**: ${formatUnknown(snubaQuery.aggregate)}`);
+    if (query.aggregate) {
+      parts.push(`**Aggregate**: ${inlineCode(query.aggregate)}`);
     }
-    const query =
-      snubaQuery.query != null ? formatUnknown(snubaQuery.query) : "";
-    if (query.length > 0) {
-      parts.push(`**Query**: \`${query}\``);
+    if (query.query) {
+      parts.push(`**Query**: ${inlineCode(query.query)}`);
     }
-    if (snubaQuery.time_window != null) {
-      parts.push(
-        `**Interval**: ${formatUnknown(snubaQuery.time_window)} second(s)`,
-      );
+    if (query.timeWindowSeconds != null) {
+      parts.push(`**Interval**: ${query.timeWindowSeconds} second(s)`);
     }
-    if (snubaQuery.environment != null) {
-      parts.push(`**Environment**: ${formatUnknown(snubaQuery.environment)}`);
+    if (query.environment) {
+      parts.push(`**Environment**: ${inlineCode(query.environment)}`);
     }
-    parts.push("");
+  }
+
+  const evaluatedWindow = getMetricAlertEvaluatedWindow(event, query);
+  if (evaluatedWindow) {
+    parts.push(
+      `**Evaluated Window**: ${evaluatedWindow.start.toISOString()} to ${evaluatedWindow.end.toISOString()}`,
+    );
   }
 
   const formattedValue = formatMetricAlertValue(evidenceData.value);
@@ -1798,12 +1946,93 @@ function formatMetricAlertDetails(
     }
   }
 
-  if (evidenceData.alert_id != null) {
-    parts.push(`**Alert Rule ID**: ${formatUnknown(evidenceData.alert_id)}`);
-  }
-
   parts.push("");
   return `${parts.join("\n")}\n`;
+}
+
+/**
+ * Follow-up notes for metric issues: the monitor configuration and a search
+ * call that reproduces the monitor query over the evaluated window.
+ */
+function buildMetricAlertResponseNotes({
+  organizationSlug,
+  issue,
+  event,
+  context,
+  experimentalMode,
+  availableToolNames,
+  directToolNames,
+}: {
+  organizationSlug: string;
+  issue: Issue;
+  event: Event;
+  context: MetricAlertContext;
+  experimentalMode: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
+}): string[] {
+  const notes: string[] = [];
+
+  if (context.monitorId) {
+    const monitorInstruction = formatToolCallInstruction({
+      toolName: "get_metric_monitor_details",
+      arguments: { organizationSlug, monitorId: context.monitorId },
+      showArguments: true,
+      experimentalMode,
+      availableToolNames,
+      directToolNames,
+      fallbackInstruction: "",
+    });
+    if (monitorInstruction) {
+      notes.push(
+        `Metric Monitor configuration and connected Alerts: ${monitorInstruction}`,
+      );
+    }
+  }
+
+  const query = context.query;
+  const datasetKind = query ? getMetricAlertDatasetKind(query) : undefined;
+  const evaluatedWindow = getMetricAlertEvaluatedWindow(event, query);
+  if (!query || !datasetKind || !evaluatedWindow) {
+    return notes;
+  }
+
+  const { toolName, label } = METRIC_ALERT_SEARCH_TOOLS[datasetKind];
+  // Sentry search binds implicit AND tighter than OR, so group an OR query
+  // before appending the environment filter.
+  const monitorQuery =
+    query.query && query.environment && /\bOR\b/.test(query.query)
+      ? `(${query.query})`
+      : query.query;
+  const searchQuery = [
+    monitorQuery,
+    query.environment
+      ? `environment:${formatSearchFilterValue(query.environment)}`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const searchInstruction = formatToolCallInstruction({
+    toolName,
+    arguments: {
+      organizationSlug,
+      projectSlug: issue.project.slug,
+      ...(searchQuery ? { query: searchQuery } : {}),
+      period: formatPeriodSince(evaluatedWindow.start, Date.now()),
+    },
+    showArguments: true,
+    experimentalMode,
+    availableToolNames,
+    directToolNames,
+    fallbackInstruction: "",
+  });
+  if (searchInstruction) {
+    notes.push(
+      `${label} matched by the monitor query: ${searchInstruction}, then focus on ${evaluatedWindow.start.toISOString()} to ${evaluatedWindow.end.toISOString()}`,
+    );
+  }
+
+  return notes;
 }
 
 /**
@@ -1826,10 +2055,12 @@ function formatGenericEventOutput(event: Event): string {
     return "";
   }
 
-  const evidenceData = occurrence.evidenceData;
-  if (occurrence.type === 8001 && evidenceData) {
-    return formatMetricAlertDetails(evidenceData);
+  const metricAlertContext = getMetricAlertContext(event);
+  if (metricAlertContext) {
+    return formatMetricAlertDetails(event, metricAlertContext);
   }
+
+  const evidenceData = occurrence.evidenceData;
 
   // Add a section header for performance regression details
   if (evidenceData) {
@@ -1977,6 +2208,37 @@ function formatSeerSummary(autofixState: AutofixRunState | undefined): string {
   return `${parts.join("\n")}\n\n`;
 }
 
+function formatEventPackages(event: Event, packageNames: string[]): string {
+  const selection = selectEventPackages(event.packages, packageNames);
+  if (!selection) {
+    return "";
+  }
+  let output = "\n### Selected Package Versions\n\n";
+  if (!selection.metadataAvailable) {
+    return `${output}Package metadata is unavailable for this event.\n\n`;
+  }
+
+  for (const entry of selection.packages) {
+    let value: string;
+    switch (entry.status) {
+      case "recorded":
+        value = inlineCode(entry.version);
+        if (entry.truncated) {
+          value += " (truncated)";
+        }
+        break;
+      case "not_listed":
+        value = "Not listed in this event's package metadata";
+        break;
+      case "version_not_recorded":
+        value = "Version not recorded";
+        break;
+    }
+    output += `- ${inlineCode(entry.name)}: ${value}\n`;
+  }
+  return `${output}\n`;
+}
+
 /** Projects the suspect commit consistently for structured and markdown issue details. */
 export function getSuspectCommit(committers: CommitterList | undefined) {
   // The endpoint currently returns the issue's latest suspect commit, grouped by author.
@@ -2001,6 +2263,7 @@ export function getSuspectCommit(committers: CommitterList | undefined) {
  * @returns Formatted markdown string with complete issue information
  */
 export function formatIssueOutput({
+  packageNames,
   organizationSlug,
   issue,
   event,
@@ -2016,6 +2279,7 @@ export function formatIssueOutput({
   availableToolNames,
   directToolNames,
 }: {
+  packageNames?: string[];
   organizationSlug: string;
   issue: Issue;
   event: Event;
@@ -2166,6 +2430,10 @@ export function formatIssueOutput({
         .join("");
     }
 
+    if (packageNames?.length) {
+      output += formatEventPackages(event, packageNames);
+    }
+
     // For unsupported event types, return early without trying to render event details
     return output;
   }
@@ -2206,6 +2474,10 @@ export function formatIssueOutput({
       directToolNames,
     },
   });
+
+  if (packageNames?.length) {
+    output += formatEventPackages(event, packageNames);
+  }
 
   // Add Seer context if available
   if (autofixState) {
@@ -2269,9 +2541,26 @@ export function buildIssueResponseNotes({
   notes.push(
     `Commit message issue reference: \`Fixes ${commitIssueReference}\` automatically closes the issue when the commit is merged.`,
   );
-  notes.push(
-    "The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.",
-  );
+  // Metric issues have no stacktrace, and their trace context belongs to the
+  // monitor evaluation rather than the data that breached the threshold.
+  const metricAlertContext = getMetricAlertContext(event);
+  if (metricAlertContext) {
+    notes.push(
+      ...buildMetricAlertResponseNotes({
+        organizationSlug,
+        issue,
+        event,
+        context: metricAlertContext,
+        experimentalMode: experimentalMode ?? false,
+        availableToolNames,
+        directToolNames,
+      }),
+    );
+  } else {
+    notes.push(
+      "The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.",
+    );
+  }
   if (aiConversations && aiConversations.length > 0) {
     notes.push(
       ...buildAIConversationResponseNotes({
@@ -2323,7 +2612,7 @@ export function buildIssueResponseNotes({
       notes.push(`Thread stacktrace lookup: ${stacktraceInstruction}`);
     }
   }
-  if (traceId) {
+  if (traceId && !metricAlertContext) {
     const traceDetailsInstruction = formatToolCallInstruction({
       toolName: "get_sentry_resource",
       arguments: {

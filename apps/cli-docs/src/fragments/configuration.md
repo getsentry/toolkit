@@ -52,6 +52,7 @@ When the CLI needs to determine your org and project, it checks these sources in
 4. **Persistent defaults** — set via `sentry cli defaults`
 5. **DSN auto-detection** — scans source code and `.env` files
 6. **Directory name inference** — matches your directory name against project slugs
+7. **Your account** — when you can reach exactly one organization, it is used. Commands that need a project also need that organization to have exactly one project
 
 The first source that provides both org and project wins. For org-only commands, only the org is needed.
 
@@ -127,7 +128,7 @@ We store credentials and caches in a SQLite database (`cli.db`) inside the confi
 - Region URL mappings
 - Project aliases (for monorepo support)
 
-API responses are cached separately, as compressed files under `cache/responses/` in the same config directory. Commands that accept `--fresh` (`-f`) skip cached responses for that run; set `SENTRY_NO_CACHE=1` to turn the cache off entirely.
+API responses are cached separately, as compressed files under `cache/api-responses/` in the same config directory. Commands that accept `--fresh` (`-f`) skip cached responses for that run; set `SENTRY_NO_CACHE=1` to turn the cache off entirely.
 
 See [Credential Storage](../commands/auth/#credential-storage) in the auth command docs for more details.
 

@@ -50,6 +50,8 @@ import { makeNodeTransport } from "@sentry/node";
 /** `@sentry/node` v11 no longer re-exports this type from its entry point. */
 type NodeTransportOptions = Parameters<typeof makeNodeTransport>[0];
 
+type HttpModule = NonNullable<NodeTransportOptions["httpModule"]>;
+
 /** Codec actually applied to a given envelope. */
 type AppliedEncoding = "zstd" | "gzip" | "none";
 
@@ -90,6 +92,54 @@ const zstdCompressAsync =
   typeof zstdCompressCb === "function" ? promisify(zstdCompressCb) : null;
 
 /**
+ * Longest an envelope request may stay open, matching the 3 s flush the
+ * CLI runs on `beforeExit`. Neither this transport nor the SDK's
+ * `makeNodeTransport` otherwise sets a deadline (the agent's `timeout`
+ * only reaps idle sockets), so a stalled ingest connection keeps its
+ * socket referenced and the process alive after the command ends (#1956).
+ */
+const REQUEST_TIMEOUT_MS = 3000;
+
+/**
+ * Wrap an `http`/`https` module so every request aborts after
+ * `timeoutMs`. `AbortSignal.timeout()` uses an unref'd timer, so the
+ * deadline itself never holds the event loop open.
+ */
+function withRequestDeadline(
+  httpModule: HttpModule,
+  timeoutMs: number,
+): HttpModule {
+  return {
+    request: (options, callback) =>
+      httpModule.request(
+        typeof options === "object" && !(options instanceof URL)
+          ? { ...options, signal: AbortSignal.timeout(timeoutMs) }
+          : options,
+        callback,
+      ),
+  };
+}
+
+/**
+ * The SDK's `makeNodeTransport` with the same per-request deadline as
+ * `makeCompressedTransport`, for hosts that keep the SDK transport
+ * (`sentry mcp`).
+ */
+export function makeNodeTransportWithDeadline(
+  options: NodeTransportOptions,
+  requestTimeoutMs = REQUEST_TIMEOUT_MS,
+): Transport {
+  const nativeHttpModule = /^https:/i.test(options.url) ? https : http;
+  return makeNodeTransport({
+    ...options,
+    httpModule: withRequestDeadline(
+      options.httpModule ?? nativeHttpModule,
+      requestTimeoutMs,
+    ),
+  });
+}
+
+/**
  * Factory for the SDK's `Sentry.init({ transport })` option.
  *
  * Falls back to `makeNodeTransport` when a proxy is configured (the SDK
@@ -99,6 +149,7 @@ const zstdCompressAsync =
  */
 export function makeCompressedTransport(
   options: NodeTransportOptions,
+  requestTimeoutMs = REQUEST_TIMEOUT_MS,
 ): Transport {
   let urlSegments: URL;
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
@@ -108,19 +159,23 @@ export function makeCompressedTransport(
     return createTransport(options, () => Promise.resolve({}));
   }
 
-  if (shouldFallbackToDefault(urlSegments, options)) {
-    return makeNodeTransport(options);
-  }
-
   const isHttps = urlSegments.protocol === "https:";
   const nativeHttpModule = isHttps ? https : http;
+  const httpModule = withRequestDeadline(
+    options.httpModule ?? nativeHttpModule,
+    requestTimeoutMs,
+  );
+
+  if (shouldFallbackToDefault(urlSegments, options)) {
+    return makeNodeTransport({ ...options, httpModule });
+  }
+
   const keepAlive = options.keepAlive ?? false;
   const agent = new nativeHttpModule.Agent({
     keepAlive,
     maxSockets: 30,
     timeout: 2000,
   });
-  const httpModule = options.httpModule ?? nativeHttpModule;
   const encoding: SelectedEncoding = hasZstdSupport() ? "zstd" : "gzip";
   const hostnameIsIPv6 = urlSegments.hostname.startsWith("[");
   const hostname = hostnameIsIPv6
@@ -185,7 +240,7 @@ export function shouldFallbackToDefault(
 type PerformRequestArgs = {
   request: TransportRequest;
   options: NodeTransportOptions;
-  httpModule: NonNullable<NodeTransportOptions["httpModule"]>;
+  httpModule: HttpModule;
   agent: http.Agent;
   encoding: SelectedEncoding;
   hostname: string;

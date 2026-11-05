@@ -19,6 +19,7 @@ import {
   type ReplayListItem,
   type ReplayListResponse,
   ReplayListResponseSchema,
+  type ReplayStringProjectId,
 } from "../../types/index.js";
 
 import { ApiError } from "../errors.js";
@@ -165,13 +166,14 @@ export type GetReplayRecordingSegmentsOptions = {
  */
 function normalizeReplayProjectId<
   T extends { project_id?: string | number | null },
->(replay: T): T {
+>(replay: T): T & ReplayStringProjectId {
   if (
     replay.project_id === null ||
     replay.project_id === undefined ||
     typeof replay.project_id === "string"
   ) {
-    return replay;
+    // Narrowing `project_id` doesn't narrow `T`.
+    return replay as T & ReplayStringProjectId;
   }
 
   return {
@@ -266,12 +268,32 @@ export async function getReplay(
 }
 
 /**
+ * Find the newest stored replay linked to a trace.
+ *
+ * Queries the replay index with `trace:{id}` over 90d, so only replays that
+ * were actually stored match. Org-wide searches send `project=-1` because
+ * omitting the project filter returns empty on large organizations.
+ */
+export async function findTraceReplay(
+  orgSlug: string,
+  traceId: string,
+  options: Pick<ListReplaysOptions, "projectSlugs"> = {},
+): Promise<ReplayListItem | undefined> {
+  const { data } = await listReplays(orgSlug, {
+    query: `trace:${traceId}`,
+    statsPeriod: "90d",
+    limit: 1,
+    projectSlugs: options.projectSlugs,
+    project: options.projectSlugs?.length ? undefined : "-1",
+  });
+  return data[0];
+}
+
+/**
  * Fetch a replay by replay ID, or by a trace ID linked on that replay.
  *
- * `GET /replays/{id}/` only matches replay primary keys. If that 404s, query
- * the replay index with `trace:{id}` over 90d and load the newest hit.
- * Org-wide searches send `project=-1` because omitting the project filter
- * returns empty on large organizations.
+ * `GET /replays/{id}/` only matches replay primary keys. If that 404s, load
+ * the newest replay linked to the ID as a trace ({@link findTraceReplay}).
  */
 export async function resolveReplay(
   orgSlug: string,
@@ -288,14 +310,7 @@ export async function resolveReplay(
     log.debug(
       `Replay ${replayOrTraceId} not found by id; searching by linked trace`,
     );
-    const { data } = await listReplays(orgSlug, {
-      query: `trace:${replayOrTraceId}`,
-      statsPeriod: "90d",
-      limit: 1,
-      projectSlugs: options.projectSlugs,
-      project: options.projectSlugs?.length ? undefined : "-1",
-    });
-    const match = data[0];
+    const match = await findTraceReplay(orgSlug, replayOrTraceId, options);
     if (!match) {
       throw error;
     }

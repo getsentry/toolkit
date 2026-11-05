@@ -94,6 +94,18 @@ Create an issue alert rule
 - `--owner <value> - Owner (team:user style value accepted by Sentry API)`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `status` | string | Rule status (active, disabled) |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `body` | object | Request body that would be sent (--dry-run) |
+| `project` | string | Project slug |
+
 **Examples:**
 
 ```bash
@@ -126,6 +138,17 @@ Delete an issue alert rule
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dryRun` | boolean | True when --dry-run made no change |
+| `deleted` | boolean | True when the rule was deleted |
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `project` | string | Project slug |
 
 **Examples:**
 
@@ -160,6 +183,28 @@ Edit an issue alert rule
 - `--filter <value>... - Filter object JSON (repeatable, or pass one JSON array)`
 - `-m, --filter-match <value> - Filter match mode: all or any`
 - `--owner <value> - Owner value (pass empty string to clear)`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `organizationId` | string |  |
+| `createdBy` | string \| null |  |
+| `dateCreated` | string |  |
+| `dateUpdated` | string |  |
+| `triggers` | object \| null |  |
+| `actionFilters` | array \| null |  |
+| `environment` | string \| null |  |
+| `config` | object |  |
+| `detectorIds` | array \| null |  |
+| `enabled` | boolean |  |
+| `lastTriggered` | string \| null |  |
+| `owner` | string \| null |  |
+| `org` | string | Organization slug |
+| `project` | string | Project slug |
+| `status` | string | Rule status (active, disabled) |
 
 **Examples:**
 
@@ -259,6 +304,17 @@ Create a metric alert rule
 - `--workflow <value>... - Alert (workflow) id to notify (repeatable or comma-separated)`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `status` | string | Rule status (active, disabled) |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `body` | object | Request body that would be sent (--dry-run) |
+
 **Examples:**
 
 ```bash
@@ -285,6 +341,16 @@ Delete a metric alert rule
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dryRun` | boolean | True when --dry-run made no change |
+| `deleted` | boolean | True when the rule was deleted |
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
 
 **Examples:**
 
@@ -318,6 +384,28 @@ Edit a metric alert rule
 - `--environment <value> - Environment value (pass empty string to clear)`
 - `--owner <value> - Owner value (pass empty string to clear)`
 - `--workflow <value>... - Replace connected alert (workflow) ids (repeatable or comma-separated; empty string disconnects all)`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `owner` | object \| null |  |
+| `createdBy` | string \| null |  |
+| `latestGroup` | object \| null |  |
+| `description` | string \| null |  |
+| `id` | string | Alert rule ID |
+| `projectId` | string \| null |  |
+| `name` | string | Alert rule name |
+| `type` | string |  |
+| `workflowIds` | array \| null |  |
+| `dateCreated` | string |  |
+| `dateUpdated` | string |  |
+| `dataSources` | array \| null |  |
+| `conditionGroup` | object \| null |  |
+| `config` | object |  |
+| `enabled` | boolean |  |
+| `org` | string | Organization slug |
+| `status` | string | Rule status (active, disabled) |
 
 **Examples:**
 

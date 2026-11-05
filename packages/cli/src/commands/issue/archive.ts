@@ -427,6 +427,6 @@ export const archiveCommand = buildCommand({
     });
 
     log.debug(`Archived ${updated.shortId}`);
-    yield new CommandOutput<SentryIssue>(updated);
+    yield new CommandOutput(updated);
   },
 });

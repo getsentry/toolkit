@@ -225,7 +225,9 @@ describe("401 retry behavior", () => {
     expect(oauthRequests).toHaveLength(1);
   });
 
-  test("preserves a final-attempt 401 without refreshing the token", async () => {
+  test("refreshes a 401 that arrives after the retries are spent", async () => {
+    // The refresh replay is outside the retry budget, so a 401 on the last
+    // retry still refreshes once.
     const requests: RequestLog[] = [];
     const body = { detail: "Unauthorized" };
     globalThis.fetch = createMockFetch(requests, (_req, requestCount) =>
@@ -236,8 +238,17 @@ describe("401 retry behavior", () => {
 
     expect(result.status).toBe(401);
     expect(result.body).toEqual(body);
-    expect(requests).toHaveLength(3);
-    expect(requests.filter((r) => r.url.includes("/oauth/token/"))).toEqual([]);
+    const apiRequests = requests.filter((r) =>
+      r.url.includes("/test-endpoint"),
+    );
+    expect(apiRequests).toHaveLength(4);
+    expect(apiRequests[3]).toMatchObject({
+      authorization: "Bearer refreshed-token",
+      isRetry: true,
+    });
+    expect(
+      requests.filter((r) => r.url.includes("/oauth/token/")),
+    ).toHaveLength(1);
   });
 
   test("does not retry for manual API tokens (no refresh token)", async () => {

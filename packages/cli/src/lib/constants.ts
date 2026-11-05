@@ -8,17 +8,6 @@ import { ConfigError } from "./errors.js";
 /** Build-time constant injected by esbuild/bun */
 declare const SENTRY_CLI_VERSION: string | undefined;
 
-/**
- * Build-time debug ID for sourcemap resolution, injected by esbuild.
- *
- * During the build, esbuild's `define` replaces this identifier with a
- * placeholder UUID string literal. After esbuild finishes, the build
- * script replaces the placeholder with the real debug ID (derived from
- * the minified JS + sourcemap content hash). The same-length swap keeps
- * sourcemap character positions valid.
- */
-declare const __SENTRY_DEBUG_ID__: string | undefined;
-
 /** Default Sentry SaaS hostname */
 export const DEFAULT_SENTRY_HOST = "sentry.io";
 
@@ -184,32 +173,3 @@ export function getUserAgent(): string {
  */
 export const SENTRY_CLI_DSN =
   "https://1188a86f3f8168f089450587b00bca66@o1.ingest.us.sentry.io/4510776311808000";
-
-/**
- * Register the build-time debug ID with the Sentry SDK's native discovery.
- *
- * The SDK reads `globalThis._sentryDebugIds` (a map of Error.stack → debugId)
- * during event processing to populate `debug_meta.images`, which the server
- * uses to match uploaded sourcemaps.
- *
- * Previously this was done by a runtime IIFE snippet prepended to the bundle
- * output by `injectDebugId()`. That broke ESM because the snippet appeared
- * before `import` declarations. Placing the same logic here — inside the
- * module, after all imports — is valid ESM and feeds the SDK's existing
- * mechanism directly.
- */
-if (typeof __SENTRY_DEBUG_ID__ !== "undefined") {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    // stack trace capture only
-    const stack = new Error().stack;
-    if (stack) {
-      // oxlint-disable-next-line typescript/no-explicit-any -- SDK reads this untyped global
-      const g = globalThis as any;
-      g._sentryDebugIds = g._sentryDebugIds || {};
-      g._sentryDebugIds[stack] = __SENTRY_DEBUG_ID__;
-    }
-  } catch (_) {
-    // Non-critical — sourcemap resolution degrades gracefully
-  }
-}

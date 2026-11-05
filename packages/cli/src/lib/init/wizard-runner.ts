@@ -14,12 +14,7 @@
 import { randomBytes } from "node:crypto";
 
 import { MastraClient } from "@mastra/client-js";
-import {
-  addBreadcrumb,
-  captureException,
-  getTraceData,
-  setTag,
-} from "@sentry/node";
+import { addBreadcrumb, getTraceData, setTag } from "@sentry/node";
 import { formatAuthHeader } from "../auth-header.js";
 import { formatBanner } from "../banner.js";
 import { CLI_VERSION } from "../constants.js";
@@ -82,6 +77,7 @@ import {
   precomputeSentryDetection,
   preReadCommonFiles,
 } from "./workflow-inputs.js";
+import { reportCliError } from "../error-reporting.js";
 
 type SpinState = { running: boolean };
 
@@ -923,7 +919,7 @@ async function resumeWithRecovery(
         });
         return recovered;
       }
-      captureException(err, {
+      reportCliError(err, {
         level: "warning",
         tags: {
           "wizard.stale_step_recovery": "failed",

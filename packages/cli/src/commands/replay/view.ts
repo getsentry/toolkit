@@ -51,7 +51,7 @@ import type {
   ReplayRelatedIssue,
   ReplayRelatedTrace,
 } from "../../types/index.js";
-import { ReplayViewOutputSchema } from "../../types/index.js";
+import { ReplayViewOutputSchema } from "../../generated/output-schemas/replay.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -274,10 +274,10 @@ function fetchRelatedReplayTraces(
         const meta = await getTraceMeta(org, traceId);
         return {
           traceId,
-          errorCount: meta.errors,
-          logCount: meta.logs,
-          performanceIssueCount: meta.performance_issues,
-          spanCount: meta.span_count,
+          errorCount: meta.errorsCount,
+          logCount: meta.logsCount,
+          performanceIssueCount: meta.performanceIssuesCount,
+          spanCount: meta.spansCount,
         };
       } catch (error) {
         log.debug(`Failed to fetch trace meta for ${traceId}`, error);
@@ -354,13 +354,8 @@ export const viewCommand = buildCommand({
   output: {
     human: formatReplayDetails,
     jsonTransform: (data: ReplayViewData, fields?: string[]) => {
-      const result: Record<string, unknown> = {
-        ...data.replay,
-        org: data.org,
-        activity: data.activity,
-        relatedIssues: data.relatedIssues,
-        relatedTraces: data.relatedTraces,
-      };
+      const { replay, ...outputFields } = data;
+      const result = { ...replay, ...outputFields };
       return fields && fields.length > 0
         ? filterFields(result, fields)
         : result;

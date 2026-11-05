@@ -23,8 +23,11 @@ import { initTimezone } from "./lib/timezone.js";
 
 /** What a binary runs: its application. */
 export type CliEntry = {
-  /** Load the application. Loading it registers its routes. */
-  readonly loadApp: () => Promise<{
+  /**
+   * Load the application for the CLI arguments, which may leave out the
+   * commands they don't run. Loading it registers its routes.
+   */
+  readonly loadApp: (args: readonly string[]) => Promise<{
     app: CliApplication;
     routes: CliRoutes;
   }>;
@@ -292,9 +295,7 @@ async function runMcpServer(
     process.stderr.write(`${error("Error:")} ${formatError(err)}\n`);
     process.exitCode = getExitCode(err);
   } finally {
-    const { scheduleForceExit } = await import("./lib/force-exit.js");
     const { closeGlobalDispatcher } = await import("./lib/close-dispatcher.js");
-    scheduleForceExit();
     await closeGlobalDispatcher();
   }
 }
@@ -306,7 +307,7 @@ export async function runCli(
   cliArgs: string[],
   entry: CliEntry,
 ): Promise<void> {
-  const { app, routes } = await entry.loadApp();
+  const { app, routes } = await entry.loadApp(cliArgs);
   if (isMcpInvocation(routes, cliArgs)) {
     await runMcpServer(app, cliArgs);
     return;
@@ -321,7 +322,7 @@ export async function runCli(
   const { runInteractiveLogin } = await import("./lib/interactive-login.js");
   const { recoverWithAutoLogin } = await import("./lib/auto-auth.js");
   const { getEnvLogLevel, setLogLevel } = await import("./lib/logger.js");
-  const { scheduleForceExit } = await import("./lib/force-exit.js");
+  const { reportLingeringHandles } = await import("./lib/lingering-handles.js");
   const { closeGlobalDispatcher } = await import("./lib/close-dispatcher.js");
   const { isTrialEligible, promptAndStartTrial } =
     await import("./lib/seer-trial.js");
@@ -718,13 +719,11 @@ export async function runCli(
   } finally {
     // Abort any pending version check to allow clean exit
     abortPendingVersionCheck();
-    // Arm the backstop first so it fires regardless of what the dispatcher
-    // teardown does. The unref'd timer only triggers if the loop is still
-    // referenced after a drained command, so it's a no-op on clean exits
-    // (a libuv refcount quirk on macOS keeps it worthwhile — see #1237).
-    scheduleForceExit();
-    // Release undici's pooled keep-alive sockets so the event loop can drain
-    // on its own — the root-cause fix. Never rejects (see close-dispatcher.ts).
+    // At debug level, name whatever still holds the event loop open once
+    // the command is done (see lingering-handles.ts and #1956).
+    reportLingeringHandles();
+    // Release undici's pooled sockets so the event loop can drain on its
+    // own. Never rejects (see close-dispatcher.ts).
     await closeGlobalDispatcher();
   }
 

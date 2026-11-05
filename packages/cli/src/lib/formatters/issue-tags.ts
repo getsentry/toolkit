@@ -3,9 +3,10 @@
  * as the whole distribution. JSON retains the original API response.
  */
 
+import { text } from "@sentry/toolkit-core/markdown";
 import type { GetOrganizationIssueTagResponse } from "@sentry/api";
 import { sanitize } from "./local.js";
-import { escapeMarkdownInline, renderMarkdown } from "./markdown.js";
+import { renderMarkdown } from "./markdown.js";
 import { fmtPct } from "./numbers.js";
 import { type Column, formatTable } from "./table.js";
 
@@ -29,7 +30,7 @@ export function formatIssueTags(tag: GetOrganizationIssueTagResponse): string {
   const values = tag.topValues ?? [];
   const total = tag.totalValues;
   const heading = renderMarkdown(
-    `### ${escapeMarkdownInline(sanitize(tag.key))} — top values\n\n` +
+    `### ${text(sanitize(tag.key))} — top values\n\n` +
       `Total retained events: ${total ?? "unknown"}\n`,
   );
   if (values.length === 0) {
@@ -40,7 +41,7 @@ export function formatIssueTags(tag: GetOrganizationIssueTagResponse): string {
     {
       header: "VALUE",
       value: (row) =>
-        escapeMarkdownInline(
+        text(
           sanitize(
             row.value === ""
               ? "(empty or missing)"

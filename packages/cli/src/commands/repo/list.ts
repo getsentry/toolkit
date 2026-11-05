@@ -10,39 +10,41 @@
  * - Bare org slug (e.g., sentry) - lists repos for that org
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import {
   listRepositories,
   listRepositoriesPaginated,
 } from "../../lib/api-client.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import {
   buildOrgListCommand,
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
-import type { OrgListConfig } from "../../lib/org-list.js";
-import {
-  type SentryRepository,
-  SentryRepositorySchema,
-} from "../../types/index.js";
+import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
+import type { SentryRepository } from "../../types/index.js";
+import { RepositoryListItemSchema } from "../../generated/output-schemas/repo.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "repo-list";
 
 /** Repository with its organization context for display */
-type RepositoryWithOrg = SentryRepository & { orgSlug?: string };
+type RepositoryWithOrg = WithOrg<SentryRepository>;
 
 /** Column definitions for the repository table. */
 const REPO_COLUMNS: Column<RepositoryWithOrg>[] = [
   { header: "ORG", value: (r) => r.orgSlug || "" },
-  { header: "NAME", value: (r) => escapeMarkdownCell(r.name) },
+  { header: "NAME", value: (r) => tableCell(r.name) },
   { header: "PROVIDER", value: (r) => r.provider.name },
   { header: "STATUS", value: (r) => r.status },
-  { header: "URL", value: (r) => escapeMarkdownCell(r.url || "") },
+  { header: "URL", value: (r) => tableCell(r.url || "") },
 ];
 
 /** Shared config that plugs into the org-list framework. */
-const repoListConfig: OrgListConfig<SentryRepository, RepositoryWithOrg> = {
+const repoListConfig: OrgListConfig<
+  SentryRepository,
+  RepositoryWithOrg,
+  typeof RepositoryListItemSchema
+> = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "repositories",
   commandPrefix: "sentry repo list",
@@ -58,7 +60,7 @@ const repoListConfig: OrgListConfig<SentryRepository, RepositoryWithOrg> = {
   searchesNames: true,
   displayTable: (repos: RepositoryWithOrg[]) =>
     formatTable(repos, REPO_COLUMNS),
-  schema: SentryRepositorySchema,
+  schema: RepositoryListItemSchema,
 };
 
 const docs: OrgListCommandDocs = {

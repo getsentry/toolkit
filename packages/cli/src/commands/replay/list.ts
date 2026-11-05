@@ -4,6 +4,7 @@
  * List Session Replays from Sentry.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import {
   isReplaySortValue,
@@ -23,11 +24,7 @@ import {
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { toSearchQueryError } from "../../lib/errors.js";
-import {
-  escapeMarkdownCell,
-  formatRelativeTime,
-  formatTable,
-} from "../../lib/formatters/index.js";
+import { formatRelativeTime, formatTable } from "../../lib/formatters/index.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import type { Column } from "../../lib/formatters/table.js";
@@ -45,6 +42,7 @@ import {
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   getReplayUserLabel,
@@ -61,11 +59,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  REPLAY_LIST_FIELDS,
-  type ReplayListItem,
-  ReplayListItemOutputSchema,
-} from "../../types/index.js";
+import { REPLAY_LIST_FIELDS, type ReplayListItem } from "../../types/index.js";
+import { ReplayListItemOutputSchema } from "../../generated/output-schemas/replay.js";
 
 type ListFlags = {
   readonly environment?: readonly string[];
@@ -137,8 +132,8 @@ function replayUserLabel(replay: ReplayListItem): string {
 const REPLAY_COLUMNS: Column<ReplayListItem>[] = [
   {
     header: "ID",
-    value: (replay) => `\`${replay.id.slice(0, 8)}\``,
-    minWidth: 8,
+    value: (replay) => `\`${replay.id}\``,
+    minWidth: 32,
     shrinkable: false,
   },
   {
@@ -165,7 +160,7 @@ const REPLAY_COLUMNS: Column<ReplayListItem>[] = [
   },
   {
     header: "USER",
-    value: (replay) => escapeMarkdownCell(replayUserLabel(replay)),
+    value: (replay) => tableCell(replayUserLabel(replay)),
     minWidth: 16,
     truncate: true,
   },
@@ -234,13 +229,13 @@ function formatReplayListHuman(result: ReplayListResult): string {
 function jsonTransformReplayList(
   result: ReplayListResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<ReplayListItem> {
   const items =
     fields && fields.length > 0
       ? result.replays.map((replay) => filterFields(replay, fields))
       : result.replays;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<ReplayListItem> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: result.hasPrev,

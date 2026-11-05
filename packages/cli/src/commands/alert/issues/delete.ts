@@ -18,6 +18,8 @@ import {
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
+import type { IssueAlertDeleteOutput } from "../../../output-schemas/alert.js";
+import { IssueAlertDeleteOutputSchema } from "../../../generated/output-schemas/alert.js";
 
 const USAGE_HINT =
   "sentry alert issues delete <org>/<project>/<rule-id-or-name>";
@@ -30,19 +32,11 @@ type DeleteFlags = {
   readonly fields?: string[];
 };
 
-type DeleteResult = {
-  org: string;
-  project: string;
-  ruleId: string;
-  name: string;
-  dryRun?: boolean;
-};
-
-function formatDeleted(r: DeleteResult): string {
+function formatDeleted(r: IssueAlertDeleteOutput): string {
   if (r.dryRun) {
-    return `Would delete issue alert rule '${r.name}' (id ${r.ruleId}) in ${r.org}/${r.project}.`;
+    return `Would delete issue alert rule '${r.name}' (id ${r.id}) in ${r.org}/${r.project}.`;
   }
-  return `Deleted issue alert rule '${r.name}' (id ${r.ruleId}) in ${r.org}/${r.project}.`;
+  return `Deleted issue alert rule '${r.name}' (id ${r.id}) in ${r.org}/${r.project}.`;
 }
 
 export const deleteCommand = buildDeleteCommand({
@@ -69,22 +63,7 @@ export const deleteCommand = buildDeleteCommand({
   },
   output: {
     human: formatDeleted,
-    jsonTransform: (r: DeleteResult) =>
-      r.dryRun
-        ? {
-            dryRun: true,
-            org: r.org,
-            project: r.project,
-            id: r.ruleId,
-            name: r.name,
-          }
-        : {
-            deleted: true,
-            org: r.org,
-            project: r.project,
-            id: r.ruleId,
-            name: r.name,
-          },
+    schema: IssueAlertDeleteOutputSchema,
   },
   parameters: {
     positional: {
@@ -127,12 +106,12 @@ export const deleteCommand = buildDeleteCommand({
     const name = rule.name;
     if (flags["dry-run"]) {
       yield new CommandOutput({
+        dryRun: true,
         org: target.org,
         project: target.project,
-        ruleId: rule.id,
+        id: rule.id,
         name,
-        dryRun: true,
-      } satisfies DeleteResult);
+      } satisfies IssueAlertDeleteOutput);
       return;
     }
 
@@ -149,10 +128,11 @@ export const deleteCommand = buildDeleteCommand({
 
     await deleteIssueAlertRule(target.org, rule.id);
     yield new CommandOutput({
+      deleted: true,
       org: target.org,
       project: target.project,
-      ruleId: rule.id,
+      id: rule.id,
       name,
-    } satisfies DeleteResult);
+    } satisfies IssueAlertDeleteOutput);
   },
 });

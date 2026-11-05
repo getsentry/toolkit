@@ -1,8 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import pkg from "../../package.json";
+
+/** The JavaScript files of a build: entry points and chunks. */
+const JS_OUTPUT_RE = /\.[cm]js$/;
 
 /**
  * Guards the dual-package (ESM + CJS) contract of the published `sentry`
@@ -26,10 +29,12 @@ describe("package.json exports (dual ESM/CJS)", () => {
     expect(dot.require?.types).toBe("./dist/index.d.cts");
   });
 
-  test("ships both bundles and their type declarations in files", () => {
+  test("ships every chunk of both formats and the type declarations", () => {
+    // The bundles are code-split: an entry point requires its chunks
+    // (`dist/chunk-*.cjs`, `dist/chunk-*.mjs`, `dist/lazy-*.cjs`)
     for (const f of [
-      "dist/index.mjs",
-      "dist/index.cjs",
+      "dist/*.mjs",
+      "dist/*.cjs",
       "dist/index.d.mts",
       "dist/index.d.cts",
     ]) {
@@ -39,6 +44,24 @@ describe("package.json exports (dual ESM/CJS)", () => {
 
   // Only meaningful after a build; skipped in a clean checkout where dist/ is absent.
   const built = existsSync(resolve("dist/index.mjs"));
+
+  test.runIf(built)("the package contains every chunk and no sourcemap", () => {
+    const [packed] = JSON.parse(
+      execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+        cwd: resolve("."),
+        encoding: "utf-8",
+        timeout: 60_000,
+      }),
+    ) as [{ files: { path: string }[] }];
+    const files = packed.files.map((file) => file.path);
+    const chunks = readdirSync(resolve("dist"))
+      .filter((name) => JS_OUTPUT_RE.test(name))
+      .map((name) => `dist/${name}`);
+
+    expect(chunks.length).toBeGreaterThan(10);
+    expect(files).toEqual(expect.arrayContaining(chunks));
+    expect(files.filter((path) => path.endsWith(".map"))).toEqual([]);
+  });
   test.runIf(built)("built ESM entry exposes createSentrySDK", () => {
     // Load the built bundle in Node, outside Vitest's source-map transformer.
     execFileSync(
@@ -66,12 +89,18 @@ describe("package.json exports (dual ESM/CJS)", () => {
   // guards against a regression (e.g. a new dep importing from bare "zlib",
   // which the shim must also cover).
   test.runIf(built)(
-    "built ESM entry has no link-fatal named zlib imports",
+    "built ESM chunks have no link-fatal named zlib imports",
     () => {
-      const src = readFileSync(resolve("dist/index.mjs"), "utf-8");
       const namedZlibImport =
         /import\s*\{[^}]*zstd[^}]*\}\s*from\s*["'](?:node:)?zlib["']/;
-      expect(src).not.toMatch(namedZlibImport);
+      const chunks = readdirSync(resolve("dist")).filter((name) =>
+        name.endsWith(".mjs"),
+      );
+      expect(chunks.length).toBeGreaterThan(1);
+      for (const chunk of chunks) {
+        const src = readFileSync(resolve(`dist/${chunk}`), "utf-8");
+        expect(src, chunk).not.toMatch(namedZlibImport);
+      }
     },
   );
 });

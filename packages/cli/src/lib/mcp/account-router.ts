@@ -18,7 +18,7 @@
  * mcp-core sends every request to that one server.
  */
 
-import { ConfigurationError } from "@sentry/toolkit-core/api-client/errors";
+import { ConfigurationError } from "@sentry/api/client";
 import type {
   CredentialRouter,
   RoutedCredential,

@@ -188,7 +188,7 @@ export const injectCommand = buildCommand({
     const modified = results.filter((r) => r.injected).length;
     const skipped = results.length - modified;
 
-    yield new CommandOutput<InjectCommandResult>({
+    yield new CommandOutput({
       modified,
       skipped,
       files: results,

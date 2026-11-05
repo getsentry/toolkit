@@ -1,4 +1,4 @@
-minVersion: "3.7.0"
+minVersion: "3.9.0"
 workspaces:
   packages/cli:
     changelog:
@@ -16,7 +16,19 @@ workspaces:
         style: Keep it concise and friendly for developers; avoid hype.
     versioning:
       policy: auto
-    preReleaseCommand: bash -c 'cd packages/cli && node --experimental-strip-types script/bump-version.ts --pre'
+      # The npm targets bump only packages/cli/package.json. These files ship
+      # with every CLI release and carry its version too. Craft writes them for
+      # the release and again for the next -dev version (postReleaseBump).
+      files:
+        # Published at the CLI's version; its bundle script fails on a mismatch.
+        - path: packages/mcp-server/package.json
+        # The plugin's version stays a plain release version, even on -dev builds.
+        - path: packages/cli/plugins/sentry-cli/.claude-plugin/plugin.json
+          stripPrerelease: true
+        # Skill frontmatter. The skill generator embeds the version too, but it
+        # needs a gitignored API schema that Craft's checkout doesn't have.
+        - path: packages/cli/plugins/sentry-cli/skills/sentry-cli/SKILL.md
+        - path: packages/cli/plugins/sentry-cli/skills/sentry-cli/references/*.md
     postReleaseBump: true
     releaseBranchPrefix: release/cli
     artifactProvider:
@@ -28,6 +40,7 @@ workspaces:
             - "npm-package"
             - "mcp-server-npm-package"
             - "vercel"
+            - "install-scripts"
     targets:
       - name: npm
         includeNames: '/^sentry-\d.*\.tgz$/'

@@ -35,6 +35,7 @@ import { fuzzyMatch } from "../lib/fuzzy.js";
 import { getCommandApiReferences, type RouteMap } from "../lib/introspect.js";
 import { filterByName, isGlobFilter } from "../lib/list-filter.js";
 import { getRoutes } from "../lib/route-registry.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 // ---------------------------------------------------------------------------
 // Output data types
@@ -441,7 +442,7 @@ type SchemaFlags = {
 export const schemaCommand = buildCommand({
   auth: false,
   docs: {
-    brief: "Browse the Sentry API schema",
+    brief: topLevelBrief("schema"),
     fullDescription:
       "Browse and search the Sentry API schema. Shows available resources, " +
       "operations, and endpoint details. Search by API concepts or CLI command paths; " +

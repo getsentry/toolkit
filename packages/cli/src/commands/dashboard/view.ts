@@ -37,6 +37,7 @@ import type {
 } from "../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "./arguments.js";
 import { withDashboardErrors } from "./resolve.js";
+import { DashboardViewOutputSchema } from "../../generated/output-schemas/dashboard.js";
 
 /** Default auto-refresh interval in seconds */
 const DEFAULT_REFRESH_INTERVAL = 60;
@@ -211,6 +212,7 @@ export const viewCommand = buildCommand({
   output: {
     human: createDashboardViewRenderer,
     jsonExclude: ["rendererPreference", "graphicsCap"],
+    schema: DashboardViewOutputSchema,
   },
   parameters: {
     positional: dashboardArguments({

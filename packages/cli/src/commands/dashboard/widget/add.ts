@@ -25,8 +25,6 @@ import {
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
   assignDefaultLayout,
-  type DashboardDetail,
-  type DashboardWidget,
   DEFAULT_WIDGET_TYPE,
   DISPLAY_TYPES,
   FALLBACK_LAYOUT,
@@ -38,6 +36,7 @@ import {
   WIDGET_TYPES,
   type WidgetLayoutFlags,
   type WidgetLayoutMode,
+  type DashboardWidgetChangeOutput,
 } from "../../../types/dashboard.js";
 import {
   type DashboardInput,
@@ -53,6 +52,7 @@ import {
   WIDGET_FIELD_COMPLETION,
   type WidgetQueryFlags,
 } from "../resolve.js";
+import { DashboardWidgetChangeOutputSchema } from "../../../generated/output-schemas/dashboard.js";
 
 /** What `--query`, `--sort`, and `--group-by` complete: a spans widget's by default. */
 const FIELD_COMPLETION: DatasetCompletion = {
@@ -67,12 +67,6 @@ type AddFlags = WidgetQueryFlags &
     readonly json: boolean;
     readonly fields?: string[];
   };
-
-type AddResult = {
-  dashboard: DashboardDetail;
-  widget: DashboardWidget;
-  url: string;
-};
 
 const USAGE_HINT =
   "sentry dashboard widget add <org>/ <dashboard> <title> --display <type>";
@@ -172,6 +166,7 @@ export const addCommand = buildCommand({
   },
   output: {
     human: formatWidgetAdded,
+    schema: DashboardWidgetChangeOutputSchema,
   },
   parameters: {
     positional: boundArguments({
@@ -378,7 +373,7 @@ export const addCommand = buildCommand({
       dashboard: updated,
       widget: newWidget,
       url,
-    } as AddResult);
+    } satisfies DashboardWidgetChangeOutput);
     return { hint: `Dashboard: ${url}` };
   },
 });

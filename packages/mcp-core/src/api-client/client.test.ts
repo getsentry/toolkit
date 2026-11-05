@@ -16,7 +16,7 @@ import {
   ApiRateLimitError,
   ApiServerError,
   ApiValidationError,
-} from "@sentry/toolkit-core/api-client/errors";
+} from "@sentry/api/client";
 import { z } from "zod";
 
 describe("validateEvents error bodies", () => {
@@ -1567,6 +1567,41 @@ describe("transient 5xx retry", () => {
 
     await expect(promise).rejects.toBeInstanceOf(ApiServerError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a write Sentry marks idempotent", async () => {
+    const mapped = () =>
+      new Response(
+        JSON.stringify({
+          created: 1,
+          updated: 0,
+          errors: 0,
+          mappings: [{ stackRoot: "", sourceRoot: "", status: "created" }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(serviceUnavailable())
+      .mockResolvedValueOnce(mapped());
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    // `POST /code-mappings/bulk/` carries `x-sentry-idempotent` in the schema.
+    const promise = apiService.linkProjectRepository({
+      organizationSlug: "my-org",
+      projectSlug: "my-project",
+      repository: "my-org/my-repo",
+    });
+    await vi.runAllTimersAsync();
+
+    await expect(promise).resolves.toMatchObject({ created: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("POST");
   });
 
   it("returns an allowed 5xx as-is once the transport stops retrying", async () => {

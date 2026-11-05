@@ -22,6 +22,7 @@ import {
   ParamReason,
   ParamRegionUrl,
 } from "../../schema";
+import { ApiClientError, ApiValidationError } from "@sentry/api/client";
 import { logIssue } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
@@ -574,9 +575,22 @@ function buildIgnoreUpdate(
 }
 
 type ReasonCommentResult =
-  | { posted: true }
+  | { posted: true; duplicate?: boolean }
   | { posted: false; skipped: true }
   | { posted: false; error: string };
+
+/**
+ * Sentry rejects a note whose text the same user already posted on the issue.
+ * That happens when a client retries `update_issue` with the same `reason`;
+ * the comment already exists, so the desired outcome is already achieved.
+ */
+function isDuplicateCommentError(error: unknown): boolean {
+  return (
+    error instanceof ApiValidationError &&
+    error.status === 400 &&
+    error.message.toLowerCase().includes("already posted that comment")
+  );
+}
 
 async function tryPostReasonComment(
   apiService: {
@@ -601,7 +615,12 @@ async function tryPostReasonComment(
     });
     return { posted: true };
   } catch (error) {
-    logIssue(error);
+    if (isDuplicateCommentError(error)) {
+      return { posted: true, duplicate: true };
+    }
+    if (!(error instanceof ApiClientError)) {
+      logIssue(error);
+    }
     return {
       posted: false,
       error: error instanceof Error ? error.message : String(error),
@@ -615,6 +634,9 @@ function formatReasonCommentLine(
 ): string {
   if (!reason || ("skipped" in result && result.skipped)) {
     return "";
+  }
+  if (result.posted && result.duplicate) {
+    return `- **Comment already present**: "${reason}"\n`;
   }
   if (result.posted) {
     return `- **Comment posted**: "${reason}"\n`;
@@ -650,7 +672,7 @@ export default defineTool({
     "- Provide `issueUrl` or `organizationSlug` + `issueId`.",
     "- At least one of `status` or `assignedTo` is required.",
     "- Omit `assignedTo` to leave assignment unchanged. Pass `null` to unassign; otherwise use `user:ID` or `team:ID_OR_SLUG`.",
-    "- Use `execute_sentry_tool(name='whoami', arguments={})` to find your user ID for self-assignment.",
+    "- Use the `whoami` tool to find your user ID for self-assignment.",
     "- Status values: `resolved`, `resolvedInNextRelease`, `unresolved`, `ignored`.",
     "- `status='ignored'` defaults to `ignoreMode='untilEscalating'`.",
     "- Ignore modes: `untilEscalating`, `forever`, `forDuration`, `untilOccurrenceCount`, `untilUserCount`.",
