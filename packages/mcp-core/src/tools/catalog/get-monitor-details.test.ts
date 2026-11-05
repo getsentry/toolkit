@@ -133,6 +133,32 @@ describe("get_monitor_details", () => {
     `);
   });
 
+  it("returns a null owner when Sentry has no usable identity", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/monitors/nightly-import/",
+        () =>
+          HttpResponse.json({
+            id: "4509100000000001",
+            slug: "nightly-import",
+            name: "Nightly Import",
+            status: "ok",
+            project: { id: "4509109104082945", slug: "cloudflare-mcp" },
+            environments: [],
+            owner: { type: "user" },
+            config: { schedule_type: "crontab", schedule: "0 2 * * *" },
+          }),
+      ),
+    );
+
+    const output = getOutput(
+      await getMonitorDetails.handler(baseParams, context),
+    );
+
+    expect(output.monitor.owner).toBeNull();
+    expect(output.monitor.ownerEmail).toBeNull();
+  });
+
   it("does not leak backend-only monitor fields", async () => {
     mswServer.use(
       http.get(

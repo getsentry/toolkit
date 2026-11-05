@@ -88,6 +88,11 @@ export const getMonitorDetailsOutputSchema = z.object({
     ),
 });
 
+function formatOwner(owner: Monitor["owner"]): string | null {
+  const name = owner ? formatActor(owner) : null;
+  return name === "unknown" ? null : name;
+}
+
 function formatProject(monitor: Monitor): string | null {
   if (!monitor.project) {
     return null;
@@ -348,7 +353,7 @@ export default defineTool({
         project,
         status: monitor.status ?? null,
         type: monitor.type ?? null,
-        owner: monitor.owner ? formatActor(monitor.owner) : null,
+        owner: formatOwner(monitor.owner),
         ownerEmail:
           monitor.owner && typeof monitor.owner === "object"
             ? monitor.owner.email || null
