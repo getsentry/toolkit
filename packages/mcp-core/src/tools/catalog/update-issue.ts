@@ -323,7 +323,9 @@ export const updateIssueOutputSchema = z.object({
   issueUrl: z.string(),
   updated: z
     .boolean()
-    .describe("False when the issue already matched the requested state."),
+    .describe(
+      "Whether issue state changed. A posted reason comment is reported in reasonComment, not here.",
+    ),
   changes: z.object({
     status: valueChangeSchema.nullable(),
     ignoreBehavior: z
@@ -899,37 +901,39 @@ export default defineTool({
       effect = updatedIgnoreState.message;
     }
 
+    const changes: UpdateIssueOutput["changes"] = {
+      status: statusChanged
+        ? { from: currentStatusDisplay, to: updatedStatusDisplay }
+        : null,
+      ignoreBehavior:
+        showIgnoreChange && updatedIgnoreState
+          ? {
+              from:
+                currentIgnoreState && ignoreBehaviorChanged
+                  ? currentIgnoreState.behavior
+                  : null,
+              to: updatedIgnoreState.behavior,
+            }
+          : null,
+      assignedTo:
+        updateAssignedTo !== undefined && assignmentChanged
+          ? {
+              from: formatAssignedTo(currentIssue.assignedTo ?? null),
+              to:
+                params.assignedTo === "me"
+                  ? "You"
+                  : formatAssignedTo(updatedIssue.assignedTo ?? null),
+            }
+          : null,
+    };
+
     return structuredResult({
       organizationSlug: orgSlug,
       issueId: updatedIssue.shortId,
       title: updatedIssue.title,
       issueUrl: apiService.getIssueUrl(orgSlug, updatedIssue.shortId),
-      updated: true,
-      changes: {
-        status: statusChanged
-          ? { from: currentStatusDisplay, to: updatedStatusDisplay }
-          : null,
-        ignoreBehavior:
-          showIgnoreChange && updatedIgnoreState
-            ? {
-                from:
-                  currentIgnoreState && ignoreBehaviorChanged
-                    ? currentIgnoreState.behavior
-                    : null,
-                to: updatedIgnoreState.behavior,
-              }
-            : null,
-        assignedTo:
-          updateAssignedTo !== undefined && assignmentChanged
-            ? {
-                from: formatAssignedTo(currentIssue.assignedTo ?? null),
-                to:
-                  params.assignedTo === "me"
-                    ? "You"
-                    : formatAssignedTo(updatedIssue.assignedTo ?? null),
-              }
-            : null,
-      },
+      updated: Object.values(changes).some(Boolean),
+      changes,
       current: getCurrentState(updatedIssue, updatedIgnoreState),
       effect,
       reasonComment: getReasonComment(params.reason, commentResult),

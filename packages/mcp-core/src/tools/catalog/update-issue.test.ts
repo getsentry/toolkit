@@ -109,6 +109,42 @@ describe("update_issue", () => {
     expect(serialized).not.toContain("must-not-leak");
   });
 
+  it("reports updated=false when the PUT returns the issue unchanged", async () => {
+    const unchangedIssue = createIssue();
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(unchangedIssue),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(unchangedIssue),
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.changes).toEqual({
+      status: null,
+      ignoreBehavior: null,
+      assignedTo: null,
+    });
+    expect(output.current.status).toBe("unresolved");
+    expect(output.effect).toBeNull();
+  });
+
   it("updates issue assignment", async () => {
     const result = await updateIssue.handler(
       {

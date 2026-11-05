@@ -8677,7 +8677,7 @@
         },
         "updated": {
           "type": "boolean",
-          "description": "False when the issue already matched the requested state."
+          "description": "Whether issue state changed. A posted reason comment is reported in reasonComment, not here."
         },
         "changes": {
           "type": "object",
