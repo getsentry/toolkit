@@ -52,7 +52,7 @@ const latestBaseFixture = {
 };
 
 describe("get_latest_base_snapshot", () => {
-  it("returns curated markdown from latest base build", async () => {
+  it("returns grouped structured images from latest base build", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry/preprodartifacts/snapshots/latest-base/",
@@ -86,23 +86,31 @@ describe("get_latest_base_snapshot", () => {
           "platform": "ios",
         },
         "appId": "com.emergetools.hackernews",
-        "images": [
+        "groups": [
           {
-            "description": "Home screen view",
-            "displayName": "Home Screen",
             "group": "Main",
-            "imageFileName": "snapshots-iphone/main_home_screen.png",
+            "images": [
+              {
+                "description": "Home screen view",
+                "displayName": "Home Screen",
+                "imageFileName": "snapshots-iphone/main_home_screen.png",
+              },
+            ],
           },
           {
-            "description": "Settings page",
-            "displayName": "Settings",
             "group": "Settings",
-            "imageFileName": "snapshots-iphone/settings_page.png",
+            "images": [
+              {
+                "description": "Settings page",
+                "displayName": "Settings",
+                "imageFileName": "snapshots-iphone/settings_page.png",
+              },
+            ],
           },
         ],
         "organizationSlug": "sentry",
         "responseNotes": [
-          "To view a specific image, use \`get_sentry_resource(url="https://sentry.sentry.io/preprod/snapshots/232800/?selectedSnapshot=<image_file_name>")\`.",
+          "Use the Sentry tool \`get_snapshot_image(organizationSlug='sentry', snapshotId='232800', imageIdentifier='<imageFileName>')\` to view one image; pass its imageFileName as imageIdentifier.",
         ],
         "snapshotId": "232800",
         "totalImages": 2,
@@ -118,6 +126,7 @@ describe("get_latest_base_snapshot", () => {
     expect(serialized).not.toContain("storage.internal.example");
     expect(serialized).not.toContain("project_id");
     expect(serialized).not.toContain("app_info");
+    expect(serialized).not.toContain("12345");
   });
 
   it("returns every image in a large latest-base snapshot", async () => {
@@ -166,10 +175,80 @@ describe("get_latest_base_snapshot", () => {
     const content = getContent(result);
 
     expect(content.totalImages).toBe(3);
-    expect(content.images.map((image) => image.imageFileName)).toEqual([
+    expect(
+      content.groups.flatMap((group) =>
+        group.images.map((image) => image.imageFileName),
+      ),
+    ).toEqual([
       "snapshots-iphone-17e/test_CoffeeProductCards.swift_FeaturedProductCard_Kenya.png",
       "snapshots-iphone-17e/test_CoffeeProductCards.swift_FeaturedProductCard_Ethiopia.png",
       "snapshots-iphone-17-pro-max/test_CoffeeProductCards.swift_FeaturedProductCard_Kenya.png",
+    ]);
+  });
+
+  it("skips non-object image entries and buckets ungrouped images", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry/preprodartifacts/snapshots/latest-base/",
+        () =>
+          HttpResponse.json({
+            ...latestBaseFixture,
+            images: [
+              null,
+              "snapshots-iphone/bogus.png",
+              ["snapshots-iphone/nested.png"],
+              { image_file_name: "snapshots-iphone/ungrouped.png" },
+            ],
+          }),
+        { once: true },
+      ),
+    );
+
+    const result = await getLatestBaseSnapshot.handler(
+      {
+        organizationSlug: "sentry",
+        appId: "com.emergetools.hackernews",
+        branch: null,
+        project: null,
+        regionUrl: null,
+      },
+      getServerContext(),
+    );
+    const content = getContent(result);
+    expect(content.totalImages).toBe(1);
+    expect(content.groups).toEqual([
+      {
+        group: null,
+        images: [{ imageFileName: "snapshots-iphone/ungrouped.png" }],
+      },
+    ]);
+  });
+
+  it("falls back to the snapshot URL when get_snapshot_image is unavailable", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry/preprodartifacts/snapshots/latest-base/",
+        () => HttpResponse.json(latestBaseFixture),
+        { once: true },
+      ),
+    );
+
+    const result = await getLatestBaseSnapshot.handler(
+      {
+        organizationSlug: "sentry",
+        appId: "com.emergetools.hackernews",
+        branch: null,
+        project: null,
+        regionUrl: null,
+      },
+      {
+        ...getServerContext(),
+        availableToolNames: new Set(),
+        directToolNames: new Set(),
+      },
+    );
+    expect(getContent(result).responseNotes).toEqual([
+      'Use the Sentry tool `get_sentry_resource(url="https://sentry.sentry.io/preprod/snapshots/232800/?selectedSnapshot=<URL-encoded imageFileName>")` to view one image; pass its imageFileName as imageIdentifier.',
     ]);
   });
 
@@ -305,7 +384,7 @@ describe("get_latest_base_snapshot", () => {
     );
     const content = getContent(result);
     expect(content.totalImages).toBe(0);
-    expect(content.images).toEqual([]);
+    expect(content.groups).toEqual([]);
     expect(content.vcs).toBeNull();
     expect(content.app).toEqual({ name: "Test", platform: null });
   });

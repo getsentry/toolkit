@@ -5,14 +5,23 @@ import type { SnapshotImageEntry, SnapshotVcsInfo } from "./formatting";
 // responses are untyped, so nothing here spreads upstream objects into
 // structuredContent.
 
-export const snapshotImageSchema = z.object({
+const snapshotImageSchema = z.object({
   imageFileName: z.string().optional(),
   displayName: z.string().optional(),
-  group: z.string().optional(),
   description: z.string().optional(),
 });
 
 type SnapshotImage = z.infer<typeof snapshotImageSchema>;
+
+/** Images bucketed by their snapshot group; ungrouped images use null. */
+export const snapshotImageGroupsSchema = z.array(
+  z.object({
+    group: z.string().nullable(),
+    images: z.array(snapshotImageSchema),
+  }),
+);
+
+type SnapshotImageGroups = z.infer<typeof snapshotImageGroupsSchema>;
 
 export const snapshotVcsSchema = z.object({
   repoName: z.string().optional(),
@@ -39,13 +48,40 @@ function withoutUndefined<T extends Record<string, unknown>>(value: T): T {
   ) as T;
 }
 
-export function toSnapshotImage(image: SnapshotImageEntry): SnapshotImage {
+/** Keeps only object entries; snapshot API arrays are untyped. */
+export function snapshotImageEntries(value: unknown): SnapshotImageEntry[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (entry): entry is SnapshotImageEntry =>
+          !!entry && typeof entry === "object" && !Array.isArray(entry),
+      )
+    : [];
+}
+
+function toSnapshotImage(image: SnapshotImageEntry): SnapshotImage {
   return withoutUndefined({
     imageFileName: snapshotString(image.image_file_name),
     displayName: snapshotString(image.display_name),
-    group: snapshotString(image.group),
     description: snapshotString(image.description),
   });
+}
+
+/** Buckets images by group, keeping first-seen order. */
+export function toSnapshotImageGroups(
+  images: SnapshotImageEntry[],
+): SnapshotImageGroups {
+  const groups = new Map<string | null, SnapshotImage[]>();
+  for (const image of images) {
+    const group = snapshotString(image.group) ?? null;
+    const mapped = toSnapshotImage(image);
+    const existing = groups.get(group);
+    if (existing) {
+      existing.push(mapped);
+    } else {
+      groups.set(group, [mapped]);
+    }
+  }
+  return [...groups].map(([group, entries]) => ({ group, images: entries }));
 }
 
 export function toSnapshotVcs(

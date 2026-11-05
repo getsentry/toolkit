@@ -2,21 +2,43 @@ import { z } from "zod";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
+import { formatToolCallInstruction } from "../../internal/tool-helpers/tool-call-formatting";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId } from "../../utils/slug-validation";
-import type {
-  SnapshotImageEntry,
-  SnapshotVcsInfo,
-} from "../support/snapshots/formatting";
+import type { SnapshotVcsInfo } from "../support/snapshots/formatting";
 import {
-  snapshotImageSchema,
+  snapshotImageEntries,
+  snapshotImageGroupsSchema,
   snapshotString,
   snapshotVcsSchema,
-  toSnapshotImage,
+  toSnapshotImageGroups,
   toSnapshotVcs,
 } from "../support/snapshots/structured";
+
+interface InstructionContext {
+  experimentalMode: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
+}
+
+function viewImageInstruction(
+  args: { organizationSlug: string; snapshotId: string; snapshotUrl: string },
+  context: InstructionContext,
+): string {
+  return `${formatToolCallInstruction({
+    toolName: "get_snapshot_image",
+    arguments: {
+      organizationSlug: args.organizationSlug,
+      snapshotId: args.snapshotId,
+      imageIdentifier: "<imageFileName>",
+    },
+    showArguments: true,
+    ...context,
+    fallbackInstruction: `Use the Sentry tool \`get_sentry_resource(url="${args.snapshotUrl}?selectedSnapshot=<URL-encoded imageFileName>")\``,
+  })} to view one image; pass its imageFileName as imageIdentifier.`;
+}
 
 export const getLatestBaseSnapshotOutputSchema = z.object({
   organizationSlug: z.string(),
@@ -31,7 +53,7 @@ export const getLatestBaseSnapshotOutputSchema = z.object({
     .nullable(),
   vcs: snapshotVcsSchema.nullable(),
   totalImages: z.number(),
-  images: z.array(snapshotImageSchema),
+  groups: snapshotImageGroupsSchema,
   responseNotes: z.array(z.string()),
 });
 
@@ -39,41 +61,49 @@ export default defineTool({
   name: "get_latest_base_snapshot",
   skills: ["inspect"],
   requiredScopes: ["project:read"],
-  description: [
-    "Get the latest UI screenshots/images for an app from the preprod snapshot system.",
-    "",
-    "This is the primary tool for retrieving app screenshots.",
-    "",
-    "Use this tool when you need to:",
-    "- Get screenshots, screens, golden images, or reference images for an app",
-    "- Find what the current UI looks like (latest screenshots from the main/default branch)",
-    "- List available snapshots or browse images before requesting specific ones",
-    "- Look up dark mode, light mode, or other variant screenshots",
-    "- Understand what baseline images exist when investigating snapshot test or visual regression CI failures",
-    "",
-    "The appId parameter is the app identifier (e.g. 'sentry-frontend', 'com.emergetools.hackernews').",
-    "Returns compact image metadata (imageFileName, displayName, group, description) for every image.",
-    "",
-    "<examples>",
-    "### Get the latest screenshots for an app",
-    "",
-    "```",
-    'get_latest_base_snapshot(organizationSlug="sentry", appId="sentry-frontend", project="frontend")',
-    "```",
-    "",
-    "### Get the latest screenshots for a specific branch",
-    "",
-    "```",
-    'get_latest_base_snapshot(organizationSlug="sentry", appId="sentry-frontend", project="frontend", branch="main")',
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- The response includes compact metadata per image. Scan the list to find images matching what you need (e.g. filter by group or name containing 'button').",
-    "- To view a specific image, use get_sentry_resource(url='<snapshot_url>?selectedSnapshot=<image_file_name>').",
-    "- If you need to investigate a specific snapshot comparison, use get_sentry_resource with the snapshot URL.",
-    "</hints>",
-  ].join("\n"),
+  description: ({ experimentalMode, availableToolNames, directToolNames }) =>
+    [
+      "Get the latest UI screenshots/images for an app from the preprod snapshot system.",
+      "",
+      "This is the primary tool for retrieving app screenshots.",
+      "",
+      "Use this tool when you need to:",
+      "- Get screenshots, screens, golden images, or reference images for an app",
+      "- Find what the current UI looks like (latest screenshots from the main/default branch)",
+      "- List available snapshots or browse images before requesting specific ones",
+      "- Look up dark mode, light mode, or other variant screenshots",
+      "- Understand what baseline images exist when investigating snapshot test or visual regression CI failures",
+      "",
+      "The appId parameter is the app identifier (e.g. 'sentry-frontend', 'com.emergetools.hackernews').",
+      "Returns compact metadata (imageFileName, displayName, description) for every image, bucketed by group.",
+      "",
+      "<examples>",
+      "### Get the latest screenshots for an app",
+      "",
+      "```",
+      'get_latest_base_snapshot(organizationSlug="sentry", appId="sentry-frontend", project="frontend")',
+      "```",
+      "",
+      "### Get the latest screenshots for a specific branch",
+      "",
+      "```",
+      'get_latest_base_snapshot(organizationSlug="sentry", appId="sentry-frontend", project="frontend", branch="main")',
+      "```",
+      "</examples>",
+      "",
+      "<hints>",
+      "- The response includes compact metadata per image. Scan the groups to find images matching what you need (e.g. filter by group or name containing 'button').",
+      `- ${viewImageInstruction(
+        {
+          organizationSlug: "<organizationSlug>",
+          snapshotId: "<snapshotId>",
+          snapshotUrl: "<url>",
+        },
+        { experimentalMode, availableToolNames, directToolNames },
+      )}`,
+      "- If you need to investigate a specific snapshot comparison, use get_sentry_resource with the snapshot URL.",
+      "</hints>",
+    ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     appId: z
@@ -128,9 +158,7 @@ export default defineTool({
     })) as Record<string, unknown>;
 
     const snapshotId = snapshotString(data.id) ?? null;
-    const images = Array.isArray(data.images)
-      ? (data.images as SnapshotImageEntry[])
-      : [];
+    const images = snapshotImageEntries(data.images);
     const appInfo = data.app_info as
       | { name?: unknown; platform?: unknown }
       | null
@@ -154,12 +182,24 @@ export default defineTool({
           : null,
       vcs: toSnapshotVcs(data.vcs_info as SnapshotVcsInfo | undefined),
       totalImages: images.length,
-      images: images.map(toSnapshotImage),
-      responseNotes: [
-        snapshotUrl
-          ? `To view a specific image, use \`get_sentry_resource(url="${snapshotUrl}?selectedSnapshot=<image_file_name>")\`.`
-          : "To view a specific image, use `get_sentry_resource` with the snapshot URL + `?selectedSnapshot=<image_file_name>`.",
-      ],
+      groups: toSnapshotImageGroups(images),
+      responseNotes:
+        snapshotId && snapshotUrl
+          ? [
+              viewImageInstruction(
+                {
+                  organizationSlug: params.organizationSlug,
+                  snapshotId,
+                  snapshotUrl,
+                },
+                {
+                  experimentalMode: context.experimentalMode ?? false,
+                  availableToolNames: context.availableToolNames,
+                  directToolNames: context.directToolNames,
+                },
+              ),
+            ]
+          : [],
     });
   },
 });
