@@ -33,8 +33,8 @@ const sampleAnalysisSchema = z.object({
   topFrames: z
     .array(
       z.object({
-        function: z.string(),
-        location: z.string(),
+        function: nullableString,
+        location: nullableString,
         isApplication: z.boolean(),
         count: z
           .number()
@@ -151,16 +151,17 @@ function buildSampleAnalysis(
       if (!frame || (options.focusOnUserCode && !frame.in_app)) {
         return [];
       }
-      const functionName = frame.function ?? frame.raw_function ?? "unknown";
+      const functionName = frame.function || frame.raw_function || null;
       return [
         {
-          function: frame.class_name
-            ? `${frame.class_name}.${functionName}`
-            : functionName,
+          function:
+            frame.class_name && functionName
+              ? `${frame.class_name}.${functionName}`
+              : functionName,
           location:
             frame.filename && frame.lineno
               ? `${frame.filename}:${frame.lineno}`
-              : frame.module || frame.abs_path || "unknown",
+              : frame.module || frame.abs_path || null,
           isApplication: frame.in_app,
           count,
         },

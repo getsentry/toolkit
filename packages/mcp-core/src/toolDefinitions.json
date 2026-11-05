@@ -5952,10 +5952,10 @@
                     "type": "object",
                     "properties": {
                       "function": {
-                        "type": "string"
+                        "type": ["string", "null"]
                       },
                       "location": {
-                        "type": "string"
+                        "type": ["string", "null"]
                       },
                       "isApplication": {
                         "type": "boolean"

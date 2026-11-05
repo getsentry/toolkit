@@ -179,7 +179,7 @@ describe("get_profile_details", () => {
         samples: {
           topFrames: expect.arrayContaining([
             {
-              function: "unknown",
+              function: null,
               location: "main.py:42",
               isApplication: true,
               count: 3,
@@ -226,6 +226,7 @@ describe("get_profile_details", () => {
               "arguments": {
                 "organizationSlug": "sentry-mcp-evals",
                 "projectSlugOrId": "backend",
+                "regionUrl": "https://us.sentry.io",
                 "transactionName": "MainActivity",
               },
               "reason": "Legacy profiles have no sample data; the aggregated transaction flamegraph shows hot paths.",
@@ -246,6 +247,64 @@ describe("get_profile_details", () => {
       });
 
       expect(result.structuredContent.suggestedActions).toEqual([]);
+    });
+
+    it("passes the resolved regionUrl to the get_profile suggestion", async () => {
+      mockLegacyProfile(legacyProfileBody());
+
+      // regionUrl is null in the params; the handler resolves it from the
+      // organization, and get_profile only reads params.regionUrl.
+      const result = await getProfileDetails.handler(
+        legacyProfileParams,
+        baseContext,
+      );
+
+      expect(result.structuredContent.suggestedActions).toEqual([
+        expect.objectContaining({
+          toolName: "get_profile",
+          arguments: {
+            organizationSlug: "sentry-mcp-evals",
+            projectSlugOrId: "backend",
+            transactionName: "MainActivity",
+            regionUrl: "https://us.sentry.io",
+          },
+        }),
+      ]);
+    });
+
+    it("wraps the get_profile suggestion when it is only in the catalog", async () => {
+      mockLegacyProfile(legacyProfileBody());
+
+      const result = await getProfileDetails.handler(legacyProfileParams, {
+        ...baseContext,
+        availableToolNames: new Set([
+          "get_profile_details",
+          "get_profile",
+          "execute_sentry_tool",
+        ]),
+        directToolNames: new Set([
+          "get_profile_details",
+          "execute_sentry_tool",
+        ]),
+      });
+
+      expect(result.structuredContent.suggestedActions).toEqual([
+        {
+          type: "tool_call",
+          toolName: "execute_sentry_tool",
+          arguments: {
+            name: "get_profile",
+            arguments: {
+              organizationSlug: "sentry-mcp-evals",
+              projectSlugOrId: "backend",
+              transactionName: "MainActivity",
+              regionUrl: "https://us.sentry.io",
+            },
+          },
+          reason:
+            "Legacy profiles have no sample data; the aggregated transaction flamegraph shows hot paths.",
+        },
+      ]);
     });
 
     it("omits the get_profile suggestion without a transaction name", async () => {

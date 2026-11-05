@@ -389,6 +389,7 @@ export default defineTool({
                 organizationSlug: resolved.organizationSlug,
                 projectSlugOrId: projectSlug,
                 transactionName,
+                ...(regionUrl ? { regionUrl } : {}),
               },
               reason:
                 "Legacy profiles have no sample data; the aggregated transaction flamegraph shows hot paths.",
