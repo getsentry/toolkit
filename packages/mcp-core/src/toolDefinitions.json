@@ -7878,6 +7878,30 @@
               "assignedTo": {
                 "type": ["string", "null"]
               },
+              "assigneeEmail": {
+                "type": ["string", "null"]
+              },
+              "reporter": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": ["string", "null"]
+                      },
+                      "email": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "required": ["name", "email"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Who submitted a feedback issue. Null for other issues."
+              },
               "firstSeen": {
                 "type": ["string", "null"]
               },
@@ -7904,6 +7928,8 @@
               "occurrences",
               "usersImpacted",
               "assignedTo",
+              "assigneeEmail",
+              "reporter",
               "firstSeen",
               "lastSeen",
               "culprit",

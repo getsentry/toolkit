@@ -3,6 +3,7 @@ import {
   createPerformanceIssue,
 } from "@sentry/mcp-server-mocks";
 import { describe, expect, it } from "vitest";
+import { IssueSchema } from "../../../api-client/schema";
 import {
   type BuildIssueResultsParams,
   buildIssueResults,
@@ -48,18 +49,13 @@ describe("buildIssueResults", () => {
     } as Parameters<typeof createFeedbackIssue>[0]);
 
     const structuredContent = build({
-      issues: [feedbackIssue],
+      // Parse like the API client does so the reporter fields must survive it.
+      issues: [IssueSchema.parse(feedbackIssue)],
       inputQuery: "show me user feedback",
     });
 
     const serialized = JSON.stringify(structuredContent);
-    for (const leaked of [
-      "must-not-leak",
-      "reporter@example.com",
-      "Reporter",
-    ]) {
-      expect(serialized).not.toContain(leaked);
-    }
+    expect(serialized).not.toContain("must-not-leak");
     expect(structuredContent).toMatchInlineSnapshot(`
       {
         "executedSearch": {
@@ -72,12 +68,17 @@ describe("buildIssueResults", () => {
         "issues": [
           {
             "assignedTo": null,
+            "assigneeEmail": null,
             "culprit": "User Feedback Widget",
             "firstSeen": "2025-01-01T00:00:00Z",
             "issueCategory": "feedback",
             "lastSeen": "2025-01-01T00:00:00Z",
             "occurrences": 1,
             "projectSlug": "CLOUDFLARE-MCP",
+            "reporter": {
+              "email": "reporter@example.com",
+              "name": "Reporter",
+            },
             "seerActionability": null,
             "shortId": "PROJ-FB-1",
             "status": "unresolved",
@@ -134,18 +135,21 @@ describe("buildIssueResults", () => {
           occurrences,
           seerActionability,
           assignedTo,
+          assigneeEmail,
         }) => ({
           shortId,
           issueCategory,
           occurrences,
           seerActionability,
           assignedTo,
+          assigneeEmail,
         }),
       ),
     ).toMatchInlineSnapshot(`
       [
         {
           "assignedTo": "Jane Doe",
+          "assigneeEmail": "jane@example.com",
           "issueCategory": "performance",
           "occurrences": 100,
           "seerActionability": "high",
@@ -153,6 +157,7 @@ describe("buildIssueResults", () => {
         },
         {
           "assignedTo": null,
+          "assigneeEmail": null,
           "issueCategory": "performance",
           "occurrences": 25,
           "seerActionability": null,
@@ -160,7 +165,6 @@ describe("buildIssueResults", () => {
         },
       ]
     `);
-    expect(JSON.stringify(structuredContent)).not.toContain("jane@example.com");
   });
 
   it("adds a feedback follow-up when any result is feedback", () => {

@@ -48,6 +48,14 @@ export const searchIssuesOutputSchema = z.object({
       occurrences: z.number(),
       usersImpacted: z.number(),
       assignedTo: z.string().nullable(),
+      assigneeEmail: z.string().nullable(),
+      reporter: z
+        .object({
+          name: z.string().nullable(),
+          email: z.string().nullable(),
+        })
+        .nullable()
+        .describe("Who submitted a feedback issue. Null for other issues."),
       firstSeen: z.string().nullable(),
       lastSeen: z.string().nullable(),
       culprit: z.string().nullable(),
@@ -87,6 +95,16 @@ function formatAssignee(assignee: Issue["assignedTo"]): string | null {
   return assignee?.name ?? null;
 }
 
+function formatAssigneeEmail(assignee: Issue["assignedTo"]): string | null {
+  return typeof assignee === "object" ? assignee?.email || null : null;
+}
+
+function formatReporter(issue: Issue) {
+  const name = issue.metadata?.name || null;
+  const email = issue.metadata?.contact_email || null;
+  return name || email ? { name, email } : null;
+}
+
 /** Builds the structured search_issues result. */
 export function buildIssueResults(
   params: BuildIssueResultsParams,
@@ -121,6 +139,8 @@ export function buildIssueResults(
     occurrences: Number(issue.count) || 0,
     usersImpacted: Number(issue.userCount) || 0,
     assignedTo: formatAssignee(issue.assignedTo),
+    assigneeEmail: formatAssigneeEmail(issue.assignedTo),
+    reporter: formatReporter(issue),
     firstSeen: issue.firstSeen,
     lastSeen: issue.lastSeen,
     culprit: issue.culprit || null,

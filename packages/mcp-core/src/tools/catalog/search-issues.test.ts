@@ -201,12 +201,14 @@ describe("search_issues", () => {
         "issues": [
           {
             "assignedTo": null,
+            "assigneeEmail": null,
             "culprit": "test.function",
             "firstSeen": "2025-01-15T10:00:00Z",
             "issueCategory": null,
             "lastSeen": "2025-01-15T12:00:00Z",
             "occurrences": 100,
             "projectSlug": "test-project",
+            "reporter": null,
             "seerActionability": null,
             "shortId": "PROJ-123",
             "status": "unresolved",
