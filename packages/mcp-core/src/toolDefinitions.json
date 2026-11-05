@@ -4936,20 +4936,89 @@
               "text": {
                 "type": ["string", "null"]
               },
-              "data": {
-                "anyOf": [
-                  {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
+              "assignee": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
                   },
-                  {
-                    "type": "null"
+                  "type": {
+                    "type": ["string", "null"]
+                  },
+                  "name": {
+                    "type": ["string", "null"]
                   }
-                ],
-                "description": "Type-specific activity data, set only when there is no text."
+                },
+                "required": ["id", "type", "name"],
+                "additionalProperties": false
+              },
+              "version": {
+                "description": "Release the issue resolved in.",
+                "type": "string"
+              },
+              "ignore": {
+                "type": "object",
+                "properties": {
+                  "duration": {
+                    "type": "number"
+                  },
+                  "count": {
+                    "type": "number"
+                  },
+                  "window": {
+                    "type": "number"
+                  },
+                  "userCount": {
+                    "type": "number"
+                  },
+                  "userWindow": {
+                    "type": "number"
+                  },
+                  "until": {
+                    "type": "string"
+                  },
+                  "untilEscalating": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "commit": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "description": "First line only.",
+                    "type": ["string", "null"]
+                  },
+                  "repository": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["id", "message", "repository"],
+                "additionalProperties": false
+              },
+              "pullRequest": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": ["string", "null"]
+                  },
+                  "repository": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["id", "title", "repository"],
+                "additionalProperties": false
+              },
+              "details": {
+                "description": "Other activity data as compact JSON without email fields, truncated after 200 characters. Set only when no text or mapped field covers the entry.",
+                "type": ["string", "null"]
               }
             },
             "required": [
@@ -4959,7 +5028,7 @@
               "dateCreated",
               "commentId",
               "text",
-              "data"
+              "details"
             ],
             "additionalProperties": false
           }
@@ -4990,20 +5059,89 @@
                   "text": {
                     "type": ["string", "null"]
                   },
-                  "data": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "additionalProperties": {}
+                  "assignee": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
                       },
-                      {
-                        "type": "null"
+                      "type": {
+                        "type": ["string", "null"]
+                      },
+                      "name": {
+                        "type": ["string", "null"]
                       }
-                    ],
-                    "description": "Type-specific activity data, set only when there is no text."
+                    },
+                    "required": ["id", "type", "name"],
+                    "additionalProperties": false
+                  },
+                  "version": {
+                    "description": "Release the issue resolved in.",
+                    "type": "string"
+                  },
+                  "ignore": {
+                    "type": "object",
+                    "properties": {
+                      "duration": {
+                        "type": "number"
+                      },
+                      "count": {
+                        "type": "number"
+                      },
+                      "window": {
+                        "type": "number"
+                      },
+                      "userCount": {
+                        "type": "number"
+                      },
+                      "userWindow": {
+                        "type": "number"
+                      },
+                      "until": {
+                        "type": "string"
+                      },
+                      "untilEscalating": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "commit": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "description": "First line only.",
+                        "type": ["string", "null"]
+                      },
+                      "repository": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "required": ["id", "message", "repository"],
+                    "additionalProperties": false
+                  },
+                  "pullRequest": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": ["string", "null"]
+                      },
+                      "repository": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "required": ["id", "title", "repository"],
+                    "additionalProperties": false
+                  },
+                  "details": {
+                    "description": "Other activity data as compact JSON without email fields, truncated after 200 characters. Set only when no text or mapped field covers the entry.",
+                    "type": ["string", "null"]
                   }
                 },
                 "required": [
@@ -5013,7 +5151,7 @@
                   "dateCreated",
                   "commentId",
                   "text",
-                  "data"
+                  "details"
                 ],
                 "additionalProperties": false
               }

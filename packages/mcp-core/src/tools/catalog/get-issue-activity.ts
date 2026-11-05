@@ -35,6 +35,9 @@ function getActivityText(
   );
 }
 
+const MAX_DETAILS_LENGTH = 200;
+const EMAIL_PATTERN = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+
 const issueActivityEntrySchema = z.object({
   id: z.string(),
   type: z.string(),
@@ -45,11 +48,48 @@ const issueActivityEntrySchema = z.object({
     .nullable()
     .describe("Set when the comment ID differs from the activity ID."),
   text: z.string().nullable(),
-  data: z
-    .record(z.string(), z.unknown())
+  assignee: z
+    .object({
+      id: z.string(),
+      type: z.string().nullable(),
+      name: z.string().nullable(),
+    })
+    .optional(),
+  version: z.string().optional().describe("Release the issue resolved in."),
+  ignore: z
+    .object({
+      duration: z.number().optional(),
+      count: z.number().optional(),
+      window: z.number().optional(),
+      userCount: z.number().optional(),
+      userWindow: z.number().optional(),
+      until: z.string().optional(),
+      untilEscalating: z.boolean().optional(),
+    })
+    .optional(),
+  commit: z
+    .object({
+      id: z.string(),
+      message: z.string().nullable().describe("First line only."),
+      repository: z.string().nullable(),
+    })
+    .optional(),
+  pullRequest: z
+    .object({
+      id: z.string(),
+      title: z.string().nullable(),
+      repository: z.string().nullable(),
+    })
+    .optional(),
+  details: z
+    .string()
     .nullable()
-    .describe("Type-specific activity data, set only when there is no text."),
+    .describe(
+      `Other activity data as compact JSON without email fields, truncated after ${MAX_DETAILS_LENGTH} characters. Set only when no text or mapped field covers the entry.`,
+    ),
 });
+
+type IssueActivityEntry = z.infer<typeof issueActivityEntrySchema>;
 
 export const getIssueActivityOutputSchema = z.object({
   organizationSlug: z.string(),
@@ -62,10 +102,112 @@ export const getIssueActivityOutputSchema = z.object({
     .describe("Null when includeComments is false."),
 });
 
-function mapActivity(activity: IssueActivity | IssueComment) {
+function readNumber(
+  value: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const field = value[key];
+  return typeof field === "number" ? field : undefined;
+}
+
+function readRepositoryName(value: Record<string, unknown>): string | null {
+  const repository = value.repository;
+  return isPlainObject(repository) ? readString(repository, "name") : null;
+}
+
+function mapAssignee(data: Record<string, unknown>) {
+  const id = data.assignee;
+  if (typeof id !== "string" && typeof id !== "number") {
+    return undefined;
+  }
+  return {
+    id: formatId(id),
+    type: readString(data, "assigneeType"),
+    name: readString(data, "assigneeName"),
+  };
+}
+
+function mapIgnore(data: Record<string, unknown>) {
+  const ignore = {
+    duration: readNumber(data, "ignoreDuration"),
+    count: readNumber(data, "ignoreCount"),
+    window: readNumber(data, "ignoreWindow"),
+    userCount: readNumber(data, "ignoreUserCount"),
+    userWindow: readNumber(data, "ignoreUserWindow"),
+    until: readString(data, "ignoreUntil") ?? undefined,
+    untilEscalating:
+      typeof data.ignoreUntilEscalating === "boolean"
+        ? data.ignoreUntilEscalating
+        : undefined,
+  };
+  return Object.values(ignore).some((value) => value !== undefined)
+    ? ignore
+    : undefined;
+}
+
+function mapCommit(data: Record<string, unknown>) {
+  const commit = data.commit;
+  if (!isPlainObject(commit) || commit.id == null) {
+    return undefined;
+  }
+  return {
+    id: formatId(commit.id as string | number),
+    message: readString(commit, "message")?.split("\n")[0] ?? null,
+    repository: readRepositoryName(commit),
+  };
+}
+
+function mapPullRequest(data: Record<string, unknown>) {
+  const pullRequest = data.pullRequest;
+  if (!isPlainObject(pullRequest) || pullRequest.id == null) {
+    return undefined;
+  }
+  return {
+    id: formatId(pullRequest.id as string | number),
+    title: readString(pullRequest, "title"),
+    repository: readRepositoryName(pullRequest),
+  };
+}
+
+/**
+ * Drops email keys and email-looking values at any depth. Commit, pull
+ * request, and group payloads embed user objects with email addresses.
+ */
+function withoutEmails(value: unknown): unknown {
+  if (typeof value === "string") {
+    return EMAIL_PATTERN.test(value) ? undefined : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(withoutEmails).filter((item) => item !== undefined);
+  }
+  if (isPlainObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => !/email/i.test(key))
+        .map(([key, item]) => [key, withoutEmails(item)] as const)
+        .filter(([, item]) => item !== undefined),
+    );
+  }
+  return value;
+}
+
+function formatDetails(data: Record<string, unknown>): string | null {
+  const sanitized = withoutEmails(data) as Record<string, unknown>;
+  if (Object.keys(sanitized).length === 0) {
+    return null;
+  }
+  const json = JSON.stringify(sanitized);
+  return json.length <= MAX_DETAILS_LENGTH
+    ? json
+    : `${json.slice(0, MAX_DETAILS_LENGTH)}...`;
+}
+
+function mapActivity(
+  activity: IssueActivity | IssueComment,
+): IssueActivityEntry {
   const text = getActivityText(activity);
   const commentId = activity.commentId;
-  return {
+  const entry: IssueActivityEntry = {
     id: formatId(activity.id),
     type: activity.type ?? "activity",
     author: formatActivityAuthor(activity),
@@ -75,13 +217,27 @@ function mapActivity(activity: IssueActivity | IssueComment) {
         ? formatId(commentId)
         : null,
     text,
-    data:
-      !text &&
-      isPlainObject(activity.data) &&
-      Object.keys(activity.data).length > 0
-        ? activity.data
-        : null,
+    details: null,
   };
+
+  const data = activity.data;
+  if (text || !isPlainObject(data) || Object.keys(data).length === 0) {
+    return entry;
+  }
+
+  const mapped = {
+    assignee: mapAssignee(data),
+    version: readString(data, "version") ?? undefined,
+    ignore: mapIgnore(data),
+    commit: mapCommit(data),
+    pullRequest: mapPullRequest(data),
+  };
+  const present = Object.fromEntries(
+    Object.entries(mapped).filter(([, value]) => value !== undefined),
+  );
+  return Object.keys(present).length > 0
+    ? { ...entry, ...present }
+    : { ...entry, details: formatDetails(data) };
 }
 
 export default defineTool({
