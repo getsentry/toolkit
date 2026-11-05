@@ -17,7 +17,7 @@ import {
   isInjectedFlag,
   refusedFlagReason,
 } from "./commands";
-import { pinConstraints } from "./constraints";
+import { pinConstraints, URL_PATTERN } from "./constraints";
 import type { CommandCall } from "./types";
 import { validateJsonSchema } from "./validate";
 
@@ -160,6 +160,20 @@ export function prepareCommandCall({
     throw refuse(
       entry,
       `this ${permission} call needs the ${API_WRITE_SKILLS.join(" or ")} skill`,
+    );
+  }
+
+  // `sentry api` sends an absolute URL to that URL's own host.
+  const [endpoint] = positional ?? [];
+  if (
+    entry.permission === "method" &&
+    endpoint !== undefined &&
+    // The CLI drops whitespace and line breaks around an endpoint first.
+    URL_PATTERN.test(endpoint.replace(/\s+/g, ""))
+  ) {
+    throw refuse(
+      entry,
+      "an absolute URL fetches a host the caller picks. Pass the path relative to /api/0/ instead, such as `organizations/<org>/issues/`",
     );
   }
 

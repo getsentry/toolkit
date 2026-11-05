@@ -266,6 +266,18 @@ describe("command tools: arguments", () => {
     );
   });
 
+  it.each([
+    "https://evil.example/api/0/organizations/acme/issues/",
+    " HTTP://169.254.169.254/latest/",
+    "ht\ntps://evil.example/organizations/acme/",
+  ])("refuses sentry api with the absolute URL %j", async (endpoint) => {
+    const { call, calls } = setup();
+    await expect(call("api", { positional: [endpoint] })).rejects.toThrow(
+      "an absolute URL fetches a host the caller picks",
+    );
+    expect(calls).toEqual([]);
+  });
+
   it.each(["next", "prev", "last", "previous"])(
     "refuses the stored-cursor keyword %s when hosted",
     async (cursor) => {

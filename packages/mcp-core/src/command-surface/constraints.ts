@@ -18,7 +18,7 @@ import { commandName } from "./commands";
 /** Completion kinds whose positional names a target. */
 const TARGET_KINDS = new Set(["org", "org/project", "dashboard", "issue"]);
 
-const URL_PATTERN = /^https?:\/\//i;
+export const URL_PATTERN = /^https?:\/\//i;
 
 type Session = { org: string; project: string | null };
 
@@ -239,9 +239,8 @@ function apiEndpointTarget(
   let segments: string[];
   try {
     const base = "https://sentry.invalid/api/0/";
-    const url = URL_PATTERN.test(endpoint)
-      ? new URL(endpoint)
-      : new URL(endpoint.replace(/^\/*(?:api\/0(?:\/|$))?/, ""), base);
+    // Absolute URLs are refused before this (`prepareCommandCall`).
+    const url = new URL(endpoint.replace(/^\/*(?:api\/0(?:\/|$))?/, ""), base);
     segments = url.pathname.split("/").filter(Boolean);
   } catch {
     return;
