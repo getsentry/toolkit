@@ -98,7 +98,7 @@ search_metrics({
    - Prominent rendering directives for AI agents
    - Shareable Sentry Explorer URL
 
-Dataset tools that declare an `outputSchema` (`search_errors`, `search_logs`, `search_traces`, and `search_metrics` today) return
+Dataset tools that declare an `outputSchema` (`search_errors`, `search_logs`, `search_traces`, `search_metrics`, and `search_profiles` today) return
 `structuredContent` instead of the markdown above; legacy `search_events` keeps
 markdown. In that payload, `resultType` (`samples`, `aggregates`, or
 `timeSeries`) replaces the dataset-specific rendering, each row holds only the

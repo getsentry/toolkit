@@ -125,6 +125,15 @@ export const METRIC_RESULT_HINTS: SearchResultHints = {
   empty: "Try being more specific about the metric name, type, or filters.",
 };
 
+export const PROFILE_RESULT_HINTS: SearchResultHints = {
+  samples:
+    "Concise summaries work well for these profiles, highlighting profile ID, transaction, duration, release, and trace context.",
+  aggregates:
+    "A compact table with readable duration units works well for these profile aggregates.",
+  empty:
+    "Try narrowing the transaction, release, platform, or profile filters.",
+};
+
 export const LOG_RESULT_HINTS: SearchResultHints = {
   samples:
     "Console-style formatting works well for these logs, with timestamps preserved.",
@@ -627,7 +636,8 @@ function getProfileTimestampValue(value: unknown): string | null {
   return null;
 }
 
-function getProfileDetailUrl(
+/** Flamegraph URL for a transaction profile or continuous profile row. */
+export function getProfileDetailUrl(
   apiService: SentryApiService,
   organizationSlug: string,
   event: FlexibleEventData,
@@ -671,15 +681,11 @@ export function formatProfileResults(params: FormatEventResultsParams): string {
 
   let output = `# Search Results for "${inputQuery}"\n\n`;
 
-  if (isAggregateQuery(fields)) {
-    output += formatSearchPresentationHint(
-      "A compact table with readable duration units works well for these profile aggregates.",
-    );
-  } else {
-    output += formatSearchPresentationHint(
-      "Concise summaries work well for these profiles, highlighting profile ID, transaction, duration, release, and trace context.",
-    );
-  }
+  output += formatSearchPresentationHint(
+    isAggregateQuery(fields)
+      ? PROFILE_RESULT_HINTS.aggregates
+      : PROFILE_RESULT_HINTS.samples,
+  );
 
   if (includeExplanation && explanation) {
     output += formatExplanation(explanation);
@@ -700,8 +706,7 @@ export function formatProfileResults(params: FormatEventResultsParams): string {
       },
     });
     output += "No results found.\n\n";
-    output +=
-      "Try narrowing the transaction, release, platform, or profile filters.\n";
+    output += `${PROFILE_RESULT_HINTS.empty}\n`;
     return output;
   }
 
