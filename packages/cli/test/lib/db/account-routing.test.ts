@@ -447,12 +447,16 @@ describe("organization-based selection", () => {
 describe("requests whose path names an organization", () => {
   let originalFetch: typeof globalThis.fetch;
   let sent: Array<string | null>;
+  let urls: string[];
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
     sent = [];
+    urls = [];
     globalThis.fetch = mockFetch(async (input, init) => {
-      sent.push(new Request(input, init).headers.get("Authorization"));
+      const request = new Request(input, init);
+      sent.push(request.headers.get("Authorization"));
+      urls.push(request.url);
       return Response.json({});
     });
   });
@@ -486,13 +490,39 @@ describe("requests whose path names an organization", () => {
     expect(sent).toEqual(["Bearer personal-token"]);
   });
 
-  test("only consider accounts on the request's server", async () => {
+  test("reach an org whose account is on another server", async () => {
     login("acme-token", ACME, "acme");
     seeOrg("acme-org", ACME);
     login("saas-token", SAAS, "saas");
     seeOrgList(SAAS, ["saas-org"]);
 
     await rawApiRequest("organizations/acme-org/");
+
+    expect(sent).toEqual(["Bearer acme-token"]);
+    expect(urls).toEqual([`${ACME}/api/0/organizations/acme-org/`]);
+    expect(getEffectiveAccountRow()?.host).toBe(ACME);
+  });
+
+  test("stay on an explicitly configured server", async () => {
+    login("acme-token", ACME, "acme");
+    seeOrg("acme-org", ACME);
+    login("saas-token", SAAS, "saas");
+    seeOrgList(SAAS, ["saas-org"]);
+    process.env.SENTRY_URL = SAAS;
+
+    await rawApiRequest("organizations/acme-org/");
+
+    expect(sent).toEqual(["Bearer saas-token"]);
+    expect(urls).toEqual([`${SAAS}/api/0/organizations/acme-org/`]);
+  });
+
+  test("only consider accounts on an absolute URL's server", async () => {
+    login("acme-token", ACME, "acme");
+    seeOrg("acme-org", ACME);
+    login("saas-token", SAAS, "saas");
+    seeOrgList(SAAS, ["saas-org"]);
+
+    await rawApiRequest("organizations/acme-org/", { baseUrl: SAAS });
 
     expect(sent).toEqual(["Bearer saas-token"]);
     expect(getEffectiveAccountRow()?.host).toBe(SAAS);

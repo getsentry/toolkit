@@ -1010,7 +1010,7 @@ export async function prepareRawApiRequest(
   const { method = "GET", body, params, headers, baseUrl } = options;
   const config = baseUrl
     ? getSdkConfig(baseUrl, { bufferResponseBody: true })
-    : getDefaultSdkConfig({ bufferResponseBody: true });
+    : getDefaultSdkConfig({ bufferResponseBody: true, path: endpoint });
   const isStringBody = typeof body === "string";
   const request = await createSentryClient(config).client.prepareRequest({
     method,

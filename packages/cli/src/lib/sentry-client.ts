@@ -13,9 +13,11 @@ import { getTraceData } from "@sentry/node";
 import {
   computeInvalidationPrefixes,
   createApiTransport,
+  type ApiPathScope,
   type CredentialRequest,
   extractUrlPath,
   getValidatedResponseSource,
+  parseApiPathScope,
   type ResponseBodyMode,
   type RetryPolicy,
   type TransportCache,
@@ -323,12 +325,15 @@ async function withHttpSpan(
 const NUMERIC_ORG_ID = /^\d+$/;
 
 /**
- * Use the stored account that knows the organization the request's path
- * targets (`selectAccountForOrg`), so requests no command resolved an org
- * for, such as `sentry api organizations/<org>/...`, still reach it. Only
- * accounts on the request's server qualify: its URL is already built.
+ * Use the stored account that knows the organization `scope` names
+ * (`selectAccountForOrg`). `server` limits the candidates to accounts on
+ * it; without it, an account on another server qualifies and brings its
+ * server along.
  */
-function selectAccountForRequest({ url, scope }: CredentialRequest): void {
+function selectAccountForScope(
+  scope: ApiPathScope | undefined,
+  server?: string,
+): void {
   if (!scope) {
     return;
   }
@@ -336,8 +341,19 @@ function selectAccountForRequest({ url, scope }: CredentialRequest): void {
   selectAccountForOrg(
     organization,
     NUMERIC_ORG_ID.test(organization) ? organization : undefined,
-    { server: url },
+    { server },
   );
+}
+
+/**
+ * Use the stored account that knows the organization the request's path
+ * targets, so requests no command resolved an org for still reach it. Only
+ * accounts on the request's server qualify: its URL is already built.
+ * Callers that build the URL from {@link getDefaultSdkConfig} with a `path`
+ * have already picked an account on any server.
+ */
+function selectAccountForRequest({ url, scope }: CredentialRequest): void {
+  selectAccountForScope(scope, url);
 }
 
 /**
@@ -559,14 +575,27 @@ export function getSdkConfig(
 /**
  * Get SDK config for the default API (control silo or self-hosted).
  *
+ * When `path` names an organization, the stored account that knows it is
+ * picked first, on any server, so the base URL follows that account's
+ * server: `sentry api organizations/<org>/` reaches a self-hosted org while
+ * a SaaS login is active. An explicit server still limits the candidates
+ * to accounts on it (see `selectAccountForOrg`).
+ *
  * The credential is not pinned, so the transport can still pick the stored
  * account that knows the organization a request's path names; it only picks
  * among accounts on the server this base URL belongs to.
  */
 export function getDefaultSdkConfig(
-  options: Pick<AuthenticatedFetchOptions, "bufferResponseBody"> = {},
+  options: Pick<AuthenticatedFetchOptions, "bufferResponseBody"> & {
+    /** API path relative to `/api/0/`, optionally with a query string. */
+    path?: string;
+  } = {},
 ) {
-  return getSdkConfig(getApiBaseUrl(), options);
+  const { path, ...fetchOptions } = options;
+  if (path !== undefined) {
+    selectAccountForScope(parseApiPathScope(path));
+  }
+  return getSdkConfig(getApiBaseUrl(), fetchOptions);
 }
 
 /**

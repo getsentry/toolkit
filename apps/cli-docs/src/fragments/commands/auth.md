@@ -63,7 +63,9 @@ that fits what they target, without changing the active account:
   which lists every stored account's organizations) but another stored
   account has used it, that account is used. This includes `oNNNN` IDs from
   DSNs, and the organization in a `sentry api` path such as
-  `organizations/acme-corp/issues/`, among accounts on that request's server.
+  `organizations/acme-corp/issues/`, even when that account is on another
+  server. A full URL passed to `sentry api`, or an explicit server, keeps
+  the request on that server.
 - **Server** — `SENTRY_HOST`/`SENTRY_URL`, `.sentryclirc`, or a pasted Sentry
   URL for another account's server (for example a self-hosted issue link) uses
   the account stored for that server.
