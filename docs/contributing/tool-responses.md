@@ -212,7 +212,18 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
   payload. Do not attach sparse structured side-channels such as
   `suggestedActions` alone on top of markdown.
 - If a tool declares `outputSchema`, every successful `structuredContent` result
-  must conform to that schema.
+  must conform to that schema. `defineTool` enforces this at compile time: the
+  handler must return `structuredResult(...)` typed as the schema's `z.output`,
+  and markdown or raw content fails tsc. The payload type comes from the
+  schema, so missing and mistyped fields are errors at the tool definition,
+  and so are extra fields in an object literal passed to `structuredResult`.
+  Spread or variable payloads (`structuredResult({ ...upstream })`,
+  `structuredResult(payload)`) are not checked for extra fields, so map fields
+  explicitly. A schema tool cannot set its own `content`.
+  Do not add per-tool `satisfies z.infer<...>` checks; they repeat
+  what the framework already checks. Shared builders should declare their
+  return type (`StructuredToolOutput<z.output<typeof schema>>`) so
+  `structuredResult` gets its type from there.
 - Do not duplicate a large structured payload into a markdown artifact block.
 - Treat `structuredContent` as a stable product contract, not a raw upstream API
   passthrough. Map only documented fields that callers should depend on.

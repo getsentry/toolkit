@@ -92,21 +92,18 @@ const timeSeriesSchema = z.object({
 
 const SEARCH_RESULT_TYPES = ["samples", "aggregates", "timeSeries"] as const;
 
-type SearchResultType = (typeof SEARCH_RESULT_TYPES)[number];
-type RowLinks = Record<string, string | null>;
-
-export interface SearchEventsStructuredContent extends Record<string, unknown> {
-  query: string;
-  explanation: string | null;
-  executedSearch: z.infer<typeof executedSearchSchema>;
-  url: string;
-  presentationHint: string;
-  notes: string[];
-  resultType: SearchResultType;
-  results: Array<{ values: Record<string, unknown>; links: RowLinks }>;
-  timeSeries: z.infer<typeof timeSeriesSchema> | null;
-  suggestedActions: SuggestedToolAction[];
-}
+/**
+ * The search payload every dataset shares, with row links loosened to a
+ * record. Derived from the output schema so the builders cannot drift from
+ * it; `DatasetSearchStructuredContent` narrows the links for one dataset.
+ */
+export type SearchEventsStructuredContent = z.output<
+  ReturnType<
+    typeof searchEventsOutputSchema<
+      z.ZodRecord<z.ZodString, z.ZodNullable<z.ZodString>>
+    >
+  >
+>;
 
 interface StructuredSearchSession {
   apiService: SentryApiService;
@@ -312,10 +309,9 @@ const STRUCTURED_DATASETS = {
 
 export type StructuredSearchDataset = keyof typeof STRUCTURED_DATASETS;
 
-/** Output schema for the dataset search tool that searches `dataset`. */
-export function buildSearchEventsOutputSchema(
-  dataset: StructuredSearchDataset,
-) {
+function searchEventsOutputSchema<
+  TLinks extends z.ZodType<Record<string, string | null>>,
+>(links: TLinks) {
   return z.object({
     query: z.string(),
     explanation: z.string().nullable(),
@@ -329,13 +325,25 @@ export function buildSearchEventsOutputSchema(
         values: z
           .record(z.string(), z.unknown())
           .describe("The requested fields, keyed by field name."),
-        links: z.object(STRUCTURED_DATASETS[dataset].links),
+        links,
       }),
     ),
     timeSeries: timeSeriesSchema.nullable(),
     suggestedActions: z.array(suggestedToolActionSchema),
   });
 }
+
+/** Output schema for the dataset search tool that searches `dataset`. */
+export function buildSearchEventsOutputSchema<
+  TDataset extends StructuredSearchDataset,
+>(dataset: TDataset) {
+  return searchEventsOutputSchema(z.object(STRUCTURED_DATASETS[dataset].links));
+}
+
+/** The payload of the dataset search tool that searches `TDataset`. */
+export type DatasetSearchStructuredContent<
+  TDataset extends StructuredSearchDataset,
+> = z.output<ReturnType<typeof buildSearchEventsOutputSchema<TDataset>>>;
 
 function getDatasetConfig(dataset: string): StructuredDatasetConfig {
   if (!Object.hasOwn(STRUCTURED_DATASETS, dataset)) {
