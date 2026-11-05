@@ -340,7 +340,7 @@ export async function listTraceItemAttributes(
   orgSlug: string,
   options: ListTraceItemAttributesOptions,
 ): Promise<PaginatedResponse<TraceItemAttributeDefinition[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   // `per_page` is accepted by the endpoint's paginator but missing from the
   // SDK's generated query type, so widen the type rather than cast the call.
   const query: TraceItemAttributesQuery & { per_page?: number } = {

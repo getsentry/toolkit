@@ -270,7 +270,7 @@ export async function listOrganizationsUncached(
 export async function getOrganization(
   orgSlug: string,
 ): Promise<SentryOrganization> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await sdkGetOrganization({
     ...config,

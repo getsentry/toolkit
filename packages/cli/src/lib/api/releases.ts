@@ -99,7 +99,7 @@ export async function listReleasesPaginated(
   orgSlug: string,
   options: ListReleasesOptions = {},
 ): Promise<PaginatedResponse<SentryRelease[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationReleases({
     ...config,
@@ -196,7 +196,7 @@ export async function getRelease(
     healthStatsPeriod?: string;
   },
 ): Promise<SentryRelease> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await getOrganizationRelease({
     ...config,
@@ -252,7 +252,7 @@ export async function createRelease(
     }>;
   },
 ): Promise<SentryRelease> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   // Cast body through unknown — the SDK's body type requires `projects: string[]`
   // as non-optional, but the API accepts it as optional at runtime.
@@ -298,7 +298,7 @@ export async function updateRelease(
     }>;
   },
 ): Promise<SentryRelease> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await updateOrganizationRelease({
     ...config,
@@ -327,7 +327,7 @@ export async function deleteRelease(
   orgSlug: string,
   version: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await deleteOrganizationRelease({
     ...config,
@@ -351,7 +351,7 @@ export async function listReleaseDeploys(
   orgSlug: string,
   version: string,
 ): Promise<SentryDeploy[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationReleaseDeploys({
     ...config,
@@ -386,7 +386,7 @@ export async function createReleaseDeploy(
     dateFinished?: string;
   },
 ): Promise<SentryDeploy> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await createOrganizationReleaseDeploy({
     ...config,
@@ -974,7 +974,7 @@ export async function listProjectEnvironments(
   orgSlug: string,
   projectSlug: string,
 ): Promise<ProjectEnvironment[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await sdkListProjectEnvironments({
     ...config,
     path: {

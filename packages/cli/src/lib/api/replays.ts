@@ -369,7 +369,7 @@ async function fetchReplayRecordingSegmentsPage(
   options: FetchReplayRecordingSegmentsPageOptions,
 ): Promise<PaginatedResponse<ListProjectReplayRecordingSegmentsResponse>> {
   const { cursor, orgSlug, projectSlugOrId, replayId } = options;
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await listProjectReplayRecordingSegments({
     ...config,
     path: {
