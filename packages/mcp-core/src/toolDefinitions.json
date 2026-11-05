@@ -7269,7 +7269,7 @@
   {
     "name": "get_monitor_details",
     "title": "Get Cron Monitor Details",
-    "description": "Get details and recent check-ins for a Sentry cron monitor (scheduled job).\n\nUse this tool when you need to:\n- Inspect a monitor's schedule, status, owner, project, and environments\n- Review recent check-ins for missed, failed, timeout, or OK runs\n- Check monitor stats over a recent time range\n\n<examples>\nget_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import')\nget_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import', projectSlugOrId='backend', environment='production', period='7d')\n</examples>",
+    "description": "Get details and recent check-ins for a Sentry cron monitor (scheduled job).\n\nUse this tool when you need to:\n- Inspect a monitor's schedule, status, owner, project, and environments\n- Review recent check-ins for missed, failed, timeout, or OK runs\n- Check monitor stats over a recent time range\n\nTo find issues from a monitor, call `search_issues` with query `monitor.slug:<slug>`.\n\n<examples>\nget_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import')\nget_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import', projectSlugOrId='backend', environment='production', period='7d')\n</examples>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -7384,6 +7384,211 @@
         }
       },
       "required": ["organizationSlug", "monitorSlug"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "monitor": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "name": {
+              "type": ["string", "null"]
+            },
+            "project": {
+              "type": ["string", "null"]
+            },
+            "status": {
+              "type": ["string", "null"]
+            },
+            "type": {
+              "type": ["string", "null"]
+            },
+            "owner": {
+              "type": ["string", "null"]
+            },
+            "ownerEmail": {
+              "description": "Set when a user owns the monitor.",
+              "type": ["string", "null"]
+            },
+            "lastCheckIn": {
+              "type": ["string", "null"]
+            },
+            "nextCheckIn": {
+              "type": ["string", "null"]
+            },
+            "url": {
+              "type": "string"
+            },
+            "config": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "scheduleType": {
+                      "type": ["string", "null"]
+                    },
+                    "schedule": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": ["number", "string"]
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Crontab string, or [value, unit] for interval schedules."
+                    },
+                    "timezone": {
+                      "type": ["string", "null"]
+                    },
+                    "checkinMarginMinutes": {
+                      "type": ["number", "null"]
+                    },
+                    "maxRuntimeMinutes": {
+                      "type": ["number", "null"]
+                    }
+                  },
+                  "required": [
+                    "scheduleType",
+                    "schedule",
+                    "timezone",
+                    "checkinMarginMinutes",
+                    "maxRuntimeMinutes"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "slug",
+            "name",
+            "project",
+            "status",
+            "type",
+            "owner",
+            "ownerEmail",
+            "lastCheckIn",
+            "nextCheckIn",
+            "url",
+            "config"
+          ],
+          "additionalProperties": false
+        },
+        "environments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": ["string", "null"]
+              },
+              "status": {
+                "type": ["string", "null"]
+              },
+              "lastCheckIn": {
+                "type": ["string", "null"]
+              },
+              "nextCheckIn": {
+                "type": ["string", "null"]
+              }
+            },
+            "required": ["name", "status", "lastCheckIn", "nextCheckIn"],
+            "additionalProperties": false
+          }
+        },
+        "checkIns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "date": {
+                "type": ["string", "null"]
+              },
+              "status": {
+                "type": ["string", "null"]
+              },
+              "durationMs": {
+                "type": ["number", "null"]
+              },
+              "environment": {
+                "type": ["string", "null"]
+              }
+            },
+            "required": ["date", "status", "durationMs", "environment"],
+            "additionalProperties": false
+          }
+        },
+        "stats": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "timestamp": {
+                    "type": "string"
+                  },
+                  "ok": {
+                    "type": ["number", "null"]
+                  },
+                  "error": {
+                    "type": ["number", "null"]
+                  },
+                  "missed": {
+                    "type": ["number", "null"]
+                  },
+                  "timeout": {
+                    "type": ["number", "null"]
+                  },
+                  "unknown": {
+                    "type": ["number", "null"]
+                  },
+                  "avgDurationMs": {
+                    "type": ["number", "null"]
+                  }
+                },
+                "required": [
+                  "timestamp",
+                  "ok",
+                  "error",
+                  "missed",
+                  "timeout",
+                  "unknown",
+                  "avgDurationMs"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "At most 10 most recent stat buckets, oldest first. Null when includeStats is false."
+        }
+      },
+      "required": ["monitor", "environments", "checkIns", "stats"],
+      "additionalProperties": false
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],
