@@ -60,10 +60,17 @@ export function toSnapshotVcs(
     headSha: snapshotString(vcsInfo.head_sha),
     baseRef: snapshotString(vcsInfo.base_ref),
     baseSha: snapshotString(vcsInfo.base_sha),
-    prNumber:
-      typeof vcsInfo.pr_number === "number" &&
-      Number.isFinite(vcsInfo.pr_number)
-        ? vcsInfo.pr_number
-        : undefined,
+    prNumber: snapshotPrNumber(vcsInfo.pr_number),
   });
+}
+
+/** The snapshot API sends PR numbers as numbers or numeric strings. */
+function snapshotPrNumber(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    return snapshotPrNumber(Number(value));
+  }
+  return undefined;
 }

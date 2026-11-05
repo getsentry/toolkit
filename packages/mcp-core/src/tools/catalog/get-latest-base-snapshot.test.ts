@@ -173,6 +173,32 @@ describe("get_latest_base_snapshot", () => {
     ]);
   });
 
+  it("keeps PR numbers the snapshot API sends as strings", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry/preprodartifacts/snapshots/latest-base/",
+        () =>
+          HttpResponse.json({
+            ...latestBaseFixture,
+            vcs_info: { ...latestBaseFixture.vcs_info, pr_number: "789" },
+          }),
+        { once: true },
+      ),
+    );
+
+    const result = await getLatestBaseSnapshot.handler(
+      {
+        organizationSlug: "sentry",
+        appId: "com.emergetools.hackernews",
+        branch: null,
+        project: null,
+        regionUrl: null,
+      },
+      getServerContext(),
+    );
+    expect(getContent(result).vcs?.prNumber).toBe(789);
+  });
+
   it("passes project slug to latest-base endpoint", async () => {
     mswServer.use(
       http.get(
