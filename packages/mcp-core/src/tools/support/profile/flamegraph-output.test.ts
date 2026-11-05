@@ -1,0 +1,220 @@
+import { describe, expect, it } from "vitest";
+import type { Flamegraph } from "../../../api-client/types";
+import {
+  buildFlamegraphAnalysis,
+  buildFlamegraphComparison,
+} from "./flamegraph-output";
+
+/**
+ * Mock flamegraph fixture for testing formatters.
+ */
+function createMockFlamegraph(overrides: Partial<Flamegraph> = {}): Flamegraph {
+  return {
+    activeProfileIndex: 0,
+    platform: "python",
+    projectID: 123,
+    transactionName: "/api/users",
+    profiles: [
+      {
+        endValue: 100,
+        isMainThread: true,
+        name: "main",
+        samples: [
+          [0, 1, 2],
+          [0, 1],
+        ],
+        sample_counts: [50, 30],
+        sample_durations_ns: [100_000_000, 60_000_000],
+        weights: [100, 60],
+        startValue: 0,
+        threadID: "main",
+        type: "sampled",
+        unit: "nanoseconds",
+      },
+    ],
+    shared: {
+      frames: [
+        {
+          file: "main.py",
+          name: "handle_request",
+          line: 10,
+          is_application: true,
+          fingerprint: 1001,
+        },
+        {
+          file: "utils.py",
+          name: "fetch_data",
+          line: 25,
+          is_application: true,
+          fingerprint: 1002,
+        },
+        {
+          file: "psycopg2/pool.py",
+          name: "execute",
+          line: 100,
+          is_application: false,
+          fingerprint: 1003,
+        },
+      ],
+      frame_infos: [
+        {
+          count: 80,
+          weight: 160,
+          sumDuration: 160_000_000,
+          sumSelfTime: 0,
+          p75Duration: 50_000_000,
+          p95Duration: 80_000_000,
+          p99Duration: 120_000_000,
+        },
+        {
+          count: 80,
+          weight: 160,
+          sumDuration: 160_000_000,
+          sumSelfTime: 20_000_000,
+          p75Duration: 40_000_000,
+          p95Duration: 70_000_000,
+          p99Duration: 100_000_000,
+        },
+        {
+          count: 50,
+          weight: 100,
+          sumDuration: 100_000_000,
+          sumSelfTime: 100_000_000,
+          p75Duration: 50_000_000,
+          p95Duration: 90_000_000,
+          p99Duration: 200_000_000,
+        },
+      ],
+      profiles: [
+        {
+          profile_id: "profile-abc123",
+          transaction_id: "txn-456",
+          timestamp: Date.now(),
+        },
+      ],
+    },
+    ...overrides,
+  } as Flamegraph;
+}
+
+describe("buildFlamegraphAnalysis", () => {
+  it("references shared frames by index from top functions and hot paths", () => {
+    const analysis = buildFlamegraphAnalysis(createMockFlamegraph(), {
+      focusOnUserCode: true,
+      maxHotPaths: 5,
+    });
+
+    expect(analysis.frames.map((frame) => frame.name)).toEqual([
+      "handle_request",
+      "fetch_data",
+      "execute",
+    ]);
+    expect(analysis.topFunctions).toEqual([0, 1]);
+    expect(analysis.hotPaths).toEqual([
+      { percentOfSamples: 62.5, sampleCount: 50, stack: [0, 1], leaf: 2 },
+      { percentOfSamples: 37.5, sampleCount: 30, stack: [0, 1], leaf: 1 },
+    ]);
+  });
+
+  it("keeps library frames in hot path stacks when focusOnUserCode is false", () => {
+    const analysis = buildFlamegraphAnalysis(createMockFlamegraph(), {
+      focusOnUserCode: false,
+      maxHotPaths: 5,
+    });
+
+    const [topPath] = analysis.hotPaths;
+    expect(topPath?.stack.map((index) => analysis.frames[index]?.file)).toEqual(
+      ["main.py", "utils.py", "psycopg2/pool.py"],
+    );
+    expect(topPath?.stack.at(-1)).toBe(topPath?.leaf);
+    expect(analysis.topFunctions).toHaveLength(3);
+  });
+
+  it("falls back to thread profiles when shared profile metadata is omitted", () => {
+    const flamegraph = createMockFlamegraph();
+    flamegraph.shared.profiles = [];
+
+    expect(
+      buildFlamegraphAnalysis(flamegraph, {
+        focusOnUserCode: true,
+        maxHotPaths: 5,
+      }).profileCount,
+    ).toBe(1);
+  });
+
+  it("returns empty hot paths when there are no thread profiles", () => {
+    const analysis = buildFlamegraphAnalysis(
+      createMockFlamegraph({ profiles: [] }),
+      { focusOnUserCode: true, maxHotPaths: 5 },
+    );
+
+    expect(analysis.hotPaths).toEqual([]);
+    expect(analysis.sampleCount).toBe(0);
+  });
+
+  it("handles empty frames", () => {
+    const flamegraph = createMockFlamegraph();
+    flamegraph.shared.frames = [];
+    flamegraph.shared.frame_infos = [];
+
+    const analysis = buildFlamegraphAnalysis(flamegraph, {
+      focusOnUserCode: false,
+      maxHotPaths: 5,
+    });
+
+    expect(analysis.topFunctions).toEqual([]);
+    expect(analysis.frames.every((frame) => frame.name === "unknown")).toBe(
+      true,
+    );
+  });
+});
+
+describe("buildFlamegraphComparison", () => {
+  it("reports no change for identical periods", () => {
+    const comparison = buildFlamegraphComparison(
+      createMockFlamegraph(),
+      createMockFlamegraph(),
+      { focusOnUserCode: false },
+    );
+
+    expect(comparison.status).toBe("no_change");
+    expect(comparison.changes).toHaveLength(3);
+  });
+
+  it("detects major regressions", () => {
+    const current = createMockFlamegraph();
+    // Comparison uses sumDuration, not weight.
+    current.shared.frame_infos[0]!.sumDuration = 240_000_000;
+
+    const comparison = buildFlamegraphComparison(
+      createMockFlamegraph(),
+      current,
+      { focusOnUserCode: false },
+    );
+
+    expect(comparison.status).toBe("major_regression");
+    expect(comparison.changes[0]).toEqual({
+      name: "handle_request",
+      file: "main.py",
+      line: 10,
+      isApplication: true,
+      baselineMs: 160,
+      currentMs: 240,
+      percentChange: 50,
+      changeType: "major_regression",
+    });
+  });
+
+  it("detects improvements", () => {
+    const current = createMockFlamegraph();
+    current.shared.frame_infos[0]!.sumDuration = 128_000_000;
+    current.shared.frame_infos[1]!.sumDuration = 128_000_000;
+    current.shared.frame_infos[2]!.sumDuration = 80_000_000;
+
+    expect(
+      buildFlamegraphComparison(createMockFlamegraph(), current, {
+        focusOnUserCode: false,
+      }).status,
+    ).toBe("improvement");
+  });
+});

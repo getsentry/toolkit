@@ -317,3 +317,15 @@ environment from a project-scoped cron monitor. The structured response
 identifies the project, monitor, and environment; `success` means the deletion
 was accepted or the target was already absent. Deletion completes in the
 background, preserving the monitor and its other environments.
+
+### Transaction Profiles
+
+`get_profile` returns the aggregated flamegraph for one transaction as
+structured content. Frames appear once in `analysis.frames` with their sample
+counts, p75/p95/p99 durations, and insights; `topFunctions`, hot path `stack`
+arrays, and hot path `leaf` values refer to them by index, so shared parent
+frames are not repeated per hot path. A stack reads from root to leaf, and its
+last frame is the primary bottleneck. With `focusOnUserCode`, library frames
+are omitted from stacks, and `leaf` still names the sampled leaf frame.
+Missing data is a successful result: `hasCurrentData` and `hasBaselineData`
+report which period had profiles, and `analysis` or `comparison` is `null`.

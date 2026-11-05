@@ -54,8 +54,6 @@ export interface HotspotFrame {
  */
 export interface PerformanceInsight {
   type: "high_variance" | "consistently_slow" | "hot_function" | "consistent";
-  icon: string;
-  message: string;
 }
 
 /**
@@ -280,8 +278,6 @@ export function generatePerformanceInsights(
   if (frameInfo.p99Duration > frameInfo.p75Duration * 3) {
     insights.push({
       type: "high_variance",
-      icon: "⚠️",
-      message: "High variance: Performance varies significantly across calls",
     });
   }
 
@@ -290,8 +286,6 @@ export function generatePerformanceInsights(
     // >100ms
     insights.push({
       type: "consistently_slow",
-      icon: "🐌",
-      message: "Consistently slow: Median execution time is high",
     });
   }
 
@@ -299,8 +293,6 @@ export function generatePerformanceInsights(
   if (frameInfo.count > 1000) {
     insights.push({
       type: "hot_function",
-      icon: "🔥",
-      message: "Hot function: Called very frequently",
     });
   }
 
@@ -311,8 +303,6 @@ export function generatePerformanceInsights(
   ) {
     insights.push({
       type: "consistent",
-      icon: "✅",
-      message: "Consistent: Low performance variance",
     });
   }
 
@@ -441,19 +431,6 @@ export function formatDuration(ns: number): string {
     return `${(ns / MILLISECOND).toFixed(0)}ms`;
   }
   return `${(ns / SECOND).toFixed(1)}s`;
-}
-
-/**
- * Formats a percentage value for display.
- *
- * @param value Percentage value (0-100)
- * @returns Formatted percentage string (e.g., "45.2%", "0.1%")
- */
-export function formatPercentage(value: number): string {
-  if (value < 1) {
-    return `${value.toFixed(2)}%`;
-  }
-  return `${value.toFixed(1)}%`;
 }
 
 /**

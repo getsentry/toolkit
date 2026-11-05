@@ -1,7 +1,16 @@
-import { mswServer } from "@sentry/mcp-server-mocks";
+import { flamegraphFixture, mswServer } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect } from "vitest";
+import { getProfileOutputSchema } from "../support/profile/flamegraph-output";
 import getProfile from "./get-profile";
+
+const context = {
+  constraints: {
+    organizationSlug: null,
+  },
+  accessToken: "access-token",
+  userId: "1",
+};
 
 describe("get_profile", () => {
   it("marks profile analysis as open-world because it reads Sentry APIs", () => {
@@ -33,82 +42,95 @@ describe("get_profile", () => {
         },
       );
 
-      expect(result).toMatchInlineSnapshot(`
-        "# Profile Analysis: /api/users
-
-        ## Transaction Information
-        - **Transaction**: /api/users
-        - **Project ID**: 4509062593708032
-        - **Platform**: python
-        - **Total Profiles**: 1
-        - **Total Samples**: 80
-        - **Estimated Total Time**: 160ms
-
-        ## Performance Summary
-
-        ### Code Breakdown
-        - **Total User Code Time**: 320ms (76.2%)
-        - **Total Library Time**: 100ms (23.8%)
-
-        ### Top Slow Functions
-
-        | Function | File:Line | Samples | % Time | p75 | p95 | p99 | Insights |
-        |----------|-----------|---------|--------|-----|-----|-----|----------|
-        | \`handle_request\` | main.py:10 | 80 | 100.0% | 50ms | 80ms | 120ms |  |
-        | \`fetch_data\` | utils.py:25 | 80 | 100.0% | 40ms | 70ms | 100ms |  |
-
-        ## Top Hot Paths
-
-        ### Path #1: 62.5% of execution time
-
-        **50 samples** across 1 profiles
-
-        \`\`\`
-        main.py:handle_request:10 [YOUR CODE]
-          utils.py:fetch_data:25 [YOUR CODE] ← PRIMARY BOTTLENECK
-        \`\`\`
-
-        **Performance Characteristics:**
-        - **p75**: 50ms
-        - **p95**: 90ms
-        - **p99**: 200ms (⚠️ High variance - some calls are very slow)
-
-        **💡 Recommendation:**
-        This path accounts for 62.5% of CPU time. The high p99 indicates some operations are very slow.
-
-        ---
-
-        ### Path #2: 37.5% of execution time
-
-        **30 samples** across 1 profiles
-
-        \`\`\`
-        main.py:handle_request:10 [YOUR CODE]
-          utils.py:fetch_data:25 [YOUR CODE] ← PRIMARY BOTTLENECK
-        \`\`\`
-
-        **Performance Characteristics:**
-        - **p75**: 40ms
-        - **p95**: 70ms
-        - **p99**: 100ms
-
-        **💡 Recommendation:**
-        This path accounts for 37.5% of CPU time.
-
-
-        ## Actionable Next Steps
-
-        ### Immediate Actions (High Impact)
-        1. **Optimize \`fetch_data\` function** - Accounts for 62.5% of CPU time
-        2. **Add caching layer** - Consider caching frequently accessed data
-        3. **Review query patterns** - Look for N+1 queries or inefficient data access
-
-        ### Investigation Actions
-        1. **Compare with baseline**: Use get_profile with compareAgainstPeriod to check for regressions"
+      getProfileOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent).toMatchInlineSnapshot(`
+        {
+          "analysis": {
+            "estimatedTotalMs": 160,
+            "frames": [
+              {
+                "file": "main.py",
+                "insights": [],
+                "isApplication": true,
+                "line": 10,
+                "name": "handle_request",
+                "p75Ms": 50,
+                "p95Ms": 80,
+                "p99Ms": 120,
+                "percentOfSamples": 100,
+                "sampleCount": 80,
+              },
+              {
+                "file": "utils.py",
+                "insights": [],
+                "isApplication": true,
+                "line": 25,
+                "name": "fetch_data",
+                "p75Ms": 40,
+                "p95Ms": 70,
+                "p99Ms": 100,
+                "percentOfSamples": 100,
+                "sampleCount": 80,
+              },
+              {
+                "file": "psycopg2/pool.py",
+                "insights": [
+                  "high_variance",
+                ],
+                "isApplication": false,
+                "line": 100,
+                "name": "execute",
+                "p75Ms": 50,
+                "p95Ms": 90,
+                "p99Ms": 200,
+                "percentOfSamples": 62.5,
+                "sampleCount": 50,
+              },
+            ],
+            "hotPaths": [
+              {
+                "leaf": 2,
+                "percentOfSamples": 62.5,
+                "sampleCount": 50,
+                "stack": [
+                  0,
+                  1,
+                ],
+              },
+              {
+                "leaf": 1,
+                "percentOfSamples": 37.5,
+                "sampleCount": 30,
+                "stack": [
+                  0,
+                  1,
+                ],
+              },
+            ],
+            "libraryMs": 100,
+            "platform": "python",
+            "profileCount": 1,
+            "sampleCount": 80,
+            "topFunctions": [
+              0,
+              1,
+            ],
+            "userCodeMs": 320,
+            "userCodePercent": 76.2,
+          },
+          "baselinePeriod": null,
+          "comparison": null,
+          "focusOnUserCode": true,
+          "hasBaselineData": null,
+          "hasCurrentData": true,
+          "period": "7d",
+          "projectId": "4509109104082945",
+          "transactionName": "/api/users",
+        }
       `);
     });
 
-    it("returns no data message for unknown transaction", async () => {
+    it("returns no analysis for an unknown transaction", async () => {
       const result = await getProfile.handler(
         {
           organizationSlug: "sentry-mcp-evals",
@@ -128,27 +150,23 @@ describe("get_profile", () => {
         },
       );
 
-      expect(result).toMatchInlineSnapshot(`
-        "# Profile Analysis: /api/nonexistent
-
-        ## No Profile Data Found
-
-        No profiling data found for transaction **/api/nonexistent** in the last 7d.
-
-        **Possible reasons:**
-        - Transaction name doesn't match exactly (names are case-sensitive)
-        - No profiles collected for this transaction in the time period
-        - Profiling may not be enabled for this project
-        - Transaction may not have been executed recently
-
-        **Suggestions:**
-        - Verify the exact transaction name using search_traces
-        - Try a longer time period (e.g., '30d')
-        - Check if profiling is enabled for this project"
+      getProfileOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent).toMatchInlineSnapshot(`
+        {
+          "analysis": null,
+          "baselinePeriod": null,
+          "comparison": null,
+          "focusOnUserCode": true,
+          "hasBaselineData": null,
+          "hasCurrentData": false,
+          "period": "7d",
+          "projectId": "4509109104082945",
+          "transactionName": "/api/nonexistent",
+        }
       `);
     });
 
-    it("returns no data message when Sentry returns a sparse empty flamegraph", async () => {
+    it("returns no analysis when Sentry returns a sparse empty flamegraph", async () => {
       mswServer.use(
         http.get(
           "https://sentry.io/api/0/organizations/sentry-mcp-evals/profiling/flamegraph/",
@@ -183,10 +201,12 @@ describe("get_profile", () => {
         },
       );
 
-      expect(result).toContain("## No Profile Data Found");
-      expect(result).toContain(
-        "No profiling data found for transaction **/api/sparse** in the last 7d.",
-      );
+      getProfileOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent).toMatchObject({
+        transactionName: "/api/sparse",
+        hasCurrentData: false,
+        analysis: null,
+      });
     });
 
     it("works with numeric project ID", async () => {
@@ -209,8 +229,9 @@ describe("get_profile", () => {
         },
       );
 
-      expect(result).toContain("# Profile Analysis: /api/users");
-      expect(result).toContain("## Transaction Information");
+      getProfileOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent.projectId).toBe("4509062593708032");
+      expect(result.structuredContent.analysis?.hotPaths).toHaveLength(2);
     });
   });
 
@@ -236,23 +257,47 @@ describe("get_profile", () => {
         },
       );
 
-      expect(result).toMatchInlineSnapshot(`
-        "# Profile Comparison: /api/users
-
-        ## Summary
-        - **Status**: ✅ No Significant Changes
-
-        ## Key Changes
-
-        | Function | File:Line | Baseline | Current | Change | Status |
-        |----------|-----------|----------|---------|--------|--------|
-        | \`handle_request\` | main.py:10 | 160ms | 160ms | 0.00% | ➖ |
-        | \`fetch_data\` | utils.py:25 | 160ms | 160ms | 0.00% | ➖ |
-        "
+      getProfileOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent).toMatchInlineSnapshot(`
+        {
+          "analysis": null,
+          "baselinePeriod": "14d",
+          "comparison": {
+            "changes": [
+              {
+                "baselineMs": 160,
+                "changeType": "no_change",
+                "currentMs": 160,
+                "file": "main.py",
+                "isApplication": true,
+                "line": 10,
+                "name": "handle_request",
+                "percentChange": 0,
+              },
+              {
+                "baselineMs": 160,
+                "changeType": "no_change",
+                "currentMs": 160,
+                "file": "utils.py",
+                "isApplication": true,
+                "line": 25,
+                "name": "fetch_data",
+                "percentChange": 0,
+              },
+            ],
+            "status": "no_change",
+          },
+          "focusOnUserCode": true,
+          "hasBaselineData": true,
+          "hasCurrentData": true,
+          "period": "7d",
+          "projectId": "4509109104082945",
+          "transactionName": "/api/users",
+        }
       `);
     });
 
-    it("returns no data message when both periods have no data", async () => {
+    it("returns no comparison when both periods have no data", async () => {
       const result = await getProfile.handler(
         {
           organizationSlug: "sentry-mcp-evals",
@@ -273,21 +318,19 @@ describe("get_profile", () => {
         },
       );
 
-      expect(result).toMatchInlineSnapshot(`
-        "# Profile Comparison: /api/nonexistent
-
-        ## No Profile Data Found
-
-        No profiling data found for transaction **/api/nonexistent** in either time period.
-
-        **Possible reasons:**
-        - Transaction name doesn't match exactly (names are case-sensitive)
-        - No profiles collected for this transaction
-        - Profiling may not be enabled for this project
-
-        **Suggestions:**
-        - Verify the exact transaction name using search_traces
-        - Check if profiling is enabled for this project"
+      getProfileOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent).toMatchInlineSnapshot(`
+        {
+          "analysis": null,
+          "baselinePeriod": "14d",
+          "comparison": null,
+          "focusOnUserCode": true,
+          "hasBaselineData": false,
+          "hasCurrentData": false,
+          "period": "7d",
+          "projectId": "4509109104082945",
+          "transactionName": "/api/nonexistent",
+        }
       `);
     });
 
@@ -312,21 +355,149 @@ describe("get_profile", () => {
         },
       );
 
-      expect(result).toMatchInlineSnapshot(`
-        "# Profile Comparison: /api/users
-
-        ## Summary
-        - **Status**: ✅ No Significant Changes
-
-        ## Key Changes
-
-        | Function | File:Line | Baseline | Current | Change | Status |
-        |----------|-----------|----------|---------|--------|--------|
-        | \`handle_request\` | main.py:10 | 160ms | 160ms | 0.00% | ➖ |
-        | \`fetch_data\` | utils.py:25 | 160ms | 160ms | 0.00% | ➖ |
-        | \`execute\` | psycopg2/pool.py:100 | 100ms | 100ms | 0.00% | ➖ |
-        "
+      getProfileOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent).toMatchInlineSnapshot(`
+        {
+          "analysis": null,
+          "baselinePeriod": "7d",
+          "comparison": {
+            "changes": [
+              {
+                "baselineMs": 160,
+                "changeType": "no_change",
+                "currentMs": 160,
+                "file": "main.py",
+                "isApplication": true,
+                "line": 10,
+                "name": "handle_request",
+                "percentChange": 0,
+              },
+              {
+                "baselineMs": 160,
+                "changeType": "no_change",
+                "currentMs": 160,
+                "file": "utils.py",
+                "isApplication": true,
+                "line": 25,
+                "name": "fetch_data",
+                "percentChange": 0,
+              },
+              {
+                "baselineMs": 100,
+                "changeType": "no_change",
+                "currentMs": 100,
+                "file": "psycopg2/pool.py",
+                "isApplication": false,
+                "line": 100,
+                "name": "execute",
+                "percentChange": 0,
+              },
+            ],
+            "status": "no_change",
+          },
+          "focusOnUserCode": false,
+          "hasBaselineData": true,
+          "hasCurrentData": true,
+          "period": "7d",
+          "projectId": "4509109104082945",
+          "transactionName": "/api/users",
+        }
       `);
+    });
+  });
+
+  it("maps flamegraph fields without leaking raw API data", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/profiling/flamegraph/",
+        () =>
+          HttpResponse.json({
+            ...flamegraphFixture,
+            backendOnly: "must-not-leak-root",
+            shared: {
+              ...flamegraphFixture.shared,
+              frames: flamegraphFixture.shared.frames.map(
+                (frame: Record<string, unknown>) => ({
+                  ...frame,
+                  image: "must-not-leak-image",
+                  internalFrameId: "must-not-leak-frame",
+                }),
+              ),
+            },
+          }),
+        { once: true },
+      ),
+    );
+
+    const result = await getProfile.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        projectSlugOrId: "cloudflare-mcp",
+        transactionName: "/api/users",
+        period: "7d",
+        focusOnUserCode: false,
+        maxHotPaths: 5,
+        regionUrl: null,
+      },
+      context,
+    );
+
+    getProfileOutputSchema.parse(result.structuredContent);
+    const serialized = JSON.stringify(result.structuredContent);
+    for (const key of [
+      "backendOnly",
+      "image",
+      "internalFrameId",
+      "fingerprint",
+      "is_application",
+      "frame_infos",
+      "profile_id",
+      "sumSelfTime",
+    ]) {
+      expect(serialized).not.toContain(`"${key}"`);
+    }
+    expect(serialized).not.toContain("must-not-leak");
+    expect(serialized).not.toContain("profile-abc123");
+  });
+
+  it("reports which comparison period is missing data", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/profiling/flamegraph/",
+        ({ request }) => {
+          const statsPeriod = new URL(request.url).searchParams.get(
+            "statsPeriod",
+          );
+          return HttpResponse.json(
+            statsPeriod === "14d"
+              ? { ...flamegraphFixture, profiles: [] }
+              : flamegraphFixture,
+          );
+        },
+      ),
+    );
+
+    const result = await getProfile.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        projectSlugOrId: "cloudflare-mcp",
+        transactionName: "/api/users",
+        period: "7d",
+        compareAgainstPeriod: "14d",
+        focusOnUserCode: true,
+        maxHotPaths: 10,
+        regionUrl: null,
+      },
+      context,
+    );
+
+    getProfileOutputSchema.parse(result.structuredContent);
+    expect(result.structuredContent).toMatchObject({
+      baselinePeriod: "14d",
+      hasCurrentData: true,
+      hasBaselineData: false,
+      analysis: null,
+      comparison: null,
     });
   });
 
