@@ -39,6 +39,44 @@
       },
       "required": ["text"]
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "issueUrl": {
+          "type": "string"
+        },
+        "note": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "author": {
+              "type": "string"
+            },
+            "dateCreated": {
+              "type": ["string", "null"]
+            },
+            "text": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": ["id", "type", "author", "dateCreated", "text"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["organizationSlug", "issueId", "issueUrl", "note"],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:write"],
     "skills": ["triage"],
     "surface": "direct"
