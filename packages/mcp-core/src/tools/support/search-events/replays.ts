@@ -85,8 +85,9 @@ const REPLAY_RESULTS_HINT =
 const REPLAY_EMPTY_HINT =
   "Try broadening the query or expanding the time range.";
 /** List previews; the counts and get_replay_details give the rest. */
-const MAX_REPLAY_URLS = 5;
-const MAX_REPLAY_TRACE_IDS = 5;
+const MAX_REPLAY_URLS = 3;
+const MAX_REPLAY_TRACE_IDS = 3;
+const MAX_REPLAY_RELEASES = 3;
 
 const nameVersionSchema = z.object({
   name: z.string().nullable(),
@@ -113,9 +114,9 @@ export const searchReplaysOutputSchema = z.object({
       durationSeconds: z.number().nullable(),
       user: z.object({
         id: z.string().nullable(),
-        displayName: z.string().nullable(),
-        email: z.string().nullable(),
         username: z.string().nullable(),
+        email: z.string().nullable(),
+        ip: z.string().nullable(),
       }),
       errorCount: z.number().nullable(),
       rageClickCount: z.number().nullable(),
@@ -126,7 +127,10 @@ export const searchReplaysOutputSchema = z.object({
         .array(z.string())
         .describe(`The first ${MAX_REPLAY_URLS} visited pages.`),
       urlCount: z.number(),
-      releases: z.array(z.string()),
+      releases: z
+        .array(z.string())
+        .describe(`The first ${MAX_REPLAY_RELEASES} releases.`),
+      releaseCount: z.number(),
       traceIds: z
         .array(z.string())
         .describe(`The first ${MAX_REPLAY_TRACE_IDS} trace IDs.`),
@@ -159,9 +163,9 @@ export function buildStructuredReplayResults(
     durationSeconds: replay.duration ?? null,
     user: {
       id: replay.user?.id ?? null,
-      displayName: replay.user?.display_name ?? null,
-      email: replay.user?.email ?? null,
       username: replay.user?.username ?? null,
+      email: replay.user?.email ?? null,
+      ip: replay.user?.ip ?? null,
     },
     errorCount: replay.count_errors ?? null,
     rageClickCount: replay.count_rage_clicks ?? null,
@@ -173,7 +177,8 @@ export function buildStructuredReplayResults(
     },
     urls: replay.urls.slice(0, MAX_REPLAY_URLS),
     urlCount: replay.urls.length,
-    releases: replay.releases ?? [],
+    releases: (replay.releases ?? []).slice(0, MAX_REPLAY_RELEASES),
+    releaseCount: replay.releases?.length ?? 0,
     traceIds: replay.trace_ids.slice(0, MAX_REPLAY_TRACE_IDS),
     traceCount: replay.trace_ids.length,
     isArchived: replay.is_archived === true,

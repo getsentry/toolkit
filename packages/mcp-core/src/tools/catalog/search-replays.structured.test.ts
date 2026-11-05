@@ -68,7 +68,7 @@ describe("search_replays structured output", () => {
     mockReplays([
       {
         ...replayDetailsFixture,
-        user: { ...replayDetailsFixture.user, ip: "must-not-leak" },
+        user: { ...replayDetailsFixture.user, ip: "203.0.113.7" },
         tags: { secret: ["must-not-leak"] },
         secretBackendField: "must-not-leak",
       },
@@ -80,7 +80,12 @@ describe("search_replays structured output", () => {
       environment: "production",
     });
 
+    // Internal fields stay out; the user data Sentry stored comes through.
     expect(JSON.stringify(structuredContent)).not.toContain("must-not-leak");
+    expect(structuredContent.replays[0]?.user).toMatchObject({
+      email: "taylor@example.com",
+      ip: "203.0.113.7",
+    });
     expect(structuredContent).toMatchInlineSnapshot(`
       {
         "executedSearch": {
@@ -112,6 +117,7 @@ describe("search_replays structured output", () => {
             "id": "7e07485f-12f9-416b-8b14-26260799b51f",
             "isArchived": false,
             "rageClickCount": 0,
+            "releaseCount": 1,
             "releases": [
               "frontend@1.2.3",
             ],
@@ -127,9 +133,9 @@ describe("search_replays structured output", () => {
               "/checkout",
             ],
             "user": {
-              "displayName": "Taylor Example",
               "email": "taylor@example.com",
               "id": "user-1",
+              "ip": "203.0.113.7",
               "username": null,
             },
           },
@@ -159,22 +165,25 @@ describe("search_replays structured output", () => {
     `);
   });
 
-  it("previews long URL and trace lists with their full counts", async () => {
+  it("previews long URL, trace, and release lists with their full counts", async () => {
     mockReplays([
       {
         ...replayDetailsFixture,
         urls: Array.from({ length: 8 }, (_, i) => `/page/${i}`),
         trace_ids: Array.from({ length: 7 }, (_, i) => `${i}`.repeat(32)),
+        releases: Array.from({ length: 5 }, (_, i) => `frontend@1.${i}.0`),
       },
     ]);
 
     const structuredContent = await runSearch({ query: "count_errors:>0" });
     const [replay] = structuredContent.replays;
 
-    expect(replay?.urls).toHaveLength(5);
+    expect(replay?.urls).toHaveLength(3);
     expect(replay?.urlCount).toBe(8);
-    expect(replay?.traceIds).toHaveLength(5);
+    expect(replay?.traceIds).toHaveLength(3);
     expect(replay?.traceCount).toBe(7);
+    expect(replay?.releases).toHaveLength(3);
+    expect(replay?.releaseCount).toBe(5);
   });
 
   it("keeps the unknown-environment warning in notes", async () => {

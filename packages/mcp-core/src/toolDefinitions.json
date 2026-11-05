@@ -12903,17 +12903,17 @@
                   "id": {
                     "type": ["string", "null"]
                   },
-                  "displayName": {
+                  "username": {
                     "type": ["string", "null"]
                   },
                   "email": {
                     "type": ["string", "null"]
                   },
-                  "username": {
+                  "ip": {
                     "type": ["string", "null"]
                   }
                 },
-                "required": ["id", "displayName", "email", "username"],
+                "required": ["id", "username", "email", "ip"],
                 "additionalProperties": false
               },
               "errorCount": {
@@ -12946,7 +12946,7 @@
                 "items": {
                   "type": "string"
                 },
-                "description": "The first 5 visited pages."
+                "description": "The first 3 visited pages."
               },
               "urlCount": {
                 "type": "number"
@@ -12955,14 +12955,18 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "The first 3 releases."
+              },
+              "releaseCount": {
+                "type": "number"
               },
               "traceIds": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 },
-                "description": "The first 5 trace IDs."
+                "description": "The first 3 trace IDs."
               },
               "traceCount": {
                 "type": "number"
@@ -12985,6 +12989,7 @@
               "urls",
               "urlCount",
               "releases",
+              "releaseCount",
               "traceIds",
               "traceCount",
               "isArchived"
