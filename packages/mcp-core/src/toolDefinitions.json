@@ -6664,7 +6664,7 @@
   {
     "name": "get_uptime_monitor_details",
     "title": "Get Uptime Monitor Details",
-    "description": "Get details for a Sentry uptime monitor, including recent checks.\n\nUse this tool when you need to:\n- Inspect an uptime monitor's URL, interval, thresholds, and status\n- Review recent HTTP check results (success/failure, status code, duration)\n- Debug why an uptime monitor is failing\n\nThis is separate from cron monitors (`get_monitor_details`).\n\nRequest bodies are never returned. Sensitive header values are redacted.\n\n<examples>\nget_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')\nget_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', period='7d', checkLimit=20)\n</examples>",
+    "description": "Get details for a Sentry uptime monitor, including recent checks.\n\nUse this tool when you need to:\n- Inspect an uptime monitor's URL, interval, thresholds, and status\n- Review recent HTTP check results (success/failure, status code, duration)\n- Debug why an uptime monitor is failing\n\nThis is separate from cron monitors (`get_monitor_details`).\n\nRequest bodies are never returned. Sensitive header values are redacted.\nTo find related issues, call `search_issues` with query `uptime_rule:<id>`.\n\n<examples>\nget_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')\nget_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', period='7d', checkLimit=20)\n</examples>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6723,6 +6723,146 @@
         }
       },
       "required": ["organizationSlug", "projectSlug", "uptimeMonitorId"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "monitor": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "projectSlug": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "uptimeStatus": {
+              "type": "string",
+              "enum": ["ok", "failed", "unknown"]
+            },
+            "url": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string"
+            },
+            "intervalSeconds": {
+              "type": "number"
+            },
+            "environment": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "webUrl": {
+              "type": "string",
+              "format": "uri"
+            },
+            "timeoutMs": {
+              "type": "number"
+            },
+            "recoveryThreshold": {
+              "type": "number"
+            },
+            "downtimeThreshold": {
+              "type": "number"
+            },
+            "traceSampling": {
+              "type": "boolean"
+            },
+            "responseCaptureEnabled": {
+              "type": "boolean"
+            },
+            "headers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": ["name", "value"],
+                "additionalProperties": false
+              },
+              "description": "Configured request headers; sensitive values are redacted."
+            },
+            "hasRequestBody": {
+              "type": "boolean",
+              "description": "Whether a request body is configured. The body is never returned."
+            },
+            "assertion": {
+              "description": "Response assertion tree as configured in Sentry, or null when none is set."
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "projectSlug",
+            "status",
+            "uptimeStatus",
+            "url",
+            "intervalSeconds",
+            "webUrl",
+            "timeoutMs",
+            "headers",
+            "hasRequestBody",
+            "assertion"
+          ],
+          "additionalProperties": false
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "time": {
+                "type": ["string", "null"]
+              },
+              "status": {
+                "type": "string"
+              },
+              "statusReason": {
+                "type": ["string", "null"]
+              },
+              "httpStatusCode": {
+                "type": ["number", "null"]
+              },
+              "durationMs": {
+                "type": ["number", "null"]
+              },
+              "region": {
+                "type": ["string", "null"]
+              },
+              "environment": {
+                "type": ["string", "null"]
+              }
+            },
+            "required": [
+              "time",
+              "status",
+              "statusReason",
+              "httpStatusCode",
+              "durationMs",
+              "region",
+              "environment"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["monitor", "checks"],
+      "additionalProperties": false
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],
