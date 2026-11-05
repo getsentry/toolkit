@@ -1396,7 +1396,9 @@ export const SearchAgentQuerySchema = z
             y_axes: z.array(z.string()).default([]),
             // Only set when the user asks for a time bucket, e.g. "per hour".
             interval: z.string().nullable().optional(),
-            transformations: TransformationPipelineSchema.optional(),
+            transformations: TransformationPipelineSchema.nullish().transform(
+              (pipeline) => pipeline ?? undefined,
+            ),
           })
           .passthrough(),
       )

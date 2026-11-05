@@ -56,6 +56,22 @@ const translate = async () =>
   });
 
 describe("Seer time series translation", () => {
+  it.each([null, "1h"])(
+    "accepts null transformations with interval %s",
+    async (interval) => {
+      mockTranslation([
+        { y_axes: ["count()"], interval, transformations: null },
+      ]);
+
+      expect(await translate()).toMatchObject({
+        fields: ["count()"],
+        timeSeries: interval
+          ? { axes: [{ yAxis: "count()" }], interval }
+          : null,
+      });
+    },
+  );
+
   it.each([
     { interval: "0m", transformations: ["fill(zero)"] },
     { interval: "1h", transformations: ["smooth(sma,0)"] },
