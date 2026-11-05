@@ -53,10 +53,10 @@ import {
   isValidReplaySort,
 } from "./replays";
 import {
-  assertStructuredSearchDataset,
   buildStructuredEventsResult,
   buildStructuredTimeSeriesResult,
   type DatasetSearchStructuredContent,
+  type SearchEventsStructuredContent,
   type StructuredSearchDataset,
 } from "./structured";
 import {
@@ -440,9 +440,8 @@ export type RunSearchEventsOptions =
   | MarkdownSearchEventsOptions
   | StructuredSearchEventsOptions;
 
-type StructuredSearchEventsOutput<
-  TDataset extends StructuredSearchDataset = StructuredSearchDataset,
-> = StructuredToolOutput<DatasetSearchStructuredContent<TDataset>>;
+type StructuredSearchEventsOutput =
+  StructuredToolOutput<SearchEventsStructuredContent>;
 
 const searchLimitParam = z
   .number()
@@ -683,19 +682,20 @@ export function runSearchEvents(
   options?: MarkdownSearchEventsOptions,
 ): Promise<string>;
 /**
- * Structured runs lock the dataset, so the payload matches the output schema
- * of the dataset the caller passed.
+ * Structured runs lock the dataset, and each row's links come from that
+ * dataset's config, so the payload matches the output schema of the dataset
+ * the caller passed.
  */
 export function runSearchEvents<TDataset extends StructuredSearchDataset>(
   params: SearchEventsParams & { dataset: TDataset },
   context: ServerContext,
   options: StructuredSearchEventsOptions,
-): Promise<StructuredSearchEventsOutput<TDataset>>;
+): Promise<StructuredToolOutput<DatasetSearchStructuredContent<TDataset>>>;
 export async function runSearchEvents(
   params: SearchEventsParams,
   context: ServerContext,
   options: RunSearchEventsOptions = {},
-): Promise<string | StructuredToolOutput> {
+): Promise<string | StructuredSearchEventsOutput> {
   // Any failure after Seer translates the query counts as `error_on_load`.
   const seerOutcome: SeerOutcomeState = { translation: null, tracked: false };
   try {
@@ -1100,7 +1100,6 @@ async function executeSearchEvents(
       timeParams.end,
     );
     if (structured) {
-      assertStructuredSearchDataset(dataset);
       return buildStructuredTimeSeriesResult({
         dataset,
         series,
@@ -1295,7 +1294,6 @@ async function executeSearchEvents(
   };
 
   if (structured) {
-    assertStructuredSearchDataset(dataset);
     return buildStructuredEventsResult({
       dataset,
       eventData,
