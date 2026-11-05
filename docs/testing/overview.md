@@ -275,22 +275,44 @@ expect(result.timestamp).toMatchInlineSnapshot(); // ❌
 ### Eval Test Structure
 
 ```typescript
-import { describeEval } from "vitest-evals/legacy";
-import { TaskRunner, Factuality } from "./utils";
+import { describeEval } from "vitest-evals";
+import {
+  createTaskHarness,
+  defineEvalCases,
+  FIXTURES,
+  NoOpTaskRunner,
+  ToolPredictionJudge,
+  type EvalCase,
+} from "./utils";
 
-describeEval("tool-name", {
-  data: async () => [
-    {
-      input: "Natural language request",
-      expected: "Expected response content",
-    },
-  ],
-  task: TaskRunner(), // Uses AI to call tools
-  scorers: [Factuality()], // Validates output
-  threshold: 0.6,
-  timeout: 30000,
-});
+const cases: EvalCase[] = [
+  {
+    input: `Natural language request in ${FIXTURES.organizationSlug}`,
+    expectedTools: [
+      {
+        name: "tool_name",
+        arguments: { organizationSlug: FIXTURES.organizationSlug },
+      },
+    ],
+  },
+];
+
+describeEval(
+  "tool-name",
+  {
+    // NoOpTaskRunner skips tool execution; the judge predicts the tool calls
+    harness: createTaskHarness("tool-name", NoOpTaskRunner()),
+    judges: [ToolPredictionJudge()],
+    judgeThreshold: 0.6,
+  },
+  (it) => defineEvalCases(it, cases, { timeout: 30000 }),
+);
 ```
+
+Each case is the harness input. The task receives only `input`; judges read
+`expectedTools` and `expected` from the case. Embedded-agent evals pass their
+own task to `createTaskHarness` and use `ToolCallJudge` and
+`StructuredOutputJudge`.
 
 ### Running Evals
 
