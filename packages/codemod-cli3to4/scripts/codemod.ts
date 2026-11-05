@@ -254,9 +254,26 @@ const codemod: Codemod<L> = async (root) => {
     if (!src || unquote(src.text()) !== "@sentry/cli") continue;
     const parent = call.parent();
     const member = parent?.kind() === "member_expression" ? parent : null;
-    const decl = member ? member.parent() : parent;
+    // The name the value lands in: `const X = …` or `X = …`, also through
+    // parens and ternary branches (`const X = c ? require(…) : null`).
+    let value: Node = member ?? call;
+    let decl = value.parent();
+    while (
+      decl &&
+      (decl.kind() === "parenthesized_expression" ||
+        (decl.kind() === "ternary_expression" &&
+          decl.field("condition")?.id() !== value.id()))
+    ) {
+      value = decl;
+      decl = decl.parent();
+    }
     const id =
-      decl?.kind() === "variable_declarator" ? decl.field("name") : null;
+      decl?.kind() === "variable_declarator"
+        ? decl.field("name")
+        : decl?.kind() === "assignment_expression" &&
+            decl.field("right")?.id() === value.id()
+          ? decl.field("left")
+          : null;
 
     if (id?.kind() === "object_pattern") {
       for (const c of id.children()) {
@@ -295,17 +312,11 @@ const codemod: Codemod<L> = async (root) => {
     }
   }
 
-  // No class binding (e.g. a type-only import): the specifier and type
-  // rewrites above are the whole migration.
-  if (bindings.size === 0) {
-    return edits.length ? rootNode.commitEdits(edits) : null;
-  }
-
   //    `X.SentryCli` on the v3 module object → `X.createSentrySDK`.
+  const isRequire = (n: Node) =>
+    /^require\(\s*["']@sentry\/cli["']\s*\)$/.test(n.text());
   const isModuleMember = (obj: Node | null) =>
-    !!obj &&
-    (nsBindings.has(obj.text()) ||
-      /^require\(\s*["']@sentry\/cli["']\s*\)$/.test(obj.text()));
+    !!obj && (nsBindings.has(obj.text()) || isRequire(obj));
   for (const m of rootNode.findAll({ rule: { pattern: "$OBJ.SentryCli" } })) {
     const prop = m.field("property");
     if (prop && isModuleMember(m.getMatch("OBJ"))) {
@@ -318,7 +329,12 @@ const codemod: Codemod<L> = async (root) => {
   //    Node.js script rather than a native binary.
   for (const call of rootNode.findAll({ rule: { pattern: "$B.getPath()" } })) {
     const b = call.getMatch("B");
-    if (b && (bindings.has(b.text()) || isModuleMember(b.field("object")))) {
+    if (
+      b &&
+      (bindings.has(b.text()) ||
+        isModuleMember(b) ||
+        isModuleMember(b.field("object")))
+    ) {
       edits.push(
         todo(
           call,
@@ -332,8 +348,12 @@ const codemod: Codemod<L> = async (root) => {
   //    Matches `new X(...)` for any binding, plus `new X.default(...)` when X is
   //    a namespace import (the v3 class is the module's default export).
   const isCtor = (c: Node | null): boolean => {
+    while (c?.kind() === "parenthesized_expression") {
+      c = c.children().find(named) ?? null;
+    }
     if (!c) return false;
-    if (bindings.has(c.text())) return true;
+    // `new (require("@sentry/cli"))()`: v2's module was the class itself.
+    if (bindings.has(c.text()) || isRequire(c)) return true;
     if (c.kind() === "member_expression") {
       const obj = c.field("object");
       const prop = c.field("property");
