@@ -121,16 +121,6 @@ export const DESTRUCTIVE_ALIASES = {
  */
 export const DRY_RUN_ALIASES = { n: "dry-run" } as const;
 
-/**
- * Alias map for `--yes` only: `-y` → `--yes`.
- *
- * Used by non-delete commands that need only the yes flag (not force):
- * ```ts
- * aliases: { ...YES_ALIASES, t: "team" }
- * ```
- */
-export const YES_ALIASES = { y: "yes" } as const;
-
 // ---------------------------------------------------------------------------
 // Level B: shared utilities
 // ---------------------------------------------------------------------------

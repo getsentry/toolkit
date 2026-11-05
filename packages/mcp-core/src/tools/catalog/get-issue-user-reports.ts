@@ -6,6 +6,7 @@ import {
   ensureIssueWithinProjectConstraint,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamIssueShortId,
   ParamIssueUrl,
@@ -34,10 +35,32 @@ function getReporter(report: UserReportList[number]): string {
   );
 }
 
-function formatUserReport(report: UserReportList[number]): string {
-  const date = formatDate(report.dateCreated) ?? "unknown time";
-  const reporter = getReporter(report);
-  return `- ${date} by ${reporter}:\n  - "${report.comments}"`;
+export const getIssueUserReportsOutputSchema = z.object({
+  organizationSlug: z.string(),
+  issueId: z.string(),
+  reports: z.array(
+    z.object({
+      id: z.string(),
+      eventId: z.string(),
+      reporter: z.string(),
+      comments: z.string(),
+      dateCreated: z.string().nullable(),
+    }),
+  ),
+  nextCursor: z
+    .string()
+    .nullable()
+    .describe("Pass as cursor with the same issue scope for the next page."),
+});
+
+function mapUserReport(report: UserReportList[number]) {
+  return {
+    id: report.id,
+    eventId: report.eventID,
+    reporter: getReporter(report),
+    comments: report.comments,
+    dateCreated: formatDate(report.dateCreated),
+  };
 }
 
 export default defineTool({
@@ -87,6 +110,7 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
+  outputSchema: getIssueUserReportsOutputSchema,
   async handler(params, context: ServerContext) {
     const parsed = parseIssueParams({
       issueUrl: params.issueUrl,
@@ -117,23 +141,11 @@ export default defineTool({
       limit: params.limit,
     });
 
-    const output = [
-      `# Issue User Reports for Issue ${parsed.issueId} in **${parsed.organizationSlug}**`,
-      "",
-      reports.length === 0
-        ? "No issue user reports found for this issue."
-        : reports.map(formatUserReport).join("\n"),
-    ];
-
-    if (nextCursor) {
-      output.push(
-        "",
-        "## Response Notes",
-        "",
-        `- More user reports are available. Pass \`cursor: "${nextCursor}"\` with the same issue scope to fetch the next page.`,
-      );
-    }
-
-    return `${output.join("\n")}\n`;
+    return structuredResult({
+      organizationSlug: parsed.organizationSlug,
+      issueId: parsed.issueId,
+      reports: reports.map(mapUserReport),
+      nextCursor: nextCursor ?? null,
+    });
   },
 });

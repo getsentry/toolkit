@@ -11,7 +11,9 @@ import { encode as encodePng } from "fast-png";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getStructuredContent } from "../../test-utils/structured-content";
+import { getSnapshotOutputSchema } from "../support/snapshots/summary";
 import { getIssueDetailsOutputSchema } from "./get-issue-details";
+import { getReplayDetailsOutputSchema } from "./get-replay-details";
 import getSentryResource from "./get-sentry-resource.js";
 import { resolveDescription } from "../../tools/types.js";
 
@@ -19,6 +21,25 @@ const originalOpenAIApiKey = process.env.OPENAI_API_KEY;
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
 const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
 const originalEmbeddedAgentProvider = process.env.EMBEDDED_AGENT_PROVIDER;
+
+function expectReplayWithDeadClick(result: unknown) {
+  const payload = getReplayDetailsOutputSchema.parse(
+    getStructuredContent(result),
+  );
+  expect(payload.replay).toMatchObject({
+    id: replayDetailsFixture.id,
+    organizationSlug: "sentry-mcp-evals",
+  });
+  expect(payload.timeline).toMatchObject({
+    status: "loaded",
+    events: expect.arrayContaining([
+      expect.objectContaining({
+        label: "dead click",
+        target: "div.modal > button.place-order",
+      }),
+    ]),
+  });
+}
 
 const baseContext = {
   constraints: {
@@ -395,12 +416,7 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: `https://sentry-mcp-evals.sentry.io/replays/${replayDetailsFixture.id}/`,
       });
-      expect(result).toContain(
-        `# Replay ${replayDetailsFixture.id} in **sentry-mcp-evals**`,
-      );
-      expect(result).toContain(
-        "**dead click** · `div.modal > button.place-order`",
-      );
+      expectReplayWithDeadClick(result);
     });
 
     it("dispatches monitor URL with a simple slug to get_monitor_details", async () => {
@@ -803,12 +819,7 @@ describe("get_sentry_resource", () => {
         organizationSlug: "sentry-mcp-evals",
         resourceId: replayDetailsFixture.id,
       });
-      expect(result).toContain(
-        `# Replay ${replayDetailsFixture.id} in **sentry-mcp-evals**`,
-      );
-      expect(result).toContain(
-        "**dead click** · `div.modal > button.place-order`",
-      );
+      expectReplayWithDeadClick(result);
     });
 
     it("fetches snapshot by snapshot ID", async () => {
@@ -847,18 +858,18 @@ describe("get_sentry_resource", () => {
         organizationSlug: "sentry",
         resourceId: "55",
       });
-      expect(result).toContain("# Snapshot 55 in **sentry**");
-      expect(result).toContain(
-        "**URL**: https://sentry.sentry.io/preprod/snapshots/55/",
+      const snapshot = getSnapshotOutputSchema.parse(
+        getStructuredContent(result),
       );
-      expect(result).toContain("**Images**: 0 total");
-      expect(result).toContain(
-        "Use the Sentry tool `get_snapshot_image` to view a specific image preview",
+      expect(snapshot.snapshotId).toBe("55");
+      expect(snapshot.url).toBe(
+        "https://sentry.sentry.io/preprod/snapshots/55/",
       );
-      expect(result).toContain(
-        "- Use the Sentry tool `get_snapshot_image` to fetch original full-resolution image bytes",
-      );
-      expect(result).not.toContain("?selectedSnapshot=");
+      expect(snapshot.counts.total).toBe(0);
+      expect(snapshot.responseNotes).toEqual([
+        "Use the Sentry tool `get_snapshot_image(organizationSlug='sentry', snapshotId='55', imageIdentifier='<imageFileName>')` to view one image preview; pass its imageFileName as imageIdentifier.",
+        "Use the Sentry tool `get_snapshot_image(organizationSlug='sentry', snapshotId='55', imageIdentifier='<imageFileName>', imageResolution='full')` to fetch original full-resolution image bytes",
+      ]);
     });
 
     it("fetches snapshot by URL and preserves no-diff image inventory compatibility", async () => {
@@ -893,12 +904,21 @@ describe("get_sentry_resource", () => {
         url: "https://sentry.sentry.io/preprod/snapshots/55/",
       });
 
-      expect(result).toContain("# Snapshot 55 in **sentry**");
-      expect(result).toContain("**Snapshot Images:**");
-      expect(result).toContain("no_change_login.png — No Change Login — auth");
-      expect(result).toContain(
-        "Use the Sentry tool `get_snapshot_image` to view a specific image preview",
+      const snapshot = getSnapshotOutputSchema.parse(
+        getStructuredContent(result),
       );
+      expect(snapshot.snapshotId).toBe("55");
+      expect(snapshot.images).toEqual([
+        {
+          group: "auth",
+          images: [
+            {
+              imageFileName: "snapshots-iphone-16/no_change_login.png",
+              displayName: "No Change Login",
+            },
+          ],
+        },
+      ]);
     });
 
     it("fetches snapshot image by snapshot URL selectedSnapshot query", async () => {
@@ -1071,7 +1091,13 @@ describe("get_sentry_resource", () => {
         organizationSlug: "my-org",
         resourceId: "something",
       });
-      expect(result).toContain("# Replay something in **my-org**");
+      const payload = getReplayDetailsOutputSchema.parse(
+        getStructuredContent(result),
+      );
+      expect(payload.replay).toMatchObject({
+        id: "something",
+        organizationSlug: "my-org",
+      });
     });
   });
 

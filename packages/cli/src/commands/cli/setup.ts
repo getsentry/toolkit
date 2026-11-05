@@ -838,7 +838,6 @@ export const setupCommand = buildCommand({
       flags.method !== "curl" ||
       flags.quiet ||
       flags["ensure-auth-scopes"] ||
-      getEnv().SENTRY_INIT === "1" ||
       Boolean(getEnv().SENTRY_SETUP_CODE) ||
       !(interactivePromptsAllowed() && isatty(0) && isatty(1) && isatty(2))
     ) {

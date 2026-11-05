@@ -250,21 +250,32 @@ test("sends the package version in the Sentry User-Agent", async () => {
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
+  // Drain stderr so a chatty server can't fill the pipe, and show it on failure.
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
   try {
     const whoami = new Promise((resolve, reject) => {
+      const fail = (message) => reject(new Error(`${message}\n${stderr}`));
       let buffer = "";
-      child.on("close", (code) => reject(new Error(`server exited (${code})`)));
+      child.on("close", (code) => fail(`server exited (${code})`));
       child.stdout.on("data", (chunk) => {
         buffer += chunk;
         const parts = buffer.split("\n");
         buffer = parts.pop() ?? "";
-        const response = parts
-          .filter(Boolean)
-          .map((line) => JSON.parse(line))
-          .find((message) => message.id === 2);
-        if (response) resolve(response);
+        for (const line of parts.filter(Boolean)) {
+          let message;
+          try {
+            message = JSON.parse(line);
+          } catch {
+            fail(`non-JSON stdout line: ${line}`);
+            return;
+          }
+          if (message.id === 2) resolve(message);
+        }
       });
-      setTimeout(() => reject(new Error("no whoami response")), 20_000).unref();
+      setTimeout(() => fail("no whoami response"), 20_000).unref();
     });
     const send = (message) =>
       child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
@@ -284,8 +295,14 @@ test("sends the package version in the Sentry User-Agent", async () => {
       params: { name: "whoami", arguments: {} },
     });
     const response = await whoami;
-    assert.ok(!response.result?.isError, JSON.stringify(response));
-    assert.ok(userAgents.length > 0, "whoami made no Sentry request");
+    assert.ok(
+      !response.result?.isError,
+      `${JSON.stringify(response)}\n${stderr}`,
+    );
+    assert.ok(
+      userAgents.length > 0,
+      `whoami made no Sentry request\n${stderr}`,
+    );
     for (const userAgent of userAgents) {
       assert.equal(userAgent, `sentry-mcp/${version} (https://mcp.sentry.dev)`);
     }

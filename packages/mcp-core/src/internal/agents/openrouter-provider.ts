@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 import { ConfigurationError } from "../../errors";
+import { getUserAgent } from "../../version";
 import type { ProviderOptions } from "./types";
 
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.6-luna";
@@ -66,6 +67,7 @@ export function getOpenRouterModel(model?: string): LanguageModel {
     apiKey: process.env.OPENROUTER_API_KEY,
     baseURL: OPENROUTER_BASE_URL,
     headers: {
+      "User-Agent": getUserAgent(),
       "HTTP-Referer": "https://github.com/getsentry/sentry-mcp",
       "X-OpenRouter-Title": "Sentry MCP",
     },

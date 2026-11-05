@@ -13,8 +13,7 @@
     "**/worker-configuration.d.ts",
     "**/tsconfig*.json",
     "packages/mcp-server-mocks/src/fixtures/**",
-    "packages/codemod-cli3to4/tests/**",
-    "packages/cli/test/init-eval/templates/sveltekit-app/**"
+    "packages/codemod-cli3to4/tests/**"
   ],
   "rules": {
     "no-unused-vars": "off",

@@ -85,9 +85,37 @@ export function formatSearchPresentationHint(hint: string): string {
   return `**Suggested presentation:** ${hint}\n\n`;
 }
 
+export const DASHBOARD_LINK_HINT =
+  "Please tell the user this dashboard link is available if they want to open the results in Sentry.";
+
 export function formatSentryDashboardLink(url: string): string {
-  return `**View these results in Sentry**:\n${url}\nPlease tell the user this dashboard link is available if they want to open the results in Sentry.\n\n`;
+  return `**View these results in Sentry**:\n${url}\n${DASHBOARD_LINK_HINT}\n\n`;
 }
+
+/** Presentation and empty-result guidance shared by markdown and structured results. */
+export interface SearchResultHints {
+  samples: string;
+  aggregates: string;
+  empty: string;
+}
+
+const AGGREGATE_RESULTS_HINT =
+  "A compact table works well for these aggregate results.";
+const EMPTY_RESULTS_HINT =
+  "Try being more specific or using different terms in your search.";
+
+export const ERROR_RESULT_HINTS: SearchResultHints = {
+  samples: "Useful details to surface include severity, event IDs, and links.",
+  aggregates: AGGREGATE_RESULTS_HINT,
+  empty: EMPTY_RESULTS_HINT,
+};
+
+export const LOG_RESULT_HINTS: SearchResultHints = {
+  samples:
+    "Console-style formatting works well for these logs, with timestamps preserved.",
+  aggregates: AGGREGATE_RESULTS_HINT,
+  empty: EMPTY_RESULTS_HINT,
+};
 
 /**
  * Common parameters for event formatters
@@ -148,16 +176,11 @@ export function formatErrorResults(params: FormatEventResultsParams): string {
 
   let output = `# Search Results for "${inputQuery}"\n\n`;
 
-  // Check if this is an aggregate query and adjust display instructions
-  if (isAggregateQuery(fields)) {
-    output += formatSearchPresentationHint(
-      "A compact table works well for these aggregate results.",
-    );
-  } else {
-    output += formatSearchPresentationHint(
-      "Useful details to surface include severity, event IDs, and links.",
-    );
-  }
+  output += formatSearchPresentationHint(
+    isAggregateQuery(fields)
+      ? ERROR_RESULT_HINTS.aggregates
+      : ERROR_RESULT_HINTS.samples,
+  );
 
   if (includeExplanation && explanation) {
     output += formatExplanation(explanation);
@@ -178,7 +201,7 @@ export function formatErrorResults(params: FormatEventResultsParams): string {
       },
     });
     output += `No results found.\n\n`;
-    output += `Try being more specific or using different terms in your search.\n`;
+    output += `${ERROR_RESULT_HINTS.empty}\n`;
     return output;
   }
 
@@ -286,16 +309,11 @@ export function formatLogResults(params: FormatEventResultsParams): string {
 
   let output = `# Search Results for "${inputQuery}"\n\n`;
 
-  // Check if this is an aggregate query and adjust display instructions
-  if (isAggregateQuery(fields)) {
-    output += formatSearchPresentationHint(
-      "A compact table works well for these aggregate results.",
-    );
-  } else {
-    output += formatSearchPresentationHint(
-      "Console-style formatting works well for these logs, with timestamps preserved.",
-    );
-  }
+  output += formatSearchPresentationHint(
+    isAggregateQuery(fields)
+      ? LOG_RESULT_HINTS.aggregates
+      : LOG_RESULT_HINTS.samples,
+  );
 
   if (includeExplanation && explanation) {
     output += formatExplanation(explanation);
@@ -316,7 +334,7 @@ export function formatLogResults(params: FormatEventResultsParams): string {
       },
     });
     output += `No results found.\n\n`;
-    output += `Try being more specific or using different terms in your search.\n`;
+    output += `${LOG_RESULT_HINTS.empty}\n`;
     return output;
   }
 
@@ -963,12 +981,96 @@ function formatIngestionStatus(ingestion: IngestionMeta): string {
   return `- **Ingestion**: ${ingestion.status}${detail}`;
 }
 
+interface TimeSeriesPoint {
+  timestamp: number;
+  time: string;
+  /** Sort key: the number, or parsed time for date-typed strings. */
+  value: number;
+  /** The bucket value as returned: a number, or the raw string. */
+  rawValue: number | string;
+  display: string;
+  filling: boolean;
+  outsideRetention: boolean;
+}
+
+interface TimeSeriesSummary {
+  /** Every bucket, oldest first. */
+  bucketCount: number;
+  /** The most recent `MAX_TIME_SERIES_ROWS` buckets. */
+  shown: TimeSeriesPoint[];
+  total: number | null;
+  hasFilling: boolean;
+  peak: TimeSeriesPoint | undefined;
+  ingestion: IngestionMeta | undefined;
+}
+
+const MAX_TIME_SERIES_ROWS = 48;
+
+/**
+ * Summarize an events-timeseries result: a metric bucketed over time.
+ * Buckets flagged `incomplete` by Sentry are still receiving data and are
+ * excluded from the peak; those that start before the retention window are
+ * permanently partial and will not change.
+ */
+export function summarizeTimeSeries(
+  series: EventsTimeSeriesResponse,
+  yAxis: string,
+): TimeSeriesSummary {
+  // String aggregates can return identifiers, even when their values look numeric.
+  const isStringSeries = series.timeSeries[0]?.meta.valueType === "string";
+  const points = (series.timeSeries[0]?.values ?? []).map(
+    (bucket): TimeSeriesPoint => {
+      // OUTSIDE_RETENTION buckets start before the retention window: their data
+      // is permanently partial. Every other reason means data is still arriving.
+      const outsideRetention =
+        bucket.incomplete && bucket.incompleteReason === "OUTSIDE_RETENTION";
+      const raw = bucket.value ?? 0;
+      // Date-typed aggregates such as max(timestamp) return ISO datetime
+      // strings. Number() rejects those whole (parseFloat would keep the year),
+      // so order them by parsed time and display the raw string.
+      const numeric = typeof raw === "number" ? raw : Number(raw);
+      const isNumeric = !Number.isNaN(numeric);
+      const keepsNumber = !isStringSeries && isNumeric;
+      return {
+        timestamp: bucket.timestamp,
+        time: formatBucketTime(bucket.timestamp),
+        value: isNumeric ? numeric : Date.parse(String(raw)) || 0,
+        rawValue: keepsNumber ? numeric : String(raw),
+        display: keepsNumber ? numeric.toLocaleString() : String(raw),
+        filling: bucket.incomplete && !outsideRetention,
+        outsideRetention,
+      };
+    },
+  );
+
+  return {
+    bucketCount: points.length,
+    shown:
+      points.length > MAX_TIME_SERIES_ROWS
+        ? points.slice(-MAX_TIME_SERIES_ROWS)
+        : points,
+    // Total is only meaningful for additive aggregates; summing count_unique /
+    // avg / percentile buckets would be wrong, so omit it for those.
+    total:
+      !isStringSeries && isAdditiveAggregate(yAxis)
+        ? points.reduce((sum, p) => sum + p.value, 0)
+        : null,
+    hasFilling: points.some((p) => p.filling),
+    // Buckets still filling can't be the peak yet. Partial retention buckets are
+    // final, so if one still tops the rest it is a real peak.
+    peak: points
+      .filter((p) => !isStringSeries && !p.filling)
+      .reduce<TimeSeriesPoint | undefined>(
+        (max, p) => (max === undefined || p.value > max.value ? p : max),
+        undefined,
+      ),
+    ingestion: series.meta?.ingestion,
+  };
+}
+
 /**
  * Format an events-timeseries result: a metric bucketed over time.
  * `interval` is null when Sentry chose the bucket size for the range.
- * Buckets flagged `incomplete` by Sentry are marked in the table. Those still
- * receiving data are also excluded from the peak; those that start before the
- * retention window are permanently partial and will not change.
  */
 export function formatTimeSeriesResults(params: {
   series: EventsTimeSeriesResponse;
@@ -991,51 +1093,11 @@ export function formatTimeSeriesResults(params: {
     url,
   } = params;
 
-  // String aggregates can return identifiers, even when their values look numeric.
-  const isStringSeries = series.timeSeries[0]?.meta.valueType === "string";
-  const points = (series.timeSeries[0]?.values ?? []).map((bucket) => {
-    // OUTSIDE_RETENTION buckets start before the retention window: their data
-    // is permanently partial. Every other reason means data is still arriving.
-    const outsideRetention =
-      bucket.incomplete && bucket.incompleteReason === "OUTSIDE_RETENTION";
-    const raw = bucket.value ?? 0;
-    // Date-typed aggregates such as max(timestamp) return ISO datetime
-    // strings. Number() rejects those whole (parseFloat would keep the year),
-    // so order them by parsed time and display the raw string.
-    const numeric = typeof raw === "number" ? raw : Number(raw);
-    const isNumeric = !Number.isNaN(numeric);
-    return {
-      time: formatBucketTime(bucket.timestamp),
-      value: isNumeric ? numeric : Date.parse(String(raw)) || 0,
-      display:
-        !isStringSeries && isNumeric ? numeric.toLocaleString() : String(raw),
-      filling: bucket.incomplete && !outsideRetention,
-      outsideRetention,
-    };
-  });
-  const hasFilling = points.some((p) => p.filling);
-  const ingestion = series.meta?.ingestion;
-
-  // Total is only meaningful for additive aggregates; summing count_unique /
-  // avg / percentile buckets would be wrong, so omit it for those.
-  const total =
-    !isStringSeries && isAdditiveAggregate(yAxis)
-      ? points.reduce((sum, p) => sum + p.value, 0)
-      : null;
-  // Buckets still filling can't be the peak yet. Partial retention buckets are
-  // final, so if one still tops the rest it is a real peak.
-  const peak = points
-    .filter((p) => !isStringSeries && !p.filling)
-    .reduce<(typeof points)[number] | undefined>(
-      (max, p) => (max === undefined || p.value > max.value ? p : max),
-      undefined,
-    );
-
-  const MAX_ROWS = 48;
-  const shown = points.length > MAX_ROWS ? points.slice(-MAX_ROWS) : points;
+  const { bucketCount, shown, total, hasFilling, peak, ingestion } =
+    summarizeTimeSeries(series, yAxis);
   const truncatedNote =
-    points.length > MAX_ROWS
-      ? ` (most recent ${MAX_ROWS} of ${points.length})`
+    bucketCount > shown.length
+      ? ` (most recent ${shown.length} of ${bucketCount})`
       : "";
 
   const lines: string[] = [`# Search Results for "${inputQuery}"`];
@@ -1074,7 +1136,7 @@ export function formatTimeSeriesResults(params: {
       lines.push(`| ${p.time} | ${p.display}${marker} |`);
     }
     // Footnotes describe markers in the visible rows only; older retention
-    // buckets may have been cut by MAX_ROWS.
+    // buckets may have been cut by MAX_TIME_SERIES_ROWS.
     const shownFilling = shown.some((p) => p.filling);
     const shownOutsideRetention = shown.some((p) => p.outsideRetention);
     if (shownFilling || shownOutsideRetention) {

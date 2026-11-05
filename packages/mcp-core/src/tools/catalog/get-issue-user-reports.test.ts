@@ -1,7 +1,13 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
-import getIssueUserReports from "./get-issue-user-reports.js";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content.js";
+import getIssueUserReports, {
+  getIssueUserReportsOutputSchema,
+} from "./get-issue-user-reports.js";
 
 const context = {
   constraints: {
@@ -28,20 +34,47 @@ describe("get_issue_user_reports", () => {
       context,
     );
 
-    expect(result).toMatchInlineSnapshot(`
-      "# Issue User Reports for Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
-
-      - 2026-06-22T02:37:27.878Z by Example Reporter:
-        - "i am currently testing it"
-      - 2026-06-22T03:10:11.123Z by anonymous:
-        - "anonymous report with no event user"
-      - 2026-06-22T03:45:12.456Z by anonymous:
-        - "event user shell without identity"
-      "
+    assertStructuredOnlyResult(result);
+    const structuredContent = getStructuredContent(result);
+    expect(getIssueUserReports.outputSchema).toBe(
+      getIssueUserReportsOutputSchema,
+    );
+    expect(getIssueUserReportsOutputSchema.parse(structuredContent)).toEqual(
+      structuredContent,
+    );
+    expect(structuredContent).toMatchInlineSnapshot(`
+      {
+        "issueId": "CLOUDFLARE-MCP-41",
+        "nextCursor": null,
+        "organizationSlug": "sentry-mcp-evals",
+        "reports": [
+          {
+            "comments": "i am currently testing it",
+            "dateCreated": "2026-06-22T02:37:27.878Z",
+            "eventId": "957c1ee8f31e4e68a57b637dad557b32",
+            "id": "11974227",
+            "reporter": "Example Reporter",
+          },
+          {
+            "comments": "anonymous report with no event user",
+            "dateCreated": "2026-06-22T03:10:11.123Z",
+            "eventId": "057c1ee8f31e4e68a57b637dad557b33",
+            "id": "11974228",
+            "reporter": "anonymous",
+          },
+          {
+            "comments": "event user shell without identity",
+            "dateCreated": "2026-06-22T03:45:12.456Z",
+            "eventId": "157c1ee8f31e4e68a57b637dad557b34",
+            "id": "11974229",
+            "reporter": "anonymous",
+          },
+        ],
+      }
     `);
   });
 
-  it("returns pagination guidance when more reports are available", async () => {
+  it("returns the next cursor without leaking IP address or avatar URL", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/:org/issues/:issueId/user-reports/",
@@ -63,8 +96,8 @@ describe("get_issue_user_reports", () => {
                   username: "event-user",
                   email: null,
                   name: null,
-                  ipAddress: null,
-                  avatarUrl: null,
+                  ipAddress: "203.0.113.7",
+                  avatarUrl: "https://example.com/avatar.png",
                 },
                 event: {
                   id: "157c1ee8f31e4e68a57b637dad557b34",
@@ -93,7 +126,25 @@ describe("get_issue_user_reports", () => {
       context,
     );
 
-    expect(result).toContain("by event-user");
-    expect(result).toContain('cursor: "page-2"');
+    const structuredContent = getStructuredContent(result);
+    expect(structuredContent).toMatchInlineSnapshot(`
+      {
+        "issueId": "CLOUDFLARE-MCP-41",
+        "nextCursor": "page-2",
+        "organizationSlug": "sentry-mcp-evals",
+        "reports": [
+          {
+            "comments": "reported by event user",
+            "dateCreated": "2026-06-22T04:20:21.987Z",
+            "eventId": "157c1ee8f31e4e68a57b637dad557b34",
+            "id": "11974229",
+            "reporter": "event-user",
+          },
+        ],
+      }
+    `);
+    const serialized = JSON.stringify(structuredContent);
+    expect(serialized).not.toContain("203.0.113.7");
+    expect(serialized).not.toContain("avatar.png");
   });
 });

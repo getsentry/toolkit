@@ -252,6 +252,11 @@ interface SuggestedActionsContent {
 }
 ```
 
+Build each action with `buildSuggestedToolAction` from
+`packages/mcp-core/src/internal/tool-helpers/suggested-actions.ts`. It returns
+null when the session cannot call the tool, and routes through
+`execute_sentry_tool` when the target is catalog-only.
+
 Guidelines:
 
 - Include only actions that are directly supported by the current result. Do not
@@ -331,3 +336,18 @@ environment from a project-scoped cron monitor. The structured response
 identifies the project, monitor, and environment; `success` means the deletion
 was accepted or the target was already absent. Deletion completes in the
 background, preserving the monitor and its other environments.
+
+### Transaction Profiles
+
+`get_profile` returns the aggregated flamegraph for one transaction as
+structured content. Frames appear once in `analysis.frames` with their
+call-tree `occurrences` (not a sample count), p75/p95/p99 durations, and
+insights; `topFunctions`, hot path `stack` arrays, and hot path `leaf` values
+refer to them by index, so shared parent frames are not repeated per hot path.
+A stack reads from root to leaf, and its last frame is the primary bottleneck.
+With `focusOnUserCode`, library frames are omitted from stacks, and `leaf`
+still names the sampled leaf frame. `userCodeMs` and `libraryMs` split the main
+thread's sampled time by whether each sample's leaf frame is application code,
+so they add up to `estimatedTotalMs`. Missing data is a successful result:
+`hasCurrentData` and `hasBaselineData` report which period had profiles, and
+`analysis` or `comparison` is `null`.
