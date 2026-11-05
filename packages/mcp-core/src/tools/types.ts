@@ -84,6 +84,12 @@ export type ToolDescription =
   | ((context: DescriptionContext) => string);
 
 /**
+ * Longest allowed tool description, in characters. VS Code (via OpenAI)
+ * limits descriptions to 1,024; this cap limits the damage until that rises.
+ */
+export const MAX_TOOL_DESCRIPTION_LENGTH = 2_048;
+
+/**
  * Resolves a tool description to a string.
  * Handles both static strings and dynamic description functions.
  */
@@ -143,7 +149,7 @@ export interface ToolConfig<
     // readOnlyHint, destructiveHint, and openWorldHint are required so every
     // tool declares its safety posture explicitly. Filters and confirmation
     // gates rely on these; an undefined hint is a silent gap. Enforced further
-    // by tools.test.ts (see "complete MCP safety annotations").
+    // by server.metadata.test.ts ("sets every safety hint explicitly").
     readOnlyHint: boolean;
     destructiveHint: boolean;
     idempotentHint?: boolean;

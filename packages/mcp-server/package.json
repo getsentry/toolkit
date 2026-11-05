@@ -41,7 +41,7 @@
   ],
   "scripts": {
     "bundle": "pnpm --filter @sentry/mcp-core run build && pnpm --filter sentry run generate && tsx script/bundle.ts",
-    "test:bundle": "node --test test/bundle.test.mjs"
+    "test:bundle": "node --test test/bundle.test.mjs test/server-json.test.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.1",
