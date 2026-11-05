@@ -574,7 +574,7 @@ describe("get_alert_rule", () => {
     );
   });
 
-  it("keeps only documented detector config keys", async () => {
+  it("keeps only documented, well-formed detector config keys", async () => {
     mswServer.use(
       http.get(`${organizationApi}/detectors/:id/`, () =>
         HttpResponse.json({
@@ -583,7 +583,9 @@ describe("get_alert_rule", () => {
             detectionType: "percent",
             comparisonDelta: 3600,
             fingerprintingRules: "private-fingerprinting-rules",
-            "sentry:resolveAge": 720,
+            resolveAge: 720,
+            // A malformed allowlisted field is dropped without losing the rest.
+            mode: "not-a-mode",
           },
         }),
       ),
@@ -593,12 +595,14 @@ describe("get_alert_rule", () => {
     expect(getStructuredContent(result)).toMatchObject({
       alertRule: {
         sources: [
-          { config: { detectionType: "percent", comparisonDelta: 3600 } },
+          {
+            config: { detectionType: "percent", comparisonDeltaSeconds: 3600 },
+          },
         ],
       },
     });
     expect(JSON.stringify(result)).not.toMatch(
-      /private-fingerprinting-rules|resolveAge/,
+      /private-fingerprinting-rules|resolveAge|not-a-mode/,
     );
   });
 

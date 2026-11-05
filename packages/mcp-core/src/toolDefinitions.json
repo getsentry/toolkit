@@ -4905,10 +4905,11 @@
                           "detectionType": {
                             "type": "string"
                           },
-                          "comparisonDelta": {
+                          "comparisonDeltaSeconds": {
                             "type": ["number", "null"]
                           },
                           "mode": {
+                            "description": "Raw integer detector mode from Sentry.",
                             "type": "number"
                           },
                           "environment": {

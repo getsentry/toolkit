@@ -65,8 +65,11 @@ const cronQuerySchema = z.object({
  */
 const detectorConfigSchema = z.object({
   detectionType: z.string().optional(),
-  comparisonDelta: z.number().nullable().optional(),
-  mode: z.number().optional(),
+  comparisonDeltaSeconds: z.number().nullable().optional(),
+  mode: z
+    .number()
+    .optional()
+    .describe("Raw integer detector mode from Sentry."),
   environment: z.string().nullable().optional(),
   recoveryThreshold: z.number().optional(),
   downtimeThreshold: z.number().optional(),
@@ -136,6 +139,17 @@ export const alertRuleDetailsSchema = z.object({
 
 export type AlertRuleDetails = z.infer<typeof alertRuleDetailsSchema>;
 
+const DETECTOR_CONFIG_FIELDS: ReadonlyArray<
+  [keyof typeof detectorConfigSchema.shape, string]
+> = [
+  ["detectionType", "detectionType"],
+  ["comparisonDeltaSeconds", "comparisonDelta"],
+  ["mode", "mode"],
+  ["environment", "environment"],
+  ["recoveryThreshold", "recoveryThreshold"],
+  ["downtimeThreshold", "downtimeThreshold"],
+];
+
 function toDetectorConfig(
   type: string,
   config: Record<string, unknown>,
@@ -143,8 +157,15 @@ function toDetectorConfig(
   if (type === "issue_stream") {
     return {};
   }
-  const parsed = detectorConfigSchema.safeParse(config);
-  return parsed.success ? parsed.data : {};
+  const mapped: Record<string, unknown> = {};
+  for (const [key, sourceKey] of DETECTOR_CONFIG_FIELDS) {
+    // Read each field on its own so one malformed value doesn't drop the rest.
+    const parsed = detectorConfigSchema.shape[key].safeParse(config[sourceKey]);
+    if (parsed.success && parsed.data !== undefined) {
+      mapped[key] = parsed.data;
+    }
+  }
+  return detectorConfigSchema.parse(mapped);
 }
 
 function sourceDetails(
