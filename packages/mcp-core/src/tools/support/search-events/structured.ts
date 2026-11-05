@@ -21,7 +21,9 @@ import type { PublicEventsDataset } from "../../../utils/events-datasets";
 import {
   DASHBOARD_LINK_HINT,
   ERROR_RESULT_HINTS,
+  getProfileDetailUrl,
   type ExecutedSearch,
+  PROFILE_RESULT_HINTS,
   METRIC_RESULT_HINTS,
   SPAN_RESULT_HINTS,
   LOG_RESULT_HINTS,
@@ -258,6 +260,53 @@ const STRUCTURED_DATASETS = {
         session,
         "Inspect the trace for the first matching metric sample.",
       ),
+  }),
+  profiles: defineDatasetConfig({
+    hints: PROFILE_RESULT_HINTS,
+    fieldUnitNotes: {
+      "transaction.duration": "transaction.duration values are in nanoseconds.",
+      "profile.duration": "profile.duration values are in nanoseconds.",
+    },
+    links: {
+      profileUrl: z.string().nullable(),
+      traceUrl: z.string().nullable(),
+    },
+    rowLinks: (event, session) => ({
+      profileUrl: getProfileDetailUrl(
+        session.apiService,
+        session.organizationSlug,
+        event,
+      ),
+      traceUrl: traceUrlFor(event, session),
+    }),
+    suggestedActions(results, session) {
+      const profileUrl = results.find((row) => row.links.profileUrl)?.links
+        .profileUrl;
+      const reason = "Analyze the flamegraph for the first matching profile.";
+      // Experimental sessions route profile URLs through get_sentry_resource.
+      const profileAction = profileUrl
+        ? buildSuggestedToolAction({
+            ...(session.experimentalMode
+              ? {
+                  toolName: "get_sentry_resource",
+                  arguments: { url: profileUrl },
+                }
+              : { toolName: "get_profile_details", arguments: { profileUrl } }),
+            reason,
+            experimentalMode: session.experimentalMode,
+            availableToolNames: session.availableToolNames,
+            directToolNames: session.directToolNames,
+          })
+        : null;
+      return [
+        ...(profileAction ? [profileAction] : []),
+        ...firstTraceAction(
+          results,
+          session,
+          "Inspect the trace for the first profiled request.",
+        ),
+      ];
+    },
   }),
 } satisfies Partial<Record<PublicEventsDataset, StructuredDatasetConfig>>;
 
