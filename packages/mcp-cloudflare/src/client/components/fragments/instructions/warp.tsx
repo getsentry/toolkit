@@ -1,7 +1,8 @@
+import { CLI_MCP_ARGS, CLI_MCP_COMMAND } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 
 interface WarpInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "stdio" | "cli";
 }
 
 export function WarpInstructions({ transport }: WarpInstructionsProps) {
@@ -72,6 +73,39 @@ export function WarpInstructions({ transport }: WarpInstructionsProps) {
             .
           </small>
         </p>
+      </>
+    );
+  }
+
+  if (transport === "cli") {
+    return (
+      <>
+        <ol>
+          <li>
+            Open Warp's MCP server settings (Command Palette:{" "}
+            <strong>Open MCP Servers</strong>).
+          </li>
+          <li>
+            Click <strong>+ Add</strong> and select{" "}
+            <strong>CLI Server (Command)</strong>.
+          </li>
+          <li>
+            <CodeSnippet
+              noMargin
+              snippet={JSON.stringify(
+                {
+                  Sentry: {
+                    command: CLI_MCP_COMMAND,
+                    args: CLI_MCP_ARGS,
+                    working_directory: null,
+                  },
+                },
+                undefined,
+                2,
+              )}
+            />
+          </li>
+        </ol>
       </>
     );
   }

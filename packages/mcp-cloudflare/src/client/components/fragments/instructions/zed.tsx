@@ -1,8 +1,9 @@
+import { CLI_MCP_ARGS, CLI_MCP_COMMAND } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 import { KeyIcon } from "../../ui/key-icon";
 
 interface ZedInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "stdio" | "cli";
 }
 
 export function ZedInstructions({ transport }: ZedInstructionsProps) {
@@ -34,6 +35,38 @@ export function ZedInstructions({ transport }: ZedInstructionsProps) {
           </li>
           <li>
             <CodeSnippet noMargin snippet={zedInstructions} />
+          </li>
+        </ol>
+      </>
+    );
+  }
+
+  if (transport === "cli") {
+    return (
+      <>
+        <ol>
+          <li>
+            <strong>
+              <KeyIcon>⌘</KeyIcon> + <KeyIcon>,</KeyIcon>
+            </strong>{" "}
+            to open Zed settings.
+          </li>
+          <li>
+            <CodeSnippet
+              noMargin
+              snippet={JSON.stringify(
+                {
+                  context_servers: {
+                    [mcpServerName]: {
+                      command: CLI_MCP_COMMAND,
+                      args: CLI_MCP_ARGS,
+                    },
+                  },
+                },
+                undefined,
+                2,
+              )}
+            />
           </li>
         </ol>
       </>

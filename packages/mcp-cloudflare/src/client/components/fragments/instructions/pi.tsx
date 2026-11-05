@@ -1,7 +1,8 @@
+import { CLI_MCP_ARGS, CLI_MCP_COMMAND } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 
 interface PiInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "stdio" | "cli";
 }
 
 export function PiInstructions({ transport }: PiInstructionsProps) {
@@ -43,6 +44,35 @@ export function PiInstructions({ transport }: PiInstructionsProps) {
             .
           </small>
         </p>
+      </>
+    );
+  }
+
+  if (transport === "cli") {
+    return (
+      <>
+        <ol>
+          <li>
+            Edit <code>~/.pi/agent/mcp.json</code> and add the stdio MCP server
+            configuration:
+            <CodeSnippet
+              noMargin
+              snippet={JSON.stringify(
+                {
+                  mcpServers: {
+                    sentry: { command: CLI_MCP_COMMAND, args: CLI_MCP_ARGS },
+                  },
+                },
+                undefined,
+                2,
+              )}
+            />
+          </li>
+          <li>
+            Start Pi or run <code>/reload</code> in an existing session to load
+            the new configuration.
+          </li>
+        </ol>
       </>
     );
   }

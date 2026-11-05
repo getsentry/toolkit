@@ -1,9 +1,9 @@
-import { NPM_PACKAGE_NAME } from "../../../../constants";
+import { CLI_MCP_SNIPPET, NPM_PACKAGE_NAME } from "../../../../constants";
 import { Link } from "../../ui/base";
 import CodeSnippet from "../../ui/code-snippet";
 
 interface FxInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "stdio" | "cli";
 }
 
 export function FxInstructions({ transport }: FxInstructionsProps) {
@@ -37,6 +37,25 @@ export function FxInstructions({ transport }: FxInstructionsProps) {
             .
           </small>
         </p>
+      </>
+    );
+  }
+
+  if (transport === "cli") {
+    return (
+      <>
+        <ol>
+          <li>Open your terminal to access the CLI.</li>
+          <li>
+            <CodeSnippet
+              noMargin
+              snippet={`fx mcp add sentry ${CLI_MCP_SNIPPET}`}
+            />
+          </li>
+          <li>
+            Run <code>/mcp reload</code> to apply the change.
+          </li>
+        </ol>
       </>
     );
   }

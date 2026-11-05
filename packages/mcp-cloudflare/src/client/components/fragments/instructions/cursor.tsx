@@ -1,3 +1,4 @@
+import { CLI_MCP_ARGS, CLI_MCP_COMMAND } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 import { Button } from "../../ui/button";
 import { KeyIcon } from "../../ui/key-icon";
@@ -5,7 +6,7 @@ import { KeyWord } from "../../ui/key-word";
 import { getCursorDeepLink } from "../../../../client/utils";
 
 interface CursorInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "stdio" | "cli";
 }
 
 export function CursorInstructions({ transport }: CursorInstructionsProps) {
@@ -58,6 +59,42 @@ export function CursorInstructions({ transport }: CursorInstructionsProps) {
           <li>
             Optional: To use the service with <code>cursor-agent</code>:
             <CodeSnippet noMargin snippet={`cursor-agent mcp login sentry`} />
+          </li>
+        </ol>
+      </>
+    );
+  }
+
+  if (transport === "cli") {
+    return (
+      <>
+        <ol>
+          <li>
+            <strong>
+              <KeyIcon>⌘</KeyIcon> + <KeyWord>Shift</KeyWord> +{" "}
+              <KeyIcon>J</KeyIcon>
+            </strong>{" "}
+            to open Cursor Settings.
+          </li>
+          <li>
+            Select <strong>Skills and Integrations</strong>.
+          </li>
+          <li>
+            Select <strong>New MCP Server</strong>.
+          </li>
+          <li>
+            <CodeSnippet
+              noMargin
+              snippet={JSON.stringify(
+                {
+                  mcpServers: {
+                    sentry: { command: CLI_MCP_COMMAND, args: CLI_MCP_ARGS },
+                  },
+                },
+                undefined,
+                2,
+              )}
+            />
           </li>
         </ol>
       </>

@@ -1,7 +1,8 @@
+import { CLI_MCP_ARGS, CLI_MCP_COMMAND } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 
 interface AmpInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "stdio" | "cli";
 }
 
 export function AmpInstructions({ transport }: AmpInstructionsProps) {
@@ -36,6 +37,41 @@ export function AmpInstructions({ transport }: AmpInstructionsProps) {
             .
           </small>
         </p>
+      </>
+    );
+  }
+
+  if (transport === "cli") {
+    return (
+      <>
+        <ol>
+          <li>
+            Edit your settings file and add the MCP server configuration:
+            <ul>
+              <li>
+                <strong>macOS/Linux:</strong>{" "}
+                <code>~/.config/amp/settings.json</code>
+              </li>
+              <li>
+                <strong>Windows:</strong>{" "}
+                <code>%USERPROFILE%\.config\amp\settings.json</code>
+              </li>
+            </ul>
+            <CodeSnippet
+              noMargin
+              snippet={JSON.stringify(
+                {
+                  "amp.mcpServers": {
+                    sentry: { command: CLI_MCP_COMMAND, args: CLI_MCP_ARGS },
+                  },
+                },
+                undefined,
+                2,
+              )}
+            />
+          </li>
+          <li>Restart Amp to load the new configuration.</li>
+        </ol>
       </>
     );
   }

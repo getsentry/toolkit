@@ -1,7 +1,8 @@
+import { CLI_MCP_SNIPPET } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 
 interface CodexCLIInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "stdio" | "cli";
 }
 
 export function CodexCLIInstructions({ transport }: CodexCLIInstructionsProps) {
@@ -42,6 +43,26 @@ export function CodexCLIInstructions({ transport }: CodexCLIInstructionsProps) {
             Next time you run <code>codex</code>, the Sentry MCP server will be
             available. It will automatically open the OAuth flow to connect to
             your Sentry account.
+          </li>
+        </ol>
+      </>
+    );
+  }
+
+  if (transport === "cli") {
+    return (
+      <>
+        <ol>
+          <li>Open your terminal to access the CLI.</li>
+          <li>
+            <CodeSnippet
+              noMargin
+              snippet={`codex mcp add sentry -- ${CLI_MCP_SNIPPET}`}
+            />
+          </li>
+          <li>
+            Next time you run <code>codex</code>, the Sentry MCP server will be
+            available, using your Sentry CLI login.
           </li>
         </ol>
       </>

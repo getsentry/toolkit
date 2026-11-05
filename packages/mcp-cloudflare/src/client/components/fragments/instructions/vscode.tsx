@@ -1,10 +1,10 @@
-import { NPM_PACKAGE_NAME } from "../../../../constants";
+import { CLI_MCP_SNIPPET, NPM_PACKAGE_NAME } from "../../../../constants";
 import { Button } from "../../ui/button";
 import CodeSnippet from "../../ui/code-snippet";
 import { KeyIcon } from "../../ui/key-icon";
 
 interface VSCodeInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "stdio" | "cli";
 }
 
 export function VSCodeInstructions({ transport }: VSCodeInstructionsProps) {
@@ -61,6 +61,39 @@ export function VSCodeInstructions({ transport }: VSCodeInstructionsProps) {
             <strong>Start Server</strong>.
           </li>
         </ol>
+      </>
+    );
+  }
+
+  if (transport === "cli") {
+    return (
+      <>
+        <ol>
+          <li>
+            <strong>
+              <KeyIcon>⌘</KeyIcon> + <KeyIcon>P</KeyIcon>
+            </strong>{" "}
+            and search for <strong>MCP: Add Server</strong>.
+          </li>
+          <li>
+            Select <strong>Command (stdio)</strong>.
+          </li>
+          <li>
+            Enter the following command, and hit enter.
+            <CodeSnippet noMargin snippet={CLI_MCP_SNIPPET} />
+          </li>
+          <li>
+            Enter the name <strong>Sentry</strong> and hit enter.
+          </li>
+          <li>
+            Activate the server using <strong>MCP: List Servers</strong> and
+            selecting <strong>Sentry</strong>, and selecting{" "}
+            <strong>Start Server</strong>.
+          </li>
+        </ol>
+        <p>
+          <small>Note: MCP is supported in VSCode 1.99 and above.</small>
+        </p>
       </>
     );
   }

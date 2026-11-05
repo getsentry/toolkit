@@ -1,7 +1,8 @@
+import { CLI_MCP_ARGS, CLI_MCP_COMMAND } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 
 interface GeminiInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "stdio" | "cli";
 }
 
 export function GeminiInstructions({ transport }: GeminiInstructionsProps) {
@@ -53,6 +54,32 @@ export function GeminiInstructions({ transport }: GeminiInstructionsProps) {
             .
           </small>
         </p>
+      </>
+    );
+  }
+
+  if (transport === "cli") {
+    return (
+      <>
+        <ol>
+          <li>
+            Edit <code>~/.gemini/settings.json</code> and add the MCP server
+            configuration:
+            <CodeSnippet
+              noMargin
+              snippet={JSON.stringify(
+                {
+                  mcpServers: {
+                    sentry: { command: CLI_MCP_COMMAND, args: CLI_MCP_ARGS },
+                  },
+                },
+                undefined,
+                2,
+              )}
+            />
+          </li>
+          <li>Restart Gemini CLI to load the new configuration.</li>
+        </ol>
       </>
     );
   }

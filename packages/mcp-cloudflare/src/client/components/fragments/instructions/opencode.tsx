@@ -1,7 +1,8 @@
+import { CLI_MCP_ARGS, CLI_MCP_COMMAND } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 
 interface OpenCodeInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "stdio" | "cli";
 }
 
 export function OpenCodeInstructions({ transport }: OpenCodeInstructionsProps) {
@@ -54,6 +55,36 @@ export function OpenCodeInstructions({ transport }: OpenCodeInstructionsProps) {
             .
           </small>
         </p>
+      </>
+    );
+  }
+
+  if (transport === "cli") {
+    return (
+      <>
+        <ol>
+          <li>
+            Edit <code>~/.config/opencode/opencode.json</code> and add the local
+            MCP server configuration:
+            <CodeSnippet
+              noMargin
+              snippet={JSON.stringify(
+                {
+                  $schema: "https://opencode.ai/config.json",
+                  mcp: {
+                    sentry: {
+                      type: "local",
+                      command: [CLI_MCP_COMMAND, ...CLI_MCP_ARGS],
+                    },
+                  },
+                },
+                undefined,
+                2,
+              )}
+            />
+          </li>
+          <li>Restart OpenCode to load the new configuration.</li>
+        </ol>
       </>
     );
   }

@@ -1,9 +1,9 @@
 import { Link } from "../../ui/base";
 import CodeSnippet from "../../ui/code-snippet";
-import { NPM_PACKAGE_NAME } from "../../../../constants";
+import { CLI_MCP_SNIPPET, NPM_PACKAGE_NAME } from "../../../../constants";
 
 interface ClaudeCodeInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "stdio" | "cli";
 }
 
 export function ClaudeCodeInstructions({
@@ -39,6 +39,26 @@ export function ClaudeCodeInstructions({
             .
           </small>
         </p>
+      </>
+    );
+  }
+
+  if (transport === "cli") {
+    return (
+      <>
+        <ol>
+          <li>Open your terminal to access the CLI.</li>
+          <li>
+            <CodeSnippet
+              noMargin
+              snippet={`claude mcp add sentry -- ${CLI_MCP_SNIPPET}`}
+            />
+          </li>
+          <li>
+            Restart Claude Code. The server uses your Sentry CLI login, so there
+            is no token to paste.
+          </li>
+        </ol>
       </>
     );
   }
