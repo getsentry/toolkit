@@ -1,8 +1,8 @@
 import type { ListOrganizationEventsDroppedResponse } from "@sentry/api";
 import { describe, expect, test } from "vitest";
 import {
-  formatDroppedEvents,
-  summarizeDroppedEvents,
+  formatEventOutcomes,
+  summarizeEventOutcomes,
 } from "../../../src/lib/formatters/dropped-events.js";
 
 function bucket(
@@ -23,7 +23,13 @@ function bucket(
   };
 }
 
-describe("summarizeDroppedEvents", () => {
+function accepted(
+  count: number,
+): ListOrganizationEventsDroppedResponse["acceptedEvents"][number] {
+  return bucket({ outcome: "accepted", reason: "accepted", count, tags: [] });
+}
+
+describe("summarizeEventOutcomes", () => {
   test("collapses buckets into one row per (outcome, reason)", () => {
     const response: ListOrganizationEventsDroppedResponse = {
       meta: {
@@ -41,7 +47,7 @@ describe("summarizeDroppedEvents", () => {
       acceptedEvents: [],
     };
 
-    const rows = summarizeDroppedEvents(response);
+    const rows = summarizeEventOutcomes(response);
 
     expect(rows).toHaveLength(2);
     const quota = rows.find((r) => r.reason === "key_quota");
@@ -65,7 +71,7 @@ describe("summarizeDroppedEvents", () => {
       acceptedEvents: [],
     };
 
-    const rows = summarizeDroppedEvents(response);
+    const rows = summarizeEventOutcomes(response);
 
     expect(rows.map((r) => r.reason)).toEqual(["b", "c", "a"]);
   });
@@ -80,12 +86,39 @@ describe("summarizeDroppedEvents", () => {
         suppressedDrops: [],
       },
       droppedEvents: [bucket({ count: 25 })],
-      acceptedEvents: [bucket({ outcome: "accepted", count: 75 })],
+      acceptedEvents: [accepted(75)],
     };
 
-    const rows = summarizeDroppedEvents(response);
+    const rows = summarizeEventOutcomes(response);
 
-    expect(rows[0]!.share).toBeCloseTo(0.25);
+    expect(rows.map((r) => [r.outcome, r.share])).toEqual([
+      ["accepted", 0.75],
+      ["rate_limited", 0.25],
+    ]);
+  });
+
+  test("lists accepted volume first, even when drops outnumber it", () => {
+    const response: ListOrganizationEventsDroppedResponse = {
+      meta: {
+        dataset: "errors",
+        start: 0,
+        end: 10,
+        interval: 1,
+        suppressedDrops: [],
+      },
+      droppedEvents: [bucket({ count: 90 })],
+      acceptedEvents: [accepted(4), accepted(6)],
+    };
+
+    const rows = summarizeEventOutcomes(response);
+
+    expect(rows[0]).toMatchObject({
+      outcome: "accepted",
+      label: "Accepted",
+      events: 10,
+      tags: [],
+    });
+    expect(rows[1]!.outcome).toBe("rate_limited");
   });
 
   test("defaults tags to [] when an older server omits them", () => {
@@ -102,16 +135,16 @@ describe("summarizeDroppedEvents", () => {
       acceptedEvents: [],
     } as unknown as ListOrganizationEventsDroppedResponse;
 
-    const rows = summarizeDroppedEvents(response);
+    const rows = summarizeEventOutcomes(response);
 
     expect(rows[0]!.tags).toEqual([]);
-    expect(formatDroppedEvents(rows)).toContain("—");
+    expect(formatEventOutcomes(rows)).toContain("—");
   });
 });
 
-describe("formatDroppedEvents", () => {
+describe("formatEventOutcomes", () => {
   test("returns empty string for no rows", () => {
-    expect(formatDroppedEvents([])).toBe("");
+    expect(formatEventOutcomes([])).toBe("");
   });
 
   test("renders one section per outcome with a reason table", () => {
@@ -130,10 +163,31 @@ describe("formatDroppedEvents", () => {
       acceptedEvents: [],
     };
 
-    const out = formatDroppedEvents(summarizeDroppedEvents(response));
+    const out = formatEventOutcomes(summarizeEventOutcomes(response));
 
     expect(out).toContain("Rate Limited");
     expect(out).toContain("Inbound Filter");
     expect(out).toContain("key_quota");
+  });
+
+  test("renders accepted volume as a header line without a table", () => {
+    const response: ListOrganizationEventsDroppedResponse = {
+      meta: {
+        dataset: "errors",
+        start: 0,
+        end: 10,
+        interval: 1,
+        suppressedDrops: [],
+      },
+      droppedEvents: [bucket({ reason: "key_quota", count: 1 })],
+      acceptedEvents: [accepted(3)],
+    };
+
+    const out = formatEventOutcomes(summarizeEventOutcomes(response));
+    const [acceptedSection, droppedSection] = out.split("\n\n");
+
+    expect(acceptedSection).toContain("Accepted: 3 (75.00%)");
+    expect(acceptedSection).not.toContain("Reason");
+    expect(droppedSection).toContain("Rate Limited: 1 dropped (25.00%)");
   });
 });

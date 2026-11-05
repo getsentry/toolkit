@@ -1,14 +1,19 @@
 import type { ListOrganizationEventsDroppedResponse } from "@sentry/api";
-import type { DroppedEventRow } from "../../output-schemas/event.js";
+import type { EventOutcomeRow } from "../../output-schemas/event.js";
 import { bold } from "./colors.js";
 import { fmtCount } from "./numbers.js";
 import { type Column, formatTable } from "./table.js";
 
-export type { DroppedEventRow };
+export type { EventOutcomeRow };
 
-/** Human-readable label for a drop outcome code. */
+/** Outcome (and reason) Sentry reports for accepted volume. */
+export const ACCEPTED_OUTCOME = "accepted";
+
+/** Human-readable label for an outcome code. */
 function outcomeLabel(outcome: string): string {
   switch (outcome) {
+    case ACCEPTED_OUTCOME:
+      return "Accepted";
     case "client_discard":
       return "Client Discard";
     case "filtered":
@@ -30,29 +35,22 @@ function shareRatio(events: number, total: number): number {
   return total === 0 ? 0 : events / total;
 }
 
-function sumCounts(
-  buckets: ListOrganizationEventsDroppedResponse["droppedEvents"],
-): number {
+type Buckets = ListOrganizationEventsDroppedResponse["droppedEvents"];
+
+function sumCounts(buckets: Buckets): number {
   return buckets.reduce((sum, bucket) => sum + bucket.count, 0);
 }
 
 /**
- * Collapse the bucketed API response into flat rows, one per (outcome, reason),
- * sorted by outcome volume then reason volume within each outcome. Share is each
- * slice's fraction of total volume (dropped + accepted), matching the Explore
- * flyout.
+ * Collapse buckets into one row per (outcome, reason), sorted by outcome volume
+ * then reason volume within each outcome.
  */
-export function summarizeDroppedEvents(
-  response: ListOrganizationEventsDroppedResponse,
-): DroppedEventRow[] {
-  const total =
-    sumCounts(response.droppedEvents) + sumCounts(response.acceptedEvents);
-
+function collapseBuckets(buckets: Buckets, total: number): EventOutcomeRow[] {
   const byOutcome = new Map<
     string,
     Map<string, { events: number; category: string; tags: string[] }>
   >();
-  for (const bucket of response.droppedEvents) {
+  for (const bucket of buckets) {
     const reasons = byOutcome.get(bucket.outcome) ?? new Map();
     byOutcome.set(bucket.outcome, reasons);
     const existing = reasons.get(bucket.reason);
@@ -72,7 +70,7 @@ export function summarizeDroppedEvents(
 
   return [...byOutcome.entries()]
     .map(([outcome, reasons]) => {
-      const rows: DroppedEventRow[] = [...reasons.entries()]
+      const rows: EventOutcomeRow[] = [...reasons.entries()]
         .map(([reason, r]) => ({
           outcome,
           label: outcomeLabel(outcome),
@@ -90,6 +88,23 @@ export function summarizeDroppedEvents(
     .flatMap((outcome) => outcome.rows);
 }
 
+/**
+ * Collapse the bucketed API response into flat rows: the accepted volume first
+ * (Sentry reports it as outcome and reason `accepted`), then one row per drop
+ * (outcome, reason). Share is each slice's fraction of total volume (dropped +
+ * accepted), matching the Explore flyout.
+ */
+export function summarizeEventOutcomes(
+  response: ListOrganizationEventsDroppedResponse,
+): EventOutcomeRow[] {
+  const total =
+    sumCounts(response.droppedEvents) + sumCounts(response.acceptedEvents);
+  return [
+    ...collapseBuckets(response.acceptedEvents, total),
+    ...collapseBuckets(response.droppedEvents, total),
+  ];
+}
+
 function formatShare(ratio: number): string {
   if (ratio > 0 && ratio < 0.0001) {
     return "<0.01%";
@@ -101,7 +116,7 @@ function formatTags(tags: string[]): string {
   return tags.length > 0 ? tags.join(", ") : "—";
 }
 
-const REASON_COLUMNS: Column<DroppedEventRow>[] = [
+const REASON_COLUMNS: Column<EventOutcomeRow>[] = [
   { header: "Reason", value: (row) => row.reason },
   { header: "Category", value: (row) => row.category },
   { header: "Dropped", value: (row) => fmtCount(row.events), align: "right" },
@@ -110,19 +125,19 @@ const REASON_COLUMNS: Column<DroppedEventRow>[] = [
 ];
 
 /**
- * Render one block per outcome (header line + reason table). Rows arrive grouped
- * by outcome (contiguous), so split on outcome change rather than re-grouping.
- * Empty input yields an empty string — the command prints the "no dropped
- * events" hint instead.
+ * Render one block per outcome. Accepted volume is a single header line; each
+ * drop outcome gets a header line plus a reason table. Rows arrive grouped by
+ * outcome (contiguous), so split on outcome change rather than re-grouping.
+ * Empty input yields an empty string — the command prints a hint instead.
  */
-export function formatDroppedEvents(rows: DroppedEventRow[]): string {
+export function formatEventOutcomes(rows: EventOutcomeRow[]): string {
   if (rows.length === 0) {
     return "";
   }
   const sections: Array<{
     outcome: string;
     label: string;
-    rows: DroppedEventRow[];
+    rows: EventOutcomeRow[];
   }> = [];
   for (const row of rows) {
     const last = sections.at(-1);
@@ -133,12 +148,15 @@ export function formatDroppedEvents(rows: DroppedEventRow[]): string {
     }
   }
   return sections
-    .map(({ label, rows: section }) => {
+    .map(({ outcome, label, rows: section }) => {
       const events = section.reduce((sum, row) => sum + row.events, 0);
-      const share = section.reduce((sum, row) => sum + row.share, 0);
-      const header = bold(
-        `${label}: ${fmtCount(events)} dropped (${formatShare(share)})`,
+      const share = formatShare(
+        section.reduce((sum, row) => sum + row.share, 0),
       );
+      if (outcome === ACCEPTED_OUTCOME) {
+        return bold(`${label}: ${fmtCount(events)} (${share})`);
+      }
+      const header = bold(`${label}: ${fmtCount(events)} dropped (${share})`);
       return `${header}\n${formatTable(section, REASON_COLUMNS)}`;
     })
     .join("\n\n");

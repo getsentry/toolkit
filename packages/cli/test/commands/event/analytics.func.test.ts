@@ -100,6 +100,37 @@ describe("event analytics", () => {
     expect(output).toContain("No dropped events for my-org/my-proj");
   });
 
+  test("hints that nothing was dropped when only accepted volume exists", async () => {
+    getDroppedEventsSpy.mockResolvedValue(
+      response({
+        acceptedEvents: [
+          {
+            type: "error",
+            category: "error",
+            outcome: "accepted",
+            reason: "accepted",
+            start: 0,
+            end: 1,
+            count: 7,
+            tags: [],
+          },
+        ],
+      }),
+    );
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await analyticsCommand.loader();
+    await func.call(
+      context,
+      { dataset: "errors", period: parsePeriod("90d"), json: false },
+      boundTarget("my-org", "my-proj"),
+    );
+
+    const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
+    expect(output).toContain("Accepted: 7 (100.00%)");
+    expect(output).toContain("No dropped events for my-org/my-proj");
+  });
+
   test("emits summarized rows as JSON", async () => {
     getDroppedEventsSpy.mockResolvedValue(
       response({

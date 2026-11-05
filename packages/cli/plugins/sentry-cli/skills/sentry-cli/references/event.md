@@ -242,7 +242,7 @@ sentry event send my-org/my-project -m "Test"
 
 ### `sentry event analytics [<org/project>]`
 
-Analytics for events Sentry dropped
+Analytics for events Sentry accepted and dropped
 
 **Arguments:**
 
@@ -258,18 +258,18 @@ Analytics for events Sentry dropped
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `outcome` | string | Drop outcome code (e.g. rate_limited, filtered) |
+| `outcome` | string | Outcome code: accepted, or a drop such as rate_limited or filtered |
 | `label` | string | Human-readable outcome label |
-| `reason` | string | Drop reason within the outcome (e.g. spike_protection) |
+| `reason` | string | Reason within the outcome (e.g. spike_protection); accepted for accepted volume |
 | `category` | string | Data category (e.g. error, span) |
-| `events` | number | Events dropped for this slice |
+| `events` | number | Events in this slice |
 | `share` | number | Fraction of total volume (0-1), not a percentage string |
-| `tags` | array | Drop classification: intentional or unintentional |
+| `tags` | array | Drop classification: intentional or unintentional; empty for accepted |
 
 **Examples:**
 
 ```bash
-# Dropped-event analytics for a project
+# Accepted and dropped event analytics for a project
 sentry event analytics my-org/my-project
 
 # Analytics for a different dataset

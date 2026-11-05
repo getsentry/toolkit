@@ -10,11 +10,12 @@ import {
 } from "../../lib/list-command.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
-  type DroppedEventRow,
-  formatDroppedEvents,
-  summarizeDroppedEvents,
+  ACCEPTED_OUTCOME,
+  type EventOutcomeRow,
+  formatEventOutcomes,
+  summarizeEventOutcomes,
 } from "../../lib/formatters/dropped-events.js";
-import { DroppedEventRowSchema } from "../../generated/output-schemas/event.js";
+import { EventOutcomeRowSchema } from "../../generated/output-schemas/event.js";
 import { withProgress } from "../../lib/polling.js";
 import { fetchProjectId } from "../../lib/resolve-target.js";
 import {
@@ -39,12 +40,12 @@ type AnalyticsFlags = {
 
 export const analyticsCommand = buildCommand({
   docs: {
-    brief: "Analytics for events Sentry dropped",
+    brief: "Analytics for events Sentry accepted and dropped",
     fullDescription:
-      "Aggregate analytics for events Sentry received but dropped before " +
-      "storage (rate-limited, filtered, invalid, abuse, client-discarded, " +
-      "cardinality-limited), one row per outcome and reason with each slice's " +
-      "share of total volume.\n\n" +
+      "Aggregate analytics for events Sentry received: the accepted volume, " +
+      "then the events dropped before storage (rate-limited, filtered, " +
+      "invalid, abuse, client-discarded, cardinality-limited), one row per " +
+      "outcome and reason with each slice's share of total volume.\n\n" +
       "Unlike 'event list', which returns individual stored events, this shows " +
       "only aggregate counts — dropped events have no stored detail to list.\n\n" +
       "Drops are either intentional (user-configured, e.g. sampling or inbound " +
@@ -54,7 +55,7 @@ export const analyticsCommand = buildCommand({
       "config or a local DSN.",
     examples: [
       {
-        description: "Dropped-event analytics for a project",
+        description: "Accepted and dropped event analytics for a project",
         command: "sentry event analytics my-org/my-project",
       },
       {
@@ -73,8 +74,8 @@ export const analyticsCommand = buildCommand({
     ],
   },
   output: {
-    human: formatDroppedEvents,
-    schema: DroppedEventRowSchema,
+    human: formatEventOutcomes,
+    schema: EventOutcomeRowSchema,
   },
   parameters: {
     positional: {
@@ -112,7 +113,7 @@ export const analyticsCommand = buildCommand({
     const projectId = await fetchProjectId(org, project, { strict: true });
 
     const response = await withProgress(
-      { message: "Fetching dropped events...", json: flags.json },
+      { message: "Fetching event analytics...", json: flags.json },
       () =>
         getDroppedEvents(org, {
           dataset: flags.dataset,
@@ -121,9 +122,9 @@ export const analyticsCommand = buildCommand({
         }),
     );
 
-    const rows: DroppedEventRow[] = summarizeDroppedEvents(response);
+    const rows: EventOutcomeRow[] = summarizeEventOutcomes(response);
     yield new CommandOutput(rows);
-    if (rows.length === 0) {
+    if (rows.every((row) => row.outcome === ACCEPTED_OUTCOME)) {
       return { hint: `No dropped events for ${org}/${project}.` };
     }
     return undefined;

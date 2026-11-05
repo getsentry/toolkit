@@ -149,35 +149,41 @@ const _DroppedEventsBucket =
   vListOrganizationEventsDroppedResponse.entries.droppedEvents.item.entries;
 
 /**
- * One (outcome, reason) slice of dropped volume in `event analytics`: one
- * JSON row, one table line.
+ * One (outcome, reason) slice of event volume in `event analytics`: the
+ * accepted total or one kind of drop. One JSON row each.
  */
-export const DroppedEventRowSchema = pipe(
+export const EventOutcomeRowSchema = pipe(
   object({
     outcome: pipe(
       _DroppedEventsBucket.outcome,
-      description("Drop outcome code (e.g. rate_limited, filtered)"),
+      description(
+        "Outcome code: accepted, or a drop such as rate_limited or filtered",
+      ),
     ),
     label: pipe(string(), description("Human-readable outcome label")),
     reason: pipe(
       _DroppedEventsBucket.reason,
-      description("Drop reason within the outcome (e.g. spike_protection)"),
+      description(
+        "Reason within the outcome (e.g. spike_protection); accepted for accepted volume",
+      ),
     ),
     category: pipe(
       _DroppedEventsBucket.category,
       description("Data category (e.g. error, span)"),
     ),
-    events: pipe(number(), description("Events dropped for this slice")),
+    events: pipe(number(), description("Events in this slice")),
     share: pipe(
       number(),
       description("Fraction of total volume (0-1), not a percentage string"),
     ),
     tags: pipe(
       _DroppedEventsBucket.tags,
-      description("Drop classification: intentional or unintentional"),
+      description(
+        "Drop classification: intentional or unintentional; empty for accepted",
+      ),
     ),
   }),
-  description("A dropped-events row: one outcome/reason slice"),
+  description("An event-outcome row: one outcome/reason slice"),
 );
 
-export type DroppedEventRow = InferOutput<typeof DroppedEventRowSchema>;
+export type EventOutcomeRow = InferOutput<typeof EventOutcomeRowSchema>;

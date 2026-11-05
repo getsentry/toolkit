@@ -20,7 +20,7 @@ export const eventRoute = buildRouteMap({
       "Use 'sentry event view <event-id>' to view a specific event.\n" +
       "Use 'sentry event list <issue-id>' to list events for an issue.\n" +
       "Use 'sentry event send -m <message>' to send a test event.\n" +
-      "Use 'sentry event analytics' to see events Sentry dropped.",
+      "Use 'sentry event analytics' to see accepted and dropped event volume.",
     hideRoute: {},
   },
 });
