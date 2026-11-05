@@ -105,7 +105,11 @@ describe("update_issue", () => {
       serverContext,
     );
 
-    const serialized = JSON.stringify(structured(result));
+    assertStructuredOnlyResult(result);
+    // Serialize the raw result: parsing with the output schema would strip
+    // unknown keys and hide a leak.
+    const serialized = JSON.stringify(result);
+    expect(serialized).toContain("CLOUDFLARE-MCP-41");
     expect(serialized).not.toContain("must-not-leak");
   });
 
