@@ -28,6 +28,12 @@ describe("buildServerInstructions", () => {
     );
   });
 
+  it("skips the catalog gateway rule unless both gateway tools are registered", () => {
+    expect(
+      buildServerInstructions(new Set(["search_sentry_tools"])),
+    ).not.toContain("search_sentry_tools");
+  });
+
   it("points at the catalog gateway when it is registered", () => {
     const instructions = buildServerInstructions(
       new Set([

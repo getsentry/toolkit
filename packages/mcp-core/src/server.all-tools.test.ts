@@ -110,7 +110,7 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
     expect(instructions).toMatchInlineSnapshot(`
       "Sentry monitors errors and performance in the user's applications. Use these tools when the user asks about production behavior or their Sentry account: errors, exceptions, and crashes; Sentry issues and stack traces; traces, spans, and slow requests; logs; metrics; session replays; profiles; releases; cron, uptime, and metric monitors; alert rules; or Sentry SDK setup and docs.
       - When the user shares a Sentry URL, or an issue, event, trace, or replay ID, call get_sentry_resource first.
-      - If the organization slug or regionUrl is unknown, call find_organizations and pass its regionUrl to later calls.
+      - Tools pick the organization automatically when the user has only one. If a tool asks for organizationSlug, call find_organizations and pass the slug and regionUrl it returns.
       - Use search_issues for grouped problems ("what's broken", "top issues") and search_errors, search_logs, search_traces, search_metrics, search_profiles, search_replays for individual events, counts, and aggregates."
     `);
   });

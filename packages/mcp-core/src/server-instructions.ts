@@ -41,7 +41,7 @@ export function buildServerInstructions(
   }
   if (toolNames.has("find_organizations")) {
     rules.push(
-      "If the organization slug or regionUrl is unknown, call find_organizations and pass its regionUrl to later calls.",
+      "Tools pick the organization automatically when the user has only one. If a tool asks for organizationSlug, call find_organizations and pass the slug and regionUrl it returns.",
     );
   }
   const eventSearchTools = EVENT_SEARCH_TOOL_NAMES.filter((name) =>
@@ -58,7 +58,10 @@ export function buildServerInstructions(
       `Use ${eventSearchTools.join(", ")} for individual events, counts, and aggregates.`,
     );
   }
-  if (toolNames.has("search_sentry_tools")) {
+  if (
+    toolNames.has("search_sentry_tools") &&
+    toolNames.has("execute_sentry_tool")
+  ) {
     rules.push(
       "More Sentry tools exist than are listed: find them with search_sentry_tools and run them with execute_sentry_tool.",
     );
