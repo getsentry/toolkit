@@ -248,7 +248,7 @@ describe("get_latest_base_snapshot", () => {
       },
     );
     expect(getContent(result).responseNotes).toEqual([
-      'Use the Sentry tool `get_sentry_resource(url="https://sentry.sentry.io/preprod/snapshots/232800/?selectedSnapshot=<URL-encoded imageFileName>")` to view one image; pass its imageFileName as imageIdentifier.',
+      'Use the Sentry tool `get_sentry_resource(url="https://sentry.sentry.io/preprod/snapshots/232800/?selectedSnapshot=<URL-encoded imageFileName>")` to view one image.',
     ]);
   });
 

@@ -27,7 +27,7 @@ function viewImageInstruction(
   args: { organizationSlug: string; snapshotId: string; snapshotUrl: string },
   context: InstructionContext,
 ): string {
-  return `${formatToolCallInstruction({
+  return formatToolCallInstruction({
     toolName: "get_snapshot_image",
     arguments: {
       organizationSlug: args.organizationSlug,
@@ -36,8 +36,9 @@ function viewImageInstruction(
     },
     showArguments: true,
     ...context,
-    fallbackInstruction: `Use the Sentry tool \`get_sentry_resource(url="${args.snapshotUrl}?selectedSnapshot=<URL-encoded imageFileName>")\``,
-  })} to view one image; pass its imageFileName as imageIdentifier.`;
+    purpose: "to view one image; pass its imageFileName as imageIdentifier.",
+    fallbackInstruction: `Use the Sentry tool \`get_sentry_resource(url="${args.snapshotUrl}?selectedSnapshot=<URL-encoded imageFileName>")\` to view one image.`,
+  });
 }
 
 export const getLatestBaseSnapshotOutputSchema = z.object({
