@@ -481,6 +481,51 @@ describe("search_issue_events", () => {
     });
   });
 
+  it("nulls users and geo that carry no values", async () => {
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/*/issues/*/events/", () =>
+        HttpResponse.json([
+          {
+            ...simpleEvent,
+            id: "event-empty-user",
+            eventID: "event-empty-user",
+            user: { id: "", email: null, geo: { country_code: "" } },
+          },
+          {
+            ...simpleEvent,
+            id: "event-empty-geo",
+            eventID: "event-empty-geo",
+            user: { id: "user-1", geo: { country_code: null, city: "" } },
+          },
+        ]),
+      ),
+    );
+
+    const result = await searchIssueEvents.handler(
+      {
+        organizationSlug: "test-org",
+        issueId: "MCP-41",
+        query: "",
+        projectSlug: null,
+        regionUrl: null,
+        limit: 50,
+        includeExplanation: false,
+      },
+      mockContext,
+    );
+
+    const [emptyUser, emptyGeo] = sc(result).events;
+    expect(emptyUser?.user).toBeNull();
+    expect(emptyGeo?.user).toEqual({
+      id: "user-1",
+      email: null,
+      username: null,
+      name: null,
+      ipAddress: null,
+      geo: null,
+    });
+  });
+
   it("should render geo-only users without duplicating raw user JSON", async () => {
     mockGenerateText.mockResolvedValue(
       mockAIResponse("", ["id", "timestamp", "title", "user"], "-timestamp"),

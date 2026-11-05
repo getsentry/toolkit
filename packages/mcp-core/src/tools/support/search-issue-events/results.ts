@@ -104,6 +104,9 @@ function readString(value: unknown): string | null {
   return typeof value === "number" ? String(value) : null;
 }
 
+const allNull = (record: Record<string, unknown>) =>
+  Object.values(record).every((field) => field === null);
+
 function mapUser(value: unknown): IssueEvent["user"] {
   if (!isPlainObject(value)) {
     return null;
@@ -115,14 +118,15 @@ function mapUser(value: unknown): IssueEvent["user"] {
         region: readString(value.geo.region),
       }
     : null;
-  return {
+  const user = {
     id: readString(value.id),
     email: readString(value.email),
     username: readString(value.username),
     name: readString(value.name),
     ipAddress: readString(value.ip_address),
-    geo,
+    geo: geo && !allNull(geo) ? geo : null,
   };
+  return allNull(user) ? null : user;
 }
 
 function mapTags(value: unknown): IssueEvent["tags"] {
@@ -135,6 +139,7 @@ function mapTags(value: unknown): IssueEvent["tags"] {
     }
     const key = readString(tag.key);
     const tagValue = readString(tag.value);
+    // Tags with an empty value are dropped on purpose.
     return key && tagValue !== null ? [{ key, value: tagValue }] : [];
   });
 }
