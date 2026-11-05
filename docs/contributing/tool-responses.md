@@ -147,6 +147,20 @@ The event API's legacy `context` field (extra data) can be `null`. Issue details
 must still load; omit the `Extra Data` section for null or empty values while
 preserving the event's error, stacktrace, and structured `contexts` data.
 
+### Profile Details
+
+`get_profile_details` returns one profile summary under `profile`,
+discriminated by `profileType`, with sample analysis beside it in `samples`.
+For `transaction` and `continuous` profiles, `samples` has frame, sample, and
+stack counts, per-thread sample counts, and the ten most frequent frames (only
+application frames when `focusOnUserCode` is true). `legacy` speedscope
+profiles, such as Android transaction profiles, return `samples: null` because
+Sentry does not return sample-format data for them; when the profile names a
+transaction and `get_profile` is callable in the session, `suggestedActions`
+points at the aggregated flamegraph. Each summary includes `profileUrl`;
+transaction and legacy profiles include `traceUrl` when the profile has a trace
+ID.
+
 ## Selected Event Package Versions
 
 Use `get_sentry_resource` with `resourceType: "event"` (or an event URL) and

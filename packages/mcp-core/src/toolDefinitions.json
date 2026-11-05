@@ -6955,7 +6955,7 @@
   {
     "name": "get_profile_details",
     "title": "Get Profile Details",
-    "description": "Inspect one specific Sentry profile in detail, by profile ID, profiler ID or URL.\nFor aggregated hot paths across a transaction, use get_profile.\n\nUSE THIS TOOL WHEN:\n- User shares a transaction profile URL and wants the details\n- User has a profile ID and wants a concise summary plus raw sample structure\n- User needs to inspect a continuous profile session by profiler ID and time range\n\nRETURNS:\n- Transaction profile summary with profile URL, transaction, trace, release, and runtime details\n- Sample structure summaries such as frame count, sample count, stacks, and thread breakdown\n- Top frames by occurrence for a quick hotspot overview\n\nNOTE: This tool supports two profile modes.\n- Transaction profiles: pass `profileUrl` or `organizationSlug` + `projectSlugOrId` + `profileId`\n- Continuous profiles: pass `profileUrl` or `organizationSlug` + `projectSlugOrId` + `profilerId` + `start` + `end`\n\n<examples>\n### Transaction profile URL\n```\nget_profile_details(\n  profileUrl='https://my-org.sentry.io/explore/profiling/profile/backend/cfe78a5c892d4a64a962d837673398d2/flamegraph/'\n)\n```\n\n### Transaction profile by ID\n```\nget_profile_details(\n  organizationSlug='my-org',\n  projectSlugOrId='backend',\n  profileId='cfe78a5c892d4a64a962d837673398d2'\n)\n```\n\n### Continuous profile by session\n```\nget_profile_details(\n  organizationSlug='my-org',\n  projectSlugOrId='backend',\n  profilerId='041bde57b9844e36b8b7e5734efae5f7',\n  start='2024-01-01T00:00:00Z',\n  end='2024-01-01T01:00:00Z'\n)\n```\n</examples>",
+    "description": "Inspect one specific Sentry profile in detail, by profile ID, profiler ID or URL.\nFor aggregated hot paths across a transaction, use get_profile.\n\nUSE THIS TOOL WHEN:\n- User shares a transaction profile URL and wants the details\n- User has a profile ID and wants a concise summary plus raw sample structure\n- User needs to inspect a continuous profile session by profiler ID and time range\n\nRETURNS:\n- `profile.profileType`: `transaction`, `legacy`, or `continuous`\n- Transaction profile summary with profile URL, transaction, trace, release, and runtime details\n- Sample structure summaries such as frame count, sample count, stacks, and thread breakdown\n- Top frames by occurrence for a quick hotspot overview\n- Legacy profiles (for example Android) return summary metadata only, with `samples: null` and a suggested get_profile call\n\nNOTE: This tool supports two profile modes.\n- Transaction profiles: pass `profileUrl` or `organizationSlug` + `projectSlugOrId` + `profileId`\n- Continuous profiles: pass `profileUrl` or `organizationSlug` + `projectSlugOrId` + `profilerId` + `start` + `end`\n\n<examples>\n### Transaction profile URL\n```\nget_profile_details(\n  profileUrl='https://my-org.sentry.io/explore/profiling/profile/backend/cfe78a5c892d4a64a962d837673398d2/flamegraph/'\n)\n```\n\n### Transaction profile by ID\n```\nget_profile_details(\n  organizationSlug='my-org',\n  projectSlugOrId='backend',\n  profileId='cfe78a5c892d4a64a962d837673398d2'\n)\n```\n\n### Continuous profile by session\n```\nget_profile_details(\n  organizationSlug='my-org',\n  projectSlugOrId='backend',\n  profilerId='041bde57b9844e36b8b7e5734efae5f7',\n  start='2024-01-01T00:00:00Z',\n  end='2024-01-01T01:00:00Z'\n)\n```\n</examples>\n\n<hints>\n- Open `profileUrl` in Sentry for the full flamegraph, and `traceUrl` to inspect the end-to-end request\n- Use search_profiles to find similar profiles\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -7010,6 +7010,298 @@
           "type": "boolean"
         }
       }
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "profileType": {
+                  "type": "string",
+                  "const": "transaction"
+                },
+                "profileUrl": {
+                  "type": "string"
+                },
+                "project": {
+                  "type": "string"
+                },
+                "profileId": {
+                  "type": "string"
+                },
+                "transactionName": {
+                  "type": ["string", "null"]
+                },
+                "traceId": {
+                  "type": ["string", "null"]
+                },
+                "traceUrl": {
+                  "type": ["string", "null"]
+                },
+                "durationMs": {
+                  "type": ["number", "null"]
+                },
+                "platform": {
+                  "type": "string"
+                },
+                "environment": {
+                  "type": ["string", "null"]
+                },
+                "device": {
+                  "type": ["string", "null"]
+                },
+                "os": {
+                  "type": ["string", "null"]
+                },
+                "release": {
+                  "type": ["string", "null"]
+                },
+                "sdk": {
+                  "type": ["string", "null"]
+                },
+                "activeThreadId": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": [
+                "profileType",
+                "profileUrl",
+                "project",
+                "profileId",
+                "transactionName",
+                "traceId",
+                "traceUrl",
+                "durationMs",
+                "platform",
+                "environment",
+                "device",
+                "os",
+                "release",
+                "sdk",
+                "activeThreadId"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "profileType": {
+                  "type": "string",
+                  "const": "legacy"
+                },
+                "profileUrl": {
+                  "type": "string"
+                },
+                "project": {
+                  "type": "string"
+                },
+                "profileId": {
+                  "type": "string"
+                },
+                "transactionName": {
+                  "type": ["string", "null"]
+                },
+                "traceId": {
+                  "type": ["string", "null"]
+                },
+                "traceUrl": {
+                  "type": ["string", "null"]
+                },
+                "durationMs": {
+                  "type": ["number", "null"]
+                },
+                "platform": {
+                  "type": "string"
+                },
+                "environment": {
+                  "type": ["string", "null"]
+                },
+                "device": {
+                  "type": ["string", "null"]
+                },
+                "os": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": [
+                "profileType",
+                "profileUrl",
+                "project",
+                "profileId",
+                "transactionName",
+                "traceId",
+                "traceUrl",
+                "durationMs",
+                "platform",
+                "environment",
+                "device",
+                "os"
+              ],
+              "additionalProperties": false,
+              "description": "Legacy speedscope profile, for example Android."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "profileType": {
+                  "type": "string",
+                  "const": "continuous"
+                },
+                "profileUrl": {
+                  "type": "string"
+                },
+                "project": {
+                  "type": "string"
+                },
+                "profilerId": {
+                  "type": "string"
+                },
+                "chunkId": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "platform": {
+                  "type": "string"
+                },
+                "release": {
+                  "type": ["string", "null"]
+                },
+                "environment": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": [
+                "profileType",
+                "profileUrl",
+                "project",
+                "profilerId",
+                "chunkId",
+                "start",
+                "end",
+                "platform",
+                "release",
+                "environment"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "samples": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "frameCount": {
+                  "type": "number"
+                },
+                "sampleCount": {
+                  "type": "number"
+                },
+                "stackCount": {
+                  "type": "number"
+                },
+                "threads": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": ["string", "null"]
+                      },
+                      "sampleCount": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["id", "name", "sampleCount"],
+                    "additionalProperties": false
+                  }
+                },
+                "topFrames": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "function": {
+                        "type": ["string", "null"]
+                      },
+                      "location": {
+                        "type": ["string", "null"]
+                      },
+                      "isApplication": {
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "type": "number",
+                        "description": "Occurrences of the frame across sampled stacks."
+                      }
+                    },
+                    "required": [
+                      "function",
+                      "location",
+                      "isApplication",
+                      "count"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "Most frequent frames. Only application frames when focusOnUserCode is true."
+                }
+              },
+              "required": [
+                "frameCount",
+                "sampleCount",
+                "stackCount",
+                "threads",
+                "topFrames"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null for legacy profiles, which have no sample-format data."
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["profile", "samples", "suggestedActions"],
+      "additionalProperties": false
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect"],

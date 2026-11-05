@@ -348,11 +348,16 @@ describe("get_sentry_resource", () => {
         url: `https://my-org.sentry.io/explore/profiling/profile/backend/${transactionProfileV1Fixture.profile_id}/flamegraph/`,
       });
 
-      expect(result).toContain(
-        `# Profile ${transactionProfileV1Fixture.profile_id}`,
-      );
-      expect(result).toContain("**Project**: backend");
-      expect(result).toContain("**Transaction**: /api/users");
+      expect(result).toMatchObject({
+        structuredContent: {
+          profile: {
+            profileType: "transaction",
+            profileId: transactionProfileV1Fixture.profile_id,
+            project: "backend",
+            transactionName: "/api/users",
+          },
+        },
+      });
     });
 
     it("dispatches transaction profile URLs with organizations path", async () => {
@@ -360,12 +365,14 @@ describe("get_sentry_resource", () => {
         url: `https://sentry.io/organizations/my-org/profiling/profile/backend/${transactionProfileV1Fixture.profile_id}/flamegraph/?frameName=handle_request`,
       });
 
-      expect(result).toContain(
-        `# Profile ${transactionProfileV1Fixture.profile_id}`,
-      );
-      expect(result).toContain(
-        "**Trace ID**: a4d1aae7216b47ff8117cf4e09ce9d0a",
-      );
+      expect(result).toMatchObject({
+        structuredContent: {
+          profile: {
+            profileId: transactionProfileV1Fixture.profile_id,
+            traceId: "a4d1aae7216b47ff8117cf4e09ce9d0a",
+          },
+        },
+      });
     });
 
     it("dispatches continuous profile URLs to get_profile_details", async () => {
@@ -373,10 +380,14 @@ describe("get_sentry_resource", () => {
         url: "https://my-org.sentry.io/profiling/profile/backend/flamegraph/?profilerId=041bde57b9844e36b8b7e5734efae5f7&start=2024-01-01T00:00:00Z&end=2024-01-01T01:00:00Z",
       });
 
-      expect(result).toContain(
-        "# Continuous Profile 041bde57b9844e36b8b7e5734efae5f7",
-      );
-      expect(result).toContain("## Raw Sample Analysis");
+      expect(result).toMatchObject({
+        structuredContent: {
+          profile: {
+            profileType: "continuous",
+            profilerId: "041bde57b9844e36b8b7e5734efae5f7",
+          },
+        },
+      });
     });
 
     it("rejects profile URLs outside the active constrained project", async () => {
