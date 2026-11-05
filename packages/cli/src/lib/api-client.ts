@@ -183,6 +183,7 @@ export {
   updateRelease,
 } from "./api/releases.js";
 export {
+  findTraceReplay,
   getReplay,
   getReplayRecordingSegments,
   isReplaySortValue,
