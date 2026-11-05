@@ -102,6 +102,19 @@ describe("defineTool output typing", () => {
         });
       },
     });
+
+    defineTool({
+      ...base,
+      name: "own_content",
+      outputSchema,
+      // @ts-expect-error the server generates content from the payload
+      async handler(params) {
+        return {
+          structuredContent: { id: params.id, count: 1, url: null, tags: [] },
+          content: [{ type: "text" as const, text: "markdown" }],
+        };
+      },
+    });
   });
 
   it("allows markdown only without outputSchema", () => {

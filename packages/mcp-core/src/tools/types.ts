@@ -14,6 +14,11 @@ export interface StructuredToolOutput<
   TStructuredContent extends Record<string, unknown> = Record<string, unknown>,
 > {
   structuredContent: TStructuredContent;
+  /**
+   * The server generates `content` from `structuredContent`. A handler that
+   * sets its own would ship it unchanged next to the payload.
+   */
+  content?: never;
 }
 export type ToolOutput =
   | string
@@ -32,7 +37,9 @@ export type ToolOutputSchema = z.ZodType<Record<string, unknown>>;
  * that raw payload, not the parse result, and advertises the schema to clients
  * in its output form (`standardSchemaToJsonSchema(schema, "output")`). So the
  * payload must already be what the schema outputs; `z.input` would accept
- * payloads that rely on defaults or transforms and break the advertised shape.
+ * payloads that rely on defaults and break the advertised shape. Output
+ * schemas must not use transforms, because the SDK cannot advertise them as
+ * JSON Schema.
  *
  * Markdown, strings, and raw MCP content are only allowed without a schema.
  * Tools without a schema may still pass through another tool's structured

@@ -682,9 +682,10 @@ export function runSearchEvents(
   options?: MarkdownSearchEventsOptions,
 ): Promise<string>;
 /**
- * Structured runs lock the dataset, and each row's links come from that
- * dataset's config, so the payload matches the output schema of the dataset
- * the caller passed.
+ * Unchecked narrowing: the builders return the shared payload with loose
+ * row links, and this overload asserts the links match `TDataset`'s output
+ * schema. That holds because structured runs lock the dataset and each row's
+ * links come from that dataset's `defineDatasetConfig`.
  */
 export function runSearchEvents<TDataset extends StructuredSearchDataset>(
   params: SearchEventsParams & { dataset: TDataset },

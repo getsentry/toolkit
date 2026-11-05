@@ -203,6 +203,9 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
   and markdown or raw content fails tsc. The payload type comes from the
   schema, so missing and mistyped fields are errors at the tool definition,
   and so are extra fields in an object literal passed to `structuredResult`.
+  Spread or variable payloads (`structuredResult({ ...upstream })`,
+  `structuredResult(payload)`) are not checked for extra fields, so map fields
+  explicitly. A schema tool cannot set its own `content`.
   Do not add per-tool `satisfies z.infer<...>` checks; they repeat
   what the framework already checks. Shared builders should declare their
   return type (`StructuredToolOutput<z.output<typeof schema>>`) so
