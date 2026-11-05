@@ -57,7 +57,7 @@ function formatCheckIn(checkIn: MonitorCheckIn): string {
   const duration =
     checkIn.duration === undefined || checkIn.duration === null
       ? ""
-      : `, ${checkIn.duration}s`;
+      : `, ${checkIn.duration}ms`;
   const environment = checkIn.environment ? `, ${checkIn.environment}` : "";
   return `- ${date}: ${checkIn.status ?? "unknown"}${duration}${environment}`;
 }
