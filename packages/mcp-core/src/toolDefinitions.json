@@ -7815,7 +7815,7 @@
   {
     "name": "onboarding_status_update",
     "title": "Update Onboarding Status",
-    "description": "Update the progress shown in Sentry's agentic onboarding UI.\n\nUse this tool only when the Sentry getting started skill provides a run token. Call it at the workflow boundaries described by that skill.\n\n<hints>\n- Progress updates are operational UI state, not user analytics.\n- Keep eventNote brief and limited to context useful in the progress UI.\n- Do not include source code, repository paths, credentials, error output, or other sensitive data.\n- status is required for every update.\n- Set runStatus to completed or failed only when the entire onboarding run reaches that state.\n- A failed status requires a brief eventNote explaining the failure.\n</hints>",
+    "description": "Update the progress shown in Sentry's agentic onboarding UI.\n\nUse this tool only when the Sentry getting started skill provides a run token. Call it at the workflow boundaries described by that skill.\n\n<hints>\n- Progress updates are operational UI state, not user analytics.\n- Keep eventNote brief and limited to context useful in the progress UI.\n- Do not include source code, repository paths, credentials, error output, or other sensitive data.\n- status is required for every update.\n- Set runStatus to completed or failed only when the entire onboarding run reaches that state.\n- A failed status requires a brief eventNote explaining the failure.\n- Stop sending updates when the result has continueUpdates: false.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -7993,6 +7993,17 @@
         }
       },
       "required": ["organizationSlug", "runToken", "update"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "continueUpdates": {
+          "type": "boolean",
+          "description": "False when Sentry wants no further updates for this run."
+        }
+      },
+      "required": ["continueUpdates"],
+      "additionalProperties": false
     },
     "requiredScopes": ["org:read"],
     "skills": ["inspect", "seer", "docs", "triage", "project-management"],
