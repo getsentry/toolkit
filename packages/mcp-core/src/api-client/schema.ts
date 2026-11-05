@@ -32,6 +32,7 @@ import type {
   SentryNamedResource,
 } from "@sentry/toolkit-core/resource-identity";
 import { z } from "zod";
+import { TransformationsSchema } from "../utils/time-series";
 
 export const UserSchema = z
   .object({
@@ -1398,6 +1399,9 @@ export const SearchAgentQuerySchema = z
             y_axes: z.array(z.string()).default([]),
             // Only set when the user asks for a time bucket, e.g. "per hour".
             interval: z.string().nullable().optional(),
+            transformations: TransformationsSchema.nullish().transform(
+              (transformations) => transformations ?? undefined,
+            ),
           })
           .passthrough(),
       )

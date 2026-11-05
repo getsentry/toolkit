@@ -155,13 +155,80 @@ Requests for a metric over time ("per hour", "per day", "trend", "over time") re
 - Buckets Sentry flags as `incomplete` are marked in the table. Those still receiving data (`NOT_ELAPSED`, `INGESTION_PENDING`) get `*`, are excluded from the peak, and label the total "so far". Those that start before the retention window (`OUTSIDE_RETENTION`) get `†` and stay in the peak, since their value is final. When the response carries `meta.ingestion`, an **Ingestion** line reports the measured delay and the time data is complete through.
 - Structured dataset tools carry the same states as data: `timeSeries.buckets[].incomplete` (still receiving data) and `outsideRetention`, `totalIncludesIncompleteBuckets` for a total "so far", and `timeSeries.ingestion` for the ingestion line.
 
+### Explicit transformed time series
+
+`search_traces`, `search_logs`, and `search_metrics` accept `timeSeries` with an
+ordered `axes` array. Each axis has an aggregate `yAxis` and an optional ordered
+`transformations` array. Duplicate aggregates retain their own ordered transformations.
+
+```typescript
+search_traces({
+  organizationSlug: "my-org",
+  query: "span.op:db",
+  period: "24h",
+  timeSeries: {
+    axes: [
+      { yAxis: "count()" },
+      {
+        yAxis: "count()",
+        transformations: ["fill(zero)", "smooth(sma,3)"],
+      },
+    ],
+    interval: "1h",
+  },
+});
+```
+
+Supported operations are `fill(zero)`, `fill(locf)`, `fill(linear)`,
+`smooth(sma,window)`, `smooth(ema,window[,factor])`, and
+`smooth(asap[,maxWindow])`. Windows are positive integers. The optional EMA
+factor is greater than zero and at most one. Each axis accepts at most one fill
+and one smoothing operation, in either order. Smoothing operates on aggregate
+buckets. It does not compute rolling percentiles over underlying events.
+
+An explicit configuration with a structured or empty query executes without an
+AI provider or table fields. `fields` and `sort` are incompatible with explicit
+time series. A natural-language query can still use translation, but explicit
+axes, transformations, interval, and period take precedence and survive provider
+fallback. Omission retains the existing search behavior.
+
+Translation responses normalize null transformations to omission. Explicit
+inputs require an array when `transformations` is supplied.
+
+The API request repeats `yAxis` in axis order and repeats
+`transformations[index]` in operation order. Explicit results use the dataset tool's structured result envelope with equivalent
+generated JSON text. Ordered axes are in `series[]`, alongside `requestedInterval`;
+`timeSeries` remains the single-axis inferred chart field. Each returned axis
+includes its executed interval, units, nullable bucket values, comparisons,
+transformation flags. Null is a gap rather than zero. Transformed axes omit totals and label their maximum as `derivedMaximum`.
+
+Errors and profiles retain their existing single-axis inferred charts.
+
+Grouped output, cross-event filters on transformed searches, and mismatched
+returned axes produce actionable errors. Sentry deployments that ignore
+transformations do not return the required bucket flags and produce an error.
+Empty transformed results also cannot confirm execution. Retry with a range
+containing data or explicitly remove the operations to request raw data.
+
+Explore links preserve each axis and its transformations through repeated `aggregateField`
+entries for traces and logs, or `metric` query state for metrics. The interval
+is a global URL parameter. Metrics require a unique metric identity in a
+qualified aggregate such as `sum(value,tokens,counter,-)` or exact
+`metric.name` and `metric.type` filters. Ambiguous metric identities produce an
+error instead of an incomplete link.
+
+When Sentry chooses the interval automatically, links retain the returned
+interval so reopening a transformed chart uses the same bucket width. Explore
+rejects intervals outside its supported range for the selected period. MCP
+returns an actionable error when Explore would replace the applied interval.
+
 ### Key Technical Constraints
 
 - **Logs timestamp handling**: Logs don't support query-based timestamp filters like `timestamp:-1h`. Instead, use `statsPeriod=24h` parameter
 - **Project ID mapping**: API requires numeric project IDs, not slugs. Tool automatically converts project slugs to IDs
 - **Seer translation**: Seer translates natural-language queries when the organization has the `mcp-search-events-seer-translate` rollout flag and has not hidden AI features. If Seer is unavailable or cannot translate the query, the tool falls back to the configured embedded agent.
 - **Untranslated queries**: With no Seer translation and no embedded agent, the query runs as literal text. When a multi-word query without Sentry filters or quotes then finds nothing, the response adds a note that the query was not translated and that the caller should retry with Sentry search syntax. `search_issues` adds the same note in direct mode. Queries in Sentry syntax and searches that return results are unchanged.
-- **Seer cross-event filters**: Time series results do not apply cross-event filters. When Seer returns those filters for a time series, the response always begins with a warning identifying the omitted filters and the broader results, even when `includeExplanation` is false. Structured dataset tools put that warning first in `notes[]`.
+- **Seer cross-event filters**: Legacy untransformed time series do not apply cross-event filters and begin with a warning, even when `includeExplanation` is false. Explicit or transformed time series reject these unsupported filters. Structured dataset tools put that warning first in `notes[]`.
 - **Seer project scope**: For a successful Seer translation without `projectSlug`, search and Explorer links use `project=-1` to match the all-accessible-project scope sent to Seer. Other unscoped searches retain their existing default scope.
 - **Parallel attribute fetching**: For spans/logs/metrics, fetches both string and number attribute types in parallel for better performance
 - **itemType specification**: Must use `logs` and `tracemetrics` exactly for the trace-items attributes API

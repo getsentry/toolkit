@@ -12117,6 +12117,50 @@
           "description": "Include explanation of how the query was translated or repaired",
           "type": "boolean"
         },
+        "timeSeries": {
+          "description": "Explicit time series. Supply ordered axes with aggregate yAxis and optional ordered transformations, such as fill(zero), fill(locf), fill(linear), smooth(sma,3), smooth(ema,5,0.3), or smooth(asap). Works without an AI provider with Sentry query syntax or an empty query. Omit fields and sort. Grouping is unsupported. Explicit axes, transformations, interval and period override translation.",
+          "type": "object",
+          "properties": {
+            "axes": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "yAxis": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[\\w]+\\(.*\\)$"
+                  },
+                  "transformations": {
+                    "maxItems": 2,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "description": "Operation in execution order: fill(zero|locf|linear), smooth(sma,window), smooth(ema,window[,factor]), or smooth(asap[,maxWindow])."
+                    },
+                    "description": "Ordered transformations with at most one fill and one smooth operation. An empty array requests raw values."
+                  }
+                },
+                "required": ["yAxis"],
+                "additionalProperties": false
+              }
+            },
+            "interval": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[1-9]\\d*[smhdw]$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["axes"],
+          "additionalProperties": false
+        },
         "fresh": {
           "description": "Bypass cached reads.",
           "type": "boolean"
@@ -12359,6 +12403,124 @@
             "required": ["type", "toolName", "arguments", "reason"],
             "additionalProperties": false
           }
+        },
+        "requestedInterval": {
+          "type": ["string", "null"]
+        },
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "axisIndex": {
+                "type": "number"
+              },
+              "yAxis": {
+                "type": "string"
+              },
+              "transformations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "intervalMs": {
+                "type": "number"
+              },
+              "valueType": {
+                "type": "string"
+              },
+              "valueUnit": {
+                "type": ["string", "null"]
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "number"
+                  },
+                  "peak": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": ["number", "string"]
+                      },
+                      "timestamp": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["value", "timestamp"],
+                    "additionalProperties": false
+                  },
+                  "derivedMaximum": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": ["number", "string"]
+                      },
+                      "timestamp": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["value", "timestamp"],
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "buckets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "timestamp": {
+                      "type": "number"
+                    },
+                    "value": {
+                      "type": ["number", "string", "null"]
+                    },
+                    "incomplete": {
+                      "type": "boolean"
+                    },
+                    "incompleteReason": {
+                      "type": "string"
+                    },
+                    "comparisonValue": {
+                      "type": ["number", "string", "null"]
+                    },
+                    "transformation": {
+                      "type": "object",
+                      "properties": {
+                        "filled": {
+                          "type": "boolean"
+                        },
+                        "smoothed": {
+                          "type": "boolean"
+                        },
+                        "comparisonFilled": {
+                          "type": "boolean"
+                        },
+                        "comparisonSmoothed": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["timestamp", "value", "incomplete"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "axisIndex",
+              "yAxis",
+              "transformations",
+              "intervalMs",
+              "buckets"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -12452,6 +12614,50 @@
           "default": false,
           "description": "Include explanation of how the query was translated or repaired",
           "type": "boolean"
+        },
+        "timeSeries": {
+          "description": "Explicit time series. Supply ordered axes with aggregate yAxis and optional ordered transformations, such as fill(zero), fill(locf), fill(linear), smooth(sma,3), smooth(ema,5,0.3), or smooth(asap). Works without an AI provider with Sentry query syntax or an empty query. Omit fields and sort. Grouping is unsupported. Explicit axes, transformations, interval and period override translation.",
+          "type": "object",
+          "properties": {
+            "axes": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "yAxis": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[\\w]+\\(.*\\)$"
+                  },
+                  "transformations": {
+                    "maxItems": 2,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "description": "Operation in execution order: fill(zero|locf|linear), smooth(sma,window), smooth(ema,window[,factor]), or smooth(asap[,maxWindow])."
+                    },
+                    "description": "Ordered transformations with at most one fill and one smooth operation. An empty array requests raw values."
+                  }
+                },
+                "required": ["yAxis"],
+                "additionalProperties": false
+              }
+            },
+            "interval": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[1-9]\\d*[smhdw]$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["axes"],
+          "additionalProperties": false
         },
         "fresh": {
           "description": "Bypass cached reads.",
@@ -12690,6 +12896,124 @@
               }
             },
             "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        },
+        "requestedInterval": {
+          "type": ["string", "null"]
+        },
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "axisIndex": {
+                "type": "number"
+              },
+              "yAxis": {
+                "type": "string"
+              },
+              "transformations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "intervalMs": {
+                "type": "number"
+              },
+              "valueType": {
+                "type": "string"
+              },
+              "valueUnit": {
+                "type": ["string", "null"]
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "number"
+                  },
+                  "peak": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": ["number", "string"]
+                      },
+                      "timestamp": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["value", "timestamp"],
+                    "additionalProperties": false
+                  },
+                  "derivedMaximum": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": ["number", "string"]
+                      },
+                      "timestamp": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["value", "timestamp"],
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "buckets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "timestamp": {
+                      "type": "number"
+                    },
+                    "value": {
+                      "type": ["number", "string", "null"]
+                    },
+                    "incomplete": {
+                      "type": "boolean"
+                    },
+                    "incompleteReason": {
+                      "type": "string"
+                    },
+                    "comparisonValue": {
+                      "type": ["number", "string", "null"]
+                    },
+                    "transformation": {
+                      "type": "object",
+                      "properties": {
+                        "filled": {
+                          "type": "boolean"
+                        },
+                        "smoothed": {
+                          "type": "boolean"
+                        },
+                        "comparisonFilled": {
+                          "type": "boolean"
+                        },
+                        "comparisonSmoothed": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["timestamp", "value", "incomplete"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "axisIndex",
+              "yAxis",
+              "transformations",
+              "intervalMs",
+              "buckets"
+            ],
             "additionalProperties": false
           }
         }
@@ -13432,6 +13756,50 @@
           "description": "Include explanation of how the query was translated or repaired",
           "type": "boolean"
         },
+        "timeSeries": {
+          "description": "Explicit time series. Supply ordered axes with aggregate yAxis and optional ordered transformations, such as fill(zero), fill(locf), fill(linear), smooth(sma,3), smooth(ema,5,0.3), or smooth(asap). Works without an AI provider with Sentry query syntax or an empty query. Omit fields and sort. Grouping is unsupported. Explicit axes, transformations, interval and period override translation.",
+          "type": "object",
+          "properties": {
+            "axes": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "yAxis": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[\\w]+\\(.*\\)$"
+                  },
+                  "transformations": {
+                    "maxItems": 2,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "description": "Operation in execution order: fill(zero|locf|linear), smooth(sma,window), smooth(ema,window[,factor]), or smooth(asap[,maxWindow])."
+                    },
+                    "description": "Ordered transformations with at most one fill and one smooth operation. An empty array requests raw values."
+                  }
+                },
+                "required": ["yAxis"],
+                "additionalProperties": false
+              }
+            },
+            "interval": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[1-9]\\d*[smhdw]$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["axes"],
+          "additionalProperties": false
+        },
         "fresh": {
           "description": "Bypass cached reads.",
           "type": "boolean"
@@ -13669,6 +14037,124 @@
               }
             },
             "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        },
+        "requestedInterval": {
+          "type": ["string", "null"]
+        },
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "axisIndex": {
+                "type": "number"
+              },
+              "yAxis": {
+                "type": "string"
+              },
+              "transformations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "intervalMs": {
+                "type": "number"
+              },
+              "valueType": {
+                "type": "string"
+              },
+              "valueUnit": {
+                "type": ["string", "null"]
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "number"
+                  },
+                  "peak": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": ["number", "string"]
+                      },
+                      "timestamp": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["value", "timestamp"],
+                    "additionalProperties": false
+                  },
+                  "derivedMaximum": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": ["number", "string"]
+                      },
+                      "timestamp": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["value", "timestamp"],
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "buckets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "timestamp": {
+                      "type": "number"
+                    },
+                    "value": {
+                      "type": ["number", "string", "null"]
+                    },
+                    "incomplete": {
+                      "type": "boolean"
+                    },
+                    "incompleteReason": {
+                      "type": "string"
+                    },
+                    "comparisonValue": {
+                      "type": ["number", "string", "null"]
+                    },
+                    "transformation": {
+                      "type": "object",
+                      "properties": {
+                        "filled": {
+                          "type": "boolean"
+                        },
+                        "smoothed": {
+                          "type": "boolean"
+                        },
+                        "comparisonFilled": {
+                          "type": "boolean"
+                        },
+                        "comparisonSmoothed": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["timestamp", "value", "incomplete"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "axisIndex",
+              "yAxis",
+              "transformations",
+              "intervalMs",
+              "buckets"
+            ],
             "additionalProperties": false
           }
         }

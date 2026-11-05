@@ -1,14 +1,14 @@
 import { defineTool } from "../../internal/tool-helpers/define";
 import type { ServerContext } from "../../types";
 import {
-  buildDatasetSearchInputSchema,
+  buildTimeSeriesSearchInputSchema,
   runSearchEvents,
   searchToolBase,
 } from "../support/search-events/search";
-import { buildSearchEventsOutputSchema } from "../support/search-events/structured";
+import { buildTimeSeriesSearchOutputSchema } from "../support/search-events/structured";
 
 export const searchMetricsOutputSchema =
-  buildSearchEventsOutputSchema("metrics");
+  buildTimeSeriesSearchOutputSchema("metrics");
 
 export default defineTool({
   ...searchToolBase("search_metrics"),
@@ -33,7 +33,7 @@ export default defineTool({
     "- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.",
     "</hints>",
   ].join("\n"),
-  inputSchema: buildDatasetSearchInputSchema(),
+  inputSchema: buildTimeSeriesSearchInputSchema(),
   outputSchema: searchMetricsOutputSchema,
   async handler(params, context: ServerContext) {
     return await runSearchEvents({ ...params, dataset: "metrics" }, context, {

@@ -31,6 +31,53 @@ import {
   summarizeTimeSeries,
 } from "./formatters";
 import { type FlexibleEventData, isAggregateQuery } from "./utils";
+import { buildTimeSeriesResult } from "./time-series-results";
+
+const seriesMaximumSchema = z.object({
+  value: z.union([z.number(), z.string()]),
+  timestamp: z.number(),
+});
+
+const orderedTimeSeriesSchema = z.object({
+  requestedInterval: z.string().nullable(),
+  series: z.array(
+    z.object({
+      axisIndex: z.number(),
+      yAxis: z.string(),
+      transformations: z.array(z.string()),
+      intervalMs: z.number(),
+      valueType: z.string().optional(),
+      valueUnit: z.string().nullish(),
+      summary: z
+        .object({
+          total: z.number().optional(),
+          peak: seriesMaximumSchema.optional(),
+          derivedMaximum: seriesMaximumSchema.optional(),
+        })
+        .optional(),
+      buckets: z.array(
+        z.object({
+          timestamp: z.number(),
+          value: z.union([z.number(), z.string()]).nullable(),
+          incomplete: z.boolean(),
+          incompleteReason: z.string().optional(),
+          comparisonValue: z
+            .union([z.number(), z.string()])
+            .nullable()
+            .optional(),
+          transformation: z
+            .object({
+              filled: z.boolean().optional(),
+              smoothed: z.boolean().optional(),
+              comparisonFilled: z.boolean().optional(),
+              comparisonSmoothed: z.boolean().optional(),
+            })
+            .optional(),
+        }),
+      ),
+    }),
+  ),
+});
 
 export const timeRangeSchema = z.object({
   statsPeriod: z.string().nullable(),
@@ -338,6 +385,41 @@ export function buildSearchEventsOutputSchema<
   TDataset extends StructuredSearchDataset,
 >(dataset: TDataset) {
   return searchEventsOutputSchema(z.object(STRUCTURED_DATASETS[dataset].links));
+}
+
+export function buildTimeSeriesSearchOutputSchema<
+  TDataset extends "spans" | "logs" | "metrics",
+>(dataset: TDataset) {
+  return buildSearchEventsOutputSchema(dataset).extend(
+    orderedTimeSeriesSchema.partial().shape,
+  );
+}
+
+export function buildStructuredOrderedTimeSeriesResult(
+  params: Parameters<typeof buildTimeSeriesResult>[0],
+): StructuredToolOutput<
+  SearchEventsStructuredContent & z.output<typeof orderedTimeSeriesSchema>
+> {
+  const result = buildTimeSeriesResult(params);
+  return structuredResult({
+    query: params.inputQuery,
+    explanation: params.explanation ?? null,
+    executedSearch: toExecutedSearch({
+      dataset: params.dataset,
+      query: params.query,
+      fields: params.configuration.axes.map((axis) => axis.yAxis),
+      timeRange: params.timeRange,
+    }),
+    url: params.url,
+    presentationHint: DASHBOARD_LINK_HINT,
+    notes: params.notes ?? [],
+    resultType: "timeSeries",
+    results: [],
+    timeSeries: null,
+    suggestedActions: [],
+    requestedInterval: result.requestedInterval,
+    series: result.series,
+  });
 }
 
 /** The payload of the dataset search tool that searches `TDataset`. */

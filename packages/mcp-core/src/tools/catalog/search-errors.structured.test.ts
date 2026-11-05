@@ -215,13 +215,84 @@ describe("search_errors structured output", () => {
     expect(structuredContent.suggestedActions).toEqual([]);
   });
 
+  it("keeps the first inferred time-series axis from Seer in the errors schema", async () => {
+    const seer = await vi.importActual<
+      typeof import("../support/search-events/seer")
+    >("../support/search-events/seer");
+    vi.mocked(translateWithSeer).mockImplementationOnce(seer.translateWithSeer);
+    let requestedAxes: string[] = [];
+    const baseUrl = "https://sentry.io/api/0/organizations/test-org";
+    mswServer.use(
+      http.get(`${baseUrl}/`, () =>
+        HttpResponse.json({
+          id: "1",
+          slug: "test-org",
+          name: "Test Org",
+          features: ["mcp-search-events-seer-translate"],
+        }),
+      ),
+      http.post(`${baseUrl}/search-agent/start/`, () =>
+        HttpResponse.json({ run_id: 1, sentry_run_id: "run-legacy-errors" }),
+      ),
+      http.get(`${baseUrl}/search-agent/state/run-legacy-errors/`, () =>
+        HttpResponse.json({
+          session: {
+            status: "completed",
+            final_response: {
+              responses: [
+                {
+                  query: "level:error",
+                  group_by: [],
+                  visualization: [
+                    { y_axes: ["count_unique(user)"], interval: null },
+                    {
+                      y_axes: ["count()", "count_unique(user)"],
+                      interval: "1h",
+                    },
+                    { y_axes: ["count()"], interval: "1d" },
+                  ],
+                  sort: "-count()",
+                  stats_period: "24h",
+                  mode: "aggregates",
+                },
+              ],
+            },
+          },
+        }),
+      ),
+      http.get(`${baseUrl}/events-timeseries/`, ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        requestedAxes = params.getAll("yAxis");
+        expect(params.get("interval")).toBe("1h");
+        return HttpResponse.json({
+          timeSeries: requestedAxes.map((yAxis) => ({
+            yAxis,
+            meta: { interval: 3600000 },
+            values: [{ timestamp: 1757548800000, value: 2, incomplete: false }],
+          })),
+        });
+      }),
+    );
+
+    const result = await runSearch({
+      query: "errors and affected users per hour",
+    });
+
+    expect(requestedAxes).toEqual(["count()"]);
+    expect(result.timeSeries).toMatchObject({
+      yAxis: "count()",
+      buckets: [{ value: 2 }],
+    });
+    expect(result).not.toHaveProperty("series");
+  });
+
   it("returns a time series with totals, peak, and bucket states", async () => {
     vi.mocked(translateWithSeer).mockResolvedValue({
       query: "level:error",
       fields: [],
       sort: "-count()",
       timeParams: { statsPeriod: "24h" },
-      timeSeries: { yAxis: "count()", interval: "1h" },
+      timeSeries: { axes: [{ yAxis: "count()" }], interval: "1h" },
       crossEventQueries: undefined,
       suggestedProjectIds: [],
       explanation: "Bucketed errors hourly",
