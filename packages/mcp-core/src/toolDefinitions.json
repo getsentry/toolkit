@@ -12898,23 +12898,31 @@
                 "type": ["number", "null"]
               },
               "user": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": ["string", "null"]
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": ["string", "null"]
+                      },
+                      "username": {
+                        "type": ["string", "null"]
+                      },
+                      "email": {
+                        "type": ["string", "null"]
+                      },
+                      "ip": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "required": ["id", "username", "email", "ip"],
+                    "additionalProperties": false
                   },
-                  "username": {
-                    "type": ["string", "null"]
-                  },
-                  "email": {
-                    "type": ["string", "null"]
-                  },
-                  "ip": {
-                    "type": ["string", "null"]
+                  {
+                    "type": "null"
                   }
-                },
-                "required": ["id", "username", "email", "ip"],
-                "additionalProperties": false
+                ],
+                "description": "Null for archived replays."
               },
               "errorCount": {
                 "type": ["number", "null"]

@@ -68,7 +68,13 @@ describe("search_replays structured output", () => {
     mockReplays([
       {
         ...replayDetailsFixture,
-        user: { ...replayDetailsFixture.user, ip: "203.0.113.7" },
+        // Pinned so the snapshot doesn't depend on the shared fixture's user.
+        user: {
+          id: "user-1",
+          username: null,
+          email: "taylor@example.com",
+          ip: "203.0.113.7",
+        },
         tags: { secret: ["must-not-leak"] },
         secretBackendField: "must-not-leak",
       },
@@ -184,6 +190,22 @@ describe("search_replays structured output", () => {
     expect(replay?.traceCount).toBe(7);
     expect(replay?.releases).toHaveLength(3);
     expect(replay?.releaseCount).toBe(5);
+  });
+
+  it("omits the placeholder user on archived replays", async () => {
+    mockReplays([
+      {
+        ...replayDetailsFixture,
+        is_archived: true,
+        user: { id: "Archived Replay", display_name: "Archived Replay" },
+      },
+    ]);
+
+    const structuredContent = await runSearch({ query: "count_errors:>0" });
+    const [replay] = structuredContent.replays;
+
+    expect(replay?.isArchived).toBe(true);
+    expect(replay?.user).toBeNull();
   });
 
   it("keeps the unknown-environment warning in notes", async () => {

@@ -112,12 +112,15 @@ export const searchReplaysOutputSchema = z.object({
       replayUrl: z.string(),
       startedAt: z.string().nullable(),
       durationSeconds: z.number().nullable(),
-      user: z.object({
-        id: z.string().nullable(),
-        username: z.string().nullable(),
-        email: z.string().nullable(),
-        ip: z.string().nullable(),
-      }),
+      user: z
+        .object({
+          id: z.string().nullable(),
+          username: z.string().nullable(),
+          email: z.string().nullable(),
+          ip: z.string().nullable(),
+        })
+        .nullable()
+        .describe("Null for archived replays."),
       errorCount: z.number().nullable(),
       rageClickCount: z.number().nullable(),
       deadClickCount: z.number().nullable(),
@@ -161,12 +164,16 @@ export function buildStructuredReplayResults(
     replayUrl: apiService.getReplayUrl(organizationSlug, replay.id),
     startedAt: replay.started_at ?? null,
     durationSeconds: replay.duration ?? null,
-    user: {
-      id: replay.user?.id ?? null,
-      username: replay.user?.username ?? null,
-      email: replay.user?.email ?? null,
-      ip: replay.user?.ip ?? null,
-    },
+    // Archived rows carry placeholder user data ("Archived Replay" as id).
+    user:
+      replay.is_archived === true
+        ? null
+        : {
+            id: replay.user?.id || null,
+            username: replay.user?.username || null,
+            email: replay.user?.email || null,
+            ip: replay.user?.ip || null,
+          },
     errorCount: replay.count_errors ?? null,
     rageClickCount: replay.count_rage_clicks ?? null,
     deadClickCount: replay.count_dead_clicks ?? null,
