@@ -22,6 +22,7 @@ import {
   DASHBOARD_LINK_HINT,
   ERROR_RESULT_HINTS,
   type ExecutedSearch,
+  METRIC_RESULT_HINTS,
   SPAN_RESULT_HINTS,
   LOG_RESULT_HINTS,
   type SearchResultHints,
@@ -245,6 +246,17 @@ const STRUCTURED_DATASETS = {
         results,
         session,
         "Inspect the trace for the first matching span.",
+      ),
+  }),
+  metrics: defineDatasetConfig({
+    hints: METRIC_RESULT_HINTS,
+    links: { traceUrl: z.string().nullable() },
+    rowLinks: (event, session) => ({ traceUrl: traceUrlFor(event, session) }),
+    suggestedActions: (results, session) =>
+      firstTraceAction(
+        results,
+        session,
+        "Inspect the trace for the first matching metric sample.",
       ),
   }),
 } satisfies Partial<Record<PublicEventsDataset, StructuredDatasetConfig>>;
