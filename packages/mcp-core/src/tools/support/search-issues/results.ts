@@ -100,6 +100,9 @@ function formatAssigneeEmail(assignee: Issue["assignedTo"]): string | null {
 }
 
 function formatReporter(issue: Issue) {
+  if (issue.issueCategory !== "feedback") {
+    return null;
+  }
   const name = issue.metadata?.name || null;
   const email = issue.metadata?.contact_email || null;
   return name || email ? { name, email } : null;

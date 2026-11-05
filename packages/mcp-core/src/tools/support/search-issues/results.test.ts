@@ -167,6 +167,24 @@ describe("buildIssueResults", () => {
     `);
   });
 
+  it("only reads the reporter from feedback issues", () => {
+    const structuredContent = build({
+      issues: [
+        IssueSchema.parse(
+          createPerformanceIssue({
+            shortId: "TEST-NOT-FEEDBACK",
+            metadata: {
+              name: "Not a reporter",
+              contact_email: "x@example.com",
+            },
+          } as Parameters<typeof createPerformanceIssue>[0]),
+        ),
+      ],
+    });
+
+    expect(structuredContent.issues[0]?.reporter).toBeNull();
+  });
+
   it("adds a feedback follow-up when any result is feedback", () => {
     const structuredContent = build({
       issues: [
