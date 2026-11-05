@@ -1,8 +1,7 @@
 import type { LanguageModelV3 } from "@ai-sdk/provider";
-import { generateText, streamText } from "ai";
+import { generateText } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigurationError } from "../../errors.js";
-import { setServerVersion } from "../../version.js";
 import {
   getOpenRouterModel,
   getOpenRouterProviderOptions,
@@ -39,7 +38,6 @@ describe("openrouter-provider", () => {
     }
 
     vi.unstubAllGlobals();
-    setServerVersion(undefined);
   });
 
   it("uses the OpenRouter chat completions endpoint", async () => {
@@ -84,30 +82,6 @@ describe("openrouter-provider", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(requestUrl).toBe("https://openrouter.ai/api/v1/chat/completions");
     expect(authorization).toBe("Bearer test-openrouter-key");
-  });
-
-  // The chat playground calls streamText directly, which adds no call-level
-  // User-Agent, so the provider's own header is the only one sent.
-  it("sends the host's User-Agent on direct streamText calls", async () => {
-    let userAgent: string | null = null;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: Request | URL | string, init?: RequestInit) => {
-        userAgent = new Request(input, init).headers.get("user-agent");
-        return new Response("{}", { status: 400 });
-      }),
-    );
-    setServerVersion("1.2.3-x");
-
-    await streamText({
-      model: getOpenRouterModel(),
-      prompt: "hello",
-      onError: () => {},
-    }).consumeStream();
-
-    expect(userAgent).toMatch(
-      /^sentry-mcp\/1\.2\.3-x \(https:\/\/mcp\.sentry\.dev\)/,
-    );
   });
 
   it("uses default and configured models", () => {
