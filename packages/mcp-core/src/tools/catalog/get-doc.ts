@@ -9,6 +9,7 @@ import { USER_AGENT } from "../../version";
 
 export default defineTool({
   name: "get_doc",
+  title: "Get Sentry Doc",
   skills: ["inspect", "docs"], // Docs is retained for legacy docs-only grants.
   requiredScopes: [],
   description: [

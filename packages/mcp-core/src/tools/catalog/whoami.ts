@@ -42,6 +42,7 @@ function toUser(user: {
 
 export default defineTool({
   name: "whoami",
+  title: "Who Am I",
   description: [
     "Identify the authenticated user in Sentry.",
     "",

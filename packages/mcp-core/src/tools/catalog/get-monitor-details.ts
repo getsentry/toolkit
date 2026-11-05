@@ -73,6 +73,7 @@ function formatStat(stat: MonitorStat): string {
 
 export default defineTool({
   name: "get_monitor_details",
+  title: "Get Cron Monitor Details",
   skills: ["inspect"],
   requiredScopes: ["project:read"],
   description: [

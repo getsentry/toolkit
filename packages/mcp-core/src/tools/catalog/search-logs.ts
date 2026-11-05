@@ -9,6 +9,7 @@ import {
 export default defineTool({
   ...searchToolBase("search_logs"),
   name: "search_logs",
+  title: "Search Logs",
   description: [
     "Search Sentry logs: application log entries, including error- and warning-severity log messages. Use for log counts, statistics, trends, and individual log lines.",
     "",

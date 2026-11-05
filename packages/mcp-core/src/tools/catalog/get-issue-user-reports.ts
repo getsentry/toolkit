@@ -42,6 +42,7 @@ function formatUserReport(report: UserReportList[number]): string {
 
 export default defineTool({
   name: "get_issue_user_reports",
+  title: "Get Issue User Reports",
   skills: ["inspect", "triage"],
   requiredScopes: ["event:read"],
   description: [

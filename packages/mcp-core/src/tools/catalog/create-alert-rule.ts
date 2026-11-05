@@ -22,6 +22,7 @@ import { resolveAlertRuleConnections } from "../support/alert-rule-connections";
 
 export default defineTool({
   name: "create_alert_rule",
+  title: "Create Alert Rule",
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [

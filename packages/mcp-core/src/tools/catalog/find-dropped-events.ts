@@ -62,6 +62,7 @@ export const findDroppedEventsOutputSchema = z.object({
 
 export default defineTool({
   name: "find_dropped_events",
+  title: "Find Dropped Events",
   skills: ["inspect"],
   requiredScopes: ["event:read"],
   description: [

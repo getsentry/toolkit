@@ -99,6 +99,7 @@ function getOwner(owner: unknown): string | null {
 
 export default defineTool({
   name: "find_alert_rules",
+  title: "Find Alert Rules",
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [

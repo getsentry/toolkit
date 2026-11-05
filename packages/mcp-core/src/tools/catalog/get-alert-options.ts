@@ -50,6 +50,7 @@ export const getAlertOptionsOutputSchema = z.object({
 
 export default defineTool({
   name: "get_alert_options",
+  title: "Get Alert Options",
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [

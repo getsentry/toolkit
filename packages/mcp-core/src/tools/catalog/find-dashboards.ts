@@ -223,6 +223,7 @@ async function listProjectVisibleDashboards({
 
 export default defineTool({
   name: "find_dashboards",
+  title: "Find Dashboards",
   skills: ["inspect"],
   requiredScopes: ["org:read"],
   description: [

@@ -80,6 +80,22 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
     expect(toolNames).toContain("create_project");
   });
 
+  it("exports each tool's title in tools/list", async () => {
+    const listed = await withClient(
+      getContext(),
+      async (client) => (await client.listTools()).tools,
+    );
+    const titles = new Map(
+      Object.values(tools).map((tool) => [tool.name, tool.title]),
+    );
+
+    expect(listed.length).toBeGreaterThan(0);
+    for (const tool of listed) {
+      expect(tool.title, tool.name).toBe(titles.get(tool.name));
+      expect(tool.title?.trim(), tool.name).toBeTruthy();
+    }
+  });
+
   it("lists the replacements of deprecated tools instead of the tools", async () => {
     const toolNames = await listToolNames(getContext());
     const deprecatedTools = Object.values(tools).filter(

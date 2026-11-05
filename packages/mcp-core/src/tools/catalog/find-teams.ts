@@ -27,6 +27,7 @@ export const findTeamsOutputSchema = z.object({
 
 export default defineTool({
   name: "find_teams",
+  title: "Find Teams",
   skills: ["inspect", "triage", "project-management"], // Team viewing and management
   requiredScopes: ["team:read"],
   description: [

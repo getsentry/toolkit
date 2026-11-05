@@ -9,6 +9,7 @@ import {
 export default defineTool({
   ...searchToolBase("search_metrics"),
   name: "search_metrics",
+  title: "Search Metrics",
   description: [
     "Search Sentry metrics: counters, gauges, and distributions, as rows or aggregates. Use for metric values, percentiles, totals, and trends.",
     "",
