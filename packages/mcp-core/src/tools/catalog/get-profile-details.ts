@@ -18,6 +18,7 @@ import {
   validateSlugOrId,
 } from "../../utils/slug-validation";
 import { structuredResult } from "../../internal/tool-helpers/results";
+import { buildSuggestedToolAction } from "../../internal/tool-helpers/suggested-actions";
 import {
   buildContinuousProfileDetails,
   buildLegacyProfileDetails,
@@ -199,7 +200,7 @@ export default defineTool({
     "- Transaction profile summary with profile URL, transaction, trace, release, and runtime details",
     "- Sample structure summaries such as frame count, sample count, stacks, and thread breakdown",
     "- Top frames by occurrence for a quick hotspot overview",
-    "- Legacy profiles (for example Android) return summary metadata only; sample analysis is unavailable",
+    "- Legacy profiles (for example Android) return summary metadata only, with `samples: null` and a suggested get_profile call",
     "",
     "NOTE: This tool supports two profile modes.",
     "- Transaction profiles: pass `profileUrl` or `organizationSlug` + `projectSlugOrId` + `profileId`",
@@ -236,7 +237,6 @@ export default defineTool({
     "",
     "<hints>",
     "- Open `profileUrl` in Sentry for the full flamegraph, and `traceUrl` to inspect the end-to-end request",
-    "- For a legacy profile, call get_profile(organizationSlug, projectSlugOrId=<project>, transactionName=<transactionName>) to analyze aggregated flamegraph data",
     "- Use search_profiles to find similar profiles",
     "</hints>",
   ].join("\n"),
@@ -370,21 +370,42 @@ export default defineTool({
 
       if (isLegacySpeedscopeProfile(profile)) {
         const legacyTraceId = profile.metadata?.traceID;
-        return structuredResult(
-          buildLegacyProfileDetails(profile, {
-            profileUrl,
-            project: projectSlug,
-            profileId: resolved.profileId,
-            traceUrl: legacyTraceId
-              ? apiService.getTraceUrl(resolved.organizationSlug, legacyTraceId)
-              : null,
-          }),
-        );
+        const details = buildLegacyProfileDetails(profile, {
+          profileUrl,
+          project: projectSlug,
+          profileId: resolved.profileId,
+          traceUrl: legacyTraceId
+            ? apiService.getTraceUrl(resolved.organizationSlug, legacyTraceId)
+            : null,
+        });
+        // Legacy profiles have no sample data, so the aggregated flamegraph is
+        // the next step. Profile URLs also reach this handler through
+        // get_sentry_resource, so only suggest it when get_profile is callable.
+        const transactionName = details.profile.transactionName;
+        const flamegraphAction = transactionName
+          ? buildSuggestedToolAction({
+              toolName: "get_profile",
+              arguments: {
+                organizationSlug: resolved.organizationSlug,
+                projectSlugOrId: projectSlug,
+                transactionName,
+              },
+              reason:
+                "Legacy profiles have no sample data; the aggregated transaction flamegraph shows hot paths.",
+              experimentalMode: context.experimentalMode ?? false,
+              availableToolNames: context.availableToolNames,
+              directToolNames: context.directToolNames,
+            })
+          : null;
+        return structuredResult({
+          ...details,
+          suggestedActions: flamegraphAction ? [flamegraphAction] : [],
+        });
       }
 
       const traceId = profile.transaction?.trace_id;
-      return structuredResult(
-        buildTransactionProfileDetails(
+      return structuredResult({
+        ...buildTransactionProfileDetails(
           profile,
           {
             profileUrl,
@@ -396,7 +417,8 @@ export default defineTool({
           },
           { focusOnUserCode: params.focusOnUserCode },
         ),
-      );
+        suggestedActions: [],
+      });
     }
 
     setTargetTagsAndAttributes({
@@ -437,8 +459,8 @@ export default defineTool({
         },
       );
 
-    return structuredResult(
-      buildContinuousProfileDetails(
+    return structuredResult({
+      ...buildContinuousProfileDetails(
         chunk,
         {
           profileUrl,
@@ -449,6 +471,7 @@ export default defineTool({
         },
         { focusOnUserCode: params.focusOnUserCode },
       ),
-    );
+      suggestedActions: [],
+    });
   },
 });

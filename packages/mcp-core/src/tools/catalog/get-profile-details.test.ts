@@ -17,6 +17,52 @@ const baseContext = {
   userId: "1",
 };
 
+const LEGACY_PROFILE_ID = "ae9108da5e274c6684f9c4e727cd18a3";
+
+function legacyProfileBody() {
+  return {
+    activeProfileIndex: 0,
+    durationNS: 1500000000,
+    metadata: {
+      deviceManufacturer: "samsung",
+      deviceModel: "SM-S918N",
+      deviceOSName: "android",
+      deviceOSVersion: "14",
+      environment: "production",
+      traceID: "18cd3a3d8eae46e5be7337e1e1845d62",
+      transactionName: "MainActivity",
+      version: "1",
+    },
+    platform: "android",
+    profileID: LEGACY_PROFILE_ID,
+    profiles: [{ type: "evented", events: [] }],
+    projectID: 1,
+    shared: { frames: [] },
+    transactionName: "MainActivity",
+    metrics: null,
+  };
+}
+
+function mockLegacyProfile(body: Record<string, unknown>) {
+  for (const host of ["sentry.io", "us.sentry.io"]) {
+    mswServer.use(
+      http.get(
+        `https://${host}/api/0/projects/sentry-mcp-evals/backend/profiling/profiles/${LEGACY_PROFILE_ID}/`,
+        () => HttpResponse.json(body),
+        { once: true },
+      ),
+    );
+  }
+}
+
+const legacyProfileParams = {
+  organizationSlug: "sentry-mcp-evals",
+  projectSlugOrId: "backend",
+  profileId: LEGACY_PROFILE_ID,
+  regionUrl: null,
+  focusOnUserCode: true,
+};
+
 describe("get_profile_details", () => {
   describe("handler", () => {
     it("fetches a transaction profile from profileUrl", async () => {
@@ -44,37 +90,38 @@ describe("get_profile_details", () => {
             "profileUrl": "https://sentry-mcp-evals.sentry.io/explore/profiling/profile/backend/cfe78a5c892d4a64a962d837673398d2/flamegraph/",
             "project": "backend",
             "release": "backend@1.2.3",
-            "samples": {
-              "frameCount": 3,
-              "sampleCount": 3,
-              "stackCount": 2,
-              "threads": [
-                {
-                  "id": "1",
-                  "name": "MainThread",
-                  "sampleCount": 3,
-                },
-              ],
-              "topFrames": [
-                {
-                  "count": 3,
-                  "function": "handle_request",
-                  "isApplication": true,
-                  "location": "main.py:42",
-                },
-                {
-                  "count": 2,
-                  "function": "execute_query",
-                  "isApplication": true,
-                  "location": "db.py:118",
-                },
-              ],
-            },
             "sdk": "sentry.python 2.24.1",
             "traceId": "a4d1aae7216b47ff8117cf4e09ce9d0a",
             "traceUrl": "https://sentry-mcp-evals.sentry.io/explore/traces/trace/a4d1aae7216b47ff8117cf4e09ce9d0a",
             "transactionName": "/api/users",
           },
+          "samples": {
+            "frameCount": 3,
+            "sampleCount": 3,
+            "stackCount": 2,
+            "threads": [
+              {
+                "id": "1",
+                "name": "MainThread",
+                "sampleCount": 3,
+              },
+            ],
+            "topFrames": [
+              {
+                "count": 3,
+                "function": "handle_request",
+                "isApplication": true,
+                "location": "main.py:42",
+              },
+              {
+                "count": 2,
+                "function": "execute_query",
+                "isApplication": true,
+                "location": "db.py:118",
+              },
+            ],
+          },
+          "suggestedActions": [],
         }
       `);
     });
@@ -128,7 +175,7 @@ describe("get_profile_details", () => {
       );
 
       getProfileDetailsOutputSchema.parse(result.structuredContent);
-      expect(result.structuredContent.profile).toMatchObject({
+      expect(result.structuredContent).toMatchObject({
         samples: {
           topFrames: expect.arrayContaining([
             {
@@ -143,43 +190,13 @@ describe("get_profile_details", () => {
     });
 
     it("summarizes legacy speedscope transaction profiles", async () => {
-      const legacyProfileId = "ae9108da5e274c6684f9c4e727cd18a3";
-      const speedscopeBody = {
-        activeProfileIndex: 0,
-        durationNS: 1500000000,
-        metadata: {
-          deviceManufacturer: "samsung",
-          deviceModel: "SM-S918N",
-          deviceOSName: "android",
-          deviceOSVersion: "14",
-          environment: "production",
-          traceID: "18cd3a3d8eae46e5be7337e1e1845d62",
-          transactionName: "MainActivity",
-          version: "1",
-        },
-        platform: "android",
-        profileID: legacyProfileId,
-        profiles: [{ type: "evented", events: [] }],
-        projectID: 1,
-        shared: { frames: [] },
-        transactionName: "MainActivity",
-        metrics: null,
-      };
-      for (const host of ["sentry.io", "us.sentry.io"]) {
-        mswServer.use(
-          http.get(
-            `https://${host}/api/0/projects/sentry-mcp-evals/backend/profiling/profiles/${legacyProfileId}/`,
-            () => HttpResponse.json(speedscopeBody),
-            { once: true },
-          ),
-        );
-      }
+      mockLegacyProfile(legacyProfileBody());
 
       const result = await getProfileDetails.handler(
         {
           organizationSlug: "sentry-mcp-evals",
           projectSlugOrId: "backend",
-          profileId: legacyProfileId,
+          profileId: LEGACY_PROFILE_ID,
           regionUrl: null,
           focusOnUserCode: true,
         },
@@ -203,8 +220,86 @@ describe("get_profile_details", () => {
             "traceUrl": "https://sentry-mcp-evals.sentry.io/explore/traces/trace/18cd3a3d8eae46e5be7337e1e1845d62",
             "transactionName": "MainActivity",
           },
+          "samples": null,
+          "suggestedActions": [
+            {
+              "arguments": {
+                "organizationSlug": "sentry-mcp-evals",
+                "projectSlugOrId": "backend",
+                "transactionName": "MainActivity",
+              },
+              "reason": "Legacy profiles have no sample data; the aggregated transaction flamegraph shows hot paths.",
+              "toolName": "get_profile",
+              "type": "tool_call",
+            },
+          ],
         }
       `);
+    });
+
+    it("omits the get_profile suggestion when it is unavailable", async () => {
+      mockLegacyProfile(legacyProfileBody());
+
+      const result = await getProfileDetails.handler(legacyProfileParams, {
+        ...baseContext,
+        availableToolNames: new Set(["get_profile_details"]),
+      });
+
+      expect(result.structuredContent.suggestedActions).toEqual([]);
+    });
+
+    it("omits the get_profile suggestion without a transaction name", async () => {
+      const body = legacyProfileBody();
+      mockLegacyProfile({
+        ...body,
+        transactionName: undefined,
+        metadata: { ...body.metadata, transactionName: undefined },
+      });
+
+      const result = await getProfileDetails.handler(
+        legacyProfileParams,
+        baseContext,
+      );
+
+      getProfileDetailsOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent.suggestedActions).toEqual([]);
+    });
+
+    it("maps legacy profile fields without leaking raw speedscope data", async () => {
+      mockLegacyProfile({
+        ...legacyProfileBody(),
+        profiles: [
+          {
+            type: "evented",
+            name: "must-not-leak-thread",
+            events: [{ type: "O", frame: 0, at: 0 }],
+          },
+        ],
+        shared: { frames: [{ name: "must-not-leak-frame" }] },
+        activeProfileIndex: 7,
+      });
+
+      const result = await getProfileDetails.handler(
+        legacyProfileParams,
+        baseContext,
+      );
+
+      getProfileDetailsOutputSchema.parse(result.structuredContent);
+      const serialized = JSON.stringify(result.structuredContent);
+      for (const key of [
+        "profiles",
+        "shared",
+        "frames",
+        "events",
+        "activeProfileIndex",
+        "durationNS",
+        "metadata",
+        "projectID",
+        "deviceManufacturer",
+      ]) {
+        expect(serialized).not.toContain(`"${key}"`);
+      }
+      expect(serialized).not.toContain("must-not-leak");
     });
 
     it("still rejects sample-format profiles without profile data", async () => {
@@ -308,45 +403,46 @@ describe("get_profile_details", () => {
             "profilerId": "041bde57b9844e36b8b7e5734efae5f7",
             "project": "backend",
             "release": "backend@1.2.3",
-            "samples": {
-              "frameCount": 6,
-              "sampleCount": 8,
-              "stackCount": 4,
-              "threads": [
-                {
-                  "id": "1",
-                  "name": "MainThread",
-                  "sampleCount": 7,
-                },
-                {
-                  "id": "2",
-                  "name": "BackgroundWorker",
-                  "sampleCount": 1,
-                },
-              ],
-              "topFrames": [
-                {
-                  "count": 8,
-                  "function": "handle_request",
-                  "isApplication": true,
-                  "location": "main.py:42",
-                },
-                {
-                  "count": 4,
-                  "function": "execute_query",
-                  "isApplication": true,
-                  "location": "db.py:118",
-                },
-                {
-                  "count": 2,
-                  "function": "serialize_response",
-                  "isApplication": true,
-                  "location": "serializers.py:55",
-                },
-              ],
-            },
             "start": "2024-01-01T00:00:00Z",
           },
+          "samples": {
+            "frameCount": 6,
+            "sampleCount": 8,
+            "stackCount": 4,
+            "threads": [
+              {
+                "id": "1",
+                "name": "MainThread",
+                "sampleCount": 7,
+              },
+              {
+                "id": "2",
+                "name": "BackgroundWorker",
+                "sampleCount": 1,
+              },
+            ],
+            "topFrames": [
+              {
+                "count": 8,
+                "function": "handle_request",
+                "isApplication": true,
+                "location": "main.py:42",
+              },
+              {
+                "count": 4,
+                "function": "execute_query",
+                "isApplication": true,
+                "location": "db.py:118",
+              },
+              {
+                "count": 2,
+                "function": "serialize_response",
+                "isApplication": true,
+                "location": "serializers.py:55",
+              },
+            ],
+          },
+          "suggestedActions": [],
         }
       `);
     });
@@ -473,6 +569,53 @@ describe("get_profile_details", () => {
         expect(serialized).not.toContain(`"${key}"`);
       }
       expect(serialized).not.toContain(profileChunkFixture.chunk.event_id);
+    });
+
+    it("maps empty continuous release and environment to null", async () => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/projects/sentry-mcp-evals/backend/",
+          () =>
+            HttpResponse.json({ id: 12345, slug: "backend", name: "Backend" }),
+          { once: true },
+        ),
+      );
+      for (const host of ["sentry.io", "us.sentry.io"]) {
+        mswServer.use(
+          http.get(
+            `https://${host}/api/0/organizations/sentry-mcp-evals/profiling/chunks/`,
+            () =>
+              HttpResponse.json({
+                chunk: {
+                  ...structuredClone(profileChunkFixture.chunk),
+                  release: "",
+                  environment: undefined,
+                },
+              }),
+            { once: true },
+          ),
+        );
+      }
+
+      const result = await getProfileDetails.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          projectSlugOrId: "backend",
+          profilerId: "041bde57b9844e36b8b7e5734efae5f7",
+          start: "2024-01-01T00:00:00Z",
+          end: "2024-01-01T01:00:00Z",
+          regionUrl: null,
+          focusOnUserCode: true,
+        },
+        baseContext,
+      );
+
+      getProfileDetailsOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent.profile).toMatchObject({
+        profileType: "continuous",
+        release: null,
+        environment: null,
+      });
     });
 
     it("rejects incomplete continuous profile URLs", async () => {

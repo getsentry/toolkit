@@ -70,7 +70,7 @@ function continuousSamples(
   chunk: ProfileChunk,
   options = { focusOnUserCode: false },
 ) {
-  const { profile } = buildContinuousProfileDetails(
+  const { profile, samples } = buildContinuousProfileDetails(
     chunk,
     {
       profileUrl,
@@ -81,25 +81,25 @@ function continuousSamples(
     },
     options,
   );
-  if (profile.profileType !== "continuous") {
+  if (profile.profileType !== "continuous" || !samples) {
     throw new Error("expected a continuous profile");
   }
-  return profile.samples;
+  return samples;
 }
 
 function transactionDetails(
   profile: TransactionProfile,
   options = { focusOnUserCode: true },
 ) {
-  const { profile: details } = buildTransactionProfileDetails(
+  const { profile: details, samples } = buildTransactionProfileDetails(
     profile,
     { profileUrl, project: "backend", profileId: "fallback", traceUrl: null },
     options,
   );
-  if (details.profileType !== "transaction") {
+  if (details.profileType !== "transaction" || !samples) {
     throw new Error("expected a transaction profile");
   }
-  return details;
+  return { ...details, samples };
 }
 
 describe("buildContinuousProfileDetails", () => {

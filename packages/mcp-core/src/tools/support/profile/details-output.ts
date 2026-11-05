@@ -1,12 +1,14 @@
 /**
  * Structured output for `get_profile_details`.
  *
- * One profile comes back in one of three shapes, discriminated by
+ * One profile comes back in one of three summary shapes, discriminated by
  * `profileType`: a sample-format transaction profile, a legacy speedscope
- * transaction profile (summary only), or a continuous profile chunk.
+ * transaction profile, or a continuous profile chunk. Sample analysis sits
+ * beside the summary and is null for legacy profiles.
  */
 
 import { z } from "zod";
+import { suggestedToolActionSchema } from "../../../internal/tool-helpers/suggested-actions";
 import type {
   LegacySpeedscopeProfile,
   ProfileChunk,
@@ -66,16 +68,13 @@ export const getProfileDetailsOutputSchema = z.object({
       release: nullableString,
       sdk: nullableString,
       activeThreadId: nullableString,
-      samples: sampleAnalysisSchema,
     }),
     z
       .object({
         profileType: z.literal("legacy"),
         ...transactionSummaryFields,
       })
-      .describe(
-        "Legacy speedscope profile (for example Android). Sample analysis is unavailable.",
-      ),
+      .describe("Legacy speedscope profile, for example Android."),
     z.object({
       profileType: z.literal("continuous"),
       profileUrl: z.string(),
@@ -85,14 +84,24 @@ export const getProfileDetailsOutputSchema = z.object({
       start: z.string(),
       end: z.string(),
       platform: z.string(),
-      release: z.string(),
+      release: nullableString,
       environment: nullableString,
-      samples: sampleAnalysisSchema,
     }),
   ]),
+  samples: sampleAnalysisSchema
+    .nullable()
+    .describe("Null for legacy profiles, which have no sample-format data."),
+  suggestedActions: z.array(suggestedToolActionSchema),
 });
 
-type ProfileDetailsOutput = z.infer<typeof getProfileDetailsOutputSchema>;
+type ProfileDetails = Omit<
+  z.infer<typeof getProfileDetailsOutputSchema>,
+  "suggestedActions"
+>;
+type LegacyProfileDetails = {
+  profile: Extract<ProfileDetails["profile"], { profileType: "legacy" }>;
+  samples: null;
+};
 type SampleAnalysis = z.infer<typeof sampleAnalysisSchema>;
 
 interface ProfileSampleData {
@@ -175,9 +184,9 @@ function buildSampleAnalysis(
 
 function formatRelease(release: TransactionProfile["release"]): string | null {
   if (typeof release === "string") {
-    return release;
+    return release || null;
   }
-  return release?.version ?? null;
+  return release?.version || null;
 }
 
 function getTransactionProfileDurationNs(
@@ -214,7 +223,7 @@ export function buildTransactionProfileDetails(
   profile: TransactionProfile,
   links: ProfileLinks & { profileId: string },
   options: { focusOnUserCode: boolean },
-): ProfileDetailsOutput {
+): ProfileDetails {
   const durationNs = getTransactionProfileDurationNs(profile);
   return {
     profile: {
@@ -227,7 +236,7 @@ export function buildTransactionProfileDetails(
       traceUrl: links.traceUrl,
       durationMs: durationNs === null ? null : toMs(durationNs),
       platform: profile.platform,
-      environment: profile.environment ?? null,
+      environment: profile.environment || null,
       device: joinPresent(
         [
           profile.device?.model,
@@ -246,16 +255,16 @@ export function buildTransactionProfileDetails(
         " ",
       ),
       activeThreadId: profile.transaction?.active_thread_id ?? null,
-      samples: buildSampleAnalysis(
-        {
-          frames: profile.profile.frames,
-          samples: profile.profile.samples,
-          stacks: profile.profile.stacks,
-          threadMetadata: profile.profile.thread_metadata,
-        },
-        options,
-      ),
     },
+    samples: buildSampleAnalysis(
+      {
+        frames: profile.profile.frames,
+        samples: profile.profile.samples,
+        stacks: profile.profile.stacks,
+        threadMetadata: profile.profile.thread_metadata,
+      },
+      options,
+    ),
   };
 }
 
@@ -266,7 +275,7 @@ export function buildTransactionProfileDetails(
 export function buildLegacyProfileDetails(
   profile: LegacySpeedscopeProfile,
   links: ProfileLinks & { profileId: string },
-): ProfileDetailsOutput {
+): LegacyProfileDetails {
   const metadata = profile.metadata;
   const durationNs =
     profile.durationNS != null && Number.isFinite(profile.durationNS)
@@ -284,13 +293,14 @@ export function buildLegacyProfileDetails(
       traceUrl: links.traceUrl,
       durationMs: durationNs === null ? null : toMs(durationNs),
       platform: profile.platform,
-      environment: metadata?.environment ?? null,
+      environment: metadata?.environment || null,
       device: joinPresent(
         [metadata?.deviceManufacturer, metadata?.deviceModel],
         " ",
       ),
       os: joinPresent([metadata?.deviceOSName, metadata?.deviceOSVersion], " "),
     },
+    samples: null,
   };
 }
 
@@ -304,7 +314,7 @@ export function buildContinuousProfileDetails(
     end: string;
   },
   options: { focusOnUserCode: boolean },
-): ProfileDetailsOutput {
+): ProfileDetails {
   return {
     profile: {
       profileType: "continuous",
@@ -317,15 +327,15 @@ export function buildContinuousProfileDetails(
       platform: chunk.platform,
       release: chunk.release,
       environment: chunk.environment,
-      samples: buildSampleAnalysis(
-        {
-          frames: chunk.profile.frames,
-          samples: chunk.profile.samples,
-          stacks: chunk.profile.stacks,
-          threadMetadata: chunk.profile.thread_metadata,
-        },
-        options,
-      ),
     },
+    samples: buildSampleAnalysis(
+      {
+        frames: chunk.profile.frames,
+        samples: chunk.profile.samples,
+        stacks: chunk.profile.stacks,
+        threadMetadata: chunk.profile.thread_metadata,
+      },
+      options,
+    ),
   };
 }
