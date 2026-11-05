@@ -9,14 +9,17 @@ import {
 } from "../../internal/tool-helpers/issue";
 import {
   getActiveAutofixTodo,
+  getFailureReasonGuidance,
   getHumanInterventionGuidance,
   getOutputForAutofixRun,
   getSeerUnsupportedIssueMessage,
   getStatusDisplayName,
+  hasSeerCredits,
   isSeerSupportedIssue,
   isTerminalStatus,
   SEER_INITIAL_RETRY_DELAY,
   SEER_MAX_RETRIES,
+  SEER_OUT_OF_CREDITS_MESSAGE,
   SEER_POLLING_INTERVAL,
   SEER_TIMEOUT,
 } from "../../internal/tool-helpers/seer";
@@ -141,6 +144,11 @@ export default defineTool({
 
     // Step 2: Start analysis if none exists
     if (!autofixState.autofix) {
+      if (!(await hasSeerCredits(apiService, orgSlug, "autofix_root_cause"))) {
+        output += `## Analysis Not Started\n\n${SEER_OUT_OF_CREDITS_MESSAGE}\n`;
+        return output;
+      }
+
       output += `Starting new analysis...\n\n`;
       const startResult = await apiService.startAutofix({
         organizationSlug: orgSlug,
@@ -182,6 +190,9 @@ export default defineTool({
 
         if (existingStatus !== "completed") {
           output += `\n**Status**: ${existingStatus}\n`;
+          output += getFailureReasonGuidance(
+            autofixState.autofix.failure_reason,
+          );
           output += getHumanInterventionGuidance(existingStatus);
           output += "\n";
         }
@@ -215,6 +226,9 @@ export default defineTool({
 
         if (status !== "completed") {
           output += `\n**Status**: ${status}\n`;
+          output += getFailureReasonGuidance(
+            autofixState.autofix.failure_reason,
+          );
           output += getHumanInterventionGuidance(status);
         }
 
