@@ -4,17 +4,18 @@
  * `makeOfflineTransport` from `@sentry/core` stores an envelope here when its
  * send throws (network error or the request deadline), and the next CLI run
  * sends the stored envelopes again (see `offline-transport.ts`). Rows live in
- * `telemetry_envelope_queue` as serialized envelope bytes, since attachments
- * can be binary.
+ * `telemetry_envelope_queue` as gzipped serialized envelopes, a BLOB since
+ * attachments can be binary.
  *
- * The store is capped by entry count and total bytes. Over a cap, it drops
- * envelopes without an error event first, then errors, oldest first. Rows
- * past their max age ({@link STORE_LIMITS}) are deleted on read and write.
- * Reads claim rows with `DELETE ... RETURNING`, so two CLI processes never
- * send the same envelope. Store failures never reach the CLI: each
- * operation logs at debug level and carries on.
+ * The store is capped by entry count and total compressed bytes. Over a
+ * cap, it drops envelopes without an error event first, then errors, oldest
+ * first. Rows past their max age ({@link STORE_LIMITS}) are deleted on read
+ * and write. Reads claim rows with `DELETE ... RETURNING`, so two CLI
+ * processes never send the same envelope. Store failures never reach the
+ * CLI: each operation logs at debug level and carries on.
  */
 
+import { gunzipSync, gzipSync } from "node:zlib";
 import {
   type Envelope,
   envelopeContainsItemType,
@@ -37,7 +38,7 @@ const EXPIRED = "created_at < CASE WHEN is_error THEN ? ELSE ? END";
 export type StoreLimits = {
   /** Most envelopes kept. */
   maxEntries: number;
-  /** Most serialized bytes kept across all envelopes. */
+  /** Most compressed bytes kept across all envelopes. */
   maxBytes: number;
   /** Max age, in milliseconds since stored, of an envelope with an error event. */
   maxErrorAgeMs: number;
@@ -53,6 +54,9 @@ export type StoreLimits = {
  * without an error event keep 4 days, leaving a day for clock skew. Relay
  * accepts an error event for the project's retention (90 days by default)
  * and past that only replaces its timestamp, so errors keep 30 days.
+ *
+ * Gzip shrinks the CLI's envelopes about 5x, so the byte cap holds about
+ * 20 MiB of them and only binds for unusually large ones.
  */
 export const STORE_LIMITS: StoreLimits = {
   maxEntries: 100,
@@ -88,10 +92,11 @@ function guarded<T>(operation: string, fallback: T, fn: () => T): T {
   }
 }
 
-function toBytes(serialized: string | Uint8Array): Uint8Array {
-  return typeof serialized === "string"
-    ? Buffer.from(serialized, "utf-8")
-    : serialized;
+function compress(envelope: Envelope): Uint8Array {
+  const serialized = serializeEnvelope(envelope);
+  return gzipSync(
+    typeof serialized === "string" ? Buffer.from(serialized) : serialized,
+  );
 }
 
 /**
@@ -116,7 +121,7 @@ export function createEnvelopeStore(
   }
 
   function insert(envelope: Envelope): void {
-    const bytes = toBytes(serializeEnvelope(envelope));
+    const bytes = compress(envelope);
     // It could never be kept, and inserting it would put every row over
     // the byte cap in the trim below, emptying the store.
     if (bytes.byteLength > limits.maxBytes) {
@@ -167,7 +172,7 @@ export function createEnvelopeStore(
       const envelopes: Envelope[] = [];
       for (const row of rows) {
         try {
-          const envelope = parseEnvelope(row.envelope);
+          const envelope = parseEnvelope(gunzipSync(row.envelope));
           storedAt.set(envelope, row.created_at);
           envelopes.push(envelope);
         } catch (error) {

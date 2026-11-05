@@ -5,6 +5,7 @@
  * covered in offline-transport.e2e.test.ts.
  */
 
+import { gunzipSync } from "node:zlib";
 import { createEnvelope, type Envelope, parseEnvelope } from "@sentry/core";
 import { describe, expect, test, vi } from "vitest";
 import { getDatabase } from "../../../src/lib/db/index.js";
@@ -28,7 +29,7 @@ function storedEventIds(): unknown[] {
       "SELECT envelope FROM telemetry_envelope_queue ORDER BY created_at, id",
     )
     .all() as { envelope: Uint8Array }[];
-  return rows.map((row) => parseEnvelope(row.envelope)[0].event_id);
+  return rows.map((row) => parseEnvelope(gunzipSync(row.envelope))[0].event_id);
 }
 
 /**

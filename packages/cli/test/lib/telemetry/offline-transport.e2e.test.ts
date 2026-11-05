@@ -7,6 +7,7 @@
  * fresh transport, like a new CLI process.
  */
 
+import { gunzipSync } from "node:zlib";
 import { createEnvelope, type Envelope, parseEnvelope } from "@sentry/core";
 import { afterEach, describe, expect, test } from "vitest";
 import { getDatabase } from "../../../src/lib/db/index.js";
@@ -42,7 +43,9 @@ function storedEventIds(): string[] {
       "SELECT envelope FROM telemetry_envelope_queue ORDER BY created_at, id",
     )
     .all() as { envelope: Uint8Array }[];
-  return rows.map((row) => parseEnvelope(row.envelope)[0].event_id as string);
+  return rows.map(
+    (row) => parseEnvelope(gunzipSync(row.envelope))[0].event_id as string,
+  );
 }
 
 /** Event IDs in the bodies a mock ingest received (bodies are small, so uncompressed). */

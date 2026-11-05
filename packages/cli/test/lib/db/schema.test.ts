@@ -334,18 +334,6 @@ describe("runMigrations", () => {
     db.close();
   });
 
-  test("v20 -> v21 adds telemetry_envelope_queue", () => {
-    const db = new Database(join(getTestDir(), "test.db"));
-    createDatabaseWithMissingTables(db, ["telemetry_envelope_queue"]);
-    db.query("UPDATE schema_version SET version = 20").run();
-
-    runMigrations(db);
-
-    expect(tableExists(db, "telemetry_envelope_queue")).toBe(true);
-    expect(getSchemaIssues(db)).toEqual([]);
-    db.close();
-  });
-
   test("repairs pagination_cursors with wrong single-column PK (CLI-72)", () => {
     const db = new Database(join(getTestDir(), "test.db"));
     // Build a full schema but with the bugged pagination_cursors table

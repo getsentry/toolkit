@@ -4,9 +4,11 @@
  * test/lib/db/concurrent.test.ts.
  */
 
+import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createEnvelope, type Envelope } from "@sentry/core";
+import { gzipSync } from "node:zlib";
+import { createEnvelope, type Envelope, serializeEnvelope } from "@sentry/core";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   CONFIG_DIR_ENV_VAR,
@@ -115,13 +117,8 @@ describe.each(["node", "wasm"] as const)(
     });
 
     test("keeps the newest envelopes that fit in maxBytes", async () => {
-      const size = Buffer.byteLength(
-        JSON.stringify(eventEnvelope("a")[0]) +
-          "\n" +
-          JSON.stringify({ type: "event" }) +
-          "\n" +
-          JSON.stringify({ event_id: "a", message: "hi" }),
-      );
+      // The cap counts stored, gzipped bytes.
+      const size = gzipSync(serializeEnvelope(eventEnvelope("a"))).byteLength;
       const { clock, store } = storeAt({ ...STORE_LIMITS, maxBytes: size * 2 });
       for (const id of ["a", "b", "c"]) {
         await store.push(eventEnvelope(id));
@@ -132,7 +129,9 @@ describe.each(["node", "wasm"] as const)(
       // One envelope bigger than the cap is not kept, and doesn't push out
       // the envelopes that fit.
       await store.push(eventEnvelope("d"));
-      await store.push(eventEnvelope("big", "x".repeat(size * 2)));
+      await store.push(
+        eventEnvelope("big", randomBytes(size * 2).toString("hex")),
+      );
       expect(eventIds(store.claim(10))).toEqual(["d"]);
     });
 
