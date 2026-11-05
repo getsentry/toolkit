@@ -5171,7 +5171,7 @@
   },
   {
     "name": "get_latest_base_snapshot",
-    "description": "Get the latest UI screenshots/images for an app from the preprod snapshot system.\n\nThis is the primary tool for retrieving app screenshots.\n\nUse this tool when you need to:\n- Get screenshots, screens, golden images, or reference images for an app\n- Find what the current UI looks like (latest screenshots from the main/default branch)\n- List available snapshots or browse images before requesting specific ones\n- Look up dark mode, light mode, or other variant screenshots\n- Understand what baseline images exist when investigating snapshot test or visual regression CI failures\n\nThe appId parameter is the app identifier (e.g. 'sentry-frontend', 'com.emergetools.hackernews').\nReturns compact image metadata (display_name, image_file_name, group, description) for every image.\n\n<examples>\n### Get the latest screenshots for an app\n\n```\nget_latest_base_snapshot(organizationSlug=\"sentry\", appId=\"sentry-frontend\", project=\"frontend\")\n```\n\n### Get the latest screenshots for a specific branch\n\n```\nget_latest_base_snapshot(organizationSlug=\"sentry\", appId=\"sentry-frontend\", project=\"frontend\", branch=\"main\")\n```\n</examples>\n\n<hints>\n- The response includes compact metadata per image. Scan the list to find images matching what you need (e.g. filter by group or name containing 'button').\n- To view a specific image, use get_sentry_resource(url='<snapshot_url>?selectedSnapshot=<image_file_name>').\n- If you need to investigate a specific snapshot comparison, use get_sentry_resource with the snapshot URL.\n</hints>",
+    "description": "Get the latest UI screenshots/images for an app from the preprod snapshot system.\n\nThis is the primary tool for retrieving app screenshots.\n\nUse this tool when you need to:\n- Get screenshots, screens, golden images, or reference images for an app\n- Find what the current UI looks like (latest screenshots from the main/default branch)\n- List available snapshots or browse images before requesting specific ones\n- Look up dark mode, light mode, or other variant screenshots\n- Understand what baseline images exist when investigating snapshot test or visual regression CI failures\n\nThe appId parameter is the app identifier (e.g. 'sentry-frontend', 'com.emergetools.hackernews').\nReturns compact image metadata (imageFileName, displayName, group, description) for every image.\n\n<examples>\n### Get the latest screenshots for an app\n\n```\nget_latest_base_snapshot(organizationSlug=\"sentry\", appId=\"sentry-frontend\", project=\"frontend\")\n```\n\n### Get the latest screenshots for a specific branch\n\n```\nget_latest_base_snapshot(organizationSlug=\"sentry\", appId=\"sentry-frontend\", project=\"frontend\", branch=\"main\")\n```\n</examples>\n\n<hints>\n- The response includes compact metadata per image. Scan the list to find images matching what you need (e.g. filter by group or name containing 'button').\n- To view a specific image, use get_sentry_resource(url='<snapshot_url>?selectedSnapshot=<image_file_name>').\n- If you need to investigate a specific snapshot comparison, use get_sentry_resource with the snapshot URL.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5225,6 +5225,116 @@
         }
       },
       "required": ["organizationSlug", "appId"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string"
+        },
+        "appId": {
+          "type": "string"
+        },
+        "snapshotId": {
+          "type": ["string", "null"]
+        },
+        "url": {
+          "type": ["string", "null"]
+        },
+        "app": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": ["string", "null"]
+                },
+                "platform": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["name", "platform"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vcs": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "repoName": {
+                  "type": "string"
+                },
+                "headRef": {
+                  "type": "string"
+                },
+                "headSha": {
+                  "type": "string"
+                },
+                "baseRef": {
+                  "type": "string"
+                },
+                "baseSha": {
+                  "type": "string"
+                },
+                "prNumber": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "totalImages": {
+          "type": "number"
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "imageFileName": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "group": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "responseNotes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "appId",
+        "snapshotId",
+        "url",
+        "app",
+        "vcs",
+        "totalImages",
+        "images",
+        "responseNotes"
+      ],
+      "additionalProperties": false
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],

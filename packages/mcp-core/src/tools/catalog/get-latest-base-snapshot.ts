@@ -1,14 +1,39 @@
 import { z } from "zod";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId } from "../../utils/slug-validation";
-import {
-  type SnapshotVcsInfo,
-  renderSnapshotImageTreeSection,
+import type {
+  SnapshotImageEntry,
+  SnapshotVcsInfo,
 } from "../support/snapshots/formatting";
+import {
+  snapshotImageSchema,
+  snapshotString,
+  snapshotVcsSchema,
+  toSnapshotImage,
+  toSnapshotVcs,
+} from "../support/snapshots/structured";
+
+export const getLatestBaseSnapshotOutputSchema = z.object({
+  organizationSlug: z.string(),
+  appId: z.string(),
+  snapshotId: z.string().nullable(),
+  url: z.string().nullable(),
+  app: z
+    .object({
+      name: z.string().nullable(),
+      platform: z.string().nullable(),
+    })
+    .nullable(),
+  vcs: snapshotVcsSchema.nullable(),
+  totalImages: z.number(),
+  images: z.array(snapshotImageSchema),
+  responseNotes: z.array(z.string()),
+});
 
 export default defineTool({
   name: "get_latest_base_snapshot",
@@ -27,7 +52,7 @@ export default defineTool({
     "- Understand what baseline images exist when investigating snapshot test or visual regression CI failures",
     "",
     "The appId parameter is the app identifier (e.g. 'sentry-frontend', 'com.emergetools.hackernews').",
-    "Returns compact image metadata (display_name, image_file_name, group, description) for every image.",
+    "Returns compact image metadata (imageFileName, displayName, group, description) for every image.",
     "",
     "<examples>",
     "### Get the latest screenshots for an app",
@@ -73,6 +98,7 @@ export default defineTool({
       .default(null),
     regionUrl: ParamRegionUrl.nullable().default(null),
   },
+  outputSchema: getLatestBaseSnapshotOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -101,55 +127,39 @@ export default defineTool({
       compactMetadata: true,
     })) as Record<string, unknown>;
 
-    const snapshotId = data.id as string | undefined;
-    const images = (data.images as Array<Record<string, unknown>>) || [];
+    const snapshotId = snapshotString(data.id) ?? null;
+    const images = Array.isArray(data.images)
+      ? (data.images as SnapshotImageEntry[])
+      : [];
     const appInfo = data.app_info as
-      | { name?: string | null; platform?: string | null }
+      | { name?: unknown; platform?: unknown }
+      | null
       | undefined;
-    const vcsInfo = data.vcs_info as SnapshotVcsInfo | undefined;
 
     const snapshotUrl = snapshotId
       ? apiService.getPreprodSnapshotUrl(params.organizationSlug, snapshotId)
       : null;
 
-    const sections: string[] = [];
-
-    sections.push(
-      `# Latest Base Snapshot for **${params.appId}** in **${params.organizationSlug}**`,
-    );
-
-    sections.push("\n## Summary\n");
-    if (snapshotUrl) sections.push(`- **URL**: ${snapshotUrl}`);
-    if (snapshotId) sections.push(`- **Snapshot ID**: ${snapshotId}`);
-    if (appInfo) {
-      if (appInfo.name) sections.push(`- **App Name**: ${appInfo.name}`);
-      if (appInfo.platform)
-        sections.push(`- **Platform**: ${appInfo.platform}`);
-    }
-    if (vcsInfo) {
-      if (vcsInfo.head_ref)
-        sections.push(
-          `- **Branch**: ${vcsInfo.head_ref} (\`${(vcsInfo.head_sha ?? "").slice(0, 8)}\`)`,
-        );
-    }
-    sections.push(`- **Total Images**: ${images.length}`);
-
-    if (images.length > 0) {
-      sections.push("\n## Images\n");
-      sections.push(
-        ...renderSnapshotImageTreeSection(
-          "Snapshot Images",
-          images.map((image) => ({ image })),
-        ),
-      );
-    }
-
-    sections.push(
-      snapshotUrl
-        ? `\n## Next Steps\n\n- To view a specific image, use \`get_sentry_resource(url="${snapshotUrl}?selectedSnapshot=<image_file_name>")\``
-        : "\n## Next Steps\n\n- To view a specific image, use `get_sentry_resource` with the snapshot URL + `?selectedSnapshot=<image_file_name>`",
-    );
-
-    return sections.join("\n");
+    return structuredResult({
+      organizationSlug: params.organizationSlug,
+      appId: params.appId,
+      snapshotId,
+      url: snapshotUrl,
+      app:
+        appInfo && typeof appInfo === "object"
+          ? {
+              name: snapshotString(appInfo.name) ?? null,
+              platform: snapshotString(appInfo.platform) ?? null,
+            }
+          : null,
+      vcs: toSnapshotVcs(data.vcs_info as SnapshotVcsInfo | undefined),
+      totalImages: images.length,
+      images: images.map(toSnapshotImage),
+      responseNotes: [
+        snapshotUrl
+          ? `To view a specific image, use \`get_sentry_resource(url="${snapshotUrl}?selectedSnapshot=<image_file_name>")\`.`
+          : "To view a specific image, use `get_sentry_resource` with the snapshot URL + `?selectedSnapshot=<image_file_name>`.",
+      ],
+    });
   },
 });
