@@ -12,14 +12,17 @@ const PRESENTATION_HINT =
   "Useful details to surface include severity, event IDs, and links. Please tell the user this dashboard link is available if they want to open the results in Sentry.";
 const EMPTY_NOTE =
   "No results found. Try being more specific or using different terms in your search.";
+const DEFAULT_SORT = "-timestamp";
+const SORT_NOTE =
+  "Results are newest first; the requested sort only applies to the Sentry link.";
 
 const nullableString = z.string().nullable();
 
 /**
  * The search_issue_events payload. Events are mapped explicitly from the
  * issue events endpoint (SimpleEventSerializer, or EventSerializer on an
- * event ID direct hit), so backend-only fields such as entries, contexts,
- * metadata, and IP addresses cannot leak.
+ * event ID direct hit). The user data Sentry stored is returned; backend-only
+ * fields such as entries, contexts, and metadata cannot leak.
  */
 export const searchIssueEventsOutputSchema = z.object({
   query: z.string(),
@@ -55,6 +58,7 @@ export const searchIssueEventsOutputSchema = z.object({
             email: nullableString,
             username: nullableString,
             name: nullableString,
+            ipAddress: nullableString,
             geo: z
               .object({
                 countryCode: nullableString,
@@ -86,6 +90,7 @@ export interface BuildIssueEventResultsParams {
   inputQuery: string;
   query: string;
   timeRange: { statsPeriod?: string; start?: string; end?: string };
+  sort: string;
   explanation?: string;
   experimentalMode?: boolean;
   availableToolNames?: ReadonlySet<string>;
@@ -115,6 +120,7 @@ function mapUser(value: unknown): IssueEvent["user"] {
     email: readString(value.email),
     username: readString(value.username),
     name: readString(value.name),
+    ipAddress: readString(value.ip_address),
     geo,
   };
 }
@@ -202,7 +208,10 @@ export function buildIssueEventResults(
     url: params.explorerUrl,
     issueUrl: params.issueUrl,
     presentationHint: PRESENTATION_HINT,
-    notes: events.length === 0 ? [EMPTY_NOTE] : [],
+    notes: [
+      ...(params.sort === DEFAULT_SORT ? [] : [SORT_NOTE]),
+      ...(events.length === 0 ? [EMPTY_NOTE] : []),
+    ],
     events,
     suggestedActions: action ? [action] : [],
   });

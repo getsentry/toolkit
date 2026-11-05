@@ -53,7 +53,7 @@ export default defineTool({
   description: [
     "Search and filter events within a specific issue.",
     "",
-    "Provide `query` as natural language or Sentry event search syntax. When an embedded agent is configured, it fixes filters, fields, sort, and time range before running.",
+    "Provide `query` as natural language or Sentry event search syntax. When an embedded agent is configured, it fixes filters and time range before running. Results are always newest first; fields and sort only shape the Sentry link.",
     "",
     "The tool automatically constrains results to the specified issue.",
     "",
@@ -103,7 +103,7 @@ export default defineTool({
       .string()
       .optional()
       .describe(
-        "Sort field (prefix with - for descending). Default: -timestamp",
+        "Sort for the Sentry link (prefix with - for descending). Results are always newest first. Default: -timestamp",
       ),
     period: ParamPeriod.optional(),
 
@@ -299,6 +299,7 @@ export default defineTool({
       inputQuery: naturalLanguageContext,
       query,
       timeRange: timeParams,
+      sort: sortParam,
       explanation: params.includeExplanation ? explanation : undefined,
       experimentalMode: context.experimentalMode ?? false,
       availableToolNames: context.availableToolNames,

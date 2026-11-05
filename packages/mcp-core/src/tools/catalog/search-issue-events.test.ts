@@ -210,6 +210,7 @@ describe("search_issue_events", () => {
                 "region": "California",
               },
               "id": "3c7631c0121d40e79e2f992ff5cf7671",
+              "ipAddress": "203.0.113.7",
               "name": null,
               "username": null,
             },
@@ -250,13 +251,13 @@ describe("search_issue_events", () => {
       "projectID",
       "crashFile",
       "metadata",
-      "ip_address",
-      "203.0.113.7",
       "internalNote",
       '"query":"user.id',
     ]) {
       expect(serialized).not.toContain(leaked);
     }
+    // The user data Sentry stored, including the IP, comes through.
+    expect(sc(result).events[0]?.user?.ipAddress).toBe("203.0.113.7");
   });
 
   it("maps event ID direct hits, which use the full event serializer", async () => {
@@ -294,6 +295,7 @@ describe("search_issue_events", () => {
       mockContext,
     );
 
+    assertStructuredOnlyResult(result);
     const payload = searchIssueEventsOutputSchema.parse(sc(result));
     expect(payload.events[0]).toMatchObject({
       eventType: "error",
@@ -394,6 +396,44 @@ describe("search_issue_events", () => {
     expect(sc(result).url).toContain("sort=-timestamp");
   });
 
+  it("notes that a non-default sort only applies to the Sentry link", async () => {
+    mockGenerateText.mockRejectedValue(
+      new APICallError({
+        message: "AI provider unavailable",
+        url: "https://openrouter.ai/api/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 503,
+        isRetryable: true,
+      }),
+    );
+
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/*/issues/*/events/", () =>
+        HttpResponse.json([simpleEvent]),
+      ),
+    );
+
+    const result = await searchIssueEvents.handler(
+      {
+        organizationSlug: "test-org",
+        issueId: "MCP-41",
+        query: "",
+        sort: "timestamp",
+        period: "7d",
+        projectSlug: null,
+        regionUrl: null,
+        limit: 50,
+        includeExplanation: false,
+      },
+      mockContext,
+    );
+
+    expect(sc(result).notes).toEqual([
+      "Results are newest first; the requested sort only applies to the Sentry link.",
+    ]);
+    expect(sc(result).url).toContain("sort=timestamp");
+  });
+
   it("should include user geo details in formatted event output", async () => {
     mockGenerateText.mockResolvedValue(
       mockAIResponse("", ["id", "timestamp", "title", "user"], "-timestamp"),
@@ -436,6 +476,7 @@ describe("search_issue_events", () => {
       email: null,
       username: null,
       name: null,
+      ipAddress: null,
       geo: { countryCode: "US", city: null, region: "United States" },
     });
   });
@@ -481,6 +522,7 @@ describe("search_issue_events", () => {
       email: null,
       username: null,
       name: null,
+      ipAddress: null,
       geo: { countryCode: "US", city: null, region: "United States" },
     });
   });
