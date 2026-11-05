@@ -3,7 +3,12 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getStructuredContent } from "../../test-utils/structured-content";
 import { prepareToolParams } from "../catalog-runtime/availability";
-import getAlertRule from "./get-alert-rule.js";
+import getAlertRule, { getAlertRuleOutputSchema } from "./get-alert-rule.js";
+
+function expectConformingOutput(result: unknown) {
+  const content = getStructuredContent(result);
+  expect(getAlertRuleOutputSchema.parse(content)).toEqual(content);
+}
 
 const context = {
   constraints: {
@@ -253,6 +258,7 @@ describe("get_alert_rule", () => {
         },
       }
     `);
+    expectConformingOutput(result);
   });
 
   it.each(["456", "10000000789", "detector:789"])(
@@ -350,6 +356,7 @@ describe("get_alert_rule", () => {
     expect(getStructuredContent(result)).toMatchObject({
       metricMonitor: { id: detector.id },
     });
+    expectConformingOutput(result);
     expect(query?.getAll("type")).toEqual(["metric_issue"]);
     expect(query?.get("query")).toContain(detector.name);
   });
@@ -567,6 +574,34 @@ describe("get_alert_rule", () => {
     );
   });
 
+  it("keeps only documented detector config keys", async () => {
+    mswServer.use(
+      http.get(`${organizationApi}/detectors/:id/`, () =>
+        HttpResponse.json({
+          ...detector,
+          config: {
+            detectionType: "percent",
+            comparisonDelta: 3600,
+            fingerprintingRules: "private-fingerprinting-rules",
+            "sentry:resolveAge": 720,
+          },
+        }),
+      ),
+    );
+    const result = await getRule({ projectSlug: "cloudflare-mcp" });
+    expectConformingOutput(result);
+    expect(getStructuredContent(result)).toMatchObject({
+      alertRule: {
+        sources: [
+          { config: { detectionType: "percent", comparisonDelta: 3600 } },
+        ],
+      },
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /private-fingerprinting-rules|resolveAge/,
+    );
+  });
+
   it("marks inaccessible sources and redacts other projects in a shared Alert", async () => {
     mswServer.use(
       http.get("*/workflows/123/", () =>
@@ -682,6 +717,7 @@ describe("get_alert_rule", () => {
       ),
     );
     const result = await getRule();
+    expectConformingOutput(result);
     expect(getStructuredContent(result)).toMatchObject({
       alertRule: {
         sources: [

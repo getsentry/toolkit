@@ -4,7 +4,11 @@ import { ApiNotFoundError, ApiPermissionError } from "../../api-client";
 import type { IssueAlertRule } from "../../api-client/types";
 import { isPlainObject } from "../../internal/type-guards";
 import { formatActor, formatDate } from "../catalog/support/api-formatting";
-import { conditionGroupSchema, getMetricQuery } from "./detector-details";
+import {
+  conditionGroupSchema,
+  getMetricQuery,
+  metricQueryDetailsSchema,
+} from "./detector-details";
 
 const componentId = z.union([z.string(), z.number()]);
 const actionGroupSchema = conditionGroupSchema.extend({
@@ -53,7 +57,99 @@ const cronQuerySchema = z.object({
   ),
 });
 
-function sourceDetails(source: Record<string, unknown>) {
+/**
+ * Detector config keys from the metric and uptime detector config schemas in
+ * getsentry/sentry (incidents/grouptype.py, uptime/grouptype.py), camelCased
+ * by DetectorSerializer. Other keys, such as error detector project options,
+ * are dropped instead of passed through.
+ */
+const detectorConfigSchema = z.object({
+  detectionType: z.string().optional(),
+  comparisonDelta: z.number().nullable().optional(),
+  mode: z.number().optional(),
+  environment: z.string().nullable().optional(),
+  recoveryThreshold: z.number().optional(),
+  downtimeThreshold: z.number().optional(),
+});
+
+const unavailableDataSourceSchema = z.object({
+  type: z.string(),
+  unavailableReason: z.string(),
+});
+
+const dataSourceSchema = z.union([
+  z.object({ type: z.string(), query: metricQueryDetailsSchema }),
+  z.object({
+    type: z.string(),
+    query: uptimeQuerySchema,
+    omittedFields: z.array(z.string()),
+  }),
+  z.object({ type: z.string(), query: cronQuerySchema }),
+  unavailableDataSourceSchema,
+]);
+
+const alertRuleSourceSchema = z.discriminatedUnion("status", [
+  z.object({
+    id: z.string(),
+    status: z.literal("available"),
+    name: z.string(),
+    type: z.string(),
+    projectId: z.string().nullable(),
+    enabled: z.boolean(),
+    config: detectorConfigSchema,
+    conditionGroup: conditionGroupSchema.nullable(),
+    dataSources: z.array(dataSourceSchema),
+  }),
+  z.object({
+    id: z.string(),
+    status: z.literal("outside_project_constraint"),
+  }),
+  z.object({
+    id: z.string(),
+    status: z.literal("unavailable"),
+    reason: z.string(),
+  }),
+]);
+
+/** Issue Alert (workflow) details returned by get_alert_rule. */
+export const alertRuleDetailsSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  enabled: z.boolean().optional(),
+  config: z.object({ frequency: z.number().optional() }),
+  environment: z.string().nullable().optional(),
+  owner: z.string().nullable(),
+  dateCreated: z.string().nullable(),
+  dateUpdated: z.string().nullable(),
+  lastTriggered: z.string().nullable(),
+  triggers: conditionGroupSchema.nullable(),
+  actionFilters: z.array(actionGroupSchema),
+  scope: z.object({
+    includesAllProjects: z.boolean(),
+    projectIds: z.array(z.string()),
+    limitedToProject: z.string().nullable().optional(),
+    outsideProjectCount: z.number().optional(),
+  }),
+  sources: z.array(alertRuleSourceSchema),
+  webUrl: z.string(),
+});
+
+export type AlertRuleDetails = z.infer<typeof alertRuleDetailsSchema>;
+
+function toDetectorConfig(
+  type: string,
+  config: Record<string, unknown>,
+): z.infer<typeof detectorConfigSchema> {
+  if (type === "issue_stream") {
+    return {};
+  }
+  const parsed = detectorConfigSchema.safeParse(config);
+  return parsed.success ? parsed.data : {};
+}
+
+function sourceDetails(
+  source: Record<string, unknown>,
+): z.infer<typeof dataSourceSchema> {
   const type = typeof source.type === "string" ? source.type : "unknown";
   const query = source.queryObj;
   const unavailable = {
@@ -89,7 +185,7 @@ export async function getAlertRuleDetails(
   organizationSlug: string,
   rule: IssueAlertRule,
   scopedProjectSlug?: string | null,
-) {
+): Promise<AlertRuleDetails> {
   const scope = await api.getAlertRuleProjectScope({
     organizationSlug,
     ruleId: rule.id,
@@ -100,7 +196,7 @@ export async function getAlertRuleDetails(
         projectSlugOrId: scopedProjectSlug,
       })
     : undefined;
-  const sources = [];
+  const sources: AlertRuleDetails["sources"] = [];
   for (const id of rule.detectorIds ?? []) {
     try {
       const detector = await api.getDetector({
@@ -123,7 +219,7 @@ export async function getAlertRuleDetails(
         projectId:
           detector.projectId === null ? null : String(detector.projectId),
         enabled: detector.enabled,
-        config: detector.type === "issue_stream" ? {} : detector.config,
+        config: toDetectorConfig(detector.type, detector.config),
         conditionGroup: detector.conditionGroup
           ? conditionGroupSchema.parse(detector.conditionGroup)
           : null,

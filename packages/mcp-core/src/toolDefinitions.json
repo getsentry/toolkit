@@ -4703,6 +4703,720 @@
       },
       "required": ["organizationSlug", "ruleIdOrName"]
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "alertRule": {
+          "description": "Set when the match is an Issue Alert.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "frequency": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "environment": {
+              "type": ["string", "null"]
+            },
+            "owner": {
+              "type": ["string", "null"]
+            },
+            "dateCreated": {
+              "type": ["string", "null"]
+            },
+            "dateUpdated": {
+              "type": ["string", "null"]
+            },
+            "lastTriggered": {
+              "type": ["string", "null"]
+            },
+            "triggers": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": ["string", "number"]
+                    },
+                    "logicType": {
+                      "type": "string"
+                    },
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": ["string", "number"]
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "comparison": {},
+                          "conditionResult": {}
+                        },
+                        "required": ["type", "comparison", "conditionResult"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["logicType", "conditions"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "actionFilters": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": ["string", "number"]
+                  },
+                  "logicType": {
+                    "type": "string"
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": ["string", "number"]
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "comparison": {},
+                        "conditionResult": {}
+                      },
+                      "required": ["type", "comparison", "conditionResult"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "actions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": ["string", "number"]
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "integrationId": {
+                          "type": ["string", "number", "null"]
+                        },
+                        "config": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "data": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "status": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["type", "config", "data"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["logicType", "conditions", "actions"],
+                "additionalProperties": false
+              }
+            },
+            "scope": {
+              "type": "object",
+              "properties": {
+                "includesAllProjects": {
+                  "type": "boolean"
+                },
+                "projectIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "limitedToProject": {
+                  "type": ["string", "null"]
+                },
+                "outsideProjectCount": {
+                  "type": "number"
+                }
+              },
+              "required": ["includesAllProjects", "projectIds"],
+              "additionalProperties": false
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "const": "available"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      },
+                      "projectId": {
+                        "type": ["string", "null"]
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "config": {
+                        "type": "object",
+                        "properties": {
+                          "detectionType": {
+                            "type": "string"
+                          },
+                          "comparisonDelta": {
+                            "type": ["number", "null"]
+                          },
+                          "mode": {
+                            "type": "number"
+                          },
+                          "environment": {
+                            "type": ["string", "null"]
+                          },
+                          "recoveryThreshold": {
+                            "type": "number"
+                          },
+                          "downtimeThreshold": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "conditionGroup": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": ["string", "number"]
+                              },
+                              "logicType": {
+                                "type": "string"
+                              },
+                              "conditions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": ["string", "number"]
+                                    },
+                                    "type": {
+                                      "type": "string"
+                                    },
+                                    "comparison": {},
+                                    "conditionResult": {}
+                                  },
+                                  "required": [
+                                    "type",
+                                    "comparison",
+                                    "conditionResult"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": ["logicType", "conditions"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "dataSources": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "query": {
+                                  "type": "object",
+                                  "properties": {
+                                    "dataset": {
+                                      "type": "string"
+                                    },
+                                    "query": {
+                                      "type": "string"
+                                    },
+                                    "aggregate": {
+                                      "type": "string"
+                                    },
+                                    "environment": {
+                                      "type": ["string", "null"]
+                                    },
+                                    "eventTypes": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "extrapolationMode": {
+                                      "type": ["string", "null"]
+                                    },
+                                    "timeWindowSeconds": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "dataset",
+                                    "query",
+                                    "aggregate",
+                                    "environment",
+                                    "eventTypes",
+                                    "timeWindowSeconds"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": ["type", "query"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "query": {
+                                  "type": "object",
+                                  "properties": {
+                                    "url": {
+                                      "type": "string"
+                                    },
+                                    "method": {
+                                      "type": "string"
+                                    },
+                                    "intervalSeconds": {
+                                      "type": "number"
+                                    },
+                                    "timeoutMs": {
+                                      "type": "number"
+                                    },
+                                    "assertion": {},
+                                    "traceSampling": {
+                                      "type": "boolean"
+                                    },
+                                    "responseCaptureEnabled": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "method",
+                                    "intervalSeconds",
+                                    "timeoutMs",
+                                    "assertion"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "omittedFields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": ["type", "query", "omittedFields"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "query": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "slug": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "type": "string"
+                                    },
+                                    "isMuted": {
+                                      "type": "boolean"
+                                    },
+                                    "config": {
+                                      "type": "object",
+                                      "properties": {
+                                        "schedule_type": {
+                                          "type": "string"
+                                        },
+                                        "schedule": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "array",
+                                              "items": {
+                                                "type": ["number", "string"]
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        "checkin_margin": {
+                                          "type": ["number", "null"]
+                                        },
+                                        "max_runtime": {
+                                          "type": ["number", "null"]
+                                        },
+                                        "timezone": {
+                                          "type": ["string", "null"]
+                                        },
+                                        "failure_issue_threshold": {
+                                          "type": ["number", "null"]
+                                        },
+                                        "recovery_threshold": {
+                                          "type": ["number", "null"]
+                                        }
+                                      },
+                                      "required": ["schedule_type", "schedule"],
+                                      "additionalProperties": false
+                                    },
+                                    "environments": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "name": {
+                                            "type": "string"
+                                          },
+                                          "status": {
+                                            "type": "string"
+                                          },
+                                          "isMuted": {
+                                            "type": "boolean"
+                                          }
+                                        },
+                                        "required": [
+                                          "name",
+                                          "status",
+                                          "isMuted"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name",
+                                    "slug",
+                                    "status",
+                                    "isMuted",
+                                    "config",
+                                    "environments"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": ["type", "query"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "unavailableReason": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["type", "unavailableReason"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "status",
+                      "name",
+                      "type",
+                      "projectId",
+                      "enabled",
+                      "config",
+                      "conditionGroup",
+                      "dataSources"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "const": "outside_project_constraint"
+                      }
+                    },
+                    "required": ["id", "status"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "const": "unavailable"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id", "status", "reason"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "webUrl": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "config",
+            "owner",
+            "dateCreated",
+            "dateUpdated",
+            "lastTriggered",
+            "triggers",
+            "actionFilters",
+            "scope",
+            "sources",
+            "webUrl"
+          ],
+          "additionalProperties": false
+        },
+        "metricMonitor": {
+          "description": "Set when the match is a Metric Monitor.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "projectId": {
+              "type": ["string", "null"]
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "owner": {
+              "type": ["string", "null"]
+            },
+            "workflowIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "webUrl": {
+              "type": "string"
+            },
+            "description": {
+              "type": ["string", "null"]
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "detectionType": {
+                  "type": "string"
+                },
+                "comparisonDeltaSeconds": {
+                  "type": "number"
+                }
+              },
+              "required": ["detectionType"],
+              "additionalProperties": false
+            },
+            "conditionGroup": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": ["string", "number"]
+                    },
+                    "logicType": {
+                      "type": "string"
+                    },
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": ["string", "number"]
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "comparison": {},
+                          "conditionResult": {}
+                        },
+                        "required": ["type", "comparison", "conditionResult"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["logicType", "conditions"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Native detection conditions, including resolution. Results: 75 critical, 50 warning, 0 resolved. Percent comparisons are absolute percentages (110 means 10% higher). Dynamic comparisons contain sensitivity, seasonality and thresholdType."
+            },
+            "dataSources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "query": {
+                    "type": "object",
+                    "properties": {
+                      "dataset": {
+                        "type": "string"
+                      },
+                      "query": {
+                        "type": "string"
+                      },
+                      "aggregate": {
+                        "type": "string"
+                      },
+                      "environment": {
+                        "type": ["string", "null"]
+                      },
+                      "eventTypes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "extrapolationMode": {
+                        "type": ["string", "null"]
+                      },
+                      "timeWindowSeconds": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "dataset",
+                      "query",
+                      "aggregate",
+                      "environment",
+                      "eventTypes",
+                      "timeWindowSeconds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "unavailableReason": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type"],
+                "additionalProperties": false
+              }
+            },
+            "dateCreated": {
+              "type": ["string", "null"]
+            },
+            "dateUpdated": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "projectId",
+            "enabled",
+            "owner",
+            "workflowIds",
+            "webUrl",
+            "description",
+            "config",
+            "conditionGroup",
+            "dataSources",
+            "dateCreated",
+            "dateUpdated"
+          ],
+          "additionalProperties": false
+        },
+        "guidance": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect"],
     "surface": "direct"
