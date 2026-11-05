@@ -25,4 +25,15 @@ describe("get_sentry_mcp_info", () => {
       }
     `);
   });
+
+  it("reports the host's version when the context sets one", async () => {
+    const result = await getSentryMcpInfo.handler(
+      {},
+      createTestContext({ serverVersion: "9.9.9-test" }),
+    );
+
+    expect(getStructuredContent<{ version: string }>(result)).toEqual({
+      version: "9.9.9-test",
+    });
+  });
 });

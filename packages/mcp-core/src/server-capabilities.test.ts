@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { buildServer } from "./server";
 import type { ToolConfig } from "./tools/types";
 import type { ServerContext } from "./types";
+import { LIB_VERSION } from "./version";
 
 const context: ServerContext = {
   accessToken: "test-token",
@@ -126,5 +127,32 @@ describe("static tool catalog capabilities", () => {
     } finally {
       await handler.close();
     }
+  });
+});
+
+describe("serverInfo version", () => {
+  async function initializeVersion(serverContext: ServerContext) {
+    const server = buildServer({ context: serverContext, tools });
+    const client = new Client({ name: "version-test", version: "1.0.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      return client.getServerVersion()?.version;
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  }
+
+  it("reports the host's version when the context sets one", async () => {
+    expect(
+      await initializeVersion({ ...context, serverVersion: "0.48.0-test" }),
+    ).toBe("0.48.0-test");
+  });
+
+  it("falls back to mcp-core's version", async () => {
+    expect(await initializeVersion(context)).toBe(LIB_VERSION);
   });
 });

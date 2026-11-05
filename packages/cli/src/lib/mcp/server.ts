@@ -414,6 +414,8 @@ export async function serveMcpStdio(
     openaiBaseUrl: config.openaiBaseUrl,
     experimentalMode: config.experimental,
     transport: "stdio",
+    // @sentry/mcp-server ships at the CLI version, not mcp-core's.
+    serverVersion: CLI_VERSION,
     // mcp-core uses the returned token for later tool calls, so a
     // long-running server recovers from an expired CLI session.
     onUpstreamUnauthorized: options.refreshAccessToken,
