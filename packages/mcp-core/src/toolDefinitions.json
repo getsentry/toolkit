@@ -5693,7 +5693,7 @@
   },
   {
     "name": "get_release_details",
-    "description": "Get details for a Sentry release.\n\nUse this tool when you need to:\n- Inspect an exact release version\n- Scope a release lookup to a specific project\n- See deploys and environments for a release\n- See recent commits attached to a release\n- Gather release health metadata when a project is known\n\n<examples>\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3')\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', projectSlugOrId='backend')\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', includeHealth=true, projectSlugOrId='backend')\n</examples>",
+    "description": "Get details for a Sentry release.\n\nUse this tool when you need to:\n- Inspect an exact release version\n- Scope a release lookup to a specific project\n- See deploys and environments for a release\n- See recent commits attached to a release\n- Gather release health metadata when a project is known\n\nTo find issues introduced in a release, call search_issues with query `release:<version>`.\n\n<examples>\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3')\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', projectSlugOrId='backend')\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', includeHealth=true, projectSlugOrId='backend')\n</examples>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5758,6 +5758,236 @@
         }
       },
       "required": ["organizationSlug", "releaseVersion"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "release": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "shortVersion": {
+              "type": ["string", "null"]
+            },
+            "dateCreated": {
+              "type": ["string", "null"]
+            },
+            "dateReleased": {
+              "type": ["string", "null"]
+            },
+            "firstEvent": {
+              "type": ["string", "null"]
+            },
+            "lastEvent": {
+              "type": ["string", "null"]
+            },
+            "newIssues": {
+              "type": ["number", "null"]
+            },
+            "projects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "url": {
+              "type": "string"
+            },
+            "lastCommit": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": ["string", "null"]
+                    },
+                    "author": {
+                      "type": ["string", "null"]
+                    },
+                    "dateCreated": {
+                      "type": ["string", "null"]
+                    }
+                  },
+                  "required": ["id", "message", "author", "dateCreated"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "shortVersion",
+            "dateCreated",
+            "dateReleased",
+            "firstEvent",
+            "lastEvent",
+            "newIssues",
+            "projects",
+            "url",
+            "lastCommit"
+          ],
+          "additionalProperties": false
+        },
+        "health": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "sessionsLowerBound": {
+                  "type": ["string", "null"]
+                },
+                "sessionsUpperBound": {
+                  "type": ["string", "null"]
+                },
+                "firstReleaseVersion": {
+                  "type": ["string", "null"]
+                },
+                "lastReleaseVersion": {
+                  "type": ["string", "null"]
+                },
+                "prevReleaseVersion": {
+                  "type": ["string", "null"]
+                },
+                "nextReleaseVersion": {
+                  "type": ["string", "null"]
+                },
+                "adoptionStages": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "project": {
+                        "type": "string"
+                      },
+                      "stage": {
+                        "type": ["string", "null"]
+                      },
+                      "adopted": {
+                        "type": ["string", "null"]
+                      },
+                      "unadopted": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "required": ["project", "stage", "adopted", "unadopted"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "sessionsLowerBound",
+                "sessionsUpperBound",
+                "firstReleaseVersion",
+                "lastReleaseVersion",
+                "prevReleaseVersion",
+                "nextReleaseVersion",
+                "adoptionStages"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Release health metadata. Null unless includeHealth is true."
+        },
+        "deploys": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "environment": {
+                    "type": ["string", "null"]
+                  },
+                  "name": {
+                    "type": ["string", "null"]
+                  },
+                  "dateStarted": {
+                    "type": ["string", "null"]
+                  },
+                  "dateFinished": {
+                    "type": ["string", "null"]
+                  },
+                  "url": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": [
+                  "id",
+                  "environment",
+                  "name",
+                  "dateStarted",
+                  "dateFinished",
+                  "url"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Recent deploys. Null when includeDeploys is false."
+        },
+        "commits": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": ["string", "null"]
+                  },
+                  "author": {
+                    "type": ["string", "null"]
+                  },
+                  "repository": {
+                    "type": ["string", "null"]
+                  },
+                  "dateCreated": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": [
+                  "id",
+                  "message",
+                  "author",
+                  "repository",
+                  "dateCreated"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Recent commits. Null when includeCommits is false."
+        }
+      },
+      "required": ["release", "health", "deploys", "commits"],
+      "additionalProperties": false
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],
