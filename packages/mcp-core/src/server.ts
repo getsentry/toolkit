@@ -37,7 +37,7 @@ import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
 import { isUnauthorizedHandled } from "./internal/tool-helpers/credential-routing";
 import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
-import { MCP_SERVER_NAME } from "./constants";
+import { MCP_SERVER_INFO } from "./constants";
 import { buildServerInstructions } from "./server-instructions";
 import {
   formatErrorForUser,
@@ -309,7 +309,7 @@ export function buildServer({
   });
   const server = new McpServer(
     {
-      name: MCP_SERVER_NAME,
+      ...MCP_SERVER_INFO,
       version: LIB_VERSION,
     },
     {

@@ -9,6 +9,7 @@ import tools from "./tools/index";
 import { EXPOSE_ALL_TOOLS } from "./tools/exposure";
 import { isToolVisibleInMode } from "./tools/types";
 import type { ServerContext } from "./types";
+import { LIB_VERSION } from "./version";
 
 vi.mock("@sentry/core/server", () => ({
   wrapMcpServerWithSentry: vi.fn((server) => server),
@@ -113,6 +114,28 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
       - Tools pick the organization automatically when the user has only one. If a tool asks for organizationSlug, call find_organizations and pass the slug and regionUrl it returns.
       - Use search_issues for grouped problems ("what's broken", "top issues") and search_errors, search_logs, search_traces, search_metrics, search_profiles, search_replays for individual events, counts, and aggregates."
     `);
+  });
+
+  it("identifies the server for client UIs", async () => {
+    const serverInfo = await withClient(getContext(), async (client) =>
+      client.getServerVersion(),
+    );
+
+    expect(serverInfo).toEqual({
+      name: "Sentry MCP",
+      title: "Sentry",
+      description:
+        "Search and debug Sentry issues, errors, traces, logs, replays, and monitors.",
+      websiteUrl: "https://mcp.sentry.dev",
+      icons: [
+        {
+          src: "https://mcp.sentry.dev/sentry-icon.png",
+          mimeType: "image/png",
+          sizes: ["256x256"],
+        },
+      ],
+      version: LIB_VERSION,
+    });
   });
 
   it("still gates tools by granted skills", async () => {
