@@ -31,11 +31,11 @@ function getActivityText(
     readString(data, "text") ??
     readString(data, "message") ??
     readString(data, "reason") ??
-    readString(data, "description")
+    readString(data, "description") ??
+    // Seer root cause and solution activities carry a one-line summary.
+    readString(data, "summary")
   );
 }
-
-const MAX_DETAILS_LENGTH = 200;
 
 const gitAuthorSchema = z
   .object({
@@ -86,7 +86,9 @@ const issueActivityEntrySchema = z.object({
       repository: z.string().nullable(),
       author: gitAuthorSchema,
     })
-    .optional(),
+    .nullable()
+    .optional()
+    .describe("Null when the linked commit was deleted."),
   pullRequest: z
     .object({
       id: z.string(),
@@ -94,13 +96,36 @@ const issueActivityEntrySchema = z.object({
       repository: z.string().nullable(),
       author: gitAuthorSchema,
     })
-    .optional(),
-  details: z
-    .string()
     .nullable()
-    .describe(
-      `Other activity data as compact JSON, truncated after ${MAX_DETAILS_LENGTH} characters. Set only when no text or mapped field covers the entry.`,
-    ),
+    .optional()
+    .describe("Null when the linked pull request was deleted."),
+  pullRequestUrls: z
+    .array(z.string())
+    .optional()
+    .describe("Pull requests Seer opened."),
+  unmerge: z
+    .object({
+      fingerprintCount: z.number(),
+      source: z.object({ shortId: z.string() }).nullable(),
+      destination: z.object({ shortId: z.string() }).nullable(),
+    })
+    .optional(),
+  externalIssue: z
+    .object({
+      title: z.string().nullable(),
+      provider: z.string().nullable(),
+      location: z.string().nullable(),
+    })
+    .optional()
+    .describe("Issue created in an external tracker."),
+  age: z
+    .number()
+    .optional()
+    .describe("Hours without events before the issue was auto-resolved."),
+  afterDays: z
+    .number()
+    .optional()
+    .describe("Days after which the issue was automatically marked ongoing."),
 });
 
 type IssueActivityEntry = z.infer<typeof issueActivityEntrySchema>;
@@ -172,12 +197,15 @@ function readGitAuthor(value: Record<string, unknown>) {
 
 function mapCommit(data: Record<string, unknown>) {
   const commit = data.commit;
+  if (commit === null) {
+    return null;
+  }
   if (!isPlainObject(commit) || commit.id == null) {
     return undefined;
   }
   return {
     id: formatId(commit.id as string | number),
-    message: readString(commit, "message")?.split("\n")[0] ?? null,
+    message: readString(commit, "message")?.split("\n")[0]?.trim() || null,
     repository: readRepositoryName(commit),
     author: readGitAuthor(commit),
   };
@@ -185,6 +213,9 @@ function mapCommit(data: Record<string, unknown>) {
 
 function mapPullRequest(data: Record<string, unknown>) {
   const pullRequest = data.pullRequest;
+  if (pullRequest === null) {
+    return null;
+  }
   if (!isPlainObject(pullRequest) || pullRequest.id == null) {
     return undefined;
   }
@@ -196,11 +227,48 @@ function mapPullRequest(data: Record<string, unknown>) {
   };
 }
 
-function formatDetails(data: Record<string, unknown>): string | null {
-  const json = JSON.stringify(data);
-  return json.length <= MAX_DETAILS_LENGTH
-    ? json
-    : `${json.slice(0, MAX_DETAILS_LENGTH)}...`;
+function mapSeerPullRequestUrls(data: Record<string, unknown>) {
+  const pullRequests = data.pull_requests;
+  if (!Array.isArray(pullRequests)) {
+    return undefined;
+  }
+  const urls = pullRequests.flatMap((item) => {
+    const pullRequest = isPlainObject(item) ? item.pull_request : null;
+    const url = isPlainObject(pullRequest)
+      ? readString(pullRequest, "pr_url")
+      : null;
+    return url ? [url] : [];
+  });
+  return urls.length > 0 ? urls : undefined;
+}
+
+function readShortId(value: unknown) {
+  const shortId = isPlainObject(value) ? readString(value, "shortId") : null;
+  return shortId ? { shortId } : null;
+}
+
+function mapUnmerge(type: string, data: Record<string, unknown>) {
+  if (type !== "unmerge_source" && type !== "unmerge_destination") {
+    return undefined;
+  }
+  return {
+    fingerprintCount: Array.isArray(data.fingerprints)
+      ? data.fingerprints.length
+      : 0,
+    source: readShortId(data.source),
+    destination: readShortId(data.destination),
+  };
+}
+
+function mapExternalIssue(type: string, data: Record<string, unknown>) {
+  if (type !== "create_issue") {
+    return undefined;
+  }
+  return {
+    title: readString(data, "title"),
+    provider: readString(data, "provider"),
+    location: readString(data, "location"),
+  };
 }
 
 function mapActivity(
@@ -218,7 +286,6 @@ function mapActivity(
         ? formatId(commentId)
         : null,
     text,
-    details: null,
   };
 
   const data = activity.data;
@@ -226,19 +293,28 @@ function mapActivity(
     return entry;
   }
 
+  // Map known activity data explicitly. Raw data can carry share tokens,
+  // integration ids, and Seer run ids, so anything else stays out.
+  const type = entry.type;
   const mapped = {
     assignee: mapAssignee(data),
     version: readString(data, "version") ?? undefined,
     ignore: mapIgnore(data),
     commit: mapCommit(data),
     pullRequest: mapPullRequest(data),
+    pullRequestUrls: mapSeerPullRequestUrls(data),
+    unmerge: mapUnmerge(type, data),
+    externalIssue: mapExternalIssue(type, data),
+    age: type === "set_resolved_by_age" ? readNumber(data, "age") : undefined,
+    afterDays:
+      type === "auto_set_ongoing" ? readNumber(data, "after_days") : undefined,
   };
-  const present = Object.fromEntries(
-    Object.entries(mapped).filter(([, value]) => value !== undefined),
-  );
-  return Object.keys(present).length > 0
-    ? { ...entry, ...present }
-    : { ...entry, details: formatDetails(data) };
+  return {
+    ...entry,
+    ...Object.fromEntries(
+      Object.entries(mapped).filter(([, value]) => value !== undefined),
+    ),
+  };
 }
 
 export default defineTool({

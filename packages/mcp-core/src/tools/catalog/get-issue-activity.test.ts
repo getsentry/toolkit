@@ -60,10 +60,10 @@ describe("get_issue_activity", () => {
       {
         "activity": [
           {
+            "afterDays": 7,
             "author": "system",
             "commentId": null,
             "dateCreated": "2025-04-10T22:55:22.411Z",
-            "details": "{"after_days":7}",
             "id": "4633815464",
             "text": null,
             "type": "auto_set_ongoing",
@@ -72,7 +72,6 @@ describe("get_issue_activity", () => {
             "author": "Jane Developer (Claude via MCP)",
             "commentId": null,
             "dateCreated": "2025-04-14T12:00:00.000Z",
-            "details": null,
             "id": "4633816000",
             "text": "Investigating after the latest deploy.",
             "type": "note",
@@ -83,7 +82,6 @@ describe("get_issue_activity", () => {
             "author": "Jane Developer (Claude via MCP)",
             "commentId": null,
             "dateCreated": "2025-04-14T12:00:00.000Z",
-            "details": null,
             "id": "4633816000",
             "text": "Investigating after the latest deploy.",
             "type": "note",
@@ -172,7 +170,6 @@ describe("get_issue_activity", () => {
             "author": "Example App",
             "commentId": "comment-1",
             "dateCreated": "2025-04-14T12:00:00.000Z",
-            "details": null,
             "id": "activity-1",
             "text": "Investigating after the latest deploy.",
             "type": "note",
@@ -183,7 +180,6 @@ describe("get_issue_activity", () => {
             "author": "Example App",
             "commentId": "comment-1",
             "dateCreated": "2025-04-14T12:00:00.000Z",
-            "details": null,
             "id": "activity-1",
             "text": "Investigating after the latest deploy.",
             "type": "note",
@@ -224,22 +220,21 @@ describe("get_issue_activity", () => {
     );
     expect((structuredContent as { activity: unknown[] }).activity[0])
       .toMatchInlineSnapshot(`
-      {
-        "assignee": {
-          "email": "assignee@example.com",
-          "id": "42",
-          "name": "Sam Owner",
-          "type": "user",
-        },
-        "author": "Jane Developer",
-        "commentId": null,
-        "dateCreated": "2025-04-14T12:00:00.000Z",
-        "details": null,
-        "id": "activity-assigned",
-        "text": null,
-        "type": "assigned",
-      }
-    `);
+        {
+          "assignee": {
+            "email": "assignee@example.com",
+            "id": "42",
+            "name": "Sam Owner",
+            "type": "user",
+          },
+          "author": "Jane Developer",
+          "commentId": null,
+          "dateCreated": "2025-04-14T12:00:00.000Z",
+          "id": "activity-assigned",
+          "text": null,
+          "type": "assigned",
+        }
+      `);
   });
 
   it("maps resolved-in-commit and pull request data with their authors", async () => {
@@ -299,45 +294,43 @@ describe("get_issue_activity", () => {
     );
     expect((structuredContent as { activity: unknown[] }).activity)
       .toMatchInlineSnapshot(`
-      [
-        {
-          "author": "system",
-          "commentId": null,
-          "commit": {
-            "author": {
-              "email": "author@example.com",
-              "name": "Commit Author",
+        [
+          {
+            "author": "system",
+            "commentId": null,
+            "commit": {
+              "author": {
+                "email": "author@example.com",
+                "name": "Commit Author",
+              },
+              "id": "abc123",
+              "message": "fix: Handle null org",
+              "repository": "getsentry/sentry-mcp",
             },
-            "id": "abc123",
-            "message": "fix: Handle null org",
-            "repository": "getsentry/sentry-mcp",
+            "dateCreated": "2025-04-14T12:00:00.000Z",
+            "id": "activity-commit",
+            "text": null,
+            "type": "set_resolved_in_commit",
           },
-          "dateCreated": "2025-04-14T12:00:00.000Z",
-          "details": null,
-          "id": "activity-commit",
-          "text": null,
-          "type": "set_resolved_in_commit",
-        },
-        {
-          "author": "system",
-          "commentId": null,
-          "dateCreated": "2025-04-14T12:05:00.000Z",
-          "details": null,
-          "id": "activity-pr",
-          "pullRequest": {
-            "author": {
-              "email": "author@example.com",
-              "name": "Commit Author",
+          {
+            "author": "system",
+            "commentId": null,
+            "dateCreated": "2025-04-14T12:05:00.000Z",
+            "id": "activity-pr",
+            "pullRequest": {
+              "author": {
+                "email": "author@example.com",
+                "name": "Commit Author",
+              },
+              "id": "99",
+              "repository": "getsentry/sentry-mcp",
+              "title": "Fix null org handling",
             },
-            "id": "99",
-            "repository": "getsentry/sentry-mcp",
-            "title": "Fix null org handling",
+            "text": null,
+            "type": "set_resolved_in_pull_request",
           },
-          "text": null,
-          "type": "set_resolved_in_pull_request",
-        },
-      ]
-    `);
+        ]
+      `);
     const serialized = JSON.stringify(structuredContent);
     expect(serialized).not.toContain("Longer body text");
     // Internal ids and release lists stay out of the mapped payload.
@@ -345,56 +338,95 @@ describe("get_issue_activity", () => {
     expect(serialized).not.toContain('"id":"7"');
   });
 
-  it("bounds other activity data and keeps the user data it carries", async () => {
-    mockActivity({
-      id: "activity-unmerge",
-      type: "unmerge_destination",
-      dateCreated: "2025-04-14T12:00:00.000Z",
-      user: null,
-      data: {
-        fingerprints: ["a".repeat(40)],
-        source: {
-          id: "123",
-          assignedTo: { name: "Owner", email: "owner@example.com" },
-          title: "x".repeat(300),
-        },
-      },
-    } as IssueActivity);
-
-    const result = await getIssueActivity.handler(
-      { ...params, includeComments: false },
-      context,
-    );
-    const [entry] = getStructuredContent<{
-      activity: Array<{ details: string | null }>;
-    }>(result).activity;
-    expect(entry!.details).toMatch(/^\{"fingerprints":/);
-    expect(entry!.details).toContain('"email":"owner@example.com"');
-    expect(entry!.details!.length).toBe(203);
-  });
-
-  it("keeps assignee names and detail keys that are emails", async () => {
+  it("maps known activity data explicitly and drops the rest", async () => {
+    const group = {
+      id: "123",
+      shortId: "CLOUDFLARE-MCP-42",
+      shareId: "share-token-must-not-leak",
+      assignedTo: { name: "Owner", email: "owner@example.com" },
+      title: "Other group",
+    };
     mswServer.use(
       http.get("*/api/0/organizations/:org/issues/:issueId/activities/", () =>
         HttpResponse.json({
           activity: [
             {
-              id: "activity-assigned-email-name",
-              type: "assigned",
+              id: "activity-unmerge",
+              type: "unmerge_destination",
               dateCreated: "2025-04-14T12:00:00.000Z",
               user: null,
+              data: { fingerprints: ["a", "b"], source: group },
+            },
+            {
+              id: "activity-resolved-integration",
+              type: "set_resolved",
+              dateCreated: "2025-04-14T12:01:00.000Z",
+              user: null,
+              data: { integration_id: 98765, provider: "jira" },
+            },
+            {
+              id: "activity-rca",
+              type: "seer_rca_completed",
+              dateCreated: "2025-04-14T12:02:00.000Z",
+              user: null,
               data: {
-                assignee: "43",
-                assigneeName: "jane@corp.com",
-                assigneeType: "user",
+                run_id: 55555,
+                summary: "Null org slug reaches the API client.",
               },
             },
             {
-              id: "activity-email-key",
-              type: "unmerge_source",
+              id: "activity-seer-pr",
+              type: "seer_iteration_completed",
+              dateCreated: "2025-04-14T12:03:00.000Z",
+              user: null,
+              data: {
+                run_id: 55555,
+                code_changes: [{ diff: "secret diff body" }],
+                pull_requests: [
+                  {
+                    pull_request: {
+                      pr_url: "https://github.com/getsentry/sentry-mcp/pull/7",
+                    },
+                  },
+                ],
+              },
+            },
+            {
+              id: "activity-create-issue",
+              type: "create_issue",
+              dateCreated: "2025-04-14T12:04:00.000Z",
+              user: null,
+              data: {
+                title: "Fix null org",
+                provider: "Jira",
+                location: "https://example.atlassian.net/browse/ENG-1",
+                label: "ENG-1",
+                new: true,
+                integration_id: 98765,
+              },
+            },
+            {
+              id: "activity-resolved-by-age",
+              type: "set_resolved_by_age",
               dateCreated: "2025-04-14T12:05:00.000Z",
               user: null,
-              data: { "owner@corp.com": "123", fingerprints: ["abc"] },
+              data: { age: 720 },
+            },
+            {
+              id: "activity-deleted-pr",
+              type: "pull_request_closed",
+              dateCreated: "2025-04-14T12:06:00.000Z",
+              user: null,
+              data: { pullRequest: null },
+            },
+            {
+              id: "activity-blank-commit",
+              type: "set_resolved_in_commit",
+              dateCreated: "2025-04-14T12:07:00.000Z",
+              user: null,
+              data: {
+                commit: { id: "abc123", message: "\nbody only", author: null },
+              },
             },
           ],
         }),
@@ -405,21 +437,88 @@ describe("get_issue_activity", () => {
       { ...params, includeComments: false },
       context,
     );
-    const structuredContent = getStructuredContent<{
-      activity: Array<{
-        assignee?: { name: string | null };
-        details: string | null;
-      }>;
-    }>(result);
-    const [assigned, unmerge] = structuredContent.activity;
+    const structuredContent = getStructuredContent(result);
+    expect(getIssueActivityOutputSchema.parse(structuredContent)).toEqual(
+      structuredContent,
+    );
+    const activity = (
+      structuredContent as { activity: Array<Record<string, unknown>> }
+    ).activity;
+    const [
+      unmerge,
+      resolved,
+      rca,
+      seerPr,
+      createIssue,
+      resolvedByAge,
+      deletedPr,
+      blankCommit,
+    ] = activity;
+    expect(unmerge!.unmerge).toEqual({
+      fingerprintCount: 2,
+      source: { shortId: "CLOUDFLARE-MCP-42" },
+      destination: null,
+    });
+    expect(Object.keys(resolved!).sort()).toEqual([
+      "author",
+      "commentId",
+      "dateCreated",
+      "id",
+      "text",
+      "type",
+    ]);
+    expect(rca!.text).toBe("Null org slug reaches the API client.");
+    expect(seerPr!.pullRequestUrls).toEqual([
+      "https://github.com/getsentry/sentry-mcp/pull/7",
+    ]);
+    expect(createIssue!.externalIssue).toEqual({
+      title: "Fix null org",
+      provider: "Jira",
+      location: "https://example.atlassian.net/browse/ENG-1",
+    });
+    expect(resolvedByAge!.age).toBe(720);
+    expect(deletedPr!.pullRequest).toBeNull();
+    expect(blankCommit!.commit).toMatchObject({ id: "abc123", message: null });
+
+    const serialized = JSON.stringify(structuredContent);
+    for (const leaked of [
+      "shareId",
+      "share-token-must-not-leak",
+      "integration_id",
+      "98765",
+      "run_id",
+      "55555",
+      "secret diff body",
+    ]) {
+      expect(serialized).not.toContain(leaked);
+    }
+  });
+
+  it("keeps assignee names that are emails", async () => {
+    mockActivity({
+      id: "activity-assigned-email-name",
+      type: "assigned",
+      dateCreated: "2025-04-14T12:00:00.000Z",
+      user: null,
+      data: {
+        assignee: "43",
+        assigneeName: "jane@corp.com",
+        assigneeType: "user",
+      },
+    } as IssueActivity);
+
+    const result = await getIssueActivity.handler(
+      { ...params, includeComments: false },
+      context,
+    );
+    const [assigned] = getStructuredContent<{
+      activity: Array<{ assignee?: { name: string | null } }>;
+    }>(result).activity;
     expect(assigned!.assignee).toEqual({
       id: "43",
       type: "user",
       name: "jane@corp.com",
       email: null,
     });
-    expect(unmerge!.details).toBe(
-      '{"owner@corp.com":"123","fingerprints":["abc"]}',
-    );
   });
 });

@@ -4987,31 +4987,134 @@
                 "additionalProperties": false
               },
               "commit": {
+                "description": "Null when the linked commit was deleted.",
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "description": "First line only.",
+                        "type": ["string", "null"]
+                      },
+                      "repository": {
+                        "type": ["string", "null"]
+                      },
+                      "author": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": ["string", "null"]
+                              },
+                              "email": {
+                                "type": ["string", "null"]
+                              }
+                            },
+                            "required": ["name", "email"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["id", "message", "repository", "author"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "pullRequest": {
+                "description": "Null when the linked pull request was deleted.",
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": ["string", "null"]
+                      },
+                      "repository": {
+                        "type": ["string", "null"]
+                      },
+                      "author": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": ["string", "null"]
+                              },
+                              "email": {
+                                "type": ["string", "null"]
+                              }
+                            },
+                            "required": ["name", "email"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["id", "title", "repository", "author"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "pullRequestUrls": {
+                "description": "Pull requests Seer opened.",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "unmerge": {
                 "type": "object",
                 "properties": {
-                  "id": {
-                    "type": "string"
+                  "fingerprintCount": {
+                    "type": "number"
                   },
-                  "message": {
-                    "description": "First line only.",
-                    "type": ["string", "null"]
-                  },
-                  "repository": {
-                    "type": ["string", "null"]
-                  },
-                  "author": {
+                  "source": {
                     "anyOf": [
                       {
                         "type": "object",
                         "properties": {
-                          "name": {
-                            "type": ["string", "null"]
-                          },
-                          "email": {
-                            "type": ["string", "null"]
+                          "shortId": {
+                            "type": "string"
                           }
                         },
-                        "required": ["name", "email"],
+                        "required": ["shortId"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "destination": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "shortId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["shortId"],
                         "additionalProperties": false
                       },
                       {
@@ -5020,48 +5123,33 @@
                     ]
                   }
                 },
-                "required": ["id", "message", "repository", "author"],
+                "required": ["fingerprintCount", "source", "destination"],
                 "additionalProperties": false
               },
-              "pullRequest": {
+              "externalIssue": {
+                "description": "Issue created in an external tracker.",
                 "type": "object",
                 "properties": {
-                  "id": {
-                    "type": "string"
-                  },
                   "title": {
                     "type": ["string", "null"]
                   },
-                  "repository": {
+                  "provider": {
                     "type": ["string", "null"]
                   },
-                  "author": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": ["string", "null"]
-                          },
-                          "email": {
-                            "type": ["string", "null"]
-                          }
-                        },
-                        "required": ["name", "email"],
-                        "additionalProperties": false
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
+                  "location": {
+                    "type": ["string", "null"]
                   }
                 },
-                "required": ["id", "title", "repository", "author"],
+                "required": ["title", "provider", "location"],
                 "additionalProperties": false
               },
-              "details": {
-                "description": "Other activity data as compact JSON, truncated after 200 characters. Set only when no text or mapped field covers the entry.",
-                "type": ["string", "null"]
+              "age": {
+                "description": "Hours without events before the issue was auto-resolved.",
+                "type": "number"
+              },
+              "afterDays": {
+                "description": "Days after which the issue was automatically marked ongoing.",
+                "type": "number"
               }
             },
             "required": [
@@ -5070,8 +5158,7 @@
               "author",
               "dateCreated",
               "commentId",
-              "text",
-              "details"
+              "text"
             ],
             "additionalProperties": false
           }
@@ -5153,31 +5240,134 @@
                     "additionalProperties": false
                   },
                   "commit": {
+                    "description": "Null when the linked commit was deleted.",
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "description": "First line only.",
+                            "type": ["string", "null"]
+                          },
+                          "repository": {
+                            "type": ["string", "null"]
+                          },
+                          "author": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": ["string", "null"]
+                                  },
+                                  "email": {
+                                    "type": ["string", "null"]
+                                  }
+                                },
+                                "required": ["name", "email"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["id", "message", "repository", "author"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "pullRequest": {
+                    "description": "Null when the linked pull request was deleted.",
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": ["string", "null"]
+                          },
+                          "repository": {
+                            "type": ["string", "null"]
+                          },
+                          "author": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": ["string", "null"]
+                                  },
+                                  "email": {
+                                    "type": ["string", "null"]
+                                  }
+                                },
+                                "required": ["name", "email"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["id", "title", "repository", "author"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "pullRequestUrls": {
+                    "description": "Pull requests Seer opened.",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "unmerge": {
                     "type": "object",
                     "properties": {
-                      "id": {
-                        "type": "string"
+                      "fingerprintCount": {
+                        "type": "number"
                       },
-                      "message": {
-                        "description": "First line only.",
-                        "type": ["string", "null"]
-                      },
-                      "repository": {
-                        "type": ["string", "null"]
-                      },
-                      "author": {
+                      "source": {
                         "anyOf": [
                           {
                             "type": "object",
                             "properties": {
-                              "name": {
-                                "type": ["string", "null"]
-                              },
-                              "email": {
-                                "type": ["string", "null"]
+                              "shortId": {
+                                "type": "string"
                               }
                             },
-                            "required": ["name", "email"],
+                            "required": ["shortId"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "destination": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "shortId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["shortId"],
                             "additionalProperties": false
                           },
                           {
@@ -5186,48 +5376,33 @@
                         ]
                       }
                     },
-                    "required": ["id", "message", "repository", "author"],
+                    "required": ["fingerprintCount", "source", "destination"],
                     "additionalProperties": false
                   },
-                  "pullRequest": {
+                  "externalIssue": {
+                    "description": "Issue created in an external tracker.",
                     "type": "object",
                     "properties": {
-                      "id": {
-                        "type": "string"
-                      },
                       "title": {
                         "type": ["string", "null"]
                       },
-                      "repository": {
+                      "provider": {
                         "type": ["string", "null"]
                       },
-                      "author": {
-                        "anyOf": [
-                          {
-                            "type": "object",
-                            "properties": {
-                              "name": {
-                                "type": ["string", "null"]
-                              },
-                              "email": {
-                                "type": ["string", "null"]
-                              }
-                            },
-                            "required": ["name", "email"],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
+                      "location": {
+                        "type": ["string", "null"]
                       }
                     },
-                    "required": ["id", "title", "repository", "author"],
+                    "required": ["title", "provider", "location"],
                     "additionalProperties": false
                   },
-                  "details": {
-                    "description": "Other activity data as compact JSON, truncated after 200 characters. Set only when no text or mapped field covers the entry.",
-                    "type": ["string", "null"]
+                  "age": {
+                    "description": "Hours without events before the issue was auto-resolved.",
+                    "type": "number"
+                  },
+                  "afterDays": {
+                    "description": "Days after which the issue was automatically marked ongoing.",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -5236,8 +5411,7 @@
                   "author",
                   "dateCreated",
                   "commentId",
-                  "text",
-                  "details"
+                  "text"
                 ],
                 "additionalProperties": false
               }
