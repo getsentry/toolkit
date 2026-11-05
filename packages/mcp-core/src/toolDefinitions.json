@@ -5312,8 +5312,49 @@
               "eventId": {
                 "type": "string"
               },
-              "reporter": {
-                "type": "string"
+              "name": {
+                "description": "Name on the report, falling back to the event user.",
+                "type": ["string", "null"]
+              },
+              "email": {
+                "description": "Email on the report, falling back to the event user.",
+                "type": ["string", "null"]
+              },
+              "user": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": ["string", "null"]
+                      },
+                      "username": {
+                        "type": ["string", "null"]
+                      },
+                      "name": {
+                        "type": ["string", "null"]
+                      },
+                      "email": {
+                        "type": ["string", "null"]
+                      },
+                      "ipAddress": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "username",
+                      "name",
+                      "email",
+                      "ipAddress"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The user on the linked event. Null when the event has none."
               },
               "comments": {
                 "type": "string"
@@ -5325,7 +5366,9 @@
             "required": [
               "id",
               "eventId",
-              "reporter",
+              "name",
+              "email",
+              "user",
               "comments",
               "dateCreated"
             ],

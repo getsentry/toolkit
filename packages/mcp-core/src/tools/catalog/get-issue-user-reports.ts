@@ -17,23 +17,38 @@ import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { formatDate } from "./support/api-formatting";
 
-function getReporter(report: UserReportList[number]): string {
-  const userId = report.user?.id?.trim();
-  // Older Sentry serializers can emit sentinel strings when no user ID exists.
-  const userIdReporter =
-    userId && !["none", "null"].includes(userId.toLowerCase())
-      ? `user:${userId}`
-      : null;
-  return (
-    report.name?.trim() ||
-    report.email?.trim() ||
-    report.user?.name?.trim() ||
-    report.user?.email?.trim() ||
-    report.user?.username?.trim() ||
-    userIdReporter ||
-    "anonymous"
-  );
+type UserReport = UserReportList[number];
+
+function orNull(value: string | null | undefined): string | null {
+  return value?.trim() || null;
 }
+
+function mapEventUser(user: UserReport["user"]) {
+  if (!user) {
+    return null;
+  }
+  const id = orNull(user.id);
+  const mapped = {
+    // Older Sentry serializers can emit sentinel strings when no user ID exists.
+    id: id && !["none", "null"].includes(id.toLowerCase()) ? id : null,
+    username: orNull(user.username),
+    name: orNull(user.name),
+    email: orNull(user.email),
+    ipAddress: orNull(user.ipAddress),
+  };
+  return Object.values(mapped).some((value) => value !== null) ? mapped : null;
+}
+
+const eventUserSchema = z
+  .object({
+    id: z.string().nullable(),
+    username: z.string().nullable(),
+    name: z.string().nullable(),
+    email: z.string().nullable(),
+    ipAddress: z.string().nullable(),
+  })
+  .nullable()
+  .describe("The user on the linked event. Null when the event has none.");
 
 export const getIssueUserReportsOutputSchema = z.object({
   organizationSlug: z.string(),
@@ -42,7 +57,15 @@ export const getIssueUserReportsOutputSchema = z.object({
     z.object({
       id: z.string(),
       eventId: z.string(),
-      reporter: z.string(),
+      name: z
+        .string()
+        .nullable()
+        .describe("Name on the report, falling back to the event user."),
+      email: z
+        .string()
+        .nullable()
+        .describe("Email on the report, falling back to the event user."),
+      user: eventUserSchema,
       comments: z.string(),
       dateCreated: z.string().nullable(),
     }),
@@ -53,11 +76,14 @@ export const getIssueUserReportsOutputSchema = z.object({
     .describe("Pass as cursor with the same issue scope for the next page."),
 });
 
-function mapUserReport(report: UserReportList[number]) {
+function mapUserReport(report: UserReport) {
+  const user = mapEventUser(report.user);
   return {
     id: report.id,
     eventId: report.eventID,
-    reporter: getReporter(report),
+    name: orNull(report.name) ?? user?.name ?? null,
+    email: orNull(report.email) ?? user?.email ?? null,
+    user,
     comments: report.comments,
     dateCreated: formatDate(report.dateCreated),
   };
