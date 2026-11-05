@@ -1,6 +1,17 @@
-import { getColumnsAndAggregates } from "@sentry/toolkit-core/events-fields";
+import {
+  getColumnsAndAggregates,
+  parseFunction,
+} from "@sentry/toolkit-core/events-fields";
 import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
+import { parseSearch } from "@sentry/search-syntax/parser";
+import {
+  BooleanOperator,
+  TermOperator,
+  Token,
+} from "@sentry/search-syntax/tokens";
+import { UserInputError } from "../errors";
 import type { SentryProtocol } from "../types";
+import { timeSeriesCharts, type TimeSeriesConfig } from "./time-series";
 import {
   type EventsDataset,
   isMetricsDataset,
@@ -31,6 +42,7 @@ export interface TraceMetricsExplorerUrlOptions {
   aggregateFunctions?: string[];
   groupByFields?: string[];
   traceMetrics?: TraceMetricIdentifier[];
+  timeSeries?: TimeSeriesConfig;
 }
 
 export interface ProfilesExplorerUrlOptions {
@@ -94,24 +106,20 @@ function normalizeTraceMetric(
 function extractTraceMetricFromAggregate(
   field: string,
 ): TraceMetricIdentifier | null {
-  const match = field.match(/^[^(]+\((.*)\)$/);
-  if (!match) {
+  const parsed = parseFunction(field);
+  if (!parsed) {
     return null;
   }
-
-  const args = match[1]
-    .split(",")
-    .map((arg) => arg.trim())
-    .filter((arg) => arg.length > 0);
-
-  if (args.length < 4) {
+  const args = parsed.arguments;
+  const offset = parsed.filter === undefined ? 0 : 1;
+  if (args.length !== 4 + offset) {
     return null;
   }
 
   return normalizeTraceMetric({
-    name: args[1]!,
-    type: args[2]!,
-    unit: args[3],
+    name: args[1 + offset]!,
+    type: args[2 + offset]!,
+    unit: args[3 + offset],
   });
 }
 
@@ -132,6 +140,48 @@ function extractTraceMetricFromQuery(
     name: extractValue("metric\\.name") ?? "",
     type: extractValue("metric\\.type") ?? "",
     unit: extractValue("metric\\.unit") ?? undefined,
+  });
+}
+
+function exactTraceMetricFromQuery(
+  query: string,
+): TraceMetricIdentifier | null {
+  const tokens = parseSearch(query);
+  if (
+    !tokens ||
+    tokens.some(
+      (token) =>
+        token.type === Token.LOGIC_BOOLEAN &&
+        token.value === BooleanOperator.OR,
+    )
+  ) {
+    return null;
+  }
+  const values = new Map<string, string>();
+  for (const token of tokens) {
+    if (
+      token.type !== Token.FILTER ||
+      token.key.type !== Token.KEY_SIMPLE ||
+      !["metric.name", "metric.type", "metric.unit"].includes(token.key.value)
+    ) {
+      continue;
+    }
+    if (
+      token.negated ||
+      (token.operator !== TermOperator.DEFAULT &&
+        token.operator !== TermOperator.EQUAL) ||
+      token.value.type !== Token.VALUE_TEXT ||
+      /[*,()]/.test(token.value.value) ||
+      values.has(token.key.value)
+    ) {
+      return null;
+    }
+    values.set(token.key.value, token.value.value);
+  }
+  return normalizeTraceMetric({
+    name: values.get("metric.name") ?? "",
+    type: values.get("metric.type") ?? "",
+    unit: values.get("metric.unit"),
   });
 }
 
@@ -189,6 +239,7 @@ export function getTraceMetricsExploreUrl(
     aggregateFunctions,
     groupByFields,
     traceMetrics,
+    timeSeries,
   } = options;
 
   const urlParams = new URLSearchParams();
@@ -211,7 +262,44 @@ export function getTraceMetricsExploreUrl(
   const sortField = sort?.startsWith("-") ? sort.slice(1) : sort;
   const sortKind = sort?.startsWith("-") ? ("desc" as const) : ("asc" as const);
 
-  if (isAggregateQuery) {
+  if (timeSeries) {
+    if (timeSeries.interval) {
+      urlParams.set("interval", timeSeries.interval);
+    }
+    for (const chart of timeSeriesCharts(timeSeries)) {
+      const yAxis = chart.yAxes[0]!;
+      const parsed = parseFunction(yAxis);
+      const axisMetric = extractTraceMetricFromAggregate(yAxis);
+      const metric = axisMetric ?? exactTraceMetricFromQuery(query);
+      const offset = parsed?.filter === undefined ? 0 : 1;
+      if (
+        !metric ||
+        !parsed ||
+        (!axisMetric && parsed.arguments.length > offset + 1)
+      ) {
+        throw new UserInputError(
+          "A metrics time series Explore link needs one exact metric identity per axis. Use an aggregate such as p95(value,http.duration,distribution,millisecond), or include exact metric.name and metric.type filters in query.",
+        );
+      }
+      const args =
+        parsed.arguments.length > offset
+          ? parsed.arguments
+          : [...parsed.arguments, "value"];
+      const qualifiedYAxis = axisMetric
+        ? yAxis
+        : `${parsed.name}(${[...args, metric.name, metric.type, metric.unit ?? "none"].join(",")})`;
+      urlParams.append(
+        "metric",
+        JSON.stringify({
+          metric,
+          query,
+          aggregateFields: [{ ...chart, yAxes: [qualifiedYAxis] }],
+          aggregateSortBys: [],
+          mode: "aggregate",
+        }),
+      );
+    }
+  } else if (isAggregateQuery) {
     const metricQueries = new Map<
       string,
       {
