@@ -12,6 +12,7 @@ import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getStructuredContent } from "../../test-utils/structured-content";
 import { getIssueDetailsOutputSchema } from "./get-issue-details";
+import { getReplayDetailsOutputSchema } from "./get-replay-details";
 import getSentryResource from "./get-sentry-resource.js";
 import { resolveDescription } from "../../tools/types.js";
 
@@ -19,6 +20,25 @@ const originalOpenAIApiKey = process.env.OPENAI_API_KEY;
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
 const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
 const originalEmbeddedAgentProvider = process.env.EMBEDDED_AGENT_PROVIDER;
+
+function expectReplayWithDeadClick(result: unknown) {
+  const payload = getReplayDetailsOutputSchema.parse(
+    getStructuredContent(result),
+  );
+  expect(payload.replay).toMatchObject({
+    id: replayDetailsFixture.id,
+    organizationSlug: "sentry-mcp-evals",
+  });
+  expect(payload.timeline).toMatchObject({
+    status: "loaded",
+    events: expect.arrayContaining([
+      expect.objectContaining({
+        label: "dead click",
+        target: "div.modal > button.place-order",
+      }),
+    ]),
+  });
+}
 
 const baseContext = {
   constraints: {
@@ -384,12 +404,7 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: `https://sentry-mcp-evals.sentry.io/replays/${replayDetailsFixture.id}/`,
       });
-      expect(result).toContain(
-        `# Replay ${replayDetailsFixture.id} in **sentry-mcp-evals**`,
-      );
-      expect(result).toContain(
-        "**dead click** · `div.modal > button.place-order`",
-      );
+      expectReplayWithDeadClick(result);
     });
 
     it("dispatches monitor URL with a simple slug to get_monitor_details", async () => {
@@ -792,12 +807,7 @@ describe("get_sentry_resource", () => {
         organizationSlug: "sentry-mcp-evals",
         resourceId: replayDetailsFixture.id,
       });
-      expect(result).toContain(
-        `# Replay ${replayDetailsFixture.id} in **sentry-mcp-evals**`,
-      );
-      expect(result).toContain(
-        "**dead click** · `div.modal > button.place-order`",
-      );
+      expectReplayWithDeadClick(result);
     });
 
     it("fetches snapshot by snapshot ID", async () => {
@@ -1060,7 +1070,13 @@ describe("get_sentry_resource", () => {
         organizationSlug: "my-org",
         resourceId: "something",
       });
-      expect(result).toContain("# Replay something in **my-org**");
+      const payload = getReplayDetailsOutputSchema.parse(
+        getStructuredContent(result),
+      );
+      expect(payload.replay).toMatchObject({
+        id: "something",
+        organizationSlug: "my-org",
+      });
     });
   });
 

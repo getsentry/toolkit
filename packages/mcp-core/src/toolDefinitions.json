@@ -6040,7 +6040,7 @@
   {
     "name": "get_replay_details",
     "title": "Get Replay Details",
-    "description": "Get a Sentry replay's summary and a timeline of what the user did: page loads and navigations, clicks (including dead and rage clicks), inputs and key presses, console warnings and errors, failed requests, and feedback.\n\nUSE THIS TOOL WHEN USERS:\n- Share a replay URL\n- Ask what happened in a replay, or what a user saw and clicked\n- Need the moments before an error, a dead click, or the end of a session\n\n<examples>\nget_replay_details(replayUrl='https://my-organization.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/')\nget_replay_details(organizationSlug='my-organization', replayId='7e07485f-12f9-416b-8b14-26260799b51f', startOffsetSeconds=-10)\nget_replay_details(replayUrl='...', categories=['click', 'network'], startOffsetSeconds=60, endOffsetSeconds=90)\n</examples>\n\n<hints>\n- Offsets are seconds from the replay start; negative offsets count back from the end, so startOffsetSeconds=-10 shows the last 10 seconds\n- The timeline header counts every recorded event, so you can see what to ask for next\n</hints>",
+    "description": "Get a Sentry replay's summary and a timeline of what the user did: page loads and navigations, clicks (including dead and rage clicks), inputs and key presses, console warnings and errors, failed requests, and feedback.\n\nUSE THIS TOOL WHEN USERS:\n- Share a replay URL\n- Ask what happened in a replay, or what a user saw and clicked\n- Need the moments before an error, a dead click, or the end of a session\n\n<examples>\nget_replay_details(replayUrl='https://my-organization.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/')\nget_replay_details(organizationSlug='my-organization', replayId='7e07485f-12f9-416b-8b14-26260799b51f', startOffsetSeconds=-10)\nget_replay_details(replayUrl='...', categories=['click', 'network'], startOffsetSeconds=60, endOffsetSeconds=90)\n</examples>\n\n<hints>\n- Offsets are seconds from the replay start; negative offsets count back from the end, so startOffsetSeconds=-10 shows the last 10 seconds\n- `timeline.recorded` counts every recorded event by category, so you can see what to ask for next\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6113,7 +6113,7 @@
           ]
         },
         "skip": {
-          "description": "Number of matching timeline events to skip. Use the value a previous response gives to continue past the limit.",
+          "description": "Number of matching timeline events to skip. Pass `timeline.nextSkip` from a previous response to continue past the limit.",
           "anyOf": [
             {
               "type": "integer",
@@ -6130,6 +6130,356 @@
           "type": "boolean"
         }
       }
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "replay": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "organizationSlug": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "startedAt": {
+              "type": ["string", "null"]
+            },
+            "durationSeconds": {
+              "type": ["number", "null"]
+            },
+            "environment": {
+              "type": ["string", "null"]
+            },
+            "browser": {
+              "type": ["string", "null"]
+            },
+            "os": {
+              "type": ["string", "null"]
+            },
+            "device": {
+              "type": ["string", "null"]
+            },
+            "user": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": ["string", "null"]
+                    },
+                    "id": {
+                      "type": ["string", "null"]
+                    }
+                  },
+                  "required": ["name", "id"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Null for an anonymous user."
+            },
+            "urls": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "First 3 visited URLs."
+            },
+            "release": {
+              "type": ["string", "null"]
+            },
+            "replayType": {
+              "type": ["string", "null"]
+            },
+            "counts": {
+              "type": "object",
+              "properties": {
+                "errors": {
+                  "type": "number"
+                },
+                "rageClicks": {
+                  "type": "number"
+                },
+                "deadClicks": {
+                  "type": "number"
+                },
+                "warnings": {
+                  "type": "number"
+                },
+                "infos": {
+                  "type": "number"
+                },
+                "segments": {
+                  "type": ["number", "null"]
+                }
+              },
+              "required": [
+                "errors",
+                "rageClicks",
+                "deadClicks",
+                "warnings",
+                "infos",
+                "segments"
+              ],
+              "additionalProperties": false
+            },
+            "archived": {
+              "type": "boolean"
+            },
+            "viewed": {
+              "type": ["boolean", "null"]
+            }
+          },
+          "required": [
+            "id",
+            "organizationSlug",
+            "url",
+            "startedAt",
+            "durationSeconds",
+            "environment",
+            "browser",
+            "os",
+            "device",
+            "user",
+            "urls",
+            "release",
+            "replayType",
+            "counts",
+            "archived",
+            "viewed"
+          ],
+          "additionalProperties": false
+        },
+        "timeline": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "const": "unavailable"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": ["status", "reason"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "const": "loaded"
+                },
+                "recorded": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "enum": [
+                      "navigation",
+                      "click",
+                      "input",
+                      "console",
+                      "network",
+                      "other"
+                    ]
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  },
+                  "description": "Every recorded event counted by category, then label, before any filter. Pass a category in `categories` to see all of its events."
+                },
+                "failedRequests": {
+                  "type": "number"
+                },
+                "categories": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "navigation",
+                          "click",
+                          "input",
+                          "console",
+                          "network",
+                          "other"
+                        ]
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Requested categories. Null means notable events only."
+                },
+                "startOffsetSeconds": {
+                  "description": "Window start in seconds from the replay start, if set.",
+                  "type": ["number", "null"]
+                },
+                "endOffsetSeconds": {
+                  "description": "Window end in seconds from the replay start, if set.",
+                  "type": ["number", "null"]
+                },
+                "matchingCount": {
+                  "type": "number",
+                  "description": "Events that match the categories and window."
+                },
+                "skip": {
+                  "type": "number"
+                },
+                "events": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "offsetSeconds": {
+                        "type": "number",
+                        "description": "Seconds from the replay start, to 0.1s."
+                      },
+                      "label": {
+                        "type": "string",
+                        "description": "Event kind, such as `click`, `dead click`, `console.error`, or `request`."
+                      },
+                      "target": {
+                        "description": "What the event acted on: a selector, URL, or message.",
+                        "type": ["string", "null"]
+                      },
+                      "details": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "description": "Extra facts keyed by name, such as `status` or `text`."
+                      }
+                    },
+                    "required": ["offsetSeconds", "label", "target", "details"],
+                    "additionalProperties": false
+                  }
+                },
+                "nextSkip": {
+                  "description": "Pass as `skip` with the same arguments to continue. Null when no more events match.",
+                  "type": ["number", "null"]
+                },
+                "segmentsRead": {
+                  "type": "number"
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "description": "True when only the first `segmentsRead` recording segments were read, so later activity is missing."
+                }
+              },
+              "required": [
+                "status",
+                "recorded",
+                "failedRequests",
+                "categories",
+                "startOffsetSeconds",
+                "endOffsetSeconds",
+                "matchingCount",
+                "skip",
+                "events",
+                "nextSkip",
+                "segmentsRead",
+                "truncated"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "related": {
+          "type": "object",
+          "properties": {
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "shortId": {
+                    "type": ["string", "null"]
+                  },
+                  "title": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["eventId", "shortId", "title"],
+                "additionalProperties": false
+              },
+              "description": "Issues for the first 3 error events. shortId is null when the issue could not be found."
+            },
+            "traces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "traceId": {
+                    "type": "string"
+                  },
+                  "spanCount": {
+                    "type": ["number", "null"]
+                  }
+                },
+                "required": ["traceId", "spanCount"],
+                "additionalProperties": false
+              },
+              "description": "The first 2 traces."
+            }
+          },
+          "required": ["issues", "traces"],
+          "additionalProperties": false
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["replay", "timeline", "related", "suggestedActions"],
+      "additionalProperties": false
     },
     "requiredScopes": ["org:read", "project:read", "event:read"],
     "skills": ["inspect"],
