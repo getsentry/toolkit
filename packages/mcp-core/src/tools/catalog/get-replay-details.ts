@@ -585,6 +585,7 @@ function buildReplaySummary({
 /**
  * Sentry's `display_name` mixes username, email, id, and IP, so the fields are
  * kept separate. Archived replays carry a placeholder user, so they map to null.
+ * Snuba returns `""` for missing user columns, so empty strings become null.
  */
 function buildReplayUser(
   replay: ReplayDetails,
@@ -594,16 +595,16 @@ function buildReplayUser(
   }
   const { id, username, email, ip, geo } = replay.user;
   const mappedGeo = {
-    city: geo?.city ?? null,
-    countryCode: geo?.country_code ?? null,
-    region: geo?.region ?? null,
-    subdivision: geo?.subdivision ?? null,
+    city: geo?.city || null,
+    countryCode: geo?.country_code || null,
+    region: geo?.region || null,
+    subdivision: geo?.subdivision || null,
   };
   const user = {
-    id: id ?? null,
-    username: username ?? null,
-    email: email ?? null,
-    ip: ip ?? null,
+    id: id || null,
+    username: username || null,
+    email: email || null,
+    ip: ip || null,
     geo: Object.values(mappedGeo).some((value) => value !== null)
       ? mappedGeo
       : null,

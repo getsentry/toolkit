@@ -467,7 +467,52 @@ describe("get_replay_details", () => {
     expect(payload.replay.user).toBeNull();
   });
 
-  it("returns a null user for anonymous replays", async () => {
+  it.each([
+    {
+      name: "null columns",
+      user: {
+        id: null,
+        username: null,
+        email: null,
+        ip: null,
+        display_name: null,
+        geo: {
+          city: null,
+          country_code: null,
+          region: null,
+          subdivision: null,
+        },
+      },
+    },
+    {
+      name: "empty Snuba columns",
+      user: {
+        id: "",
+        username: "",
+        email: "",
+        ip: "",
+        display_name: "",
+        geo: { city: "", country_code: "", region: "", subdivision: "" },
+      },
+    },
+  ])(
+    "returns a null user for anonymous replays with $name",
+    async ({ user }) => {
+      mswServer.use(
+        http.get(
+          replayEndpoint,
+          () => HttpResponse.json({ data: { ...replayDetailsFixture, user } }),
+          { once: true },
+        ),
+      );
+
+      const payload = await getPayload(directParams);
+
+      expect(payload.replay.user).toBeNull();
+    },
+  );
+
+  it("returns a null geo when every geo column is empty", async () => {
     mswServer.use(
       http.get(
         replayEndpoint,
@@ -476,16 +521,16 @@ describe("get_replay_details", () => {
             data: {
               ...replayDetailsFixture,
               user: {
-                id: null,
-                username: null,
-                email: null,
-                ip: null,
-                display_name: null,
+                id: "user-1",
+                username: "",
+                email: "taylor@example.com",
+                ip: "",
+                display_name: "taylor@example.com",
                 geo: {
-                  city: null,
-                  country_code: null,
-                  region: null,
-                  subdivision: null,
+                  city: "",
+                  country_code: "",
+                  region: "",
+                  subdivision: "",
                 },
               },
             },
@@ -496,7 +541,13 @@ describe("get_replay_details", () => {
 
     const payload = await getPayload(directParams);
 
-    expect(payload.replay.user).toBeNull();
+    expect(payload.replay.user).toEqual({
+      id: "user-1",
+      username: null,
+      email: "taylor@example.com",
+      ip: null,
+      geo: null,
+    });
   });
 
   it("throws for invalid direct input", async () => {
@@ -732,6 +783,27 @@ describe("get_replay_details", () => {
       },
       reason: "Show the next matching timeline events; 2 remain.",
     });
+  });
+
+  it("leaves regionUrl out of the continuation when the caller did not pass it", async () => {
+    const payload = await getPayload(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        replayId: replayDetailsFixture.id,
+        limit: 2,
+      },
+      getServerContext({
+        constraints: { regionUrl: "https://us.sentry.io" },
+      }),
+    );
+
+    expect(payload.suggestedActions[0]).toMatchObject({
+      toolName: "get_replay_details",
+      arguments: { skip: 2 },
+    });
+    expect(payload.suggestedActions[0]?.arguments).not.toHaveProperty(
+      "regionUrl",
+    );
   });
 
   it("continues from the skip value without repeating events", async () => {
