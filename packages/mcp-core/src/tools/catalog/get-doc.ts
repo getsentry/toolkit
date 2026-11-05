@@ -5,7 +5,7 @@ import { UserInputError } from "../../errors";
 import { fetchWithTimeout } from "../../internal/fetch-utils";
 import { defineTool } from "../../internal/tool-helpers/define";
 import type { ServerContext } from "../../types";
-import { USER_AGENT } from "../../version";
+import { getUserAgent } from "../../version";
 
 export default defineTool({
   name: "get_doc",
@@ -81,7 +81,7 @@ export default defineTool({
       {
         headers: {
           Accept: "text/plain, text/markdown",
-          "User-Agent": USER_AGENT,
+          "User-Agent": getUserAgent(),
         },
       },
       15000, // 15 second timeout

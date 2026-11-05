@@ -62,6 +62,7 @@ const EXTRA_DOC_FILES = [
   "README.md",
   "CONTRIBUTING.md",
   "DEVELOPMENT.md",
+  "init.md",
   "plugins/README.md",
 ];
 

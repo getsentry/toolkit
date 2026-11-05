@@ -130,7 +130,6 @@ const BOUND_TARGET_TYPES = new Set([
   "DashboardCreateArguments",
   "DashboardListArguments",
   "EventViewArguments",
-  "InitArguments",
   "IntegrationArguments",
   "IssuesArguments",
   "LogListArguments",

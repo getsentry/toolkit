@@ -55,7 +55,7 @@ You can also set `SENTRY_INSTALL_DIR` to override the binary installation direct
 curl https://cli.sentry.dev/install -fsS | SENTRY_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
-Set `SENTRY_INIT=1` to run [`sentry init`](../commands/init/) right after installing. This requires an interactive terminal:
+Set `SENTRY_INIT=1` to run [`sentry init`](../commands/init/) right after installing, which prints the guide a coding agent follows to add Sentry to your project:
 
 ```bash
 curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
@@ -245,7 +245,7 @@ Credentials are stored in a SQLite database under `$XDG_CONFIG_HOME/sentry/` (de
 
 Once authenticated, you can start using the CLI:
 
-- [Initialize Sentry](../commands/init/) - Set up Sentry in your project with the guided wizard
+- [Initialize Sentry](../commands/init/) - Print the guide a coding agent follows to set up Sentry in your project
 - [Organization commands](../commands/org/) - List and view organizations
 - [Project commands](../commands/project/) - Manage projects
 - [Issue commands](../commands/issue/) - Track and manage issues

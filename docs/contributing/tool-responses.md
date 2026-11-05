@@ -147,6 +147,20 @@ The event API's legacy `context` field (extra data) can be `null`. Issue details
 must still load; omit the `Extra Data` section for null or empty values while
 preserving the event's error, stacktrace, and structured `contexts` data.
 
+### Profile Details
+
+`get_profile_details` returns one profile summary under `profile`,
+discriminated by `profileType`, with sample analysis beside it in `samples`.
+For `transaction` and `continuous` profiles, `samples` has frame, sample, and
+stack counts, per-thread sample counts, and the ten most frequent frames (only
+application frames when `focusOnUserCode` is true). `legacy` speedscope
+profiles, such as Android transaction profiles, return `samples: null` because
+Sentry does not return sample-format data for them; when the profile names a
+transaction and `get_profile` is callable in the session, `suggestedActions`
+points at the aggregated flamegraph. Each summary includes `profileUrl`;
+transaction and legacy profiles include `traceUrl` when the profile has a trace
+ID.
+
 ## Selected Event Package Versions
 
 Use `get_sentry_resource` with `resourceType: "event"` (or an event URL) and
@@ -198,7 +212,18 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
   payload. Do not attach sparse structured side-channels such as
   `suggestedActions` alone on top of markdown.
 - If a tool declares `outputSchema`, every successful `structuredContent` result
-  must conform to that schema.
+  must conform to that schema. `defineTool` enforces this at compile time: the
+  handler must return `structuredResult(...)` typed as the schema's `z.output`,
+  and markdown or raw content fails tsc. The payload type comes from the
+  schema, so missing and mistyped fields are errors at the tool definition,
+  and so are extra fields in an object literal passed to `structuredResult`.
+  Spread or variable payloads (`structuredResult({ ...upstream })`,
+  `structuredResult(payload)`) are not checked for extra fields, so map fields
+  explicitly. A schema tool cannot set its own `content`.
+  Do not add per-tool `satisfies z.infer<...>` checks; they repeat
+  what the framework already checks. Shared builders should declare their
+  return type (`StructuredToolOutput<z.output<typeof schema>>`) so
+  `structuredResult` gets its type from there.
 - Do not duplicate a large structured payload into a markdown artifact block.
 - Treat `structuredContent` as a stable product contract, not a raw upstream API
   passthrough. Map only documented fields that callers should depend on.
@@ -237,6 +262,11 @@ interface SuggestedActionsContent {
   suggestedActions: SuggestedToolAction[];
 }
 ```
+
+Build each action with `buildSuggestedToolAction` from
+`packages/mcp-core/src/internal/tool-helpers/suggested-actions.ts`. It returns
+null when the session cannot call the tool, and routes through
+`execute_sentry_tool` when the target is catalog-only.
 
 Guidelines:
 
@@ -317,3 +347,18 @@ environment from a project-scoped cron monitor. The structured response
 identifies the project, monitor, and environment; `success` means the deletion
 was accepted or the target was already absent. Deletion completes in the
 background, preserving the monitor and its other environments.
+
+### Transaction Profiles
+
+`get_profile` returns the aggregated flamegraph for one transaction as
+structured content. Frames appear once in `analysis.frames` with their
+call-tree `occurrences` (not a sample count), p75/p95/p99 durations, and
+insights; `topFunctions`, hot path `stack` arrays, and hot path `leaf` values
+refer to them by index, so shared parent frames are not repeated per hot path.
+A stack reads from root to leaf, and its last frame is the primary bottleneck.
+With `focusOnUserCode`, library frames are omitted from stacks, and `leaf`
+still names the sampled leaf frame. `userCodeMs` and `libraryMs` split the main
+thread's sampled time by whether each sample's leaf frame is application code,
+so they add up to `estimatedTotalMs`. Missing data is a successful result:
+`hasCurrentData` and `hasBaselineData` report which period had profiles, and
+`analysis` or `comparison` is `null`.

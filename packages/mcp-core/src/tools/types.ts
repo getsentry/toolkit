@@ -14,12 +14,43 @@ export interface StructuredToolOutput<
   TStructuredContent extends Record<string, unknown> = Record<string, unknown>,
 > {
   structuredContent: TStructuredContent;
+  /**
+   * The server generates `content` from `structuredContent`. A handler that
+   * sets its own would ship it unchanged next to the payload.
+   */
+  content?: never;
 }
 export type ToolOutput =
   | string
   | ToolContent[]
   | CallToolResult
   | StructuredToolOutput;
+
+/** Zod schema a tool can declare as its MCP `outputSchema`. */
+export type ToolOutputSchema = z.ZodType<Record<string, unknown>>;
+
+/**
+ * What a handler must return for a given `outputSchema`.
+ *
+ * With a schema, the handler returns `structuredContent` typed as the schema's
+ * `z.output`. The SDK validates the raw payload against the schema but sends
+ * that raw payload, not the parse result, and advertises the schema to clients
+ * in its output form (`standardSchemaToJsonSchema(schema, "output")`). So the
+ * payload must already be what the schema outputs; `z.input` would accept
+ * payloads that rely on defaults and break the advertised shape. Output
+ * schemas must not use transforms, because the SDK cannot advertise them as
+ * JSON Schema.
+ *
+ * Markdown, strings, and raw MCP content are only allowed without a schema.
+ * Tools without a schema may still pass through another tool's structured
+ * result (`execute_sentry_tool`, `get_sentry_resource`). The type distributes
+ * over a union so `ToolConfig<any>` registries accept every tool.
+ */
+export type ToolOutputFor<TOutputSchema extends ToolOutputSchema | undefined> =
+  TOutputSchema extends ToolOutputSchema
+    ? StructuredToolOutput<z.output<TOutputSchema>>
+    : ToolOutput;
+
 /**
  * Keeps schema-inferred handler params at tool definition sites while allowing
  * heterogeneous tool registries to store many concrete handler signatures.
@@ -80,6 +111,9 @@ export function isToolVisibleInMode(
 
 export interface ToolConfig<
   TSchema extends Record<string, z.ZodType> = Record<string, z.ZodType>,
+  TOutputSchema extends ToolOutputSchema | undefined =
+    | ToolOutputSchema
+    | undefined,
 > {
   name: string;
   /** Human-readable display name exported as the MCP tool `title`. */
@@ -99,7 +133,12 @@ export interface ToolConfig<
    */
   deprecated?: { replacedBy: readonly string[] };
   requiredCapabilities?: (keyof ProjectCapabilities)[]; // Project capabilities required for this tool
-  outputSchema?: z.ZodType;
+  /**
+   * Structured result contract. When set, the handler must return
+   * `structuredResult(...)` typed as this schema's output; see
+   * `ToolOutputFor`.
+   */
+  outputSchema?: TOutputSchema;
   annotations: {
     // readOnlyHint, destructiveHint, and openWorldHint are required so every
     // tool declares its safety posture explicitly. Filters and confirmation
@@ -115,7 +154,7 @@ export interface ToolConfig<
    * `anthropic/alwaysLoad` (see docs/mcp/harnesses.md).
    */
   _meta?: Record<string, unknown>;
-  handler: ToolHandler<TSchema>;
+  handler: ToolHandler<TSchema, ToolOutputFor<TOutputSchema>>;
   /**
    * Optional hook invoked when the handler throws, for tool-specific failure
    * telemetry (e.g. logging the failing query). The error is still formatted

@@ -354,7 +354,6 @@ describe("getErrorUpdateNotification", () => {
 
   test.each([
     ["json flag", ["issue", "list", "--json"]],
-    ["init", ["init"]],
     ["upgrade", ["upgrade"]],
     ["cli setup", ["cli", "setup"]],
   ])("returns null for suppressed args: %s", (_label, args) => {

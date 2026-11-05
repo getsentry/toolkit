@@ -25,6 +25,7 @@ it("search_profiles runs the shared handler locked to profiles", async () => {
       ],
       "options": {
         "lockDataset": true,
+        "output": "structured",
       },
     }
   `);
