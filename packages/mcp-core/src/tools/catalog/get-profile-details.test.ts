@@ -6,6 +6,7 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
+import { getProfileDetailsOutputSchema } from "../support/profile/details-output";
 import getProfileDetails from "./get-profile-details";
 
 const baseContext = {
@@ -18,7 +19,7 @@ const baseContext = {
 
 describe("get_profile_details", () => {
   describe("handler", () => {
-    it("fetches and formats a transaction profile from profileUrl", async () => {
+    it("fetches a transaction profile from profileUrl", async () => {
       const result = await getProfileDetails.handler(
         {
           profileUrl: `https://sentry-mcp-evals.sentry.io/explore/profiling/profile/backend/${transactionProfileV1Fixture.profile_id}/flamegraph/`,
@@ -28,47 +29,53 @@ describe("get_profile_details", () => {
         baseContext,
       );
 
-      expect(result).toMatchInlineSnapshot(`
-        "# Profile cfe78a5c892d4a64a962d837673398d2
-
-        ## Summary
-        - **Profile URL**: https://sentry-mcp-evals.sentry.io/explore/profiling/profile/backend/cfe78a5c892d4a64a962d837673398d2/flamegraph/
-        - **Project**: backend
-        - **Profile ID**: cfe78a5c892d4a64a962d837673398d2
-        - **Transaction**: /api/users
-        - **Trace ID**: a4d1aae7216b47ff8117cf4e09ce9d0a
-        - **Trace URL**: https://sentry-mcp-evals.sentry.io/explore/traces/trace/a4d1aae7216b47ff8117cf4e09ce9d0a
-        - **Duration**: 120ms
-        - **Platform**: python
-        - **Release**: backend@1.2.3
-        - **Environment**: production
-        - **Device**: MacBook Pro · high · arm64
-        - **OS**: macOS 14.4
-        - **SDK**: sentry.python 2.24.1
-        - **Active Thread**: 1
-
-        ## Sample Summary
-        - **Total Frames**: 3
-        - **Total Samples**: 3
-        - **Total Stacks**: 2
-        - **Threads**: 1
-
-        ## Thread Information
-
-        - **Thread 1**: MainThread (3 samples)
-
-        ## Top Frames by Occurrence
-
-        | Function | File:Line | Count | Type |
-        |----------|-----------|-------|------|
-        | \`handle_request\` | main.py:42 | 3 | User Code |
-        | \`execute_query\` | db.py:118 | 2 | User Code |
-
-        ## Next Steps
-
-        - Open the profile URL above in Sentry for the full flamegraph
-        - Open the related trace URL to inspect the end-to-end request
-        - Use \`search_profiles\` to find similar profiles"
+      getProfileDetailsOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent).toMatchInlineSnapshot(`
+        {
+          "profile": {
+            "activeThreadId": "1",
+            "device": "MacBook Pro · high · arm64",
+            "durationMs": 120,
+            "environment": "production",
+            "os": "macOS 14.4",
+            "platform": "python",
+            "profileId": "cfe78a5c892d4a64a962d837673398d2",
+            "profileType": "transaction",
+            "profileUrl": "https://sentry-mcp-evals.sentry.io/explore/profiling/profile/backend/cfe78a5c892d4a64a962d837673398d2/flamegraph/",
+            "project": "backend",
+            "release": "backend@1.2.3",
+            "samples": {
+              "frameCount": 3,
+              "sampleCount": 3,
+              "stackCount": 2,
+              "threads": [
+                {
+                  "id": "1",
+                  "name": "MainThread",
+                  "sampleCount": 3,
+                },
+              ],
+              "topFrames": [
+                {
+                  "count": 3,
+                  "function": "handle_request",
+                  "isApplication": true,
+                  "location": "main.py:42",
+                },
+                {
+                  "count": 2,
+                  "function": "execute_query",
+                  "isApplication": true,
+                  "location": "db.py:118",
+                },
+              ],
+            },
+            "sdk": "sentry.python 2.24.1",
+            "traceId": "a4d1aae7216b47ff8117cf4e09ce9d0a",
+            "traceUrl": "https://sentry-mcp-evals.sentry.io/explore/traces/trace/a4d1aae7216b47ff8117cf4e09ce9d0a",
+            "transactionName": "/api/users",
+          },
+        }
       `);
     });
 
@@ -84,14 +91,18 @@ describe("get_profile_details", () => {
         baseContext,
       );
 
-      expect(result).toContain(
-        `# Profile ${transactionProfileV1Fixture.profile_id}`,
+      getProfileDetailsOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent.profile).toMatchObject({
+        profileType: "transaction",
+        profileId: transactionProfileV1Fixture.profile_id,
+        project: "backend",
+      });
+      expect(JSON.stringify(result.structuredContent)).toContain(
+        "cursor.execute",
       );
-      expect(result).toContain("**Project**: backend");
-      expect(result).toContain("cursor.execute");
     });
 
-    it("formats transaction profiles even when frames omit function names", async () => {
+    it("maps transaction profiles even when frames omit function names", async () => {
       mswServer.use(
         http.get(
           `https://sentry.io/api/0/projects/sentry-mcp-evals/backend/profiling/profiles/${transactionProfileV1Fixture.profile_id}/`,
@@ -116,8 +127,19 @@ describe("get_profile_details", () => {
         baseContext,
       );
 
-      expect(result).toContain("## Top Frames by Occurrence");
-      expect(result).toContain("| `unknown` | main.py:42 | 3 | User Code |");
+      getProfileDetailsOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent.profile).toMatchObject({
+        samples: {
+          topFrames: expect.arrayContaining([
+            {
+              function: "unknown",
+              location: "main.py:42",
+              isApplication: true,
+              count: 3,
+            },
+          ]),
+        },
+      });
     });
 
     it("summarizes legacy speedscope transaction profiles", async () => {
@@ -164,12 +186,25 @@ describe("get_profile_details", () => {
         baseContext,
       );
 
-      expect(result).toContain(`# Profile ${legacyProfileId}`);
-      expect(result).toContain("**Transaction**: MainActivity");
-      expect(result).toContain("**Platform**: android");
-      expect(result).toContain("**Format**: legacy (speedscope)");
-      expect(result).toContain("**Device**: samsung SM-S918N");
-      expect(result).toContain("## Sample Analysis Unavailable");
+      getProfileDetailsOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent).toMatchInlineSnapshot(`
+        {
+          "profile": {
+            "device": "samsung SM-S918N",
+            "durationMs": 1500,
+            "environment": "production",
+            "os": "android 14",
+            "platform": "android",
+            "profileId": "ae9108da5e274c6684f9c4e727cd18a3",
+            "profileType": "legacy",
+            "profileUrl": "https://sentry-mcp-evals.sentry.io/explore/profiling/profile/backend/ae9108da5e274c6684f9c4e727cd18a3/flamegraph/",
+            "project": "backend",
+            "traceId": "18cd3a3d8eae46e5be7337e1e1845d62",
+            "traceUrl": "https://sentry-mcp-evals.sentry.io/explore/traces/trace/18cd3a3d8eae46e5be7337e1e1845d62",
+            "transactionName": "MainActivity",
+          },
+        }
+      `);
     });
 
     it("still rejects sample-format profiles without profile data", async () => {
@@ -229,16 +264,15 @@ describe("get_profile_details", () => {
         baseContext,
       );
 
-      expect(result).toContain(
-        `# Profile ${transactionProfileV1Fixture.profile_id}`,
-      );
-      expect(result).toContain("**Project**: backend");
-      expect(result).toContain(
-        `https://sentry-mcp-evals.sentry.io/explore/profiling/profile/backend/${transactionProfileV1Fixture.profile_id}/flamegraph/`,
-      );
+      getProfileDetailsOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent.profile).toMatchObject({
+        profileType: "transaction",
+        project: "backend",
+        profileUrl: `https://sentry-mcp-evals.sentry.io/explore/profiling/profile/backend/${transactionProfileV1Fixture.profile_id}/flamegraph/`,
+      });
     });
 
-    it("fetches and formats a continuous profile chunk", async () => {
+    it("fetches a continuous profile chunk", async () => {
       mswServer.use(
         http.get(
           "https://sentry.io/api/0/projects/sentry-mcp-evals/backend/",
@@ -261,12 +295,60 @@ describe("get_profile_details", () => {
         baseContext,
       );
 
-      expect(result).toContain(
-        "# Continuous Profile 041bde57b9844e36b8b7e5734efae5f7",
-      );
-      expect(result).toContain("## Summary");
-      expect(result).toContain("## Raw Sample Analysis");
-      expect(result).toContain("## Top Frames by Occurrence");
+      getProfileDetailsOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent).toMatchInlineSnapshot(`
+        {
+          "profile": {
+            "chunkId": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+            "end": "2024-01-01T01:00:00Z",
+            "environment": "production",
+            "platform": "python",
+            "profileType": "continuous",
+            "profileUrl": "https://sentry-mcp-evals.sentry.io/explore/profiling/profile/backend/flamegraph/?profilerId=041bde57b9844e36b8b7e5734efae5f7&start=2024-01-01T00%3A00%3A00Z&end=2024-01-01T01%3A00%3A00Z",
+            "profilerId": "041bde57b9844e36b8b7e5734efae5f7",
+            "project": "backend",
+            "release": "backend@1.2.3",
+            "samples": {
+              "frameCount": 6,
+              "sampleCount": 8,
+              "stackCount": 4,
+              "threads": [
+                {
+                  "id": "1",
+                  "name": "MainThread",
+                  "sampleCount": 7,
+                },
+                {
+                  "id": "2",
+                  "name": "BackgroundWorker",
+                  "sampleCount": 1,
+                },
+              ],
+              "topFrames": [
+                {
+                  "count": 8,
+                  "function": "handle_request",
+                  "isApplication": true,
+                  "location": "main.py:42",
+                },
+                {
+                  "count": 4,
+                  "function": "execute_query",
+                  "isApplication": true,
+                  "location": "db.py:118",
+                },
+                {
+                  "count": 2,
+                  "function": "serialize_response",
+                  "isApplication": true,
+                  "location": "serializers.py:55",
+                },
+              ],
+            },
+            "start": "2024-01-01T00:00:00Z",
+          },
+        }
+      `);
     });
 
     it("copies profilerId from the request when the chunk payload omits it", async () => {
@@ -302,9 +384,95 @@ describe("get_profile_details", () => {
         baseContext,
       );
 
-      expect(result).toContain(
-        "- **Profiler ID**: 041bde57b9844e36b8b7e5734efae5f7",
+      getProfileDetailsOutputSchema.parse(result.structuredContent);
+      expect(result.structuredContent.profile).toMatchObject({
+        profileType: "continuous",
+        profilerId: "041bde57b9844e36b8b7e5734efae5f7",
+      });
+    });
+
+    it("maps transaction profile fields without leaking raw API data", async () => {
+      const body = {
+        ...structuredClone(transactionProfileV1Fixture),
+        backendOnly: "must-not-leak-root",
+      };
+      body.profile.frames = body.profile.frames.map(
+        (frame: Record<string, unknown>) => ({
+          ...frame,
+          instruction_addr: "0xmust-not-leak",
+        }),
       );
+      for (const host of ["sentry.io", "us.sentry.io"]) {
+        mswServer.use(
+          http.get(
+            `https://${host}/api/0/projects/sentry-mcp-evals/backend/profiling/profiles/${transactionProfileV1Fixture.profile_id}/`,
+            () => HttpResponse.json(body),
+            { once: true },
+          ),
+        );
+      }
+
+      const result = await getProfileDetails.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          projectSlugOrId: "backend",
+          profileId: transactionProfileV1Fixture.profile_id,
+          regionUrl: null,
+          focusOnUserCode: false,
+        },
+        baseContext,
+      );
+
+      getProfileDetailsOutputSchema.parse(result.structuredContent);
+      const serialized = JSON.stringify(result.structuredContent);
+      for (const key of [
+        "backendOnly",
+        "instruction_addr",
+        "abs_path",
+        "in_app",
+        "priority",
+        "stack_id",
+        "elapsed_since_start_ns",
+        "relative_start_ns",
+        "client_sdk",
+      ]) {
+        expect(serialized).not.toContain(`"${key}"`);
+      }
+      expect(serialized).not.toContain("must-not-leak");
+      // Raw transaction event ID and absolute frame paths are not mapped.
+      expect(serialized).not.toContain("7ca573c0f4814912aaa9bdc77d1a7d51");
+      expect(serialized).not.toContain("/app/src/main.py");
+    });
+
+    it("maps continuous profile fields without leaking raw chunk data", async () => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/projects/sentry-mcp-evals/backend/",
+          () =>
+            HttpResponse.json({ id: 12345, slug: "backend", name: "Backend" }),
+          { once: true },
+        ),
+      );
+
+      const result = await getProfileDetails.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          projectSlugOrId: "backend",
+          profilerId: "041bde57b9844e36b8b7e5734efae5f7",
+          start: "2024-01-01T00:00:00Z",
+          end: "2024-01-01T01:00:00Z",
+          regionUrl: null,
+          focusOnUserCode: false,
+        },
+        baseContext,
+      );
+
+      getProfileDetailsOutputSchema.parse(result.structuredContent);
+      const serialized = JSON.stringify(result.structuredContent);
+      for (const key of ["event_id", "timestamp", "colno", "thread_metadata"]) {
+        expect(serialized).not.toContain(`"${key}"`);
+      }
+      expect(serialized).not.toContain(profileChunkFixture.chunk.event_id);
     });
 
     it("rejects incomplete continuous profile URLs", async () => {
