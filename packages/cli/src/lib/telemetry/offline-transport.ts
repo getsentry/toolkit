@@ -49,9 +49,10 @@ export const STORED_ENVELOPES_PER_RUN = 10;
  *
  * Short commands never live this long, so they keep one deadline and then
  * disk. For a long-running process (`sentry mcp`, `sentry local`), a stalled
- * ingest costs one deadline-bound request every 5 minutes, and what it
- * stored goes out within 5 minutes of ingest or the network coming back,
- * far inside the store's 4-day age limit.
+ * ingest costs one deadline-bound request every 5 minutes, and one batch of
+ * {@link STORED_ENVELOPES_PER_RUN} stored envelopes goes out within 5 minutes
+ * of ingest or the network coming back. The rest wait for later runs, so
+ * each recovery adds a bounded amount of work.
  */
 export const BREAKER_COOLDOWN_MS = 5 * 60 * 1000;
 
