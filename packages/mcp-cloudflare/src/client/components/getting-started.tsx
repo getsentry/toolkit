@@ -2,10 +2,9 @@ import { useSearchParams } from "react-router-dom";
 import { Button } from "./ui/button";
 import CliSetup, { CliInstallSteps, CliSetupTabs } from "./fragments/cli-setup";
 import RemoteSetup, { RemoteSetupTabs } from "./fragments/remote-setup";
-import StdioSetup, { StdioSetupTabs } from "./fragments/stdio-setup";
-import { Cable, Cloud, Terminal } from "lucide-react";
+import { Cloud, Terminal } from "lucide-react";
 
-type Transport = "cloud" | "cli" | "stdio";
+type Transport = "cloud" | "cli";
 
 const TRANSPORTS: ReadonlyArray<{
   id: Transport;
@@ -18,11 +17,11 @@ const TRANSPORTS: ReadonlyArray<{
     icon: <Cloud className="size-4 fill-current" />,
   },
   { id: "cli", label: "CLI", icon: <Terminal className="size-4" /> },
-  { id: "stdio", label: "Stdio", icon: <Cable className="size-4" /> },
 ];
 
 function parseTransport(value: string | null): Transport {
-  return value === "cli" || value === "stdio" ? value : "cloud";
+  // The CLI flow replaced the npx stdio flow; keep old ?transport=stdio links working.
+  return value === "cli" || value === "stdio" ? "cli" : "cloud";
 }
 
 export default function Integration() {
@@ -91,12 +90,6 @@ export default function Integration() {
             />
           </>
         )}
-        {transport === "stdio" && (
-          <StdioSetupTabs
-            selectedIde={selectedIde}
-            onIdeChange={setSelectedIde}
-          />
-        )}
       </div>
 
       <div className="px-4 sm:px-8 pt-4 sm:pt-8 pb-4">
@@ -116,14 +109,6 @@ export default function Integration() {
               className="animate-in fade-in motion-safe:slide-in-from-right-4 duration-300"
             >
               <CliSetup />
-            </div>
-          )}
-          {transport === "stdio" && (
-            <div
-              key="stdio-self-hosted"
-              className="animate-in fade-in motion-safe:slide-in-from-right-4 duration-300"
-            >
-              <StdioSetup />
             </div>
           )}
         </div>

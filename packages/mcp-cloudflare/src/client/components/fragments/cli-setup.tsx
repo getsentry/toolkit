@@ -99,7 +99,12 @@ export default function CliSetup() {
 
       <p className="mt-4 text-sm text-slate-300">
         Run <code>{CLI_MCP_SNIPPET} --help</code> for every flag and environment
-        variable.
+        variable. To run the server without installing the CLI, use{" "}
+        <code>npx @sentry/mcp-server</code> as described in the{" "}
+        <Link href="https://github.com/getsentry/toolkit#stdio-vs-remote">
+          README
+        </Link>
+        .
       </p>
     </Prose>
   );

@@ -2,7 +2,7 @@ import { CLI_MCP_ARGS, CLI_MCP_COMMAND } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 
 interface PiInstructionsProps {
-  transport: "cloud" | "stdio" | "cli";
+  transport: "cloud" | "cli";
 }
 
 export function PiInstructions({ transport }: PiInstructionsProps) {
@@ -48,46 +48,6 @@ export function PiInstructions({ transport }: PiInstructionsProps) {
     );
   }
 
-  if (transport === "cli") {
-    return (
-      <>
-        <ol>
-          <li>
-            Edit <code>~/.pi/agent/mcp.json</code> and add the stdio MCP server
-            configuration:
-            <CodeSnippet
-              noMargin
-              snippet={JSON.stringify(
-                {
-                  mcpServers: {
-                    sentry: { command: CLI_MCP_COMMAND, args: CLI_MCP_ARGS },
-                  },
-                },
-                undefined,
-                2,
-              )}
-            />
-          </li>
-          <li>
-            Start Pi or run <code>/reload</code> in an existing session to load
-            the new configuration.
-          </li>
-        </ol>
-      </>
-    );
-  }
-
-  // Stdio transport
-  const defaultEnv = {
-    SENTRY_ACCESS_TOKEN: "sentry-user-token",
-    OPENAI_API_KEY: "your-openai-key",
-  } as const;
-  const coreConfig = {
-    command: "npx",
-    args: ["@sentry/mcp-server@latest"],
-    env: defaultEnv,
-  };
-
   return (
     <>
       <ol>
@@ -99,33 +59,7 @@ export function PiInstructions({ transport }: PiInstructionsProps) {
             snippet={JSON.stringify(
               {
                 mcpServers: {
-                  sentry: coreConfig,
-                },
-              },
-              undefined,
-              2,
-            )}
-          />
-        </li>
-        <li>
-          Replace <code>sentry-user-token</code> with your Sentry User Auth
-          Token.
-        </li>
-        <li>
-          For self-hosted Sentry, add <code>SENTRY_HOST</code> to the env
-          object:
-          <CodeSnippet
-            noMargin
-            snippet={JSON.stringify(
-              {
-                mcpServers: {
-                  sentry: {
-                    ...coreConfig,
-                    env: {
-                      ...coreConfig.env,
-                      SENTRY_HOST: "sentry.example.com",
-                    },
-                  },
+                  sentry: { command: CLI_MCP_COMMAND, args: CLI_MCP_ARGS },
                 },
               },
               undefined,
@@ -138,19 +72,6 @@ export function PiInstructions({ transport }: PiInstructionsProps) {
           the new configuration.
         </li>
       </ol>
-      <p>
-        <small>
-          For more details, see the{" "}
-          <a
-            href="https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/mcp.md"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Pi MCP documentation
-          </a>
-          .
-        </small>
-      </p>
     </>
   );
 }

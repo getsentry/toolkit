@@ -1,9 +1,9 @@
-import { CLI_MCP_SNIPPET, NPM_PACKAGE_NAME } from "../../../../constants";
+import { CLI_MCP_SNIPPET } from "../../../../constants";
 import { Link } from "../../ui/base";
 import CodeSnippet from "../../ui/code-snippet";
 
 interface FxInstructionsProps {
-  transport: "cloud" | "stdio" | "cli";
+  transport: "cloud" | "cli";
 }
 
 export function FxInstructions({ transport }: FxInstructionsProps) {
@@ -41,27 +41,6 @@ export function FxInstructions({ transport }: FxInstructionsProps) {
     );
   }
 
-  if (transport === "cli") {
-    return (
-      <>
-        <ol>
-          <li>Open your terminal to access the CLI.</li>
-          <li>
-            <CodeSnippet
-              noMargin
-              snippet={`fx mcp add sentry ${CLI_MCP_SNIPPET}`}
-            />
-          </li>
-          <li>
-            Run <code>/mcp reload</code> to apply the change.
-          </li>
-        </ol>
-      </>
-    );
-  }
-
-  // Stdio transport
-  const mcpStdioSnippet = `npx ${NPM_PACKAGE_NAME}@latest`;
   return (
     <>
       <ol>
@@ -69,47 +48,13 @@ export function FxInstructions({ transport }: FxInstructionsProps) {
         <li>
           <CodeSnippet
             noMargin
-            snippet={`fx mcp add sentry ${mcpStdioSnippet}`}
-          />
-        </li>
-        <li>
-          Run <code>fx mcp path</code> to find your profile, then add your
-          access token under <code>environment</code>:
-        </li>
-        <li>
-          <CodeSnippet
-            noMargin
-            snippet={JSON.stringify(
-              {
-                mcp: {
-                  sentry: {
-                    type: "stdio",
-                    command: ["npx", `${NPM_PACKAGE_NAME}@latest`],
-                    environment: {
-                      SENTRY_ACCESS_TOKEN: "sentry-user-token",
-                      OPENAI_API_KEY: "your-openai-key",
-                    },
-                  },
-                },
-              },
-              undefined,
-              2,
-            )}
+            snippet={`fx mcp add sentry ${CLI_MCP_SNIPPET}`}
           />
         </li>
         <li>
           Run <code>/mcp reload</code> to apply the change.
         </li>
       </ol>
-      <p>
-        <small>
-          For more details, see the{" "}
-          <Link href="https://fx.sh/docs/capabilities/mcp">
-            fx MCP documentation
-          </Link>
-          .
-        </small>
-      </p>
     </>
   );
 }

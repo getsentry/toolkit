@@ -2,7 +2,7 @@ import { CLI_MCP_ARGS, CLI_MCP_COMMAND } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 
 interface OpenCodeInstructionsProps {
-  transport: "cloud" | "stdio" | "cli";
+  transport: "cloud" | "cli";
 }
 
 export function OpenCodeInstructions({ transport }: OpenCodeInstructionsProps) {
@@ -59,52 +59,11 @@ export function OpenCodeInstructions({ transport }: OpenCodeInstructionsProps) {
     );
   }
 
-  if (transport === "cli") {
-    return (
-      <>
-        <ol>
-          <li>
-            Edit <code>~/.config/opencode/opencode.json</code> and add the local
-            MCP server configuration:
-            <CodeSnippet
-              noMargin
-              snippet={JSON.stringify(
-                {
-                  $schema: "https://opencode.ai/config.json",
-                  mcp: {
-                    sentry: {
-                      type: "local",
-                      command: [CLI_MCP_COMMAND, ...CLI_MCP_ARGS],
-                    },
-                  },
-                },
-                undefined,
-                2,
-              )}
-            />
-          </li>
-          <li>Restart OpenCode to load the new configuration.</li>
-        </ol>
-      </>
-    );
-  }
-
-  // Stdio transport
-  const defaultEnv = {
-    SENTRY_ACCESS_TOKEN: "sentry-user-token",
-    OPENAI_API_KEY: "your-openai-key",
-  } as const;
-  const coreConfig = {
-    command: "npx",
-    args: ["@sentry/mcp-server@latest"],
-    env: defaultEnv,
-  };
-
   return (
     <>
       <ol>
         <li>
-          Edit <code>~/.config/opencode/opencode.json</code> and add the stdio
+          Edit <code>~/.config/opencode/opencode.json</code> and add the local
           MCP server configuration:
           <CodeSnippet
             noMargin
@@ -113,38 +72,8 @@ export function OpenCodeInstructions({ transport }: OpenCodeInstructionsProps) {
                 $schema: "https://opencode.ai/config.json",
                 mcp: {
                   sentry: {
-                    type: "stdio",
-                    ...coreConfig,
-                    env: {
-                      ...coreConfig.env,
-                    },
-                  },
-                },
-              },
-              undefined,
-              2,
-            )}
-          />
-        </li>
-        <li>
-          Replace <code>sentry-user-token</code> with your Sentry User Auth
-          Token.
-        </li>
-        <li>
-          For self-hosted Sentry, add <code>SENTRY_HOST</code> to the env
-          object:
-          <CodeSnippet
-            noMargin
-            snippet={JSON.stringify(
-              {
-                mcp: {
-                  sentry: {
-                    type: "stdio",
-                    ...coreConfig,
-                    env: {
-                      ...coreConfig.env,
-                      SENTRY_HOST: "sentry.example.com",
-                    },
+                    type: "local",
+                    command: [CLI_MCP_COMMAND, ...CLI_MCP_ARGS],
                   },
                 },
               },
@@ -155,19 +84,6 @@ export function OpenCodeInstructions({ transport }: OpenCodeInstructionsProps) {
         </li>
         <li>Restart OpenCode to load the new configuration.</li>
       </ol>
-      <p>
-        <small>
-          For more details, see the{" "}
-          <a
-            href="https://opencode.ai/docs/mcp-servers"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            OpenCode MCP documentation
-          </a>
-          .
-        </small>
-      </p>
     </>
   );
 }

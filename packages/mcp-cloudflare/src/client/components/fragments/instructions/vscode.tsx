@@ -1,10 +1,10 @@
-import { CLI_MCP_SNIPPET, NPM_PACKAGE_NAME } from "../../../../constants";
+import { CLI_MCP_SNIPPET } from "../../../../constants";
 import { Button } from "../../ui/button";
 import CodeSnippet from "../../ui/code-snippet";
 import { KeyIcon } from "../../ui/key-icon";
 
 interface VSCodeInstructionsProps {
-  transport: "cloud" | "stdio" | "cli";
+  transport: "cloud" | "cli";
 }
 
 export function VSCodeInstructions({ transport }: VSCodeInstructionsProps) {
@@ -65,51 +65,6 @@ export function VSCodeInstructions({ transport }: VSCodeInstructionsProps) {
     );
   }
 
-  if (transport === "cli") {
-    return (
-      <>
-        <ol>
-          <li>
-            <strong>
-              <KeyIcon>⌘</KeyIcon> + <KeyIcon>P</KeyIcon>
-            </strong>{" "}
-            and search for <strong>MCP: Add Server</strong>.
-          </li>
-          <li>
-            Select <strong>Command (stdio)</strong>.
-          </li>
-          <li>
-            Enter the following command, and hit enter.
-            <CodeSnippet noMargin snippet={CLI_MCP_SNIPPET} />
-          </li>
-          <li>
-            Enter the name <strong>Sentry</strong> and hit enter.
-          </li>
-          <li>
-            Activate the server using <strong>MCP: List Servers</strong> and
-            selecting <strong>Sentry</strong>, and selecting{" "}
-            <strong>Start Server</strong>.
-          </li>
-        </ol>
-        <p>
-          <small>Note: MCP is supported in VSCode 1.99 and above.</small>
-        </p>
-      </>
-    );
-  }
-
-  // Stdio transport
-  const mcpStdioSnippet = `npx ${NPM_PACKAGE_NAME}@latest`;
-  const defaultEnv = {
-    SENTRY_ACCESS_TOKEN: "sentry-user-token",
-    OPENAI_API_KEY: "your-openai-key",
-  } as const;
-  const coreConfig = {
-    command: "npx",
-    args: ["@sentry/mcp-server@latest"],
-    env: defaultEnv,
-  };
-
   return (
     <>
       <ol>
@@ -120,33 +75,14 @@ export function VSCodeInstructions({ transport }: VSCodeInstructionsProps) {
           and search for <strong>MCP: Add Server</strong>.
         </li>
         <li>
-          Select <strong>Command (stdio)</strong>
+          Select <strong>Command (stdio)</strong>.
         </li>
         <li>
-          Enter the following configuration, and hit enter.
-          <CodeSnippet noMargin snippet={mcpStdioSnippet} />
+          Enter the following command, and hit enter.
+          <CodeSnippet noMargin snippet={CLI_MCP_SNIPPET} />
         </li>
         <li>
           Enter the name <strong>Sentry</strong> and hit enter.
-        </li>
-        <li>
-          Update the server configuration to include your configuration:
-          <CodeSnippet
-            noMargin
-            snippet={JSON.stringify(
-              {
-                [mcpServerName]: {
-                  type: "stdio",
-                  ...coreConfig,
-                  env: {
-                    ...coreConfig.env,
-                  },
-                },
-              },
-              undefined,
-              2,
-            )}
-          />
         </li>
         <li>
           Activate the server using <strong>MCP: List Servers</strong> and

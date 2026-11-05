@@ -6,7 +6,7 @@ import { KeyWord } from "../../ui/key-word";
 import { getCursorDeepLink } from "../../../../client/utils";
 
 interface CursorInstructionsProps {
-  transport: "cloud" | "stdio" | "cli";
+  transport: "cloud" | "cli";
 }
 
 export function CursorInstructions({ transport }: CursorInstructionsProps) {
@@ -65,53 +65,6 @@ export function CursorInstructions({ transport }: CursorInstructionsProps) {
     );
   }
 
-  if (transport === "cli") {
-    return (
-      <>
-        <ol>
-          <li>
-            <strong>
-              <KeyIcon>⌘</KeyIcon> + <KeyWord>Shift</KeyWord> +{" "}
-              <KeyIcon>J</KeyIcon>
-            </strong>{" "}
-            to open Cursor Settings.
-          </li>
-          <li>
-            Select <strong>Skills and Integrations</strong>.
-          </li>
-          <li>
-            Select <strong>New MCP Server</strong>.
-          </li>
-          <li>
-            <CodeSnippet
-              noMargin
-              snippet={JSON.stringify(
-                {
-                  mcpServers: {
-                    sentry: { command: CLI_MCP_COMMAND, args: CLI_MCP_ARGS },
-                  },
-                },
-                undefined,
-                2,
-              )}
-            />
-          </li>
-        </ol>
-      </>
-    );
-  }
-
-  // Stdio transport
-  const defaultEnv = {
-    SENTRY_ACCESS_TOKEN: "sentry-user-token",
-    OPENAI_API_KEY: "your-openai-key",
-  } as const;
-  const coreConfig = {
-    command: "npx",
-    args: ["@sentry/mcp-server@latest"],
-    env: defaultEnv,
-  };
-
   return (
     <>
       <ol>
@@ -123,7 +76,7 @@ export function CursorInstructions({ transport }: CursorInstructionsProps) {
           to open Cursor Settings.
         </li>
         <li>
-          Select <strong>MCP Skills</strong>.
+          Select <strong>Skills and Integrations</strong>.
         </li>
         <li>
           Select <strong>New MCP Server</strong>.
@@ -134,12 +87,7 @@ export function CursorInstructions({ transport }: CursorInstructionsProps) {
             snippet={JSON.stringify(
               {
                 mcpServers: {
-                  sentry: {
-                    ...coreConfig,
-                    env: {
-                      ...coreConfig.env,
-                    },
-                  },
+                  sentry: { command: CLI_MCP_COMMAND, args: CLI_MCP_ARGS },
                 },
               },
               undefined,
