@@ -24,10 +24,13 @@ export default defineTool({
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     projectSlug: ParamProjectSlug.nullable().default(null),
-    query: z.string().trim().optional().describe(
-      // TODO(nikki): "What attribute to find, in plain English or as part of a key. Omit to list the dataset's attributes.",
-      "Not used yet. Searching by query is not available, so the dataset's attributes are listed either way. Omit it.",
-    ),
+    query: z
+      .string()
+      .trim()
+      .optional()
+      .describe(
+        "Not used yet. Searching by query is not available, so the dataset's attributes are listed either way. Omit it.",
+      ),
     period: ParamPeriod.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
     limit: z
