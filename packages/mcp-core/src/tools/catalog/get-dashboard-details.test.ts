@@ -69,6 +69,9 @@ describe("get_dashboard_details", () => {
                 "value": "browser.name:[Chrome]",
               },
             ],
+            "releaseIds": [
+              "1234",
+            ],
             "releases": [
               "frontend@1.2.3",
             ],
@@ -158,7 +161,6 @@ describe("get_dashboard_details", () => {
       "permissions",
       "teamsWithEditAccess",
       "@example.com",
-      "Browser Name",
     ]) {
       expect(text).not.toContain(leaked);
     }

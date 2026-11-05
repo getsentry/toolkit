@@ -79,6 +79,7 @@
   ],
   "filters": {
     "release": ["frontend@1.2.3"],
+    "releaseId": ["1234"],
     "globalFilter": [
       {
         "dataset": "error-events",

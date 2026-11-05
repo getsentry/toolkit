@@ -4805,6 +4805,12 @@
                     "type": "string"
                   }
                 },
+                "releaseIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "globalFilters": {
                   "type": "array",
                   "items": {
@@ -4825,7 +4831,7 @@
                   }
                 }
               },
-              "required": ["releases", "globalFilters"],
+              "required": ["releases", "releaseIds", "globalFilters"],
               "additionalProperties": false
             },
             "widgets": {

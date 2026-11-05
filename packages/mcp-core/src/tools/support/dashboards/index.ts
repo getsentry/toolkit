@@ -138,6 +138,7 @@ export const dashboardDetailsSchema = z.object({
   isFavorited: z.boolean(),
   filters: z.object({
     releases: z.array(z.string()),
+    releaseIds: z.array(z.string()),
     globalFilters: z.array(
       z.object({
         dataset: nullableString,
@@ -211,6 +212,7 @@ function toFilters(
     : [];
   return {
     releases: readStringArray(filters.release),
+    releaseIds: readStringArray(filters.releaseId),
     globalFilters,
   };
 }
