@@ -32,7 +32,7 @@ import {
 } from "./formatters";
 import { type FlexibleEventData, isAggregateQuery } from "./utils";
 
-const timeRangeSchema = z.object({
+export const timeRangeSchema = z.object({
   statsPeriod: z.string().nullable(),
   start: z.string().nullable(),
   end: z.string().nullable(),

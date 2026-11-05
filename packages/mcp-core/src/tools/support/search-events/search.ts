@@ -47,10 +47,12 @@ import {
   formatTraceMetricsResults,
 } from "./formatters";
 import {
+  buildStructuredReplayResults,
   DEFAULT_REPLAY_SORT,
   DEFAULT_REPLAY_STATS_PERIOD,
   formatReplayResults,
   isValidReplaySort,
+  type SearchReplaysStructuredContent,
 } from "./replays";
 import {
   buildStructuredEventsResult,
@@ -439,7 +441,8 @@ export type RunSearchEventsOptions =
   | StructuredSearchEventsOptions;
 
 type StructuredSearchEventsOutput =
-  StructuredToolOutput<SearchEventsStructuredContent>;
+  | StructuredToolOutput<SearchEventsStructuredContent>
+  | StructuredToolOutput<SearchReplaysStructuredContent>;
 
 const searchLimitParam = z
   .number()
@@ -680,10 +683,15 @@ export function runSearchEvents(
   options?: MarkdownSearchEventsOptions,
 ): Promise<string>;
 export function runSearchEvents(
-  params: SearchEventsParams,
+  params: SearchEventsParams & { dataset: "replays" },
   context: ServerContext,
   options: StructuredSearchEventsOptions,
-): Promise<StructuredSearchEventsOutput>;
+): Promise<StructuredToolOutput<SearchReplaysStructuredContent>>;
+export function runSearchEvents(
+  params: SearchEventsParams & { dataset: PublicEventsDataset },
+  context: ServerContext,
+  options: StructuredSearchEventsOptions,
+): Promise<StructuredToolOutput<SearchEventsStructuredContent>>;
 export async function runSearchEvents(
   params: SearchEventsParams,
   context: ServerContext,
@@ -965,9 +973,6 @@ async function executeSearchEvents(
     leadingNote ? `${leadingNote}\n\n${text}` : text;
 
   if (dataset === "replays") {
-    if (structured) {
-      throw new Error("Structured replay search results are not supported.");
-    }
     const replaySort = sortParam || DEFAULT_REPLAY_SORT;
     if (!isValidReplaySort(replaySort)) {
       throw new UserInputError(
@@ -1011,7 +1016,7 @@ async function executeSearchEvents(
       replays.length,
     );
 
-    const replayOutput = formatReplayResults({
+    const replayParams = {
       replays,
       inputQuery: params.query || sentryQuery || "recent replays",
       includeExplanation: params.includeExplanation,
@@ -1033,8 +1038,14 @@ async function executeSearchEvents(
       experimentalMode: context.experimentalMode ?? false,
       availableToolNames: context.availableToolNames,
       directToolNames: context.directToolNames,
-    });
-    return withLeadingNote(replayOutput);
+    };
+    if (structured) {
+      return buildStructuredReplayResults({
+        ...replayParams,
+        notes: leadingNotes,
+      });
+    }
+    return withLeadingNote(formatReplayResults(replayParams));
   }
 
   if (timeSeries) {

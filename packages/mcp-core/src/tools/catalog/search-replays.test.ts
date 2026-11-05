@@ -25,6 +25,7 @@ it("search_replays runs the shared handler locked to replays", async () => {
       ],
       "options": {
         "lockDataset": true,
+        "output": "structured",
       },
     }
   `);
