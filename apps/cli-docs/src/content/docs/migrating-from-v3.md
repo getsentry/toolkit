@@ -478,30 +478,16 @@ To automate the mechanical parts of this migration, run the
 constructor, and method chain, and inserts `// TODO(sentry-v4): …` comments where
 option shapes changed and need a manual check).
 
-For now, run it from the toolkit repo's source — clone the repo, then point the
-Codemod runner at the transform and your project directory:
-
-```bash
-git clone --depth 1 https://github.com/getsentry/toolkit /tmp/sentry-toolkit-src
-
-# From your project root (-t . targets the current directory)
-npx codemod@latest jssg run --language typescript \
-  /tmp/sentry-toolkit-src/packages/codemod-cli3to4/scripts/codemod.ts -t .
-```
-
-:::note
-Once the codemod is published to the [Codemod registry](https://codemod.com), the
-shorter form below will work — until then, use the run-from-source command above:
+It's published to the [Codemod registry](https://codemod.com) as
+`@getsentry/cli3to4`:
 
 ```bash
 npx codemod@latest @getsentry/cli3to4
 ```
-:::
 
-It rewrites `.js`/`.ts` files in place (the registry form also covers
-`.jsx`/`.tsx`). Review the diff afterward — argument
-shapes differ (especially for `uploadSourceMaps` and `newDeploy`), so the codemod
-flags those rather than guessing. See
+It rewrites `.js`/`.ts`/`.jsx`/`.tsx` files in place. Review the diff
+afterward — argument shapes differ (especially for `uploadSourceMaps` and
+`newDeploy`), so the codemod flags those rather than guessing. See
 [`packages/codemod-cli3to4`](https://github.com/getsentry/toolkit/tree/main/packages/codemod-cli3to4)
 for the source and test fixtures.
 
