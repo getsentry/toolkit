@@ -2370,10 +2370,9 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Updated DSN in **sentry-mcp-evals/cloudflare-mcp**",
-      );
-      expect(getTextContent(result)).toContain("**Rate Limit**: Disabled");
+      expect(getStructuredContent(result)).toMatchObject({
+        dsn: { id: "d20df0a1ab5031c7f3c7edca9c02814d", rateLimit: null },
+      });
     });
 
     it.each([
