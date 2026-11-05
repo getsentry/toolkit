@@ -4956,6 +4956,57 @@
         }
       }
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "issueId": {
+          "type": "string"
+        },
+        "eventId": {
+          "type": "string"
+        },
+        "breadcrumbs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "timestamp": {
+                "type": ["string", "null"]
+              },
+              "level": {
+                "type": "string"
+              },
+              "category": {
+                "type": ["string", "null"]
+              },
+              "type": {
+                "type": ["string", "null"]
+              },
+              "message": {
+                "description": "Single line, truncated after 120 characters.",
+                "type": ["string", "null"]
+              },
+              "data": {
+                "description": "Compact JSON of the breadcrumb data, truncated after 200 characters.",
+                "type": ["string", "null"]
+              }
+            },
+            "required": [
+              "timestamp",
+              "level",
+              "category",
+              "type",
+              "message",
+              "data"
+            ],
+            "additionalProperties": false
+          },
+          "description": "The trail of events leading up to the error, oldest first."
+        }
+      },
+      "required": ["issueId", "eventId", "breadcrumbs"],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage"],
     "surface": "direct"

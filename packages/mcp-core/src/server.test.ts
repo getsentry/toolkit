@@ -635,7 +635,7 @@ describe("buildServer", () => {
       );
 
       const text = getTextContent(result);
-      expect(text).toContain(`[console] ${replacedText}...`);
+      expect(text).toContain(`"message": "${replacedText}..."`);
       expect(text.isWellFormed()).toBe(true);
     });
 
