@@ -415,20 +415,28 @@ export interface SearchEventsParams {
   includeExplanation: boolean;
 }
 
-export interface RunSearchEventsOptions {
+export interface MarkdownSearchEventsOptions {
   /**
    * Keep the caller's dataset even when the embedded agent suggests another.
    * Dataset-specific tools (search_logs, search_traces, ...) set this so a
    * search never returns rows from a different dataset than the tool name.
    */
   lockDataset?: boolean;
-  /**
-   * `structured` returns the payload a dataset tool declares as its
-   * `outputSchema` instead of markdown. Only dataset tools, which also set
-   * `lockDataset`, ask for it.
-   */
-  output?: "markdown" | "structured";
+  output?: "markdown";
 }
+
+/**
+ * Returns the payload a dataset tool declares as its `outputSchema` instead
+ * of markdown. That schema is per dataset, so the dataset must be locked.
+ */
+export interface StructuredSearchEventsOptions {
+  lockDataset: true;
+  output: "structured";
+}
+
+export type RunSearchEventsOptions =
+  | MarkdownSearchEventsOptions
+  | StructuredSearchEventsOptions;
 
 type StructuredSearchEventsOutput =
   StructuredToolOutput<SearchEventsStructuredContent>;
@@ -669,12 +677,12 @@ function trackSeerOutcome(
 export function runSearchEvents(
   params: SearchEventsParams,
   context: ServerContext,
-  options?: RunSearchEventsOptions & { output?: "markdown" },
+  options?: MarkdownSearchEventsOptions,
 ): Promise<string>;
 export function runSearchEvents(
   params: SearchEventsParams,
   context: ServerContext,
-  options: RunSearchEventsOptions & { output: "structured" },
+  options: StructuredSearchEventsOptions,
 ): Promise<StructuredSearchEventsOutput>;
 export async function runSearchEvents(
   params: SearchEventsParams,

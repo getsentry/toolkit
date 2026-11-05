@@ -151,11 +151,12 @@ describe("search_errors structured output", () => {
         "suggestedActions": [
           {
             "arguments": {
-              "issueId": "CLOUDFLARE-MCP-41",
               "organizationSlug": "test-org",
+              "resourceId": "CLOUDFLARE-MCP-41",
+              "resourceType": "issue",
             },
-            "reason": "Get full details for the first matching issue.",
-            "toolName": "get_issue_details",
+            "reason": "Inspect the first matching issue.",
+            "toolName": "get_sentry_resource",
             "type": "tool_call",
           },
         ],
@@ -233,21 +234,51 @@ describe("search_errors structured output", () => {
         "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
         () =>
           HttpResponse.json({
+            secretResponseField: "must-not-leak",
             timeSeries: [
               {
                 yAxis: "count()",
+                secretSeriesField: "must-not-leak",
                 values: [
+                  {
+                    timestamp: 1757545200000,
+                    value: 2,
+                    incomplete: true,
+                    incompleteReason: "OUTSIDE_RETENTION",
+                  },
                   { timestamp: 1757548800000, value: 5, incomplete: false },
-                  { timestamp: 1757552400000, value: 8, incomplete: false },
-                  { timestamp: 1757556000000, value: 3, incomplete: true },
+                  {
+                    timestamp: 1757552400000,
+                    value: 8,
+                    incomplete: false,
+                    secretBucketField: "must-not-leak",
+                  },
+                  {
+                    timestamp: 1757556000000,
+                    value: 3,
+                    incomplete: true,
+                    incompleteReason: "INGESTION_PENDING",
+                  },
                 ],
                 meta: {
                   interval: 3600000,
                   valueType: "integer",
                   valueUnit: null,
+                  secretSeriesMetaField: "must-not-leak",
                 },
               },
             ],
+            meta: {
+              start: 1757545200000,
+              end: 1757559600000,
+              secretMetaField: "must-not-leak",
+              ingestion: {
+                status: "healthy",
+                delaySeconds: 42,
+                completeThrough: 1757556000000,
+                secretIngestionField: "must-not-leak",
+              },
+            },
           }),
       ),
     );
@@ -257,40 +288,72 @@ describe("search_errors structured output", () => {
       includeExplanation: true,
     });
 
-    expect(structuredContent.resultType).toBe("timeSeries");
-    expect(structuredContent.explanation).toBe("Bucketed errors hourly");
-    expect(structuredContent.timeSeries).toMatchInlineSnapshot(`
+    expect(JSON.stringify(structuredContent)).not.toContain("must-not-leak");
+    expect(structuredContent).toMatchInlineSnapshot(`
       {
-        "bucketCount": 3,
-        "buckets": [
-          {
-            "incomplete": false,
-            "outsideRetention": false,
-            "time": "2025-09-11T00:00:00.000Z",
-            "value": 5,
+        "executedSearch": {
+          "dataset": "errors",
+          "fields": [
+            "count()",
+          ],
+          "query": "level:error",
+          "sort": null,
+          "timeRange": {
+            "end": null,
+            "start": null,
+            "statsPeriod": "24h",
           },
-          {
-            "incomplete": false,
-            "outsideRetention": false,
+        },
+        "explanation": "Bucketed errors hourly",
+        "notes": [],
+        "presentationHint": "Please tell the user this dashboard link is available if they want to open the results in Sentry.",
+        "query": "errors per hour",
+        "resultType": "timeSeries",
+        "results": [],
+        "suggestedActions": [],
+        "timeSeries": {
+          "bucketCount": 4,
+          "buckets": [
+            {
+              "incomplete": false,
+              "outsideRetention": true,
+              "time": "2025-09-10T23:00:00.000Z",
+              "value": 2,
+            },
+            {
+              "incomplete": false,
+              "outsideRetention": false,
+              "time": "2025-09-11T00:00:00.000Z",
+              "value": 5,
+            },
+            {
+              "incomplete": false,
+              "outsideRetention": false,
+              "time": "2025-09-11T01:00:00.000Z",
+              "value": 8,
+            },
+            {
+              "incomplete": true,
+              "outsideRetention": false,
+              "time": "2025-09-11T02:00:00.000Z",
+              "value": 3,
+            },
+          ],
+          "ingestion": {
+            "completeThrough": "2025-09-11T02:00:00.000Z",
+            "delaySeconds": 42,
+            "status": "healthy",
+          },
+          "interval": "1h",
+          "peak": {
             "time": "2025-09-11T01:00:00.000Z",
             "value": 8,
           },
-          {
-            "incomplete": true,
-            "outsideRetention": false,
-            "time": "2025-09-11T02:00:00.000Z",
-            "value": 3,
-          },
-        ],
-        "ingestion": null,
-        "interval": "1h",
-        "peak": {
-          "time": "2025-09-11T01:00:00.000Z",
-          "value": 8,
+          "total": 18,
+          "totalIncludesIncompleteBuckets": true,
+          "yAxis": "count()",
         },
-        "total": 16,
-        "totalIncludesIncompleteBuckets": true,
-        "yAxis": "count()",
+        "url": "https://test-org.sentry.io/explore/discover/homepage/?dataset=errors&queryDataset=error-events&query=level%3Aerror&project=-1&field=count%28%29&sort=-count%28%29&statsPeriod=24h&mode=aggregate&yAxis=count%28%29",
       }
     `);
   });

@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { defineTool } from "../../internal/tool-helpers/define";
 import type { ServerContext } from "../../types";
 import {
@@ -8,9 +7,7 @@ import {
 } from "../support/search-events/search";
 import { buildSearchEventsOutputSchema } from "../support/search-events/structured";
 
-export const searchErrorsOutputSchema = buildSearchEventsOutputSchema({
-  issueUrl: z.string().nullable(),
-});
+export const searchErrorsOutputSchema = buildSearchEventsOutputSchema("errors");
 
 export default defineTool({
   ...searchToolBase("search_errors"),

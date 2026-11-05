@@ -87,34 +87,6 @@ const timeSeriesSchema = z.object({
 
 const SEARCH_RESULT_TYPES = ["samples", "aggregates", "timeSeries"] as const;
 
-/**
- * Output schema for one dataset search tool. `rowLinks` names the Sentry URLs
- * that tool derives for each result row.
- */
-export function buildSearchEventsOutputSchema<
-  TRowLinks extends Record<string, z.ZodType>,
->(rowLinks: TRowLinks) {
-  return z.object({
-    query: z.string(),
-    explanation: z.string().nullable(),
-    executedSearch: executedSearchSchema,
-    url: z.string().describe("Opens these results in Sentry."),
-    presentationHint: z.string(),
-    notes: z.array(z.string()),
-    resultType: z.enum(SEARCH_RESULT_TYPES),
-    results: z.array(
-      z.object({
-        values: z
-          .record(z.string(), z.unknown())
-          .describe("The requested fields, keyed by field name."),
-        links: z.object(rowLinks),
-      }),
-    ),
-    timeSeries: timeSeriesSchema.nullable(),
-    suggestedActions: z.array(suggestedToolActionSchema),
-  });
-}
-
 type SearchResultType = (typeof SEARCH_RESULT_TYPES)[number];
 type RowLinks = Record<string, string | null>;
 
@@ -139,23 +111,33 @@ interface StructuredSearchSession {
   directToolNames?: ReadonlySet<string>;
 }
 
-interface StructuredDatasetConfig {
+type RowLinkShape = Record<string, z.ZodType<string | null>>;
+
+interface StructuredDatasetConfig<TLinks extends RowLinkShape = RowLinkShape> {
   hints: SearchResultHints;
+  /** The Sentry URLs derived for each result row; the output schema uses it. */
+  links: TLinks;
   rowLinks(
     event: FlexibleEventData,
     session: StructuredSearchSession,
-  ): RowLinks;
+  ): z.infer<z.ZodObject<TLinks>>;
   suggestedActions(
     results: SearchEventsStructuredContent["results"],
     session: StructuredSearchSession,
   ): SuggestedToolAction[];
 }
 
-const STRUCTURED_DATASETS: Partial<
-  Record<PublicEventsDataset, StructuredDatasetConfig>
-> = {
-  errors: {
+/** Ties a dataset's `rowLinks` return type to its declared `links` schema. */
+function defineDatasetConfig<TLinks extends RowLinkShape>(
+  config: StructuredDatasetConfig<TLinks>,
+): StructuredDatasetConfig<TLinks> {
+  return config;
+}
+
+const STRUCTURED_DATASETS = {
+  errors: defineDatasetConfig({
     hints: ERROR_RESULT_HINTS,
+    links: { issueUrl: z.string().nullable() },
     rowLinks: (event, { apiService, organizationSlug }) => ({
       issueUrl:
         typeof event.issue === "string" && event.issue
@@ -168,12 +150,13 @@ const STRUCTURED_DATASETS: Partial<
         .find((issue): issue is string => typeof issue === "string" && !!issue);
       const action = issueId
         ? buildSuggestedToolAction({
-            toolName: "get_issue_details",
+            toolName: "get_sentry_resource",
             arguments: {
               organizationSlug: session.organizationSlug,
-              issueId,
+              resourceType: "issue",
+              resourceId: issueId,
             },
-            reason: "Get full details for the first matching issue.",
+            reason: "Inspect the first matching issue.",
             experimentalMode: session.experimentalMode,
             availableToolNames: session.availableToolNames,
             directToolNames: session.directToolNames,
@@ -181,15 +164,41 @@ const STRUCTURED_DATASETS: Partial<
         : null;
       return action ? [action] : [];
     },
-  },
-};
+  }),
+} satisfies Partial<Record<PublicEventsDataset, StructuredDatasetConfig>>;
+
+export type StructuredSearchDataset = keyof typeof STRUCTURED_DATASETS;
+
+/** Output schema for the dataset search tool that searches `dataset`. */
+export function buildSearchEventsOutputSchema(
+  dataset: StructuredSearchDataset,
+) {
+  return z.object({
+    query: z.string(),
+    explanation: z.string().nullable(),
+    executedSearch: executedSearchSchema,
+    url: z.string().describe("Opens these results in Sentry."),
+    presentationHint: z.string(),
+    notes: z.array(z.string()),
+    resultType: z.enum(SEARCH_RESULT_TYPES),
+    results: z.array(
+      z.object({
+        values: z
+          .record(z.string(), z.unknown())
+          .describe("The requested fields, keyed by field name."),
+        links: z.object(STRUCTURED_DATASETS[dataset].links),
+      }),
+    ),
+    timeSeries: timeSeriesSchema.nullable(),
+    suggestedActions: z.array(suggestedToolActionSchema),
+  });
+}
 
 function getDatasetConfig(dataset: string): StructuredDatasetConfig {
-  const config = STRUCTURED_DATASETS[dataset as PublicEventsDataset];
-  if (!config) {
+  if (!Object.hasOwn(STRUCTURED_DATASETS, dataset)) {
     throw new Error(`Structured search results are not defined for ${dataset}`);
   }
-  return config;
+  return STRUCTURED_DATASETS[dataset as StructuredSearchDataset];
 }
 
 function toExecutedSearch(
