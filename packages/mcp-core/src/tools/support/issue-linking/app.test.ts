@@ -405,35 +405,128 @@ describe("linkAppIssue", () => {
     },
   );
 
-  it("reports canonical URL and concurrent replacement conflicts without an unguarded retry", async () => {
-    mockDiscovery({
-      form: {
-        uri: "/issues/link",
-        required_fields: [{ name: "issueId", type: "text" }],
-      },
-    });
-    let actions = 0;
-    mswServer.use(
-      http.post(
-        `${base}/sentry-app-installations/installation/external-issue-actions/`,
-        ({ request }) => {
-          actions++;
-          expect(
-            new URL(request.url).searchParams.get("expectedExternalIssueUrl"),
-          ).toBe(url);
-          return HttpResponse.json(
-            { detail: "External issue URL does not match expected URL" },
-            { status: 409 },
-          );
+  // Production 409s: agents sent a bare key or a self-built title path, and
+  // Linear's callback returned its own canonical URL for the same issue.
+  // Sentry stores nothing on that 409, so the recovery cases assume the App
+  // (Sentry's "legacy writers can race the callback") or a concurrent request
+  // stored the association by the time it is read back.
+  it.each([
+    {
+      name: "canonical URL",
+      sent: url,
+      callback: 201,
+      stored: [],
+      expected: { status: "linked", url },
+    },
+    {
+      name: "bare key stored by the App",
+      sent: "https://linear.app/example/issue/ENG-123",
+      callback: 409,
+      stored: [association],
+      expected: { status: "already_linked", url },
+    },
+    {
+      name: "different title path stored by the App",
+      sent: "https://linear.app/example/issue/ENG-123/fix-crash",
+      callback: 409,
+      stored: [association],
+      expected: { status: "already_linked", url },
+    },
+  ])(
+    "links the requested Linear issue from a $name",
+    async ({ sent, callback, stored, expected }) => {
+      const actions = mockLinearCallback({ sent, status: callback, stored });
+      await expect(
+        linkAppIssue(api, { ...params, externalIssueUrl: sent }),
+      ).resolves.toMatchObject(expected);
+      expect(actions()).toBe(1);
+    },
+  );
+
+  it.each([
+    {
+      name: "nothing was stored",
+      stored: [],
+      error: "returned a different URL than externalIssueUrl",
+    },
+    {
+      name: "the read-back fails",
+      stored: 500,
+      error: "returned a different URL than externalIssueUrl",
+    },
+    {
+      name: "another issue was stored",
+      stored: [
+        {
+          ...association,
+          webUrl: "https://linear.app/example/issue/ENG-999/other",
         },
-      ),
-    );
-    await expect(linkAppIssue(api, params)).rejects.toThrow(
-      "exact canonical issue URL",
-    );
-    expect(actions).toBe(1);
-  });
+      ],
+      error: "already linked to a different 'linear' issue URL",
+    },
+    {
+      name: "another link operation holds the lock",
+      detail: "This issue link is being updated. Try again.",
+      stored: [],
+      error: "Another link operation may be in progress",
+    },
+  ])(
+    "rejects a guarded conflict without an unguarded retry when $name",
+    async ({ stored, detail, error }) => {
+      const sent = "https://linear.app/example/issue/ENG-123";
+      const actions = mockLinearCallback({ sent, status: 409, stored, detail });
+      await expect(
+        linkAppIssue(api, { ...params, externalIssueUrl: sent }),
+      ).rejects.toThrow(error);
+      expect(actions()).toBe(1);
+    },
+  );
 });
+
+/** Mock a Linear link whose guarded callback returns `status`, then `stored` links (or an HTTP status). */
+function mockLinearCallback({
+  sent,
+  status,
+  stored,
+  detail = "A different external issue would be linked. Unlink the existing issue first.",
+}: {
+  sent: string;
+  status: number;
+  stored: (typeof association)[] | number;
+  detail?: string;
+}) {
+  mockDiscovery();
+  let actions = 0;
+  mswServer.use(
+    http.get(`${base}/organizations/example/issues/123/external-issues/`, () =>
+      !actions
+        ? HttpResponse.json([])
+        : typeof stored === "number"
+          ? HttpResponse.json({ detail: "Internal Error" }, { status: stored })
+          : HttpResponse.json(stored),
+    ),
+    http.get(
+      `${base}/sentry-app-installations/installation/external-requests/`,
+      () =>
+        HttpResponse.json({
+          choices: [["linear-issue", "ENG-123 Fix the error"]],
+        }),
+    ),
+    http.post(
+      `${base}/sentry-app-installations/installation/external-issue-actions/`,
+      ({ request }) => {
+        actions++;
+        expect(
+          new URL(request.url).searchParams.get("expectedExternalIssueUrl"),
+        ).toBe(sent);
+        return status === 409
+          ? HttpResponse.json({ detail }, { status })
+          : HttpResponse.json(association, { status });
+      },
+    ),
+  );
+  return () => actions;
+}
 
 describe("unlinkAppIssue", () => {
   it.each([true, false])(
