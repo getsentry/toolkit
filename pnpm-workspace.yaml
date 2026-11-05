@@ -57,6 +57,7 @@ catalog:
   "@sentry/core": 11.6.0
   "@sentry/node": 11.6.0
   "@sentry/react": 11.6.0
+  "@sentry/roach": 0.2.0
   "@sentry/search-syntax": ^1.0.0
   "@sentry/vite-plugin": ^4.6.1
   "@tailwindcss/typography": ^0.5.16
@@ -124,6 +125,7 @@ minimumReleaseAgeExclude:
   - "@sentry/react@11.6.0"
   - "@sentry/replay-canvas@11.6.0"
   - "@sentry/replay@11.6.0"
+  - "@sentry/roach@0.2.0"
   - "@sentry/search-syntax@1.0.0"
   - "@sentry/server-runtime-injection@11.6.0"
   - "@sentry/server-utils@11.6.0"

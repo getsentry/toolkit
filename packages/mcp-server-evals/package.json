@@ -27,5 +27,8 @@
     "vitest": "catalog:",
     "vitest-evals": "catalog:",
     "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sentry/roach": "catalog:"
   }
 }
