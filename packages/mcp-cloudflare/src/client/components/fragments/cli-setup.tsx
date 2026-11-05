@@ -78,10 +78,10 @@ export default function CliSetup() {
       <p>
         The event search tools (<code>search_errors</code>,{" "}
         <code>search_traces</code>, <code>search_logs</code>, and so on) and{" "}
-        <code>search_issues</code> need an LLM key such as{" "}
-        <code>OPENAI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code> in the
-        server's environment. Without one, those tools stay hidden and
-        everything else works.
+        <code>search_issues</code> translate natural-language queries when an
+        LLM key such as <code>OPENAI_API_KEY</code> or{" "}
+        <code>ANTHROPIC_API_KEY</code> is in the server's environment. Without
+        one, they still work with Sentry search syntax.
       </p>
 
       <h4 className="text-base font-semibold text-slate-100">
