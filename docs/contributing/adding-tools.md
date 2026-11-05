@@ -109,8 +109,10 @@ export default defineTool({
 **REQUIRED**: Every tool sets `title`, a short Title Case display name such as
 `"Search Issues"`. The server exports it as the MCP tool `title`, which clients
 show instead of the snake_case `name`. Titles must be unique across tools; the
-[metadata linter](tool-responses.md#metadata-linter) enforces this. Deprecated aliases add a ` (Deprecated)`
-suffix, for example `"Search AI Conversations (Deprecated)"`.
+[metadata linter](tool-responses.md#metadata-linter) enforces this for listed
+tools, and `tools.test.ts` for tools that never appear in tools/list. Deprecated
+aliases add a ` (Deprecated)` suffix, for example
+`"Search AI Conversations (Deprecated)"`.
 
 ### Safety Annotations
 

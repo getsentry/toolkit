@@ -60,7 +60,25 @@ test(`all tool descriptions under maximum length`, () => {
   }
 });
 
-// server.metadata.test.ts checks titles and that every hint is set.
+// server.metadata.test.ts checks the titles of listed tools. These tools never
+// appear in its tools/list: deprecated aliases, and the feedback tool, which
+// is hidden without a telemetry DSN.
+test("unlisted tools declare a unique display title", () => {
+  const all = Object.values(tools.default);
+  const unlisted = all.filter(
+    (tool) => tool.deprecated || tool.name === "submit_feedback_to_sentry_team",
+  );
+  assert(unlisted.length > 0, "expected deprecated or hidden tools");
+  for (const tool of unlisted) {
+    assert(tool.title.trim(), `${tool.name} must define a non-empty title`);
+    const owner = all.find(
+      (other) => other !== tool && other.title === tool.title,
+    );
+    assert(!owner, `${tool.name} reuses the title of ${owner?.name}`);
+  }
+});
+
+// server.metadata.test.ts checks that every hint is set.
 test("no tool is both read-only and destructive", () => {
   for (const tool of Object.values(tools.default)) {
     assert(
