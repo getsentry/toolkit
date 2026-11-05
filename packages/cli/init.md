@@ -58,30 +58,46 @@ self-hosted Sentry, ask the user for its URL and pass `--url <url>`.
 ## 3. Map the project
 
 Read the manifests and framework configuration; don't guess from file names.
-Work out three things.
+Work out four things.
 
 **Which apps to set up.** In a monorepo, deployable apps usually live in
 `apps/*`, and `packages/*` are usually libraries. Ask the user which apps
 should get Sentry, and change only their files. Tests, examples, docs, and CI
 jobs are not apps.
 
-**Which SDKs each app needs.** It is often more than one. Each part of the
-app that runs in its own environment gets the SDK for that environment:
+**Which SDKs they need.** Often more than one, for different reasons:
 
-- A full-stack framework usually has one SDK that covers its browser and
-  server code, such as `@sentry/nextjs`.
-- A framework deployed to a specific runtime can need the runtime's SDK too.
-  TanStack Start on Cloudflare uses `@sentry/cloudflare` for the Worker and
-  `@sentry/tanstackstart-react` for the app. Its setup page lives under the
-  runtime's docs (Cloudflare → Frameworks → TanStack Start), not only under
-  the framework's.
-- Separately deployed workers, edge functions, or background services each
-  get their own SDK, set up from their own docs page.
-- Some features need extra packages, such as `@sentry/profiling-node` or
-  `sentry-sdk[django]`.
+- A frontend and a backend: a React frontend with a Django backend.
+- A framework on a specific runtime: TanStack Start on Cloudflare.
+- Separately deployed workers, edge functions, or background services. Each
+  needs its own setup, even with the same SDK: every Supabase Edge Function
+  initializes the Deno SDK itself.
+- Mobile and desktop apps, and native code inside them.
 
-Search the docs for the exact combination, for example
-`sentry docs list "tanstack start cloudflare"`.
+Other times one SDK covers several parts, as `@sentry/nextjs` does for a
+Next.js app's browser, server, and edge code. The docs decide which, not
+your memory. Search for each part's exact framework and runtime, and read the
+setup pages before you choose:
+
+```bash
+sentry docs list "tanstack start cloudflare"
+sentry docs "How do I set up Sentry in TanStack Start on Cloudflare?"
+```
+
+Use the SDKs those pages name, and no others: a page can say one SDK is
+enough, or that the setup depends on the runtime version. If the search
+finds no page for a framework or runtime, look it up in
+https://docs.sentry.io/platforms.md, the index of every SDK and its guides.
+
+**Which integrations apply.** Libraries the app uses can have a Sentry
+integration: AI SDKs (Vercel AI SDK, OpenAI, Anthropic, LangChain), Zod,
+Prisma, queues, and more. They aren't separate SDKs, but some must be added
+to the init call or need an extra package. Check each SDK's integrations
+against the app's dependencies:
+
+```bash
+sentry docs list "nextjs integrations"
+```
 
 **Whether Sentry is already there.** Look for Sentry packages in the
 dependency manifests (`package.json`, `requirements.txt`, `pyproject.toml`,
@@ -101,14 +117,16 @@ dependency manifests (`package.json`, `requirements.txt`, `pyproject.toml`,
 
 ## 4. Pick the Sentry project
 
-Ask the user whether to use an existing Sentry project or create a new one.
+Ask the user whether to use existing Sentry projects or create new ones. A
+frontend and a backend usually get separate projects.
 
-Create a new project. Get the platform identifier first, then create the
-project. The JSON output includes its DSN:
+Create new projects. Get each platform identifier first; the JSON output
+includes each project's DSN:
 
 ```bash
 sentry platform list --search nextjs
 sentry project create my-app:javascript-nextjs --json
+sentry project create web:javascript-react api:python-django --json
 ```
 
 If the CLI can't tell which organization to use, it says so. Ask the user,
@@ -117,7 +135,7 @@ then pass the organization as a prefix (`my-org/my-app:javascript-nextjs`);
 the user wants a different one, pass `--team <slug>` (`sentry team list my-org/`
 lists them).
 
-Or use an existing project and read its DSN:
+Or use existing projects and read their DSNs:
 
 ```bash
 sentry project list my-org/
@@ -154,19 +172,22 @@ add.
 
 ## 6. Install and configure the SDKs
 
-For each SDK from step 3, fetch its setup page and follow it:
+For each SDK and integration from step 3, read its docs page and follow it:
 
 ```bash
 sentry docs "How do I set up Sentry in <framework> on <runtime>?"
 sentry docs "How do I enable <feature> in <framework>?"
+sentry docs "How do I add the <library> integration in <framework>?"
 ```
 
 - Install every package the new code imports, with the project's package
-  manager and without a version. A docs page's install command can list
-  fewer packages than its code imports. In a workspace, install into the app,
+  manager and without a version, such as `@sentry/profiling-node` for
+  profiling. A docs page's install command can list fewer packages than its
+  code imports. In a workspace, install into the app,
   not the root, and keep the project's conventions (such as pnpm catalogs).
 - Configure only the features the user chose. Docs snippets include options
   for other features; leave those out.
+- Add an integration only when the docs say it isn't enabled by default.
 - Put the DSN in the SDK init code, the way the docs do; a DSN is not a
   secret. If the project already reads the DSN from an environment variable,
   keep that. Real secrets, such as the auth token for source map uploads, go
@@ -183,9 +204,9 @@ you didn't skip them:
 
 - Browser profiling needs the `Document-Policy: js-profiling` response
   header from the dev server and in production.
-- AI agent monitoring: AI integrations the docs mark as enabled by default
-  don't need adding. In the handlers that make AI calls, set the conversation
-  ID and the user with the SDK's API, using IDs the handler already has.
+- AI agent monitoring: in the handlers that make AI calls, set the
+  conversation ID and the user with the SDK's API, using IDs the handler
+  already has.
 - iOS and React Native need changes to the Xcode project, and Android and
   React Native need changes to the Gradle build.
 
@@ -230,8 +251,8 @@ for each SDK.
 
 Tell the user, from what you actually checked:
 
-- The SDKs and versions you installed or upgraded, and for which part of the
-  app
+- The SDKs and integrations you added or upgraded, with versions, and for
+  which part of the app
 - The Sentry organization and project, and where the DSN lives
 - The features you turned on, and any you suggested that they declined
 - What the verification showed, with the issue's short ID or link
