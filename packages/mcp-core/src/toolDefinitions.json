@@ -10752,6 +10752,151 @@
         }
       }
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "issueUrl": {
+          "type": "string"
+        },
+        "updated": {
+          "type": "boolean",
+          "description": "Whether issue state changed. A posted reason comment is reported in reasonComment, not here."
+        },
+        "changes": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["from", "to"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "ignoreBehavior": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": ["string", "null"]
+                    },
+                    "to": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["from", "to"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "assignedTo": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["from", "to"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["status", "ignoreBehavior", "assignedTo"],
+          "additionalProperties": false
+        },
+        "current": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string"
+            },
+            "ignoreBehavior": {
+              "type": ["string", "null"]
+            },
+            "assignedTo": {
+              "type": "string"
+            }
+          },
+          "required": ["status", "ignoreBehavior", "assignedTo"],
+          "additionalProperties": false
+        },
+        "effect": {
+          "description": "What the new status means for the issue, when it changed.",
+          "type": ["string", "null"]
+        },
+        "reasonComment": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": ["posted", "already_present", "not_posted"]
+                },
+                "text": {
+                  "type": "string"
+                },
+                "error": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["status", "text", "error"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null when no reason was given."
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "issueId",
+        "title",
+        "issueUrl",
+        "updated",
+        "changes",
+        "current",
+        "effect",
+        "reasonComment"
+      ],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:write"],
     "skills": ["triage"],
     "surface": "direct"
