@@ -20,11 +20,11 @@ import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { startStdio } from "@sentry/mcp-core/transports/stdio";
 import type { CredentialRouter, ServerContext } from "@sentry/mcp-core/types";
 import {
-  captureException,
+  close,
   consoleLoggingIntegration,
   flush,
   init,
-  makeNodeTransport,
+  setCurrentClient,
   vercelAIIntegration,
   zodErrorsIntegration,
 } from "@sentry/node";
@@ -33,7 +33,9 @@ import { CLI_VERSION, SENTRY_CLI_DSN } from "../constants.js";
 import { logger } from "../logger.js";
 import { isTelemetryEnabled } from "../telemetry.js";
 import { redactTelemetryEnvelope } from "../telemetry/credential-redaction.js";
+import { makeNodeTransportWithDeadline } from "../telemetry/zstd-transport.js";
 import type { McpServerConfig } from "./config.js";
+import { reportCliError } from "../error-reporting.js";
 
 /** Credential wiring supplied by the CLI host. */
 export type McpServeOptions = {
@@ -234,12 +236,6 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     return;
   }
 
-  // An empty `--sentry-dsn=` turns telemetry off. Skip `init` so neither the
-  // CLI's DSN nor a shell SENTRY_DSN starts the SDK.
-  if (config.sentryDsn === "") {
-    return;
-  }
-
   const { name, packageName } = getAppIdentity();
   const scopeContext = {
     "app.server.version": CLI_VERSION,
@@ -250,12 +246,12 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     "app.url.full": config.mcpUrl,
   };
 
-  // Without `--sentry-dsn`/`SENTRY_DSN`, report to the CLI's own project,
-  // honoring the CLI's telemetry opt-outs.
-  const useCliDsn = config.sentryDsn === undefined;
-  init({
-    dsn: config.sentryDsn ?? SENTRY_CLI_DSN,
-    enabled: !useCliDsn || isTelemetryEnabled(),
+  // Always the CLI's own project, never a DSN from the environment: an MCP
+  // server started from a project shell or IDE inherits the app's SENTRY_DSN.
+  // Only the CLI's telemetry opt-outs turn it off.
+  const client = init({
+    dsn: SENTRY_CLI_DSN,
+    enabled: isTelemetryEnabled(),
     tracesSampleRate: 1,
     beforeSend: sentryBeforeSend,
     initialScope: {
@@ -271,9 +267,11 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     },
     // Always the running release; an env override would misreport it.
     release: CLI_VERSION,
-    // Same credential redaction as the CLI's own telemetry.
+    // Same credential redaction and request deadline as the CLI's own
+    // telemetry: a stalled ingest socket must not keep the process alive
+    // after the client disconnects (#1956).
     transport: (transportOptions) => {
-      const transport = makeNodeTransport(transportOptions);
+      const transport = makeNodeTransportWithDeadline(transportOptions);
       return {
         send: (envelope) => transport.send(redactTelemetryEnvelope(envelope)),
         flush: (timeout) => transport.flush(timeout),
@@ -287,6 +285,13 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     // The retired package fixed this at build time; keep the same value.
     environment: "stdio",
   });
+  // `buildCommand` runs this inside its pre-init `exec` span, and v11 loses
+  // the scope that span forked when init switches the context strategy, so
+  // every span, log, and flush would find no client. Same fix as
+  // `initSentry()` in telemetry.ts.
+  if (client) {
+    setCurrentClient(client);
+  }
 }
 
 /**
@@ -301,6 +306,7 @@ export function installProcessHandlers(): (
   let exiting = false;
   function exitAfterError(error: unknown, label: string): void {
     if (exiting) {
+      // oxlint-disable-next-line sentry-cli/no-process-exit -- a second fatal error while the first one is exiting.
       process.exit(1);
     }
     exiting = true;
@@ -318,13 +324,15 @@ export function installProcessHandlers(): (
     }
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- reporting must not block exit.
     try {
-      captureException(error);
+      reportCliError(error);
     } catch {
       // reporting must not block exit
     }
 
     // Don't depend on flush finishing — exit even if it hangs or rejects.
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- fatal error: exit even when the flush hangs.
     setTimeout(() => process.exit(1), SENTRY_FLUSH_TIMEOUT_MS).unref();
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- fatal error: exit once the flush settles.
     void flush(SENTRY_FLUSH_TIMEOUT_MS).finally(() => process.exit(1));
   }
 
@@ -337,6 +345,7 @@ export function installProcessHandlers(): (
     exiting = true;
     console.error(`${signal} received, shutting down...`);
     await flush(SENTRY_FLUSH_TIMEOUT_MS);
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- signal shutdown, after the flush.
     process.exit(0);
   }
 
@@ -399,6 +408,9 @@ export async function serveMcpStdio(
     },
   );
   await connection.closed;
-  // Send what the session recorded before the caller releases the network.
-  await flush(SENTRY_FLUSH_TIMEOUT_MS);
+  // Send what the session recorded before the caller releases the network,
+  // then disable the client: the SDK otherwise flushes metrics and client
+  // reports again on every `beforeExit`, and a failed send queues a new
+  // client report, so the process never drains (#1956).
+  await close(SENTRY_FLUSH_TIMEOUT_MS);
 }

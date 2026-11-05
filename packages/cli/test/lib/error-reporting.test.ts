@@ -696,7 +696,7 @@ describe("reportCliError integration", () => {
     expect(error).toBeInstanceOf(MalformedAuthTokenError);
 
     const { tags, contexts } = capturedScopeTags(error);
-    expect(captureSpy).toHaveBeenCalledExactlyOnceWith(error);
+    expect(captureSpy).toHaveBeenCalledExactlyOnceWith(error, undefined);
     expect(metricSpy).not.toHaveBeenCalled();
     expect(tags).toMatchObject({
       "cli_error.class": "MalformedAuthTokenError",
@@ -712,6 +712,31 @@ describe("reportCliError integration", () => {
     });
     expect(diagnostics).not.toContain(firstPart);
     expect(diagnostics).not.toContain(secondPart);
+  });
+
+  test("passes the caller's tags and extras to the captured event", () => {
+    const error = new Error("disk failed");
+    const context = {
+      level: "warning" as const,
+      tags: { "setup.step": "agent-skills" },
+      extra: { path: "/tmp/skill" },
+    };
+    reportCliError(error, context);
+    expect(captureSpy).toHaveBeenCalledExactlyOnceWith(error, context);
+  });
+
+  test("silences a 4xx ApiError even when the caller passes context", () => {
+    reportCliError(new ApiError("forbidden", 403), {
+      tags: { "setup.step": "agent-skills" },
+    });
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({ reason: "api_user_error" }),
+      }),
+    );
   });
 
   test("captures ApiError(400) with normalized endpoint tag", () => {

@@ -622,6 +622,26 @@ describe("isSearchQueryParseError", () => {
     );
   });
 
+  test("true for a 400 with the invalid_search_query code", () => {
+    const error = new ApiError(
+      "bad",
+      400,
+      "Invalid quote at '*\"POST': quotes must enclose text or be escaped.",
+      "/organizations/my-org/events/",
+      { code: "invalid_search_query" },
+    );
+    expect(isSearchQueryParseError(error)).toBe(true);
+  });
+
+  test("false for a parser-looking Events 400 without the code", () => {
+    const error = new ApiError(
+      "bad",
+      400,
+      "Invalid quote at '*\"POST': quotes must enclose text or be escaped.",
+    );
+    expect(isSearchQueryParseError(error)).toBe(false);
+  });
+
   test("false for a 400 without a query parse detail", () => {
     expect(
       isSearchQueryParseError(new ApiError("bad", 400, "Other failure")),

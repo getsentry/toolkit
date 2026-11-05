@@ -63,7 +63,7 @@ export type SixelDashboardWidget = {
   /** Widget title displayed in the top frame line. */
   title: string;
   /** Sentry display type, used to distinguish categorical bars. */
-  displayType: string;
+  displayType: string | null;
   /** Grid position when supplied by the dashboard API. */
   layout?: SixelWidgetLayout;
   /** Fully resolved query result. */

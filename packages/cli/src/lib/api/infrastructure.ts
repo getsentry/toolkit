@@ -14,16 +14,16 @@ import {
   type SdkResult,
   SentryApiError,
 } from "@sentry/api";
-import { readErrorResponse } from "@sentry/toolkit-core/api-client/response";
-import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import {
   API_MAX_PER_PAGE,
+  buildSentryApiUrl,
   decodePageCursor as decodeCursorPosition,
   fetchAllPages as fetchEveryPage,
   type FetchAllPagesFailure,
-  type PagePosition,
+  type CursorPosition,
   paginate as paginateFrom,
-} from "@sentry/toolkit-core/api-client/pagination";
+  readErrorResponse,
+} from "@sentry/api/client";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
@@ -40,6 +40,7 @@ import { getEnv } from "../env.js";
 import {
   ApiError,
   CliError,
+  type FunctionArgument,
   stringifyUnknown,
   TimeoutError,
 } from "../errors.js";
@@ -230,6 +231,36 @@ export type ApiRequestOptions<T = unknown> = {
   idempotent?: boolean;
 };
 
+/**
+ * Structured fields of a JSON error body: its string `code` (e.g.
+ * `invalid_search_query`) and the rejected `function` and `argument`, with an
+ * optional `hint` (sent with `invalid_function_argument`).
+ */
+function readErrorFields(body: unknown): {
+  code?: string;
+  functionArgument?: FunctionArgument;
+} {
+  if (body === null || typeof body !== "object") {
+    return {};
+  }
+  const fields = body as Record<string, unknown>;
+  const code = typeof fields.code === "string" ? fields.code : undefined;
+  if (
+    typeof fields.function !== "string" ||
+    typeof fields.argument !== "string"
+  ) {
+    return { code };
+  }
+  const functionArgument: FunctionArgument = {
+    function: fields.function,
+    argument: fields.argument,
+  };
+  if (typeof fields.hint === "string") {
+    functionArgument.hint = fields.hint;
+  }
+  return { code, functionArgument };
+}
+
 const CONNECT_TIMEOUT_HINT =
   "The connection timed out. Check network access and firewall rules on this machine.";
 
@@ -363,7 +394,7 @@ export function throwApiError(
     status,
     enrichDetail(status, detail, hasUsableDetail),
     undefined,
-    is403,
+    { enriched403: is403, ...readErrorFields(error) },
   );
 }
 
@@ -516,13 +547,10 @@ export const MAX_PAGINATION_PAGES = Math.max(
  */
 export { API_MAX_PER_PAGE };
 
-export {
-  consumePage,
-  type PagePosition,
-} from "@sentry/toolkit-core/api-client/pagination";
+export { consumeCursorPage, type CursorPosition } from "@sentry/api/client";
 
 /** Decode a shared cursor, reporting unreadable legacy bookmarks through the CLI logger. */
-export function decodePageCursor(raw: string | undefined): PagePosition {
+export function decodePageCursor(raw: string | undefined): CursorPosition {
   return decodeCursorPosition(raw, (message) => logger.warn(message));
 }
 
@@ -608,7 +636,7 @@ export async function autoPaginate<T>(
  * This is the only supported way to build a limit-bounded list; the
  * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops
  * (#1458, #1608). Page sizing and resume-safe cursors live in
- * `@sentry/toolkit-core/api-client/pagination`, shared with the MCP; this wrapper sets
+ * `@sentry/api/client`, shared with the MCP; this wrapper sets
  * the CLI's page cap and default limit and logs the CLI's warnings.
  *
  * Callers own region resolution and query building inside `fetchPage`, and
@@ -853,7 +881,7 @@ async function throwRawApiError(
     response.status,
     enrichDetail(response.status, detail, detail !== undefined),
     endpoint,
-    is403,
+    { enriched403: is403, ...readErrorFields(body.json) },
   );
 }
 

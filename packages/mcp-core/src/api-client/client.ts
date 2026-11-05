@@ -15,99 +15,78 @@ import {
   listProjectEventAttachments,
   parseSentryLinkHeader,
 } from "@sentry/api";
-import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
 import { operations } from "@sentry/api/operations";
 import {
-  createIdempotentOperationMatcher,
-  selectIdempotentWrites,
-} from "@sentry/toolkit-core/api-client/idempotent-operations";
-import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
-import {
+  ApiError,
+  ApiNotFoundError,
+  apiPath,
+  ApiRateLimitError,
   type ApiTarget,
+  ApiValidationError,
+  applyStatsMixinTimeParams,
+  applyTimeParams,
   createApiClientCore,
-} from "@sentry/toolkit-core/api-client/core";
+  createApiError,
+  createApiTransport,
+  createIdempotentOperationMatcher,
+  parseStatsPeriod,
+  readJsonResponse,
+  type RetryPolicy,
+  selectIdempotentWrites,
+  sentryBearerHeader,
+} from "@sentry/api/client";
 import {
-  getAuthenticatedUser,
-  getOrganization,
-  listOrganizations,
-  updateAgenticOnboardingStatus,
-} from "@sentry/toolkit-core/api-client/endpoints/organizations";
-import {
+  addProjectTeam,
   createClientKey,
-  listClientKeys,
-  type UpdateClientKeyParams,
-  updateClientKey,
-} from "@sentry/toolkit-core/api-client/endpoints/client-keys";
-import {
-  getDashboard,
-  listDashboards,
-} from "@sentry/toolkit-core/api-client/endpoints/dashboards";
-import {
+  createProject,
+  createTeam,
+  createUptimeMonitor,
   deleteMonitorEnvironment,
+  deleteUptimeMonitor,
+  getAuthenticatedUser,
+  getDashboard,
+  getEventCommitters,
+  getFlamegraph,
+  getLatestBaseSnapshot,
   getMonitor,
   getMonitorStats,
-  listMonitorCheckIns,
-  listMonitors,
-} from "@sentry/toolkit-core/api-client/endpoints/monitors";
-import {
-  createUptimeMonitor,
-  deleteUptimeMonitor,
-  getUptimeMonitor,
-  listUptimeMonitorChecks,
-  listUptimeMonitors,
-  updateUptimeMonitor,
-  type UptimeMonitorFields,
-} from "@sentry/toolkit-core/api-client/endpoints/uptime-monitors";
-import {
-  getFlamegraph,
+  getOrganization,
   getProfileChunks,
-  getTransactionProfile,
-} from "@sentry/toolkit-core/api-client/endpoints/profiling";
-import {
+  getProject,
+  getRelease,
   getReplay,
-  listIssueReplayIds,
-  searchReplays,
-  visitReplayRecordingSegments,
-} from "@sentry/toolkit-core/api-client/endpoints/replays";
-import {
-  getLatestBaseSnapshot,
   getSnapshot,
   getSnapshotImage,
-} from "@sentry/toolkit-core/api-client/endpoints/snapshots";
-import {
   getTrace,
   getTraceMeta,
-} from "@sentry/toolkit-core/api-client/endpoints/traces";
-import {
-  getEventCommitters,
-  getRelease,
+  getTransactionProfile,
+  getUptimeMonitor,
+  linkProjectRepository,
+  listClientKeys,
+  listDashboards,
+  listIssueReplayIds,
+  listMonitorCheckIns,
+  listMonitors,
+  listOrganizations,
+  listProjects,
+  listProjectTeams,
   listReleaseCommits,
   listReleaseDeploys,
   listReleases,
-} from "@sentry/toolkit-core/api-client/endpoints/releases";
-import {
-  linkProjectRepository,
   listRepositories,
-} from "@sentry/toolkit-core/api-client/endpoints/repositories";
-import {
-  addProjectTeam,
-  createProject,
-  getProject,
-  listProjects,
-  listProjectTeams,
-  removeProjectTeam,
-  updateProject,
-} from "@sentry/toolkit-core/api-client/endpoints/projects";
-import {
-  createTeam,
   listTeams,
-} from "@sentry/toolkit-core/api-client/endpoints/teams";
-import {
-  applyStatsMixinTimeParams,
-  applyTimeParams,
-  parseStatsPeriod,
-} from "@sentry/toolkit-core/api-client/time-params";
-import { createApiTransport } from "@sentry/toolkit-core/api-client/transport";
+  listUptimeMonitorChecks,
+  listUptimeMonitors,
+  removeProjectTeam,
+  searchReplays,
+  updateAgenticOnboardingStatus,
+  updateClientKey,
+  type UpdateClientKeyParams,
+  updateProject,
+  updateUptimeMonitor,
+  type UptimeMonitorFields,
+  visitReplayRecordingSegments,
+} from "@sentry/api/client/endpoints";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
@@ -143,14 +122,6 @@ import {
   type TraceMetricIdentifier,
 } from "../utils/url-utils";
 import { USER_AGENT } from "../version";
-import { apiPath } from "@sentry/toolkit-core/api-client/api-path";
-import {
-  ApiError,
-  ApiNotFoundError,
-  ApiRateLimitError,
-  ApiValidationError,
-  createApiError,
-} from "@sentry/toolkit-core/api-client/errors";
 import {
   AgenticOnboardingRunSchema,
   AIConversationDetailsResponseSchema,
@@ -184,6 +155,7 @@ import {
   IssueIntegrationListSchema,
   IssueListSchema,
   IssueSchema,
+  IssueTagKeyListSchema,
   IssueTagValuesSchema,
   MetricAlertRuleListSchema,
   MetricAlertRuleSchema,
@@ -260,6 +232,7 @@ import type {
   IssueCommentList,
   IssueIntegrationList,
   IssueList,
+  IssueTagKeyList,
   IssueTagValues,
   MetricAlertRule,
   MetricAlertRuleList,
@@ -297,7 +270,6 @@ import type {
   User,
   UserReportList,
 } from "./types";
-import { readJsonResponse } from "@sentry/toolkit-core/api-client/response";
 
 // TODO: this is shared - so ideally, for safety, it uses @sentry/core, but currently
 // logger isnt exposed (or rather, it is, but its not the right logger)
@@ -365,7 +337,7 @@ type RequestOptions = {
 
 /**
  * Caps for automatic retries. Which statuses and methods are retried is the
- * shared rule in `@sentry/toolkit-core/api-client/retry`.
+ * shared rule in `@sentry/api/client`.
  *
  * Sentry's per-endpoint limits are mostly per second ("Limit is 40 requests
  * in 1 seconds"), so a 429's reset is usually under a second away and two
@@ -743,7 +715,7 @@ export class SentryApiService {
 
   /**
    * Makes an authenticated request through the shared client core
-   * (`@sentry/toolkit-core/api-client/core`), which maps network failures
+   * (`@sentry/api/client`), which maps network failures
    * and error responses to `ApiError` subclasses.
    *
    * Retries happen in the transport, never here, so they do not stack: a
@@ -3371,6 +3343,38 @@ export class SentryApiService {
       throwOnError: true,
     });
     return IssueTagValuesSchema.parse(data);
+  }
+
+  /**
+   * Lists the tag keys recorded on an issue's events, with the number of
+   * events that carry each key.
+   *
+   * `@sentry/api` has no operation for this private endpoint. `limit` caps the
+   * top values Sentry returns per key; one is enough here because callers
+   * only need the keys.
+   *
+   * @param params.organizationSlug Organization identifier
+   * @param params.issueId Issue identifier (short ID or numeric ID)
+   * @param opts Request options
+   * @returns The issue's tag keys. Throws ApiNotFoundError when the issue does not exist.
+   */
+  async listIssueTags(
+    {
+      organizationSlug,
+      issueId,
+    }: {
+      organizationSlug: string;
+      issueId: string;
+    },
+    opts?: RequestOptions,
+  ): Promise<IssueTagKeyList> {
+    const body = await this.requestJSON(
+      apiPath`/organizations/${organizationSlug}/issues/${issueId}/tags/` +
+        "?limit=1",
+      undefined,
+      opts,
+    );
+    return IssueTagKeyListSchema.parse(body);
   }
 
   /**

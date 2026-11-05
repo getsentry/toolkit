@@ -53,6 +53,10 @@ export {
   restoreDashboardRevision,
   updateDashboard,
 } from "./api/dashboards.js";
+export {
+  type DroppedEventsOptions,
+  getDroppedEvents,
+} from "./api/dropped-events.js";
 export { isNotFoundApiError } from "./api/error-guards.js";
 export {
   findEventAcrossOrgs,
@@ -89,11 +93,11 @@ export {
   appendSearchParams,
   autoPaginate,
   buildSearchParams,
-  consumePage,
+  consumeCursorPage,
   decodePageCursor,
   isTextualContentType,
   ORG_FANOUT_CONCURRENCY,
-  type PagePosition,
+  type CursorPosition,
   type PaginatedResponse,
   parseLinkHeader,
   type PreparedRawApiRequest,
@@ -183,6 +187,7 @@ export {
   updateRelease,
 } from "./api/releases.js";
 export {
+  findTraceReplay,
   getReplay,
   getReplayRecordingSegments,
   isReplaySortValue,
@@ -200,6 +205,11 @@ export {
   listIntegrations,
   listIntegrationsPaginated,
 } from "./api/integrations.js";
+export {
+  createOrgAuthToken,
+  deleteOrgAuthToken,
+  listOrgAuthTokens,
+} from "./api/org-auth-tokens.js";
 export {
   listAllRepositories,
   listRepositories,

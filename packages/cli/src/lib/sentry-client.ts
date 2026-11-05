@@ -10,15 +10,16 @@
 
 import type { SentryClient } from "@sentry/api";
 import { getTraceData } from "@sentry/node";
-import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
 import {
+  computeInvalidationPrefixes,
   createApiTransport,
+  type CredentialRequest,
   extractUrlPath,
   getValidatedResponseSource,
   type ResponseBodyMode,
+  type RetryPolicy,
   type TransportCache,
-} from "@sentry/toolkit-core/api-client/transport";
-import { computeInvalidationPrefixes } from "@sentry/toolkit-core/api-client/response-cache";
+} from "@sentry/api/client";
 import { formatAuthHeader } from "./auth-header.js";
 import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
@@ -40,6 +41,7 @@ import {
   getRemainingLifetimeRatio,
   REFRESH_THRESHOLD,
   refreshToken,
+  selectAccountForOrg,
 } from "./db/auth.js";
 import {
   ApiError,
@@ -86,7 +88,7 @@ const ENDPOINT_TIMEOUT_OVERRIDES: TimeoutOverride[] = [
 
 /**
  * Caps for automatic retries. Which statuses and methods retry is the shared
- * rule in `@sentry/toolkit-core/api-client/retry`.
+ * rule in `@sentry/api/client`.
  *
  * `maxDelayMs` caps the jittered backoff and the server-requested wait
  * (`Retry-After`, rate-limit reset); a longer server-requested wait is not
@@ -317,15 +319,39 @@ async function withHttpSpan(
   );
 }
 
+/** Sentry org slugs are never entirely numeric, so digits are an org id. */
+const NUMERIC_ORG_ID = /^\d+$/;
+
+/**
+ * Use the stored account that knows the organization the request's path
+ * targets (`selectAccountForOrg`), so requests no command resolved an org
+ * for, such as `sentry api organizations/<org>/...`, still reach it. Only
+ * accounts on the request's server qualify: its URL is already built.
+ */
+function selectAccountForRequest({ url, scope }: CredentialRequest): void {
+  if (!scope) {
+    return;
+  }
+  const { organization } = scope;
+  selectAccountForOrg(
+    organization,
+    NUMERIC_ORG_ID.test(organization) ? organization : undefined,
+    { server: url },
+  );
+}
+
 /**
  * The CLI's transport options: stored credentials, host-scope checks, the
  * response cache, and the CLI's error classes. Retries, timeouts, the 401
- * refresh, and redirect validation are in `@sentry/toolkit-core/api-client/transport`.
+ * refresh, and redirect validation are in `@sentry/api/client`.
  */
 function createCliTransport(credential: CredentialContext | undefined) {
   return createApiTransport<CredentialContext>({
     credentials: {
-      current: async () => {
+      current: async (request) => {
+        if (!credential) {
+          selectAccountForRequest(request);
+        }
         const current = credential ?? getCredentialContext();
         if (!current) {
           await refreshToken();
@@ -378,7 +404,7 @@ function createCliTransport(credential: CredentialContext | undefined) {
 /**
  * Create a fetch function with authentication, timeout, retry, caching, and 401 refresh.
  *
- * This wraps the native fetch with `@sentry/toolkit-core/api-client/transport`:
+ * This wraps the native fetch with `@sentry/api/client`:
  * - **Response caching** for GET requests (checked before hitting the network)
  * - Auth token injection (Bearer token)
  * - Request timeout via AbortController
@@ -532,12 +558,15 @@ export function getSdkConfig(
 
 /**
  * Get SDK config for the default API (control silo or self-hosted).
+ *
+ * The credential is not pinned, so the transport can still pick the stored
+ * account that knows the organization a request's path names; it only picks
+ * among accounts on the server this base URL belongs to.
  */
 export function getDefaultSdkConfig(
   options: Pick<AuthenticatedFetchOptions, "bufferResponseBody"> = {},
 ) {
-  const credential = getCredentialContext();
-  return getSdkConfig(getApiBaseUrl(credential), { ...options, credential });
+  return getSdkConfig(getApiBaseUrl(), options);
 }
 
 /**

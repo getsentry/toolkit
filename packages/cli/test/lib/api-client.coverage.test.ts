@@ -1474,6 +1474,68 @@ describe("infrastructure.ts", () => {
       }
     });
 
+    test("keeps the error body's code next to its detail", async () => {
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              detail: "Invalid quote at '*\"POST'",
+              code: "invalid_search_query",
+            }),
+            {
+              status: 400,
+              statusText: "Bad Request",
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+      );
+
+      const error = await apiRequestToRegion(
+        "https://sentry.io",
+        "/test/",
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        detail: "Invalid quote at '*\"POST'",
+        code: "invalid_search_query",
+      });
+    });
+
+    test("keeps the function and argument a 400 body rejected", async () => {
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              detail: "cart.total is invalid for parameter 1 in p75.",
+              code: "invalid_function_argument",
+              function: "p75",
+              argument: "cart.total",
+              hint: "Use cart.amount instead of cart.total.",
+            }),
+            {
+              status: 400,
+              statusText: "Bad Request",
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+      );
+
+      const error = await apiRequestToRegion(
+        "https://sentry.io",
+        "/test/",
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toMatchObject({
+        code: "invalid_function_argument",
+        functionArgument: {
+          function: "p75",
+          argument: "cart.total",
+          hint: "Use cart.amount instead of cart.total.",
+        },
+      });
+    });
+
     test("JSON-stringifies error body without detail field", async () => {
       globalThis.fetch = mockFetch(
         async () =>

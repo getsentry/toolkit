@@ -153,7 +153,7 @@ export const DashboardPermissionsSchema = z
 
 export const DashboardWidgetPreviewSchema = z
   .object({
-    displayType: z.string(),
+    displayType: z.string().nullable(),
     layout: z.record(z.string(), z.unknown()).nullable().optional(),
   })
   .passthrough();
@@ -189,7 +189,7 @@ export const DashboardWidgetSchema = z
     id: z.union([z.string(), z.number()]),
     title: z.string(),
     description: z.string().nullable().optional(),
-    displayType: z.string(),
+    displayType: z.string().nullable(),
     interval: z.string().nullable().optional(),
     dateCreated: z.string(),
     dashboardId: z.union([z.string(), z.number()]),
@@ -212,7 +212,7 @@ export const DashboardListItemSchema = z
     environment: z.array(z.string()).default([]),
     filters: DashboardFiltersSchema.default({}),
     lastVisited: z.string().nullable().optional(),
-    widgetDisplay: z.array(z.string()).default([]),
+    widgetDisplay: z.array(z.string().nullable()).default([]),
     widgetPreview: z.array(DashboardWidgetPreviewSchema).default([]),
     permissions: DashboardPermissionsSchema.nullable().optional(),
     isFavorited: z.boolean().optional(),
@@ -1503,6 +1503,23 @@ export const IssueTagValuesSchema = z
     totalValues: tagValues.totalValues ?? tagValues.uniqueValues ?? 0,
     topValues: tagValues.topValues ?? [],
   }));
+
+/**
+ * Schema for the tag keys recorded on an issue, each with its event count.
+ *
+ * Only the keys are parsed; the top values Sentry returns with each key are
+ * dropped so one unusual value cannot fail the whole list.
+ *
+ * Upstream source of truth in getsentry/sentry:
+ * - `src/sentry/issues/endpoints/group_tags.py` (`GroupTagsEndpoint`)
+ * - `src/sentry/tagstore/types.py` (`TagKeySerializerResponse`)
+ */
+export const IssueTagKeyListSchema = z.array(
+  z.object({
+    key: z.string(),
+    totalValues: z.number().nullish(),
+  }),
+);
 
 /**
  * Schema for external issue link (e.g., Jira, GitHub Issues).

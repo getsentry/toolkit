@@ -47,7 +47,7 @@ The `sentry` CLI follows conventions from well-known tools — if you're familia
 
 ### Safety Rules
 
-- Always confirm with the user before running destructive commands: `alert issues delete`, `alert metrics delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `project delete`, `release delete`, `trial start`
+- Always confirm with the user before running destructive commands: `alert issues delete`, `alert metrics delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `project delete`, `release delete`, `token delete`, `trial start`
 - For mutations, verify the org/project context looks correct in the command output before proceeding with further changes
 - Never store or log authentication tokens — the CLI manages credentials automatically
 - If the CLI reports the wrong org/project, override with explicit `<org>/<project>` arguments
@@ -376,6 +376,10 @@ curl https://cli.sentry.dev/install -fsS | bash -s -- --no-completions
 curl https://cli.sentry.dev/install -fsS | bash -s -- --no-agent-skills
 curl https://cli.sentry.dev/install -fsS | SENTRY_INSTALL_DIR="$HOME/.local/bin" bash
 curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
+curl -fsSL https://cli.sentry.dev/install -o install
+curl -fsSL https://release-registry.services.sentry.io/apps/sentry/latest -o release.json
+expected=$(jq -er '.files.install.checksums["sha256-hex"]' release.json)
+echo "$expected  install" | sha256sum -c - && bash install
 
 # Or install via npm/pnpm/bun
 npm install -g sentry
@@ -398,6 +402,7 @@ Authenticate with Sentry
 
 - `sentry auth list` — List stored accounts
 - `sentry auth login [<email>]` — Authenticate with Sentry
+- `sentry auth bootstrap` — Authenticate using a one-time setup code
 - `sentry auth logout <account...>` — Log out of Sentry
 - `sentry auth refresh` — Refresh your OAuth access token
 - `sentry auth status` — View authentication status
@@ -453,6 +458,7 @@ View, list, and send Sentry events
 - `sentry event view <org/project/event-id...>` — View details of one or more events
 - `sentry event list <issue>` — List events for an issue
 - `sentry event send <target-or-file...>` — Send a Sentry event
+- `sentry event analytics [<org/project>]` — Analytics for events Sentry accepted and dropped
 
 → Full flags and examples: `references/event.md`
 
@@ -652,6 +658,16 @@ Work with Sentry teams
 - `sentry team list [<org/project>]` — List teams
 
 → Full flags and examples: `references/team.md`
+
+### Token
+
+Manage org auth tokens
+
+- `sentry token list [<org>]` — List org auth tokens
+- `sentry token create <org/name>` — Create an org auth token
+- `sentry token delete [<org>/]<token-id-or-name>` — Revoke an org auth token
+
+→ Full flags and examples: `references/token.md`
 
 ### Integration
 

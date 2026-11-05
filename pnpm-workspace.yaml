@@ -51,7 +51,7 @@ catalog:
   "@modelcontextprotocol/server": 2.4.0
   "@radix-ui/react-accordion": ^1.2.20
   "@radix-ui/react-slot": ^1.2.3
-  "@sentry/api": 0.437.0
+  "@sentry/api": 1.26.0
   "@sentry/cloudflare": 11.6.0
   "@sentry/core": 11.6.0
   "@sentry/node": 11.6.0
@@ -101,7 +101,7 @@ catalog:
   valibot: ^1.4.2
   vite: ^6.4.5
   vitest: ^5.0.5
-  vitest-evals: ^0.4.0
+  vitest-evals: ^0.18.0
   workers-mcp: 0.1.0-3
   wrangler: 4.156.1
   zod: ^4.6.6
@@ -166,7 +166,10 @@ minimumReleaseAgeExclude:
   - "@oxlint/binding-win32-x64-msvc@1.87.0"
   - oxfmt@0.72.0
   - oxlint@1.87.0
-  - "@sentry/api@0.437.0"
+  - "@sentry/api@1.26.0"
   - miniflare@5.20261101.0-beta
   - wrangler@4.156.1
   - "@sentry/symbolic@14.0.0-alpha.5"
+  - "@vitest-evals/core@0.18.0"
+  - "@vitest-evals/report-ui@0.18.0"
+  - vitest-evals@0.18.0

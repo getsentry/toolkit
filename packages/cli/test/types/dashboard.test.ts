@@ -8,10 +8,12 @@
 import { safeParse } from "valibot";
 import { describe, expect, test } from "vitest";
 import { ValidationError } from "../../src/lib/errors.js";
+import { DashboardListItemSchema } from "../../src/output-schemas/dashboard.js";
 import {
   assignDefaultLayout,
   type DashboardWidget,
   DashboardWidgetInputSchema,
+  DashboardWidgetSchema,
   DEFAULT_WIDGET_TYPE,
   DISPLAY_TYPES,
   type DisplayType,
@@ -457,7 +459,38 @@ describe("parseSortExpression", () => {
 // prepareWidgetQueries
 // ---------------------------------------------------------------------------
 
+describe("dashboard response schemas", () => {
+  // @sentry/api documents these as nullable: Sentry serializes a stored
+  // display type it no longer knows as null.
+  test("accept a widget whose display type is null", () => {
+    const result = safeParse(DashboardWidgetSchema, {
+      title: "Legacy",
+      displayType: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("accept a list item whose widget display types include null", () => {
+    const result = safeParse(DashboardListItemSchema, {
+      id: "1",
+      title: "Legacy",
+      widgetDisplay: ["line", null],
+    });
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({ widgetDisplay: ["line", null] });
+  });
+});
+
 describe("prepareWidgetQueries", () => {
+  test("skips the row limit clamp when the display type is null", () => {
+    const widget = prepareWidgetQueries({
+      title: "Legacy",
+      displayType: null,
+      limit: 500,
+    });
+    expect(widget.limit).toBe(500);
+  });
+
   test("auto-computes fields from aggregates + columns", () => {
     const widget = prepareWidgetQueries({
       title: "Test",

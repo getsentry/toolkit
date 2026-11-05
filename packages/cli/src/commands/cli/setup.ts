@@ -10,7 +10,6 @@ import { existsSync, unlinkSync } from "node:fs";
 import { chmod, copyFile, mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isatty } from "node:tty";
-import { captureException } from "@sentry/node";
 import type { SentryContext } from "../../context.js";
 import { installAgentSkills } from "../../lib/agent-skills.js";
 import { assertAutoLoginHostTrusted } from "../../lib/auto-auth.js";
@@ -34,7 +33,7 @@ import {
   warmCachesAfterLogin,
 } from "../../lib/completion-warmup.js";
 import { CLI_VERSION } from "../../lib/constants.js";
-import { getAuthConfig } from "../../lib/db/auth.js";
+import { getAuthConfig, hasStoredAuthCredentials } from "../../lib/db/auth.js";
 import {
   getOnOffPreference,
   setOnOffPreference,
@@ -50,10 +49,12 @@ import {
   detectAgent,
   detectAgentFromProcessTree,
 } from "../../lib/detect-agent.js";
+import { getEnv } from "../../lib/env.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { runInteractiveLogin } from "../../lib/interactive-login.js";
 import { interactivePromptsAllowed } from "../../lib/interactive-prompts.js";
 import { logger } from "../../lib/logger.js";
+import { bootstrapAuthentication } from "../../lib/setup-code.js";
 import {
   addToFpath,
   addToGitHubPath,
@@ -66,6 +67,7 @@ import {
   type ShellInfo,
 } from "../../lib/shell.js";
 import { addToWindowsUserPath } from "../../lib/windows-path.js";
+import { reportCliError } from "../../lib/error-reporting.js";
 
 type SetupFlags = {
   readonly install: boolean;
@@ -506,7 +508,7 @@ async function bestEffort(
     await fn();
   } catch (error) {
     warn(stepName, error);
-    captureException(error, {
+    reportCliError(error, {
       level: "warning",
       tags: { "setup.step": stepName },
     });
@@ -788,6 +790,14 @@ export const setupCommand = buildCommand({
       warn,
     });
 
+    if (getEnv().SENTRY_SETUP_CODE && !hasStoredAuthCredentials()) {
+      await bootstrapAuthentication();
+      emit("Authenticated with Sentry using the setup code.");
+      if (!flags["no-completions"]) {
+        await warmCachesAfterLogin();
+      }
+    }
+
     if (flags["ensure-auth-scopes"]) {
       await bestEffort(
         "Authorization",
@@ -828,6 +838,7 @@ export const setupCommand = buildCommand({
       flags.method !== "curl" ||
       flags.quiet ||
       flags["ensure-auth-scopes"] ||
+      Boolean(getEnv().SENTRY_SETUP_CODE) ||
       !(interactivePromptsAllowed() && isatty(0) && isatty(1) && isatty(2))
     ) {
       return;

@@ -161,7 +161,7 @@ Top-level layout:
   `dashboard`, `debug-files`, `docs`, `dsn`, `event`, `feedback`, `integration`, `issue`, `local`,
   `log`, `monitor`, `org`, `platform`, `proguard`, `project`, `react-native`,
   `release`, `replay`, `repo`, `snapshots`, `sourcemap`, `span`, `status`,
-  `team`, `trace`, `trial`) plus standalone command files (`api.ts`,
+  `team`, `token`, `trace`, `trial`) plus standalone command files (`api.ts`,
   `explore.ts`, `help.ts`, `info.ts`, `init.ts`, `mcp.ts`, `schema.ts`,
   `wasm-split.ts`, plus the hidden `bash-hook.ts`, `send-event.ts`, and
   `send-envelope.ts`).
@@ -246,7 +246,7 @@ The schemas live in `src/output-schemas/<area>.ts` (one module per top-level com
 - A schema that also validates an API response at runtime (`SentryLogSchema`, `TransactionListItemSchema`, `ConversationListItemSchema`, `DashboardRevisionSchema`) stays where it is and is re-exported from its area's module.
 - `src/output-schemas/` must not import `src/generated/output-schemas/`: the generator loads the former to write the latter.
 
-- **API fields** keep their `@sentry/api` type and come from the generated `@sentry/api/valibot` schema (`vXxxResponse.entries`, wrapped in `pipe(field, description(…))` when it needs a description).
+- **API fields** keep their `@sentry/api` type and come from the generated `@sentry/api/valibot` schema (`vXxxResponse.entries`). They carry the OpenAPI description when the spec has one. Wrap a field in `pipe(field, description(…))` only when the spec has no description or its text doesn't suit CLI users; the wrapper wins.
 - **Fields the CLI adds** (target context such as `org`/`orgSlug`, flags such as `dryRun`/`deleted`, computed values such as `url`, `trace`, `period`) are written once as a valibot `object` of output fields. Spread its `entries` into the schema, and get the type with `InferOutput<typeof Fields>`, or `WithOutputFields<ApiType, typeof Fields>` (`src/output-schemas/output.ts`) when the fields sit on (or override) an API object.
 - Type the `human` formatter's parameter (and `jsonTransform`'s, when set) with the derived type. `buildCommand`, `buildListCommand`, and `buildDeleteCommand` infer the output type from `output` and check every `CommandOutput` that `func` yields against it. Annotate a yield (`new CommandOutput<Output>(…)`) only when it builds a discriminated-union literal (`kind: "endpoints"`) that would otherwise widen to `string`.
 - Without `jsonTransform`, the data (each item, for array data) must also satisfy `output.schema`: a field the schema documents but the command doesn't produce, or documents with another type, is a compile error. Keep the data typed: an API response typed `Record<string, unknown>` can't satisfy a schema built from `@sentry/api/valibot`, so type it with its `@sentry/api` response type.
@@ -985,6 +985,22 @@ can only shrink, the same ratchet the old JSON baseline provided, with no
 separate script or baseline file to maintain. Fix a grandfathered catch by
 adding logging/re-throwing and deleting its suppression line; only add a new
 suppression for a genuinely intentional silent catch, with a real reason.
+
+Report errors to Sentry with `reportCliError(error, { tags, extra, level })`
+from `src/lib/error-reporting.ts`, never `captureException` directly. A raw
+capture skips the 4xx/network silencing and the `api_error` context, so user
+errors pile into one issue with no detail (CLI-10). The
+`no-raw-capture-exception` CLI Oxlint rule enforces this.
+
+### Process Exit
+
+Do not end the CLI with `process.exit()`, including forced-exit timers. A
+forced exit drops pending telemetry and piped output. When a process stays
+alive after its command, release the handle that keeps the event loop alive
+(`close-dispatcher.ts` is the example), or fix the dependency that owns it.
+The `no-process-exit` CLI Oxlint rule enforces this. Only signal, fatal error,
+and broken stream handlers exit directly, each with a disable comment that
+says why.
 
 ### Auto-Recovery for Wrong Entity Types
 

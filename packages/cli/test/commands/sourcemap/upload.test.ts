@@ -15,6 +15,7 @@ import { uploadCommand } from "../../../src/commands/sourcemap/upload.js";
 import * as sourcemapsApi from "../../../src/lib/api/sourcemaps.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import { getDebugIdSnippet } from "../../../src/lib/sourcemap/debug-id.js";
+import { buildEmptyDiscoveryError } from "../../../src/lib/sourcemap/inject.js";
 
 type InjectFuncArgs = {
   ext?: string;
@@ -42,6 +43,26 @@ function makeContext() {
     cwd: "/tmp",
   };
 }
+
+describe("buildEmptyDiscoveryError — bundler hint", () => {
+  test.each([
+    ["/app/dist", /vite.*webpack/i],
+    ["/app/.next/static/chunks", /productionBrowserSourceMaps: false/],
+    ["/app/.next/static/immutable/chunks", /productionBrowserSourceMaps/],
+    ["C:\\app\\.next\\static\\chunks", /productionBrowserSourceMaps/],
+    ["/app/.next/server", /serverSourceMaps/],
+    ["/app/not.next/static", /vite.*webpack/i],
+  ])("%s", (dir, hint) => {
+    for (const diag of [
+      { jsFiles: 3, mapFiles: 0 },
+      { jsFiles: 3, mapFiles: 1 },
+    ]) {
+      const msg = buildEmptyDiscoveryError(dir, diag).message;
+      expect(msg).toMatch(hint);
+      expect(msg).toContain("--allow-empty");
+    }
+  });
+});
 
 describe("sourcemap inject command — --allow-empty behavior", () => {
   let dir: string;
@@ -126,7 +147,7 @@ describe("sourcemap inject command — --allow-empty behavior", () => {
       const msg = (err as Error).message;
       expect(msg).toContain("1 JS");
       expect(msg).toContain("1 .map");
-      expect(msg).toContain("matching basename");
+      expect(msg).toContain("sourceMappingURL");
     }
   });
 

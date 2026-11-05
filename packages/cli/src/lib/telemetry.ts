@@ -10,6 +10,7 @@
  */
 
 import { createRequire } from "node:module";
+import type { Metric } from "@sentry/core";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 
@@ -41,6 +42,10 @@ import {
 import { ApiError, isUserError } from "./errors.js";
 import { attachSentryReporter, logger } from "./logger.js";
 import { sentryReporter } from "@sentry/logger";
+import {
+  SNAKE_SCORE_HANDLE_ATTRIBUTE,
+  SNAKE_SCORE_METRIC,
+} from "@sentry/toolkit-core/games";
 import { getSentryBaseUrl, isSentrySaasUrl } from "./sentry-urls.js";
 import { redactTelemetryEnvelope } from "./telemetry/credential-redaction.js";
 import { makeCompressedTransport } from "./telemetry/zstd-transport.js";
@@ -73,7 +78,7 @@ async function initTelemetryContext(): Promise<void> {
   } catch (error) {
     // Context initialization is not critical - continue without it
     // But capture the error for debugging
-    Sentry.captureException(error);
+    reportCliError(error);
   }
 }
 
@@ -157,6 +162,32 @@ export function computeTelemetryEffective(): TelemetryEffective {
  */
 export function isTelemetryEnabled(): boolean {
   return computeTelemetryEffective().enabled;
+}
+
+/**
+ * Attributes a Snake score metric may carry. Everything else the SDK adds
+ * (user.*, replay ids, ...) is dropped so a score cannot be linked to a user.
+ */
+const SNAKE_SCORE_ATTRIBUTE_ALLOWLIST = new Set([
+  SNAKE_SCORE_HANDLE_ATTRIBUTE,
+  "sentry.release",
+  "sentry.environment",
+  "sentry.sdk.name",
+  "sentry.sdk.version",
+]);
+
+/** `beforeSendMetric` hook: allowlist attributes for anonymous game scores, pass other metrics through. */
+export function scrubAnonymousMetric(metric: Metric): Metric {
+  if (metric.name !== SNAKE_SCORE_METRIC) {
+    return metric;
+  }
+  const attributes: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metric.attributes ?? {})) {
+    if (SNAKE_SCORE_ATTRIBUTE_ALLOWLIST.has(key)) {
+      attributes[key] = value;
+    }
+  }
+  return { ...metric, attributes };
 }
 
 /**
@@ -267,7 +298,14 @@ export async function withTelemetry<T>(
  * and flushing pending events. Includes a re-entry guard since flush is async
  * and causes beforeExit to re-fire when complete.
  *
- * @param client - The Sentry client to flush
+ * It closes the client rather than only flushing it. The SDK flushes metrics
+ * and client reports on every `beforeExit`; when ingest is slow or
+ * unreachable, each failed send becomes a client report, and the runtime
+ * metrics timer keeps adding data, so the next `beforeExit` sends again and
+ * the process never exits (#1956). Closing removes those listeners and
+ * disables the client after this last flush.
+ *
+ * @param client - The Sentry client to close
  * @returns A handler function for process.on("beforeExit")
  *
  * @internal Exported for testing
@@ -285,11 +323,11 @@ export function createBeforeExitHandler(client: Sentry.NodeClient): () => void {
       Sentry.endSession();
     }
 
-    // Flush pending events before exit. Convert PromiseLike to Promise
-    // for proper error handling. The async work causes beforeExit to
+    // Flush pending events, then disable the client. Convert PromiseLike to
+    // Promise for proper error handling. The async work causes beforeExit to
     // re-fire when complete, which the isFlushing guard handles.
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-    Promise.resolve(client.flush(3000)).catch(() => {
+    Promise.resolve(client.close(3000)).catch(() => {
       // Ignore flush errors — telemetry should never block CLI exit
     });
   };
@@ -686,6 +724,8 @@ export function initSentry(
     release: CLI_VERSION,
     // Propagate traces to Sentry API for distributed tracing
     tracePropagationTargets: getSentryTracePropagationTargets(),
+
+    beforeSendMetric: scrubAnonymousMetric,
 
     beforeSendTransaction: (event) => {
       // Remove server_name which may contain hostname (PII)

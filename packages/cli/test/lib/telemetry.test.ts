@@ -324,7 +324,7 @@ describe("withTelemetry", () => {
       ).rejects.toThrow(error);
       // Captured via reportCliError → Sentry.withScope
       expect(withScopeSpy).toHaveBeenCalled();
-      expect(captureSpy).toHaveBeenCalledWith(error);
+      expect(captureSpy).toHaveBeenCalledWith(error, undefined);
       withScopeSpy.mockRestore();
       captureSpy.mockRestore();
     });
@@ -392,6 +392,7 @@ describe("withTelemetry", () => {
         ).rejects.toThrow(MalformedAuthTokenError);
         expect(captureSpy).toHaveBeenCalledExactlyOnceWith(
           expect.any(MalformedAuthTokenError),
+          undefined,
         );
         expect(
           metricSpy.mock.calls.find((c) => c[0] === "cli.error.silenced"),
