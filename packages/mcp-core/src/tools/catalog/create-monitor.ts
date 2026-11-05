@@ -110,6 +110,7 @@ function toMonitorSummary(
 
 export default defineTool({
   name: "create_monitor",
+  title: "Create Cron Monitor",
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [

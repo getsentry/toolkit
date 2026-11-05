@@ -144,7 +144,7 @@
       },
       {
         "name": "get_release_details",
-        "description": "Get details for a Sentry release.\n\nUse this tool when you need to:\n- Inspect an exact release version\n- Scope a release lookup to a specific project\n- See deploys and environments for a release\n- See recent commits attached to a release\n- Gather release health metadata when a project is known\n\n<examples>\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3')\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', projectSlugOrId='backend')\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', includeHealth=true, projectSlugOrId='backend')\n</examples>",
+        "description": "Get details for a Sentry release.\n\nUse this tool when you need to:\n- Inspect an exact release version\n- Scope a release lookup to a specific project\n- See deploys and environments for a release\n- See recent commits attached to a release\n- Gather release health metadata when a project is known\n\nTo find issues introduced in a release, call search_issues with query `release:<version>`.\n\n<examples>\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3')\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', projectSlugOrId='backend')\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', includeHealth=true, projectSlugOrId='backend')\n</examples>",
         "requiredScopes": ["project:read"]
       },
       {

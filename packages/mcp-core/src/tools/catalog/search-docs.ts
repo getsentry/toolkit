@@ -10,6 +10,7 @@ import type { SearchResponse } from "../types";
 
 export default defineTool({
   name: "search_docs",
+  title: "Search Sentry Docs",
   skills: ["inspect", "docs"], // Docs is retained for legacy docs-only grants.
   requiredScopes: [],
   description: ({ experimentalMode, availableToolNames, directToolNames }) =>

@@ -649,6 +649,7 @@ function formatReasonCommentLine(
 
 export default defineTool({
   name: "update_issue",
+  title: "Update Issue",
   skills: ["triage"], // Only available in triage skill
   requiredScopes: ["event:write"],
   description: [

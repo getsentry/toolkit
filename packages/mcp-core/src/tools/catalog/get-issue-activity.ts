@@ -60,6 +60,7 @@ function formatActivity(activity: IssueActivity | IssueComment): string {
 
 export default defineTool({
   name: "get_issue_activity",
+  title: "Get Issue Activity",
   skills: ["inspect", "triage"],
   requiredScopes: ["event:read"],
   description: [
