@@ -65,8 +65,7 @@
     "tsx": "catalog:",
     "typescript": "catalog:",
     "valibot": "catalog:",
-    "vitest": "catalog:",
-    "vitest-evals": "catalog:"
+    "vitest": "catalog:"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm run pre-commit:generated && pnpm exec lint-staged --concurrent false"

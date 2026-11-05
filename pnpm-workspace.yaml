@@ -102,7 +102,7 @@ catalog:
   valibot: ^1.4.2
   vite: ^6.4.5
   vitest: ^5.0.5
-  vitest-evals: ^0.4.0
+  vitest-evals: ^0.18.0
   workers-mcp: 0.1.0-3
   wrangler: 4.156.1
   zod: ^4.6.6
@@ -171,3 +171,6 @@ minimumReleaseAgeExclude:
   - miniflare@5.20261101.0-beta
   - wrangler@4.156.1
   - "@sentry/symbolic@14.0.0-alpha.5"
+  - "@vitest-evals/core@0.18.0"
+  - "@vitest-evals/report-ui@0.18.0"
+  - vitest-evals@0.18.0
