@@ -5,7 +5,7 @@ import type { SnapshotImageEntry, SnapshotVcsInfo } from "./formatting";
 // responses are untyped, so nothing here spreads upstream objects into
 // structuredContent.
 
-const snapshotImageSchema = z.object({
+export const snapshotImageSchema = z.object({
   imageFileName: z.string().optional(),
   displayName: z.string().optional(),
   description: z.string().optional(),
@@ -14,12 +14,16 @@ const snapshotImageSchema = z.object({
 type SnapshotImage = z.infer<typeof snapshotImageSchema>;
 
 /** Images bucketed by their snapshot group; ungrouped images use null. */
-export const snapshotImageGroupsSchema = z.array(
-  z.object({
-    group: z.string().nullable(),
-    images: z.array(snapshotImageSchema),
-  }),
-);
+export function snapshotGroupsOf<T extends z.ZodType>(image: T) {
+  return z.array(
+    z.object({
+      group: z.string().nullable(),
+      images: z.array(image),
+    }),
+  );
+}
+
+export const snapshotImageGroupsSchema = snapshotGroupsOf(snapshotImageSchema);
 
 type SnapshotImageGroups = z.infer<typeof snapshotImageGroupsSchema>;
 
@@ -58,7 +62,7 @@ export function snapshotImageEntries(value: unknown): SnapshotImageEntry[] {
     : [];
 }
 
-function toSnapshotImage(image: SnapshotImageEntry): SnapshotImage {
+export function toSnapshotImage(image: SnapshotImageEntry): SnapshotImage {
   return withoutUndefined({
     imageFileName: snapshotString(image.image_file_name),
     displayName: snapshotString(image.display_name),
@@ -67,13 +71,15 @@ function toSnapshotImage(image: SnapshotImageEntry): SnapshotImage {
 }
 
 /** Buckets images by group, keeping first-seen order. */
-export function toSnapshotImageGroups(
-  images: SnapshotImageEntry[],
-): SnapshotImageGroups {
-  const groups = new Map<string | null, SnapshotImage[]>();
-  for (const image of images) {
-    const group = snapshotString(image.group) ?? null;
-    const mapped = toSnapshotImage(image);
+export function groupSnapshotImages<TItem, TMapped>(
+  items: TItem[],
+  imageOf: (item: TItem) => SnapshotImageEntry,
+  map: (item: TItem) => TMapped,
+): Array<{ group: string | null; images: TMapped[] }> {
+  const groups = new Map<string | null, TMapped[]>();
+  for (const item of items) {
+    const group = snapshotString(imageOf(item).group) ?? null;
+    const mapped = map(item);
     const existing = groups.get(group);
     if (existing) {
       existing.push(mapped);
@@ -81,7 +87,13 @@ export function toSnapshotImageGroups(
       groups.set(group, [mapped]);
     }
   }
-  return [...groups].map(([group, entries]) => ({ group, images: entries }));
+  return [...groups].map(([group, images]) => ({ group, images }));
+}
+
+export function toSnapshotImageGroups(
+  images: SnapshotImageEntry[],
+): SnapshotImageGroups {
+  return groupSnapshotImages(images, (image) => image, toSnapshotImage);
 }
 
 export function toSnapshotVcs(
