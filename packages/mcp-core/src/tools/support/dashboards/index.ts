@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type {
   Dashboard,
   DashboardListItem,
@@ -7,20 +8,13 @@ import type {
 } from "../../../api-client";
 import { UserInputError } from "../../../errors";
 import { isNumericId } from "../../../utils/slug-validation";
+import { isPlainObject } from "../../../internal/type-guards";
 import {
-  compactLines,
   formatActor,
   formatDate,
   formatId,
-  formatUnknown,
+  readString,
 } from "../../catalog/support/api-formatting";
-
-function formatList(values: Array<string | number> | undefined): string | null {
-  if (!values || values.length === 0) {
-    return null;
-  }
-  return values.map(String).join(", ");
-}
 
 function dashboardIncludesProject(
   dashboard: Pick<DashboardListItem, "projects">,
@@ -95,129 +89,164 @@ export function assertDashboardWithinProjectConstraint({
   }
 }
 
-function formatWidgetQuery(
-  query: DashboardWidget["queries"][number],
-): string[] {
-  const lines = compactLines([
-    `- **${query.name || "Query"}**`,
-    query.conditions ? `  - Conditions: \`${query.conditions}\`` : null,
-    query.fields?.length ? `  - Fields: ${query.fields.join(", ")}` : null,
-    query.aggregates?.length
-      ? `  - Aggregates: ${query.aggregates.join(", ")}`
-      : null,
-    query.columns?.length ? `  - Columns: ${query.columns.join(", ")}` : null,
-    query.orderby ? `  - Sort: \`${query.orderby}\`` : null,
-  ]);
+const nullableString = z.string().nullable();
 
-  return lines;
+const dashboardWidgetSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: nullableString,
+  displayType: nullableString,
+  widgetType: nullableString,
+  datasetSource: nullableString,
+  interval: nullableString,
+  limit: z.number().nullable(),
+  layout: z
+    .object({
+      x: z.number().nullable(),
+      y: z.number().nullable(),
+      w: z.number().nullable(),
+      h: z.number().nullable(),
+    })
+    .nullable(),
+  queries: z.array(
+    z.object({
+      name: nullableString,
+      conditions: nullableString,
+      fields: z.array(z.string()),
+      aggregates: z.array(z.string()),
+      columns: z.array(z.string()),
+      orderby: nullableString,
+    }),
+  ),
+});
+
+/** Saved dashboard configuration; widgets carry query definitions, not live data. */
+export const dashboardDetailsSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  url: z.string(),
+  dateCreated: nullableString,
+  createdBy: nullableString,
+  projects: z.array(z.string()),
+  environments: z.array(z.string()),
+  period: nullableString,
+  start: nullableString,
+  end: nullableString,
+  utc: z.boolean().nullable(),
+  expired: z.boolean().nullable(),
+  prebuiltId: nullableString,
+  isFavorited: z.boolean(),
+  filters: z.object({
+    releases: z.array(z.string()),
+    globalFilters: z.array(
+      z.object({
+        dataset: nullableString,
+        tagKey: nullableString,
+        value: nullableString,
+      }),
+    ),
+  }),
+  widgets: z.array(dashboardWidgetSchema),
+});
+
+export type DashboardDetails = z.infer<typeof dashboardDetailsSchema>;
+
+function readNumber(
+  value: Record<string, unknown> | null | undefined,
+  key: string,
+): number | null {
+  const field = value?.[key];
+  return typeof field === "number" ? field : null;
 }
 
-function formatWidget(widget: DashboardWidget, index: number): string {
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function toWidget(
+  widget: DashboardWidget,
+): DashboardDetails["widgets"][number] {
   const layout = widget.layout;
-  const layoutText =
-    layout && typeof layout === "object"
-      ? ["x", "y", "w", "h"]
-          .filter((key) => layout[key] !== undefined)
-          .map((key) => `${key}=${formatUnknown(layout[key])}`)
-          .join(", ")
-      : null;
-
-  const lines = compactLines([
-    `### ${index + 1}. ${widget.title}`,
-    "",
-    `**ID**: ${formatId(widget.id)}`,
-    widget.displayType ? `**Display Type**: ${widget.displayType}` : null,
-    widget.widgetType ? `**Widget Type**: ${widget.widgetType}` : null,
-    widget.datasetSource ? `**Dataset**: ${widget.datasetSource}` : null,
-    widget.interval ? `**Interval**: ${widget.interval}` : null,
-    widget.limit !== null && widget.limit !== undefined
-      ? `**Limit**: ${widget.limit}`
+  return {
+    id: formatId(widget.id),
+    title: widget.title,
+    description: widget.description || null,
+    displayType: widget.displayType || null,
+    widgetType: widget.widgetType || null,
+    datasetSource: widget.datasetSource || null,
+    interval: widget.interval || null,
+    limit: widget.limit ?? null,
+    layout: layout
+      ? {
+          x: readNumber(layout, "x"),
+          y: readNumber(layout, "y"),
+          w: readNumber(layout, "w"),
+          h: readNumber(layout, "h"),
+        }
       : null,
-    layoutText ? `**Layout**: ${layoutText}` : null,
-    widget.description ? `**Description**: ${widget.description}` : null,
-  ]);
-
-  if (widget.queries.length > 0) {
-    lines.push("", "#### Queries", "");
-    for (const query of widget.queries) {
-      lines.push(...formatWidgetQuery(query));
-    }
-  }
-
-  return lines.join("\n");
+    queries: widget.queries.map((query) => ({
+      name: query.name || null,
+      conditions: query.conditions || null,
+      fields: query.fields,
+      aggregates: query.aggregates,
+      columns: query.columns,
+      orderby: query.orderby || null,
+    })),
+  };
 }
 
-function formatFilters(filters: Record<string, unknown>): string[] {
-  return Object.entries(filters).map(
-    ([key, value]) => `- **${key}**: ${formatUnknown(value)}`,
-  );
+function toFilters(
+  filters: Record<string, unknown>,
+): DashboardDetails["filters"] {
+  const globalFilters = Array.isArray(filters.globalFilter)
+    ? filters.globalFilter.filter(isPlainObject).map((filter) => ({
+        dataset: readString(filter, "dataset"),
+        tagKey: isPlainObject(filter.tag)
+          ? readString(filter.tag, "key")
+          : null,
+        value: readString(filter, "value"),
+      }))
+    : [];
+  return {
+    releases: readStringArray(filters.release),
+    globalFilters,
+  };
 }
 
-/** Formats saved dashboard metadata, filters, widgets, and query definitions. */
-export function formatDashboardDetails({
+/** Maps saved dashboard metadata, filters, widgets, and query definitions. */
+export function toDashboardDetails({
   dashboard,
-  organizationSlug,
   dashboardUrl,
 }: {
   dashboard: Dashboard;
-  organizationSlug: string;
   dashboardUrl: string;
-}): string {
-  const lines = compactLines([
-    `# Dashboard ${dashboard.title} in **${organizationSlug}**`,
-    "",
-    `**ID**: ${formatId(dashboard.id)}`,
-    `**URL**: [Open Dashboard](${dashboardUrl})`,
-    formatDate(dashboard.dateCreated)
-      ? `**Created**: ${formatDate(dashboard.dateCreated)}`
-      : null,
-    dashboard.createdBy
-      ? `**Created By**: ${formatActor(dashboard.createdBy)}`
-      : null,
-    formatList(dashboard.projects)
-      ? `**Projects**: ${formatList(dashboard.projects)}`
-      : null,
-    formatList(dashboard.environment)
-      ? `**Environments**: ${formatList(dashboard.environment)}`
-      : null,
-    dashboard.period ? `**Period**: ${dashboard.period}` : null,
-    dashboard.start ? `**Start**: ${formatDate(dashboard.start)}` : null,
-    dashboard.end ? `**End**: ${formatDate(dashboard.end)}` : null,
-    dashboard.utc !== null && dashboard.utc !== undefined
-      ? `**UTC**: ${formatUnknown(dashboard.utc)}`
-      : null,
-    dashboard.expired !== undefined
-      ? `**Expired**: ${formatUnknown(dashboard.expired)}`
-      : null,
-    dashboard.prebuiltId !== null && dashboard.prebuiltId !== undefined
-      ? `**Prebuilt ID**: ${formatId(dashboard.prebuiltId)}`
-      : null,
-    dashboard.isFavorited ? "**Favorited**: yes" : null,
-  ]);
-
-  const filterLines = formatFilters(dashboard.filters);
-  if (filterLines.length > 0) {
-    lines.push("", "## Filters", "", ...filterLines);
-  }
-
-  lines.push("", "## Widgets", "");
-
-  if (dashboard.widgets.length === 0) {
-    lines.push("No widgets found.");
-  } else {
-    lines.push(
-      dashboard.widgets
-        .map((widget, index) => formatWidget(widget, index))
-        .join("\n\n"),
-    );
-  }
-
-  lines.push("", "## Response Notes", "");
-  lines.push(
-    "- Dashboard widgets include saved query definitions, not live query results.",
-  );
-
-  return lines.join("\n");
+}): DashboardDetails {
+  return {
+    id: formatId(dashboard.id),
+    title: dashboard.title,
+    url: dashboardUrl,
+    dateCreated: formatDate(dashboard.dateCreated),
+    createdBy: dashboard.createdBy ? formatActor(dashboard.createdBy) : null,
+    projects: dashboard.projects.map(String),
+    environments: dashboard.environment,
+    period: dashboard.period || null,
+    start: formatDate(dashboard.start),
+    end: formatDate(dashboard.end),
+    utc:
+      dashboard.utc === null || dashboard.utc === undefined
+        ? null
+        : dashboard.utc === true || dashboard.utc === "true",
+    expired: dashboard.expired ?? null,
+    prebuiltId:
+      dashboard.prebuiltId === null || dashboard.prebuiltId === undefined
+        ? null
+        : String(dashboard.prebuiltId),
+    isFavorited: dashboard.isFavorited ?? false,
+    filters: toFilters(dashboard.filters),
+    widgets: dashboard.widgets.map(toWidget),
+  };
 }
 
 function formatCandidates(candidates: DashboardListItem[]): string {

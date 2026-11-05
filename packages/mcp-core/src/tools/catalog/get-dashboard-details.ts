@@ -1,15 +1,21 @@
 import { z } from "zod";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
   assertDashboardWithinProjectConstraint,
-  formatDashboardDetails,
+  dashboardDetailsSchema,
   resolveDashboardId,
   resolveDashboardProjectConstraint,
+  toDashboardDetails,
 } from "../support/dashboards";
+
+export const getDashboardDetailsOutputSchema = z.object({
+  dashboard: dashboardDetailsSchema,
+});
 
 export default defineTool({
   name: "get_dashboard_details",
@@ -44,6 +50,7 @@ export default defineTool({
       .min(1)
       .describe("The dashboard's numeric ID or exact title."),
   },
+  outputSchema: getDashboardDetailsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -88,19 +95,20 @@ export default defineTool({
       projectId: scopedProject?.id,
     });
 
-    return formatDashboardDetails({
-      dashboard,
-      organizationSlug,
-      dashboardUrl: apiService.getDashboardUrl(
-        organizationSlug,
-        String(dashboard.id),
-        {
-          projectId:
-            scopedProject?.id ??
-            (dashboard.projects.length === 1 ? dashboard.projects[0] : null),
-          statsPeriod: dashboard.period ?? null,
-        },
-      ),
+    return structuredResult({
+      dashboard: toDashboardDetails({
+        dashboard,
+        dashboardUrl: apiService.getDashboardUrl(
+          organizationSlug,
+          String(dashboard.id),
+          {
+            projectId:
+              scopedProject?.id ??
+              (dashboard.projects.length === 1 ? dashboard.projects[0] : null),
+            statsPeriod: dashboard.period ?? null,
+          },
+        ),
+      }),
     });
   },
 });

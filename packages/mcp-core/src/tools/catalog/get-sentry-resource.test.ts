@@ -625,11 +625,10 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/dashboard/101/",
       });
-      expect(result).toContain(
-        "# Dashboard Errors Overview in **sentry-mcp-evals**",
-      );
-      expect(result).toContain("**ID**: 101");
-      expect(result).toContain("[Open Dashboard]");
+      expect(getStructuredContent(result).dashboard).toMatchObject({
+        id: "101",
+        title: "Errors Overview",
+      });
     });
 
     it("dispatches explicit dashboard resourceType to get_dashboard_details by ID", async () => {
@@ -638,10 +637,10 @@ describe("get_sentry_resource", () => {
         resourceId: "101",
         organizationSlug: "sentry-mcp-evals",
       });
-      expect(result).toContain(
-        "# Dashboard Errors Overview in **sentry-mcp-evals**",
-      );
-      expect(result).toContain("**ID**: 101");
+      expect(getStructuredContent(result).dashboard).toMatchObject({
+        id: "101",
+        title: "Errors Overview",
+      });
     });
 
     it("dispatches explicit dashboard resourceType to get_dashboard_details by title", async () => {
@@ -650,10 +649,10 @@ describe("get_sentry_resource", () => {
         resourceId: "Errors Overview",
         organizationSlug: "sentry-mcp-evals",
       });
-      expect(result).toContain(
-        "# Dashboard Errors Overview in **sentry-mcp-evals**",
-      );
-      expect(result).toContain("**ID**: 101");
+      expect(getStructuredContent(result).dashboard).toMatchObject({
+        id: "101",
+        title: "Errors Overview",
+      });
     });
 
     it("rejects dashboard URL when get_dashboard_details is not available", async () => {
