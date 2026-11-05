@@ -22,6 +22,7 @@ import {
   DASHBOARD_LINK_HINT,
   ERROR_RESULT_HINTS,
   type ExecutedSearch,
+  SPAN_RESULT_HINTS,
   LOG_RESULT_HINTS,
   type SearchResultHints,
   summarizeTimeSeries,
@@ -116,6 +117,8 @@ type RowLinkShape = Record<string, z.ZodType<string | null>>;
 
 interface StructuredDatasetConfig<TLinks extends RowLinkShape = RowLinkShape> {
   hints: SearchResultHints;
+  /** Units the raw values use, keyed by the field they describe. */
+  fieldUnitNotes?: Record<string, string>;
   /** The Sentry URLs derived for each result row; the output schema uses it. */
   links: TLinks;
   rowLinks(
@@ -230,6 +233,20 @@ const STRUCTURED_DATASETS = {
         "Inspect the trace for the first matching log.",
       ),
   }),
+  spans: defineDatasetConfig({
+    hints: SPAN_RESULT_HINTS,
+    fieldUnitNotes: {
+      "span.duration": "span.duration values are in milliseconds.",
+    },
+    links: { traceUrl: z.string().nullable() },
+    rowLinks: (event, session) => ({ traceUrl: traceUrlFor(event, session) }),
+    suggestedActions: (results, session) =>
+      firstTraceAction(
+        results,
+        session,
+        "Inspect the trace for the first matching span.",
+      ),
+  }),
 } satisfies Partial<Record<PublicEventsDataset, StructuredDatasetConfig>>;
 
 export type StructuredSearchDataset = keyof typeof STRUCTURED_DATASETS;
@@ -342,7 +359,12 @@ export function buildStructuredEventsResult(params: {
     notes:
       results.length === 0
         ? [...params.notes, `No results found. ${config.hints.empty}`]
-        : params.notes,
+        : [
+            ...params.notes,
+            ...params.requestFields.flatMap(
+              (field) => config.fieldUnitNotes?.[field] ?? [],
+            ),
+          ],
     resultType: isAggregate ? "aggregates" : "samples",
     results,
     timeSeries: null,

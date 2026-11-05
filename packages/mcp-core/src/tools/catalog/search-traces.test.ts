@@ -25,6 +25,7 @@ it("search_traces runs the shared handler locked to spans", async () => {
       ],
       "options": {
         "lockDataset": true,
+        "output": "structured",
       },
     }
   `);
