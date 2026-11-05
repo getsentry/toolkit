@@ -74,7 +74,7 @@ describe("get_issue_user_reports", () => {
     `);
   });
 
-  it("returns the next cursor without leaking reporter account fields", async () => {
+  it("returns the next cursor without leaking IP address or avatar URL", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/:org/issues/:issueId/user-reports/",
