@@ -55,7 +55,12 @@ const issueActivityEntrySchema = z.object({
       name: z.string().nullable(),
     })
     .optional(),
-  version: z.string().optional().describe("Release the issue resolved in."),
+  version: z
+    .string()
+    .optional()
+    .describe(
+      "Release version referenced by the activity (resolved-in or regressed-in).",
+    ),
   ignore: z
     .object({
       duration: z.number().optional(),
@@ -120,10 +125,12 @@ function mapAssignee(data: Record<string, unknown>) {
   if (typeof id !== "string" && typeof id !== "number") {
     return undefined;
   }
+  // Sentry copies the assignee's display name, which can be an email.
+  const name = readString(data, "assigneeName");
   return {
     id: formatId(id),
     type: readString(data, "assigneeType"),
-    name: readString(data, "assigneeName"),
+    name: name && EMAIL_PATTERN.test(name) ? null : name,
   };
 }
 
@@ -183,7 +190,7 @@ function withoutEmails(value: unknown): unknown {
   if (isPlainObject(value)) {
     return Object.fromEntries(
       Object.entries(value)
-        .filter(([key]) => !/email/i.test(key))
+        .filter(([key]) => !/email/i.test(key) && !EMAIL_PATTERN.test(key))
         .map(([key, item]) => [key, withoutEmails(item)] as const)
         .filter(([, item]) => item !== undefined),
     );

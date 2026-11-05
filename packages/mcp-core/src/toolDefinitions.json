@@ -4953,7 +4953,7 @@
                 "additionalProperties": false
               },
               "version": {
-                "description": "Release the issue resolved in.",
+                "description": "Release version referenced by the activity (resolved-in or regressed-in).",
                 "type": "string"
               },
               "ignore": {
@@ -5076,7 +5076,7 @@
                     "additionalProperties": false
                   },
                   "version": {
-                    "description": "Release the issue resolved in.",
+                    "description": "Release version referenced by the activity (resolved-in or regressed-in).",
                     "type": "string"
                   },
                   "ignore": {

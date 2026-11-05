@@ -367,4 +367,48 @@ describe("get_issue_activity", () => {
     expect(entry!.details).not.toContain("example.com");
     expect(entry!.details).not.toMatch(/email/i);
   });
+
+  it("drops assignee names and detail keys that are emails", async () => {
+    mswServer.use(
+      http.get("*/api/0/organizations/:org/issues/:issueId/activities/", () =>
+        HttpResponse.json({
+          activity: [
+            {
+              id: "activity-assigned-email-name",
+              type: "assigned",
+              dateCreated: "2025-04-14T12:00:00.000Z",
+              user: null,
+              data: {
+                assignee: "43",
+                assigneeName: "jane@corp.com",
+                assigneeType: "user",
+              },
+            },
+            {
+              id: "activity-email-key",
+              type: "unmerge_source",
+              dateCreated: "2025-04-14T12:05:00.000Z",
+              user: null,
+              data: { "owner@corp.com": "123", fingerprints: ["abc"] },
+            },
+          ],
+        }),
+      ),
+    );
+
+    const result = await getIssueActivity.handler(
+      { ...params, includeComments: false },
+      context,
+    );
+    const structuredContent = getStructuredContent<{
+      activity: Array<{
+        assignee?: { name: string | null };
+        details: string | null;
+      }>;
+    }>(result);
+    const [assigned, unmerge] = structuredContent.activity;
+    expect(assigned!.assignee).toEqual({ id: "43", type: "user", name: null });
+    expect(unmerge!.details).toBe('{"fingerprints":["abc"]}');
+    expect(JSON.stringify(structuredContent)).not.toContain("corp.com");
+  });
 });
