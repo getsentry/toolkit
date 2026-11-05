@@ -238,6 +238,11 @@ interface SuggestedActionsContent {
 }
 ```
 
+Build each action with `buildSuggestedToolAction` from
+`packages/mcp-core/src/internal/tool-helpers/suggested-actions.ts`. It returns
+null when the session cannot call the tool, and routes through
+`execute_sentry_tool` when the target is catalog-only.
+
 Guidelines:
 
 - Include only actions that are directly supported by the current result. Do not

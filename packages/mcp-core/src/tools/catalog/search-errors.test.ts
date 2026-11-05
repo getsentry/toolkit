@@ -25,6 +25,7 @@ it("search_errors runs the shared handler locked to errors", async () => {
       ],
       "options": {
         "lockDataset": true,
+        "output": "structured",
       },
     }
   `);
