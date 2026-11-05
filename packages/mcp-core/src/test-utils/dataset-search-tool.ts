@@ -21,8 +21,9 @@ const params = {
  *     runSearchEvents: vi.fn(async () => "ok"),
  *   }));
  *
- * A tool with an outputSchema must return `SEARCH_EVENTS_STUB` from
- * `./search-events-stub` instead of "ok"; search-errors.test.ts shows how.
+ * A tool with an outputSchema must return `SEARCH_EVENTS_STUB` (or
+ * `SEARCH_REPLAYS_STUB` for search_replays) from `./search-events-stub`
+ * instead of "ok"; search-errors.test.ts shows how.
  */
 export async function inspectDatasetSearchTool<P>(tool: {
   inputSchema: object;

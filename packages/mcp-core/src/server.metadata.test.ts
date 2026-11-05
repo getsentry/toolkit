@@ -58,14 +58,6 @@ const OUTPUT_SCHEMA_EXEMPT: Record<string, string> = {
  * its PR merges; a test below fails until you do.
  */
 const OUTPUT_SCHEMA_PENDING: Record<string, string> = {
-  get_issue_activity: "pending getsentry/toolkit#2001",
-  search_issues: "pending getsentry/toolkit#2004",
-  search_metrics: "pending getsentry/toolkit#2010",
-  search_profiles: "pending getsentry/toolkit#2012",
-  get_dashboard_details: "pending getsentry/toolkit#2018",
-  get_monitor_details: "pending getsentry/toolkit#2020",
-  get_profile_details: "pending getsentry/toolkit#2024",
-  search_replays: "pending getsentry/toolkit#2025",
   search_attributes: "pending: experimental-only, no outputSchema PR yet",
 };
 
@@ -301,6 +293,8 @@ describe("structured output", () => {
         destructiveHint: false,
         openWorldHint: false,
       },
+      // @ts-expect-error -- the probe breaks its schema on purpose; the guard
+      // catches what types miss, such as unvalidated upstream data.
       handler: async () => ({ structuredContent: { count: "one" } }),
     });
 
