@@ -120,6 +120,22 @@ const help = await sdk.run("help", "issue");
 ```
 <!-- GENERATED:END sdk-run-examples -->
 
+## Version and executable path
+
+`getVersion()` returns the installed `sentry` package version, and `getPath()`
+returns the absolute path to its `sentry` executable. Both are also available
+as `createSentrySDK.getVersion()` and `createSentrySDK.getPath()`, matching
+v3's static `SentryCli` methods.
+
+```typescript
+import { execFileSync } from "node:child_process";
+import { getPath, getVersion } from "sentry";
+
+console.log(getVersion());
+// The executable is a Node.js script, so run it with Node.js on every platform
+execFileSync(process.execPath, [getPath(), "--version"]);
+```
+
 ## Authentication
 
 The `token` option provides an auth token for the current invocation. When
