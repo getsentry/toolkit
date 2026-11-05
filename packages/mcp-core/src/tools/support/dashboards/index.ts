@@ -127,6 +127,7 @@ export const dashboardDetailsSchema = z.object({
   url: z.string(),
   dateCreated: nullableString,
   createdBy: nullableString,
+  createdByEmail: nullableString,
   projects: z.array(z.string()),
   environments: z.array(z.string()),
   period: nullableString,
@@ -231,6 +232,9 @@ export function toDashboardDetails({
     url: dashboardUrl,
     dateCreated: formatDate(dashboard.dateCreated),
     createdBy: dashboard.createdBy ? formatActor(dashboard.createdBy) : null,
+    createdByEmail: isPlainObject(dashboard.createdBy)
+      ? readString(dashboard.createdBy, "email")
+      : null,
     projects: dashboard.projects.map(String),
     environments: dashboard.environment,
     period: dashboard.period || null,

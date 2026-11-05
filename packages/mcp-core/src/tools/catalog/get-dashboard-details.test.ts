@@ -55,6 +55,7 @@ describe("get_dashboard_details", () => {
       {
         "dashboard": {
           "createdBy": "Jane Developer",
+          "createdByEmail": "jane@example.com",
           "dateCreated": "2025-04-14T10:15:00.000Z",
           "end": null,
           "environments": [
@@ -156,12 +157,8 @@ describe("get_dashboard_details", () => {
       }
     `);
     const text = JSON.stringify(content);
-    // Backend-only fields and actor emails stay out of the mapped payload.
-    for (const leaked of [
-      "permissions",
-      "teamsWithEditAccess",
-      "@example.com",
-    ]) {
+    // Backend-only fields stay out of the mapped payload.
+    for (const leaked of ["permissions", "teamsWithEditAccess"]) {
       expect(text).not.toContain(leaked);
     }
   });
