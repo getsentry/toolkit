@@ -14,7 +14,7 @@ import {
   type EventOutcomeRow,
   formatEventOutcomes,
   summarizeEventOutcomes,
-} from "../../lib/formatters/dropped-events.js";
+} from "../../lib/formatters/event-outcomes.js";
 import { EventOutcomeRowSchema } from "../../generated/output-schemas/event.js";
 import { withProgress } from "../../lib/polling.js";
 import { fetchProjectId } from "../../lib/resolve-target.js";

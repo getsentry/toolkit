@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   formatEventOutcomes,
   summarizeEventOutcomes,
-} from "../../../src/lib/formatters/dropped-events.js";
+} from "../../../src/lib/formatters/event-outcomes.js";
 
 function bucket(
   overrides: Partial<
