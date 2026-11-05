@@ -32,6 +32,102 @@ function makeSeries(): EventsTimeSeriesResponse {
 }
 
 describe("buildTimeSeriesResult", () => {
+  it.each([false, true])(
+    "includes final retention buckets in the maximum (transformed: %s)",
+    (transformed) => {
+      const result = buildTimeSeriesResult({
+        series: {
+          timeSeries: [
+            {
+              yAxis: "count()",
+              meta: { interval: 60000, valueType: "number" },
+              values: [
+                { timestamp: 1, value: 8, incomplete: false },
+                {
+                  timestamp: 2,
+                  value: 12,
+                  incomplete: true,
+                  incompleteReason: "OUTSIDE_RETENTION",
+                },
+                {
+                  timestamp: 3,
+                  value: 20,
+                  incomplete: true,
+                  incompleteReason: "INGESTION_PENDING",
+                },
+                {
+                  timestamp: 4,
+                  value: 30,
+                  incomplete: true,
+                  incompleteReason: "NOT_ELAPSED",
+                },
+              ].map((bucket) => ({
+                ...bucket,
+                filled: false,
+                smoothed: false,
+              })),
+            },
+          ],
+        },
+        configuration: {
+          axes: [
+            {
+              yAxis: "count()",
+              transformations: transformed ? ["smooth(sma,2)"] : [],
+            },
+          ],
+        },
+        dataset: "spans",
+        query: "",
+        inputQuery: "requests",
+        timeRange: { statsPeriod: "1h" },
+        url: "https://example.sentry.io/explore/traces/",
+      });
+
+      expect(result.series[0]?.summary).toHaveProperty(
+        transformed ? "derivedMaximum" : "peak",
+        { value: 12, timestamp: 2 },
+      );
+    },
+  );
+
+  it("orders ISO date values by time and preserves the original peak value", () => {
+    const result = buildTimeSeriesResult({
+      series: {
+        timeSeries: [
+          {
+            yAxis: "max(timestamp)",
+            meta: { interval: 60000, valueType: "date" },
+            values: [
+              { timestamp: 1, value: 0, incomplete: false },
+              {
+                timestamp: 2,
+                value: "2026-11-05T10:30:00Z",
+                incomplete: false,
+              },
+              {
+                timestamp: 3,
+                value: "2026-11-05T10:00:00-01:00",
+                incomplete: false,
+              },
+              { timestamp: 4, value: "2026-11-05T11:30:00Z", incomplete: true },
+            ],
+          },
+        ],
+      },
+      configuration: { axes: [{ yAxis: "max(timestamp)" }] },
+      dataset: "logs",
+      query: "severity:error",
+      inputQuery: "latest error over time",
+      timeRange: { statsPeriod: "1h" },
+      url: "https://example.sentry.io/explore/logs/",
+    });
+
+    expect(result.series[0]?.summary).toEqual({
+      peak: { value: "2026-11-05T10:00:00-01:00", timestamp: 3 },
+    });
+  });
+
   it("does not replace a missing value with zero when finding a raw peak", () => {
     const result = buildTimeSeriesResult({
       series: {
