@@ -230,6 +230,29 @@ describe("get_dashboard_details", () => {
     });
   });
 
+  it("returns a null creator when Sentry has no usable identity", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/101/",
+        () => HttpResponse.json({ ...dashboardDetailsFixture, createdBy: {} }),
+      ),
+    );
+
+    const dashboard = getDashboard(
+      await getDashboardDetails.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          dashboardIdOrTitle: "101",
+        },
+        context,
+      ),
+    );
+
+    expect(dashboard.createdBy).toBeNull();
+    expect(dashboard.createdByEmail).toBeNull();
+  });
+
   it("returns candidates for ambiguous dashboard titles", async () => {
     mswServer.use(
       http.get(

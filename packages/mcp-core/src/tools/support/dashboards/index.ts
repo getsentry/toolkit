@@ -161,6 +161,11 @@ function readNumber(
   return typeof field === "number" ? field : null;
 }
 
+function formatCreator(createdBy: unknown): string | null {
+  const name = createdBy ? formatActor(createdBy) : null;
+  return name === "unknown" ? null : name;
+}
+
 function readStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
@@ -231,7 +236,7 @@ export function toDashboardDetails({
     title: dashboard.title,
     url: dashboardUrl,
     dateCreated: formatDate(dashboard.dateCreated),
-    createdBy: dashboard.createdBy ? formatActor(dashboard.createdBy) : null,
+    createdBy: formatCreator(dashboard.createdBy),
     createdByEmail: isPlainObject(dashboard.createdBy)
       ? readString(dashboard.createdBy, "email")
       : null,
