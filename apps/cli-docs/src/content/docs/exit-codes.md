@@ -42,9 +42,6 @@ react to failure categories without parsing stderr.
 | 50 | Upgrade Error | CLI upgrade operation failed |
 | 51 | Device Flow Error | OAuth device authorization flow failed |
 | 60 | Output Error | Command produced output but the operation failed |
-| 61 | Reserved | Not used; was the removed `sentry init` setup wizard |
-| 62 | Reserved | Not used; was the removed `sentry init` setup wizard |
-| 63 | Reserved | Not used; was the removed `sentry init` setup wizard |
 | 64 | Verify Failed | `sentry local run --verify` received no events from the SDK |
 | 252 | Invalid Argument | An argument could not be parsed — see [Argument errors](#argument-errors) |
 

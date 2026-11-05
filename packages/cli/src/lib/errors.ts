@@ -93,7 +93,6 @@ export const EXIT = {
   // 60–69: Command-specific
   /** Command produced output but should exit non-zero */
   OUTPUT_ERROR: 60,
-  // 61–63: reserved; the removed `sentry init` wizard used them.
   /** `sentry local run --verify` received no events from the SDK */
   VERIFY_FAILED: 64,
 } as const;
