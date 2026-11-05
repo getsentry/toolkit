@@ -398,18 +398,20 @@ export function compareFrameStats(
     });
   }
 
-  // Sort by severity: major regressions first, then minor, then improvements
+  // Sort by severity: major regressions, minor regressions, improvements, then
+  // unchanged frames, so a truncated list keeps every kind of change. Within a
+  // kind, the largest change comes first.
   const severityOrder = {
     major_regression: 0,
     minor_regression: 1,
-    no_change: 2,
-    improvement: 3,
+    improvement: 2,
+    no_change: 3,
   };
 
   return comparisons.sort(
     (a, b) =>
       severityOrder[a.changeType] - severityOrder[b.changeType] ||
-      b.percentChange - a.percentChange,
+      Math.abs(b.percentChange) - Math.abs(a.percentChange),
   );
 }
 

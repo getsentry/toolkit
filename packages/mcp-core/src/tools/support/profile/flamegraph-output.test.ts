@@ -266,6 +266,41 @@ describe("buildFlamegraphComparison", () => {
     ).toMatchObject({ file: null, line: null });
   });
 
+  it("keeps improvements in changes when many frames are unchanged", () => {
+    const withFrames = (improvedDurationNs: number) => {
+      const flamegraph = createMockFlamegraph();
+      const template = flamegraph.shared.frame_infos[0]!;
+      flamegraph.shared.frames = Array.from({ length: 13 }, (_, index) => ({
+        file: `module_${index}.py`,
+        name: `fn_${index}`,
+        line: index + 1,
+        is_application: true,
+        fingerprint: 2000 + index,
+      }));
+      flamegraph.shared.frame_infos = flamegraph.shared.frames.map(
+        (_, index) => ({
+          ...template,
+          sumDuration: index === 12 ? improvedDurationNs : 160_000_000,
+        }),
+      );
+      return flamegraph;
+    };
+
+    const comparison = buildFlamegraphComparison(
+      withFrames(160_000_000),
+      withFrames(80_000_000),
+      { focusOnUserCode: false },
+    );
+
+    expect(comparison.status).toBe("improvement");
+    expect(comparison.changes).toHaveLength(10);
+    expect(comparison.changes[0]).toMatchObject({
+      name: "fn_12",
+      changeType: "improvement",
+      percentChange: -50,
+    });
+  });
+
   it("detects improvements", () => {
     const current = createMockFlamegraph();
     current.shared.frame_infos[0]!.sumDuration = 128_000_000;
