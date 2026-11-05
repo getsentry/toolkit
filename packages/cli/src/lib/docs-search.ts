@@ -363,15 +363,13 @@ const FIELDS_BY_WEIGHT = [
   [FIELD.breadcrumb, FIELD_WEIGHT.breadcrumb],
 ] as const;
 
-/** The weight of the best field in a posting's flags. */
+/**
+ * The weight of the best field in a posting's flags. A whole path segment
+ * (`react` in `/guides/react/`) beats part of one (`react` in
+ * `/react-native/`) because segment ranks above path.
+ */
 function fieldWeight(flags: number): number {
-  const weight =
-    FIELDS_BY_WEIGHT.find(([field]) => hasField(flags, field))?.[1] ?? 0;
-  // A word that is a whole path segment (`react` in `/guides/react/`) beats
-  // one that is only part of it (`react` in `/react-native/`).
-  return hasField(flags, FIELD.segment)
-    ? weight + FIELD_WEIGHT.segment
-    : weight;
+  return FIELDS_BY_WEIGHT.find(([field]) => hasField(flags, field))?.[1] ?? 0;
 }
 
 /** The best score of one term on each page it matches. */
@@ -434,7 +432,9 @@ function toDocsPath(input: string): string | undefined {
   if (path === undefined) {
     return;
   }
-  return path.startsWith("/") ? path || "/" : `/${path}`;
+  const normalized = path.startsWith("/") ? path || "/" : `/${path}`;
+  // The home page's Markdown URL is `/index.md` (see `markdownUrl`).
+  return normalized === "/index" ? "/" : normalized;
 }
 
 /** The Markdown URL of a page. */

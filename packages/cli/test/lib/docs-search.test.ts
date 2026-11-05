@@ -90,6 +90,10 @@ describe("searchDocs", () => {
     ]);
   });
 
+  test("returns the home page for its own Markdown URL", () => {
+    expect(urls(`${ORIGIN}/index.md`)).toEqual(["/index.md"]);
+  });
+
   test("returns nothing for a query with only filler words", () => {
     const outcome = searchDocs(index, { query: "how do I", limit: 8 });
     expect(outcome.results).toEqual([]);
