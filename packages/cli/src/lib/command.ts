@@ -211,7 +211,8 @@ type LocalCommandBuilderArguments<
    *
    * Set to `true` for commands that establish or tear down host trust
    * (`auth login`, `auth logout`) — they must run even when a
-   * repo-local `.sentryclirc` URL mismatches the current token.
+   * repo-local `.sentryclirc` URL mismatches the current token — and
+   * for commands that send nothing to Sentry (`init`).
    */
   readonly skipRcUrlCheck?: boolean;
   /**
@@ -828,7 +829,7 @@ export function buildCommand<
 
     // Suppress prompts when parsed command flags require unattended or
     // machine-readable execution. Using parsed flags avoids confusing aliases
-    // such as list command `-n` (limit) with init's `-n` (dry-run).
+    // such as list command `-n` (limit) with `sentry api`'s `-n` (dry-run).
     setInteractivePromptsAllowed(
       !(
         cleanFlags.json === true ||

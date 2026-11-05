@@ -3,15 +3,7 @@
  */
 
 import { vBaseTeam } from "@sentry/api/valibot";
-import {
-  description,
-  looseObject,
-  optional,
-  partial,
-  pick,
-  pipe,
-  string,
-} from "valibot";
+import { description, looseObject, partial, pick, pipe, string } from "valibot";
 import { orgListItemSchema } from "./org-list.js";
 
 /**
@@ -36,21 +28,6 @@ export const SentryTeamSchema = looseObject({
   id: pipe(string(), description("Team ID")),
   slug: pipe(string(), description("Team slug")),
   name: pipe(string(), description("Team name")),
-  dateCreated: optional(
-    pipe(
-      vBaseTeam.entries.dateCreated,
-      description("Creation date (ISO 8601)"),
-    ),
-  ),
-  isMember: optional(
-    pipe(vBaseTeam.entries.isMember, description("Whether you are a member")),
-  ),
-  teamRole: optional(
-    pipe(vBaseTeam.entries.teamRole, description("Your role in the team")),
-  ),
-  memberCount: optional(
-    pipe(vBaseTeam.entries.memberCount, description("Number of members")),
-  ),
 });
 
 /** JSON output of `team list`: a team and the org it came from. */

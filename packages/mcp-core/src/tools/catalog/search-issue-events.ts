@@ -44,6 +44,7 @@ function buildIssueEventSearchRepairPrompt(params: {
 
 export default defineTool({
   name: "search_issue_events",
+  title: "Search Issue Events",
   skills: ["inspect", "triage"], // Available in inspect and triage skills
   requiredScopes: ["event:read"],
   description: [

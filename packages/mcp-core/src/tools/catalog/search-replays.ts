@@ -9,6 +9,7 @@ import {
 export default defineTool({
   ...searchToolBase("search_replays"),
   name: "search_replays",
+  title: "Search Replays",
   description: [
     "Search Sentry session replays: rage clicks, dead clicks, visited pages, errors seen, and replay users.",
     "",

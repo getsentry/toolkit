@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isLegacySpeedscopeProfile } from "../../api-client/types";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -17,6 +18,7 @@ import {
   validateSlugOrId,
 } from "../../utils/slug-validation";
 import {
+  formatLegacyProfileSummary,
   formatProfileChunkAnalysis,
   formatTransactionProfileAnalysis,
 } from "../support/profile/formatter";
@@ -175,6 +177,7 @@ async function resolveProjectContext(
 
 export default defineTool({
   name: "get_profile_details",
+  title: "Get Profile Details",
   skills: ["inspect"],
   requiredScopes: ["event:read"],
   requiredCapabilities: ["profiles"],
@@ -352,6 +355,17 @@ export default defineTool({
           projectSlug,
           resolved.profileId,
         );
+
+      if (isLegacySpeedscopeProfile(profile)) {
+        const legacyTraceId = profile.metadata?.traceID;
+        return formatLegacyProfileSummary(profile, {
+          profileUrl,
+          projectSlug,
+          traceUrl: legacyTraceId
+            ? apiService.getTraceUrl(resolved.organizationSlug, legacyTraceId)
+            : undefined,
+        });
+      }
 
       const traceUrl = profile.transaction?.trace_id
         ? apiService.getTraceUrl(

@@ -17,6 +17,7 @@ import { SENTRY_CLI } from "./sentry-cli.js";
 // the real Node/Hermes tool instead of running the CLI. Must run before any
 // command parsing.
 if (process.env.__SENTRY_RN_WRAP_XCODE_CALL === "1") {
+  // oxlint-disable-next-line sentry-cli/no-process-exit -- forward the wrapped Node/Hermes tool's exit status; the CLI never started.
   process.exit(wrapCall());
 }
 

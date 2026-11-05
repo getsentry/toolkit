@@ -58,6 +58,7 @@ function formatCheck(
 
 export default defineTool({
   name: "get_uptime_monitor_details",
+  title: "Get Uptime Monitor Details",
   skills: ["inspect"],
   requiredScopes: ["project:read"],
   description: [

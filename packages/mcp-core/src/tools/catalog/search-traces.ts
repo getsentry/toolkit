@@ -9,6 +9,7 @@ import {
 export default defineTool({
   ...searchToolBase("search_traces"),
   name: "search_traces",
+  title: "Search Traces",
   description: [
     "Search Sentry spans and traces: requests, API/HTTP calls, endpoints, DB queries, AI/LLM calls, and other operations. Use for latency, throughput, slowness, and performance questions.",
     "",

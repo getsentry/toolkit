@@ -11,7 +11,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
-import { USER_AGENT } from "../src/version.js";
+import { getUserAgent } from "../src/version.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -199,7 +199,7 @@ async function fetchYamlContent(namespace: string): Promise<string | null> {
       `${GITHUB_BASE_URL}/${namespace}/registry.yaml`,
       {
         headers: {
-          "User-Agent": USER_AGENT,
+          "User-Agent": getUserAgent(),
         },
       },
     );

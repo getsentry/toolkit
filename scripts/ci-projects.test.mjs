@@ -40,7 +40,6 @@ describe("workspace CI selection", () => {
     const docsScripts = JSON.parse(
       readFileSync(resolve(root, "apps/cli-docs/package.json"), "utf8"),
     ).scripts;
-    assert.match(docsScripts[docs.prepare], /sentry run generate:schema/);
     assert.match(docsScripts[docs.prepare], /sentry run generate:docs/);
     const cli = matrix.include.find(({ name }) => name === "sentry");
     assert.equal(cli.policy, "ci:policy");

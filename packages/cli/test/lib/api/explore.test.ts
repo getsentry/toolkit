@@ -108,6 +108,15 @@ describe("queryEvents", () => {
     );
   });
 
+  test("sends projectId as the project param, omitting it when unset", async () => {
+    mockOk({ data: [], meta: { fields: {} } });
+    await queryEvents("my-org", { fields: ["title"], projectId: 42 });
+    expect(new URL(capturedUrl).searchParams.get("project")).toBe("42");
+
+    await queryEvents("my-org", { fields: ["title"] });
+    expect(new URL(capturedUrl).searchParams.has("project")).toBe(false);
+  });
+
   test("omits sort when not provided", async () => {
     mockOk({ data: [], meta: { fields: {} } });
 

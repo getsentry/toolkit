@@ -27,54 +27,26 @@ const sdkRelease = vOrgReleaseResponse.entries;
  * like {@link SentryOrganizationSchema}; not used for runtime validation.
  */
 export const SentryReleaseSchema = looseObject({
-  id: optional(pipe(sdkRelease.id, description("Release ID"))),
+  id: optional(sdkRelease.id),
   version: pipe(string(), description("Release version")),
-  shortVersion: optional(
-    pipe(sdkRelease.shortVersion, description("Shortened version")),
-  ),
-  versionInfo: optional(
-    pipe(sdkRelease.versionInfo, description("Parsed version information")),
-  ),
-  status: optional(
-    pipe(sdkRelease.status, description("Release status (open, archived)")),
-  ),
-  ref: optional(pipe(sdkRelease.ref, description("VCS reference"))),
-  url: optional(pipe(sdkRelease.url, description("Release URL"))),
-  dateCreated: optional(
-    pipe(sdkRelease.dateCreated, description("Creation date (ISO 8601)")),
-  ),
-  dateReleased: optional(
-    pipe(sdkRelease.dateReleased, description("Release date (ISO 8601)")),
-  ),
-  firstEvent: optional(
-    pipe(sdkRelease.firstEvent, description("First event date (ISO 8601)")),
-  ),
-  lastEvent: optional(
-    pipe(sdkRelease.lastEvent, description("Last event date (ISO 8601)")),
-  ),
-  newGroups: optional(
-    pipe(sdkRelease.newGroups, description("Number of new issues")),
-  ),
-  commitCount: optional(
-    pipe(sdkRelease.commitCount, description("Number of commits")),
-  ),
-  deployCount: optional(
-    pipe(sdkRelease.deployCount, description("Number of deploys")),
-  ),
-  lastCommit: optional(
-    pipe(sdkRelease.lastCommit, description("Most recent commit")),
-  ),
-  lastDeploy: optional(
-    pipe(sdkRelease.lastDeploy, description("Most recent deploy")),
-  ),
-  authors: optional(pipe(sdkRelease.authors, description("Commit authors"))),
-  owner: optional(pipe(sdkRelease.owner, description("Release owner"))),
-  projects: optional(
-    pipe(sdkRelease.projects, description("Projects in the release")),
-  ),
-  adoptionStages: optional(
-    pipe(sdkRelease.adoptionStages, description("Adoption stage per project")),
-  ),
+  shortVersion: optional(sdkRelease.shortVersion),
+  versionInfo: optional(sdkRelease.versionInfo),
+  status: optional(sdkRelease.status),
+  ref: optional(sdkRelease.ref),
+  url: optional(sdkRelease.url),
+  dateCreated: optional(sdkRelease.dateCreated),
+  dateReleased: optional(sdkRelease.dateReleased),
+  firstEvent: optional(sdkRelease.firstEvent),
+  lastEvent: optional(sdkRelease.lastEvent),
+  newGroups: optional(sdkRelease.newGroups),
+  commitCount: optional(sdkRelease.commitCount),
+  deployCount: optional(sdkRelease.deployCount),
+  lastCommit: optional(sdkRelease.lastCommit),
+  lastDeploy: optional(sdkRelease.lastDeploy),
+  authors: optional(sdkRelease.authors),
+  owner: optional(sdkRelease.owner),
+  projects: optional(sdkRelease.projects),
+  adoptionStages: optional(sdkRelease.adoptionStages),
 });
 
 /**
@@ -95,10 +67,10 @@ export const ReleaseUpdateOutputSchema = looseObject({
 
 /** `--fields` / SKILL.md documentation schema for a deploy. */
 export const SentryDeploySchema = looseObject({
-  id: pipe(string(), description("Deploy ID")),
-  environment: pipe(string(), description("Environment")),
-  name: optional(pipe(vDeployResponse.entries.name, description("Name"))),
-  url: optional(pipe(vDeployResponse.entries.url, description("Deploy URL"))),
+  id: vDeployResponse.entries.id,
+  environment: vDeployResponse.entries.environment,
+  name: optional(vDeployResponse.entries.name),
+  url: optional(vDeployResponse.entries.url),
   dateStarted: optional(
     pipe(
       vDeployResponse.entries.dateStarted,

@@ -33,6 +33,7 @@ export const submitFeedbackToSentryTeamOutputSchema = z.object({
 
 export default defineTool({
   name: "submit_feedback_to_sentry_team",
+  title: "Submit Feedback to Sentry Team",
   description: [
     "Report friction with the Sentry MCP server to its maintainers.",
     "",

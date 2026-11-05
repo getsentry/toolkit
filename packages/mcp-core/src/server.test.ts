@@ -173,6 +173,7 @@ describe("buildServer", () => {
     options: Partial<ToolConfig> = {},
   ): ToolConfig => ({
     name,
+    title: `${name} title`,
     description: `${name} description`,
     inputSchema: {},
     skills: ["inspect"],

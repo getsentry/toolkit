@@ -1,4 +1,4 @@
-import type { Score, ScoreFn, BaseScorerOptions } from "vitest-evals";
+import type { Score, ScoreFn, BaseScorerOptions } from "vitest-evals/legacy";
 
 interface StructuredOutputScorerOptions extends BaseScorerOptions {
   expected?: Record<string, any>;

@@ -13,6 +13,7 @@ import { validateResourceId } from "../../utils/slug-validation";
 
 export default defineTool({
   name: "update_dsn",
+  title: "Update DSN",
   skills: ["project-management"], // DSN management is part of project setup
   requiredScopes: ["project:write"],
   description: [

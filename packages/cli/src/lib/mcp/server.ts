@@ -20,12 +20,13 @@ import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { startStdio } from "@sentry/mcp-core/transports/stdio";
 import type { ToolRegistry } from "@sentry/mcp-core/command-surface";
 import type { CredentialRouter, ServerContext } from "@sentry/mcp-core/types";
+import { setServerVersion } from "@sentry/mcp-core/version";
 import {
-  captureException,
+  close,
   consoleLoggingIntegration,
   flush,
   init,
-  makeNodeTransport,
+  setCurrentClient,
   vercelAIIntegration,
   zodErrorsIntegration,
 } from "@sentry/node";
@@ -34,7 +35,15 @@ import { CLI_VERSION, SENTRY_CLI_DSN } from "../constants.js";
 import { logger } from "../logger.js";
 import { isTelemetryEnabled } from "../telemetry.js";
 import { redactTelemetryEnvelope } from "../telemetry/credential-redaction.js";
+import { clearStoredEnvelopes } from "../telemetry/offline-store.js";
+import {
+  makeStoringTransport,
+  STORED_ENVELOPES_PER_RUN,
+  type StoringTransport,
+} from "../telemetry/offline-transport.js";
+import { makeNodeTransportWithDeadline } from "../telemetry/zstd-transport.js";
 import type { McpServerConfig } from "./config.js";
+import { reportCliError } from "../error-reporting.js";
 
 /** Credential wiring supplied by the CLI host. */
 export type McpServeOptions = {
@@ -237,12 +246,6 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     return;
   }
 
-  // An empty `--sentry-dsn=` turns telemetry off. Skip `init` so neither the
-  // CLI's DSN nor a shell SENTRY_DSN starts the SDK.
-  if (config.sentryDsn === "") {
-    return;
-  }
-
   const { name, packageName } = getAppIdentity();
   const scopeContext = {
     "app.server.version": CLI_VERSION,
@@ -252,13 +255,20 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     "app.upstream.host": config.sentryHost,
     "app.url.full": config.mcpUrl,
   };
+  // Unsent telemetry shares the CLI's store, so opting out clears it, as in
+  // `withTelemetry()`.
+  const storeTelemetry = isTelemetryEnabled();
+  if (!storeTelemetry) {
+    clearStoredEnvelopes();
+  }
+  let storingTransport: StoringTransport | undefined;
 
-  // Without `--sentry-dsn`/`SENTRY_DSN`, report to the CLI's own project,
-  // honoring the CLI's telemetry opt-outs.
-  const useCliDsn = config.sentryDsn === undefined;
-  init({
-    dsn: config.sentryDsn ?? SENTRY_CLI_DSN,
-    enabled: !useCliDsn || isTelemetryEnabled(),
+  // Always the CLI's own project, never a DSN from the environment: an MCP
+  // server started from a project shell or IDE inherits the app's SENTRY_DSN.
+  // Only the CLI's telemetry opt-outs turn it off.
+  const client = init({
+    dsn: SENTRY_CLI_DSN,
+    enabled: isTelemetryEnabled(),
     tracesSampleRate: 1,
     beforeSend: sentryBeforeSend,
     initialScope: {
@@ -274,9 +284,19 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     },
     // Always the running release; an env override would misreport it.
     release: CLI_VERSION,
-    // Same credential redaction as the CLI's own telemetry.
+    // Same credential redaction and request deadline as the CLI's own
+    // telemetry: a stalled ingest socket must not keep the process alive
+    // after the client disconnects (#1956). Envelopes that fail to send are
+    // stored like the CLI's own.
     transport: (transportOptions) => {
-      const transport = makeNodeTransport(transportOptions);
+      if (storeTelemetry) {
+        storingTransport = makeStoringTransport(
+          transportOptions,
+          makeNodeTransportWithDeadline,
+        );
+      }
+      const transport =
+        storingTransport ?? makeNodeTransportWithDeadline(transportOptions);
       return {
         send: (envelope) => transport.send(redactTelemetryEnvelope(envelope)),
         flush: (timeout) => transport.flush(timeout),
@@ -290,6 +310,16 @@ export function initMcpTelemetry(config: McpServerConfig): void {
     // The retired package fixed this at build time; keep the same value.
     environment: "stdio",
   });
+  // `buildCommand` runs this inside its pre-init `exec` span, and v11 loses
+  // the scope that span forked when init switches the context strategy, so
+  // every span, log, and flush would find no client. Same fix as
+  // `initSentry()` in telemetry.ts.
+  if (client) {
+    setCurrentClient(client);
+  }
+  // Retry what earlier runs failed to send; `close()` on disconnect waits
+  // for it. The breaker sends another batch whenever ingest recovers.
+  storingTransport?.sendStored(STORED_ENVELOPES_PER_RUN);
 }
 
 /**
@@ -304,6 +334,7 @@ export function installProcessHandlers(): (
   let exiting = false;
   function exitAfterError(error: unknown, label: string): void {
     if (exiting) {
+      // oxlint-disable-next-line sentry-cli/no-process-exit -- a second fatal error while the first one is exiting.
       process.exit(1);
     }
     exiting = true;
@@ -321,13 +352,15 @@ export function installProcessHandlers(): (
     }
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- reporting must not block exit.
     try {
-      captureException(error);
+      reportCliError(error);
     } catch {
       // reporting must not block exit
     }
 
     // Don't depend on flush finishing — exit even if it hangs or rejects.
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- fatal error: exit even when the flush hangs.
     setTimeout(() => process.exit(1), SENTRY_FLUSH_TIMEOUT_MS).unref();
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- fatal error: exit once the flush settles.
     void flush(SENTRY_FLUSH_TIMEOUT_MS).finally(() => process.exit(1));
   }
 
@@ -340,6 +373,7 @@ export function installProcessHandlers(): (
     exiting = true;
     console.error(`${signal} received, shutting down...`);
     await flush(SENTRY_FLUSH_TIMEOUT_MS);
+    // oxlint-disable-next-line sentry-cli/no-process-exit -- signal shutdown, after the flush.
     process.exit(0);
   }
 
@@ -359,6 +393,8 @@ export async function serveMcpStdio(
   config: McpServerConfig,
   options: McpServeOptions,
 ): Promise<void> {
+  // @sentry/mcp-server ships at the CLI version, not mcp-core's.
+  setServerVersion(CLI_VERSION);
   configureAgentProvider(config, options.env);
   initMcpTelemetry(config);
 
@@ -403,6 +439,9 @@ export async function serveMcpStdio(
     },
   );
   await connection.closed;
-  // Send what the session recorded before the caller releases the network.
-  await flush(SENTRY_FLUSH_TIMEOUT_MS);
+  // Send what the session recorded before the caller releases the network,
+  // then disable the client: the SDK otherwise flushes metrics and client
+  // reports again on every `beforeExit`, and a failed send queues a new
+  // client report, so the process never drains (#1956).
+  await close(SENTRY_FLUSH_TIMEOUT_MS);
 }

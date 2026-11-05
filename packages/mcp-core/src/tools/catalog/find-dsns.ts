@@ -22,6 +22,7 @@ export const findDsnsOutputSchema = z.object({
 
 export default defineTool({
   name: "find_dsns",
+  title: "Find DSNs",
   skills: ["project-management"], // DSN management is part of project setup
   requiredScopes: ["project:read"],
   description: [

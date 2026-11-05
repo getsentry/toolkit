@@ -12,6 +12,7 @@ import {
 
 export default defineTool({
   name: "get_latest_base_snapshot",
+  title: "Get Latest Base Snapshot",
   skills: ["inspect"],
   requiredScopes: ["project:read"],
   description: [

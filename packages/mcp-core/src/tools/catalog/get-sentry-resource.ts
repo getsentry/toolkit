@@ -491,6 +491,7 @@ function generateUnsupportedResourceMessage(
 
 export default defineTool({
   name: "get_sentry_resource",
+  title: "Get Sentry Resource",
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read", "project:read"],
 

@@ -270,4 +270,30 @@ describe("get_dashboard_details", () => {
 
     expect(result).toContain("No widgets found.");
   });
+
+  it("accepts widgets whose display type is null", async () => {
+    const [widget] = dashboardDetailsFixture.widgets;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/101/",
+        () =>
+          HttpResponse.json({
+            ...dashboardDetailsFixture,
+            widgets: [{ ...widget, displayType: null }],
+          }),
+      ),
+    );
+
+    const result = await getDashboardDetails.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        dashboardIdOrTitle: "101",
+      },
+      context,
+    );
+
+    expect(result).toContain("### 1. Handled Errors");
+    expect(result).not.toContain("**Display Type**");
+  });
 });

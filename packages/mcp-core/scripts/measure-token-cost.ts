@@ -59,6 +59,7 @@ Examples:
 
 type ToolDefinition = {
   name: string;
+  title: string;
   description: string | ((context: { experimentalMode: boolean }) => string);
   inputSchema: Record<string, ZodTypeAny>;
   experimental?: boolean;
@@ -91,6 +92,7 @@ function formatToolsForMCP(tools: Record<string, ToolDefinition>) {
 
     return {
       name: tool.name,
+      title: tool.title,
       description: toolTypesModule.resolveDescription(tool.description, {
         experimentalMode: false,
       }),

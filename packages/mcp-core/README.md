@@ -133,12 +133,8 @@ The host configuration accepts two distinct formats:
 
 **Note**: Only HTTPS connections are supported for security reasons.
 
-By default we also enable Sentry reporting (traces, errors) upstream to our cloud service. You can disable that, or send it to a different Sentry instance by using the `--sentry-dsn` flag:
+By default the server reports its own telemetry (traces, errors) to the Sentry CLI's project on sentry.io. Set `SENTRY_CLI_NO_TELEMETRY=1` or `DO_NOT_TRACK=1` to turn it off:
 
 ```shell
-# disable sentry reporting
-npx @sentry/mcp-server@latest --sentry-dsn=
-
-# use custom sentry instance
-npx @sentry/mcp-server@latest --sentry-dsn=https://publicKey@mysentry.example.com/...
+SENTRY_CLI_NO_TELEMETRY=1 npx @sentry/mcp-server@latest
 ```

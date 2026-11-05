@@ -2411,7 +2411,12 @@ describe("resolveIssue with share URLs", () => {
         command: "view",
       }),
     ).rejects.toBeInstanceOf(ContextError);
-    expect(requests).toEqual([]);
+    // Only the account's org list may be read, to find a sole org
+    expect(
+      requests.filter(
+        (url) => new URL(url).pathname !== "/api/0/organizations/",
+      ),
+    ).toEqual([]);
   });
 
   test("reports an expired share link without fetching issue details", async () => {

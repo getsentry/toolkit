@@ -236,12 +236,13 @@ describe("viewCommand.func", () => {
         ],
       ]);
     getTraceMetaSpy = vi.spyOn(apiClient, "getTraceMeta").mockResolvedValue({
-      errors: 2,
-      logs: 4,
-      performance_issues: 1,
-      span_count: 8,
-      span_count_map: {},
-      transaction_child_count_map: [],
+      errorsCount: 2,
+      logsCount: 4,
+      metricsCount: 0,
+      performanceIssuesCount: 1,
+      spansCount: 8,
+      spansCountMap: {},
+      transactionChildCountMap: [],
     });
     listIssuesPaginatedSpy = vi
       .spyOn(apiClient, "listIssuesPaginated")

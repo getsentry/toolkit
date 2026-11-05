@@ -11,7 +11,6 @@ import { useTestConfigDir } from "../helpers.js";
 const mocks = vi.hoisted(() => ({
   serveMcp: vi.fn(),
   withTelemetry: vi.fn(),
-  scheduleForceExit: vi.fn(),
   closeGlobalDispatcher: vi.fn(),
 }));
 
@@ -29,9 +28,6 @@ vi.mock("../../src/lib/telemetry.js", async (importOriginal) => {
     },
   };
 });
-vi.mock("../../src/lib/force-exit.js", () => ({
-  scheduleForceExit: () => mocks.scheduleForceExit(),
-}));
 vi.mock("../../src/lib/close-dispatcher.js", () => ({
   closeGlobalDispatcher: () => mocks.closeGlobalDispatcher(),
 }));
@@ -241,13 +237,11 @@ describe("running `mcp`", () => {
 
     const running = runCli(["mcp"], SENTRY_CLI);
     await vi.waitFor(() => expect(mocks.serveMcp).toHaveBeenCalledOnce());
-    // A live stdio server must not be force-exited or lose its dispatcher.
-    expect(mocks.scheduleForceExit).not.toHaveBeenCalled();
+    // A live stdio server must not lose its dispatcher.
     expect(mocks.closeGlobalDispatcher).not.toHaveBeenCalled();
 
     finishServing();
     await running;
-    expect(mocks.scheduleForceExit).toHaveBeenCalledOnce();
     expect(mocks.closeGlobalDispatcher).toHaveBeenCalledOnce();
   });
 
@@ -275,7 +269,6 @@ describe("running `mcp`", () => {
       "--disable-skills",
       "--agent-provider",
       "--mcp-url",
-      "--sentry-dsn",
     ]) {
       expect(stdout).toContain(flag);
     }

@@ -19,6 +19,7 @@ import type { ServerContext } from "../../types";
 
 export default defineTool({
   name: "get_issue_breadcrumbs",
+  title: "Get Issue Breadcrumbs",
   skills: ["inspect", "triage"],
   requiredScopes: ["event:read"],
   description: [

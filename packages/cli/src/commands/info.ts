@@ -181,7 +181,7 @@ export const infoCommand = buildCommand({
       return {
         hint: failed
           ? "Not authenticated. Run `sentry auth login`."
-          : "No default organization/project. Run `sentry init` or set defaults.",
+          : "No default organization/project. Set them with `sentry cli defaults org <org>` and `sentry cli defaults project <project>`.",
       };
     }
     return { hint: "Configuration verified." };

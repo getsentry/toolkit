@@ -27,8 +27,8 @@
  *   1 - At least one example names a missing command, flag, or ambiguous target
  */
 
-import { mkdirSync, readdirSync } from "node:fs";
-import { access, readFile, writeFile } from "node:fs/promises";
+import { readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { exampleSteps } from "../src/lib/command-example.js";
 import type {
@@ -37,6 +37,7 @@ import type {
   RouteMap,
   RouteTarget,
 } from "../src/lib/introspect.js";
+import { writeRouteTreeStubs } from "./lib/route-tree-stubs.js";
 import { blankCodeBlocks, markdownCodeBlocks } from "./markdown.js";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
 import {
@@ -46,19 +47,7 @@ import {
 } from "./sdk-run-calls.js";
 import { shellCommands } from "./shell-words.js";
 
-// Bootstrap: skill-content stub (same pattern as generate-docs-sections.ts)
-const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
-const skillContentExists = await access(SKILL_CONTENT_PATH).then(
-  () => true,
-  () => false,
-);
-if (!skillContentExists) {
-  mkdirSync("src/generated", { recursive: true });
-  await writeFile(
-    SKILL_CONTENT_PATH,
-    "export const SKILL_FILES: [string, string][] = [];\n",
-  );
-}
+await writeRouteTreeStubs();
 
 const { routes } = await import("../src/app.js");
 const { isCommand, isRouteMap } = await import("../src/lib/introspect.js");
@@ -73,6 +62,7 @@ const EXTRA_DOC_FILES = [
   "README.md",
   "CONTRIBUTING.md",
   "DEVELOPMENT.md",
+  "init.md",
   "plugins/README.md",
 ];
 

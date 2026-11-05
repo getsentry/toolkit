@@ -1,20 +1,22 @@
 /**
  * HTTP response cache for read-only API calls.
  *
- * Freshness, revalidation, and retention come from the toolkit-core cache
- * policy (`lookupResponse` / `storeResponse`): server `Cache-Control` /
- * `ETag` / `Expires` headers win, and a URL-based fallback TTL applies when
- * the server sends none (Sentry's current behavior). This module adds the
- * CLI's store, identity, kill switches, telemetry, and cache-age hint.
+ * Freshness, revalidation, and retention come from the shared cache policy
+ * in `@sentry/api/client` (`lookupResponse` / `storeResponse`): server
+ * `Cache-Control` / `ETag` / `Expires` headers win, and a URL-based fallback
+ * TTL applies when the server sends none (Sentry's current behavior). This
+ * module adds the CLI's store, identity, kill switches, telemetry, and
+ * cache-age hint.
  *
  * Bodies are compressed with the toolkit-core codec and kept in a
- * filesystem store under `~/.sentry/cache/responses/` (see
+ * filesystem store under `~/.sentry/cache/api-responses/` (see
  * `response-cache-store.ts`), separate from the config SQLite database, which
  * stores small structured data (tokens, org slugs, cursors).
  *
  * @module
  */
 
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   buildCacheKey as buildIdentityCacheKey,
@@ -22,7 +24,7 @@ import {
   classifyUrl,
   lookupResponse,
   storeResponse,
-} from "@sentry/toolkit-core/api-client/response-cache";
+} from "@sentry/api/client";
 import { createBodyCodec } from "@sentry/toolkit-core/response-cache/codec";
 
 import { getIdentityFingerprint } from "./db/auth.js";
@@ -36,7 +38,7 @@ import { recordCacheHit, withCacheSpan } from "./telemetry.js";
 const log = logger.withTag("response-cache");
 
 // ---------------------------------------------------------------------------
-// Cache keys — tiers, keys, and invalidation prefixes live in toolkit-core
+// Cache keys — tiers, keys, and invalidation prefixes live in @sentry/api/client
 // ---------------------------------------------------------------------------
 
 /**
@@ -58,6 +60,15 @@ export async function buildCacheKey(
 
 /** Get the response cache directory path */
 function getCacheDir(): string {
+  return join(getConfigDir(), "cache", "api-responses");
+}
+
+/**
+ * The directory CLI versions before `@sentry/api` 0.446.0 cached into. Their
+ * entries can hold the raw `Authorization` header in the stored cache policy,
+ * so it is deleted rather than migrated.
+ */
+function getLegacyCacheDir(): string {
   return join(getConfigDir(), "cache", "responses");
 }
 
@@ -73,6 +84,9 @@ function getStore(): FileStore {
   const dir = getCacheDir();
   if (current?.dir !== dir) {
     current = { dir, store: createFileStore({ dir }) };
+    rm(getLegacyCacheDir(), { recursive: true, force: true }).catch((error) => {
+      log.debug("Failed to delete the legacy response cache", error);
+    });
   }
   return current.store;
 }
@@ -178,7 +192,7 @@ export type { CacheLookup };
  * Look up a GET request in the cache.
  *
  * A fresh entry is a `hit`, and a stale entry with an `ETag` is returned for
- * conditional revalidation (see toolkit-core's `lookupResponse`).
+ * conditional revalidation (see `lookupResponse` in `@sentry/api/client`).
  *
  * @param method - HTTP method (only "GET" is cached)
  * @param url - Full request URL
@@ -282,7 +296,8 @@ export async function getCachedResponse(
  * Store a response in the cache.
  *
  * Only caches successful (2xx) GET responses that HTTP caching allows (see
- * toolkit-core's `storeResponse`); `Cache-Control: no-store` is not cached.
+ * `storeResponse` in `@sentry/api/client`); `Cache-Control: no-store` is not
+ * cached.
  *
  * This function is fire-and-forget — errors are silently swallowed to avoid
  * slowing down the response path.

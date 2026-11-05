@@ -72,6 +72,7 @@ import type { ServerContext } from "../../types";
 
 export default defineTool({
   name: "your_tool_name",
+  title: "Your Tool Name",
   description: [
     "One-line summary.",
     "",
@@ -102,6 +103,14 @@ export default defineTool({
   },
 });
 ```
+
+### Title
+
+**REQUIRED**: Every tool sets `title`, a short Title Case display name such as
+`"Search Issues"`. The server exports it as the MCP tool `title`, which clients
+show instead of the snake_case `name`. Titles must be unique across tools;
+`tools.test.ts` enforces this. Deprecated aliases add a ` (Deprecated)`
+suffix, for example `"Search AI Conversations (Deprecated)"`.
 
 ### Safety Annotations
 

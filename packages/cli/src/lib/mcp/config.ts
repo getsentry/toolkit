@@ -33,7 +33,6 @@ export type McpServerConfig = {
   sentryHost: string;
   sentryProtocol: "http" | "https";
   mcpUrl?: string;
-  sentryDsn?: string;
   openaiBaseUrl?: string;
   openaiModel?: string;
   anthropicBaseUrl?: string;
@@ -188,7 +187,6 @@ export function finalizeMcpConfig(input: McpMergedArgs): McpServerConfig {
     sentryHost,
     sentryProtocol: input.insecureHttp ? "http" : "https",
     mcpUrl: input.mcpUrl,
-    sentryDsn: input.sentryDsn,
     // Anthropic base URLs follow the same rules as OpenAI ones.
     openaiBaseUrl: input.openaiBaseUrl
       ? validated(() => validateOpenAiBaseUrlThrows(input.openaiBaseUrl ?? ""))

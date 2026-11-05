@@ -18,12 +18,12 @@ import { logger } from "../logger.js";
 import { storedCredentialIdentity } from "./identity-hash.js";
 import type { Database } from "./sqlite.js";
 
-export const CURRENT_SCHEMA_VERSION = 20;
+export const CURRENT_SCHEMA_VERSION = 21;
 
 /** Environment variable to disable auto-repair */
 const NO_AUTO_REPAIR_ENV = "SENTRY_CLI_NO_AUTO_REPAIR";
 
-type SqliteType = "TEXT" | "INTEGER";
+type SqliteType = "TEXT" | "INTEGER" | "BLOB";
 
 export type ColumnDef = {
   type: SqliteType;
@@ -326,6 +326,23 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
       command_path: { type: "TEXT", notNull: true },
       duration_ms: { type: "INTEGER", notNull: true },
       result_count: { type: "INTEGER", notNull: true },
+    },
+  },
+  /**
+   * Telemetry envelopes that failed to send, kept for a later run to retry
+   * (`src/lib/telemetry/offline-store.ts`). `envelope` holds the serialized
+   * envelope bytes; `size` is their length, for the byte cap. `is_error` is 1
+   * when the envelope has an error event, which is kept longer and dropped
+   * last over the caps. Rows past their max age are deleted on read. Dropping
+   * the table only loses telemetry that may never have been delivered anyway.
+   */
+  telemetry_envelope_queue: {
+    columns: {
+      id: { type: "INTEGER", primaryKey: true },
+      created_at: { type: "INTEGER", notNull: true },
+      is_error: { type: "INTEGER", notNull: true, default: "0" },
+      size: { type: "INTEGER", notNull: true },
+      envelope: { type: "BLOB", notNull: true },
     },
   },
 };
@@ -1170,6 +1187,12 @@ export function runMigrations(db: Database): void {
   // completion from entities seen during normal CLI usage.
   if (currentVersion < 20) {
     db.exec(EXPECTED_TABLES.completion_cache as string);
+  }
+
+  // Migration 20 -> 21: Add telemetry_envelope_queue for telemetry envelopes
+  // that failed to send, retried by the next run.
+  if (currentVersion < 21) {
+    db.exec(EXPECTED_TABLES.telemetry_envelope_queue as string);
   }
 
   if (currentVersion < CURRENT_SCHEMA_VERSION) {

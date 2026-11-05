@@ -8,6 +8,7 @@ import type { SentryContext } from "../../context.js";
 import {
   attributesToDict,
   fetchMultiSpanDetails,
+  findTraceReplay,
   getDetailedTrace,
   getIssueByShortId,
   getLatestEvent,
@@ -169,7 +170,30 @@ export type TraceViewData = {
   details?: Map<string, TraceItemDetail>;
   /** Shared interpretation used by the request and JSON projection. */
   fieldSelection?: TraceFieldSelection;
+  /** Newest stored replay linked to the trace, or null if there's none */
+  replayId?: string | null;
 };
+
+/**
+ * Look up the newest stored replay linked to a trace.
+ *
+ * Returns the replay ID, null when none is stored, or undefined when the
+ * lookup fails, so a replay problem never fails `trace view`.
+ */
+async function lookupTraceReplay(
+  org: string,
+  traceId: string,
+): Promise<string | null | undefined> {
+  try {
+    const replay = await findTraceReplay(org, traceId);
+    return replay?.id ?? null;
+  } catch (error) {
+    logger
+      .withTag("trace.view")
+      .debug(`Failed to look up replays for trace ${traceId}`, error);
+    return;
+  }
+}
 
 /**
  * Count spans in the tree that have non-empty `additional_attributes`.
@@ -264,7 +288,7 @@ function mergeSpanDetails(
 export function formatTraceView(data: TraceViewData): string {
   const parts: string[] = [];
 
-  parts.push(formatTraceSummary(data.summary));
+  parts.push(formatTraceSummary(data.summary, { replayId: data.replayId }));
 
   if (data.spanTreeLines && data.spanTreeLines.length > 0) {
     parts.push(data.spanTreeLines.join("\n"));
@@ -346,7 +370,12 @@ function jsonTransformTraceView(
       ? mergeSpanDetails(cleaned, details)
       : cleaned;
   });
-  const result = { ...summary, spans: cleanedSpans };
+  // replayId is omitted when the lookup failed, matching the hidden human row.
+  const result = {
+    ...summary,
+    ...(data.replayId !== undefined && { replayId: data.replayId }),
+    spans: cleanedSpans,
+  };
   const selection = data.fieldSelection ?? parseTraceFields(fields);
   return selection ? projectTraceFields(result, selection) : result;
 }
@@ -547,10 +576,14 @@ export const viewCommand = buildCommand({
       numericProjectId = toNumericId(projectData.id);
     }
 
-    const spans = await getDetailedTrace(org, traceId, {
-      additionalAttributes,
-      projectId: numericProjectId,
-    });
+    // The replay lookup runs alongside the trace fetch to avoid adding latency.
+    const [spans, replayId] = await Promise.all([
+      getDetailedTrace(org, traceId, {
+        additionalAttributes,
+        projectId: numericProjectId,
+      }),
+      lookupTraceReplay(org, traceId),
+    ]);
 
     if (spans.length === 0) {
       throw new ResolutionError(
@@ -590,6 +623,7 @@ export const viewCommand = buildCommand({
       spanTreeLines,
       details: spanDetails,
       fieldSelection,
+      replayId,
     });
     return { hint: buildViewHint(traceId, org, projectFilter, summary) };
   },

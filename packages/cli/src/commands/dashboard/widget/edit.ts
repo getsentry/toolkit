@@ -60,7 +60,7 @@ type EditFlags = WidgetQueryFlags &
 /** Merge query-level flags over existing widget query */
 function mergeQueries(
   flags: EditFlags,
-  existingQuery: DashboardWidgetQuery | undefined,
+  existingQueries: DashboardWidgetQuery[] | undefined,
 ): DashboardWidgetQuery[] | undefined {
   const hasChanges =
     flags.query || flags.where !== undefined || flags["group-by"] || flags.sort;
@@ -71,6 +71,7 @@ function mergeQueries(
 
   // Destructure to omit stale `fields` — prepareWidgetQueries will
   // recompute it from the updated aggregates/columns.
+  const [existingQuery, ...remainingQueries] = existingQueries ?? [];
   const { fields: _staleFields, ...base } = existingQuery ?? {};
   return [
     {
@@ -80,6 +81,7 @@ function mergeQueries(
       ...(flags["group-by"] && { columns: flags["group-by"] }),
       ...(flags.sort && { orderby: parseSortExpression(flags.sort) }),
     },
+    ...remainingQueries,
   ];
 }
 
@@ -124,7 +126,7 @@ function validateEnumsAndAggregates(
   }
 
   if (flags.display || flags.dataset) {
-    const effectiveDisplay = flags.display ?? existing.displayType;
+    const effectiveDisplay = flags.display ?? existing.displayType ?? undefined;
     const effectiveDataset = flags.dataset ?? existing.widgetType;
     validateWidgetEnums(effectiveDisplay, effectiveDataset);
   }
@@ -158,7 +160,7 @@ function buildReplacement(
   flags: EditFlags,
   existing: DashboardWidget,
 ): DashboardWidget {
-  const mergedQueries = mergeQueries(flags, existing.queries?.[0]);
+  const mergedQueries = mergeQueries(flags, existing.queries);
   const baseLimit = flags.limit !== undefined ? flags.limit : existing.limit;
   const columns =
     mergedQueries?.[0]?.columns ?? existing.queries?.[0]?.columns ?? [];
@@ -171,9 +173,20 @@ function buildReplacement(
   validateEnumsAndAggregates(flags, existing, mergedQueries);
   validateQueryConstraints(flags, existing, mergedQueries);
 
+  // Sentry returns null for a display type it doesn't recognize, and it
+  // won't accept null back.
+  const displayType = flags.display ?? existing.displayType;
+  if (displayType === null) {
+    throw new ValidationError(
+      "This widget has no display type Sentry recognizes. Pass --display to set one.",
+      "display",
+    );
+  }
+
   const raw: Record<string, unknown> = {
+    ...(existing.id !== undefined && { id: existing.id }),
     title: flags["new-title"] ?? existing.title,
-    displayType: flags.display ?? existing.displayType,
+    displayType,
     queries: mergedQueries ?? existing.queries,
     layout: mergeLayout(flags, existing),
   };

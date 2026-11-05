@@ -1527,9 +1527,18 @@ function renderTextContent(content: string, innerWidth: number): string[] {
   return wrapped.split("\n");
 }
 
-/** Render placeholder content for unsupported/error widgets (no title/border). */
-function renderPlaceholderContent(message: string): string[] {
-  return [isPlainOutput() ? `(${message})` : muted(`(${message})`)];
+/**
+ * Render placeholder content for unsupported/error widgets (no title/border).
+ * Wraps to the widget width so long API details stay readable.
+ */
+function renderPlaceholderContent(
+  message: string,
+  innerWidth: number,
+): string[] {
+  const lines = wrapAnsi(`(${message})`, innerWidth, { hard: true }).split(
+    "\n",
+  );
+  return isPlainOutput() ? lines : lines.map((line) => muted(line));
 }
 
 // ---------------------------------------------------------------------------
@@ -1706,13 +1715,16 @@ function renderContentLines(opts: {
       return renderTextContent(data.content, innerWidth);
 
     case "unsupported":
-      return renderPlaceholderContent(data.reason);
+      return renderPlaceholderContent(data.reason, innerWidth);
 
     case "error":
-      return renderPlaceholderContent(`query failed: ${data.message}`);
+      return renderPlaceholderContent(
+        `query failed: ${data.message}`,
+        innerWidth,
+      );
 
     default:
-      return renderPlaceholderContent("unknown widget data type");
+      return renderPlaceholderContent("unknown widget data type", innerWidth);
   }
 }
 

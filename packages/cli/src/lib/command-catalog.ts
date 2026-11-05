@@ -14,6 +14,7 @@ import type {
 } from "@sentry/mcp-core/command-catalog";
 import generatedCommandApi from "../generated/command-api.json";
 import type { ApiReference } from "./api-schema.js";
+import type { ApiAccess } from "./command-access.js";
 import { CHOICE_TARGET } from "./completion-target.js";
 import {
   argumentCompletion,
@@ -161,17 +162,24 @@ function completions(command: Command): CommandCatalogEntry["completions"] {
  *
  * @param routeMap - Top-level Stricli route map
  * @param apiByCommand - API references by command path (`command-api.json`)
+ * @param apiAccessByCommand - API request class by command path
+ *   (`command-api-access.json`); introspection's import when omitted
  */
 export function extractCommandCatalog(
   routeMap: RouteMap,
   apiByCommand: Readonly<
     Record<string, readonly ApiReference[]>
   > = generatedCommandApi,
+  apiAccessByCommand?: Readonly<Record<string, ApiAccess>>,
 ): CommandCatalog {
   const commands: CommandCatalogEntry[] = [];
   for (const [command, segments] of publicTargetPaths(routeMap)) {
     if (!isCommand(command)) continue;
-    const info = buildCommandInfo(command, `sentry ${segments.join(" ")}`);
+    const info = buildCommandInfo(
+      command,
+      `sentry ${segments.join(" ")}`,
+      apiAccessByCommand,
+    );
     const { exposure } = info;
     if (exposure === "hidden") continue;
     const localPathFlags = info.flags
