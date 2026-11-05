@@ -1,6 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
-import { getUserAgent } from "../../version";
 
 // Default configuration constants
 const DEFAULT_OPENAI_MODEL = "gpt-5";
@@ -41,9 +40,6 @@ export function getOpenAIModel(model?: string): LanguageModel {
 
   const factory = createOpenAI({
     ...(configuredBaseUrl && { baseURL: configuredBaseUrl }),
-    headers: {
-      "User-Agent": getUserAgent(),
-    },
   });
 
   return factory(model ?? defaultModel);
