@@ -4788,6 +4788,721 @@
       },
       "required": ["organizationSlug", "ruleIdOrName"]
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "alertRule": {
+          "description": "Set when the match is an Issue Alert.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "frequency": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "environment": {
+              "type": ["string", "null"]
+            },
+            "owner": {
+              "type": ["string", "null"]
+            },
+            "dateCreated": {
+              "type": ["string", "null"]
+            },
+            "dateUpdated": {
+              "type": ["string", "null"]
+            },
+            "lastTriggered": {
+              "type": ["string", "null"]
+            },
+            "triggers": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": ["string", "number"]
+                    },
+                    "logicType": {
+                      "type": "string"
+                    },
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": ["string", "number"]
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "comparison": {},
+                          "conditionResult": {}
+                        },
+                        "required": ["type", "comparison", "conditionResult"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["logicType", "conditions"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "actionFilters": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": ["string", "number"]
+                  },
+                  "logicType": {
+                    "type": "string"
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": ["string", "number"]
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "comparison": {},
+                        "conditionResult": {}
+                      },
+                      "required": ["type", "comparison", "conditionResult"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "actions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": ["string", "number"]
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "integrationId": {
+                          "type": ["string", "number", "null"]
+                        },
+                        "config": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "data": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "status": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["type", "config", "data"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["logicType", "conditions", "actions"],
+                "additionalProperties": false
+              }
+            },
+            "scope": {
+              "type": "object",
+              "properties": {
+                "includesAllProjects": {
+                  "type": "boolean"
+                },
+                "projectIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "limitedToProject": {
+                  "type": ["string", "null"]
+                },
+                "outsideProjectCount": {
+                  "type": "number"
+                }
+              },
+              "required": ["includesAllProjects", "projectIds"],
+              "additionalProperties": false
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "const": "available"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      },
+                      "projectId": {
+                        "type": ["string", "null"]
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "config": {
+                        "type": "object",
+                        "properties": {
+                          "detectionType": {
+                            "type": "string"
+                          },
+                          "comparisonDeltaSeconds": {
+                            "type": ["number", "null"]
+                          },
+                          "mode": {
+                            "description": "Raw integer detector mode from Sentry.",
+                            "type": "number"
+                          },
+                          "environment": {
+                            "type": ["string", "null"]
+                          },
+                          "recoveryThreshold": {
+                            "type": "number"
+                          },
+                          "downtimeThreshold": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "conditionGroup": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": ["string", "number"]
+                              },
+                              "logicType": {
+                                "type": "string"
+                              },
+                              "conditions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": ["string", "number"]
+                                    },
+                                    "type": {
+                                      "type": "string"
+                                    },
+                                    "comparison": {},
+                                    "conditionResult": {}
+                                  },
+                                  "required": [
+                                    "type",
+                                    "comparison",
+                                    "conditionResult"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": ["logicType", "conditions"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "dataSources": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "query": {
+                                  "type": "object",
+                                  "properties": {
+                                    "dataset": {
+                                      "type": "string"
+                                    },
+                                    "query": {
+                                      "type": "string"
+                                    },
+                                    "aggregate": {
+                                      "type": "string"
+                                    },
+                                    "environment": {
+                                      "type": ["string", "null"]
+                                    },
+                                    "eventTypes": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "extrapolationMode": {
+                                      "type": ["string", "null"]
+                                    },
+                                    "timeWindowSeconds": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "dataset",
+                                    "query",
+                                    "aggregate",
+                                    "environment",
+                                    "eventTypes",
+                                    "timeWindowSeconds"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": ["type", "query"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "query": {
+                                  "type": "object",
+                                  "properties": {
+                                    "url": {
+                                      "type": "string"
+                                    },
+                                    "method": {
+                                      "type": "string"
+                                    },
+                                    "intervalSeconds": {
+                                      "type": "number"
+                                    },
+                                    "timeoutMs": {
+                                      "type": "number"
+                                    },
+                                    "assertion": {},
+                                    "traceSampling": {
+                                      "type": "boolean"
+                                    },
+                                    "responseCaptureEnabled": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "method",
+                                    "intervalSeconds",
+                                    "timeoutMs",
+                                    "assertion"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "omittedFields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": ["type", "query", "omittedFields"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "query": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "slug": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "type": "string"
+                                    },
+                                    "isMuted": {
+                                      "type": "boolean"
+                                    },
+                                    "config": {
+                                      "type": "object",
+                                      "properties": {
+                                        "schedule_type": {
+                                          "type": "string"
+                                        },
+                                        "schedule": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "array",
+                                              "items": {
+                                                "type": ["number", "string"]
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        "checkin_margin": {
+                                          "type": ["number", "null"]
+                                        },
+                                        "max_runtime": {
+                                          "type": ["number", "null"]
+                                        },
+                                        "timezone": {
+                                          "type": ["string", "null"]
+                                        },
+                                        "failure_issue_threshold": {
+                                          "type": ["number", "null"]
+                                        },
+                                        "recovery_threshold": {
+                                          "type": ["number", "null"]
+                                        }
+                                      },
+                                      "required": ["schedule_type", "schedule"],
+                                      "additionalProperties": false
+                                    },
+                                    "environments": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "name": {
+                                            "type": "string"
+                                          },
+                                          "status": {
+                                            "type": "string"
+                                          },
+                                          "isMuted": {
+                                            "type": "boolean"
+                                          }
+                                        },
+                                        "required": [
+                                          "name",
+                                          "status",
+                                          "isMuted"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name",
+                                    "slug",
+                                    "status",
+                                    "isMuted",
+                                    "config",
+                                    "environments"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": ["type", "query"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "unavailableReason": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["type", "unavailableReason"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "status",
+                      "name",
+                      "type",
+                      "projectId",
+                      "enabled",
+                      "config",
+                      "conditionGroup",
+                      "dataSources"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "const": "outside_project_constraint"
+                      }
+                    },
+                    "required": ["id", "status"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "const": "unavailable"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id", "status", "reason"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "webUrl": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "config",
+            "owner",
+            "dateCreated",
+            "dateUpdated",
+            "lastTriggered",
+            "triggers",
+            "actionFilters",
+            "scope",
+            "sources",
+            "webUrl"
+          ],
+          "additionalProperties": false
+        },
+        "metricMonitor": {
+          "description": "Set when the match is a Metric Monitor.",
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "projectId": {
+              "type": ["string", "null"]
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "owner": {
+              "type": ["string", "null"]
+            },
+            "workflowIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "webUrl": {
+              "type": "string"
+            },
+            "description": {
+              "type": ["string", "null"]
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "detectionType": {
+                  "type": "string"
+                },
+                "comparisonDeltaSeconds": {
+                  "type": "number"
+                }
+              },
+              "required": ["detectionType"],
+              "additionalProperties": false
+            },
+            "conditionGroup": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": ["string", "number"]
+                    },
+                    "logicType": {
+                      "type": "string"
+                    },
+                    "conditions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": ["string", "number"]
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "comparison": {},
+                          "conditionResult": {}
+                        },
+                        "required": ["type", "comparison", "conditionResult"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["logicType", "conditions"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Native detection conditions, including resolution. Results: 75 critical, 50 warning, 0 resolved. Percent comparisons are absolute percentages (110 means 10% higher). Dynamic comparisons contain sensitivity, seasonality and thresholdType."
+            },
+            "dataSources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "query": {
+                    "type": "object",
+                    "properties": {
+                      "dataset": {
+                        "type": "string"
+                      },
+                      "query": {
+                        "type": "string"
+                      },
+                      "aggregate": {
+                        "type": "string"
+                      },
+                      "environment": {
+                        "type": ["string", "null"]
+                      },
+                      "eventTypes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "extrapolationMode": {
+                        "type": ["string", "null"]
+                      },
+                      "timeWindowSeconds": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "dataset",
+                      "query",
+                      "aggregate",
+                      "environment",
+                      "eventTypes",
+                      "timeWindowSeconds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "unavailableReason": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type"],
+                "additionalProperties": false
+              }
+            },
+            "dateCreated": {
+              "type": ["string", "null"]
+            },
+            "dateUpdated": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "projectId",
+            "enabled",
+            "owner",
+            "workflowIds",
+            "webUrl",
+            "description",
+            "config",
+            "conditionGroup",
+            "dataSources",
+            "dateCreated",
+            "dateUpdated"
+          ],
+          "additionalProperties": false
+        },
+        "guidance": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "requiredScopes": ["org:read", "project:read"],
     "skills": ["inspect"],
     "surface": "direct"
@@ -5909,7 +6624,7 @@
   {
     "name": "get_profile",
     "title": "Get Transaction Profile",
-    "description": "Analyze aggregated CPU profiling data (flamegraph) for a transaction to identify performance bottlenecks and detect regressions.\nFor one specific profile by ID or URL, use get_profile_details.\n\nUSE THIS TOOL WHEN:\n- User asks why a specific endpoint/transaction is slow\n- User wants to understand where CPU time is spent\n- User asks about performance bottlenecks\n- User wants to compare performance between time periods\n- User shares a Sentry profile URL\n\nRETURNS:\n- Hot paths (call stacks consuming the most CPU time)\n- Performance percentiles (p75, p95, p99) for each function\n- User code vs library code breakdown\n- Actionable recommendations for optimization\n- Regression analysis when comparing periods\n\n<examples>\n### Analyze from URL (with transaction name)\n```\nget_profile(\n  profileUrl='https://my-org.sentry.io/explore/profiling/profile/backend/flamegraph/?profilerId=abc123',\n  transactionName='/api/users'\n)\n```\n\n### Analyze by transaction name\n```\nget_profile(\n  organizationSlug='my-org',\n  transactionName='/api/users',\n  projectSlugOrId='backend'\n)\n```\n\n### Compare performance between periods\n```\nget_profile(\n  organizationSlug='my-org',\n  transactionName='/api/users',\n  projectSlugOrId='backend',\n  period='7d',\n  compareAgainstPeriod='14d'\n)\n```\n</examples>\n\n<hints>\n- Use `focusOnUserCode: true` (default) to filter out library code\n- High p99 relative to p75 indicates inconsistent performance\n- Use compareAgainstPeriod to detect regressions over time\n- Transaction names are case-sensitive\n</hints>",
+    "description": "Analyze aggregated CPU profiling data (flamegraph) for a transaction to identify performance bottlenecks and detect regressions.\nFor one specific profile by ID or URL, use get_profile_details.\n\nUSE THIS TOOL WHEN:\n- User asks why a specific endpoint/transaction is slow\n- User wants to understand where CPU time is spent\n- User asks about performance bottlenecks\n- User wants to compare performance between time periods\n- User shares a Sentry profile URL\n\nRETURNS:\n- Hot paths (call stacks consuming the most CPU time); the last frame of each stack is the primary bottleneck\n- Performance percentiles (p75, p95, p99) for each function\n- User code vs library code breakdown\n- Regression analysis when comparing periods\n\n<examples>\n### Analyze from URL (with transaction name)\n```\nget_profile(\n  profileUrl='https://my-org.sentry.io/explore/profiling/profile/backend/flamegraph/?profilerId=abc123',\n  transactionName='/api/users'\n)\n```\n\n### Analyze by transaction name\n```\nget_profile(\n  organizationSlug='my-org',\n  transactionName='/api/users',\n  projectSlugOrId='backend'\n)\n```\n\n### Compare performance between periods\n```\nget_profile(\n  organizationSlug='my-org',\n  transactionName='/api/users',\n  projectSlugOrId='backend',\n  period='7d',\n  compareAgainstPeriod='14d'\n)\n```\n</examples>\n\n<hints>\n- Use `focusOnUserCode: true` (default) to filter out library code\n- High p99 relative to p75 indicates inconsistent performance\n- Use compareAgainstPeriod to detect regressions over time\n- Transaction names are case-sensitive\n- Start optimizing at the bottleneck of the top hot path; look for caching opportunities and N+1 or inefficient data access\n- For a major regression, investigate recent changes to that function\n- Without profile data, verify the exact transaction name with search_traces, try a longer period (e.g. '30d'), or check that profiling is enabled for the project. If only one comparison period has data, adjust that period or drop compareAgainstPeriod\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5970,6 +6685,268 @@
           "type": "boolean"
         }
       }
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "transactionName": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "period": {
+          "type": "string"
+        },
+        "baselinePeriod": {
+          "description": "Null unless compareAgainstPeriod was set.",
+          "type": ["string", "null"]
+        },
+        "focusOnUserCode": {
+          "type": "boolean"
+        },
+        "hasCurrentData": {
+          "type": "boolean"
+        },
+        "hasBaselineData": {
+          "description": "Null unless compareAgainstPeriod was set.",
+          "type": ["boolean", "null"]
+        },
+        "analysis": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "platform": {
+                  "type": ["string", "null"]
+                },
+                "profileCount": {
+                  "type": "number"
+                },
+                "sampleCount": {
+                  "type": "number"
+                },
+                "estimatedTotalMs": {
+                  "type": "number",
+                  "description": "Sampled duration across the aggregated stacks returned."
+                },
+                "userCodeMs": {
+                  "type": "number",
+                  "description": "Part of estimatedTotalMs where the sampled leaf frame is application code."
+                },
+                "libraryMs": {
+                  "type": "number",
+                  "description": "Part of estimatedTotalMs where the sampled leaf frame is library code."
+                },
+                "userCodePercent": {
+                  "type": "number",
+                  "description": "userCodeMs as a share of the total."
+                },
+                "frames": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "file": {
+                        "type": ["string", "null"]
+                      },
+                      "line": {
+                        "type": ["number", "null"]
+                      },
+                      "isApplication": {
+                        "type": "boolean"
+                      },
+                      "occurrences": {
+                        "type": "number",
+                        "description": "Times this frame appears in the aggregated call tree, summed across calls. Not a sample count; it can exceed the number of samples."
+                      },
+                      "p75Ms": {
+                        "type": "number"
+                      },
+                      "p95Ms": {
+                        "type": "number"
+                      },
+                      "p99Ms": {
+                        "type": "number"
+                      },
+                      "insights": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "high_variance",
+                            "consistently_slow",
+                            "hot_function",
+                            "consistent"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "file",
+                      "line",
+                      "isApplication",
+                      "occurrences",
+                      "p75Ms",
+                      "p95Ms",
+                      "p99Ms",
+                      "insights"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "Frames referenced by topFunctions and hotPaths. Other fields refer to frames by index into this array."
+                },
+                "topFunctions": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "description": "Frame indexes of the slowest functions, by CPU weight."
+                },
+                "hotPaths": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "percentOfSamples": {
+                        "type": "number"
+                      },
+                      "sampleCount": {
+                        "type": "number"
+                      },
+                      "stack": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "description": "Frame indexes from root to leaf. Library frames are omitted when focusOnUserCode is true. The last frame is the primary bottleneck."
+                      },
+                      "leaf": {
+                        "type": "number",
+                        "description": "Frame index of the sampled leaf, which can be library code omitted from stack."
+                      }
+                    },
+                    "required": [
+                      "percentOfSamples",
+                      "sampleCount",
+                      "stack",
+                      "leaf"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "platform",
+                "profileCount",
+                "sampleCount",
+                "estimatedTotalMs",
+                "userCodeMs",
+                "libraryMs",
+                "userCodePercent",
+                "frames",
+                "topFunctions",
+                "hotPaths"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Single-period analysis. Null when comparing or without data."
+        },
+        "comparison": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "major_regression",
+                    "minor_regression",
+                    "improvement",
+                    "no_change"
+                  ],
+                  "description": "Most severe change among compared frames."
+                },
+                "changes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "file": {
+                        "type": ["string", "null"]
+                      },
+                      "line": {
+                        "type": ["number", "null"]
+                      },
+                      "isApplication": {
+                        "type": "boolean"
+                      },
+                      "baselineMs": {
+                        "type": "number"
+                      },
+                      "currentMs": {
+                        "type": "number"
+                      },
+                      "percentChange": {
+                        "type": "number"
+                      },
+                      "changeType": {
+                        "type": "string",
+                        "enum": [
+                          "major_regression",
+                          "minor_regression",
+                          "improvement",
+                          "no_change"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "file",
+                      "line",
+                      "isApplication",
+                      "baselineMs",
+                      "currentMs",
+                      "percentChange",
+                      "changeType"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["status", "changes"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Baseline comparison. Null unless both periods have data."
+        }
+      },
+      "required": [
+        "transactionName",
+        "projectId",
+        "period",
+        "baselinePeriod",
+        "focusOnUserCode",
+        "hasCurrentData",
+        "hasBaselineData",
+        "analysis",
+        "comparison"
+      ],
+      "additionalProperties": false
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect"],
@@ -7815,7 +8792,7 @@
   {
     "name": "onboarding_status_update",
     "title": "Update Onboarding Status",
-    "description": "Update the progress shown in Sentry's agentic onboarding UI.\n\nUse this tool only when the Sentry getting started skill provides a run token. Call it at the workflow boundaries described by that skill.\n\n<hints>\n- Progress updates are operational UI state, not user analytics.\n- Keep eventNote brief and limited to context useful in the progress UI.\n- Do not include source code, repository paths, credentials, error output, or other sensitive data.\n- status is required for every update.\n- Set runStatus to completed or failed only when the entire onboarding run reaches that state.\n- A failed status requires a brief eventNote explaining the failure.\n</hints>",
+    "description": "Update the progress shown in Sentry's agentic onboarding UI.\n\nUse this tool only when the Sentry getting started skill provides a run token. Call it at the workflow boundaries described by that skill.\n\n<hints>\n- Progress updates are operational UI state, not user analytics.\n- Keep eventNote brief and limited to context useful in the progress UI.\n- Do not include source code, repository paths, credentials, error output, or other sensitive data.\n- status is required for every update.\n- Set runStatus to completed or failed only when the entire onboarding run reaches that state.\n- A failed status requires a brief eventNote explaining the failure.\n- Stop sending updates when the result has continueUpdates: false.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -7993,6 +8970,17 @@
         }
       },
       "required": ["organizationSlug", "runToken", "update"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "continueUpdates": {
+          "type": "boolean",
+          "description": "False when Sentry wants no further updates for this run."
+        }
+      },
+      "required": ["continueUpdates"],
+      "additionalProperties": false
     },
     "requiredScopes": ["org:read"],
     "skills": ["inspect", "seer", "docs", "triage", "project-management"],
@@ -9592,6 +10580,257 @@
       },
       "required": ["organizationSlug"]
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "explanation": {
+          "type": ["string", "null"]
+        },
+        "executedSearch": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "string"
+            },
+            "query": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sort": {
+              "type": ["string", "null"]
+            },
+            "timeRange": {
+              "type": "object",
+              "properties": {
+                "statsPeriod": {
+                  "type": ["string", "null"]
+                },
+                "start": {
+                  "type": ["string", "null"]
+                },
+                "end": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["statsPeriod", "start", "end"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["dataset", "query", "fields", "sort", "timeRange"],
+          "additionalProperties": false
+        },
+        "url": {
+          "type": "string",
+          "description": "Opens these results in Sentry."
+        },
+        "presentationHint": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "resultType": {
+          "type": "string",
+          "enum": ["samples", "aggregates", "timeSeries"]
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {},
+                "description": "The requested fields, keyed by field name."
+              },
+              "links": {
+                "type": "object",
+                "properties": {
+                  "logUrl": {
+                    "type": ["string", "null"]
+                  },
+                  "traceUrl": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["logUrl", "traceUrl"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["values", "links"],
+            "additionalProperties": false
+          }
+        },
+        "timeSeries": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "yAxis": {
+                  "type": "string"
+                },
+                "interval": {
+                  "description": "Bucket size; null when Sentry chose it for the range.",
+                  "type": ["string", "null"]
+                },
+                "total": {
+                  "description": "Sum of all buckets; null for non-additive aggregates.",
+                  "type": ["number", "null"]
+                },
+                "totalIncludesIncompleteBuckets": {
+                  "type": "boolean"
+                },
+                "peak": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "time": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": ["number", "string"]
+                        }
+                      },
+                      "required": ["time", "value"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Highest bucket that is no longer receiving data."
+                },
+                "ingestion": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string"
+                        },
+                        "delaySeconds": {
+                          "type": ["number", "null"]
+                        },
+                        "completeThrough": {
+                          "type": ["string", "null"]
+                        }
+                      },
+                      "required": ["status", "delaySeconds", "completeThrough"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "bucketCount": {
+                  "type": "number"
+                },
+                "buckets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "time": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": ["number", "string"]
+                      },
+                      "incomplete": {
+                        "type": "boolean",
+                        "description": "Data is still arriving, so the value may rise."
+                      },
+                      "outsideRetention": {
+                        "type": "boolean",
+                        "description": "Starts before the retention window, so older data is missing and the value will not change."
+                      }
+                    },
+                    "required": [
+                      "time",
+                      "value",
+                      "incomplete",
+                      "outsideRetention"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "The most recent buckets, oldest first."
+                }
+              },
+              "required": [
+                "yAxis",
+                "interval",
+                "total",
+                "totalIncludesIncompleteBuckets",
+                "peak",
+                "ingestion",
+                "bucketCount",
+                "buckets"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "query",
+        "explanation",
+        "executedSearch",
+        "url",
+        "presentationHint",
+        "notes",
+        "resultType",
+        "results",
+        "timeSeries",
+        "suggestedActions"
+      ],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "direct"
@@ -9934,6 +11173,254 @@
         }
       },
       "required": ["organizationSlug"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "explanation": {
+          "type": ["string", "null"]
+        },
+        "executedSearch": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "string"
+            },
+            "query": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sort": {
+              "type": ["string", "null"]
+            },
+            "timeRange": {
+              "type": "object",
+              "properties": {
+                "statsPeriod": {
+                  "type": ["string", "null"]
+                },
+                "start": {
+                  "type": ["string", "null"]
+                },
+                "end": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["statsPeriod", "start", "end"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["dataset", "query", "fields", "sort", "timeRange"],
+          "additionalProperties": false
+        },
+        "url": {
+          "type": "string",
+          "description": "Opens these results in Sentry."
+        },
+        "presentationHint": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "resultType": {
+          "type": "string",
+          "enum": ["samples", "aggregates", "timeSeries"]
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {},
+                "description": "The requested fields, keyed by field name."
+              },
+              "links": {
+                "type": "object",
+                "properties": {
+                  "traceUrl": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["traceUrl"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["values", "links"],
+            "additionalProperties": false
+          }
+        },
+        "timeSeries": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "yAxis": {
+                  "type": "string"
+                },
+                "interval": {
+                  "description": "Bucket size; null when Sentry chose it for the range.",
+                  "type": ["string", "null"]
+                },
+                "total": {
+                  "description": "Sum of all buckets; null for non-additive aggregates.",
+                  "type": ["number", "null"]
+                },
+                "totalIncludesIncompleteBuckets": {
+                  "type": "boolean"
+                },
+                "peak": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "time": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": ["number", "string"]
+                        }
+                      },
+                      "required": ["time", "value"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Highest bucket that is no longer receiving data."
+                },
+                "ingestion": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string"
+                        },
+                        "delaySeconds": {
+                          "type": ["number", "null"]
+                        },
+                        "completeThrough": {
+                          "type": ["string", "null"]
+                        }
+                      },
+                      "required": ["status", "delaySeconds", "completeThrough"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "bucketCount": {
+                  "type": "number"
+                },
+                "buckets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "time": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": ["number", "string"]
+                      },
+                      "incomplete": {
+                        "type": "boolean",
+                        "description": "Data is still arriving, so the value may rise."
+                      },
+                      "outsideRetention": {
+                        "type": "boolean",
+                        "description": "Starts before the retention window, so older data is missing and the value will not change."
+                      }
+                    },
+                    "required": [
+                      "time",
+                      "value",
+                      "incomplete",
+                      "outsideRetention"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "The most recent buckets, oldest first."
+                }
+              },
+              "required": [
+                "yAxis",
+                "interval",
+                "total",
+                "totalIncludesIncompleteBuckets",
+                "peak",
+                "ingestion",
+                "bucketCount",
+                "buckets"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "query",
+        "explanation",
+        "executedSearch",
+        "url",
+        "presentationHint",
+        "notes",
+        "resultType",
+        "results",
+        "timeSeries",
+        "suggestedActions"
+      ],
+      "additionalProperties": false
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],

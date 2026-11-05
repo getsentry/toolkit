@@ -110,6 +110,20 @@ export const ERROR_RESULT_HINTS: SearchResultHints = {
   empty: EMPTY_RESULTS_HINT,
 };
 
+export const SPAN_RESULT_HINTS: SearchResultHints = {
+  samples:
+    "A timeline works well for these traces, with durations and parent-child span relationships visible.",
+  aggregates: AGGREGATE_RESULTS_HINT,
+  empty: EMPTY_RESULTS_HINT,
+};
+
+export const LOG_RESULT_HINTS: SearchResultHints = {
+  samples:
+    "Console-style formatting works well for these logs, with timestamps preserved.",
+  aggregates: AGGREGATE_RESULTS_HINT,
+  empty: EMPTY_RESULTS_HINT,
+};
+
 /**
  * Common parameters for event formatters
  */
@@ -302,16 +316,11 @@ export function formatLogResults(params: FormatEventResultsParams): string {
 
   let output = `# Search Results for "${inputQuery}"\n\n`;
 
-  // Check if this is an aggregate query and adjust display instructions
-  if (isAggregateQuery(fields)) {
-    output += formatSearchPresentationHint(
-      "A compact table works well for these aggregate results.",
-    );
-  } else {
-    output += formatSearchPresentationHint(
-      "Console-style formatting works well for these logs, with timestamps preserved.",
-    );
-  }
+  output += formatSearchPresentationHint(
+    isAggregateQuery(fields)
+      ? LOG_RESULT_HINTS.aggregates
+      : LOG_RESULT_HINTS.samples,
+  );
 
   if (includeExplanation && explanation) {
     output += formatExplanation(explanation);
@@ -332,7 +341,7 @@ export function formatLogResults(params: FormatEventResultsParams): string {
       },
     });
     output += `No results found.\n\n`;
-    output += `Try being more specific or using different terms in your search.\n`;
+    output += `${LOG_RESULT_HINTS.empty}\n`;
     return output;
   }
 
@@ -467,16 +476,11 @@ export function formatSpanResults(params: FormatEventResultsParams): string {
 
   let output = `# Search Results for "${inputQuery}"\n\n`;
 
-  // Check if this is an aggregate query and adjust display instructions
-  if (isAggregateQuery(fields)) {
-    output += formatSearchPresentationHint(
-      "A compact table works well for these aggregate results.",
-    );
-  } else {
-    output += formatSearchPresentationHint(
-      "A timeline works well for these traces, with durations and parent-child span relationships visible.",
-    );
-  }
+  output += formatSearchPresentationHint(
+    isAggregateQuery(fields)
+      ? SPAN_RESULT_HINTS.aggregates
+      : SPAN_RESULT_HINTS.samples,
+  );
 
   if (includeExplanation && explanation) {
     output += formatExplanation(explanation);
@@ -497,7 +501,7 @@ export function formatSpanResults(params: FormatEventResultsParams): string {
       },
     });
     output += `No results found.\n\n`;
-    output += `Try being more specific or using different terms in your search.\n`;
+    output += `${SPAN_RESULT_HINTS.empty}\n`;
     return output;
   }
 
