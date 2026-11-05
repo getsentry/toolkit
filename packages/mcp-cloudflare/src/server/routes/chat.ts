@@ -1,5 +1,4 @@
 import { experimental_createMCPClient } from "@ai-sdk/mcp";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
   getOpenRouterModel,
   getOpenRouterProviderOptions,
@@ -245,17 +244,15 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
       // Get the current request URL to construct the MCP endpoint URL
       const requestUrl = new URL(c.req.url);
       const mcpUrl = new URL(`${requestUrl.protocol}//${requestUrl.host}/mcp`);
-      const httpTransport = new StreamableHTTPClientTransport(mcpUrl, {
-        requestInit: {
+      mcpClient = await experimental_createMCPClient({
+        name: "mcp.sentry.dev (web)",
+        transport: {
+          type: "http",
+          url: mcpUrl.href,
           headers: {
             Authorization: `Bearer ${currentAccessToken}`,
           },
         },
-      });
-
-      mcpClient = await experimental_createMCPClient({
-        name: "mcp.sentry.dev (web)",
-        transport: httpTransport,
       });
 
       // Get available tools from MCP server
@@ -281,17 +278,15 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
             const mcpUrl = new URL(
               `${requestUrl.protocol}//${requestUrl.host}/mcp`,
             );
-            const httpTransport = new StreamableHTTPClientTransport(mcpUrl, {
-              requestInit: {
+            mcpClient = await experimental_createMCPClient({
+              name: "mcp.sentry.dev (web)",
+              transport: {
+                type: "http",
+                url: mcpUrl.href,
                 headers: {
                   Authorization: `Bearer ${currentAccessToken}`,
                 },
               },
-            });
-
-            mcpClient = await experimental_createMCPClient({
-              name: "mcp.sentry.dev (web)",
-              transport: httpTransport,
             });
 
             Object.assign(tools, await mcpClient.tools());

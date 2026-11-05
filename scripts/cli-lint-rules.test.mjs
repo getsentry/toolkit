@@ -124,6 +124,29 @@ tester.run("no-silent-catch", plugin.rules["no-silent-catch"], {
   ],
 });
 
+tester.run("no-process-exit", plugin.rules["no-process-exit"], {
+  valid: [
+    { filename: source, code: "process.exitCode = 1;" },
+    { filename: source, code: "this.process.exitCode = code;" },
+    {
+      // Tests may stub process.exit
+      filename: "/repo/packages/cli/test/example.test.ts",
+      code: "vi.spyOn(process, 'exit'); process.exit(1);",
+    },
+  ],
+  invalid: [
+    { filename: source, code: "process.exit(1);", errors: 1 },
+    { filename: commands, code: "this.process.exit(0);", errors: 1 },
+    {
+      // A forced-exit timer is still a forced exit
+      filename: source,
+      code: "setTimeout(() => process.exit(process.exitCode ?? 0), 1000).unref();",
+      errors: 1,
+    },
+    { filename: source, code: "setTimeout(process.exit, 100);", errors: 1 },
+  ],
+});
+
 tester.run("no-ad-hoc-id-arguments", plugin.rules["no-ad-hoc-id-arguments"], {
   valid: [
     {

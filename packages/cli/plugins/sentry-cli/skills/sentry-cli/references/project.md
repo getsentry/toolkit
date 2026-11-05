@@ -97,19 +97,19 @@ List projects
 | `id` | string | Project ID |
 | `slug` | string | Project slug |
 | `name` | string | Project name |
-| `platform` | string \| null | Platform |
-| `platforms` | array | Platforms seen in events |
-| `dateCreated` | string | Creation date (ISO 8601) |
-| `firstEvent` | string \| null | First event date (ISO 8601) |
+| `platform` | string \| null | Platform of the project |
+| `platforms` | array | Platforms seen in the project's events |
+| `dateCreated` | string | When the project was created (ISO 8601) |
+| `firstEvent` | string \| null | When the project received its first event (ISO 8601) |
 | `status` | string | Project status |
-| `isBookmarked` | boolean | Whether you bookmarked it |
-| `isMember` | boolean | Whether you are a member |
-| `hasAccess` | boolean | Whether you have access |
-| `features` | array | Enabled features |
-| `team` | object \| null | Owning team |
-| `teams` | array | Teams with access |
-| `environments` | array | Environments seen |
-| `latestRelease` | object \| null | Latest release |
+| `isBookmarked` | boolean | Whether the requesting user bookmarked the project |
+| `isMember` | boolean | Whether the requesting user is a member of a team with access to the project |
+| `hasAccess` | boolean | Whether the requesting user has access to the project |
+| `features` | array | Features enabled for the project |
+| `team` | object \| null | First team with access to the project; use teams instead |
+| `teams` | array | Teams with access to the project |
+| `environments` | array | Environments seen in the project's events |
+| `latestRelease` | object \| null | Latest release of the project |
 | `organization` | object | Organization (detail responses only) |
 | `orgSlug` | string | Organization slug |
 
@@ -168,19 +168,19 @@ View details of a project
 | `id` | string | Project ID |
 | `slug` | string | Project slug |
 | `name` | string | Project name |
-| `platform` | string \| null | Platform |
-| `platforms` | array | Platforms seen in events |
-| `dateCreated` | string | Creation date (ISO 8601) |
-| `firstEvent` | string \| null | First event date (ISO 8601) |
+| `platform` | string \| null | Platform of the project |
+| `platforms` | array | Platforms seen in the project's events |
+| `dateCreated` | string | When the project was created (ISO 8601) |
+| `firstEvent` | string \| null | When the project received its first event (ISO 8601) |
 | `status` | string | Project status |
-| `isBookmarked` | boolean | Whether you bookmarked it |
-| `isMember` | boolean | Whether you are a member |
-| `hasAccess` | boolean | Whether you have access |
-| `features` | array | Enabled features |
-| `team` | object \| null | Owning team |
-| `teams` | array | Teams with access |
-| `environments` | array | Environments seen |
-| `latestRelease` | object \| null | Latest release |
+| `isBookmarked` | boolean | Whether the requesting user bookmarked the project |
+| `isMember` | boolean | Whether the requesting user is a member of a team with access to the project |
+| `hasAccess` | boolean | Whether the requesting user has access to the project |
+| `features` | array | Features enabled for the project |
+| `team` | object \| null | First team with access to the project; use teams instead |
+| `teams` | array | Teams with access to the project |
+| `environments` | array | Environments seen in the project's events |
+| `latestRelease` | object \| null | Latest release of the project |
 | `organization` | object | Organization (detail responses only) |
 | `dsn` | string \| null | Primary DSN |
 

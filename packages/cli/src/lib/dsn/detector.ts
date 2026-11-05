@@ -24,6 +24,7 @@ import {
   getCachedProjectRoot,
   setCachedProjectRoot,
 } from "../db/project-root-cache.js";
+import { logger } from "../logger.js";
 import {
   extractFirstDsnFromContent,
   scanCodeForDsns,
@@ -37,13 +38,22 @@ import {
 } from "./env-file.js";
 import { isRegularFile } from "./fs-utils.js";
 import { createDetectedDsn, createDsnFingerprint, parseDsn } from "./parser.js";
-import { findProjectRoot, isHomeOrAncestor } from "./project-root.js";
+import { findProjectRoot, shouldSkipDownwardScan } from "./project-root.js";
 import type {
   CachedDsnEntry,
   DetectedDsn,
   DsnDetectionResult,
   DsnSource,
 } from "./types.js";
+
+const log = logger.withTag("dsn");
+
+/** Explain at debug level why DSN auto-detection did not scan any files. */
+function logSkippedScan(projectRoot: string, reason: string): void {
+  log.debug(
+    `Skipping DSN file scan: project root ${projectRoot} (${reason}) is the home directory, an ancestor of it, or a shared temp directory`,
+  );
+}
 
 /**
  * Detect DSN with project root detection and caching support.
@@ -67,11 +77,12 @@ export async function detectDsn(cwd: string): Promise<DetectedDsn | null> {
   //    return it immediately - code DSNs take priority)
   const { projectRoot, reason } = await findProjectRoot(cwd);
 
-  // When project root detection fell back to the home directory (or an
-  // ancestor of it), a downward scan would reach OS app-data and credential
-  // directories (~/Library, ~/.ssh, ~/.aws, …). Skip the filesystem scan
-  // entirely in that case and only consult the SENTRY_DSN env var.
-  if (reason === "fallback" && isHomeOrAncestor(projectRoot)) {
+  // When the project root is the home directory, an ancestor of it, or a
+  // shared temp root, a downward scan would reach OS app-data, credential,
+  // and mounted dirs (~/Library, ~/.ssh, /tmp/.mount_*, …). Skip the
+  // filesystem scan entirely and only consult the SENTRY_DSN env var.
+  if (shouldSkipDownwardScan(projectRoot)) {
+    logSkippedScan(projectRoot, reason);
     return detectFromEnv();
   }
 
@@ -156,11 +167,10 @@ export async function detectAllDsns(cwd: string): Promise<DsnDetectionResult> {
     });
   }
 
-  // When project root detection fell back to the home directory (or an
-  // ancestor of it), a downward scan would reach OS app-data and credential
-  // directories (~/Library, ~/.ssh, ~/.aws, …). Skip the filesystem scan
-  // entirely and only report the SENTRY_DSN env var, if any.
-  if (reason === "fallback" && isHomeOrAncestor(projectRoot)) {
+  // Same guard as detectDsn: never scan down from $HOME, its ancestors, or a
+  // shared temp root. Only report the SENTRY_DSN env var, if any.
+  if (shouldSkipDownwardScan(projectRoot)) {
+    logSkippedScan(projectRoot, reason);
     const envDsn = detectFromEnv();
     const all = envDsn ? [envDsn] : [];
     return {

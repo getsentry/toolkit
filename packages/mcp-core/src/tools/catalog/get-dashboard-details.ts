@@ -13,6 +13,7 @@ import {
 
 export default defineTool({
   name: "get_dashboard_details",
+  title: "Get Dashboard Details",
   skills: ["inspect"],
   requiredScopes: ["org:read"],
   description: [

@@ -22,6 +22,7 @@ import { assertProjectRefWithinConstraint } from "./support/project-constraints"
 
 export default defineTool({
   name: "create_metric_monitor",
+  title: "Create Metric Monitor",
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [

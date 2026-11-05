@@ -52,6 +52,7 @@ function createSearchToolsResult(payload: SearchToolsOutput) {
 export function createSearchToolsTool(getTools: () => ToolRegistry) {
   return defineTool({
     name: "search_sentry_tools",
+    title: "Search Sentry Tools",
     skills: ALL_SKILLS,
     requiredScopes: [],
     description: [

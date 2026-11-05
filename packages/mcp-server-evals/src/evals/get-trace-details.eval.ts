@@ -1,4 +1,4 @@
-import { describeEval, ToolCallScorer } from "vitest-evals";
+import { describeEval, ToolCallScorer } from "vitest-evals/legacy";
 import { FIXTURES, McpToolCallTaskRunner } from "./utils";
 
 describeEval("get-trace-details", {

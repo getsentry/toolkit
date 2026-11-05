@@ -34,7 +34,6 @@ import {
   formatError,
   getExitCode,
   OutputError,
-  WizardError,
 } from "./errors.js";
 import { error as errorColor, warning } from "./formatters/colors.js";
 import { stripAnsi } from "./formatters/plain-detect.js";
@@ -216,7 +215,10 @@ function buildApplicationText(options: ArgumentHintOptions): ApplicationText {
       exc: unknown,
       ansiColor: boolean,
     ): string => {
-      const message = formatArgumentError(options, exc, ansiColor);
+      // Stricli quotes the raw input, which may be a pasted auth token
+      const message = redactCredentialText(
+        formatArgumentError(options, exc, ansiColor),
+      );
       // Exit 252 never reaches reportCliError; record it for UX research
       reportArgumentError(exc, stripAnsi(message));
       return message;
@@ -289,11 +291,6 @@ function buildApplicationText(options: ArgumentHintOptions): ApplicationText {
       reportCliError(exc);
 
       if (exc instanceof CliError) {
-        // WizardError with rendered=true: clack already displayed the error.
-        // Return empty string to avoid double output, exit code flows through.
-        if (exc instanceof WizardError && exc.rendered) {
-          return "";
-        }
         const prefix = ansiColor ? errorColor("Error:") : "Error:";
         return `${prefix} ${formatError(exc)}`;
       }

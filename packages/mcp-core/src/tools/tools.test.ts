@@ -59,6 +59,16 @@ test(`all tool descriptions under maximum length`, () => {
   }
 });
 
+test("all tools declare a unique display title", () => {
+  const seen = new Map<string, string>();
+  for (const tool of Object.values(tools.default)) {
+    assert(tool.title.trim(), `${tool.name} must define a non-empty title`);
+    const owner = seen.get(tool.title);
+    assert(!owner, `${tool.name} reuses the title of ${owner}`);
+    seen.set(tool.title, tool.name);
+  }
+});
+
 test("all tools declare complete MCP safety annotations", () => {
   for (const tool of Object.values(tools.default)) {
     // Every tool must declare readOnlyHint, destructiveHint, and openWorldHint

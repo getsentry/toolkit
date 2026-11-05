@@ -58,7 +58,7 @@ import {
 import { type ResolvedOrg, resolveOrg } from "../../lib/resolve-target.js";
 import {
   buildOrgNotFoundError,
-  type ResolvedConcreteTeam,
+  type ResolvedTeam,
   resolveOrCreateTeam,
 } from "../../lib/resolve-team.js";
 import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
@@ -222,7 +222,7 @@ async function resolveDryRunTeam(
     detectedFrom?: string;
     autoCreateSlug: string;
   },
-): Promise<ResolvedConcreteTeam> {
+): Promise<ResolvedTeam> {
   try {
     return await resolveOrCreateTeam(orgSlug, {
       team: opts.team,
@@ -275,7 +275,7 @@ async function createProjectWithAutoTeamFallback(
 ): Promise<
   CreatedProjectDetails & {
     teamSlug: string;
-    teamSource: ResolvedConcreteTeam["source"];
+    teamSource: ResolvedTeam["source"];
   }
 > {
   const { orgSlug, name, platform } = opts;
@@ -612,11 +612,11 @@ async function createOneProject(opts: {
   }
 
   let teamSlug: string;
-  let teamSource: ResolvedConcreteTeam["source"];
+  let teamSource: ResolvedTeam["source"];
   let projectDetails: CreatedProjectDetails;
 
   try {
-    const team: ResolvedConcreteTeam = await resolveOrCreateTeam(orgSlug, {
+    const team: ResolvedTeam = await resolveOrCreateTeam(orgSlug, {
       team: flags.team,
       detectedFrom,
       usageHint: USAGE_HINT,

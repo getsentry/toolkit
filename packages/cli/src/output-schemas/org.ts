@@ -25,36 +25,16 @@ export const SentryOrganizationSchema = looseObject({
   id: pipe(string(), description("Organization ID")),
   slug: pipe(string(), description("Organization slug")),
   name: pipe(string(), description("Organization name")),
-  dateCreated: optional(
-    pipe(sdkOrg.dateCreated, description("Creation date (ISO 8601)")),
-  ),
-  status: optional(pipe(sdkOrg.status, description("Organization status"))),
-  isEarlyAdopter: optional(
-    pipe(
-      sdkOrg.isEarlyAdopter,
-      description("Whether the org is an early adopter"),
-    ),
-  ),
-  require2FA: optional(
-    pipe(sdkOrg.require2FA, description("Whether members must use 2FA")),
-  ),
-  features: optional(pipe(sdkOrg.features, description("Enabled features"))),
-  avatar: optional(pipe(sdkOrg.avatar, description("Avatar"))),
-  links: optional(
-    pipe(sdkOrg.links, description("Organization and region URLs")),
-  ),
-  hasAuthProvider: optional(
-    pipe(sdkOrg.hasAuthProvider, description("Whether SSO is configured")),
-  ),
-  allowMemberInvite: optional(
-    pipe(sdkOrg.allowMemberInvite, description("Whether members can invite")),
-  ),
-  allowMemberProjectCreation: optional(
-    pipe(
-      sdkOrg.allowMemberProjectCreation,
-      description("Whether members can create projects"),
-    ),
-  ),
+  dateCreated: optional(sdkOrg.dateCreated),
+  status: optional(sdkOrg.status),
+  isEarlyAdopter: optional(sdkOrg.isEarlyAdopter),
+  require2FA: optional(sdkOrg.require2FA),
+  features: optional(sdkOrg.features),
+  avatar: optional(sdkOrg.avatar),
+  links: optional(sdkOrg.links),
+  hasAuthProvider: optional(sdkOrg.hasAuthProvider),
+  allowMemberInvite: optional(sdkOrg.allowMemberInvite),
+  allowMemberProjectCreation: optional(sdkOrg.allowMemberProjectCreation),
   orgRole: optional(
     pipe(string(), description("Your role in the organization")),
   ),

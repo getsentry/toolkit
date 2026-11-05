@@ -51,6 +51,7 @@ function describeMatch(match: AlertRuleMatch): string {
 
 export default defineTool({
   name: "get_alert_rule",
+  title: "Get Alert Rule",
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [

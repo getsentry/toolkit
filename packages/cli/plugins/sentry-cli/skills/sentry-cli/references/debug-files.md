@@ -74,7 +74,7 @@ Upload debug information files to Sentry
 | `<path...>` | Files or directories to scan for debug information files |
 
 **Flags:**
-- `-t, --type <value>... - Only upload files of this type (repeatable): dsym, elf, pe, pdb, portablepdb, wasm, breakpad, sourcebundle, jvm`
+- `-t, --type <value>... - Only upload files of this type (repeatable): dsym, elf, pe, pdb, portablepdb, wasm, breakpad, sourcebundle, jvm, dxil`
 - `--id <value>... - Only upload the object with this debug id (repeatable)`
 - `--require-all - Fail if any --id value was not found among scanned files`
 - `--no-debug - Do not upload files whose only feature is debug/symbol info`

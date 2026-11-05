@@ -14,28 +14,36 @@ import {
   type SdkResult,
   SentryApiError,
 } from "@sentry/api";
-import { readErrorResponse } from "@sentry/toolkit-core/api-client/response";
-import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import {
   API_MAX_PER_PAGE,
+  buildSentryApiUrl,
   decodePageCursor as decodeCursorPosition,
   fetchAllPages as fetchEveryPage,
   type FetchAllPagesFailure,
-  type PagePosition,
+  type CursorPosition,
   paginate as paginateFrom,
-} from "@sentry/toolkit-core/api-client/pagination";
+  readErrorResponse,
+} from "@sentry/api/client";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
 
 import { extractRequiredScopes } from "../api-scope.js";
+import { getUrlLoginCommand } from "../app-identity.js";
 import {
   type CredentialContext,
   getActiveEnvVarName,
   isEnvTokenActive,
 } from "../db/auth.js";
+import { getConfiguredSentryUrl } from "../constants.js";
 import { getEnv } from "../env.js";
-import { ApiError, AuthError, stringifyUnknown } from "../errors.js";
+import {
+  ApiError,
+  CliError,
+  type FunctionArgument,
+  stringifyUnknown,
+  TimeoutError,
+} from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -44,6 +52,7 @@ import {
   getSdkConfig,
 } from "../sentry-client.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
+import { isSentrySaasUrl } from "../sentry-urls.js";
 
 /**
  * Enrich a 403 Forbidden error detail with actionable guidance.
@@ -123,7 +132,7 @@ function enrich403Detail(rawDetail: string | undefined): string {
  *
  * @see https://github.com/getsentry/sentry/blob/934f1473f198a62f9268d7140b80cd9ca1e59bb9/src/sentry/api/authentication.py#L536-L539
  */
-export function enrich401Detail(rawDetail: string | undefined): string {
+function enrich401Detail(rawDetail: string | undefined): string {
   // Seat-limit lockout, not an auth failure. Sentry returns 401 with
   // `code: member-disabled-over-limit` when the org is over its member limit
   // and the caller's seat is disabled — re-authenticating cannot fix this.
@@ -132,7 +141,7 @@ export function enrich401Detail(rawDetail: string | undefined): string {
       "Your account is disabled in this organization because it is over its member limit.",
       "This is a billing/seat-limit issue, not an auth problem — re-authenticating won't help.",
       "Ask an org owner to upgrade the plan or free up a seat, then retry.",
-      "Or target a different org, e.g.:  sentry init my-other-org/",
+      "Or target a different org, e.g.:  sentry issue list my-other-org/",
     ].join("\n  ");
   }
 
@@ -223,6 +232,121 @@ export type ApiRequestOptions<T = unknown> = {
 };
 
 /**
+ * Structured fields of a JSON error body: its string `code` (e.g.
+ * `invalid_search_query`) and the rejected `function` and `argument`, with an
+ * optional `hint` (sent with `invalid_function_argument`).
+ */
+function readErrorFields(body: unknown): {
+  code?: string;
+  functionArgument?: FunctionArgument;
+} {
+  if (body === null || typeof body !== "object") {
+    return {};
+  }
+  const fields = body as Record<string, unknown>;
+  const code = typeof fields.code === "string" ? fields.code : undefined;
+  if (
+    typeof fields.function !== "string" ||
+    typeof fields.argument !== "string"
+  ) {
+    return { code };
+  }
+  const functionArgument: FunctionArgument = {
+    function: fields.function,
+    argument: fields.argument,
+  };
+  if (typeof fields.hint === "string") {
+    functionArgument.hint = fields.hint;
+  }
+  return { code, functionArgument };
+}
+
+const CONNECT_TIMEOUT_HINT =
+  "The connection timed out. Check network access and firewall rules on this machine.";
+
+/** Next steps for Node (undici) connection error codes, keyed by `code`. */
+const NETWORK_CAUSE_HINTS: Record<string, string> = {
+  ENOTFOUND:
+    "The hostname could not be resolved. Check that the URL is right and that DNS works on this machine.",
+  EAI_AGAIN:
+    "DNS lookup failed temporarily. Check DNS on this machine and try again.",
+  ECONNREFUSED:
+    "The server refused the connection. Check that the URL and port are right and that Sentry is running.",
+  ECONNRESET:
+    "The connection was reset. A proxy or firewall may be interrupting the request; try again.",
+  ETIMEDOUT: CONNECT_TIMEOUT_HINT,
+  UND_ERR_CONNECT_TIMEOUT: CONNECT_TIMEOUT_HINT,
+};
+
+/** Max `cause` links to follow; undici nests at most a couple. */
+const MAX_CAUSE_DEPTH = 5;
+
+/**
+ * Find the innermost error behind a fetch failure.
+ *
+ * undici rejects with `TypeError: fetch failed` for every connection failure
+ * and puts the real cause on `cause`: a system error with an errno `code`
+ * (`ENOTFOUND`, `ECONNREFUSED`, ...) or a plain Error (`bad port`).
+ */
+function findNetworkCause(
+  error: unknown,
+): { message: string; code?: string } | undefined {
+  let found: { message: string; code?: string } | undefined;
+  let current: unknown = error;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth++) {
+    if (!(current instanceof Error)) {
+      break;
+    }
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === "string") {
+      return { message: current.message, code };
+    }
+    found = { message: current.message };
+    current = current.cause;
+  }
+  return found;
+}
+
+/**
+ * Say where a self-hosted URL comes from, and how to point at another server.
+ * SENTRY_HOST wins over SENTRY_URL (getConfiguredSentryUrl), then the login.
+ */
+function describeUrlSource(): string {
+  if (getConfiguredSentryUrl()) {
+    const urlVar = getEnv().SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL";
+    return `This URL comes from ${urlVar}. If it is not your Sentry server, set ${urlVar} to the right URL.`;
+  }
+  return `This URL comes from your login. To use another server, run: ${getUrlLoginCommand()} <url>`;
+}
+
+/**
+ * Build the user-facing detail for a request that got no HTTP response.
+ *
+ * Names the Sentry URL that was contacted, the underlying cause (not just
+ * "fetch failed"), and next steps that match it.
+ */
+function buildNetworkErrorDetail(error: unknown): string {
+  // Same resolution as request routing: env, then the stored login's host.
+  const baseUrl = getApiBaseUrl();
+  const networkCause = findNetworkCause(error);
+  const cause =
+    networkCause?.message ??
+    (error instanceof Error ? error.message : stringifyUnknown(error));
+  const causeHint = networkCause?.code
+    ? NETWORK_CAUSE_HINTS[networkCause.code]
+    : undefined;
+  const steps = [causeHint ?? "Check your network connection and try again."];
+  steps.push(
+    isSentrySaasUrl(baseUrl)
+      ? "Check Sentry's status with: sentry status"
+      : describeUrlSource(),
+  );
+  return [`Unable to reach Sentry at ${baseUrl}: ${cause}`, "", ...steps].join(
+    "\n  ",
+  );
+}
+
+/**
  * Throw an ApiError from a failed @sentry/api SDK response.
  *
  * @param error - The error object from the SDK (contains status code and detail)
@@ -236,13 +360,15 @@ export function throwApiError(
 ): never {
   // Network-level failure: no HTTP response received (DNS, timeout, ECONNREFUSED, etc.)
   if (!response) {
-    const cause =
-      error instanceof Error ? error.message : stringifyUnknown(error);
-    throw new ApiError(
+    const apiError = new ApiError(
       `${context}: Network error`,
       0,
-      `Unable to reach Sentry API. Cause: ${cause}\n\n  Check your internet connection and try again.`,
+      buildNetworkErrorDetail(error),
     );
+    // Keep the original error so error reporting can recognize a raw
+    // `fetch failed` (user environment) behind this wrapper.
+    apiError.cause = error;
+    throw apiError;
   }
 
   if (error instanceof SentryApiError) {
@@ -268,7 +394,7 @@ export function throwApiError(
     status,
     enrichDetail(status, detail, hasUsableDetail),
     undefined,
-    is403,
+    { enriched403: is403, ...readErrorFields(error) },
   );
 }
 
@@ -277,8 +403,9 @@ export function throwApiError(
  *
  * When `throwOnError` is false (our default), the SDK catches errors from
  * the fetch function and returns them in `{ error }`. This includes our
- * AuthError from refreshToken(). We must re-throw known error types (AuthError,
- * ApiError) directly so callers can distinguish auth failures from API errors.
+ * AuthError from refreshToken(). We must re-throw CLI errors (AuthError,
+ * ApiError, TimeoutError, ...) directly so callers can distinguish auth
+ * failures from API errors and users see the error's own guidance.
  *
  * @param result - The result from an SDK function call
  * @param context - Human-readable context for error messages
@@ -290,8 +417,14 @@ export function unwrapResult<T>(
 ): T {
   if ("error" in result) {
     const { error } = result;
-    // Preserve known error types that were caught by the SDK from our fetch function
-    if (error instanceof AuthError || error instanceof ApiError) {
+    // Name the failed operation, like ApiError does, and keep the hint.
+    if (error instanceof TimeoutError) {
+      throw new TimeoutError(`${context}: ${error.message}`, error.hint);
+    }
+    // Preserve other CLI errors thrown by our fetch function (AuthError,
+    // ApiError, HostScopeError, ...). They already carry the right message
+    // and next step; wrapping them as "Network error" would hide both.
+    if (error instanceof CliError) {
       throw error;
     }
     throwApiError(error, result.response, context);
@@ -414,13 +547,10 @@ export const MAX_PAGINATION_PAGES = Math.max(
  */
 export { API_MAX_PER_PAGE };
 
-export {
-  consumePage,
-  type PagePosition,
-} from "@sentry/toolkit-core/api-client/pagination";
+export { consumeCursorPage, type CursorPosition } from "@sentry/api/client";
 
 /** Decode a shared cursor, reporting unreadable legacy bookmarks through the CLI logger. */
-export function decodePageCursor(raw: string | undefined): PagePosition {
+export function decodePageCursor(raw: string | undefined): CursorPosition {
   return decodeCursorPosition(raw, (message) => logger.warn(message));
 }
 
@@ -506,7 +636,7 @@ export async function autoPaginate<T>(
  * This is the only supported way to build a limit-bounded list; the
  * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops
  * (#1458, #1608). Page sizing and resume-safe cursors live in
- * `@sentry/toolkit-core/api-client/pagination`, shared with the MCP; this wrapper sets
+ * `@sentry/api/client`, shared with the MCP; this wrapper sets
  * the CLI's page cap and default limit and logs the CLI's warnings.
  *
  * Callers own region resolution and query building inside `fetchPage`, and
@@ -751,7 +881,7 @@ async function throwRawApiError(
     response.status,
     enrichDetail(response.status, detail, detail !== undefined),
     endpoint,
-    is403,
+    { enriched403: is403, ...readErrorFields(body.json) },
   );
 }
 
@@ -880,7 +1010,7 @@ export async function prepareRawApiRequest(
   const { method = "GET", body, params, headers, baseUrl } = options;
   const config = baseUrl
     ? getSdkConfig(baseUrl, { bufferResponseBody: true })
-    : getDefaultSdkConfig({ bufferResponseBody: true });
+    : getDefaultSdkConfig({ bufferResponseBody: true, path: endpoint });
   const isStringBody = typeof body === "string";
   const request = await createSentryClient(config).client.prepareRequest({
     method,

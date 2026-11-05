@@ -996,8 +996,16 @@ function followDefaultAccountHost(host: string): void {
  *
  * An env token that knows the org wins over every stored account, the
  * active one included (see {@link getEnvAccount}).
+ *
+ * `server` limits candidates (the env token included) to that server, for a
+ * request whose URL is already built: switching servers would send it to
+ * the wrong one.
  */
-export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
+export function selectAccountForOrg(
+  orgSlug: string,
+  orgId?: string,
+  options: { server?: string } = {},
+): void {
   if (isEnvTokenForced()) {
     return;
   }
@@ -1006,13 +1014,13 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
     return;
   }
   try {
-    if (selectEnvAccountForOrg(orgSlug, orgId)) {
+    if (selectEnvAccountForOrg(orgSlug, orgId, options.server)) {
       return;
     }
     const current = getAuthRow();
     const pick = findAccountForOrg(orgSlug, orgId, {
       current,
-      host: getExplicitServerUrl(),
+      host: getExplicitServerUrl() ?? options.server,
     });
     if (!pick?.host || pick.account_id === current?.account_id) {
       return;
@@ -1079,16 +1087,21 @@ export function findAccountForOrg(
 /**
  * Use the env token for the rest of this invocation when its org cache
  * shows it knows the org on its current server, and that server is the
- * explicit one, if any. The
- * env token wins over stored accounts that know the org too.
+ * explicit one and `server`, when set. The env token wins over stored
+ * accounts that know the org too.
  *
  * @returns whether the env token was chosen
  */
-function selectEnvAccountForOrg(orgSlug: string, orgId?: string): boolean {
+function selectEnvAccountForOrg(
+  orgSlug: string,
+  orgId: string | undefined,
+  server: string | undefined,
+): boolean {
   const envAccount = getEnvAccountInScope();
   if (
     !(
       envAccount &&
+      (!server || isSameServer(envAccount.host, server)) &&
       hasCachedOrgForIdentity(
         envAccount.identity,
         envAccount.host,

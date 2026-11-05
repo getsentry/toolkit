@@ -45,8 +45,8 @@ The package is a single file with no runtime dependencies.
   Cloudflare worker; mcp-core no longer ships SDK v1's server. `zod/v3` is
   stubbed in this bundle and the CLI's
   (`packages/cli/script/lib/zod-v3-stub-plugin.ts`): only Zod 3 code paths in
-  `@ai-sdk/provider-utils` and `@mastra/schema-compat` use it, and everything
-  bundled builds Zod 4 schemas. Zod keeps only its English locale
+  `@ai-sdk/provider-utils` use it, and everything bundled builds Zod 4
+  schemas. Zod keeps only its English locale
   (`packages/cli/script/lib/zod-locales-plugin.ts`).
 - CLI-only code stays out: the other commands, agent skills, completions,
   syntax highlighting, the Ink UI, and debug-file processing. Help and `auth`

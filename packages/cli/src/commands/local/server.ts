@@ -521,6 +521,7 @@ function waitForShutdown(server: Server): Promise<void> {
 
     function shutdown(signal: NodeJS.Signals) {
       if (shuttingDown) {
+        // oxlint-disable-next-line sentry-cli/no-process-exit -- a second SIGINT/SIGTERM during shutdown.
         process.exit(0);
       }
       shuttingDown = true;

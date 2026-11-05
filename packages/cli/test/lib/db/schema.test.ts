@@ -260,6 +260,7 @@ describe("TABLE_SCHEMAS persistence", () => {
       "project_cache",
       "project_root_cache",
       "repo_cache",
+      "telemetry_envelope_queue",
     ]);
   });
 });

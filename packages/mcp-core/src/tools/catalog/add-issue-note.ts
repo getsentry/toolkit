@@ -36,6 +36,7 @@ function formatComment(comment: IssueComment): string {
 
 export default defineTool({
   name: "add_issue_note",
+  title: "Add Issue Note",
   skills: ["triage"],
   requiredScopes: ["event:write"],
   description: [

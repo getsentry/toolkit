@@ -84,7 +84,6 @@ export const mcpCommand = buildCommand({
       "  SENTRY_AUTH_TOKEN        Sentry token (same as for other commands)\n" +
       "  SENTRY_HOST, SENTRY_URL  Sentry instance (same as for other commands; http:// for plain HTTP)\n" +
       "  MCP_URL                  MCP server URL reported in telemetry\n" +
-      "  SENTRY_DSN               DSN for the server's own telemetry\n" +
       "  OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY\n" +
       "                           LLM API key for AI-powered search tools\n" +
       "  OPENAI_MODEL, ANTHROPIC_MODEL, OPENROUTER_MODEL\n" +
@@ -176,7 +175,6 @@ export const mcpCommand = buildCommand({
         "Anthropic model (default: claude-sonnet-4-5)",
       ),
       "mcp-url": stringFlag("MCP server URL reported in telemetry"),
-      "sentry-dsn": stringFlag("DSN for the server's own telemetry"),
     },
   },
   // oxlint-disable-next-line require-yield -- The server speaks JSON-RPC on stdout; the command yields no output.

@@ -91,6 +91,7 @@ async function executeCatalogToolWithSpan({
 export function createExecuteTool(getTools: () => ToolRegistry) {
   return defineTool({
     name: "execute_sentry_tool",
+    title: "Execute Sentry Tool",
     skills: ALL_SKILLS,
     requiredScopes: [],
     description: [

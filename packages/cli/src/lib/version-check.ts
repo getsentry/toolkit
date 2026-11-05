@@ -32,6 +32,7 @@ import {
   fetchLatestFromGitHubWithSource,
   fetchLatestNightlyVersionWithSource,
 } from "./upgrade.js";
+import { reportCliError } from "./error-reporting.js";
 
 /** Target check interval: ~24 hours */
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -47,7 +48,7 @@ const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
  */
 const NOTIFICATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-/** Jitter factor for probabilistic checking (±20%) */
+/** Jitter factor for the check interval (±20%) */
 const JITTER_FACTOR = 0.2;
 
 /** Commands/flags that should not show update notifications */
@@ -57,9 +58,6 @@ const SUPPRESSED_ARGS = new Set([
   "-V",
   "--json",
   "token",
-  // `init` runs an interactive wizard with its own terminal UI, so suppress
-  // update notifications explicitly to avoid unrelated banners mid-flow.
-  "init",
 ]);
 
 /**
@@ -164,8 +162,25 @@ function cliSubcommandAfterGroup(
 let pendingAbortController: AbortController | null = null;
 
 /**
+ * Jitter (±{@link JITTER_FACTOR}) for the interval that starts at `lastChecked`.
+ *
+ * Derived from the millisecond part of the timestamp, which differs between
+ * users, so their checks spread out. It stays the same on every run until a
+ * successful check moves `lastChecked`; re-rolling it per run would let
+ * frequent runs keep hitting the short end of the range.
+ */
+function intervalJitter(lastChecked: number): number {
+  const fraction = (lastChecked % 1000) / 1000;
+  return (fraction * 2 - 1) * JITTER_FACTOR;
+}
+
+/**
  * Determine if we should check for updates based on time since last check.
- * Uses probabilistic approach: probability increases as we approach/pass the interval.
+ *
+ * A check is due once a jittered interval has passed since the last
+ * successful one. The decision depends only on the time, not on how many
+ * commands ran: a per-run random roll adds up across runs, so frequent
+ * users checked about hourly instead of daily (#1957).
  */
 function shouldCheckForUpdate(): boolean {
   const { lastChecked } = getVersionCheckInfo();
@@ -176,17 +191,13 @@ function shouldCheckForUpdate(): boolean {
 
   const elapsed = Date.now() - lastChecked;
 
-  // Add jitter to the interval (±20%)
-  const jitter = (Math.random() - 0.5) * 2 * JITTER_FACTOR;
-  const effectiveInterval = CHECK_INTERVAL_MS * (1 + jitter);
+  // A last check in the future means the clock moved back. Check now so a
+  // successful result replaces the timestamp instead of waiting for it.
+  if (elapsed < 0) {
+    return true;
+  }
 
-  // Probability ramps up as we approach/exceed the interval
-  // At 0% of interval: ~0% chance
-  // At 100% of interval: ~63% chance (1 - 1/e)
-  // At 200% of interval: ~86% chance
-  const probability = 1 - Math.exp(-elapsed / effectiveInterval);
-
-  return Math.random() < probability;
+  return elapsed >= CHECK_INTERVAL_MS * (1 + intervalJitter(lastChecked));
 }
 
 /**
@@ -268,7 +279,7 @@ function checkForUpdateInBackgroundImpl(): void {
     }
   } catch (error) {
     // DB access failed - report to Sentry but don't crash CLI
-    Sentry.captureException(error);
+    reportCliError(error);
     return;
   }
 
@@ -399,14 +410,14 @@ function getUpdateNotificationWithCopy(
     try {
       markUpdateNotified();
     } catch (error) {
-      Sentry.captureException(error);
+      reportCliError(error);
     }
     notifiedThisProcess = true;
 
     return notification;
   } catch (error) {
     // DB access failed - report to Sentry but don't crash CLI
-    Sentry.captureException(error);
+    reportCliError(error);
     return null;
   }
 }

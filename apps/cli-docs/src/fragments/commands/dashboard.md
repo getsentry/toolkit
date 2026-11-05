@@ -13,6 +13,13 @@ numeric ID, pass the organization separately to select it by title:
 Use `sentry dashboard revisions` to find a revision number before running
 `sentry dashboard restore`.
 
+## Saved transformations
+
+Widget add, edit, and delete commands retain saved transformation pipelines on
+untouched widgets. Title, layout, and filter edits preserve pipeline stage order
+and aggregate positions, including separate pipelines for duplicate aggregates.
+Query flags edit the first query and retain the remaining queries.
+
 ## Query Shorthand
 
 The `--query` flag supports shorthand for aggregate functions:
