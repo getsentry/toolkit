@@ -8158,7 +8158,7 @@
   {
     "name": "search_issue_events",
     "title": "Search Issue Events",
-    "description": "Search and filter events within a specific issue.\n\nProvide `query` as natural language or Sentry event search syntax. When an embedded agent is configured, it fixes filters, fields, sort, and time range before running.\n\nThe tool automatically constrains results to the specified issue.\n\nCommon Query Filters:\n- environment:production - Filter by environment\n- release:1.0.0 - Filter by release version\n- user.email:alice@example.com - Filter by user\n- trace:TRACE_ID - Filter by trace ID\n\nFor cross-issue searches use search_issues. For single issue or event details use get_sentry_resource.\n\n<examples>\nsearch_issue_events(issueId='MCP-41', organizationSlug='my-org', query='from last hour')\nsearch_issue_events(issueId='MCP-41', organizationSlug='my-org', query='environment:production')\nsearch_issue_events(issueUrl='https://sentry.io/.../issues/123/', query='release:v1.0.0', period='7d')\n</examples>",
+    "description": "Search and filter events within a specific issue.\n\nProvide `query` as natural language or Sentry event search syntax. When an embedded agent is configured, it fixes filters and time range before running. Results are always newest first; fields and sort only shape the Sentry link.\n\nThe tool automatically constrains results to the specified issue.\n\nCommon Query Filters:\n- environment:production - Filter by environment\n- release:1.0.0 - Filter by release version\n- user.email:alice@example.com - Filter by user\n- trace:TRACE_ID - Filter by trace ID\n\nFor cross-issue searches use search_issues. For single issue or event details use get_sentry_resource.\n\n<examples>\nsearch_issue_events(issueId='MCP-41', organizationSlug='my-org', query='from last hour')\nsearch_issue_events(issueId='MCP-41', organizationSlug='my-org', query='environment:production')\nsearch_issue_events(issueUrl='https://sentry.io/.../issues/123/', query='release:v1.0.0', period='7d')\n</examples>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -8189,7 +8189,7 @@
           "type": "string"
         },
         "sort": {
-          "description": "Sort field (prefix with - for descending). Default: -timestamp",
+          "description": "Sort for the Sentry link (prefix with - for descending). Results are always newest first. Default: -timestamp",
           "type": "string"
         },
         "period": {
@@ -8240,6 +8240,226 @@
           "type": "boolean"
         }
       }
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "explanation": {
+          "type": ["string", "null"]
+        },
+        "executedSearch": {
+          "type": "object",
+          "properties": {
+            "issueId": {
+              "type": "string"
+            },
+            "query": {
+              "type": "string"
+            },
+            "timeRange": {
+              "type": "object",
+              "properties": {
+                "statsPeriod": {
+                  "type": ["string", "null"]
+                },
+                "start": {
+                  "type": ["string", "null"]
+                },
+                "end": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["statsPeriod", "start", "end"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["issueId", "query", "timeRange"],
+          "additionalProperties": false
+        },
+        "url": {
+          "type": "string",
+          "description": "Opens these results in Sentry."
+        },
+        "issueUrl": {
+          "type": "string"
+        },
+        "presentationHint": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "eventType": {
+                "type": ["string", "null"]
+              },
+              "title": {
+                "type": ["string", "null"]
+              },
+              "message": {
+                "type": ["string", "null"]
+              },
+              "culprit": {
+                "type": ["string", "null"]
+              },
+              "location": {
+                "type": ["string", "null"]
+              },
+              "platform": {
+                "type": ["string", "null"]
+              },
+              "dateCreated": {
+                "type": ["string", "null"]
+              },
+              "user": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": ["string", "null"]
+                      },
+                      "email": {
+                        "type": ["string", "null"]
+                      },
+                      "username": {
+                        "type": ["string", "null"]
+                      },
+                      "name": {
+                        "type": ["string", "null"]
+                      },
+                      "ipAddress": {
+                        "type": ["string", "null"]
+                      },
+                      "geo": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "countryCode": {
+                                "type": ["string", "null"]
+                              },
+                              "city": {
+                                "type": ["string", "null"]
+                              },
+                              "region": {
+                                "type": ["string", "null"]
+                              }
+                            },
+                            "required": ["countryCode", "city", "region"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "email",
+                      "username",
+                      "name",
+                      "ipAddress",
+                      "geo"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["key", "value"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "url",
+              "eventType",
+              "title",
+              "message",
+              "culprit",
+              "location",
+              "platform",
+              "dateCreated",
+              "user",
+              "tags"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Newest first; the issue events endpoint has no sort."
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "query",
+        "explanation",
+        "executedSearch",
+        "url",
+        "issueUrl",
+        "presentationHint",
+        "notes",
+        "events",
+        "suggestedActions"
+      ],
+      "additionalProperties": false
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage"],
