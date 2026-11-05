@@ -87,20 +87,11 @@ const timeSeriesSchema = z.object({
 
 const SEARCH_RESULT_TYPES = ["samples", "aggregates", "timeSeries"] as const;
 
-type SearchResultType = (typeof SEARCH_RESULT_TYPES)[number];
-type RowLinks = Record<string, string | null>;
+type RowLinkShape = Record<string, z.ZodType<string | null>>;
 
-export interface SearchEventsStructuredContent extends Record<string, unknown> {
-  query: string;
-  explanation: string | null;
-  executedSearch: z.infer<typeof executedSearchSchema>;
-  url: string;
-  presentationHint: string;
-  notes: string[];
-  resultType: SearchResultType;
-  results: Array<{ values: Record<string, unknown>; links: RowLinks }>;
-  timeSeries: z.infer<typeof timeSeriesSchema> | null;
-  suggestedActions: SuggestedToolAction[];
+interface SearchResultRow<TLinks extends RowLinkShape> {
+  values: Record<string, unknown>;
+  links: z.infer<z.ZodObject<TLinks>>;
 }
 
 interface StructuredSearchSession {
@@ -111,8 +102,6 @@ interface StructuredSearchSession {
   directToolNames?: ReadonlySet<string>;
 }
 
-type RowLinkShape = Record<string, z.ZodType<string | null>>;
-
 interface StructuredDatasetConfig<TLinks extends RowLinkShape = RowLinkShape> {
   hints: SearchResultHints;
   /** The Sentry URLs derived for each result row; the output schema uses it. */
@@ -122,7 +111,7 @@ interface StructuredDatasetConfig<TLinks extends RowLinkShape = RowLinkShape> {
     session: StructuredSearchSession,
   ): z.infer<z.ZodObject<TLinks>>;
   suggestedActions(
-    results: SearchEventsStructuredContent["results"],
+    results: SearchResultRow<TLinks>[],
     session: StructuredSearchSession,
   ): SuggestedToolAction[];
 }
@@ -169,10 +158,13 @@ const STRUCTURED_DATASETS = {
 
 export type StructuredSearchDataset = keyof typeof STRUCTURED_DATASETS;
 
+type DatasetLinkShape<TDataset extends StructuredSearchDataset> =
+  (typeof STRUCTURED_DATASETS)[TDataset]["links"];
+
 /** Output schema for the dataset search tool that searches `dataset`. */
-export function buildSearchEventsOutputSchema(
-  dataset: StructuredSearchDataset,
-) {
+export function buildSearchEventsOutputSchema<
+  TDataset extends StructuredSearchDataset,
+>(dataset: TDataset) {
   return z.object({
     query: z.string(),
     explanation: z.string().nullable(),
@@ -186,7 +178,9 @@ export function buildSearchEventsOutputSchema(
         values: z
           .record(z.string(), z.unknown())
           .describe("The requested fields, keyed by field name."),
-        links: z.object(STRUCTURED_DATASETS[dataset].links),
+        links: z.object<DatasetLinkShape<TDataset>>(
+          STRUCTURED_DATASETS[dataset].links,
+        ),
       }),
     ),
     timeSeries: timeSeriesSchema.nullable(),
@@ -194,16 +188,38 @@ export function buildSearchEventsOutputSchema(
   });
 }
 
-function getDatasetConfig(dataset: string): StructuredDatasetConfig {
-  if (!Object.hasOwn(STRUCTURED_DATASETS, dataset)) {
+/**
+ * The payload a dataset search tool returns, derived from that dataset's
+ * output schema so builders and the tool's `outputSchema` cannot drift.
+ */
+export type SearchEventsStructuredContent<
+  TDataset extends StructuredSearchDataset = StructuredSearchDataset,
+> = z.output<ReturnType<typeof buildSearchEventsOutputSchema<TDataset>>>;
+
+function isStructuredSearchDataset(
+  dataset: string,
+): dataset is StructuredSearchDataset {
+  return Object.hasOwn(STRUCTURED_DATASETS, dataset);
+}
+
+/** Throws for a dataset whose tool has no structured output schema. */
+export function assertStructuredSearchDataset(
+  dataset: string,
+): asserts dataset is StructuredSearchDataset {
+  if (!isStructuredSearchDataset(dataset)) {
     throw new Error(`Structured search results are not defined for ${dataset}`);
   }
-  return STRUCTURED_DATASETS[dataset as StructuredSearchDataset];
+}
+
+function getDatasetConfig<TDataset extends StructuredSearchDataset>(
+  dataset: TDataset,
+): StructuredDatasetConfig<DatasetLinkShape<TDataset>> {
+  return STRUCTURED_DATASETS[dataset];
 }
 
 function toExecutedSearch(
   executedSearch: ExecutedSearch,
-): SearchEventsStructuredContent["executedSearch"] {
+): z.infer<typeof executedSearchSchema> {
   return {
     dataset: executedSearch.dataset,
     query: executedSearch.query,
@@ -231,8 +247,10 @@ function pickRequestedValues(
   return values;
 }
 
-export function buildStructuredEventsResult(params: {
-  dataset: PublicEventsDataset;
+export function buildStructuredEventsResult<
+  TDataset extends StructuredSearchDataset,
+>(params: {
+  dataset: TDataset;
   eventData: FlexibleEventData[];
   inputQuery: string;
   includeExplanation: boolean;
@@ -244,7 +262,7 @@ export function buildStructuredEventsResult(params: {
   executedSearch: ExecutedSearch;
   notes: string[];
   session: StructuredSearchSession;
-}): StructuredToolOutput<SearchEventsStructuredContent> {
+}): StructuredToolOutput<SearchEventsStructuredContent<TDataset>> {
   const { dataset, eventData, fields, session } = params;
   const config = getDatasetConfig(dataset);
   const isAggregate = isAggregateQuery(fields);
@@ -285,8 +303,10 @@ export function buildStructuredEventsResult(params: {
   });
 }
 
-export function buildStructuredTimeSeriesResult(params: {
-  dataset: PublicEventsDataset;
+export function buildStructuredTimeSeriesResult<
+  TDataset extends StructuredSearchDataset,
+>(params: {
+  dataset: TDataset;
   series: EventsTimeSeriesResponse;
   yAxis: string;
   interval: string | null;
@@ -297,7 +317,7 @@ export function buildStructuredTimeSeriesResult(params: {
   timeRange: { statsPeriod?: string; start?: string; end?: string };
   url: string;
   notes: string[];
-}): StructuredToolOutput<SearchEventsStructuredContent> {
+}): StructuredToolOutput<SearchEventsStructuredContent<TDataset>> {
   const { bucketCount, shown, total, hasFilling, peak, ingestion } =
     summarizeTimeSeries(params.series, params.yAxis);
 

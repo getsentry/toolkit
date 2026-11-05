@@ -53,9 +53,11 @@ import {
   isValidReplaySort,
 } from "./replays";
 import {
+  assertStructuredSearchDataset,
   buildStructuredEventsResult,
   buildStructuredTimeSeriesResult,
   type SearchEventsStructuredContent,
+  type StructuredSearchDataset,
 } from "./structured";
 import {
   isSeerSearchDataset,
@@ -438,8 +440,9 @@ export type RunSearchEventsOptions =
   | MarkdownSearchEventsOptions
   | StructuredSearchEventsOptions;
 
-type StructuredSearchEventsOutput =
-  StructuredToolOutput<SearchEventsStructuredContent>;
+type StructuredSearchEventsOutput<
+  TDataset extends StructuredSearchDataset = StructuredSearchDataset,
+> = StructuredToolOutput<SearchEventsStructuredContent<TDataset>>;
 
 const searchLimitParam = z
   .number()
@@ -679,16 +682,20 @@ export function runSearchEvents(
   context: ServerContext,
   options?: MarkdownSearchEventsOptions,
 ): Promise<string>;
-export function runSearchEvents(
-  params: SearchEventsParams,
+/**
+ * Structured runs lock the dataset, so the payload matches the output schema
+ * of the dataset the caller passed.
+ */
+export function runSearchEvents<TDataset extends StructuredSearchDataset>(
+  params: SearchEventsParams & { dataset: TDataset },
   context: ServerContext,
   options: StructuredSearchEventsOptions,
-): Promise<StructuredSearchEventsOutput>;
+): Promise<StructuredSearchEventsOutput<TDataset>>;
 export async function runSearchEvents(
   params: SearchEventsParams,
   context: ServerContext,
   options: RunSearchEventsOptions = {},
-): Promise<string | StructuredSearchEventsOutput> {
+): Promise<string | StructuredToolOutput> {
   // Any failure after Seer translates the query counts as `error_on_load`.
   const seerOutcome: SeerOutcomeState = { translation: null, tracked: false };
   try {
@@ -1093,6 +1100,7 @@ async function executeSearchEvents(
       timeParams.end,
     );
     if (structured) {
+      assertStructuredSearchDataset(dataset);
       return buildStructuredTimeSeriesResult({
         dataset,
         series,
@@ -1287,6 +1295,7 @@ async function executeSearchEvents(
   };
 
   if (structured) {
+    assertStructuredSearchDataset(dataset);
     return buildStructuredEventsResult({
       dataset,
       eventData,
