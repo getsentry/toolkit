@@ -58,9 +58,6 @@ const SUPPRESSED_ARGS = new Set([
   "-V",
   "--json",
   "token",
-  // `init` runs an interactive wizard with its own terminal UI, so suppress
-  // update notifications explicitly to avoid unrelated banners mid-flow.
-  "init",
 ]);
 
 /**

@@ -33,8 +33,8 @@ const MAX_BUNDLE_BYTES = 3.75 * 1024 * 1024;
  * Inputs that serve the CLI but not this package: commands other than `mcp`,
  * `auth`, and `help` (flag completion reads `local/loopback.ts`, a leaf module
  * of host constants), agent skills, shell completions, syntax highlighting,
- * the Ink UI, terminal images (the kitty/sixel help banner and dashboards,
- * and `pngjs`), `sentry init`, build/sourcemap/debug-file processing, the
+ * the Ink select picker, terminal images (the kitty/sixel help banner and
+ * dashboards, and `pngjs`), build/sourcemap/debug-file processing, the
  * SQLite WASM fallback for Node.js < 22.15, Zod 3, and MCP SDK v1.
  *
  * `jpeg-js` is not on the list: mcp-core's snapshot and attachment tools
@@ -45,8 +45,8 @@ const FORBIDDEN_INPUTS: ReadonlyArray<RegExp> = [
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:agent-skills|complete|completions)\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:sixel|sixel-image|kitty-image|formatters[\\/]sixel-dashboard)\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]generated[\\/]banner-image\.ts$/,
-  /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:bash-hook|build|dif|init|react-native|snapshots|sourcemap|wasm)[\\/]/,
-  /[\\/]node_modules[\\/](?:cli-highlight|highlight\.js|parse5|ink|ink-spinner|react|react-reconciler|yoga-layout|@sentry[\\/]symbolic|node-sqlite3-wasm|pngjs)[\\/]/,
+  /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:bash-hook|build|dif|react-native|select-ui|snapshots|sourcemap|wasm)[\\/]/,
+  /[\\/]node_modules[\\/](?:cli-highlight|highlight\.js|parse5|ink|react|react-reconciler|yoga-layout|@sentry[\\/]symbolic|node-sqlite3-wasm|pngjs)[\\/]/,
   /[\\/]node_modules[\\/](?:zod[\\/]v3|@modelcontextprotocol[\\/]sdk)[\\/]/,
 ];
 
@@ -62,7 +62,7 @@ const NODE_VERSION_CHECK = `{let v=process.versions.node.split(".").map(Number);
  * with the CLI bundles.
  */
 const STUBBED_MODULES =
-  /^(?:node-sqlite3-wasm|@sentry\/symbolic\/symbolic_bg\.wasm|ink|ink-spinner|react|react-reconciler|react-devtools-core|yoga-layout)(?:\/.*)?$/;
+  /^(?:node-sqlite3-wasm|@sentry\/symbolic\/symbolic_bg\.wasm|ink|react|react-reconciler|react-devtools-core|yoga-layout)(?:\/.*)?$/;
 
 const stubModulesPlugin: Plugin = {
   name: "stub-cli-only-modules",
