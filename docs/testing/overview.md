@@ -275,7 +275,7 @@ expect(result.timestamp).toMatchInlineSnapshot(); // ❌
 ### Eval Test Structure
 
 ```typescript
-import { describeEval } from "vitest-evals";
+import { describeEval } from "vitest-evals/legacy";
 import { TaskRunner, Factuality } from "./utils";
 
 describeEval("tool-name", {
