@@ -25,7 +25,6 @@ import { getServerVersion } from "../version";
 
 export type StdioServerContext = {
   sentryHost?: string;
-  serverVersion?: string;
   mcpUrl?: string;
   experimentalMode?: boolean;
 };
@@ -33,7 +32,7 @@ export type StdioServerContext = {
 function getStdioSpanAttributes(
   context: StdioServerContext,
 ): Record<string, string | boolean> {
-  const version = getServerVersion(context);
+  const version = getServerVersion();
   const attributes: Record<string, string | boolean> = {
     "app.transport": "stdio",
     "app.server.version": version,

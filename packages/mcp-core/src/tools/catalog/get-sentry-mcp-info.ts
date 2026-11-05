@@ -2,7 +2,6 @@ import { z } from "zod";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import { ALL_SKILLS } from "../../skills";
-import type { ServerContext } from "../../types";
 import { getServerVersion } from "../../version";
 
 export const getSentryMcpInfoOutputSchema = z.object({
@@ -27,9 +26,9 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: false,
   },
-  async handler(_params, context: ServerContext) {
+  async handler() {
     return structuredResult({
-      version: getServerVersion(context),
+      version: getServerVersion(),
     });
   },
 });

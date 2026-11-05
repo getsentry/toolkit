@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { startSpan } from "@sentry/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { LIB_VERSION } from "../version";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LIB_VERSION, setServerVersion } from "../version";
 import { startStdio } from "./stdio";
 
 vi.mock("@sentry/core", async (importOriginal) => ({
@@ -26,10 +26,13 @@ describe("startStdio", () => {
     vi.mocked(startSpan).mockClear();
   });
 
+  afterEach(() => {
+    setServerVersion(undefined);
+  });
+
   it("tags the span with the host's version", async () => {
-    expect(
-      await spanAttributes({ serverVersion: "0.48.0-test" }),
-    ).toMatchObject({
+    setServerVersion("0.48.0-test");
+    expect(await spanAttributes({})).toMatchObject({
       "app.server.version": "0.48.0-test",
       "service.version": "0.48.0-test",
     });

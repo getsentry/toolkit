@@ -4,7 +4,7 @@ import {
   assertStructuredOnlyResult,
   getStructuredContent,
 } from "../../test-utils/structured-content.js";
-import { LIB_VERSION } from "../../version.js";
+import { LIB_VERSION, setServerVersion } from "../../version.js";
 import getSentryMcpInfo, {
   getSentryMcpInfoOutputSchema,
 } from "./get-sentry-mcp-info.js";
@@ -26,11 +26,11 @@ describe("get_sentry_mcp_info", () => {
     `);
   });
 
-  it("reports the host's version when the context sets one", async () => {
-    const result = await getSentryMcpInfo.handler(
-      {},
-      createTestContext({ serverVersion: "9.9.9-test" }),
-    );
+  it("reports the host's version when it sets one", async () => {
+    setServerVersion("9.9.9-test");
+    const result = await getSentryMcpInfo
+      .handler({}, createTestContext())
+      .finally(() => setServerVersion(undefined));
 
     expect(getStructuredContent<{ version: string }>(result)).toEqual({
       version: "9.9.9-test",

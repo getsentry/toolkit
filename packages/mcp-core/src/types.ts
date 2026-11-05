@@ -105,14 +105,6 @@ export type ServerContext = {
   /** Transport type - affects error message formatting */
   transport?: TransportType;
   /**
-   * Version of the artifact that hosts this server. It is reported as
-   * `serverInfo.version`, as the stdio span's `service.version`, and by
-   * `get_sentry_mcp_info`. The CLI ships `@sentry/mcp-server` at its own
-   * version, so it sets this. Hosts that leave it unset report mcp-core's
-   * `LIB_VERSION`.
-   */
-  serverVersion?: string;
-  /**
    * Invoked when a tool call surfaces an upstream 401. Transports wire this
    * to revoke the MCP grant so the session doesn't keep getting wrapper
    * tokens backed by an upstream token Sentry has already rejected. Hosts

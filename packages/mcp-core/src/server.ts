@@ -310,7 +310,7 @@ export function buildServer({
   const server = new McpServer(
     {
       ...MCP_SERVER_INFO,
-      version: getServerVersion(context),
+      version: getServerVersion(),
     },
     {
       maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,

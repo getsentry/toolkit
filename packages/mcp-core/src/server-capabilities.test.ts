@@ -1,12 +1,12 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpHandler } from "@modelcontextprotocol/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { buildServer } from "./server";
 import { buildServerInstructions } from "./server-instructions";
 import type { ToolConfig } from "./tools/types";
 import type { ServerContext } from "./types";
-import { LIB_VERSION } from "./version";
+import { LIB_VERSION, setServerVersion } from "./version";
 
 const context: ServerContext = {
   accessToken: "test-token",
@@ -164,10 +164,13 @@ describe("serverInfo version", () => {
     }
   }
 
-  it("reports the host's version when the context sets one", async () => {
-    expect(
-      await initializeVersion({ ...context, serverVersion: "0.48.0-test" }),
-    ).toBe("0.48.0-test");
+  afterEach(() => {
+    setServerVersion(undefined);
+  });
+
+  it("reports the host's version when it sets one", async () => {
+    setServerVersion("0.48.0-test");
+    expect(await initializeVersion(context)).toBe("0.48.0-test");
   });
 
   it("falls back to mcp-core's version", async () => {
