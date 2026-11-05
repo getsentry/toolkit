@@ -190,7 +190,7 @@ import {
   TeamSchema,
   TraceMetaSchema,
   TraceSchema,
-  TransactionProfileSchema,
+  TransactionProfileResponseSchema,
   UptimeCheckListSchema,
   UptimeMonitorListSchema,
   UptimeMonitorSchema,
@@ -264,6 +264,7 @@ import type {
   Trace,
   TraceMeta,
   TransactionProfile,
+  LegacySpeedscopeProfile,
   UptimeCheckList,
   UptimeMonitor,
   UptimeMonitorList,
@@ -5007,11 +5008,13 @@ export class SentryApiService {
       profileId: string;
     },
     opts?: RequestOptions,
-  ): Promise<TransactionProfile> {
+  ): Promise<TransactionProfile | LegacySpeedscopeProfile> {
+    // Legacy (e.g. Android) profiles are returned as speedscope output even
+    // when `format=sample` is requested, so they have no `profile` key.
     return await getTransactionProfile(
       this.target(opts?.host),
       params,
-      TransactionProfileSchema,
+      TransactionProfileResponseSchema,
     );
   }
 

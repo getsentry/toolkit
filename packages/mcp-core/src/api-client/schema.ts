@@ -2196,6 +2196,57 @@ const ProfileReleaseSchema = z
   .optional();
 
 /**
+ * Schema for a legacy transaction profile response in speedscope format.
+ *
+ * The profiling service only honors `format=sample` for sample-format
+ * profiles. Legacy profiles (Android, React Native on Android) always come
+ * back as speedscope output: there is no `profile` key, only `profiles`,
+ * `shared`, and camelCase metadata. We only model the summary metadata here;
+ * the speedscope stack data is kept opaque.
+ */
+export const LegacySpeedscopeProfileSchema = z
+  .object({
+    platform: z.string(),
+    profileID: z.string().optional(),
+    transactionName: z.string().nullable().optional(),
+    durationNS: z
+      .union([z.string(), z.number()])
+      .transform((value) => Number(value))
+      .optional(),
+    profiles: z.array(z.unknown()),
+    shared: z.unknown().optional(),
+    metadata: z
+      .object({
+        deviceClassification: z.string().nullable().optional(),
+        deviceManufacturer: z.string().nullable().optional(),
+        deviceModel: z.string().nullable().optional(),
+        deviceOSName: z.string().nullable().optional(),
+        deviceOSVersion: z.string().nullable().optional(),
+        environment: z.string().nullable().optional(),
+        traceID: z.string().nullable().optional(),
+        transactionID: z.string().nullable().optional(),
+        transactionName: z.string().nullable().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough()
+  .transform((profile) => ({ ...profile, format: "speedscope" as const }));
+
+/**
+ * Returns true when a raw profile response body is speedscope output, which
+ * has `profiles` instead of a sample-format `profile` object.
+ */
+function isSpeedscopeProfilePayload(body: unknown): boolean {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    !("profile" in body) &&
+    Array.isArray((body as { profiles?: unknown }).profiles)
+  );
+}
+
+/**
  * Schema for a V1 transaction profile response.
  *
  * Unlike V2 continuous profile chunks, transaction profiles are scoped to a
@@ -2279,6 +2330,32 @@ export const TransactionProfileSchema = z
       .optional(),
   })
   .passthrough();
+
+/**
+ * Schema for a transaction profile details response.
+ *
+ * Validates speedscope bodies against `LegacySpeedscopeProfileSchema` and every
+ * other body against the strict `TransactionProfileSchema`, so a malformed
+ * sample-format profile still reports the sample-format issues.
+ */
+export const TransactionProfileResponseSchema = z
+  .unknown()
+  .transform((body, ctx) => {
+    const result = isSpeedscopeProfilePayload(body)
+      ? LegacySpeedscopeProfileSchema.safeParse(body)
+      : TransactionProfileSchema.safeParse(body);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        ctx.addIssue({
+          code: "custom",
+          message: issue.message,
+          path: issue.path,
+        });
+      }
+      return z.NEVER;
+    }
+    return result.data;
+  });
 
 export const AgenticOnboardingStageSchema = z.enum([
   "connect_mcp",
