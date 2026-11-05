@@ -67,6 +67,7 @@ type ToolDefinition = {
     idempotentHint?: boolean;
     openWorldHint?: boolean;
   };
+  _meta?: Record<string, unknown>;
 };
 
 /**
@@ -94,6 +95,7 @@ function formatToolsForMCP(tools: Record<string, ToolDefinition>) {
       }),
       inputSchema: jsonSchema,
       ...(tool.annotations && { annotations: tool.annotations }),
+      ...(tool._meta && { _meta: tool._meta }),
     };
   });
 }

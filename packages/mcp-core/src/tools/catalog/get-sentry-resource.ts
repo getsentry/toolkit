@@ -620,6 +620,9 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
+  // Users often start from a pasted Sentry URL, so Claude Code keeps this tool
+  // loaded instead of deferring it behind tool search.
+  _meta: { "anthropic/alwaysLoad": true },
 
   async handler(params, context: ServerContext) {
     const url = params.url ?? params.issueUrl ?? params.resourceUrl;
