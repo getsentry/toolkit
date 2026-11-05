@@ -6383,7 +6383,7 @@
   {
     "name": "get_snapshot",
     "title": "Get Snapshot",
-    "description": "Get a preprod snapshot comparison summary, including metadata, counts, and changed image sections.\n\nUse this tool when you need to:\n- Investigate a failed snapshot test from CI\n- Review what changed in a specific preprod snapshot\n- Browse snapshot image file names before viewing a specific image\n\nPass organizationSlug and snapshotId. Use get_sentry_resource for snapshot URLs.\nCompact output is returned by default. Set showUnmodified=true to list unchanged and skipped images separately.\n\n<examples>\n### Browse a snapshot\n\n```\nget_snapshot(organizationSlug=\"sentry\", snapshotId=\"231949\")\n```\n\n### Include unchanged and skipped images\n\n```\nget_snapshot(organizationSlug=\"sentry\", snapshotId=\"231949\", showUnmodified=true)\n```\n</examples>\n\n<hints>\n- Use the Sentry tool `get_snapshot_image` to view a specific image preview or full-resolution image bytes.\n- Use get_sentry_resource when starting from a Sentry snapshot URL.\n- The diff percent field shows what percentage of pixels changed (0-100).\n- showUnmodified=true is useful when a diff snapshot has no changed image sections.\n</hints>",
+    "description": "Get a preprod snapshot comparison summary, including metadata, counts, and changed image sections.\n\nUse this tool when you need to:\n- Investigate a failed snapshot test from CI\n- Review what changed in a specific preprod snapshot\n- Browse snapshot image file names before viewing a specific image\n\nPass organizationSlug and snapshotId. Use get_sentry_resource for snapshot URLs.\nCompact output is returned by default. Set showUnmodified=true to list unchanged and skipped images separately.\n\n<examples>\n### Browse a snapshot\n\n```\nget_snapshot(organizationSlug=\"sentry\", snapshotId=\"231949\")\n```\n\n### Include unchanged and skipped images\n\n```\nget_snapshot(organizationSlug=\"sentry\", snapshotId=\"231949\", showUnmodified=true)\n```\n</examples>\n\n<hints>\n- Use the Sentry tool `get_snapshot_image(organizationSlug='<organizationSlug>', snapshotId='<snapshotId>', imageIdentifier='<imageFileName>')` to view a specific image preview or full-resolution image bytes.\n- Use get_sentry_resource when starting from a Sentry snapshot URL.\n- The diff percent field shows what percentage of pixels changed (0-100).\n- showUnmodified=true is useful when a diff snapshot has no changed image sections.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6419,6 +6419,422 @@
         }
       },
       "required": ["organizationSlug", "snapshotId"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string"
+        },
+        "snapshotId": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "comparisonType": {
+          "type": ["string", "null"]
+        },
+        "state": {
+          "type": ["string", "null"]
+        },
+        "projectId": {
+          "type": ["string", "null"]
+        },
+        "counts": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": "number"
+            },
+            "changed": {
+              "type": "number"
+            },
+            "added": {
+              "type": "number"
+            },
+            "removed": {
+              "type": "number"
+            },
+            "renamed": {
+              "type": "number"
+            },
+            "unchanged": {
+              "type": "number"
+            },
+            "errored": {
+              "type": "number"
+            },
+            "skipped": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "total",
+            "changed",
+            "added",
+            "removed",
+            "renamed",
+            "unchanged",
+            "errored",
+            "skipped"
+          ],
+          "additionalProperties": false
+        },
+        "vcs": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "repoName": {
+                  "type": "string"
+                },
+                "headRef": {
+                  "type": "string"
+                },
+                "headSha": {
+                  "type": "string"
+                },
+                "baseRef": {
+                  "type": "string"
+                },
+                "baseSha": {
+                  "type": "string"
+                },
+                "prNumber": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approval": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": ["string", "null"]
+                },
+                "autoApproved": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["status", "autoApproved"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": ["string", "null"]
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "imageFileName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "diffPercent": {
+                      "type": ["number", "null"]
+                    }
+                  },
+                  "required": ["diffPercent"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["group", "images"],
+            "additionalProperties": false
+          }
+        },
+        "added": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": ["string", "null"]
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "imageFileName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["group", "images"],
+            "additionalProperties": false
+          }
+        },
+        "removed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": ["string", "null"]
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "imageFileName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["group", "images"],
+            "additionalProperties": false
+          }
+        },
+        "renamed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": ["string", "null"]
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "imageFileName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "previous": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "imageFileName": {
+                              "type": "string"
+                            },
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["previous"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["group", "images"],
+            "additionalProperties": false
+          }
+        },
+        "errored": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": ["string", "null"]
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "imageFileName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["group", "images"],
+            "additionalProperties": false
+          }
+        },
+        "images": {
+          "description": "Snapshot image inventory, present only when nothing changed.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": ["string", "null"]
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "imageFileName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["group", "images"],
+            "additionalProperties": false
+          }
+        },
+        "unchanged": {
+          "description": "Present only when showUnmodified=true.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": ["string", "null"]
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "imageFileName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["group", "images"],
+            "additionalProperties": false
+          }
+        },
+        "skipped": {
+          "description": "Present only when showUnmodified=true.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": ["string", "null"]
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "imageFileName": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["group", "images"],
+            "additionalProperties": false
+          }
+        },
+        "responseNotes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "snapshotId",
+        "url",
+        "comparisonType",
+        "state",
+        "projectId",
+        "counts",
+        "vcs",
+        "approval",
+        "changed",
+        "added",
+        "removed",
+        "renamed",
+        "errored",
+        "responseNotes"
+      ],
+      "additionalProperties": false
     },
     "requiredScopes": ["project:read"],
     "skills": ["inspect"],

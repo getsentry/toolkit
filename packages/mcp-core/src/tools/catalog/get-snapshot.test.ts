@@ -3,6 +3,20 @@ import { http, HttpResponse } from "msw";
 import { mswServer } from "@sentry/mcp-server-mocks";
 import getSnapshot from "./get-snapshot.js";
 import { getServerContext } from "../../test-setup.js";
+import { getSnapshotOutputSchema } from "../support/snapshots/summary.js";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content.js";
+
+type SnapshotContent = ReturnType<typeof getSnapshotOutputSchema.parse>;
+
+function getContent(result: unknown): SnapshotContent {
+  assertStructuredOnlyResult(result);
+  const content = getStructuredContent<SnapshotContent>(result);
+  expect(getSnapshotOutputSchema.parse(content)).toEqual(content);
+  return content;
+}
 
 const snapshotFixture = {
   project_id: "12345",
@@ -27,6 +41,8 @@ const snapshotFixture = {
         display_name: "login_screen.png",
         group: "auth",
         image_file_name: "snapshots-iphone-16/auth_login_screen.png",
+        content_hash: "internal-content-hash",
+        image_url: "https://storage.internal.example/auth_login_screen.png",
       },
       diff: 0.125,
     },
@@ -76,6 +92,7 @@ const snapshotFixture = {
   unchanged_count: 1,
   errored_count: 0,
   skipped_count: 1,
+  internal_artifact_state: "internal-only",
 };
 
 function setupSnapshotMock(body: Record<string, unknown> = snapshotFixture) {
@@ -112,52 +129,93 @@ function callHandler(
 }
 
 describe("get_snapshot", () => {
-  it("returns compact summary output", async () => {
+  it("returns compact structured summary", async () => {
     setupSnapshotMock();
 
-    const result = await callHandler();
+    const content = getContent(await callHandler());
 
-    expect(result).toMatchInlineSnapshot(`
-      "# Snapshot 231949 in **sentry**
-
-      ## Summary
-
-      - **URL**: https://sentry.sentry.io/preprod/snapshots/231949/
-      - **Type**: diff
-      - **State**: visible
-      - **Project ID**: 12345
-      - **Images**: 5 total (1 changed, 1 added, 0 removed, 1 renamed, 1 unchanged, 0 errored, 1 skipped)
-
-      ## VCS Info
-
-      - **Repo**: getsentry/sentry
-      - **Head**: feature/new-login (\`abc123de\`)
-      - **Base**: main (\`00011122\`)
-      - **PR**: #789
-
-      - **Approval**: requires_approval
-
-      ## Changes
-
-      **Changed:**
-      └── snapshots-iphone-16/
-          └── auth_login_screen.png — 12.5% diff — login_screen.png — auth
-
-      **Added:**
-      └── snapshots-iphone-16/
-          └── dialogs_new_modal.png — new_modal.png — dialogs
-
-      **Renamed:**
-      └── snapshots-iphone-16/
-          └── settings_page.png — previous: preferences_page.png — settings
-
-      ## Next Steps
-
-      - Use the Sentry tool \`get_snapshot_image\` to view a specific image preview
-      - Use the Sentry tool \`get_snapshot_image\` to fetch original full-resolution image bytes"
+    expect(content).toMatchInlineSnapshot(`
+      {
+        "added": [
+          {
+            "group": "dialogs",
+            "images": [
+              {
+                "displayName": "new_modal.png",
+                "imageFileName": "snapshots-iphone-16/dialogs_new_modal.png",
+              },
+            ],
+          },
+        ],
+        "approval": {
+          "autoApproved": false,
+          "status": "requires_approval",
+        },
+        "changed": [
+          {
+            "group": "auth",
+            "images": [
+              {
+                "diffPercent": 12.5,
+                "displayName": "login_screen.png",
+                "imageFileName": "snapshots-iphone-16/auth_login_screen.png",
+              },
+            ],
+          },
+        ],
+        "comparisonType": "diff",
+        "counts": {
+          "added": 1,
+          "changed": 1,
+          "errored": 0,
+          "removed": 0,
+          "renamed": 1,
+          "skipped": 1,
+          "total": 5,
+          "unchanged": 1,
+        },
+        "errored": [],
+        "organizationSlug": "sentry",
+        "projectId": "12345",
+        "removed": [],
+        "renamed": [
+          {
+            "group": "settings",
+            "images": [
+              {
+                "displayName": "settings_page.png",
+                "imageFileName": "snapshots-iphone-16/settings_page.png",
+                "previous": {
+                  "displayName": "preferences_page.png",
+                  "imageFileName": "snapshots-iphone-16/preferences_page.png",
+                },
+              },
+            ],
+          },
+        ],
+        "responseNotes": [
+          "Use the Sentry tool \`get_snapshot_image(organizationSlug='sentry', snapshotId='231949', imageIdentifier='<imageFileName>')\` to view one image preview; pass its imageFileName as imageIdentifier.",
+          "Use the Sentry tool \`get_snapshot_image(organizationSlug='sentry', snapshotId='231949', imageIdentifier='<imageFileName>', imageResolution='full')\` to fetch original full-resolution image bytes",
+        ],
+        "snapshotId": "231949",
+        "state": "visible",
+        "url": "https://sentry.sentry.io/preprod/snapshots/231949/",
+        "vcs": {
+          "baseRef": "main",
+          "baseSha": "000111222",
+          "headRef": "feature/new-login",
+          "headSha": "abc123def",
+          "prNumber": 789,
+          "repoName": "getsentry/sentry",
+        },
+      }
     `);
-    expect(result).not.toContain("**Unchanged:**");
-    expect(result).not.toContain("skipped.png");
+    const serialized = JSON.stringify(content);
+    expect(serialized).not.toContain("internal-content-hash");
+    expect(serialized).not.toContain("storage.internal.example");
+    expect(serialized).not.toContain("internal-only");
+    expect(serialized).not.toContain("unchanged.png");
+    expect(serialized).not.toContain("skipped.png");
   });
 
   it("preserves the selectedSnapshot URL fallback when the image tool is unavailable", async () => {
@@ -177,9 +235,22 @@ describe("get_snapshot", () => {
       },
     );
 
-    expect(result).toContain(
-      'get_sentry_resource(url="https://sentry.sentry.io/preprod/snapshots/231949/?selectedSnapshot=<image_file_name>")',
+    expect(getContent(result).responseNotes[0]).toContain(
+      'get_sentry_resource(url="https://sentry.sentry.io/preprod/snapshots/231949/?selectedSnapshot=<URL-encoded imageFileName>")',
     );
+  });
+
+  it("skips non-object entries in image sections", async () => {
+    setupSnapshotMock({
+      ...snapshotFixture,
+      changed: [null, "bogus", ...snapshotFixture.changed],
+      added: [42, ...snapshotFixture.added],
+    });
+
+    const content = getContent(await callHandler());
+
+    expect(content.changed.flatMap((group) => group.images)).toHaveLength(1);
+    expect(content.added.flatMap((group) => group.images)).toHaveLength(1);
   });
 
   it("throws on missing explicit params", async () => {
@@ -194,13 +265,30 @@ describe("get_snapshot", () => {
   it("lists unchanged and skipped sections when requested", async () => {
     setupSnapshotMock();
 
-    const result = await callHandler({ showUnmodified: true });
+    const content = getContent(await callHandler({ showUnmodified: true }));
 
-    expect(result).toContain("## Unmodified");
-    expect(result).toContain("**Unchanged:**");
-    expect(result).toContain("unchanged.png — stable");
-    expect(result).toContain("**Skipped:**");
-    expect(result).toContain("skipped.png — selective-upload");
+    expect(content.unchanged).toEqual([
+      {
+        group: "stable",
+        images: [
+          {
+            imageFileName: "snapshots-iphone-16/unchanged.png",
+            displayName: "unchanged.png",
+          },
+        ],
+      },
+    ]);
+    expect(content.skipped).toEqual([
+      {
+        group: "selective-upload",
+        images: [
+          {
+            imageFileName: "snapshots-iphone-16/skipped.png",
+            displayName: "skipped.png",
+          },
+        ],
+      },
+    ]);
   });
 
   it("hints when compact diff output hides the only file lists", async () => {
@@ -213,10 +301,12 @@ describe("get_snapshot", () => {
       skipped_count: 1,
     });
 
-    const result = await callHandler();
+    const content = getContent(await callHandler());
 
-    expect(result).toContain(
-      "Re-run `get_snapshot` with `showUnmodified=true` to list unchanged and skipped images.",
+    expect(content.images).toEqual([]);
+    expect(content.unchanged).toBeUndefined();
+    expect(content.responseNotes[0]).toBe(
+      "No changed images are shown in compact mode. Re-run `get_snapshot` with `showUnmodified=true` to list unchanged and skipped images.",
     );
   });
 
@@ -242,13 +332,23 @@ describe("get_snapshot", () => {
       total_count: 1,
     });
 
-    const result = await callHandler();
+    const content = getContent(await callHandler());
 
-    expect(result).toContain("**Snapshot Images:**");
-    expect(result).toContain("no_change_login.png — No Change Login — auth");
-    expect(result).not.toContain(
-      "Re-run `get_snapshot` with `showUnmodified=true`",
-    );
+    expect(content.images).toEqual([
+      {
+        group: "auth",
+        images: [
+          {
+            imageFileName: "snapshots-iphone-16/no_change_login.png",
+            displayName: "No Change Login",
+          },
+        ],
+      },
+    ]);
+    expect(content.counts.total).toBe(1);
+    expect(content.vcs).toBeNull();
+    expect(content.approval).toBeNull();
+    expect(content.responseNotes).toHaveLength(2);
   });
 
   it("lists solo snapshot images and treats showUnmodified as a no-op", async () => {
@@ -280,12 +380,20 @@ describe("get_snapshot", () => {
       skipped_count: 0,
     });
 
-    const result = await callHandler({ showUnmodified: true });
+    const content = getContent(await callHandler({ showUnmodified: true }));
 
-    expect(result).toContain("**Snapshot Images:**");
-    expect(result).toContain(
-      "Content_View_Dark_mode.png — Dark mode — Content View",
-    );
-    expect(result).not.toContain("## Unmodified");
+    expect(content.images).toEqual([
+      {
+        group: "Content View",
+        images: [
+          {
+            imageFileName: "snapshots-ipad/Content_View_Dark_mode.png",
+            displayName: "Dark mode",
+          },
+        ],
+      },
+    ]);
+    expect(content.unchanged).toBeUndefined();
+    expect(content.skipped).toBeUndefined();
   });
 });

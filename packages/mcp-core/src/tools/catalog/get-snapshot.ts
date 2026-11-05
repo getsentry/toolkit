@@ -2,11 +2,15 @@ import { z } from "zod";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import { formatToolCallInstruction } from "../../internal/tool-helpers/tool-call-formatting";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import { fetchSnapshotSummary } from "../support/snapshots/handlers";
+import {
+  getSnapshotOutputSchema,
+  getSnapshotSummary,
+} from "../support/snapshots/summary";
 
 export default defineTool({
   name: "get_snapshot",
@@ -17,14 +21,16 @@ export default defineTool({
     const imageInstruction = formatToolCallInstruction({
       toolName: "get_snapshot_image",
       arguments: {
-        organizationSlug: "<organization_slug>",
-        snapshotId: "<snapshot_id>",
-        imageIdentifier: "<image_file_name>",
+        organizationSlug: "<organizationSlug>",
+        snapshotId: "<snapshotId>",
+        imageIdentifier: "<imageFileName>",
       },
+      showArguments: true,
       experimentalMode,
       availableToolNames,
       directToolNames,
-      fallbackInstruction: "Use the Sentry tool `get_sentry_resource`",
+      fallbackInstruction:
+        "Use the Sentry tool `get_sentry_resource` with the snapshot url + `?selectedSnapshot=<URL-encoded imageFileName>`",
     });
     const imageInstructionSuffix = imageInstruction.includes(
       "get_snapshot_image",
@@ -80,6 +86,7 @@ export default defineTool({
       .default(false),
     regionUrl: ParamRegionUrl.nullable().default(null),
   },
+  outputSchema: getSnapshotOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -98,18 +105,18 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
 
-    return await fetchSnapshotSummary(
-      apiService,
-      params.organizationSlug,
-      params.snapshotId,
-      null,
-      {
-        showUnmodified: params.showUnmodified,
-        listImagesWhenNoDiffs: true,
-        experimentalMode: context.experimentalMode ?? false,
-        availableToolNames: context.availableToolNames,
-        directToolNames: context.directToolNames,
-      },
+    return structuredResult(
+      await getSnapshotSummary(
+        apiService,
+        params.organizationSlug,
+        params.snapshotId,
+        {
+          showUnmodified: params.showUnmodified,
+          experimentalMode: context.experimentalMode ?? false,
+          availableToolNames: context.availableToolNames,
+          directToolNames: context.directToolNames,
+        },
+      ),
     );
   },
 });
