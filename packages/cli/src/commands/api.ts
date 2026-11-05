@@ -8,6 +8,7 @@
 import { access, readFile } from "node:fs/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
+import { parseApiPathScope } from "@sentry/api/client";
 import type { SentryContext } from "../context.js";
 import {
   appendSearchParams,
@@ -263,22 +264,11 @@ function resolveApiTarget(endpoint: string): {
 }
 
 /**
- * Org/project slugs or numeric IDs in API paths. Rejects schema placeholders
- * (`{organization_id_or_slug}`) and empty/dot segments so we never tag junk.
- */
-const API_PATH_SLUG_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
-
-function isApiPathSlug(segment: string | undefined): segment is string {
-  return segment !== undefined && API_PATH_SLUG_RE.test(segment);
-}
-
-/**
  * Parse org (and project when present) from a Sentry API endpoint path.
  *
  * `sentry api` never goes through target resolve, so the slug lives only in
- * the URL. `organizations/`, `projects/`, and `teams/` prefixes carry the
- * org; `projects/` and `organizations/{org}/projects/{project}/` also carry
- * a project when that segment is a real slug.
+ * the URL. The transport reads the same scope to pick the stored account
+ * that knows the org; see `parseApiPathScope` in `@sentry/api/client`.
  *
  * @param endpoint - Path relative to `/api/0/`, optionally with a query string
  *   or a leading `/api/0/` prefix
@@ -289,34 +279,13 @@ function isApiPathSlug(segment: string | undefined): segment is string {
 export function parseOrgProjectFromApiPath(
   endpoint: string,
 ): { org: string; project?: string } | undefined {
-  const path = endpoint.split("?", 1)[0] ?? "";
-  const segments = path.split("/").filter((segment) => segment.length > 0);
-
-  if (segments[0] === "api" && segments[1] === "0") {
-    segments.splice(0, 2);
+  const scope = parseApiPathScope(endpoint);
+  if (!scope) {
+    return;
   }
-
-  if (segments[0] === "organizations" && isApiPathSlug(segments[1])) {
-    const org = segments[1];
-    if (segments[2] === "projects" && isApiPathSlug(segments[3])) {
-      return { org, project: segments[3] };
-    }
-    return { org };
-  }
-
-  if (segments[0] === "projects" && isApiPathSlug(segments[1])) {
-    const org = segments[1];
-    if (isApiPathSlug(segments[2])) {
-      return { org, project: segments[2] };
-    }
-    return { org };
-  }
-
-  if (segments[0] === "teams" && isApiPathSlug(segments[1])) {
-    return { org: segments[1] };
-  }
-
-  return;
+  return scope.project
+    ? { org: scope.organization, project: scope.project }
+    : { org: scope.organization };
 }
 
 function tagOrgFromApiPath(endpoint: string): void {
