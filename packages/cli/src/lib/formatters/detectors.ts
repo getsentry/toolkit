@@ -1,6 +1,6 @@
 import type { GetOrganizationWorkflowResponse } from "@sentry/api";
 import { text, tableCell } from "@sentry/toolkit-core/markdown";
-import type { MetricMonitor } from "../api/detectors.js";
+import type { Monitor, MetricMonitor } from "../api/detectors.js";
 import { stringifyUnknown } from "../errors.js";
 import { monitorQuery } from "../metric-monitor.js";
 import { mdKvTable, renderMarkdown } from "./markdown.js";
@@ -84,5 +84,18 @@ export function formatMetricMonitorList(
       header: "DATASET",
       value: (m) => stringifyUnknown(monitorQuery(m)?.dataset ?? ""),
     },
+  ]);
+}
+
+export function formatMonitorList(
+  monitors: (Monitor & { orgSlug: string })[],
+): string {
+  return formatTable(monitors, [
+    { header: "ID", value: (m) => m.id },
+    { header: "TYPE", value: (m) => tableCell(m.type) },
+    { header: "NAME", value: (m) => tableCell(m.name) },
+    { header: "ORG", value: (m) => m.orgSlug },
+    { header: "PROJECT", value: (m) => m.projectId ?? "" },
+    { header: "ENABLED", value: (m) => String(m.enabled) },
   ]);
 }

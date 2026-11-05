@@ -113,7 +113,6 @@ for the bare **list** (`sentry releases` → lists releases), but any
 | `sentry-cli projects …` | `sentry project …` |
 | `sentry-cli releases …` | `sentry release …` |
 | `sentry-cli issues …` | `sentry issue …` |
-| `sentry-cli monitors …` | `sentry monitor …` |
 | `sentry-cli repos …` | `sentry repo …` |
 | `sentry-cli events …` | `sentry event …` |
 
@@ -140,6 +139,8 @@ These live under a different group now:
 | `sentry-cli upload-dsym …` | `sentry debug-files upload …` |
 | `sentry-cli difutil check …` | `sentry debug-files check …` |
 | `sentry-cli upload-proguard …` | `sentry proguard upload …` |
+| `sentry-cli monitors run …` | `sentry monitor cron run …` |
+| `sentry-cli monitors list …` | `sentry monitor cron list …` |
 
 Most of these were already soft-deprecated in v3 (hidden from `--help` in favor
 of `debug-files` / `proguard`); v4 simply drops the legacy top-level spellings.
@@ -301,7 +302,7 @@ sentry-cli() {
       organizations) grp=org ;;
       projects)       grp=project ;;
       issues)         grp=issue ;;
-      monitors)       grp=monitor ;;
+      monitors)       "${run[@]}" monitor cron "$@"; return ;;
       repos)          grp=repo ;;
       events)         grp=event ;;
     esac

@@ -78,7 +78,7 @@ describe("renderJsonHelp", () => {
 
   test("a --json after a -- escape is ignored (wrapped command's flag)", () => {
     expect(
-      renderJsonHelp([APP, "monitor", "run"], ["--", "tool", "--json"]),
+      renderJsonHelp([APP, "monitor", "cron", "run"], ["--", "tool", "--json"]),
     ).toBeUndefined();
   });
 
@@ -190,6 +190,7 @@ describe("rewriteHelpJsonToHelpCommand", () => {
     expect(
       rewriteHelpJsonToHelpCommand([
         "monitor",
+        "cron",
         "run",
         "--",
         "tool",

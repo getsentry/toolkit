@@ -1,5 +1,5 @@
 /**
- * Tests for `sentry monitor run` command func().
+ * Tests for `sentry monitor cron run` command func().
  *
  * Uses a real child process (`node -e ...`) to verify exit-code propagation,
  * the `SENTRY_MONITOR_SLUG` env var, and that check-in send failures do not
@@ -7,13 +7,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { runCommand } from "../../../src/commands/monitor/run.js";
+import { runCommand } from "../../../../src/commands/monitor/cron/run.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
-import * as transport from "../../../src/lib/envelope/transport.js";
-import { CliError, ValidationError } from "../../../src/lib/errors.js";
-import { useTestConfigDir } from "../../helpers.js";
+import * as transport from "../../../../src/lib/envelope/transport.js";
+import { CliError, ValidationError } from "../../../../src/lib/errors.js";
+import { useTestConfigDir } from "../../../helpers.js";
 
-useTestConfigDir("monitor-run-");
+useTestConfigDir("monitor-cron-run-");
 
 const SAAS_DSN = "https://abc123@o1.ingest.us.sentry.io/999";
 
@@ -29,7 +29,7 @@ function makeContext() {
   };
 }
 
-describe("monitor runCommand.func()", () => {
+describe("monitor cron runCommand.func()", () => {
   let func: Awaited<ReturnType<typeof runCommand.loader>>;
   let sendSpy: ReturnType<typeof vi.spyOn>;
 

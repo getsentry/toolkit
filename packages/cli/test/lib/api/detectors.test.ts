@@ -3,7 +3,7 @@ import {
   createMetricMonitor,
   deleteMetricMonitor,
   getMetricMonitor,
-  listMetricMonitorsPaginated,
+  listDetectorsPaginated,
   updateMetricMonitor,
   type MetricMonitorCreateBody,
 } from "../../../src/lib/api/detectors.js";
@@ -31,14 +31,12 @@ afterEach(() => {
 });
 
 describe("native metric monitor API", () => {
-  test("lists native documents with metric type, search, project filters and server cursor", async () => {
+  test("lists native documents with search, project filters and server cursor", async () => {
     const monitor = metricMonitor();
     globalThis.fetch = mockFetch(async (input, init) => {
       const url = new URL(new Request(input!, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/detectors/");
-      expect(url.searchParams.get("query")).toBe(
-        "type:metric_issue name:Latency",
-      );
+      expect(url.searchParams.get("query")).toBe("name:Latency");
       expect(url.searchParams.getAll("project")).toEqual(["1", "2"]);
       expect(url.searchParams.get("cursor")).toBe("older");
       expect(url.searchParams.get("per_page")).toBe("20");
@@ -48,7 +46,7 @@ describe("native metric monitor API", () => {
         },
       });
     });
-    const result = await listMetricMonitorsPaginated("test-org", {
+    const result = await listDetectorsPaginated("test-org", {
       perPage: 20,
       cursor: "older",
       query: "name:Latency",

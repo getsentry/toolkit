@@ -1,10 +1,10 @@
-import type { SentryContext } from "../../context.js";
-import { updateMetricMonitor } from "../../lib/api/detectors.js";
-import { buildCommand } from "../../lib/command.js";
-import { CommandOutput } from "../../lib/formatters/output.js";
-import { DRY_RUN_ALIASES } from "../../lib/mutate-command.js";
-import { MetricMonitorMutationSchema } from "../../generated/output-schemas/monitor.js";
-import type { MetricMonitorMutation } from "../../output-schemas/monitor.js";
+import type { SentryContext } from "../../../context.js";
+import { updateMetricMonitor } from "../../../lib/api/detectors.js";
+import { buildCommand } from "../../../lib/command.js";
+import { CommandOutput } from "../../../lib/formatters/output.js";
+import { DRY_RUN_ALIASES } from "../../../lib/mutate-command.js";
+import { MetricMonitorMutationSchema } from "../../../generated/output-schemas/monitor.js";
+import type { MetricMonitorMutation } from "../../../output-schemas/monitor.js";
 import { monitorFlags } from "./flags.js";
 import { buildMonitorBody, type MonitorFlags } from "./mutation-utils.js";
 import {
@@ -21,7 +21,7 @@ export const editCommand = buildCommand({
     examples: [
       {
         description: "Disable a monitor",
-        command: "sentry monitor edit my-org/123 --enabled false",
+        command: "sentry monitor metric edit my-org/123 --enabled false",
       },
     ],
   },

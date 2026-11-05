@@ -5,6 +5,7 @@ import {
   choiceParser,
   parseEnvironment,
   parseOwner,
+  parseProjectSlug,
   parseText,
 } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
@@ -13,6 +14,7 @@ import type {
   AlertCreateBody,
   AlertUpdateBody,
 } from "../../lib/api/alerts.js";
+import { resolveProjectAlertMonitorId } from "../../lib/api/alerts.js";
 
 const TRIGGERS: Readonly<Record<string, string>> = {
   "first-seen": "first_seen_event",
@@ -35,6 +37,7 @@ export type AlertMutationFlags = {
   readonly config?: string;
   readonly "action-filter"?: string[];
   readonly monitor?: string[];
+  readonly project?: string;
   readonly environment?: string;
   readonly owner?: string;
   readonly enabled?: boolean;
@@ -113,6 +116,12 @@ export const ALERT_MUTATION_FLAGS = {
     brief:
       "Monitor IDs to connect (repeatable, comma-separated; empty string clears)",
   },
+  project: {
+    kind: "parsed",
+    parse: parseProjectSlug,
+    optional: true,
+    brief: "Select a project's issues and activity (replaces monitor links)",
+  },
   environment: {
     kind: "parsed",
     parse: parseEnvironment,
@@ -137,6 +146,26 @@ export const ALERT_MUTATION_FLAGS = {
     brief: "Whether this alert is enabled: true or false",
   },
 } as const;
+
+/** Project selection is explicit; resolve its existing issue stream. */
+export async function resolveAlertMonitorFlags(
+  org: string,
+  flags: AlertMutationFlags,
+): Promise<AlertMutationFlags> {
+  if (flags.project === undefined) return flags;
+  if (flags.monitor !== undefined) {
+    throw new ValidationError(
+      "Use --project or --monitor, not both.",
+      "project",
+    );
+  }
+  const project = flags.project.trim();
+  if (!project || project === "-1") {
+    throw new ValidationError("project must select one project.", "project");
+  }
+  const id = await resolveProjectAlertMonitorId(org, project);
+  return { ...flags, monitor: [id] };
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

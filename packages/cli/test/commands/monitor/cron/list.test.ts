@@ -1,5 +1,5 @@
 /**
- * Tests for monitor list schedule formatting.
+ * Tests for monitor cron list schedule formatting.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";

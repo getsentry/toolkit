@@ -1,20 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { createCommand } from "../../../src/commands/monitor/create.js";
-import { editCommand } from "../../../src/commands/monitor/edit.js";
-import { deleteCommand } from "../../../src/commands/monitor/delete.js";
-import { viewCommand } from "../../../src/commands/monitor/view.js";
-import { listCommand } from "../../../src/commands/monitor/list.js";
-import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
-import { setAuthToken } from "../../../src/lib/db/auth.js";
-import { setOrgRegion } from "../../../src/lib/db/regions.js";
-import { resetAuthenticatedFetch } from "../../../src/lib/sentry-client.js";
+import { createCommand } from "../../../../src/commands/monitor/metric/create.js";
+import { editCommand } from "../../../../src/commands/monitor/metric/edit.js";
+import { deleteCommand } from "../../../../src/commands/monitor/metric/delete.js";
+import { viewCommand } from "../../../../src/commands/monitor/metric/view.js";
+import { listCommand } from "../../../../src/commands/monitor/metric/list.js";
+import { DEFAULT_SENTRY_URL } from "../../../../src/lib/constants.js";
+import { setAuthToken } from "../../../../src/lib/db/auth.js";
+import { setOrgRegion } from "../../../../src/lib/db/regions.js";
+import { resetAuthenticatedFetch } from "../../../../src/lib/sentry-client.js";
 import {
   metricMonitor,
   nativeMonitorCreateBody,
-} from "../../fixtures/metric-monitors.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+} from "../../../fixtures/metric-monitors.js";
+import { mockFetch, useTestConfigDir } from "../../../helpers.js";
 
-const configDir = useTestConfigDir("monitor-commands-", {
+const configDir = useTestConfigDir("monitor-metric-commands-", {
   isolateProjectRoot: true,
 });
 let originalFetch: typeof globalThis.fetch;
@@ -39,7 +39,7 @@ async function invoke(
   const chunks: string[] = [];
   const context = {
     cwd: configDir(),
-    commandPrefix: ["sentry", "monitor", verb],
+    commandPrefix: ["sentry", "monitor", "metric", verb],
     stdout: {
       write: (chunk: string) => {
         chunks.push(chunk);

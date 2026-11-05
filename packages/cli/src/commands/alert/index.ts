@@ -17,6 +17,6 @@ export const alertRoute = buildRouteMap({
   docs: {
     brief: topLevelBrief("alert"),
     fullDescription:
-      "Manage organization alerts (native workflows), including detached alerts and alerts connected to any monitor. Use sentry monitor for metric detectors and sentry monitor cron for cron monitors.",
+      "Manage organization alerts (native workflows), including detached alerts and alerts connected to any monitor. Use sentry monitor metric for metric detectors and sentry monitor cron for cron monitors.",
   },
 });

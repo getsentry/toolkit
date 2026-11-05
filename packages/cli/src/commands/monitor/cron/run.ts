@@ -1,5 +1,5 @@
 /**
- * sentry monitor run
+ * sentry monitor cron run
  *
  * Wrap an arbitrary command with cron monitor check-ins. Sends an
  * `in_progress` check-in when the command starts, then `ok`/`error` (with
@@ -23,17 +23,17 @@ import {
   serializeEnvelope,
   uuid4,
 } from "@sentry/core";
-import type { SentryContext } from "../../context.js";
-import { buildCommand, numberParser } from "../../lib/command.js";
+import type { SentryContext } from "../../../context.js";
+import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
   buildCheckIn,
   buildMonitorConfig,
   type CheckInConfigFlags,
-} from "../../lib/envelope/checkin-builder.js";
+} from "../../../lib/envelope/checkin-builder.js";
 import {
   resolveIngestDsn,
   sendEnvelopeRequest,
-} from "../../lib/envelope/transport.js";
+} from "../../../lib/envelope/transport.js";
 import {
   choiceParser,
   parseDsn,
@@ -41,14 +41,14 @@ import {
   parseMonitorCommand,
   parseText,
   textParser,
-} from "../../lib/completion-target.js";
-import { CliError, ConfigError, ValidationError } from "../../lib/errors.js";
-import { logger } from "../../lib/logger.js";
+} from "../../../lib/completion-target.js";
+import { CliError, ConfigError, ValidationError } from "../../../lib/errors.js";
+import { logger } from "../../../lib/logger.js";
 
-const log = logger.withTag("monitor.run");
+const log = logger.withTag("monitor.cron.run");
 
 /** Usage hint shown when no command is provided. */
-const USAGE_HINT = "sentry monitor run <monitor-slug> -- <command>";
+const USAGE_HINT = "sentry monitor cron run <monitor-slug> -- <command>";
 
 type RunFlags = CheckInConfigFlags & {
   dsn?: string;
@@ -160,15 +160,15 @@ auto-detecting it from your project sources.
 ## Usage
 
 \`\`\`
-sentry monitor run <monitor-slug> -- <command>
+sentry monitor cron run <monitor-slug> -- <command>
 \`\`\`
 
 The \`--\` separator is recommended so flags belonging to your command are not
-interpreted by \`monitor run\`. It is optional when your command has no flags:
+interpreted by \`monitor cron run\`. It is optional when your command has no flags:
 
 \`\`\`
-sentry monitor run nightly-job -- python manage.py cron
-sentry monitor run nightly-job npm run task        # -- optional here
+sentry monitor cron run nightly-job -- python manage.py cron
+sentry monitor cron run nightly-job npm run task        # -- optional here
 \`\`\`
 
 ## Creating/updating the monitor
@@ -177,7 +177,7 @@ Pass \`--schedule\` (crontab format) to upsert the monitor on the first
 check-in. Dependent flags require \`--schedule\`:
 
 \`\`\`
-sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh
+sentry monitor cron run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh
 \`\`\`
 
 The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
@@ -185,17 +185,17 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
       {
         description: "Wrap a command with cron monitor check-ins (DSN-based)",
         command:
-          "SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 sentry monitor run nightly-job -- python manage.py cron",
+          "SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 sentry monitor cron run nightly-job -- python manage.py cron",
       },
       {
         description:
           "The -- separator is optional when the command has no flags",
-        command: "sentry monitor run nightly-job npm run task",
+        command: "sentry monitor cron run nightly-job npm run task",
       },
       {
         description: "Create or update the monitor on the first check-in",
         command:
-          'sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh',
+          'sentry monitor cron run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh',
       },
     ],
   },

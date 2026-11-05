@@ -44,7 +44,7 @@ export const TOP_LEVEL_BRIEFS = {
   feedback: "Manage User Feedback",
   log: "View Sentry logs",
   mcp: "Start a local Sentry MCP server",
-  monitor: "Manage metric monitors and cron check-ins",
+  monitor: "Manage Sentry monitors by type",
   snapshots: "Manage and compare snapshots",
   sourcemap: "Manage sourcemaps",
   span: "List and view spans in projects or traces",

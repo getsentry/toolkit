@@ -69,7 +69,7 @@ export function resolveDsn(flags: DsnFlags): string | undefined {
 /**
  * Resolve a DSN for envelope ingest: optional flag → `SENTRY_DSN` → project scan.
  *
- * Used by ingest commands such as `event send` and `monitor run`. Returns `undefined`
+ * Used by ingest commands such as `event send` and `monitor cron run`. Returns `undefined`
  * when none of those sources yield a DSN; callers decide whether to look up
  * a project key via the Web API or throw.
  *
@@ -103,7 +103,7 @@ export async function resolveIngestDsn(
  *
  * @param flags - DSN flag source (`--dsn`), with `SENTRY_DSN` fallback.
  * @param usageHint - Optional command-specific usage example shown in the
- *   error (e.g. `"sentry monitor run <slug> -- <command>"`).
+ *   error (e.g. `"sentry monitor cron run <slug> -- <command>"`).
  */
 export function requireDsn(
   flags: DsnFlags,

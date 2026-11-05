@@ -1,5 +1,5 @@
 /**
- * Constructs cron monitor check-in payloads for `sentry monitor run`.
+ * Constructs cron monitor check-in payloads for `sentry monitor cron run`.
  *
  * Mirrors the behaviour of the legacy Rust sentry-cli `monitors run` command:
  * an `in_progress` check-in is sent when the wrapped command starts, then an
@@ -16,7 +16,7 @@ import type { SerializedCheckIn } from "@sentry/core";
 import { ValidationError } from "../errors.js";
 
 /**
- * CLI flags accepted by `sentry monitor run` that affect the monitor config.
+ * CLI flags accepted by `sentry monitor cron run` that affect the monitor config.
  *
  * `schedule` is a crontab string (matching the legacy CLI, which only supports
  * crontab schedules — not intervals). The remaining flags require `schedule`

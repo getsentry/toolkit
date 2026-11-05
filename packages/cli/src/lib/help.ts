@@ -659,7 +659,7 @@ export function rewriteHelpJsonToHelpCommand(
  * `--fields`, and any leftover non-flag command-path tokens.
  *
  * Only tokens before a `--` escape separator are considered so a wrapped
- * command's own `--json` (`sentry monitor run <slug> -- tool --json`) is not
+ * command's own `--json` (`sentry monitor cron run <slug> -- tool --json`) is not
  * treated as a help request. `--fields` supports both the spaced
  * (`--fields a,b`) and inline (`--fields=a,b`) forms; its value is parsed with
  * {@link parseFieldsList} for parity with the wrapper's `--fields` handling.

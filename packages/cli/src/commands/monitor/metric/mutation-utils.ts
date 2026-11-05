@@ -1,23 +1,23 @@
 import type {
   DatasetCompletion,
   DatasetFields,
-} from "../../lib/completion-target.js";
-import { ValidationError } from "../../lib/errors.js";
+} from "../../../lib/completion-target.js";
+import { ValidationError } from "../../../lib/errors.js";
 import type {
   MetricMonitor,
   MetricMonitorCreateBody,
   MetricMonitorUpdateBody,
-} from "../../lib/api/detectors.js";
+} from "../../../lib/api/detectors.js";
 import {
   METRIC_MONITOR_SIGNALS,
   METRIC_MONITOR_SIGNAL_ALIASES,
   METRIC_MONITOR_SIGNAL_NAMES,
   type MetricMonitorSignal,
-} from "../../types/metric-monitor.js";
+} from "../../../types/metric-monitor.js";
 import {
   monitorObject as objectValue,
   monitorQuery,
-} from "../../lib/metric-monitor.js";
+} from "../../../lib/metric-monitor.js";
 
 const TRANSACTION_DATASET_NAMES = ["transaction", "transactions"];
 const LOG_ALERT_FUNCTIONS = [

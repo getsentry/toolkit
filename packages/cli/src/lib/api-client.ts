@@ -35,8 +35,9 @@ export {
   createMetricMonitor,
   deleteMetricMonitor,
   getMetricMonitor,
-  listMetricMonitorsPaginated,
+  listDetectorsPaginated,
   type MetricMonitor,
+  type Monitor,
   updateMetricMonitor,
 } from "./api/detectors.js";
 export {

@@ -134,8 +134,8 @@ export const SentryMonitorSchema = pipe(
 /** JSON output of `monitor cron list`: a cron monitor and its organization. */
 export const MonitorListItemSchema = orgListItemSchema(SentryMonitorSchema);
 
-/** Native metric detector, with the organization that produced the list item. */
-export const MetricMonitorListItemSchema = orgListItemSchema(
+/** Native monitor of any type, with the organization that produced the list item. */
+export const DetectorMonitorListItemSchema = orgListItemSchema(
   vGetOrganizationDetectorResponse,
 );
 

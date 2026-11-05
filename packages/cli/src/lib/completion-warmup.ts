@@ -2,7 +2,7 @@
  * Warm the shell-completion cache with trace item attribute keys.
  *
  * Field completion (`explore --field`, `dashboard widget --query`,
- * `monitor create --aggregate`, …) reads the `span-attribute`,
+ * `monitor metric create --aggregate`, …) reads the `span-attribute`,
  * `log-attribute` and `metric-attribute` kinds of `completion_cache`. Only
  * a `GET /organizations/{org}/trace-items/attributes/` response seeds them
  * (see `api/completion-seed.ts`), so without a warm-up field completion

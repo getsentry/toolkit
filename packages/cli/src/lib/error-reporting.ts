@@ -166,7 +166,7 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   if (error instanceof SeerError && !isSaaS()) {
     return "seer_unavailable_self_hosted";
   }
-  // A child process launched by `sentry local run` or `sentry monitor run`
+  // A child process launched by `sentry local run` or `sentry monitor cron run`
   // that exits with a non-zero code throws `CliError("Process exited with
   // code N")`. These are expected user-script failures, not CLI bugs — no
   // actionable signal comes from capturing them (CLI-20G).

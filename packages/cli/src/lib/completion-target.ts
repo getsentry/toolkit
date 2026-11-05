@@ -118,7 +118,7 @@ export const PROJECT_LIST_TARGET = "project-list" satisfies CompletionTarget;
 /** Comma-separated cached alert (workflow) IDs. */
 export const WORKFLOW_LIST_TARGET = "workflow-list" satisfies CompletionTarget;
 
-/** `monitor run`'s cached monitor slug, then the command to run. */
+/** `monitor cron run`'s cached monitor slug, then the command to run. */
 export const MONITOR_COMMAND_TARGET =
   "monitor-command" satisfies CompletionTarget;
 
@@ -328,7 +328,7 @@ export const parseProjectList = identityParser(PROJECT_LIST_TARGET);
 /** Parses comma-separated alert (workflow) IDs; completes cached ones. */
 export const parseWorkflowList = identityParser(WORKFLOW_LIST_TARGET);
 
-/** Parses `monitor run`'s words; completes a cached monitor slug first. */
+/** Parses `monitor cron run`'s words; completes a cached monitor slug first. */
 export const parseMonitorCommand = identityParser(MONITOR_COMMAND_TARGET);
 
 /** Parses a native integration ID; completes cached integrations. */

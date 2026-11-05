@@ -1,4 +1,19 @@
 
+## Monitor types
+
+`sentry monitor` groups Sentry Monitors by type. Metric, cron, and uptime are
+monitor types, not alert types. `sentry monitor list` lists every user-facing
+monitor type together, with a type column and native JSON. Like Sentry's Monitors
+page, it excludes internal issue streams used only for alert project connections.
+Choose a type for type-specific operations.
+
+- `sentry monitor list` lists all monitor types, including uptime and other
+  monitors without dedicated CLI mutation commands.
+- `sentry monitor metric list|view|create|edit|delete` manages metric monitors.
+- `sentry monitor cron list` lists cron monitors.
+- `sentry monitor cron run` wraps a command with cron check-ins and can create or
+  update the cron monitor when passed `--schedule`.
+
 ## Detection and notifications
 
 A metric monitor evaluates a query and creates issues. An alert configures
@@ -50,5 +65,8 @@ of alert firings or notification delivery.
 
 ## Cron monitors
 
-Cron listing is now `sentry monitor cron list`. `sentry monitor run` continues to
-wrap a command with cron check-ins. `sentry monitor list` lists metric monitors.
+Cron commands live under `sentry monitor cron`: use `list` to inspect cron
+monitors and `run` to wrap a command with check-ins. The former `monitor run` is
+now `sentry monitor cron run`. `sentry monitor list` is now cross-type; use
+`sentry monitor cron list` to retain cron-only listing or
+`sentry monitor metric list` for metric-only listing.

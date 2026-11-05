@@ -1,28 +1,19 @@
 import { buildRouteMap } from "../../lib/route-map.js";
 import { topLevelBrief } from "../../top-level-briefs.js";
-import { listCommand } from "./list.js";
-import { runCommand } from "./run.js";
-import { createCommand } from "./create.js";
-import { editCommand } from "./edit.js";
-import { deleteCommand } from "./delete.js";
-import { viewCommand } from "./view.js";
+import { metricRoute } from "./metric/index.js";
 import { cronRoute } from "./cron/index.js";
+import { listCommand } from "./list.js";
 
 export const monitorRoute = buildRouteMap({
   routes: {
-    run: runCommand,
     list: listCommand,
-    view: viewCommand,
-    create: createCommand,
-    edit: editCommand,
-    delete: deleteCommand,
+    metric: metricRoute,
     cron: cronRoute,
   },
-  defaultCommand: "list",
   docs: {
     brief: topLevelBrief("monitor"),
     fullDescription:
-      "Manage metric monitors (native metric detectors), inspect cron monitors with `sentry monitor cron list`, and send cron check-ins with `sentry monitor run`.\n\n" +
-      "Alias: `sentry monitors` → `sentry monitor list`",
+      "List Sentry monitors of every type with `sentry monitor list`. Use `sentry monitor metric` for metric monitors and `sentry monitor cron` for cron monitors and command check-ins.\n\n" +
+      "Alias: `sentry monitors` → `sentry monitor`",
   },
 });

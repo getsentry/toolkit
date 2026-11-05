@@ -9,9 +9,12 @@ import { viewCommand } from "../../../src/commands/alert/view.js";
 import type { SentryContext } from "../../../src/context.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- public API spies keep command orchestration real
 import * as alertsApi from "../../../src/lib/api/alerts.js";
+import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
+import { setOrgRegion } from "../../../src/lib/db/regions.js";
+import { resetAuthenticatedFetch } from "../../../src/lib/sentry-client.js";
 import { workflow } from "../../fixtures/workflow.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
 const getConfigDir = useTestConfigDir("native-alert-commands-", {
   isolateProjectRoot: true,
@@ -43,10 +46,17 @@ async function run(
   return JSON.parse(stdout.mock.calls.map(([text]) => text).join(""));
 }
 
+let originalFetch: typeof globalThis.fetch;
+
 beforeEach(() => {
+  originalFetch = globalThis.fetch;
+  resetAuthenticatedFetch();
   setAuthToken("test-token");
+  setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 });
 afterEach(() => {
+  globalThis.fetch = originalFetch;
+  resetAuthenticatedFetch();
   vi.restoreAllMocks();
 });
 
@@ -141,6 +151,158 @@ describe("native alert commands", () => {
       enabled: true,
     });
   });
+
+  test("project selection creates an alert on the issue stream, not an error or metric detector", async () => {
+    const requests: { method: string; path: string; body: unknown }[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const request = new Request(input!, init);
+      const url = new URL(request.url);
+      if (url.pathname.endsWith("/detectors/")) {
+        expect(url.searchParams.getAll("project")).toEqual(["backend"]);
+        expect(url.searchParams.get("query")).toBe("type:issue_stream");
+        return Response.json([
+          { id: "90", type: "issue_stream", projectId: "1" },
+        ]);
+      }
+      requests.push({
+        method: request.method,
+        path: url.pathname,
+        body: await request.json(),
+      });
+      return Response.json(
+        workflow({ name: "New issues", detectorIds: ["90"] }),
+        { status: 201 },
+      );
+    });
+    await run(
+      createCommand,
+      "create",
+      {
+        name: "New issues",
+        project: "backend",
+        trigger: ["first-seen"],
+        frequency: 30,
+        action: [
+          '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"7"}}',
+        ],
+      },
+      "test-org/",
+    );
+    expect(requests).toEqual([
+      {
+        method: "POST",
+        path: "/api/0/organizations/test-org/workflows/",
+        body: {
+          name: "New issues",
+          enabled: true,
+          detectorIds: [90],
+          config: { frequency: 30 },
+          triggers: {
+            logicType: "any-short",
+            conditions: [
+              {
+                type: "first_seen_event",
+                comparison: true,
+                conditionResult: true,
+              },
+            ],
+          },
+          actionFilters: [
+            {
+              logicType: "all",
+              conditions: [],
+              actions: [
+                {
+                  type: "email",
+                  data: {},
+                  config: { targetType: "team", targetIdentifier: "7" },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
+  test("project-scoped edit previews replacement connections without changing the disabled state", async () => {
+    const current = workflow();
+    const methods: string[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const request = new Request(input!, init);
+      methods.push(request.method);
+      const url = new URL(request.url);
+      if (url.pathname.endsWith("/detectors/")) {
+        return Response.json([
+          { id: "90", type: "issue_stream", projectId: "1" },
+        ]);
+      }
+      return Response.json(current);
+    });
+    const preview = await run(
+      editCommand,
+      "edit",
+      { project: "backend", trigger: ["resolved"], "dry-run": true },
+      "test-org/42",
+    );
+    expect(preview.body).toEqual({
+      name: current.name,
+      enabled: false,
+      detectorIds: [90],
+      triggers: {
+        ...current.triggers,
+        logicType: "any-short",
+        conditions: [
+          {
+            type: "issue_resolved_trigger",
+            comparison: true,
+            conditionResult: true,
+          },
+        ],
+      },
+    });
+    expect(methods).toEqual(["GET", "GET"]);
+  });
+
+  test.each([[[]], [[{ id: "90" }, { id: "91" }]]])(
+    "does not create a detached or arbitrarily scoped alert when project scope is unresolved (%j)",
+    async (detectors) => {
+      const methods: string[] = [];
+      globalThis.fetch = mockFetch(async (input, init) => {
+        methods.push(new Request(input!, init).method);
+        return Response.json(detectors);
+      });
+      await expect(
+        run(
+          createCommand,
+          "create",
+          { name: "Scoped", project: "backend" },
+          "test-org/",
+        ),
+      ).rejects.toThrow("Expected one issue stream");
+      expect(methods).toEqual(["GET"]);
+    },
+  );
+
+  test.each([{ project: "backend", monitor: ["9"] }, { project: "-1" }])(
+    "rejects ambiguous project selection before making requests (%j)",
+    async (selection) => {
+      const requests: string[] = [];
+      globalThis.fetch = mockFetch(async (input, init) => {
+        requests.push(new Request(input!, init).method);
+        return Response.json([]);
+      });
+      await expect(
+        run(
+          createCommand,
+          "create",
+          { name: "Scoped", ...selection },
+          "test-org/",
+        ),
+      ).rejects.toThrow(/Use --project or --monitor|select one project/);
+      expect(requests).toEqual([]);
+    },
+  );
 
   test("dry-run prints exactly the native create request, including full config and action groups", async () => {
     const create = vi.spyOn(alertsApi, "createAlert");

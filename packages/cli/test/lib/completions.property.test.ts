@@ -203,7 +203,6 @@ describe("proposeCompletions: Stricli integration", () => {
     "status",
     "log",
     "local",
-    "monitor",
     "feedback",
   ]);
 
@@ -459,6 +458,25 @@ printf 'reply %s\\n' "\${COMPREPLY[@]}"`,
       };
     }
 
+    test("bash completes cross-type listing and typed monitor operations", () => {
+      expect(bashComplete("monitor", "").replies.sort()).toEqual([
+        "cron",
+        "list",
+        "metric",
+      ]);
+      expect(bashComplete("monitor", "metric", "").replies.sort()).toEqual([
+        "create",
+        "delete",
+        "edit",
+        "list",
+        "view",
+      ]);
+      expect(bashComplete("monitor", "cron", "").replies.sort()).toEqual([
+        "list",
+        "run",
+      ]);
+    });
+
     test("bash completes flag names at every depth", () => {
       const issueList = bashComplete("issue", "list", "--");
       expect(issueList.replies).toContain("--limit");
@@ -466,6 +484,9 @@ printf 'reply %s\\n' "\${COMPREPLY[@]}"`,
       expect(bashComplete("monitor", "cron", "list", "--li").replies).toEqual([
         "--limit",
       ]);
+      expect(bashComplete("monitor", "metric", "list", "--li").replies).toEqual(
+        ["--limit"],
+      );
     });
 
     test("bash completes directories without a trailing space, escaped", () => {

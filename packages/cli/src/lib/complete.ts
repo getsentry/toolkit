@@ -123,10 +123,9 @@ async function handleComplete(args: string[]): Promise<void> {
 
   // Queue timing data for the next normal CLI run to emit as Sentry metrics.
   // Pure SQLite write — no Sentry SDK overhead (~1ms).
-  const cmdPath =
-    precedingWords.length >= 2
-      ? `${precedingWords[0]} ${precedingWords[1]}`
-      : (precedingWords[0] ?? "");
+  const cmdPath = precedingWords
+    .slice(0, commandPathLength(precedingWords))
+    .join(" ");
   queueCompletionTelemetry({
     commandPath: cmdPath,
     durationMs: performance.now() - startMs,
@@ -210,6 +209,23 @@ function remainingFlagNames(
         : spellings.map((value) => ({ value, description: brief }));
     },
   );
+}
+
+/** Length of the command or route-group prefix, excluding flags and arguments. */
+function commandPathLength(words: string[]): number {
+  let matched = 0;
+  for (let length = 1; length <= words.length; length++) {
+    const path = words.slice(0, length).join(" ");
+    if (GENERATED.commands[path]) {
+      return length;
+    }
+    if (GENERATED.groups[path]) {
+      matched = length;
+    } else {
+      break;
+    }
+  }
+  return matched;
 }
 
 /**

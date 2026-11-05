@@ -1,4 +1,4 @@
-import { numberParser } from "../../lib/command.js";
+import { numberParser } from "../../../lib/command.js";
 import {
   aggregateParser,
   choiceParser,
@@ -6,12 +6,12 @@ import {
   parseOwner,
   parseText,
   parseWorkflowList,
-} from "../../lib/completion-target.js";
-import { DRY_RUN_FLAG } from "../../lib/mutate-command.js";
+} from "../../../lib/completion-target.js";
+import { DRY_RUN_FLAG } from "../../../lib/mutate-command.js";
 import {
   METRIC_MONITOR_DATASET_BRIEF,
   METRIC_MONITOR_SIGNAL_NAMES,
-} from "../../types/metric-monitor.js";
+} from "../../../types/metric-monitor.js";
 import {
   METRIC_MONITOR_FIELD_COMPLETION,
   parseEnabled,

@@ -115,9 +115,29 @@ describe("sentry schema path lookup", () => {
       command: "sentry trace view",
     },
     {
-      args: ["monitor", "view"],
+      args: ["monitor", "list"],
+      fn: "listOrganizationDetectors",
+      command: "sentry monitor list",
+    },
+    {
+      args: ["monitor", "metric", "view"],
       fn: "getOrganizationDetector",
-      command: "sentry monitor view",
+      command: "sentry monitor metric view",
+    },
+    {
+      args: ["monitors", "metric", "view"],
+      fn: "getOrganizationDetector",
+      command: "sentry monitor metric view",
+    },
+    {
+      args: ["monitor", "cron", "list"],
+      fn: "listOrganizationMonitors",
+      command: "sentry monitor cron list",
+    },
+    {
+      args: ["monitors", "cron", "list"],
+      fn: "listOrganizationMonitors",
+      command: "sentry monitor cron list",
     },
   ])("discovers the API used by $args", async ({ args, fn, command, note }) => {
     const { context, stdoutWrite } = createMockContext();
@@ -148,11 +168,13 @@ describe("sentry schema path lookup", () => {
       positional.context,
       { json: true, all: false },
       "monitor",
+      "metric",
       "view",
     );
     await func.call(
       search.context,
       { json: true, all: false, search: "monitor" },
+      "metric",
       "view",
     );
     expect(JSON.parse(stdoutOf(search.stdoutWrite))).toEqual(
@@ -168,10 +190,10 @@ describe("sentry schema path lookup", () => {
       command: "sentry trace list",
     },
     {
-      args: ["monitor", "view"],
+      args: ["monitor", "metric", "view"],
       search: true,
       fn: "getOrganizationDetector",
-      command: "sentry monitor view",
+      command: "sentry monitor metric view",
     },
   ])(
     "HTTP filters preserve CLI discovery for $args",

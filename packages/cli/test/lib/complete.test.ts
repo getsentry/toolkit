@@ -914,16 +914,13 @@ describe("getCompletions: fixed values", () => {
       await values(["auth", "login", "--scope"], "org:read,org:wr"),
     ).toEqual(["org:read,org:write"]);
     expect(
-      await values(
-        ["alert", "issues", "create", "--condition"],
-        "first-seen,re",
-      ),
+      await values(["alert", "create", "--trigger"], "first-seen,re"),
     ).toEqual([
       "first-seen,regression",
       "first-seen,reappeared",
       "first-seen,resolved",
     ]);
-    expect(await values(["alert", "issues", "edit", "-c"], "new")).toEqual([
+    expect(await values(["alert", "edit", "-t"], "new")).toEqual([
       "new-high-priority",
     ]);
   });
@@ -942,13 +939,17 @@ describe("getCompletions: command paths", () => {
     expect(await getCompletions(["help"], "aler")).toEqual([
       { value: "alert", description: expect.any(String) },
     ]);
-    expect(await values(["help", "alert"], "")).toEqual(["issues", "metrics"]);
-    expect(await values(["help", "alert", "issues"], "l")).toEqual(["list"]);
-    expect(await values(["help", "alert", "issues", "list"], "")).toEqual([]);
+    expect(await values(["help", "monitor"], "")).toEqual([
+      "cron",
+      "list",
+      "metric",
+    ]);
+    expect(await values(["help", "monitor", "metric"], "l")).toEqual(["list"]);
+    expect(await values(["help", "monitor", "metric", "list"], "")).toEqual([]);
   });
 
   test("words naming a nested route group complete its subcommands", async () => {
-    expect(await values(["alert", "issues"], "")).toContain("list");
+    expect(await values(["monitor", "metric"], "")).toContain("list");
     expect(await values(["dashboard", "widget"], "e")).toEqual(["edit"]);
     // The shell scripts complete the first two levels themselves.
     expect(await values(["alert"], "")).toEqual([]);
@@ -968,7 +969,7 @@ describe("getCompletions: flag names", () => {
   });
 
   test("nested commands complete their own flags", async () => {
-    expect(await values(["alert", "issues", "list"], "--li")).toEqual([
+    expect(await values(["monitor", "metric", "list"], "--li")).toEqual([
       "--limit",
     ]);
     expect(await values(["dashboard", "widget", "add"], "--q")).toEqual([
@@ -987,8 +988,8 @@ describe("getCompletions: flag names", () => {
 
   test("variadic flags may be given again", async () => {
     expect(
-      await values(["alert", "issues", "create", "--action", "{}"], "--act"),
-    ).toEqual(["--action"]);
+      await values(["alert", "create", "--action", "{}"], "--act"),
+    ).toEqual(["--action", "--action-filter"]);
   });
 
   test("a flag after one that takes a value is a flag, not its value", async () => {
@@ -1033,7 +1034,7 @@ describe("getCompletions: flag values that name cached entities", () => {
       { value: "staging" },
       { value: "production" },
     ]);
-    const create = ["alert", "metrics", "create"];
+    const create = ["monitor", "metric", "create"];
 
     expect(await values([...create, "acme/cli", "--environment"], "")).toEqual([
       "production",
@@ -1064,7 +1065,7 @@ describe("getCompletions: flag values that name cached entities", () => {
     ]);
 
     expect(
-      await getCompletions(["alert", "issues", "create", "--owner"], "back"),
+      await getCompletions(["alert", "create", "--owner"], "back"),
     ).toEqual([{ value: "team:7", description: "#backend" }]);
   });
 
@@ -1102,14 +1103,28 @@ describe("getCompletions: flag values that name cached entities", () => {
     ).toContain("CLI-1A");
   });
 
-  test("monitor run completes a monitor slug, then nothing for the command", async () => {
+  test.each([
+    ["metric", ["create", "delete", "edit", "list", "view"]],
+    ["cron", ["list", "run"]],
+  ] as const)(
+    "monitor %s completes only its typed operations",
+    async (type, operations) => {
+      expect((await values(["monitor", type], "")).sort()).toEqual([
+        ...operations,
+      ]);
+    },
+  );
+
+  test("monitor cron run completes a monitor slug, then nothing for the command", async () => {
     await seedOrgs([{ slug: "acme", name: "Acme" }]);
     cacheCompletionEntities("monitor", "acme", [
       { value: "nightly", label: "Nightly job" },
     ]);
 
-    expect(await values(["monitor", "run"], "")).toEqual(["nightly"]);
-    expect(await values(["monitor", "run", "nightly", "--"], "")).toEqual([]);
+    expect(await values(["monitor", "cron", "run"], "")).toEqual(["nightly"]);
+    expect(
+      await values(["monitor", "cron", "run", "nightly", "--"], ""),
+    ).toEqual([]);
   });
 
   test("completes comma-separated project slugs of the target org", async () => {
@@ -1226,10 +1241,7 @@ describe("getCompletions: account servers", () => {
 });
 
 describe("getCompletions: fixed values from the modules that validate them", () => {
-  test("metric alert windows, grid positions, providers, and aggregations", async () => {
-    expect(
-      await values(["alert", "metrics", "create", "--time-window"], "1"),
-    ).toEqual(["1", "10", "15", "120", "1440"]);
+  test("grid positions, providers, and aggregations", async () => {
     expect(await values(["dashboard", "widget", "add", "--col"], "")).toEqual([
       "0",
       "1",
@@ -1395,9 +1407,16 @@ describe("getCompletions: fields and aggregates of the --dataset given", () => {
     ]);
   });
 
-  test("alert --aggregate completes the calls metric alerts accept", async () => {
+  test("metric monitor --aggregate completes only supported calls", async () => {
     await seedFields();
-    const create = ["alert", "metrics", "create", "acme/", "--dataset", "span"];
+    const create = [
+      "monitor",
+      "metric",
+      "create",
+      "acme/cli",
+      "--dataset",
+      "span",
+    ];
 
     expect(await values([...create, "--aggregate"], "span")).toEqual([]);
     expect(await values([...create, "--aggregate"], "p9")).toEqual([
@@ -1416,13 +1435,13 @@ describe("getCompletions: fields and aggregates of the --dataset given", () => {
     expect(await values([...create, "--aggregate"], "any")).toEqual([]);
   });
 
-  test("alert --aggregate narrows to each dataset's aggregates", async () => {
+  test("metric monitor --aggregate narrows to each dataset's aggregates", async () => {
     await seedFields();
     const aggregate = (dataset: string) => [
-      "alert",
-      "metrics",
+      "monitor",
+      "metric",
       "create",
-      "acme/",
+      "acme/cli",
       "--dataset",
       dataset,
       "--aggregate",

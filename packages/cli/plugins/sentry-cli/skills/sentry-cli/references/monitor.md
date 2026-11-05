@@ -1,7 +1,7 @@
 ---
 name: sentry-cli-monitor
 version: 0.48.0-dev.0
-description: Manage metric monitors and cron check-ins
+description: Manage Sentry monitors by type
 requires:
   bins: ["sentry"]
   auth: true
@@ -9,42 +9,57 @@ requires:
 
 # Monitor Commands
 
-Manage metric monitors and cron check-ins
+Manage Sentry monitors by type
 
-### `sentry monitor run <monitor-slug command...>`
+### `sentry monitor list [<target>]`
 
-Wrap a command with cron monitor check-ins
+List monitors of every type
 
 **Arguments:**
 
 | Argument | Description |
 |----------|-------------|
-| `<monitor-slug command...>` | Monitor slug followed by the command to run |
+| `[<target>]` | Organization or project target |
 
 **Flags:**
-- `--dsn <value> - DSN to send check-ins to (overrides SENTRY_DSN env var)`
-- `-e, --environment <value> - Environment of the monitor - (default: "production")`
-- `-s, --schedule <value> - Upsert the monitor with this crontab schedule (e.g. '0 * * * *')`
-- `--check-in-margin <value> - Minutes after the expected check-in before it is missed (requires --schedule)`
-- `--max-runtime <value> - Minutes a check-in may run before timing out (requires --schedule)`
-- `--timezone <value> - Timezone of the schedule, tz database string (requires --schedule)`
-- `--failure-issue-threshold <value> - Consecutive failures before an issue is created (requires --schedule)`
-- `--recovery-threshold <value> - Consecutive successes before an issue is resolved (requires --schedule)`
+- `-n, --limit <value> - Maximum number of monitors to list - (default: "25")`
+- `-q, --query <value> - Native monitor search query`
+- `-w, --web - Open monitors in the browser`
+- `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+- `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `owner` | object \| null |  |
+| `createdBy` | string \| null |  |
+| `latestGroup` | object \| null |  |
+| `description` | string \| null |  |
+| `id` | string | Monitor ID |
+| `projectId` | string \| null |  |
+| `name` | string | Monitor name |
+| `type` | string |  |
+| `workflowIds` | array \| null |  |
+| `dateCreated` | string |  |
+| `dateUpdated` | string |  |
+| `dataSources` | array \| null |  |
+| `conditionGroup` | object \| null |  |
+| `config` | object |  |
+| `enabled` | boolean |  |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 
 ```bash
-# Wrap a command with cron monitor check-ins (DSN-based)
-SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 sentry monitor run nightly-job -- python manage.py cron
+# List monitors
+sentry monitor list my-org/
 
-# The -- separator is optional when the command has no flags
-sentry monitor run nightly-job npm run task
-
-# Create or update the monitor on the first check-in
-sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh
+# Filter a project's monitors
+sentry monitor list my-org/my-project --query 'name:Latency'
 ```
 
-### `sentry monitor list [<target>]`
+### `sentry monitor metric list [<target>]`
 
 List metric monitors
 
@@ -86,13 +101,13 @@ List metric monitors
 
 ```bash
 # List metric monitors
-sentry monitor list my-org/
+sentry monitor metric list my-org/
 
 # Filter a project's monitors
-sentry monitor list my-org/my-project --query 'name:Latency'
+sentry monitor metric list my-org/my-project --query 'name:Latency'
 ```
 
-### `sentry monitor view <org/monitor-id-or-name>`
+### `sentry monitor metric view <org/monitor-id-or-name>`
 
 View a metric monitor
 
@@ -132,10 +147,10 @@ View a metric monitor
 
 ```bash
 # Inspect monitor configuration
-sentry monitor view my-org/123 --json
+sentry monitor metric view my-org/123 --json
 ```
 
-### `sentry monitor create <org/project>`
+### `sentry monitor metric create <org/project>`
 
 Create a metric monitor
 
@@ -192,13 +207,13 @@ Create a metric monitor
 
 ```bash
 # Create an error volume monitor
-sentry monitor create my-org/my-project --name 'Error volume' --query '' --aggregate 'count()' --dataset errors --time-window 5 --critical 100
+sentry monitor metric create my-org/my-project --name 'Error volume' --query '' --aggregate 'count()' --dataset errors --time-window 5 --critical 100
 
 # Preview warning and critical thresholds connected to an alert
-sentry monitor create my-org/my-project --name 'Error volume' --query '' --aggregate 'count()' --dataset errors --time-window 5 --critical 100 --warning 80 --resolve 70 --alert 123 --dry-run
+sentry monitor metric create my-org/my-project --name 'Error volume' --query '' --aggregate 'count()' --dataset errors --time-window 5 --critical 100 --warning 80 --resolve 70 --alert 123 --dry-run
 ```
 
-### `sentry monitor edit <org/monitor-id-or-name>`
+### `sentry monitor metric edit <org/monitor-id-or-name>`
 
 Edit a metric monitor
 
@@ -255,10 +270,10 @@ Edit a metric monitor
 
 ```bash
 # Disable a monitor
-sentry monitor edit my-org/123 --enabled false
+sentry monitor metric edit my-org/123 --enabled false
 ```
 
-### `sentry monitor delete <org/monitor-id-or-name>`
+### `sentry monitor metric delete <org/monitor-id-or-name>`
 
 Delete a metric monitor
 
@@ -289,7 +304,7 @@ Delete a metric monitor
 
 ```bash
 # Delete a monitor without prompting
-sentry monitor delete my-org/123 --yes
+sentry monitor metric delete my-org/123 --yes
 ```
 
 ### `sentry monitor cron list [<org/project>]`
@@ -341,6 +356,39 @@ sentry monitor cron list my-org/nigthly
 
 # Output as JSON
 sentry monitor cron list --json
+```
+
+### `sentry monitor cron run <monitor-slug command...>`
+
+Wrap a command with cron monitor check-ins
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<monitor-slug command...>` | Monitor slug followed by the command to run |
+
+**Flags:**
+- `--dsn <value> - DSN to send check-ins to (overrides SENTRY_DSN env var)`
+- `-e, --environment <value> - Environment of the monitor - (default: "production")`
+- `-s, --schedule <value> - Upsert the monitor with this crontab schedule (e.g. '0 * * * *')`
+- `--check-in-margin <value> - Minutes after the expected check-in before it is missed (requires --schedule)`
+- `--max-runtime <value> - Minutes a check-in may run before timing out (requires --schedule)`
+- `--timezone <value> - Timezone of the schedule, tz database string (requires --schedule)`
+- `--failure-issue-threshold <value> - Consecutive failures before an issue is created (requires --schedule)`
+- `--recovery-threshold <value> - Consecutive successes before an issue is resolved (requires --schedule)`
+
+**Examples:**
+
+```bash
+# Wrap a command with cron monitor check-ins (DSN-based)
+SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 sentry monitor cron run nightly-job -- python manage.py cron
+
+# The -- separator is optional when the command has no flags
+sentry monitor cron run nightly-job npm run task
+
+# Create or update the monitor on the first check-in
+sentry monitor cron run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

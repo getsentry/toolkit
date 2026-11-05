@@ -191,7 +191,7 @@ function isTargetParam(param: PositionalParam | undefined): boolean {
 
 /**
  * Arguments after `sentry` when `words` runs the CLI, skipping a `sudo` or
- * `NAME=value` prefix (e.g. `SENTRY_DSN=… sentry monitor run`).
+ * `NAME=value` prefix (e.g. `SENTRY_DSN=… sentry monitor cron run`).
  */
 function sentryArgs(words: string[]): string[] | undefined {
   const start = words.findIndex(

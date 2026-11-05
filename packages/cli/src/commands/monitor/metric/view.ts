@@ -1,15 +1,15 @@
-import type { SentryContext } from "../../context.js";
-import { getAlert } from "../../lib/api/alerts.js";
-import { openInBrowser } from "../../lib/browser.js";
-import { buildCommand } from "../../lib/command.js";
-import { ApiError } from "../../lib/errors.js";
+import type { SentryContext } from "../../../context.js";
+import { getAlert } from "../../../lib/api/alerts.js";
+import { openInBrowser } from "../../../lib/browser.js";
+import { buildCommand } from "../../../lib/command.js";
+import { ApiError } from "../../../lib/errors.js";
 import {
   formatMetricMonitorView,
   type MetricMonitorView,
-} from "../../lib/formatters/detectors.js";
-import { CommandOutput } from "../../lib/formatters/output.js";
-import { buildMonitorsUrl } from "../../lib/sentry-web-urls.js";
-import { MetricMonitorViewSchema } from "../../generated/output-schemas/monitor.js";
+} from "../../../lib/formatters/detectors.js";
+import { CommandOutput } from "../../../lib/formatters/output.js";
+import { buildMonitorsUrl } from "../../../lib/sentry-web-urls.js";
+import { MetricMonitorViewSchema } from "../../../generated/output-schemas/monitor.js";
 import {
   type MonitorArgument,
   monitorParameter,
@@ -24,7 +24,7 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "Inspect monitor configuration",
-        command: "sentry monitor view my-org/123 --json",
+        command: "sentry monitor metric view my-org/123 --json",
       },
     ],
   },

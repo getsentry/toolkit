@@ -1,27 +1,27 @@
 import {
   getMetricMonitor,
-  listMetricMonitorsPaginated,
+  listDetectorsPaginated,
   type MetricMonitor,
-} from "../../lib/api/detectors.js";
+} from "../../../lib/api/detectors.js";
 import {
   API_MAX_PER_PAGE,
   MAX_PAGINATION_PAGES,
-} from "../../lib/api/infrastructure.js";
+} from "../../../lib/api/infrastructure.js";
 import {
   parseOrgProjectInput,
   type ParsedOrgProject,
-} from "../../lib/arg-parsing.js";
-import { ORG_TARGET } from "../../lib/completion-target.js";
-import { ResolutionError, ValidationError } from "../../lib/errors.js";
+} from "../../../lib/arg-parsing.js";
+import { ORG_TARGET } from "../../../lib/completion-target.js";
+import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import {
   boundPositional,
   type BoundPositional,
-} from "../../lib/positional-parse.js";
-import { resolveOrgOnlyTarget } from "../../lib/resolve-target.js";
+} from "../../../lib/positional-parse.js";
+import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
 import {
   applySentryUrlContext,
   parseSentryUrl,
-} from "../../lib/sentry-url-parser.js";
+} from "../../../lib/sentry-url-parser.js";
 
 type MonitorRef = { ref: string; target: ParsedOrgProject; baseUrl?: string };
 export type MonitorArgument = BoundPositional<MonitorRef, MonitorRef>;
@@ -57,7 +57,7 @@ export function monitorParameter(command: string) {
           (parts.length === 2 && !parts[0])
         ) {
           throw new ValidationError(
-            `Use: sentry monitor ${command} <org>/<monitor-id-or-name>`,
+            `Use: sentry monitor metric ${command} <org>/<monitor-id-or-name>`,
           );
         }
         const ref = parts.at(-1) as string;
@@ -81,15 +81,20 @@ export async function resolveMonitor(
   command: string,
 ): Promise<{ org: string; monitor: MetricMonitor }> {
   const { ref, target } = await argument.resolved;
-  const org = await resolveOrgOnlyTarget(target, cwd, `monitor ${command}`);
+  const org = await resolveOrgOnlyTarget(
+    target,
+    cwd,
+    `monitor metric ${command}`,
+  );
   if (/^\d+$/.test(ref))
     return { org, monitor: await getMetricMonitor(org, ref) };
   const hits: MetricMonitor[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-    const result = await listMetricMonitorsPaginated(org, {
+    const result = await listDetectorsPaginated(org, {
       perPage: API_MAX_PER_PAGE,
       cursor,
+      query: "type:metric_issue",
     });
     hits.push(
       ...result.data.filter((m) => m.name.toLowerCase() === ref.toLowerCase()),
@@ -111,7 +116,7 @@ export async function resolveMonitor(
     throw new ResolutionError(
       `Monitor '${ref}'`,
       "not found",
-      `sentry monitor ${command} <org>/<monitor-id>`,
+      `sentry monitor metric ${command} <org>/<monitor-id>`,
     );
   // A detail read protects mutations against an unrelated detector type and
   // provides the complete source/config baseline, independent of list projection.

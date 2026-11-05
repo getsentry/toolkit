@@ -1,15 +1,15 @@
-import type { SentryContext } from "../../context.js";
-import { createMetricMonitor } from "../../lib/api/detectors.js";
-import { buildCommand } from "../../lib/command.js";
-import { ValidationError } from "../../lib/errors.js";
-import { CommandOutput } from "../../lib/formatters/output.js";
-import { DRY_RUN_ALIASES } from "../../lib/mutate-command.js";
+import type { SentryContext } from "../../../context.js";
+import { createMetricMonitor } from "../../../lib/api/detectors.js";
+import { buildCommand } from "../../../lib/command.js";
+import { ValidationError } from "../../../lib/errors.js";
+import { CommandOutput } from "../../../lib/formatters/output.js";
+import { DRY_RUN_ALIASES } from "../../../lib/mutate-command.js";
 import {
   type ProjectBoundTarget,
   projectBoundTarget,
-} from "../../lib/target-positional.js";
-import { MetricMonitorMutationSchema } from "../../generated/output-schemas/monitor.js";
-import type { MetricMonitorMutation } from "../../output-schemas/monitor.js";
+} from "../../../lib/target-positional.js";
+import { MetricMonitorMutationSchema } from "../../../generated/output-schemas/monitor.js";
+import type { MetricMonitorMutation } from "../../../output-schemas/monitor.js";
 import { monitorFlags } from "./flags.js";
 import { buildMonitorCreateBody, type MonitorFlags } from "./mutation-utils.js";
 
@@ -22,13 +22,13 @@ export const createCommand = buildCommand({
       {
         description: "Create an error volume monitor",
         command:
-          "sentry monitor create my-org/my-project --name 'Error volume' --query '' --aggregate 'count()' --dataset errors --time-window 5 --critical 100",
+          "sentry monitor metric create my-org/my-project --name 'Error volume' --query '' --aggregate 'count()' --dataset errors --time-window 5 --critical 100",
       },
       {
         description:
           "Preview warning and critical thresholds connected to an alert",
         command:
-          "sentry monitor create my-org/my-project --name 'Error volume' --query '' --aggregate 'count()' --dataset errors --time-window 5 --critical 100 --warning 80 --resolve 70 --alert 123 --dry-run",
+          "sentry monitor metric create my-org/my-project --name 'Error volume' --query '' --aggregate 'count()' --dataset errors --time-window 5 --critical 100 --warning 80 --resolve 70 --alert 123 --dry-run",
       },
     ],
   },

@@ -15,6 +15,7 @@ import {
   ALERT_MUTATION_FLAGS,
   type AlertMutationFlags,
   buildAlertUpdateBody,
+  resolveAlertMonitorFlags,
 } from "./mutation-utils.js";
 
 export const editCommand = buildCommand({
@@ -26,7 +27,7 @@ export const editCommand = buildCommand({
       "--action, --filter, and --filter-match modify only the first action-filter group, retaining all others. " +
       "--trigger replaces trigger conditions, or accepts a complete native trigger group. " +
       "--action-filter replaces all action-filter groups; --config replaces config. --frequency changes only config.frequency. " +
-      "--monitor replaces monitor links (an empty string disconnects all monitors). --enabled takes true or false. " +
+      "--monitor replaces monitor links (an empty string disconnects all monitors). --project instead selects that project's issues and issue activity; do not combine them. --enabled takes true or false. " +
       "--dry-run prints the exact PUT body without writing.",
     examples: [
       {
@@ -36,6 +37,10 @@ export const editCommand = buildCommand({
       {
         description: "Connect an alert to two monitors",
         command: "sentry alert edit my-org/123 --monitor 456,789",
+      },
+      {
+        description: "Scope an alert to a project's issues and activity",
+        command: "sentry alert edit my-org/123 --project my-project",
       },
       {
         description: "Preview disabling an alert selected by name",
@@ -62,7 +67,10 @@ export const editCommand = buildCommand({
   ) {
     const { org, ref } = await arg.resolved;
     const current = await resolveAlert(org, ref);
-    const body = buildAlertUpdateBody(flags, current);
+    const body = buildAlertUpdateBody(
+      await resolveAlertMonitorFlags(org, flags),
+      current,
+    );
     if (flags["dry-run"]) {
       yield new CommandOutput({
         org,

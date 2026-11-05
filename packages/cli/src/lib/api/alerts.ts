@@ -3,14 +3,17 @@ import {
   createOrganizationWorkflow,
   deleteOrganizationWorkflow,
   getOrganizationWorkflow,
+  listOrganizationDetectors,
   listOrganizationWorkflows,
   updateOrganizationWorkflow,
 } from "@sentry/api";
 import type {
   CreateOrganizationWorkflowData,
+  GetOrganizationDetectorResponse,
   GetOrganizationWorkflowResponse,
   UpdateOrganizationWorkflowData,
 } from "@sentry/api";
+import { ValidationError } from "../errors.js";
 import {
   getOrgSdkConfig,
   type PaginatedResponse,
@@ -28,6 +31,30 @@ export type AlertListOptions = {
   project?: string[];
   monitor?: string[];
 };
+
+/** Match Sentry's alert project selection: connect the project's issue stream. */
+export async function resolveProjectAlertMonitorId(
+  org: string,
+  project: string,
+): Promise<string> {
+  const result = await listOrganizationDetectors({
+    ...(await getOrgSdkConfig(org)),
+    path: { organization_id_or_slug: org },
+    query: { project: [project], query: "type:issue_stream", per_page: 2 },
+  });
+  const monitors = unwrapResult<GetOrganizationDetectorResponse[]>(
+    result,
+    "Failed to find the project's issue stream",
+  );
+  const monitor = monitors[0];
+  if (!monitor || monitors.length !== 1) {
+    throw new ValidationError(
+      `Expected one issue stream in '${org}/${project}', found ${monitors.length}. Use --monitor with an explicit monitor ID.`,
+      "project",
+    );
+  }
+  return monitor.id;
+}
 
 /** List all accessible alerts, including workflows with no connected monitors. */
 export async function listAlertsPaginated(

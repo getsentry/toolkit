@@ -472,7 +472,7 @@ export const schemaCommand = buildCommand({
       },
       {
         description: "Find APIs used by a nested command",
-        command: "sentry schema monitor view",
+        command: "sentry schema monitor metric view",
       },
       {
         description: "Look up an endpoint by its exact operation ID",

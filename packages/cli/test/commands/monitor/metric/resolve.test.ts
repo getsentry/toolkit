@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { monitorParameter } from "../../../src/commands/monitor/resolve.js";
+import { monitorParameter } from "../../../../src/commands/monitor/metric/resolve.js";
 
-describe("monitor references", () => {
+describe("metric monitor references", () => {
   test("parses IDs and names without losing organization context", () => {
     const parse = monitorParameter("view").parse;
     expect(parse("test-org/9").parsed).toEqual({

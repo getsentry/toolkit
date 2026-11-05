@@ -1,4 +1,4 @@
-/** Native metric monitor documents. No legacy alert-rule projection. */
+/** Native monitor documents and metric-monitor mutations. No legacy rule projection. */
 import {
   createOrganizationProjectDetector,
   deleteOrganizationDetector,
@@ -15,7 +15,8 @@ import {
   unwrapResult,
 } from "./infrastructure.js";
 
-export type MetricMonitor = GetOrganizationDetectorResponse;
+export type Monitor = GetOrganizationDetectorResponse;
+export type MetricMonitor = Monitor;
 export type MetricMonitorCreateBody = NonNullable<
   Parameters<typeof createOrganizationProjectDetector>[0]["body"]
 >;
@@ -31,7 +32,7 @@ function detectorPath(org: string, id: string) {
   };
 }
 
-export async function listMetricMonitorsPaginated(
+export async function listDetectorsPaginated(
   org: string,
   options: {
     perPage?: number;
@@ -39,24 +40,19 @@ export async function listMetricMonitorsPaginated(
     query?: string;
     project?: string[];
   } = {},
-): Promise<PaginatedResponse<MetricMonitor[]>> {
+): Promise<PaginatedResponse<Monitor[]>> {
   const result = await listOrganizationDetectors({
     ...(await getOrgSdkConfig(org)),
     path: { organization_id_or_slug: org },
     query: {
-      query: options.query
-        ? `type:metric_issue ${options.query}`
-        : "type:metric_issue",
+      query: options.query,
       sortBy: "-id",
       cursor: options.cursor,
       per_page: options.perPage,
       project: options.project ?? ["-1"],
     } as NonNullable<Parameters<typeof listOrganizationDetectors>[0]["query"]>,
   });
-  return unwrapPaginatedResult<MetricMonitor[]>(
-    result,
-    "Failed to list metric monitors",
-  );
+  return unwrapPaginatedResult<Monitor[]>(result, "Failed to list monitors");
 }
 
 export async function getMetricMonitor(

@@ -126,6 +126,7 @@ Create an alert
 - `--config <value> - Complete native workflow config JSON`
 - `--action-filter <value>... - Complete native action-filter group JSON; replaces all groups (repeatable or JSON array)`
 - `--monitor <value>... - Monitor IDs to connect (repeatable, comma-separated; empty string clears)`
+- `--project <value> - Select a project's issues and activity (replaces monitor links)`
 - `--environment <value> - Environment (empty string clears)`
 - `--owner <value> - Owner: user:<id> or team:<id> (empty string clears)`
 - `--enabled <value> - Whether this alert is enabled: true or false`
@@ -159,6 +160,9 @@ Create an alert
 # Create an alert connected to a metric monitor
 sentry alert create my-org/ --name "Latency notifications" --monitor 123 --action '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}'
 
+# Create an alert for a project's new issues
+sentry alert create my-org/ --project my-project --name "New issues" --trigger first-seen --frequency 30 --action '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"7"}}'
+
 # Preview a detached alert with native configuration
 sentry alert create my-org/ --name "New issues" --trigger first-seen --config '{"frequency":0}' --dry-run
 ```
@@ -183,6 +187,7 @@ Edit an alert
 - `--config <value> - Complete native workflow config JSON`
 - `--action-filter <value>... - Complete native action-filter group JSON; replaces all groups (repeatable or JSON array)`
 - `--monitor <value>... - Monitor IDs to connect (repeatable, comma-separated; empty string clears)`
+- `--project <value> - Select a project's issues and activity (replaces monitor links)`
 - `--environment <value> - Environment (empty string clears)`
 - `--owner <value> - Owner: user:<id> or team:<id> (empty string clears)`
 - `--enabled <value> - Whether this alert is enabled: true or false`
@@ -218,6 +223,9 @@ sentry alert edit my-org/123 --name "Production latency"
 
 # Connect an alert to two monitors
 sentry alert edit my-org/123 --monitor 456,789
+
+# Scope an alert to a project's issues and activity
+sentry alert edit my-org/123 --project my-project
 
 # Preview disabling an alert selected by name
 sentry alert edit "my-org/Latency" --enabled false --dry-run

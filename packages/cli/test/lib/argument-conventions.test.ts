@@ -16,11 +16,11 @@ import { deleteCommand as alertDeleteCommand } from "../../src/commands/alert/de
 import { editCommand as alertEditCommand } from "../../src/commands/alert/edit.js";
 import { listCommand as alertListCommand } from "../../src/commands/alert/list.js";
 import { viewCommand as alertViewCommand } from "../../src/commands/alert/view.js";
-import { createCommand as monitorCreateCommand } from "../../src/commands/monitor/create.js";
-import { deleteCommand as monitorDeleteCommand } from "../../src/commands/monitor/delete.js";
-import { editCommand as monitorEditCommand } from "../../src/commands/monitor/edit.js";
-import { listCommand as monitorListCommand } from "../../src/commands/monitor/list.js";
-import { viewCommand as monitorViewCommand } from "../../src/commands/monitor/view.js";
+import { createCommand as monitorCreateCommand } from "../../src/commands/monitor/metric/create.js";
+import { deleteCommand as monitorDeleteCommand } from "../../src/commands/monitor/metric/delete.js";
+import { editCommand as monitorEditCommand } from "../../src/commands/monitor/metric/edit.js";
+import { listCommand as monitorListCommand } from "../../src/commands/monitor/metric/list.js";
+import { viewCommand as monitorViewCommand } from "../../src/commands/monitor/metric/view.js";
 import { createCommand as dashboardCreateCommand } from "../../src/commands/dashboard/create.js";
 import { listCommand as dashboardListCommand } from "../../src/commands/dashboard/list.js";
 import { restoreCommand as dashboardRestoreCommand } from "../../src/commands/dashboard/restore.js";
@@ -1108,9 +1108,9 @@ const RESOURCE_COMMANDS: readonly (readonly [string, unknown])[] = [
   ["alert view", alertViewCommand],
   ["alert delete", alertDeleteCommand],
   ["alert edit", alertEditCommand],
-  ["monitor view", monitorViewCommand],
-  ["monitor delete", monitorDeleteCommand],
-  ["monitor edit", monitorEditCommand],
+  ["monitor metric view", monitorViewCommand],
+  ["monitor metric delete", monitorDeleteCommand],
+  ["monitor metric edit", monitorEditCommand],
 ];
 
 /** The parsed value of a command's first positional. */
@@ -1148,8 +1148,8 @@ describe.each(RESOURCE_COMMANDS)("%s", (_name, command) => {
 });
 
 describe.each([
-  ["monitor create", monitorCreateCommand],
-  ["monitor list", monitorListCommand],
+  ["monitor metric create", monitorCreateCommand],
+  ["monitor metric list", monitorListCommand],
 ] as const)("%s project targets", (name, command) => {
   test.each([
     ["my-org/", { type: "org-all", org: "my-org" }],

@@ -1,15 +1,15 @@
-import type { SentryContext } from "../../context.js";
-import { deleteMetricMonitor } from "../../lib/api/detectors.js";
-import { CommandOutput } from "../../lib/formatters/output.js";
-import { logger } from "../../lib/logger.js";
+import type { SentryContext } from "../../../context.js";
+import { deleteMetricMonitor } from "../../../lib/api/detectors.js";
+import { CommandOutput } from "../../../lib/formatters/output.js";
+import { logger } from "../../../lib/logger.js";
 import {
   buildDeleteCommand,
   confirmByTyping,
   isConfirmationBypassed,
   requireExplicitTarget,
-} from "../../lib/mutate-command.js";
-import { MetricMonitorDeleteSchema } from "../../generated/output-schemas/monitor.js";
-import type { MetricMonitorDelete } from "../../output-schemas/monitor.js";
+} from "../../../lib/mutate-command.js";
+import { MetricMonitorDeleteSchema } from "../../../generated/output-schemas/monitor.js";
+import type { MetricMonitorDelete } from "../../../output-schemas/monitor.js";
 import {
   type MonitorArgument,
   monitorParameter,
@@ -24,7 +24,7 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Delete a monitor without prompting",
-        command: "sentry monitor delete my-org/123 --yes",
+        command: "sentry monitor metric delete my-org/123 --yes",
       },
     ],
   },
@@ -51,7 +51,7 @@ export const deleteCommand = buildDeleteCommand({
     requireExplicitTarget(
       target,
       "Monitor target",
-      "sentry monitor delete <org>/<monitor-id-or-name>",
+      "sentry monitor metric delete <org>/<monitor-id-or-name>",
     );
     const { org, monitor } = await resolveMonitor(argument, this.cwd, "delete");
     if (flags["dry-run"]) {

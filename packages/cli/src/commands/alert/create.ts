@@ -12,6 +12,7 @@ import {
   ALERT_MUTATION_FLAGS,
   type AlertMutationFlags,
   buildAlertCreateBody,
+  resolveAlertMonitorFlags,
 } from "./mutation-utils.js";
 
 export const createCommand = buildCommand({
@@ -19,7 +20,7 @@ export const createCommand = buildCommand({
     brief: "Create an alert",
     fullDescription:
       "Create a native organization alert (workflow). Alerts may be detached or connected to any monitor with --monitor. " +
-      "No error monitor is selected automatically.\n\n" +
+      "Use --project to select a project's issues and issue activity, or --monitor for explicit monitor IDs; do not combine them. No monitor is selected implicitly.\n\n" +
       "--trigger accepts names such as first-seen and regression, native condition JSON, or a complete native trigger group. " +
       "--action and --filter populate the first action-filter group. --action-filter accepts complete native groups, including actions, for advanced configuration. " +
       "--config sets the complete native configuration; --frequency sets config.frequency in minutes, including zero. " +
@@ -29,6 +30,11 @@ export const createCommand = buildCommand({
         description: "Create an alert connected to a metric monitor",
         command:
           'sentry alert create my-org/ --name "Latency notifications" --monitor 123 --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
+      },
+      {
+        description: "Create an alert for a project's new issues",
+        command:
+          'sentry alert create my-org/ --project my-project --name "New issues" --trigger first-seen --frequency 30 --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"7"}}\'',
       },
       {
         description: "Preview a detached alert with native configuration",
@@ -65,8 +71,10 @@ export const createCommand = buildCommand({
     flags: AlertMutationFlags,
     target: OrgTarget,
   ) {
-    const body = buildAlertCreateBody(flags);
     const { org } = await target.resolved;
+    const body = buildAlertCreateBody(
+      await resolveAlertMonitorFlags(org, flags),
+    );
     if (flags["dry-run"]) {
       yield new CommandOutput({
         org,

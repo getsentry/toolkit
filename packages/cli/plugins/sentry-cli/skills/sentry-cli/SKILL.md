@@ -46,7 +46,7 @@ The `sentry` CLI follows conventions from well-known tools — if you're familia
 
 ### Safety Rules
 
-- Always confirm with the user before running destructive commands: `alert delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `monitor delete`, `project delete`, `release delete`, `token delete`, `trial start`
+- Always confirm with the user before running destructive commands: `alert delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `monitor metric delete`, `project delete`, `release delete`, `token delete`, `trial start`
 - For mutations, verify the org/project context looks correct in the command output before proceeding with further changes
 - Never store or log authentication tokens — the CLI manages credentials automatically
 - If the CLI reports the wrong org/project, override with explicit `<org>/<project>` arguments
@@ -711,15 +711,16 @@ Start a local Sentry MCP server
 
 ### Monitor
 
-Manage metric monitors and cron check-ins
+Manage Sentry monitors by type
 
-- `sentry monitor run <monitor-slug command...>` — Wrap a command with cron monitor check-ins
-- `sentry monitor list [<target>]` — List metric monitors
-- `sentry monitor view <org/monitor-id-or-name>` — View a metric monitor
-- `sentry monitor create <org/project>` — Create a metric monitor
-- `sentry monitor edit <org/monitor-id-or-name>` — Edit a metric monitor
-- `sentry monitor delete <org/monitor-id-or-name>` — Delete a metric monitor
+- `sentry monitor list [<target>]` — List monitors of every type
+- `sentry monitor metric list [<target>]` — List metric monitors
+- `sentry monitor metric view <org/monitor-id-or-name>` — View a metric monitor
+- `sentry monitor metric create <org/project>` — Create a metric monitor
+- `sentry monitor metric edit <org/monitor-id-or-name>` — Edit a metric monitor
+- `sentry monitor metric delete <org/monitor-id-or-name>` — Delete a metric monitor
 - `sentry monitor cron list [<org/project>]` — List cron monitors
+- `sentry monitor cron run <monitor-slug command...>` — Wrap a command with cron monitor check-ins
 
 → Full flags and examples: `references/monitor.md`
 

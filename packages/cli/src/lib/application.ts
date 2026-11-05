@@ -330,7 +330,7 @@ export function buildCliApplication(
     scanner: {
       caseStyle: "allow-kebab-for-camel",
       // Allow `--` to stop flag parsing so wrapper commands (e.g.
-      // `sentry monitor run <slug> -- <command>`) can pass through flags
+      // `sentry monitor cron run <slug> -- <command>`) can pass through flags
       // like `-e` or `--verbose` to the wrapped command unambiguously.
       allowArgumentEscapeSequence: true,
       // Recognize global flags placed before the subcommand

@@ -34,7 +34,6 @@ import { logRoute } from "./commands/log/index.js";
 import { listCommand as logListCommand } from "./commands/log/list.js";
 import { mcpCommand } from "./commands/mcp.js";
 import { monitorRoute } from "./commands/monitor/index.js";
-import { listCommand as monitorListCommand } from "./commands/monitor/list.js";
 import { orgRoute } from "./commands/org/index.js";
 import { listCommand as orgListCommand } from "./commands/org/list.js";
 import { platformRoute } from "./commands/platform/index.js";
@@ -140,7 +139,7 @@ export const routes = buildSentryRoutes({
   teams: teamListCommand,
   tokens: tokenListCommand,
   logs: logListCommand,
-  monitors: monitorListCommand,
+  monitors: monitorRoute,
   spans: spanListCommand,
   traces: traceListCommand,
   trials: trialListCommand,
