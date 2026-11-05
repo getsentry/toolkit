@@ -346,6 +346,18 @@ describe("command tools: session constraints", () => {
     ]);
   });
 
+  it("keeps dashboard and trace targets in the session", async () => {
+    const { call, calls } = setup();
+    await call("dashboard view", { positional: ["acme", "123"] }, org);
+    await call("span list", { positional: ["acme/web"] }, project);
+    await call("trace view", { positional: ["acme/web", "abc123"] }, project);
+    expect(calls.map((c) => c.positional)).toEqual([
+      ["acme", "123"],
+      ["acme/web"],
+      ["acme/web", "abc123"],
+    ]);
+  });
+
   it("keeps ids that name no target", async () => {
     const { call, calls } = setup();
     await call("agent-conversation view", { positional: ["conv-1"] }, org);
@@ -395,6 +407,11 @@ describe("command tools: session constraints", () => {
     ["issue view", ["other/web#G"], org],
     ["agent-conversation view", ["conv-1", "other/conv-2"], org],
     ["agent-conversation view", ["other", "conv-1"], org],
+    ["dashboard view", ["other", "123"], org],
+    ["dashboard view", ["other", "Errors"], org],
+    ["span list", ["acme/api"], project],
+    ["trace view", ["acme/api", "abc123"], project],
+    ["log list", ["acme/api"], project],
   ])(
     "refuses %s %j outside the session",
     async (command, positional, context) => {

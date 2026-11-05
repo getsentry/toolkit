@@ -175,7 +175,13 @@ function pinTarget(
   const titleSegments = title.split("/");
   if (segments.length === 1) {
     const orgWord = title === "org" || (leading && titleSegments[0] === "org");
-    if (kind === "org" && orgWord && value !== session.org) {
+    // `<org> <id>`: the leading word of `agent-conversation view` (`org`)
+    // or `dashboard view` (`dashboard`) is the organization.
+    if (
+      (kind === "org" || kind === "dashboard") &&
+      orgWord &&
+      value !== session.org
+    ) {
       throw outside(entry, value, session);
     }
     if (kind === "org/project" && title === "org/project") {
@@ -208,12 +214,16 @@ function pinTarget(
       return `${session.org}/${session.project}`;
     }
     // `<org>/<project>/...`, or `<org>/<project>/<suffix>` under a
-    // one-word title (`feedback`, `issue`).
+    // one-word title (`feedback`, `issue`). An `org/project` target can stop
+    // after the project, as `<org>/<project> <trace-id>` or `span list
+    // <org>/<project>` do under `org/project/trace-id`.
     const namesProject =
       titleSegments.length === 1
         ? segments.length >= 3
-        : titleSegments[1] === "project" &&
-          segments.length >= titleSegments.length;
+        : (kind === "org/project" &&
+            titleSegments[1]?.startsWith("project") === true) ||
+          (titleSegments[1] === "project" &&
+            segments.length >= titleSegments.length);
     const project = segments[1];
     if (
       session.project &&
