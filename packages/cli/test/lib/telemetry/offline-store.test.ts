@@ -7,8 +7,7 @@
 import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { gzipSync } from "node:zlib";
-import { createEnvelope, type Envelope, serializeEnvelope } from "@sentry/core";
+import { createEnvelope, type Envelope } from "@sentry/core";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   CONFIG_DIR_ENV_VAR,
@@ -18,6 +17,7 @@ import {
 import { __setDriverForTests } from "../../../src/lib/db/sqlite.js";
 import {
   clearStoredEnvelopes,
+  compressEnvelope,
   createEnvelopeStore,
   STORE_LIMITS,
   type StoreLimits,
@@ -117,8 +117,8 @@ describe.each(["node", "wasm"] as const)(
     });
 
     test("keeps the newest envelopes that fit in maxBytes", async () => {
-      // The cap counts stored, gzipped bytes.
-      const size = gzipSync(serializeEnvelope(eventEnvelope("a"))).byteLength;
+      // The cap counts stored, compressed bytes.
+      const size = compressEnvelope(eventEnvelope("a")).byteLength;
       const { clock, store } = storeAt({ ...STORE_LIMITS, maxBytes: size * 2 });
       for (const id of ["a", "b", "c"]) {
         await store.push(eventEnvelope(id));
@@ -130,7 +130,7 @@ describe.each(["node", "wasm"] as const)(
       // the envelopes that fit.
       await store.push(eventEnvelope("d"));
       await store.push(
-        eventEnvelope("big", randomBytes(size * 2).toString("hex")),
+        eventEnvelope("big", randomBytes(size * 4).toString("hex")),
       );
       expect(eventIds(store.claim(10))).toEqual(["d"]);
     });

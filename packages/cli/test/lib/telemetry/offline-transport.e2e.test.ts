@@ -7,7 +7,7 @@
  * fresh transport, like a new CLI process.
  */
 
-import { gunzipSync } from "node:zlib";
+import { brotliDecompressSync } from "node:zlib";
 import { createEnvelope, type Envelope, parseEnvelope } from "@sentry/core";
 import { afterEach, describe, expect, test } from "vitest";
 import { getDatabase } from "../../../src/lib/db/index.js";
@@ -44,7 +44,8 @@ function storedEventIds(): string[] {
     )
     .all() as { envelope: Uint8Array }[];
   return rows.map(
-    (row) => parseEnvelope(gunzipSync(row.envelope))[0].event_id as string,
+    (row) =>
+      parseEnvelope(brotliDecompressSync(row.envelope))[0].event_id as string,
   );
 }
 
