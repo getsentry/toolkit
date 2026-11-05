@@ -102,6 +102,7 @@ describe("get_monitor_details", () => {
           "name": "Nightly Import",
           "nextCheckIn": "2025-04-15T02:00:00.000Z",
           "owner": "the-goats",
+          "ownerEmail": null,
           "project": "cloudflare-mcp",
           "slug": "nightly-import",
           "status": "ok",
@@ -164,9 +165,11 @@ describe("get_monitor_details", () => {
 
     const result = await getMonitorDetails.handler(baseParams, context);
 
-    const text = JSON.stringify(getOutput(result));
+    const output = getOutput(result);
+    // The owner's email is user data Sentry stored, so it comes through.
+    expect(output.monitor.ownerEmail).toBe("jane@example.com");
+    const text = JSON.stringify(output);
     for (const leaked of [
-      "jane@example.com",
       "secret-target",
       "alertRule",
       "failure_issue_threshold",

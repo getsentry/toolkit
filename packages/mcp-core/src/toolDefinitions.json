@@ -5625,6 +5625,10 @@
             "owner": {
               "type": ["string", "null"]
             },
+            "ownerEmail": {
+              "description": "Set when a user owns the monitor.",
+              "type": ["string", "null"]
+            },
             "lastCheckIn": {
               "type": ["string", "null"]
             },
@@ -5696,6 +5700,7 @@
             "status",
             "type",
             "owner",
+            "ownerEmail",
             "lastCheckIn",
             "nextCheckIn",
             "url",

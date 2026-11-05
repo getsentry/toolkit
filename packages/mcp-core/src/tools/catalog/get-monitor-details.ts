@@ -65,6 +65,7 @@ export const getMonitorDetailsOutputSchema = z.object({
     status: nullableString,
     type: nullableString,
     owner: nullableString,
+    ownerEmail: nullableString.describe("Set when a user owns the monitor."),
     lastCheckIn: nullableString,
     nextCheckIn: nullableString,
     url: z.string(),
@@ -348,6 +349,10 @@ export default defineTool({
         status: monitor.status ?? null,
         type: monitor.type ?? null,
         owner: monitor.owner ? formatActor(monitor.owner) : null,
+        ownerEmail:
+          monitor.owner && typeof monitor.owner === "object"
+            ? monitor.owner.email || null
+            : null,
         lastCheckIn: formatDate(monitor.lastCheckIn),
         nextCheckIn: formatDate(monitor.nextCheckIn),
         url: monitorUrl,
