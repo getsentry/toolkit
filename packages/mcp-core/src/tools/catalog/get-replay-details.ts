@@ -759,7 +759,9 @@ function buildSuggestedActions({
     );
   }
 
-  // Alternate issues and traces so the cap does not drop a whole kind.
+  // Alternate issues and traces so the cap does not drop a whole kind. Event
+  // lookups resolve through the same issue search, so an event without an
+  // issue has no follow-up that would succeed.
   const issueActions = related.issues.map((issue) =>
     issue.shortId
       ? buildSuggestedToolAction({
@@ -768,16 +770,7 @@ function buildSuggestedActions({
           reason: "Inspect the issue for an error seen in this replay.",
           ...session,
         })
-      : buildSuggestedToolAction({
-          toolName: "get_sentry_resource",
-          arguments: {
-            organizationSlug,
-            resourceType: "event",
-            resourceId: issue.eventId,
-          },
-          reason: "Inspect an error event seen in this replay.",
-          ...session,
-        }),
+      : null,
   );
   const traceActions = related.traces.map((trace) =>
     buildSuggestedToolAction({

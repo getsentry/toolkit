@@ -244,16 +244,10 @@ describe("get_replay_details", () => {
     expect(payload.related.issues).toEqual([
       { eventId: "replay-only-event-id", shortId: null, title: null },
     ]);
-    expect(payload.suggestedActions).toContainEqual({
-      type: "tool_call",
-      toolName: "get_sentry_resource",
-      arguments: {
-        organizationSlug: "sentry-mcp-evals",
-        resourceType: "event",
-        resourceId: "replay-only-event-id",
-      },
-      reason: "Inspect an error event seen in this replay.",
-    });
+    // Event lookups go through the same issue search, so none is suggested.
+    expect(payload.suggestedActions.map((action) => action.toolName)).toEqual([
+      "get_trace_details",
+    ]);
   });
 
   it("handles archived replays", async () => {
