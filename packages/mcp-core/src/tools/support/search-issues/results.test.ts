@@ -44,6 +44,7 @@ describe("buildIssueResults", () => {
       issueCategory: "feedback",
       culprit: "User Feedback Widget",
       secretBackendField: "must-not-leak",
+      metadata: { contact_email: "reporter@example.com", name: "Reporter" },
     } as Parameters<typeof createFeedbackIssue>[0]);
 
     const structuredContent = build({
@@ -51,7 +52,14 @@ describe("buildIssueResults", () => {
       inputQuery: "show me user feedback",
     });
 
-    expect(JSON.stringify(structuredContent)).not.toContain("must-not-leak");
+    const serialized = JSON.stringify(structuredContent);
+    for (const leaked of [
+      "must-not-leak",
+      "reporter@example.com",
+      "Reporter",
+    ]) {
+      expect(serialized).not.toContain(leaked);
+    }
     expect(structuredContent).toMatchInlineSnapshot(`
       {
         "executedSearch": {
@@ -152,6 +160,7 @@ describe("buildIssueResults", () => {
         },
       ]
     `);
+    expect(JSON.stringify(structuredContent)).not.toContain("jane@example.com");
   });
 
   it("adds a feedback follow-up when any result is feedback", () => {
