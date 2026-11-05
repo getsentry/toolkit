@@ -86,7 +86,12 @@ const WRAPPING_QUOTES_RE = new RegExp(`^${QUOTE_CLASS}+|${QUOTE_CLASS}+$`, "g");
 const DOT_JS_RE = /([a-z0-9])\.js\b/g;
 const TOKEN_RE = /[a-z0-9]+/g;
 const DOCS_URL_PREFIX_RE = /^(?:https?:\/\/)?docs\.sentry\.io(?=\/|$)/i;
-const SLASH_DELIMITED_RE = /^\/(.+)\/[a-z]*$/s;
+/**
+ * A JavaScript regex literal such as `/a\/b$/i`: a body with no unescaped
+ * `/` and only real flags after it, which tells it apart from a docs path
+ * such as `/python/integrations/django` or `/guides/nextjs`.
+ */
+const SLASH_DELIMITED_RE = /^\/((?:[^/\\]|\\.)+)\/[dgimsuvy]*$/s;
 const TRAILING_MD_RE = /(?:\\?\.md|\/)+$/i;
 const SEGMENT_JOIN_RE = /[-_.]/g;
 /** `/platforms/<platform>/` and an optional `/guides/<guide>/` after it. */
@@ -275,8 +280,18 @@ type SearchContext = {
   readonly vocabulary: readonly string[];
 };
 
+/**
+ * The postings of a token. Own properties only: an index parsed from the
+ * cache inherits `Object.prototype`, so `constructor` must not resolve.
+ */
+function postingsOf(index: DocsIndex, token: string): readonly number[] {
+  return Object.hasOwn(index.postings, token)
+    ? (index.postings[token] ?? [])
+    : [];
+}
+
 function frequency(index: DocsIndex, token: string): number {
-  return index.postings[token]?.length ?? 0;
+  return postingsOf(index, token).length;
 }
 
 /** Index words longer than `word` that start with it. */
@@ -364,7 +379,7 @@ function scoreTerm(context: SearchContext, term: Term): Map<number, number> {
   const scores = new Map<number, number>();
   const add = (token: string, weightOf: (bits: number) => number): void => {
     const tokenIdf = idf(context.index, token);
-    for (const posting of context.index.postings[token] ?? []) {
+    for (const posting of postingsOf(context.index, token)) {
       const page = Math.floor(posting / FIELD_COUNT_SPAN);
       const score = weightOf(posting % FIELD_COUNT_SPAN) * tokenIdf;
       if (score > (scores.get(page) ?? 0)) {

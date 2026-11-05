@@ -102,6 +102,18 @@ describe("searchDocs", () => {
     );
   });
 
+  test("searches words that are Object.prototype keys in a cached index", () => {
+    // A cached index is plain parsed JSON, so it inherits Object.prototype.
+    const cached = JSON.parse(JSON.stringify(index));
+    expect(() =>
+      searchDocs(cached, { query: "constructor tostring celery", limit: 1 }),
+    ).not.toThrow();
+    expect(
+      searchDocs(cached, { query: "constructor celery", limit: 1 }).results[0]
+        ?.title,
+    ).toBe("Celery");
+  });
+
   test("respects the limit", () => {
     expect(urls("tracing", undefined, 2)).toHaveLength(2);
   });
@@ -131,6 +143,18 @@ describe("searchDocs patterns", () => {
   test("ranks pattern matches by the words", () => {
     expect(urls("celery", ["/python/"])[0]).toBe(
       "/platforms/python/integrations/celery.md",
+    );
+  });
+
+  test("keeps the last segment of a path pattern", () => {
+    expect(urls("", ["/python/integrations/django"])).toEqual([
+      "/platforms/python/integrations/django.md",
+    ]);
+    expect(urls("", ["/guides/nextjs"])).toContain(
+      "/platforms/javascript/guides/nextjs.md",
+    );
+    expect(urls("", ["/guides/nextjs"])).not.toContain(
+      "/platforms/javascript/guides/react.md",
     );
   });
 
