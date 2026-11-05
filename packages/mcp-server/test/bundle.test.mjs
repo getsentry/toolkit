@@ -200,6 +200,8 @@ async function serveStdio(args, extraEnv, { deletedCwd } = {}) {
     const [initialize, toolsList] = await responses;
     assert.equal(initialize.id, 1);
     assert.ok(initialize.result?.serverInfo, JSON.stringify(initialize));
+    // The package ships at the CLI version, not mcp-core's.
+    assert.equal(initialize.result.serverInfo.version, version);
     assert.equal(toolsList.id, 2);
     assert.ok(toolsList.result?.tools.length > 0, JSON.stringify(toolsList));
     // The server exits once the client closes stdin. A leftover timer, such
