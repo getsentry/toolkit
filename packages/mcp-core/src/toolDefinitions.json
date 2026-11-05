@@ -5734,6 +5734,538 @@
         }
       }
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "issueUrl": {
+          "type": "string"
+        },
+        "activity": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "author": {
+                "type": "string"
+              },
+              "dateCreated": {
+                "type": ["string", "null"]
+              },
+              "commentId": {
+                "description": "Set when the comment ID differs from the activity ID.",
+                "type": ["string", "null"]
+              },
+              "text": {
+                "type": ["string", "null"]
+              },
+              "assignee": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": ["string", "null"]
+                  },
+                  "name": {
+                    "type": ["string", "null"]
+                  },
+                  "email": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["id", "type", "name", "email"],
+                "additionalProperties": false
+              },
+              "version": {
+                "description": "Release version referenced by the activity (resolved-in or regressed-in).",
+                "type": "string"
+              },
+              "ignore": {
+                "type": "object",
+                "properties": {
+                  "duration": {
+                    "type": "number"
+                  },
+                  "count": {
+                    "type": "number"
+                  },
+                  "window": {
+                    "type": "number"
+                  },
+                  "userCount": {
+                    "type": "number"
+                  },
+                  "userWindow": {
+                    "type": "number"
+                  },
+                  "until": {
+                    "type": "string"
+                  },
+                  "untilEscalating": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "commit": {
+                "description": "Null when the linked commit was deleted.",
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "description": "First line only.",
+                        "type": ["string", "null"]
+                      },
+                      "repository": {
+                        "type": ["string", "null"]
+                      },
+                      "author": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": ["string", "null"]
+                              },
+                              "email": {
+                                "type": ["string", "null"]
+                              }
+                            },
+                            "required": ["name", "email"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["id", "message", "repository", "author"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "pullRequest": {
+                "description": "Null when the linked pull request was deleted.",
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": ["string", "null"]
+                      },
+                      "repository": {
+                        "type": ["string", "null"]
+                      },
+                      "author": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": ["string", "null"]
+                              },
+                              "email": {
+                                "type": ["string", "null"]
+                              }
+                            },
+                            "required": ["name", "email"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["id", "title", "repository", "author"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "pullRequestUrls": {
+                "description": "Pull requests Seer opened.",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "unmerge": {
+                "type": "object",
+                "properties": {
+                  "fingerprintCount": {
+                    "type": "number"
+                  },
+                  "source": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "shortId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["shortId"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "destination": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "shortId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["shortId"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["fingerprintCount", "source", "destination"],
+                "additionalProperties": false
+              },
+              "externalIssue": {
+                "description": "Issue created in an external tracker.",
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": ["string", "null"]
+                  },
+                  "provider": {
+                    "type": ["string", "null"]
+                  },
+                  "location": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["title", "provider", "location"],
+                "additionalProperties": false
+              },
+              "age": {
+                "description": "Hours without events before the issue was auto-resolved.",
+                "type": "number"
+              },
+              "afterDays": {
+                "description": "Days after which the issue was automatically marked ongoing.",
+                "type": "number"
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "author",
+              "dateCreated",
+              "commentId",
+              "text"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "comments": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "author": {
+                    "type": "string"
+                  },
+                  "dateCreated": {
+                    "type": ["string", "null"]
+                  },
+                  "commentId": {
+                    "description": "Set when the comment ID differs from the activity ID.",
+                    "type": ["string", "null"]
+                  },
+                  "text": {
+                    "type": ["string", "null"]
+                  },
+                  "assignee": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": ["string", "null"]
+                      },
+                      "name": {
+                        "type": ["string", "null"]
+                      },
+                      "email": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "required": ["id", "type", "name", "email"],
+                    "additionalProperties": false
+                  },
+                  "version": {
+                    "description": "Release version referenced by the activity (resolved-in or regressed-in).",
+                    "type": "string"
+                  },
+                  "ignore": {
+                    "type": "object",
+                    "properties": {
+                      "duration": {
+                        "type": "number"
+                      },
+                      "count": {
+                        "type": "number"
+                      },
+                      "window": {
+                        "type": "number"
+                      },
+                      "userCount": {
+                        "type": "number"
+                      },
+                      "userWindow": {
+                        "type": "number"
+                      },
+                      "until": {
+                        "type": "string"
+                      },
+                      "untilEscalating": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "commit": {
+                    "description": "Null when the linked commit was deleted.",
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "description": "First line only.",
+                            "type": ["string", "null"]
+                          },
+                          "repository": {
+                            "type": ["string", "null"]
+                          },
+                          "author": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": ["string", "null"]
+                                  },
+                                  "email": {
+                                    "type": ["string", "null"]
+                                  }
+                                },
+                                "required": ["name", "email"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["id", "message", "repository", "author"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "pullRequest": {
+                    "description": "Null when the linked pull request was deleted.",
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": ["string", "null"]
+                          },
+                          "repository": {
+                            "type": ["string", "null"]
+                          },
+                          "author": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": ["string", "null"]
+                                  },
+                                  "email": {
+                                    "type": ["string", "null"]
+                                  }
+                                },
+                                "required": ["name", "email"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["id", "title", "repository", "author"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "pullRequestUrls": {
+                    "description": "Pull requests Seer opened.",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "unmerge": {
+                    "type": "object",
+                    "properties": {
+                      "fingerprintCount": {
+                        "type": "number"
+                      },
+                      "source": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "shortId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["shortId"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "destination": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "shortId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["shortId"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["fingerprintCount", "source", "destination"],
+                    "additionalProperties": false
+                  },
+                  "externalIssue": {
+                    "description": "Issue created in an external tracker.",
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": ["string", "null"]
+                      },
+                      "provider": {
+                        "type": ["string", "null"]
+                      },
+                      "location": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "required": ["title", "provider", "location"],
+                    "additionalProperties": false
+                  },
+                  "age": {
+                    "description": "Hours without events before the issue was auto-resolved.",
+                    "type": "number"
+                  },
+                  "afterDays": {
+                    "description": "Days after which the issue was automatically marked ongoing.",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "author",
+                  "dateCreated",
+                  "commentId",
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null when includeComments is false."
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "issueId",
+        "issueUrl",
+        "activity",
+        "comments"
+      ],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage"],
     "surface": "direct"
