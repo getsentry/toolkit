@@ -8,6 +8,7 @@ import tools from "./tools/index";
 import { EXPOSE_ALL_TOOLS } from "./tools/exposure";
 import { isToolVisibleInMode } from "./tools/types";
 import type { ServerContext } from "./types";
+import { LIB_VERSION } from "./version";
 
 vi.mock("@sentry/core/server", () => ({
   wrapMcpServerWithSentry: vi.fn((server) => server),
@@ -96,6 +97,28 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
         expect(toolNames).toContain(replacement);
       }
     }
+  });
+
+  it("identifies the server for client UIs", async () => {
+    const serverInfo = await withClient(getContext(), async (client) =>
+      client.getServerVersion(),
+    );
+
+    expect(serverInfo).toEqual({
+      name: "Sentry MCP",
+      title: "Sentry",
+      description:
+        "Search and debug Sentry issues, errors, traces, logs, replays, and monitors.",
+      websiteUrl: "https://mcp.sentry.dev",
+      icons: [
+        {
+          src: "https://mcp.sentry.dev/sentry-icon.png",
+          mimeType: "image/png",
+          sizes: ["256x256"],
+        },
+      ],
+      version: LIB_VERSION,
+    });
   });
 
   it("still gates tools by granted skills", async () => {
