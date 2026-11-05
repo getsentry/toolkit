@@ -56,7 +56,7 @@ import {
   assertStructuredSearchDataset,
   buildStructuredEventsResult,
   buildStructuredTimeSeriesResult,
-  type SearchEventsStructuredContent,
+  type DatasetSearchStructuredContent,
   type StructuredSearchDataset,
 } from "./structured";
 import {
@@ -442,7 +442,7 @@ export type RunSearchEventsOptions =
 
 type StructuredSearchEventsOutput<
   TDataset extends StructuredSearchDataset = StructuredSearchDataset,
-> = StructuredToolOutput<SearchEventsStructuredContent<TDataset>>;
+> = StructuredToolOutput<DatasetSearchStructuredContent<TDataset>>;
 
 const searchLimitParam = z
   .number()
