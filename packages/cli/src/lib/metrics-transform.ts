@@ -67,9 +67,12 @@ export function resolveMetricField(
       `Metric '${metricName}'`,
       "not found in this project",
       `sentry explore my-org/ -m ${metricName} --dataset metrics --period 7d`,
-      suggestions.length > 0
-        ? [`Similar metrics: ${suggestions.join(", ")}`]
-        : ["Use a wider --period to search for older metrics"],
+      [
+        suggestions.length > 0
+          ? `Similar metrics: ${suggestions.join(", ")}`
+          : "Use a wider --period to search for older metrics",
+        "List available metrics: sentry explore my-org/ --dataset metrics",
+      ],
     );
   }
 

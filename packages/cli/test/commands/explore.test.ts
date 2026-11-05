@@ -989,8 +989,7 @@ describe("sentry explore", () => {
       {
         name: "metrics without an aggregate",
         args: ["--time-series", "auto", "--dataset", "metrics"],
-        error:
-          "The metrics dataset requires --metric or explicit --field flags",
+        error: "Metrics time series require --metric or explicit --field flags",
       },
       {
         name: "metric grouping fields",
@@ -1667,20 +1666,81 @@ describe("sentry explore", () => {
       );
     });
 
-    test("requires --metric or --field for metrics dataset", async () => {
+    test("lists available metrics when neither --metric nor --field is given", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
-      const { context } = createContext();
+      queryEventsSpy.mockResolvedValue({
+        data: {
+          data: [
+            {
+              "metric.name": "llm.token_usage",
+              "metric.type": "distribution",
+              "metric.unit": "none",
+              "count(metric.name)": 42,
+            },
+          ],
+          meta: {
+            fields: {
+              "metric.name": "string",
+              "metric.type": "string",
+              "metric.unit": "string",
+              "count(metric.name)": "integer",
+            },
+            units: {},
+          },
+        },
+        nextCursor: undefined,
+      });
+      const { context, getStdout } = createContext();
 
-      const promise = func.call(
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "tracemetrics",
+          period: parsePeriod("7d"),
+        },
+        "test-org/",
+      );
+
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          dataset: "tracemetrics",
+          fields: [
+            "metric.name",
+            "metric.type",
+            "metric.unit",
+            "count(metric.name)",
+          ],
+        }),
+      );
+      expect(queryMetricsMetaSpy).not.toHaveBeenCalled();
+
+      const output = getStdout();
+      expect(output).toContain("Available metrics in test-org");
+      expect(output).toContain("llm.token_usage");
+      expect(output).toContain("Showing 1 metric.");
+      expect(output).toContain(
+        'Query a metric: sentry explore test-org/ --dataset metrics -m "llm.token_usage" --period 7d',
+      );
+      expect(output).toContain("--agg");
+    });
+
+    test("reports when no metrics exist in the period", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      queryEventsSpy.mockResolvedValue({
+        data: { data: [], meta: { fields: {}, units: {} } },
+        nextCursor: undefined,
+      });
+      const { context, getStdout } = createContext();
+
+      await func.call(
         context,
         { ...DEFAULT_FLAGS, dataset: "tracemetrics" },
         "test-org/",
       );
 
-      await expect(promise).rejects.toThrow(ValidationError);
-      await expect(promise).rejects.toThrow(
-        /requires --metric or explicit --field/,
-      );
+      expect(getStdout()).toContain("No metrics found in this period.");
     });
 
     test("allows non-aggregate fields without tracemetrics format", async () => {

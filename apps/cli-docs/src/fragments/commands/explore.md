@@ -44,6 +44,7 @@ Graphics do not change `--json` or `--fields`.
 
 ## Metrics
 
+Run `--dataset metrics` without `--metric` or `--field` to list the metrics in the period with their type and unit.
 Use `--metric` (`-m`) to query metrics by name. The CLI auto-resolves the metric's type and unit.
 You can also use the raw tracemetrics format: `aggregation(value,metric_name,metric_type,unit)`.
 
