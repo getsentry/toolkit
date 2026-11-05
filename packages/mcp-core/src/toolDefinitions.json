@@ -5542,6 +5542,242 @@
       },
       "required": ["organizationSlug", "dashboardIdOrTitle"]
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "dashboard": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "dateCreated": {
+              "type": ["string", "null"]
+            },
+            "createdBy": {
+              "type": ["string", "null"]
+            },
+            "createdByEmail": {
+              "type": ["string", "null"]
+            },
+            "projects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "environments": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "period": {
+              "type": ["string", "null"]
+            },
+            "start": {
+              "type": ["string", "null"]
+            },
+            "end": {
+              "type": ["string", "null"]
+            },
+            "utc": {
+              "type": ["boolean", "null"]
+            },
+            "expired": {
+              "type": ["boolean", "null"]
+            },
+            "prebuiltId": {
+              "type": ["string", "null"]
+            },
+            "isFavorited": {
+              "type": "boolean"
+            },
+            "filters": {
+              "type": "object",
+              "properties": {
+                "releases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "releaseIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "globalFilters": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "dataset": {
+                        "type": ["string", "null"]
+                      },
+                      "tagKey": {
+                        "type": ["string", "null"]
+                      },
+                      "value": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "required": ["dataset", "tagKey", "value"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["releases", "releaseIds", "globalFilters"],
+              "additionalProperties": false
+            },
+            "widgets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": ["string", "null"]
+                  },
+                  "displayType": {
+                    "type": ["string", "null"]
+                  },
+                  "widgetType": {
+                    "type": ["string", "null"]
+                  },
+                  "datasetSource": {
+                    "type": ["string", "null"]
+                  },
+                  "interval": {
+                    "type": ["string", "null"]
+                  },
+                  "limit": {
+                    "type": ["number", "null"]
+                  },
+                  "layout": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": ["number", "null"]
+                          },
+                          "y": {
+                            "type": ["number", "null"]
+                          },
+                          "w": {
+                            "type": ["number", "null"]
+                          },
+                          "h": {
+                            "type": ["number", "null"]
+                          }
+                        },
+                        "required": ["x", "y", "w", "h"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "queries": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": ["string", "null"]
+                        },
+                        "conditions": {
+                          "type": ["string", "null"]
+                        },
+                        "fields": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "aggregates": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "columns": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "orderby": {
+                          "type": ["string", "null"]
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "conditions",
+                        "fields",
+                        "aggregates",
+                        "columns",
+                        "orderby"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "description",
+                  "displayType",
+                  "widgetType",
+                  "datasetSource",
+                  "interval",
+                  "limit",
+                  "layout",
+                  "queries"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "url",
+            "dateCreated",
+            "createdBy",
+            "createdByEmail",
+            "projects",
+            "environments",
+            "period",
+            "start",
+            "end",
+            "utc",
+            "expired",
+            "prebuiltId",
+            "isFavorited",
+            "filters",
+            "widgets"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": ["dashboard"],
+      "additionalProperties": false
+    },
     "requiredScopes": ["org:read"],
     "skills": ["inspect"],
     "surface": "direct"
