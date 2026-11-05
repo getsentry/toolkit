@@ -2,14 +2,29 @@
  * Output schemas of the `sentry monitor` commands.
  */
 
+import type {
+  GetOrganizationDetectorResponse,
+  GetOrganizationWorkflowResponse,
+} from "@sentry/api";
+import {
+  vGetOrganizationDetectorResponse,
+  vGetOrganizationWorkflowResponse,
+} from "@sentry/api/valibot";
+import type {
+  MetricMonitorCreateBody,
+  MetricMonitorUpdateBody,
+} from "../lib/api/detectors.js";
+import { opaque } from "./output.js";
 import {
   array,
   boolean,
   description,
+  type InferOutput,
   looseObject,
   nullable,
   number,
   optional,
+  partial,
   pipe,
   string,
   union,
@@ -116,5 +131,69 @@ export const SentryMonitorSchema = pipe(
   description("Sentry monitor"),
 );
 
-/** JSON output of `monitor list`: a cron monitor and the org it came from. */
+/** JSON output of `monitor cron list`: a cron monitor and its organization. */
 export const MonitorListItemSchema = orgListItemSchema(SentryMonitorSchema);
+
+/** Native metric detector, with the organization that produced the list item. */
+export const MetricMonitorListItemSchema = orgListItemSchema(
+  vGetOrganizationDetectorResponse,
+);
+
+/** Inspection retains the complete native detector and connected alert documents. */
+export const MetricMonitorViewSchema = looseObject({
+  ...vGetOrganizationDetectorResponse.entries,
+  org: pipe(string(), description("Organization slug")),
+  workflows: pipe(
+    array(vGetOrganizationWorkflowResponse),
+    description("Connected notification alert documents"),
+  ),
+  workflowErrors: array(
+    looseObject({
+      id: string(),
+      status: pipe(
+        number(),
+        description("HTTP status for an inaccessible connected alert"),
+      ),
+    }),
+  ),
+});
+
+/** Mutation results keep native responses separate from exact dry-run request bodies. */
+export const MetricMonitorMutationSchema = looseObject({
+  ...partial(vGetOrganizationDetectorResponse).entries,
+  org: pipe(string(), description("Organization slug")),
+  project: optional(pipe(string(), description("Project slug for create"))),
+  dryRun: optional(pipe(boolean(), description("True for a dry-run preview"))),
+  body: optional(
+    pipe(
+      opaque<MetricMonitorCreateBody | MetricMonitorUpdateBody>(),
+      description("Exact native request body (--dry-run)"),
+    ),
+  ),
+});
+
+export type MetricMonitorMutation = Partial<GetOrganizationDetectorResponse> & {
+  org: string;
+  project?: string;
+  id?: string;
+  dryRun?: boolean;
+  body?: MetricMonitorCreateBody | MetricMonitorUpdateBody;
+};
+
+export type MetricMonitorInspection = GetOrganizationDetectorResponse & {
+  org: string;
+  workflows: GetOrganizationWorkflowResponse[];
+  workflowErrors: { id: string; status: number }[];
+};
+
+export const MetricMonitorDeleteSchema = looseObject({
+  org: pipe(string(), description("Organization slug")),
+  id: pipe(string(), description("Deleted monitor ID")),
+  name: pipe(string(), description("Deleted monitor name")),
+  dryRun: optional(boolean()),
+  deleted: optional(
+    pipe(boolean(), description("True when deletion succeeded")),
+  ),
+});
+
+export type MetricMonitorDelete = InferOutput<typeof MetricMonitorDeleteSchema>;

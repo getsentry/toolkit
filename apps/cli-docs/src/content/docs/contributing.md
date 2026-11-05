@@ -73,7 +73,7 @@ toolkit/
 │       │   │   ├── issue/       # archive, events, explain, link, list, merge, plan, resolve, tags, unlink, unresolve, view
 │       │   │   ├── local/       # close, create, list, reset, restart, retention, run, serve, start, status, stop, view
 │       │   │   ├── log/         # list, view
-│       │   │   ├── monitor/     # list, run
+│       │   │   ├── monitor/     # create, delete, edit, list, run, view
 │       │   │   ├── org/         # list, view
 │       │   │   ├── platform/    # list
 │       │   │   ├── proguard/    # upload, uuid

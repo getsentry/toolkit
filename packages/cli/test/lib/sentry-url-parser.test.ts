@@ -410,6 +410,18 @@ describe("parseSentryUrl", () => {
   });
 
   describe("SaaS subdomain-style URLs (org in hostname)", () => {
+    test.each([
+      "monitors/",
+      "monitors/101/",
+      "monitors/alerts/",
+      "monitors/alerts/201/",
+    ])("native %s page extracts its organization and server", (path) => {
+      expect(parseSentryUrl(`https://my-org.sentry.io/${path}`)).toEqual({
+        baseUrl: "https://my-org.sentry.io",
+        org: "my-org",
+      });
+    });
+
     test("issue URL extracts org from subdomain", () => {
       const result = parseSentryUrl(
         "https://my-org.sentry.io/issues/99124558/",

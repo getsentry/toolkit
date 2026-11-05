@@ -46,7 +46,7 @@ The `sentry` CLI follows conventions from well-known tools — if you're familia
 
 ### Safety Rules
 
-- Always confirm with the user before running destructive commands: `alert issues delete`, `alert metrics delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `project delete`, `release delete`, `token delete`, `trial start`
+- Always confirm with the user before running destructive commands: `alert delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `monitor delete`, `project delete`, `release delete`, `token delete`, `trial start`
 - For mutations, verify the org/project context looks correct in the command output before proceeding with further changes
 - Never store or log authentication tokens — the CLI manages credentials automatically
 - If the CLI reports the wrong org/project, override with explicit `<org>/<project>` arguments
@@ -471,18 +471,13 @@ Make an authenticated API request
 
 ### Alert
 
-Manage Sentry alert rules
+Manage Sentry alerts
 
-- `sentry alert issues list [<org/project>]` — List issue alert rules
-- `sentry alert issues view <org/project/rule-id-or-name>` — View an issue alert rule
-- `sentry alert issues create [<target>]` — Create an issue alert rule
-- `sentry alert issues delete <org/project/rule-id-or-name>` — Delete an issue alert rule
-- `sentry alert issues edit <org/project/rule-id-or-name>` — Edit an issue alert rule
-- `sentry alert metrics list [<target>]` — List metric alert rules
-- `sentry alert metrics view <org/rule-id-or-name>` — View a metric alert rule
-- `sentry alert metrics create <target>` — Create a metric alert rule
-- `sentry alert metrics delete <org/rule-id-or-name>` — Delete a metric alert rule
-- `sentry alert metrics edit <org/rule-id-or-name>` — Edit a metric alert rule
+- `sentry alert list [<org>]` — List alerts
+- `sentry alert view <alert>` — View an alert
+- `sentry alert create [<org>]` — Create an alert
+- `sentry alert edit <alert>` — Edit an alert
+- `sentry alert delete <alert>` — Delete an alert
 
 → Full flags and examples: `references/alert.md`
 
@@ -716,10 +711,15 @@ Start a local Sentry MCP server
 
 ### Monitor
 
-Work with Sentry cron monitors
+Manage metric monitors and cron check-ins
 
 - `sentry monitor run <monitor-slug command...>` — Wrap a command with cron monitor check-ins
-- `sentry monitor list [<org/project>]` — List cron monitors
+- `sentry monitor list [<target>]` — List metric monitors
+- `sentry monitor view <org/monitor-id-or-name>` — View a metric monitor
+- `sentry monitor create <org/project>` — Create a metric monitor
+- `sentry monitor edit <org/monitor-id-or-name>` — Edit a metric monitor
+- `sentry monitor delete <org/monitor-id-or-name>` — Delete a metric monitor
+- `sentry monitor cron list [<org/project>]` — List cron monitors
 
 → Full flags and examples: `references/monitor.md`
 

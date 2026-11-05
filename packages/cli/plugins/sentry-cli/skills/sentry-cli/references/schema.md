@@ -44,10 +44,10 @@ sentry schema log list
 sentry schema trace ls
 
 # Find APIs used by a command group
-sentry schema alert metrics
+sentry schema monitor
 
 # Find APIs used by a nested command
-sentry schema alert metrics view
+sentry schema monitor view
 
 # Look up an endpoint by its exact operation ID
 sentry schema listOrganizationEvents

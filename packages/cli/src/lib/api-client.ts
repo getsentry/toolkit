@@ -24,22 +24,21 @@
  */
 
 export {
-  createIssueAlertRule,
-  createMetricAlertRule,
-  deleteIssueAlertRule,
-  deleteMetricAlertRule,
-  getIssueAlertRule,
-  getIssueAlertWorkflowDocument,
-  getMetricAlertRule,
-  getMetricAlertRuleDocument,
-  type IssueAlertRule,
-  listIssueAlertsPaginated,
-  listMetricAlertsPaginated,
-  type MetricAlertRule,
-  putMetricAlertRule,
-  resolveErrorDetectorId,
-  updateIssueAlertRule,
+  type Alert,
+  createAlert,
+  deleteAlert,
+  getAlert,
+  listAlertsPaginated,
+  updateAlert,
 } from "./api/alerts.js";
+export {
+  createMetricMonitor,
+  deleteMetricMonitor,
+  getMetricMonitor,
+  listMetricMonitorsPaginated,
+  type MetricMonitor,
+  updateMetricMonitor,
+} from "./api/detectors.js";
 export {
   getConversationSpans,
   listConversations,

@@ -1,7 +1,7 @@
 ---
 name: sentry-cli-alert
 version: 0.48.0-dev.0
-description: Manage Sentry alert rules
+description: Manage Sentry alerts
 requires:
   bins: ["sentry"]
   auth: true
@@ -9,187 +9,79 @@ requires:
 
 # Alert Commands
 
-Manage Sentry alert rules
+Manage Sentry alerts
 
-### `sentry alert issues list [<org/project>]`
+### `sentry alert list [<org>]`
 
-List issue alert rules
+List alerts
 
 **Arguments:**
 
 | Argument | Description |
 |----------|-------------|
-| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
+| `[<org>]` | Organization slug (auto-detected if omitted) |
 
 **Flags:**
-- `-w, --web - Open in browser`
-- `-n, --limit <value> - Maximum number of issue alert rules to list - (default: "25")`
-- `-q, --query <value> - Filter rules by name`
-- `-c, --cursor <value> - Pagination cursor (use "next" for next page, "prev" for previous)`
+- `-n, --limit <value> - Maximum number of alerts to list - (default: "25")`
+- `-q, --query <value> - Native alert search query`
+- `--project <value>... - Project IDs or slugs (repeatable)`
+- `--monitor <value>... - Connected monitor IDs (repeatable or comma-separated)`
+- `-w, --web - Open alerts in a browser`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
-
-**Examples:**
-
-```bash
-# List issue alert rules (project auto-detected)
-sentry alert issues list
-
-# List issue alert rules for a project
-sentry alert issues list my-org/my-project
-
-# Filter rules by name
-sentry alert issues list my-org/my-project --query "spike"
-
-# List issue alert rules for all projects in an organization
-sentry alert issues list my-org/
-
-# Find a project across organizations
-sentry alert issues list frontend
-```
-
-### `sentry alert issues view <org/project/rule-id-or-name>`
-
-View an issue alert rule
-
-**Arguments:**
-
-| Argument | Description |
-|----------|-------------|
-| `<org/project/rule-id-or-name>` | Issue alert rule ID or name |
-
-**Flags:**
-- `-w, --web - Open issue alert rules page in browser`
-
-**Examples:**
-
-```bash
-# View an issue alert rule by ID (organization and project auto-detected)
-sentry alert issues view 12345
-
-# View by ID in an explicit project
-sentry alert issues view my-org/my-project/12345
-
-# View by name
-sentry alert issues view my-org/my-project/'Error Spike'
-```
-
-### `sentry alert issues create [<target>]`
-
-Create an issue alert rule
-
-**Arguments:**
-
-| Argument | Description |
-|----------|-------------|
-| `[<target>]` | &lt;org&gt;/&lt;project&gt;, auto-detected project, or &lt;project&gt; (search) |
-
-**Flags:**
-- `--name <value> - Rule name`
-- `-c, --condition <value>... - Trigger condition JSON or name such as first-seen (repeatable, or pass one JSON array)`
-- `-a, --action <value>... - Action object JSON (repeatable, or pass one JSON array)`
-- `--frequency <value> - Frequency in minutes - (default: 30)`
-- `--environment <value> - Environment filter`
-- `--filter <value>... - Filter object JSON (repeatable, or pass one JSON array)`
-- `-m, --filter-match <value> - Filter match mode: all or any`
-- `--owner <value> - Owner (team:user style value accepted by Sentry API)`
-- `-n, --dry-run - Show what would happen without making changes`
+- `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
 
 **JSON Fields** (use `--json --fields` to select specific fields):
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `org` | string | Organization slug |
-| `id` | string | Alert rule ID |
-| `name` | string | Alert rule name |
-| `status` | string | Rule status (active, disabled) |
-| `dryRun` | boolean | True when --dry-run made no change |
-| `body` | object | Request body that would be sent (--dry-run) |
-| `project` | string | Project slug |
+| `id` | string | Alert ID |
+| `name` | string | Alert name |
+| `organizationId` | string |  |
+| `createdBy` | string \| null |  |
+| `dateCreated` | string |  |
+| `dateUpdated` | string |  |
+| `triggers` | object \| null |  |
+| `actionFilters` | array \| null |  |
+| `environment` | string \| null |  |
+| `config` | object |  |
+| `detectorIds` | array \| null |  |
+| `enabled` | boolean |  |
+| `lastTriggered` | string \| null |  |
+| `owner` | string \| null |  |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 
 ```bash
-# Alert on new issues and email a team
-sentry alert issues create my-org/my-project --name 'New Issues' --condition '{"type":"first_seen_event","comparison":true,"conditionResult":true}' --action '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}'
+# List all accessible alerts, including detached alerts
+sentry alert list my-org/
 
-# Preview a high-priority alert that emails a user at most every 30 minutes
-sentry alert issues create my-org/my-project --name 'High Priority' --condition '{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}' --action '{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}' --frequency 30 --dry-run
+# Filter by a connected monitor
+sentry alert list my-org/ --monitor 123
 
-# Alert on new issues and regressions, using trigger names
-sentry alert issues create my-org/my-project --name 'New or Regressed' --condition first-seen,regression --action '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}'
-
-# Alert when an issue sees more than 50 events in a day (filters only, checked on every event)
-sentry alert issues create my-org/my-project --name 'Busy Issues' --filter '{"type":"event_frequency_count","comparison":{"value":50,"interval":"1d"},"conditionResult":true}' --action '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}' --frequency 1440
+# Search alerts
+sentry alert list my-org/ --query "name:Latency"
 ```
 
-### `sentry alert issues delete <org/project/rule-id-or-name>`
+### `sentry alert view <alert>`
 
-Delete an issue alert rule
-
-**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
+View an alert
 
 **Arguments:**
 
 | Argument | Description |
 |----------|-------------|
-| `<org/project/rule-id-or-name>` | Rule id or name (same as view) |
+| `<alert>` | [&lt;org&gt;/]&lt;id-or-name&gt; or alert URL |
 
 **Flags:**
-- `-y, --yes - Skip confirmation prompt`
-- `-f, --force - Force the operation without confirmation`
-- `-n, --dry-run - Show what would happen without making changes`
+- `-w, --web - Open the alert in a browser`
 
 **JSON Fields** (use `--json --fields` to select specific fields):
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `dryRun` | boolean | True when --dry-run made no change |
-| `deleted` | boolean | True when the rule was deleted |
-| `org` | string | Organization slug |
-| `id` | string | Alert rule ID |
-| `name` | string | Alert rule name |
-| `project` | string | Project slug |
-
-**Examples:**
-
-```bash
-# Delete an issue alert rule (prompts for confirmation)
-sentry alert issues delete my-org/my-project/12345
-
-# Delete a rule selected by name without prompting
-sentry alert issues delete my-org/my-project/'My Rule' --yes
-
-# Preview the deletion
-sentry alert issues delete my-org/my-project/12345 --dry-run
-```
-
-### `sentry alert issues edit <org/project/rule-id-or-name>`
-
-Edit an issue alert rule
-
-**Arguments:**
-
-| Argument | Description |
-|----------|-------------|
-| `<org/project/rule-id-or-name>` | Rule id or name (same as view) |
-
-**Flags:**
-- `--name <value> - New rule name`
-- `--status <value> - Rule status: active or disabled`
-- `-c, --condition <value>... - Trigger condition JSON or name such as first-seen (repeatable, or pass one JSON array)`
-- `-a, --action <value>... - Action object JSON (repeatable, or pass one JSON array)`
-- `--frequency <value> - Frequency in minutes`
-- `--environment <value> - Environment value (pass empty string to clear)`
-- `--filter <value>... - Filter object JSON (repeatable, or pass one JSON array)`
-- `-m, --filter-match <value> - Filter match mode: all or any`
-- `--owner <value> - Owner value (pass empty string to clear)`
-
-**JSON Fields** (use `--json --fields` to select specific fields):
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | Alert rule ID |
-| `name` | string | Alert rule name |
+| `id` | string | Alert ID |
+| `name` | string | Alert name |
 | `organizationId` | string |  |
 | `createdBy` | string \| null |  |
 | `dateCreated` | string |  |
@@ -203,131 +95,137 @@ Edit an issue alert rule
 | `lastTriggered` | string \| null |  |
 | `owner` | string \| null |  |
 | `org` | string | Organization slug |
-| `project` | string | Project slug |
-| `status` | string | Rule status (active, disabled) |
 
 **Examples:**
 
 ```bash
-# Rename an issue alert rule
-sentry alert issues edit my-org/my-project/12345 --name 'Prod errors'
-
-# Disable a rule selected by name
-sentry alert issues edit my-org/my-project/'Old name' --status disabled
-
-# Rename and enable a rule (organization and project auto-detected)
-sentry alert issues edit 12345 --name 'Renamed' --status active
-
-# Replace the rule's conditions
-sentry alert issues edit my-org/my-project/12345 --condition '{"type":"first_seen_event","comparison":true,"conditionResult":true}'
-```
-
-### `sentry alert metrics list [<target>]`
-
-List metric alert rules
-
-**Arguments:**
-
-| Argument | Description |
-|----------|-------------|
-| `[<target>]` | &lt;org&gt;/, &lt;org&gt;/&lt;project&gt; (project ignored), or &lt;project&gt; (search) |
-
-**Flags:**
-- `-w, --web - Open in browser`
-- `-n, --limit <value> - Maximum number of metric alert rules to list - (default: "25")`
-- `-q, --query <value> - Filter rules by name`
-- `-c, --cursor <value> - Pagination cursor (use "next" for next page, "prev" for previous)`
-- `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
-
-**Examples:**
-
-```bash
-# List metric alert rules (organization auto-detected)
-sentry alert metrics list
-
-# List metric alert rules for an organization
-sentry alert metrics list my-org/
-
-# Fetch the next page
-sentry alert metrics list my-org/ -c next
-```
-
-### `sentry alert metrics view <org/rule-id-or-name>`
-
-View a metric alert rule
-
-**Arguments:**
-
-| Argument | Description |
-|----------|-------------|
-| `<org/rule-id-or-name>` | Metric alert rule ID or name |
-
-**Flags:**
-- `-w, --web - Open metric alert rules page in browser`
-
-**Examples:**
-
-```bash
-# View a metric alert rule by ID (organization auto-detected)
-sentry alert metrics view 12345
-
-# View by ID in an explicit organization
-sentry alert metrics view my-org/12345
+# View an alert
+sentry alert view my-org/123
 
 # View by name
-sentry alert metrics view my-org/'P95 latency alert'
-
-# Inspect native thresholds and notification workflows
-sentry alert metrics view my-org/12345 --json
+sentry alert view "my-org/Latency notifications"
 ```
 
-### `sentry alert metrics create <target>`
+### `sentry alert create [<org>]`
 
-Create a metric alert rule
+Create an alert
 
 **Arguments:**
 
 | Argument | Description |
 |----------|-------------|
-| `<target>` | Target project or organization |
+| `[<org>]` | Organization slug (auto-detected if omitted) |
 
 **Flags:**
-- `--name <value> - Rule name`
-- `--query <value> - Metric query filter string`
-- `--aggregate <value> - Aggregate expression (for example count(), p95(span.duration))`
-- `--dataset <value> - Dataset: errors, events, spans, logs, metrics, sessions (error-events is errors; transaction(s) routes to spans)`
-- `--time-window <value> - Evaluation window in minutes`
-- `-t, --trigger <value>... - Trigger object JSON (repeatable, or pass one JSON array)`
-- `-p, --project <value>... - Project slug filter (repeatable or comma-separated)`
-- `--environment <value> - Environment filter`
-- `--owner <value> - Owner value accepted by Sentry API`
-- `--workflow <value>... - Alert (workflow) id to notify (repeatable or comma-separated)`
+- `--name <value> - Alert name`
+- `-t, --trigger <value>... - Trigger name, native condition JSON, or full trigger group JSON (repeatable)`
+- `-a, --action <value>... - Native action JSON for the first action-filter group (repeatable)`
+- `--filter <value>... - Native condition JSON for the first action-filter group (repeatable)`
+- `--filter-match <value> - First action-filter group logic: all or any`
+- `--frequency <value> - config.frequency in minutes (0 or greater)`
+- `--config <value> - Complete native workflow config JSON`
+- `--action-filter <value>... - Complete native action-filter group JSON; replaces all groups (repeatable or JSON array)`
+- `--monitor <value>... - Monitor IDs to connect (repeatable, comma-separated; empty string clears)`
+- `--environment <value> - Environment (empty string clears)`
+- `--owner <value> - Owner: user:<id> or team:<id> (empty string clears)`
+- `--enabled <value> - Whether this alert is enabled: true or false`
 - `-n, --dry-run - Show what would happen without making changes`
 
 **JSON Fields** (use `--json --fields` to select specific fields):
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `id` | string | Alert ID |
+| `name` | string | Alert name |
+| `organizationId` | string |  |
+| `createdBy` | string \| null |  |
+| `dateCreated` | string |  |
+| `dateUpdated` | string |  |
+| `triggers` | object \| null |  |
+| `actionFilters` | array \| null |  |
+| `environment` | string \| null |  |
+| `config` | object |  |
+| `detectorIds` | array \| null |  |
+| `enabled` | boolean |  |
+| `lastTriggered` | string \| null |  |
+| `owner` | string \| null |  |
 | `org` | string | Organization slug |
-| `id` | string | Alert rule ID |
-| `name` | string | Alert rule name |
-| `status` | string | Rule status (active, disabled) |
 | `dryRun` | boolean | True when --dry-run made no change |
-| `body` | object | Request body that would be sent (--dry-run) |
+| `body` | unknown | Exact native request body (--dry-run) |
 
 **Examples:**
 
 ```bash
-# Alert when P95 span duration goes above 500ms
-sentry alert metrics create my-org/ --name 'P95 latency' --project my-project --query 'environment:prod' --aggregate 'p95(span.duration)' --dataset spans --time-window 5 --trigger '{"alertThreshold":500}'
+# Create an alert connected to a metric monitor
+sentry alert create my-org/ --name "Latency notifications" --monitor 123 --action '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}'
 
-# Preview an alert on any matching log line that notifies through an existing alert
-sentry alert metrics create my-org/ --name 'AI chat failures' --project my-project --query 'action:ai.chat result:error' --aggregate 'count()' --dataset logs --time-window 5 --trigger '{"alertThreshold":0,"resolveThreshold":0}' --workflow 12345 --dry-run
+# Preview a detached alert with native configuration
+sentry alert create my-org/ --name "New issues" --trigger first-seen --config '{"frequency":0}' --dry-run
 ```
 
-### `sentry alert metrics delete <org/rule-id-or-name>`
+### `sentry alert edit <alert>`
 
-Delete a metric alert rule
+Edit an alert
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<alert>` | [&lt;org&gt;/]&lt;id-or-name&gt; or alert URL |
+
+**Flags:**
+- `--name <value> - Alert name`
+- `-t, --trigger <value>... - Trigger name, native condition JSON, or full trigger group JSON (repeatable)`
+- `-a, --action <value>... - Native action JSON for the first action-filter group (repeatable)`
+- `--filter <value>... - Native condition JSON for the first action-filter group (repeatable)`
+- `--filter-match <value> - First action-filter group logic: all or any`
+- `--frequency <value> - config.frequency in minutes (0 or greater)`
+- `--config <value> - Complete native workflow config JSON`
+- `--action-filter <value>... - Complete native action-filter group JSON; replaces all groups (repeatable or JSON array)`
+- `--monitor <value>... - Monitor IDs to connect (repeatable, comma-separated; empty string clears)`
+- `--environment <value> - Environment (empty string clears)`
+- `--owner <value> - Owner: user:<id> or team:<id> (empty string clears)`
+- `--enabled <value> - Whether this alert is enabled: true or false`
+- `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Alert ID |
+| `name` | string | Alert name |
+| `organizationId` | string |  |
+| `createdBy` | string \| null |  |
+| `dateCreated` | string |  |
+| `dateUpdated` | string |  |
+| `triggers` | object \| null |  |
+| `actionFilters` | array \| null |  |
+| `environment` | string \| null |  |
+| `config` | object |  |
+| `detectorIds` | array \| null |  |
+| `enabled` | boolean |  |
+| `lastTriggered` | string \| null |  |
+| `owner` | string \| null |  |
+| `org` | string | Organization slug |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `body` | unknown | Exact native request body (--dry-run) |
+
+**Examples:**
+
+```bash
+# Rename a disabled alert without re-enabling it
+sentry alert edit my-org/123 --name "Production latency"
+
+# Connect an alert to two monitors
+sentry alert edit my-org/123 --monitor 456,789
+
+# Preview disabling an alert selected by name
+sentry alert edit "my-org/Latency" --enabled false --dry-run
+```
+
+### `sentry alert delete <alert>`
+
+Delete an alert
 
 **Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
 
@@ -335,7 +233,7 @@ Delete a metric alert rule
 
 | Argument | Description |
 |----------|-------------|
-| `<org/rule-id-or-name>` | Rule id or name (same as view) |
+| `<alert>` | [&lt;org&gt;/]&lt;id-or-name&gt; or alert URL |
 
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`
@@ -346,81 +244,20 @@ Delete a metric alert rule
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `org` | string | Organization slug |
+| `id` | string | Alert ID |
+| `name` | string | Alert name |
 | `dryRun` | boolean | True when --dry-run made no change |
-| `deleted` | boolean | True when the rule was deleted |
-| `org` | string | Organization slug |
-| `id` | string | Alert rule ID |
-| `name` | string | Alert rule name |
+| `deleted` | boolean | True when the alert was deleted |
 
 **Examples:**
 
 ```bash
-# Delete a metric alert rule (prompts for confirmation)
-sentry alert metrics delete my-org/12345
+# Preview deleting an alert
+sentry alert delete my-org/123 --dry-run
 
-# Delete a rule selected by name without prompting
-sentry alert metrics delete my-org/'P95 alert' --yes
-```
-
-### `sentry alert metrics edit <org/rule-id-or-name>`
-
-Edit a metric alert rule
-
-**Arguments:**
-
-| Argument | Description |
-|----------|-------------|
-| `<org/rule-id-or-name>` | Rule id or name (same as view) |
-
-**Flags:**
-- `--name <value> - New rule name`
-- `--status <value> - active or disabled`
-- `--query <value> - Metric query filter`
-- `--aggregate <value> - Aggregate expression`
-- `--dataset <value> - Dataset: errors, events, spans, logs, metrics, sessions (error-events is errors; transaction(s) routes to spans)`
-- `--time-window <value> - Evaluation window in minutes`
-- `-t, --trigger <value>... - Trigger object JSON (repeatable, or pass one JSON array)`
-- `-p, --project <value>... - Project slug filter (repeatable or comma-separated)`
-- `--environment <value> - Environment value (pass empty string to clear)`
-- `--owner <value> - Owner value (pass empty string to clear)`
-- `--workflow <value>... - Replace connected alert (workflow) ids (repeatable or comma-separated; empty string disconnects all)`
-
-**JSON Fields** (use `--json --fields` to select specific fields):
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `owner` | object \| null |  |
-| `createdBy` | string \| null |  |
-| `latestGroup` | object \| null |  |
-| `description` | string \| null |  |
-| `id` | string | Alert rule ID |
-| `projectId` | string \| null |  |
-| `name` | string | Alert rule name |
-| `type` | string |  |
-| `workflowIds` | array \| null |  |
-| `dateCreated` | string |  |
-| `dateUpdated` | string |  |
-| `dataSources` | array \| null |  |
-| `conditionGroup` | object \| null |  |
-| `config` | object |  |
-| `enabled` | boolean |  |
-| `org` | string | Organization slug |
-| `status` | string | Rule status (active, disabled) |
-
-**Examples:**
-
-```bash
-# Rename a metric alert rule
-sentry alert metrics edit my-org/12345 --name 'Error budget'
-
-# Disable a rule
-sentry alert metrics edit my-org/12345 --status disabled
-
-# Change the query and time window
-sentry alert metrics edit my-org/12345 --query "environment:prod event.type:error" --time-window 15
-
-# Switch the dataset
-sentry alert metrics edit my-org/12345 --time-window 15 --dataset spans
+# Delete by exact name
+sentry alert delete "my-org/Latency notifications" --yes
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

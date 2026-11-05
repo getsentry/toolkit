@@ -443,37 +443,22 @@ export function buildTraceUrl(orgSlug: string, traceId: string): string {
   return `${getSentryBaseUrl()}/organizations/${orgSlug}/explore/traces/trace/${traceId}/`;
 }
 
-// Alert URLs
-
-/**
- * Build URL to the issue alert rules list for a project.
- *
- * @param orgSlug - Organization slug
- * @param projectSlug - Project slug
- * @returns Full URL to the issue alert rules page
- */
-export function buildIssueAlertsUrl(
-  orgSlug: string,
-  projectSlug?: string,
-): string {
-  const projectFilter = projectSlug ? `?project=${projectSlug}` : "";
+/** Build the native Alerts list or detail URL. */
+export function buildAlertsUrl(orgSlug: string, alertId?: string): string {
+  const detail = alertId ? `${encodeURIComponent(alertId)}/` : "";
   if (isSaaS()) {
-    return `${getOrgBaseUrl(orgSlug)}/alerts/rules/${projectFilter}`;
+    return `${getOrgBaseUrl(orgSlug)}/monitors/alerts/${detail}`;
   }
-  return `${getSentryBaseUrl()}/organizations/${orgSlug}/alerts/rules/${projectFilter}`;
+  return `${getSentryBaseUrl()}/organizations/${orgSlug}/monitors/alerts/${detail}`;
 }
 
-/**
- * Build URL to the metric alert rules list for an organization.
- *
- * @param orgSlug - Organization slug
- * @returns Full URL to the metric alert rules page
- */
-export function buildMetricAlertsUrl(orgSlug: string): string {
+/** Build the native Monitors list or detail URL. */
+export function buildMonitorsUrl(orgSlug: string, monitorId?: string): string {
+  const detail = monitorId ? `${encodeURIComponent(monitorId)}/` : "";
   if (isSaaS()) {
-    return `${getOrgBaseUrl(orgSlug)}/alerts/metric-rules/`;
+    return `${getOrgBaseUrl(orgSlug)}/monitors/${detail}`;
   }
-  return `${getSentryBaseUrl()}/organizations/${orgSlug}/alerts/metric-rules/`;
+  return `${getSentryBaseUrl()}/organizations/${orgSlug}/monitors/${detail}`;
 }
 
 /**

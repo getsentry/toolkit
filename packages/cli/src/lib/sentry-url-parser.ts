@@ -143,6 +143,11 @@ function matchSubdomainPath(
   segments: string[],
   searchParams: URLSearchParams,
 ): Omit<ParsedSentryUrl, "baseUrl" | "org"> | null {
+  // Native monitor and alert pages share the /monitors/ namespace. Their
+  // resource parsers read the ID; org targets need the host context here.
+  if (segments[0] === "monitors") {
+    return {};
+  }
   // /issues/{id}/ (optionally with /events/{eventId}/)
   if (segments[0] === "issues" && segments[1]) {
     const eventId =

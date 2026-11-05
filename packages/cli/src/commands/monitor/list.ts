@@ -1,117 +1,143 @@
-/**
- * sentry monitor list
- *
- * List cron monitors in an organization, with flexible targeting and cursor
- * pagination.
- *
- * Supports:
- * - Auto-detection from DSN/config
- * - Org-scoped listing with cursor pagination (e.g., sentry/)
- * - Project-scoped targeting (e.g., sentry/cli) — monitors are org-scoped, so
- *   this lists the org's monitors
- * - Cross-org project search (e.g., sentry)
- */
-
-import { tableCell } from "@sentry/toolkit-core/markdown";
-import { listMonitors, listMonitorsPaginated } from "../../lib/api-client.js";
-import { type Column, formatTable } from "../../lib/formatters/table.js";
+import type { SentryContext } from "../../context.js";
 import {
-  buildOrgListCommand,
-  type OrgListCommandDocs,
+  listMetricMonitorsPaginated,
+  type MetricMonitor,
+} from "../../lib/api/detectors.js";
+import { paginate } from "../../lib/api/infrastructure.js";
+import { openInBrowser } from "../../lib/browser.js";
+import { ORG_PROJECT_TARGET, parseText } from "../../lib/completion-target.js";
+import { formatMetricMonitorList } from "../../lib/formatters/detectors.js";
+import { CommandOutput } from "../../lib/formatters/output.js";
+import {
+  buildListCommand,
+  buildListLimitFlag,
+  LIST_BASE_ALIASES,
 } from "../../lib/list-command.js";
-import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
-import type { SentryMonitor } from "../../types/index.js";
-import { MonitorListItemSchema } from "../../generated/output-schemas/monitor.js";
+import {
+  dispatchOrgScopedList,
+  jsonTransformListResult,
+  type ListResult,
+  type OrgListConfig,
+} from "../../lib/org-list.js";
+import {
+  resolveOrgOnlyTarget,
+  resolveProjectIdsInOrg,
+} from "../../lib/resolve-target.js";
+import { buildMonitorsUrl } from "../../lib/sentry-web-urls.js";
+import {
+  listTarget,
+  type ListCommandTarget,
+} from "../../lib/target-positional.js";
+import { MetricMonitorListItemSchema } from "../../generated/output-schemas/monitor.js";
 
-/** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "monitor-list";
+type MonitorWithOrg = MetricMonitor & { orgSlug: string };
+type ListFlags = {
+  readonly limit: number;
+  readonly cursor?: string;
+  readonly query?: string;
+  readonly web: boolean;
+  readonly fresh: boolean;
+  readonly json: boolean;
+  readonly fields?: string[];
+};
 
-/** Monitor with its organization context for display */
-type MonitorWithOrg = WithOrg<SentryMonitor>;
-
-/**
- * Render a monitor's schedule for display.
- *
- * Crontab schedules show the raw expression (e.g. `"0 * * * *"`).
- * Interval schedules show `"every <value> <unit>"` (e.g. `"every 1 hour"`).
- * Returns an empty string when no schedule is configured.
- */
-export function formatSchedule(monitor: MonitorWithOrg): string {
-  const config = monitor.config;
-  if (!config?.schedule) {
-    return "";
-  }
-  if (Array.isArray(config.schedule)) {
-    if (config.schedule.length < 2) {
-      return String(config.schedule[0] ?? "");
+export const listCommand = buildListCommand("monitor", {
+  docs: {
+    brief: "List metric monitors",
+    fullDescription:
+      "List native metric detectors in detected organizations, one organization (<org>/), or a project (<org>/<project>). --query is sent to Sentry's monitor search alongside the metric_issue type filter. Use --cursor next / prev for organization pagination. Cron monitors live at sentry monitor cron list.",
+    examples: [
+      {
+        description: "List metric monitors",
+        command: "sentry monitor list my-org/",
+      },
+      {
+        description: "Filter a project's monitors",
+        command: "sentry monitor list my-org/my-project --query 'name:Latency'",
+      },
+    ],
+  },
+  output: {
+    schema: MetricMonitorListItemSchema,
+    human: (result: ListResult<MonitorWithOrg>) =>
+      result.items.length
+        ? formatMetricMonitorList(result.items)
+        : (result.hint ?? "No metric monitors found."),
+    jsonTransform: (result: ListResult<MonitorWithOrg>, fields?: string[]) =>
+      jsonTransformListResult(result, fields),
+  },
+  parameters: {
+    positional: {
+      kind: "tuple",
+      parameters: [
+        {
+          placeholder: "target",
+          brief: "Organization or project target",
+          parse: listTarget(ORG_PROJECT_TARGET),
+          optional: true,
+        },
+      ],
+    },
+    flags: {
+      limit: buildListLimitFlag("metric monitors"),
+      query: {
+        kind: "parsed",
+        parse: parseText,
+        optional: true,
+        brief: "Native monitor search query",
+      },
+      web: {
+        kind: "boolean",
+        default: false,
+        brief: "Open monitors in the browser",
+      },
+    },
+    aliases: { ...LIST_BASE_ALIASES, q: "query", w: "web" },
+  },
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: ListCommandTarget,
+  ) {
+    const { parsed } = await target.resolved;
+    if (flags.web) {
+      const org = await resolveOrgOnlyTarget(parsed, this.cwd, "monitor list");
+      await openInBrowser(buildMonitorsUrl(org), "monitors");
+      return;
     }
-    return `every ${config.schedule[0]} ${config.schedule[1]}`;
-  }
-  return config.schedule;
-}
-
-/** Column definitions for the monitor table. */
-const MONITOR_COLUMNS: Column<MonitorWithOrg>[] = [
-  { header: "ID", value: (m) => m.id },
-  { header: "SLUG", value: (m) => m.slug },
-  { header: "NAME", value: (m) => tableCell(m.name) },
-  { header: "STATUS", value: (m) => m.status },
-  { header: "SCHEDULE", value: (m) => tableCell(formatSchedule(m)) },
-];
-
-/** Shared config that plugs into the org-list framework. */
-const monitorListConfig: OrgListConfig<
-  SentryMonitor,
-  MonitorWithOrg,
-  typeof MonitorListItemSchema
-> = {
-  paginationKey: PAGINATION_KEY,
-  entityPlural: "monitors",
-  commandPrefix: "sentry monitor list",
-  listForOrg: (org) => listMonitors(org),
-  listPaginated: (org, opts) => listMonitorsPaginated(org, opts),
-  withOrg: (monitor, orgSlug) => ({ ...monitor, orgSlug }),
-  namesOf: (monitor) => [monitor.slug, monitor.name],
-  searchesNames: true,
-  displayTable: (monitors: MonitorWithOrg[]) =>
-    formatTable(monitors, MONITOR_COLUMNS),
-  schema: MonitorListItemSchema,
-};
-
-const docs: OrgListCommandDocs = {
-  brief: "List cron monitors",
-  fullDescription:
-    "List cron monitors in an organization.\n\n" +
-    "`<org>/<name>` lists monitors whose slug or name matches `<name>`, a glob (`<org>/nightly-*`) or text: exact or partial matches first, then close (fuzzy) matches. A bare `<name>` that is no project does the same in the detected organizations. Name filters can't be combined with --cursor.\n\n" +
-    "Alias: `sentry monitors` → `sentry monitor list`",
-  examples: [
-    {
-      description: "List monitors (organization auto-detected)",
-      command: "sentry monitor list",
-    },
-    {
-      description: "List cron monitors in an organization",
-      command: "sentry monitor list my-org/",
-    },
-    {
-      description: "Fetch the next page",
-      command: "sentry monitor list my-org/ -c next",
-    },
-    {
-      description: "Only monitors whose slug or name matches a glob",
-      command: "sentry monitor list 'my-org/nightly-*'",
-    },
-    {
-      description:
-        "Monitors named like 'nightly' (fuzzy when nothing matches exactly)",
-      command: "sentry monitor list my-org/nigthly",
-    },
-    { description: "Output as JSON", command: "sentry monitor list --json" },
-  ],
-};
-
-export const listCommand = buildOrgListCommand(
-  monitorListConfig,
-  docs,
-  "monitor",
-);
+    const listAll = async (org: string, project?: string[]) => {
+      const page = await paginate({ limit: flags.limit }, (perPage, cursor) =>
+        listMetricMonitorsPaginated(org, {
+          perPage,
+          cursor,
+          query: flags.query,
+          project,
+        }),
+      );
+      return page.data;
+    };
+    const config: OrgListConfig<MetricMonitor, MonitorWithOrg> = {
+      paginationKey: `${PAGINATION_KEY}:${flags.query ?? ""}`,
+      entityPlural: "metric monitors",
+      commandPrefix: "sentry monitor list",
+      listForOrg: (org) => listAll(org),
+      listPaginated: (org, options) =>
+        listMetricMonitorsPaginated(org, { ...options, query: flags.query }),
+      listForProject: async (org, project) => {
+        const ids = await resolveProjectIdsInOrg(org, [project]);
+        return await listAll(org, ids.map(String));
+      },
+      withOrg: (monitor, orgSlug) => ({ ...monitor, orgSlug }),
+      displayTable: formatMetricMonitorList,
+    };
+    const result = await dispatchOrgScopedList({
+      config,
+      cwd: this.cwd,
+      flags,
+      parsed,
+    });
+    yield new CommandOutput(result);
+    return { hint: result.items.length ? result.hint : undefined };
+  },
+});

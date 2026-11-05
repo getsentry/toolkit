@@ -8,7 +8,7 @@ import "../../src/app.js";
 import { schemaCommand } from "../../src/commands/schema.js";
 import type { SentryContext } from "../../src/context.js";
 import { getAllEndpoints } from "../../src/lib/api-schema.js";
-import { OutputError, ResolutionError } from "../../src/lib/errors.js";
+import { ResolutionError } from "../../src/lib/errors.js";
 
 const ORG_ISSUES = "/api/0/organizations/{organization_id_or_slug}/issues/";
 const SKILL_QUERY = `GET ${ORG_ISSUES}`;
@@ -115,9 +115,9 @@ describe("sentry schema path lookup", () => {
       command: "sentry trace view",
     },
     {
-      args: ["alert", "metrics", "view"],
+      args: ["monitor", "view"],
       fn: "getOrganizationDetector",
-      command: "sentry alert metrics view",
+      command: "sentry monitor view",
     },
   ])("discovers the API used by $args", async ({ args, fn, command, note }) => {
     const { context, stdoutWrite } = createMockContext();
@@ -147,14 +147,12 @@ describe("sentry schema path lookup", () => {
     await func.call(
       positional.context,
       { json: true, all: false },
-      "alert",
-      "metrics",
+      "monitor",
       "view",
     );
     await func.call(
       search.context,
-      { json: true, all: false, search: "alert" },
-      "metrics",
+      { json: true, all: false, search: "monitor" },
       "view",
     );
     expect(JSON.parse(stdoutOf(search.stdoutWrite))).toEqual(
@@ -170,10 +168,10 @@ describe("sentry schema path lookup", () => {
       command: "sentry trace list",
     },
     {
-      args: ["alert", "metrics", "view"],
+      args: ["monitor", "view"],
       search: true,
       fn: "getOrganizationDetector",
-      command: "sentry alert metrics view",
+      command: "sentry monitor view",
     },
   ])(
     "HTTP filters preserve CLI discovery for $args",
@@ -197,16 +195,9 @@ describe("sentry schema path lookup", () => {
         }),
       );
 
-      const incompatible = createMockContext();
-      await expect(
-        func.call(
-          incompatible.context,
-          { json: true, all: false, search: search ? "POST" : undefined },
-          ...(search ? args : ["POST", ...args]),
-        ),
-      ).rejects.toBeInstanceOf(search ? OutputError : ResolutionError);
-      expect(stdoutOf(incompatible.stdoutWrite).trim()).toBe(
-        search ? "[]" : "",
+      const endpoints: { method: string }[] = JSON.parse(stdoutOf(stdoutWrite));
+      expect(endpoints.every((endpoint) => endpoint.method === "GET")).toBe(
+        true,
       );
     },
   );

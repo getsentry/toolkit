@@ -21,7 +21,7 @@ function command() {
 const exampleApi: Readonly<Record<string, readonly ApiReference[]>> = {
   "sentry log list": [{ fn: "queryEvents", note: "Uses the logs dataset." }],
   "sentry log view": [{ fn: "queryEvents", note: "Filters by log item ID." }],
-  "sentry alert metrics list": [{ fn: "listDetectors" }],
+  "sentry monitor cron list": [{ fn: "listMonitors" }],
   "sentry future": [{ fn: "newOperation" }],
   "sentry internal": [{ fn: "notPublished" }],
 };
@@ -33,18 +33,18 @@ function exampleRoutes() {
     aliases: { details: "view" },
     docs: { brief: "Logs" },
   });
-  const metrics = buildRouteMap({
+  const cron = buildRouteMap({
     routes: { list: command() },
-    docs: { brief: "Metric alerts" },
+    docs: { brief: "Cron monitors" },
   });
   return buildRouteMap({
     routes: {
       log,
       logs: list,
       internal: command(),
-      alert: buildRouteMap({
-        routes: { metrics },
-        docs: { brief: "Alerts" },
+      monitor: buildRouteMap({
+        routes: { cron },
+        docs: { brief: "Monitors" },
       }),
       future: command(),
       local: command(),
@@ -60,10 +60,10 @@ describe("command API discovery", () => {
       { command: "sentry future", fn: "newOperation" },
     ]);
     expect(
-      getCommandApiReferences(tree, "alert metrics list", exampleApi),
-    ).toEqual([{ command: "sentry alert metrics list", fn: "listDetectors" }]);
-    expect(getCommandApiReferences(tree, "alert metrics", exampleApi)).toEqual(
-      getCommandApiReferences(tree, "alert", exampleApi),
+      getCommandApiReferences(tree, "monitor cron list", exampleApi),
+    ).toEqual([{ command: "sentry monitor cron list", fn: "listMonitors" }]);
+    expect(getCommandApiReferences(tree, "monitor cron", exampleApi)).toEqual(
+      getCommandApiReferences(tree, "monitor", exampleApi),
     );
   });
 
@@ -136,34 +136,6 @@ describe("command API discovery", () => {
     expect(getCommandApiReferences(tree, "trace show")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ fn: "getOrganizationTrace" }),
-      ]),
-    );
-    expect(
-      getCommandApiReferences(tree, "alert metrics").map((reference) => ({
-        command: reference.command,
-        fn: reference.fn,
-      })),
-    ).toEqual(
-      expect.arrayContaining([
-        {
-          command: "sentry alert metrics list",
-          fn: "listOrganizationDetectors",
-        },
-        { command: "sentry alert metrics view", fn: "getOrganizationDetector" },
-        { command: "sentry alert metrics view", fn: "getOrganizationWorkflow" },
-        {
-          command: "sentry alert metrics create",
-          fn: "createOrganizationProjectDetector",
-        },
-        {
-          command: "sentry alert metrics delete",
-          fn: "deleteOrganizationDetector",
-        },
-        { command: "sentry alert metrics edit", fn: "getOrganizationDetector" },
-        {
-          command: "sentry alert metrics edit",
-          fn: "updateOrganizationDetector",
-        },
       ]),
     );
   });

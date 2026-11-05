@@ -678,18 +678,18 @@ describe("extractRouteGroups", () => {
   test("lists the visible subcommands of every group, nested ones included", () => {
     const topLevel = makeRouteMap([
       makeEntry(
-        "alert",
+        "monitor",
         makeRouteMap(
           [
             makeEntry(
-              "issues",
+              "cron",
               makeRouteMap([
-                makeEntry("list", makeCommand({ brief: "List rules" })),
+                makeEntry("list", makeCommand({ brief: "List cron monitors" })),
                 makeEntry("secret", makeCommand(), true),
               ]),
             ),
           ],
-          { brief: "Manage alerts" },
+          { brief: "Manage monitors" },
         ),
       ),
       makeEntry("api", makeCommand({ brief: "Call the API" })),
@@ -697,9 +697,9 @@ describe("extractRouteGroups", () => {
     ]);
 
     expect(extractRouteGroups(topLevel)).toEqual({
-      "": { alert: "Manage alerts", api: "Call the API" },
-      alert: { issues: "Test route" },
-      "alert issues": { list: "List rules" },
+      "": { monitor: "Manage monitors", api: "Call the API" },
+      monitor: { cron: "Test route" },
+      "monitor cron": { list: "List cron monitors" },
     });
   });
 });

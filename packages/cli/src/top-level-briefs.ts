@@ -15,7 +15,7 @@
 
 export const TOP_LEVEL_BRIEFS = {
   help: "Display help for a command",
-  alert: "Manage Sentry alert rules",
+  alert: "Manage Sentry alerts",
   attribute: "Explore span, log, and metric attributes",
   auth: "Authenticate with Sentry",
   build: "Manage mobile build artifacts",
@@ -44,7 +44,7 @@ export const TOP_LEVEL_BRIEFS = {
   feedback: "Manage User Feedback",
   log: "View Sentry logs",
   mcp: "Start a local Sentry MCP server",
-  monitor: "Work with Sentry cron monitors",
+  monitor: "Manage metric monitors and cron check-ins",
   snapshots: "Manage and compare snapshots",
   sourcemap: "Manage sourcemaps",
   span: "List and view spans in projects or traces",

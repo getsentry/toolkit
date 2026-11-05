@@ -643,7 +643,7 @@ function completePeriods(partial: string): Completion[] {
  * Finds the argument the partial fills (a positional or a flag value) and
  * runs the completer for the kind its parser declares. A partial starting
  * with `-` completes the command's flag names instead. Words that name a
- * nested route group (`alert issues`) complete its subcommands; the shell
+ * nested route group (`monitor cron`) complete its subcommands; the shell
  * scripts embed the first two levels themselves.
  *
  * @param precedingWords - Words before the partial (determines context)

@@ -1,0 +1,123 @@
+/**
+ * sentry monitor cron list
+ *
+ * List cron monitors in an organization, with flexible targeting and cursor
+ * pagination.
+ *
+ * Supports:
+ * - Auto-detection from DSN/config
+ * - Org-scoped listing with cursor pagination (e.g., sentry/)
+ * - Project-scoped targeting (e.g., sentry/cli) — monitors are org-scoped, so
+ *   this lists the org's monitors
+ * - Cross-org project search (e.g., sentry)
+ */
+
+import { tableCell } from "@sentry/toolkit-core/markdown";
+import {
+  listMonitors,
+  listMonitorsPaginated,
+} from "../../../lib/api-client.js";
+import { type Column, formatTable } from "../../../lib/formatters/table.js";
+import {
+  buildOrgListCommand,
+  type OrgListCommandDocs,
+} from "../../../lib/list-command.js";
+import type { OrgListConfig, WithOrg } from "../../../lib/org-list.js";
+import type { SentryMonitor } from "../../../types/index.js";
+import { MonitorListItemSchema } from "../../../generated/output-schemas/monitor.js";
+
+/** Command key for pagination cursor storage */
+export const PAGINATION_KEY = "monitor-cron-list";
+
+/** Monitor with its organization context for display */
+type MonitorWithOrg = WithOrg<SentryMonitor>;
+
+/**
+ * Render a monitor's schedule for display.
+ *
+ * Crontab schedules show the raw expression (e.g. `"0 * * * *"`).
+ * Interval schedules show `"every <value> <unit>"` (e.g. `"every 1 hour"`).
+ * Returns an empty string when no schedule is configured.
+ */
+export function formatSchedule(monitor: MonitorWithOrg): string {
+  const config = monitor.config;
+  if (!config?.schedule) {
+    return "";
+  }
+  if (Array.isArray(config.schedule)) {
+    if (config.schedule.length < 2) {
+      return String(config.schedule[0] ?? "");
+    }
+    return `every ${config.schedule[0]} ${config.schedule[1]}`;
+  }
+  return config.schedule;
+}
+
+/** Column definitions for the monitor table. */
+const MONITOR_COLUMNS: Column<MonitorWithOrg>[] = [
+  { header: "ID", value: (m) => m.id },
+  { header: "SLUG", value: (m) => m.slug },
+  { header: "NAME", value: (m) => tableCell(m.name) },
+  { header: "STATUS", value: (m) => m.status },
+  { header: "SCHEDULE", value: (m) => tableCell(formatSchedule(m)) },
+];
+
+/** Shared config that plugs into the org-list framework. */
+const monitorListConfig: OrgListConfig<
+  SentryMonitor,
+  MonitorWithOrg,
+  typeof MonitorListItemSchema
+> = {
+  paginationKey: PAGINATION_KEY,
+  entityPlural: "cron monitors",
+  commandPrefix: "sentry monitor cron list",
+  listForOrg: (org) => listMonitors(org),
+  listPaginated: (org, opts) => listMonitorsPaginated(org, opts),
+  withOrg: (monitor, orgSlug) => ({ ...monitor, orgSlug }),
+  namesOf: (monitor) => [monitor.slug, monitor.name],
+  searchesNames: true,
+  displayTable: (monitors: MonitorWithOrg[]) =>
+    formatTable(monitors, MONITOR_COLUMNS),
+  schema: MonitorListItemSchema,
+};
+
+const docs: OrgListCommandDocs = {
+  brief: "List cron monitors",
+  fullDescription:
+    "List cron monitors in an organization.\n\n" +
+    "`<org>/<name>` lists monitors whose slug or name matches `<name>`, a glob (`<org>/nightly-*`) or text: exact or partial matches first, then close (fuzzy) matches. A bare `<name>` that is no project does the same in the detected organizations. Name filters can't be combined with --cursor.\n\n" +
+    "Cron listing is separate from metric monitors.",
+  examples: [
+    {
+      description: "List monitors (organization auto-detected)",
+      command: "sentry monitor cron list",
+    },
+    {
+      description: "List cron monitors in an organization",
+      command: "sentry monitor cron list my-org/",
+    },
+    {
+      description: "Fetch the next page",
+      command: "sentry monitor cron list my-org/ -c next",
+    },
+    {
+      description: "Only monitors whose slug or name matches a glob",
+      command: "sentry monitor cron list 'my-org/nightly-*'",
+    },
+    {
+      description:
+        "Monitors named like 'nightly' (fuzzy when nothing matches exactly)",
+      command: "sentry monitor cron list my-org/nigthly",
+    },
+    {
+      description: "Output as JSON",
+      command: "sentry monitor cron list --json",
+    },
+  ],
+};
+
+export const listCommand = buildOrgListCommand(
+  monitorListConfig,
+  docs,
+  "monitor cron",
+);

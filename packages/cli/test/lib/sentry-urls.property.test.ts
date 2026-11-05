@@ -15,6 +15,8 @@ import {
 } from "fast-check";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
+  buildAlertsUrl,
+  buildMonitorsUrl,
   buildBillingUrl,
   buildDashboardsListUrl,
   buildDashboardUrl,
@@ -816,5 +818,23 @@ describe("URL building cross-function properties", () => {
       ),
       { numRuns: DEFAULT_NUM_RUNS },
     );
+  });
+});
+
+describe("native monitor and alert URLs", () => {
+  test.each([
+    ["https://sentry.io", "https://acme.sentry.io"],
+    [
+      "https://sentry.example.com",
+      "https://sentry.example.com/organizations/acme",
+    ],
+  ])("links native resources on %s", (server, orgBase) => {
+    process.env.SENTRY_URL = server;
+    expect(buildAlertsUrl("acme")).toBe(`${orgBase}/monitors/alerts/`);
+    expect(buildAlertsUrl("acme", "123")).toBe(
+      `${orgBase}/monitors/alerts/123/`,
+    );
+    expect(buildMonitorsUrl("acme")).toBe(`${orgBase}/monitors/`);
+    expect(buildMonitorsUrl("acme", "456")).toBe(`${orgBase}/monitors/456/`);
   });
 });

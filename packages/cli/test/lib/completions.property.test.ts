@@ -463,7 +463,7 @@ printf 'reply %s\\n' "\${COMPREPLY[@]}"`,
       const issueList = bashComplete("issue", "list", "--");
       expect(issueList.replies).toContain("--limit");
       expect(issueList.replies).toContain("--json");
-      expect(bashComplete("alert", "issues", "list", "--li").replies).toEqual([
+      expect(bashComplete("monitor", "cron", "list", "--li").replies).toEqual([
         "--limit",
       ]);
     });
@@ -504,13 +504,13 @@ printf 'reply %s\\n' "\${COMPREPLY[@]}"`,
             ],
             { cwd: workDir, env, encoding: "utf8" },
           ).stdout.trim();
-        expect(fishComplete("sentry alert issues list --li")).toBe(
-          "--limit\tMaximum number of issue alert rules to list",
-        );
+        expect(
+          fishComplete("sentry monitor cron list --li").split("\t")[0],
+        ).toBe("--limit");
         expect(fishComplete("sentry event send --level wa")).toBe("warning");
         expect(fishComplete("sentry sourcemap upload docs")).toBe("docs dir/");
-        expect(fishComplete("sentry alert issues l")).toBe(
-          "list\tList issue alert rules",
+        expect(fishComplete("sentry monitor cron l").split("\t")[0]).toBe(
+          "list",
         );
       },
     );

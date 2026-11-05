@@ -11,15 +11,16 @@
 import { ArgumentParseError } from "@stricli/core";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { viewCommand as agentConversationViewCommand } from "../../src/commands/agent-conversation/view.js";
-import { createCommand as alertIssuesCreateCommand } from "../../src/commands/alert/issues/create.js";
-import { deleteCommand as alertIssuesDeleteCommand } from "../../src/commands/alert/issues/delete.js";
-import { editCommand as alertIssuesEditCommand } from "../../src/commands/alert/issues/edit.js";
-import { viewCommand as alertIssuesViewCommand } from "../../src/commands/alert/issues/view.js";
-import { createCommand as alertMetricsCreateCommand } from "../../src/commands/alert/metrics/create.js";
-import { deleteCommand as alertMetricsDeleteCommand } from "../../src/commands/alert/metrics/delete.js";
-import { editCommand as alertMetricsEditCommand } from "../../src/commands/alert/metrics/edit.js";
-import { listCommand as alertMetricsListCommand } from "../../src/commands/alert/metrics/list.js";
-import { viewCommand as alertMetricsViewCommand } from "../../src/commands/alert/metrics/view.js";
+import { createCommand as alertCreateCommand } from "../../src/commands/alert/create.js";
+import { deleteCommand as alertDeleteCommand } from "../../src/commands/alert/delete.js";
+import { editCommand as alertEditCommand } from "../../src/commands/alert/edit.js";
+import { listCommand as alertListCommand } from "../../src/commands/alert/list.js";
+import { viewCommand as alertViewCommand } from "../../src/commands/alert/view.js";
+import { createCommand as monitorCreateCommand } from "../../src/commands/monitor/create.js";
+import { deleteCommand as monitorDeleteCommand } from "../../src/commands/monitor/delete.js";
+import { editCommand as monitorEditCommand } from "../../src/commands/monitor/edit.js";
+import { listCommand as monitorListCommand } from "../../src/commands/monitor/list.js";
+import { viewCommand as monitorViewCommand } from "../../src/commands/monitor/view.js";
 import { createCommand as dashboardCreateCommand } from "../../src/commands/dashboard/create.js";
 import { listCommand as dashboardListCommand } from "../../src/commands/dashboard/list.js";
 import { restoreCommand as dashboardRestoreCommand } from "../../src/commands/dashboard/restore.js";
@@ -947,6 +948,8 @@ const ORG_COMMANDS: readonly (readonly [string, unknown, readonly string[]])[] =
     ["org view", orgViewCommand, []],
     ["token list", tokenListCommand, []],
     ["trial list", trialListCommand, []],
+    ["alert create", alertCreateCommand, []],
+    ["alert list", alertListCommand, []],
     // The trial name comes first
     ["trial start", trialStartCommand, ["seer"]],
   ];
@@ -1100,28 +1103,15 @@ describe("init target and directory", () => {
   });
 });
 
-/** Commands that take an `<org>/<project>/<rule-id-or-name>` issue alert. */
-const ISSUE_RULE_COMMANDS: readonly (readonly [string, unknown])[] = [
-  ["alert issues view", alertIssuesViewCommand],
-  ["alert issues delete", alertIssuesDeleteCommand],
-  ["alert issues edit", alertIssuesEditCommand],
+/** Native alerts and monitors both take organization-scoped references. */
+const RESOURCE_COMMANDS: readonly (readonly [string, unknown])[] = [
+  ["alert view", alertViewCommand],
+  ["alert delete", alertDeleteCommand],
+  ["alert edit", alertEditCommand],
+  ["monitor view", monitorViewCommand],
+  ["monitor delete", monitorDeleteCommand],
+  ["monitor edit", monitorEditCommand],
 ];
-
-/** Commands that take an `<org>/<rule-id-or-name>` metric alert. */
-const METRIC_RULE_COMMANDS: readonly (readonly [string, unknown])[] = [
-  ["alert metrics view", alertMetricsViewCommand],
-  ["alert metrics delete", alertMetricsDeleteCommand],
-  ["alert metrics edit", alertMetricsEditCommand],
-];
-
-/** Alert commands that take only an `[<org>/][<project>]` target. */
-const ALERT_TARGET_COMMANDS: readonly (readonly [string, unknown])[] = [
-  ["alert issues create", alertIssuesCreateCommand],
-  ["alert metrics create", alertMetricsCreateCommand],
-  ["alert metrics list", alertMetricsListCommand],
-];
-
-const PROJECT_SETTINGS_URL = `${SERVER}/settings/acme/projects/web/`;
 
 /** The parsed value of a command's first positional. */
 function parsedOf(command: unknown, input: string): unknown {
@@ -1130,50 +1120,23 @@ function parsedOf(command: unknown, input: string): unknown {
   return (bound as BoundPositional<unknown, unknown>).parsed;
 }
 
-describe.each(ISSUE_RULE_COMMANDS)("%s", (_name, command) => {
+describe.each(RESOURCE_COMMANDS)("%s", (_name, command) => {
   test.each([
-    ["42", { ref: "42", target: { type: "auto-detect" } }],
-    [
-      "my-org/web/High error rate",
-      {
-        ref: "High error rate",
-        target: { type: "explicit", org: "my-org", project: "web" },
-      },
-    ],
-    [
-      `${PROJECT_SETTINGS_URL}42`,
-      {
-        ref: "42",
-        target: { type: "explicit", org: "acme", project: "web" },
-      },
-    ],
-  ])("parses %s before the command runs", (input, expected) => {
-    expect(parsedOf(command, input)).toEqual(expected);
-  });
-
-  test.each(["my-org/web", "  "])("%s fails to parse", (input) => {
-    expect(() => bind(command, [input])).toThrow(ValidationError);
-  });
-
-  test("applies a pasted URL's server on resolve, not parse", async () => {
-    const [bound] = bind(command, [`${PROJECT_SETTINGS_URL}42`]);
-    expect(applyUrl).not.toHaveBeenCalled();
-    await expect(
-      (bound as BoundPositional<unknown, unknown>).resolved,
-    ).rejects.toBeInstanceOf(UrlApplied);
-    expect(applyUrl).toHaveBeenCalledWith(SERVER);
-  });
-});
-
-describe.each(METRIC_RULE_COMMANDS)("%s", (_name, command) => {
-  test.each([
-    ["42", { ref: "42", target: { type: "auto-detect" } }],
-    [
-      "my-org/High error rate",
-      { ref: "High error rate", target: { type: "org-all", org: "my-org" } },
-    ],
-  ])("parses %s before the command runs", (input, expected) => {
-    expect(parsedOf(command, input)).toEqual(expected);
+    ["42", "42", "auto"],
+    ["my-org/High error rate", "High error rate", "org:my-org"],
+  ])("parses %s before the command runs", (input, ref, target) => {
+    const parsed = parsedOf(command, input) as {
+      ref: string;
+      target: ParsedTarget | { org?: string };
+    };
+    expect(parsed.ref).toBe(ref);
+    const actual =
+      "type" in parsed.target
+        ? describeTarget(parsed.target)
+        : parsed.target.org
+          ? `org:${parsed.target.org}`
+          : "auto";
+    expect(actual).toBe(target);
   });
 
   test.each(["my-org/", "my-org/web/42", "  "])(
@@ -1184,25 +1147,26 @@ describe.each(METRIC_RULE_COMMANDS)("%s", (_name, command) => {
   );
 });
 
-describe.each(ALERT_TARGET_COMMANDS)("%s", (name, command) => {
+describe.each([
+  ["monitor create", monitorCreateCommand],
+  ["monitor list", monitorListCommand],
+] as const)("%s project targets", (name, command) => {
   test.each([
     ["my-org/", { type: "org-all", org: "my-org" }],
     ["my-org/web", { type: "explicit", org: "my-org", project: "web" }],
     ["web", { type: "project-search", projectSlug: "web" }],
-  ])("parses the target %s before the command runs", (input, expected) => {
+  ])("parses %s before resolution", (input, expected) => {
     const parsed = parsedOf(command, input);
-    // List targets wrap the parsed target with the name filter
     const target =
-      command === alertMetricsListCommand
-        ? (parsed as { parsed: unknown }).parsed
+      parsed && typeof parsed === "object" && "parsed" in parsed
+        ? parsed.parsed
         : parsed;
     expect(target).toEqual(expected);
   });
 
   test("applies a pasted URL's server on resolve, not parse", async () => {
-    // Target resolvers name the running command in usage hints
     const [bound] = applyBoundPositionals(
-      [PROJECT_SETTINGS_URL],
+      [`${SERVER}/settings/acme/projects/web/`],
       positionalOf(command),
       { ...CONTEXT, commandPrefix: ["sentry", ...name.split(" ")] },
     );

@@ -5,10 +5,10 @@ import {
   buildDashboardsListUrl as buildDashboardsListUrlPure,
   buildDashboardUrl as buildDashboardUrlPure,
   buildEventSearchUrl as buildEventSearchUrlPure,
-  buildIssueAlertsUrl as buildIssueAlertsUrlPure,
+  buildAlertsUrl as buildAlertsUrlPure,
   buildIssueUrl as buildIssueUrlPure,
   buildLogsUrl as buildLogsUrlPure,
-  buildMetricAlertsUrl as buildMetricAlertsUrlPure,
+  buildMonitorsUrl as buildMonitorsUrlPure,
   buildOrgSettingsUrl as buildOrgSettingsUrlPure,
   buildOrgUrl as buildOrgUrlPure,
   buildProjectIssuesUrl as buildProjectIssuesUrlPure,
@@ -107,15 +107,12 @@ export function buildTraceUrl(orgSlug: string, traceId: string): string {
   return render(() => buildTraceUrlPure(orgSlug, traceId));
 }
 
-export function buildIssueAlertsUrl(
-  orgSlug: string,
-  projectSlug?: string,
-): string {
-  return render(() => buildIssueAlertsUrlPure(orgSlug, projectSlug));
+export function buildAlertsUrl(orgSlug: string, alertId?: string): string {
+  return render(() => buildAlertsUrlPure(orgSlug, alertId));
 }
 
-export function buildMetricAlertsUrl(orgSlug: string): string {
-  return render(() => buildMetricAlertsUrlPure(orgSlug));
+export function buildMonitorsUrl(orgSlug: string, monitorId?: string): string {
+  return render(() => buildMonitorsUrlPure(orgSlug, monitorId));
 }
 
 export function buildReleaseUrl(orgSlug: string, version: string): string {

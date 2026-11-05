@@ -1,87 +1,117 @@
-/**
- * Alert rule positionals, parsed before `func` runs.
- *
- * {@link alertRuleParameter} takes a rule ID or name and where to find it:
- * `<org>/<project>/<rule>` for issue alerts, `<org>/<rule>` for metric
- * alerts. Rule names may hold spaces, so these keep their own syntax
- * (`parseIssueRuleArg()`, `parseMetricRuleArg()`) rather than the ID
- * grammar of `id-arguments.ts`.
- *
- * The parse has no side effects; the server of a pasted Sentry URL is
- * applied when the value resolves, after the auth guard.
- */
-
-import {
-  type ParsedOrgProject,
-  parseOrgProjectInput,
-} from "../../lib/arg-parsing.js";
-import type {
-  ORG_PROJECT_TARGET,
-  ORG_TARGET,
-} from "../../lib/completion-target.js";
+/** Organization-scoped alert references: [<org>/]<id-or-name>. */
+import { ORG_TARGET } from "../../lib/completion-target.js";
+import { ValidationError } from "../../lib/errors.js";
 import {
   type BoundPositional,
   boundPositional,
 } from "../../lib/positional-parse.js";
-import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
+import { parseSentryUrl } from "../../lib/sentry-url-parser.js";
+import { parseOrgInput, resolveOrgInput } from "../../lib/target-positional.js";
+import type { OrgInput } from "../../lib/target-positional.js";
+import { getAlert, listAlertsPaginated } from "../../lib/api/alerts.js";
+import { MAX_PAGINATION_PAGES } from "../../lib/api/infrastructure.js";
+import type { Alert } from "../../lib/api/alerts.js";
 
-/** A rule ID or name and the target to find it in. */
-export type AlertRuleRef = {
-  /** The rule's numeric ID or name, as typed */
-  readonly ref: string;
-  /** Where to look the rule up */
-  readonly target: ParsedOrgProject;
-};
+export type AlertRef = { ref: string; target: OrgInput };
+export type AlertArgument = BoundPositional<
+  AlertRef,
+  { org: string; ref: string }
+>;
 
-/**
- * An alert rule positional. `await rule.resolved` applies a pasted URL's
- * server and yields the rule reference; the command then looks the rule up
- * in the target's projects or org.
- */
-export type AlertRuleArgument = BoundPositional<AlertRuleRef, AlertRuleRef>;
+function parseAlertRef(raw: string | undefined): AlertRef {
+  const text = raw?.trim() ?? "";
+  const url = parseSentryUrl(text);
+  if (url) {
+    const match = new URL(text).pathname.match(/\/monitors\/alerts\/(\d+)\/?$/);
+    if (!url.org || !match?.[1]) {
+      throw new ValidationError(
+        "Expected an alert detail URL or [<org>/]<id-or-name>.",
+        "alert",
+      );
+    }
+    return { ref: match[1], target: { org: url.org, baseUrl: url.baseUrl } };
+  }
+  const slash = text.indexOf("/");
+  const ref = (slash < 0 ? text : text.slice(slash + 1)).trim();
+  if (
+    !ref ||
+    ref.includes("/") ||
+    (slash >= 0 && !text.slice(0, slash).trim())
+  ) {
+    throw new ValidationError("Expected [<org>/]<id-or-name>.", "alert");
+  }
+  return { ref, target: slash < 0 ? {} : parseOrgInput(text.slice(0, slash)) };
+}
 
-/** Splits a rule argument into the rule reference and the target argument. */
-type RuleArgSplitter = (
-  arg: string,
-  usageHint: string,
-) => { ref: string; targetArg: string | undefined };
-
-/**
- * The rule parameter of an alert command's tuple positional.
- *
- * @param options.split - The rule syntax: `parseIssueRuleArg` or
- *   `parseMetricRuleArg`; throws a `ValidationError` for an invalid rule
- * @param options.kind - Shell completion for the target part
- */
-export function alertRuleParameter(options: {
-  readonly placeholder: string;
-  readonly brief: string;
-  readonly kind: typeof ORG_TARGET | typeof ORG_PROJECT_TARGET;
-  readonly split: RuleArgSplitter;
-  readonly usageHint: string;
-}) {
-  const { placeholder, brief, kind, split, usageHint } = options;
-  const parse = (raw: string | undefined) => {
-    const { ref, targetArg } = split(raw ?? "", usageHint);
-    return { ref, ...parseOrgProjectInput(targetArg) };
-  };
+export function alertParameter(usageHint: string) {
   return {
-    placeholder,
-    brief,
+    placeholder: "alert",
+    brief: "[<org>/]<id-or-name> or alert URL",
     parse: boundPositional(
-      kind,
-      (raw): AlertRuleRef => {
-        const { ref, parsed } = parse(raw);
-        return { ref, target: parsed };
+      ORG_TARGET,
+      parseAlertRef,
+      async ({ ref, target }, context: { cwd: string }) => {
+        const { org } = await resolveOrgInput(target, context.cwd, usageHint);
+        return { org, ref };
       },
-      async (rule: AlertRuleRef, _context: unknown, raw) => {
-        // Parsing again is cheap and pure; it recovers the URL's server
-        const { baseUrl } = parse(raw);
-        if (baseUrl) {
-          applySentryUrlContext(baseUrl);
+      ({ target }) => {
+        if (!target.org) {
+          throw new ValidationError(
+            `Delete requires an explicit <org>/<id-or-name>.\nUsage: ${usageHint}`,
+            "alert",
+          );
         }
-        return rule;
       },
     ),
   } as const;
+}
+
+/** Resolve names across every page, never silently choosing an ambiguous match. */
+export async function resolveAlert(org: string, ref: string): Promise<Alert> {
+  if (/^\d+$/.test(ref)) {
+    return await getAlert(org, ref);
+  }
+  const matches: Alert[] = [];
+  let cursor: string | undefined;
+  const seen = new Set<string>();
+  for (let index = 0; index < MAX_PAGINATION_PAGES; index += 1) {
+    const page = await listAlertsPaginated(org, { perPage: 100, cursor });
+    matches.push(
+      ...page.data.filter(
+        (alert) => alert.name.toLowerCase() === ref.toLowerCase(),
+      ),
+    );
+    cursor = page.nextCursor;
+    if (!cursor) {
+      break;
+    }
+    if (seen.has(cursor)) {
+      throw new ValidationError(
+        `Alert pagination repeated a cursor in '${org}'; use an ID.`,
+        "alert",
+      );
+    }
+    seen.add(cursor);
+  }
+  if (cursor) {
+    throw new ValidationError(
+      `Alert search exceeded ${MAX_PAGINATION_PAGES} pages in '${org}'; use an ID.`,
+      "alert",
+    );
+  }
+  const [alert] = matches;
+  if (!alert) {
+    throw new ValidationError(
+      `Alert '${ref}' not found in '${org}'. Use 'sentry alert list ${org}/'.`,
+      "alert",
+    );
+  }
+  if (matches.length > 1) {
+    throw new ValidationError(
+      `Alert name '${ref}' is ambiguous in '${org}'; use an ID: ${matches.map((match) => match.id).join(", ")}.`,
+      "alert",
+    );
+  }
+  // Detail is authoritative for edits, including all condition groups and config.
+  return await getAlert(org, alert.id);
 }
