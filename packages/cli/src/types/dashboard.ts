@@ -105,6 +105,7 @@ export const DashboardWidgetQuerySchema = looseObject({
   conditions: optional(string()),
   columns: optional(array(string())),
   aggregates: optional(array(string())),
+  transformations: optional(record(string(), array(string()))),
   fieldAliases: optional(array(string())),
   orderby: optional(string()),
   fields: optional(array(string())),
@@ -806,8 +807,17 @@ export function validateWidgetLayout(
 // ---------------------------------------------------------------------------
 
 /** Extract only the query fields the PUT API accepts */
-function cleanQuery(q: DashboardWidgetQuery): DashboardWidgetQuery {
+function cleanQuery(
+  q: DashboardWidgetQuery,
+  widgetId: string | undefined,
+): DashboardWidgetQuery {
   return {
+    // Sentry preserves omitted pipelines by ID even when the feature is disabled.
+    ...(widgetId !== undefined && q.id !== undefined
+      ? { id: q.id }
+      : q.transformations !== undefined
+        ? { transformations: q.transformations }
+        : {}),
     name: q.name ?? "",
     conditions: q.conditions ?? "",
     columns: q.columns ?? [],
@@ -819,12 +829,9 @@ function cleanQuery(q: DashboardWidgetQuery): DashboardWidgetQuery {
 }
 
 /**
- * Strip server-generated and passthrough fields from a widget for PUT requests.
- *
- * Uses an allowlist approach: only includes fields the dashboard PUT API
- * accepts. The GET response includes many extra fields (description, thresholds,
- * interval, axisRange, datasetSource, etc.) that cause silent failures if
- * sent back in PUT.
+ * Prepare a widget for PUT while retaining existing widget and query identities.
+ * Existing queries omit pipelines so Sentry preserves their stored configuration.
+ * New queries include pipelines verbatim, keyed by aggregate position.
  *
  * @param widget - Widget object from GET response
  * @returns Widget safe for PUT (only API-accepted fields)
@@ -833,10 +840,13 @@ export function stripWidgetServerFields(
   widget: DashboardWidget,
 ): DashboardWidget {
   const cleaned: DashboardWidget = {
+    ...(widget.id !== undefined && { id: widget.id }),
     title: widget.title,
     displayType: widget.displayType,
     ...(widget.widgetType && { widgetType: widget.widgetType }),
-    ...(widget.queries && { queries: widget.queries.map(cleanQuery) }),
+    ...(widget.queries && {
+      queries: widget.queries.map((query) => cleanQuery(query, widget.id)),
+    }),
     ...(widget.limit !== undefined &&
       widget.limit !== null && { limit: widget.limit }),
   };
@@ -857,8 +867,7 @@ export function stripWidgetServerFields(
 
 /**
  * Prepare a full dashboard for PUT update.
- * Strips server-generated fields from all widgets while preserving
- * widgetType, displayType, and layout.
+ * Retains widget and query identities so Sentry updates existing records.
  *
  * @param dashboard - Dashboard detail from GET response
  * @returns Object with title and cleaned widgets, ready for PUT body

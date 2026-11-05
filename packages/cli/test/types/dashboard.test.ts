@@ -840,7 +840,7 @@ describe("assignDefaultLayout", () => {
 // ---------------------------------------------------------------------------
 
 describe("stripWidgetServerFields", () => {
-  test("strips id, dashboardId, dateCreated from widget", () => {
+  test("retains widget identity and strips dashboardId and dateCreated", () => {
     const widget: DashboardWidget = {
       id: "100",
       dashboardId: "42",
@@ -850,7 +850,7 @@ describe("stripWidgetServerFields", () => {
       widgetType: "spans",
     };
     const result = stripWidgetServerFields(widget);
-    expect(result).not.toHaveProperty("id");
+    expect(result.id).toBe("100");
     expect(result).not.toHaveProperty("dashboardId");
     expect(result).not.toHaveProperty("dateCreated");
     expect(result.title).toBe("Test");
@@ -858,8 +858,9 @@ describe("stripWidgetServerFields", () => {
     expect(result.widgetType).toBe("spans");
   });
 
-  test("strips server fields from queries", () => {
+  test("retains query identity and strips server metadata", () => {
     const widget: DashboardWidget = {
+      id: "100",
       title: "Test",
       displayType: "line",
       queries: [
@@ -875,10 +876,42 @@ describe("stripWidgetServerFields", () => {
     };
     const result = stripWidgetServerFields(widget);
     const query = result.queries![0]!;
-    expect(query).not.toHaveProperty("id");
+    expect(query.id).toBe("q1");
     expect(query).not.toHaveProperty("widgetId");
     expect(query).not.toHaveProperty("dateCreated");
     expect(query.aggregates).toEqual(["count()"]);
+  });
+
+  test.each([
+    { scenario: "a new query", widgetId: "100", queryId: undefined },
+    { scenario: "a recreated widget", widgetId: undefined, queryId: "200" },
+  ])("keeps pipelines for $scenario", ({ widgetId, queryId }) => {
+    const widget = parseWidgetInput({
+      id: widgetId,
+      title: "Test",
+      displayType: "line",
+      queries: [
+        {
+          id: queryId,
+          aggregates: ["count()"],
+          transformations: {
+            "0": ["fill( linear )", "smooth( ema , 7 , 0.25 )"],
+          },
+        },
+      ],
+    });
+    expect(stripWidgetServerFields(widget).queries).toEqual([
+      {
+        name: "",
+        conditions: "",
+        columns: [],
+        aggregates: ["count()"],
+        fields: [],
+        transformations: {
+          "0": ["fill( linear )", "smooth( ema , 7 , 0.25 )"],
+        },
+      },
+    ]);
   });
 
   test("strips isResizable from layout", () => {
