@@ -129,7 +129,7 @@
       },
       {
         "name": "get_monitor_details",
-        "description": "Get details and recent check-ins for a Sentry cron monitor (scheduled job).\n\nUse this tool when you need to:\n- Inspect a monitor's schedule, status, owner, project, and environments\n- Review recent check-ins for missed, failed, timeout, or OK runs\n- Check monitor stats over a recent time range\n\n<examples>\nget_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import')\nget_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import', projectSlugOrId='backend', environment='production', period='7d')\n</examples>",
+        "description": "Get details and recent check-ins for a Sentry cron monitor (scheduled job).\n\nUse this tool when you need to:\n- Inspect a monitor's schedule, status, owner, project, and environments\n- Review recent check-ins for missed, failed, timeout, or OK runs\n- Check monitor stats over a recent time range\n\nTo find issues from a monitor, call `search_issues` with query `monitor.slug:<slug>`.\n\n<examples>\nget_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import')\nget_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import', projectSlugOrId='backend', environment='production', period='7d')\n</examples>",
         "requiredScopes": ["project:read"]
       },
       {

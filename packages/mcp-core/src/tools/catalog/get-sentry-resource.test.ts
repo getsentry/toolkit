@@ -403,10 +403,10 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://my-org.sentry.io/crons/daily-backup/",
       });
-      expect(result).toContain("# Monitor daily-backup in **my-org**");
-      expect(result).toContain(
-        "[Open Monitor](https://my-org.sentry.io/crons/backend/daily-backup/)",
-      );
+      expect(getStructuredContent(result).monitor).toMatchObject({
+        slug: "daily-backup",
+        url: "https://my-org.sentry.io/crons/backend/daily-backup/",
+      });
     });
 
     it("dispatches monitor URL with project/slug path to get_monitor_details", async () => {
@@ -421,10 +421,10 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://my-org.sentry.io/crons/my-project/my-monitor/",
       });
-      expect(result).toContain("# Monitor my-monitor in **my-org**");
-      expect(result).toContain(
-        "[Open Monitor](https://my-org.sentry.io/crons/my-project/my-monitor/)",
-      );
+      expect(getStructuredContent(result).monitor).toMatchObject({
+        slug: "my-monitor",
+        url: "https://my-org.sentry.io/crons/my-project/my-monitor/",
+      });
     });
 
     it("dispatches monitor URL with numeric project ID under an active project constraint", async () => {
@@ -450,10 +450,10 @@ describe("get_sentry_resource", () => {
         },
       );
 
-      expect(result).toContain("# Monitor my-monitor in **my-org**");
-      expect(result).toContain(
-        "[Open Monitor](https://my-org.sentry.io/crons/backend/my-monitor/)",
-      );
+      expect(getStructuredContent(result).monitor).toMatchObject({
+        slug: "my-monitor",
+        url: "https://my-org.sentry.io/crons/backend/my-monitor/",
+      });
     });
 
     it("rejects numeric monitor project IDs outside the active project constraint before monitor reads", async () => {
@@ -530,10 +530,10 @@ describe("get_sentry_resource", () => {
         },
       );
 
-      expect(result).toContain("# Monitor my-monitor in **my-org**");
-      expect(result).toContain(
-        "[Open Monitor](https://my-org.sentry.io/crons/backend/my-monitor/)",
-      );
+      expect(getStructuredContent(result).monitor).toMatchObject({
+        slug: "my-monitor",
+        url: "https://my-org.sentry.io/crons/backend/my-monitor/",
+      });
     });
 
     it("returns guidance for release URL", async () => {
@@ -594,9 +594,9 @@ describe("get_sentry_resource", () => {
           sentryProtocol: "http",
         },
       );
-      expect(result).toContain(
-        "[Open Monitor](http://sentry.internal:9000/organizations/my-org/crons/backend/daily-backup/)",
-      );
+      expect(getStructuredContent(result).monitor).toMatchObject({
+        url: "http://sentry.internal:9000/organizations/my-org/crons/backend/daily-backup/",
+      });
     });
 
     it("uses configured host and protocol for self-hosted release URL", async () => {
