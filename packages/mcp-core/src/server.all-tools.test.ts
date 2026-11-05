@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it, vi } from "vitest";
 import { buildServer } from "./server";
+import { MAX_SERVER_INSTRUCTIONS_LENGTH } from "./server-instructions";
 import type { Skill } from "./skills";
 import { getStructuredContent } from "./test-utils/structured-content";
 import tools from "./tools/index";
@@ -96,6 +97,22 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
         expect(toolNames).toContain(replacement);
       }
     }
+  });
+
+  it("returns server instructions that fit the harness cap", async () => {
+    const instructions = await withClient(getContext(), async (client) =>
+      client.getInstructions(),
+    );
+
+    expect(instructions?.length).toBeLessThanOrEqual(
+      MAX_SERVER_INSTRUCTIONS_LENGTH,
+    );
+    expect(instructions).toMatchInlineSnapshot(`
+      "Sentry monitors errors and performance in the user's applications. Use these tools when the user asks about production behavior or their Sentry account: errors, exceptions, and crashes; Sentry issues and stack traces; traces, spans, and slow requests; logs; metrics; session replays; profiles; releases; cron, uptime, and metric monitors; alert rules; or Sentry SDK setup and docs.
+      - When the user shares a Sentry URL, or an issue, event, trace, or replay ID, call get_sentry_resource first.
+      - If the organization slug or regionUrl is unknown, call find_organizations and pass its regionUrl to later calls.
+      - Use search_issues for grouped problems ("what's broken", "top issues") and search_errors, search_logs, search_traces, search_metrics, search_profiles, search_replays for individual events, counts, and aggregates."
+    `);
   });
 
   it("still gates tools by granted skills", async () => {
