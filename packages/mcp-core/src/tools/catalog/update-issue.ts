@@ -22,7 +22,7 @@ import {
   ParamReason,
   ParamRegionUrl,
 } from "../../schema";
-import { ApiValidationError } from "@sentry/api/client";
+import { ApiClientError, ApiValidationError } from "@sentry/api/client";
 import { logIssue } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
@@ -618,7 +618,9 @@ async function tryPostReasonComment(
     if (isDuplicateCommentError(error)) {
       return { posted: true, duplicate: true };
     }
-    logIssue(error);
+    if (!(error instanceof ApiClientError)) {
+      logIssue(error);
+    }
     return {
       posted: false,
       error: error instanceof Error ? error.message : String(error),
