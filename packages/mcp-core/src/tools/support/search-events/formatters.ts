@@ -117,6 +117,14 @@ export const SPAN_RESULT_HINTS: SearchResultHints = {
   empty: EMPTY_RESULTS_HINT,
 };
 
+export const METRIC_RESULT_HINTS: SearchResultHints = {
+  samples:
+    "Concise summaries work well for these metric samples, highlighting metric name, type, value, and trace context.",
+  aggregates:
+    "A compact table with grouping labels and units works well for these metric aggregates.",
+  empty: "Try being more specific about the metric name, type, or filters.",
+};
+
 export const LOG_RESULT_HINTS: SearchResultHints = {
   samples:
     "Console-style formatting works well for these logs, with timestamps preserved.",
@@ -830,15 +838,11 @@ export function formatTraceMetricsResults(
 
   let output = `# Search Results for "${inputQuery}"\n\n`;
 
-  if (isAggregateQuery(fields)) {
-    output += formatSearchPresentationHint(
-      "A compact table with grouping labels and units works well for these metric aggregates.",
-    );
-  } else {
-    output += formatSearchPresentationHint(
-      "Concise summaries work well for these metric samples, highlighting metric name, type, value, and trace context.",
-    );
-  }
+  output += formatSearchPresentationHint(
+    isAggregateQuery(fields)
+      ? METRIC_RESULT_HINTS.aggregates
+      : METRIC_RESULT_HINTS.samples,
+  );
 
   if (includeExplanation && explanation) {
     output += formatExplanation(explanation);
@@ -859,8 +863,7 @@ export function formatTraceMetricsResults(
       },
     });
     output += "No results found.\n\n";
-    output +=
-      "Try being more specific about the metric name, type, or filters.\n";
+    output += `${METRIC_RESULT_HINTS.empty}\n`;
     return output;
   }
 

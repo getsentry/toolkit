@@ -25,6 +25,7 @@ it("search_metrics runs the shared handler locked to metrics", async () => {
       ],
       "options": {
         "lockDataset": true,
+        "output": "structured",
       },
     }
   `);
