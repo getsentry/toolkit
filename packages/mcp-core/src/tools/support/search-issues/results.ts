@@ -92,7 +92,7 @@ function formatAssignee(assignee: Issue["assignedTo"]): string | null {
   if (typeof assignee === "string") {
     return assignee;
   }
-  return assignee?.name ?? null;
+  return assignee?.name || null;
 }
 
 function formatAssigneeEmail(assignee: Issue["assignedTo"]): string | null {
