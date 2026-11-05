@@ -141,8 +141,8 @@ export async function callEmbeddedAgent<
   try {
     const result = await generateText({
       model: provider.getModel(),
-      // generateText sets a call-level user-agent that replaces any
-      // provider-level one, so ours has to go on the call.
+      // generateText sets a call-level user-agent that replaces the
+      // providers' own, so ours has to go on the call too.
       headers: { "User-Agent": getUserAgent() },
       system,
       prompt,
