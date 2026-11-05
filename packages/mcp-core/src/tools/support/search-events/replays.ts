@@ -172,18 +172,12 @@ export function formatReplayResults(params: FormatReplayResultsParams): string {
   return output;
 }
 
-/** The name a replay list or detail view shows for the replay's user. */
-export function getReplayUserName(replay: ReplayDetails): string | null {
-  return (
+export function formatReplayUser(replay: ReplayDetails): string {
+  const name =
     replay.user?.display_name ??
     replay.user?.email ??
     replay.user?.username ??
-    null
-  );
-}
-
-export function formatReplayUser(replay: ReplayDetails): string {
-  const name = getReplayUserName(replay);
+    null;
   const id = replay.user?.id ?? null;
   // Keep the ID visible so results can be matched to a `user.id` search.
   if (name && id && name !== id) {

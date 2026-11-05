@@ -6169,21 +6169,58 @@
                 {
                   "type": "object",
                   "properties": {
-                    "name": {
-                      "type": ["string", "null"]
-                    },
                     "id": {
                       "type": ["string", "null"]
+                    },
+                    "username": {
+                      "type": ["string", "null"]
+                    },
+                    "email": {
+                      "type": ["string", "null"]
+                    },
+                    "ip": {
+                      "type": ["string", "null"]
+                    },
+                    "geo": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "city": {
+                              "type": ["string", "null"]
+                            },
+                            "countryCode": {
+                              "type": ["string", "null"]
+                            },
+                            "region": {
+                              "type": ["string", "null"]
+                            },
+                            "subdivision": {
+                              "type": ["string", "null"]
+                            }
+                          },
+                          "required": [
+                            "city",
+                            "countryCode",
+                            "region",
+                            "subdivision"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
-                  "required": ["name", "id"],
+                  "required": ["id", "username", "email", "ip", "geo"],
                   "additionalProperties": false
                 },
                 {
                   "type": "null"
                 }
               ],
-              "description": "Null for an anonymous user."
+              "description": "Null when anonymous or archived."
             },
             "urls": {
               "type": "array",
@@ -6283,15 +6320,7 @@
                 "recorded": {
                   "type": "object",
                   "propertyNames": {
-                    "type": "string",
-                    "enum": [
-                      "navigation",
-                      "click",
-                      "input",
-                      "console",
-                      "network",
-                      "other"
-                    ]
+                    "type": "string"
                   },
                   "additionalProperties": {
                     "type": "object",
@@ -6302,7 +6331,7 @@
                       "type": "number"
                     }
                   },
-                  "description": "Every recorded event counted by category, then label, before any filter. Pass a category in `categories` to see all of its events."
+                  "description": "Counts by category, then label, before filters. `{}` means no activity."
                 },
                 "failedRequests": {
                   "type": "number"
@@ -6326,15 +6355,12 @@
                     {
                       "type": "null"
                     }
-                  ],
-                  "description": "Requested categories. Null means notable events only."
+                  ]
                 },
                 "startOffsetSeconds": {
-                  "description": "Window start in seconds from the replay start, if set.",
                   "type": ["number", "null"]
                 },
                 "endOffsetSeconds": {
-                  "description": "Window end in seconds from the replay start, if set.",
                   "type": ["number", "null"]
                 },
                 "matchingCount": {
@@ -6355,7 +6381,7 @@
                       },
                       "label": {
                         "type": "string",
-                        "description": "Event kind, such as `click`, `dead click`, `console.error`, or `request`."
+                        "description": "Such as `click`, `dead click`, `request`."
                       },
                       "target": {
                         "description": "What the event acted on: a selector, URL, or message.",
@@ -6377,7 +6403,6 @@
                   }
                 },
                 "nextSkip": {
-                  "description": "Pass as `skip` with the same arguments to continue. Null when no more events match.",
                   "type": ["number", "null"]
                 },
                 "segmentsRead": {
@@ -6385,7 +6410,7 @@
                 },
                 "truncated": {
                   "type": "boolean",
-                  "description": "True when only the first `segmentsRead` recording segments were read, so later activity is missing."
+                  "description": "Later activity is missing past `segmentsRead`."
                 }
               },
               "required": [
@@ -6427,7 +6452,7 @@
                 "required": ["eventId", "shortId", "title"],
                 "additionalProperties": false
               },
-              "description": "Issues for the first 3 error events. shortId is null when the issue could not be found."
+              "description": "First 3 error events; shortId null if no issue found."
             },
             "traces": {
               "type": "array",

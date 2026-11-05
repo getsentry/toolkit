@@ -35,7 +35,6 @@ import {
 import { logIssue } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import { getReplayUserName } from "../support/search-events/replays";
 
 interface ResolvedReplayParams {
   organizationSlug: string;
@@ -82,11 +81,7 @@ const nullableString = z.string().nullable();
 
 const timelineEventSchema = z.object({
   offsetSeconds: z.number().describe("Seconds from the replay start, to 0.1s."),
-  label: z
-    .string()
-    .describe(
-      "Event kind, such as `click`, `dead click`, `console.error`, or `request`.",
-    ),
+  label: z.string().describe("Such as `click`, `dead click`, `request`."),
   target: nullableString.describe(
     "What the event acted on: a selector, URL, or message.",
   ),
@@ -107,9 +102,22 @@ export const getReplayDetailsOutputSchema = z.object({
     os: nullableString,
     device: nullableString,
     user: z
-      .object({ name: nullableString, id: nullableString })
+      .object({
+        id: nullableString,
+        username: nullableString,
+        email: nullableString,
+        ip: nullableString,
+        geo: z
+          .object({
+            city: nullableString,
+            countryCode: nullableString,
+            region: nullableString,
+            subdivision: nullableString,
+          })
+          .nullable(),
+      })
       .nullable()
-      .describe("Null for an anonymous user."),
+      .describe("Null when anonymous or archived."),
     urls: z
       .array(z.string())
       .describe(`First ${MAX_SUMMARY_URLS} visited URLs.`),
@@ -134,43 +142,24 @@ export const getReplayDetailsOutputSchema = z.object({
     z.object({
       status: z.literal("loaded"),
       recorded: z
-        .partialRecord(
-          z.enum(REPLAY_TIMELINE_CATEGORIES),
-          z.record(z.string(), z.number()),
-        )
+        .record(z.string(), z.record(z.string(), z.number()))
         .describe(
-          "Every recorded event counted by category, then label, before any filter. Pass a category in `categories` to see all of its events.",
+          "Counts by category, then label, before filters. `{}` means no activity.",
         ),
       failedRequests: z.number(),
-      categories: z
-        .array(z.enum(REPLAY_TIMELINE_CATEGORIES))
-        .nullable()
-        .describe("Requested categories. Null means notable events only."),
-      startOffsetSeconds: z
-        .number()
-        .nullable()
-        .describe("Window start in seconds from the replay start, if set."),
-      endOffsetSeconds: z
-        .number()
-        .nullable()
-        .describe("Window end in seconds from the replay start, if set."),
+      categories: z.array(z.enum(REPLAY_TIMELINE_CATEGORIES)).nullable(),
+      startOffsetSeconds: z.number().nullable(),
+      endOffsetSeconds: z.number().nullable(),
       matchingCount: z
         .number()
         .describe("Events that match the categories and window."),
       skip: z.number(),
       events: z.array(timelineEventSchema),
-      nextSkip: z
-        .number()
-        .nullable()
-        .describe(
-          "Pass as `skip` with the same arguments to continue. Null when no more events match.",
-        ),
+      nextSkip: z.number().nullable(),
       segmentsRead: z.number(),
       truncated: z
         .boolean()
-        .describe(
-          "True when only the first `segmentsRead` recording segments were read, so later activity is missing.",
-        ),
+        .describe("Later activity is missing past `segmentsRead`."),
     }),
   ]),
   related: z.object({
@@ -183,7 +172,7 @@ export const getReplayDetailsOutputSchema = z.object({
         }),
       )
       .describe(
-        `Issues for the first ${MAX_RELATED_ERRORS} error events. shortId is null when the issue could not be found.`,
+        `First ${MAX_RELATED_ERRORS} error events; shortId null if no issue found.`,
       ),
     traces: z
       .array(
@@ -361,6 +350,7 @@ export default defineTool({
       suggestedActions: buildSuggestedActions({
         organizationSlug: resolved.organizationSlug,
         replayId: replay.id,
+        regionUrl: params.regionUrl ?? null,
         timelineRequest,
         timeline,
         related,
@@ -559,8 +549,6 @@ function buildReplaySummary({
   replayUrl: string;
 }): GetReplayDetailsPayload["replay"] {
   const startedAtMs = parseTimestampMs(replay.started_at);
-  const userName = getReplayUserName(replay);
-  const userId = replay.user?.id ?? null;
 
   return {
     id: replay.id,
@@ -577,7 +565,7 @@ function buildReplaySummary({
       replay.device?.model ??
       replay.device?.family ??
       null,
-    user: userName || userId ? { name: userName, id: userId } : null,
+    user: buildReplayUser(replay),
     urls: replay.urls.slice(0, MAX_SUMMARY_URLS),
     release: replay.releases?.[0] ?? null,
     replayType: replay.replay_type ?? null,
@@ -592,6 +580,37 @@ function buildReplaySummary({
     archived: replay.is_archived === true,
     viewed: replay.has_viewed ?? null,
   };
+}
+
+/**
+ * Sentry's `display_name` mixes username, email, id, and IP, so the fields are
+ * kept separate. Archived replays carry a placeholder user, so they map to null.
+ */
+function buildReplayUser(
+  replay: ReplayDetails,
+): GetReplayDetailsPayload["replay"]["user"] {
+  if (replay.is_archived === true || !replay.user) {
+    return null;
+  }
+  const { id, username, email, ip, geo } = replay.user;
+  const mappedGeo = {
+    city: geo?.city ?? null,
+    countryCode: geo?.country_code ?? null,
+    region: geo?.region ?? null,
+    subdivision: geo?.subdivision ?? null,
+  };
+  const user = {
+    id: id ?? null,
+    username: username ?? null,
+    email: email ?? null,
+    ip: ip ?? null,
+    geo: Object.values(mappedGeo).some((value) => value !== null)
+      ? mappedGeo
+      : null,
+  };
+  return user.id || user.username || user.email || user.ip || user.geo
+    ? user
+    : null;
 }
 
 function buildTimeline({
@@ -689,6 +708,7 @@ function countRecordedEvents(events: ReplayTimelineEvent[]): {
 function buildSuggestedActions({
   organizationSlug,
   replayId,
+  regionUrl,
   timelineRequest,
   timeline,
   related,
@@ -696,6 +716,7 @@ function buildSuggestedActions({
 }: {
   organizationSlug: string;
   replayId: string;
+  regionUrl: string | null;
   timelineRequest: TimelineRequest;
   timeline: ReplayTimelinePayload;
   related: GetReplayDetailsPayload["related"];
@@ -713,6 +734,9 @@ function buildSuggestedActions({
       organizationSlug,
       replayId,
     };
+    if (regionUrl) {
+      continueArguments.regionUrl = regionUrl;
+    }
     if (timelineRequest.categories) {
       continueArguments.categories = timelineRequest.categories;
     }

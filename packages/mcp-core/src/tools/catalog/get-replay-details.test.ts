@@ -92,8 +92,16 @@ describe("get_replay_details", () => {
             "/checkout",
           ],
           "user": {
+            "email": "taylor@example.com",
+            "geo": {
+              "city": "Vienna",
+              "countryCode": "AT",
+              "region": "Austria",
+              "subdivision": "Vienna",
+            },
             "id": "user-1",
-            "name": "Taylor Example",
+            "ip": "203.0.113.42",
+            "username": "taylor",
           },
           "viewed": null,
         },
@@ -293,7 +301,7 @@ describe("get_replay_details", () => {
     expect(payload.replay.archived).toBe(false);
   });
 
-  it("does not leak replay user data or raw recording payloads", async () => {
+  it("maps stored user fields and leaves out tags, SDK, and recording internals", async () => {
     mswServer.use(
       http.get(
         replayEndpoint,
@@ -306,10 +314,12 @@ describe("get_replay_details", () => {
               warning_ids: ["warning-leak-event-id"],
               tags: { "leak.tag": ["tag-leak-value"] },
               user: {
-                ...replayDetailsFixture.user,
+                display_name: "display-name-mix",
+                email: "taylor@example.com",
+                id: "user-1",
                 ip: "203.0.113.77",
-                username: "taylor-leak-username",
-                geo: { city: "Leaksville", country_code: "LK" },
+                username: "taylor-username",
+                geo: { city: "Graz", country_code: "AT" },
               },
             },
           }),
@@ -373,11 +383,20 @@ describe("get_replay_details", () => {
       getReplayDetailsOutputSchema.parse(result.structuredContent);
     const serializedProduct = JSON.stringify(product);
 
+    expect(product.replay.user).toEqual({
+      id: "user-1",
+      username: "taylor-username",
+      email: "taylor@example.com",
+      ip: "203.0.113.77",
+      geo: {
+        city: "Graz",
+        countryCode: "AT",
+        region: null,
+        subdivision: null,
+      },
+    });
     for (const leaked of [
-      "taylor@example.com",
-      "203.0.113.77",
-      "taylor-leak-username",
-      "Leaksville",
+      "display-name-mix",
       "dist-leak-42",
       "info-leak-event-id",
       "warning-leak-event-id",
@@ -391,10 +410,9 @@ describe("get_replay_details", () => {
       expect(serialized).not.toContain(leaked);
     }
     for (const key of [
-      "email",
-      "ip",
-      "username",
-      "geo",
+      "display_name",
+      "name",
+      "country_code",
       "tags",
       "sdk",
       "platform",
@@ -428,7 +446,7 @@ describe("get_replay_details", () => {
     ]);
   });
 
-  it("falls back to the user's email when there is no display name", async () => {
+  it("returns a null user for archived replays", async () => {
     mswServer.use(
       http.get(
         replayEndpoint,
@@ -436,7 +454,8 @@ describe("get_replay_details", () => {
           HttpResponse.json({
             data: {
               ...replayDetailsFixture,
-              user: { email: "taylor@example.com", id: "user-1" },
+              is_archived: true,
+              user: { id: "Archived Replay", display_name: "Archived Replay" },
             },
           }),
         { once: true },
@@ -445,10 +464,7 @@ describe("get_replay_details", () => {
 
     const payload = await getPayload(directParams);
 
-    expect(payload.replay.user).toEqual({
-      name: "taylor@example.com",
-      id: "user-1",
-    });
+    expect(payload.replay.user).toBeNull();
   });
 
   it("returns a null user for anonymous replays", async () => {
@@ -456,7 +472,24 @@ describe("get_replay_details", () => {
       http.get(
         replayEndpoint,
         () =>
-          HttpResponse.json({ data: { ...replayDetailsFixture, user: {} } }),
+          HttpResponse.json({
+            data: {
+              ...replayDetailsFixture,
+              user: {
+                id: null,
+                username: null,
+                email: null,
+                ip: null,
+                display_name: null,
+                geo: {
+                  city: null,
+                  country_code: null,
+                  region: null,
+                  subdivision: null,
+                },
+              },
+            },
+          }),
         { once: true },
       ),
     );
@@ -691,6 +724,7 @@ describe("get_replay_details", () => {
       arguments: {
         organizationSlug: "sentry-mcp-evals",
         replayId: replayDetailsFixture.id,
+        regionUrl: "https://us.sentry.io",
         categories: ["click", "network"],
         startOffsetSeconds: 0,
         limit: 2,
