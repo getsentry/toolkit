@@ -36,7 +36,7 @@ export const createCommand = buildCommand({
     schema: MetricMonitorMutationSchema,
     human: (data: MetricMonitorMutation) =>
       data.dryRun
-        ? `Would create monitor in ${data.org}/${data.project}.`
+        ? `Would create monitor in ${data.org}/${data.project}:\n${JSON.stringify(data.body, null, 2)}`
         : `Created monitor ${data.id} in ${data.org}/${data.project}: ${data.name}.`,
   },
   parameters: {

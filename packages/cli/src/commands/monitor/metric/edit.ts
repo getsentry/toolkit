@@ -29,7 +29,7 @@ export const editCommand = buildCommand({
     schema: MetricMonitorMutationSchema,
     human: (data: MetricMonitorMutation) =>
       data.dryRun
-        ? `Would update monitor ${data.id} in ${data.org}.`
+        ? `Would update monitor ${data.id} in ${data.org}:\n${JSON.stringify(data.body, null, 2)}`
         : `Updated monitor ${data.id} in ${data.org}: ${data.name}.`,
   },
   parameters: {

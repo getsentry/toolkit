@@ -36,6 +36,18 @@ async function invoke(
   flags: Record<string, unknown>,
   target: string,
 ) {
+  return JSON.parse(await invokeText(command, verb, flags, target)) as Record<
+    string,
+    unknown
+  >;
+}
+
+async function invokeText(
+  command: typeof createCommand,
+  verb: string,
+  flags: Record<string, unknown>,
+  target: string,
+) {
   const chunks: string[] = [];
   const context = {
     cwd: configDir(),
@@ -54,7 +66,7 @@ async function invoke(
     target: string,
   ) => Promise<void>;
   await func.call(context, { json: true, "dry-run": false, ...flags }, target);
-  return JSON.parse(chunks.join("")) as Record<string, unknown>;
+  return chunks.join("");
 }
 
 const createFlags = {
@@ -84,6 +96,41 @@ describe("native metric monitor commands", () => {
       body: nativeMonitorCreateBody,
     });
   });
+
+  test.each([
+    {
+      verb: "create",
+      command: createCommand,
+      target: "test-org/web",
+      flags: createFlags,
+      body: nativeMonitorCreateBody,
+    },
+    {
+      verb: "edit",
+      command: editCommand,
+      target: "test-org/9",
+      flags: { enabled: false, alert: ["7", "8"] },
+      body: { enabled: false, workflowIds: [7, 8] },
+    },
+  ])(
+    "$verb human dry-run exposes the native request body",
+    async (scenario) => {
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const request = new Request(input!, init);
+        expect(request.method).toBe("GET");
+        return Response.json(metricMonitor());
+      });
+      const output = await invokeText(
+        scenario.command,
+        scenario.verb,
+        { ...scenario.flags, json: false, "dry-run": true },
+        scenario.target,
+      );
+      expect(JSON.parse(output.slice(output.indexOf("{")))).toEqual(
+        scenario.body,
+      );
+    },
+  );
 
   test("create sends the same native body and outputs enabled, not legacy status", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {

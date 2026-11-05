@@ -52,8 +52,9 @@ The dataset names select these native signals:
 | `sessions`, `metrics` | Session crash rates |
 
 `--enabled true|false` controls the monitor. `--alert` replaces connected alert
-IDs; an empty string disconnects all alerts. `--dry-run --json` shows the exact
-native request. JSON output retains `dataSources`, `conditionGroup`, `config`,
+IDs; an empty string disconnects all alerts. For create and edit, `--dry-run`
+prints the exact native request body in human output; add `--json` for a
+structured preview. JSON output retains `dataSources`, `conditionGroup`, `config`,
 `workflowIds`, `projectId`, and `enabled` rather than a flattened alert-rule shape.
 
 ## Inspect notifications
