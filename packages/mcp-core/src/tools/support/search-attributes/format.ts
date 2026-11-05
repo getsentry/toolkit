@@ -130,7 +130,7 @@ function describeCell({ context }: TraceItemAttribute): string {
   if (brief) {
     const description = truncate(brief, MAX_DESCRIPTION_LENGTH);
     const examples = `EXAMPLE VALUES: ${context?.examples?.join(", ")}`;
-    return `${description}. ${context?.examples ? examples : ""}`;
+    return `${description} ${context?.examples ? examples : ""}`;
   } else return "";
 }
 
