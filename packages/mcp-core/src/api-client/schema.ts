@@ -2511,12 +2511,19 @@ export const EventsTimeSeriesValueSchema = z
     value: z.union([z.number(), z.string()]).nullish(),
     incomplete: z.boolean(),
     incompleteReason: z.string().optional(),
+    comparisonValue: z.union([z.number(), z.string()]).nullish(),
+    filled: z.boolean().optional(),
+    smoothed: z.boolean().optional(),
+    comparisonFilled: z.boolean().optional(),
+    comparisonSmoothed: z.boolean().optional(),
+    sampleCount: z.number().nullish(),
+    sampleRate: z.number().nullish(),
+    confidence: z.enum(["low", "high"]).nullish(),
   })
   .passthrough();
 
 /**
- * Response from the events-timeseries endpoint. The MCP always requests a
- * single yAxis without topEvents, so `timeSeries` holds exactly one series.
+ * Response from the events-timeseries endpoint in request axis order.
  */
 export const EventsTimeSeriesResponseSchema = z
   .object({
@@ -2525,12 +2532,21 @@ export const EventsTimeSeriesResponseSchema = z
         .object({
           yAxis: z.string(),
           values: z.array(EventsTimeSeriesValueSchema),
+          groupBy: z
+            .array(
+              z.object({
+                key: z.string(),
+                value: z.union([z.string(), z.number()]).nullable(),
+              }),
+            )
+            .optional(),
           meta: z
             .object({
               // Bucket width in milliseconds
               interval: z.number(),
               valueType: z.string().optional(),
               valueUnit: z.string().nullish(),
+              dataScanned: z.enum(["partial", "full"]).optional(),
             })
             .passthrough(),
         })

@@ -101,6 +101,12 @@ import {
 } from "../utils/events-datasets";
 import { isNumericId } from "../utils/slug-validation";
 import {
+  appendTimeSeriesParams,
+  normalizeTimeSeriesConfig,
+  timeSeriesCharts,
+  type TimeSeriesConfig,
+} from "../utils/time-series";
+import {
   type DashboardUrlOptions,
   getAIConversationsUrl as getAIConversationsUrlUtil,
   getAIConversationUrl as getAIConversationUrlUtil,
@@ -292,6 +298,7 @@ type ExplorerAggregateParams = {
   fields?: string[];
   aggregateFunctions?: string[];
   groupByFields?: string[];
+  timeSeries?: TimeSeriesConfig;
 };
 
 type ExplorerUrlParams = ExplorerAggregateParams & {
@@ -1082,6 +1089,7 @@ export class SentryApiService {
 
   private isAggregateExplorerQuery(params: ExplorerAggregateParams): boolean {
     return Boolean(
+      params.timeSeries ||
       params.aggregateFunctions?.length ||
       params.fields?.some(isAggregateFieldOrEquation),
     );
@@ -1099,6 +1107,12 @@ export class SentryApiService {
     urlParams: URLSearchParams,
     params: ExplorerAggregateParams,
   ): void {
+    if (params.timeSeries) {
+      for (const chart of timeSeriesCharts(params.timeSeries)) {
+        urlParams.append("aggregateField", JSON.stringify(chart));
+      }
+      return;
+    }
     const { fields, aggregateFunctions, groupByFields } = params;
 
     if (aggregateFunctions?.length || groupByFields?.length) {
@@ -1136,8 +1150,16 @@ export class SentryApiService {
 
   private appendExplorerTimeParams(
     urlParams: URLSearchParams,
-    params: { statsPeriod?: string; start?: string; end?: string },
+    params: {
+      statsPeriod?: string;
+      start?: string;
+      end?: string;
+      timeSeries?: TimeSeriesConfig;
+    },
   ): void {
+    if (params.timeSeries?.interval) {
+      urlParams.set("interval", params.timeSeries.interval);
+    }
     if (params.start && params.end) {
       urlParams.set("start", params.start);
       urlParams.set("end", params.end);
@@ -1285,6 +1307,7 @@ export class SentryApiService {
     start?: string,
     end?: string,
     eventData?: Record<string, unknown>[],
+    timeSeries?: TimeSeriesConfig,
   ): string {
     if (dataset === "errors") {
       // Route to legacy Discover API
@@ -1316,6 +1339,7 @@ export class SentryApiService {
           aggregateFunctions,
           groupByFields,
           traceMetrics: this.extractTraceMetricsFromResults(eventData),
+          timeSeries,
         },
         this.protocol,
       );
@@ -1351,6 +1375,7 @@ export class SentryApiService {
       end,
       aggregateFunctions,
       groupByFields,
+      timeSeries,
     };
 
     return dataset === "logs"
@@ -4544,7 +4569,7 @@ export class SentryApiService {
   }
 
   /**
-   * Fetch a timeseries (events-timeseries) for a single yAxis, bucketed over
+   * Fetch a timeseries (events-timeseries) for ordered axes, bucketed over
    * time. Buckets that may still receive data are flagged `incomplete`, and
    * `meta.ingestion` reports the measured ingestion delay when available.
    *
@@ -4558,6 +4583,7 @@ export class SentryApiService {
       query,
       yAxis,
       interval,
+      timeSeries,
       projectId,
       dataset = "errors",
       statsPeriod,
@@ -4566,24 +4592,24 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       query: string;
-      yAxis: string;
-      interval?: string;
       projectId?: string;
       dataset?: EventsDataset;
       statsPeriod?: string;
       start?: string;
       end?: string;
-    },
+    } & (
+      | { yAxis: string; interval?: string; timeSeries?: never }
+      | { timeSeries: TimeSeriesConfig; yAxis?: never; interval?: never }
+    ),
     opts?: RequestOptions,
   ) {
     const queryParams = new URLSearchParams();
     queryParams.set("dataset", normalizeEventsDataset(dataset));
     queryParams.set("query", query);
-    queryParams.set("yAxis", yAxis);
-    // Omit interval to let Sentry pick a sensible bucket size for the range.
-    if (interval) {
-      queryParams.set("interval", interval);
-    }
+    appendTimeSeriesParams(
+      queryParams,
+      normalizeTimeSeriesConfig(timeSeries ?? { yAxis, interval }),
+    );
     applyTimeParams(queryParams, statsPeriod, start, end);
     if (projectId) {
       queryParams.set("project", projectId);
