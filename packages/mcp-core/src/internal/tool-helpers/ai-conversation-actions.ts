@@ -1,11 +1,10 @@
 import { inlineCode } from "@sentry/toolkit-core/markdown";
 import {
-  buildSuggestedToolAction,
+  MAX_SUGGESTED_ACTIONS,
   type SuggestedToolAction,
+  buildSuggestedToolAction,
 } from "./suggested-actions";
 import { formatToolCall } from "./tool-call-formatting";
-
-const MAX_SUGGESTED_ACTIONS = 3;
 
 export interface AIConversationReference {
   conversationId: string;
@@ -26,8 +25,9 @@ export function getAIConversationSuggestedActions({
   availableToolNames?: ReadonlySet<string>;
   directToolNames?: ReadonlySet<string>;
 }): SuggestedToolAction[] {
-  return aiConversations.slice(0, MAX_SUGGESTED_ACTIONS).flatMap(
-    (conversation) =>
+  return aiConversations
+    .slice(0, MAX_SUGGESTED_ACTIONS)
+    .map((conversation) =>
       buildSuggestedToolAction({
         toolName: "get_agent_conversation_details",
         arguments: {
@@ -38,8 +38,9 @@ export function getAIConversationSuggestedActions({
         experimentalMode,
         availableToolNames,
         directToolNames,
-      }) ?? [],
-  );
+      }),
+    )
+    .filter((action): action is SuggestedToolAction => action !== null);
 }
 
 /** Returns markdown instructions that mirror the callable structured actions. */

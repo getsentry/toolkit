@@ -2,7 +2,10 @@ import { z } from "zod";
 import { isTopLevelToolName } from "../../tools/surfaces";
 import { isToolAvailableInSession } from "./tool-call-formatting";
 
-type SuggestedActionValue =
+/** See docs/contributing/tool-responses.md#suggested-actions. */
+export const MAX_SUGGESTED_ACTIONS = 3;
+
+export type SuggestedActionValue =
   | string
   | number
   | boolean
@@ -26,8 +29,8 @@ export const suggestedToolActionSchema = z.object({
 });
 
 /**
- * Builds a follow-up call for `toolName` on the session's direct or catalog
- * surface. Returns null when the session cannot call the tool.
+ * Builds a follow-up call that matches the session's direct or catalog
+ * surface, or null when the target tool cannot be called in this session.
  */
 export function buildSuggestedToolAction({
   toolName,
@@ -48,31 +51,27 @@ export function buildSuggestedToolAction({
     return null;
   }
 
-  const isDirect = (name: string) =>
-    directToolNames
-      ? directToolNames.has(name)
-      : isTopLevelToolName(name, experimentalMode);
-
-  if (isDirect(toolName)) {
-    return {
-      type: "tool_call",
-      toolName,
-      arguments: targetArguments,
-      reason,
-    };
+  const targetIsDirect = directToolNames
+    ? directToolNames.has(toolName)
+    : isTopLevelToolName(toolName, experimentalMode);
+  if (targetIsDirect) {
+    return { type: "tool_call", toolName, arguments: targetArguments, reason };
   }
 
+  const executeToolIsDirect = directToolNames
+    ? directToolNames.has("execute_sentry_tool")
+    : isTopLevelToolName("execute_sentry_tool", experimentalMode);
   if (
-    isDirect("execute_sentry_tool") &&
-    isToolAvailableInSession("execute_sentry_tool", availableToolNames)
+    !executeToolIsDirect ||
+    !isToolAvailableInSession("execute_sentry_tool", availableToolNames)
   ) {
-    return {
-      type: "tool_call",
-      toolName: "execute_sentry_tool",
-      arguments: { name: toolName, arguments: targetArguments },
-      reason,
-    };
+    return null;
   }
 
-  return null;
+  return {
+    type: "tool_call",
+    toolName: "execute_sentry_tool",
+    arguments: { name: toolName, arguments: targetArguments },
+    reason,
+  };
 }
