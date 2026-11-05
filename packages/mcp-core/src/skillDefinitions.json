@@ -184,7 +184,7 @@
       },
       {
         "name": "get_uptime_monitor_details",
-        "description": "Get details for a Sentry uptime monitor, including recent checks.\n\nUse this tool when you need to:\n- Inspect an uptime monitor's URL, interval, thresholds, and status\n- Review recent HTTP check results (success/failure, status code, duration)\n- Debug why an uptime monitor is failing\n\nThis is separate from cron monitors (`get_monitor_details`).\n\nRequest bodies are never returned. Sensitive header values are redacted.\n\n<examples>\nget_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')\nget_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', period='7d', checkLimit=20)\n</examples>",
+        "description": "Get details for a Sentry uptime monitor, including recent checks.\n\nUse this tool when you need to:\n- Inspect an uptime monitor's URL, interval, thresholds, and status\n- Review recent HTTP check results (success/failure, status code, duration)\n- Debug why an uptime monitor is failing\n\nThis is separate from cron monitors (`get_monitor_details`).\n\nRequest bodies are never returned. Sensitive header values are redacted.\nTo find related issues, call `search_issues` with query `uptime_rule:<id>`.\n\n<examples>\nget_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')\nget_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', period='7d', checkLimit=20)\n</examples>",
         "requiredScopes": ["project:read"]
       },
       {
