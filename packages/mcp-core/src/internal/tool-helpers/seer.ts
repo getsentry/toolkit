@@ -92,7 +92,7 @@ export function getHumanInterventionGuidance(status: string): string {
 }
 
 export const SEER_OUT_OF_CREDITS_MESSAGE =
-  "Your organization doesn't have enough Seer credits for this. Add credits in Sentry to continue.";
+  "Your organization does not have enough Seer credits. Someone with billing access can turn on auto-reload in Sentry.";
 
 /**
  * Explain why a failed run stopped, when Seer gives a reason we can explain.
