@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-init
-version: 0.48.0
+version: 0.49.0-dev.0
 description: Print instructions for a coding agent to set up Sentry
 requires:
   bins: ["sentry"]
