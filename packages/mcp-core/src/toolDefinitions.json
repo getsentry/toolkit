@@ -5709,7 +5709,7 @@
                 },
                 "estimatedTotalMs": {
                   "type": "number",
-                  "description": "Total sampled duration of the main thread profile."
+                  "description": "Sampled duration across the aggregated stacks returned."
                 },
                 "userCodeMs": {
                   "type": "number",

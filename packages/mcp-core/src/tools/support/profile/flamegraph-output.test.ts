@@ -244,6 +244,28 @@ describe("buildFlamegraphComparison", () => {
     });
   });
 
+  it("maps placeholder file and line values to null in changes", () => {
+    const withPlaceholders = () => {
+      const flamegraph = createMockFlamegraph();
+      flamegraph.shared.frames[0] = {
+        ...flamegraph.shared.frames[0]!,
+        file: "",
+        line: 0,
+      };
+      return flamegraph;
+    };
+
+    const comparison = buildFlamegraphComparison(
+      withPlaceholders(),
+      withPlaceholders(),
+      { focusOnUserCode: false },
+    );
+
+    expect(
+      comparison.changes.find((change) => change.name === "handle_request"),
+    ).toMatchObject({ file: null, line: null });
+  });
+
   it("detects improvements", () => {
     const current = createMockFlamegraph();
     current.shared.frame_infos[0]!.sumDuration = 128_000_000;

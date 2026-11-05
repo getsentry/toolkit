@@ -59,7 +59,7 @@ const analysisSchema = z.object({
   sampleCount: z.number(),
   estimatedTotalMs: z
     .number()
-    .describe("Total sampled duration of the main thread profile."),
+    .describe("Sampled duration across the aggregated stacks returned."),
   userCodeMs: z
     .number()
     .describe(

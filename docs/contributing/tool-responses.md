@@ -323,12 +323,12 @@ background, preserving the monitor and its other environments.
 `get_profile` returns the aggregated flamegraph for one transaction as
 structured content. Frames appear once in `analysis.frames` with their
 call-tree `occurrences` (not a sample count), p75/p95/p99 durations, and
-insights; `topFunctions`, hot path `stack`
-arrays, and hot path `leaf` values refer to them by index, so shared parent
-frames are not repeated per hot path. A stack reads from root to leaf, and its
-last frame is the primary bottleneck. With `focusOnUserCode`, library frames
-are omitted from stacks, and `leaf` still names the sampled leaf frame.
-`userCodeMs` and `libraryMs` split the main thread's sampled time by whether
-each sample's leaf frame is application code, so they add up to
-`estimatedTotalMs`. Missing data is a successful result: `hasCurrentData` and `hasBaselineData`
-report which period had profiles, and `analysis` or `comparison` is `null`.
+insights; `topFunctions`, hot path `stack` arrays, and hot path `leaf` values
+refer to them by index, so shared parent frames are not repeated per hot path.
+A stack reads from root to leaf, and its last frame is the primary bottleneck.
+With `focusOnUserCode`, library frames are omitted from stacks, and `leaf`
+still names the sampled leaf frame. `userCodeMs` and `libraryMs` split the main
+thread's sampled time by whether each sample's leaf frame is application code,
+so they add up to `estimatedTotalMs`. Missing data is a successful result:
+`hasCurrentData` and `hasBaselineData` report which period had profiles, and
+`analysis` or `comparison` is `null`.
