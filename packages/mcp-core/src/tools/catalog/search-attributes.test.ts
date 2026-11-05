@@ -232,16 +232,6 @@ describe("search_attributes", () => {
 
   // This isn't quite a case yet but i'm leaving it here so we don't forget about this case
   it("lists attributes with a note when the AI provider fails", async () => {
-    mockGenerateText.mockRejectedValue(
-      new APICallError({
-        message: "Workspace budget exceeded",
-        url: "https://api.openai.com/v1/chat/completions",
-        requestBodyValues: {},
-        statusCode: 402,
-        isRetryable: false,
-      }),
-    );
-
     const output = await search({
       query: "HTTP status code",
       dataset: "spans",

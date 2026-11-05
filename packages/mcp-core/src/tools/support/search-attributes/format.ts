@@ -128,9 +128,13 @@ function formatAttributeTable(attributes: TraceItemAttribute[]): string[] {
 function describeCell({ context }: TraceItemAttribute): string {
   const brief = flatten(context?.brief);
   if (brief) {
-    const description = truncate(brief, MAX_DESCRIPTION_LENGTH);
-    const examples = `EXAMPLE VALUES: ${context?.examples?.join(", ")}`;
-    return `${description} ${context?.examples ? examples : ""}`;
+    const examples = flatten(
+      `EXAMPLE VALUES: ${context?.examples?.join(", ")}`,
+    );
+    return truncate(
+      `${brief} ${context?.examples ? examples : ""}`,
+      MAX_DESCRIPTION_LENGTH,
+    );
   } else return "";
 }
 
