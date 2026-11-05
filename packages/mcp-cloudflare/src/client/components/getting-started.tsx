@@ -49,7 +49,7 @@ export default function Integration() {
       id="getting-started"
       className="flex flex-col md:max-w-3xl mx-auto relative mb-12 -scroll-mt-8 max-w-full"
     >
-      <div className="flex justify-between items-center px-4 sm:px-8 pt-4 sm:pt-8 pb-4">
+      <div className="flex flex-wrap justify-between items-center gap-3 px-4 sm:px-8 pt-4 sm:pt-8 pb-4">
         <h1 className="text-2xl md:text-2xl font-semibold">Installation</h1>
         <div className="flex items-center text-xs bg-background-3 rounded-xl p-1 size-fit -translate-x-[1.5px] z-20 border-[0.5px] border-violet-300/50 gap-0.5">
           {TRANSPORTS.map(({ id, label, icon }) => (
