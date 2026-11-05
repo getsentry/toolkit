@@ -106,6 +106,11 @@ requested fields in `values` plus derived URLs in `links`, and rendering
 guidance is in `presentationHint`. Warnings and empty-result guidance are
 entries in `notes[]`, and a concrete follow-up is in `suggestedActions`.
 
+`search_replays` also declares an `outputSchema`, but replays have no fields
+or aggregates, so its payload lists `replays[]` with explicitly mapped
+replay fields (IDs, URLs, user, counts, browser, environment, and previews of
+visited pages and trace IDs with their full counts) in place of `results`.
+
 ## Key Implementation Details
 
 ### Embedded Agent Provider

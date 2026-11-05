@@ -13072,6 +13072,228 @@
       },
       "required": ["organizationSlug"]
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "explanation": {
+          "type": ["string", "null"]
+        },
+        "executedSearch": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "sort": {
+              "type": "string"
+            },
+            "environment": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "timeRange": {
+              "type": "object",
+              "properties": {
+                "statsPeriod": {
+                  "type": ["string", "null"]
+                },
+                "start": {
+                  "type": ["string", "null"]
+                },
+                "end": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["statsPeriod", "start", "end"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["query", "sort", "environment", "timeRange"],
+          "additionalProperties": false
+        },
+        "url": {
+          "type": "string",
+          "description": "Opens these results in Sentry."
+        },
+        "presentationHint": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "replays": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "replayUrl": {
+                "type": "string"
+              },
+              "startedAt": {
+                "type": ["string", "null"]
+              },
+              "durationSeconds": {
+                "type": ["number", "null"]
+              },
+              "user": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": ["string", "null"]
+                      },
+                      "username": {
+                        "type": ["string", "null"]
+                      },
+                      "email": {
+                        "type": ["string", "null"]
+                      },
+                      "ip": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "required": ["id", "username", "email", "ip"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Null for archived replays."
+              },
+              "errorCount": {
+                "type": ["number", "null"]
+              },
+              "rageClickCount": {
+                "type": ["number", "null"]
+              },
+              "deadClickCount": {
+                "type": ["number", "null"]
+              },
+              "environment": {
+                "type": ["string", "null"]
+              },
+              "browser": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": ["string", "null"]
+                  },
+                  "version": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["name", "version"],
+                "additionalProperties": false
+              },
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The first 3 visited pages."
+              },
+              "urlCount": {
+                "type": "number"
+              },
+              "releases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The first 3 releases."
+              },
+              "releaseCount": {
+                "type": "number"
+              },
+              "traceIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The first 3 trace IDs."
+              },
+              "traceCount": {
+                "type": "number"
+              },
+              "isArchived": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "replayUrl",
+              "startedAt",
+              "durationSeconds",
+              "user",
+              "errorCount",
+              "rageClickCount",
+              "deadClickCount",
+              "environment",
+              "browser",
+              "urls",
+              "urlCount",
+              "releases",
+              "releaseCount",
+              "traceIds",
+              "traceCount",
+              "isArchived"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "query",
+        "explanation",
+        "executedSearch",
+        "url",
+        "presentationHint",
+        "notes",
+        "replays",
+        "suggestedActions"
+      ],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "direct"
