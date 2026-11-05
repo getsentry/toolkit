@@ -22,6 +22,7 @@ import {
   DASHBOARD_LINK_HINT,
   ERROR_RESULT_HINTS,
   type ExecutedSearch,
+  LOG_RESULT_HINTS,
   type SearchResultHints,
   summarizeTimeSeries,
 } from "./formatters";
@@ -134,6 +135,48 @@ function defineDatasetConfig<TLinks extends RowLinkShape>(
   return config;
 }
 
+function getStringField(
+  event: FlexibleEventData,
+  field: string,
+): string | null {
+  const value = event[field];
+  return typeof value === "string" && value ? value : null;
+}
+
+function traceUrlFor(
+  event: FlexibleEventData,
+  { apiService, organizationSlug }: StructuredSearchSession,
+): string | null {
+  const traceId = getStringField(event, "trace");
+  return traceId ? apiService.getTraceUrl(organizationSlug, traceId) : null;
+}
+
+/** Suggests opening the trace of the first row that has one. */
+function firstTraceAction(
+  results: SearchEventsStructuredContent["results"],
+  session: StructuredSearchSession,
+  reason: string,
+): SuggestedToolAction[] {
+  const traceId = results
+    .map((row) => row.values.trace)
+    .find((trace): trace is string => typeof trace === "string" && !!trace);
+  const action = traceId
+    ? buildSuggestedToolAction({
+        toolName: "get_sentry_resource",
+        arguments: {
+          organizationSlug: session.organizationSlug,
+          resourceType: "trace",
+          resourceId: traceId,
+        },
+        reason,
+        experimentalMode: session.experimentalMode,
+        availableToolNames: session.availableToolNames,
+        directToolNames: session.directToolNames,
+      })
+    : null;
+  return action ? [action] : [];
+}
+
 const STRUCTURED_DATASETS = {
   errors: defineDatasetConfig({
     hints: ERROR_RESULT_HINTS,
@@ -164,6 +207,28 @@ const STRUCTURED_DATASETS = {
         : null;
       return action ? [action] : [];
     },
+  }),
+  logs: defineDatasetConfig({
+    hints: LOG_RESULT_HINTS,
+    links: {
+      logUrl: z.string().nullable(),
+      traceUrl: z.string().nullable(),
+    },
+    rowLinks: (event, session) => {
+      const logId = getStringField(event, "id");
+      return {
+        logUrl: logId
+          ? session.apiService.getLogUrl(session.organizationSlug, logId)
+          : null,
+        traceUrl: traceUrlFor(event, session),
+      };
+    },
+    suggestedActions: (results, session) =>
+      firstTraceAction(
+        results,
+        session,
+        "Inspect the trace for the first matching log.",
+      ),
   }),
 } satisfies Partial<Record<PublicEventsDataset, StructuredDatasetConfig>>;
 

@@ -25,6 +25,7 @@ it("search_logs runs the shared handler locked to logs", async () => {
       ],
       "options": {
         "lockDataset": true,
+        "output": "structured",
       },
     }
   `);
