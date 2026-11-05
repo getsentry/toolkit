@@ -58,7 +58,7 @@ import tools from "./tools/index";
 import { isCatalogInfrastructureToolName } from "./tools/surfaces";
 import type { StructuredToolOutput } from "./tools/types";
 import type { ServerContext } from "./types";
-import { LIB_VERSION } from "./version";
+import { getServerVersion } from "./version";
 
 function getSkillGrantedAttributeName(skill: Skill): string {
   return `app.consent.skill.${skill.replaceAll("-", "_")}.granted`;
@@ -310,7 +310,7 @@ export function buildServer({
   const server = new McpServer(
     {
       ...MCP_SERVER_INFO,
-      version: LIB_VERSION,
+      version: getServerVersion(),
     },
     {
       maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,

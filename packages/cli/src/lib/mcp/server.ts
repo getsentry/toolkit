@@ -19,6 +19,7 @@ import { buildServer } from "@sentry/mcp-core/server";
 import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { startStdio } from "@sentry/mcp-core/transports/stdio";
 import type { CredentialRouter, ServerContext } from "@sentry/mcp-core/types";
+import { setServerVersion } from "@sentry/mcp-core/version";
 import {
   close,
   consoleLoggingIntegration,
@@ -389,6 +390,8 @@ export async function serveMcpStdio(
   config: McpServerConfig,
   options: McpServeOptions,
 ): Promise<void> {
+  // @sentry/mcp-server ships at the CLI version, not mcp-core's.
+  setServerVersion(CLI_VERSION);
   configureAgentProvider(config, options.env);
   initMcpTelemetry(config);
 

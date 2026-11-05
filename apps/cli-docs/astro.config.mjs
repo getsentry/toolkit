@@ -1,3 +1,4 @@
+import mdx from "@astrojs/mdx";
 import starlight from "@astrojs/starlight";
 import sentry from "@sentry/astro";
 import sentryStarlightTheme, {
@@ -253,5 +254,12 @@ export default defineConfig({
       ],
       customCss: ["./src/styles/cli.css"],
     }),
+    // Starlight adds `mdx({ optimize: true })` unless an MDX integration is
+    // already configured. With Astro 7's Sätteri MDX pipeline, that
+    // optimization serializes the Expressive Code `<style>` element as a
+    // literal `set:html="..."` attribute, so MDX pages ship code blocks
+    // without their base styles (no padding, borders, etc.). Keep the
+    // optimization but leave `<style>` elements alone.
+    mdx({ optimize: { ignoreElementNames: ["style"] } }),
   ],
 });
