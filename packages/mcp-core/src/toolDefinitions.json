@@ -5292,6 +5292,54 @@
         }
       }
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "reports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "reporter": {
+                "type": "string"
+              },
+              "comments": {
+                "type": "string"
+              },
+              "dateCreated": {
+                "type": ["string", "null"]
+              }
+            },
+            "required": [
+              "id",
+              "eventId",
+              "reporter",
+              "comments",
+              "dateCreated"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "nextCursor": {
+          "description": "Pass as cursor with the same issue scope for the next page.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["organizationSlug", "issueId", "reports", "nextCursor"],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage"],
     "surface": "direct"
