@@ -484,7 +484,7 @@ function parseEventsTimeseriesResponse(
       unit: s.meta.valueUnit ?? null,
     })),
   };
-  const ingestion = parseIngestion(parsed.output.meta?.ingestion);
+  const ingestion = parseIngestion(response.meta?.ingestion);
   if (ingestion) {
     result.ingestion = ingestion;
   }
