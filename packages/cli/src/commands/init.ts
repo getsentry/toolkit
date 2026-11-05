@@ -5,7 +5,7 @@
  * to add Sentry to a project — install the CLI, log in, pick a Sentry
  * project, choose features, install the SDKs with help from `sentry docs`,
  * and check that a test error reaches Sentry. The same guide is published at
- * https://cli.sentry.dev/init.md.
+ * https://cli.sentry.dev/get-started-with-sentry.md.
  *
  * The command makes no requests, so it runs without a login and ignores a
  * `.sentryclirc` URL.
@@ -50,7 +50,7 @@ export const initCommand = buildCommand({
       "project already uses Sentry, the guide covers upgrading the SDKs and " +
       "turning on more features instead.\n\n" +
       "The command changes nothing and needs no login. The same guide is " +
-      "published at https://cli.sentry.dev/init.md.",
+      "published at https://cli.sentry.dev/get-started-with-sentry.md.",
     examples: [
       {
         description: "Print the setup guide",

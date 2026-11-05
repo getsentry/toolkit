@@ -3,9 +3,9 @@
  *
  * `init.md` is the guide a coding agent follows to add Sentry to a project.
  * `sentry init` prints it, and the docs site serves the same file at
- * https://cli.sentry.dev/init.md (`apps/cli-docs/public/init.md` is a symlink
- * to it). The single-file binary can't read the file from disk at runtime, so
- * this step writes it into a module.
+ * https://cli.sentry.dev/get-started-with-sentry.md (a symlink in
+ * `apps/cli-docs/public`). The single-file binary can't read the file from
+ * disk at runtime, so this step writes it into a module.
  *
  * Usage:   tsx script/generate.ts init-guide
  * Output:  src/generated/init-guide.ts

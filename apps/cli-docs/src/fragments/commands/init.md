@@ -10,7 +10,7 @@ itself. Ask your agent to run it:
 If the CLI isn't installed yet, point the agent at the published copy, which
 starts by installing it:
 
-> Set up Sentry for me. Fetch https://cli.sentry.dev/init.md and follow it.
+> Set up Sentry for me. Fetch https://cli.sentry.dev/get-started-with-sentry.md and follow it.
 
 When the output is piped, as it is for agents, the command prints the guide's
 Markdown source. In a terminal it renders the guide.
