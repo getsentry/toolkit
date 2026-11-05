@@ -17,9 +17,10 @@ import type { ServerContext } from "../../types";
 import { isNumericId, validateSlugOrId } from "../../utils/slug-validation";
 import { searchIssuesAgent } from "../support/search-issues/agent";
 import {
-  formatExplanation,
-  formatIssueResults,
-} from "../support/search-issues/formatters";
+  buildIssueResults,
+  type IssueSort,
+  searchIssuesOutputSchema,
+} from "../support/search-issues/results";
 
 const ProjectSlugOrIdSchema = z.string().trim().superRefine(validateSlugOrId);
 
@@ -44,7 +45,7 @@ function rewriteIssueQuery(query: string): RewrittenSearchQuery {
 
 function buildIssueSearchRepairPrompt(params: {
   query: string;
-  sort: "date" | "freq" | "new" | "user" | "recommended";
+  sort: IssueSort;
 }): string {
   return [
     "Fix this Sentry issue search request.",
@@ -138,6 +139,7 @@ export default defineTool({
         "Include explanation of how the query was translated or repaired",
       ),
   },
+  outputSchema: searchIssuesOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -151,7 +153,7 @@ export default defineTool({
     setTargetTagsAndAttributes(params);
 
     let query: string;
-    let sort: "date" | "freq" | "new" | "user" | "recommended";
+    let sort: IssueSort;
     let explanation: string | undefined;
 
     let projectId: string | undefined;
@@ -222,59 +224,25 @@ export default defineTool({
       issues.length,
     );
 
-    // Build output with explanation first (if requested and NL was used), then results
-    let output = "";
-
-    if (params.includeExplanation && explanation) {
-      output += `# Search Results for "${params.query}"\n\n`;
-      output += `**Suggested presentation:** Cards work well for these issues, with status, assignee, and issue ID links visible.\n\n`;
-
-      output += `## Query Translation\n`;
-      output += `Input query: "${params.query}"\n`;
-      output += `Sentry query: \`${query}\``;
-      output += `\nSort: ${sort}`;
-      output += `\n\n`;
-
-      if (explanation) {
-        output += formatExplanation(explanation);
-        output += `\n\n`;
-      }
-
-      output += formatIssueResults({
-        issues,
-        organizationSlug: params.organizationSlug,
-        projectSlugOrId: params.projectSlugOrId ?? undefined,
-        query,
-        regionUrl: params.regionUrl ?? undefined,
-        host: context.sentryHost,
-        protocol: context.sentryProtocol,
-        inputQuery: params.query,
-        skipHeader: true,
-        experimentalMode: context.experimentalMode ?? false,
-        availableToolNames: context.availableToolNames,
-        directToolNames: context.directToolNames,
-      });
-    } else {
-      output = formatIssueResults({
-        issues,
-        organizationSlug: params.organizationSlug,
-        projectSlugOrId: params.projectSlugOrId ?? undefined,
-        query,
-        regionUrl: params.regionUrl ?? undefined,
-        host: context.sentryHost,
-        protocol: context.sentryProtocol,
-        inputQuery: params.query,
-        skipHeader: false,
-        experimentalMode: context.experimentalMode ?? false,
-        availableToolNames: context.availableToolNames,
-        directToolNames: context.directToolNames,
-      });
-    }
-
-    if (rewritten.notes.length > 0) {
-      output += `\n\n**Query rewritten:** ${rewritten.notes.join(" ")} Ran \`${query}\`.`;
-    }
-
-    return output;
+    return buildIssueResults({
+      issues,
+      organizationSlug: params.organizationSlug,
+      inputQuery: params.query,
+      query,
+      sort,
+      period: params.period,
+      projectSlugOrId: params.projectSlugOrId ?? undefined,
+      explanation: params.includeExplanation ? explanation : undefined,
+      notes:
+        rewritten.notes.length > 0
+          ? [`Query rewritten: ${rewritten.notes.join(" ")} Ran \`${query}\`.`]
+          : [],
+      regionUrl: params.regionUrl ?? undefined,
+      host: context.sentryHost,
+      protocol: context.sentryProtocol,
+      experimentalMode: context.experimentalMode ?? false,
+      availableToolNames: context.availableToolNames,
+      directToolNames: context.directToolNames,
+    });
   },
 });

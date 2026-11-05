@@ -11555,6 +11555,181 @@
       },
       "required": ["organizationSlug"]
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "explanation": {
+          "type": ["string", "null"]
+        },
+        "executedSearch": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "sort": {
+              "type": "string",
+              "enum": ["date", "freq", "new", "user", "recommended"]
+            },
+            "period": {
+              "type": "string"
+            },
+            "projectSlugOrId": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": ["query", "sort", "period", "projectSlugOrId"],
+          "additionalProperties": false
+        },
+        "url": {
+          "type": "string",
+          "description": "Opens these results in Sentry."
+        },
+        "presentationHint": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "shortId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "substatus": {
+                "type": ["string", "null"]
+              },
+              "issueCategory": {
+                "type": ["string", "null"]
+              },
+              "occurrences": {
+                "type": "number"
+              },
+              "usersImpacted": {
+                "type": "number"
+              },
+              "assignedTo": {
+                "type": ["string", "null"]
+              },
+              "assigneeEmail": {
+                "type": ["string", "null"]
+              },
+              "reporter": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": ["string", "null"]
+                      },
+                      "email": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "required": ["name", "email"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Who submitted a feedback issue. Null for other issues."
+              },
+              "firstSeen": {
+                "type": ["string", "null"]
+              },
+              "lastSeen": {
+                "type": ["string", "null"]
+              },
+              "culprit": {
+                "type": ["string", "null"]
+              },
+              "seerActionability": {
+                "type": ["string", "null"]
+              },
+              "projectSlug": {
+                "type": ["string", "null"]
+              }
+            },
+            "required": [
+              "shortId",
+              "title",
+              "url",
+              "status",
+              "substatus",
+              "issueCategory",
+              "occurrences",
+              "usersImpacted",
+              "assignedTo",
+              "assigneeEmail",
+              "reporter",
+              "firstSeen",
+              "lastSeen",
+              "culprit",
+              "seerActionability",
+              "projectSlug"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "query",
+        "explanation",
+        "executedSearch",
+        "url",
+        "presentationHint",
+        "notes",
+        "issues",
+        "suggestedActions"
+      ],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "direct"

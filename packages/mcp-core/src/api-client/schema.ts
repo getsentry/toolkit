@@ -875,6 +875,9 @@ export const IssueSchema = z
         title: z.string().nullable().optional(),
         location: z.string().nullable().optional(),
         value: z.string().nullable().optional(),
+        // Feedback issues carry who submitted them.
+        name: z.string().nullable().optional(),
+        contact_email: z.string().nullable().optional(),
       })
       .optional(),
     seerFixabilityScore: z.number().nullable().optional(),
