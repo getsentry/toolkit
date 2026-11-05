@@ -16,6 +16,12 @@ Use `--read-only` to request only read-only scopes — useful for tokens handed
 to AI agents or CI jobs that should not mutate Sentry state. Use `--scope` to
 request specific scopes (repeatable, comma-separated).
 
+## Setup codes
+
+`SENTRY_SETUP_CODE=... sentry auth bootstrap` exchanges a short-lived, single-use
+code supplied by Sentry for stored OAuth credentials. Use `--url` to confirm an
+HTTP instance and `--force` to replace the stored login for the issuing server.
+
 ## Self-hosted Sentry
 
 Pass `--url` to log in to a self-hosted instance. Setting `SENTRY_HOST` or
@@ -56,7 +62,10 @@ that fits what they target, without changing the active account:
   account's organization list (cached at login and by `sentry org list`,
   which lists every stored account's organizations) but another stored
   account has used it, that account is used. This includes `oNNNN` IDs from
-  DSNs.
+  DSNs, and the organization in a `sentry api` path such as
+  `organizations/acme-corp/issues/`, even when that account is on another
+  server. A full URL passed to `sentry api`, or an explicit server, keeps
+  the request on that server.
 - **Server** — `SENTRY_HOST`/`SENTRY_URL`, `.sentryclirc`, or a pasted Sentry
   URL for another account's server (for example a self-hosted issue link) uses
   the account stored for that server.

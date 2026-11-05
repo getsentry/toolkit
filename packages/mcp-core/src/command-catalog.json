@@ -287,6 +287,9 @@
           "fn": "getOrganization"
         },
         {
+          "fn": "listOrganizations"
+        },
+        {
           "fn": "retrieveOrganizationAiConversation"
         }
       ]
@@ -2317,6 +2320,9 @@
         },
         {
           "fn": "getOrganizationPreprodArtifactInstallDetails"
+        },
+        {
+          "fn": "listOrganizations"
         }
       ]
     },
@@ -3534,6 +3540,9 @@
           "fn": "listOrganizationEvents"
         },
         {
+          "fn": "listOrganizationEventsTimeseries"
+        },
+        {
           "fn": "listOrganizationProjects"
         },
         {
@@ -4469,10 +4478,11 @@
                     "wasm",
                     "breakpad",
                     "sourcebundle",
-                    "jvm"
+                    "jvm",
+                    "dxil"
                   ]
                 },
-                "description": "Only upload files of this type (repeatable): dsym, elf, pe, pdb, portablepdb, wasm, breakpad, sourcebundle, jvm"
+                "description": "Only upload files of this type (repeatable): dsym, elf, pe, pdb, portablepdb, wasm, breakpad, sourcebundle, jvm, dxil"
               },
               "id": {
                 "type": "array",
@@ -4789,6 +4799,137 @@
       ]
     },
     {
+      "path": "sentry event analytics",
+      "brief": "Analytics for events Sentry accepted and dropped",
+      "permission": "read",
+      "exposure": "exposed",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "positional": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string",
+                "title": "org/project",
+                "description": "<org>/<project> or <project> (search)"
+              }
+            ],
+            "items": false
+          },
+          "flags": {
+            "type": "object",
+            "properties": {
+              "dataset": {
+                "type": "string",
+                "examples": [
+                  "errors",
+                  "spans",
+                  "logs",
+                  "metrics"
+                ],
+                "description": "Dropped-data type: errors, spans, logs, metrics",
+                "default": "errors"
+              },
+              "period": {
+                "type": "string",
+                "description": "Time range: \"7d\", \"2024-01-01..2024-02-01\", \">=2024-01-01\"",
+                "default": "7d"
+              },
+              "json": {
+                "type": "boolean",
+                "description": "Output as JSON",
+                "default": false
+              },
+              "fields": {
+                "type": "string",
+                "description": "Comma-separated fields to include in JSON output (dot.notation supported). Available: outcome, label, reason, category, events, share, tags"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "completions": {
+        "positional": [
+          "org/project"
+        ],
+        "flags": {
+          "dataset": "choice",
+          "period": "period",
+          "fields": "choice-list"
+        }
+      },
+      "examples": [
+        "# Accepted and dropped event analytics for a project\nsentry event analytics my-org/my-project",
+        "# Analytics for a different dataset\nsentry event analytics my-org/my-project --dataset spans",
+        "# Widen the time range\nsentry event analytics my-org/my-project --period 7d",
+        "# Select specific JSON fields\nsentry event analytics my-org/my-project --json --fields outcome,reason,events"
+      ],
+      "outputFields": [
+        {
+          "name": "outcome",
+          "type": "string",
+          "description": "Outcome code: accepted, or a drop such as rate_limited or filtered",
+          "optional": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "description": "Human-readable outcome label",
+          "optional": false
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": "Reason within the outcome (e.g. spike_protection); accepted for accepted volume",
+          "optional": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Data category (e.g. error, span)",
+          "optional": false
+        },
+        {
+          "name": "events",
+          "type": "number",
+          "description": "Events in this slice",
+          "optional": false
+        },
+        {
+          "name": "share",
+          "type": "number",
+          "description": "Fraction of total volume (0-1), not a percentage string",
+          "optional": false
+        },
+        {
+          "name": "tags",
+          "type": "array",
+          "description": "Drop classification: intentional or unintentional; empty for accepted",
+          "optional": false
+        }
+      ],
+      "apiOperations": [
+        {
+          "fn": "getOrganization"
+        },
+        {
+          "fn": "getProject"
+        },
+        {
+          "fn": "listOrganizationEventsDropped"
+        },
+        {
+          "fn": "listOrganizationProjects"
+        },
+        {
+          "fn": "listOrganizations"
+        }
+      ]
+    },
+    {
       "path": "sentry event list",
       "brief": "List events for an issue",
       "permission": "read",
@@ -4901,7 +5042,7 @@
         {
           "name": "groupID",
           "type": "string | null",
-          "description": "Group (issue) ID",
+          "description": "ID of the issue the event belongs to",
           "optional": true
         },
         {
@@ -4913,7 +5054,7 @@
         {
           "name": "projectID",
           "type": "string",
-          "description": "Project ID",
+          "description": "ID of the project the event belongs to",
           "optional": true
         },
         {
@@ -4931,43 +5072,43 @@
         {
           "name": "location",
           "type": "string | null",
-          "description": "Source location (file:line)",
+          "description": "Source location of the event, such as a file and line",
           "optional": true
         },
         {
           "name": "culprit",
           "type": "string | null",
-          "description": "Culprit function/module",
+          "description": "Function or module that caused the event",
           "optional": true
         },
         {
           "name": "user",
           "type": "object | null",
-          "description": "User context",
+          "description": "User context of the event",
           "optional": true
         },
         {
           "name": "tags",
           "type": "array",
-          "description": "Event tags",
+          "description": "Tags attached to the event",
           "optional": true
         },
         {
           "name": "platform",
           "type": "string | null",
-          "description": "Platform (python, javascript, etc.)",
+          "description": "Platform of the event, such as python or javascript",
           "optional": true
         },
         {
           "name": "dateCreated",
           "type": "string",
-          "description": "ISO 8601 creation timestamp",
+          "description": "When the event occurred (ISO 8601)",
           "optional": true
         },
         {
           "name": "crashFile",
           "type": "string | null",
-          "description": "Crash file URL",
+          "description": "Crash report attachment of the event, if any",
           "optional": true
         },
         {
@@ -5315,7 +5456,7 @@
         },
         {
           "name": "platform",
-          "type": "string",
+          "type": "string | null",
           "optional": true
         },
         {
@@ -5375,7 +5516,7 @@
         },
         {
           "name": "occurrence",
-          "type": "object | object | null",
+          "type": "object | null",
           "optional": true
         },
         {
@@ -5461,6 +5602,7 @@
         {
           "name": "formatted",
           "type": "object",
+          "description": "Event rendered as Markdown, XML, or JSON; only returned for API requests with llmFormat",
           "optional": true
         },
         {
@@ -5832,37 +5974,37 @@
         {
           "name": "culprit",
           "type": "string | null",
-          "description": "Culprit string",
+          "description": "Function or module where the issue occurs",
           "optional": true
         },
         {
           "name": "count",
           "type": "string",
-          "description": "Total event count",
+          "description": "Total number of events in the issue",
           "optional": true
         },
         {
           "name": "userCount",
           "type": "number",
-          "description": "Number of affected users",
+          "description": "Number of users affected by the issue",
           "optional": true
         },
         {
           "name": "firstSeen",
           "type": "string | null",
-          "description": "First occurrence (ISO 8601)",
+          "description": "When the issue was first seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastSeen",
           "type": "string | null",
-          "description": "Most recent occurrence (ISO 8601)",
+          "description": "When the issue was last seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "level",
           "type": "string",
-          "description": "Severity level",
+          "description": "Severity level of the issue",
           "optional": true
         },
         {
@@ -5874,13 +6016,13 @@
         {
           "name": "permalink",
           "type": "string",
-          "description": "URL to the issue in Sentry",
+          "description": "URL of the issue in Sentry",
           "optional": true
         },
         {
           "name": "project",
           "type": "object",
-          "description": "Project info",
+          "description": "Project the issue belongs to",
           "optional": true
         },
         {
@@ -5892,7 +6034,7 @@
         {
           "name": "assignedTo",
           "type": "object | null",
-          "description": "Assigned user or team",
+          "description": "User or team the issue is assigned to",
           "optional": true
         },
         {
@@ -6045,37 +6187,37 @@
         {
           "name": "culprit",
           "type": "string | null",
-          "description": "Culprit string",
+          "description": "Function or module where the issue occurs",
           "optional": true
         },
         {
           "name": "count",
           "type": "string",
-          "description": "Total event count",
+          "description": "Total number of events in the issue",
           "optional": true
         },
         {
           "name": "userCount",
           "type": "number",
-          "description": "Number of affected users",
+          "description": "Number of users affected by the issue",
           "optional": true
         },
         {
           "name": "firstSeen",
           "type": "string | null",
-          "description": "First occurrence (ISO 8601)",
+          "description": "When the issue was first seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastSeen",
           "type": "string | null",
-          "description": "Most recent occurrence (ISO 8601)",
+          "description": "When the issue was last seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "level",
           "type": "string",
-          "description": "Severity level",
+          "description": "Severity level of the issue",
           "optional": true
         },
         {
@@ -6087,13 +6229,13 @@
         {
           "name": "permalink",
           "type": "string",
-          "description": "URL to the issue in Sentry",
+          "description": "URL of the issue in Sentry",
           "optional": true
         },
         {
           "name": "project",
           "type": "object",
-          "description": "Project info",
+          "description": "Project the issue belongs to",
           "optional": true
         },
         {
@@ -6105,7 +6247,7 @@
         {
           "name": "assignedTo",
           "type": "object | null",
-          "description": "Assigned user or team",
+          "description": "User or team the issue is assigned to",
           "optional": true
         },
         {
@@ -6267,37 +6409,37 @@
         {
           "name": "culprit",
           "type": "string | null",
-          "description": "Culprit string",
+          "description": "Function or module where the issue occurs",
           "optional": true
         },
         {
           "name": "count",
           "type": "string",
-          "description": "Total event count",
+          "description": "Total number of events in the issue",
           "optional": true
         },
         {
           "name": "userCount",
           "type": "number",
-          "description": "Number of affected users",
+          "description": "Number of users affected by the issue",
           "optional": true
         },
         {
           "name": "firstSeen",
           "type": "string | null",
-          "description": "First occurrence (ISO 8601)",
+          "description": "When the issue was first seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastSeen",
           "type": "string | null",
-          "description": "Most recent occurrence (ISO 8601)",
+          "description": "When the issue was last seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "level",
           "type": "string",
-          "description": "Severity level",
+          "description": "Severity level of the issue",
           "optional": true
         },
         {
@@ -6309,13 +6451,13 @@
         {
           "name": "permalink",
           "type": "string",
-          "description": "URL to the issue in Sentry",
+          "description": "URL of the issue in Sentry",
           "optional": true
         },
         {
           "name": "project",
           "type": "object",
-          "description": "Project info",
+          "description": "Project the issue belongs to",
           "optional": true
         },
         {
@@ -6327,7 +6469,7 @@
         {
           "name": "assignedTo",
           "type": "object | null",
-          "description": "Assigned user or team",
+          "description": "User or team the issue is assigned to",
           "optional": true
         },
         {
@@ -6490,37 +6632,37 @@
         {
           "name": "culprit",
           "type": "string | null",
-          "description": "Culprit string",
+          "description": "Function or module where the issue occurs",
           "optional": true
         },
         {
           "name": "count",
           "type": "string",
-          "description": "Total event count",
+          "description": "Total number of events in the issue",
           "optional": true
         },
         {
           "name": "userCount",
           "type": "number",
-          "description": "Number of affected users",
+          "description": "Number of users affected by the issue",
           "optional": true
         },
         {
           "name": "firstSeen",
           "type": "string | null",
-          "description": "First occurrence (ISO 8601)",
+          "description": "When the issue was first seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastSeen",
           "type": "string | null",
-          "description": "Most recent occurrence (ISO 8601)",
+          "description": "When the issue was last seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "level",
           "type": "string",
-          "description": "Severity level",
+          "description": "Severity level of the issue",
           "optional": true
         },
         {
@@ -6532,13 +6674,13 @@
         {
           "name": "permalink",
           "type": "string",
-          "description": "URL to the issue in Sentry",
+          "description": "URL of the issue in Sentry",
           "optional": true
         },
         {
           "name": "project",
           "type": "object",
-          "description": "Project info",
+          "description": "Project the issue belongs to",
           "optional": true
         },
         {
@@ -6550,7 +6692,7 @@
         {
           "name": "assignedTo",
           "type": "object | null",
-          "description": "Assigned user or team",
+          "description": "User or team the issue is assigned to",
           "optional": true
         },
         {
@@ -6725,37 +6867,37 @@
         {
           "name": "culprit",
           "type": "string | null",
-          "description": "Culprit string",
+          "description": "Function or module where the issue occurs",
           "optional": true
         },
         {
           "name": "count",
           "type": "string",
-          "description": "Total event count",
+          "description": "Total number of events in the issue",
           "optional": true
         },
         {
           "name": "userCount",
           "type": "number",
-          "description": "Number of affected users",
+          "description": "Number of users affected by the issue",
           "optional": true
         },
         {
           "name": "firstSeen",
           "type": "string | null",
-          "description": "First occurrence (ISO 8601)",
+          "description": "When the issue was first seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastSeen",
           "type": "string | null",
-          "description": "Most recent occurrence (ISO 8601)",
+          "description": "When the issue was last seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "level",
           "type": "string",
-          "description": "Severity level",
+          "description": "Severity level of the issue",
           "optional": true
         },
         {
@@ -6767,13 +6909,13 @@
         {
           "name": "permalink",
           "type": "string",
-          "description": "URL to the issue in Sentry",
+          "description": "URL of the issue in Sentry",
           "optional": true
         },
         {
           "name": "project",
           "type": "object",
-          "description": "Project info",
+          "description": "Project the issue belongs to",
           "optional": true
         },
         {
@@ -6785,7 +6927,7 @@
         {
           "name": "assignedTo",
           "type": "object | null",
-          "description": "Assigned user or team",
+          "description": "User or team the issue is assigned to",
           "optional": true
         },
         {
@@ -6993,52 +7135,23 @@
     },
     {
       "path": "sentry init",
-      "brief": "Initialize Sentry in your project (experimental)",
-      "permission": "write",
-      "exposure": "stdio-only",
+      "brief": "Print instructions for a coding agent to set up Sentry",
+      "permission": "read",
+      "exposure": "exposed",
       "parameters": {
         "type": "object",
         "properties": {
-          "positional": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "title": "target/directory",
-              "description": "Optional target (<org>/<project>, <org>/, or <project>) and directory (default: current directory)"
-            }
-          },
           "flags": {
             "type": "object",
             "properties": {
-              "yes": {
+              "json": {
                 "type": "boolean",
-                "description": "Accept non-interactive defaults (requires --features outside a TTY)",
+                "description": "Output as JSON",
                 "default": false
               },
-              "dry-run": {
-                "type": "boolean",
-                "description": "Show what would happen without making changes",
-                "default": false
-              },
-              "features": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Features to enable: errors,tracing,logs,replay,profiling,crons,agent-tracing,mcp-observability"
-              },
-              "team": {
+              "fields": {
                 "type": "string",
-                "description": "Team slug to create the project under"
-              },
-              "app": {
-                "type": "string",
-                "description": "App to initialize in a monorepo (required with --yes when multiple apps are detected)"
-              },
-              "tui": {
-                "type": "boolean",
-                "description": "Use the Ink-based interactive UI (default). Pass --no-tui to fall back to plain log output.",
-                "default": true
+                "description": "Comma-separated fields to include in JSON output (dot.notation supported). Available: guide"
               }
             },
             "additionalProperties": false
@@ -7047,59 +7160,23 @@
         "additionalProperties": false
       },
       "completions": {
-        "positional": [
-          "org-project-or-directory"
-        ],
         "flags": {
-          "features": "choice-list",
-          "team": "team",
-          "app": "text"
+          "fields": "choice-list"
         }
       },
       "examples": [
-        "# Interactive setup\nsentry init",
-        "# Non-interactive agent/CI setup\nsentry init --yes --features errors,tracing,replay",
-        "# Dry run to preview changes\nsentry init --dry-run",
-        "# Target a subdirectory\nsentry init ./my-app",
-        "# Use a specific organization (auto-detect project)\nsentry init acme/",
-        "# Use a specific organization and project\nsentry init acme/my-app",
-        "# Search for a project across organizations\nsentry init my-app",
-        "# Use a specific project in a subdirectory\nsentry init acme/my-app ./my-project",
-        "# Assign a team when creating a new project\nsentry init acme/ --team backend",
-        "# Enable specific features\nsentry init --features profiling,replay"
+        "# Print the setup guide\nsentry init",
+        "# Print the guide as JSON\nsentry init --json"
       ],
-      "apiOperations": [
+      "outputFields": [
         {
-          "fn": "addOrganizationMemberTeam"
-        },
-        {
-          "fn": "createOrganizationProject"
-        },
-        {
-          "fn": "createOrganizationTeam"
-        },
-        {
-          "fn": "createTeamProject"
-        },
-        {
-          "fn": "getOrganization"
-        },
-        {
-          "fn": "getProject"
-        },
-        {
-          "fn": "listOrganizationProjects"
-        },
-        {
-          "fn": "listOrganizations"
-        },
-        {
-          "fn": "listOrganizationTeams"
-        },
-        {
-          "fn": "listProjectKeys"
+          "name": "guide",
+          "type": "string",
+          "description": "The setup guide's Markdown source",
+          "optional": false
         }
-      ]
+      ],
+      "apiOperations": []
     },
     {
       "path": "sentry integration delete",
@@ -7172,6 +7249,9 @@
         },
         {
           "fn": "getOrganizationIntegration"
+        },
+        {
+          "fn": "listOrganizations"
         }
       ]
     },
@@ -7513,7 +7593,7 @@
         {
           "name": "groupID",
           "type": "string | null",
-          "description": "Group (issue) ID",
+          "description": "ID of the issue the event belongs to",
           "optional": true
         },
         {
@@ -7525,7 +7605,7 @@
         {
           "name": "projectID",
           "type": "string",
-          "description": "Project ID",
+          "description": "ID of the project the event belongs to",
           "optional": true
         },
         {
@@ -7543,43 +7623,43 @@
         {
           "name": "location",
           "type": "string | null",
-          "description": "Source location (file:line)",
+          "description": "Source location of the event, such as a file and line",
           "optional": true
         },
         {
           "name": "culprit",
           "type": "string | null",
-          "description": "Culprit function/module",
+          "description": "Function or module that caused the event",
           "optional": true
         },
         {
           "name": "user",
           "type": "object | null",
-          "description": "User context",
+          "description": "User context of the event",
           "optional": true
         },
         {
           "name": "tags",
           "type": "array",
-          "description": "Event tags",
+          "description": "Tags attached to the event",
           "optional": true
         },
         {
           "name": "platform",
           "type": "string | null",
-          "description": "Platform (python, javascript, etc.)",
+          "description": "Platform of the event, such as python or javascript",
           "optional": true
         },
         {
           "name": "dateCreated",
           "type": "string",
-          "description": "ISO 8601 creation timestamp",
+          "description": "When the event occurred (ISO 8601)",
           "optional": true
         },
         {
           "name": "crashFile",
           "type": "string | null",
-          "description": "Crash file URL",
+          "description": "Crash report attachment of the event, if any",
           "optional": true
         },
         {
@@ -7966,37 +8046,37 @@
         {
           "name": "culprit",
           "type": "string | null",
-          "description": "Culprit string",
+          "description": "Function or module where the issue occurs",
           "optional": true
         },
         {
           "name": "count",
           "type": "string",
-          "description": "Total event count",
+          "description": "Total number of events in the issue",
           "optional": true
         },
         {
           "name": "userCount",
           "type": "number",
-          "description": "Number of affected users",
+          "description": "Number of users affected by the issue",
           "optional": true
         },
         {
           "name": "firstSeen",
           "type": "string | null",
-          "description": "First occurrence (ISO 8601)",
+          "description": "When the issue was first seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastSeen",
           "type": "string | null",
-          "description": "Most recent occurrence (ISO 8601)",
+          "description": "When the issue was last seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "level",
           "type": "string",
-          "description": "Severity level",
+          "description": "Severity level of the issue",
           "optional": true
         },
         {
@@ -8008,13 +8088,13 @@
         {
           "name": "permalink",
           "type": "string",
-          "description": "URL to the issue in Sentry",
+          "description": "URL of the issue in Sentry",
           "optional": true
         },
         {
           "name": "project",
           "type": "object",
-          "description": "Project info",
+          "description": "Project the issue belongs to",
           "optional": true
         },
         {
@@ -8026,7 +8106,7 @@
         {
           "name": "assignedTo",
           "type": "object | null",
-          "description": "Assigned user or team",
+          "description": "User or team the issue is assigned to",
           "optional": true
         },
         {
@@ -8786,37 +8866,37 @@
         {
           "name": "culprit",
           "type": "string | null",
-          "description": "Culprit string",
+          "description": "Function or module where the issue occurs",
           "optional": true
         },
         {
           "name": "count",
           "type": "string",
-          "description": "Total event count",
+          "description": "Total number of events in the issue",
           "optional": true
         },
         {
           "name": "userCount",
           "type": "number",
-          "description": "Number of affected users",
+          "description": "Number of users affected by the issue",
           "optional": true
         },
         {
           "name": "firstSeen",
           "type": "string | null",
-          "description": "First occurrence (ISO 8601)",
+          "description": "When the issue was first seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastSeen",
           "type": "string | null",
-          "description": "Most recent occurrence (ISO 8601)",
+          "description": "When the issue was last seen (ISO 8601)",
           "optional": true
         },
         {
           "name": "level",
           "type": "string",
-          "description": "Severity level",
+          "description": "Severity level of the issue",
           "optional": true
         },
         {
@@ -8828,13 +8908,13 @@
         {
           "name": "permalink",
           "type": "string",
-          "description": "URL to the issue in Sentry",
+          "description": "URL of the issue in Sentry",
           "optional": true
         },
         {
           "name": "project",
           "type": "object",
-          "description": "Project info",
+          "description": "Project the issue belongs to",
           "optional": true
         },
         {
@@ -8846,7 +8926,7 @@
         {
           "name": "assignedTo",
           "type": "object | null",
-          "description": "Assigned user or team",
+          "description": "User or team the issue is assigned to",
           "optional": true
         },
         {
@@ -9399,7 +9479,7 @@
         {
           "name": "dateCreated",
           "type": "string",
-          "description": "Creation date (ISO 8601)",
+          "description": "When the organization was created (ISO 8601)",
           "optional": true
         },
         {
@@ -9411,25 +9491,25 @@
         {
           "name": "isEarlyAdopter",
           "type": "boolean",
-          "description": "Whether the org is an early adopter",
+          "description": "Whether the organization is an early adopter",
           "optional": true
         },
         {
           "name": "require2FA",
           "type": "boolean",
-          "description": "Whether members must use 2FA",
+          "description": "Whether members must use two-factor authentication",
           "optional": true
         },
         {
           "name": "features",
           "type": "array",
-          "description": "Enabled features",
+          "description": "Features enabled for the organization",
           "optional": true
         },
         {
           "name": "avatar",
           "type": "object",
-          "description": "Avatar",
+          "description": "Organization avatar",
           "optional": true
         },
         {
@@ -9441,13 +9521,13 @@
         {
           "name": "hasAuthProvider",
           "type": "boolean",
-          "description": "Whether SSO is configured",
+          "description": "Whether SSO is configured for the organization",
           "optional": true
         },
         {
           "name": "allowMemberInvite",
           "type": "boolean",
-          "description": "Whether members can invite",
+          "description": "Whether members can invite other members",
           "optional": true
         },
         {
@@ -9562,7 +9642,7 @@
         {
           "name": "dateCreated",
           "type": "string",
-          "description": "Creation date (ISO 8601)",
+          "description": "When the organization was created (ISO 8601)",
           "optional": true
         },
         {
@@ -9574,25 +9654,25 @@
         {
           "name": "isEarlyAdopter",
           "type": "boolean",
-          "description": "Whether the org is an early adopter",
+          "description": "Whether the organization is an early adopter",
           "optional": true
         },
         {
           "name": "require2FA",
           "type": "boolean",
-          "description": "Whether members must use 2FA",
+          "description": "Whether members must use two-factor authentication",
           "optional": true
         },
         {
           "name": "features",
           "type": "array",
-          "description": "Enabled features",
+          "description": "Features enabled for the organization",
           "optional": true
         },
         {
           "name": "avatar",
           "type": "object",
-          "description": "Avatar",
+          "description": "Organization avatar",
           "optional": true
         },
         {
@@ -9604,13 +9684,13 @@
         {
           "name": "hasAuthProvider",
           "type": "boolean",
-          "description": "Whether SSO is configured",
+          "description": "Whether SSO is configured for the organization",
           "optional": true
         },
         {
           "name": "allowMemberInvite",
           "type": "boolean",
-          "description": "Whether members can invite",
+          "description": "Whether members can invite other members",
           "optional": true
         },
         {
@@ -9629,6 +9709,9 @@
       "apiOperations": [
         {
           "fn": "getOrganization"
+        },
+        {
+          "fn": "listOrganizations"
         }
       ]
     },
@@ -10090,25 +10173,25 @@
         {
           "name": "platform",
           "type": "string | null",
-          "description": "Platform",
+          "description": "Platform of the project",
           "optional": true
         },
         {
           "name": "platforms",
           "type": "array",
-          "description": "Platforms seen in events",
+          "description": "Platforms seen in the project's events",
           "optional": true
         },
         {
           "name": "dateCreated",
           "type": "string",
-          "description": "Creation date (ISO 8601)",
+          "description": "When the project was created (ISO 8601)",
           "optional": true
         },
         {
           "name": "firstEvent",
           "type": "string | null",
-          "description": "First event date (ISO 8601)",
+          "description": "When the project received its first event (ISO 8601)",
           "optional": true
         },
         {
@@ -10120,49 +10203,49 @@
         {
           "name": "isBookmarked",
           "type": "boolean",
-          "description": "Whether you bookmarked it",
+          "description": "Whether the requesting user bookmarked the project",
           "optional": true
         },
         {
           "name": "isMember",
           "type": "boolean",
-          "description": "Whether you are a member",
+          "description": "Whether the requesting user is a member of a team with access to the project",
           "optional": true
         },
         {
           "name": "hasAccess",
           "type": "boolean",
-          "description": "Whether you have access",
+          "description": "Whether the requesting user has access to the project",
           "optional": true
         },
         {
           "name": "features",
           "type": "array",
-          "description": "Enabled features",
+          "description": "Features enabled for the project",
           "optional": true
         },
         {
           "name": "team",
           "type": "object | null",
-          "description": "Owning team",
+          "description": "First team with access to the project; use teams instead",
           "optional": true
         },
         {
           "name": "teams",
           "type": "array",
-          "description": "Teams with access",
+          "description": "Teams with access to the project",
           "optional": true
         },
         {
           "name": "environments",
           "type": "array",
-          "description": "Environments seen",
+          "description": "Environments seen in the project's events",
           "optional": true
         },
         {
           "name": "latestRelease",
           "type": "object | null",
-          "description": "Latest release",
+          "description": "Latest release of the project",
           "optional": true
         },
         {
@@ -10276,25 +10359,25 @@
         {
           "name": "platform",
           "type": "string | null",
-          "description": "Platform",
+          "description": "Platform of the project",
           "optional": true
         },
         {
           "name": "platforms",
           "type": "array",
-          "description": "Platforms seen in events",
+          "description": "Platforms seen in the project's events",
           "optional": true
         },
         {
           "name": "dateCreated",
           "type": "string",
-          "description": "Creation date (ISO 8601)",
+          "description": "When the project was created (ISO 8601)",
           "optional": true
         },
         {
           "name": "firstEvent",
           "type": "string | null",
-          "description": "First event date (ISO 8601)",
+          "description": "When the project received its first event (ISO 8601)",
           "optional": true
         },
         {
@@ -10306,49 +10389,49 @@
         {
           "name": "isBookmarked",
           "type": "boolean",
-          "description": "Whether you bookmarked it",
+          "description": "Whether the requesting user bookmarked the project",
           "optional": true
         },
         {
           "name": "isMember",
           "type": "boolean",
-          "description": "Whether you are a member",
+          "description": "Whether the requesting user is a member of a team with access to the project",
           "optional": true
         },
         {
           "name": "hasAccess",
           "type": "boolean",
-          "description": "Whether you have access",
+          "description": "Whether the requesting user has access to the project",
           "optional": true
         },
         {
           "name": "features",
           "type": "array",
-          "description": "Enabled features",
+          "description": "Features enabled for the project",
           "optional": true
         },
         {
           "name": "team",
           "type": "object | null",
-          "description": "Owning team",
+          "description": "First team with access to the project; use teams instead",
           "optional": true
         },
         {
           "name": "teams",
           "type": "array",
-          "description": "Teams with access",
+          "description": "Teams with access to the project",
           "optional": true
         },
         {
           "name": "environments",
           "type": "array",
-          "description": "Environments seen",
+          "description": "Environments seen in the project's events",
           "optional": true
         },
         {
           "name": "latestRelease",
           "type": "object | null",
-          "description": "Latest release",
+          "description": "Latest release of the project",
           "optional": true
         },
         {
@@ -10662,7 +10745,7 @@
         {
           "name": "shortVersion",
           "type": "string",
-          "description": "Shortened version",
+          "description": "Shortened release version",
           "optional": true
         },
         {
@@ -10674,13 +10757,13 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open, archived)",
+          "description": "Release status (open or archived)",
           "optional": true
         },
         {
           "name": "ref",
           "type": "string | null",
-          "description": "VCS reference",
+          "description": "Version control reference, such as a commit SHA or tag",
           "optional": true
         },
         {
@@ -10692,61 +10775,61 @@
         {
           "name": "dateCreated",
           "type": "string | null",
-          "description": "Creation date (ISO 8601)",
+          "description": "When the release was created (ISO 8601)",
           "optional": true
         },
         {
           "name": "dateReleased",
           "type": "string | null",
-          "description": "Release date (ISO 8601)",
+          "description": "When the release went live (ISO 8601)",
           "optional": true
         },
         {
           "name": "firstEvent",
           "type": "string | null",
-          "description": "First event date (ISO 8601)",
+          "description": "When the release received its first event (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastEvent",
           "type": "string | null",
-          "description": "Last event date (ISO 8601)",
+          "description": "When the release received its most recent event (ISO 8601)",
           "optional": true
         },
         {
           "name": "newGroups",
           "type": "number",
-          "description": "Number of new issues",
+          "description": "Number of new issues first seen in the release",
           "optional": true
         },
         {
           "name": "commitCount",
           "type": "number",
-          "description": "Number of commits",
+          "description": "Number of commits in the release",
           "optional": true
         },
         {
           "name": "deployCount",
           "type": "number",
-          "description": "Number of deploys",
+          "description": "Number of deploys of the release",
           "optional": true
         },
         {
           "name": "lastCommit",
           "type": "object | null",
-          "description": "Most recent commit",
+          "description": "Most recent commit in the release",
           "optional": true
         },
         {
           "name": "lastDeploy",
           "type": "object | null",
-          "description": "Most recent deploy",
+          "description": "Most recent deploy of the release",
           "optional": true
         },
         {
           "name": "authors",
           "type": "array",
-          "description": "Commit authors",
+          "description": "Authors of the release's commits",
           "optional": true
         },
         {
@@ -10764,7 +10847,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage per project",
+          "description": "Adoption stage of the release in each project",
           "optional": true
         },
         {
@@ -10783,6 +10866,9 @@
       "apiOperations": [
         {
           "fn": "getOrganization"
+        },
+        {
+          "fn": "listOrganizations"
         },
         {
           "fn": "updateOrganizationRelease"
@@ -10889,7 +10975,7 @@
         {
           "name": "shortVersion",
           "type": "string",
-          "description": "Shortened version",
+          "description": "Shortened release version",
           "optional": true
         },
         {
@@ -10901,13 +10987,13 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open, archived)",
+          "description": "Release status (open or archived)",
           "optional": true
         },
         {
           "name": "ref",
           "type": "string | null",
-          "description": "VCS reference",
+          "description": "Version control reference, such as a commit SHA or tag",
           "optional": true
         },
         {
@@ -10919,61 +11005,61 @@
         {
           "name": "dateCreated",
           "type": "string | null",
-          "description": "Creation date (ISO 8601)",
+          "description": "When the release was created (ISO 8601)",
           "optional": true
         },
         {
           "name": "dateReleased",
           "type": "string | null",
-          "description": "Release date (ISO 8601)",
+          "description": "When the release went live (ISO 8601)",
           "optional": true
         },
         {
           "name": "firstEvent",
           "type": "string | null",
-          "description": "First event date (ISO 8601)",
+          "description": "When the release received its first event (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastEvent",
           "type": "string | null",
-          "description": "Last event date (ISO 8601)",
+          "description": "When the release received its most recent event (ISO 8601)",
           "optional": true
         },
         {
           "name": "newGroups",
           "type": "number",
-          "description": "Number of new issues",
+          "description": "Number of new issues first seen in the release",
           "optional": true
         },
         {
           "name": "commitCount",
           "type": "number",
-          "description": "Number of commits",
+          "description": "Number of commits in the release",
           "optional": true
         },
         {
           "name": "deployCount",
           "type": "number",
-          "description": "Number of deploys",
+          "description": "Number of deploys of the release",
           "optional": true
         },
         {
           "name": "lastCommit",
           "type": "object | null",
-          "description": "Most recent commit",
+          "description": "Most recent commit in the release",
           "optional": true
         },
         {
           "name": "lastDeploy",
           "type": "object | null",
-          "description": "Most recent deploy",
+          "description": "Most recent deploy of the release",
           "optional": true
         },
         {
           "name": "authors",
           "type": "array",
-          "description": "Commit authors",
+          "description": "Authors of the release's commits",
           "optional": true
         },
         {
@@ -10991,7 +11077,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage per project",
+          "description": "Adoption stage of the release in each project",
           "optional": true
         },
         {
@@ -11007,6 +11093,9 @@
         },
         {
           "fn": "getOrganization"
+        },
+        {
+          "fn": "listOrganizations"
         }
       ]
     },
@@ -11114,6 +11203,9 @@
         },
         {
           "fn": "getOrganizationRelease"
+        },
+        {
+          "fn": "listOrganizations"
         }
       ]
     },
@@ -11214,25 +11306,25 @@
         {
           "name": "id",
           "type": "string",
-          "description": "Deploy ID",
+          "description": "The ID of the deploy",
           "optional": true
         },
         {
           "name": "environment",
           "type": "string",
-          "description": "Environment",
+          "description": "The environment name",
           "optional": false
         },
         {
           "name": "name",
           "type": "string | null",
-          "description": "Name",
+          "description": "The optional name of the deploy",
           "optional": true
         },
         {
           "name": "url",
           "type": "string | null",
-          "description": "Deploy URL",
+          "description": "The optional URL that points to the deploy",
           "optional": true
         },
         {
@@ -11266,6 +11358,9 @@
         },
         {
           "fn": "getOrganization"
+        },
+        {
+          "fn": "listOrganizations"
         }
       ]
     },
@@ -11327,25 +11422,25 @@
         {
           "name": "id",
           "type": "string",
-          "description": "Deploy ID",
+          "description": "The ID of the deploy",
           "optional": false
         },
         {
           "name": "environment",
           "type": "string",
-          "description": "Environment",
+          "description": "The environment name",
           "optional": false
         },
         {
           "name": "name",
           "type": "string | null",
-          "description": "Name",
+          "description": "The optional name of the deploy",
           "optional": true
         },
         {
           "name": "url",
           "type": "string | null",
-          "description": "Deploy URL",
+          "description": "The optional URL that points to the deploy",
           "optional": true
         },
         {
@@ -11367,6 +11462,9 @@
         },
         {
           "fn": "listOrganizationReleaseDeploys"
+        },
+        {
+          "fn": "listOrganizations"
         }
       ]
     },
@@ -11456,7 +11554,7 @@
         {
           "name": "shortVersion",
           "type": "string",
-          "description": "Shortened version",
+          "description": "Shortened release version",
           "optional": true
         },
         {
@@ -11468,13 +11566,13 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open, archived)",
+          "description": "Release status (open or archived)",
           "optional": true
         },
         {
           "name": "ref",
           "type": "string | null",
-          "description": "VCS reference",
+          "description": "Version control reference, such as a commit SHA or tag",
           "optional": true
         },
         {
@@ -11486,61 +11584,61 @@
         {
           "name": "dateCreated",
           "type": "string | null",
-          "description": "Creation date (ISO 8601)",
+          "description": "When the release was created (ISO 8601)",
           "optional": true
         },
         {
           "name": "dateReleased",
           "type": "string | null",
-          "description": "Release date (ISO 8601)",
+          "description": "When the release went live (ISO 8601)",
           "optional": true
         },
         {
           "name": "firstEvent",
           "type": "string | null",
-          "description": "First event date (ISO 8601)",
+          "description": "When the release received its first event (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastEvent",
           "type": "string | null",
-          "description": "Last event date (ISO 8601)",
+          "description": "When the release received its most recent event (ISO 8601)",
           "optional": true
         },
         {
           "name": "newGroups",
           "type": "number",
-          "description": "Number of new issues",
+          "description": "Number of new issues first seen in the release",
           "optional": true
         },
         {
           "name": "commitCount",
           "type": "number",
-          "description": "Number of commits",
+          "description": "Number of commits in the release",
           "optional": true
         },
         {
           "name": "deployCount",
           "type": "number",
-          "description": "Number of deploys",
+          "description": "Number of deploys of the release",
           "optional": true
         },
         {
           "name": "lastCommit",
           "type": "object | null",
-          "description": "Most recent commit",
+          "description": "Most recent commit in the release",
           "optional": true
         },
         {
           "name": "lastDeploy",
           "type": "object | null",
-          "description": "Most recent deploy",
+          "description": "Most recent deploy of the release",
           "optional": true
         },
         {
           "name": "authors",
           "type": "array",
-          "description": "Commit authors",
+          "description": "Authors of the release's commits",
           "optional": true
         },
         {
@@ -11558,7 +11656,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage per project",
+          "description": "Adoption stage of the release in each project",
           "optional": true
         },
         {
@@ -11583,6 +11681,9 @@
       "apiOperations": [
         {
           "fn": "getOrganization"
+        },
+        {
+          "fn": "listOrganizations"
         },
         {
           "fn": "updateOrganizationRelease"
@@ -11718,7 +11819,7 @@
         {
           "name": "shortVersion",
           "type": "string",
-          "description": "Shortened version",
+          "description": "Shortened release version",
           "optional": true
         },
         {
@@ -11730,13 +11831,13 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open, archived)",
+          "description": "Release status (open or archived)",
           "optional": true
         },
         {
           "name": "ref",
           "type": "string | null",
-          "description": "VCS reference",
+          "description": "Version control reference, such as a commit SHA or tag",
           "optional": true
         },
         {
@@ -11748,61 +11849,61 @@
         {
           "name": "dateCreated",
           "type": "string | null",
-          "description": "Creation date (ISO 8601)",
+          "description": "When the release was created (ISO 8601)",
           "optional": true
         },
         {
           "name": "dateReleased",
           "type": "string | null",
-          "description": "Release date (ISO 8601)",
+          "description": "When the release went live (ISO 8601)",
           "optional": true
         },
         {
           "name": "firstEvent",
           "type": "string | null",
-          "description": "First event date (ISO 8601)",
+          "description": "When the release received its first event (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastEvent",
           "type": "string | null",
-          "description": "Last event date (ISO 8601)",
+          "description": "When the release received its most recent event (ISO 8601)",
           "optional": true
         },
         {
           "name": "newGroups",
           "type": "number",
-          "description": "Number of new issues",
+          "description": "Number of new issues first seen in the release",
           "optional": true
         },
         {
           "name": "commitCount",
           "type": "number",
-          "description": "Number of commits",
+          "description": "Number of commits in the release",
           "optional": true
         },
         {
           "name": "deployCount",
           "type": "number",
-          "description": "Number of deploys",
+          "description": "Number of deploys of the release",
           "optional": true
         },
         {
           "name": "lastCommit",
           "type": "object | null",
-          "description": "Most recent commit",
+          "description": "Most recent commit in the release",
           "optional": true
         },
         {
           "name": "lastDeploy",
           "type": "object | null",
-          "description": "Most recent deploy",
+          "description": "Most recent deploy of the release",
           "optional": true
         },
         {
           "name": "authors",
           "type": "array",
-          "description": "Commit authors",
+          "description": "Authors of the release's commits",
           "optional": true
         },
         {
@@ -11820,7 +11921,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage per project",
+          "description": "Adoption stage of the release in each project",
           "optional": true
         },
         {
@@ -11970,7 +12071,7 @@
         {
           "name": "shortVersion",
           "type": "string",
-          "description": "Shortened version",
+          "description": "Shortened release version",
           "optional": true
         },
         {
@@ -11982,13 +12083,13 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open, archived)",
+          "description": "Release status (open or archived)",
           "optional": true
         },
         {
           "name": "ref",
           "type": "string | null",
-          "description": "VCS reference",
+          "description": "Version control reference, such as a commit SHA or tag",
           "optional": true
         },
         {
@@ -12000,61 +12101,61 @@
         {
           "name": "dateCreated",
           "type": "string | null",
-          "description": "Creation date (ISO 8601)",
+          "description": "When the release was created (ISO 8601)",
           "optional": true
         },
         {
           "name": "dateReleased",
           "type": "string | null",
-          "description": "Release date (ISO 8601)",
+          "description": "When the release went live (ISO 8601)",
           "optional": true
         },
         {
           "name": "firstEvent",
           "type": "string | null",
-          "description": "First event date (ISO 8601)",
+          "description": "When the release received its first event (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastEvent",
           "type": "string | null",
-          "description": "Last event date (ISO 8601)",
+          "description": "When the release received its most recent event (ISO 8601)",
           "optional": true
         },
         {
           "name": "newGroups",
           "type": "number",
-          "description": "Number of new issues",
+          "description": "Number of new issues first seen in the release",
           "optional": true
         },
         {
           "name": "commitCount",
           "type": "number",
-          "description": "Number of commits",
+          "description": "Number of commits in the release",
           "optional": true
         },
         {
           "name": "deployCount",
           "type": "number",
-          "description": "Number of deploys",
+          "description": "Number of deploys of the release",
           "optional": true
         },
         {
           "name": "lastCommit",
           "type": "object | null",
-          "description": "Most recent commit",
+          "description": "Most recent commit in the release",
           "optional": true
         },
         {
           "name": "lastDeploy",
           "type": "object | null",
-          "description": "Most recent deploy",
+          "description": "Most recent deploy of the release",
           "optional": true
         },
         {
           "name": "authors",
           "type": "array",
-          "description": "Commit authors",
+          "description": "Authors of the release's commits",
           "optional": true
         },
         {
@@ -12072,7 +12173,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage per project",
+          "description": "Adoption stage of the release in each project",
           "optional": true
         },
         {
@@ -12091,6 +12192,9 @@
       "apiOperations": [
         {
           "fn": "getOrganization"
+        },
+        {
+          "fn": "listOrganizations"
         },
         {
           "fn": "updateOrganizationRelease"
@@ -12210,7 +12314,7 @@
         {
           "name": "shortVersion",
           "type": "string",
-          "description": "Shortened version",
+          "description": "Shortened release version",
           "optional": true
         },
         {
@@ -12222,13 +12326,13 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open, archived)",
+          "description": "Release status (open or archived)",
           "optional": true
         },
         {
           "name": "ref",
           "type": "string | null",
-          "description": "VCS reference",
+          "description": "Version control reference, such as a commit SHA or tag",
           "optional": true
         },
         {
@@ -12240,61 +12344,61 @@
         {
           "name": "dateCreated",
           "type": "string | null",
-          "description": "Creation date (ISO 8601)",
+          "description": "When the release was created (ISO 8601)",
           "optional": true
         },
         {
           "name": "dateReleased",
           "type": "string | null",
-          "description": "Release date (ISO 8601)",
+          "description": "When the release went live (ISO 8601)",
           "optional": true
         },
         {
           "name": "firstEvent",
           "type": "string | null",
-          "description": "First event date (ISO 8601)",
+          "description": "When the release received its first event (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastEvent",
           "type": "string | null",
-          "description": "Last event date (ISO 8601)",
+          "description": "When the release received its most recent event (ISO 8601)",
           "optional": true
         },
         {
           "name": "newGroups",
           "type": "number",
-          "description": "Number of new issues",
+          "description": "Number of new issues first seen in the release",
           "optional": true
         },
         {
           "name": "commitCount",
           "type": "number",
-          "description": "Number of commits",
+          "description": "Number of commits in the release",
           "optional": true
         },
         {
           "name": "deployCount",
           "type": "number",
-          "description": "Number of deploys",
+          "description": "Number of deploys of the release",
           "optional": true
         },
         {
           "name": "lastCommit",
           "type": "object | null",
-          "description": "Most recent commit",
+          "description": "Most recent commit in the release",
           "optional": true
         },
         {
           "name": "lastDeploy",
           "type": "object | null",
-          "description": "Most recent deploy",
+          "description": "Most recent deploy of the release",
           "optional": true
         },
         {
           "name": "authors",
           "type": "array",
-          "description": "Commit authors",
+          "description": "Authors of the release's commits",
           "optional": true
         },
         {
@@ -12312,7 +12416,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage per project",
+          "description": "Adoption stage of the release in each project",
           "optional": true
         }
       ],
@@ -12322,6 +12426,9 @@
         },
         {
           "fn": "listOrganizationRepos"
+        },
+        {
+          "fn": "listOrganizations"
         },
         {
           "fn": "updateOrganizationRelease"
@@ -12404,7 +12511,7 @@
         {
           "name": "shortVersion",
           "type": "string",
-          "description": "Shortened version",
+          "description": "Shortened release version",
           "optional": true
         },
         {
@@ -12416,13 +12523,13 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open, archived)",
+          "description": "Release status (open or archived)",
           "optional": true
         },
         {
           "name": "ref",
           "type": "string | null",
-          "description": "VCS reference",
+          "description": "Version control reference, such as a commit SHA or tag",
           "optional": true
         },
         {
@@ -12434,61 +12541,61 @@
         {
           "name": "dateCreated",
           "type": "string | null",
-          "description": "Creation date (ISO 8601)",
+          "description": "When the release was created (ISO 8601)",
           "optional": true
         },
         {
           "name": "dateReleased",
           "type": "string | null",
-          "description": "Release date (ISO 8601)",
+          "description": "When the release went live (ISO 8601)",
           "optional": true
         },
         {
           "name": "firstEvent",
           "type": "string | null",
-          "description": "First event date (ISO 8601)",
+          "description": "When the release received its first event (ISO 8601)",
           "optional": true
         },
         {
           "name": "lastEvent",
           "type": "string | null",
-          "description": "Last event date (ISO 8601)",
+          "description": "When the release received its most recent event (ISO 8601)",
           "optional": true
         },
         {
           "name": "newGroups",
           "type": "number",
-          "description": "Number of new issues",
+          "description": "Number of new issues first seen in the release",
           "optional": true
         },
         {
           "name": "commitCount",
           "type": "number",
-          "description": "Number of commits",
+          "description": "Number of commits in the release",
           "optional": true
         },
         {
           "name": "deployCount",
           "type": "number",
-          "description": "Number of deploys",
+          "description": "Number of deploys of the release",
           "optional": true
         },
         {
           "name": "lastCommit",
           "type": "object | null",
-          "description": "Most recent commit",
+          "description": "Most recent commit in the release",
           "optional": true
         },
         {
           "name": "lastDeploy",
           "type": "object | null",
-          "description": "Most recent deploy",
+          "description": "Most recent deploy of the release",
           "optional": true
         },
         {
           "name": "authors",
           "type": "array",
-          "description": "Commit authors",
+          "description": "Authors of the release's commits",
           "optional": true
         },
         {
@@ -12506,7 +12613,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage per project",
+          "description": "Adoption stage of the release in each project",
           "optional": true
         }
       ],
@@ -12516,6 +12623,9 @@
         },
         {
           "fn": "getOrganizationRelease"
+        },
+        {
+          "fn": "listOrganizations"
         }
       ]
     },
@@ -13396,6 +13506,7 @@
                 "attachments",
                 "attributes",
                 "autofix",
+                "available-actions",
                 "bulk",
                 "channel-validate",
                 "channels",
@@ -13699,6 +13810,9 @@
         },
         {
           "fn": "getOrganizationPreprodArtifactSnapshotLatestBase"
+        },
+        {
+          "fn": "listOrganizations"
         }
       ]
     },
@@ -14030,7 +14144,7 @@
               {
                 "type": "string",
                 "title": "directory",
-                "description": "Directory containing sourcemaps"
+                "description": "Directory containing sourcemaps, or a glob like 'dist/**'"
               }
             ],
             "items": false,
@@ -14121,6 +14235,7 @@
       ],
       "examples": [
         "# Upload sourcemaps from dist/\nsentry sourcemap upload ./dist",
+        "# Upload only the files a glob matches\nsentry sourcemap upload '.next/static/**'",
         "# Associate with a release\nsentry sourcemap upload ./dist --release 1.0.0",
         "# Set a custom URL prefix\nsentry sourcemap upload ./dist --url-prefix '~/static/js/'",
         "# Don't fail when no sourcemaps are found\nsentry sourcemap upload ./dist --allow-empty",
@@ -14549,25 +14664,25 @@
         {
           "name": "dateCreated",
           "type": "string | null",
-          "description": "Creation date (ISO 8601)",
+          "description": "When the team was created (ISO 8601)",
           "optional": true
         },
         {
           "name": "isMember",
           "type": "boolean",
-          "description": "Whether you are a member",
+          "description": "Whether the requesting user is a member of the team",
           "optional": true
         },
         {
           "name": "teamRole",
           "type": "string | null",
-          "description": "Your role in the team",
+          "description": "The requesting user's role in the team",
           "optional": true
         },
         {
           "name": "memberCount",
           "type": "number",
-          "description": "Number of members",
+          "description": "Number of members in the team",
           "optional": true
         },
         {
@@ -14586,6 +14701,246 @@
         },
         {
           "fn": "listProjectTeams"
+        }
+      ]
+    },
+    {
+      "path": "sentry token create",
+      "brief": "Create an org auth token",
+      "permission": "write",
+      "exposure": "stdio-only",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "positional": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string",
+                "title": "org/name",
+                "description": "[<org>/]<name> - Name of the new token"
+              }
+            ],
+            "items": false,
+            "minItems": 1
+          },
+          "flags": {
+            "type": "object",
+            "properties": {
+              "dry-run": {
+                "type": "boolean",
+                "description": "Show what would happen without making changes",
+                "default": false
+              },
+              "json": {
+                "type": "boolean",
+                "description": "Output as JSON",
+                "default": false
+              },
+              "fields": {
+                "type": "string",
+                "description": "Comma-separated fields to include in JSON output (dot.notation supported)"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "positional"
+        ],
+        "additionalProperties": false
+      },
+      "completions": {
+        "positional": [
+          "org"
+        ],
+        "flags": {
+          "fields": "text"
+        }
+      },
+      "examples": [
+        "# Create a token (auto-detect org)\nsentry token create github-actions",
+        "# Create a token in a specific org\nsentry token create my-org/github-actions",
+        "# Output as JSON, including the token value\nsentry token create my-org/github-actions --json"
+      ],
+      "apiOperations": [
+        {
+          "fn": "listOrganizations"
+        }
+      ]
+    },
+    {
+      "path": "sentry token delete",
+      "brief": "Revoke an org auth token",
+      "permission": "destructive",
+      "exposure": "exposed",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "positional": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "title": "org/token-id-or-name",
+              "description": "[<org>/]<token-id-or-name> - ID or name from sentry token list (not the token value)"
+            }
+          },
+          "flags": {
+            "type": "object",
+            "properties": {
+              "yes": {
+                "type": "boolean",
+                "description": "Skip confirmation prompt",
+                "default": false
+              },
+              "force": {
+                "type": "boolean",
+                "description": "Force the operation without confirmation",
+                "default": false
+              },
+              "dry-run": {
+                "type": "boolean",
+                "description": "Show what would happen without making changes",
+                "default": false
+              },
+              "json": {
+                "type": "boolean",
+                "description": "Output as JSON",
+                "default": false
+              },
+              "fields": {
+                "type": "string",
+                "description": "Comma-separated fields to include in JSON output (dot.notation supported)"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "completions": {
+        "positional": [
+          "org"
+        ],
+        "flags": {
+          "fields": "text"
+        }
+      },
+      "examples": [
+        "# Revoke token ID 12345 (auto-detect org)\nsentry token delete 12345",
+        "# Revoke the token named github-actions\nsentry token delete my-org/github-actions",
+        "# Preview revoking token ID 12345\nsentry token delete my-org/12345 --dry-run",
+        "# Revoke without the confirmation prompt\nsentry token delete my-org/12345 --yes"
+      ],
+      "apiOperations": [
+        {
+          "fn": "listOrganizations"
+        }
+      ]
+    },
+    {
+      "path": "sentry token list",
+      "brief": "List org auth tokens",
+      "permission": "read",
+      "exposure": "exposed",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "positional": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string",
+                "title": "org",
+                "description": "Organization slug (auto-detected if omitted)"
+              }
+            ],
+            "items": false
+          },
+          "flags": {
+            "type": "object",
+            "properties": {
+              "json": {
+                "type": "boolean",
+                "description": "Output as JSON",
+                "default": false
+              },
+              "fields": {
+                "type": "string",
+                "description": "Comma-separated fields to include in JSON output (dot.notation supported). Available: id, name, scopes, tokenLastCharacters, dateCreated, dateLastUsed, projectLastUsedId, token"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "completions": {
+        "positional": [
+          "org"
+        ],
+        "flags": {
+          "fields": "choice-list"
+        }
+      },
+      "examples": [
+        "# List tokens (auto-detect org)\nsentry token list",
+        "# List tokens in a specific org\nsentry token list my-org",
+        "# Output as JSON\nsentry token list --json"
+      ],
+      "outputFields": [
+        {
+          "name": "id",
+          "type": "string",
+          "description": "Token ID",
+          "optional": false
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "description": "Token name",
+          "optional": false
+        },
+        {
+          "name": "scopes",
+          "type": "array",
+          "description": "Scopes granted to the token",
+          "optional": false
+        },
+        {
+          "name": "tokenLastCharacters",
+          "type": "string | null",
+          "description": "Last 4 characters of the token",
+          "optional": false
+        },
+        {
+          "name": "dateCreated",
+          "type": "string",
+          "description": "Creation timestamp",
+          "optional": false
+        },
+        {
+          "name": "dateLastUsed",
+          "type": "string | null",
+          "description": "Last time the token was used, if ever",
+          "optional": false
+        },
+        {
+          "name": "projectLastUsedId",
+          "type": "string | null",
+          "description": "ID of the project the token was last used for",
+          "optional": true
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "description": "Full token value (create response only)",
+          "optional": true
+        }
+      ],
+      "apiOperations": [
+        {
+          "fn": "listOrganizations"
         }
       ]
     },
@@ -14951,6 +15306,9 @@
           "fn": "listOrganizationProjects"
         },
         {
+          "fn": "listOrganizationReplays"
+        },
+        {
           "fn": "listOrganizations"
         },
         {
@@ -15058,7 +15416,11 @@
           "optional": false
         }
       ],
-      "apiOperations": []
+      "apiOperations": [
+        {
+          "fn": "listOrganizations"
+        }
+      ]
     },
     {
       "path": "sentry trial start",
@@ -15108,7 +15470,11 @@
         "# Start a Business plan trial (opens the browser)\nsentry trial start plan",
         "# Output the result as JSON\nsentry trial start --json seer"
       ],
-      "apiOperations": []
+      "apiOperations": [
+        {
+          "fn": "listOrganizations"
+        }
+      ]
     },
     {
       "path": "sentry wasm-split",

@@ -1,7 +1,7 @@
 import { SentryApiService } from "@sentry/mcp-core/api-client";
 import { searchEventsAgent } from "@sentry/mcp-core/tools/search-events/agent";
 import { expect } from "vitest";
-import { describeEval } from "vitest-evals";
+import { describeEval } from "vitest-evals/legacy";
 import "../setup-env";
 import { StructuredOutputScorer } from "./utils/structuredOutputScorer";
 

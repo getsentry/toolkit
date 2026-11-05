@@ -372,7 +372,7 @@ describe("sentry local run", () => {
     }
   });
 
-  test("--verify with a quick-exit process throws WIZARD_VERIFY", async () => {
+  test("--verify with a quick-exit process throws VERIFY_FAILED", async () => {
     const func = (await runCommand.loader()) as unknown as RunFunc;
     const ctx = makeContext();
 

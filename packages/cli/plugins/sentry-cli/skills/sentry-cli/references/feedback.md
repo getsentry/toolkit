@@ -36,17 +36,17 @@ List and search User Feedback
 | `id` | string | Numeric issue ID |
 | `shortId` | string | Human-readable short ID (e.g. PROJ-ABC) |
 | `title` | string | Issue title |
-| `culprit` | string \| null | Culprit string |
-| `count` | string | Total event count |
-| `userCount` | number | Number of affected users |
-| `firstSeen` | string \| null | First occurrence (ISO 8601) |
-| `lastSeen` | string \| null | Most recent occurrence (ISO 8601) |
-| `level` | string | Severity level |
+| `culprit` | string \| null | Function or module where the issue occurs |
+| `count` | string | Total number of events in the issue |
+| `userCount` | number | Number of users affected by the issue |
+| `firstSeen` | string \| null | When the issue was first seen (ISO 8601) |
+| `lastSeen` | string \| null | When the issue was last seen (ISO 8601) |
+| `level` | string | Severity level of the issue |
 | `status` | string | Issue status |
-| `permalink` | string | URL to the issue in Sentry |
-| `project` | object | Project info |
+| `permalink` | string | URL of the issue in Sentry |
+| `project` | object | Project the issue belongs to |
 | `metadata` | object | Feedback metadata |
-| `assignedTo` | object \| null | Assigned user or team |
+| `assignedTo` | object \| null | User or team the issue is assigned to |
 | `priority` | string | Triage priority |
 | `platform` | string | Platform |
 | `substatus` | string \| null | Issue substatus |
@@ -106,17 +106,17 @@ View a User Feedback item
 | `id` | string | Numeric issue ID |
 | `shortId` | string | Human-readable short ID (e.g. PROJ-ABC) |
 | `title` | string | Issue title |
-| `culprit` | string \| null | Culprit string |
-| `count` | string | Total event count |
-| `userCount` | number | Number of affected users |
-| `firstSeen` | string \| null | First occurrence (ISO 8601) |
-| `lastSeen` | string \| null | Most recent occurrence (ISO 8601) |
-| `level` | string | Severity level |
+| `culprit` | string \| null | Function or module where the issue occurs |
+| `count` | string | Total number of events in the issue |
+| `userCount` | number | Number of users affected by the issue |
+| `firstSeen` | string \| null | When the issue was first seen (ISO 8601) |
+| `lastSeen` | string \| null | When the issue was last seen (ISO 8601) |
+| `level` | string | Severity level of the issue |
 | `status` | string | Issue status |
-| `permalink` | string | URL to the issue in Sentry |
-| `project` | object | Project info |
+| `permalink` | string | URL of the issue in Sentry |
+| `project` | object | Project the issue belongs to |
 | `metadata` | object | Feedback metadata |
-| `assignedTo` | object \| null | Assigned user or team |
+| `assignedTo` | object \| null | User or team the issue is assigned to |
 | `priority` | string | Triage priority |
 | `platform` | string | Platform |
 | `substatus` | string \| null | Issue substatus |
@@ -173,17 +173,17 @@ Mark User Feedback as resolved
 | `id` | string | Numeric issue ID |
 | `shortId` | string | Human-readable short ID (e.g. PROJ-ABC) |
 | `title` | string | Issue title |
-| `culprit` | string \| null | Culprit string |
-| `count` | string | Total event count |
-| `userCount` | number | Number of affected users |
-| `firstSeen` | string \| null | First occurrence (ISO 8601) |
-| `lastSeen` | string \| null | Most recent occurrence (ISO 8601) |
-| `level` | string | Severity level |
+| `culprit` | string \| null | Function or module where the issue occurs |
+| `count` | string | Total number of events in the issue |
+| `userCount` | number | Number of users affected by the issue |
+| `firstSeen` | string \| null | When the issue was first seen (ISO 8601) |
+| `lastSeen` | string \| null | When the issue was last seen (ISO 8601) |
+| `level` | string | Severity level of the issue |
 | `status` | string | Issue status |
-| `permalink` | string | URL to the issue in Sentry |
-| `project` | object | Project info |
+| `permalink` | string | URL of the issue in Sentry |
+| `project` | object | Project the issue belongs to |
 | `metadata` | object | Feedback metadata |
-| `assignedTo` | object \| null | Assigned user or team |
+| `assignedTo` | object \| null | User or team the issue is assigned to |
 | `priority` | string | Triage priority |
 | `platform` | string | Platform |
 | `substatus` | string \| null | Issue substatus |
@@ -227,17 +227,17 @@ Return User Feedback to the inbox
 | `id` | string | Numeric issue ID |
 | `shortId` | string | Human-readable short ID (e.g. PROJ-ABC) |
 | `title` | string | Issue title |
-| `culprit` | string \| null | Culprit string |
-| `count` | string | Total event count |
-| `userCount` | number | Number of affected users |
-| `firstSeen` | string \| null | First occurrence (ISO 8601) |
-| `lastSeen` | string \| null | Most recent occurrence (ISO 8601) |
-| `level` | string | Severity level |
+| `culprit` | string \| null | Function or module where the issue occurs |
+| `count` | string | Total number of events in the issue |
+| `userCount` | number | Number of users affected by the issue |
+| `firstSeen` | string \| null | When the issue was first seen (ISO 8601) |
+| `lastSeen` | string \| null | When the issue was last seen (ISO 8601) |
+| `level` | string | Severity level of the issue |
 | `status` | string | Issue status |
-| `permalink` | string | URL to the issue in Sentry |
-| `project` | object | Project info |
+| `permalink` | string | URL of the issue in Sentry |
+| `project` | object | Project the issue belongs to |
 | `metadata` | object | Feedback metadata |
-| `assignedTo` | object \| null | Assigned user or team |
+| `assignedTo` | object \| null | User or team the issue is assigned to |
 | `priority` | string | Triage priority |
 | `platform` | string | Platform |
 | `substatus` | string \| null | Issue substatus |
@@ -284,17 +284,17 @@ Mark User Feedback as spam
 | `id` | string | Numeric issue ID |
 | `shortId` | string | Human-readable short ID (e.g. PROJ-ABC) |
 | `title` | string | Issue title |
-| `culprit` | string \| null | Culprit string |
-| `count` | string | Total event count |
-| `userCount` | number | Number of affected users |
-| `firstSeen` | string \| null | First occurrence (ISO 8601) |
-| `lastSeen` | string \| null | Most recent occurrence (ISO 8601) |
-| `level` | string | Severity level |
+| `culprit` | string \| null | Function or module where the issue occurs |
+| `count` | string | Total number of events in the issue |
+| `userCount` | number | Number of users affected by the issue |
+| `firstSeen` | string \| null | When the issue was first seen (ISO 8601) |
+| `lastSeen` | string \| null | When the issue was last seen (ISO 8601) |
+| `level` | string | Severity level of the issue |
 | `status` | string | Issue status |
-| `permalink` | string | URL to the issue in Sentry |
-| `project` | object | Project info |
+| `permalink` | string | URL of the issue in Sentry |
+| `project` | object | Project the issue belongs to |
 | `metadata` | object | Feedback metadata |
-| `assignedTo` | object \| null | Assigned user or team |
+| `assignedTo` | object \| null | User or team the issue is assigned to |
 | `priority` | string | Triage priority |
 | `platform` | string | Platform |
 | `substatus` | string \| null | Issue substatus |

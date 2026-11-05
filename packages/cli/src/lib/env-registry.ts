@@ -137,6 +137,12 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     selfHosted: true,
     devGuide: "Sentry OAuth app client ID",
   },
+  {
+    name: "SENTRY_SETUP_CODE",
+    description:
+      "Private, short-lived code for headless OAuth authentication with sentry auth bootstrap or the installer. Each code can be redeemed once.",
+    devGuide: "One-time setup code for headless authentication",
+  },
   // -- Custom headers --
   {
     name: "SENTRY_CUSTOM_HEADERS",
@@ -178,7 +184,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_INIT",
     description:
-      "Used with the install script. When set to `1`, the installer runs `sentry init` after installing the binary to guide you through project setup.",
+      "Used with the install script. When set to `1`, the installer runs `sentry init` after installing the binary, which prints the guide a coding agent follows to add Sentry to your project.",
     example: "1",
     installOnly: true,
   },
@@ -189,12 +195,12 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     example: "1",
     installOnly: true,
   },
-  // -- Init wizard --
+  // -- Games --
   {
-    name: "SENTRY_INIT_TUI",
+    name: "SENTRY_GAMES_API_URL",
     description:
-      "Control the TUI (terminal user interface) for `sentry init`. Set to `0` to disable the interactive TUI and use plain text logging output instead. Useful in CI/CD pipelines or environments without full terminal support.",
-    example: "0",
+      "Base URL of the service that serves the `sentry games leaderboard` scores. Defaults to `https://games.sentry.new`. Mainly useful for testing.",
+    example: "http://localhost:8787",
   },
   // -- TLS / Certificates --
   {

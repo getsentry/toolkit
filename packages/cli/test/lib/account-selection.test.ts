@@ -9,7 +9,7 @@ const { selectWithFilter, isatty } = vi.hoisted(() => ({
   selectWithFilter: vi.fn(),
   isatty: vi.fn(() => true),
 }));
-vi.mock("../../src/lib/init/ui/ink-ui.js", () => ({ selectWithFilter }));
+vi.mock("../../src/lib/select-ui/ink-ui.js", () => ({ selectWithFilter }));
 vi.mock("node:tty", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:tty")>()),
   isatty,

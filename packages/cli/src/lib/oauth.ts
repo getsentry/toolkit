@@ -37,7 +37,7 @@ import {
 } from "./errors.js";
 import { logger } from "./logger.js";
 import { normalizeHttpOrigin } from "./sentry-urls.js";
-import { getActiveTokenHost } from "./token-host.js";
+import { getActiveTokenHost, isLoginTrustAnchorFor } from "./token-host.js";
 import { getLoginCommand } from "./app-identity.js";
 
 /**
@@ -607,6 +607,56 @@ export async function refreshAccessToken(
       response.status,
       result.issues.map((i) => i.message).join(", "),
       "/oauth/token/",
+    );
+  }
+
+  return result.output;
+}
+
+/** Exchange a single-use setup credential without retries or redirects. */
+export async function exchangeSetupCode(
+  code: string,
+  host: string,
+): Promise<TokenResponse> {
+  const response = await fetchWithConnectionError(
+    host + "/oauth/token/",
+    {
+      method: "POST",
+      redirect: "error",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:sentry:params:oauth:grant-type:setup_code",
+        client_id: getClientId(),
+        setup_code: code,
+      }),
+    },
+    isLoginTrustAnchorFor(host) || undefined,
+  );
+
+  if (!response.ok) {
+    throw new AuthError(
+      "invalid",
+      "Setup-code authentication failed. Generate a new setup code in Sentry and try again.",
+    );
+  }
+
+  let data: unknown;
+
+  try {
+    data = await response.json();
+  } catch {
+    throw new AuthError(
+      "invalid",
+      "The setup endpoint returned an invalid token response. Generate a new setup code in Sentry.",
+    );
+  }
+
+  const result = safeParse(TokenResponseSchema, data);
+
+  if (!result.success) {
+    throw new AuthError(
+      "invalid",
+      "The setup endpoint returned an invalid token response. Generate a new setup code in Sentry.",
     );
   }
 

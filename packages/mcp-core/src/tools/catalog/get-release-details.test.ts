@@ -1,7 +1,9 @@
 import { mswServer, releaseFixture } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
-import getReleaseDetails from "./get-release-details.js";
+import getReleaseDetails, {
+  getReleaseDetailsOutputSchema,
+} from "./get-release-details.js";
 import { prepareToolParams } from "../catalog-runtime/availability";
 
 const context = {
@@ -28,40 +30,128 @@ describe("get_release_details", () => {
       context,
     );
 
-    expect(result).toMatchInlineSnapshot(`
-      "# Release 8ce89484-0fec-4913-a2cd-e8e2d41dee36 in **sentry-mcp-evals**
-
-      **ID**: 1402755016
-      **Short Version**: 8ce89484-0fec-4913-a2cd-e8e2d41dee36
-      **Created**: 2025-04-13T19:54:21.764Z
-      **First Event**: 2025-04-13T19:54:21.000Z
-      **Last Event**: 2025-04-13T20:28:23.000Z
-      **New Issues**: 0
-      **Projects**: cloudflare-mcp
-      **URL**: [Open Release](https://sentry-mcp-evals.sentry.io/releases/8ce89484-0fec-4913-a2cd-e8e2d41dee36/)
-
-      ## Deploys
-
-      ### Deploy 98765
-
-      **Environment**: production
-      **Name**: prod deploy
-      **Started**: 2025-04-13T20:00:00.000Z
-      **Finished**: 2025-04-13T20:05:30.000Z
-      **URL**: https://deploys.example.com/98765
-
-      ## Commits
-
-      - \`2ce6a2700fec4913a2cde8e2d41dee36\`: Fix duplicate tool registration
-        - Author: Jane Developer
-        - Repository: getsentry/sentry-mcp
-        - Created: 2025-04-13T19:40:00.000Z
-
-      ## Response Notes
-
-      - Search issues introduced in this release with query \`release:8ce89484-0fec-4913-a2cd-e8e2d41dee36\`.
-      "
+    getReleaseDetailsOutputSchema.parse(result.structuredContent);
+    expect(result.structuredContent).toMatchInlineSnapshot(`
+      {
+        "commits": [
+          {
+            "author": "Jane Developer",
+            "dateCreated": "2025-04-13T19:40:00.000Z",
+            "id": "2ce6a2700fec4913a2cde8e2d41dee36",
+            "message": "Fix duplicate tool registration",
+            "repository": "getsentry/sentry-mcp",
+          },
+        ],
+        "deploys": [
+          {
+            "dateFinished": "2025-04-13T20:05:30.000Z",
+            "dateStarted": "2025-04-13T20:00:00.000Z",
+            "environment": "production",
+            "id": "98765",
+            "name": "prod deploy",
+            "url": "https://deploys.example.com/98765",
+          },
+        ],
+        "health": null,
+        "release": {
+          "dateCreated": "2025-04-13T19:54:21.764Z",
+          "dateReleased": null,
+          "firstEvent": "2025-04-13T19:54:21.000Z",
+          "id": "1402755016",
+          "lastCommit": null,
+          "lastEvent": "2025-04-13T20:28:23.000Z",
+          "newIssues": 0,
+          "projects": [
+            "cloudflare-mcp",
+          ],
+          "shortVersion": "8ce89484-0fec-4913-a2cd-e8e2d41dee36",
+          "url": "https://sentry-mcp-evals.sentry.io/releases/8ce89484-0fec-4913-a2cd-e8e2d41dee36/",
+          "version": "8ce89484-0fec-4913-a2cd-e8e2d41dee36",
+        },
+      }
     `);
+  });
+
+  it("maps release health metadata without leaking unknown fields", async () => {
+    const releaseVersion = "8ce89484-0fec-4913-a2cd-e8e2d41dee36";
+    mswServer.use(
+      http.get(
+        `https://sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/releases/${releaseVersion}/`,
+        () =>
+          HttpResponse.json({
+            ...releaseFixture,
+            lastCommit: {
+              id: "2ce6a2700fec4913a2cde8e2d41dee36",
+              message: "Fix duplicate tool registration\n\nLonger body",
+              dateCreated: "2025-04-13T19:40:00Z",
+              author: { name: "Jane Developer", email: "jane@example.com" },
+            },
+            currentProjectMeta: {
+              sessionsLowerBound: "2025-04-13T19:00:00Z",
+              sessionsUpperBound: "2025-04-13T21:00:00Z",
+              firstReleaseVersion: "1.0.0",
+              lastReleaseVersion: "2.0.0",
+              prevReleaseVersion: "1.9.0",
+              nextReleaseVersion: null,
+              backendOnlyMeta: "must-not-leak",
+            },
+            adoptionStages: {
+              "cloudflare-mcp": {
+                stage: "adopted",
+                adopted: "2025-04-13T20:00:00Z",
+                unadopted: null,
+              },
+            },
+          }),
+      ),
+    );
+
+    const result = await getReleaseDetails.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        releaseVersion,
+        projectSlugOrId: "cloudflare-mcp",
+        includeHealth: true,
+        includeDeploys: false,
+        includeCommits: false,
+        limit: 10,
+      },
+      context,
+    );
+
+    getReleaseDetailsOutputSchema.parse(result.structuredContent);
+    expect(result.structuredContent.release.lastCommit).toEqual({
+      id: "2ce6a2700fec4913a2cde8e2d41dee36",
+      message: "Fix duplicate tool registration\n\nLonger body",
+      author: "Jane Developer",
+      dateCreated: "2025-04-13T19:40:00.000Z",
+    });
+    expect(result.structuredContent.health).toMatchInlineSnapshot(`
+      {
+        "adoptionStages": [
+          {
+            "adopted": "2025-04-13T20:00:00.000Z",
+            "project": "cloudflare-mcp",
+            "stage": "adopted",
+            "unadopted": null,
+          },
+        ],
+        "firstReleaseVersion": "1.0.0",
+        "lastReleaseVersion": "2.0.0",
+        "nextReleaseVersion": null,
+        "prevReleaseVersion": "1.9.0",
+        "sessionsLowerBound": "2025-04-13T19:00:00.000Z",
+        "sessionsUpperBound": "2025-04-13T21:00:00.000Z",
+      }
+    `);
+    expect(result.structuredContent.deploys).toBeNull();
+    expect(result.structuredContent.commits).toBeNull();
+    const serialized = JSON.stringify(result.structuredContent);
+    expect(serialized).not.toContain("backendOnlyMeta");
+    expect(serialized).not.toContain("jane@example.com");
+    expect(serialized).not.toContain("versionInfo");
+    expect(serialized).not.toContain("hasHealthData");
   });
 
   it("rejects releases outside the active project constraint", async () => {
@@ -127,9 +217,8 @@ describe("get_release_details", () => {
       },
     );
 
-    expect(result).toContain(
-      `# Release ${releaseVersion} in **sentry-mcp-evals**`,
-    );
+    expect(result.structuredContent.release.version).toBe(releaseVersion);
+    expect(result.structuredContent.release.projects).toEqual([]);
   });
 
   it("rejects release health metadata outside the active project constraint", async () => {
@@ -352,9 +441,10 @@ describe("get_release_details", () => {
       context,
     );
 
-    expect(result).not.toContain("Health And Project Metadata");
-    expect(result).not.toContain("sessionsAdoption");
-    expect(result).not.toContain("adoptionStages");
+    expect(result.structuredContent.health).toBeNull();
+    expect(JSON.stringify(result.structuredContent)).not.toContain(
+      "sessionsAdoption",
+    );
   });
 
   it("uses scoped release endpoints under an active project constraint", async () => {

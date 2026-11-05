@@ -17,7 +17,8 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { ROUTE_TREE_STUBS } from "./lib/route-tree-stub-files.mjs";
 
 /** Produced by `generate:schema`; imported at runtime by `src/`. */
 const SCHEMA_OUTPUTS = [
@@ -39,7 +40,28 @@ const DOCS_OUTPUTS = [
   "src/generated/skill-content.ts",
   "src/generated/completion-targets.json",
   "src/generated/top-level-routes.json",
+  "src/generated/init-guide.ts",
 ];
+
+const STUBS = new Map(ROUTE_TREE_STUBS);
+
+/**
+ * Whether `path` holds generated output. A file that still holds its
+ * route-tree stub does not: scripts that load the tree without generating,
+ * such as `check-fragments`, write stubs and leave them behind.
+ */
+function isGenerated(path) {
+  if (!existsSync(path)) {
+    return false;
+  }
+  const stub = STUBS.get(path);
+  // Compare sizes first so generated files are not read.
+  return (
+    stub === undefined ||
+    statSync(path).size !== Buffer.byteLength(stub) ||
+    readFileSync(path, "utf8") !== stub
+  );
+}
 
 function run(script) {
   console.error(`Missing generated files; running \`pnpm run ${script}\`...`);
@@ -60,6 +82,6 @@ if (!SCHEMA_OUTPUTS.every(existsSync)) {
 if (wants("grammar") && !GRAMMAR_OUTPUTS.every(existsSync)) {
   run("generate:grammar");
 }
-if (wants("docs") && !DOCS_OUTPUTS.every(existsSync)) {
+if (wants("docs") && !DOCS_OUTPUTS.every(isGenerated)) {
   run("generate:docs");
 }

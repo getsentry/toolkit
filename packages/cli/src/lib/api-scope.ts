@@ -25,6 +25,7 @@ export const SENTRY_SCOPES = [
   "org:admin",
   "org:integrations",
   "org:ci",
+  "org:tokens",
   "member:invite",
   "member:read",
   "member:write",

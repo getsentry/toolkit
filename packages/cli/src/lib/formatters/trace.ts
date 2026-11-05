@@ -171,6 +171,7 @@ const TRACE_FIELD_ROOTS = new Set([
   "rootTransaction",
   "rootOp",
   "startTimestamp",
+  "replayId",
   "spans",
   "spanTreeLines",
 ]);
@@ -239,7 +240,7 @@ function includeTraceAttributes(
 
 /** Project trace JSON, retaining span IDs and topology for bare attributes. */
 export function projectTraceFields(
-  trace: TraceSummary & { spans: TraceSpan[] },
+  trace: TraceSummary & { replayId?: string | null; spans: TraceSpan[] },
   selection: TraceFieldSelection,
 ): Partial<TraceSummary> & { spans?: ProjectedTraceSpan[] } {
   const result: Partial<TraceSummary> & { spans?: ProjectedTraceSpan[] } =
@@ -361,7 +362,13 @@ export function computeTraceSummary(
  * @param summary - Computed trace summary
  * @returns Rendered terminal string
  */
-export function formatTraceSummary(summary: TraceSummary): string {
+export function formatTraceSummary(
+  summary: TraceSummary,
+  options: {
+    /** Newest stored replay linked to the trace, or null. */
+    replayId?: string | null;
+  } = {},
+): string {
   const kvRows: [string, string][] = [];
 
   if (summary.rootTransaction) {
@@ -376,6 +383,12 @@ export function formatTraceSummary(summary: TraceSummary): string {
   if (Number.isFinite(summary.startTimestamp) && summary.startTimestamp > 0) {
     const date = new Date(summary.startTimestamp * 1000);
     kvRows.push(["Started", date.toLocaleString("sv-SE")]);
+  }
+  if (options.replayId !== undefined) {
+    kvRows.push([
+      "Replay ID",
+      options.replayId ? `\`${options.replayId}\`` : "none",
+    ]);
   }
 
   const md = `## Trace \`${summary.traceId}\`\n\n${mdKvTable(kvRows)}\n`;

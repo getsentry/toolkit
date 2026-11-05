@@ -4,10 +4,29 @@
  * Defines platform and framework combinations available in Sentry documentation.
  */
 
+import type { Implementation } from "@modelcontextprotocol/server";
+
 /**
- * MCP Server identification
+ * MCP server identification for `serverInfo`, minus the version.
+ *
+ * `name` stays "Sentry MCP" for telemetry and client compatibility even though
+ * the spec reserves it for a programmatic ID; clients display `title`. The icon
+ * is served from the mcp-cloudflare `public/` assets.
  */
-export const MCP_SERVER_NAME = "Sentry MCP" as const;
+export const MCP_SERVER_INFO = {
+  name: "Sentry MCP",
+  title: "Sentry",
+  description:
+    "Search and debug Sentry issues, errors, traces, logs, replays, and monitors.",
+  websiteUrl: "https://mcp.sentry.dev",
+  icons: [
+    {
+      src: "https://mcp.sentry.dev/sentry-icon.png",
+      mimeType: "image/png",
+      sizes: ["256x256"],
+    },
+  ],
+} satisfies Omit<Implementation, "version">;
 
 /**
  * Supported issue-search windows exposed by search_issues.

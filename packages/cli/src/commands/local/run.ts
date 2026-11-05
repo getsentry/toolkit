@@ -41,7 +41,6 @@ import {
   printLocalViewerHint,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
-import { DEFAULT_MAX_ENVELOPES } from "./retention-limits.js";
 import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
 import {
   createLocalDaemonSession,
@@ -82,9 +81,6 @@ type RunFlags = {
   readonly session?: string;
   readonly "max-envelopes"?: number;
 };
-
-/** Buffer size for the auto-started background server. */
-export const BUFFER_SIZE = DEFAULT_MAX_ENVELOPES;
 
 /**
  * Client-side env var prefixes that frameworks inline into browser bundles
@@ -861,7 +857,7 @@ async function* runWithVerify(
       );
       throw new CliError(
         `Verification timed out after ${verifyTimeout}s`,
-        EXIT.WIZARD_VERIFY,
+        EXIT.VERIFY_FAILED,
       );
     }
     case "exited": {
@@ -869,7 +865,7 @@ async function* runWithVerify(
         logger.warn("Process exited before sending any events");
         throw new CliError(
           "Process exited before sending any events",
-          EXIT.WIZARD_VERIFY,
+          EXIT.VERIFY_FAILED,
         );
       }
       logger.warn(`Process crashed with code ${outcome.code}`);

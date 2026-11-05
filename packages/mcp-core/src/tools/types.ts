@@ -82,6 +82,8 @@ export interface ToolConfig<
   TSchema extends Record<string, z.ZodType> = Record<string, z.ZodType>,
 > {
   name: string;
+  /** Human-readable display name exported as the MCP tool `title`. */
+  title: string;
   description: ToolDescription;
   inputSchema: TSchema;
   skills: Skill[]; // Which skill categories this tool belongs to

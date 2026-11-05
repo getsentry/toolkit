@@ -144,6 +144,23 @@ describe("library mode (bundled)", () => {
     expect(stdout.trim()).toBe("function");
   });
 
+  test("getVersion()/getPath() match v3's statics", async () => {
+    const { stdout } = await runNodeScriptOk(`
+      const mod = require('./dist/index.cjs');
+      const { existsSync } = require('node:fs');
+      const path = mod.getPath();
+      console.log(JSON.stringify({
+        version: mod.getVersion(),
+        bin: path === require('node:path').resolve('dist/bin.cjs') && existsSync(path),
+        statics: mod.default.getVersion === mod.getVersion && mod.default.getPath === mod.getPath,
+      }));
+    `);
+    const result = JSON.parse(stdout.trim());
+    expect(result.version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(result.bin).toBe(true);
+    expect(result.statics).toBe(true);
+  });
+
   // --- run() escape hatch ---
 
   test("sdk.run('--version') returns version string", async () => {

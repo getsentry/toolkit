@@ -52,7 +52,7 @@ Upload sourcemaps to Sentry
 
 | Argument | Description |
 |----------|-------------|
-| `<directory>` | Directory containing sourcemaps |
+| `<directory>` | Directory containing sourcemaps, or a glob like 'dist/**' |
 
 **Flags:**
 - `--release <value> - Release version to associate with the upload`
@@ -71,6 +71,9 @@ Upload sourcemaps to Sentry
 ```bash
 # Upload sourcemaps from dist/
 sentry sourcemap upload ./dist
+
+# Upload only the files a glob matches
+sentry sourcemap upload '.next/static/**'
 
 # Associate with a release
 sentry sourcemap upload ./dist --release 1.0.0

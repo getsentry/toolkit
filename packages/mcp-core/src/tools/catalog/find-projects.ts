@@ -27,6 +27,7 @@ export const findProjectsOutputSchema = z.object({
 
 export default defineTool({
   name: "find_projects",
+  title: "Find Projects",
   skills: ALL_SKILLS, // Foundational tool - available to all skills
   requiredScopes: ["project:read"],
   description: [

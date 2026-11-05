@@ -94,6 +94,7 @@ const onboardingUpdateSchema = z
 
 export default defineTool({
   name: "onboarding_status_update",
+  title: "Update Onboarding Status",
   skills: ALL_SKILLS,
   includeInSkillDefinitions: false,
   requiredScopes: ["org:read"],

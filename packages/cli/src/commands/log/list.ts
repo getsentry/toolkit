@@ -6,8 +6,6 @@
  * Supports trace ID as a positional argument to filter logs by trace.
  */
 
-// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../../context.js";
 import {
   type LogSortDirection,
@@ -80,6 +78,7 @@ import {
 } from "../../lib/trace-target.js";
 import { getUpdateNotification } from "../../lib/version-check.js";
 import { SentryLogSchema } from "../../generated/output-schemas/log.js";
+import { reportCliError } from "../../lib/error-reporting.js";
 
 type ListFlags = {
   readonly limit: number;
@@ -412,7 +411,7 @@ async function fetchPoll<T extends LogLike>(
     if (error instanceof ValidationError) {
       throw error;
     }
-    Sentry.captureException(error);
+    reportCliError(error);
     const message = stringifyUnknown(error);
     config.onDiagnostic(`Error fetching logs: ${message}\n`);
     return;

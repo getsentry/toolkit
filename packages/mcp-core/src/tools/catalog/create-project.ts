@@ -108,6 +108,7 @@ async function getOrCreateClientKey({
 
 export default defineTool({
   name: "create_project",
+  title: "Create Project",
   skills: ["project-management"], // Only available in project-management skill
   requiredScopes: ["project:write", "team:read", "org:read"],
   description: [

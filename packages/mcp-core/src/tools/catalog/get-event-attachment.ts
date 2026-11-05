@@ -83,6 +83,7 @@ function formatOversizedAttachment(
 
 export default defineTool({
   name: "get_event_attachment",
+  title: "Get Event Attachment",
   skills: ["inspect"], // Only available in inspect skill
   requiredScopes: ["event:read"],
   description: [

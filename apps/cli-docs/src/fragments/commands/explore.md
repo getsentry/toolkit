@@ -73,7 +73,7 @@ by one dataset may be unsupported by another.
 
 | Target | Behavior |
 |--------|----------|
-| `<org>/<project>` | Auto-adds `project:<slug>` to query |
+| `<org>/<project>` | Scopes the query to that project |
 | `<org>/` | All projects in org (no project filter) |
 | `<project>` | Searches for project across all accessible orgs |
 | (omitted) | Auto-detect from DSN/config |

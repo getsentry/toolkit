@@ -39,7 +39,7 @@ View details of one or more events
 | `location` | string \| null |  |
 | `user` | object \| null |  |
 | `tags` | array |  |
-| `platform` | string |  |
+| `platform` | string \| null |  |
 | `dateReceived` | string \| null |  |
 | `contexts` | object \| null |  |
 | `size` | number \| null |  |
@@ -51,7 +51,7 @@ View details of one or more events
 | `type` | string |  |
 | `metadata` | object |  |
 | `errors` | array |  |
-| `occurrence` | object \| object \| null |  |
+| `occurrence` | object \| null |  |
 | `_meta` | object |  |
 | `crashFile` | string \| null |  |
 | `culprit` | string \| null |  |
@@ -68,7 +68,7 @@ View details of one or more events
 | `resolvedWith` | array |  |
 | `nextEventID` | string \| null |  |
 | `previousEventID` | string \| null |  |
-| `formatted` | object |  |
+| `formatted` | object | Event rendered as Markdown, XML, or JSON; only returned for API requests with llmFormat |
 | `trace` | object \| null | Trace context, or null when unavailable |
 | `attachments` | array | Event attachments; each includes metadata and an absolute authenticated download URL |
 
@@ -130,18 +130,18 @@ List events for an issue
 |-------|------|-------------|
 | `id` | string | Internal event ID |
 | `event.type` | string | Event type (error, default, transaction) |
-| `groupID` | string \| null | Group (issue) ID |
+| `groupID` | string \| null | ID of the issue the event belongs to |
 | `eventID` | string | UUID-format event ID |
-| `projectID` | string | Project ID |
+| `projectID` | string | ID of the project the event belongs to |
 | `message` | string | Event message |
 | `title` | string | Event title |
-| `location` | string \| null | Source location (file:line) |
-| `culprit` | string \| null | Culprit function/module |
-| `user` | object \| null | User context |
-| `tags` | array | Event tags |
-| `platform` | string \| null | Platform (python, javascript, etc.) |
-| `dateCreated` | string | ISO 8601 creation timestamp |
-| `crashFile` | string \| null | Crash file URL |
+| `location` | string \| null | Source location of the event, such as a file and line |
+| `culprit` | string \| null | Function or module that caused the event |
+| `user` | object \| null | User context of the event |
+| `tags` | array | Tags attached to the event |
+| `platform` | string \| null | Platform of the event, such as python or javascript |
+| `dateCreated` | string | When the event occurred (ISO 8601) |
+| `crashFile` | string \| null | Crash report attachment of the event, if any |
 | `metadata` | object | Event metadata |
 
 **Examples:**
@@ -238,6 +238,48 @@ sentry event send my-project -m "Test"
 
 # Send to an org/project target
 sentry event send my-org/my-project -m "Test"
+```
+
+### `sentry event analytics [<org/project>]`
+
+Analytics for events Sentry accepted and dropped
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/&lt;project&gt; or &lt;project&gt; (search) |
+
+**Flags:**
+- `-d, --dataset <value> - Dropped-data type: errors, spans, logs, metrics - (default: "errors")`
+- `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "7d")`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outcome` | string | Outcome code: accepted, or a drop such as rate_limited or filtered |
+| `label` | string | Human-readable outcome label |
+| `reason` | string | Reason within the outcome (e.g. spike_protection); accepted for accepted volume |
+| `category` | string | Data category (e.g. error, span) |
+| `events` | number | Events in this slice |
+| `share` | number | Fraction of total volume (0-1), not a percentage string |
+| `tags` | array | Drop classification: intentional or unintentional; empty for accepted |
+
+**Examples:**
+
+```bash
+# Accepted and dropped event analytics for a project
+sentry event analytics my-org/my-project
+
+# Analytics for a different dataset
+sentry event analytics my-org/my-project --dataset spans
+
+# Widen the time range
+sentry event analytics my-org/my-project --period 7d
+
+# Select specific JSON fields
+sentry event analytics my-org/my-project --json --fields outcome,reason,events
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

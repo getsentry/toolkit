@@ -21,7 +21,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { startNewTrace, startSpan } from "@sentry/core";
-import { LIB_VERSION } from "../version";
+import { getServerVersion } from "../version";
 
 export type StdioServerContext = {
   sentryHost?: string;
@@ -32,12 +32,13 @@ export type StdioServerContext = {
 function getStdioSpanAttributes(
   context: StdioServerContext,
 ): Record<string, string | boolean> {
+  const version = getServerVersion();
   const attributes: Record<string, string | boolean> = {
     "app.transport": "stdio",
-    "app.server.version": LIB_VERSION,
+    "app.server.version": version,
     "app.server.mode.experimental": context.experimentalMode ?? false,
     "network.transport": "pipe",
-    "service.version": LIB_VERSION,
+    "service.version": version,
   };
 
   if (context.sentryHost) {
