@@ -1,4 +1,4 @@
-import { describe, expect, test, vi, afterEach } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   resolveRunCode,
   buildStageExtra,
@@ -10,10 +10,6 @@ import {
   ContextError,
   ValidationError,
 } from "../../../src/lib/errors.js";
-
-// ---------------------------------------------------------------------------
-// resolveRunCode
-// ---------------------------------------------------------------------------
 
 describe("resolveRunCode", () => {
   afterEach(() => {
@@ -40,10 +36,6 @@ describe("resolveRunCode", () => {
     expect(() => resolveRunCode("11chars_too")).toThrow(ValidationError);
   });
 });
-
-// ---------------------------------------------------------------------------
-// buildStageExtra
-// ---------------------------------------------------------------------------
 
 function flags(
   stage: string,
@@ -94,10 +86,6 @@ describe("buildStageExtra", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// toClosedRunError
-// ---------------------------------------------------------------------------
-
 describe("toClosedRunError", () => {
   test.each([404, 409, 410])(
     "wraps HTTP %i as an ApiError with the stop message",
@@ -122,10 +110,6 @@ describe("toClosedRunError", () => {
     expect(toClosedRunError(original)).toBe(original);
   });
 });
-
-// ---------------------------------------------------------------------------
-// formatProgress
-// ---------------------------------------------------------------------------
 
 describe("formatProgress", () => {
   test("says yes when continueUpdates is true", () => {

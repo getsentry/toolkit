@@ -14,10 +14,6 @@ import {
   description,
 } from "valibot";
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 export const ONBOARDING_STAGES = [
   "connect_agent",
   "analyze_project",
@@ -40,10 +36,6 @@ export const ONBOARDING_STAGE_STATUSES = [
 
 export const ONBOARDING_RUN_STATUSES = ["completed", "failed"] as const;
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export type OnboardingStage = (typeof ONBOARDING_STAGES)[number];
 export type OnboardingStageStatus = (typeof ONBOARDING_STAGE_STATUSES)[number];
 export type OnboardingRunStatus = (typeof ONBOARDING_RUN_STATUSES)[number];
@@ -62,10 +54,6 @@ export type OnboardingStatusUpdate = {
   runStatus?: OnboardingRunStatus;
   extra?: OnboardingStageExtra;
 };
-
-// ---------------------------------------------------------------------------
-// Schemas
-// ---------------------------------------------------------------------------
 
 /**
  * Response schema for a single onboarding status update.
