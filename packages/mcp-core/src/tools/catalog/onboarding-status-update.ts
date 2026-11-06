@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  AgenticOnboardingConnectStageInputSchema,
   AgenticOnboardingRunStatusUpdateSchema,
   AgenticOnboardingRunTokenSchema,
   AgenticOnboardingStageSchema,
@@ -75,8 +76,15 @@ const receiveVerificationErrorUpdateSchema = updateBaseSchema.extend({
     ),
 });
 
+const connectUpdateSchema = updateBaseSchema.extend({
+  stage: AgenticOnboardingConnectStageInputSchema.describe(
+    "Report progress while connecting to the user's Sentry account. connect_mcp is accepted as an older name.",
+  ),
+});
+
 const updateWithoutExtraSchema = updateBaseSchema.extend({
   stage: AgenticOnboardingStageSchema.exclude([
+    "connect_mcp",
     "create_project",
     "receive_verification_error",
   ]).describe(
@@ -86,11 +94,27 @@ const updateWithoutExtraSchema = updateBaseSchema.extend({
 
 const onboardingUpdateSchema = z
   .discriminatedUnion("stage", [
+    connectUpdateSchema,
     createProjectUpdateSchema,
     receiveVerificationErrorUpdateSchema,
     updateWithoutExtraSchema,
   ])
   .describe("The stage-specific onboarding progress update.");
+
+type OnboardingUpdate = z.infer<typeof onboardingUpdateSchema>;
+
+const CONNECTION_METHOD = "mcp" as const;
+
+function withConnectionMethod(update: OnboardingUpdate) {
+  if (update.stage !== "connect_agent" && update.stage !== "connect_mcp") {
+    return update;
+  }
+  return {
+    ...update,
+    stage: "connect_agent" as const,
+    extra: { method: CONNECTION_METHOD },
+  };
+}
 
 export default defineTool({
   name: "onboarding_status_update",
@@ -136,7 +160,7 @@ export default defineTool({
     const update = AgenticOnboardingStatusUpdateSchema.parse({
       schemaVersion: 1,
       runToken: params.runToken,
-      ...params.update,
+      ...withConnectionMethod(params.update),
     });
 
     const run = await apiService.updateAgenticOnboardingStatus({
