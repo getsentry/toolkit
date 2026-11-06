@@ -4864,6 +4864,74 @@ describe("search_events", () => {
         ),
       ];
 
+      it.each([
+        { confirmed: true, outcome: "has_results", resultCount: 1 },
+        { confirmed: false, outcome: "error_on_load", resultCount: 0 },
+      ])(
+        "reports $outcome after validating a transformed time series",
+        async ({ confirmed, outcome, resultCount }) => {
+          mswServer.use(
+            mockOrganization(["mcp-search-events-seer-translate"]),
+            mockSeerState({
+              status: "completed",
+              final_response: {
+                responses: [
+                  {
+                    ...seerQuery,
+                    group_by: [],
+                    visualization: [
+                      {
+                        y_axes: ["p95(span.duration)"],
+                        interval: "1h",
+                        transformations: ["smooth(sma,2)"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            }),
+            http.get(
+              "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+              () =>
+                HttpResponse.json({
+                  timeSeries: [
+                    {
+                      yAxis: "p95(span.duration)",
+                      meta: { interval: 3600000 },
+                      values: [
+                        {
+                          timestamp: 1757548800000,
+                          value: 10,
+                          incomplete: false,
+                          ...(confirmed
+                            ? { filled: false, smoothed: true }
+                            : {}),
+                        },
+                      ],
+                    },
+                  ],
+                }),
+            ),
+          );
+
+          const result = searchEvents.handler(seerParams, context);
+          if (confirmed) {
+            await expect(result).resolves.toHaveProperty("structuredContent");
+          } else {
+            await expect(result).rejects.toThrow(
+              "Sentry did not confirm that the requested transformations ran",
+            );
+          }
+
+          expect(mockDistribution).toHaveBeenCalledTimes(1);
+          expect(mockDistribution).toHaveBeenCalledWith(
+            "assisted_query.outcome",
+            resultCount,
+            { attributes: expect.objectContaining({ outcome }) },
+          );
+        },
+      );
+
       it("should report has_results when the Seer query returns rows", async () => {
         mswServer.use(
           ...mockSeerEvents(() =>

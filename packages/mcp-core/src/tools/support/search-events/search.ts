@@ -1120,14 +1120,6 @@ async function executeSearchEvents(
             ),
           }
         : undefined;
-    // A series always has buckets, so count the ones with data.
-    trackSeerOutcome(
-      seerOutcome,
-      params,
-      series.timeSeries
-        .flatMap((s) => s.values)
-        .filter((point) => point.value != null && point.value !== 0).length,
-    );
     const statsUrl = apiService.getEventsExplorerUrl(
       organizationSlug,
       timeSeriesQuery,
@@ -1143,36 +1135,45 @@ async function executeSearchEvents(
       undefined,
       exploreConfiguration,
     );
-    if (needsStructuredSeries) {
-      return structuredResult(
-        buildTimeSeriesResult({
+    const timeSeriesOutput = needsStructuredSeries
+      ? structuredResult(
+          buildTimeSeriesResult({
+            series,
+            configuration: timeSeries,
+            dataset,
+            query: timeSeriesQuery,
+            inputQuery: params.query || timeSeriesQuery,
+            timeRange: timeParams,
+            url: statsUrl,
+            explanation: params.includeExplanation ? explanation : undefined,
+            notes: [leadingNote, droppedEventsNote].filter(Boolean),
+          }),
+        )
+      : formatTimeSeriesResults({
           series,
-          configuration: timeSeries,
-          dataset,
-          query: timeSeriesQuery,
+          yAxis: timeSeries.axes[0]!.yAxis,
+          interval: timeSeries.interval ?? null,
           inputQuery: params.query || timeSeriesQuery,
+          includeExplanation: params.includeExplanation,
+          explanation,
           timeRange: timeParams,
           url: statsUrl,
-          explanation: params.includeExplanation ? explanation : undefined,
-          notes: [leadingNote, droppedEventsNote].filter(Boolean),
-        }),
-      );
-    }
-    const timeSeriesOutput = formatTimeSeriesResults({
-      series,
-      yAxis: timeSeries.axes[0]!.yAxis,
-      interval: timeSeries.interval ?? null,
-      inputQuery: params.query || timeSeriesQuery,
-      includeExplanation: params.includeExplanation,
-      explanation,
-      timeRange: timeParams,
-      url: statsUrl,
-    });
-    return withLeadingNote(
-      droppedEventsNote
-        ? `${timeSeriesOutput}\n\n${droppedEventsNote}`
-        : timeSeriesOutput,
+        });
+    // A series always has buckets, so count the ones with data.
+    trackSeerOutcome(
+      seerOutcome,
+      params,
+      series.timeSeries
+        .flatMap((s) => s.values)
+        .filter((point) => point.value != null && point.value !== 0).length,
     );
+    return typeof timeSeriesOutput === "string"
+      ? withLeadingNote(
+          droppedEventsNote
+            ? `${timeSeriesOutput}\n\n${droppedEventsNote}`
+            : timeSeriesOutput,
+        )
+      : timeSeriesOutput;
   }
 
   // Sentry rejects the request if the sort column isn't in the selected
