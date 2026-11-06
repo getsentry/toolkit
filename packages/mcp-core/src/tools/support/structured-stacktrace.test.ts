@@ -198,4 +198,25 @@ describe("mapStructuredStacktrace", () => {
     expect(vars?.label).toBe("export");
     expect(vars?.rows).toBe(`${JSON.stringify(rows).slice(0, 200)}…`);
   });
+
+  it("keeps vars on a detail frame that has no line number", () => {
+    const stacktrace = mapStructuredStacktrace({
+      frames: [
+        sentryFrame({
+          function: "handle_request",
+          module: "app.views",
+          inApp: true,
+          vars: { user_id: 42 },
+        }),
+      ],
+      framesOmitted: null,
+    });
+
+    expect(stacktrace?.frames[0]).toEqual({
+      function: "handle_request",
+      module: "app.views",
+      inApp: true,
+      vars: { user_id: 42 },
+    });
+  });
 });

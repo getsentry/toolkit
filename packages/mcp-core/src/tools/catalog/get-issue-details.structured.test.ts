@@ -764,6 +764,26 @@ describe("get_issue_details structuredContent for a realistic error", () => {
     expect(payload.event.threads.at(-1).name).toBe("worker-20");
   });
 
+  it("falls back to the ip and display_name user aliases", async () => {
+    mockDjangoIssue({
+      ...djangoErrorEvent,
+      user: {
+        id: "1182",
+        email: "jane@example.com",
+        ip: "203.0.113.24",
+        display_name: "Jane Doe",
+      },
+    });
+
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(payload.event.user).toMatchObject({
+      ipAddress: "203.0.113.24",
+      name: "Jane Doe",
+    });
+  });
+
   it("turns empty strings into null", async () => {
     mockDjangoIssue({
       ...djangoErrorEvent,
