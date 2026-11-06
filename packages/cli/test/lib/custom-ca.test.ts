@@ -7,9 +7,11 @@
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { setAppIdentity } from "../../src/lib/app-identity.js";
 import {
   __resetForTests,
+  buildTlsErrorDetail,
   customFetch,
   getCustomCaCerts,
   getCustomCaSource,
@@ -272,6 +274,41 @@ describe("warnIfSaasWithEnvCa", () => {
     // Self-hosted URL — no warning
     warnIfSaasWithEnvCa("https://sentry.example.com/api/0/");
     expect(getCustomCaSource()).toBe("env");
+  });
+
+  test("warning names a command that exists in @sentry/mcp-server", () => {
+    const certPath = join(getConfigDir(), "ca.pem");
+    writeFileSync(certPath, CERT_PEM);
+    process.env.NODE_EXTRA_CA_CERTS = certPath;
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
+    try {
+      warnIfSaasWithEnvCa("https://us.sentry.io/api/0/organizations/");
+      const output = stderr.mock.calls.map((call) => String(call[0])).join("");
+      expect(output).toContain(
+        "silence this warning with the Sentry CLI:\n    npx -y sentry cli defaults ca-cert /path/to/cert.pem",
+      );
+    } finally {
+      setAppIdentity({ name: "sentry", packageName: "sentry" });
+      stderr.mockRestore();
+    }
+  });
+
+  test("TLS error fix names a command that exists in @sentry/mcp-server", () => {
+    setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
+    try {
+      expect(
+        buildTlsErrorDetail(
+          new Error("unable to get local issuer certificate"),
+        ),
+      ).toContain(
+        "npx -y sentry cli defaults ca-cert /path/to/corporate-ca.pem",
+      );
+    } finally {
+      setAppIdentity({ name: "sentry", packageName: "sentry" });
+    }
   });
 });
 
