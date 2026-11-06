@@ -2012,6 +2012,28 @@ When Sentry detects an abnormal spike in events, it automatically activates spik
       );
     },
   ),
+  // docs.sentry.io serves unknown pages as a 200 "Page Not Found" document
+  http.get("https://docs.sentry.io/ai/mcp.md", () => {
+    return new HttpResponse(
+      `---
+title: "Page Not Found"
+url: "https://docs.sentry.io/ai/mcp"
+---
+
+# Page Not Found
+
+The page \`/ai/mcp\` does not exist.
+
+## Find what you need
+
+- [Site index](https://docs.sentry.io/llms.txt) — LLM-optimized page listing`,
+      {
+        headers: {
+          "Content-Type": "text/markdown",
+        },
+      },
+    );
+  }),
   // Catch-all for other doc paths - return 404
   http.get("https://docs.sentry.io/*.md", () => {
     return new HttpResponse(null, { status: 404 });

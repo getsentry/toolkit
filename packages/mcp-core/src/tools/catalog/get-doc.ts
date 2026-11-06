@@ -7,6 +7,17 @@ import { defineTool } from "../../internal/tool-helpers/define";
 import type { ServerContext } from "../../types";
 import { getUserAgent } from "../../version";
 
+const DOC_NOT_FOUND_MESSAGE =
+  "Documentation not found at this path. The page may have been moved or removed. Use `search_docs()` to find the current path, and pass the `path` from its results exactly.";
+
+function isSoftNotFound(content: string): boolean {
+  const frontMatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content.trimStart());
+  return (
+    frontMatter !== null &&
+    /^title:\s*["']?Page Not Found["']?\s*$/m.test(frontMatter[1] ?? "")
+  );
+}
+
 export default defineTool({
   name: "get_doc",
   title: "Get Sentry Doc",
@@ -89,13 +100,7 @@ export default defineTool({
 
     if (!response.ok) {
       if (response.status === 404) {
-        output += `**Error**: Documentation not found at this path.\n\n`;
-        output += `Please verify the path is correct. Common issues:\n`;
-        output += `- Path should start with / (e.g., /platforms/javascript/guides/nextjs.md)\n`;
-        output += `- Path should match exactly what's shown in search_docs results\n`;
-        output += `- Some pages may have been moved or renamed\n\n`;
-        output += `Try searching again with \`search_docs()\` to find the correct path.\n`;
-        return output;
+        throw new UserInputError(DOC_NOT_FOUND_MESSAGE);
       }
 
       throw new ApiError(
@@ -105,6 +110,11 @@ export default defineTool({
     }
 
     const content = await response.text();
+
+    // docs.sentry.io answers unknown paths with 200 and a "Page Not Found" page.
+    if (isSoftNotFound(content)) {
+      throw new UserInputError(DOC_NOT_FOUND_MESSAGE);
+    }
 
     // Check if we got HTML instead of markdown (wrong path format)
     if (
