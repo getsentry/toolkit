@@ -556,6 +556,22 @@ describe("url-utils", () => {
   });
 
   describe("getTraceMetricsExploreUrl", () => {
+    it("resolves exact metric filters inside nested parentheses", () => {
+      const query =
+        "(metric.name:tokens AND (metric.type:counter)) environment:production";
+      const url = new URL(
+        getTraceMetricsExploreUrl("sentry.io", "myorg", {
+          query,
+          timeSeries: { axes: [{ yAxis: "sum(value)" }], interval: "1h" },
+        }),
+      );
+      expect(JSON.parse(url.searchParams.get("metric")!)).toMatchObject({
+        metric: { name: "tokens", type: "counter" },
+        query,
+        aggregateFields: [{ yAxes: ["sum(value,tokens,counter,none)"] }],
+      });
+    });
+
     it("preserves axis order across metric identities and qualifies bare value aggregates", () => {
       const url = new URL(
         getTraceMetricsExploreUrl("sentry.io", "myorg", {
@@ -641,6 +657,9 @@ describe("url-utils", () => {
       "metric.name:[a,b] metric.type:distribution",
       "metric.name:a metric.name:b metric.type:distribution",
       "metric.name:a metric.type:distribution OR environment:production",
+      "(metric.name:a OR metric.name:b) metric.type:distribution",
+      "NOT (metric.name:a metric.type:distribution)",
+      "!(metric.name:a metric.type:distribution)",
     ])("rejects an ambiguous metric identity in %s", (query) => {
       expect(() =>
         getTraceMetricsExploreUrl("sentry.io", "myorg", {
