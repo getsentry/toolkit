@@ -1,12 +1,40 @@
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
-import { ApiError } from "../../api-client/index";
+import { ApiError, ApiServerError } from "../../api-client/index";
 import { fetchWithTimeout } from "../../internal/fetch-utils";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
+import {
+  buildSuggestedToolAction,
+  suggestedToolActionSchema,
+} from "../../internal/tool-helpers/suggested-actions";
 import { formatToolCallInstruction } from "../../internal/tool-helpers/tool-call-formatting";
 import { ParamSentryGuide } from "../../schema";
 import type { ServerContext } from "../../types";
 import type { SearchResponse } from "../types";
+
+// Snippets are search chunks, so only the top results carry one to keep the
+// response small when callers ask for up to 10 results.
+const MAX_SNIPPETS = 3;
+
+export const searchDocsOutputSchema = z.object({
+  query: z.string(),
+  guide: z.string().nullable(),
+  results: z.array(
+    z.object({
+      path: z.string().describe("Pass to get_doc as `path`."),
+      url: z.string(),
+      relevance: z.number().describe("Match score from 0 to 1."),
+      snippet: z
+        .string()
+        .nullable()
+        .describe(
+          `Matching excerpt, not the full page. Null after the first ${MAX_SNIPPETS} results.`,
+        ),
+    }),
+  ),
+  suggestedActions: z.array(suggestedToolActionSchema),
+});
 
 export default defineTool({
   name: "search_docs",
@@ -72,14 +100,8 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
+  outputSchema: searchDocsOutputSchema,
   async handler(params, context: ServerContext) {
-    let output = `# Documentation Search Results\n\n`;
-    output += `**Query**: "${params.query}"\n`;
-    if (params.guide) {
-      output += `**Guide**: ${params.guide}\n`;
-    }
-    output += `\n`;
-
     // Determine the URL - use context.mcpUrl if available, otherwise default to production
     const host = context.mcpUrl || "https://mcp.sentry.dev";
     const searchUrl = new URL("/api/search", host);
@@ -113,10 +135,11 @@ export default defineTool({
 
     const data = (await response.json()) as SearchResponse;
 
-    // Handle error in response
+    // The search endpoint reports failures with non-2xx statuses. An error in
+    // a 2xx body means it misbehaved, so surface it as a server error rather
+    // than an empty, success-shaped result.
     if ("error" in data && data.error) {
-      output += `**Error**: ${data.error}\n\n`;
-      return output;
+      throw new ApiServerError(data.error, 502);
     }
 
     getActiveSpan()?.setAttribute(
@@ -124,32 +147,31 @@ export default defineTool({
       data.results.length,
     );
 
-    // Display results
-    if (data.results.length === 0) {
-      output += "No documentation found matching your query.\n\n";
-      return output;
-    }
+    const results = data.results.map((result, index) => ({
+      path: result.id,
+      url: result.url,
+      relevance: result.relevance,
+      snippet: index < MAX_SNIPPETS ? result.snippet : null,
+    }));
 
-    output += `Found ${data.results.length} match${data.results.length === 1 ? "" : "es"}\n\n`;
+    const topPath = results[0]?.path;
+    const getDocAction = topPath
+      ? buildSuggestedToolAction({
+          toolName: "get_doc",
+          arguments: { path: topPath },
+          reason:
+            "Results are snippets; fetch the full page for the top match.",
+          experimentalMode: context.experimentalMode ?? false,
+          availableToolNames: context.availableToolNames,
+          directToolNames: context.directToolNames,
+        })
+      : null;
 
-    output += `These are just snippets. ${formatToolCallInstruction({
-      toolName: "get_doc",
-      arguments: { path: "..." },
-      experimentalMode: context.experimentalMode ?? false,
-      availableToolNames: context.availableToolNames,
-      directToolNames: context.directToolNames,
-    })} to fetch the full content.\n\n`;
-
-    for (const [index, result] of data.results.entries()) {
-      output += `## ${index + 1}. ${result.url}\n\n`;
-      output += `**Path**: ${result.id}\n`;
-      output += `**Relevance**: ${(result.relevance * 100).toFixed(1)}%\n\n`;
-      if (index < 3) {
-        output += "**Matching Context**\n";
-        output += `> ${result.snippet.replace(/\n/g, "\n> ")}\n\n`;
-      }
-    }
-
-    return output;
+    return structuredResult({
+      query: params.query,
+      guide: params.guide ?? null,
+      results,
+      suggestedActions: getDocAction ? [getDocAction] : [],
+    });
   },
 });

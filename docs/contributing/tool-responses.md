@@ -378,6 +378,16 @@ If the raw tool result is clean but the agent final answer adds unrelated
 content, treat that as a client/agent prompt issue rather than a tool response
 formatting issue.
 
+### Documentation Search
+
+`search_docs` returns `query`, `guide` (null when omitted), and `results`, each
+with the `path` to pass to `get_doc`, the docs `url`, a 0–1 `relevance` score,
+and a matching `snippet`. Snippets are search chunks, not full pages, and only
+the first three results carry one; later results have `snippet: null`. When
+`get_doc` is callable, `suggestedActions` fetches the top result's full page.
+No matches return `results: []`. A search failure is a tool error, including
+an error reported inside a successful search response.
+
 ### Cron Monitor Environment Deletion
 
 `delete_monitor_environment` schedules irreversible deletion of one exact
