@@ -5858,7 +5858,7 @@
   {
     "name": "get_event_stacktrace",
     "title": "Get Event Stacktrace",
-    "description": "Get the full stack trace (stacktrace) for one thread of a specific Sentry event.\n\nUse this tool when you need to:\n- Fetch the full stacktrace for a thread listed in issue details\n- Inspect a non-crashed thread from an event with multiple threads\n- Get Sentry's default selected thread stacktrace when no thread is specified\n\n<examples>\nget_event_stacktrace(organizationSlug='my-org', issueId='PROJECT-123')\nget_event_stacktrace(organizationSlug='my-org', issueId='PROJECT-123', eventId='c49541c747cb4d8aa3efb70ca5aba243', thread=259)\nget_event_stacktrace(organizationSlug='my-org', issueId='PROJECT-123', thread='main')\n</examples>\n\n<hints>\n- `thread` is optional. If omitted, this returns the same default thread Sentry selects: first crashed thread, then first thread with a stacktrace, then first thread.\n- Pass `thread` as a numeric Thread ID or exact thread Name from the issue details thread list.\n- If the issue details show only one useful thread, omit `thread`.\n</hints>",
+    "description": "Get the full stack trace (stacktrace) for one thread of a specific Sentry event.\n\nUse this tool when you need to:\n- Fetch the full stacktrace for a thread listed in issue details\n- Inspect a non-crashed thread from an event with multiple threads\n- Get Sentry's default selected thread stacktrace when no thread is specified\n\n<examples>\nget_event_stacktrace(organizationSlug='my-org', issueId='PROJECT-123')\nget_event_stacktrace(organizationSlug='my-org', issueId='PROJECT-123', eventId='c49541c747cb4d8aa3efb70ca5aba243', thread=259)\nget_event_stacktrace(organizationSlug='my-org', issueId='PROJECT-123', thread='main')\n</examples>\n\n<hints>\n- `thread` is optional. If omitted, this returns the same default thread Sentry selects: first crashed thread, then first thread with a stacktrace, then first thread.\n- Pass `thread` as a numeric Thread ID or exact thread Name from the issue details thread list.\n- If the issue details show only one useful thread, omit `thread`.\n- When the selector matches no thread or several, `thread` is null and `availableThreads` lists every thread.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5917,6 +5917,218 @@
         }
       },
       "required": ["organizationSlug", "issueId"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "eventId": {
+          "type": "string"
+        },
+        "platform": {
+          "description": "The event platform, which sets how to read frames.",
+          "type": ["string", "null"]
+        },
+        "threadCount": {
+          "type": "number"
+        },
+        "selection": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["selected", "not_found", "ambiguous", "no_threads"],
+              "description": "`selected` returns `thread`. Otherwise `thread` is null and `message` says why."
+            },
+            "message": {
+              "description": "Why no thread was selected; null when one was.",
+              "type": ["string", "null"]
+            }
+          },
+          "required": ["status", "message"],
+          "additionalProperties": false
+        },
+        "thread": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": ["number", "string", "null"]
+                },
+                "name": {
+                  "type": ["string", "null"]
+                },
+                "state": {
+                  "type": ["string", "null"]
+                },
+                "crashed": {
+                  "type": "boolean"
+                },
+                "current": {
+                  "type": "boolean"
+                },
+                "frameCount": {
+                  "type": "number"
+                },
+                "stacktrace": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "frames": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "filename": {
+                                "type": "string"
+                              },
+                              "absPath": {
+                                "description": "Present only when it differs from filename.",
+                                "type": "string"
+                              },
+                              "module": {
+                                "type": "string"
+                              },
+                              "package": {
+                                "type": "string"
+                              },
+                              "function": {
+                                "type": "string"
+                              },
+                              "lineNo": {
+                                "type": "number"
+                              },
+                              "colNo": {
+                                "type": "number"
+                              },
+                              "inApp": {
+                                "description": "Present on application frames.",
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "contextLine": {
+                                "description": "The source line at lineNo.",
+                                "type": "string"
+                              },
+                              "preContext": {
+                                "description": "Up to 3 source lines before lineNo, on the most relevant frame only.",
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "postContext": {
+                                "description": "Up to 3 source lines after lineNo, on the most relevant frame only.",
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "vars": {
+                                "description": "Local variables, on the most relevant frame only. Values longer than 200 characters of JSON are cut to a string.",
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "description": "Most recent call last. The most relevant frame is the last in-app frame."
+                        },
+                        "framesOmitted": {
+                          "type": ["number", "null"]
+                        }
+                      },
+                      "required": ["frames", "framesOmitted"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "state",
+                "crashed",
+                "current",
+                "frameCount",
+                "stacktrace"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The selected thread and its stacktrace."
+        },
+        "availableThreads": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": ["number", "string", "null"]
+                  },
+                  "name": {
+                    "type": ["string", "null"]
+                  },
+                  "state": {
+                    "type": ["string", "null"]
+                  },
+                  "crashed": {
+                    "type": "boolean"
+                  },
+                  "current": {
+                    "type": "boolean"
+                  },
+                  "frameCount": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "state",
+                  "crashed",
+                  "current",
+                  "frameCount"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Every thread on the event, listed only when the `thread` selector matched none or several."
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "issueId",
+        "eventId",
+        "platform",
+        "threadCount",
+        "selection",
+        "thread",
+        "availableThreads"
+      ],
+      "additionalProperties": false
     },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],

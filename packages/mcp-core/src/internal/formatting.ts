@@ -698,109 +698,11 @@ function formatThreadTable(
   ];
 }
 
-export function formatAvailableThreadList(
-  threads: z.infer<typeof ThreadEntrySchema>[],
-): string {
-  return [
-    "## Available Threads",
-    "",
-    ...formatThreadTable(threads),
-    "",
-    "Pass `thread` as a numeric Thread ID or exact thread Name.",
-  ].join("\n");
-}
-
 export function parseThreadsEntryData(
   data: unknown,
 ): z.infer<typeof ThreadsEntrySchema> | undefined {
   const result = ThreadsEntrySchema.safeParse(data);
   return result.success ? result.data : undefined;
-}
-
-/**
- * Formats the selected thread stacktrace using the same frame rendering
- * conventions as issue event details.
- */
-export function formatThreadStacktraceOutput({
-  event,
-  thread,
-  selectionReason,
-}: {
-  event: Event;
-  thread: z.infer<typeof ThreadEntrySchema>;
-  selectionReason: string;
-}): string {
-  const parts: string[] = [];
-
-  parts.push("## Selected Thread");
-  parts.push("");
-  parts.push(`**Selection**: ${selectionReason}`);
-  parts.push(`**Thread ID**: ${getThreadDisplayValue(thread.id)}`);
-  parts.push(`**Name**: ${getThreadDisplayValue(thread.name)}`);
-  parts.push(`**State**: ${getThreadDisplayValue(thread.state)}`);
-  parts.push(`**Crashed**: ${getThreadDisplayValue(thread.crashed)}`);
-  parts.push(`**Current**: ${getThreadDisplayValue(thread.current)}`);
-  parts.push("");
-
-  const frames = thread.stacktrace?.frames;
-  if (!frames || frames.length === 0) {
-    parts.push("No stacktrace is available for the selected thread.");
-    parts.push("");
-    return parts.join("\n");
-  }
-
-  parts.push("## Stacktrace");
-  parts.push("");
-  const framesOmitted = formatFramesOmitted(thread.stacktrace?.framesOmitted);
-  if (framesOmitted) {
-    parts.push(`**Frames Omitted**: ${framesOmitted}`);
-    parts.push("");
-  }
-
-  const relevantFrame = findMostRelevantInAppFrame(frames);
-  if (relevantFrame && (relevantFrame.context?.length || relevantFrame.vars)) {
-    parts.push(renderEnhancedFrame(relevantFrame, event));
-    parts.push("");
-    parts.push("**Full Stacktrace:**");
-    parts.push("────────────────");
-  } else {
-    parts.push("**Full Stacktrace:**");
-  }
-
-  parts.push(
-    codeBlock(
-      frames
-        .map((frame) => {
-          const header = formatFrameHeader(frame, undefined, event.platform);
-          const context = renderInlineContext(frame);
-          return `${header}${context}`;
-        })
-        .join("\n"),
-    ),
-  );
-  parts.push("");
-
-  return parts.join("\n");
-}
-
-function formatFramesOmitted(
-  framesOmitted: unknown[] | null | undefined,
-): string | null {
-  if (!framesOmitted?.length) {
-    return null;
-  }
-
-  const [firstOmitted, lastOmitted] = framesOmitted;
-  if (
-    typeof firstOmitted === "number" &&
-    typeof lastOmitted === "number" &&
-    Number.isFinite(firstOmitted) &&
-    Number.isFinite(lastOmitted)
-  ) {
-    return String(Math.max(0, lastOmitted - firstOmitted));
-  }
-
-  return null;
 }
 
 /**
