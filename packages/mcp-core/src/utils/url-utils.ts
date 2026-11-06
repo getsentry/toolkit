@@ -146,13 +146,16 @@ function extractTraceMetricFromQuery(
 function exactTraceMetricFromQuery(
   query: string,
 ): TraceMetricIdentifier | null {
-  const tokens = parseSearch(query);
+  const tokens = parseSearch(query, { config: { flattenParenGroups: true } });
   if (
     !tokens ||
     tokens.some(
       (token) =>
-        token.type === Token.LOGIC_BOOLEAN &&
-        token.value === BooleanOperator.OR,
+        (token.type === Token.LOGIC_BOOLEAN &&
+          token.value === BooleanOperator.OR) ||
+        (token.type === Token.FREE_TEXT &&
+          !token.quoted &&
+          /^(?:NOT|!)\s*$/i.test(token.value)),
     )
   ) {
     return null;

@@ -214,6 +214,7 @@ function toSearchTranslation(
     );
   }
   if (
+    dataset !== "errors" &&
     !timeSeriesOverride &&
     chartWithInterval &&
     result.visualization.some(
@@ -234,7 +235,10 @@ function toSearchTranslation(
     chartWithInterval?.interval &&
     chartWithInterval.y_axes[0]
       ? TimeSeriesConfigSchema.parse({
-          axes: result.visualization.flatMap((chart) =>
+          axes: (dataset === "errors" && !hasTransformations
+            ? [chartWithInterval]
+            : result.visualization
+          ).flatMap((chart) =>
             chart.y_axes.map((yAxis) => ({
               yAxis,
               transformations: chart.transformations,

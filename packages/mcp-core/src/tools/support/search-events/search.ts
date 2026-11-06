@@ -1127,6 +1127,10 @@ async function executeSearchEvents(
         "Transformations are supported for traces, logs, and metrics only. Choose search_traces, search_logs, or search_metrics.",
       );
     }
+    // Errors and profiles retain the legacy single-axis response contract.
+    if (!isTraceItemDataset(dataset)) {
+      timeSeries = { ...timeSeries, axes: [timeSeries.axes[0]!] };
+    }
     const timeSeriesQuery = applyEnvironmentToEventsQuery(
       dataset,
       sentryQuery,
