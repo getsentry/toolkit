@@ -19,6 +19,7 @@
 
 import { randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
+import pLimit from "p-limit";
 import { customFetch } from "./custom-ca.js";
 import { ApiError } from "./errors.js";
 
@@ -45,8 +46,16 @@ const BATCH_STATUS_HEADER = "x-sn-batch-operation-status";
 const MAX_BATCH_OPS = 1000;
 /** Server-enforced maximum body size of one batch part; larger objects are PUT individually. */
 const MAX_BATCH_PART_SIZE = 1024 * 1024;
-/** Maximum total body size of one batch request (matches the Rust client). */
-const MAX_BATCH_BODY_SIZE = 100 * 1024 * 1024;
+/**
+ * Maximum total body size of one batch request. With {@link BATCH_CONCURRENCY}
+ * batches in flight, upload bodies held in memory stay around 100 MB.
+ */
+const MAX_BATCH_BODY_SIZE = 25 * 1024 * 1024;
+/**
+ * Batch requests in flight at once. Each batch is one request to the Sentry
+ * proxy, so this stays far below its per-request rate limit.
+ */
+const BATCH_CONCURRENCY = 4;
 /** Concurrency for objects too large to batch (matches the Rust client). */
 const INDIVIDUAL_CONCURRENCY = 5;
 
@@ -334,7 +343,7 @@ function chunk<T>(items: T[], size: number): T[][] {
 
 /**
  * Find which keys already exist, using batched HEAD operations (one request
- * per {@link MAX_BATCH_OPS} keys).
+ * per {@link MAX_BATCH_OPS} keys, up to {@link BATCH_CONCURRENCY} at once).
  *
  * @returns The subset of `keys` that exist.
  * @throws {ApiError} On a failed batch, or any HEAD result other than 2xx/404.
@@ -344,22 +353,27 @@ export async function findExistingObjects(
   keys: string[],
 ): Promise<Set<string>> {
   const existing = new Set<string>();
-  for (const batch of chunk(keys, MAX_BATCH_OPS)) {
-    const results = await sendBatch(
-      config,
-      batch.map((key) => ({ kind: "head", key })),
-    );
-    results.forEach((result, i) => {
-      const key = batch[i] as string;
-      if (result.status === 404) {
-        return;
-      }
-      if (result.status >= 400) {
-        throwOperationError(config, "Objectstore HEAD failed", key, result);
-      }
-      existing.add(key);
-    });
-  }
+  const limit = pLimit(BATCH_CONCURRENCY);
+  await Promise.all(
+    chunk(keys, MAX_BATCH_OPS).map((batch) =>
+      limit(async () => {
+        const results = await sendBatch(
+          config,
+          batch.map((key) => ({ kind: "head", key })),
+        );
+        results.forEach((result, i) => {
+          const key = batch[i] as string;
+          if (result.status === 404) {
+            return;
+          }
+          if (result.status >= 400) {
+            throwOperationError(config, "Objectstore HEAD failed", key, result);
+          }
+          existing.add(key);
+        });
+      }),
+    ),
+  );
   return existing;
 }
 
@@ -393,8 +407,9 @@ function groupBatches(
 
 /**
  * Upload files as objects. Files up to {@link MAX_BATCH_PART_SIZE} are sent in
- * batch requests (one at a time, to bound memory); larger files are PUT
- * individually with bounded concurrency.
+ * batch requests, up to {@link BATCH_CONCURRENCY} at once; larger files are PUT
+ * individually, up to {@link INDIVIDUAL_CONCURRENCY} at once. Both run in
+ * parallel. A file is read only when its request starts.
  *
  * @throws {ApiError} On a failed batch, or any failed insert.
  */
@@ -411,28 +426,36 @@ export async function putObjects(
   const batchable = sized.filter((u) => u.size <= MAX_BATCH_PART_SIZE);
   const individual = sized.filter((u) => u.size > MAX_BATCH_PART_SIZE);
 
-  for (const batch of groupBatches(batchable)) {
-    const operations = await Promise.all(
-      batch.map(async (upload): Promise<BatchOperation> => ({
-        kind: "insert",
-        key: upload.key,
-        body: await readFile(upload.path),
-      })),
-    );
-    const results = await sendBatch(config, operations);
-    results.forEach((result, i) => {
-      if (result.status >= 400) {
-        const key = (batch[i] as ObjectUpload).key;
-        throwOperationError(config, "Objectstore upload failed", key, result);
-      }
-    });
-  }
-
-  for (const group of chunk(individual, INDIVIDUAL_CONCURRENCY)) {
-    await Promise.all(
-      group.map(async (upload) => {
+  const batchLimit = pLimit(BATCH_CONCURRENCY);
+  const individualLimit = pLimit(INDIVIDUAL_CONCURRENCY);
+  await Promise.all([
+    ...groupBatches(batchable).map((batch) =>
+      batchLimit(async () => {
+        const operations = await Promise.all(
+          batch.map(async (upload): Promise<BatchOperation> => ({
+            kind: "insert",
+            key: upload.key,
+            body: await readFile(upload.path),
+          })),
+        );
+        const results = await sendBatch(config, operations);
+        results.forEach((result, i) => {
+          if (result.status >= 400) {
+            const key = (batch[i] as ObjectUpload).key;
+            throwOperationError(
+              config,
+              "Objectstore upload failed",
+              key,
+              result,
+            );
+          }
+        });
+      }),
+    ),
+    ...individual.map((upload) =>
+      individualLimit(async () => {
         await putObject(config, upload.key, await readFile(upload.path));
       }),
-    );
-  }
+    ),
+  ]);
 }

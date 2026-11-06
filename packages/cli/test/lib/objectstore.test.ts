@@ -117,6 +117,31 @@ describe("findExistingObjects", () => {
     expect(raw).toContain("x-sn-batch-operation-key: k1\r\n");
   });
 
+  test("splits more than 1000 keys into batches sent concurrently", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    customFetchMock.mockImplementation(async (_url, init: RequestInit) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      const count = (await sentParts(init)).length;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      inFlight -= 1;
+      return batchResponse(
+        Array.from({ length: count }, (_, index) => ({
+          index,
+          status: "200 OK",
+        })),
+      );
+    });
+    const keys = Array.from({ length: 2500 }, (_, i) => `k${i}`);
+
+    const existing = await findExistingObjects(config, keys);
+
+    expect(existing.size).toBe(2500);
+    expect(customFetchMock).toHaveBeenCalledTimes(3);
+    expect(maxInFlight).toBe(3);
+  });
+
   test("throws on a per-operation error other than 404", async () => {
     customFetchMock.mockResolvedValue(
       batchResponse([
