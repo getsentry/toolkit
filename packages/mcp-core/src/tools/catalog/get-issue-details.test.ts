@@ -2876,6 +2876,7 @@ describe("selected event package versions", () => {
               "value": "production",
             },
           ],
+          "threadCount": 0,
           "threads": null,
           "type": "default",
           "user": null,
