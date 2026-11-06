@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getTimeSeriesExploreInterval,
   TimeSeriesConfigSchema,
+  TransformationsSchema,
 } from "./time-series";
 
 describe("time series configuration", () => {
@@ -48,12 +49,10 @@ describe("time series configuration", () => {
     ["smooth(asap,0)"],
     ["smooth(asap,2,0.5)"],
     ["fill(missing)"],
-  ])("rejects invalid operation pipeline %j", (...operations) => {
-    expect(
-      TimeSeriesConfigSchema.safeParse({
-        axes: [{ yAxis: "count()", transformations: operations }],
-      }).success,
-    ).toBe(false);
+  ])("rejects invalid transformations %j", (...transformations) => {
+    expect(TransformationsSchema.safeParse(transformations).success).toBe(
+      false,
+    );
   });
 
   it("rejects unknown chart shape properties instead of discarding them", () => {
