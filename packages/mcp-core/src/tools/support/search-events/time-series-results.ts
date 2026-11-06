@@ -53,7 +53,7 @@ export function validateTimeSeriesResponse(
   }
 }
 
-export function isAdditiveTimeSeriesAggregate(yAxis: string): boolean {
+function isAdditiveTimeSeriesAggregate(yAxis: string): boolean {
   const aggregate = yAxis.trim().toLowerCase();
   return aggregate === "count()" || aggregate.startsWith("sum(");
 }
@@ -115,39 +115,15 @@ export function buildTimeSeriesResult(params: {
 }) {
   const { series, configuration } = params;
   validateTimeSeriesResponse(series, configuration);
-  const ingestion = series.meta?.ingestion;
   return {
     dataset: params.dataset,
     query: params.query,
     inputQuery: params.inputQuery,
     timeRange: params.timeRange,
-    ...(series.meta?.start !== undefined || series.meta?.end !== undefined
-      ? {
-          executedTimeRange: {
-            ...(series.meta.start !== undefined
-              ? { start: series.meta.start }
-              : {}),
-            ...(series.meta.end !== undefined ? { end: series.meta.end } : {}),
-          },
-        }
-      : {}),
     requestedInterval: configuration.interval ?? null,
     url: params.url,
     ...(params.explanation ? { explanation: params.explanation } : {}),
     ...(params.notes?.length ? { notes: params.notes } : {}),
-    ...(ingestion
-      ? {
-          ingestion: {
-            status: ingestion.status,
-            ...(ingestion.delaySeconds !== undefined
-              ? { delaySeconds: ingestion.delaySeconds }
-              : {}),
-            ...(ingestion.completeThrough !== undefined
-              ? { completeThrough: ingestion.completeThrough }
-              : {}),
-          },
-        }
-      : {}),
     series: series.timeSeries.map((axis, axisIndex) => {
       const summary = summarizeSeries(
         axis,
@@ -163,9 +139,6 @@ export function buildTimeSeriesResult(params: {
           : {}),
         ...(axis.meta.valueUnit !== undefined
           ? { valueUnit: axis.meta.valueUnit }
-          : {}),
-        ...(axis.meta.dataScanned !== undefined
-          ? { dataScanned: axis.meta.dataScanned }
           : {}),
         ...(Object.keys(summary).length > 0 ? { summary } : {}),
         buckets: axis.values.map((bucket) => ({
@@ -195,23 +168,6 @@ export function buildTimeSeriesResult(params: {
                     : {}),
                   ...(bucket.comparisonSmoothed !== undefined
                     ? { comparisonSmoothed: bucket.comparisonSmoothed }
-                    : {}),
-                },
-              }
-            : {}),
-          ...(bucket.sampleCount !== undefined ||
-          bucket.sampleRate !== undefined ||
-          bucket.confidence !== undefined
-            ? {
-                sampling: {
-                  ...(bucket.sampleCount !== undefined
-                    ? { sampleCount: bucket.sampleCount }
-                    : {}),
-                  ...(bucket.sampleRate !== undefined
-                    ? { sampleRate: bucket.sampleRate }
-                    : {}),
-                  ...(bucket.confidence !== undefined
-                    ? { confidence: bucket.confidence }
                     : {}),
                 },
               }
