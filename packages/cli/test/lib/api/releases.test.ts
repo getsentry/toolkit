@@ -36,7 +36,6 @@ vi.mock("../../../src/lib/git.js", async (importOriginal) => ({
   isInsideGitWorkTree: mockIsInsideGitWorkTree,
   isShallowRepository: () => false,
   getCommitLog: () => [],
-  getUncommittedFiles: () => [],
 }));
 
 // Dynamic import: must run AFTER vi.mock() so setCommitsAuto picks up

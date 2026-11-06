@@ -127,7 +127,7 @@ import {
   isPublicSentryHost,
   type TraceMetricIdentifier,
 } from "../utils/url-utils";
-import { USER_AGENT } from "../version";
+import { getUserAgent } from "../version";
 import {
   AgenticOnboardingRunSchema,
   AIConversationDetailsResponseSchema,
@@ -694,7 +694,7 @@ export class SentryApiService {
 
   /** Headers for every request after `Content-Type`. */
   private requestHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { "User-Agent": USER_AGENT };
+    const headers: Record<string, string> = { "User-Agent": getUserAgent() };
     if (this.accessToken !== null) {
       const authorization = sentryBearerHeader(this.accessToken);
       if (authorization === null) {

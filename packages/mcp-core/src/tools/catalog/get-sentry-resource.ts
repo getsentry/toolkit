@@ -491,6 +491,7 @@ function generateUnsupportedResourceMessage(
 
 export default defineTool({
   name: "get_sentry_resource",
+  title: "Get Sentry Resource",
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read", "project:read"],
 
@@ -510,9 +511,9 @@ export default defineTool({
     const fullResolutionInstruction = formatToolCallInstruction({
       toolName: "get_snapshot_image",
       arguments: {
-        organizationSlug: "<organization_slug>",
-        snapshotId: "<snapshot_id>",
-        imageIdentifier: "<image_file_name>",
+        organizationSlug: "<organizationSlug>",
+        snapshotId: "<snapshotId>",
+        imageIdentifier: "<imageFileName>",
         imageResolution: "full",
       },
       experimentalMode,
@@ -550,7 +551,7 @@ export default defineTool({
       "",
       "For preprod snapshot URLs (matching 'sentry.io/preprod/snapshots/'):",
       "- Without ?selectedSnapshot=: returns the snapshot diff summary (changed, added, removed images)",
-      `- With ?selectedSnapshot=<image_file_name>: returns the image preview and metadata. ${fullResolutionInstruction}.`,
+      `- With ?selectedSnapshot=<imageFileName>: returns the image preview and metadata. ${fullResolutionInstruction}.`,
       "",
       "Resource IDs:",
       ...resourceIds,

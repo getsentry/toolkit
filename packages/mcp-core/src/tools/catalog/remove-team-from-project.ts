@@ -34,6 +34,7 @@ function mapTeam(team: Team) {
 
 export default defineTool({
   name: "remove_team_from_project",
+  title: "Remove Team from Project",
   skills: ["project-management"],
   requiredScopes: ["project:write", "team:read", "org:read"],
   description: [

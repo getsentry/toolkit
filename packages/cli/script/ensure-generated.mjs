@@ -39,6 +39,7 @@ const DOCS_OUTPUTS = [
   "src/generated/skill-content.ts",
   "src/generated/completion-targets.json",
   "src/generated/top-level-routes.json",
+  "src/generated/init-guide.ts",
 ];
 
 const STUBS = new Map(ROUTE_TREE_STUBS);

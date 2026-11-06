@@ -13,6 +13,7 @@ import { validateAlertRuleProjectScope } from "../support/alert-rule-connections
 
 export default defineTool({
   name: "delete_alert_rule",
+  title: "Delete Alert Rule",
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [

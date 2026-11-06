@@ -79,6 +79,7 @@ import type { ToolConfig } from "../types";
 const legacyGetAIConversationDetails = {
   ...getAgentConversationDetails,
   name: "get_ai_conversation_details",
+  title: "Get AI Conversation Details (Deprecated)",
   includeInSkillDefinitions: false,
   deprecated: { replacedBy: ["get_agent_conversation_details"] },
   description: [
@@ -91,6 +92,7 @@ const legacyGetAIConversationDetails = {
 const legacySearchAIConversations = {
   ...searchAgentConversations,
   name: "search_ai_conversations",
+  title: "Search AI Conversations (Deprecated)",
   includeInSkillDefinitions: false,
   deprecated: { replacedBy: ["search_agent_conversations"] },
   description: [

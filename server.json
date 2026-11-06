@@ -1,12 +1,21 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.getsentry/sentry-mcp",
+  "title": "Sentry",
   "description": "MCP server for Sentry - error monitoring, issue tracking, and debugging for AI assistants",
   "repository": {
-    "url": "https://github.com/getsentry/sentry-mcp",
+    "url": "https://github.com/getsentry/toolkit",
     "source": "github",
     "subfolder": "packages/mcp-server"
   },
+  "websiteUrl": "https://mcp.sentry.dev",
+  "icons": [
+    {
+      "src": "https://mcp.sentry.dev/sentry-icon.png",
+      "mimeType": "image/png",
+      "sizes": ["256x256"]
+    }
+  ],
   "version": "0.40.0",
   "packages": [
     {
@@ -16,11 +25,25 @@
       "transport": { "type": "stdio" },
       "environmentVariables": [
         {
-          "description": "Your Sentry user authentication token",
-          "isRequired": true,
+          "description": "Sentry auth token. Optional after `npx -y @sentry/mcp-server auth login`.",
+          "isRequired": false,
           "format": "string",
           "isSecret": true,
           "name": "SENTRY_AUTH_TOKEN"
+        },
+        {
+          "description": "Self-hosted Sentry hostname or URL. Takes precedence over SENTRY_URL. Defaults to sentry.io.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "SENTRY_HOST"
+        },
+        {
+          "description": "Self-hosted Sentry URL, such as https://sentry.example.com. Defaults to sentry.io.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "SENTRY_URL"
         }
       ]
     }

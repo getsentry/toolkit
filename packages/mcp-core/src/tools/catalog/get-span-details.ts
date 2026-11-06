@@ -10,6 +10,7 @@ import getTraceDetails from "./get-trace-details";
 
 export default defineTool({
   name: "get_span_details",
+  title: "Get Span Details",
   skills: ["inspect"],
   requiredScopes: ["event:read"],
   requiredCapabilities: ["traces"],

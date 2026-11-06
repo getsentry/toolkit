@@ -1,8 +1,8 @@
 /**
  * Centralized git helpers
  *
- * Low-level git primitives used across the CLI: release management,
- * init wizard pre-flight checks, and version detection.
+ * Low-level git primitives used across the CLI: release management
+ * and version detection.
  *
  * Uses `execFileSync` (no shell) from `node:child_process` instead of
  * `Bun.spawnSync` because this module is also used by the npm/Node
@@ -97,31 +97,6 @@ export function isInsideGitWorkTree(cwd?: string): boolean {
     return true;
   } catch {
     return false;
-  }
-}
-
-/**
- * Get the list of uncommitted or untracked files.
- *
- * Returns each line from `git status --porcelain=v1` prefixed with `- `.
- * Empty array if the working tree is clean or not a git repo.
- *
- * @param cwd - Working directory
- * @returns Array of formatted status lines (e.g., `["- M src/index.ts", "- ?? new-file.ts"]`)
- */
-export function getUncommittedFiles(cwd?: string): string[] {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    const raw = git(["status", "--porcelain=v1"], cwd);
-    if (!raw) {
-      return [];
-    }
-    return raw
-      .split("\n")
-      .filter((line) => line.length > 0)
-      .map((line) => `- ${line}`);
-  } catch {
-    return [];
   }
 }
 

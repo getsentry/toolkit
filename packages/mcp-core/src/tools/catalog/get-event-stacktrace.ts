@@ -16,6 +16,7 @@ import { fetchAndFormatEventStacktrace } from "../support/event-stacktrace";
 
 export default defineTool({
   name: "get_event_stacktrace",
+  title: "Get Event Stacktrace",
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read"],
   description: [

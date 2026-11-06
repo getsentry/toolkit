@@ -132,7 +132,7 @@ function enrich403Detail(rawDetail: string | undefined): string {
  *
  * @see https://github.com/getsentry/sentry/blob/934f1473f198a62f9268d7140b80cd9ca1e59bb9/src/sentry/api/authentication.py#L536-L539
  */
-export function enrich401Detail(rawDetail: string | undefined): string {
+function enrich401Detail(rawDetail: string | undefined): string {
   // Seat-limit lockout, not an auth failure. Sentry returns 401 with
   // `code: member-disabled-over-limit` when the org is over its member limit
   // and the caller's seat is disabled — re-authenticating cannot fix this.
@@ -141,7 +141,7 @@ export function enrich401Detail(rawDetail: string | undefined): string {
       "Your account is disabled in this organization because it is over its member limit.",
       "This is a billing/seat-limit issue, not an auth problem — re-authenticating won't help.",
       "Ask an org owner to upgrade the plan or free up a seat, then retry.",
-      "Or target a different org, e.g.:  sentry init my-other-org/",
+      "Or target a different org, e.g.:  sentry issue list my-other-org/",
     ].join("\n  ");
   }
 

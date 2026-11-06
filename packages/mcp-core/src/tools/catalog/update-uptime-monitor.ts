@@ -34,6 +34,7 @@ function hasDefinedUpdate(
 
 export default defineTool({
   name: "update_uptime_monitor",
+  title: "Update Uptime Monitor",
   skills: ["project-management"],
   requiredScopes: ["project:write"],
   description: [

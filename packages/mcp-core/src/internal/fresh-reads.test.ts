@@ -10,6 +10,7 @@ function probeTool() {
   const calls: { params: Record<string, unknown>; fresh: boolean }[] = [];
   const tool = withFreshReadInput({
     name: "probe",
+    title: "Probe",
     description: "Probe",
     inputSchema: { id: z.string() },
     skills: ["inspect"],

@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it, vi } from "vitest";
 import { buildServer } from "./server";
+import { MAX_SERVER_INSTRUCTIONS_LENGTH } from "./server-instructions";
 import type { Skill } from "./skills";
 import { getStructuredContent } from "./test-utils/structured-content";
 import tools from "./tools/index";
@@ -80,6 +81,22 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
     expect(toolNames).toContain("create_project");
   });
 
+  it("exports each tool's title in tools/list", async () => {
+    const listed = await withClient(
+      getContext(),
+      async (client) => (await client.listTools()).tools,
+    );
+    const titles = new Map(
+      Object.values(tools).map((tool) => [tool.name, tool.title]),
+    );
+
+    expect(listed.length).toBeGreaterThan(0);
+    for (const tool of listed) {
+      expect(tool.title, tool.name).toBe(titles.get(tool.name));
+      expect(tool.title?.trim(), tool.name).toBeTruthy();
+    }
+  });
+
   it("lists the replacements of deprecated tools instead of the tools", async () => {
     const toolNames = await listToolNames(getContext());
     const deprecatedTools = Object.values(tools).filter(
@@ -97,6 +114,22 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
         expect(toolNames).toContain(replacement);
       }
     }
+  });
+
+  it("returns server instructions that fit the harness cap", async () => {
+    const instructions = await withClient(getContext(), async (client) =>
+      client.getInstructions(),
+    );
+
+    expect(instructions?.length).toBeLessThanOrEqual(
+      MAX_SERVER_INSTRUCTIONS_LENGTH,
+    );
+    expect(instructions).toMatchInlineSnapshot(`
+      "Use Sentry tools for questions about the user's production apps or Sentry account: errors, crashes, issues, stack traces, traces, spans, slow requests, logs, metrics, replays, profiles, releases, monitors, alert rules, and Sentry SDK setup and docs.
+      - For a Sentry URL or an issue, event, trace, or replay ID, call get_sentry_resource first.
+      - Do not look up the organization first; tools default to it when the user has one. If a tool asks for organizationSlug, call find_organizations and pass the slug and regionUrl it returns.
+      - search_issues finds grouped problems ("what's broken", "top issues"); search_errors, search_logs, search_traces, search_metrics, search_profiles, search_replays find individual events, counts, and aggregates."
+    `);
   });
 
   it("identifies the server for client UIs", async () => {
