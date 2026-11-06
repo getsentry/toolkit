@@ -1,6 +1,12 @@
 import { z } from "zod";
-import type { AutofixRunState } from "../../api-client/index";
-import type { Issue } from "../../api-client/types";
+import {
+  ApiNotFoundError,
+  ApiValidationError,
+  type AutofixRunState,
+  type SentryApiService,
+} from "../../api-client/index";
+import type { Issue, SeerCreditOperation } from "../../api-client/types";
+import { logIssue, logWarn } from "../../telem/logging";
 
 type AutofixRun = NonNullable<AutofixRunState["autofix"]>;
 
@@ -83,6 +89,45 @@ export function getHumanInterventionGuidance(status: string): string {
     return "\nSeer is waiting for your response to proceed. Please review the analysis and provide feedback.\n";
   }
   return "";
+}
+
+export const SEER_OUT_OF_CREDITS_MESSAGE =
+  "Your organization does not have enough Seer credits. Someone with billing access can turn on auto-reload in Sentry.";
+
+/**
+ * Explain why a failed run stopped, when Seer gives a reason we can explain.
+ */
+export function getFailureReasonGuidance(
+  failureReason: string | null | undefined,
+): string {
+  if (failureReason === "out_of_credits") {
+    return `\n${SEER_OUT_OF_CREDITS_MESSAGE}\n`;
+  }
+  return "";
+}
+
+/**
+ * Whether the organization has enough Seer credits for the operation.
+ */
+export async function hasSeerCredits(
+  apiService: SentryApiService,
+  organizationSlug: string,
+  operation: SeerCreditOperation,
+): Promise<boolean> {
+  try {
+    return await apiService.hasSeerCredits({ organizationSlug, operation });
+  } catch (error) {
+    if (error instanceof ApiValidationError || error instanceof z.ZodError) {
+      // Sentry rejected the operation or answered in a shape we don't expect,
+      // so our contract with Sentry drifted.
+      logIssue(error, {
+        contexts: { request: { organizationSlug, operation } },
+      });
+    } else if (!(error instanceof ApiNotFoundError)) {
+      logWarn(error, { extra: { organizationSlug, operation } });
+    }
+    return true;
+  }
 }
 
 function escapeXmlAttribute(value: string | number): string {
