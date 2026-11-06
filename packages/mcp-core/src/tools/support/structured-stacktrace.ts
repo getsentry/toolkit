@@ -141,29 +141,31 @@ export function mapStructuredFrame(
   if (lineNo !== null) mapped.lineNo = lineNo;
   if (colNo !== null) mapped.colNo = colNo;
   if (frame.inApp === true) mapped.inApp = true;
-  if (lineNo === null) {
-    return mapped;
+  if (lineNo !== null) {
+    const contextLine = frame.context?.find(
+      ([contextLineNo]) => contextLineNo === lineNo,
+    )?.[1];
+    if (contextLine !== undefined) mapped.contextLine = contextLine;
   }
-  const contextLine = frame.context?.find(
-    ([contextLineNo]) => contextLineNo === lineNo,
-  )?.[1];
-  if (contextLine !== undefined) mapped.contextLine = contextLine;
   if (!detail) {
     return mapped;
   }
-  const preContext = contextLinesWithin(
-    frame,
-    lineNo - DETAIL_CONTEXT_LINES,
-    lineNo - 1,
-  );
-  const postContext = contextLinesWithin(
-    frame,
-    lineNo + 1,
-    lineNo + DETAIL_CONTEXT_LINES,
-  );
+  // Surrounding source lines need a line number; local variables do not.
+  if (lineNo !== null) {
+    const preContext = contextLinesWithin(
+      frame,
+      lineNo - DETAIL_CONTEXT_LINES,
+      lineNo - 1,
+    );
+    const postContext = contextLinesWithin(
+      frame,
+      lineNo + 1,
+      lineNo + DETAIL_CONTEXT_LINES,
+    );
+    if (preContext) mapped.preContext = preContext;
+    if (postContext) mapped.postContext = postContext;
+  }
   const vars = mapVars(frame.vars);
-  if (preContext) mapped.preContext = preContext;
-  if (postContext) mapped.postContext = postContext;
   if (vars) mapped.vars = vars;
   return mapped;
 }
