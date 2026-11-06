@@ -127,41 +127,41 @@ need.
 
 ### Issue Details
 
-`get_issue_details` includes the issue's suspect commit when available, with
-its SHA, message, author, and source. Structured responses expose
-`suspectCommit`; Markdown responses include a `Suspect Commit` section with
-the same data. Without a commit, the structured field is `null` and Markdown
-omits the section. Commit lookup is optional: failures do not prevent issue
-details from loading, but unexpected server or response-validation failures
-are reported to Sentry.
+`get_issue_details` declares `outputSchema` and returns `structuredContent`
+for every event type, including types it has no dedicated mapping for, which
+keep their identity, message, tags, and contexts.
 
-For metric issues, `Metric Alert Details` comes from the occurrence's
+It includes the issue's suspect commit when available as `suspectCommit`, with
+its SHA, message, author, and source, or `null` without one. Commit lookup is
+optional: failures do not prevent issue details from loading, but unexpected
+server or response-validation failures are reported to Sentry.
+
+For metric issues, `event.metricAlert` comes from the occurrence's
 `evidenceData`, which the event API returns camelCased
-(`dataSources[].queryObj.snubaQuery`, `detectorId`). It shows the Metric
-Monitor ID, dataset, aggregate, query, interval, environment, evaluated window,
-value, and threshold. Response Notes replace the stacktrace and trace hints with
+(`dataSources[].queryObj.snubaQuery`, `detectorId`). It has the Metric Monitor
+ID, dataset, aggregate, query, interval, environment, evaluated window, value,
+and thresholds. `suggestedActions` replace the trace action with
 `get_metric_monitor_details` and a pre-filled `search_errors`, `search_logs`,
 `search_traces`, or `search_metrics` call for the monitor's query.
 
 The event API's legacy `context` field (extra data) can be `null`. Issue details
-must still load; omit the `Extra Data` section for null or empty values while
-preserving the event's error, stacktrace, and structured `contexts` data.
+must still load; `event.extra` is `null` for null or empty values while the
+event's error, stacktrace, and structured `contexts` data are preserved.
 
-In experimental mode `get_issue_details` returns `structuredContent` for every
-event type, including types the markdown path does not support, and declares
-`outputSchema` to experimental sessions only (`experimentalOutputSchema`).
-`event` maps the entries into fields instead of rendering markdown: the
-exception chain (the raised exception first), up to 20 thread summaries with a
-`threadCount`, the crashed thread when there is no exception, request method and
-URL, CSP report, N+1 evidence and spans, metric alert, evidence, user (including
-email and IP), tags, extra data, and contexts. Frames use the shared shape in
+`event` maps the entries into fields: the exception chain (the raised
+exception first), up to 20 thread summaries with a `threadCount`, the crashed
+thread when there is no exception, request method and URL, CSP report, N+1
+evidence and spans, metric alert, evidence, user (including email and IP), tags,
+extra data, and contexts. Frames use the shared shape in
 `tools/support/structured-stacktrace.ts`: most recent call last, with only the
 fields that have a value (`inApp` only when true, `absPath` only when it differs
 from `filename`). Every frame gets its `contextLine`. Only the most relevant
 frame (the last in-app frame of the raised exception or the thread) gets
 `preContext`, `postContext` (3 lines each) and `vars`, with each variable cut
-to 200 characters of JSON. Request headers, cookies and body, frame addresses, symbols
-and source links, tag search queries, and external issue link ids stay out.
+to 200 characters of JSON. Request headers, cookies and body, frame addresses,
+symbols and source links, tag search queries, and external issue link ids stay
+out. An event with more than one thread suggests `get_event_stacktrace` for a
+thread that is neither crashed nor current.
 
 ### Event Stacktrace
 
@@ -197,21 +197,16 @@ the same selection with an explicit `eventId`.
 - Selection is optional: omitting it preserves the ordinary response.
 - Accept 1–10 exact, case-sensitive names, each up to 256 characters. Duplicate
   names produce one entry; package names are not normalized across ecosystems.
-- Use the existing response's `packages` map without extra API calls. In experimental
-  mode, include `event.packageVersions` in `structuredContent`: a
-  `metadataAvailable` flag and selected `packages` entries with `name`, `status`,
-  `version`, and `truncated`. Status is `recorded`, `not_listed`, or
-  `version_not_recorded`; unavailable metadata has an empty selection. The server
-  generates equivalent JSON text. When returning Markdown, append the same
-  selection after local event formatting.
+- Use the existing response's `packages` map without extra API calls. Include
+  `event.packageVersions` in `structuredContent`: a `metadataAvailable` flag and
+  selected `packages` entries with `name`, `status`, `version`, and
+  `truncated`. Status is `recorded`, `not_listed`, or `version_not_recorded`;
+  unavailable metadata has an empty selection.
 - Missing, null, and empty maps mean metadata is unavailable. In a populated map,
   distinguish a name not listed from a null or blank version. Neither proves a
   dependency was absent from the application.
-- Truncate versions after 256 characters with an explicit marker. In Markdown,
-  render package names and versions as code spans with `inlineCode` from
-  `@sentry/toolkit-core/markdown`, which keeps them inside
-  their list entries; structured strings stay raw. Do not render unrelated
-  packages.
+- Truncate versions after 256 characters with an explicit marker. Do not return
+  unrelated packages.
 - Package selection requires an exact event; issue/latest-event and other resource
   lookups reject it.
 

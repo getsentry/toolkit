@@ -6,7 +6,10 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
-import getIssueDetails from "./get-issue-details";
+import { getStructuredContent } from "../../test-utils/structured-content";
+import getIssueDetails, {
+  getIssueDetailsOutputSchema,
+} from "./get-issue-details";
 import getSentryResource from "./get-sentry-resource";
 
 const organizationSlug = "sentry-mcp-evals";
@@ -87,9 +90,20 @@ describe("issue details with an unresolvable short ID", () => {
 
     const result = await call();
 
-    expect(result).toContain(`Issue ${issueFixture.shortId}`);
-    expect(result).toContain(eventsFixture.id);
-    expect(result).toContain("## Seer Analysis");
-    expect(result).toContain("**example/app#123** (github)");
+    const payload = getIssueDetailsOutputSchema.parse(
+      getStructuredContent(
+        result as Parameters<typeof getStructuredContent>[0],
+      ),
+    );
+    expect(payload.issue.shortId).toBe(issueFixture.shortId);
+    expect(payload.event.id).toBe(eventsFixture.id);
+    expect(payload.seer).not.toBeNull();
+    expect(payload.externalIssues).toEqual([
+      {
+        serviceType: "github",
+        displayName: "example/app#123",
+        webUrl: "https://github.com/example/app/issues/123",
+      },
+    ]);
   });
 });

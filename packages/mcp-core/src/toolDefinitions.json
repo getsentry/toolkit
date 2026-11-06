@@ -6880,6 +6880,1042 @@
         }
       }
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "issue": {
+          "type": "object",
+          "properties": {
+            "shortId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "culprit": {
+              "type": ["string", "null"]
+            },
+            "firstSeen": {
+              "type": ["string", "null"]
+            },
+            "lastSeen": {
+              "type": ["string", "null"]
+            },
+            "occurrences": {
+              "type": ["number", "null"]
+            },
+            "usersImpacted": {
+              "type": ["number", "null"]
+            },
+            "status": {
+              "type": ["string", "null"]
+            },
+            "substatus": {
+              "type": ["string", "null"]
+            },
+            "assignedTo": {
+              "type": ["string", "null"]
+            },
+            "issueType": {
+              "type": ["string", "null"]
+            },
+            "issueCategory": {
+              "type": ["string", "null"]
+            },
+            "seerActionability": {
+              "type": ["string", "null"]
+            },
+            "platform": {
+              "type": ["string", "null"]
+            },
+            "project": {
+              "type": ["string", "null"]
+            },
+            "url": {
+              "type": "string"
+            },
+            "location": {
+              "type": ["string", "null"]
+            },
+            "queryPattern": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": [
+            "shortId",
+            "title",
+            "culprit",
+            "firstSeen",
+            "lastSeen",
+            "occurrences",
+            "usersImpacted",
+            "status",
+            "substatus",
+            "assignedTo",
+            "issueType",
+            "issueCategory",
+            "seerActionability",
+            "platform",
+            "project",
+            "url",
+            "location",
+            "queryPattern"
+          ],
+          "additionalProperties": false
+        },
+        "event": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": ["string", "null"]
+            },
+            "occurredAt": {
+              "type": ["string", "null"]
+            },
+            "platform": {
+              "type": ["string", "null"]
+            },
+            "message": {
+              "type": ["string", "null"]
+            },
+            "exceptions": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": ["string", "null"]
+                      },
+                      "value": {
+                        "type": ["string", "null"]
+                      },
+                      "module": {
+                        "type": ["string", "null"]
+                      },
+                      "mechanism": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": ["string", "null"]
+                              },
+                              "handled": {
+                                "type": ["boolean", "null"]
+                              }
+                            },
+                            "required": ["type", "handled"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "stacktrace": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "frames": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "filename": {
+                                      "type": "string"
+                                    },
+                                    "absPath": {
+                                      "description": "Present only when it differs from filename.",
+                                      "type": "string"
+                                    },
+                                    "module": {
+                                      "type": "string"
+                                    },
+                                    "package": {
+                                      "type": "string"
+                                    },
+                                    "function": {
+                                      "type": "string"
+                                    },
+                                    "lineNo": {
+                                      "type": "number"
+                                    },
+                                    "colNo": {
+                                      "type": "number"
+                                    },
+                                    "inApp": {
+                                      "description": "Present on application frames.",
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "contextLine": {
+                                      "description": "The source line at lineNo.",
+                                      "type": "string"
+                                    },
+                                    "preContext": {
+                                      "description": "Up to 3 source lines before lineNo, on the most relevant frame only.",
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "postContext": {
+                                      "description": "Up to 3 source lines after lineNo, on the most relevant frame only.",
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "vars": {
+                                      "description": "Local variables, on the most relevant frame only. Values longer than 200 characters of JSON are cut to a string.",
+                                      "type": "object",
+                                      "propertyNames": {
+                                        "type": "string"
+                                      },
+                                      "additionalProperties": {}
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "description": "Most recent call last. The most relevant frame is the last in-app frame."
+                              },
+                              "framesOmitted": {
+                                "type": ["number", "null"]
+                              }
+                            },
+                            "required": ["frames", "framesOmitted"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "value",
+                      "module",
+                      "mechanism",
+                      "stacktrace"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The exception that was raised first, then each one it was chained from."
+            },
+            "threads": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": ["number", "string", "null"]
+                      },
+                      "name": {
+                        "type": ["string", "null"]
+                      },
+                      "state": {
+                        "type": ["string", "null"]
+                      },
+                      "crashed": {
+                        "type": "boolean"
+                      },
+                      "current": {
+                        "type": "boolean"
+                      },
+                      "frameCount": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "state",
+                      "crashed",
+                      "current",
+                      "frameCount"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The first 20 threads; threadCount says how many the event has."
+            },
+            "threadCount": {
+              "type": "number"
+            },
+            "crashedThread": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": ["number", "string", "null"]
+                    },
+                    "name": {
+                      "type": ["string", "null"]
+                    },
+                    "state": {
+                      "type": ["string", "null"]
+                    },
+                    "crashed": {
+                      "type": "boolean"
+                    },
+                    "current": {
+                      "type": "boolean"
+                    },
+                    "frameCount": {
+                      "type": "number"
+                    },
+                    "stacktrace": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "frames": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "filename": {
+                                    "type": "string"
+                                  },
+                                  "absPath": {
+                                    "description": "Present only when it differs from filename.",
+                                    "type": "string"
+                                  },
+                                  "module": {
+                                    "type": "string"
+                                  },
+                                  "package": {
+                                    "type": "string"
+                                  },
+                                  "function": {
+                                    "type": "string"
+                                  },
+                                  "lineNo": {
+                                    "type": "number"
+                                  },
+                                  "colNo": {
+                                    "type": "number"
+                                  },
+                                  "inApp": {
+                                    "description": "Present on application frames.",
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "contextLine": {
+                                    "description": "The source line at lineNo.",
+                                    "type": "string"
+                                  },
+                                  "preContext": {
+                                    "description": "Up to 3 source lines before lineNo, on the most relevant frame only.",
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "postContext": {
+                                    "description": "Up to 3 source lines after lineNo, on the most relevant frame only.",
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "vars": {
+                                    "description": "Local variables, on the most relevant frame only. Values longer than 200 characters of JSON are cut to a string.",
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "description": "Most recent call last. The most relevant frame is the last in-app frame."
+                            },
+                            "framesOmitted": {
+                              "type": ["number", "null"]
+                            }
+                          },
+                          "required": ["frames", "framesOmitted"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "state",
+                    "crashed",
+                    "current",
+                    "frameCount",
+                    "stacktrace"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The crashed thread's stacktrace, when there is no exception."
+            },
+            "request": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "method": {
+                      "type": ["string", "null"]
+                    },
+                    "url": {
+                      "type": ["string", "null"]
+                    }
+                  },
+                  "required": ["method", "url"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "csp": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "blockedUri": {
+                      "type": ["string", "null"]
+                    },
+                    "violatedDirective": {
+                      "type": ["string", "null"]
+                    },
+                    "effectiveDirective": {
+                      "type": ["string", "null"]
+                    },
+                    "documentUri": {
+                      "type": ["string", "null"]
+                    },
+                    "sourceFile": {
+                      "type": ["string", "null"]
+                    },
+                    "lineNumber": {
+                      "type": ["number", "null"]
+                    },
+                    "disposition": {
+                      "type": ["string", "null"]
+                    },
+                    "originalPolicy": {
+                      "type": ["string", "null"]
+                    }
+                  },
+                  "required": [
+                    "blockedUri",
+                    "violatedDirective",
+                    "effectiveDirective",
+                    "documentUri",
+                    "sourceFile",
+                    "lineNumber",
+                    "disposition",
+                    "originalPolicy"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "performance": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "issueType": {
+                      "type": ["string", "null"]
+                    },
+                    "transactionName": {
+                      "type": ["string", "null"]
+                    },
+                    "parentOperation": {
+                      "type": ["string", "null"]
+                    },
+                    "repeatedOperations": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "repeatCount": {
+                      "type": ["number", "null"]
+                    },
+                    "spans": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "spanId": {
+                            "type": ["string", "null"]
+                          },
+                          "parentSpanId": {
+                            "type": ["string", "null"]
+                          },
+                          "op": {
+                            "type": ["string", "null"]
+                          },
+                          "description": {
+                            "type": ["string", "null"]
+                          },
+                          "durationMs": {
+                            "type": ["number", "null"]
+                          },
+                          "isOffender": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "spanId",
+                          "parentSpanId",
+                          "op",
+                          "description",
+                          "durationMs",
+                          "isOffender"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "issueType",
+                    "transactionName",
+                    "parentOperation",
+                    "repeatedOperations",
+                    "repeatCount",
+                    "spans"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "metricAlert": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "monitorId": {
+                      "type": ["string", "null"]
+                    },
+                    "alertRuleId": {
+                      "type": ["string", "null"]
+                    },
+                    "dataset": {
+                      "type": ["string", "null"]
+                    },
+                    "aggregate": {
+                      "type": ["string", "null"]
+                    },
+                    "query": {
+                      "type": ["string", "null"]
+                    },
+                    "intervalSeconds": {
+                      "type": ["number", "null"]
+                    },
+                    "environment": {
+                      "type": ["string", "null"]
+                    },
+                    "evaluatedWindow": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "start": {
+                              "type": "string"
+                            },
+                            "end": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["start", "end"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "value": {
+                      "type": ["string", "null"]
+                    },
+                    "thresholds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "monitorId",
+                    "alertRuleId",
+                    "dataset",
+                    "aggregate",
+                    "query",
+                    "intervalSeconds",
+                    "environment",
+                    "evaluatedWindow",
+                    "value",
+                    "thresholds"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "evidence": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["name", "value"],
+                    "additionalProperties": false
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "user": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": ["string", "null"]
+                    },
+                    "email": {
+                      "type": ["string", "null"]
+                    },
+                    "username": {
+                      "type": ["string", "null"]
+                    },
+                    "ipAddress": {
+                      "type": ["string", "null"]
+                    },
+                    "name": {
+                      "type": ["string", "null"]
+                    },
+                    "geo": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "countryCode": {
+                              "type": ["string", "null"]
+                            },
+                            "city": {
+                              "type": ["string", "null"]
+                            },
+                            "region": {
+                              "type": ["string", "null"]
+                            }
+                          },
+                          "required": ["countryCode", "city", "region"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "data": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "email",
+                    "username",
+                    "ipAddress",
+                    "name",
+                    "geo",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["key", "value"],
+                "additionalProperties": false
+              }
+            },
+            "extra": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "contexts": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "packageVersions": {
+              "type": "object",
+              "properties": {
+                "metadataAvailable": {
+                  "type": "boolean"
+                },
+                "packages": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "const": "recorded"
+                          },
+                          "version": {
+                            "type": "string"
+                          },
+                          "truncated": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["name", "status", "version", "truncated"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["not_listed", "version_not_recorded"]
+                          },
+                          "version": {
+                            "type": "null"
+                          },
+                          "truncated": {
+                            "type": "boolean",
+                            "const": false
+                          }
+                        },
+                        "required": ["name", "status", "version", "truncated"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": ["metadataAvailable", "packages"],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "occurredAt",
+            "platform",
+            "message",
+            "exceptions",
+            "threads",
+            "threadCount",
+            "crashedThread",
+            "request",
+            "csp",
+            "performance",
+            "metricAlert",
+            "evidence",
+            "user",
+            "tags",
+            "extra",
+            "contexts"
+          ],
+          "additionalProperties": false
+        },
+        "seer": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": ["string", "null"]
+                },
+                "rootCause": {
+                  "type": ["string", "null"]
+                },
+                "solution": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["status", "rootCause", "solution"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "codeLocation": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "repository": {
+                  "type": ["string", "null"]
+                },
+                "path": {
+                  "type": ["string", "null"]
+                },
+                "line": {
+                  "type": ["number", "null"]
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": ["repository", "path", "line", "url"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "suspectCommit": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": ["string", "null"]
+                },
+                "author": {
+                  "type": ["string", "null"]
+                },
+                "suspectCommitType": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["id", "message", "author", "suspectCommitType"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replays": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "attached": {
+                  "type": ["string", "null"]
+                },
+                "related": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "relatedCount": {
+                  "type": "number"
+                }
+              },
+              "required": ["attached", "related", "relatedCount"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "externalIssues": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "serviceType": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "webUrl": {
+                    "type": "string"
+                  }
+                },
+                "required": ["serviceType", "displayName", "webUrl"],
+                "additionalProperties": false
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "aiConversations": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "conversationId": {
+                    "type": "string"
+                  },
+                  "spanId": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["conversationId", "spanId"],
+                "additionalProperties": false
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "issue",
+        "event",
+        "seer",
+        "codeLocation",
+        "suspectCommit",
+        "replays",
+        "externalIssues",
+        "aiConversations",
+        "suggestedActions"
+      ],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:read"],
     "skills": ["inspect", "triage", "seer"],
     "surface": "direct"
@@ -6887,7 +7923,7 @@
   {
     "name": "get_issue_tag_values",
     "title": "Get Issue Tag Values",
-    "description": "Get tag value distribution for a specific Sentry issue.\n\nUse this tool when you need to:\n- Understand how an issue is distributed across different tag values\n- Get aggregate counts of unique tag values (e.g., 'how many unique URLs are affected')\n- Analyze which browsers, environments, or URLs are most impacted by an issue\n- View the tag distributions page data programmatically\n\nTag keys depend on the issue's platform, SDK, and custom tags, so keys such as `browser` or `url` are missing from many issues. The `### Tags` section of `get_issue_details` shows the tags on one of the issue's events, which is a good place to pick a key from. If the key is not on the issue, the error lists the keys it has.\n\n<examples>\n### Get environment distribution for an issue\n```\nget_issue_tag_values(organizationSlug='my-organization', issueId='PROJECT-123', tagKey='environment')\n```\n\n### Get release distribution using issue URL\n```\nget_issue_tag_values(issueUrl='https://sentry.io/issues/PROJECT-123/', tagKey='release')\n```\n</examples>\n\n<hints>\n- If user provides a Sentry URL, pass the ENTIRE URL to issueUrl parameter unchanged\n- Tag keys are case-sensitive\n</hints>",
+    "description": "Get tag value distribution for a specific Sentry issue.\n\nUse this tool when you need to:\n- Understand how an issue is distributed across different tag values\n- Get aggregate counts of unique tag values (e.g., 'how many unique URLs are affected')\n- Analyze which browsers, environments, or URLs are most impacted by an issue\n- View the tag distributions page data programmatically\n\nTag keys depend on the issue's platform, SDK, and custom tags, so keys such as `browser` or `url` are missing from many issues. The `event.tags` list in `get_issue_details` has the tags on one of the issue's events, which is a good place to pick a key from. If the key is not on the issue, the error lists the keys it has.\n\n<examples>\n### Get environment distribution for an issue\n```\nget_issue_tag_values(organizationSlug='my-organization', issueId='PROJECT-123', tagKey='environment')\n```\n\n### Get release distribution using issue URL\n```\nget_issue_tag_values(issueUrl='https://sentry.io/issues/PROJECT-123/', tagKey='release')\n```\n</examples>\n\n<hints>\n- If user provides a Sentry URL, pass the ENTIRE URL to issueUrl parameter unchanged\n- Tag keys are case-sensitive\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
