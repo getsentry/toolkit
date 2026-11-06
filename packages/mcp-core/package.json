@@ -129,6 +129,10 @@
       "types": "./dist/internal/agents/provider-factory.d.ts",
       "default": "./dist/internal/agents/provider-factory.js"
     },
+    "./internal/tool-helpers/validate-region-url": {
+      "types": "./dist/internal/tool-helpers/validate-region-url.d.ts",
+      "default": "./dist/internal/tool-helpers/validate-region-url.js"
+    },
     "./internal/agents/types": {
       "types": "./dist/internal/agents/types.d.ts",
       "default": "./dist/internal/agents/types.js"

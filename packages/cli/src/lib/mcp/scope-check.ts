@@ -20,7 +20,7 @@ import {
   ApiNotFoundError,
   SentryApiService,
 } from "@sentry/mcp-core/api-client";
-import { SENTRY_ALLOWED_REGION_DOMAINS } from "@sentry/mcp-core/constants";
+import { validateRegionUrl } from "@sentry/mcp-core/internal/tool-helpers/validate-region-url";
 import { getInvocationCommand } from "../app-identity.js";
 import { ResolutionError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -70,22 +70,20 @@ async function probe<T>(
 }
 
 /**
- * The host for the org's project requests: its `links.regionUrl` on SaaS,
- * which mcp-core's tools also use, else the configured host. Only the
- * configured host or a known Sentry region is accepted, as in mcp-core's
- * `validateRegionUrl`.
+ * The host for the org's project requests: its `links.regionUrl` when
+ * mcp-core's `validateRegionUrl` accepts it (the configured host or a known
+ * Sentry region), else the configured host.
  */
 function regionHost(regionUrl: string | undefined, sentryHost: string): string {
-  if (!(regionUrl && URL.canParse(regionUrl))) {
+  if (!regionUrl) {
     return sentryHost;
   }
-  const url = new URL(regionUrl);
-  const host = url.host.toLowerCase();
-  return url.protocol === "https:" &&
-    (host === sentryHost.toLowerCase() ||
-      SENTRY_ALLOWED_REGION_DOMAINS.has(host))
-    ? host
-    : sentryHost;
+  try {
+    return validateRegionUrl(regionUrl, sentryHost);
+  } catch (error) {
+    log.debug("Ignoring the organization's region URL", error);
+    return sentryHost;
+  }
 }
 
 function organizationNotFound(org: string, scope: string): ResolutionError {
