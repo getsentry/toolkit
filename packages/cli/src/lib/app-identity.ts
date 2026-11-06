@@ -59,13 +59,13 @@ export function getInvocationCommand(): string {
 }
 
 /**
- * A `sentry` CLI command (`command` starts with `sentry `) for a hint about
- * settings this program shares with the CLI. Programs other than the CLI
- * (such as `@sentry/mcp-server`) do not have the command, so it runs the CLI
- * through `npx`.
+ * `command` as a hint that runs this program again: a leading `sentry `
+ * becomes {@link getInvocationCommand}.
  */
-export function getSentryCliCommand(command: string): string {
-  return identity.name === "sentry" ? command : `npx -y ${command}`;
+export function asInvocationCommand(command: string): string {
+  return command.startsWith("sentry ")
+    ? `${getInvocationCommand()}${command.slice("sentry".length)}`
+    : command;
 }
 
 /** Command that signs in to the active Sentry host. */

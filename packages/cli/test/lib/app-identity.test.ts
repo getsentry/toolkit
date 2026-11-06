@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "vitest";
 import {
+  asInvocationCommand,
   asRunningAppCommand,
   getLoginCommand,
-  getSentryCliCommand,
   getUrlLoginCommand,
   setAppIdentity,
 } from "../../src/lib/app-identity.js";
@@ -53,13 +53,16 @@ describe("app identity", () => {
     expect(asRunningAppCommand("sentry-cli login")).toBe("sentry-cli login");
   });
 
-  test("CLI-only commands run the sentry CLI outside the CLI", () => {
-    const command = "sentry cli defaults ca-cert /path/to/cert.pem";
-    expect(getSentryCliCommand(command)).toBe(command);
+  test("command hints run this program again", () => {
+    const command = "sentry cli fix";
+    expect(asInvocationCommand(command)).toBe(command);
 
     setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
-    expect(getSentryCliCommand(command)).toBe(
-      "npx -y sentry cli defaults ca-cert /path/to/cert.pem",
+    expect(asInvocationCommand(command)).toBe("sentry-mcp cli fix");
+
+    process.env.npm_command = "exec";
+    expect(asInvocationCommand(command)).toBe(
+      "npx -y @sentry/mcp-server cli fix",
     );
   });
 });

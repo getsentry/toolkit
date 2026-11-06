@@ -3,7 +3,7 @@ import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
 import { pointDefaultUrlAtAccount } from "../../lib/account-selection.js";
 import { getCurrentUser, getUserRegions } from "../../lib/api-client.js";
-import { getSentryCliCommand } from "../../lib/app-identity.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { normalizeAuthToken } from "../../lib/auth-header.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
 import {
@@ -329,7 +329,7 @@ function persistLoginUrlAsDefault(
     pointDefaultUrlAtAccount(effectiveHost);
   } catch {
     log.debug(
-      `Could not persist default URL to DB; host is recorded on the stored token. Set SENTRY_HOST or run '${getSentryCliCommand(`sentry cli defaults url ${effectiveHost}`)}' if subsequent commands route incorrectly.`,
+      `Could not persist default URL to DB; host is recorded on the stored token. Set SENTRY_HOST or run '${asInvocationCommand(`sentry cli defaults url ${effectiveHost}`)}' if subsequent commands route incorrectly.`,
     );
   }
 }

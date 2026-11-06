@@ -21,7 +21,7 @@ import {
   warnIfSaasWithEnvCa,
 } from "../../src/lib/custom-ca.js";
 import { setDefaultCaCert } from "../../src/lib/db/defaults.js";
-import { useTestConfigDir } from "../helpers.js";
+import { useEnvSandbox, useTestConfigDir } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // isTlsCertError — pure detection tests
@@ -235,6 +235,8 @@ describe("custom CA loading", () => {
 
 describe("warnIfSaasWithEnvCa", () => {
   const getConfigDir = useTestConfigDir("saas-warn-");
+  // Hints go through npx when npm_command says npx launched the process.
+  useEnvSandbox(["npm_command"]);
   const CERT_PEM =
     "-----BEGIN CERTIFICATE-----\nMIIBxyz...\n-----END CERTIFICATE-----\n";
 
@@ -276,7 +278,7 @@ describe("warnIfSaasWithEnvCa", () => {
     expect(getCustomCaSource()).toBe("env");
   });
 
-  test("warning names a command that exists in @sentry/mcp-server", () => {
+  test("warning names @sentry/mcp-server's own ca-cert command", () => {
     const certPath = join(getConfigDir(), "ca.pem");
     writeFileSync(certPath, CERT_PEM);
     process.env.NODE_EXTRA_CA_CERTS = certPath;
@@ -288,7 +290,7 @@ describe("warnIfSaasWithEnvCa", () => {
       warnIfSaasWithEnvCa("https://us.sentry.io/api/0/organizations/");
       const output = stderr.mock.calls.map((call) => String(call[0])).join("");
       expect(output).toContain(
-        "silence this warning with the Sentry CLI:\n    npx -y sentry cli defaults ca-cert /path/to/cert.pem",
+        "silence this warning:\n    sentry-mcp cli defaults ca-cert /path/to/cert.pem",
       );
     } finally {
       setAppIdentity({ name: "sentry", packageName: "sentry" });
@@ -296,16 +298,14 @@ describe("warnIfSaasWithEnvCa", () => {
     }
   });
 
-  test("TLS error fix names a command that exists in @sentry/mcp-server", () => {
+  test("TLS error fix names @sentry/mcp-server's own ca-cert command", () => {
     setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
     try {
       expect(
         buildTlsErrorDetail(
           new Error("unable to get local issuer certificate"),
         ),
-      ).toContain(
-        "npx -y sentry cli defaults ca-cert /path/to/corporate-ca.pem",
-      );
+      ).toContain("sentry-mcp cli defaults ca-cert /path/to/corporate-ca.pem");
     } finally {
       setAppIdentity({ name: "sentry", packageName: "sentry" });
     }

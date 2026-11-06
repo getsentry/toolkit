@@ -21,7 +21,7 @@ import { createRequire } from "node:module";
 import { rootCertificates } from "node:tls";
 
 const _require = createRequire(import.meta.url);
-import { getSentryCliCommand } from "./app-identity.js";
+import { asInvocationCommand } from "./app-identity.js";
 import { getDefaultCaCert } from "./db/defaults.js";
 import { getEnv } from "./env.js";
 import { stringifyUnknown } from "./errors.js";
@@ -200,8 +200,8 @@ export function warnIfSaasWithEnvCa(targetUrl: string): void {
 
   log.warn(
     `Using custom CA certificates from ${resolvedLabel} for sentry.io connections.\n` +
-      "  If you intended this (e.g. corporate proxy), silence this warning with the Sentry CLI:\n" +
-      `    ${getSentryCliCommand("sentry cli defaults ca-cert /path/to/cert.pem")}`,
+      "  If you intended this (e.g. corporate proxy), silence this warning:\n" +
+      `    ${asInvocationCommand("sentry cli defaults ca-cert /path/to/cert.pem")}`,
   );
 }
 
@@ -279,8 +279,8 @@ export function buildTlsErrorDetail(error: Error): string {
     `TLS certificate verification failed: ${cause}\n\n` +
     "  This usually means your network uses a TLS-intercepting proxy\n" +
     "  (corporate firewall, VPN) with a private certificate authority.\n\n" +
-    "  To fix this, point the Sentry CLI to your CA certificate bundle:\n" +
-    `    ${getSentryCliCommand("sentry cli defaults ca-cert /path/to/corporate-ca.pem")}\n\n` +
+    "  To fix this, point the CLI to your CA certificate bundle:\n" +
+    `    ${asInvocationCommand("sentry cli defaults ca-cert /path/to/corporate-ca.pem")}\n\n` +
     "  Or set the NODE_EXTRA_CA_CERTS environment variable:\n" +
     "    export NODE_EXTRA_CA_CERTS=/path/to/corporate-ca.pem"
   );

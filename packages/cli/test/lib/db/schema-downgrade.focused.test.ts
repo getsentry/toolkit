@@ -37,6 +37,7 @@ useEnvSandbox([
   "SENTRY_CLI_NO_AUTO_REPAIR",
   "SENTRY_HOST",
   "SENTRY_URL",
+  "npm_command",
 ]);
 
 const HOST = "https://sentry.io";
@@ -132,7 +133,7 @@ describe("database written by a newer CLI", () => {
     expect(getSchemaIssues(getRawDatabase())).toEqual([]);
   });
 
-  test("@sentry/mcp-server's mismatch warning runs the CLI's fix through npx", () => {
+  test("@sentry/mcp-server's mismatch warning names its own cli fix", () => {
     writeAsNewerCli();
     process.env.SENTRY_CLI_NO_AUTO_REPAIR = "1";
     const stderr = vi
@@ -142,7 +143,7 @@ describe("database written by a newer CLI", () => {
     try {
       reopen();
       const output = stderr.mock.calls.map((call) => String(call[0])).join("");
-      expect(output).toContain("Run `npx -y sentry cli fix` to adapt it.");
+      expect(output).toContain("Run `sentry-mcp cli fix` to adapt it.");
     } finally {
       setAppIdentity({ name: "sentry", packageName: "sentry" });
       stderr.mockRestore();
