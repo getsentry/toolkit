@@ -194,7 +194,7 @@ export default defineTool({
 
     // Seer only sees the natural language query, so skip it for Sentry syntax.
     const seerTranslation =
-      !params.query || looksLikeSentrySearchSyntax(params.query)
+      !params.query || looksLikeSentrySearchSyntax(params.query, "issues")
         ? null
         : await translateIssuesWithSeer({
             apiService,

@@ -1187,15 +1187,16 @@ describe("search_issues", () => {
       expect(issueRequests[0]?.searchParams.get("query")).toBe("is:unresolved");
     });
 
-    it("skips Seer for Sentry search syntax", async () => {
-      mockGenerateText.mockResolvedValue(
-        mockAIResponse("is:unresolved", "date"),
-      );
-      mswServer.use(mockOrganization(SEER_FEATURES));
+    it.each(["is:unresolved", "firstSeen:-24h", "userCount:>100"])(
+      "skips Seer for Sentry search syntax %s",
+      async (query) => {
+        mockGenerateText.mockResolvedValue(mockAIResponse(query, "date"));
+        mswServer.use(mockOrganization(SEER_FEATURES));
 
-      await runSearch({ ...seerParams, query: "is:unresolved" }, mockContext);
+        await runSearch({ ...seerParams, query }, mockContext);
 
-      expect(mockSeerStart).not.toHaveBeenCalled();
-    });
+        expect(mockSeerStart).not.toHaveBeenCalled();
+      },
+    );
   });
 });
