@@ -16,9 +16,11 @@ import {
   setProviderBaseUrls,
 } from "@sentry/mcp-core/internal/agents/provider-factory";
 import { buildServer } from "@sentry/mcp-core/server";
+import { findRetainedSkillTools } from "@sentry/mcp-core/skills";
 import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { startStdio } from "@sentry/mcp-core/transports/stdio";
 import type { CredentialRouter, ServerContext } from "@sentry/mcp-core/types";
+import tools from "@sentry/mcp-core/tools";
 import { setServerVersion } from "@sentry/mcp-core/version";
 import {
   close,
@@ -385,6 +387,21 @@ export function installProcessHandlers(): (
   return exitAfterError;
 }
 
+/**
+ * Warn about disabled skills that remove no tools, because another granted
+ * skill still grants each of them. stderr only: stdout carries the transport.
+ */
+export function warnIneffectiveDisabledSkills(config: McpServerConfig): void {
+  for (const skill of config.disabledSkills) {
+    const retained = findRetainedSkillTools(tools, config.finalSkills, skill);
+    if (retained) {
+      console.warn(
+        `Warning: disabling the "${skill}" skill removed no tools. ${retained.tools.join(", ")} stay enabled through ${retained.grantedBy.join(", ")}.`,
+      );
+    }
+  }
+}
+
 /** Serve the MCP tools over stdio. Resolves once the client disconnects. */
 export async function serveMcpStdio(
   config: McpServerConfig,
@@ -394,6 +411,7 @@ export async function serveMcpStdio(
   setServerVersion(CLI_VERSION);
   configureAgentProvider(config, options.env);
   initMcpTelemetry(config);
+  warnIneffectiveDisabledSkills(config);
 
   if (config.experimental) {
     console.warn(
