@@ -2187,9 +2187,10 @@ describe("buildServer", () => {
           },
         });
 
-        expect(getTextContent(result)).toContain(
-          "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-        );
+        expect(
+          getStructuredContent<{ issue: { shortId: string } }>(result).issue
+            .shortId,
+        ).toBe("CLOUDFLARE-MCP-41");
       },
     );
 
@@ -2258,9 +2259,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(
+        getStructuredContent<{ issue: { shortId: string } }>(result).issue
+          .shortId,
+      ).toBe("CLOUDFLARE-MCP-41");
     });
 
     it.each([
@@ -3296,9 +3298,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(
+        getStructuredContent<{ issue: { shortId: string } }>(result).issue
+          .shortId,
+      ).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("exposes catalog-only tool safety annotations through search_sentry_tools", async () => {
