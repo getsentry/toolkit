@@ -46,7 +46,6 @@ const OUTPUT_SCHEMA_EXEMPT: Record<string, string> = {
     "markdown-only by policy (docs/contributing/tool-responses.md)",
   get_span_details: "delegates to the get_trace_details renderer",
   get_doc: "returns doc text",
-  search_docs: "returns doc text",
   get_snapshot_image: "returns an image",
   get_event_attachment: "its download path returns image or resource content",
   get_sentry_resource: "passes through whatever tool it resolves to",

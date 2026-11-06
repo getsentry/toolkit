@@ -10976,6 +10976,71 @@
       },
       "required": ["query"]
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "guide": {
+          "type": ["string", "null"]
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Pass to get_doc as `path`."
+              },
+              "url": {
+                "type": "string"
+              },
+              "relevance": {
+                "type": "number",
+                "description": "Match score from 0 to 1."
+              },
+              "snippet": {
+                "description": "Matching excerpt, not the full page. Null after the first 3 results.",
+                "type": ["string", "null"]
+              }
+            },
+            "required": ["path", "url", "relevance", "snippet"],
+            "additionalProperties": false
+          }
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["query", "guide", "results", "suggestedActions"],
+      "additionalProperties": false
+    },
     "requiredScopes": [],
     "skills": ["inspect", "docs"],
     "surface": "direct"
