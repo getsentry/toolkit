@@ -74,8 +74,8 @@ sentry explore my-org/cli --time-series 15m --period 1h
 # Latency over time with automatic bucket duration, as JSON
 sentry explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series --period 24h --json
 
-# List available metrics with their type and unit
-sentry explore my-org/ --dataset metrics --period 7d
+# List available metrics, most frequently recorded first
+sentry explore my-org/ --dataset metrics --sort "-count" --period 7d
 
 # A metric over time using its discovered type and unit
 sentry explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg -b -t 1h

@@ -138,6 +138,9 @@ export const DSN_TARGET = "dsn" satisfies CompletionTarget;
 /** Cached tag keys of issues. */
 export const TAG_KEY_TARGET = "tag-key" satisfies CompletionTarget;
 
+/** Cached trace metric names. */
+export const METRIC_TARGET = "metric" satisfies CompletionTarget;
+
 /** Field names of the dataset the command's `--dataset` names. */
 export const FIELD_TARGET = "field" satisfies CompletionTarget;
 
@@ -345,6 +348,9 @@ export const parseDsn = identityParser(DSN_TARGET);
 
 /** Parses an issue tag key; completes cached tag keys. */
 export const parseTagKey = identityParser(TAG_KEY_TARGET);
+
+/** Parses a trace metric name; completes cached metric names. */
+export const parseMetricName = identityParser(METRIC_TARGET);
 
 /** Parses an `issue archive --until` condition; completes its grammar. */
 export const parseArchiveUntil = identityParser(ARCHIVE_UNTIL_TARGET);

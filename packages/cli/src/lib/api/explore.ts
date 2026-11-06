@@ -2,22 +2,28 @@
  * Sentry Explore/Discover API — tabular and time-series event queries.
  *
  * Wraps the `events/` and `events-timeseries/` endpoints used by the Sentry
- * Explore UI, with user-specified aggregates, datasets, filters, and time ranges.
+ * Explore UI, with user-specified aggregates, datasets, filters, and time ranges,
+ * and `trace-items/metrics/`, which lists the metrics an org has.
  */
 
-import type { OrganizationEventsTimeseriesResponse } from "@sentry/api";
+import {
+  type ListOrganizationTraceMetricsData,
+  type ListOrganizationTraceMetricsResponse2,
+  listOrganizationTraceMetrics,
+  type OrganizationEventsTimeseriesResponse,
+} from "@sentry/api";
 
 import type { EventsTableResponse } from "../../types/dashboard.js";
 import { EventsTableResponseSchema } from "../../types/dashboard.js";
-import { stringifyUnknown } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import {
-  API_MAX_PER_PAGE,
   apiRequestToRegion,
+  getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   paginate,
   parseLinkHeader,
+  unwrapPaginatedResult,
 } from "./infrastructure.js";
 
 /** Options for querying the Explore/Events endpoint. */
@@ -163,6 +169,81 @@ async function fetchEventsPage(
   return { data, nextCursor };
 }
 
+/** A trace metric returned by {@link listTraceMetrics}. */
+export type TraceMetric = ListOrganizationTraceMetricsResponse2[number];
+
+/** Sort accepted by {@link listTraceMetrics}. */
+export type TraceMetricSort = NonNullable<
+  NonNullable<ListOrganizationTraceMetricsData["query"]>["sort"]
+>;
+
+/** Most metrics the trace metrics endpoint returns per page. */
+const TRACE_METRICS_MAX_PER_PAGE = 1000;
+
+/** Options for {@link listTraceMetrics}. */
+export type ListTraceMetricsOptions = {
+  /** Project IDs or slugs to scope to (omit for all accessible projects) */
+  project?: Array<number | string>;
+  /** Environment names to scope to */
+  environment?: string[];
+  /** Search query, in the metrics dataset's syntax */
+  query?: string;
+  /** Response field to sort by, `-` prefixed for descending (default: name) */
+  sort?: TraceMetricSort;
+  /** Relative time window, e.g. "7d" (overrides start/end) */
+  statsPeriod?: string;
+  /** Absolute window start (ISO-8601) */
+  start?: string;
+  /** Absolute window end (ISO-8601) */
+  end?: string;
+  /** Page size, sent as `per_page` (at most {@link TRACE_METRICS_MAX_PER_PAGE}) */
+  perPage?: number;
+  /** Pagination cursor from a previous page's `nextCursor` */
+  cursor?: string;
+};
+
+/**
+ * List the trace metrics of an org, one row per name/type/unit, via
+ * `GET /organizations/{org}/trace-items/metrics/`.
+ *
+ * The response also seeds `--metric` completion (`api/completion-seed.ts`).
+ *
+ * @param orgSlug - Organization slug
+ * @param options - Project, environment, query, sort, time, and page options
+ * @returns One page of metrics and an optional next-page cursor
+ */
+export async function listTraceMetrics(
+  orgSlug: string,
+  options: ListTraceMetricsOptions = {},
+): Promise<PaginatedResponse<TraceMetric[]>> {
+  const config = await getOrgSdkConfig(orgSlug);
+  // `per_page` and `cursor` are accepted by the endpoint's paginator but
+  // missing from the SDK's generated query type.
+  const query: NonNullable<ListOrganizationTraceMetricsData["query"]> & {
+    per_page?: number;
+    cursor?: string;
+  } = {
+    project: options.project?.length ? options.project : undefined,
+    environment: options.environment?.length ? options.environment : undefined,
+    query: options.query || undefined,
+    sort: options.sort,
+    statsPeriod: options.statsPeriod,
+    start: options.start,
+    end: options.end,
+    per_page: options.perPage,
+    cursor: options.cursor,
+  };
+  const result = await listOrganizationTraceMetrics({
+    ...config,
+    path: { organization_id_or_slug: orgSlug },
+    query,
+  });
+  return unwrapPaginatedResult<TraceMetric[]>(
+    result,
+    "Failed to list trace metrics",
+  );
+}
+
 /** Metric metadata returned by {@link queryMetricsMeta}. */
 export type MetricMeta = {
   name: string;
@@ -171,13 +252,12 @@ export type MetricMeta = {
 };
 
 /**
- * Discover available metrics for an org via the Events API.
+ * Discover the metrics of an org for resolving `--metric`, with
+ * {@link listTraceMetrics}.
  *
- * Queries `dataset=tracemetrics` with meta-fields (`metric.name`, etc.)
- * — the same technique the Sentry Explore Metrics UI uses.
- *
- * Auto-paginates to collect all available metrics (bounded by
- * {@link MAX_PAGINATION_PAGES} to prevent runaway loops).
+ * Follows every page (bounded by {@link MAX_PAGINATION_PAGES}); the
+ * endpoint returns up to {@link TRACE_METRICS_MAX_PER_PAGE} metrics per
+ * page, so one request usually covers an org.
  */
 export async function queryMetricsMeta(
   orgSlug: string,
@@ -186,52 +266,37 @@ export async function queryMetricsMeta(
     start?: string;
     end?: string;
     project?: string;
-    /** Numeric ID for `project`; when set, replaces the `project:<slug>` filter. */
+    /** Numeric ID for `project`, sent instead of the slug when known */
     projectId?: number;
   },
 ): Promise<MetricMeta[]> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const query =
-    options?.project && options.projectId === undefined
-      ? `project:${options.project}`
-      : undefined;
-
-  const baseOptions: ExploreQueryOptions = {
-    fields: ["metric.name", "metric.type", "metric.unit"],
-    dataset: "tracemetrics",
-    query,
-    projectId: options?.projectId,
+  const project = options?.projectId ?? options?.project;
+  const baseOptions: ListTraceMetricsOptions = {
+    project: project === undefined ? undefined : [project],
     statsPeriod:
       options?.start || options?.end
         ? undefined
         : (options?.statsPeriod ?? "7d"),
     start: options?.start,
     end: options?.end,
+    perPage: TRACE_METRICS_MAX_PER_PAGE,
   };
 
-  const allRows: Record<string, unknown>[] = [];
+  const metrics: TraceMetric[] = [];
   let cursor: string | undefined;
-
   for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
-    const result = await fetchEventsPage(
-      regionUrl,
-      orgSlug,
-      { ...baseOptions, cursor },
-      API_MAX_PER_PAGE,
-    );
-
-    allRows.push(...result.data.data);
-
+    const result = await listTraceMetrics(orgSlug, { ...baseOptions, cursor });
+    metrics.push(...result.data);
     if (!result.nextCursor) {
       break;
     }
     cursor = result.nextCursor;
   }
 
-  return allRows.map((row) => ({
-    name: stringifyUnknown(row["metric.name"] ?? ""),
-    type: stringifyUnknown(row["metric.type"] ?? "distribution"),
-    unit: stringifyUnknown(row["metric.unit"] ?? "none"),
+  return metrics.map((metric) => ({
+    name: metric.name,
+    type: metric.type,
+    unit: metric.unit ?? "none",
   }));
 }
 

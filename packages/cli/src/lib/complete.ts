@@ -456,6 +456,8 @@ const COMPLETERS = Object.freeze({
     slot.positionals.length > 0 ? [] : completeLocalSessions(partial),
   /** Cached tag keys of issues, described by their labels. */
   "tag-key": flagEntityCompleter("tag-key"),
+  /** Cached trace metric names, described by their type and unit. */
+  metric: flagEntityCompleter("metric"),
   /**
    * Fields of the dataset the command's `--dataset` names: cached attribute
    * or tag keys, or a fixed set (replays).

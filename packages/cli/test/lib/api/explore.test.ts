@@ -2,13 +2,16 @@
  * Tests for the explore API helper.
  *
  * Verifies URL construction, query parameter encoding (especially repeated
- * `field` params), schema validation, and pagination cursor extraction.
+ * `field` params), schema validation, and pagination cursor extraction, and
+ * the trace metrics list behind metrics discovery and `--metric`.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
+  listTraceMetrics,
   queryEvents,
   queryEventsTimeSeries,
+  queryMetricsMeta,
 } from "../../../src/lib/api/explore.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
@@ -552,5 +555,93 @@ describe("queryEventsTimeSeries", () => {
       status: 400,
       detail: "Selected interval is not allowed",
     });
+  });
+});
+
+describe("trace metrics", () => {
+  useTestConfigDir("explore-metrics-test-");
+
+  let originalFetch: typeof globalThis.fetch;
+  let requests: URL[];
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    requests = [];
+    setOrgRegion("metrics-org", "https://de.sentry.io");
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  /** Answer each request with the next page; all but the last link onward. */
+  function mockPages(pages: unknown[][]) {
+    globalThis.fetch = mockFetch(async (input, init) => {
+      requests.push(new URL(new Request(input!, init).url));
+      const index = requests.length - 1;
+      const more = index < pages.length - 1;
+      return new Response(JSON.stringify(pages[index] ?? []), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          Link: `<https://de.sentry.io/next/>; rel="next"; results="${more}"; cursor="0:${index + 1}:0"`,
+        },
+      });
+    });
+  }
+
+  const metric = (name: string, unit: string | null = "millisecond") => ({
+    name,
+    type: "distribution",
+    unit,
+    count: 3,
+    lastSeen: 1_735_689_600,
+  });
+
+  test("listTraceMetrics sends its filters to the org region's trace-items/metrics/", async () => {
+    mockPages([[metric("checkout.latency")]]);
+
+    const result = await listTraceMetrics("metrics-org", {
+      project: [42],
+      environment: ["production"],
+      query: "metric.type:distribution",
+      sort: "-count",
+      statsPeriod: "7d",
+      perPage: 25,
+      cursor: "0:25:0",
+    });
+
+    const [url] = requests;
+    expect(url?.origin).toBe("https://de.sentry.io");
+    expect(url?.pathname).toBe(
+      "/api/0/organizations/metrics-org/trace-items/metrics/",
+    );
+    expect(Object.fromEntries(url?.searchParams ?? [])).toEqual({
+      project: "42",
+      environment: "production",
+      query: "metric.type:distribution",
+      sort: "-count",
+      statsPeriod: "7d",
+      per_page: "25",
+      cursor: "0:25:0",
+    });
+    expect(result.data).toEqual([metric("checkout.latency")]);
+    expect(result.nextCursor).toBeUndefined();
+  });
+
+  test("queryMetricsMeta follows every page and defaults a missing unit to none", async () => {
+    mockPages([[metric("a")], [metric("b", null)]]);
+
+    const metrics = await queryMetricsMeta("metrics-org", { project: "cli" });
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.searchParams.get("project")).toBe("cli");
+    expect(requests[0]?.searchParams.get("statsPeriod")).toBe("7d");
+    expect(requests[0]?.searchParams.get("per_page")).toBe("1000");
+    expect(requests[1]?.searchParams.get("cursor")).toBe("0:1:0");
+    expect(metrics).toEqual([
+      { name: "a", type: "distribution", unit: "millisecond" },
+      { name: "b", type: "distribution", unit: "none" },
+    ]);
   });
 });

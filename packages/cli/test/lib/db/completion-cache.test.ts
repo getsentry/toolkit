@@ -275,6 +275,25 @@ describe("completion seeding from API responses", () => {
     ]);
   });
 
+  test("trace metrics are stored by name with their type and unit", async () => {
+    await seedCompletions(
+      `${API}/trace-items/metrics/?statsPeriod=7d`,
+      json([
+        { name: "checkout.latency", type: "distribution", unit: "millisecond" },
+        { name: "cart.items", type: "gauge", unit: null },
+      ]),
+    );
+
+    expect(getCachedCompletionEntities("metric", ["acme"])).toEqual([
+      {
+        orgSlug: "acme",
+        value: "checkout.latency",
+        label: "distribution, millisecond",
+      },
+      { orgSlug: "acme", value: "cart.items", label: "gauge" },
+    ]);
+  });
+
   test("attribute keys are stored by the dataset the request names", async () => {
     const attributes = (dataset: string) =>
       `${API}/trace-items/attributes/?dataset=${dataset}&attributeType=number`;
