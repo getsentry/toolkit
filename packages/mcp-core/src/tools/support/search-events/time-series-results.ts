@@ -67,7 +67,11 @@ function summarizeSeries(
   let maximum: { value: number | string; timestamp: number } | undefined;
   let maximumValue = Number.NEGATIVE_INFINITY;
   for (const bucket of series.values) {
-    if (bucket.value == null || series.meta.valueType === "string") {
+    if (
+      bucket.value == null ||
+      series.meta.valueType === "string" ||
+      (series.meta.valueType === "date" && bucket.value === 0)
+    ) {
       allNumeric = false;
       continue;
     }

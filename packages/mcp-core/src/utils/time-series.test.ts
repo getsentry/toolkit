@@ -1,7 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { TimeSeriesConfigSchema } from "./time-series";
+import {
+  getTimeSeriesExploreInterval,
+  TimeSeriesConfigSchema,
+} from "./time-series";
 
 describe("time series configuration", () => {
+  it("uses the Explore URL's 24h default when checking interval bounds", () => {
+    expect(
+      getTimeSeriesExploreInterval(
+        { axes: [{ yAxis: "count()" }], interval: "10m" },
+        undefined,
+        {},
+      ),
+    ).toBe("10m");
+    expect(() =>
+      getTimeSeriesExploreInterval(
+        { axes: [{ yAxis: "count()" }], interval: "2d" },
+        undefined,
+        {},
+      ),
+    ).toThrow("Explore cannot preserve this bucket interval");
+  });
+
   it("accepts automatic EMA factor and ASAP window selection", () => {
     expect(
       TimeSeriesConfigSchema.parse({

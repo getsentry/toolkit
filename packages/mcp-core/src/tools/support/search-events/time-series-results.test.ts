@@ -91,6 +91,50 @@ describe("buildTimeSeriesResult", () => {
     },
   );
 
+  it.each([false, true])(
+    "omits a date maximum when only empty buckets are final (transformed: %s)",
+    (transformed) => {
+      const result = buildTimeSeriesResult({
+        series: {
+          timeSeries: [
+            {
+              yAxis: "max(timestamp)",
+              meta: { interval: 60000, valueType: "date" },
+              values: [
+                { timestamp: 1, value: 0, incomplete: false },
+                {
+                  timestamp: 2,
+                  value: "2026-11-05T10:30:00Z",
+                  incomplete: true,
+                  incompleteReason: "INGESTION_PENDING",
+                },
+              ].map((bucket) => ({
+                ...bucket,
+                filled: false,
+                smoothed: false,
+              })),
+            },
+          ],
+        },
+        configuration: {
+          axes: [
+            {
+              yAxis: "max(timestamp)",
+              transformations: transformed ? ["smooth(sma,2)"] : [],
+            },
+          ],
+        },
+        dataset: "logs",
+        query: "severity:error",
+        inputQuery: "latest error over time",
+        timeRange: { statsPeriod: "1h" },
+        url: "https://example.sentry.io/explore/logs/",
+      });
+
+      expect(result.series[0]?.summary).toBeUndefined();
+    },
+  );
+
   it("orders ISO date values by time and preserves the original peak value", () => {
     const result = buildTimeSeriesResult({
       series: {

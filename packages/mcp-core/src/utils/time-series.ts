@@ -134,7 +134,7 @@ export function getTimeSeriesExploreInterval(
   const rangeSeconds =
     timeRange.start && timeRange.end
       ? (Date.parse(timeRange.end) - Date.parse(timeRange.start)) / 1000
-      : durationSeconds(timeRange.statsPeriod ?? "14d");
+      : durationSeconds(timeRange.statsPeriod ?? "24h");
   // Explore's useChartInterval.tsx replaces intervals outside this range.
   const minimum =
     EXPLORE_INTERVAL_MINIMUMS.find(([range]) => rangeSeconds >= range)?.[1] ??
