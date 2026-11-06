@@ -109,6 +109,39 @@ const eventWithThreads = createDefaultEvent({
                     [43, "        }"],
                   ],
                 },
+                {
+                  // a library frame with source context and locals still gets only its own line
+                  filename: "Objects.java",
+                  absPath: "java/util/Objects.java",
+                  module: "java.util.Objects",
+                  package: null,
+                  platform: null,
+                  instructionAddr: null,
+                  symbolAddr: null,
+                  function: "requireNonNull",
+                  rawFunction: null,
+                  symbol: null,
+                  lineNo: 233,
+                  colNo: null,
+                  inApp: false,
+                  trust: null,
+                  errors: null,
+                  lock: null,
+                  sourceLink: null,
+                  vars: { obj: null, message: "order" },
+                  context: [
+                    [
+                      231,
+                      "    public static <T> T requireNonNull(T obj, String message) {",
+                    ],
+                    [232, "        if (obj == null)"],
+                    [
+                      233,
+                      "            throw new NullPointerException(message);",
+                    ],
+                    [234, "        return obj;"],
+                  ],
+                },
               ],
               hasSystemFrames: true,
             },
@@ -171,41 +204,30 @@ describe("get_event_stacktrace", () => {
         "organizationSlug": "sentry-mcp-evals",
         "platform": "java",
         "selection": {
-          "message": "Sentry default selection: first crashed thread, then first thread with a stacktrace, then first thread.",
+          "message": null,
           "status": "selected",
         },
         "thread": {
           "crashed": true,
           "current": true,
-          "frameCount": 2,
+          "frameCount": 3,
           "id": 259,
           "name": "main",
           "stacktrace": {
             "frames": [
               {
-                "absPath": "Thread.java",
-                "colNo": null,
-                "contextLine": null,
                 "filename": "Thread.java",
                 "function": "run",
-                "inApp": false,
                 "lineNo": 833,
                 "module": "java.lang.Thread",
-                "package": null,
-                "postContext": null,
-                "preContext": null,
-                "vars": null,
               },
               {
-                "absPath": "CheckoutActivity.java",
-                "colNo": null,
                 "contextLine": "            throw new IllegalStateException();",
                 "filename": "CheckoutActivity.java",
                 "function": "submitOrder",
                 "inApp": true,
                 "lineNo": 42,
                 "module": "com.example.CheckoutActivity",
-                "package": null,
                 "postContext": [
                   "        }",
                 ],
@@ -217,6 +239,14 @@ describe("get_event_stacktrace", () => {
                   "cartSize": 3,
                   "userEmail": "jane@example.com",
                 },
+              },
+              {
+                "absPath": "java/util/Objects.java",
+                "contextLine": "            throw new NullPointerException(message);",
+                "filename": "Objects.java",
+                "function": "requireNonNull",
+                "lineNo": 233,
+                "module": "java.util.Objects",
               },
             ],
             "framesOmitted": null,
@@ -235,7 +265,7 @@ describe("get_event_stacktrace", () => {
 
     expect(result.selection).toEqual({
       status: "selected",
-      message: "Matched the provided thread selector.",
+      message: null,
     });
     expect(result.thread?.id).toBe(11);
     expect(result.thread?.stacktrace?.framesOmitted).toBe(500);
@@ -288,7 +318,12 @@ describe("get_event_stacktrace", () => {
     expect(result.thread?.id).toBe(20);
     expect(result.thread?.stacktrace).toEqual({
       frames: [
-        expect.objectContaining({ function: "run", lineNo: 42, inApp: null }),
+        {
+          filename: "Worker.java",
+          module: "com.example.Worker",
+          function: "run",
+          lineNo: 42,
+        },
       ],
       framesOmitted: null,
     });
@@ -371,7 +406,7 @@ describe("get_event_stacktrace", () => {
           {
             "crashed": true,
             "current": true,
-            "frameCount": 2,
+            "frameCount": 3,
             "id": 259,
             "name": "main",
             "state": "RUNNABLE",
@@ -518,18 +553,13 @@ describe("get_event_stacktrace", () => {
 
     expect(result.thread?.name).toBeNull();
     expect(result.thread?.stacktrace?.frames[0]).toEqual({
-      filename: null,
       absPath: "/usr/src/app/crash.cpp",
-      module: null,
       package: "/usr/lib/libapp.so",
       function: "crash_handler",
       lineNo: 17,
       colNo: 5,
       inApp: true,
       contextLine: "  *ptr = 0;",
-      preContext: null,
-      postContext: null,
-      vars: null,
     });
     for (const leaked of [
       "0x7f1c2b3a4d5e",

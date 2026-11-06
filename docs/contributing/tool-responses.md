@@ -168,7 +168,9 @@ and source links, tag search queries, and external issue link ids stay out.
 `get_event_stacktrace` returns one thread under `thread`, using the same frame
 and thread shapes as `get_issue_details`, with `selection.status` saying how the
 `thread` selector resolved. When the selector matches no thread or several,
-`thread` is null and `availableThreads` lists every thread summary. Held locks,
+`thread` is null, `selection.message` says why, and `availableThreads` lists
+every thread summary. Only the thread's most relevant frame (its last in-app
+frame) gets pre/post context and variables. Held locks,
 registers and the raw (unsymbolicated) stacktrace stay out.
 
 ### Profile Details

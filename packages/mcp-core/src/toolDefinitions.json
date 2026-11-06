@@ -5946,7 +5946,8 @@
               "description": "`selected` returns `thread`. Otherwise `thread` is null and `message` says why."
             },
             "message": {
-              "type": "string"
+              "description": "Why no thread was selected; null when one was.",
+              "type": ["string", "null"]
             }
           },
           "required": ["status", "message"],
@@ -5986,94 +5987,62 @@
                             "type": "object",
                             "properties": {
                               "filename": {
-                                "type": ["string", "null"]
+                                "type": "string"
                               },
                               "absPath": {
-                                "type": ["string", "null"]
+                                "description": "Present only when it differs from filename.",
+                                "type": "string"
                               },
                               "module": {
-                                "type": ["string", "null"]
+                                "type": "string"
                               },
                               "package": {
-                                "type": ["string", "null"]
+                                "type": "string"
                               },
                               "function": {
-                                "type": ["string", "null"]
+                                "type": "string"
                               },
                               "lineNo": {
-                                "type": ["number", "null"]
+                                "type": "number"
                               },
                               "colNo": {
-                                "type": ["number", "null"]
+                                "type": "number"
                               },
                               "inApp": {
-                                "type": ["boolean", "null"]
+                                "description": "Present on application frames.",
+                                "type": "boolean",
+                                "const": true
                               },
                               "contextLine": {
                                 "description": "The source line at lineNo.",
-                                "type": ["string", "null"]
+                                "type": "string"
                               },
                               "preContext": {
-                                "anyOf": [
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ],
-                                "description": "Up to 3 source lines before lineNo, for in-app frames only."
+                                "description": "Up to 3 source lines before lineNo, on the most relevant frame only.",
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
                               },
                               "postContext": {
-                                "anyOf": [
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ],
-                                "description": "Up to 3 source lines after lineNo, for in-app frames only."
+                                "description": "Up to 3 source lines after lineNo, on the most relevant frame only.",
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
                               },
                               "vars": {
-                                "anyOf": [
-                                  {
-                                    "type": "object",
-                                    "propertyNames": {
-                                      "type": "string"
-                                    },
-                                    "additionalProperties": {}
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ],
-                                "description": "Local variables, recorded for in-app frames only."
+                                "description": "Local variables, on the most relevant frame only. Values longer than 200 characters of JSON are cut to a string.",
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
                               }
                             },
-                            "required": [
-                              "filename",
-                              "absPath",
-                              "module",
-                              "package",
-                              "function",
-                              "lineNo",
-                              "colNo",
-                              "inApp",
-                              "contextLine",
-                              "preContext",
-                              "postContext",
-                              "vars"
-                            ],
                             "additionalProperties": false
                           },
-                          "description": "Oldest call first; the frame that raised is last."
+                          "description": "Most recent call last. The most relevant frame is the last in-app frame."
                         },
                         "framesOmitted": {
                           "type": ["number", "null"]

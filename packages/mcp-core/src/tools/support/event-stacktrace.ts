@@ -17,7 +17,6 @@ type SelectedThread =
   | {
       kind: "selected";
       thread: Thread;
-      reason: string;
     }
   | {
       kind: "not_found" | "ambiguous";
@@ -42,7 +41,10 @@ export const eventStacktraceOutputSchema = z.object({
       .describe(
         "`selected` returns `thread`. Otherwise `thread` is null and `message` says why.",
       ),
-    message: z.string(),
+    message: z
+      .string()
+      .nullable()
+      .describe("Why no thread was selected; null when one was."),
   }),
   thread: structuredThreadSchema
     .nullable()
@@ -118,7 +120,7 @@ export async function fetchEventStacktrace({
 
   return {
     ...base,
-    selection: { status: "selected", message: selected.reason },
+    selection: { status: "selected", message: null },
     thread: mapStructuredThread(selected.thread),
     availableThreads: null,
   };
@@ -136,12 +138,7 @@ function selectThread(
 ): SelectedThread {
   if (selector === undefined) {
     const selected = selectSentryDefaultThread(threads);
-    return {
-      kind: "selected",
-      thread: selected,
-      reason:
-        "Sentry default selection: first crashed thread, then first thread with a stacktrace, then first thread.",
-    };
+    return { kind: "selected", thread: selected };
   }
 
   if (typeof selector === "number") {
@@ -211,9 +208,5 @@ function selectUnique(
     return { kind: "ambiguous", message: ambiguousMessage };
   }
 
-  return {
-    kind: "selected",
-    thread: matches[0]!,
-    reason: "Matched the provided thread selector.",
-  };
+  return { kind: "selected", thread: matches[0]! };
 }
