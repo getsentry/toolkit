@@ -190,6 +190,9 @@ function isStructuredToolOutput(
 /**
  * Wraps structured-only output in an MCP CallToolResult with generated JSON
  * text for clients that do not read structuredContent yet.
+ *
+ * The text is compact JSON because clients that read it send it to a model,
+ * and indentation adds tokens without adding data.
  */
 function structuredOutputToCallToolResult(
   output: StructuredToolOutput,
@@ -198,7 +201,7 @@ function structuredOutputToCallToolResult(
     content: [
       {
         type: "text" as const,
-        text: JSON.stringify(output.structuredContent, null, 2),
+        text: JSON.stringify(output.structuredContent),
       },
     ],
     structuredContent: output.structuredContent,
