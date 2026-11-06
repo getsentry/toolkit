@@ -58,6 +58,7 @@ type ToolDefinition = {
   title: string;
   description: string | ((context: { experimentalMode: boolean }) => string);
   inputSchema: Record<string, ZodTypeAny>;
+  outputSchema?: ZodTypeAny;
   experimental?: boolean;
   hideInExperimentalMode?: boolean;
   deprecated?: { replacedBy: readonly string[] };
@@ -93,6 +94,13 @@ function formatToolsForMCP(tools: Record<string, ToolDefinition>) {
         experimentalMode: false,
       }),
       inputSchema: jsonSchema,
+      // the same conversion the MCP SDK applies when it lists the tool
+      ...(tool.outputSchema && {
+        outputSchema: z.toJSONSchema(tool.outputSchema, {
+          io: "output",
+          target: "draft-7",
+        }),
+      }),
       ...(tool.annotations && { annotations: tool.annotations }),
     };
   });

@@ -8,6 +8,7 @@ The token cost of tool metadata that MCP sends to clients via `tools/list`:
 
 - Tool names and descriptions
 - Parameter schemas (JSON Schema)
+- Output schemas (`outputSchema`, JSON Schema) for tools that declare one
 - Total overhead per tool and across all tools
 
 **Exclusions:**
@@ -123,7 +124,7 @@ tsx measure-token-cost.ts --help       # Show help
 - Remove redundant examples
 - Focus on unique, non-obvious details
 
-**Simplify parameter schemas:**
+**Simplify parameter and output schemas:**
 
 - Use `.describe()` sparingly
 - Avoid duplicate descriptions in nested schemas
