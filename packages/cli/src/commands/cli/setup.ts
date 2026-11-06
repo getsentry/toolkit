@@ -483,6 +483,7 @@ function printWelcomeMessage(
   emit("");
   emit("Get started:");
   emit("  sentry auth     Authenticate with Sentry");
+  emit("  sentry mcp      Run the Sentry MCP server for your AI agent");
   emit("  sentry --help   See all available commands");
   emit("");
   emit("https://cli.sentry.dev");
