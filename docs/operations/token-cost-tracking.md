@@ -44,6 +44,13 @@ Per-Tool Breakdown:
 ...
 ```
 
+**Measure the command surface** (`sentry mcp --commands`: one tool per
+exposed CLI command) instead of the tool catalog:
+
+```bash
+pnpm run measure-tokens -- --commands
+```
+
 **Write JSON to file:**
 
 ```bash

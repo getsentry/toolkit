@@ -59,6 +59,12 @@ export type SentryOptions = {
   headers?: Record<string, string>;
 
   /**
+   * Set `false` to run commands without the CLI's telemetry. The CLI's
+   * telemetry initializes `@sentry/node` for each call, which replaces a
+   * Sentry client the host application set up (the MCP server's).
+   */
+  telemetry?: boolean;
+  /**
    * Abort signal for cancelling streaming commands.
    * When aborted, streaming iterables stop on the next poll cycle.
    * Consumer `break` in `for await...of` also triggers abort automatically.

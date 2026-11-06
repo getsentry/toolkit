@@ -116,6 +116,11 @@ export const mcpCommand = buildCommand({
         command: "sentry mcp --skills inspect,triage",
       },
       {
+        description:
+          "Serve CLI commands instead of the tool catalog, read-only",
+        command: "sentry mcp --commands --read-only",
+      },
+      {
         description: "Pick the LLM provider for AI-powered search",
         command: "sentry mcp --agent-provider anthropic",
       },
@@ -164,6 +169,12 @@ export const mcpCommand = buildCommand({
       "disable-skills": stringFlag("Skills to remove, comma-separated"),
       experimental: booleanFlag(
         "Enable forward-looking tool variants and experimental features",
+      ),
+      commands: booleanFlag(
+        "Serve each CLI command as its own tool (sentry_issue_list, ...) instead of the tool catalog (preview)",
+      ),
+      "read-only": booleanFlag(
+        "With --commands: list no write tools and refuse write calls",
       ),
       "agent-provider": stringFlag(
         "LLM provider for AI-powered search: openai, azure-openai, anthropic, or openrouter",
