@@ -17,7 +17,10 @@
  */
 
 import { SentryApiService } from "@sentry/mcp-core/api-client";
-import { lookupConstraints } from "@sentry/mcp-core/constraint-lookup";
+import {
+  allowedRegionHost,
+  lookupConstraints,
+} from "@sentry/mcp-core/constraint-lookup";
 import { getInvocationCommand } from "../app-identity.js";
 import { ResolutionError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -77,8 +80,10 @@ export async function assertMcpScopeExists(
   });
   const { organization, project } = await lookupConstraints(
     api,
-    { organizationSlug, projectSlug, sentryHost: config.sentryHost },
+    { organizationSlug, projectSlug },
     {
+      projectHost: (regionUrl) =>
+        allowedRegionHost(regionUrl, config.sentryHost),
       organizationTimeoutMs: timeoutMs,
       projectTimeoutMs: timeoutMs,
       detailed: false,

@@ -6,8 +6,10 @@
  * (fail, serve, cache); this module only fetches and classifies.
  *
  * The project lives on the organization's region, not the control silo
- * (multi-region SaaS), so it is fetched on the org's `links.regionUrl` when
- * that passes `validateRegionUrl`, else on the configured host.
+ * (multi-region SaaS). Each caller maps the org's `links.regionUrl` to the
+ * project request's host with `projectHost`;
+ * {@link allowedRegionHost} is the `validateRegionUrl` rule mcp-core's tools
+ * use.
  */
 
 import {
@@ -53,13 +55,16 @@ async function classify<T>(
   resource: "organization" | "project",
   timeoutMs: number | undefined,
 ): Promise<ConstraintLookup<T>> {
-  const outcome = request().then(
-    (value): ConstraintLookup<T> => ({ status: "ok", value }),
-    (error: unknown): ConstraintLookup<T> =>
-      error instanceof ApiNotFoundError
-        ? { status: "not-found", error }
-        : { status: "unknown", error },
-  );
+  // `then(request)` also classifies a synchronous throw.
+  const outcome = Promise.resolve()
+    .then(request)
+    .then(
+      (value): ConstraintLookup<T> => ({ status: "ok", value }),
+      (error: unknown): ConstraintLookup<T> =>
+        error instanceof ApiNotFoundError
+          ? { status: "not-found", error }
+          : { status: "unknown", error },
+    );
   if (timeoutMs === undefined) {
     return await outcome;
   }
@@ -81,8 +86,11 @@ async function classify<T>(
   }
 }
 
-/** The org's region host when `validateRegionUrl` accepts it. */
-function projectHost(
+/**
+ * The org's region host when `validateRegionUrl` accepts it (the configured
+ * host or a known Sentry region), else undefined for the configured host.
+ */
+export function allowedRegionHost(
   regionUrl: string | null,
   sentryHost: string,
 ): string | undefined {
@@ -106,22 +114,27 @@ export async function lookupConstraints(
   {
     organizationSlug,
     projectSlug,
-    sentryHost,
   }: {
     organizationSlug: string;
     projectSlug?: string | null;
-    sentryHost: string;
   },
   {
+    projectHost,
     organizationTimeoutMs,
     projectTimeoutMs,
     detailed,
   }: {
+    /**
+     * The project request's host for the org's `links.regionUrl`; undefined
+     * uses the configured host. Called inside the project lookup, so a throw
+     * is classified like a failed request.
+     */
+    projectHost: (regionUrl: string | null) => string | undefined;
     organizationTimeoutMs?: number;
     projectTimeoutMs?: number;
     /** Passed to the organization request; `false` skips projects and teams. */
     detailed?: boolean;
-  } = {},
+  },
 ): Promise<ConstraintLookupResult> {
   const organization = await classify(
     () =>
@@ -135,21 +148,22 @@ export async function lookupConstraints(
   if (organization.status !== "ok") {
     return { organization, regionUrl: null, project: null };
   }
-  const regionUrl = organization.value.links?.regionUrl?.trim() || null;
+  const regionUrl = organization.value.links?.regionUrl || null;
   if (!projectSlug) {
     return { organization, regionUrl, project: null };
   }
-  const host = projectHost(regionUrl, sentryHost);
   const project = await classify(
-    () =>
-      api.getProject(
+    () => {
+      const host = projectHost(regionUrl);
+      return api.getProject(
         {
           organizationSlug,
           projectSlugOrId: projectSlug,
           collapse: "organization",
         },
         host ? { host } : undefined,
-      ),
+      );
+    },
     "project",
     projectTimeoutMs,
   );

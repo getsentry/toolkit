@@ -181,10 +181,15 @@ export async function verifyConstraintsAccess(
 
   const { organization, regionUrl, project } = await lookupConstraints(
     api,
-    { organizationSlug, projectSlug, sentryHost },
-    // Only the project lookup has a time limit, to avoid blocking on slow
-    // API responses.
-    { projectTimeoutMs: CAPABILITIES_TIMEOUT_MS },
+    { organizationSlug, projectSlug },
+    {
+      // The region URL's host as given; an invalid URL fails as a 502.
+      projectHost: (regionUrl) =>
+        regionUrl ? new URL(regionUrl).host : undefined,
+      // Only the project lookup has a time limit, to avoid blocking on slow
+      // API responses.
+      projectTimeoutMs: CAPABILITIES_TIMEOUT_MS,
+    },
   );
 
   if (organization.status !== "ok") {
