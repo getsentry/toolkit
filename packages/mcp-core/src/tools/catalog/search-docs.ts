@@ -1,6 +1,6 @@
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
-import { ApiError, ApiServerError } from "../../api-client/index";
+import { createApiError } from "../../api-client/index";
 import { fetchWithTimeout } from "../../internal/fetch-utils";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
@@ -130,7 +130,7 @@ export default defineTool({
 
       const errorMessage =
         errorData?.error || `Search failed with status ${response.status}`;
-      throw new ApiError(errorMessage, response.status);
+      throw createApiError(errorMessage, response.status, undefined, errorData);
     }
 
     const data = (await response.json()) as SearchResponse;
@@ -139,7 +139,7 @@ export default defineTool({
     // a 2xx body means it misbehaved, so surface it as a server error rather
     // than an empty, success-shaped result.
     if ("error" in data && data.error) {
-      throw new ApiServerError(data.error, 502);
+      throw createApiError(data.error, 502);
     }
 
     getActiveSpan()?.setAttribute(
@@ -154,7 +154,8 @@ export default defineTool({
       snippet: index < MAX_SNIPPETS ? result.snippet : null,
     }));
 
-    const topPath = results[0]?.path;
+    // The search route sends an empty path when a hit has no filename.
+    const topPath = results.find((result) => result.path)?.path;
     const getDocAction = topPath
       ? buildSuggestedToolAction({
           toolName: "get_doc",

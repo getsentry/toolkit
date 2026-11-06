@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiServerError } from "../../api-client/index";
+import { ApiRateLimitError, ApiServerError } from "../../api-client/index";
 import type { ServerContext } from "../../types";
 import searchDocs, { searchDocsOutputSchema } from "./search-docs.js";
 
@@ -52,6 +52,11 @@ describe("search_docs", () => {
         }),
       }),
     );
+    // The search route rejects `guide: null` (#788), so omit the key.
+    const requestBody = JSON.parse(
+      mockFetch.mock.calls[0]?.[1]?.body as string,
+    ) as Record<string, unknown>;
+    expect(requestBody).not.toHaveProperty("guide");
     searchDocsOutputSchema.parse(result.structuredContent);
     expect(result.structuredContent).toMatchInlineSnapshot(`
       {
@@ -146,11 +151,36 @@ describe("search_docs", () => {
       baseContext,
     );
 
+    expect(Object.keys(result.structuredContent)).toEqual([
+      "query",
+      "guide",
+      "results",
+      "suggestedActions",
+    ]);
     expect(Object.keys(result.structuredContent.results[0] ?? {})).toEqual([
       "path",
       "url",
       "relevance",
       "snippet",
+    ]);
+  });
+
+  it("suggests get_doc for the first result with a path", async () => {
+    mockSearchResponse({
+      query: "test query",
+      results: [{ ...searchResult(0), id: "", url: "" }, searchResult(1)],
+    });
+
+    const result = await searchDocs.handler(
+      { query: "test query", maxResults: 3 },
+      baseContext,
+    );
+
+    expect(result.structuredContent.suggestedActions).toEqual([
+      expect.objectContaining({
+        toolName: "get_doc",
+        arguments: { path: "platforms/python/page-1.md" },
+      }),
     ]);
   });
 
@@ -201,15 +231,28 @@ describe("search_docs", () => {
       json: async () => ({ error: "Internal server error" }),
     } as Response);
 
+    const promise = searchDocs.handler(
+      {
+        query: "test query",
+        maxResults: 3,
+      },
+      baseContext,
+    );
+
+    await expect(promise).rejects.toBeInstanceOf(ApiServerError);
+    await expect(promise).rejects.toThrow("Internal server error");
+  });
+
+  it("types rate limit responses", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      json: async () => ({ error: "Rate limit exceeded." }),
+    } as Response);
+
     await expect(
-      searchDocs.handler(
-        {
-          query: "test query",
-          maxResults: 3,
-        },
-        baseContext,
-      ),
-    ).rejects.toThrow("Internal server error");
+      searchDocs.handler({ query: "test query", maxResults: 3 }, baseContext),
+    ).rejects.toBeInstanceOf(ApiRateLimitError);
   });
 
   it("handles timeout errors", async () => {

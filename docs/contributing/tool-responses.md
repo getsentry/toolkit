@@ -384,7 +384,8 @@ formatting issue.
 with the `path` to pass to `get_doc`, the docs `url`, a 0–1 `relevance` score,
 and a matching `snippet`. Snippets are search chunks, not full pages, and only
 the first three results carry one; later results have `snippet: null`. When
-`get_doc` is callable, `suggestedActions` fetches the top result's full page.
+`get_doc` is callable, `suggestedActions` fetches the full page of the first
+result with a path.
 No matches return `results: []`. A search failure is a tool error, including
 an error reported inside a successful search response.
 
