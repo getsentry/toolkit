@@ -137,7 +137,8 @@ one MCP server per host via `SENTRY_HOST`.
 
 With a scope (`<org>/`, `<org>/<project>`, `--org`, `--project`), the server
 checks it with that credential before it connects: one request for the
-organization, or for the project. When Sentry answers 404, the server prints
+organization, then, for a project, one for the project on the organization's
+region (`links.regionUrl`). When Sentry answers 404, the server prints
 which part of the scope was not found on stderr and exits with the resolution
 exit code (23), instead of failing every call with a generic 404. Any other
 answer (401, 403, 5xx), a network failure, or no answer within 3 seconds starts

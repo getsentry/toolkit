@@ -4,8 +4,9 @@
  *
  * mcp-core adds the scope to every tool call, so a scope that names an
  * organization or project the credential cannot see makes every call fail
- * with a generic 404. One request at startup reports it once, naming the
- * scope, before the client connects.
+ * with a generic 404. Checking at startup (the organization, then the
+ * project on the organization's region) reports it once, naming the scope,
+ * before the client connects.
  *
  * Only a 404 fails startup. Anything else (a 401 or 403, a token without
  * `org:read`, a 5xx, a network failure, or no answer within the time limit)
@@ -19,6 +20,7 @@ import {
   ApiNotFoundError,
   SentryApiService,
 } from "@sentry/mcp-core/api-client";
+import { SENTRY_ALLOWED_REGION_DOMAINS } from "@sentry/mcp-core/constants";
 import { getInvocationCommand } from "../app-identity.js";
 import { ResolutionError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -29,32 +31,35 @@ const log = logger.withTag("mcp.scope");
 /** How long startup waits for each request before serving without it. */
 const SCOPE_CHECK_TIMEOUT_MS = 3000;
 
-type ScopeCheckResult = "ok" | "not-found" | "unknown";
+type ScopeCheckResult<T> =
+  | { status: "ok"; value: T }
+  | { status: "not-found" }
+  | { status: "unknown" };
 
 /**
  * Whether `request` finds the resource: "unknown" for any failure but a 404,
  * and when it takes longer than `timeoutMs`.
  */
-async function probe(
-  request: () => Promise<unknown>,
+async function probe<T>(
+  request: () => Promise<T>,
   timeoutMs: number,
-): Promise<ScopeCheckResult> {
+): Promise<ScopeCheckResult<T>> {
   let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<ScopeCheckResult>((resolve) => {
+  const timeout = new Promise<ScopeCheckResult<T>>((resolve) => {
     timer = setTimeout(() => {
       log.debug(`MCP server scope check timed out after ${timeoutMs}ms`);
-      resolve("unknown");
+      resolve({ status: "unknown" });
     }, timeoutMs);
     timer.unref();
   });
   const outcome = request().then(
-    (): ScopeCheckResult => "ok",
-    (error: unknown): ScopeCheckResult => {
+    (value): ScopeCheckResult<T> => ({ status: "ok", value }),
+    (error: unknown): ScopeCheckResult<T> => {
       if (error instanceof ApiNotFoundError) {
-        return "not-found";
+        return { status: "not-found" };
       }
       log.debug("Could not check the MCP server scope", error);
-      return "unknown";
+      return { status: "unknown" };
     },
   );
   try {
@@ -62,6 +67,25 @@ async function probe(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * The host for the org's project requests: its `links.regionUrl` on SaaS,
+ * which mcp-core's tools also use, else the configured host. Only the
+ * configured host or a known Sentry region is accepted, as in mcp-core's
+ * `validateRegionUrl`.
+ */
+function regionHost(regionUrl: string | undefined, sentryHost: string): string {
+  if (!(regionUrl && URL.canParse(regionUrl))) {
+    return sentryHost;
+  }
+  const url = new URL(regionUrl);
+  const host = url.host.toLowerCase();
+  return url.protocol === "https:" &&
+    (host === sentryHost.toLowerCase() ||
+      SENTRY_ALLOWED_REGION_DOMAINS.has(host))
+    ? host
+    : sentryHost;
 }
 
 function organizationNotFound(org: string, scope: string): ResolutionError {
@@ -111,34 +135,36 @@ export async function assertMcpScopeExists(
     protocol: config.sentryProtocol,
     accessToken,
   });
-  const checkOrg = () =>
-    probe(
-      () => api.getOrganization(organizationSlug, { detailed: false }),
-      timeoutMs,
-    );
-
-  if (!projectSlug) {
-    if ((await checkOrg()) === "not-found") {
-      throw organizationNotFound(organizationSlug, scope);
-    }
-    return;
-  }
-
-  // One request for a valid scope; a second only to say which part is wrong.
-  const project = await probe(
-    () =>
-      api.getProject({
-        organizationSlug,
-        projectSlugOrId: projectSlug,
-        collapse: "organization",
-      }),
+  const org = await probe(
+    () => api.getOrganization(organizationSlug, { detailed: false }),
     timeoutMs,
   );
-  if (project !== "not-found") {
-    return;
-  }
-  if ((await checkOrg()) === "not-found") {
+  if (org.status === "not-found") {
     throw organizationNotFound(organizationSlug, scope);
   }
-  throw projectNotFound(organizationSlug, projectSlug);
+  // Without the org, its region is unknown, so a project 404 would prove
+  // nothing.
+  if (!projectSlug || org.status === "unknown") {
+    return;
+  }
+
+  // Projects live on the org's region, not the control silo (multi-region
+  // SaaS), so ask there.
+  const project = await probe(
+    () =>
+      api.getProject(
+        {
+          organizationSlug,
+          projectSlugOrId: projectSlug,
+          collapse: "organization",
+        },
+        {
+          host: regionHost(org.value.links?.regionUrl, config.sentryHost),
+        },
+      ),
+    timeoutMs,
+  );
+  if (project.status === "not-found") {
+    throw projectNotFound(organizationSlug, projectSlug);
+  }
 }

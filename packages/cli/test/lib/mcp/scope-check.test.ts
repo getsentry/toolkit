@@ -5,12 +5,33 @@ import { assertMcpScopeExists } from "../../../src/lib/mcp/scope-check.js";
 const originalFetch = globalThis.fetch;
 const requested: string[] = [];
 
+const ORG = { id: "1", slug: "acme", name: "Acme" };
+const PROJECT = {
+  id: "2",
+  slug: "web",
+  name: "web",
+  organization: { id: "1", slug: "acme" },
+};
+
+/** An org on a multi-region SaaS install, as `links.regionUrl` reports it. */
+function orgInRegion(regionUrl: string) {
+  return {
+    ...ORG,
+    links: {
+      regionUrl,
+      organizationUrl: "https://acme.sentry.io",
+    },
+  };
+}
+
 /** Answer each request path with `respond`, recording the paths. */
-function mockSentry(respond: (path: string) => Response | Promise<Response>) {
+function mockSentry(
+  respond: (path: string, host: string) => Response | Promise<Response>,
+) {
   globalThis.fetch = async (input) => {
     const url = new URL(new Request(input).url);
-    requested.push(url.pathname);
-    return await respond(url.pathname);
+    requested.push(`${url.host}${url.pathname}`);
+    return await respond(url.pathname, url.host);
   };
 }
 
@@ -51,9 +72,9 @@ describe("assertMcpScopeExists", () => {
   });
 
   test("accepts an organization that exists with one request", async () => {
-    mockSentry(() => Response.json({ id: "1", slug: "acme", name: "Acme" }));
+    mockSentry(() => Response.json(ORG));
     await expect(check("acme")).resolves.toBeUndefined();
-    expect(requested).toEqual(["/api/0/organizations/acme/"]);
+    expect(requested).toEqual(["sentry.io/api/0/organizations/acme/"]);
   });
 
   test("names the scope when the organization does not exist", async () => {
@@ -65,24 +86,48 @@ describe("assertMcpScopeExists", () => {
     );
   });
 
-  test("accepts a project that exists with one request", async () => {
-    mockSentry(() =>
-      Response.json({
-        id: "2",
-        slug: "web",
-        name: "web",
-        organization: { id: "1", slug: "acme" },
-      }),
+  test("accepts a project that exists", async () => {
+    mockSentry((path) =>
+      Response.json(path.startsWith("/api/0/projects/") ? PROJECT : ORG),
     );
     await expect(check("acme", "web")).resolves.toBeUndefined();
-    expect(requested).toEqual(["/api/0/projects/acme/web/"]);
+    expect(requested).toEqual([
+      "sentry.io/api/0/organizations/acme/",
+      "sentry.io/api/0/projects/acme/web/",
+    ]);
+  });
+
+  test("asks for the project on the organization's region", async () => {
+    // The control silo has no project route, as on multi-region SaaS.
+    mockSentry((path, host) => {
+      if (path.startsWith("/api/0/organizations/")) {
+        return Response.json(orgInRegion("https://de.sentry.io"));
+      }
+      return host === "de.sentry.io" ? Response.json(PROJECT) : notFound();
+    });
+    await expect(check("acme", "web")).resolves.toBeUndefined();
+    expect(requested).toEqual([
+      "sentry.io/api/0/organizations/acme/",
+      "de.sentry.io/api/0/projects/acme/web/",
+    ]);
+  });
+
+  test("ignores a region that is not a Sentry region", async () => {
+    mockSentry((path) =>
+      path.startsWith("/api/0/organizations/")
+        ? Response.json(orgInRegion("https://evil.example.com"))
+        : Response.json(PROJECT),
+    );
+    await expect(check("acme", "web")).resolves.toBeUndefined();
+    expect(requested).toEqual([
+      "sentry.io/api/0/organizations/acme/",
+      "sentry.io/api/0/projects/acme/web/",
+    ]);
   });
 
   test("names the project when only the project does not exist", async () => {
     mockSentry((path) =>
-      path.startsWith("/api/0/projects/")
-        ? notFound()
-        : Response.json({ id: "1", slug: "acme", name: "Acme" }),
+      path.startsWith("/api/0/projects/") ? notFound() : Response.json(ORG),
     );
     const error = await check("acme", "no-such-project").catch(
       (e: unknown) => e,
@@ -100,6 +145,18 @@ describe("assertMcpScopeExists", () => {
     expect((error as Error).message).toContain(
       "Organization 'no-such-org' (MCP server scope 'no-such-org/web') not found.",
     );
+    expect(requested).toEqual(["sentry.io/api/0/organizations/no-such-org/"]);
+  });
+
+  test("skips the project when the organization could not be read", async () => {
+    // Without the org there is no region, so a project 404 proves nothing.
+    mockSentry((path) =>
+      path.startsWith("/api/0/organizations/")
+        ? Response.json({ detail: "forbidden" }, { status: 403 })
+        : notFound(),
+    );
+    await expect(check("acme", "web")).resolves.toBeUndefined();
+    expect(requested).toEqual(["sentry.io/api/0/organizations/acme/"]);
   });
 
   test.each([
