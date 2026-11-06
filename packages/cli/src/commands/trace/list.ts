@@ -194,6 +194,7 @@ function jsonTransformTraceList(
 }
 
 export const listCommand = buildListCommand("trace", {
+  exposure: "exposed",
   docs: {
     brief: "List recent traces in a project",
     fullDescription:

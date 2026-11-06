@@ -66,6 +66,9 @@ function formatTokenCreated(result: CreateResult): string {
 }
 
 export const createCommand = buildCommand({
+  // Prints a new credential, meant for local CI setup; hosted MCP must not
+  // mint tokens under the user's grant
+  exposure: "stdio-only",
   docs: {
     brief: "Create an org auth token",
     fullDescription:

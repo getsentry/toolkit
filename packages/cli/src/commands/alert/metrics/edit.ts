@@ -183,6 +183,7 @@ function formatEdited(r: MetricAlertEditOutput): string {
 }
 
 export const editCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Edit a metric alert rule",
     fullDescription:

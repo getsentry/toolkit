@@ -132,6 +132,7 @@ function jsonTransformFeedbackList(
 }
 
 export const listCommand = buildListCommand("feedback", {
+  exposure: "exposed",
   docs: {
     brief: "List and search User Feedback",
     fullDescription:

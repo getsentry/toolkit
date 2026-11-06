@@ -141,6 +141,7 @@ async function resolveTraceLogsTarget(
 }
 
 export const logsCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View logs associated with a trace",
     fullDescription:

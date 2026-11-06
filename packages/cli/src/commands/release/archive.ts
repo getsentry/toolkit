@@ -45,6 +45,7 @@ function formatReleaseArchived(release: ReleaseUpdateOutput): string {
 }
 
 export const archiveCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Archive a release",
     fullDescription:

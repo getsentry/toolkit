@@ -243,6 +243,7 @@ export type DefaultsResult = {
 const log = logger.withTag("defaults");
 
 export const defaultsCommand = buildCommand({
+  exposure: "stdio-only",
   auth: false,
   docs: {
     brief: "View and manage default settings",

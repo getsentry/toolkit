@@ -602,6 +602,7 @@ async function handleProjectMode(
 // ---------------------------------------------------------------------------
 
 export const listCommand = buildListCommand("span", {
+  exposure: "exposed",
   docs: {
     brief: "List spans in a project or trace",
     fullDescription:

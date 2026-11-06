@@ -81,6 +81,7 @@ function parseDeployArgs(
 }
 
 export const deployCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Create a deploy for a release",
     fullDescription:

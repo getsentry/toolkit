@@ -105,6 +105,8 @@ async function buildFilePayload(
 }
 
 export const sendCommand = buildCommand({
+  exposure: "stdio-only",
+  permission: "write",
   docs: {
     brief: "Send a Sentry event",
     fullDescription: `\

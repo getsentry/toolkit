@@ -767,6 +767,7 @@ function validateFollowFlags(flags: ListFlags): void {
 export const listCommand = buildListCommand(
   "log",
   {
+    exposure: "exposed",
     docs: {
       brief: "List logs from a project",
       fullDescription:

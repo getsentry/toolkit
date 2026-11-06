@@ -108,6 +108,7 @@ function jsonTransformRevisions(
 }
 
 export const revisionsCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "List dashboard revisions",
     fullDescription:

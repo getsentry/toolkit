@@ -23,6 +23,7 @@ type ShowFlags = {
 };
 
 export const showCommand = buildCommand({
+  exposure: "exposed",
   // Checking the public status page requires no Sentry credentials.
   auth: false,
   docs: {

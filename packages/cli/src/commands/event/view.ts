@@ -1335,6 +1335,7 @@ export async function fetchMultipleEvents(
 }
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View details of one or more events",
     fullDescription:

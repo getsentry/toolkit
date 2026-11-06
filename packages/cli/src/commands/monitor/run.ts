@@ -143,6 +143,7 @@ async function sendCheckInSafely(
 }
 
 export const runCommand = buildCommand({
+  exposure: "hidden",
   docs: {
     brief: "Wrap a command with cron monitor check-ins",
     fullDescription: `\

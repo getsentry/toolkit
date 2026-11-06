@@ -160,6 +160,7 @@ async function resolveDashboardTarget(
 }
 
 export const createCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Create a dashboard",
     fullDescription:

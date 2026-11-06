@@ -192,6 +192,7 @@ function formatEdited(r: IssueAlertEditOutput): string {
 }
 
 export const editCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Edit an issue alert rule",
     fullDescription:

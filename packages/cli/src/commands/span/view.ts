@@ -347,6 +347,7 @@ function jsonTransformSpanView(data: SpanViewData, fields?: string[]): unknown {
 }
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View details of specific spans",
     fullDescription:

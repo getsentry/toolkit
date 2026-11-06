@@ -849,6 +849,7 @@ const projectListMeta: ListCommandMeta = {
 };
 
 export const listCommand = buildListCommand("project", {
+  exposure: "exposed",
   docs: {
     brief: "List projects",
     fullDescription:

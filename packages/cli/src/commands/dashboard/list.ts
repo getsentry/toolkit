@@ -369,6 +369,7 @@ function buildHint(
 // Command
 
 export const listCommand = buildListCommand("dashboard", {
+  exposure: "exposed",
   docs: {
     brief: "List dashboards",
     fullDescription:

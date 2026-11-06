@@ -154,6 +154,7 @@ function formatReleaseDetails(release: SentryRelease): string {
 }
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View release details with health metrics",
     fullDescription:

@@ -40,6 +40,7 @@ function formatDeleted(r: IssueAlertDeleteOutput): string {
 }
 
 export const deleteCommand = buildDeleteCommand({
+  exposure: "exposed",
   docs: {
     brief: "Delete an issue alert rule",
     fullDescription:

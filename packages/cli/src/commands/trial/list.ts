@@ -175,6 +175,7 @@ function formatTrialListHuman(entries: TrialListEntry[]): string {
 }
 
 export const listCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "List product trials",
     fullDescription:

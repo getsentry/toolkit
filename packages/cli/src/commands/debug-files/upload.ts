@@ -527,6 +527,7 @@ async function* doUpload(
 }
 
 export const uploadCommand = buildCommand({
+  exposure: "stdio-only",
   // Auth is not required for --no-upload (dry-run). The upload path calls
   // resolveOrgAndProject which triggers auth resolution.
   auth: false,

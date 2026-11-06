@@ -440,6 +440,7 @@ type SchemaFlags = {
 };
 
 export const schemaCommand = buildCommand({
+  exposure: "exposed",
   auth: false,
   docs: {
     brief: topLevelBrief("schema"),

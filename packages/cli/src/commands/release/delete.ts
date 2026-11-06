@@ -77,6 +77,7 @@ type DeleteFlags = {
 };
 
 export const deleteCommand = buildDeleteCommand({
+  exposure: "exposed",
   docs: {
     brief: "Delete a release",
     fullDescription: "Permanently delete a Sentry release.",

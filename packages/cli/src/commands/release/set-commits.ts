@@ -364,6 +364,7 @@ function formatCommitsSet(release: SentryRelease): string {
 }
 
 export const setCommitsCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Set commits for a release",
     fullDescription:

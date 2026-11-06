@@ -41,6 +41,7 @@ import type { GenericSchema } from "valibot";
 import type { Writer } from "../types/index.js";
 import { asRunningAppCommand } from "./app-identity.js";
 import { appendCacheHint } from "./cache-hint.js";
+import type { CommandExposure, DeclaredPermission } from "./command-access.js";
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
   choiceListParser,
@@ -226,6 +227,19 @@ type LocalCommandBuilderArguments<
    * `issue merge`, `trial start`).
    */
   readonly destructive?: boolean;
+  /**
+   * Where agents may run the command: `exposed`, `stdio-only` (needs local
+   * files, the `cwd`, or a terminal), or `hidden`. Every command declares one.
+   */
+  readonly exposure: CommandExposure;
+  /**
+   * Permission class, for commands whose Sentry API requests can't settle
+   * it: requests outside the Sentry API, requests the source analysis can't
+   * follow, or `method` for `sentry api`. Other commands get their class
+   * from their API requests, and `check:command-access` rejects a
+   * declaration there. Destructive commands never declare one.
+   */
+  readonly permission?: DeclaredPermission;
 };
 
 // ---------------------------------------------------------------------------
@@ -974,6 +988,11 @@ export function buildCommand<
   }
   if (builderArgs.destructive) {
     (cmd as unknown as Record<string, unknown>).__destructive = true;
+  }
+  (cmd as unknown as Record<string, unknown>).__exposure = builderArgs.exposure;
+  if (builderArgs.permission) {
+    (cmd as unknown as Record<string, unknown>).__permission =
+      builderArgs.permission;
   }
 
   // Attach the JSON fields to the built command as a non-standard property.

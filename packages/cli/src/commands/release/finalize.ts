@@ -47,6 +47,7 @@ function formatReleaseFinalized(release: FinalizeOutput): string {
 }
 
 export const finalizeCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Finalize a release",
     fullDescription: "Mark a release as finalized by setting its release date.",

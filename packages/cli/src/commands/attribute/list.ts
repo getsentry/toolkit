@@ -189,6 +189,7 @@ function pageHint(
 }
 
 export const listCommand = buildListCommand("attribute", {
+  exposure: "exposed",
   docs: {
     brief: "List attribute keys for spans, logs, or metrics",
     fullDescription:

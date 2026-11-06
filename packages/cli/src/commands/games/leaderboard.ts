@@ -35,6 +35,7 @@ function formatLeaderboardHuman(data: LeaderboardData): string {
 }
 
 export const leaderboardCommand = buildCommand({
+  exposure: "hidden",
   docs: {
     brief: "Show the top Snake scores from the last 30 days",
     fullDescription:

@@ -17,6 +17,7 @@ import type { Aliases, Command, CommandContext } from "@stricli/core";
 import type { GenericSchema } from "valibot";
 import type { SentryContext } from "../context.js";
 import { type ListTargetOptions, parseCursorFlag } from "./arg-parsing.js";
+import type { CommandExposure } from "./command-access.js";
 import {
   buildCommand,
   type CommandDocumentation,
@@ -539,6 +540,7 @@ export function buildListCommand<
     readonly func: SentryCommandFunction<FLAGS, ARGS, CONTEXT, NoInfer<OUTPUT>>;
     readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED>;
     readonly auth?: boolean;
+    readonly exposure: CommandExposure;
   },
   options?: ListCommandOptions,
 ): Command<CONTEXT> {
@@ -693,6 +695,8 @@ export function buildOrgListCommand<TEntity, TWithOrg>(
     schema: config.schema,
   };
   return buildListCommand(routeName, {
+    // Org-scoped API listings: nothing here needs the user's machine.
+    exposure: "exposed",
     docs,
     output,
     parameters: {

@@ -55,6 +55,7 @@ type WasmSplitResult = {
 };
 
 export const wasmSplitCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: topLevelBrief("wasm-split"),
     fullDescription:
