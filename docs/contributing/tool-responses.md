@@ -244,6 +244,44 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
 Reference: MCP 2025-11-25 Tools specification, sections "Structured Content"
 and "Output Schema".
 
+## Metadata Linter
+
+`packages/mcp-core/src/server.metadata.test.ts` builds the server with every
+skill granted, in stable and experimental mode, and checks what a client
+receives from `initialize` and `tools/list`:
+
+- `serverInfo` keeps `name: "Sentry MCP"` and sets `title`, `description`, an
+  https `websiteUrl`, and https `icons`.
+- `instructions` are non-empty and at most `MAX_SERVER_INSTRUCTIONS_LENGTH`
+  characters.
+- Every tool name matches `^[A-Za-z0-9_.-]{1,128}$`, its `inputSchema` root is
+  an object, and it advertises no `execution.taskSupport`.
+- Every tool has a unique, non-empty `title`; sets `readOnlyHint`,
+  `destructiveHint`, and `openWorldHint`; and has a description of at most
+  `MAX_TOOL_DESCRIPTION_LENGTH` characters.
+- A tool exports only the `_meta` keys that `ALLOWED_TOOL_META` lists for it.
+- Every tool declares an object `outputSchema`, unless it has a skip entry.
+
+`test-utils/structured-output-guard.ts` wraps `defineTool` for the whole
+mcp-core suite, the same way the SDK validates `tools/call`: a handler with an
+`outputSchema` that returns no `structuredContent`, or `structuredContent` that
+does not match the schema, fails the test that called it. Error results
+(`isError: true`) are skipped. The linter checks that each listed tool with an
+`outputSchema` has a colocated `<name>*.test.ts` that reads its
+`structuredContent`.
+
+To skip the `outputSchema` check, add the tool to one of two maps, with a
+reason:
+
+- `OUTPUT_SCHEMA_EXEMPT` for tools that return no structured content by design,
+  such as the markdown-only tools above.
+- `OUTPUT_SCHEMA_PENDING` for tools whose `outputSchema` has not landed, with
+  the PR, for example `"pending getsentry/toolkit#2004"`.
+
+An entry fails once its tool has an `outputSchema`, so the PR that adds one
+also deletes the entry. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
+with a comment that says which client reads it.
+
 ## Suggested Actions
 
 Use `suggestedActions` when a tool result reveals a concrete follow-up tool call
