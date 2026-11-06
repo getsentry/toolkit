@@ -173,6 +173,7 @@ describe("buildServer", () => {
     options: Partial<ToolConfig> = {},
   ): ToolConfig => ({
     name,
+    title: `${name} title`,
     description: `${name} description`,
     inputSchema: {},
     skills: ["inspect"],
@@ -635,7 +636,7 @@ describe("buildServer", () => {
       );
 
       const text = getTextContent(result);
-      expect(text).toContain(`[console] ${replacedText}...`);
+      expect(text).toContain(`"message": "${replacedText}..."`);
       expect(text.isWellFormed()).toBe(true);
     });
 
@@ -2146,9 +2147,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Issue User Reports for Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(result.structuredContent).toMatchObject({
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+      });
     });
 
     it("discovers and dispatches issue linking with injected constraints", async () => {
@@ -2369,10 +2371,9 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Updated DSN in **sentry-mcp-evals/cloudflare-mcp**",
-      );
-      expect(getTextContent(result)).toContain("**Rate Limit**: Disabled");
+      expect(getStructuredContent(result)).toMatchObject({
+        dsn: { id: "d20df0a1ab5031c7f3c7edca9c02814d", rateLimit: null },
+      });
     });
 
     it.each([

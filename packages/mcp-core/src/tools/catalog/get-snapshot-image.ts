@@ -9,6 +9,7 @@ import { fetchSnapshotImage } from "../support/snapshots/handlers";
 
 export default defineTool({
   name: "get_snapshot_image",
+  title: "Get Snapshot Image",
   skills: ["inspect"],
   requiredScopes: ["project:read"],
   description: [

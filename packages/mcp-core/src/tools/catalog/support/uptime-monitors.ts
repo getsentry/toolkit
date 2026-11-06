@@ -94,29 +94,37 @@ export function isSensitiveHeaderName(name: string): boolean {
   );
 }
 
+export const uptimeHeaderSchema = z.object({
+  name: z.string(),
+  value: z.string(),
+});
+
 /**
- * Format headers for tool output without leaking secrets.
- * Malformed short arrays are skipped. Sensitive values are redacted.
+ * Map configured headers for tool output without leaking secrets.
+ * Malformed entries are skipped. Sensitive values are redacted.
  */
-export function formatUptimeHeadersForOutput(headers: unknown): string[] {
-  if (!Array.isArray(headers) || headers.length === 0) {
+export function toUptimeHeadersForOutput(
+  headers: unknown,
+): Array<z.infer<typeof uptimeHeaderSchema>> {
+  if (!Array.isArray(headers)) {
     return [];
   }
 
-  const lines: string[] = [];
+  const output: Array<z.infer<typeof uptimeHeaderSchema>> = [];
   for (const header of headers) {
     if (!Array.isArray(header) || header.length < 2) {
       continue;
     }
-    const name = header[0];
-    const value = header[1];
+    const [name, value] = header;
     if (typeof name !== "string" || typeof value !== "string") {
       continue;
     }
-    const displayValue = isSensitiveHeaderName(name) ? "[REDACTED]" : value;
-    lines.push(`- ${name}: ${displayValue}`);
+    output.push({
+      name,
+      value: isSensitiveHeaderName(name) ? "[REDACTED]" : value,
+    });
   }
-  return lines;
+  return output;
 }
 
 export const uptimeStatusSchema = z.enum(["ok", "failed", "unknown"]);

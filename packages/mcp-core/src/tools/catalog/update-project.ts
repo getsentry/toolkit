@@ -26,6 +26,7 @@ export const updateProjectOutputSchema = z.object({
 
 export default defineTool({
   name: "update_project",
+  title: "Update Project",
   skills: ["project-management"], // Only available in project-management skill
   requiredScopes: ["project:write"],
   description: [

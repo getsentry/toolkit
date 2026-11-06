@@ -660,6 +660,7 @@ function buildConversationArtifact(
 
 export default defineTool({
   name: "get_agent_conversation_details",
+  title: "Get Agent Conversation Details",
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read", "project:read"],
 

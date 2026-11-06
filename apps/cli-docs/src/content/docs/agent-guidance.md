@@ -9,6 +9,7 @@ Best practices and operational guidance for AI coding agents using the Sentry CL
 
 - **Just run the command** — the CLI handles authentication and org/project detection automatically. Don't pre-authenticate or look up org/project before running commands. The CLI prompts for login if needed.
 - **Prefer CLI commands over raw API calls** — the CLI has dedicated commands for most tasks. Reach for `sentry issue view`, `sentry issue list`, `sentry trace view`, etc. before constructing API calls manually or fetching external documentation.
+- **Use `sentry init` to add Sentry to a project** — it prints step-by-step setup instructions for you to follow: log in, pick a Sentry project, choose features with the user, install the SDK, and verify that a test error arrives. It also covers upgrading an existing setup.
 - **Use `sentry docs` for setup questions** — if you need to know how to configure a Sentry SDK or feature, run `sentry docs "your question"` to query the documentation directly. This is faster and more accurate than fetching docs externally.
 - **Use `sentry schema` to explore the API** — run `sentry schema` to list API resources or `sentry schema <query...>` to search by API concepts or CLI command paths. Use `sentry help <command>` for CLI flags and usage examples.
 - **Use `sentry issue view` to investigate issues** — when asked about a specific issue (e.g., `CLI-G5`, `PROJECT-123`), use `sentry issue view` directly. Multiple IDs can be passed in one invocation: `sentry issue view A B C --json` returns an array of the same objects.

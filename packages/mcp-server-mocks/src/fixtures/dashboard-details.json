@@ -79,7 +79,14 @@
   ],
   "filters": {
     "release": ["frontend@1.2.3"],
-    "globalFilter": [{ "key": "browser.name", "value": "Chrome" }]
+    "releaseId": ["1234"],
+    "globalFilter": [
+      {
+        "dataset": "error-events",
+        "tag": { "key": "browser.name", "name": "Browser Name", "kind": "tag" },
+        "value": "browser.name:[Chrome]"
+      }
+    ]
   },
   "permissions": {
     "isEditableByEveryone": true,

@@ -142,11 +142,10 @@ function isNarrowAbsenceError(error: unknown): boolean {
  * to see that clearly, not have it silently suppressed and surface
  * downstream as a confusing "no auth token" error.
  *
- * Note: cannot use {@link safeReadFile} / `isRegularFile` from
- * `safe-read.ts` — their `handleFileError` treats EPERM and
- * EISDIR as ignorable, swallowing them during the stat phase.
- * That broader policy is correct for opportunistic DSN scans; not
- * for this committed config load.
+ * Note: this does not use `handleFileError` from `dsn/fs-utils.ts`,
+ * which treats EPERM and EISDIR as ignorable. That broader policy is
+ * correct for opportunistic DSN scans; not for this committed config
+ * load.
  */
 export async function tryReadSentryCliRc(
   filePath: string,

@@ -1231,7 +1231,6 @@ describe("sentry cli setup", () => {
     });
 
     test.each([
-      { env: { SENTRY_INIT: "1" } },
       { env: { SENTRY_AUTH_TOKEN: "existing-token" } },
       { env: { SENTRY_OUTPUT_FORMAT: "json" } },
       { flags: ["--quiet"] },

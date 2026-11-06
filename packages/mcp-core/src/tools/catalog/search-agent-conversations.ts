@@ -200,6 +200,7 @@ function buildArtifact(
 
 export default defineTool({
   name: "search_agent_conversations",
+  title: "Search Agent Conversations",
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read", "project:read"],
   description: [

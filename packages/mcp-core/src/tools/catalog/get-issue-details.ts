@@ -334,6 +334,7 @@ function buildIssueDetailsPayload({
 
 export default defineTool({
   name: "get_issue_details",
+  title: "Get Issue Details",
   skills: ["inspect", "triage", "seer"], // Available in inspect, triage, and seer skills
   requiredScopes: ["event:read"],
   description: [

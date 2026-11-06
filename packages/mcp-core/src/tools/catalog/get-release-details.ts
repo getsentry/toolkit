@@ -144,6 +144,7 @@ function toHealth(release: ReleaseDetails): ReleaseHealth {
 
 export default defineTool({
   name: "get_release_details",
+  title: "Get Release Details",
   skills: ["inspect"],
   requiredScopes: ["project:read"],
   description: [

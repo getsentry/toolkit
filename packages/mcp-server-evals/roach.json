@@ -1,0 +1,13 @@
+{
+  "tenant": "getsentry/toolkit",
+  "allow": ["https://openrouter.ai"],
+  "rules": [
+    {
+      "name": "model",
+      "match": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/"
+      }
+    }
+  ]
+}

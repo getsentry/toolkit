@@ -76,6 +76,7 @@ type DefinitionTool = {
         availableToolNames?: ReadonlySet<string>;
         directToolNames?: ReadonlySet<string>;
       }) => string);
+  title: string;
   inputSchema: Record<string, ZodTypeAny>;
   outputSchema?: ZodTypeAny;
   skills: string[];
@@ -159,6 +160,7 @@ function generateToolDefinitions({
     const surface: ToolSurface = isDirect ? "direct" : "catalog";
     return {
       name: t.name,
+      title: t.title,
       description: toolTypesModule.resolveDescription(t.description, {
         experimentalMode,
         availableToolNames,
