@@ -724,6 +724,14 @@ Work with Sentry cron monitors
 
 → Full flags and examples: `references/monitor.md`
 
+### Onboarding
+
+Report agent onboarding progress to Sentry
+
+- `sentry onboarding progress [<org>]` — Report agent onboarding progress
+
+→ Full flags and examples: `references/onboarding.md`
+
 ### Snapshots
 
 Manage and compare snapshots

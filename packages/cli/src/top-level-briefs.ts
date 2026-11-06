@@ -45,6 +45,7 @@ export const TOP_LEVEL_BRIEFS = {
   log: "View Sentry logs",
   mcp: "Start a local Sentry MCP server",
   monitor: "Work with Sentry cron monitors",
+  onboarding: "Report agent onboarding progress to Sentry",
   snapshots: "Manage and compare snapshots",
   sourcemap: "Manage sourcemaps",
   span: "List and view spans in projects or traces",

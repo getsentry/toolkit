@@ -143,6 +143,12 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
       "Private, short-lived code for headless OAuth authentication with sentry auth bootstrap or the installer. Each code can be redeemed once.",
     devGuide: "One-time setup code for headless authentication",
   },
+  {
+    name: "SENTRY_ONBOARDING_RUN_CODE",
+    description:
+      "Private onboarding run code used by `sentry onboarding progress` when `--run-code` is not passed. Must be exactly 10 letters or digits. Keep it private — it links updates to a specific user's onboarding page.",
+    devGuide: "Onboarding run code for `sentry onboarding progress`",
+  },
   // -- Custom headers --
   {
     name: "SENTRY_CUSTOM_HEADERS",
