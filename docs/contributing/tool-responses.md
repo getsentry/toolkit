@@ -202,12 +202,13 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
 - `structuredContent` is the source of truth when present.
 - `content` text is a compatibility view of that same answer.
 - Never put unique product data in only one side. If both fields are present,
-  they must be equivalent. Form-only differences (JSON vs text of the same
-  payload) are fine; a second answer that exists in only one field is a bug.
+  they must be equivalent. Form-only differences (`structuredContent` vs its
+  serialized JSON text) are fine; a second answer that exists in only one
+  field is a bug.
 - Data tools should use `structuredResult(payload)`. The server generates
-  `content` as compact JSON (no indentation) of that same payload. Clients
-  that read the text send it to a model, and indentation adds tokens without
-  adding data.
+  `content` as compact JSON (no indentation) of that same payload. Most
+  clients that read the text send it to a model, and indentation adds tokens
+  without adding data.
 - Markdown-only tools (for example issue and trace details today) should return
   markdown and omit `structuredContent` until they have a real structured
   payload. Do not attach sparse structured side-channels such as
