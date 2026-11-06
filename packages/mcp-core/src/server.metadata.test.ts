@@ -38,8 +38,6 @@ const ALLOWED_TOOL_META: Record<string, readonly string[]> = {
 
 /** Tools that return no `structuredContent` by design. */
 const OUTPUT_SCHEMA_EXEMPT: Record<string, string> = {
-  get_issue_details:
-    "markdown-only by policy (docs/contributing/tool-responses.md)",
   get_trace_details:
     "markdown-only by policy (docs/contributing/tool-responses.md)",
   get_event_stacktrace:
@@ -57,6 +55,8 @@ const OUTPUT_SCHEMA_EXEMPT: Record<string, string> = {
  * its PR merges; a test below fails until you do.
  */
 const OUTPUT_SCHEMA_PENDING: Record<string, string> = {
+  get_issue_details:
+    "pending: outputSchema is experimental-only until it graduates",
   search_attributes: "pending: experimental-only, no outputSchema PR yet",
 };
 
@@ -233,22 +233,23 @@ describe.each(Object.keys(MODES))("%s mode", (mode) => {
 });
 
 describe("outputSchema skip lists", () => {
-  const listed = () =>
-    new Map(
-      [...surfaces.values()].flatMap(({ tools }) =>
-        tools.map((tool) => [tool.name, tool] as const),
-      ),
+  // a tool can declare its outputSchema to experimental sessions first, so an entry is
+  // stale only once every surface that lists the tool declares one
+  const listings = (name: string) =>
+    [...surfaces.values()].flatMap(({ tools }) =>
+      tools.filter((tool) => tool.name === name),
     );
 
   it("name listed tools without an outputSchema", () => {
-    const tools = listed();
     const problems = [
       ...Object.keys(OUTPUT_SCHEMA_EXEMPT).map((name) => ["EXEMPT", name]),
       ...Object.keys(OUTPUT_SCHEMA_PENDING).map((name) => ["PENDING", name]),
     ].flatMap(([list, name]) => {
-      const tool = tools.get(name);
-      if (!tool) return [`${name}: in OUTPUT_SCHEMA_${list} but not listed`];
-      if (tool.outputSchema) {
+      const tools = listings(name);
+      if (tools.length === 0) {
+        return [`${name}: in OUTPUT_SCHEMA_${list} but not listed`];
+      }
+      if (tools.every((tool) => tool.outputSchema)) {
         return [
           `${name}: has an outputSchema now; delete its OUTPUT_SCHEMA_${list} entry`,
         ];

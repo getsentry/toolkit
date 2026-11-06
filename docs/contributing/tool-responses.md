@@ -147,6 +147,19 @@ The event API's legacy `context` field (extra data) can be `null`. Issue details
 must still load; omit the `Extra Data` section for null or empty values while
 preserving the event's error, stacktrace, and structured `contexts` data.
 
+In experimental mode `get_issue_details` returns `structuredContent` for every
+event type, including types the markdown path does not support, and declares
+`outputSchema` to experimental sessions only (`experimentalOutputSchema`).
+`event` maps the entries into fields instead of rendering markdown: the
+exception chain (the raised exception first), thread summaries, the crashed
+thread when there is no exception, request method and URL, CSP report, N+1
+evidence and spans, metric alert, evidence, user (including email and IP), tags,
+extra data, and contexts. Frames use the shared shape in
+`tools/support/structured-stacktrace.ts`: oldest call first, `contextLine` for
+every frame, and `preContext`, `postContext` (3 lines each) and `vars` for
+in-app frames only. Request headers, cookies and body, frame addresses, symbols
+and source links, tag search queries, and external issue link ids stay out.
+
 ### Profile Details
 
 `get_profile_details` returns one profile summary under `profile`,
@@ -207,10 +220,14 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
   bug.
 - Data tools should use `structuredResult(payload)`. The server generates
   `content` as pretty JSON of that same payload.
-- Markdown-only tools (for example issue and trace details today) should return
+- Markdown-only tools (for example trace details today) should return
   markdown and omit `structuredContent` until they have a real structured
   payload. Do not attach sparse structured side-channels such as
   `suggestedActions` alone on top of markdown.
+- A tool whose structured payload is still behind experimental mode declares
+  `experimentalOutputSchema` instead. The server advertises it to experimental
+  sessions only, and tsc cannot check the handler against it, so the tool's
+  tests must parse every structured payload against the schema.
 - If a tool declares `outputSchema`, every successful `structuredContent` result
   must conform to that schema. `defineTool` enforces this at compile time: the
   handler must return `structuredResult(...)` typed as the schema's `z.output`,
@@ -278,8 +295,10 @@ reason:
 - `OUTPUT_SCHEMA_PENDING` for tools whose `outputSchema` has not landed, with
   the PR, for example `"pending getsentry/toolkit#2004"`.
 
-An entry fails once its tool has an `outputSchema`, so the PR that adds one
-also deletes the entry. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
+An entry fails once its tool has an `outputSchema` in every session that lists
+it, so the PR that adds one also deletes the entry. A tool whose
+`experimentalOutputSchema` reaches experimental sessions first stays
+`OUTPUT_SCHEMA_PENDING` until it graduates. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
 with a comment that says which client reads it.
 
 ## Suggested Actions
