@@ -14,6 +14,7 @@
 import { chmodSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
+import { getSentryCliCommand } from "../app-identity.js";
 import { getRealUsername } from "../utils.js";
 import { isReadonlyError, tryRepairAndRetry } from "./schema.js";
 import type { Database } from "./sqlite.js";
@@ -53,7 +54,7 @@ function warnReadonlyDatabase(): void {
   process.stderr.write(
     `\nWarning: Sentry CLI local database is read-only. Caching and preferences won't persist.\n` +
       `  Path: ${dbPath}\n` +
-      "  Fix:  sentry cli fix\n\n",
+      `  Fix:  ${getSentryCliCommand("sentry cli fix")}\n\n`,
   );
 }
 
@@ -149,7 +150,7 @@ function tryRepairReadonly(): boolean {
       "\nWarning: Sentry CLI config directory is owned by root.\n" +
         `  Path:  ${configDir}\n` +
         `  Fix:   sudo chown -R ${username} "${configDir}"\n` +
-        "  Or:    sudo sentry cli fix\n\n",
+        `  Or:    sudo ${getSentryCliCommand("sentry cli fix")}\n\n`,
     );
     return false;
   }

@@ -5,7 +5,8 @@
  * `sentry cli upgrade` performs before installing an older CLI.
  */
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import { setAppIdentity } from "../../../src/lib/app-identity.js";
 import { listAccounts } from "../../../src/lib/db/accounts.js";
 import {
   getAuthConfig,
@@ -129,6 +130,23 @@ describe("database written by a newer CLI", () => {
     expect(result.failed).toEqual([]);
     expect(storedVersion()).toBe(CURRENT_SCHEMA_VERSION);
     expect(getSchemaIssues(getRawDatabase())).toEqual([]);
+  });
+
+  test("@sentry/mcp-server's mismatch warning runs the CLI's fix through npx", () => {
+    writeAsNewerCli();
+    process.env.SENTRY_CLI_NO_AUTO_REPAIR = "1";
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
+    try {
+      reopen();
+      const output = stderr.mock.calls.map((call) => String(call[0])).join("");
+      expect(output).toContain("Run `npx -y sentry cli fix` to adapt it.");
+    } finally {
+      setAppIdentity({ name: "sentry", packageName: "sentry" });
+      stderr.mockRestore();
+    }
   });
 });
 
