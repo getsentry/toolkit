@@ -159,7 +159,7 @@ Requests for a metric over time ("per hour", "per day", "trend", "over time") re
 
 `search_traces`, `search_logs`, and `search_metrics` accept `timeSeries` with an
 ordered `axes` array. Each axis has an aggregate `yAxis` and an optional ordered
-`transformations` array. Duplicate aggregates retain separate pipelines.
+`transformations` array. Duplicate aggregates retain their own ordered transformations.
 
 ```typescript
 search_traces({
@@ -189,8 +189,11 @@ buckets. It does not compute rolling percentiles over underlying events.
 An explicit configuration with a structured or empty query executes without an
 AI provider or table fields. `fields` and `sort` are incompatible with explicit
 time series. A natural-language query can still use translation, but explicit
-axes, pipelines, interval, and period take precedence and survive provider
+axes, transformations, interval, and period take precedence and survive provider
 fallback. Omission retains the existing search behavior.
+
+Translation responses normalize null transformations to omission. Explicit
+inputs require an array when `transformations` is supplied.
 
 The API request repeats `yAxis` in axis order and repeats
 `transformations[index]` in operation order. Explicit results use the dataset tool's structured result envelope with equivalent
@@ -207,7 +210,7 @@ transformations do not return the required bucket flags and produce an error.
 Empty transformed results also cannot confirm execution. Retry with a range
 containing data or explicitly remove the operations to request raw data.
 
-Explore links preserve each axis and pipeline through repeated `aggregateField`
+Explore links preserve each axis and its transformations through repeated `aggregateField`
 entries for traces and logs, or `metric` query state for metrics. The interval
 is a global URL parameter. Metrics require a unique metric identity in a
 qualified aggregate such as `sum(value,tokens,counter,-)` or exact
@@ -215,7 +218,7 @@ qualified aggregate such as `sum(value,tokens,counter,-)` or exact
 error instead of an incomplete link.
 
 When Sentry chooses the interval automatically, links retain the returned
-interval so reopening a smoothing pipeline uses the same bucket width. Explore
+interval so reopening a transformed chart uses the same bucket width. Explore
 rejects intervals outside its supported range for the selected period. MCP
 returns an actionable error when Explore would replace the applied interval.
 

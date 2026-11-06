@@ -557,7 +557,7 @@ export function buildTimeSeriesSearchInputSchema() {
   return {
     ...buildDatasetSearchInputSchema(),
     timeSeries: TimeSeriesConfigSchema.optional().describe(
-      "Explicit time series. Supply ordered axes with aggregate yAxis and optional ordered transformations, such as fill(zero), fill(locf), fill(linear), smooth(sma,3), smooth(ema,5,0.3), or smooth(asap). Works without an AI provider with Sentry query syntax or an empty query. Omit fields and sort. Grouping is unsupported. Explicit axes, pipelines, interval and period override translation.",
+      "Explicit time series. Supply ordered axes with aggregate yAxis and optional ordered transformations, such as fill(zero), fill(locf), fill(linear), smooth(sma,3), smooth(ema,5,0.3), or smooth(asap). Works without an AI provider with Sentry query syntax or an empty query. Omit fields and sort. Grouping is unsupported. Explicit axes, transformations, interval and period override translation.",
     ),
   };
 }

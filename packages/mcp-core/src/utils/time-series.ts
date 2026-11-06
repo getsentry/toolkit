@@ -36,7 +36,7 @@ function isTransformation(value: string): boolean {
   );
 }
 
-export const TransformationPipelineSchema = z
+export const TransformationsSchema = z
   .array(
     z
       .string()
@@ -59,7 +59,7 @@ export const TransformationPipelineSchema = z
     },
   )
   .describe(
-    "Ordered pipeline with at most one fill and one smooth operation. An empty array requests raw values.",
+    "Ordered transformations with at most one fill and one smooth operation. An empty array requests raw values.",
   );
 
 export const TimeSeriesConfigSchema = z
@@ -76,7 +76,7 @@ export const TimeSeriesConfigSchema = z
                 /^[\w]+\(.*\)$/,
                 "Use an aggregate such as count() or avg(span.duration).",
               ),
-            transformations: TransformationPipelineSchema.optional(),
+            transformations: TransformationsSchema.optional(),
           })
           .strict(),
       )

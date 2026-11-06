@@ -1,9 +1,57 @@
 import { expect, it } from "vitest";
-import { normalizeTimeSeriesConfig } from "../../../utils/time-series";
+import {
+  appendTimeSeriesParams,
+  normalizeTimeSeriesConfig,
+  TimeSeriesConfigSchema,
+} from "../../../utils/time-series";
 import {
   hasSuccessfulSearchValidation,
   searchEventsAgentOutputSchema,
 } from "./agent";
+
+it.each([
+  {
+    shape: "legacy",
+    timeSeries: { yAxis: "count()", transformations: null, interval: "1h" },
+  },
+  {
+    shape: "ordered",
+    timeSeries: {
+      axes: [{ yAxis: "count()", transformations: null }],
+      interval: "1h",
+    },
+  },
+])(
+  "normalizes null transformations in $shape embedded time series",
+  ({ timeSeries }) => {
+    const translated = searchEventsAgentOutputSchema.parse({
+      dataset: "logs",
+      query: "severity:error",
+      fields: [],
+      sort: "",
+      timeRange: { statsPeriod: "24h" },
+      timeSeries,
+    });
+    const configuration = normalizeTimeSeriesConfig(translated.timeSeries!);
+
+    expect(configuration.axes[0]?.transformations).toBeUndefined();
+    const params = new URLSearchParams();
+    appendTimeSeriesParams(params, configuration);
+    expect(Object.fromEntries(params)).toEqual({
+      yAxis: "count()",
+      interval: "1h",
+    });
+  },
+);
+
+it("keeps null transformations invalid for explicit caller input", () => {
+  expect(
+    TimeSeriesConfigSchema.safeParse({
+      axes: [{ yAxis: "count()", transformations: null }],
+      interval: "1h",
+    }).success,
+  ).toBe(false);
+});
 
 it("accepts ordered duplicate axes from embedded translation", () => {
   const translated = searchEventsAgentOutputSchema.parse({
@@ -30,7 +78,7 @@ it("accepts ordered duplicate axes from embedded translation", () => {
   });
 });
 
-it("normalizes legacy embedded time series without dropping its pipeline", () => {
+it("normalizes legacy embedded time series without dropping its transformations", () => {
   const translated = searchEventsAgentOutputSchema.parse({
     dataset: "logs",
     query: "severity:error",

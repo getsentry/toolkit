@@ -12123,7 +12123,7 @@
           "type": "boolean"
         },
         "timeSeries": {
-          "description": "Explicit time series. Supply ordered axes with aggregate yAxis and optional ordered transformations, such as fill(zero), fill(locf), fill(linear), smooth(sma,3), smooth(ema,5,0.3), or smooth(asap). Works without an AI provider with Sentry query syntax or an empty query. Omit fields and sort. Grouping is unsupported. Explicit axes, pipelines, interval and period override translation.",
+          "description": "Explicit time series. Supply ordered axes with aggregate yAxis and optional ordered transformations, such as fill(zero), fill(locf), fill(linear), smooth(sma,3), smooth(ema,5,0.3), or smooth(asap). Works without an AI provider with Sentry query syntax or an empty query. Omit fields and sort. Grouping is unsupported. Explicit axes, transformations, interval and period override translation.",
           "type": "object",
           "properties": {
             "axes": {
@@ -12144,7 +12144,7 @@
                       "type": "string",
                       "description": "Operation in execution order: fill(zero|locf|linear), smooth(sma,window), smooth(ema,window[,factor]), or smooth(asap[,maxWindow])."
                     },
-                    "description": "Ordered pipeline with at most one fill and one smooth operation. An empty array requests raw values."
+                    "description": "Ordered transformations with at most one fill and one smooth operation. An empty array requests raw values."
                   }
                 },
                 "required": ["yAxis"],
@@ -12621,7 +12621,7 @@
           "type": "boolean"
         },
         "timeSeries": {
-          "description": "Explicit time series. Supply ordered axes with aggregate yAxis and optional ordered transformations, such as fill(zero), fill(locf), fill(linear), smooth(sma,3), smooth(ema,5,0.3), or smooth(asap). Works without an AI provider with Sentry query syntax or an empty query. Omit fields and sort. Grouping is unsupported. Explicit axes, pipelines, interval and period override translation.",
+          "description": "Explicit time series. Supply ordered axes with aggregate yAxis and optional ordered transformations, such as fill(zero), fill(locf), fill(linear), smooth(sma,3), smooth(ema,5,0.3), or smooth(asap). Works without an AI provider with Sentry query syntax or an empty query. Omit fields and sort. Grouping is unsupported. Explicit axes, transformations, interval and period override translation.",
           "type": "object",
           "properties": {
             "axes": {
@@ -12642,7 +12642,7 @@
                       "type": "string",
                       "description": "Operation in execution order: fill(zero|locf|linear), smooth(sma,window), smooth(ema,window[,factor]), or smooth(asap[,maxWindow])."
                     },
-                    "description": "Ordered pipeline with at most one fill and one smooth operation. An empty array requests raw values."
+                    "description": "Ordered transformations with at most one fill and one smooth operation. An empty array requests raw values."
                   }
                 },
                 "required": ["yAxis"],
@@ -13762,7 +13762,7 @@
           "type": "boolean"
         },
         "timeSeries": {
-          "description": "Explicit time series. Supply ordered axes with aggregate yAxis and optional ordered transformations, such as fill(zero), fill(locf), fill(linear), smooth(sma,3), smooth(ema,5,0.3), or smooth(asap). Works without an AI provider with Sentry query syntax or an empty query. Omit fields and sort. Grouping is unsupported. Explicit axes, pipelines, interval and period override translation.",
+          "description": "Explicit time series. Supply ordered axes with aggregate yAxis and optional ordered transformations, such as fill(zero), fill(locf), fill(linear), smooth(sma,3), smooth(ema,5,0.3), or smooth(asap). Works without an AI provider with Sentry query syntax or an empty query. Omit fields and sort. Grouping is unsupported. Explicit axes, transformations, interval and period override translation.",
           "type": "object",
           "properties": {
             "axes": {
@@ -13783,7 +13783,7 @@
                       "type": "string",
                       "description": "Operation in execution order: fill(zero|locf|linear), smooth(sma,window), smooth(ema,window[,factor]), or smooth(asap[,maxWindow])."
                     },
-                    "description": "Ordered pipeline with at most one fill and one smooth operation. An empty array requests raw values."
+                    "description": "Ordered transformations with at most one fill and one smooth operation. An empty array requests raw values."
                   }
                 },
                 "required": ["yAxis"],

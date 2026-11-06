@@ -11,7 +11,7 @@ import { PUBLIC_EVENTS_DATASETS } from "../../../utils/events-datasets";
 import {
   normalizeTimeSeriesConfig,
   TimeSeriesConfigSchema,
-  TransformationPipelineSchema,
+  TransformationsSchema,
   type TimeSeriesConfig,
 } from "../../../utils/time-series";
 import { systemPrompt } from "./config";
@@ -36,6 +36,20 @@ export function hasSuccessfulSearchValidation(
   );
 }
 
+// Models may emit null for optional transformations; public input stays strict.
+const agentTransformationsSchema = TransformationsSchema.nullish().transform(
+  (transformations) => transformations ?? undefined,
+);
+const agentTimeSeriesConfigSchema = TimeSeriesConfigSchema.extend({
+  axes: z
+    .array(
+      TimeSeriesConfigSchema.shape.axes.element.extend({
+        transformations: agentTransformationsSchema,
+      }),
+    )
+    .min(1),
+});
+
 // .default("") on explanation is safe because structuredOutputs: false is set via providerOptions.
 // If structuredOutputs is re-enabled, remove .default() calls (OpenAI requires all fields in 'required').
 // Tracking: https://github.com/getsentry/sentry-mcp/issues/623
@@ -58,7 +72,7 @@ export const searchEventsAgentOutputSchema = z
       ),
     timeSeries: z
       .union([
-        TimeSeriesConfigSchema,
+        agentTimeSeriesConfigSchema,
         z.object({
           yAxis: z
             .string()
@@ -72,7 +86,7 @@ export const searchEventsAgentOutputSchema = z
             .describe(
               "Bucket size like '1h' or '1d'. Set ONLY when the user names a granularity (e.g. 'per hour' -> '1h'); otherwise null so Sentry picks a sensible bucket for the time range.",
             ),
-          transformations: TransformationPipelineSchema.optional(),
+          transformations: agentTransformationsSchema,
         }),
       ])
       .nullable()

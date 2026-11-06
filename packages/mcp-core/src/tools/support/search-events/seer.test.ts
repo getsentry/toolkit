@@ -84,7 +84,7 @@ describe("Seer time series translation", () => {
       );
     },
   );
-  it("preserves duplicate axes and each ordered pipeline", async () => {
+  it("preserves duplicate axes and their ordered transformations", async () => {
     mockTranslation([
       {
         y_axes: ["count()", "sum(span.duration)"],
