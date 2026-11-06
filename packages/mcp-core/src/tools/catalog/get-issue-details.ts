@@ -62,6 +62,7 @@ import type { ServerContext } from "../../types";
 import { resolveCodeLocation } from "../support/code-location";
 import {
   buildIssueEventPayload,
+  getEventTimestamp,
   issueEventSchema,
 } from "../support/issue-event-payload";
 import { nonEmptyString } from "../support/structured-stacktrace";
@@ -946,18 +947,6 @@ function buildConversationLookupTimeParams(event: Event): {
       eventTimestamp.getTime() + AI_CONVERSATION_LOOKUP_WINDOW_MS,
     ).toISOString(),
   };
-}
-
-function getEventTimestamp(event: Event): Date | null {
-  const timestamp =
-    getString((event as { dateCreated?: unknown }).dateCreated) ??
-    getString(event.dateReceived);
-  if (!timestamp) {
-    return null;
-  }
-
-  const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function getEventTraceId(event: Event): string | undefined {
