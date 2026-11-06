@@ -390,9 +390,9 @@ No matches return `results: []`. A search failure is a tool error, including
 an error reported inside a successful search response.
 
 `get_doc` returns a user input error for a missing page and points the agent to
-`search_docs`. docs.sentry.io serves missing pages with status 200, an
-`X-Sentry-Docs-Not-Found` header, and `title: "Page Not Found"` front matter,
-so the tool checks either signal as well as status 404.
+`search_docs`. docs.sentry.io serves missing pages with status 200 and an
+`X-Sentry-Docs-Not-Found` header, so the tool checks that header as well as
+status 404.
 
 ### Cron Monitor Environment Deletion
 

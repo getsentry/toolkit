@@ -10,19 +10,9 @@ import { getUserAgent } from "../../version";
 const DOC_NOT_FOUND_MESSAGE =
   "Documentation not found at this path. The page may have been moved or removed. Use `search_docs()` to find the current path, and pass the `path` from its results exactly.";
 
-// docs.sentry.io answers unknown paths with 200 and a "Page Not Found" page.
-// It marks them with this header; the front matter check is a fallback for
-// responses without it.
-function isSoftNotFound(response: Response, content: string): boolean {
-  if (response.headers.get("x-sentry-docs-not-found")) {
-    return true;
-  }
-  const frontMatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content.trimStart());
-  return (
-    frontMatter !== null &&
-    /^title:\s*["']?Page Not Found["']?\s*$/m.test(frontMatter[1] ?? "")
-  );
-}
+// docs.sentry.io answers unknown paths with 200 and a "Page Not Found" page,
+// marked with this header.
+const NOT_FOUND_HEADER = "x-sentry-docs-not-found";
 
 export default defineTool({
   name: "get_doc",
@@ -104,11 +94,11 @@ export default defineTool({
       15000, // 15 second timeout
     );
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        throw new UserInputError(DOC_NOT_FOUND_MESSAGE);
-      }
+    if (response.status === 404 || response.headers.has(NOT_FOUND_HEADER)) {
+      throw new UserInputError(DOC_NOT_FOUND_MESSAGE);
+    }
 
+    if (!response.ok) {
       throw new ApiError(
         `Failed to fetch documentation: ${response.statusText}`,
         response.status,
@@ -116,10 +106,6 @@ export default defineTool({
     }
 
     const content = await response.text();
-
-    if (isSoftNotFound(response, content)) {
-      throw new UserInputError(DOC_NOT_FOUND_MESSAGE);
-    }
 
     // Check if we got HTML instead of markdown (wrong path format)
     if (

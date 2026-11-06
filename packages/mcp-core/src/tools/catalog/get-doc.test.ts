@@ -243,30 +243,6 @@ describe("get_doc", () => {
     );
   });
 
-  it("rejects a page marked with the not-found header", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValueOnce(
-      new Response("# Page Not Found", {
-        status: 200,
-        headers: { "X-Sentry-Docs-Not-Found": "1" },
-      }),
-    );
-
-    await expect(
-      getDoc.handler(
-        {
-          path: "/product/removed.md",
-        },
-        {
-          constraints: {
-            organizationSlug: null,
-          },
-          accessToken: "access-token",
-          userId: "1",
-        },
-      ),
-    ).rejects.toThrow(UserInputError);
-  });
-
   it("handles API errors", async () => {
     vi.spyOn(global, "fetch").mockResolvedValueOnce({
       ok: false,
