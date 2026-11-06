@@ -94,12 +94,10 @@ function formatToolsForMCP(tools: Record<string, ToolDefinition>) {
         experimentalMode: false,
       }),
       inputSchema: jsonSchema,
-      // the same conversion the MCP SDK applies when it lists the tool
+      // matches @modelcontextprotocol/server's
+      // standardSchemaToJsonSchema(schema, "output") (draft-2020-12)
       ...(tool.outputSchema && {
-        outputSchema: z.toJSONSchema(tool.outputSchema, {
-          io: "output",
-          target: "draft-7",
-        }),
+        outputSchema: z.toJSONSchema(tool.outputSchema, { io: "output" }),
       }),
       ...(tool.annotations && { annotations: tool.annotations }),
     };
