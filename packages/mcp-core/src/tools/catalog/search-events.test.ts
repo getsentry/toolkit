@@ -7,6 +7,7 @@ import { ApiValidationError } from "../../api-client";
 import { UserInputError } from "../../errors";
 import { runSearchEvents } from "../support/search-events/search";
 import searchEvents from "./search-events";
+import searchTraces from "./search-traces";
 
 // Mock the AI SDK
 vi.mock("@ai-sdk/openai", () => {
@@ -4401,9 +4402,6 @@ describe("search_events", () => {
 
         const warning =
           "**Warning:** Time series results are unfiltered by the requested cross-event filters (spans `span.op:db`, logs `severity:error`, metrics `metric.name:requests`). Counts and other values may include events outside the requested subset.";
-        if (typeof result !== "string") {
-          throw new Error("Expected string result");
-        }
         expect(result.startsWith(`${warning}\n\n`)).toBe(true);
         expect(result.split(warning)).toHaveLength(2);
         expect(result.includes("Translated by Seer's search agent.")).toBe(
@@ -4535,9 +4533,6 @@ describe("search_events", () => {
         const result = await searchEvents.handler(seerParams, handlerContext);
 
         expect(mockSeerStart).toHaveBeenCalled();
-        if (typeof result !== "string") {
-          throw new Error("Expected string result");
-        }
         expect(
           result.includes("Seer suggested also searching project IDs 43"),
         ).toBe(expectNote);
@@ -4914,7 +4909,7 @@ describe("search_events", () => {
             ),
           );
 
-          const result = searchEvents.handler(seerParams, context);
+          const result = searchTraces.handler(seerParams, context);
           if (confirmed) {
             await expect(result).resolves.toHaveProperty("structuredContent");
           } else {

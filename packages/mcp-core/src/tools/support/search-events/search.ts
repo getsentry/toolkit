@@ -8,7 +8,6 @@ import { UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
 import { withProviderFallback } from "../../../internal/agents/provider-fallback";
 import { apiServiceFromContext } from "../../../internal/tool-helpers/api";
-import { structuredResult } from "../../../internal/tool-helpers/results";
 import {
   ParamOrganizationSlug,
   ParamPeriod,
@@ -50,11 +49,21 @@ import {
   formatTraceMetricsResults,
 } from "./formatters";
 import {
+  buildStructuredReplayResults,
   DEFAULT_REPLAY_SORT,
   DEFAULT_REPLAY_STATS_PERIOD,
   formatReplayResults,
   isValidReplaySort,
+  type SearchReplaysStructuredContent,
 } from "./replays";
+import {
+  buildStructuredEventsResult,
+  buildStructuredTimeSeriesResult,
+  buildStructuredOrderedTimeSeriesResult,
+  type DatasetSearchStructuredContent,
+  type SearchEventsStructuredContent,
+  type StructuredSearchDataset,
+} from "./structured";
 import {
   isSeerSearchDataset,
   type SeerSearchTranslation,
@@ -416,14 +425,32 @@ export interface SearchEventsParams {
   timeSeries?: TimeSeriesConfig;
 }
 
-export interface RunSearchEventsOptions {
+export interface MarkdownSearchEventsOptions {
   /**
    * Keep the caller's dataset even when the embedded agent suggests another.
    * Dataset-specific tools (search_logs, search_traces, ...) set this so a
    * search never returns rows from a different dataset than the tool name.
    */
   lockDataset?: boolean;
+  output?: "markdown";
 }
+
+/**
+ * Returns the payload a dataset tool declares as its `outputSchema` instead
+ * of markdown. That schema is per dataset, so the dataset must be locked.
+ */
+export interface StructuredSearchEventsOptions {
+  lockDataset: true;
+  output: "structured";
+}
+
+export type RunSearchEventsOptions =
+  | MarkdownSearchEventsOptions
+  | StructuredSearchEventsOptions;
+
+type StructuredSearchEventsOutput =
+  | StructuredToolOutput<SearchEventsStructuredContent>
+  | StructuredToolOutput<SearchReplaysStructuredContent>;
 
 const searchLimitParam = z
   .number()
@@ -667,11 +694,32 @@ function trackSeerOutcome(
   });
 }
 
+export function runSearchEvents(
+  params: SearchEventsParams,
+  context: ServerContext,
+  options?: MarkdownSearchEventsOptions,
+): Promise<string>;
+export function runSearchEvents(
+  params: SearchEventsParams & { dataset: "replays" },
+  context: ServerContext,
+  options: StructuredSearchEventsOptions,
+): Promise<StructuredToolOutput<SearchReplaysStructuredContent>>;
+/**
+ * Unchecked narrowing: the builders return the shared payload with loose
+ * row links, and this overload asserts the links match `TDataset`'s output
+ * schema. That holds because structured runs lock the dataset and each row's
+ * links come from that dataset's `defineDatasetConfig`.
+ */
+export function runSearchEvents<TDataset extends StructuredSearchDataset>(
+  params: SearchEventsParams & { dataset: TDataset },
+  context: ServerContext,
+  options: StructuredSearchEventsOptions,
+): Promise<StructuredToolOutput<DatasetSearchStructuredContent<TDataset>>>;
 export async function runSearchEvents(
   params: SearchEventsParams,
   context: ServerContext,
   options: RunSearchEventsOptions = {},
-): Promise<string | StructuredToolOutput> {
+): Promise<string | StructuredSearchEventsOutput> {
   // Any failure after Seer translates the query counts as `error_on_load`.
   const seerOutcome: SeerOutcomeState = { translation: null, tracked: false };
   try {
@@ -687,8 +735,9 @@ async function executeSearchEvents(
   context: ServerContext,
   options: RunSearchEventsOptions,
   seerOutcome: SeerOutcomeState,
-): Promise<string | StructuredToolOutput> {
+): Promise<string | StructuredSearchEventsOutput> {
   const lockDataset = options.lockDataset === true;
+  const structured = options.output === "structured";
   const apiService = apiServiceFromContext(context, {
     regionUrl: params.regionUrl ?? undefined,
   });
@@ -984,13 +1033,12 @@ async function executeSearchEvents(
     suggestedProjectIds.length > 0
       ? `**Note:** Seer suggested also searching project IDs ${suggestedProjectIds.join(", ")}, for example other services in the same trace. Omit \`projectSlug\` to search all accessible projects.`
       : "";
-  const leadingNote = [
+  const leadingNotes = [
     seerTranslation?.warning,
     environmentNote,
     projectSuggestionNote,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  ].filter((note): note is string => Boolean(note));
+  const leadingNote = leadingNotes.join("\n\n");
   const withLeadingNote = (text: string): string =>
     leadingNote ? `${leadingNote}\n\n${text}` : text;
 
@@ -1038,7 +1086,7 @@ async function executeSearchEvents(
       replays.length,
     );
 
-    const replayOutput = formatReplayResults({
+    const replayParams = {
       replays,
       inputQuery: params.query || sentryQuery || "recent replays",
       includeExplanation: params.includeExplanation,
@@ -1060,8 +1108,14 @@ async function executeSearchEvents(
       experimentalMode: context.experimentalMode ?? false,
       availableToolNames: context.availableToolNames,
       directToolNames: context.directToolNames,
-    });
-    return withLeadingNote(replayOutput);
+    };
+    if (structured) {
+      return buildStructuredReplayResults({
+        ...replayParams,
+        notes: leadingNotes,
+      });
+    }
+    return withLeadingNote(formatReplayResults(replayParams));
   }
 
   if (timeSeries) {
@@ -1135,30 +1189,29 @@ async function executeSearchEvents(
       undefined,
       exploreConfiguration,
     );
+    const resultParams = {
+      dataset,
+      series,
+      configuration: timeSeries,
+      yAxis: timeSeries.axes[0]!.yAxis,
+      interval: timeSeries.interval ?? null,
+      inputQuery: params.query || timeSeriesQuery,
+      includeExplanation: params.includeExplanation,
+      explanation: params.includeExplanation ? explanation : undefined,
+      query: timeSeriesQuery,
+      timeRange: timeParams,
+      url: statsUrl,
+      notes: droppedEventsNote
+        ? [...leadingNotes, droppedEventsNote]
+        : leadingNotes,
+    };
     const timeSeriesOutput = needsStructuredSeries
-      ? structuredResult(
-          buildTimeSeriesResult({
-            series,
-            configuration: timeSeries,
-            dataset,
-            query: timeSeriesQuery,
-            inputQuery: params.query || timeSeriesQuery,
-            timeRange: timeParams,
-            url: statsUrl,
-            explanation: params.includeExplanation ? explanation : undefined,
-            notes: [leadingNote, droppedEventsNote].filter(Boolean),
-          }),
-        )
-      : formatTimeSeriesResults({
-          series,
-          yAxis: timeSeries.axes[0]!.yAxis,
-          interval: timeSeries.interval ?? null,
-          inputQuery: params.query || timeSeriesQuery,
-          includeExplanation: params.includeExplanation,
-          explanation,
-          timeRange: timeParams,
-          url: statsUrl,
-        });
+      ? structured
+        ? buildStructuredOrderedTimeSeriesResult(resultParams)
+        : JSON.stringify(buildTimeSeriesResult(resultParams), null, 2)
+      : structured
+        ? buildStructuredTimeSeriesResult(resultParams)
+        : formatTimeSeriesResults(resultParams);
     // A series always has buckets, so count the ones with data.
     trackSeerOutcome(
       seerOutcome,
@@ -1167,7 +1220,7 @@ async function executeSearchEvents(
         .flatMap((s) => s.values)
         .filter((point) => point.value != null && point.value !== 0).length,
     );
-    return typeof timeSeriesOutput === "string"
+    return typeof timeSeriesOutput === "string" && !needsStructuredSeries
       ? withLeadingNote(
           droppedEventsNote
             ? `${timeSeriesOutput}\n\n${droppedEventsNote}`
@@ -1335,6 +1388,29 @@ async function executeSearchEvents(
     availableToolNames: context.availableToolNames,
     directToolNames: context.directToolNames,
   };
+
+  if (structured) {
+    return buildStructuredEventsResult({
+      dataset,
+      eventData,
+      inputQuery: formatParams.inputQuery,
+      includeExplanation: params.includeExplanation,
+      explanation,
+      explorerUrl,
+      sentryQuery,
+      fields,
+      requestFields: finalRequestFields,
+      executedSearch: formatParams.executedSearch,
+      notes: leadingNotes,
+      session: {
+        apiService,
+        organizationSlug,
+        experimentalMode: formatParams.experimentalMode,
+        availableToolNames: context.availableToolNames,
+        directToolNames: context.directToolNames,
+      },
+    });
+  }
 
   switch (dataset) {
     case "errors":

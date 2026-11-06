@@ -19,9 +19,8 @@ import {
   type DisplayType,
   ERROR_AGGREGATE_FUNCTIONS,
   ErrorAggregateFunctionSchema,
-  EventsStatsDataPointSchema,
-  EventsStatsSeriesSchema,
   EventsTableResponseSchema,
+  EventsTimeseriesResponseSchema,
   GRID_COLUMNS,
   IS_FILTER_VALUES,
   IsFilterValueSchema,
@@ -840,7 +839,7 @@ describe("assignDefaultLayout", () => {
 // ---------------------------------------------------------------------------
 
 describe("stripWidgetServerFields", () => {
-  test("strips id, dashboardId, dateCreated from widget", () => {
+  test("retains widget identity and strips dashboardId and dateCreated", () => {
     const widget: DashboardWidget = {
       id: "100",
       dashboardId: "42",
@@ -850,7 +849,7 @@ describe("stripWidgetServerFields", () => {
       widgetType: "spans",
     };
     const result = stripWidgetServerFields(widget);
-    expect(result).not.toHaveProperty("id");
+    expect(result.id).toBe("100");
     expect(result).not.toHaveProperty("dashboardId");
     expect(result).not.toHaveProperty("dateCreated");
     expect(result.title).toBe("Test");
@@ -858,8 +857,9 @@ describe("stripWidgetServerFields", () => {
     expect(result.widgetType).toBe("spans");
   });
 
-  test("strips server fields from queries", () => {
+  test("retains query identity and strips server metadata", () => {
     const widget: DashboardWidget = {
+      id: "100",
       title: "Test",
       displayType: "line",
       queries: [
@@ -875,10 +875,42 @@ describe("stripWidgetServerFields", () => {
     };
     const result = stripWidgetServerFields(widget);
     const query = result.queries![0]!;
-    expect(query).not.toHaveProperty("id");
+    expect(query.id).toBe("q1");
     expect(query).not.toHaveProperty("widgetId");
     expect(query).not.toHaveProperty("dateCreated");
     expect(query.aggregates).toEqual(["count()"]);
+  });
+
+  test.each([
+    { scenario: "a new query", widgetId: "100", queryId: undefined },
+    { scenario: "a recreated widget", widgetId: undefined, queryId: "200" },
+  ])("keeps pipelines for $scenario", ({ widgetId, queryId }) => {
+    const widget = parseWidgetInput({
+      id: widgetId,
+      title: "Test",
+      displayType: "line",
+      queries: [
+        {
+          id: queryId,
+          aggregates: ["count()"],
+          transformations: {
+            "0": ["fill( linear )", "smooth( ema , 7 , 0.25 )"],
+          },
+        },
+      ],
+    });
+    expect(stripWidgetServerFields(widget).queries).toEqual([
+      {
+        name: "",
+        conditions: "",
+        columns: [],
+        aggregates: ["count()"],
+        fields: [],
+        transformations: {
+          "0": ["fill( linear )", "smooth( ema , 7 , 0.25 )"],
+        },
+      },
+    ]);
   });
 
   test("strips isResizable from layout", () => {
@@ -912,44 +944,38 @@ describe("stripWidgetServerFields", () => {
 // Widget data query types
 // ---------------------------------------------------------------------------
 
-describe("EventsStatsDataPointSchema", () => {
-  test("parses valid data point", () => {
-    const result = safeParse(EventsStatsDataPointSchema, [
-      1_700_000_000,
-      [{ count: 42 }],
-    ]);
-    expect(result.success).toBe(true);
-  });
+describe("EventsTimeseriesResponseSchema", () => {
+  const meta = { valueType: "integer", valueUnit: null, interval: 3_600_000 };
 
-  test("rejects invalid data point", () => {
-    const result = safeParse(EventsStatsDataPointSchema, [
-      "not-a-number",
-      [{ count: 42 }],
-    ]);
-    expect(result.success).toBe(false);
-  });
-});
-
-describe("EventsStatsSeriesSchema", () => {
-  test("parses simple series", () => {
-    const result = safeParse(EventsStatsSeriesSchema, {
-      data: [
-        [1_700_000_000, [{ count: 10 }]],
-        [1_700_003_600, [{ count: 20 }]],
+  test("parses an ungrouped response", () => {
+    const result = safeParse(EventsTimeseriesResponseSchema, {
+      meta: { dataset: "errors", start: 1, end: 2 },
+      timeSeries: [
+        {
+          yAxis: "count()",
+          values: [
+            { timestamp: 1_700_000_000_000, value: 10, incomplete: false },
+            { timestamp: 1_700_003_600_000, value: 20, incomplete: true },
+          ],
+          meta,
+        },
       ],
-      start: "2024-01-01T00:00:00Z",
-      end: "2024-01-02T00:00:00Z",
-      meta: {
-        fields: { "count()": "integer" },
-        units: { "count()": null },
-      },
     });
     expect(result.success).toBe(true);
   });
 
-  test("parses series with optional fields missing", () => {
-    const result = safeParse(EventsStatsSeriesSchema, {
-      data: [[1_700_000_000, [{ count: 5 }]]],
+  test("accepts a null groupBy and string values the spec leaves out", () => {
+    const result = safeParse(EventsTimeseriesResponseSchema, {
+      timeSeries: [
+        {
+          yAxis: "max(measurements.custom.ratio)",
+          groupBy: null,
+          values: [
+            { timestamp: 1_700_000_000_000, value: "", incomplete: false },
+          ],
+          meta: { ...meta, valueType: "string", isOther: true },
+        },
+      ],
     });
     expect(result.success).toBe(true);
   });

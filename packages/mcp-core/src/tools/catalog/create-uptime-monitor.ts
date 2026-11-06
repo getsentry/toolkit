@@ -27,6 +27,7 @@ export const createUptimeMonitorOutputSchema = z.object({
 
 export default defineTool({
   name: "create_uptime_monitor",
+  title: "Create Uptime Monitor",
   skills: ["project-management"],
   requiredScopes: ["project:write"],
   description: [

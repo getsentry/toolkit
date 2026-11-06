@@ -11,6 +11,7 @@ import {
   isTracemetricsAggregate,
   parseFunction,
 } from "@sentry/toolkit-core/events-fields";
+import { vListOrganizationEventsTimeseriesResponse } from "@sentry/api/valibot";
 import {
   array,
   boolean,
@@ -29,7 +30,6 @@ import {
   record,
   safeParse,
   string,
-  tuple,
   union,
   unknown,
   variant,
@@ -105,6 +105,7 @@ export const DashboardWidgetQuerySchema = looseObject({
   conditions: optional(string()),
   columns: optional(array(string())),
   aggregates: optional(array(string())),
+  transformations: optional(record(string(), array(string()))),
   fieldAliases: optional(array(string())),
   orderby: optional(string()),
   fields: optional(array(string())),
@@ -806,8 +807,17 @@ export function validateWidgetLayout(
 // ---------------------------------------------------------------------------
 
 /** Extract only the query fields the PUT API accepts */
-function cleanQuery(q: DashboardWidgetQuery): DashboardWidgetQuery {
+function cleanQuery(
+  q: DashboardWidgetQuery,
+  widgetId: string | undefined,
+): DashboardWidgetQuery {
   return {
+    // Sentry preserves omitted pipelines by ID even when the feature is disabled.
+    ...(widgetId !== undefined && q.id !== undefined
+      ? { id: q.id }
+      : q.transformations !== undefined
+        ? { transformations: q.transformations }
+        : {}),
     name: q.name ?? "",
     conditions: q.conditions ?? "",
     columns: q.columns ?? [],
@@ -819,12 +829,9 @@ function cleanQuery(q: DashboardWidgetQuery): DashboardWidgetQuery {
 }
 
 /**
- * Strip server-generated and passthrough fields from a widget for PUT requests.
- *
- * Uses an allowlist approach: only includes fields the dashboard PUT API
- * accepts. The GET response includes many extra fields (description, thresholds,
- * interval, axisRange, datasetSource, etc.) that cause silent failures if
- * sent back in PUT.
+ * Prepare a widget for PUT while retaining existing widget and query identities.
+ * Existing queries omit pipelines so Sentry preserves their stored configuration.
+ * New queries include pipelines verbatim, keyed by aggregate position.
  *
  * @param widget - Widget object from GET response
  * @returns Widget safe for PUT (only API-accepted fields)
@@ -833,10 +840,13 @@ export function stripWidgetServerFields(
   widget: DashboardWidget,
 ): DashboardWidget {
   const cleaned: DashboardWidget = {
+    ...(widget.id !== undefined && { id: widget.id }),
     title: widget.title,
     displayType: widget.displayType,
     ...(widget.widgetType && { widgetType: widget.widgetType }),
-    ...(widget.queries && { queries: widget.queries.map(cleanQuery) }),
+    ...(widget.queries && {
+      queries: widget.queries.map((query) => cleanQuery(query, widget.id)),
+    }),
     ...(widget.limit !== undefined &&
       widget.limit !== null && { limit: widget.limit }),
   };
@@ -857,8 +867,7 @@ export function stripWidgetServerFields(
 
 /**
  * Prepare a full dashboard for PUT update.
- * Strips server-generated fields from all widgets while preserving
- * widgetType, displayType, and layout.
+ * Retains widget and query identities so Sentry updates existing records.
  *
  * @param dashboard - Dashboard detail from GET response
  * @returns Object with title and cleaned widgets, ready for PUT body
@@ -882,43 +891,56 @@ export function prepareDashboardForUpdate(dashboard: DashboardDetail): {
 // ---------------------------------------------------------------------------
 // Widget data query types
 //
-// Types for responses from the events-stats and events API endpoints
+// Types for responses from the events-timeseries and events API endpoints
 // used to fetch actual widget data for dashboard rendering.
 // ---------------------------------------------------------------------------
 
-/**
- * Single data point from the events-stats API.
- * Format: [timestamp_epoch_seconds, [{count: value}]]
- */
-export const EventsStatsDataPointSchema = tuple([
-  number(),
-  array(object({ count: number() })),
-]);
-
-export type EventsStatsDataPoint = InferOutput<
-  typeof EventsStatsDataPointSchema
->;
+const sdkTimeseriesResponse = vListOrganizationEventsTimeseriesResponse.entries;
+const sdkTimeseriesSeries = sdkTimeseriesResponse.timeSeries.item.entries;
+const sdkTimeseriesRow = sdkTimeseriesSeries.values.item.entries;
 
 /**
- * A single time-series from events-stats.
+ * Single bucket from the events-timeseries API.
  *
- * In simple queries this is the top-level response.
- * In grouped queries (`topEvents > 0`) each group key maps to one of these.
+ * Built from the `@sentry/api` schema. `timestamp` is epoch milliseconds and
+ * `value` is null for empty buckets.
  */
-export const EventsStatsSeriesSchema = looseObject({
-  data: array(EventsStatsDataPointSchema),
-  order: optional(number()),
-  start: optional(union([string(), number()])),
-  end: optional(union([string(), number()])),
-  meta: optional(
-    looseObject({
-      fields: optional(record(string(), string())),
-      units: optional(record(string(), nullable(string()))),
-    }),
-  ),
+const EventsTimeseriesRowSchema = object({
+  ...sdkTimeseriesRow,
+  // The spec says `number | null`, but the errors dataset returns a string
+  // for string-typed aggregates (for example `max()` over a measurement no
+  // event carries), which arrives as "".
+  value: nullable(union([number(), string()])),
 });
 
-export type EventsStatsSeries = InferOutput<typeof EventsStatsSeriesSchema>;
+/**
+ * A single series from `GET /organizations/{org}/events-timeseries/`.
+ *
+ * Ungrouped queries return one series per `yAxis`. Grouped queries
+ * (`topEvents > 0`) return one series per group per `yAxis`, with the
+ * group identified by `groupBy` and the catch-all group by `meta.isOther`.
+ */
+const EventsTimeseriesSeriesSchema = object({
+  ...sdkTimeseriesSeries,
+  values: array(EventsTimeseriesRowSchema),
+  // The spec marks `groupBy` optional only, but the "Other" series sends
+  // `groupBy: null`.
+  groupBy: nullish(sdkTimeseriesSeries.groupBy.wrapped),
+});
+
+export type EventsTimeseriesSeries = InferOutput<
+  typeof EventsTimeseriesSeriesSchema
+>;
+
+/** Top-level response from the events-timeseries API. */
+export const EventsTimeseriesResponseSchema = object({
+  ...sdkTimeseriesResponse,
+  timeSeries: array(EventsTimeseriesSeriesSchema),
+});
+
+export type EventsTimeseriesResponse = InferOutput<
+  typeof EventsTimeseriesResponseSchema
+>;
 
 /**
  * Response from `GET /organizations/{org}/events/` (table format).
@@ -1070,7 +1092,7 @@ export function mapWidgetTypeToDataset(
   return WIDGET_TYPE_TO_DATASET[widgetType] ?? null;
 }
 
-/** Display types that use time-series data (events-stats endpoint) */
+/** Display types that use time-series data (events-timeseries endpoint) */
 export const TIMESERIES_DISPLAY_TYPES = new Set([
   "line",
   "area",

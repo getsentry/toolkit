@@ -16,6 +16,7 @@ import {
   UserInputError,
 } from "../../errors";
 import { logIssue, logWarn } from "../../telem/logging";
+import { getUserAgent } from "../../version";
 import { getAgentProvider } from "./provider-factory";
 
 // Tool work gets this many model steps; a validated final response may get one more.
@@ -140,6 +141,9 @@ export async function callEmbeddedAgent<
   try {
     const result = await generateText({
       model: provider.getModel(),
+      // generateText sets a call-level user-agent that replaces the
+      // providers' own, so ours has to go on the call too.
+      headers: { "User-Agent": getUserAgent() },
       system,
       prompt,
       tools,

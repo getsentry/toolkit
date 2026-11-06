@@ -1,4 +1,4 @@
-minVersion: "3.9.0"
+minVersion: "3.11.0"
 workspaces:
   packages/cli:
     changelog:
@@ -13,6 +13,9 @@ workspaces:
           model: gpt-5.6-luna-utility
         levels: [release, category, scope]
         minItems: 0
+        # Summarizing every scope and category of a month of changes takes
+        # longer than Craft's 120-second default.
+        timeout: 600
         style: Keep it concise and friendly for developers; avoid hype.
     versioning:
       policy: auto

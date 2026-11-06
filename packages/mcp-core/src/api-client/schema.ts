@@ -876,6 +876,9 @@ export const IssueSchema = z
         title: z.string().nullable().optional(),
         location: z.string().nullable().optional(),
         value: z.string().nullable().optional(),
+        // Feedback issues carry who submitted them.
+        name: z.string().nullable().optional(),
+        contact_email: z.string().nullable().optional(),
       })
       .optional(),
     seerFixabilityScore: z.number().nullable().optional(),
@@ -2144,9 +2147,9 @@ export const ProfileChunkSchema = z
     chunk_id: z.string(),
     profiler_id: z.string().optional(),
     event_id: z.string().optional(),
-    environment: z.preprocess((value) => value ?? null, z.string().nullable()),
+    environment: z.preprocess((value) => value || null, z.string().nullable()),
     platform: z.preprocess((value) => value ?? "unknown", z.string()),
-    release: z.preprocess((value) => value ?? "unknown", z.string()),
+    release: z.preprocess((value) => value || null, z.string().nullable()),
     version: z.preprocess((value) => value ?? "2", z.string()),
     profile: z.object({
       frames: z.array(ProfileFrameSchema),

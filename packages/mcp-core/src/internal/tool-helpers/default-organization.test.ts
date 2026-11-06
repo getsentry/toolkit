@@ -13,6 +13,7 @@ import type { CredentialRouter, ServerContext } from "../../types";
 
 const requiredOrgTool: ToolConfig<any> = {
   name: "required_org_tool",
+  title: "Required Org Tool",
   description: "required_org_tool description",
   skills: ["inspect"],
   requiredScopes: [],

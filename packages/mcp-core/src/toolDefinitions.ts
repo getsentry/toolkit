@@ -7,6 +7,8 @@ export type ToolDefinitionSurface = "direct" | "catalog";
 
 export interface ToolDefinition {
   name: string;
+  // Human-readable display name
+  title: string;
   description: string;
   // Full JSON Schema object for parameters
   inputSchema: unknown;

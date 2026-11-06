@@ -1,7 +1,13 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
-import getMonitorDetails from "./get-monitor-details.js";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content";
+import getMonitorDetails, {
+  getMonitorDetailsOutputSchema,
+} from "./get-monitor-details.js";
 import { prepareToolParams } from "../catalog-runtime/availability";
 
 const context = {
@@ -11,6 +17,28 @@ const context = {
   accessToken: "access-token",
   userId: "1",
 };
+
+const baseParams = {
+  organizationSlug: "sentry-mcp-evals",
+  regionUrl: null,
+  projectSlugOrId: null,
+  monitorSlug: "nightly-import",
+  environment: null,
+  period: "24h",
+  start: null,
+  end: null,
+  checkInLimit: 10,
+  includeStats: true,
+  rollupSeconds: null,
+};
+
+function getOutput(result: unknown) {
+  assertStructuredOnlyResult(result);
+  const content = getStructuredContent(result);
+  const parsed = getMonitorDetailsOutputSchema.parse(content);
+  expect(parsed).toEqual(content);
+  return parsed;
+}
 
 describe("get_monitor_details", () => {
   it("serializes monitor details", async () => {
@@ -31,52 +59,151 @@ describe("get_monitor_details", () => {
       context,
     );
 
-    expect(result).toMatchInlineSnapshot(`
-      "# Monitor Nightly Import in **sentry-mcp-evals**
-
-      **Slug**: nightly-import
-      **ID**: 4509100000000001
-      **Project**: cloudflare-mcp
-      **Status**: ok
-      **Owner**: the-goats
-      **Last Check-In**: 2025-04-14T02:00:13.000Z
-      **Next Check-In**: 2025-04-15T02:00:00.000Z
-      **URL**: [Open Monitor](https://sentry-mcp-evals.sentry.io/crons/cloudflare-mcp/nightly-import/)
-
-      ## Schedule
-
-      - **schedule**: ["crontab","0 2 * * *"]
-      - **schedule_type**: crontab
-      - **timezone**: UTC
-      - **checkin_margin**: 5
-      - **max_runtime**: 30
-
-      ## Environments
-
-      - production
-        - Status: ok
-        - Last check-in: 2025-04-14T02:00:13.000Z
-        - Next check-in: 2025-04-15T02:00:00.000Z
-      - staging
-        - Status: missed_checkin
-        - Last check-in: 2025-04-13T02:00:18.000Z
-        - Next check-in: 2025-04-14T02:00:00.000Z
-
-      ## Recent Check-Ins
-
-      - 2025-04-14T02:00:13.000Z: ok, 13.2s, production
-      - 2025-04-14T02:05:00.000Z: missed, staging
-
-      ## Stats
-
-      - 2025-04-14T02:00:00.000Z: ok=1, error=0, missed=0, timeout=0, unknown=0, duration=13.2
-      - 2025-04-15T02:00:00.000Z: ok=0, error=0, missed=1, timeout=0, unknown=0, duration=0
-
-      ## Response Notes
-
-      - Search issues from this monitor with \`search_issues\` query \`monitor.slug:nightly-import\`.
-      "
+    expect(getOutput(result)).toMatchInlineSnapshot(`
+      {
+        "checkIns": [
+          {
+            "date": "2025-04-14T02:00:13.000Z",
+            "durationMs": 13200,
+            "environment": "production",
+            "status": "ok",
+          },
+          {
+            "date": "2025-04-14T02:05:00.000Z",
+            "durationMs": null,
+            "environment": "staging",
+            "status": "missed",
+          },
+        ],
+        "environments": [
+          {
+            "lastCheckIn": "2025-04-14T02:00:13.000Z",
+            "name": "production",
+            "nextCheckIn": "2025-04-15T02:00:00.000Z",
+            "status": "ok",
+          },
+          {
+            "lastCheckIn": "2025-04-13T02:00:18.000Z",
+            "name": "staging",
+            "nextCheckIn": "2025-04-14T02:00:00.000Z",
+            "status": "missed_checkin",
+          },
+        ],
+        "monitor": {
+          "config": {
+            "checkinMarginMinutes": 5,
+            "maxRuntimeMinutes": 30,
+            "schedule": "0 2 * * *",
+            "scheduleType": "crontab",
+            "timezone": "UTC",
+          },
+          "id": "4509100000000001",
+          "lastCheckIn": "2025-04-14T02:00:13.000Z",
+          "name": "Nightly Import",
+          "nextCheckIn": "2025-04-15T02:00:00.000Z",
+          "owner": "the-goats",
+          "ownerEmail": null,
+          "project": "cloudflare-mcp",
+          "slug": "nightly-import",
+          "status": "ok",
+          "type": null,
+          "url": "https://sentry-mcp-evals.sentry.io/crons/cloudflare-mcp/nightly-import/",
+        },
+        "stats": [
+          {
+            "avgDurationMs": 13200,
+            "error": 0,
+            "missed": 0,
+            "ok": 1,
+            "timeout": 0,
+            "timestamp": "2025-04-14T02:00:00.000Z",
+            "unknown": 0,
+          },
+          {
+            "avgDurationMs": 0,
+            "error": 0,
+            "missed": 1,
+            "ok": 0,
+            "timeout": 0,
+            "timestamp": "2025-04-15T02:00:00.000Z",
+            "unknown": 0,
+          },
+        ],
+      }
     `);
+  });
+
+  it("returns a null owner when Sentry has no usable identity", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/monitors/nightly-import/",
+        () =>
+          HttpResponse.json({
+            id: "4509100000000001",
+            slug: "nightly-import",
+            name: "Nightly Import",
+            status: "ok",
+            project: { id: "4509109104082945", slug: "cloudflare-mcp" },
+            environments: [],
+            owner: { type: "user" },
+            config: { schedule_type: "crontab", schedule: "0 2 * * *" },
+          }),
+      ),
+    );
+
+    const output = getOutput(
+      await getMonitorDetails.handler(baseParams, context),
+    );
+
+    expect(output.monitor.owner).toBeNull();
+    expect(output.monitor.ownerEmail).toBeNull();
+  });
+
+  it("does not leak backend-only monitor fields", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/monitors/nightly-import/",
+        () =>
+          HttpResponse.json({
+            id: "4509100000000001",
+            slug: "nightly-import",
+            name: "Nightly Import",
+            status: "ok",
+            isUpserting: false,
+            project: { id: "4509109104082945", slug: "cloudflare-mcp" },
+            environments: [],
+            owner: {
+              type: "user",
+              id: "1",
+              name: "Jane Developer",
+              email: "jane@example.com",
+            },
+            alertRule: { targets: [{ targetIdentifier: "secret-target" }] },
+            config: {
+              schedule_type: "crontab",
+              schedule: "0 2 * * *",
+              failure_issue_threshold: 3,
+              alert_rule_id: 987654,
+            },
+          }),
+      ),
+    );
+
+    const result = await getMonitorDetails.handler(baseParams, context);
+
+    const output = getOutput(result);
+    // The owner's email is user data Sentry stored, so it comes through.
+    expect(output.monitor.ownerEmail).toBe("jane@example.com");
+    const text = JSON.stringify(output);
+    for (const leaked of [
+      "secret-target",
+      "alertRule",
+      "failure_issue_threshold",
+      "987654",
+      "isUpserting",
+    ]) {
+      expect(text).not.toContain(leaked);
+    }
   });
 
   it("rejects monitors outside the active project constraint", async () => {
@@ -123,7 +250,7 @@ describe("get_monitor_details", () => {
       },
       config: {
         schedule_type: "crontab",
-        schedule: ["crontab", "0 2 * * *"],
+        schedule: "0 2 * * *",
       },
       environments: [],
     };
@@ -174,9 +301,7 @@ describe("get_monitor_details", () => {
       },
     );
 
-    expect(result).toContain(
-      "# Monitor Nightly Import in **sentry-mcp-evals**",
-    );
+    expect(getOutput(result).monitor.name).toBe("Nightly Import");
     expect(paths).toEqual([
       "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/monitors/nightly-import/",
       "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/monitors/nightly-import/checkins/",
@@ -199,7 +324,7 @@ describe("get_monitor_details", () => {
       },
       config: {
         schedule_type: "crontab",
-        schedule: ["crontab", "0 2 * * *"],
+        schedule: "0 2 * * *",
       },
       environments: [],
     };
@@ -240,7 +365,7 @@ describe("get_monitor_details", () => {
 
     const result = await getMonitorDetails.handler(params, context);
 
-    expect(result).toContain("# Monitor Nightly Import in **MyOrg**");
+    expect(getOutput(result).monitor.name).toBe("Nightly Import");
     expect(paths).toEqual([
       "/api/0/projects/MyOrg/MyProject/monitors/nightly-import/",
       "/api/0/projects/MyOrg/MyProject/monitors/nightly-import/checkins/",
@@ -263,7 +388,7 @@ describe("get_monitor_details", () => {
       },
       config: {
         schedule_type: "crontab",
-        schedule: ["crontab", "0 2 * * *"],
+        schedule: "0 2 * * *",
       },
       environments: [],
     };
@@ -379,7 +504,7 @@ describe("get_monitor_details", () => {
       },
       config: {
         schedule_type: "crontab",
-        schedule: ["crontab", "0 2 * * *"],
+        schedule: "0 2 * * *",
       },
       environments: [],
     };
@@ -446,7 +571,7 @@ describe("get_monitor_details", () => {
       },
       config: {
         schedule_type: "crontab",
-        schedule: ["crontab", "0 2 * * *"],
+        schedule: "0 2 * * *",
       },
       environments: [],
     };
@@ -486,10 +611,11 @@ describe("get_monitor_details", () => {
       context,
     );
 
-    expect(result).toContain(
-      "[Open Monitor](https://sentry-mcp-evals.sentry.io/crons/cloudflare-mcp/nightly%2Fimport%201/)",
+    const output = getOutput(result);
+    expect(output.monitor.url).toBe(
+      "https://sentry-mcp-evals.sentry.io/crons/cloudflare-mcp/nightly%2Fimport%201/",
     );
-    expect(result).not.toContain("## Stats");
+    expect(output.stats).toBeNull();
   });
 
   describe("tool definition", () => {

@@ -9,6 +9,7 @@ import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
+import { setServerVersion } from "../version";
 import {
   ApiClientError,
   ApiNotFoundError,
@@ -1947,6 +1948,35 @@ describe("request headers", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    setServerVersion(undefined);
+  });
+
+  it("sends the host's version in the User-Agent", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "1",
+          name: "Test User",
+          email: "test@example.com",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    setServerVersion("0.48.0-test");
+
+    await new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    }).getAuthenticatedUser();
+
+    const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0];
+    expect(new Headers(requestInit.headers).get("User-Agent")).toBe(
+      "sentry-mcp/0.48.0-test (https://mcp.sentry.dev)",
+    );
   });
 
   it("should send MCP client headers when clientId and clientName are set", async () => {

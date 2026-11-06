@@ -96,7 +96,7 @@ afterEach(() => {
 });
 
 describe("explicit time series", () => {
-  it("preserves legacy untransformed searches when explicit settings are omitted", async () => {
+  it("preserves inferred single-axis results when explicit settings are omitted", async () => {
     vi.mocked(provider.hasAgentProvider).mockReturnValue(true);
     vi.spyOn(agent, "searchEventsAgent").mockResolvedValue({
       result: {
@@ -130,8 +130,10 @@ describe("explicit time series", () => {
       { ...baseParams, query: "database traffic per minute" },
       context,
     );
-    expect(result).toContain("count() over time");
-    expect(result).toContain("**Total**: 8");
+    expect(result.structuredContent).toMatchObject({
+      resultType: "timeSeries",
+      timeSeries: { yAxis: "count()", total: 8 },
+    });
   });
   it("exposes and dispatches the schema through MCP with equivalent structured and text results", async () => {
     mswServer.use(http.get(endpoint, () => HttpResponse.json(responseFor())));
@@ -159,8 +161,7 @@ describe("explicit time series", () => {
         },
       });
       expect(result.structuredContent).toMatchObject({
-        dataset: "spans",
-        query: "span.op:db",
+        executedSearch: { dataset: "spans", query: "span.op:db" },
         series: [{ axisIndex: 0 }, { axisIndex: 1 }],
       });
       const parsed = z
@@ -291,7 +292,10 @@ describe("explicit time series", () => {
       context,
     );
     expect(result).toMatchObject({
-      structuredContent: { query: "span.op:db", requestedInterval: "1h" },
+      structuredContent: {
+        executedSearch: { query: "span.op:db" },
+        requestedInterval: "1h",
+      },
     });
   });
   it.each([
@@ -354,8 +358,10 @@ describe("explicit time series", () => {
       const result = await tool.handler(params, context);
       expect(result).toMatchObject({
         structuredContent: {
-          dataset: dataset === "tracemetrics" ? "metrics" : dataset,
-          query,
+          executedSearch: {
+            dataset: dataset === "tracemetrics" ? "metrics" : dataset,
+            query,
+          },
           requestedInterval: "1h",
           series: [
             {
@@ -480,7 +486,10 @@ describe("explicit time series", () => {
       context,
     );
     expect(result).toMatchObject({
-      structuredContent: { query: "span.op:db", requestedInterval: "1h" },
+      structuredContent: {
+        executedSearch: { query: "span.op:db" },
+        requestedInterval: "1h",
+      },
     });
   });
 

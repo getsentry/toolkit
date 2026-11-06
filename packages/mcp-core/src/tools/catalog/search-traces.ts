@@ -5,10 +5,15 @@ import {
   runSearchEvents,
   searchToolBase,
 } from "../support/search-events/search";
+import { buildTimeSeriesSearchOutputSchema } from "../support/search-events/structured";
+
+export const searchTracesOutputSchema =
+  buildTimeSeriesSearchOutputSchema("spans");
 
 export default defineTool({
   ...searchToolBase("search_traces"),
   name: "search_traces",
+  title: "Search Traces",
   description: [
     "Search Sentry spans and traces: requests, API/HTTP calls, endpoints, DB queries, AI/LLM calls, and other operations. Use for latency, throughput, slowness, and performance questions.",
     "",
@@ -32,9 +37,11 @@ export default defineTool({
     "</hints>",
   ].join("\n"),
   inputSchema: buildTimeSeriesSearchInputSchema(),
+  outputSchema: searchTracesOutputSchema,
   async handler(params, context: ServerContext) {
     return await runSearchEvents({ ...params, dataset: "spans" }, context, {
       lockDataset: true,
+      output: "structured",
     });
   },
 });

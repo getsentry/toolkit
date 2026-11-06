@@ -98,6 +98,19 @@ search_metrics({
    - Prominent rendering directives for AI agents
    - Shareable Sentry Explorer URL
 
+Dataset tools that declare an `outputSchema` (`search_errors`, `search_logs`, `search_traces`, `search_metrics`, and `search_profiles` today) return
+`structuredContent` instead of the markdown above; legacy `search_events` keeps
+markdown. In that payload, `resultType` (`samples`, `aggregates`, or
+`timeSeries`) replaces the dataset-specific rendering, each row holds only the
+requested fields in `values` plus derived URLs in `links`, and rendering
+guidance is in `presentationHint`. Warnings and empty-result guidance are
+entries in `notes[]`, and a concrete follow-up is in `suggestedActions`.
+
+`search_replays` also declares an `outputSchema`, but replays have no fields
+or aggregates, so its payload lists `replays[]` with explicitly mapped
+replay fields (IDs, URLs, user, counts, browser, environment, and previews of
+visited pages and trace IDs with their full counts) in place of `results`.
+
 ## Key Implementation Details
 
 ### Embedded Agent Provider
@@ -140,6 +153,7 @@ Requests for a metric over time ("per hour", "per day", "trend", "over time") re
 - The handler routes `timeSeries` to `SentryApiService.getEventsTimeSeries` and renders the buckets (with total and peak) via `formatTimeSeriesResults`.
 - Series declared as `valueType: "string"` preserve raw values, including identifiers with leading zeros, and omit total and peak. Numeric series retain their formatting and summaries; ISO datetime strings are displayed as returned and ordered by their parsed timestamp for the peak.
 - Buckets Sentry flags as `incomplete` are marked in the table. Those still receiving data (`NOT_ELAPSED`, `INGESTION_PENDING`) get `*`, are excluded from the peak, and label the total "so far". Those that start before the retention window (`OUTSIDE_RETENTION`) get `†` and stay in the peak, since their value is final. When the response carries `meta.ingestion`, an **Ingestion** line reports the measured delay and the time data is complete through.
+- Structured dataset tools carry the same states as data: `timeSeries.buckets[].incomplete` (still receiving data) and `outsideRetention`, `totalIncludesIncompleteBuckets` for a total "so far", and `timeSeries.ingestion` for the ingestion line.
 
 ### Explicit transformed time series
 
@@ -179,8 +193,9 @@ axes, pipelines, interval, and period take precedence and survive provider
 fallback. Omission retains the existing search behavior.
 
 The API request repeats `yAxis` in axis order and repeats
-`transformations[index]` in operation order. Explicit results use complete
-`structuredContent` with equivalent generated JSON text. Each returned axis
+`transformations[index]` in operation order. Explicit results use the dataset tool's structured result envelope with equivalent
+generated JSON text. Ordered axes are in `series[]`, alongside `requestedInterval`;
+`timeSeries` remains the single-axis inferred chart field. Each returned axis
 includes its executed interval, units, nullable bucket values, comparisons,
 transformation flags. Null is a gap rather than zero. Transformed axes omit totals and label their maximum as `derivedMaximum`.
 
@@ -207,7 +222,7 @@ returns an actionable error when Explore would replace the applied interval.
 - **Logs timestamp handling**: Logs don't support query-based timestamp filters like `timestamp:-1h`. Instead, use `statsPeriod=24h` parameter
 - **Project ID mapping**: API requires numeric project IDs, not slugs. Tool automatically converts project slugs to IDs
 - **Seer translation**: Seer translates natural-language queries when the organization has the `mcp-search-events-seer-translate` rollout flag and has not hidden AI features. If Seer is unavailable or cannot translate the query, the tool falls back to the configured embedded agent.
-- **Seer cross-event filters**: Legacy untransformed time series do not apply cross-event filters and begin with a warning, even when `includeExplanation` is false. Explicit or transformed time series reject these unsupported filters.
+- **Seer cross-event filters**: Legacy untransformed time series do not apply cross-event filters and begin with a warning, even when `includeExplanation` is false. Explicit or transformed time series reject these unsupported filters. Structured dataset tools put that warning first in `notes[]`.
 - **Seer project scope**: For a successful Seer translation without `projectSlug`, search and Explorer links use `project=-1` to match the all-accessible-project scope sent to Seer. Other unscoped searches retain their existing default scope.
 - **Parallel attribute fetching**: For spans/logs/metrics, fetches both string and number attribute types in parallel for better performance
 - **itemType specification**: Must use `logs` and `tracemetrics` exactly for the trace-items attributes API
