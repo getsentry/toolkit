@@ -405,9 +405,7 @@ function configureServer({
       title: tool.title,
       description: resolvedDescription,
       inputSchema: filteredInputSchema,
-      outputSchema:
-        tool.outputSchema ??
-        (experimentalMode ? tool.experimentalOutputSchema : undefined),
+      outputSchema: tool.outputSchema,
       annotations: tool.annotations,
     };
     const handleToolCall = async (
