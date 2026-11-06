@@ -24,10 +24,6 @@ import {
 } from "../../types/onboarding.js";
 import { OnboardingProgressSchema } from "../../generated/output-schemas/onboarding.js";
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const STATUS_SCHEMA_VERSION = 1;
 const CONNECTION_METHOD = "cli" as const;
 const RUN_CODE_PATTERN = /^[A-Za-z0-9]{10}$/;
@@ -38,10 +34,6 @@ const CREATE_PROJECT_STAGE: OnboardingStage = "create_project";
 const RECEIVE_VERIFICATION_ERROR_STAGE: OnboardingStage =
   "receive_verification_error";
 const CONNECT_AGENT_STAGE: OnboardingStage = "connect_agent";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 type ProgressFlags = {
   readonly stage: OnboardingStage;
@@ -134,10 +126,6 @@ export function formatProgress({
 }: OnboardingProgress): string {
   return `Onboarding progress updated. Continue updates: ${continueUpdates ? "yes" : "no"}.`;
 }
-
-// ---------------------------------------------------------------------------
-// Command
-// ---------------------------------------------------------------------------
 
 export const progressCommand = buildCommand({
   docs: {
