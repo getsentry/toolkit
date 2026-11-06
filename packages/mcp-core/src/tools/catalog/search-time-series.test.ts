@@ -39,23 +39,12 @@ const baseParams = {
 
 function responseFor(axes = configuration.axes.map((axis) => axis.yAxis)) {
   return {
-    meta: {
-      ingestion: {
-        status: "healthy",
-        delaySeconds: 4,
-        completeThrough: 1757556000000,
-        internalDebug: "must not leak",
-      },
-      internalDebug: "must not leak",
-    },
     timeSeries: axes.map((yAxis, index) => ({
       yAxis,
       meta: {
         interval: 3600000,
         valueType: "number",
         valueUnit: index === 0 ? null : "millisecond",
-        dataScanned: "full",
-        internalDebug: "must not leak",
       },
       values: [
         {
@@ -67,10 +56,6 @@ function responseFor(axes = configuration.axes.map((axis) => axis.yAxis)) {
           comparisonValue: null,
           comparisonFilled: false,
           comparisonSmoothed: false,
-          sampleCount: 0,
-          sampleRate: null,
-          confidence: null,
-          internalDebug: "must not leak",
         },
         {
           timestamp: 1757552400000,
@@ -82,14 +67,9 @@ function responseFor(axes = configuration.axes.map((axis) => axis.yAxis)) {
           comparisonValue: 0,
           comparisonFilled: false,
           comparisonSmoothed: true,
-          sampleCount: 10,
-          sampleRate: 0.5,
-          confidence: "high",
         },
       ],
-      internalDebug: "must not leak",
     })),
-    internalQuery: "must not leak",
   };
 }
 
@@ -382,20 +362,45 @@ describe("explicit time series", () => {
               axisIndex: 0,
               yAxis: axes[0]?.yAxis,
               transformations: ["fill(zero)", "smooth(sma,3)"],
+              valueUnit: null,
+              buckets: [
+                {
+                  value: null,
+                  comparisonValue: null,
+                  transformation: {
+                    filled: false,
+                    smoothed: false,
+                    comparisonFilled: false,
+                    comparisonSmoothed: false,
+                  },
+                },
+                { value: 4, comparisonValue: 0 },
+              ],
+              summary: { derivedMaximum: { value: 4 } },
             },
             {
               axisIndex: 1,
               yAxis: axes[1]?.yAxis,
               transformations: ["smooth(asap)", "fill(locf)"],
+              valueUnit: "millisecond",
+              buckets: [
+                { value: 0 },
+                {
+                  value: 5,
+                  incomplete: true,
+                  transformation: { filled: true, smoothed: true },
+                },
+              ],
+              summary: { derivedMaximum: { value: 0 } },
             },
           ],
         },
       });
       expect(agentCall).not.toHaveBeenCalled();
-      expect(JSON.stringify(result)).not.toContain("must not leak");
       const parsed = z
         .object({ structuredContent: z.object({ url: z.string() }) })
         .parse(result);
+      expect(JSON.stringify(result)).not.toContain('"total"');
       const url = new URL(parsed.structuredContent.url);
       expect(url.pathname).toBe(`/explore/${page}/`);
       expect(url.searchParams.get("interval")).toBe("1h");
@@ -413,138 +418,6 @@ describe("explicit time series", () => {
           transformations: axis.transformations,
         })),
       );
-      if (dataset === "spans") {
-        expect(result).toMatchInlineSnapshot(`
-          {
-            "structuredContent": {
-              "dataset": "spans",
-              "ingestion": {
-                "completeThrough": 1757556000000,
-                "delaySeconds": 4,
-                "status": "healthy",
-              },
-              "inputQuery": "span.op:db",
-              "query": "span.op:db",
-              "requestedInterval": "1h",
-              "series": [
-                {
-                  "axisIndex": 0,
-                  "buckets": [
-                    {
-                      "comparisonValue": null,
-                      "incomplete": false,
-                      "sampling": {
-                        "confidence": null,
-                        "sampleCount": 0,
-                        "sampleRate": null,
-                      },
-                      "timestamp": 1757548800000,
-                      "transformation": {
-                        "comparisonFilled": false,
-                        "comparisonSmoothed": false,
-                        "filled": false,
-                        "smoothed": false,
-                      },
-                      "value": null,
-                    },
-                    {
-                      "comparisonValue": 0,
-                      "incomplete": false,
-                      "sampling": {
-                        "confidence": "high",
-                        "sampleCount": 10,
-                        "sampleRate": 0.5,
-                      },
-                      "timestamp": 1757552400000,
-                      "transformation": {
-                        "comparisonFilled": false,
-                        "comparisonSmoothed": true,
-                        "filled": true,
-                        "smoothed": true,
-                      },
-                      "value": 4,
-                    },
-                  ],
-                  "dataScanned": "full",
-                  "intervalMs": 3600000,
-                  "summary": {
-                    "derivedMaximum": {
-                      "timestamp": 1757552400000,
-                      "value": 4,
-                    },
-                  },
-                  "transformations": [
-                    "fill(zero)",
-                    "smooth(sma,3)",
-                  ],
-                  "valueType": "number",
-                  "valueUnit": null,
-                  "yAxis": "count()",
-                },
-                {
-                  "axisIndex": 1,
-                  "buckets": [
-                    {
-                      "comparisonValue": null,
-                      "incomplete": false,
-                      "sampling": {
-                        "confidence": null,
-                        "sampleCount": 0,
-                        "sampleRate": null,
-                      },
-                      "timestamp": 1757548800000,
-                      "transformation": {
-                        "comparisonFilled": false,
-                        "comparisonSmoothed": false,
-                        "filled": false,
-                        "smoothed": false,
-                      },
-                      "value": 0,
-                    },
-                    {
-                      "comparisonValue": 0,
-                      "incomplete": true,
-                      "incompleteReason": "INGESTION_PENDING",
-                      "sampling": {
-                        "confidence": "high",
-                        "sampleCount": 10,
-                        "sampleRate": 0.5,
-                      },
-                      "timestamp": 1757552400000,
-                      "transformation": {
-                        "comparisonFilled": false,
-                        "comparisonSmoothed": true,
-                        "filled": true,
-                        "smoothed": true,
-                      },
-                      "value": 5,
-                    },
-                  ],
-                  "dataScanned": "full",
-                  "intervalMs": 3600000,
-                  "summary": {
-                    "derivedMaximum": {
-                      "timestamp": 1757548800000,
-                      "value": 0,
-                    },
-                  },
-                  "transformations": [
-                    "smooth(asap)",
-                    "fill(locf)",
-                  ],
-                  "valueType": "number",
-                  "valueUnit": "millisecond",
-                  "yAxis": "count()",
-                },
-              ],
-              "timeRange": {
-                "statsPeriod": "24h",
-              },
-              "url": "https://test-org.sentry.io/explore/traces/?query=span.op%3Adb&aggregateField=%7B%22yAxes%22%3A%5B%22count%28%29%22%5D%2C%22transformations%22%3A%5B%22fill%28zero%29%22%2C%22smooth%28sma%2C3%29%22%5D%7D&aggregateField=%7B%22yAxes%22%3A%5B%22count%28%29%22%5D%2C%22transformations%22%3A%5B%22smooth%28asap%29%22%2C%22fill%28locf%29%22%5D%7D&mode=aggregate&sort=-count%28%29&interval=1h&statsPeriod=24h&table=span",
-            },
-          }
-        `);
-      }
     },
   );
 

@@ -40,10 +40,7 @@ import {
 } from "./config";
 import { buildDroppedEventsNote } from "./dropped-events-note";
 import { getFieldRecoveryHints } from "./field-hints";
-import {
-  buildTimeSeriesResult,
-  validateTimeSeriesResponse,
-} from "./time-series-results";
+import { buildTimeSeriesResult } from "./time-series-results";
 import {
   formatErrorResults,
   formatLogResults,
@@ -1108,7 +1105,6 @@ async function executeSearchEvents(
           context.availableToolNames?.has("find_dropped_events") ?? false,
       }),
     ]);
-    validateTimeSeriesResponse(series, timeSeries);
     const needsStructuredSeries =
       explicitTimeSeries !== undefined ||
       hasTransformations ||
@@ -1165,7 +1161,6 @@ async function executeSearchEvents(
     const timeSeriesOutput = formatTimeSeriesResults({
       series,
       yAxis: timeSeries.axes[0]!.yAxis,
-      configuration: timeSeries,
       interval: timeSeries.interval ?? null,
       inputQuery: params.query || timeSeriesQuery,
       includeExplanation: params.includeExplanation,

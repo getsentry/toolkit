@@ -7,9 +7,7 @@ import type {
 import { formatToolCallInstruction } from "../../../internal/tool-helpers/tool-call-formatting";
 import { formatUserGeoSummary } from "../../../internal/user-formatting";
 import { logInfo } from "../../../telem/logging";
-import type { TimeSeriesConfig } from "../../../utils/time-series";
 import { formatDuration } from "../profile/analyzer";
-import { isAdditiveTimeSeriesAggregate } from "./time-series-results";
 import {
   type FlexibleEventData,
   formatEventValue,
@@ -928,6 +926,16 @@ export function formatTraceMetricsResults(
   return output;
 }
 
+/**
+ * Whether summing per-bucket values yields a meaningful series total.
+ * Only `count()` and `sum(...)` are additive across time buckets;
+ * `count_unique`, `avg`, percentiles, min/max, rates, etc. are not.
+ */
+function isAdditiveAggregate(yAxis: string): boolean {
+  const fn = yAxis.trim().toLowerCase();
+  return fn === "count()" || fn.startsWith("sum(");
+}
+
 function formatBucketTime(timestampMs: number): string {
   return new Date(timestampMs).toISOString().slice(0, 16).replace("T", " ");
 }
@@ -971,7 +979,6 @@ export function formatTimeSeriesResults(params: {
   explanation?: string;
   timeRange?: SearchTimeRange;
   url?: string;
-  configuration?: TimeSeriesConfig;
 }): string {
   const {
     series,
@@ -982,7 +989,6 @@ export function formatTimeSeriesResults(params: {
     explanation,
     timeRange,
     url,
-    configuration,
   } = params;
 
   // String aggregates can return identifiers, even when their values look numeric.
@@ -992,55 +998,36 @@ export function formatTimeSeriesResults(params: {
     // is permanently partial. Every other reason means data is still arriving.
     const outsideRetention =
       bucket.incomplete && bucket.incompleteReason === "OUTSIDE_RETENTION";
-    const raw = bucket.value;
+    const raw = bucket.value ?? 0;
     // Date-typed aggregates such as max(timestamp) return ISO datetime
     // strings. Number() rejects those whole (parseFloat would keep the year),
     // so order them by parsed time and display the raw string.
     const numeric = typeof raw === "number" ? raw : Number(raw);
-    const isNumeric = raw != null && Number.isFinite(numeric);
+    const isNumeric = !Number.isNaN(numeric);
     return {
-      bucket,
       time: formatBucketTime(bucket.timestamp),
-      value:
-        raw == null ? null : isNumeric ? numeric : Date.parse(String(raw)) || 0,
+      value: isNumeric ? numeric : Date.parse(String(raw)) || 0,
       display:
-        raw == null
-          ? "Gap"
-          : !isStringSeries && isNumeric
-            ? numeric.toLocaleString()
-            : String(raw),
+        !isStringSeries && isNumeric ? numeric.toLocaleString() : String(raw),
       filling: bucket.incomplete && !outsideRetention,
       outsideRetention,
     };
   });
   const hasFilling = points.some((p) => p.filling);
   const ingestion = series.meta?.ingestion;
-  const transformed =
-    (configuration?.axes[0]?.transformations?.length ?? 0) > 0 ||
-    points.some(
-      (point) =>
-        point.bucket.filled !== undefined ||
-        point.bucket.smoothed !== undefined,
-    );
 
   // Total is only meaningful for additive aggregates; summing count_unique /
   // avg / percentile buckets would be wrong, so omit it for those.
   const total =
-    !transformed &&
-    !isStringSeries &&
-    !points.some((point) => point.value === null) &&
-    isAdditiveTimeSeriesAggregate(yAxis)
-      ? points.reduce((sum, p) => sum + (p.value ?? 0), 0)
+    !isStringSeries && isAdditiveAggregate(yAxis)
+      ? points.reduce((sum, p) => sum + p.value, 0)
       : null;
   // Buckets still filling can't be the peak yet. Partial retention buckets are
   // final, so if one still tops the rest it is a real peak.
   const peak = points
-    .filter((p) => !isStringSeries && !p.filling && p.value !== null)
+    .filter((p) => !isStringSeries && !p.filling)
     .reduce<(typeof points)[number] | undefined>(
-      (max, p) =>
-        max === undefined || (p.value ?? -Infinity) > (max.value ?? -Infinity)
-          ? p
-          : max,
+      (max, p) => (max === undefined || p.value > max.value ? p : max),
       undefined,
     );
 
@@ -1062,58 +1049,29 @@ export function formatTimeSeriesResults(params: {
     `- **Interval**: ${interval ? `\`${interval}\`` : "auto (chosen by Sentry for the range)"}`,
   );
   lines.push(`- **Time range**: ${formatExecutedTimeRange(timeRange)}`);
-  const unit = series.timeSeries[0]?.meta.valueUnit;
-  if (unit != null) {
-    lines.push(`- **Unit**: ${unit}`);
-  }
-  const transformations = configuration?.axes[0]?.transformations;
-  if (transformations?.length) {
-    lines.push(
-      `- **Transformations**: ${transformations.map(inlineCode).join(" then ")}`,
-    );
-  }
   if (total !== null) {
     lines.push(
       `- **Total**: ${total.toLocaleString()}${hasFilling ? " (so far)" : ""}`,
     );
   }
   if (peak) {
-    lines.push(
-      `- **${transformed ? "Derived maximum" : "Peak"}**: ${peak.display} at ${peak.time}`,
-    );
+    lines.push(`- **Peak**: ${peak.display} at ${peak.time}`);
   }
   if (ingestion) {
     lines.push(formatIngestionStatus(ingestion));
   }
 
   if (shown.length > 0) {
-    const extraColumns = [
-      ["comparisonValue", "Comparison"],
-      ["filled", "Filled"],
-      ["smoothed", "Smoothed"],
-      ["comparisonFilled", "Comparison filled"],
-      ["comparisonSmoothed", "Comparison smoothed"],
-      ["sampleCount", "Sample count"],
-      ["sampleRate", "Sample rate"],
-      ["confidence", "Sampling confidence"],
-    ] as const;
-    const columns = extraColumns.filter(([key]) =>
-      shown.some((point) => point.bucket[key] !== undefined),
-    );
-    lines.push("", `## Buckets${truncatedNote}`, "");
     lines.push(
-      `| Time (UTC) | Value |${columns.map(([, label]) => ` ${label} |`).join("")}`,
+      "",
+      `## Buckets${truncatedNote}`,
+      "",
+      "| Time (UTC) | Value |",
+      "| --- | --- |",
     );
-    lines.push(`| --- | --- |${columns.map(() => " --- |").join("")}`);
     for (const p of shown) {
       const marker = p.filling ? " *" : p.outsideRetention ? " †" : "";
-      const extraValues = columns.map(([key]) => {
-        const value = p.bucket[key];
-        return ` ${value == null ? "Gap" : String(value)} |`;
-      });
-      lines.push(
-        `| ${p.time} | ${p.display}${marker} |${extraValues.join("")}`,
-      );
+      lines.push(`| ${p.time} | ${p.display}${marker} |`);
     }
     // Footnotes describe markers in the visible rows only; older retention
     // buckets may have been cut by MAX_ROWS.

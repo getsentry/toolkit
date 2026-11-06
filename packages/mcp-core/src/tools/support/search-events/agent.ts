@@ -59,23 +59,21 @@ export const searchEventsAgentOutputSchema = z
     timeSeries: z
       .union([
         TimeSeriesConfigSchema,
-        z
-          .object({
-            yAxis: z
-              .string()
-              .describe(
-                "The aggregate to plot over time, e.g. 'count()', 'count_unique(user)', 'sum(span.duration)'.",
-              ),
-            interval: z
-              .string()
-              .nullable()
-              .default(null)
-              .describe(
-                "Bucket size like '1h' or '1d'. Set ONLY when the user names a granularity (e.g. 'per hour' -> '1h'); otherwise null so Sentry picks a sensible bucket for the time range.",
-              ),
-            transformations: TransformationPipelineSchema.optional(),
-          })
-          .strict(),
+        z.object({
+          yAxis: z
+            .string()
+            .describe(
+              "The aggregate to plot over time, e.g. 'count()', 'count_unique(user)', 'sum(span.duration)'.",
+            ),
+          interval: z
+            .string()
+            .nullable()
+            .default(null)
+            .describe(
+              "Bucket size like '1h' or '1d'. Set ONLY when the user names a granularity (e.g. 'per hour' -> '1h'); otherwise null so Sentry picks a sensible bucket for the time range.",
+            ),
+          transformations: TransformationPipelineSchema.optional(),
+        }),
       ])
       .nullable()
       .default(null)
