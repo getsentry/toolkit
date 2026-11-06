@@ -21,23 +21,25 @@ import type { Skill } from "../../../skills";
 import type { ServerContext } from "../../../types";
 import type { StructuredToolOutput } from "../../types";
 import {
+  TimeSeriesConfigSchema,
+  getTimeSeriesExploreInterval,
+  type TimeSeriesConfig,
+} from "../../../utils/time-series";
+import {
   isMetricsDataset,
   normalizeEventsDataset,
   PUBLIC_EVENTS_DATASETS,
   type PublicEventsDataset,
 } from "../../../utils/events-datasets";
 import { extractConversationIdFromSearchQuery } from "../../../utils/url-utils";
-import {
-  fetchEnvironmentNames,
-  searchEventsAgent,
-  type searchEventsAgentOutputSchema,
-} from "./agent";
+import { fetchEnvironmentNames, searchEventsAgent } from "./agent";
 import {
   RECOMMENDED_FIELDS,
   TRACE_METRICS_SAMPLE_IDENTITY_FIELDS,
 } from "./config";
 import { buildDroppedEventsNote } from "./dropped-events-note";
 import { getFieldRecoveryHints } from "./field-hints";
+import { buildTimeSeriesResult } from "./time-series-results";
 import {
   formatErrorResults,
   formatLogResults,
@@ -57,6 +59,7 @@ import {
 import {
   buildStructuredEventsResult,
   buildStructuredTimeSeriesResult,
+  buildStructuredOrderedTimeSeriesResult,
   type DatasetSearchStructuredContent,
   type SearchEventsStructuredContent,
   type StructuredSearchDataset,
@@ -83,7 +86,9 @@ export const SEARCH_EVENTS_DATASETS = [
 ] as const;
 const DEFAULT_EVENTS_SORT = "-timestamp";
 
-type SearchEventsAgentResult = z.output<typeof searchEventsAgentOutputSchema>;
+type SearchEventsAgentResult = Awaited<
+  ReturnType<typeof searchEventsAgent>
+>["result"];
 
 function defaultSortForDataset(dataset: PublicEventsDataset | "replays") {
   return dataset === "replays" ? DEFAULT_REPLAY_SORT : DEFAULT_EVENTS_SORT;
@@ -417,6 +422,7 @@ export interface SearchEventsParams {
   regionUrl: string | null;
   limit: number;
   includeExplanation: boolean;
+  timeSeries?: TimeSeriesConfig;
 }
 
 export interface MarkdownSearchEventsOptions {
@@ -544,6 +550,15 @@ export function buildDatasetSearchInputSchema() {
     regionUrl: ParamRegionUrl.nullable().default(null),
     limit: searchLimitParam,
     includeExplanation: includeExplanationParam,
+  };
+}
+
+export function buildTimeSeriesSearchInputSchema() {
+  return {
+    ...buildDatasetSearchInputSchema(),
+    timeSeries: TimeSeriesConfigSchema.optional().describe(
+      "Explicit time series. Supply ordered axes with aggregate yAxis and optional ordered transformations, such as fill(zero), fill(locf), fill(linear), smooth(sma,3), smooth(ema,5,0.3), or smooth(asap). Works without an AI provider with Sentry query syntax or an empty query. Omit fields and sort. Grouping is unsupported. Explicit axes, transformations, interval and period override translation.",
+    ),
   };
 }
 
@@ -731,6 +746,26 @@ async function executeSearchEvents(
   setTargetTagsAndAttributes(params);
 
   const inputDataset = params.dataset ?? "errors";
+  let explicitTimeSeries = params.timeSeries;
+  if (explicitTimeSeries) {
+    const validation = TimeSeriesConfigSchema.safeParse(explicitTimeSeries);
+    if (!validation.success) {
+      throw new UserInputError(
+        `Invalid timeSeries configuration. ${validation.error.issues.map((issue) => issue.message).join(" ")}`,
+      );
+    }
+    explicitTimeSeries = validation.data;
+    if (!isTraceItemDataset(inputDataset)) {
+      throw new UserInputError(
+        "Explicit time series are supported by search_traces, search_logs, and search_metrics. Choose one of those tools.",
+      );
+    }
+    if (hasFields(params.fields) || params.sort?.trim()) {
+      throw new UserInputError(
+        "Use timeSeries.axes for aggregates and omit fields and sort. Grouped time series and table output settings are not supported.",
+      );
+    }
+  }
   const hasStructuredQuery = looksLikeSentrySearchSyntax(
     params.query,
     inputDataset,
@@ -756,7 +791,7 @@ async function executeSearchEvents(
   let timeParams: { statsPeriod?: string; start?: string; end?: string };
   let explanation: string | undefined;
   let environment: string | string[] | null | undefined = params.environment;
-  let timeSeries: { yAxis: string; interval: string | null } | null = null;
+  let timeSeries: TimeSeriesConfig | null = null;
 
   const explicitSort = params.sort?.trim() || undefined;
   const hasExplicitDataset = params.dataset !== undefined;
@@ -766,13 +801,16 @@ async function executeSearchEvents(
   const hasExplicitTraceItemDataset =
     hasExplicitDataset && isTraceItemDataset(inputDataset);
   const shouldTrustStructuredTraceSearch =
-    hasStructuredQuery && hasExplicitTraceItemDataset;
+    (hasStructuredQuery || (explicitTimeSeries && !params.query?.trim())) &&
+    hasExplicitTraceItemDataset;
   const environmentFilter = formatEnvironmentFilter(params.environment);
   const explicitStructuredTraceQuery = shouldTrustStructuredTraceSearch
     ? appendSearchFilter(params.query ?? "", environmentFilter)
     : (params.query ?? "");
   const canRunWithoutAgent =
-    shouldTrustStructuredTraceSearch && hasExplicitFields && hasExplicitSort;
+    shouldTrustStructuredTraceSearch &&
+    (explicitTimeSeries !== undefined ||
+      (hasExplicitFields && hasExplicitSort));
 
   // Fetch the org's real environments once: used to ground the agent prompt
   // (below) and to flag any requested environment that doesn't exist. Skipped
@@ -786,6 +824,7 @@ async function executeSearchEvents(
   const seerTranslation =
     params.query &&
     isSeerSearchDataset(params.dataset) &&
+    !canRunWithoutAgent &&
     !hasStructuredQuery &&
     !hasExplicitFields &&
     !hasExplicitSort
@@ -795,6 +834,7 @@ async function executeSearchEvents(
           projectId,
           dataset: params.dataset,
           query: params.query,
+          timeSeriesOverride: explicitTimeSeries,
         })
       : null;
   seerOutcome.translation = seerTranslation;
@@ -886,6 +926,7 @@ async function executeSearchEvents(
     // Time series requests use yAxis/interval, so sort is not required.
     if (
       !timeSeries &&
+      !explicitTimeSeries &&
       !parsed.sort?.trim() &&
       !(shouldTrustExplicitSearchParams && hasExplicitSort)
     ) {
@@ -896,7 +937,7 @@ async function executeSearchEvents(
 
     // Dataset-specific tools never switch datasets, even if the agent asks.
     dataset =
-      lockDataset || shouldTrustStructuredTraceSearch
+      lockDataset || shouldTrustStructuredTraceSearch || explicitTimeSeries
         ? inputDataset
         : parsed.dataset;
     sentryQuery = shouldTrustStructuredTraceSearch
@@ -947,6 +988,27 @@ async function executeSearchEvents(
       dataset === "replays"
         ? []
         : (params.fields ?? defaultFieldsForDataset(dataset));
+  }
+
+  if (explicitTimeSeries) {
+    timeSeries = explicitTimeSeries;
+    if (hasExplicitPeriod) {
+      timeParams = { statsPeriod: params.period };
+    }
+    const { columns } = getColumnsAndAggregates(fields);
+    if (isAggregateQuery(fields) && columns.length > 0) {
+      throw new UserInputError(
+        "Grouped time series are not supported. Remove grouping from the query and retry with timeSeries.axes.",
+      );
+    }
+    if (
+      seerTranslation &&
+      Object.values(seerTranslation.crossEventQueries).some(Boolean)
+    ) {
+      throw new UserInputError(
+        "Explicit time series do not support cross-event filters. Remove filters on other events in the trace and retry.",
+      );
+    }
   }
 
   // Flag any requested environment that doesn't exist (checking both the
@@ -1057,6 +1119,18 @@ async function executeSearchEvents(
   }
 
   if (timeSeries) {
+    const hasTransformations = timeSeries.axes.some(
+      (axis) => (axis.transformations?.length ?? 0) > 0,
+    );
+    if (hasTransformations && !isTraceItemDataset(dataset)) {
+      throw new UserInputError(
+        "Transformations are supported for traces, logs, and metrics only. Choose search_traces, search_logs, or search_metrics.",
+      );
+    }
+    // Errors and profiles retain the legacy single-axis response contract.
+    if (!isTraceItemDataset(dataset)) {
+      timeSeries = { ...timeSeries, axes: [timeSeries.axes[0]!] };
+    }
     const timeSeriesQuery = applyEnvironmentToEventsQuery(
       dataset,
       sentryQuery,
@@ -1073,8 +1147,7 @@ async function executeSearchEvents(
       apiService.getEventsTimeSeries({
         organizationSlug,
         query: timeSeriesQuery,
-        yAxis: timeSeries.yAxis,
-        interval: timeSeries.interval ?? undefined,
+        timeSeries,
         projectId,
         dataset,
         ...timeParams,
@@ -1084,12 +1157,65 @@ async function executeSearchEvents(
         organizationSlug,
         projectId,
         dataset: dataset as PublicEventsDataset,
-        interval: timeSeries.interval,
+        interval: timeSeries.interval ?? null,
         timeParams,
         toolAvailable:
           context.availableToolNames?.has("find_dropped_events") ?? false,
       }),
     ]);
+    const needsStructuredSeries =
+      explicitTimeSeries !== undefined ||
+      hasTransformations ||
+      timeSeries.axes.length > 1;
+    const exploreConfiguration =
+      isTraceItemDataset(dataset) && needsStructuredSeries
+        ? {
+            ...timeSeries,
+            interval: getTimeSeriesExploreInterval(
+              timeSeries,
+              series.timeSeries[0]?.meta.interval,
+              timeParams,
+            ),
+          }
+        : undefined;
+    const statsUrl = apiService.getEventsExplorerUrl(
+      organizationSlug,
+      timeSeriesQuery,
+      projectId,
+      dataset,
+      timeSeries.axes.map((axis) => axis.yAxis),
+      `-${timeSeries.axes[0]?.yAxis}`,
+      timeSeries.axes.map((axis) => axis.yAxis),
+      [],
+      timeParams.statsPeriod,
+      timeParams.start,
+      timeParams.end,
+      undefined,
+      exploreConfiguration,
+    );
+    const resultParams = {
+      dataset,
+      series,
+      configuration: timeSeries,
+      yAxis: timeSeries.axes[0]!.yAxis,
+      interval: timeSeries.interval ?? null,
+      inputQuery: params.query || timeSeriesQuery,
+      includeExplanation: params.includeExplanation,
+      explanation: params.includeExplanation ? explanation : undefined,
+      query: timeSeriesQuery,
+      timeRange: timeParams,
+      url: statsUrl,
+      notes: droppedEventsNote
+        ? [...leadingNotes, droppedEventsNote]
+        : leadingNotes,
+    };
+    const timeSeriesOutput = needsStructuredSeries
+      ? structured
+        ? buildStructuredOrderedTimeSeriesResult(resultParams)
+        : JSON.stringify(buildTimeSeriesResult(resultParams), null, 2)
+      : structured
+        ? buildStructuredTimeSeriesResult(resultParams)
+        : formatTimeSeriesResults(resultParams);
     // A series always has buckets, so count the ones with data.
     trackSeerOutcome(
       seerOutcome,
@@ -1098,51 +1224,13 @@ async function executeSearchEvents(
         .flatMap((s) => s.values)
         .filter((point) => point.value != null && point.value !== 0).length,
     );
-    const statsUrl = apiService.getEventsExplorerUrl(
-      organizationSlug,
-      timeSeriesQuery,
-      projectId,
-      dataset,
-      [timeSeries.yAxis],
-      `-${timeSeries.yAxis}`,
-      [timeSeries.yAxis],
-      [],
-      timeParams.statsPeriod,
-      timeParams.start,
-      timeParams.end,
-    );
-    if (structured) {
-      return buildStructuredTimeSeriesResult({
-        dataset,
-        series,
-        yAxis: timeSeries.yAxis,
-        interval: timeSeries.interval,
-        inputQuery: params.query || timeSeriesQuery,
-        includeExplanation: params.includeExplanation,
-        explanation,
-        query: timeSeriesQuery,
-        timeRange: timeParams,
-        url: statsUrl,
-        notes: droppedEventsNote
-          ? [...leadingNotes, droppedEventsNote]
-          : leadingNotes,
-      });
-    }
-    const timeSeriesOutput = formatTimeSeriesResults({
-      series,
-      yAxis: timeSeries.yAxis,
-      interval: timeSeries.interval,
-      inputQuery: params.query || timeSeriesQuery,
-      includeExplanation: params.includeExplanation,
-      explanation,
-      timeRange: timeParams,
-      url: statsUrl,
-    });
-    return withLeadingNote(
-      droppedEventsNote
-        ? `${timeSeriesOutput}\n\n${droppedEventsNote}`
-        : timeSeriesOutput,
-    );
+    return typeof timeSeriesOutput === "string" && !needsStructuredSeries
+      ? withLeadingNote(
+          droppedEventsNote
+            ? `${timeSeriesOutput}\n\n${droppedEventsNote}`
+            : timeSeriesOutput,
+        )
+      : timeSeriesOutput;
   }
 
   // Sentry rejects the request if the sort column isn't in the selected

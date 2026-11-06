@@ -1,7 +1,7 @@
 import { logger, metrics } from "@sentry/core";
 import { isAggregateFieldOrEquation } from "@sentry/toolkit-core/events-fields";
 import { getSortField } from "@sentry/toolkit-core/events-sort";
-import type { z } from "zod";
+import { ZodError, type z } from "zod";
 import type { CrossEventQueries, SentryApiService } from "../../../api-client";
 import {
   ApiAuthenticationError,
@@ -9,12 +9,17 @@ import {
   type SearchAgentQuerySchema,
 } from "../../../api-client/index";
 import { logWarn } from "../../../telem/logging";
+import { UserInputError } from "../../../errors";
 import {
   type EventsApiDataset,
   normalizeEventsDataset,
   type PublicEventsDataset,
 } from "../../../utils/events-datasets";
 import type { ExploreMode } from "../../../utils/url-utils";
+import {
+  TimeSeriesConfigSchema,
+  type TimeSeriesConfig,
+} from "../../../utils/time-series";
 import { RECOMMENDED_FIELDS } from "./config";
 
 export const SEER_SEARCH_AGENT_POLLING_INTERVAL = 1000; // 1 second
@@ -47,7 +52,7 @@ export interface SeerSearchTranslation {
   fields: string[];
   sort: string;
   timeParams: { statsPeriod?: string; start?: string; end?: string };
-  timeSeries: { yAxis: string; interval: string } | null;
+  timeSeries: TimeSeriesConfig | null;
   crossEventQueries: CrossEventQueries;
   // Other projects Seer suggested searching beyond the requested one.
   suggestedProjectIds: number[];
@@ -150,6 +155,7 @@ function toSearchTranslation(
   dataset: SeerSearchDataset,
   suggestedProjectIds: number[],
   run: { runId: string; organizationFeatures: string[] },
+  timeSeriesOverride?: TimeSeriesConfig,
 ): SeerSearchTranslation {
   const aggregates = result.visualization.flatMap((chart) => chart.y_axes);
   const fields =
@@ -183,16 +189,64 @@ function toSearchTranslation(
   const chartWithInterval = result.visualization.find(
     (chart) => chart.interval && chart.y_axes[0],
   );
+  const hasTransformations = timeSeriesOverride
+    ? timeSeriesOverride.axes.some(
+        (axis) => (axis.transformations?.length ?? 0) > 0,
+      )
+    : result.visualization.some(
+        (chart) => (chart.transformations?.length ?? 0) > 0,
+      );
+  if (
+    (timeSeriesOverride || hasTransformations) &&
+    result.group_by.length > 0
+  ) {
+    throw new UserInputError(
+      "Grouped transformed time series are not supported. Remove grouping and retry with timeSeries.axes.",
+    );
+  }
+  if (
+    !timeSeriesOverride &&
+    hasTransformations &&
+    (result.mode !== "aggregates" || !chartWithInterval)
+  ) {
+    throw new UserInputError(
+      "The translated transformations need a supported time-series request. Supply explicit timeSeries.axes and interval instead.",
+    );
+  }
+  if (
+    dataset !== "errors" &&
+    !timeSeriesOverride &&
+    chartWithInterval &&
+    result.visualization.some(
+      (chart) =>
+        chart.y_axes.length > 0 &&
+        chart.interval &&
+        chart.interval !== chartWithInterval.interval,
+    )
+  ) {
+    throw new UserInputError(
+      "Time-series charts with different intervals cannot be combined. Retry with one explicit timeSeries.interval.",
+    );
+  }
   const timeSeries =
-    result.mode === "aggregates" &&
+    timeSeriesOverride ??
+    (result.mode === "aggregates" &&
     result.group_by.length === 0 &&
     chartWithInterval?.interval &&
     chartWithInterval.y_axes[0]
-      ? {
-          yAxis: chartWithInterval.y_axes[0],
+      ? TimeSeriesConfigSchema.parse({
+          axes: (dataset === "errors" && !hasTransformations
+            ? [chartWithInterval]
+            : result.visualization
+          ).flatMap((chart) =>
+            chart.y_axes.map((yAxis) => ({
+              yAxis,
+              transformations: chart.transformations,
+            })),
+          ),
           interval: chartWithInterval.interval,
-        }
-      : null;
+        })
+      : null);
 
   let timeParams: SeerSearchTranslation["timeParams"];
   if (result.stats_period) {
@@ -220,6 +274,11 @@ function toSearchTranslation(
   let explanation = "Translated by Seer's search agent.";
   let warning: string | undefined;
   if (crossEventFilters.length > 0) {
+    if (timeSeriesOverride || hasTransformations) {
+      throw new UserInputError(
+        "Transformed time series do not support cross-event filters. Remove filters on other events in the trace and retry.",
+      );
+    }
     if (timeSeries) {
       // The time series endpoint doesn't support cross-event filters.
       warning = `**Warning:** Time series results are unfiltered by the requested cross-event filters (${crossEventFilters.join(", ")}). Counts and other values may include events outside the requested subset.`;
@@ -257,12 +316,14 @@ export async function translateWithSeer({
   projectId,
   dataset,
   query,
+  timeSeriesOverride,
 }: {
   apiService: SentryApiService;
   organizationSlug: string;
   projectId?: string;
   dataset: SeerSearchDataset;
   query: string;
+  timeSeriesOverride?: TimeSeriesConfig;
 }): Promise<SeerSearchTranslation | null> {
   try {
     const organizationFeatures = await getSeerSearchAgentFeatures(
@@ -300,10 +361,13 @@ export async function translateWithSeer({
               (id) => id !== Number(projectId),
             )
           : [];
-        return toSearchTranslation(result, dataset, suggestedProjectIds, {
-          runId: run.sentry_run_id,
-          organizationFeatures,
-        });
+        return toSearchTranslation(
+          result,
+          dataset,
+          suggestedProjectIds,
+          { runId: run.sentry_run_id, organizationFeatures },
+          timeSeriesOverride,
+        );
       }
       if (session?.status === "error") {
         return null;
@@ -319,8 +383,24 @@ export async function translateWithSeer({
     });
     return null;
   } catch (error) {
-    // An invalid token should surface to the user rather than fall back.
-    if (error instanceof ApiAuthenticationError) {
+    if (
+      !timeSeriesOverride &&
+      error instanceof ZodError &&
+      error.issues.some((issue) =>
+        issue.path.some((part) =>
+          ["axes", "interval", "transformations"].includes(String(part)),
+        ),
+      )
+    ) {
+      throw new UserInputError(
+        "Seer returned an unsupported time-series configuration. Retry with explicit timeSeries.axes, supported transformations, and a valid interval.",
+        { cause: error },
+      );
+    }
+    if (
+      error instanceof ApiAuthenticationError ||
+      error instanceof UserInputError
+    ) {
       throw error;
     }
     logWarn(error, { extra: { organizationSlug } });
