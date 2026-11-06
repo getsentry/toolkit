@@ -22,7 +22,6 @@ Start a local Sentry MCP server
 | `[<org/project>]` | &lt;org&gt;/ (an organization) or &lt;org&gt;/&lt;project&gt; to limit calls to |
 
 **Flags:**
-- `--access-token <value> - Deprecated: set SENTRY_AUTH_TOKEN instead`
 - `--org <value> - Limit every call to this organization`
 - `--project <value> - Limit calls to this project`
 - `--skills <value> - Skills to grant, comma-separated (default: active skills; seer is left out on self-hosted)`
