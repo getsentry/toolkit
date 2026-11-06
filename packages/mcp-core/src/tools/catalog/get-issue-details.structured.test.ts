@@ -438,56 +438,29 @@ describe("get_issue_details structuredContent for a realistic error", () => {
                 "frames": [
                   {
                     "absPath": "/usr/local/lib/python3.12/site-packages/django/core/handlers/base.py",
-                    "colNo": null,
                     "contextLine": "                response = wrapped_callback(request, *callback_args, **callback_kwargs)",
                     "filename": "django/core/handlers/base.py",
                     "function": "_get_response",
-                    "inApp": false,
                     "lineNo": 197,
                     "module": "django.core.handlers.base",
-                    "package": null,
-                    "postContext": null,
-                    "preContext": null,
-                    "vars": null,
                   },
                   {
                     "absPath": "/app/shop/views.py",
-                    "colNo": null,
                     "contextLine": "        order = OrderService(cart).place(payload['order_id'])",
                     "filename": "shop/views.py",
                     "function": "checkout",
                     "inApp": true,
                     "lineNo": 42,
                     "module": "shop.views",
-                    "package": null,
-                    "postContext": [
-                      "    return JsonResponse({'id': order.pk})",
-                      "",
-                      "",
-                    ],
-                    "preContext": [
-                      "    cart = Cart.objects.get(user=request.user)",
-                      "    payload = json.loads(request.body)",
-                      "    with transaction.atomic():",
-                    ],
-                    "vars": {
-                      "cart": "<Cart: 1182>",
-                      "payload": {
-                        "order_id": "ord_8812",
-                      },
-                      "request": "<WSGIRequest: POST '/api/orders/'>",
-                    },
                   },
                   {
                     "absPath": "/app/shop/services.py",
-                    "colNo": null,
                     "contextLine": "        return Order.objects.create(external_id=order_id, total=total)",
                     "filename": "shop/services.py",
                     "function": "OrderService.place",
                     "inApp": true,
                     "lineNo": 88,
                     "module": "shop.services",
-                    "package": null,
                     "postContext": [
                       "",
                       "    def cancel(self, order):",
@@ -521,17 +494,11 @@ describe("get_issue_details structuredContent for a realistic error", () => {
                 "frames": [
                   {
                     "absPath": "/usr/local/lib/python3.12/site-packages/django/db/backends/utils.py",
-                    "colNo": null,
                     "contextLine": "                return self.cursor.execute(sql, params)",
                     "filename": "django/db/backends/utils.py",
                     "function": "_execute",
-                    "inApp": false,
                     "lineNo": 105,
                     "module": "django.db.backends.utils",
-                    "package": null,
-                    "postContext": null,
-                    "preContext": null,
-                    "vars": null,
                   },
                 ],
                 "framesOmitted": null,
@@ -601,6 +568,7 @@ describe("get_issue_details structuredContent for a realistic error", () => {
               "value": "id:1182",
             },
           ],
+          "threadCount": 0,
           "threads": null,
           "type": "error",
           "user": {
@@ -724,7 +692,7 @@ describe("get_issue_details structuredContent for a realistic error", () => {
     });
   });
 
-  it("puts the raised exception first and trims library frame context", async () => {
+  it("puts the raised exception first and keeps context on the most relevant frame", async () => {
     mockDjangoIssue();
 
     const result = await getIssueDetails.handler(params, experimentalContext);
@@ -744,11 +712,14 @@ describe("get_issue_details structuredContent for a realistic error", () => {
     expect(frames[0]).toMatchObject({
       contextLine:
         "                response = wrapped_callback(request, *callback_args, **callback_kwargs)",
-      preContext: null,
-      postContext: null,
-      vars: null,
     });
-    // an in-app frame keeps 3 lines either side and its locals
+    expect(frames[0]).not.toHaveProperty("preContext");
+    expect(frames[0]).not.toHaveProperty("vars");
+    // an earlier in-app frame keeps only its own line too
+    expect(frames[1]).toHaveProperty("inApp", true);
+    expect(frames[1]).not.toHaveProperty("preContext");
+    expect(frames[1]).not.toHaveProperty("vars");
+    // the most relevant (last in-app) frame keeps 3 lines either side and its locals
     expect(frames[2]).toMatchObject({
       contextLine:
         "        return Order.objects.create(external_id=order_id, total=total)",
@@ -764,6 +735,33 @@ describe("get_issue_details structuredContent for a realistic error", () => {
       ],
     });
     expect(frames[2].vars).toHaveProperty("order_id", "'ord_8812'");
+  });
+
+  it("lists the first 20 threads and counts them all", async () => {
+    const threads = Array.from({ length: 25 }, (_, index) => ({
+      id: index + 1,
+      name: `worker-${index + 1}`,
+      state: "WAITING",
+      crashed: false,
+      current: false,
+      heldLocks: null,
+      stacktrace: null,
+      rawStacktrace: null,
+    }));
+    mockDjangoIssue({
+      ...djangoErrorEvent,
+      entries: [
+        ...djangoErrorEvent.entries,
+        { type: "threads", data: { values: threads } },
+      ],
+    });
+
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(payload.event.threadCount).toBe(25);
+    expect(payload.event.threads).toHaveLength(20);
+    expect(payload.event.threads.at(-1).name).toBe("worker-20");
   });
 
   it("turns empty strings into null", async () => {
