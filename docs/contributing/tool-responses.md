@@ -389,6 +389,11 @@ result with a path.
 No matches return `results: []`. A search failure is a tool error, including
 an error reported inside a successful search response.
 
+`get_doc` returns a user input error for a missing page and points the agent to
+`search_docs`. docs.sentry.io serves missing pages with status 200 and an
+`X-Sentry-Docs-Not-Found` header, so the tool checks that header as well as
+status 404.
+
 ### Cron Monitor Environment Deletion
 
 `delete_monitor_environment` schedules irreversible deletion of one exact
