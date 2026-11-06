@@ -207,6 +207,28 @@ export function looksLikeSentrySearchSyntax(
   return false;
 }
 
+/**
+ * Note for an untranslated query that ran as literal text and matched nothing.
+ *
+ * Only multi-word queries without Sentry filters or quotes get the note, so
+ * single terms, quoted phrases, and structured searches stay unchanged.
+ */
+export function formatUntranslatedQueryNote(
+  query: string | undefined,
+  syntaxExample: string,
+  dataset?: SearchSyntaxDataset,
+): string | null {
+  const trimmedQuery = query?.trim() ?? "";
+  if (
+    !/\s/.test(trimmedQuery) ||
+    trimmedQuery.includes('"') ||
+    looksLikeSentrySearchSyntax(trimmedQuery, dataset)
+  ) {
+    return null;
+  }
+  return `\`query\` was not translated from natural language because no embedded agent or Seer translation was available, so Sentry searched for it as literal text and found nothing. Retry with Sentry search syntax, such as \`${syntaxExample}\`, and use \`period\` for the time range.`;
+}
+
 export function readRegexFilterValue(
   query: string,
   index: number,

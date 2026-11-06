@@ -15,6 +15,7 @@ import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId, validateSlugOrId } from "../../utils/slug-validation";
+import { formatUntranslatedQueryNote } from "../support/search-events/utils";
 import { searchIssuesAgent } from "../support/search-issues/agent";
 import {
   buildIssueResults,
@@ -155,6 +156,8 @@ export default defineTool({
     let query: string;
     let sort: IssueSort;
     let explanation: string | undefined;
+    // Set only when the query ran as-is; shown when it then matches nothing.
+    let untranslatedQueryNote: string | null = null;
 
     let projectId: string | undefined;
     if (params.projectSlugOrId) {
@@ -205,6 +208,10 @@ export default defineTool({
       // Direct mode: use Sentry query syntax params as-is
       query = params.query;
       sort = params.sort;
+      untranslatedQueryNote = formatUntranslatedQueryNote(
+        params.query,
+        "is:unresolved level:error",
+      );
     }
 
     const rewritten = rewriteIssueQuery(query);
@@ -233,10 +240,14 @@ export default defineTool({
       period: params.period,
       projectSlugOrId: params.projectSlugOrId ?? undefined,
       explanation: params.includeExplanation ? explanation : undefined,
-      notes:
-        rewritten.notes.length > 0
+      notes: [
+        ...(rewritten.notes.length > 0
           ? [`Query rewritten: ${rewritten.notes.join(" ")} Ran \`${query}\`.`]
-          : [],
+          : []),
+        ...(issues.length === 0 && untranslatedQueryNote
+          ? [untranslatedQueryNote]
+          : []),
+      ],
       regionUrl: params.regionUrl ?? undefined,
       host: context.sentryHost,
       protocol: context.sentryProtocol,

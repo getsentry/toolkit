@@ -545,7 +545,7 @@ describe("search_issues", () => {
       tool: searchIssues,
       params: {
         organizationSlug: " MyOrg ",
-        query: "all issues",
+        query: "is:unresolved",
         sort: "date",
         projectSlugOrId: " MyProject ",
         regionUrl: null,
@@ -741,6 +741,48 @@ describe("search_issues", () => {
     expect(result.issues).toEqual([]);
     expect(result.notes).toEqual([EMPTY_NOTE]);
   });
+
+  it.each([
+    [
+      "top unresolved errors today",
+      [
+        "`query` was not translated from natural language because no embedded agent or Seer translation was available, so Sentry searched for it as literal text and found nothing. Retry with Sentry search syntax, such as `is:unresolved level:error`, and use `period` for the time range.",
+        EMPTY_NOTE,
+      ],
+    ],
+    ["is:unresolved level:error", [EMPTY_NOTE]],
+    ["TypeError", [EMPTY_NOTE]],
+    ['"connection reset by peer"', [EMPTY_NOTE]],
+  ])(
+    "notes an untranslated natural-language query that finds nothing (no agent): %s",
+    async (query, notes) => {
+      process.env.OPENAI_API_KEY = "";
+      process.env.ANTHROPIC_API_KEY = "";
+      process.env.OPENROUTER_API_KEY = "";
+      mswServer.use(
+        http.get("https://sentry.io/api/0/organizations/*/issues/", () =>
+          HttpResponse.json([]),
+        ),
+      );
+
+      const result = await runSearch(
+        {
+          organizationSlug: "test-org",
+          query,
+          sort: "date",
+          projectSlugOrId: null,
+          regionUrl: null,
+          limit: 10,
+          period: "30d",
+          includeExplanation: false,
+        },
+        mockContext,
+      );
+
+      expect(mockGenerateText).not.toHaveBeenCalled();
+      expect(result.notes).toEqual(notes);
+    },
+  );
 
   it("should pass agent query directly to API", async () => {
     mockGenerateText.mockResolvedValue(
