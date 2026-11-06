@@ -435,8 +435,10 @@ function mapUser(event: Event): IssueEventPayload["user"] {
     id: nonEmptyString(user.id),
     email: nonEmptyString(user.email),
     username: nonEmptyString(user.username),
-    ipAddress: nonEmptyString(user.ip_address),
-    name: nonEmptyString(user.name),
+    // Sentry's user interface serializes `ip_address` and `name`; some
+    // payloads carry the `ip` / `display_name` aliases instead.
+    ipAddress: nonEmptyString(user.ip_address) ?? nonEmptyString(user.ip),
+    name: nonEmptyString(user.name) ?? nonEmptyString(user.display_name),
     geo:
       mappedGeo && Object.values(mappedGeo).some((value) => value !== null)
         ? mappedGeo
