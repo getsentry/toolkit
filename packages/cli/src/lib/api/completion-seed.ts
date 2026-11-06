@@ -7,9 +7,9 @@
  * `src/lib/sentry-client.ts` is offered to {@link seedCompletions},
  * which matches its path against {@link COMPLETION_SOURCES}: the
  * `@sentry/api` operations that return a completed entity (issues,
- * dashboards, environments, releases, teams, attribute keys, …), by their
- * URL templates and, where a parameter picks what the response holds (the
- * `dataset` of attribute keys), their query.
+ * dashboards, environments, releases, teams, attribute keys, metric
+ * names, …), by their URL templates and, where a parameter picks what the
+ * response holds (the `dataset` of attribute keys), their query.
  * Any command that lists or fetches them therefore seeds the cache, without
  * the API functions having to remember to.
  *
@@ -38,6 +38,7 @@ import type {
   ListOrganizationSentryAppInstallationsData,
   ListOrganizationTeamsData,
   ListOrganizationTraceItemAttributesData,
+  ListOrganizationTraceMetricsData,
   ListOrganizationWorkflowsData,
   ListProjectEnvironmentsData,
   ListProjectKeysData,
@@ -284,6 +285,20 @@ function attributeEntities(body: unknown): CompletionEntity[] {
   });
 }
 
+/**
+ * Names of trace metrics, the value `explore --metric` takes, described by
+ * their type and unit (`distribution, millisecond`).
+ */
+function metricEntities(body: unknown): CompletionEntity[] {
+  return items(body).flatMap((metric) => {
+    const value = stringField(metric, "name");
+    const label = [stringField(metric, "type"), stringField(metric, "unit")]
+      .filter((part) => part && part !== "none")
+      .join(", ");
+    return value ? [{ value, label: label || undefined }] : [];
+  });
+}
+
 /** Entity kind of the attribute keys of each trace item dataset. */
 export const ATTRIBUTE_KINDS = {
   spans: "span-attribute",
@@ -446,6 +461,11 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
     kind: "dsn",
     url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/keys/" satisfies ListProjectKeysData["url"],
     extract: dsnEntities,
+  },
+  {
+    kind: "metric",
+    url: "/api/0/organizations/{organization_id_or_slug}/trace-items/metrics/" satisfies ListOrganizationTraceMetricsData["url"],
+    extract: metricEntities,
   },
   ...Object.entries(ATTRIBUTE_KINDS).map(([dataset, kind]) => ({
     kind,

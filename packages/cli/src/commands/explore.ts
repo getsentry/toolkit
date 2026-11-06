@@ -16,10 +16,13 @@ import type { SentryContext } from "../context.js";
 import {
   isReplaySortValue,
   listReplays,
+  listTraceMetrics,
   REPLAY_SORT_FIELDS,
   queryEvents,
   queryEventsTimeSeries,
   queryMetricsMeta,
+  type TraceMetric,
+  type TraceMetricSort,
 } from "../lib/api-client.js";
 import { validateLimit } from "../lib/arg-parsing.js";
 import {
@@ -28,6 +31,7 @@ import {
   type DatasetCompletion,
   fieldOrAggregateParser,
   parseEnvironmentList,
+  parseMetricName,
   parseText,
   textParser,
 } from "../lib/completion-target.js";
@@ -102,6 +106,34 @@ const DEFAULT_FIELDS = ["title", "count()"];
 const DEFAULT_TRANSACTION_FIELDS = ["transaction", "count()"];
 const LEGACY_TRANSACTION_DATASETS = new Set(["transaction", "transactions"]);
 const IS_TRANSACTION_FILTER = "is_transaction:true";
+
+/**
+ * Columns of metrics discovery (`--dataset metrics` without `-m` or `-F`):
+ * the fields of each row `trace-items/metrics/` returns.
+ */
+const METRICS_LIST_FIELDS = ["name", "type", "unit", "count", "lastSeen"];
+
+/** `--sort` values metrics discovery accepts (`trace-items/metrics/` sorts). */
+const METRICS_LIST_SORTS = METRICS_LIST_FIELDS.flatMap((field) => [
+  field,
+  `-${field}`,
+]) as TraceMetricSort[];
+
+/** Table types of the metrics discovery columns, for alignment. */
+const METRICS_LIST_META: NonNullable<ExploreData["meta"]> = {
+  fields: {
+    name: "string",
+    type: "string",
+    unit: "string",
+    count: "integer",
+    lastSeen: "date",
+  },
+};
+
+/** Points users at metrics discovery from metrics errors. */
+const METRICS_LIST_TIP =
+  "List available metrics with their type and unit:\n" +
+  "  sentry explore my-org/ --dataset metrics";
 
 /** Default dataset */
 const DEFAULT_DATASET = "errors";
@@ -184,6 +216,8 @@ type ExploreData = {
   project?: string;
   /** The fields the user requested, in their original order — drives column order */
   requestedFields: string[];
+  /** True when listing available metrics instead of querying one */
+  metricsList?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -274,8 +308,11 @@ function formatExploreHuman(data: ExploreData | ExploreTimeSeriesData): string {
   }
   if (data.data.length === 0) {
     // Empty page mid-pagination (more or prev pages exist) vs. truly no results.
-    return data.hasMore || data.hasPrev
-      ? "No results on this page."
+    if (data.hasMore || data.hasPrev) {
+      return "No results on this page.";
+    }
+    return data.metricsList
+      ? "No metrics found in this period. Try a wider --period."
       : "No results matched the query.";
   }
 
@@ -287,7 +324,9 @@ function formatExploreHuman(data: ExploreData | ExploreTimeSeriesData): string {
   );
 
   const scope = data.project ? `${data.org}/${data.project}` : data.org;
-  const header = `Querying ${displayDataset} in ${scope}:\n\n`;
+  const header = data.metricsList
+    ? `Available metrics in ${scope}:\n\n`
+    : `Querying ${displayDataset} in ${scope}:\n\n`;
   return header + formatTable(data.data, columns);
 }
 
@@ -438,7 +477,8 @@ function validateMetricsFields(fieldList: string[]): void {
       '  - value: literal string "value"\n' +
       "  - metric_name: the metric name emitted by the SDK (e.g., llm.token_usage)\n" +
       "  - metric_type: distribution, gauge, counter, or set\n" +
-      "  - unit: none, byte, second, millisecond, etc.",
+      "  - unit: none, byte, second, millisecond, etc.\n\n" +
+      METRICS_LIST_TIP,
     "field",
   );
 }
@@ -569,9 +609,13 @@ function resolveDatasetConfig(params: {
   project: string | undefined;
   projectId: number | undefined;
   environment: string[] | undefined;
+  metricsList: boolean;
 }): DatasetConfig {
   const { dataset, fieldList, flags, org, project, projectId, environment } =
     params;
+  if (params.metricsList) {
+    return resolveMetricsListConfig(params);
+  }
   if (dataset === "replays") {
     const userQuery = sanitizeQuery(flags.query);
     const unsupportedField = fieldList.find(
@@ -660,6 +704,65 @@ function resolveDatasetConfig(params: {
   };
 }
 
+/** A metric as a discovery table row, with `lastSeen` as an ISO date. */
+function toMetricsListRow(metric: TraceMetric): Record<string, unknown> {
+  return {
+    name: metric.name,
+    type: metric.type,
+    unit: metric.unit,
+    count: metric.count,
+    lastSeen:
+      metric.lastSeen === null
+        ? null
+        : new Date(metric.lastSeen * 1000).toISOString(),
+  };
+}
+
+/**
+ * Configure metrics discovery: list the org's metrics with
+ * `trace-items/metrics/`, which also seeds `--metric` completion.
+ */
+function resolveMetricsListConfig(params: {
+  flags: ExploreFlags;
+  org: string;
+  project: string | undefined;
+  projectId: number | undefined;
+  environment: string[] | undefined;
+}): DatasetConfig {
+  const { flags, org, project, projectId, environment } = params;
+  const sort = flags.sort as TraceMetricSort | undefined;
+  if (sort !== undefined && !METRICS_LIST_SORTS.includes(sort)) {
+    throw new ValidationError(
+      `Invalid metrics list sort "${flags.sort}". Sort by one of: ${METRICS_LIST_SORTS.join(", ")}.`,
+      "sort",
+    );
+  }
+  const query = sanitizeQuery(flags.query, { allowBoolean: true });
+  const scope = projectId ?? project;
+  return {
+    sort,
+    query,
+    fetch: async ({ cursor, limit, timeRange }) => {
+      const page = await listTraceMetrics(org, {
+        project: scope === undefined ? undefined : [scope],
+        environment,
+        query,
+        sort,
+        perPage: limit,
+        cursor,
+        ...timeRangeToApiParams(timeRange),
+      });
+      return {
+        data: {
+          data: page.data.map(toMetricsListRow),
+          meta: METRICS_LIST_META,
+        },
+        nextCursor: page.nextCursor,
+      };
+    },
+  };
+}
+
 /** Build the result hint string from pagination state and row count */
 function buildResultHint(rowCount: number, nav: string): string | undefined {
   if (rowCount === 0 && nav) {
@@ -670,6 +773,42 @@ function buildResultHint(rowCount: number, nav: string): string | undefined {
     return nav ? `${countText} ${nav}` : countText;
   }
   return;
+}
+
+/**
+ * Build the footer for metrics discovery: row count and pagination, plus
+ * how to query a listed metric.
+ *
+ * @param rows - Metric rows returned by the discovery query
+ * @param nav - Pagination hint from {@link paginationHint}
+ * @param baseTarget - `org/` or `org/project` target for the example command
+ * @param hintFlags - Active flags, carried over into the example command
+ */
+function buildMetricsListHint(
+  rows: Record<string, unknown>[],
+  nav: string,
+  baseTarget: string,
+  hintFlags: Parameters<typeof appendFlagHints>[1],
+): string | undefined {
+  if (rows.length === 0) {
+    return nav || undefined;
+  }
+  const firstName = rows[0]?.name;
+  const exampleMetric =
+    typeof firstName === "string" && firstName ? firstName : "<metric>";
+  // The list's --sort names its own columns, which a metric query rejects.
+  const queryHint = appendFlagHints(`sentry explore ${baseTarget}`, {
+    ...hintFlags,
+    sort: undefined,
+    metric: exampleMetric,
+  });
+  const countText = `Showing ${rows.length} metric${rows.length === 1 ? "" : "s"}.`;
+  return [
+    nav ? `${countText} ${nav}` : countText,
+    `Query a metric: ${queryHint}`,
+    "Change the aggregation with --agg (avg, p95, max, ...), group with -F <tag>, " +
+      'or pass the raw format: -F "sum(value,<metric.name>,<metric.type>,<metric.unit>)"',
+  ].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -692,7 +831,7 @@ export const exploreCommand = buildListCommand("explore", {
       "Datasets:\n" +
       "  errors   Error events (default)\n" +
       "  spans    Span data\n" +
-      "  metrics  Custom metrics (tracemetrics format)\n" +
+      "  metrics  Custom metrics (lists available metrics without -m/-F)\n" +
       "  logs     Log entries\n" +
       "  replays  Session replay search\n\n" +
       "Events queries support AND, OR, and parentheses. Project, environment, " +
@@ -755,6 +894,11 @@ export const exploreCommand = buildListCommand("explore", {
           "Latency over time with automatic bucket duration, as JSON",
         command:
           'sentry explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series --period 24h --json',
+      },
+      {
+        description: "List available metrics, most frequently recorded first",
+        command:
+          'sentry explore my-org/ --dataset metrics --sort "-count" --period 7d',
       },
       {
         description: "A metric over time using its discovered type and unit",
@@ -826,7 +970,7 @@ export const exploreCommand = buildListCommand("explore", {
       },
       metric: {
         kind: "parsed",
-        parse: parseText,
+        parse: parseMetricName,
         brief:
           "Metric name for --dataset metrics. Auto-resolves type/unit via API.",
         optional: true,
@@ -924,6 +1068,7 @@ export const exploreCommand = buildListCommand("explore", {
         ? parsePeriod(flags.period)
         : flags.period;
     const environment = parseReplayEnvironmentFilter(flags.environment);
+    let metricsList = false;
     // Events queries scope by numeric ID; replays take the slug directly.
     const projectId =
       project && (flags.metric || dataset !== "replays")
@@ -959,18 +1104,22 @@ export const exploreCommand = buildListCommand("explore", {
         : [];
       fieldList = [...groupByFields, aggField];
     } else if (dataset === "tracemetrics") {
-      if (!userSuppliedFields) {
+      if (userSuppliedFields) {
+        validateMetricsFields(fieldList);
+      } else if (flags["time-series"] !== undefined) {
         throw new ValidationError(
-          "The metrics dataset requires --metric or explicit --field flags.\n\n" +
+          "Metrics time series require --metric or explicit --field flags.\n\n" +
             "Auto mode (recommended):\n" +
-            "  sentry explore my-org/ -m llm.token_usage --dataset metrics\n" +
-            "  sentry explore my-org/ -m llm.token_usage --agg avg --dataset metrics\n\n" +
+            "  sentry explore my-org/ -m llm.token_usage --dataset metrics --time-series\n\n" +
             "Manual mode (tracemetrics format):\n" +
-            '  sentry explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics',
+            '  sentry explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics --time-series\n\n' +
+            METRICS_LIST_TIP,
           "field",
         );
+      } else {
+        metricsList = true;
+        fieldList = [...METRICS_LIST_FIELDS];
       }
-      validateMetricsFields(fieldList);
     }
 
     if (flags["time-series"] !== undefined) {
@@ -1029,6 +1178,7 @@ export const exploreCommand = buildListCommand("explore", {
       project,
       projectId,
       environment,
+      metricsList,
     });
 
     const contextKey = buildPaginationContextKey(
@@ -1082,7 +1232,9 @@ export const exploreCommand = buildListCommand("explore", {
       ),
     });
 
-    const hint = buildResultHint(response.data.length, nav);
+    const hint = metricsList
+      ? buildMetricsListHint(response.data, nav, baseTarget, hintFlags)
+      : buildResultHint(response.data.length, nav);
 
     yield new CommandOutput({
       data: response.data,
@@ -1094,6 +1246,7 @@ export const exploreCommand = buildListCommand("explore", {
       org,
       project,
       requestedFields: fieldList,
+      metricsList,
     });
     return { hint };
   },

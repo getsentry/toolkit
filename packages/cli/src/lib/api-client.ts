@@ -71,8 +71,11 @@ export type {
   EventsTimeSeriesResponse,
   ExploreTimeSeriesQueryOptions,
   MetricMeta,
+  TraceMetric,
+  TraceMetricSort,
 } from "./api/explore.js";
 export {
+  listTraceMetrics,
   queryEvents,
   queryEventsTimeSeries,
   queryMetricsMeta,

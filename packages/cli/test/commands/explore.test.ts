@@ -173,6 +173,7 @@ const MOCK_REPLAYS_RESPONSE = [
 let queryEventsSpy: ReturnType<typeof spyOn>;
 let queryEventsTimeSeriesSpy: ReturnType<typeof spyOn>;
 let queryMetricsMetaSpy: ReturnType<typeof spyOn>;
+let listTraceMetricsSpy: ReturnType<typeof spyOn>;
 let listReplaysSpy: ReturnType<typeof spyOn>;
 let resolveTargetSpy: ReturnType<typeof spyOn>;
 let resolveProjectIdSpy: ReturnType<typeof spyOn>;
@@ -197,6 +198,8 @@ beforeEach(async () => {
   queryEventsTimeSeriesSpy.mockResolvedValue(MOCK_TIME_SERIES_RESPONSE);
   queryMetricsMetaSpy = vi.spyOn(apiClient, "queryMetricsMeta");
   queryMetricsMetaSpy.mockResolvedValue(MOCK_METRICS_META);
+  listTraceMetricsSpy = vi.spyOn(apiClient, "listTraceMetrics");
+  listTraceMetricsSpy.mockResolvedValue({ data: [] });
   listReplaysSpy = vi.spyOn(apiClient, "listReplays");
   listReplaysSpy.mockResolvedValue({
     data: MOCK_REPLAYS_RESPONSE,
@@ -226,6 +229,7 @@ afterEach(() => {
   queryEventsSpy.mockRestore();
   queryEventsTimeSeriesSpy.mockRestore();
   queryMetricsMetaSpy.mockRestore();
+  listTraceMetricsSpy.mockRestore();
   listReplaysSpy.mockRestore();
   resolveTargetSpy.mockRestore();
   resolveProjectIdSpy.mockRestore();
@@ -989,8 +993,7 @@ describe("sentry explore", () => {
       {
         name: "metrics without an aggregate",
         args: ["--time-series", "auto", "--dataset", "metrics"],
-        error:
-          "The metrics dataset requires --metric or explicit --field flags",
+        error: "Metrics time series require --metric or explicit --field flags",
       },
       {
         name: "metric grouping fields",
@@ -1667,20 +1670,103 @@ describe("sentry explore", () => {
       );
     });
 
-    test("requires --metric or --field for metrics dataset", async () => {
+    test("lists available metrics when neither --metric nor --field is given", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      listTraceMetricsSpy.mockResolvedValue({
+        data: [
+          {
+            name: "llm.token_usage",
+            type: "distribution",
+            unit: null,
+            count: 42,
+            lastSeen: 1_735_689_600,
+          },
+        ],
+        nextCursor: "0:25:0",
+      });
+      const { context, getStdout } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "tracemetrics",
+          period: parsePeriod("7d"),
+          environment: ["production"],
+          sort: "-count",
+        },
+        "test-org/",
+      );
+
+      expect(listTraceMetricsSpy).toHaveBeenCalledWith("test-org", {
+        project: undefined,
+        environment: ["production"],
+        query: undefined,
+        sort: "-count",
+        perPage: 25,
+        cursor: undefined,
+        statsPeriod: "7d",
+      });
+      expect(queryEventsSpy).not.toHaveBeenCalled();
+      expect(queryMetricsMetaSpy).not.toHaveBeenCalled();
+
+      const output = getStdout();
+      expect(output).toContain("Available metrics in test-org");
+      expect(output).toContain("llm.token_usage");
+      expect(output).toContain("2025-01-01T00:00:00.000Z");
+      expect(output).toContain("Showing 1 metric.");
+      expect(output).toContain(
+        'Next: sentry explore test-org/ -c next --dataset metrics --sort "-count"',
+      );
+      expect(output).toContain(
+        'Query a metric: sentry explore test-org/ --dataset metrics -m "llm.token_usage" -e "production" --period 7d',
+      );
+      expect(output).toContain("--agg");
+    });
+
+    test("scopes the metrics list to the project by ID", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org", project: "cli" });
+      resolveProjectIdSpy.mockResolvedValue(42);
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        { ...DEFAULT_FLAGS, dataset: "tracemetrics" },
+        "test-org/cli",
+      );
+
+      expect(listTraceMetricsSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({ project: [42] }),
+      );
+    });
+
+    test("rejects sorts the metrics list does not support", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       const { context } = createContext();
 
       const promise = func.call(
         context,
-        { ...DEFAULT_FLAGS, dataset: "tracemetrics" },
+        { ...DEFAULT_FLAGS, dataset: "tracemetrics", sort: "-count()" },
         "test-org/",
       );
 
       await expect(promise).rejects.toThrow(ValidationError);
-      await expect(promise).rejects.toThrow(
-        /requires --metric or explicit --field/,
+      await expect(promise).rejects.toThrow(/Sort by one of: name, -name/);
+      expect(listTraceMetricsSpy).not.toHaveBeenCalled();
+    });
+
+    test("reports when no metrics exist in the period", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const { context, getStdout } = createContext();
+
+      await func.call(
+        context,
+        { ...DEFAULT_FLAGS, dataset: "tracemetrics" },
+        "test-org/",
       );
+
+      expect(getStdout()).toContain("No metrics found in this period.");
     });
 
     test("allows non-aggregate fields without tracemetrics format", async () => {

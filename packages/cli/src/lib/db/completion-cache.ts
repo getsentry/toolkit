@@ -59,7 +59,8 @@ export type CompletionEntityKind =
   | "tag-key"
   | "span-attribute"
   | "log-attribute"
-  | "metric-attribute";
+  | "metric-attribute"
+  | "metric";
 
 /** Most recently seen entries kept per kind and org. */
 export const MAX_ENTITIES_PER_ORG = 500;
