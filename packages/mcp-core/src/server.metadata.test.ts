@@ -40,8 +40,6 @@ const ALLOWED_TOOL_META: Record<string, readonly string[]> = {
 const OUTPUT_SCHEMA_EXEMPT: Record<string, string> = {
   get_trace_details:
     "markdown-only by policy (docs/contributing/tool-responses.md)",
-  get_event_stacktrace:
-    "markdown-only by policy (docs/contributing/tool-responses.md)",
   get_span_details: "delegates to the get_trace_details renderer",
   get_doc: "returns doc text",
   get_snapshot_image: "returns an image",
