@@ -389,14 +389,15 @@ export function installProcessHandlers(): (
 
 /**
  * Warn about disabled skills that remove no tools, because another granted
- * skill still grants each of them. stderr only: stdout carries the transport.
+ * skill still grants each of them. The logger writes to stderr, which keeps
+ * stdout free for the transport.
  */
 export function warnIneffectiveDisabledSkills(config: McpServerConfig): void {
   for (const skill of config.disabledSkills) {
     const retained = findRetainedSkillTools(tools, config.finalSkills, skill);
     if (retained) {
-      console.warn(
-        `Warning: disabling the "${skill}" skill removed no tools. ${retained.tools.join(", ")} stay enabled through ${retained.grantedBy.join(", ")}.`,
+      logger.warn(
+        `Disabling the "${skill}" skill removed no tools. ${retained.tools.join(", ")} stay enabled through ${retained.grantedBy.join(", ")}.`,
       );
     }
   }

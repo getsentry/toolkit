@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { logger } from "../../../src/lib/logger.js";
 import type { McpMergedArgs } from "../../../src/lib/mcp/args.js";
 import { finalizeMcpConfig } from "../../../src/lib/mcp/config.js";
 import { warnIneffectiveDisabledSkills } from "../../../src/lib/mcp/server.js";
 
 function warningsFor(input: Partial<McpMergedArgs>): string[] {
-  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
   const log = vi.spyOn(console, "log");
   warnIneffectiveDisabledSkills(
     finalizeMcpConfig({ agentProviderFromFlag: false, ...input }),
@@ -21,7 +22,7 @@ afterEach(() => {
 describe("warnIneffectiveDisabledSkills", () => {
   test("warns when disabling docs leaves its tools enabled through inspect", () => {
     expect(warningsFor({ disableSkills: "docs" })).toEqual([
-      'Warning: disabling the "docs" skill removed no tools. get_doc, search_docs stay enabled through inspect.',
+      'Disabling the "docs" skill removed no tools. get_doc, search_docs stay enabled through inspect.',
     ]);
   });
 
