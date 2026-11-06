@@ -60,6 +60,9 @@ const performanceSpanSchema = z.object({
  * The event as `structuredContent`. Every field is mapped from the event
  * entries Sentry returns; nothing is spread from the api response.
  */
+/** Thread summaries listed per event; get_event_stacktrace reads any one thread in full. */
+const MAX_THREAD_SUMMARIES = 20;
+
 export const issueEventSchema = z.object({
   id: z.string(),
   type: z.string().nullable(),
@@ -72,7 +75,13 @@ export const issueEventSchema = z.object({
     .describe(
       "The exception that was raised first, then each one it was chained from.",
     ),
-  threads: z.array(structuredThreadSummarySchema).nullable(),
+  threads: z
+    .array(structuredThreadSummarySchema)
+    .nullable()
+    .describe(
+      `The first ${MAX_THREAD_SUMMARIES} threads; threadCount says how many the event has.`,
+    ),
+  threadCount: z.number(),
   crashedThread: structuredThreadSchema
     .nullable()
     .describe("The crashed thread's stacktrace, when there is no exception."),
@@ -206,7 +215,7 @@ function mapExceptions(event: Event): IssueEventPayload["exceptions"] {
   const exceptions = values
     .filter((exception) => exception != null)
     .reverse()
-    .map((exception) => ({
+    .map((exception, index) => ({
       type: nonEmptyString(exception.type),
       value: nonEmptyString(exception.value),
       module: nonEmptyString(exception.module),
@@ -219,7 +228,10 @@ function mapExceptions(event: Event): IssueEventPayload["exceptions"] {
                 : null,
           }
         : null,
-      stacktrace: mapStructuredStacktrace(exception.stacktrace),
+      // like the markdown view, only the raised exception's relevant frame gets context and variables
+      stacktrace: mapStructuredStacktrace(exception.stacktrace, {
+        detail: index === 0,
+      }),
     }));
   return exceptions.length > 0 ? exceptions : null;
 }
@@ -230,7 +242,7 @@ function mapThreads(event: Event, hasExceptions: boolean) {
     ? (parseThreadsEntryData(entry.data)?.values ?? [])
     : [];
   if (threads.length === 0) {
-    return { threads: null, crashedThread: null };
+    return { threads: null, threadCount: 0, crashedThread: null };
   }
   // the markdown shows the crashed thread's frames only when there is no exception
   const crashed = hasExceptions
@@ -240,7 +252,10 @@ function mapThreads(event: Event, hasExceptions: boolean) {
     ? mapStructuredThread(crashed)
     : null;
   return {
-    threads: threads.map(mapStructuredThreadSummary),
+    threads: threads
+      .slice(0, MAX_THREAD_SUMMARIES)
+      .map(mapStructuredThreadSummary),
+    threadCount: threads.length,
     crashedThread,
   };
 }
@@ -457,7 +472,10 @@ export function buildIssueEventPayload({
   // replays are reported beside the event, not inside its contexts and tags
   const stripped = stripReplayMetadata(event);
   const exceptions = mapExceptions(stripped);
-  const { threads, crashedThread } = mapThreads(stripped, exceptions !== null);
+  const { threads, threadCount, crashedThread } = mapThreads(
+    stripped,
+    exceptions !== null,
+  );
   const occurrence = getOccurrence(stripped);
   const metricAlertContext = getMetricAlertContext(stripped);
   const packageVersions = selectEventPackages(event.packages, packageNames);
@@ -470,6 +488,7 @@ export function buildIssueEventPayload({
     message: mapMessage(stripped),
     exceptions,
     threads,
+    threadCount,
     crashedThread,
     request: mapRequest(stripped),
     csp: mapCsp(stripped),

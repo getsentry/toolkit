@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { FrameInterface, ThreadEntrySchema } from "../../api-client";
+import { findMostRelevantInAppFrame } from "../../internal/code-location";
 
 type Frame = z.infer<typeof FrameInterface>;
 type Thread = z.infer<typeof ThreadEntrySchema>;
@@ -8,41 +9,55 @@ type Stacktrace = {
   framesOmitted?: unknown[] | null;
 };
 
-/** Lines kept on each side of an in-app frame's line, as the markdown frame view shows. */
-const IN_APP_CONTEXT_LINES = 3;
+/** Lines kept on each side of the detail frame's line, as the markdown frame view shows. */
+const DETAIL_CONTEXT_LINES = 3;
+
+/** A local variable whose JSON is longer than this is cut to this many characters. */
+const MAX_VAR_LENGTH = 200;
 
 /**
  * One stack frame. Shared by `get_issue_details` and `get_event_stacktrace` so
- * both tools describe frames the same way.
+ * both tools describe frames the same way. Fields with no value are left out.
  */
 export const structuredFrameSchema = z.object({
-  filename: z.string().nullable(),
-  absPath: z.string().nullable(),
-  module: z.string().nullable(),
-  package: z.string().nullable(),
-  function: z.string().nullable(),
-  lineNo: z.number().nullable(),
-  colNo: z.number().nullable(),
-  inApp: z.boolean().nullable(),
-  contextLine: z.string().nullable().describe("The source line at lineNo."),
+  filename: z.string().optional(),
+  absPath: z
+    .string()
+    .optional()
+    .describe("Present only when it differs from filename."),
+  module: z.string().optional(),
+  package: z.string().optional(),
+  function: z.string().optional(),
+  lineNo: z.number().optional(),
+  colNo: z.number().optional(),
+  inApp: z.literal(true).optional().describe("Present on application frames."),
+  contextLine: z.string().optional().describe("The source line at lineNo."),
   preContext: z
     .array(z.string())
-    .nullable()
-    .describe("Up to 3 source lines before lineNo, for in-app frames only."),
+    .optional()
+    .describe(
+      "Up to 3 source lines before lineNo, on the most relevant frame only.",
+    ),
   postContext: z
     .array(z.string())
-    .nullable()
-    .describe("Up to 3 source lines after lineNo, for in-app frames only."),
+    .optional()
+    .describe(
+      "Up to 3 source lines after lineNo, on the most relevant frame only.",
+    ),
   vars: z
     .record(z.string(), z.unknown())
-    .nullable()
-    .describe("Local variables, recorded for in-app frames only."),
+    .optional()
+    .describe(
+      "Local variables, on the most relevant frame only. Values longer than 200 characters of JSON are cut to a string.",
+    ),
 });
 
 export const structuredStacktraceSchema = z.object({
   frames: z
     .array(structuredFrameSchema)
-    .describe("Oldest call first; the frame that raised is last."),
+    .describe(
+      "Most recent call last. The most relevant frame is the last in-app frame.",
+    ),
   framesOmitted: z.number().nullable(),
 });
 
@@ -75,51 +90,82 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-type FrameContext = Pick<
-  StructuredFrame,
-  "contextLine" | "preContext" | "postContext"
->;
-
-/** Splits Sentry's `[lineNo, line]` context around the frame's own line, as the event protocol does. */
-function mapContext(frame: Frame): FrameContext {
-  const lineNo = frame.lineNo;
-  const context = lineNo == null ? [] : (frame.context ?? []);
-  const contextLine =
-    context.find(([contextLineNo]) => contextLineNo === lineNo)?.[1] ?? null;
-  if (frame.inApp !== true || lineNo == null) {
-    return { contextLine, preContext: null, postContext: null };
-  }
-  const linesWithin = (from: number, to: number) => {
-    const lines = context
-      .filter(([contextLineNo]) => contextLineNo >= from && contextLineNo <= to)
-      .map(([, line]) => line);
-    return lines.length > 0 ? lines : null;
-  };
-  return {
-    contextLine,
-    preContext: linesWithin(lineNo - IN_APP_CONTEXT_LINES, lineNo - 1),
-    postContext: linesWithin(lineNo + 1, lineNo + IN_APP_CONTEXT_LINES),
-  };
+/** Source lines from Sentry's `[lineNo, line]` context between two line numbers. */
+function contextLinesWithin(frame: Frame, from: number, to: number) {
+  const lines = (frame.context ?? [])
+    .filter(([contextLineNo]) => contextLineNo >= from && contextLineNo <= to)
+    .map(([, line]) => line);
+  return lines.length > 0 ? lines : undefined;
 }
 
-/** Maps one upstream frame field by field; raw addresses, symbols and source links stay out. */
-export function mapStructuredFrame(frame: Frame): StructuredFrame {
-  const vars =
-    frame.inApp === true && frame.vars && Object.keys(frame.vars).length > 0
-      ? { ...frame.vars }
-      : null;
-  return {
-    filename: nonEmptyString(frame.filename),
-    absPath: nonEmptyString(frame.absPath),
-    module: nonEmptyString(frame.module),
-    package: nonEmptyString(frame.package),
-    function: nonEmptyString(frame.function),
-    lineNo: finiteNumber(frame.lineNo),
-    colNo: finiteNumber(frame.colNo),
-    inApp: typeof frame.inApp === "boolean" ? frame.inApp : null,
-    ...mapContext(frame),
-    vars,
-  };
+/** Copies local variables key by key, cutting values whose JSON is too long. */
+function mapVars(
+  vars: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | undefined {
+  if (!vars) {
+    return undefined;
+  }
+  const mapped: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(vars)) {
+    const json = JSON.stringify(value) ?? "";
+    mapped[key] =
+      json.length > MAX_VAR_LENGTH
+        ? `${json.slice(0, MAX_VAR_LENGTH)}…`
+        : value;
+  }
+  return Object.keys(mapped).length > 0 ? mapped : undefined;
+}
+
+/**
+ * Maps one upstream frame field by field and writes only the fields that have
+ * a value. Raw addresses, symbols and source links stay out. Surrounding
+ * context lines and variables go only on the detail frame.
+ */
+export function mapStructuredFrame(
+  frame: Frame,
+  { detail = false }: { detail?: boolean } = {},
+): StructuredFrame {
+  const mapped: StructuredFrame = {};
+  const filename = nonEmptyString(frame.filename);
+  const absPath = nonEmptyString(frame.absPath);
+  const module = nonEmptyString(frame.module);
+  const pkg = nonEmptyString(frame.package);
+  const fn = nonEmptyString(frame.function);
+  const lineNo = finiteNumber(frame.lineNo);
+  const colNo = finiteNumber(frame.colNo);
+  if (filename) mapped.filename = filename;
+  if (absPath && absPath !== filename) mapped.absPath = absPath;
+  if (module) mapped.module = module;
+  if (pkg) mapped.package = pkg;
+  if (fn) mapped.function = fn;
+  if (lineNo !== null) mapped.lineNo = lineNo;
+  if (colNo !== null) mapped.colNo = colNo;
+  if (frame.inApp === true) mapped.inApp = true;
+  if (lineNo === null) {
+    return mapped;
+  }
+  const contextLine = frame.context?.find(
+    ([contextLineNo]) => contextLineNo === lineNo,
+  )?.[1];
+  if (contextLine !== undefined) mapped.contextLine = contextLine;
+  if (!detail) {
+    return mapped;
+  }
+  const preContext = contextLinesWithin(
+    frame,
+    lineNo - DETAIL_CONTEXT_LINES,
+    lineNo - 1,
+  );
+  const postContext = contextLinesWithin(
+    frame,
+    lineNo + 1,
+    lineNo + DETAIL_CONTEXT_LINES,
+  );
+  const vars = mapVars(frame.vars);
+  if (preContext) mapped.preContext = preContext;
+  if (postContext) mapped.postContext = postContext;
+  if (vars) mapped.vars = vars;
+  return mapped;
 }
 
 /** Sentry records omitted frames as a `[start, end]` index pair. */
@@ -138,14 +184,23 @@ export function countFramesOmitted(
   return null;
 }
 
+/**
+ * Maps a stacktrace. With `detail`, the most relevant frame (the last in-app
+ * frame, as Sentry picks it) also gets its surrounding context and variables.
+ */
 export function mapStructuredStacktrace(
   stacktrace: Stacktrace | null | undefined,
+  { detail = true }: { detail?: boolean } = {},
 ): StructuredStacktrace | null {
   if (!stacktrace?.frames?.length) {
     return null;
   }
+  const { frames } = stacktrace;
+  const relevantFrame = detail ? findMostRelevantInAppFrame(frames) : undefined;
   return {
-    frames: stacktrace.frames.map(mapStructuredFrame),
+    frames: frames.map((frame) =>
+      mapStructuredFrame(frame, { detail: frame === relevantFrame }),
+    ),
     framesOmitted: countFramesOmitted(stacktrace.framesOmitted),
   };
 }

@@ -151,13 +151,16 @@ In experimental mode `get_issue_details` returns `structuredContent` for every
 event type, including types the markdown path does not support, and declares
 `outputSchema` to experimental sessions only (`experimentalOutputSchema`).
 `event` maps the entries into fields instead of rendering markdown: the
-exception chain (the raised exception first), thread summaries, the crashed
-thread when there is no exception, request method and URL, CSP report, N+1
-evidence and spans, metric alert, evidence, user (including email and IP), tags,
-extra data, and contexts. Frames use the shared shape in
-`tools/support/structured-stacktrace.ts`: oldest call first, `contextLine` for
-every frame, and `preContext`, `postContext` (3 lines each) and `vars` for
-in-app frames only. Request headers, cookies and body, frame addresses, symbols
+exception chain (the raised exception first), up to 20 thread summaries with a
+`threadCount`, the crashed thread when there is no exception, request method and
+URL, CSP report, N+1 evidence and spans, metric alert, evidence, user (including
+email and IP), tags, extra data, and contexts. Frames use the shared shape in
+`tools/support/structured-stacktrace.ts`: most recent call last, with only the
+fields that have a value (`inApp` only when true, `absPath` only when it differs
+from `filename`). Every frame gets its `contextLine`. Only the most relevant
+frame (the last in-app frame of the raised exception or the thread) gets
+`preContext`, `postContext` (3 lines each) and `vars`, with each variable cut
+to 200 characters of JSON. Request headers, cookies and body, frame addresses, symbols
 and source links, tag search queries, and external issue link ids stay out.
 
 ### Profile Details
@@ -226,8 +229,9 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
   `suggestedActions` alone on top of markdown.
 - A tool whose structured payload is still behind experimental mode declares
   `experimentalOutputSchema` instead. The server advertises it to experimental
-  sessions only, and tsc cannot check the handler against it, so the tool's
-  tests must parse every structured payload against the schema.
+  sessions only, and tsc cannot check the handler against it. The test guard
+  checks every `structuredContent` result against it, and the tool's tests
+  must cover every structured path.
 - If a tool declares `outputSchema`, every successful `structuredContent` result
   must conform to that schema. `defineTool` enforces this at compile time: the
   handler must return `structuredResult(...)` typed as the schema's `z.output`,
@@ -295,10 +299,11 @@ reason:
 - `OUTPUT_SCHEMA_PENDING` for tools whose `outputSchema` has not landed, with
   the PR, for example `"pending getsentry/toolkit#2004"`.
 
-An entry fails once its tool has an `outputSchema` in every session that lists
-it, so the PR that adds one also deletes the entry. A tool whose
-`experimentalOutputSchema` reaches experimental sessions first stays
-`OUTPUT_SCHEMA_PENDING` until it graduates. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
+An `OUTPUT_SCHEMA_EXEMPT` entry fails once any session lists its tool with an
+`outputSchema`. An `OUTPUT_SCHEMA_PENDING` entry fails once every session that
+lists the tool has one, so a tool whose `experimentalOutputSchema` reaches
+experimental sessions first stays pending until it graduates. The PR that
+makes an entry stale also deletes it. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
 with a comment that says which client reads it.
 
 ## Suggested Actions
