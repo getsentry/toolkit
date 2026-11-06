@@ -1,11 +1,14 @@
-import type { z } from "zod";
+import { z } from "zod";
 import { ThreadsEntrySchema } from "../../api-client";
 import type { SentryApiService, ThreadEntrySchema } from "../../api-client";
 import type { Event } from "../../api-client/types";
 import {
-  formatAvailableThreadList,
-  formatThreadStacktraceOutput,
-} from "../../internal/formatting";
+  mapStructuredThread,
+  mapStructuredThreadSummary,
+  nonEmptyString,
+  structuredThreadSchema,
+  structuredThreadSummarySchema,
+} from "./structured-stacktrace";
 
 type Thread = z.infer<typeof ThreadEntrySchema>;
 type ThreadSelector = string | number | undefined;
@@ -21,10 +24,45 @@ type SelectedThread =
       message: string;
     };
 
+const SELECTOR_HINT =
+  "Pass `thread` as a numeric thread id or exact thread name.";
+
+export const eventStacktraceOutputSchema = z.object({
+  organizationSlug: z.string(),
+  issueId: z.string(),
+  eventId: z.string(),
+  platform: z
+    .string()
+    .nullable()
+    .describe("The event platform, which sets how to read frames."),
+  threadCount: z.number(),
+  selection: z.object({
+    status: z
+      .enum(["selected", "not_found", "ambiguous", "no_threads"])
+      .describe(
+        "`selected` returns `thread`. Otherwise `thread` is null and `message` says why.",
+      ),
+    message: z.string(),
+  }),
+  thread: structuredThreadSchema
+    .nullable()
+    .describe("The selected thread and its stacktrace."),
+  availableThreads: z
+    .array(structuredThreadSummarySchema)
+    .nullable()
+    .describe(
+      "Every thread on the event, listed only when the `thread` selector matched none or several.",
+    ),
+});
+
+export type EventStacktracePayload = z.output<
+  typeof eventStacktraceOutputSchema
+>;
+
 /**
- * Fetches an issue event and formats the selected thread stacktrace.
+ * Fetches an issue event and maps the selected thread stacktrace.
  */
-export async function fetchAndFormatEventStacktrace({
+export async function fetchEventStacktrace({
   apiService,
   organizationSlug,
   issueId,
@@ -36,7 +74,7 @@ export async function fetchAndFormatEventStacktrace({
   issueId: string;
   eventId: string;
   thread?: string | number;
-}): Promise<string> {
+}): Promise<EventStacktracePayload> {
   const event = await apiService.getEventForIssue({
     organizationSlug,
     issueId,
@@ -44,30 +82,46 @@ export async function fetchAndFormatEventStacktrace({
   });
 
   const threads = getThreads(event);
-
-  let output = `# Event Stacktrace in **${organizationSlug}**\n\n`;
-  output += `**Issue ID**: ${issueId}\n`;
-  output += `**Event ID**: ${event.id}\n\n`;
+  const base = {
+    organizationSlug,
+    issueId,
+    eventId: event.id,
+    platform: nonEmptyString(event.platform),
+    threadCount: threads.length,
+  };
 
   if (threads.length === 0) {
-    output += "No thread stacktraces were found for this event.\n";
-    return output;
+    return {
+      ...base,
+      selection: {
+        status: "no_threads",
+        message: "No thread stacktraces were found for this event.",
+      },
+      thread: null,
+      availableThreads: null,
+    };
   }
 
   const selected = selectThread(threads, thread);
 
   if (selected.kind !== "selected") {
-    output += `${selected.message}\n\n`;
-    output += formatAvailableThreadList(threads);
-    return output;
+    return {
+      ...base,
+      selection: {
+        status: selected.kind,
+        message: `${selected.message} ${SELECTOR_HINT}`,
+      },
+      thread: null,
+      availableThreads: threads.map(mapStructuredThreadSummary),
+    };
   }
 
-  output += formatThreadStacktraceOutput({
-    event,
-    thread: selected.thread,
-    selectionReason: selected.reason,
-  });
-  return output;
+  return {
+    ...base,
+    selection: { status: "selected", message: selected.reason },
+    thread: mapStructuredThread(selected.thread),
+    availableThreads: null,
+  };
 }
 
 function getThreads(event: Event): Thread[] {

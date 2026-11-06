@@ -2152,9 +2152,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Event Stacktrace in **sentry-mcp-evals**",
-      );
+      expect(result.structuredContent).toMatchObject({
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+      });
     });
 
     it("execute_sentry_tool dispatches to catalog-only issue user reports", async () => {

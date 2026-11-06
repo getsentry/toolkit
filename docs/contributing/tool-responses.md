@@ -163,6 +163,14 @@ frame (the last in-app frame of the raised exception or the thread) gets
 to 200 characters of JSON. Request headers, cookies and body, frame addresses, symbols
 and source links, tag search queries, and external issue link ids stay out.
 
+### Event Stacktrace
+
+`get_event_stacktrace` returns one thread under `thread`, using the same frame
+and thread shapes as `get_issue_details`, with `selection.status` saying how the
+`thread` selector resolved. When the selector matches no thread or several,
+`thread` is null and `availableThreads` lists every thread summary. Held locks,
+registers and the raw (unsymbolicated) stacktrace stay out.
+
 ### Profile Details
 
 `get_profile_details` returns one profile summary under `profile`,
