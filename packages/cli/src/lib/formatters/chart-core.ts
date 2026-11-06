@@ -11,7 +11,7 @@
 import type { TimeseriesResult } from "../../types/dashboard.js";
 import type { DecodedImage } from "../sixel-image.js";
 import { createPixelCanvas, drawPixelRect } from "./pixel-canvas.js";
-import { downsample } from "./sparkline.js";
+import { downsample, downsampleFlags } from "./sparkline.js";
 
 /**
  * Chart color palette based on Sentry's categorical chart hues.
@@ -36,6 +36,25 @@ export const SERIES_PALETTE = [
 
 /** Muted gray for the "Other" bucket. */
 export const OTHER_COLOR = "#888888";
+
+/** Gray that incomplete buckets are blended toward. */
+const INCOMPLETE_BLEND: [number, number, number] = [128, 128, 128];
+
+/**
+ * Fade a series color for a bucket that is still being ingested.
+ *
+ * Blends halfway toward neutral gray so the column stays recognizably the
+ * series' color while reading as provisional on light and dark backgrounds.
+ */
+export function fadeIncompleteColor(
+  color: [number, number, number],
+): [number, number, number] {
+  return [
+    Math.round((color[0] + INCOMPLETE_BLEND[0]) / 2),
+    Math.round((color[1] + INCOMPLETE_BLEND[1]) / 2),
+    Math.round((color[2] + INCOMPLETE_BLEND[2]) / 2),
+  ];
+}
 
 /** Get the hex color for a series by index. "Other" gets muted gray. */
 export function seriesColor(label: string, index: number): string {
@@ -72,6 +91,8 @@ export type ChartSeries = {
   label: string;
   /** Per-bucket values; null leaves a gap without shifting later buckets. */
   values: (number | null)[];
+  /** Per-bucket flag for buckets still being ingested; omitted when none. */
+  incomplete?: boolean[];
 };
 
 /** Heatmap grid model: categories (rows) × time buckets (columns). */
@@ -115,16 +136,25 @@ export function buildChartModel(
     return;
   }
 
-  const series = data.series.map((s) => ({
-    label: s.label,
-    values: s.values.map((v) => v.value),
-  }));
+  const series = data.series.map((s): ChartSeries => {
+    const chartSeries: ChartSeries = {
+      label: s.label,
+      values: s.values.map((v) => v.value),
+    };
+    if (s.values.some((v) => v.incomplete)) {
+      chartSeries.incomplete = s.values.map((v) => v.incomplete === true);
+    }
+    return chartSeries;
+  });
   const buckets = Math.max(...series.map((s) => s.values.length));
   const stacked = series.length > 1;
 
   const maxVal = stacked
     ? Math.max(...bucketTotals(series, buckets), 1)
-    : Math.max(...(series[0]?.values ?? []), 1);
+    : Math.max(
+        ...(series[0]?.values ?? []).filter((v): v is number => v !== null),
+        1,
+      );
 
   return { kind: "timeseries", series, buckets, maxVal, stacked };
 }
@@ -283,13 +313,17 @@ function fitModelToWidth(
     if (s.values.some((value) => value === null)) {
       return;
     }
-    series.push({
+    const fitted: ChartSeries = {
       label: s.label,
       values: downsample(
         s.values.filter((value) => value !== null),
         maxBuckets,
       ),
-    });
+    };
+    if (s.incomplete) {
+      fitted.incomplete = downsampleFlags(s.incomplete, maxBuckets);
+    }
+    series.push(fitted);
   }
   const buckets = Math.max(...series.map((s) => s.values.length));
   return { ...model, series, buckets };
@@ -337,7 +371,7 @@ function drawBars(
       y: height - h,
       width: layout.barWidth,
       height: h,
-      color,
+      color: series.incomplete?.[i] ? fadeIncompleteColor(color) : color,
     });
   }
 }
@@ -368,12 +402,13 @@ function drawStackedColumns(
         Math.max(1, Math.round((value / model.maxVal) * height)),
       );
       const yTop = Math.max(0, yBottom - segmentHeight);
+      const color = hexToRgb(seriesColor(series.label, s));
       drawPixelRect(img, {
         x: x0,
         y: yTop,
         width: layout.barWidth,
         height: yBottom - yTop,
-        color: hexToRgb(seriesColor(series.label, s)),
+        color: series.incomplete?.[b] ? fadeIncompleteColor(color) : color,
       });
       yBottom = yTop;
     }
