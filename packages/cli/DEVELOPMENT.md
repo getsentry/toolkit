@@ -129,6 +129,15 @@ and any declared `permission` into the command's permission class, and
 `check:command-access` fails when a declaration contradicts the requests or
 a command declares no exposure.
 
+`generate:command-catalog` (part of `generate:docs`) writes
+`packages/mcp-core/src/command-catalog.json` from the same introspection
+(`src/lib/command-catalog.ts`): for each command whose exposure is not
+`hidden`, its permission class, exposure, parameters as JSON Schema,
+completion kinds, local-path flags, examples, output fields, and API
+operations. MCP servers import it from `@sentry/mcp-core/command-catalog`
+and read it instead of building schemas at runtime. The file is committed;
+`check:command-catalog` (in `ci:policy`) fails when it is stale.
+
 Introspection derives canonical command paths, registered aliases, and group
 membership from the route tree. Groups collect their public commands' generated
 references, so adding a command requires no separate group mapping. A related API

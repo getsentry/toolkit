@@ -194,15 +194,20 @@ const TREE_STEPS: readonly Step[] = [
   { name: "docs-sections", load: () => import("./generate-docs-sections.js") },
   { name: "skill", load: () => import("./generate-skill.js") },
   { name: "sdk", load: () => import("./generate-sdk.js") },
-  // Last: its emit waits for the worker `prepare` starts, and no step reads
-  // `command-api.json` or `command-api-access.json` back (only the CLI does,
-  // at runtime).
+  // Late: its emit waits for the worker `prepare` starts. Only
+  // `command-catalog` reads its output back.
   {
     name: "command-api",
     load: () => import("./generate-command-api.js"),
     prepare: (after) => {
       void commandApiAnalysis(after("schema"));
     },
+  },
+  // Reads `command-api.json` and `command-api-access.json` from disk, so it
+  // runs after `command-api`.
+  {
+    name: "command-catalog",
+    load: () => import("./generate-command-catalog.js"),
   },
 ];
 
