@@ -147,6 +147,20 @@ The event API's legacy `context` field (extra data) can be `null`. Issue details
 must still load; omit the `Extra Data` section for null or empty values while
 preserving the event's error, stacktrace, and structured `contexts` data.
 
+### Profile Details
+
+`get_profile_details` returns one profile summary under `profile`,
+discriminated by `profileType`, with sample analysis beside it in `samples`.
+For `transaction` and `continuous` profiles, `samples` has frame, sample, and
+stack counts, per-thread sample counts, and the ten most frequent frames (only
+application frames when `focusOnUserCode` is true). `legacy` speedscope
+profiles, such as Android transaction profiles, return `samples: null` because
+Sentry does not return sample-format data for them; when the profile names a
+transaction and `get_profile` is callable in the session, `suggestedActions`
+points at the aggregated flamegraph. Each summary includes `profileUrl`;
+transaction and legacy profiles include `traceUrl` when the profile has a trace
+ID.
+
 ## Selected Event Package Versions
 
 Use `get_sentry_resource` with `resourceType: "event"` (or an event URL) and
@@ -198,7 +212,18 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
   payload. Do not attach sparse structured side-channels such as
   `suggestedActions` alone on top of markdown.
 - If a tool declares `outputSchema`, every successful `structuredContent` result
-  must conform to that schema.
+  must conform to that schema. `defineTool` enforces this at compile time: the
+  handler must return `structuredResult(...)` typed as the schema's `z.output`,
+  and markdown or raw content fails tsc. The payload type comes from the
+  schema, so missing and mistyped fields are errors at the tool definition,
+  and so are extra fields in an object literal passed to `structuredResult`.
+  Spread or variable payloads (`structuredResult({ ...upstream })`,
+  `structuredResult(payload)`) are not checked for extra fields, so map fields
+  explicitly. A schema tool cannot set its own `content`.
+  Do not add per-tool `satisfies z.infer<...>` checks; they repeat
+  what the framework already checks. Shared builders should declare their
+  return type (`StructuredToolOutput<z.output<typeof schema>>`) so
+  `structuredResult` gets its type from there.
 - Do not duplicate a large structured payload into a markdown artifact block.
 - Treat `structuredContent` as a stable product contract, not a raw upstream API
   passthrough. Map only documented fields that callers should depend on.
@@ -219,6 +244,44 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
 Reference: MCP 2025-11-25 Tools specification, sections "Structured Content"
 and "Output Schema".
 
+## Metadata Linter
+
+`packages/mcp-core/src/server.metadata.test.ts` builds the server with every
+skill granted, in stable and experimental mode, and checks what a client
+receives from `initialize` and `tools/list`:
+
+- `serverInfo` keeps `name: "Sentry MCP"` and sets `title`, `description`, an
+  https `websiteUrl`, and https `icons`.
+- `instructions` are non-empty and at most `MAX_SERVER_INSTRUCTIONS_LENGTH`
+  characters.
+- Every tool name matches `^[A-Za-z0-9_.-]{1,128}$`, its `inputSchema` root is
+  an object, and it advertises no `execution.taskSupport`.
+- Every tool has a unique, non-empty `title`; sets `readOnlyHint`,
+  `destructiveHint`, and `openWorldHint`; and has a description of at most
+  `MAX_TOOL_DESCRIPTION_LENGTH` characters.
+- A tool exports only the `_meta` keys that `ALLOWED_TOOL_META` lists for it.
+- Every tool declares an object `outputSchema`, unless it has a skip entry.
+
+`test-utils/structured-output-guard.ts` wraps `defineTool` for the whole
+mcp-core suite, the same way the SDK validates `tools/call`: a handler with an
+`outputSchema` that returns no `structuredContent`, or `structuredContent` that
+does not match the schema, fails the test that called it. Error results
+(`isError: true`) are skipped. The linter checks that each listed tool with an
+`outputSchema` has a colocated `<name>*.test.ts` that reads its
+`structuredContent`.
+
+To skip the `outputSchema` check, add the tool to one of two maps, with a
+reason:
+
+- `OUTPUT_SCHEMA_EXEMPT` for tools that return no structured content by design,
+  such as the markdown-only tools above.
+- `OUTPUT_SCHEMA_PENDING` for tools whose `outputSchema` has not landed, with
+  the PR, for example `"pending getsentry/toolkit#2004"`.
+
+An entry fails once its tool has an `outputSchema`, so the PR that adds one
+also deletes the entry. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
+with a comment that says which client reads it.
+
 ## Suggested Actions
 
 Use `suggestedActions` when a tool result reveals a concrete follow-up tool call
@@ -237,6 +300,11 @@ interface SuggestedActionsContent {
   suggestedActions: SuggestedToolAction[];
 }
 ```
+
+Build each action with `buildSuggestedToolAction` from
+`packages/mcp-core/src/internal/tool-helpers/suggested-actions.ts`. It returns
+null when the session cannot call the tool, and routes through
+`execute_sentry_tool` when the target is catalog-only.
 
 Guidelines:
 
@@ -310,6 +378,22 @@ If the raw tool result is clean but the agent final answer adds unrelated
 content, treat that as a client/agent prompt issue rather than a tool response
 formatting issue.
 
+### Documentation Search
+
+`search_docs` returns `query`, `guide` (null when omitted), and `results`, each
+with the `path` to pass to `get_doc`, the docs `url`, a 0–1 `relevance` score,
+and a matching `snippet`. Snippets are search chunks, not full pages, and only
+the first three results carry one; later results have `snippet: null`. When
+`get_doc` is callable, `suggestedActions` fetches the full page of the first
+result with a path.
+No matches return `results: []`. A search failure is a tool error, including
+an error reported inside a successful search response.
+
+`get_doc` returns a user input error for a missing page and points the agent to
+`search_docs`. docs.sentry.io serves missing pages with status 200 and an
+`X-Sentry-Docs-Not-Found` header, so the tool checks that header as well as
+status 404.
+
 ### Cron Monitor Environment Deletion
 
 `delete_monitor_environment` schedules irreversible deletion of one exact
@@ -317,3 +401,18 @@ environment from a project-scoped cron monitor. The structured response
 identifies the project, monitor, and environment; `success` means the deletion
 was accepted or the target was already absent. Deletion completes in the
 background, preserving the monitor and its other environments.
+
+### Transaction Profiles
+
+`get_profile` returns the aggregated flamegraph for one transaction as
+structured content. Frames appear once in `analysis.frames` with their
+call-tree `occurrences` (not a sample count), p75/p95/p99 durations, and
+insights; `topFunctions`, hot path `stack` arrays, and hot path `leaf` values
+refer to them by index, so shared parent frames are not repeated per hot path.
+A stack reads from root to leaf, and its last frame is the primary bottleneck.
+With `focusOnUserCode`, library frames are omitted from stacks, and `leaf`
+still names the sampled leaf frame. `userCodeMs` and `libraryMs` split the main
+thread's sampled time by whether each sample's leaf frame is application code,
+so they add up to `estimatedTotalMs`. Missing data is a successful result:
+`hasCurrentData` and `hasBaselineData` report which period had profiles, and
+`analysis` or `comparison` is `null`.

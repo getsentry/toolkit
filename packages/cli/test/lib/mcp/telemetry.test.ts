@@ -35,6 +35,7 @@ const config: McpServerConfig = {
   agentProviderFromFlag: false,
   experimental: false,
   finalSkills: new Set(),
+  disabledSkills: [],
 };
 
 /** The options the server passed to `Sentry.init`. */

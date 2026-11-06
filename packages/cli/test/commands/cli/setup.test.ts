@@ -824,6 +824,9 @@ describe("sentry cli setup", () => {
       // Should show welcome message, not "Setup complete!"
       expect(combined).toContain("Installed sentry v");
       expect(combined).toContain("Get started:");
+      expect(combined).toContain(
+        "  sentry mcp      Run the Sentry MCP server for your AI agent",
+      );
       expect(combined).toContain("sentry auth");
       expect(combined).toContain("sentry --help");
       expect(combined).toContain("cli.sentry.dev");

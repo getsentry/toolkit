@@ -57,6 +57,9 @@ catalogs:
     '@sentry/react':
       specifier: 11.6.0
       version: 11.6.0
+    '@sentry/roach':
+      specifier: 0.3.0
+      version: 0.3.0
     '@sentry/search-syntax':
       specifier: ^1.0.0
       version: 1.0.0
@@ -960,6 +963,10 @@ importers:
       zod:
         specifier: ^4.6.6
         version: 4.6.7
+    devDependencies:
+      '@sentry/roach':
+        specifier: 'catalog:'
+        version: 0.3.0(vitest@5.0.5)
 
   packages/mcp-server-mocks:
     dependencies:
@@ -4643,6 +4650,15 @@ packages:
   '@sentry/replay@11.6.0':
     resolution: {integrity: sha512-cJyPYnF6QJA8ADRfAW06YoU7EVIebtWezBOCU9Vag5+W1VLBkXEvH7C4LbeMUiDmrqw92sumq06NgqipIxA7BA==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
+  '@sentry/roach@0.3.0':
+    resolution: {integrity: sha512-vgYiE3t/Cd5Ruff0KdCNktRNFYoXJTj10RUlcgqqhuMYTBbGlY+e/pU48M02WuueoQWx6zRZMm76jQRJQwp7KA==}
+    engines: {node: '>=24'}
+    peerDependencies:
+      vitest: '>=3'
+    peerDependenciesMeta:
+      vitest:
+        optional: true
 
   '@sentry/search-syntax@1.0.0':
     resolution: {integrity: sha512-R+raAe4PixC+e7Zn6uPH7NSK7nzfHy2MA1kRWDn7dFH8zaU10edFBVPj8qO3TlSb58yts0tejPdy+s1acq80wQ==}
@@ -12490,6 +12506,10 @@ snapshots:
     dependencies:
       '@sentry/browser-utils': 11.6.0
       '@sentry/core': 11.6.0
+
+  '@sentry/roach@0.3.0(vitest@5.0.5)':
+    optionalDependencies:
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0)(msw@2.10.2(@types/node@24.13.5)(typescript@5.9.3))(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
 
   '@sentry/search-syntax@1.0.0': {}
 

@@ -94,6 +94,12 @@ skipped. An identical active listing is a no-op, so reruns are safe. Different
 metadata for an existing version fails because registry versions are
 immutable; publish those changes with the next release.
 
+`packages/mcp-server/test/server-json.test.mjs` runs with `test:bundle` and
+checks the manifest: its name, npm package, repository, title, website, icons,
+and that its environment variables are the `SENTRY_*` variables the bundled
+`mcp --help` lists. It does not validate against the registry schema, which is
+not vendored; tests make no network requests.
+
 ## User Installation
 
 Users run the server through npx in their MCP client configuration:

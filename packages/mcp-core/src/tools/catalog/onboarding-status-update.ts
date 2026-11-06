@@ -9,6 +9,7 @@ import {
 } from "../../api-client/schema";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { ALL_SKILLS } from "../../skills";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
@@ -116,6 +117,12 @@ function withConnectionMethod(update: OnboardingUpdate) {
   };
 }
 
+export const onboardingStatusUpdateOutputSchema = z.object({
+  continueUpdates: z
+    .boolean()
+    .describe("False when Sentry wants no further updates for this run."),
+});
+
 export default defineTool({
   name: "onboarding_status_update",
   title: "Update Onboarding Status",
@@ -134,6 +141,7 @@ export default defineTool({
     "- status is required for every update.",
     "- Set runStatus to completed or failed only when the entire onboarding run reaches that state.",
     "- A failed status requires a brief eventNote explaining the failure.",
+    "- Stop sending updates when the result has continueUpdates: false.",
     "</hints>",
   ].join("\n"),
   inputSchema: {
@@ -144,6 +152,7 @@ export default defineTool({
     ),
     update: onboardingUpdateSchema,
   },
+  outputSchema: onboardingStatusUpdateOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
@@ -168,6 +177,6 @@ export default defineTool({
       update,
     });
 
-    return `Onboarding status updated. Continue updates: ${run.continueUpdates ? "yes" : "no"}.`;
+    return structuredResult({ continueUpdates: run.continueUpdates });
   },
 });

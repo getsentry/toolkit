@@ -22,9 +22,16 @@ import type { StructuredToolOutput } from "../../tools/types";
  *
  * The returned payload is the full answer. Do not use this helper to ship a
  * partial hint while leaving the real answer only in handwritten markdown.
+ *
+ * `T` comes from where the result is returned (the tool's `outputSchema` via
+ * `ToolConfig`, or the caller's declared return type), never from the payload.
+ * The payload is then checked against that type, so missing and mistyped
+ * fields fail tsc. Excess-property checks only apply to a fresh object
+ * literal: `structuredResult({ ...upstream })` and `structuredResult(payload)`
+ * accept extra fields, so map fields explicitly.
  */
 export function structuredResult<T extends Record<string, unknown>>(
-  structuredContent: T,
+  structuredContent: NoInfer<T>,
 ): StructuredToolOutput<T> {
   return {
     structuredContent,

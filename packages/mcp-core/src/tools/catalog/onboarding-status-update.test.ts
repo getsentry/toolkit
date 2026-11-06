@@ -1,6 +1,13 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content";
+import onboardingStatusUpdate, {
+  onboardingStatusUpdateOutputSchema,
+} from "./onboarding-status-update.js";
 
 const BASE_RUN_RESPONSE = {
   schemaVersion: 1,
@@ -15,7 +22,14 @@ const BASE_RUN_RESPONSE = {
   runStatus: "active",
   stages: [],
 };
-import onboardingStatusUpdate from "./onboarding-status-update.js";
+
+function getOutput(result: unknown) {
+  assertStructuredOnlyResult(result);
+  const content = getStructuredContent(result);
+  const parsed = onboardingStatusUpdateOutputSchema.parse(content);
+  expect(parsed).toEqual(content);
+  return parsed;
+}
 
 const context = {
   constraints: {
@@ -86,11 +100,15 @@ describe("onboarding_status_update", () => {
       eventNote: "Project already existed.",
       extra: { projectSlugs: ["private-project", "worker-project"] },
     });
-    expect(result).toMatchInlineSnapshot(
-      `"Onboarding status updated. Continue updates: yes."`,
-    );
-    expect(result).not.toContain("a1B2c3D4e5");
-    expect(result).not.toContain("private-project");
+    expect(getOutput(result)).toMatchInlineSnapshot(`
+      {
+        "continueUpdates": true,
+      }
+    `);
+    // The run token and stage extras are not echoed back.
+    const text = JSON.stringify(result);
+    expect(text).not.toContain("a1B2c3D4e5");
+    expect(text).not.toContain("private-project");
   });
 
   it("does not accept the backend-derived bypassed status as input", () => {
@@ -145,17 +163,16 @@ describe("onboarding_status_update", () => {
   });
 
   it("uses the default mock endpoint", async () => {
-    await expect(
-      onboardingStatusUpdate.handler(
-        {
-          organizationSlug: "sentry-mcp-evals",
-          regionUrl: null,
-          runToken: "a1B2c3D4e5",
-          update: { stage: "connect_mcp", status: "completed" },
-        },
-        context,
-      ),
-    ).resolves.toBe("Onboarding status updated. Continue updates: yes.");
+    const result = await onboardingStatusUpdate.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        runToken: "a1B2c3D4e5",
+        update: { stage: "connect_mcp", status: "completed" },
+      },
+      context,
+    );
+    expect(getOutput(result)).toEqual({ continueUpdates: true });
   });
 
   it("accepts nullable stage extras from the backend", async () => {
@@ -179,17 +196,16 @@ describe("onboarding_status_update", () => {
       ),
     );
 
-    await expect(
-      onboardingStatusUpdate.handler(
-        {
-          organizationSlug: "sentry-mcp-evals",
-          regionUrl: "https://us.sentry.io",
-          runToken: "a1B2c3D4e5",
-          update: { stage: "connect_mcp", status: "completed" },
-        },
-        context,
-      ),
-    ).resolves.toBe("Onboarding status updated. Continue updates: yes.");
+    const result = await onboardingStatusUpdate.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: "https://us.sentry.io",
+        runToken: "a1B2c3D4e5",
+        update: { stage: "connect_mcp", status: "completed" },
+      },
+      context,
+    );
+    expect(getOutput(result)).toEqual({ continueUpdates: true });
   });
 
   it("reports when the run no longer accepts updates", async () => {
@@ -213,21 +229,20 @@ describe("onboarding_status_update", () => {
       ),
     );
 
-    await expect(
-      onboardingStatusUpdate.handler(
-        {
-          organizationSlug: "sentry-mcp-evals",
-          regionUrl: "https://us.sentry.io",
-          runToken: "a1B2c3D4e5",
-          update: {
-            stage: "check_stack_trace_quality",
-            status: "completed",
-            runStatus: "completed",
-          },
+    const result = await onboardingStatusUpdate.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: "https://us.sentry.io",
+        runToken: "a1B2c3D4e5",
+        update: {
+          stage: "check_stack_trace_quality",
+          status: "completed",
+          runStatus: "completed",
         },
-        context,
-      ),
-    ).resolves.toBe("Onboarding status updated. Continue updates: no.");
+      },
+      context,
+    );
+    expect(getOutput(result)).toEqual({ continueUpdates: false });
   });
 
   it.each(["connect_agent", "connect_mcp"] as const)(
@@ -283,16 +298,15 @@ describe("onboarding_status_update", () => {
       ),
     );
 
-    await expect(
-      onboardingStatusUpdate.handler(
-        {
-          organizationSlug: "sentry-mcp-evals",
-          regionUrl: "https://us.sentry.io",
-          runToken: "a1B2c3D4e5",
-          update: { stage: "analyze_project", status: "active" },
-        },
-        context,
-      ),
-    ).resolves.toBe("Onboarding status updated. Continue updates: yes.");
+    const result = await onboardingStatusUpdate.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: "https://us.sentry.io",
+        runToken: "a1B2c3D4e5",
+        update: { stage: "analyze_project", status: "active" },
+      },
+      context,
+    );
+    expect(getOutput(result)).toEqual({ continueUpdates: true });
   });
 });
