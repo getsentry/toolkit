@@ -122,7 +122,17 @@ export function isAggregateQuery(fields: readonly string[]): boolean {
   return fields.some(isAggregateFieldOrEquation);
 }
 
-type SearchSyntaxDataset = EventsDataset | "replays";
+type SearchSyntaxDataset = EventsDataset | "replays" | "issues";
+
+// Issue search keys are camelCase, unlike event attributes.
+const ISSUE_SEARCH_MIXED_CASE_KEYS = new Set([
+  "activeSince",
+  "firstRelease",
+  "firstSeen",
+  "lastSeen",
+  "timesSeen",
+  "userCount",
+]);
 
 /** Every filter token, including those inside parenthesized groups. */
 function* filterTokens(
@@ -141,7 +151,11 @@ function* filterTokens(
  * Whether a parsed filter is Sentry search syntax rather than prose that
  * happens to contain a colon, like `Note: ...`, `10:30`, or a URL.
  */
-function isStructuredFilter(query: string, filter: FilterToken): boolean {
+function isStructuredFilter(
+  query: string,
+  filter: FilterToken,
+  dataset?: SearchSyntaxDataset,
+): boolean {
   const key = query.slice(
     filter.key.location.start.offset,
     filter.key.location.end.offset,
@@ -166,6 +180,10 @@ function isStructuredFilter(query: string, filter: FilterToken): boolean {
   }
 
   if (filter.key.type === Token.KEY_AGGREGATE || /^tags\[[^\]]+\]$/.test(key)) {
+    return true;
+  }
+
+  if (dataset === "issues" && ISSUE_SEARCH_MIXED_CASE_KEYS.has(key)) {
     return true;
   }
 
@@ -200,7 +218,7 @@ export function looksLikeSentrySearchSyntax(
   }
 
   for (const filter of filterTokens(tokens)) {
-    if (isStructuredFilter(trimmedQuery, filter)) {
+    if (isStructuredFilter(trimmedQuery, filter, dataset)) {
       return true;
     }
   }

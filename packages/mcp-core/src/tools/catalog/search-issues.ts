@@ -211,6 +211,7 @@ export default defineTool({
       untranslatedQueryNote = formatUntranslatedQueryNote(
         params.query,
         "is:unresolved level:error",
+        "issues",
       );
     }
 

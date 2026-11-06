@@ -751,6 +751,7 @@ describe("search_issues", () => {
       ],
     ],
     ["is:unresolved level:error", [EMPTY_NOTE]],
+    ["firstSeen:-24h userCount:>100", [EMPTY_NOTE]],
     ["TypeError", [EMPTY_NOTE]],
     ['"connection reset by peer"', [EMPTY_NOTE]],
   ])(
