@@ -2264,6 +2264,84 @@ describe("structuredContent", () => {
     logIssueSpy.mockRestore();
   });
 
+  // Sentry's event serializer sends dateCreated and dateReceived on every
+  // event, but the transaction and unknown (CSP and others) event schemas
+  // drop dateCreated, so occurredAt comes from dateReceived.
+  it("takes occurredAt from dateReceived for a transaction event", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
+        () => HttpResponse.json(createPerformanceIssue()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/7890123456/events/latest/",
+        () =>
+          HttpResponse.json(
+            createPerformanceEvent({
+              dateReceived: "2025-08-06T18:00:01.250000Z",
+            }),
+          ),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/trace/abcdef1234567890abcdef1234567890/",
+        () => HttpResponse.json(createTraceResponseFixture()),
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "PERF-N1-001" },
+      experimentalContext,
+    );
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(payload.event.type).toBe("transaction");
+    expect(payload.event.occurredAt).toBe("2025-08-06T18:00:01.250Z");
+  });
+
+  it("takes occurredAt from dateReceived for a CSP event", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/4256774711/events/latest/",
+        () => HttpResponse.json(createCspEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/BLOG-CSP-4XC/",
+        () => HttpResponse.json(createCspIssue()),
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "BLOG-CSP-4XC" },
+      experimentalContext,
+    );
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(payload.event.type).toBe("csp");
+    expect(payload.event.occurredAt).toBe("2025-11-19T19:24:12.491Z");
+  });
+
+  it("takes occurredAt from dateReceived for an unknown event type", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/7777777777/events/latest/",
+        () => HttpResponse.json(createUnknownEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/FUTURE-TYPE-001",
+        () => HttpResponse.json(createUnsupportedIssue()),
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "FUTURE-TYPE-001" },
+      experimentalContext,
+    );
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(payload.event.type).toBe("future_ai_agent_trace");
+    expect(payload.event.occurredAt).toBe("2025-01-01T01:00:00.000Z");
+  });
+
   it("maps a transaction's N+1 evidence and its spans", async () => {
     mswServer.use(
       http.get(

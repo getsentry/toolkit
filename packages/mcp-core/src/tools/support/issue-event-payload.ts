@@ -184,13 +184,19 @@ function compactMap(
 }
 
 /** The event types differ in where `dateCreated` sits; normalize it to ISO and tolerate bad values. */
-function eventOccurredAt(event: Event): string | null {
-  const raw = "dateCreated" in event ? event.dateCreated : null;
-  if (typeof raw !== "string") {
+/**
+ * When the event happened. The transaction and unknown (CSP and others)
+ * event schemas drop `dateCreated`, so fall back to `dateReceived`.
+ */
+export function getEventTimestamp(event: Event): Date | null {
+  const raw =
+    nonEmptyString((event as { dateCreated?: unknown }).dateCreated) ??
+    nonEmptyString(event.dateReceived);
+  if (!raw) {
     return null;
   }
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function mapMessage(event: Event): string | null {
@@ -485,7 +491,7 @@ export function buildIssueEventPayload({
   return {
     id: event.id,
     type: nonEmptyString(event.type),
-    occurredAt: eventOccurredAt(event),
+    occurredAt: getEventTimestamp(event)?.toISOString() ?? null,
     platform: nonEmptyString(event.platform),
     message: mapMessage(stripped),
     exceptions,
