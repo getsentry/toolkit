@@ -10,7 +10,13 @@ import { getUserAgent } from "../../version";
 const DOC_NOT_FOUND_MESSAGE =
   "Documentation not found at this path. The page may have been moved or removed. Use `search_docs()` to find the current path, and pass the `path` from its results exactly.";
 
-function isSoftNotFound(content: string): boolean {
+// docs.sentry.io answers unknown paths with 200 and a "Page Not Found" page.
+// It marks them with this header; the front matter check is a fallback for
+// responses without it.
+function isSoftNotFound(response: Response, content: string): boolean {
+  if (response.headers.get("x-sentry-docs-not-found")) {
+    return true;
+  }
   const frontMatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content.trimStart());
   return (
     frontMatter !== null &&
@@ -111,8 +117,7 @@ export default defineTool({
 
     const content = await response.text();
 
-    // docs.sentry.io answers unknown paths with 200 and a "Page Not Found" page.
-    if (isSoftNotFound(content)) {
+    if (isSoftNotFound(response, content)) {
       throw new UserInputError(DOC_NOT_FOUND_MESSAGE);
     }
 

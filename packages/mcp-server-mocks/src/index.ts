@@ -2030,6 +2030,7 @@ The page \`/ai/mcp\` does not exist.
       {
         headers: {
           "Content-Type": "text/markdown",
+          "X-Sentry-Docs-Not-Found": "1",
         },
       },
     );
