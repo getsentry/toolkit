@@ -35,7 +35,6 @@ import { defineTool } from "../../internal/tool-helpers/define";
 import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
 import {
   assertIssueWithinProjectConstraint,
-  formatIssueOutput,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
 import { structuredResult } from "../../internal/tool-helpers/results";
@@ -67,7 +66,10 @@ import {
   issueEventSchema,
 } from "../support/issue-event-payload";
 import { maybeFetchSourceMapDebug } from "../support/source-map-debug";
-import { nonEmptyString } from "../support/structured-stacktrace";
+import {
+  nonEmptyString,
+  type StructuredThreadSummary,
+} from "../support/structured-stacktrace";
 import type { StructuredToolOutput } from "../types";
 
 // mirrors MAX_DISPLAY_REPLAYS in the markdown output
@@ -189,16 +191,26 @@ function buildReplays(
   };
 }
 
-type IssueDetailsArgs = Parameters<typeof formatIssueOutput>[0];
+type IssueDetailsArgs = {
+  packageNames?: string[];
+  organizationSlug: string;
+  issue: Issue;
+  event: Event;
+  apiService: SentryApiService;
+  autofixState?: AutofixRunState;
+  performanceTrace?: Trace;
+  externalIssues?: ExternalIssueList;
+  relatedReplayIds?: string[];
+  aiConversations?: AIConversationReference[];
+  codeLocation?: CodeLocation;
+  committers?: CommitterList;
+  sourceMapDebug?: SourceMapDebug;
+  experimentalMode?: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
+};
 
-function issueDetailsResult(args: IssueDetailsArgs) {
-  if (args.experimentalMode) {
-    return buildIssueDetailsResult(args);
-  }
-  return formatIssueOutput(args);
-}
-
-function buildIssueDetailsResult(
+function issueDetailsResult(
   args: IssueDetailsArgs,
 ): StructuredToolOutput<GetIssueDetailsPayload> {
   if (!isSupportedEventType(args.event)) {
@@ -231,6 +243,11 @@ function buildIssueDetailsPayload({
   const summaries = autofix ? getAutofixArtifactSummaries(autofix) : undefined;
   const isPerf = isPerformanceIssueType(issue) && !!issue.metadata;
   const suspectCommit = getSuspectCommit(committers);
+  const eventPayload = buildIssueEventPayload({
+    event,
+    performanceTrace,
+    packageNames,
+  });
 
   return {
     issue: {
@@ -264,7 +281,7 @@ function buildIssueDetailsPayload({
       location: isPerf ? nonEmptyString(issue.metadata?.location) : null,
       queryPattern: isPerf ? nonEmptyString(issue.metadata?.value) : null,
     },
-    event: buildIssueEventPayload({ event, performanceTrace, packageNames }),
+    event: eventPayload,
     seer: autofix
       ? {
           status: nonEmptyString(getStatusDisplayName(autofix.status)),
@@ -311,6 +328,7 @@ function buildIssueDetailsPayload({
       event,
       apiService,
       aiConversations,
+      otherThread: findOtherThread(eventPayload.threads),
       session: {
         experimentalMode: experimentalMode ?? false,
         availableToolNames,
@@ -318,6 +336,20 @@ function buildIssueDetailsPayload({
       },
     }),
   };
+}
+
+/**
+ * The first thread with frames that neither crashed nor is current, as a
+ * `thread` selector. A thread without frames has no stacktrace to fetch.
+ */
+function findOtherThread(
+  threads: StructuredThreadSummary[] | null,
+): number | string | null {
+  const thread = threads?.find(
+    (candidate) =>
+      !candidate.crashed && !candidate.current && candidate.frameCount > 0,
+  );
+  return thread?.id ?? thread?.name ?? null;
 }
 
 function toCount(value: unknown): number | null {
@@ -329,8 +361,8 @@ function toCount(value: unknown): number | null {
 }
 
 /**
- * The follow-up calls the markdown Response Notes describe, as callable actions: a metric
- * issue's monitor and query, the agent conversations in the trace, the trace itself, and the
+ * Follow-up calls, most specific first: a metric issue's monitor and query, the agent
+ * conversations in the trace, the trace itself, another thread's stacktrace, and the
  * breadcrumbs.
  */
 function buildIssueSuggestedActions({
@@ -339,6 +371,7 @@ function buildIssueSuggestedActions({
   event,
   apiService,
   aiConversations,
+  otherThread,
   session,
 }: {
   organizationSlug: string;
@@ -346,6 +379,7 @@ function buildIssueSuggestedActions({
   event: Event;
   apiService: SentryApiService;
   aiConversations?: AIConversationReference[];
+  otherThread: number | string | null;
   session: {
     experimentalMode: boolean;
     availableToolNames?: ReadonlySet<string>;
@@ -401,6 +435,24 @@ function buildIssueSuggestedActions({
         toolName: "get_trace_details",
         arguments: { organizationSlug, traceId },
         reason: "Inspect the distributed trace this event belongs to.",
+        ...session,
+      }),
+    );
+  }
+
+  // event.threads lists them, but only get_event_stacktrace returns another thread's frames
+  if (otherThread !== null) {
+    candidates.push(
+      buildSuggestedToolAction({
+        toolName: "get_event_stacktrace",
+        arguments: {
+          organizationSlug,
+          issueId: issue.shortId,
+          eventId: event.id,
+          thread: otherThread,
+        },
+        reason:
+          "Fetch the full stacktrace of a thread that did not crash; pick another from event.threads by id or name.",
         ...session,
       }),
     );
@@ -478,9 +530,7 @@ export default defineTool({
     issueUrl: ParamIssueUrl.optional(),
     packageNames: ParamPackageNames.optional(),
   },
-  // Experimental sessions get structuredContent on every success path, so only they are told
-  // the schema; stable sessions still get markdown until the structured payload graduates.
-  experimentalOutputSchema: getIssueDetailsOutputSchema,
+  outputSchema: getIssueDetailsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
