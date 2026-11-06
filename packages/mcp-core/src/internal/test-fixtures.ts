@@ -1,15 +1,10 @@
 import type { Event } from "../api-client/types";
 import type { z } from "zod";
-import type {
-  FrameInterface,
-  ExceptionInterface,
-  ThreadEntrySchema,
-} from "../api-client/schema";
+import type { FrameInterface, ExceptionInterface } from "../api-client/schema";
 
 // Type aliases for cleaner code
 type Frame = z.infer<typeof FrameInterface>;
 type ExceptionValue = z.infer<typeof ExceptionInterface>;
-type Thread = z.infer<typeof ThreadEntrySchema>;
 type StackTrace = { frames: Frame[] };
 
 /**
@@ -79,17 +74,6 @@ export function createExceptionValue(
   return {
     type: "Error",
     value: "Something went wrong",
-    stacktrace: createStackTrace([createFrame()]),
-    ...overrides,
-  };
-}
-
-// Thread factory
-export function createThread(overrides: Partial<Thread> = {}): Thread {
-  return {
-    id: 1,
-    name: "main",
-    crashed: true,
     stacktrace: createStackTrace([createFrame()]),
     ...overrides,
   };
@@ -188,26 +172,6 @@ export class EventBuilder {
     return this;
   }
 
-  withThread(thread: Thread): this {
-    const existingThread = this.event.entries.find((e) => e.type === "threads");
-    if (
-      existingThread?.data &&
-      typeof existingThread.data === "object" &&
-      "values" in existingThread.data &&
-      Array.isArray(existingThread.data.values)
-    ) {
-      existingThread.data.values.push(thread);
-    } else {
-      this.event.entries.push({
-        type: "threads",
-        data: {
-          values: [thread],
-        },
-      });
-    }
-    return this;
-  }
-
   withMessage(message: string): this {
     this.event.entries.push({
       type: "message",
@@ -297,79 +261,7 @@ export const testEvents = {
         }),
       )
       .build(),
-
-  // Java thread error
-  javaThreadError: (message = "Test error") =>
-    new EventBuilder("java")
-      .withTitle("Test Error")
-      .withType("error")
-      .withMessage(message)
-      .withThread(
-        createThread({
-          id: 187,
-          name: "CONTRACT_WORKER",
-          state: "RUNNABLE",
-          stacktrace: createStackTrace([
-            frameFactories.java({
-              filename: "Thread.java",
-              module: "java.lang.Thread",
-              function: "run",
-              lineNo: 833,
-            }),
-            frameFactories.java({
-              filename: "AeronServer.java",
-              module: "com.citics.eqd.mq.aeron.AeronServer",
-              function: "lambda$start$3",
-              lineNo: 110,
-            }),
-          ]),
-        }),
-      )
-      .build(),
-
-  // Enhanced frame with context and variables
-  enhancedFrame: (platform = "python") => {
-    const frame = frameFactories[platform as keyof typeof frameFactories]({
-      inApp: true,
-      context: [
-        [40, '    raise ValueError("User not found")'],
-        [41, "    "],
-        [42, "    balance = user.account.balance"],
-        [43, "    if balance < amount:"],
-        [44, "        raise InsufficientFundsError()"],
-      ],
-      vars: {
-        amount: 150.0,
-        user_id: "usr_123456",
-        user: null,
-      },
-    });
-
-    return new EventBuilder(platform)
-      .withException(
-        createExceptionValue({
-          type: "ValueError",
-          value: "Something went wrong",
-          stacktrace: createStackTrace([frame]),
-        }),
-      )
-      .build();
-  },
 };
-
-// Helper to create frames with context lines
-export function createFrameWithContext(
-  frame: Partial<Frame>,
-  contextLines: Array<[number, string]>,
-  vars?: Record<string, any>,
-): Frame {
-  return createFrame({
-    ...frame,
-    inApp: true,
-    context: contextLines,
-    vars,
-  });
-}
 
 // Advanced test fixtures for specific scenarios
 export const advancedFixtures = {
