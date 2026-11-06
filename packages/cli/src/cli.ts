@@ -627,23 +627,26 @@ export async function runCli(
     const { resolveCommandPath } = await import("./lib/introspect.js");
     const { getDefaultOrganization } = await import("./lib/db/defaults.js");
 
+    // Redact first: a sensitive flag's value would otherwise survive as a
+    // path segment or the trailing argv token.
+    const safeArgv = redactArgv(argv);
+
     // Strip flags so resolveCommandPath only sees command path segments
-    const pathSegments = argv.filter((t) => !t.startsWith("-"));
+    const pathSegments = safeArgv.filter((t) => !t.startsWith("-"));
     const resolved = resolveCommandPath(
       routes as unknown as Parameters<typeof resolveCommandPath>[0],
       pathSegments,
     );
     const unknownToken =
-      resolved?.kind === "unresolved" ? resolved.input : (argv.at(-1) ?? "");
+      resolved?.kind === "unresolved"
+        ? resolved.input
+        : (safeArgv.at(-1) ?? "");
     const suggestions =
       resolved?.kind === "unresolved" ? resolved.suggestions : [];
 
     // Extract org/project from argv, fall back to default org from SQLite
-    const fromArgv = extractOrgProjectFromArgv(argv);
+    const fromArgv = extractOrgProjectFromArgv(safeArgv);
     const org = fromArgv.org ?? getDefaultOrganization() ?? undefined;
-
-    // Redact sensitive flags (e.g., --token) before sending to Sentry
-    const safeArgv = redactArgv(argv);
 
     Sentry.setTag("command", "unknown");
     if (org) {
@@ -656,7 +659,7 @@ export async function runCli(
       argv: safeArgv,
       unknown_token: unknownToken,
       suggestions,
-      arg_count: argv.length,
+      arg_count: safeArgv.length,
       org: org ?? null,
       project: fromArgv.project ?? null,
     });
