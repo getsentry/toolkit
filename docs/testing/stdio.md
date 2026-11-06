@@ -390,6 +390,11 @@ my-org/my-project                 # Limit calls to this project
 --version, -v                     # Show version (-v alone; elsewhere it is --verbose)
 ```
 
+A tool stays enabled while any granted skill lists it. When a disabled skill
+removes no tools for that reason, for example `--disable-skills=docs` while
+`inspect` still grants `search_docs` and `get_doc`, the server prints a warning
+to stderr that names the tools that stay enabled.
+
 ### Environment Variables
 
 ```bash
