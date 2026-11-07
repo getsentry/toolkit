@@ -27,12 +27,19 @@ function json(body: unknown, headers: Record<string, string> = {}): Response {
   });
 }
 
+type RecordedRequest = { method: string; url: URL };
+
+/** Whether a request went to sentry.io (or one of its region hosts). */
+function isSentryHost({ url }: RecordedRequest): boolean {
+  return url.hostname === "sentry.io" || url.hostname.endsWith(".sentry.io");
+}
+
 /** Answers the endpoints the tests call; records every request. */
-function sentryApi(requests: string[]): typeof fetch {
+function sentryApi(requests: RecordedRequest[]): typeof fetch {
   return mockFetch(async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
-    requests.push(`${request.method} ${url.host}${url.pathname}${url.search}`);
+    requests.push({ method: request.method, url });
     const path = url.pathname;
     if (path === "/api/0/organizations/acme/") {
       return json({ id: "1", slug: "acme", name: "Acme" });
@@ -80,7 +87,7 @@ function sentryApi(requests: string[]): typeof fetch {
 describe("createSentrySDK({ persist: false })", () => {
   let root: string;
   let configDir: string;
-  let requests: string[];
+  let requests: RecordedRequest[];
   let originalFetch: typeof globalThis.fetch;
 
   beforeEach(() => {
@@ -117,7 +124,9 @@ describe("createSentrySDK({ persist: false })", () => {
     await sdk().issue.resolve({ issue: "acme/FRONTEND-1" });
 
     expect(
-      requests.some((r) => r.startsWith("PUT ") && r.includes("/100/")),
+      requests.some(
+        (r) => r.method === "PUT" && r.url.pathname.includes("/100/"),
+      ),
     ).toBe(true);
     expect(existsSync(configDir)).toBe(false);
   });
@@ -155,7 +164,7 @@ describe("createSentrySDK({ persist: false })", () => {
     }
 
     expect(requests.length).toBeGreaterThan(0);
-    expect(requests.every((r) => r.includes("sentry.io/"))).toBe(true);
+    expect(requests.every(isSentryHost)).toBe(true);
   });
 
   test("ignores .sentryclirc", async () => {
@@ -167,7 +176,7 @@ describe("createSentrySDK({ persist: false })", () => {
     await sdk().project.view({ orgProject: "acme/frontend" });
 
     expect(requests.length).toBeGreaterThan(0);
-    expect(requests.every((r) => r.includes("sentry.io/"))).toBe(true);
+    expect(requests.every(isSentryHost)).toBe(true);
   });
 
   test("turns telemetry off", () => {
