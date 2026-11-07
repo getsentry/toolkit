@@ -9,6 +9,7 @@ import {
   createOrganizationRelease,
   createOrganizationReleaseDeploy,
   deleteOrganizationRelease,
+  getOrganizationPreviousReleaseWithCommits,
   getOrganizationRelease,
   listOrganizationReleaseDeploys,
   listOrganizationReleases,
@@ -37,14 +38,12 @@ import {
   isSameRepository,
 } from "../git.js";
 import { logger } from "../logger.js";
-import { resolveOrgRegion } from "../region.js";
 import {
   buildRepositorySettingsUrl,
   buildSourceCodeIntegrationsUrl,
 } from "../sentry-web-urls.js";
 import {
   API_MAX_PER_PAGE,
-  apiRequestToRegion,
   getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
@@ -421,16 +420,17 @@ async function getPreviousReleaseCommit(
 ): Promise<string | undefined> {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    const regionUrl = await resolveOrgRegion(orgSlug);
-    const encodedVersion = encodeURIComponent(version);
-    const { data } = await apiRequestToRegion<{
-      lastCommit?: { id: string } | null;
-    }>(
-      regionUrl,
-      `organizations/${orgSlug}/releases/${encodedVersion}/previous-with-commits/`,
-      { method: "GET" },
+    const result = await getOrganizationPreviousReleaseWithCommits({
+      ...getOrgSdkConfig(),
+      path: { organization_id_or_slug: orgSlug, version },
+    });
+    // Sentry answers `{}` when no earlier release has commits.
+    const data = unwrapResult<{ lastCommit?: { id?: unknown } | null }>(
+      result,
+      "Failed to get previous release commit",
     );
-    return data?.lastCommit?.id;
+    const id = data.lastCommit?.id;
+    return typeof id === "string" ? id : undefined;
   } catch {
     // Not critical — if we can't get the previous commit, we still send
     // refs without previousCommit. Sentry will try to determine the range
