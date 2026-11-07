@@ -3,7 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import { createLocalSessionStore } from "../../../src/commands/local/session-store.js";
 
 describe("LocalSessionStore", () => {
-  test("grows retention without losing envelopes, IDs or live subscribers", () => {
+  test("grows retention without losing envelopes, IDs or live subscribers", async () => {
     const store = createLocalSessionStore();
     const session = store.create({
       label: "web",
@@ -29,19 +29,19 @@ describe("LocalSessionStore", () => {
     ingest("two");
     const retained = buffer.read({ all: true });
     expect(store.resolve(session.id).maxEnvelopes).toBe(2);
-    store.setMaxEnvelopes(session.id, 4);
+    await store.setMaxEnvelopes(session.id, 4);
     expect(store.getBuffer(session.id)).toBe(buffer);
     expect(buffer.read({ all: true })).toEqual(retained);
     ingest("three");
     ingest("four");
     expect(buffer.read({ all: true })).toHaveLength(4);
     expect(messages).toHaveLength(4);
-    expect(() => store.setMaxEnvelopes(session.id, 3)).toThrow(
+    await expect(store.setMaxEnvelopes(session.id, 3)).rejects.toThrow(
       /retained envelopes/,
     );
     expect(buffer.read({ all: true })).toHaveLength(4);
     buffer.clear();
-    store.setMaxEnvelopes(session.id, 1);
+    await store.setMaxEnvelopes(session.id, 1);
     ingest("five");
     ingest("six");
     expect(buffer.read({ all: true })).toHaveLength(1);
@@ -49,7 +49,7 @@ describe("LocalSessionStore", () => {
     buffer.unsubscribe(reader);
   });
 
-  test("keeps original arrival times when resizing", () => {
+  test("keeps original arrival times when resizing", async () => {
     const store = createLocalSessionStore();
     const session = store.create({
       label: "timed",
@@ -65,7 +65,7 @@ describe("LocalSessionStore", () => {
         body: Buffer.from('{"event_id":"old"}\n{"type":"event"}\n{}'),
       });
       time.mockReturnValue(61001);
-      store.setMaxEnvelopes(session.id, 4);
+      await store.setMaxEnvelopes(session.id, 4);
       expect(buffer.read({ timeWindow: 60 })).toHaveLength(0);
       expect(buffer.read({ all: true })).toHaveLength(1);
     } finally {

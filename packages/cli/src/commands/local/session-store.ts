@@ -62,7 +62,7 @@ export class AmbiguousLocalSessionError extends Error {
 /** In-memory session lifecycle and access to isolated telemetry buffers. */
 export type LocalSessionStore = {
   create: (input: CreateLocalSessionInput) => LocalSession;
-  setMaxEnvelopes: (reference: string, value: number) => LocalSession;
+  setMaxEnvelopes: (reference: string, value: number) => Promise<LocalSession>;
   getRetention: (reference: string) => LocalRetentionBuffer;
   close: (reference: string) => LocalSession;
   reset: (reference: string) => void;
@@ -183,10 +183,12 @@ export function createLocalSessionStore({
     getRetention(reference) {
       return resolveStored(reference).retention;
     },
-    setMaxEnvelopes(reference, value) {
+    async setMaxEnvelopes(reference, value) {
       const session = resolveStored(reference);
-      session.retention.resize(value);
-      return toPublicSession(update(session, { maxEnvelopes: value }));
+      await session.retention.resize(value);
+      return toPublicSession(
+        update(resolveStored(session.id), { maxEnvelopes: value }),
+      );
     },
     close(reference) {
       const session = resolveStored(reference);

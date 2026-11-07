@@ -59,7 +59,9 @@ receiver's envelope retention limit when replaying a large corpus.
 - AI inspection reads standard `gen_ai.*` and Vercel AI fields from both embedded
   transaction spans and standalone spans. Prompts, responses, token usage and
   tool arguments/results appear when the SDK captured them. Child AI steps stay
-  linked to their parent interaction.
+  linked to their parent interaction. Interaction summaries use captured child
+  metadata, reconcile parent/step token totals, and pair the latest response
+  with its finish reason. Empty or malformed aliases do not hide usable content.
 - Queries and resources group exact operation/description pairs. Sort by count,
   duration or captured resource size and open an execution in its trace.
 - Web Vitals groups visits by page and shows individual captured measurements.
@@ -68,9 +70,13 @@ receiver's envelope retention limit when replaying a large corpus.
 - Profiles support Sentry sample/stack/frame payloads in legacy `profile` items
   and continuous `profile_chunk` items. Select a thread, compare inclusive/self
   time and samples, and explore flame, treemap or sunburst views. Observed time
-  uses adjacent samples on each thread; no duration is invented for the last
-  sample. Charts limit displayed depth/nodes for responsiveness; JSON preserves
-  the original payload.
+  uses adjacent samples on each thread within a captured chunk; no duration is
+  invented across missing chunks or after a final sample. Retained chunks from
+  the same profiler can be viewed together or individually. Sampled functions
+  appear in associated trace waterfalls where captured span timing identifies
+  their parent unambiguously. These rows are labelled as sampled and capped at
+  5,000 per trace. Charts limit displayed depth/nodes for responsiveness; JSON
+  preserves the selected original payload.
 - SDKs lists observed names, versions, platforms and last-seen metadata, followed
   by session/client reports. Feedback links to associated errors in the capture.
 - Attachments show safe text/JSON/image/video previews and downloads. Captured
@@ -93,3 +99,11 @@ Integration tests start an actual receiver, replay the bundled capture through
 HTTP/SSE, then navigate the analysis and inspector views. Replay tests cover
 binary bytes, gzip/Brotli, recursive directories, repeated passes and rejected
 requests. Unknown payloads remain inspectable as JSON.
+
+The receiver accepts gzip, deflate and Brotli with a 10 MiB encoded-body limit
+and a 32 MiB decoded-body limit. Missing or plain-text content types use the
+envelope format. Invalid compression returns 400, oversized input 413,
+unsupported media/encoding 415, and temporary admission overload 503. Malformed
+envelopes remain listed and downloadable by their receiver ID; downloads retain
+the original bytes while the text preview is best effort. Retention remains
+bounded by the configured envelope count.
