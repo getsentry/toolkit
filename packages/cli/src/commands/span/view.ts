@@ -170,6 +170,7 @@ async function resolveSpanViewInput(
   const { traceId, org, project } = await resolveTraceOrgProject(
     traceTarget,
     context.cwd,
+    "span view",
     usageHint(),
   );
   // Span IDs are unique only within a trace, so recovery scopes its fuzzy

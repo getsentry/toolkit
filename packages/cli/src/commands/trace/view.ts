@@ -149,6 +149,7 @@ async function resolveTraceViewInput(
   const target = await resolveTraceOrgOptionalProject(
     parsed,
     context.cwd,
+    "trace view",
     usageHint(),
   );
   return {

@@ -212,6 +212,7 @@ async function resolveLogListTarget(
     const { traceId, org } = await resolveTraceOrg(
       parsed,
       context.cwd,
+      "log list",
       traceUsageHint(),
     );
     return {
