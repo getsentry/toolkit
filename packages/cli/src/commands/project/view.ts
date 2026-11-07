@@ -11,7 +11,7 @@ import {
   resolveOrgDisplayName,
   tryGetPrimaryDsn,
 } from "../../lib/api-client.js";
-import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   type ParsedOrgProject,
   ProjectSpecificationType,
@@ -52,7 +52,7 @@ type ViewFlags = {
 };
 
 /** Usage hint for ContextError messages */
-const USAGE_HINT = "sentry project view <org>/<project>";
+const usageHint = () => sentry`project view <org>/<project>`;
 
 /**
  * Build an error message for missing context, with optional DSN resolution hint.
@@ -61,13 +61,13 @@ function buildContextError(skippedSelfHosted?: number): ContextError {
   if (skippedSelfHosted) {
     return new ContextError(
       "Organization and project",
-      USAGE_HINT,
+      usageHint(),
       undefined,
       `Found ${skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`,
     );
   }
 
-  return new ContextError("Organization and project", USAGE_HINT);
+  return new ContextError("Organization and project", usageHint());
 }
 
 /**
@@ -76,13 +76,9 @@ function buildContextError(skippedSelfHosted?: number): ContextError {
  */
 async function handleWebView(resolvedTargets: ResolvedTarget[]): Promise<void> {
   if (resolvedTargets.length > 1) {
-    throw new ContextError(
-      "Single project",
-      `${asInvocationCommand(USAGE_HINT)} -w`,
-      [
-        `Found ${resolvedTargets.length} projects — specify which project to open in browser`,
-      ],
-    );
+    throw new ContextError("Single project", `${usageHint()} -w`, [
+      `Found ${resolvedTargets.length} projects — specify which project to open in browser`,
+    ]);
   }
 
   const target = resolvedTargets[0];
@@ -296,7 +292,7 @@ async function resolveViewTargets(
       // Search for project across all orgs - single target
       const resolved = await resolveProjectBoundSlug(
         parsed.projectSlug,
-        USAGE_HINT,
+        usageHint(),
         sentry`project view <org>/${parsed.projectSlug}`,
         parsed.originalSlug,
       );
@@ -332,7 +328,7 @@ async function resolveViewTargets(
     }
 
     default:
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
   }
 }
 

@@ -24,6 +24,7 @@ import {
 import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
 import type { SentryTeam } from "../../types/index.js";
 import { TeamListItemSchema } from "../../generated/output-schemas/team.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "team-list";
@@ -51,7 +52,7 @@ const teamListConfig: OrgListConfig<
 > = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "teams",
-  commandPrefix: "sentry team list",
+  commandPrefix: () => sentry`team list`,
   listForOrg: (org) => listTeams(org),
   listPaginated: (org, opts) => listTeamsPaginated(org, opts),
   withOrg: (team, orgSlug) => ({ ...team, orgSlug }),

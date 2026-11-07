@@ -12,7 +12,7 @@ import {
   listIssuesPaginated,
   resolveReplay,
 } from "../../lib/api-client.js";
-import { sentry } from "../../lib/app-identity.js";
+import { type LazyCommand, sentry } from "../../lib/app-identity.js";
 import {
   type ParsedOrgProject,
   parseOrgProjectInput,
@@ -61,8 +61,8 @@ type ViewFlags = {
   readonly fields?: string[];
 };
 
-const USAGE_HINT =
-  "sentry replay view [<org>/<project>/]<replay-id> | <replay-url>";
+const viewUsageHint = () =>
+  sentry`replay view [<org>/<project>/]<replay-id> | <replay-url>`;
 const MAX_ACTIVITY_EVENTS = 6;
 const MAX_RELATED_ERRORS = 3;
 const MAX_RELATED_TRACES = 2;
@@ -79,7 +79,7 @@ const log = logger.withTag("replay.view");
  */
 export function parseReplayArguments(
   args: readonly string[],
-  usageHint = USAGE_HINT,
+  usageHint = viewUsageHint(),
 ): ReplayArgumentsInput {
   const { target, id, baseUrl, warnings } = parseIdArgument(
     args,
@@ -122,14 +122,14 @@ export type ReplayArguments = BoundArguments<
  */
 export function replayArguments(
   command: "view" | "download",
-  usageHint: string,
+  usageHint: LazyCommand,
 ) {
   const commandLog = logger.withTag(`replay.${command}`);
   return boundArguments({
     placeholder: "replay-id-or-url",
     brief: "[<org>/<project>] <replay-id or trace-id> or <replay-url>",
     kind: ORG_PROJECT_TARGET,
-    parse: (raw) => parseReplayArguments(raw, usageHint),
+    parse: (raw) => parseReplayArguments(raw, usageHint()),
     resolve: async (
       input,
       context: SentryContext,
@@ -364,7 +364,7 @@ export const viewCommand = buildCommand({
     schema: ReplayViewOutputSchema,
   },
   parameters: {
-    positional: replayArguments("view", USAGE_HINT),
+    positional: replayArguments("view", viewUsageHint),
     flags: {
       web: {
         kind: "boolean",

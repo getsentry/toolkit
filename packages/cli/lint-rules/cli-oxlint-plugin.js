@@ -396,26 +396,12 @@ function namesSentryCommand(text) {
   return false;
 }
 
-/** A whole `sentry <command>`, such as a usage line or a command prefix. */
-function isWholeSentryCommand(text) {
-  return namesSentryCommand(text) && text.startsWith("sentry ");
-}
-
 /** The tag that builds a command hint: `` sentry`issue list` ``. */
 function isSentryTag(node) {
   return (
     node.type === "TaggedTemplateExpression" &&
     node.tag.type === "Identifier" &&
     node.tag.name === "sentry"
-  );
-}
-
-/** A call of the runtime form, for commands held in variables. */
-function isInvocationCall(node) {
-  return (
-    node.type === "CallExpression" &&
-    node.callee.type === "Identifier" &&
-    node.callee.name === "asInvocationCommand"
   );
 }
 
@@ -446,7 +432,7 @@ function hasFunctionAncestor(node) {
 function isInvocationSafe(node) {
   for (let current = node.parent; current; current = current.parent) {
     if (FUNCTION_TYPES.has(current.type)) return false;
-    if (isSentryTag(current) || isInvocationCall(current)) return true;
+    if (isSentryTag(current)) return true;
     if (
       current.type === "Property" &&
       HELP_TEXT_KEYS.has(current.key?.name ?? current.key?.value)
@@ -911,9 +897,6 @@ const rules = {
       if (!file.includes("/src/")) return {};
       const check = (node, text) => {
         if (!namesSentryCommand(text) || isInvocationSafe(node)) return;
-        // A module-level constant that holds a whole command is data: the
-        // code that prints it wraps it, as ContextError and org-list do.
-        if (isWholeSentryCommand(text) && !hasFunctionAncestor(node)) return;
         report(node);
       };
       // The running program is known only once an entry point has started,
@@ -922,26 +905,10 @@ const rules = {
         if (!hasFunctionAncestor(node))
           report(
             node,
-            "Build the hint inside the function that prints it, not at module load: the running program is not known yet.",
+            "Build the hint when it is shown, not at module load: the running program is not known yet. Keep a command in a constant or table as `() => sentry`…``.",
           );
       };
       return {
-        CallExpression(node) {
-          if (!isInvocationCall(node)) return;
-          checkModuleLevel(node);
-          const [arg] = node.arguments;
-          const text =
-            arg?.type === "Literal"
-              ? arg.value
-              : arg?.type === "TemplateLiteral"
-                ? templateText(arg)
-                : undefined;
-          if (typeof text === "string" && text.startsWith("sentry "))
-            report(
-              node,
-              "Write a literal command with the sentry`…` tag; asInvocationCommand() is for commands held in variables.",
-            );
-        },
         TaggedTemplateExpression(node) {
           if (!isSentryTag(node)) return;
           checkModuleLevel(node);

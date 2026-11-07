@@ -26,7 +26,7 @@ import {
   listTeams,
   MEMBER_PROJECT_CREATION_DISABLED_DETAIL,
 } from "../../lib/api-client.js";
-import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { parseOrgProjectInput } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseTeam, PROJECT_SPEC_TARGET } from "../../lib/completion-target.js";
@@ -69,7 +69,7 @@ const log = logger.withTag("project.create");
 const WHITESPACE_RE = /\s/;
 
 /** Full usage hint shown in errors and help text. */
-const USAGE_HINT = "sentry project create [<org>/]<name>:<platform>...";
+const usageHint = () => sentry`project create [<org>/]<name>:<platform>...`;
 
 type CreateFlags = {
   readonly team?: string;
@@ -194,7 +194,7 @@ async function handleCreateProject404(opts: {
   // listTeams returned 404 → org doesn't exist
   // Delegates to shared helper that handles DSN org ID resolution and org listing
   if (listTeamsError instanceof ApiError && listTeamsError.status === 404) {
-    return await buildOrgNotFoundError(orgSlug, USAGE_HINT, detectedFrom);
+    return await buildOrgNotFoundError(orgSlug, usageHint(), detectedFrom);
   }
 
   // listTeams failed for other reasons (403, 5xx, network) — can't disambiguate
@@ -228,7 +228,7 @@ async function resolveDryRunTeam(
     return await resolveOrCreateTeam(orgSlug, {
       team: opts.team,
       detectedFrom: opts.detectedFrom,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
       autoCreateSlug: opts.autoCreateSlug,
       dryRun: true,
     });
@@ -438,13 +438,13 @@ function parseProjectName(
         platform,
       };
     case "org-all":
-      throw new ContextError("Project name", USAGE_HINT, [
+      throw new ContextError("Project name", usageHint(), [
         `'${rawName}' looks like an org, not a project name.`,
       ]);
     case "auto-detect":
       throw new ValidationError("Project name cannot be empty.", "name");
     default:
-      throw new ContextError("Project name", USAGE_HINT, []);
+      throw new ContextError("Project name", usageHint(), []);
   }
 }
 
@@ -504,7 +504,7 @@ function parsePairedProjectSpec(
  */
 function parseProjectSpecs(rawSpecs: readonly string[]): ProjectSpecsInput {
   if (rawSpecs.length === 0) {
-    throw new ContextError("Project specification", USAGE_HINT, []);
+    throw new ContextError("Project specification", usageHint(), []);
   }
 
   if (rawSpecs.length === 1 && !rawSpecs[0]?.includes(":")) {
@@ -552,8 +552,8 @@ async function resolveProjectSpecsOrg(
   }
   const resolved = await resolveOrg({ org: input.explicitOrg, cwd });
   if (!resolved) {
-    throw new ContextError("Organization", USAGE_HINT, [
-      `Include org in name: ${asInvocationCommand(USAGE_HINT)}`,
+    throw new ContextError("Organization", usageHint(), [
+      `Include org in name: ${usageHint()}`,
     ]);
   }
   return resolved;
@@ -620,7 +620,7 @@ async function createOneProject(opts: {
     const team: ResolvedTeam = await resolveOrCreateTeam(orgSlug, {
       team: flags.team,
       detectedFrom,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
       autoCreateSlug,
     });
     teamSlug = team.slug;

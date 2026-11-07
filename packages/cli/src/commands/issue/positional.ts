@@ -8,7 +8,7 @@
  * pasted issue URL is applied. See `positional-parse.ts`.
  */
 
-import { sentry } from "../../lib/app-identity.js";
+import { type LazyCommand, sentry } from "../../lib/app-identity.js";
 import { ISSUE_TARGET } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import {
@@ -38,9 +38,12 @@ export type IssueTarget = BoundPositional<
 type IssueCommand = {
   /** The subcommand, e.g. `"view"` */
   readonly command: string;
-  /** The command before it (default: `"sentry issue"`) */
-  readonly commandBase?: string;
+  /** The command before it (default: `sentry issue`) */
+  readonly commandBase?: LazyCommand;
 };
+
+/** The default {@link IssueCommand.commandBase}. */
+const issueBase = () => sentry`issue`;
 
 /** What the issue resolver needs from the command context. */
 type IssueTargetContext = { readonly cwd: string };
@@ -67,8 +70,8 @@ export function requireIssueArgument(
   if (issue) {
     return issue;
   }
-  const { command, commandBase = sentry`issue` } = issueCommand;
-  throw new ContextError("Issue ID", `${commandBase} ${command} <issue>`);
+  const { command, commandBase = issueBase } = issueCommand;
+  throw new ContextError("Issue ID", `${commandBase()} ${command} <issue>`);
 }
 
 /**
@@ -79,7 +82,7 @@ export function requireIssueArgument(
 function issueTarget(
   issueCommand: IssueCommand,
 ): (this: IssueTargetContext, input?: string) => IssueTarget {
-  const { command, commandBase = sentry`issue` } = issueCommand;
+  const { command, commandBase = issueBase } = issueCommand;
   return boundPositional(
     ISSUE_TARGET,
     parseIssueTargetInput,
@@ -88,7 +91,7 @@ function issueTarget(
         issueArg: requireIssueArgument(issue, issueCommand),
         cwd: context.cwd,
         command,
-        commandBase,
+        commandBase: commandBase(),
       }),
   );
 }
@@ -135,7 +138,7 @@ export type IssuesArguments = BoundArguments<
  */
 export function issuesPositional(options: {
   readonly brief: string;
-  readonly usageHint: string;
+  readonly usageHint: LazyCommand;
   readonly distinct?: boolean;
   readonly optional?: boolean;
 }) {
@@ -145,7 +148,10 @@ export function issuesPositional(options: {
     brief,
     kind: ISSUE_TARGET,
     parse: (raw): readonly IssueArgument[] => {
-      const issues = parseIssueArguments(raw, { usageHint, optional });
+      const issues = parseIssueArguments(raw, {
+        usageHint: usageHint(),
+        optional,
+      });
       if (!distinct) {
         return issues;
       }

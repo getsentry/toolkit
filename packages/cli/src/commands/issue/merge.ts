@@ -46,7 +46,7 @@ const log = logger.withTag("issue.merge");
 const COMMAND = "merge";
 /** Full command path for error messages (this one isn't passed to resolveIssue). */
 const COMMAND_PATH = "issue merge";
-const USAGE_HINT = "sentry issue merge <issue> <issue> [<issue>...]";
+const usageHint = () => sentry`issue merge <issue> <issue> [<issue>...]`;
 
 type MergeFlags = {
   readonly json: boolean;
@@ -302,7 +302,7 @@ export const mergeCommand = buildCommand({
     // counts `--into` too
     positional: issuesPositional({
       brief: "Issue IDs to merge (2 or more required)",
-      usageHint: USAGE_HINT,
+      usageHint: usageHint,
       optional: true,
     }),
     flags: {

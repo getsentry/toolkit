@@ -78,11 +78,12 @@ import {
   fetchAlertRulesWithBudget,
   throwAlertListFetchFailure,
 } from "../list-utils.js";
+import { sentry } from "../../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "alert-issues-list";
 
-const USAGE_HINT = "sentry alert issues list <org>/<project>";
+const usageHint = () => sentry`alert issues list <org>/<project>`;
 
 type ListFlags = {
   readonly web: boolean;
@@ -122,7 +123,7 @@ type IssueAlertListResult = ListResult<IssueAlertRule> & {
 const issueAlertListMeta: ListCommandMeta = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "issue alert rules",
-  commandPrefix: "sentry alert issues list",
+  commandPrefix: () => sentry`alert issues list`,
 };
 
 // Fetch helpers
@@ -186,11 +187,11 @@ async function resolveWebUrl(
 
   const { targets } = await resolveProjectBoundTargets(parsed, {
     cwd,
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
     projectSearchResolution,
   });
   if (targets.length === 0) {
-    throw new ContextError("Organization and project", USAGE_HINT);
+    throw new ContextError("Organization and project", usageHint());
   }
 
   const orgs = [...new Set(targets.map((t) => t.org))];
@@ -226,11 +227,11 @@ async function handleResolvedTargets(
 
   const { targets, footer, detectedDsns } = await resolveProjectBoundTargets(
     parsed,
-    { cwd, usageHint: USAGE_HINT, projectSearchResolution },
+    { cwd, usageHint: usageHint(), projectSearchResolution },
   );
 
   if (targets.length === 0) {
-    throw new ContextError("Organization and project", USAGE_HINT);
+    throw new ContextError("Organization and project", usageHint());
   }
 
   const contextKey = buildMultiTargetContextKey(targets, {

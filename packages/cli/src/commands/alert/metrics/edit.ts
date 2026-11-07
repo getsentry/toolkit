@@ -46,9 +46,10 @@ import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
 import type { MetricAlertEditOutput } from "../../../output-schemas/alert.js";
 import { MetricAlertEditOutputSchema } from "../../../generated/output-schemas/alert.js";
+import { sentry } from "../../../lib/app-identity.js";
 
-const USAGE_HINT =
-  "sentry alert metrics edit <org>/<rule-id-or-name> --name <n> | --status active|disabled";
+const usageHint = () =>
+  sentry`alert metrics edit <org>/<rule-id-or-name> --name <n> | --status active|disabled`;
 
 type EditFlags = {
   readonly name?: string;
@@ -217,7 +218,7 @@ export const editCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        metricRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
+        metricRuleParameter(usageHint, "Rule id or name (same as view)"),
       ],
     },
     flags: {
@@ -310,7 +311,7 @@ export const editCommand = buildCommand({
     const { orgSlug, rule } = await resolveMetricAlertRule(
       orgSlugs,
       ref,
-      USAGE_HINT,
+      usageHint(),
     );
     const body = {
       ...(await getMetricAlertRuleDocument(orgSlug, rule.id)),

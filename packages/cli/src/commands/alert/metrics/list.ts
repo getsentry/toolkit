@@ -78,11 +78,12 @@ import {
   throwAlertListFetchFailure,
 } from "../list-utils.js";
 import { metricAlertStatusLabel } from "./status.js";
+import { sentry } from "../../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "alert-metrics-list";
 
-const USAGE_HINT = "sentry alert metrics list <org>/";
+const usageHint = () => sentry`alert metrics list <org>/`;
 
 const METRIC_ALERT_TARGET_POSITIONAL = {
   kind: "tuple" as const,
@@ -134,7 +135,7 @@ type MetricAlertListResult = ListResult<MetricAlertRule> & {
 const metricAlertListMeta: ListCommandMeta = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "metric alert rules",
-  commandPrefix: "sentry alert metrics list",
+  commandPrefix: () => sentry`alert metrics list`,
 };
 
 // Fetch helpers
@@ -193,7 +194,7 @@ async function resolveOrgs(
   }
   const { targets, footer } = await resolveProjectBoundTargets(parsed, {
     cwd,
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
     projectSearchResolution,
   });
   return {
@@ -225,7 +226,7 @@ async function resolveWebUrl(
   const { orgs } = await resolveOrgs(parsed, cwd, projectSearchResolution);
   const uniqueOrgs = [...new Set(orgs)];
   if (uniqueOrgs.length === 0) {
-    throw new ContextError("Organization", USAGE_HINT);
+    throw new ContextError("Organization", usageHint());
   }
   if (uniqueOrgs.length !== 1) {
     throw new ValidationError(
@@ -254,7 +255,7 @@ async function handleResolvedOrgs(
   );
 
   if (resolved.length === 0) {
-    throw new ContextError("Organization", USAGE_HINT);
+    throw new ContextError("Organization", usageHint());
   }
 
   const uniqueOrgs = [...new Set(resolved)];

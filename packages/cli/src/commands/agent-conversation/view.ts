@@ -6,7 +6,6 @@
 
 import type { SentryContext } from "../../context.js";
 import { getConversationSpans } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import {
@@ -33,6 +32,7 @@ import {
   parseOrgInput,
   resolveOrgInput,
 } from "../../lib/target-positional.js";
+import { sentry } from "../../lib/app-identity.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -40,7 +40,7 @@ type ViewFlags = {
 };
 
 const USAGE = "[<org>/]<conversation-id>";
-const USAGE_HINT = `sentry agent-conversation view ${USAGE}`;
+const usageHint = () => sentry`agent-conversation view ${USAGE}`;
 
 const log = logger.withTag("agent-conversation.view");
 
@@ -82,7 +82,7 @@ export function parseConversationArguments(
   args: readonly string[],
 ): ConversationInput {
   const parsed = parseIdArguments(args, ID_KINDS.conversation, {
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
     multiple: true,
   });
   let { target, ids } = parsed;
@@ -92,12 +92,12 @@ export function parseConversationArguments(
   }
   if (ids.length > 1) {
     throw new ValidationError(
-      `View one conversation at a time: ${asInvocationCommand(USAGE_HINT)}`,
+      `View one conversation at a time: ${usageHint()}`,
       "conversation-id",
     );
   }
   const [conversationId = ""] = ids;
-  const org = parseOrgInput(target, USAGE_HINT);
+  const org = parseOrgInput(target, usageHint());
   return {
     conversationId,
     org: parsed.baseUrl ? { ...org, baseUrl: parsed.baseUrl } : org,
@@ -147,7 +147,7 @@ export const viewCommand = buildCommand({
         const { org } = await resolveOrgInput(
           input.org,
           context.cwd,
-          USAGE_HINT,
+          usageHint(),
         );
         return { org, conversationId: input.conversationId };
       },

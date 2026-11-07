@@ -32,7 +32,7 @@ import {
 } from "./utils.js";
 
 const log = logger.withTag("issue.explain");
-const USAGE_HINT = "sentry issue explain <issue> [<issue>...]";
+const usageHint = () => sentry`issue explain <issue> [<issue>...]`;
 
 type ExplainFlags = {
   readonly json: boolean;
@@ -142,7 +142,7 @@ export const explainCommand = buildCommand({
   parameters: {
     positional: issuesPositional({
       brief: "One or more issue IDs",
-      usageHint: USAGE_HINT,
+      usageHint: usageHint,
       distinct: true,
     }),
     flags: {

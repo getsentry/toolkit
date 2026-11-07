@@ -245,8 +245,8 @@ export const editCommand = buildCommand({
   parameters: {
     positional: dashboardArguments({
       placeholder: "org/project/dashboard",
-      usageHint:
-        "sentry dashboard widget edit <org>/ <dashboard> --title <name> --display <type>",
+      usageHint: () =>
+        sentry`dashboard widget edit <org>/ <dashboard> --title <name> --display <type>`,
     }),
     flags: {
       index: {

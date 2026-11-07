@@ -23,8 +23,9 @@ import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { resolveOrgRegion } from "../../lib/region.js";
 import { resolveOrg } from "../../lib/resolve-target.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry build download <build-id>";
+const usageHint = () => sentry`build download <build-id>`;
 
 /** Structured result for `build download`. */
 type BuildDownloadResult = {
@@ -106,7 +107,7 @@ export const downloadCommand = buildCommand({
   ) {
     const resolved = await resolveOrg({ cwd: this.cwd });
     if (!resolved) {
-      throw new ContextError("Organization", USAGE_HINT);
+      throw new ContextError("Organization", usageHint());
     }
     const { org } = resolved;
 
@@ -115,7 +116,7 @@ export const downloadCommand = buildCommand({
       throw new ResolutionError(
         `Build ${buildId}`,
         "is not installable",
-        USAGE_HINT,
+        usageHint(),
         [
           "The build may still be processing, or it has no downloadable artifact.",
         ],

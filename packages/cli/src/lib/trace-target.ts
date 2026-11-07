@@ -10,7 +10,7 @@
  * Used by: span list, span view, trace view, trace logs, log list.
  */
 
-import { asInvocationCommand, sentry } from "./app-identity.js";
+import { sentry } from "./app-identity.js";
 import {
   type ParsedOrgProject,
   parseOrgProjectArg,
@@ -421,7 +421,7 @@ export async function resolveTraceOrgProject(
 
     case "org-scoped":
       throw new ContextError("Specific project", usageHint, [
-        `Use: ${asInvocationCommand(usageHint.replace(USAGE_TARGET_RE, `${parsed.org}/<project>/${parsed.traceId}`))}`,
+        `Use: ${usageHint.replace(USAGE_TARGET_RE, `${parsed.org}/<project>/${parsed.traceId}`)}`,
         `List projects: ${sentry`project list ${parsed.org}/`}`,
       ]);
 

@@ -24,7 +24,6 @@ import {
   uuid4,
 } from "@sentry/core";
 import type { SentryContext } from "../../context.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
 import {
   buildCheckIn,
@@ -45,11 +44,12 @@ import {
 } from "../../lib/completion-target.js";
 import { CliError, ConfigError, ValidationError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("monitor.run");
 
 /** Usage hint shown when no command is provided. */
-const USAGE_HINT = "sentry monitor run <monitor-slug> -- <command>";
+const usageHint = () => sentry`monitor run <monitor-slug> -- <command>`;
 
 type RunFlags = CheckInConfigFlags & {
   dsn?: string;
@@ -85,7 +85,7 @@ async function resolveCheckInDsn(
 
   throw new ConfigError(
     "No DSN found. Provide one via --dsn <dsn>, set the SENTRY_DSN environment variable, or run from a project where a DSN can be detected.",
-    USAGE_HINT,
+    usageHint(),
   );
 }
 
@@ -284,13 +284,13 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
 
     if (!monitorSlug) {
       throw new ValidationError(
-        `No monitor slug provided. Usage: ${asInvocationCommand(USAGE_HINT)}`,
+        `No monitor slug provided. Usage: ${usageHint()}`,
         "monitor-slug",
       );
     }
     if (command.length === 0) {
       throw new ValidationError(
-        `No command provided. Usage: ${asInvocationCommand(USAGE_HINT)}`,
+        `No command provided. Usage: ${usageHint()}`,
         "command",
       );
     }

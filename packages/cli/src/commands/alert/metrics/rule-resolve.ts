@@ -10,7 +10,7 @@ import {
   listMetricAlertsPaginated,
   type MetricAlertRule,
 } from "../../../lib/api-client.js";
-import { asInvocationCommand, sentry } from "../../../lib/app-identity.js";
+import { type LazyCommand, sentry } from "../../../lib/app-identity.js";
 import { ORG_TARGET } from "../../../lib/completion-target.js";
 import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
@@ -39,7 +39,7 @@ export function parseMetricRuleArg(
   const trimmed = arg.trim();
   if (!trimmed) {
     throw new ValidationError(
-      `Rule id or name is required.\nUse: ${asInvocationCommand(usageHint)}`,
+      `Rule id or name is required.\nUse: ${usageHint}`,
       "rule",
     );
   }
@@ -51,7 +51,7 @@ export function parseMetricRuleArg(
   const slashCount = countChar(trimmed, "/");
   if (slashCount > 1) {
     throw new ValidationError(
-      `Metric alerts are org-scoped — use '<org>/<rule-id-or-name>', not '<org>/<project>/<rule>'.\nUse: ${asInvocationCommand(usageHint)}`,
+      `Metric alerts are org-scoped — use '<org>/<rule-id-or-name>', not '<org>/<project>/<rule>'.\nUse: ${usageHint}`,
       "rule",
     );
   }
@@ -61,7 +61,7 @@ export function parseMetricRuleArg(
   const ref = trimmed.slice(lastSlash + 1).trim();
   if (!ref) {
     throw new ValidationError(
-      `Invalid rule reference '${arg}' (missing id or name after org).\nUse: ${asInvocationCommand(usageHint)}`,
+      `Invalid rule reference '${arg}' (missing id or name after org).\nUse: ${usageHint}`,
       "rule",
     );
   }
@@ -72,7 +72,7 @@ export function parseMetricRuleArg(
  * The `<org>/<rule-id-or-name>` parameter of a metric alert command,
  * parsed with {@link parseMetricRuleArg} before the command runs.
  */
-export function metricRuleParameter(usageHint: string, brief: string) {
+export function metricRuleParameter(usageHint: LazyCommand, brief: string) {
   return alertRuleParameter({
     placeholder: "org/rule-id-or-name",
     brief,

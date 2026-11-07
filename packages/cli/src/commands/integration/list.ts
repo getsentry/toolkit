@@ -18,6 +18,7 @@ import {
 import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
 import type { SentryIntegration } from "../../types/index.js";
 import { IntegrationListItemSchema } from "../../generated/output-schemas/integration.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "integration-list";
@@ -43,7 +44,7 @@ const integrationListConfig: OrgListConfig<
 > = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "integrations",
-  commandPrefix: "sentry integration list",
+  commandPrefix: () => sentry`integration list`,
   listForOrg: (org) => listIntegrations(org),
   listPaginated: (org, opts) => listIntegrationsPaginated(org, opts),
   withOrg: (integration, orgSlug) => ({ ...integration, orgSlug }),

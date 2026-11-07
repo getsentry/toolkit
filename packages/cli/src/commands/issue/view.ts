@@ -39,7 +39,7 @@ import { IssueViewOutputSchema } from "../../generated/output-schemas/issue.js";
 const log = logger.withTag("issue.view");
 
 /** Usage hint for a missing issue */
-const USAGE_HINT = "sentry issue view <issue> [<issue>...]";
+const usageHint = () => sentry`issue view <issue> [<issue>...]`;
 
 /** Maximum browser tabs opened without an explicit safety override. */
 export const MAX_WEB_ISSUES = 5;
@@ -401,7 +401,7 @@ export const viewCommand = buildCommand({
   parameters: {
     positional: issuesPositional({
       brief: "One or more issue IDs",
-      usageHint: USAGE_HINT,
+      usageHint: usageHint,
       distinct: true,
     }),
     flags: {

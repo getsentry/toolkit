@@ -26,6 +26,7 @@ import {
 import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import { withDashboardErrors, resolveWidgetIndex } from "../resolve.js";
 import { DashboardWidgetDeleteOutputSchema } from "../../../generated/output-schemas/dashboard.js";
+import { sentry } from "../../../lib/app-identity.js";
 
 type DeleteFlags = {
   readonly index?: number;
@@ -68,8 +69,8 @@ export const deleteCommand = buildDeleteCommand(
     parameters: {
       positional: dashboardArguments({
         placeholder: "org/project/dashboard",
-        usageHint:
-          "sentry dashboard widget delete <org>/ <id> (--index <n> | --title <name>)",
+        usageHint: () =>
+          sentry`dashboard widget delete <org>/ <id> (--index <n> | --title <name>)`,
       }),
       flags: {
         index: {

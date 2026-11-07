@@ -51,10 +51,11 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("build.upload");
 
-const USAGE_HINT = "sentry build upload <path>";
+const usageHint = () => sentry`build upload <path>`;
 
 /** Parse `--pr-number` as a non-negative integer. */
 function parsePrNumber(value: string): number {
@@ -347,10 +348,10 @@ export const uploadCommand = buildCommand({
 
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 

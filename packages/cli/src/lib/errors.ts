@@ -30,12 +30,7 @@ import {
   buildOrgSettingsUrl,
   buildSeerSettingsUrl,
 } from "./sentry-urls.js";
-import {
-  asInvocationCommand,
-  getLoginCommand,
-  getUrlLoginCommand,
-  sentry,
-} from "./app-identity.js";
+import { getLoginCommand, getUrlLoginCommand, sentry } from "./app-identity.js";
 
 // ---------------------------------------------------------------------------
 // Exit code constants
@@ -389,7 +384,7 @@ function defaultContextAlternatives(): string[] {
  * Build the formatted context error message with usage hints.
  *
  * @param resource - What is required (e.g., "Organization", "Trace ID and span ID")
- * @param command - Single-line CLI usage example (e.g., "sentry org view <org-slug>")
+ * @param command - Single-line CLI usage example (e.g., sentry`org view <org-slug>`)
  * @param alternatives - Alternative ways to provide the context
  * @param note - Optional informational context (e.g., "Found 2 DSN(s) that could not be resolved").
  *   Rendered as a separate "Note:" section after alternatives. Use this for diagnostic
@@ -474,7 +469,7 @@ function buildResolutionMessage(
  *
  * @param resource - What is required (e.g., "Organization", "Organization and project").
  *   Use " and " to join compound resources — triggers plural grammar ("are required").
- * @param command - **Single-line** CLI usage example (e.g., "sentry org view <org-slug>").
+ * @param command - **Single-line** CLI usage example (e.g., sentry`org view <org-slug>`).
  *   Must not contain newlines — multi-line messages indicate a resolution failure
  *   that should use {@link ResolutionError}.
  * @param alternatives - Alternative ways to resolve (defaults to DSN/project detection hints).
@@ -498,12 +493,10 @@ export class ContextError extends CliError {
     // When alternatives is omitted, auto-detection was tried and failed
     const isAutoDetect = alternatives === undefined;
     const resolvedAlternatives = alternatives ?? defaultContextAlternatives();
-    // Commands hold usage lines written as `sentry …`
-    const usage = asInvocationCommand(command);
 
     // Include full formatted message so it's shown even when caught by external handlers
     super(
-      buildContextMessage(resource, usage, resolvedAlternatives, {
+      buildContextMessage(resource, command, resolvedAlternatives, {
         note,
         isAutoDetect,
       }),
@@ -511,7 +504,7 @@ export class ContextError extends CliError {
     );
     this.name = "ContextError";
     this.resource = resource;
-    this.command = usage;
+    this.command = command;
     this.alternatives = resolvedAlternatives;
     this.note = note;
 
@@ -566,18 +559,15 @@ export class ResolutionError extends CliError {
     hint: string,
     suggestions: string[] = [],
   ) {
-    // The hint and suggestions are often usage lines written as `sentry …`
-    const usage = asInvocationCommand(hint);
-    const commands = suggestions.map(asInvocationCommand);
     super(
-      buildResolutionMessage(resource, headline, usage, commands),
+      buildResolutionMessage(resource, headline, hint, suggestions),
       EXIT.RESOLUTION,
     );
     this.name = "ResolutionError";
     this.resource = resource;
     this.headline = headline;
-    this.hint = usage;
-    this.suggestions = commands;
+    this.hint = hint;
+    this.suggestions = suggestions;
   }
 
   override format(): string {
@@ -606,7 +596,7 @@ export function buildValidationMessage(
   if (examples.length > 0) {
     lines.push("", "Try:");
     for (const example of examples) {
-      lines.push(`  ${asInvocationCommand(example)}`);
+      lines.push(`  ${example}`);
     }
   }
   if (note) {

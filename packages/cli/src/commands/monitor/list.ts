@@ -22,6 +22,7 @@ import {
 import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
 import type { SentryMonitor } from "../../types/index.js";
 import { MonitorListItemSchema } from "../../generated/output-schemas/monitor.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "monitor-list";
@@ -67,7 +68,7 @@ const monitorListConfig: OrgListConfig<
 > = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "monitors",
-  commandPrefix: "sentry monitor list",
+  commandPrefix: () => sentry`monitor list`,
   listForOrg: (org) => listMonitors(org),
   listPaginated: (org, opts) => listMonitorsPaginated(org, opts),
   withOrg: (monitor, orgSlug) => ({ ...monitor, orgSlug }),

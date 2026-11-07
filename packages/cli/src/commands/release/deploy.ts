@@ -23,9 +23,10 @@ import type { SentryDeploy, WithOutputFields } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 import { ReleaseDeployOutputSchema } from "../../generated/output-schemas/release.js";
 import type { ReleaseDeployOutputFields } from "../../output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT =
-  "sentry release deploy [<org>/]<version> <environment> [name]";
+const usageHint = () =>
+  sentry`release deploy [<org>/]<version> <environment> [name]`;
 
 /** JSON output: the created deploy, or the `--dry-run` preview. */
 type DeployOutput = WithOutputFields<
@@ -75,7 +76,7 @@ function parseDeployArgs(
   name?: string,
 ): { environment: string; name?: string } {
   if (!environment) {
-    throw new ContextError("Environment", USAGE_HINT, []);
+    throw new ContextError("Environment", usageHint(), []);
   }
   return { environment, name: name || undefined };
 }
@@ -117,7 +118,7 @@ export const deployCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        releaseParameter(USAGE_HINT, "[<org>/]<version> - Release version"),
+        releaseParameter(usageHint, "[<org>/]<version> - Release version"),
         {
           placeholder: "environment",
           brief: "Deploy environment (e.g. production)",

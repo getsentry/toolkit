@@ -20,8 +20,9 @@ import type { SentryRelease, WithOutputFields } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 import { ReleaseFinalizeOutputSchema } from "../../generated/output-schemas/release.js";
 import type { ReleaseFinalizeOutputFields } from "../../output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release finalize [<org>/]<version>";
+const usageHint = () => sentry`release finalize [<org>/]<version>`;
 
 /** JSON output: the finalized release, or the `--dry-run` preview. */
 type FinalizeOutput = WithOutputFields<
@@ -79,7 +80,7 @@ export const finalizeCommand = buildCommand({
       kind: "tuple",
       parameters: [
         releaseParameter(
-          USAGE_HINT,
+          usageHint,
           "[<org>/]<version> - Release version to finalize",
         ),
       ],

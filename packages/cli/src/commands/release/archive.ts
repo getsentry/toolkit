@@ -20,8 +20,9 @@ import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
 import type { ReleaseUpdateOutput } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 import { ReleaseUpdateOutputSchema } from "../../generated/output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release archive [<org>/]<version>";
+const usageHint = () => sentry`release archive [<org>/]<version>`;
 
 /**
  * Render the human-readable result of archiving a release.
@@ -76,7 +77,7 @@ export const archiveCommand = buildCommand({
       kind: "tuple",
       parameters: [
         releaseParameter(
-          USAGE_HINT,
+          usageHint,
           "[<org>/]<version> - Release version to archive",
         ),
       ],

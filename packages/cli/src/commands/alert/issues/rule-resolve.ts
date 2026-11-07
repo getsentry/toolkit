@@ -10,7 +10,7 @@ import {
   isNotFoundApiError,
   listIssueAlertsPaginated,
 } from "../../../lib/api-client.js";
-import { asInvocationCommand, sentry } from "../../../lib/app-identity.js";
+import { type LazyCommand, sentry } from "../../../lib/app-identity.js";
 import { ORG_PROJECT_TARGET } from "../../../lib/completion-target.js";
 import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
@@ -40,7 +40,7 @@ export function parseIssueRuleArg(
   const trimmed = arg.trim();
   if (!trimmed) {
     throw new ValidationError(
-      `Rule id or name is required.\nUse: ${asInvocationCommand(usageHint)}`,
+      `Rule id or name is required.\nUse: ${usageHint}`,
       "rule",
     );
   }
@@ -52,7 +52,7 @@ export function parseIssueRuleArg(
   if (slashCount === 1) {
     throw new ValidationError(
       `Missing rule id or name after the project (got '${trimmed}').\n` +
-        `Use: ${asInvocationCommand(usageHint)}\n` +
+        `Use: ${usageHint}\n` +
         `Example: ${trimmed}/<rule-id-or-name>`,
       "rule",
     );
@@ -63,7 +63,7 @@ export function parseIssueRuleArg(
   const ref = trimmed.slice(lastSlash + 1).trim();
   if (!ref) {
     throw new ValidationError(
-      `Invalid rule reference '${arg}'.\nUse: ${asInvocationCommand(usageHint)}`,
+      `Invalid rule reference '${arg}'.\nUse: ${usageHint}`,
       "rule",
     );
   }
@@ -74,7 +74,7 @@ export function parseIssueRuleArg(
  * The `<org>/<project>/<rule-id-or-name>` parameter of an issue alert
  * command, parsed with {@link parseIssueRuleArg} before the command runs.
  */
-export function issueRuleParameter(usageHint: string, brief: string) {
+export function issueRuleParameter(usageHint: LazyCommand, brief: string) {
   return alertRuleParameter({
     placeholder: "org/project/rule-id-or-name",
     brief,

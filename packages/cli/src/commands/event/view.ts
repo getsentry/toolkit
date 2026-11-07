@@ -17,7 +17,7 @@ import {
   type ResolvedEvent,
   resolveEventInOrg,
 } from "../../lib/api-client.js";
-import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   type IssueSelector,
   issueSelectorHelp,
@@ -212,7 +212,7 @@ function viewOutputHint(
 }
 
 /** Usage hint for ContextError messages */
-const USAGE_HINT = "sentry event view <org>/<project> <event-id>";
+const usageHint = () => sentry`event view <org>/<project> <event-id>`;
 
 /**
  * Expand positional args by splitting each on newlines.
@@ -238,14 +238,14 @@ const LATEST_EVENT_SENTINEL = "@latest";
 const DEFAULT_SELECTOR: IssueSelector = "@latest";
 
 /** Usage hint for magic selectors */
-const SELECTOR_HINT = "sentry event view [<org>/[<project>/]]@latest";
+const selectorHint = () => sentry`event view [<org>/[<project>/]]@latest`;
 
 /**
  * Shared usage hint shown when a bare "latest" is passed without an issue.
  * There is no "latest event of a project" API — the latest-event lookup is
  * keyed by issue, so the user must supply an issue ID (or short ID).
  */
-const BARE_LATEST_HINT = "sentry event view <issue-id>";
+const bareLatestHint = () => sentry`event view <issue-id>`;
 
 /**
  * The arguments of `event view`, parsed. Parsing has no side effects: the
@@ -329,7 +329,7 @@ export function parseEventViewInput(args: readonly string[]): EventViewInput {
     let parsed: ReturnType<typeof parseIdArguments>;
     try {
       parsed = parseIdArguments(tokens, ID_KINDS.event, {
-        usageHint: USAGE_HINT,
+        usageHint: usageHint(),
         multiple: true,
         needsProject: true,
         validate: false,
@@ -364,9 +364,9 @@ export function parseEventViewInput(args: readonly string[]): EventViewInput {
   if (input.eventId.toLowerCase() === "latest") {
     // There is no "latest event of a project" endpoint — the latest-event
     // lookup is keyed by issue, so a bare "latest" has nothing to resolve
-    throw new ContextError("Issue ID", BARE_LATEST_HINT, [
+    throw new ContextError("Issue ID", bareLatestHint(), [
       `'latest' resolves the newest event of an issue — pass an issue ID, e.g. '${sentry`event view 17370`}'`,
-      `Or use the @latest selector for the latest event of the most recent unresolved issue: ${SELECTOR_HINT}`,
+      `Or use the @latest selector for the latest event of the most recent unresolved issue: ${selectorHint()}`,
     ]);
   }
   const target = parseOrgProjectInput(input.targetArg);
@@ -419,7 +419,7 @@ function selectorInput(tokens: readonly string[]): IssueInput | null {
     otherIsId
   ) {
     throw new ValidationError(
-      `'${token}' selects one event; pass it alone or after a target, not with IDs: ${SELECTOR_HINT}`,
+      `'${token}' selects one event; pass it alone or after a target, not with IDs: ${selectorHint()}`,
       "positional",
     );
   }
@@ -451,7 +451,7 @@ function targetOnlyInput(
     return null;
   }
   const parsed = parseIdArguments(tokens, ID_KINDS.event, {
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
     multiple: true,
     optional: true,
     needsProject: true,
@@ -484,7 +484,7 @@ function issueFromUrl(url: ParsedSentryUrl): IssueInput | null {
       issueId: url.issueId,
     };
   }
-  throw new ContextError("Event ID", USAGE_HINT, [
+  throw new ContextError("Event ID", usageHint(), [
     "Pass an event URL: https://sentry.io/organizations/{org}/issues/{id}/events/{eventId}/",
     "Or an issue URL to view the latest event: https://sentry.io/organizations/{org}/issues/{id}/",
   ]);
@@ -691,7 +691,7 @@ export async function resolveEventTarget(
     case ProjectSpecificationType.ProjectSearch: {
       const resolved = await resolveProjectBoundSlug(
         parsed.projectSlug,
-        USAGE_HINT,
+        usageHint(),
         sentry`event view <org>/${parsed.projectSlug} ${eventId}`,
         parsed.originalSlug,
       );
@@ -769,7 +769,10 @@ export async function resolveAutoDetectTarget(
   eventId: string,
   cwd: string,
 ): Promise<ResolvedEventTarget | null> {
-  const autoTarget = await resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
+  const autoTarget = await resolveOrgAndProject({
+    cwd,
+    usageHint: usageHint(),
+  });
   if (autoTarget) {
     return autoTarget;
   }
@@ -1039,14 +1042,14 @@ async function resolveSelectorScope(
     case ProjectSpecificationType.ProjectSearch:
       return await resolveProjectBoundSlug(
         parsed.projectSlug,
-        SELECTOR_HINT,
+        selectorHint(),
         sentry`event view <org>/${parsed.projectSlug}/${selector}`,
         parsed.originalSlug,
       );
     case ProjectSpecificationType.AutoDetect: {
       const resolved = await resolveOrg({ cwd });
       if (!resolved) {
-        throw new ContextError("Organization", SELECTOR_HINT);
+        throw new ContextError("Organization", selectorHint());
       }
       return { org: resolved.org };
     }
@@ -1084,7 +1087,7 @@ async function resolveSelectorEvent(
   return {
     org,
     data,
-    hint: `Showing the latest event of ${issue.shortId} (${selector}). Pass an event ID to view a specific one: ${asInvocationCommand(USAGE_HINT)}`,
+    hint: `Showing the latest event of ${issue.shortId} (${selector}). Pass an event ID to view a specific one: ${usageHint()}`,
   };
 }
 
@@ -1485,7 +1488,7 @@ export const viewCommand = buildCommand({
     });
 
     if (!target) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
 
     if (flags.web) {

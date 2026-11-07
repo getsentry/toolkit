@@ -45,7 +45,7 @@ import { IssueEventSchema } from "../../generated/output-schemas/event.js";
 const COMMAND_NAME = "list";
 
 /** Base command prefix for error hints */
-const COMMAND_BASE = "sentry event";
+const commandBase = () => sentry`event`;
 
 /** Command key for pagination cursor storage */
 const PAGINATION_KEY = "event-list";
@@ -132,7 +132,7 @@ export const listCommand = buildListCommand("event", {
   parameters: {
     positional: issuePositional({
       command: COMMAND_NAME,
-      commandBase: COMMAND_BASE,
+      commandBase: commandBase,
     }),
     flags: EVENTS_FLAGS,
     aliases: EVENTS_ALIASES,
@@ -155,7 +155,7 @@ export const listCommand = buildListCommand("event", {
     if (!org) {
       throw new ContextError(
         "Organization",
-        buildCommandHint(COMMAND_NAME, issueArg, COMMAND_BASE),
+        buildCommandHint(COMMAND_NAME, issueArg, commandBase()),
       );
     }
 

@@ -23,6 +23,7 @@ import {
 import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
 import type { SentryRepository } from "../../types/index.js";
 import { RepositoryListItemSchema } from "../../generated/output-schemas/repo.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "repo-list";
@@ -47,7 +48,7 @@ const repoListConfig: OrgListConfig<
 > = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "repositories",
-  commandPrefix: "sentry repo list",
+  commandPrefix: () => sentry`repo list`,
   listForOrg: (org) => listRepositories(org),
   listPaginated: (org, opts) => listRepositoriesPaginated(org, opts),
   withOrg: (repo, orgSlug) => ({ ...repo, orgSlug }),

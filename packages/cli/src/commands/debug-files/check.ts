@@ -13,7 +13,6 @@
  */
 
 import type { SentryContext } from "../../context.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { type DifArchiveInfo, parseDebugFile } from "../../lib/dif/index.js";
 import { parseFilePath } from "../../lib/completion-target.js";
@@ -25,8 +24,9 @@ import {
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { readDebugFile } from "./read-file.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry debug-files check <path>";
+const usageHint = () => sentry`debug-files check <path>`;
 
 /** Structured result for the check command. */
 type DebugFilesCheckResult = DifArchiveInfo & {
@@ -187,7 +187,7 @@ export const checkCommand = buildCommand({
       // using it here keeps the exit-code observable in tests.
       this.process.exitCode = 1;
       return {
-        hint: `No usable debug information found. Try: ${asInvocationCommand(USAGE_HINT)}`,
+        hint: `No usable debug information found. Try: ${usageHint()}`,
       };
     }
   },

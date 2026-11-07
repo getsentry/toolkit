@@ -17,7 +17,7 @@ import {
   getProductTrials,
   startProductTrial,
 } from "../../lib/api-client.js";
-import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { detectSwappedTrialArgs } from "../../lib/arg-parsing.js";
 import { openBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
@@ -63,7 +63,7 @@ function isValidTrialArg(name: string): boolean {
 }
 
 const USAGE = "<name> [<org>]";
-const USAGE_HINT = `sentry trial start ${USAGE}`;
+const usageHint = () => sentry`trial start ${USAGE}`;
 
 /** Parsed `trial start` arguments. */
 export type TrialStartInput = {
@@ -118,13 +118,13 @@ export function parseTrialStartArguments(
 ): TrialStartInput {
   const [first, second, ...extra] = args;
   if (first === undefined) {
-    throw new ContextError("Trial name", USAGE_HINT, [
+    throw new ContextError("Trial name", usageHint(), [
       `Valid trial names: ${NAMES_LIST}`,
     ]);
   }
   if (extra.length > 0) {
     throw new ValidationError(
-      `Too many arguments: ${extra.join(" ")}. Expected: ${asInvocationCommand(USAGE_HINT)}`,
+      `Too many arguments: ${extra.join(" ")}. Expected: ${usageHint()}`,
       "positional",
     );
   }
@@ -147,7 +147,7 @@ export function parseTrialStartArguments(
 
   return {
     name,
-    org: parseOrgInput(org, USAGE_HINT),
+    org: parseOrgInput(org, usageHint()),
     ...(swapped && { warning: swapped.warning }),
   };
 }

@@ -54,10 +54,11 @@ import {
   splitAndTrim,
   validateImageSizes,
 } from "../../lib/snapshots/images.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("snapshots.upload");
 
-const USAGE_HINT = "sentry snapshots upload <path> --app-id <id>";
+const usageHint = () => sentry`snapshots upload <path> --app-id <id>`;
 
 /** Flags accepted by `snapshots upload`. */
 type UploadFlags = {
@@ -477,10 +478,10 @@ export const uploadCommand = buildCommand({
 
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 

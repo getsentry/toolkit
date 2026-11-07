@@ -6,7 +6,6 @@
  * slug separators. This module provides version-aware parsing.
  */
 
-import { asInvocationCommand } from "../../lib/app-identity.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
@@ -14,6 +13,7 @@ import {
   boundPositional,
 } from "../../lib/positional-parse.js";
 import { resolveOrg } from "../../lib/resolve-target.js";
+import type { LazyCommand } from "../../lib/app-identity.js";
 
 /** Slug pattern: lowercase alphanumeric + hyphens, no leading/trailing hyphen */
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
@@ -56,7 +56,7 @@ export function parseReleaseArg(
 
   if (!arg) {
     throw new ValidationError(
-      `Release version is required.\n\n  Usage: ${asInvocationCommand(usageHint)}`,
+      `Release version is required.\n\n  Usage: ${usageHint}`,
       "version",
     );
   }
@@ -109,20 +109,20 @@ function parseReleaseInput(
  * @param usageHint - Single-line usage example for error messages
  * @param brief - Help text of the parameter
  */
-export function releaseParameter(usageHint: string, brief: string) {
+export function releaseParameter(usageHint: LazyCommand, brief: string) {
   return {
     placeholder: "org/version",
     brief,
     parse: boundPositional(
       ORG_TARGET,
-      (raw) => parseReleaseInput(raw, usageHint),
+      (raw) => parseReleaseInput(raw, usageHint()),
       async (
         { version, orgSlug },
         context: ReleaseTargetContext,
       ): Promise<ResolvedReleaseTarget> => {
         const resolved = await resolveOrg({ org: orgSlug, cwd: context.cwd });
         if (!resolved) {
-          throw new ContextError("Organization", usageHint);
+          throw new ContextError("Organization", usageHint());
         }
         return {
           version,

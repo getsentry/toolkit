@@ -57,12 +57,12 @@ import {
 import type { ListCommandTarget } from "../../lib/target-positional.js";
 
 const PAGINATION_KEY = "dsn-list";
-const USAGE_HINT = "sentry dsn list <org>/<project>";
+const usageHint = () => sentry`dsn list <org>/<project>`;
 
 const listConfig: ListCommandMeta = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "DSNs",
-  commandPrefix: "sentry dsn list",
+  commandPrefix: () => sentry`dsn list`,
 };
 
 /** List an organization's keys directly, preserving its cursor history. */
@@ -185,13 +185,13 @@ async function listForResolvedProjects<
 >(ctx: HandlerContext<T>): Promise<ListResult<DsnListItem>> {
   const resolution = await resolveProjectBoundTargets(ctx.parsed, {
     cwd: ctx.cwd,
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
     projectSearchResolution: ctx.projectSearchResolution,
   });
   if (resolution.targets.length === 0) {
     throw new ContextError(
       "Organization and project",
-      USAGE_HINT,
+      usageHint(),
       undefined,
       resolution.skippedSelfHosted
         ? `Found ${resolution.skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`

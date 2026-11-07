@@ -119,7 +119,7 @@ const DEFAULT_POLL_INTERVAL = 2;
 const COMMAND_NAME = "log list";
 
 /** Usage hint for trace mode error messages */
-const TRACE_USAGE_HINT = "sentry log list [<org>/[<project>/]]<trace-id>";
+const traceUsageHint = () => sentry`log list [<org>/[<project>/]]<trace-id>`;
 
 /**
  * Parse --limit flag, delegating range validation to shared utility.
@@ -194,7 +194,7 @@ type LogListArguments = BoundArguments<LogListInput, LogListTarget>;
  * (trace mode when the arguments end in a trace ID).
  */
 function parseLogListInput(args: readonly string[]): LogListInput {
-  const input = parseDualModeInput(args, TRACE_USAGE_HINT);
+  const input = parseDualModeInput(args, traceUsageHint());
   if (input.mode === "trace") {
     return input;
   }
@@ -212,7 +212,7 @@ async function resolveLogListTarget(
     const { traceId, org } = await resolveTraceOrg(
       parsed,
       context.cwd,
-      TRACE_USAGE_HINT,
+      traceUsageHint(),
     );
     return {
       mode: "trace",
