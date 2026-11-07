@@ -14,7 +14,7 @@ import {
   hasPreviousPage,
   resolveCursor,
 } from "../../lib/db/pagination.js";
-import { ContextError, toSearchQueryError } from "../../lib/errors.js";
+import { toSearchQueryError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { buildListCommand, paginationHint } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
@@ -31,7 +31,6 @@ import {
   jsonTransformEvents,
 } from "../event/shared-events.js";
 import { type IssueTarget, issuePositional } from "./positional.js";
-import { buildCommandHint } from "./utils.js";
 import { IssueEventSchema } from "../../generated/output-schemas/event.js";
 
 // ---------------------------------------------------------------------------
@@ -126,14 +125,6 @@ export const eventsCommand = buildListCommand("issue", {
 
     // Resolve issue using shared resolution logic (supports @latest, short IDs, etc.)
     const { org, issue } = await target.resolved;
-
-    // Org is required for region-routed events endpoint
-    if (!org) {
-      throw new ContextError(
-        "Organization",
-        buildCommandHint(COMMAND_NAME, issueArg),
-      );
-    }
 
     // Build context key for pagination (keyed by issue ID + query-varying params)
     const contextKey = buildPaginationContextKey(

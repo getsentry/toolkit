@@ -39,7 +39,7 @@ const {
   mockGetCachedDsn,
   mockSetCachedDsn,
   mockGetProject,
-  mockFindProjectByDsnKey,
+  mockFindProjectByDsn,
   mockFindProjectsByPattern,
   mockListOrganizationsUncached,
   mockGetOrgByNumericId,
@@ -75,7 +75,7 @@ const {
     /* no-op */
   }),
   mockGetProject: vi.fn(() => Promise.resolve({ slug: "test", name: "Test" })),
-  mockFindProjectByDsnKey: vi.fn(() => Promise.resolve(null)),
+  mockFindProjectByDsn: vi.fn(() => Promise.resolve(null)),
   mockFindProjectsByPattern: vi.fn(() => Promise.resolve([])),
   mockListOrganizationsUncached: vi.fn(() => Promise.resolve([])),
   mockGetOrgByNumericId: vi.fn(
@@ -143,7 +143,7 @@ vi.mock("../../src/lib/db/regions.js", () => ({
 
 vi.mock("../../src/lib/api-client.js", () => ({
   getProject: mockGetProject,
-  findProjectByDsnKey: mockFindProjectByDsnKey,
+  findProjectByDsn: mockFindProjectByDsn,
   findProjectsByPattern: mockFindProjectsByPattern,
   findProjectsBySlug: vi.fn(() => Promise.resolve({ projects: [], orgs: [] })),
   listOrganizations: vi.fn(() => Promise.resolve([])),
@@ -177,7 +177,7 @@ function resetAllMocks() {
   mockGetCachedDsn.mockReset();
   mockSetCachedDsn.mockReset();
   mockGetProject.mockReset();
-  mockFindProjectByDsnKey.mockReset();
+  mockFindProjectByDsn.mockReset();
   mockFindProjectsByPattern.mockReset();
   mockListOrganizationsUncached.mockReset();
   mockGetOrgByNumericId.mockReset();
@@ -884,8 +884,8 @@ describe("resolveAllTargets", () => {
       fingerprint: "",
     });
     mockGetCachedProjectByDsnKey.mockReturnValue(null);
-    // findProjectByDsnKey returns null (project not found)
-    mockFindProjectByDsnKey.mockResolvedValue(null);
+    // findProjectByDsn returns null (project not found)
+    mockFindProjectByDsn.mockResolvedValue(null);
     mockFindProjectRoot.mockResolvedValue({
       projectRoot: "/a",
       detectedFrom: "package.json",

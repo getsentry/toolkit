@@ -247,11 +247,11 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
   /**
    * Mapping from numeric issue group IDs to organization slugs.
    *
-   * Populated after `sentry issue view <numeric-id>` falls back to the legacy
-   * unscoped `/api/0/issues/{id}/` endpoint and extracts the org from the
-   * response permalink. Subsequent runs consult this cache to route directly
-   * via the org-scoped endpoint, avoiding the redundant unscoped lookup
-   * flagged as a "Consecutive HTTP" performance issue in Sentry.
+   * Populated after `sentry issue view <numeric-id>` finds the issue's org
+   * by searching the user's organizations. Subsequent runs consult this
+   * cache to make a single org-scoped request instead of repeating the
+   * search, which was flagged as a "Consecutive HTTP" performance issue in
+   * Sentry.
    *
    * Entries are best-effort: a stale mapping (issue moved / deleted / access
    * revoked) causes a 404 on the cached org call, which the caller evicts and

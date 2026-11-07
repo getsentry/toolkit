@@ -9,7 +9,6 @@ import type { SentryContext } from "../../context.js";
 import { getIssueTag } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseEnvironment, parseTagKey } from "../../lib/completion-target.js";
-import { ContextError } from "../../lib/errors.js";
 import { formatIssueTags } from "../../lib/formatters/issue-tags.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
@@ -23,7 +22,7 @@ import {
   issueParameter,
   requireIssueArgument,
 } from "./positional.js";
-import { buildCommandHint, resolveIssue } from "./utils.js";
+import { resolveIssue } from "./utils.js";
 import { IssueTagsOutputSchema } from "../../generated/output-schemas/issue.js";
 
 type TagsFlags = {
@@ -115,12 +114,6 @@ export const tagsCommand = buildCommand({
       command: "tags",
       trailingArgs,
     });
-    if (!org) {
-      throw new ContextError(
-        "Organization",
-        buildCommandHint("tags", issueArg.text, undefined, trailingArgs),
-      );
-    }
 
     const tag = await withProgress(
       { message: "Fetching tag distribution...", json: flags.json },

@@ -6,7 +6,7 @@
  */
 
 import {
-  findProjectByDsnKey,
+  findProjectByDsn,
   listOrganizations,
   listProjects,
   resolveOrgDisplayName,
@@ -57,7 +57,7 @@ export async function resolveProject(
   // Need to fetch from API
   // For DSNs without orgId, try to resolve by searching with the public key
   if (!dsn.orgId) {
-    const project = await findProjectByDsnKey(dsn.publicKey);
+    const project = await findProjectByDsn(dsn.raw, dsn.publicKey);
     if (!project?.organization) {
       throw new Error(
         "Cannot resolve project: DSN could not be matched to any accessible project. " +
