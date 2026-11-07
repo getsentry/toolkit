@@ -253,6 +253,7 @@ async function resolveSpanListTarget(
     const resolved = await resolveTraceOrgProject(
       parsed,
       context.cwd,
+      "span list",
       traceUsageHint(),
     );
     return { mode: "trace", ...resolved };

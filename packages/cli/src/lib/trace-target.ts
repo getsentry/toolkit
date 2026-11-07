@@ -44,8 +44,6 @@ const log = logger.withTag("trace-target");
 
 /** Match `[<prefix>]<trail>` in usageHint — captures bracket content + trailing placeholder */
 const USAGE_TARGET_RE = /\[.*\]<[^>]+>/;
-const SENTRY_COMMAND_PREFIX_RE = /^sentry\s+/;
-const USAGE_ARGUMENT_START_RE = /\s+(?:\[|<)/;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -354,14 +352,6 @@ export function warnIfNormalized(parsed: ParsedTraceTarget, tag: string): void {
 // Resolution — org + project
 // ---------------------------------------------------------------------------
 
-function commandNameFromUsageHint(usageHint: string): string {
-  const withoutPrefix = usageHint.replace(SENTRY_COMMAND_PREFIX_RE, "");
-  const targetIndex = withoutPrefix.search(USAGE_ARGUMENT_START_RE);
-  return targetIndex === -1
-    ? withoutPrefix
-    : withoutPrefix.slice(0, targetIndex);
-}
-
 /**
  * Resolve a parsed trace target to org + optional project.
  *
@@ -374,6 +364,7 @@ function commandNameFromUsageHint(usageHint: string): string {
 export async function resolveTraceOrgOptionalProject(
   parsed: ParsedTraceTarget,
   cwd: string,
+  commandName: string,
   usageHint: string,
 ): Promise<ResolvedTraceOrgProject | ResolvedTraceOrg> {
   if (parsed.type === "org-scoped") {
@@ -384,12 +375,12 @@ export async function resolveTraceOrgOptionalProject(
     const resolved = await resolveOrgOptionalTarget(
       parsed,
       cwd,
-      commandNameFromUsageHint(usageHint),
+      commandName,
       usageHint,
     );
     return { traceId: parsed.traceId, ...resolved };
   }
-  return await resolveTraceOrgProject(parsed, cwd, usageHint);
+  return await resolveTraceOrgProject(parsed, cwd, commandName, usageHint);
 }
 
 /**
@@ -404,6 +395,7 @@ export async function resolveTraceOrgOptionalProject(
 export async function resolveTraceOrgProject(
   parsed: ParsedTraceTarget,
   cwd: string,
+  commandName: string,
   usageHint: string,
 ): Promise<ResolvedTraceOrgProject> {
   switch (parsed.type) {
@@ -417,7 +409,12 @@ export async function resolveTraceOrgProject(
 
     case "project-search":
       // resolveProjectBoundTarget (called inside) sets telemetry context.
-      return await resolveProjectSearchTarget(parsed, cwd, usageHint);
+      return await resolveProjectSearchTarget(
+        parsed,
+        cwd,
+        commandName,
+        usageHint,
+      );
 
     case "org-scoped":
       throw new ContextError("Specific project", usageHint, [
@@ -450,14 +447,12 @@ export async function resolveTraceOrgProject(
 async function resolveProjectSearchTarget(
   parsed: Extract<ParsedTraceTarget, { type: "project-search" }>,
   cwd: string,
+  commandName: string,
   usageHint: string,
 ): Promise<ResolvedTraceOrgProject> {
-  const target = await resolveProjectBoundTarget(
-    parsed,
-    cwd,
-    commandNameFromUsageHint(usageHint),
-    { usageHint },
-  );
+  const target = await resolveProjectBoundTarget(parsed, cwd, commandName, {
+    usageHint,
+  });
   return {
     traceId: parsed.traceId,
     org: target.org,
@@ -480,6 +475,7 @@ async function resolveProjectSearchTarget(
 export async function resolveTraceOrg(
   parsed: ParsedTraceTarget,
   cwd: string,
+  commandName: string,
   usageHint: string,
 ): Promise<ResolvedTraceOrg> {
   switch (parsed.type) {
@@ -495,7 +491,7 @@ export async function resolveTraceOrg(
       const org = await resolveOrgOnlyTarget(
         parsed,
         cwd,
-        commandNameFromUsageHint(usageHint),
+        commandName,
         usageHint,
       );
       return { traceId: parsed.traceId, org };

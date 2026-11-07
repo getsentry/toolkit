@@ -132,6 +132,7 @@ async function resolveTraceLogsTarget(
   const { traceId, org } = await resolveTraceOrg(
     parsed,
     context.cwd,
+    "trace logs",
     usageHint(),
   );
   return {
