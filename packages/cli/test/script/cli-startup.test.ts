@@ -32,6 +32,8 @@ const COMPLETION_PACKAGES = new Set([
   "@stricli/core",
   // `db/accounts.ts` account IDs
   "uuidv7",
+  // `fuzzy.ts` search mode; one file, no dependencies
+  "fuzzysort",
 ]);
 
 /**

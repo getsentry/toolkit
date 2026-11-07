@@ -189,8 +189,17 @@ describe("fuzzyMatch: search mode", () => {
 
   test("keeps typo prefixes anchored to the beginning of a candidate", () => {
     expect(
-      fuzzyMatch("frone", ["team-frontend-web"], { mode: "search" }),
+      fuzzyMatch("fornt", ["team-frontend-web"], { mode: "search" }),
     ).toEqual([]);
+  });
+
+  test("matches letters in order but apart, after contains matches", () => {
+    expect(fuzzyMatch("fw", ["frontend-web"])).toEqual([]);
+    expect(
+      fuzzyMatch("fw", ["frontend-web", "team-fw", "web-front"], {
+        mode: "search",
+      }),
+    ).toEqual(["team-fw", "frontend-web"]);
   });
 });
 
