@@ -10,6 +10,7 @@ import type {
 } from "@sentry/api";
 import {
   getOrganizationIssue,
+  getOrganizationSharedIssue,
   listOrganizationIssues,
   resolveOrganizationShortId,
   updateOrganizationIssue,
@@ -727,30 +728,62 @@ export async function getSharedIssue(
   shareId: string,
 ): Promise<{ id: string }> {
   const path = `organizations/${encodeURIComponent(orgSlug)}/shared/issues/${encodeURIComponent(shareId)}/`;
-  const url = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/api/0/${path}`;
+  const normalizedBase = baseUrl.replace(TRAILING_SLASH_RE, "");
+  const url = `${normalizedBase}/api/0/${path}`;
   const headers = new Headers({ "Content-Type": "application/json" });
   // URL-scoped: headers only attach when `url`'s origin matches the trusted
   // host, so IAP tokens etc. can't leak to an attacker-controlled share URL.
   applyCustomHeaders(headers, url);
   warnIfSaasWithEnvCa(url);
 
-  let response: Response;
+  // The share URL's host may not be the logged-in one, so this goes out
+  // without the authenticated transport and its bearer token.
+  let response: Response | undefined;
+  const fetchUnauthenticated = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    response = await customFetch(input, init);
+    return response;
+  };
+
+  let result: Awaited<ReturnType<typeof getOrganizationSharedIssue>>;
   try {
-    response = await customFetch(url, { headers });
+    result = await getOrganizationSharedIssue({
+      baseUrl: normalizedBase,
+      fetch: fetchUnauthenticated as unknown as typeof fetch,
+      headers,
+      parseAs: "json",
+      path: { organization_id_or_slug: orgSlug, share_id: shareId },
+      throwOnError: false,
+    });
   } catch (error) {
-    if (error instanceof Error && isTlsCertError(error)) {
-      throw new ApiError(
-        "TLS certificate error",
-        0,
-        buildTlsErrorDetail(error),
-        path,
-      );
+    if (!(error instanceof SyntaxError)) {
+      throw error;
     }
-    throw error;
+    throw new ApiError(
+      "Share link returned invalid JSON",
+      response?.status ?? 0,
+      undefined,
+      path,
+    );
   }
 
-  if (!response.ok) {
-    if (response.status === 404) {
+  if ("error" in result) {
+    const status = result.response?.status;
+    if (status === undefined) {
+      const { error } = result;
+      if (error instanceof Error && isTlsCertError(error)) {
+        throw new ApiError(
+          "TLS certificate error",
+          0,
+          buildTlsErrorDetail(error),
+          path,
+        );
+      }
+      throw error;
+    }
+    if (status === 404) {
       throw new ApiError(
         "Share link not found or expired",
         404,
@@ -759,29 +792,10 @@ export async function getSharedIssue(
         path,
       );
     }
-    throw new ApiError(
-      "Failed to resolve share link",
-      response.status,
-      undefined,
-      path,
-    );
+    throw new ApiError("Failed to resolve share link", status, undefined, path);
   }
 
-  let data: unknown;
-  try {
-    data = await response.json();
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) {
-      throw error;
-    }
-    throw new ApiError(
-      "Share link returned invalid JSON",
-      response.status,
-      undefined,
-      path,
-    );
-  }
-
+  const data: unknown = result.data;
   if (
     typeof data !== "object" ||
     data === null ||
@@ -791,7 +805,7 @@ export async function getSharedIssue(
   ) {
     throw new ApiError(
       "Share link response missing a valid issue ID",
-      response.status,
+      result.response?.status ?? 0,
       undefined,
       path,
     );

@@ -37,22 +37,22 @@ View details of one or more events
 | `message` | string \| null | Event message |
 | `title` | string | Event title |
 | `location` | string \| null | Source location of the event, such as a file and line |
-| `user` | object \| null | User context of the event |
-| `tags` | array | Tags attached to the event |
 | `platform` | string \| null | Platform of the event, such as python or javascript |
 | `dateReceived` | string \| null | When Sentry received the event (ISO 8601) |
-| `contexts` | object \| null | Contexts of the event, such as device, os, browser and runtime |
 | `size` | number \| null | Size of the event payload in bytes |
 | `entries` | array | Event interfaces, such as exception, breadcrumbs and request, each with a type and data |
 | `dist` | string \| null | Distribution of the release the event was sent with |
-| `sdk` | object \| null | SDK that sent the event |
-| `context` | object \| null | Additional data sent with the event in its extra field |
 | `packages` | object | Modules loaded when the event occurred, keyed by module name with their versions |
 | `type` | string | Event type, such as error, default or transaction |
 | `metadata` | object | Event metadata |
-| `errors` | array | Errors Sentry found while processing the event |
 | `occurrence` | object \| null |  |
 | `_meta` | object | Metadata about changes Sentry made to the event's fields, such as data scrubbing or trimming |
+| `user` | object \| null | User context of the event |
+| `tags` | array | Tags attached to the event |
+| `contexts` | object \| null | Contexts of the event, such as device, os, browser and runtime |
+| `sdk` | object \| null | SDK that sent the event |
+| `context` | object \| null | Additional data sent with the event in its extra field |
+| `errors` | array | Errors Sentry found while processing the event |
 | `crashFile` | string \| null | Crash report attachment of the event, if any |
 | `culprit` | string \| null | Function or module that caused the event |
 | `dateCreated` | string | When the event occurred (ISO 8601) |
