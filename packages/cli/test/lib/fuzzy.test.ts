@@ -203,6 +203,12 @@ describe("fuzzyMatch: search mode", () => {
     ).toEqual(["sentry-javascript"]);
   });
 
+  test("matches two extra letters in a longer typo", () => {
+    expect(
+      fuzzyMatch("chheckkout", ["checkout-service-api"], { mode: "search" }),
+    ).toEqual(["checkout-service-api"]);
+  });
+
   test("falls back to full-name typos past the search typo limit", () => {
     expect(fuzzyMatch("committers", ["commits"], { mode: "search" })).toEqual([
       "commits",

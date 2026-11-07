@@ -169,14 +169,12 @@ function typoScore(partial: string, candidate: string): number | undefined {
   for (const word of candidate.matchAll(WORD_RE)) {
     const distances = prefixDistances(
       partial,
-      candidate.slice(word.index, word.index + partial.length + 1),
+      candidate.slice(word.index, word.index + partial.length + allowed),
     );
-    for (const length of [
-      partial.length,
-      partial.length - 1,
-      partial.length + 1,
-    ]) {
-      const distance = distances[length];
+    // Each extra or missing letter costs an edit, so lengths further than
+    // `allowed` from the input can't match.
+    for (let offset = -allowed; offset <= allowed; offset++) {
+      const distance = distances[partial.length + offset];
       if (
         distance !== undefined &&
         distance <= allowed &&
