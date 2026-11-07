@@ -102,7 +102,7 @@ export async function queryEventsTimeSeries(
   options: ExploreTimeSeriesQueryOptions,
 ): Promise<EventsTimeSeriesResponse> {
   const result = await listOrganizationEventsTimeseries({
-    ...(await getOrgSdkConfig(orgSlug)),
+    ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug },
     query: {
       dataset: options.dataset ?? "errors",
