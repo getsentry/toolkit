@@ -85,11 +85,13 @@ export async function formatNoDsnError(
   lines.push("To use this command, either:");
   lines.push("");
   lines.push("1. Add SENTRY_DSN to your environment:");
-  lines.push("   export SENTRY_DSN=https://key@o123.ingest.sentry.io/456");
+  lines.push(
+    "   export SENTRY_DSN=https://<key>@o<org-id>.ingest.sentry.io/<project-id>",
+  );
   lines.push("");
   lines.push("2. Add SENTRY_DSN to a .env file:");
   lines.push(
-    "   echo 'SENTRY_DSN=https://key@o123.ingest.sentry.io/456' >> .env",
+    "   echo 'SENTRY_DSN=https://<key>@o<org-id>.ingest.sentry.io/<project-id>' >> .env",
   );
   lines.push("");
   lines.push("3. Specify project explicitly:");

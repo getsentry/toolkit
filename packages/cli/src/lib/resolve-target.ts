@@ -391,14 +391,20 @@ export async function resolveOrgFromDsn(
  *
  * 1. Local DB cache lookup (getOrgByNumericId — fast, no API call)
  * 2. Refresh org list via listOrganizationsUncached to populate mapping
- * 3. Falls back to original ID if resolution fails
+ * 3. Falls back to original ID only if the refresh itself fails (offline,
+ *    not authenticated), so the downstream API call reports the real error
+ *
+ * Returns `null` when the org list was fetched but none of the user's orgs
+ * has this numeric ID. That happens for placeholder DSNs copied from docs or
+ * examples (e.g. `o123.ingest.sentry.io/456`); using the raw ID would send a
+ * nonexistent org to the API and fail with a confusing 404 (CLI-T6).
  *
  * Non-numeric identifiers (already slugs) are returned unchanged.
  *
  * @param orgId - Raw org identifier from DSN (numeric ID or slug)
- * @returns Org slug for API calls
+ * @returns Org slug for API calls, or null if no accessible org matches
  */
-async function normalizeNumericOrg(orgId: string): Promise<string> {
+async function normalizeNumericOrg(orgId: string): Promise<string | null> {
   if (!isAllDigits(orgId)) {
     return orgId;
   }
@@ -420,9 +426,10 @@ async function normalizeNumericOrg(orgId: string): Promise<string> {
     return orgId;
   }
 
-  // Retry cache after refresh
+  // Retry cache after refresh. The org list is now fresh, so a miss means
+  // the user has no access to an org with this ID.
   const afterRefresh = getOrgByNumericId(orgId);
-  return afterRefresh?.slug ?? orgId;
+  return afterRefresh?.slug ?? null;
 }
 
 /**
@@ -2186,8 +2193,16 @@ export async function resolveOrg(
       // cache is cold. Normalize to a slug so API endpoints that reject
       // numeric IDs (e.g., dashboards) work correctly.
       const resolvedOrg = await normalizeNumericOrg(result.org);
-      setOrgProjectContext([resolvedOrg], []);
-      return { org: resolvedOrg, detectedFrom: result.detectedFrom };
+      if (resolvedOrg) {
+        setOrgProjectContext([resolvedOrg], []);
+        return { org: resolvedOrg, detectedFrom: result.detectedFrom };
+      }
+      // The DSN names an org none of the user's organizations match (often a
+      // placeholder DSN like o123.ingest.sentry.io/456). Don't send it to the
+      // API; fall through to the account's organizations instead.
+      log.warn(
+        `Ignoring organization ID '${result.org}' from ${result.detectedFrom}: none of your organizations has this ID`,
+      );
     }
   } catch {
     // Fall through to the account's organizations
