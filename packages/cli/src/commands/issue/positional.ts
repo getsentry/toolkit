@@ -8,6 +8,7 @@
  * pasted issue URL is applied. See `positional-parse.ts`.
  */
 
+import { sentry } from "../../lib/app-identity.js";
 import { ISSUE_TARGET } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import {
@@ -66,7 +67,7 @@ export function requireIssueArgument(
   if (issue) {
     return issue;
   }
-  const { command, commandBase = "sentry issue" } = issueCommand;
+  const { command, commandBase = sentry`issue` } = issueCommand;
   throw new ContextError("Issue ID", `${commandBase} ${command} <issue>`);
 }
 
@@ -78,7 +79,7 @@ export function requireIssueArgument(
 function issueTarget(
   issueCommand: IssueCommand,
 ): (this: IssueTargetContext, input?: string) => IssueTarget {
-  const { command, commandBase = "sentry issue" } = issueCommand;
+  const { command, commandBase = sentry`issue` } = issueCommand;
   return boundPositional(
     ISSUE_TARGET,
     parseIssueTargetInput,

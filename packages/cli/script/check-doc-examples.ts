@@ -11,6 +11,9 @@
  *      matches a project first, so examples that mean the org must use the
  *      trailing-slash form (`my-org/`)
  *
+ * Hints built with the `` sentry`…` `` tag (src/lib/app-identity.ts) get the
+ * same checks, with each interpolation read as a placeholder.
+ *
  * Library examples that pass only string literals to `sdk.run(…)` get the same
  * checks, since `run()` takes the same argv as the CLI. Those calls are found
  * by parsing TypeScript fences and `@example` JSDoc with the TypeScript
@@ -30,6 +33,7 @@
 import { readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import ts from "typescript";
 import { exampleSteps } from "../src/lib/command-example.js";
 import type {
   Command,
@@ -69,6 +73,9 @@ const EXTRA_DOC_FILES = [
 
 /** Source files whose JSDoc shows `sdk.run(…)` examples. */
 const SDK_EXAMPLE_FILES = ["src/index.ts"];
+
+/** Source scanned for `` sentry`…` `` hints. */
+const SOURCE_DIR = "src";
 
 /** Flags Stricli handles before command dispatch. */
 const BUILTIN_FLAGS = new Set(["help", "help-all", "version"]);
@@ -258,6 +265,40 @@ function checkWords(words: string[]): string[] {
   return problems;
 }
 
+/**
+ * Commands built with the `` sentry`…` `` tag in one source file, as
+ * `sentry …` lines with each interpolation as an `<arg>` placeholder.
+ */
+function sentryTagCommands(file: string, code: string): string[] {
+  const source = ts.createSourceFile(file, code, ts.ScriptTarget.Latest);
+  const commands: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isTaggedTemplateExpression(node) &&
+      ts.isIdentifier(node.tag) &&
+      node.tag.text === "sentry"
+    ) {
+      const { template } = node;
+      const text = ts.isNoSubstitutionTemplateLiteral(template)
+        ? template.text
+        : template.head.text +
+          template.templateSpans
+            .map((span) => `<arg>${span.literal.text}`)
+            .join("");
+      commands.push(`sentry ${text}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return commands;
+}
+
+function listSource(dir: string): string[] {
+  return readdirSync(dir, { recursive: true, encoding: "utf-8" })
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts"))
+    .map((f) => join(dir, f));
+}
+
 function listMarkdown(dir: string): string[] {
   return readdirSync(dir, { recursive: true, encoding: "utf-8" })
     .filter((f) => f.endsWith(".md") || f.endsWith(".mdx"))
@@ -324,9 +365,23 @@ for (const file of [...files, ...SDK_EXAMPLE_FILES]) {
   }
 }
 
+const sourceFiles = listSource(SOURCE_DIR);
+for (const file of sourceFiles) {
+  const content = await readFile(file, "utf-8");
+  if (!content.includes("sentry`")) {
+    continue;
+  }
+  for (const invocation of sentryTagCommands(file, content)) {
+    checked += 1;
+    for (const problem of checkInvocation(invocation)) {
+      findings.push({ file, example: invocation, problem });
+    }
+  }
+}
+
 if (findings.length === 0) {
   logger.success(
-    `${checked} sentry examples in ${files.length + SDK_EXAMPLE_FILES.length} files match the CLI`,
+    `${checked} sentry examples in ${files.length + SDK_EXAMPLE_FILES.length + sourceFiles.length} files match the CLI`,
   );
   process.exit(0);
 }

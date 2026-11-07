@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { isatty } from "node:tty";
 import type { SentryContext } from "../../context.js";
 import { installAgentSkills } from "../../lib/agent-skills.js";
+import { sentry } from "../../lib/app-identity.js";
 import { assertAutoLoginHostTrusted } from "../../lib/auto-auth.js";
 import {
   determineInstallDir,
@@ -482,9 +483,9 @@ function printWelcomeMessage(
   emit(`Installed sentry v${version} to ${binaryPath}`);
   emit("");
   emit("Get started:");
-  emit("  sentry auth     Authenticate with Sentry");
-  emit("  sentry mcp      Run the Sentry MCP server for your AI agent");
-  emit("  sentry --help   See all available commands");
+  emit(`  ${sentry`auth`}     Authenticate with Sentry`);
+  emit(`  ${sentry`mcp`}      Run the Sentry MCP server for your AI agent`);
+  emit(`  ${sentry`--help`}   See all available commands`);
   emit("");
   emit("https://cli.sentry.dev");
 }
@@ -864,7 +865,7 @@ export const setupCommand = buildCommand({
             await warmCachesAfterLogin();
           }
         } else {
-          log.info("Run 'sentry auth login' to authenticate later.");
+          log.info(`Run '${sentry`auth login`}' to authenticate later.`);
         }
       },
       warn,

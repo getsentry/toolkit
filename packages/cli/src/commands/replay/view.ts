@@ -12,6 +12,7 @@ import {
   listIssuesPaginated,
   resolveReplay,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   type ParsedOrgProject,
   parseOrgProjectInput,
@@ -182,9 +183,9 @@ export async function validateReplayProjectScope(
     throw new ResolutionError(
       `Replay '${replayId}'`,
       "has no project association",
-      `sentry replay ${command} ${org}/${project}/${replayId}`,
+      sentry`replay ${command} ${org}/${project}/${replayId}`,
       [
-        `Use the org-scoped replay instead: sentry replay ${command} ${org}/${replayId}`,
+        `Use the org-scoped replay instead: ${sentry`replay ${command} ${org}/${replayId}`}`,
       ],
     );
   }
@@ -194,9 +195,9 @@ export async function validateReplayProjectScope(
     throw new ResolutionError(
       `Replay '${replayId}'`,
       `is not in project '${project}'`,
-      `sentry replay ${command} ${org}/${project}/${replayId}`,
+      sentry`replay ${command} ${org}/${project}/${replayId}`,
       [
-        `Use the org-scoped replay instead: sentry replay ${command} ${org}/${replayId}`,
+        `Use the org-scoped replay instead: ${sentry`replay ${command} ${org}/${replayId}`}`,
       ],
     );
   }
@@ -390,7 +391,7 @@ export const viewCommand = buildCommand({
         throw new ResolutionError(
           `Replay '${replayId}'`,
           "not found",
-          `sentry replay view ${resolved.org}/${replayId}`,
+          sentry`replay view ${resolved.org}/${replayId}`,
           [
             "Check that you are querying the right organization",
             "The replay may be past your retention window",

@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
+import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { createSourceBundle } from "../../lib/dif/index.js";
 import { parseFilePath } from "../../lib/completion-target.js";
@@ -160,7 +161,7 @@ export const bundleSourcesCommand = buildCommand({
         fileCount: 0,
       });
       return {
-        hint: `No source files found on disk for '${path}'. This is normally run on the build machine. Try: ${USAGE_HINT}`,
+        hint: `No source files found on disk for '${path}'. This is normally run on the build machine. Try: ${asInvocationCommand(USAGE_HINT)}`,
       };
     }
 
@@ -182,7 +183,7 @@ export const bundleSourcesCommand = buildCommand({
     });
 
     return {
-      hint: `Created ${outputPath} with ${result.fileCount} source file(s). Upload with: sentry debug-files upload`,
+      hint: `Created ${outputPath} with ${result.fileCount} source file(s). Upload with: ${sentry`debug-files upload`}`,
     };
   },
 });

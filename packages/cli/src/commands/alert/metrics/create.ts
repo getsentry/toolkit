@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../../context.js";
 import { createMetricAlertRule } from "../../../lib/api-client.js";
+import { sentry } from "../../../lib/app-identity.js";
 import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
@@ -79,7 +80,7 @@ function resolveMetricCreateOrg(
     parsed,
     cwd,
     "alert metrics create",
-    "sentry alert metrics create <org>/",
+    sentry`alert metrics create <org>/`,
   );
 }
 

@@ -12,6 +12,7 @@ import {
   listLogs,
   listTraceLogs,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   buildProjectQuery,
   type ParsedOrgProject,
@@ -581,7 +582,7 @@ async function executeTraceSingleFetch(
       result: { logs: [], traceId, hasMore: false },
       hint:
         `No logs found for trace ${traceId} ${periodLabel}.\n\n` +
-        "Try 'sentry trace logs' for more options (e.g., --period 30d).",
+        `Try '${sentry`trace logs`}' for more options (e.g., --period 30d).`,
     };
   }
 
@@ -592,9 +593,9 @@ async function executeTraceSingleFetch(
   // Build hint with real values for easy copy-paste
   let hint = `${countText}${tip}`;
   if (projectFilter) {
-    hint += `\nFiltered to project '${projectFilter}'. Full trace logs: sentry log list ${org}/${traceId}`;
+    hint += `\nFiltered to project '${projectFilter}'. Full trace logs: ${sentry`log list ${org}/${traceId}`}`;
   } else {
-    hint += `\nFilter by project: sentry log list ${org}/<project>/${traceId}`;
+    hint += `\nFilter by project: ${sentry`log list ${org}/<project>/${traceId}`}`;
   }
 
   return {

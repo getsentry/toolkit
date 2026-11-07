@@ -13,6 +13,7 @@
 import { isatty } from "node:tty";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { textParser } from "../../lib/completion-target.js";
 import { getDefaultUrl } from "../../lib/db/defaults.js";
@@ -222,7 +223,7 @@ function enforceTrustGate(plan: ImportPlan): void {
   throw new HostScopeError(
     `Token (from ${tokenSource}) and URL (from ${urlSource}) come from different files.\n` +
       "To confirm you trust this URL, pass it explicitly:\n" +
-      `  sentry cli import --url ${plan.effective.url ?? "<url>"}`,
+      `  ${sentry`cli import --url ${plan.effective.url ?? "<url>"}`}`,
   );
 }
 
@@ -389,7 +390,7 @@ export const importCommand = buildCommand({
 
     if (result.tokenValid === false) {
       return {
-        hint: "Token validation failed. Check your token and try: sentry auth login",
+        hint: `Token validation failed. Check your token and try: ${sentry`auth login`}`,
       };
     }
     if (result.imported) {

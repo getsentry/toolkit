@@ -21,6 +21,7 @@ import {
   queryEventsTimeSeries,
   queryMetricsMeta,
 } from "../lib/api-client.js";
+import { sentry } from "../lib/app-identity.js";
 import { validateLimit } from "../lib/arg-parsing.js";
 import {
   choiceParser,
@@ -436,8 +437,8 @@ function validateMetricsFields(fieldList: string[]): void {
     `Invalid metrics aggregate${badAggs.length > 1 ? "s" : ""}: ${badAggs.join(", ")}\n\n` +
       "The metrics dataset requires the format: aggregation(value,metric_name,metric_type,unit)\n\n" +
       "Examples:\n" +
-      '  sentry explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics\n' +
-      '  sentry explore my-org/ -F gen_ai.request.model -F "avg(value,cache.hit_rate,distribution,none)" --dataset metrics\n\n' +
+      `  ${sentry`explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics`}\n` +
+      `  ${sentry`explore my-org/ -F gen_ai.request.model -F "avg(value,cache.hit_rate,distribution,none)" --dataset metrics`}\n\n` +
       "Parameters:\n" +
       '  - value: literal string "value"\n' +
       "  - metric_name: the metric name emitted by the SDK (e.g., llm.token_usage)\n" +
@@ -974,10 +975,10 @@ export const exploreCommand = buildListCommand("explore", {
         throw new ValidationError(
           "The metrics dataset requires --metric or explicit --field flags.\n\n" +
             "Auto mode (recommended):\n" +
-            "  sentry explore my-org/ -m llm.token_usage --dataset metrics\n" +
-            "  sentry explore my-org/ -m llm.token_usage --agg avg --dataset metrics\n\n" +
+            `  ${sentry`explore my-org/ -m llm.token_usage --dataset metrics`}\n` +
+            `  ${sentry`explore my-org/ -m llm.token_usage --agg avg --dataset metrics`}\n\n` +
             "Manual mode (tracemetrics format):\n" +
-            '  sentry explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics',
+            `  ${sentry`explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics`}`,
           "field",
         );
       }
@@ -1084,11 +1085,11 @@ export const exploreCommand = buildListCommand("explore", {
       hasPrev,
       hasMore,
       prevHint: appendFlagHints(
-        `sentry explore ${baseTarget} -c prev`,
+        sentry`explore ${baseTarget} -c prev`,
         hintFlags,
       ),
       nextHint: appendFlagHints(
-        `sentry explore ${baseTarget} -c next`,
+        sentry`explore ${baseTarget} -c next`,
         hintFlags,
       ),
     });

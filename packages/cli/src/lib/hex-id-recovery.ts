@@ -28,6 +28,7 @@ import { addBreadcrumb } from "@sentry/node";
 
 import type { SpanListItem } from "../types/index.js";
 import { listLogs, listSpans, queryEvents } from "./api-client.js";
+import { asInvocationCommand, sentry } from "./app-identity.js";
 import {
   type ParsedOrgProject,
   ProjectSpecificationType,
@@ -589,7 +590,7 @@ function buildSlugHint(
   const orgPart = org ? `${org}/` : "<org>/";
   const cmd = SLUG_REDIRECT_COMMAND[entityType];
   if (cmd) {
-    return `'${input}' looks like a project slug, not a ${entityType} ID. Try: ${cmd} ${orgPart}${input}`;
+    return `'${input}' looks like a project slug, not a ${entityType} ID. Try: ${asInvocationCommand(cmd)} ${orgPart}${input}`;
   }
   return `'${input}' looks like a project slug, not a ${entityType} ID. Spans are identified by 16 hex chars within a trace.`;
 }
@@ -628,7 +629,7 @@ function buildNoMatchHint(
     return (
       `No event matched this prefix in the last ${window}. ` +
       "Sentry cannot search by a partial event ID — pass the full " +
-      "32-character ID printed by `sentry event list`."
+      `32-character ID printed by \`${sentry`event list`}\`.`
     );
   }
   return (

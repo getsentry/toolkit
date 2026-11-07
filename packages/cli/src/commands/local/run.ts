@@ -21,6 +21,7 @@ import {
 import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceParser,
@@ -332,17 +333,20 @@ function augmentPathForNode(
   };
 }
 
-const AUTO_DETECT_ERROR_MESSAGE = [
-  "No command provided and could not auto-detect a dev script.",
-  "Usage: sentry local run -- <command>",
-  "",
-  "Supported auto-detection:",
-  "  - package.json (scripts: dev, develop, serve, start)",
-  "  - manage.py (Django)",
-  "  - app.py / main.py (Python)",
-  "  - go.mod (Go)",
-  "  - docker-compose.yml / compose.yml (Docker Compose)",
-].join("\n");
+/** The error shown when no command was given and none was detected. */
+function autoDetectErrorMessage(): string {
+  return [
+    "No command provided and could not auto-detect a dev script.",
+    `Usage: ${sentry`local run -- <command>`}`,
+    "",
+    "Supported auto-detection:",
+    "  - package.json (scripts: dev, develop, serve, start)",
+    "  - manage.py (Django)",
+    "  - app.py / main.py (Python)",
+    "  - go.mod (Go)",
+    "  - docker-compose.yml / compose.yml (Docker Compose)",
+  ].join("\n");
+}
 
 /** Build the env vars for the child process. */
 function buildChildEnv(
@@ -379,7 +383,7 @@ async function resolveArgs(
   }
   const detected = await detectDevCommand(cwd);
   if (!detected) {
-    throw new ValidationError(AUTO_DETECT_ERROR_MESSAGE, "command");
+    throw new ValidationError(autoDetectErrorMessage(), "command");
   }
   logger.info(`Detected ${detected.source}: ${detected.args.join(" ")}`);
   return { args: detected.args, commandSource: detected.source };
@@ -593,7 +597,7 @@ export const runCommand = buildCommand({
     logger.info(`Starting: ${bold(wrangler.args.join(" "))}`);
     logger.info(
       daemonSessionId
-        ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use sentry local session view ${daemonSessionId} --json for its ingest URL.`
+        ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use ${sentry`local session view ${daemonSessionId} --json`} for its ingest URL.`
         : `SENTRY_SPOTLIGHT=${spotlightUrl}`,
     );
 

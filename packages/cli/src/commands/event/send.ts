@@ -11,6 +11,7 @@
 import type { DsnComponents, Event } from "@sentry/core";
 import { createEventEnvelope, makeDsn, serializeEnvelope } from "@sentry/core";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   buildEventFromFlags,
@@ -382,7 +383,7 @@ built entirely from the file contents.
       if (!flags.message?.length) {
         throw new ConfigError(
           "Provide a message via -m/--message or a JSON event file as a positional argument.",
-          "sentry event send -m 'My message'",
+          sentry`event send -m 'My message'`,
         );
       }
       const event = await buildEventFromFlags(flags);

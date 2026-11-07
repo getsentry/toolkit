@@ -33,6 +33,7 @@
  */
 
 import { parse } from "../generated/id-arguments-grammar.js";
+import { asInvocationCommand, sentry } from "./app-identity.js";
 import { looksLikeIssueShortId } from "./arg-parsing.js";
 import { ContextError, ValidationError } from "./errors.js";
 import {
@@ -167,7 +168,7 @@ function searchable(kind: IdKind, listCommand: string): IdKind {
       if (!(kind.isId(value) || kind.mayBeId(value)) && search.isText(value)) {
         const label = kind.label.charAt(0).toLowerCase() + kind.label.slice(1);
         throw new ValidationError(
-          `Not a ${label}: "${value}". To search, try \`${search.command} --query ${shellQuote(value)}\`.\n\n` +
+          `Not a ${label}: "${value}". To search, try \`${asInvocationCommand(search.command)} --query ${shellQuote(value)}\`.\n\n` +
             `If it names a project, pass the ${label} after it: <org>/<project> <${label}>`,
           "positional",
         );
@@ -267,7 +268,7 @@ export const ID_KINDS = {
     validate: (value) => {
       if (!isAllDigits(value)) {
         throw new ValidationError(
-          `Invalid integration ID '${value}'. Use the numeric ID from 'sentry integration list'.`,
+          `Invalid integration ID '${value}'. Use the numeric ID from '${sentry`integration list`}'.`,
           "integration-id",
         );
       }
@@ -395,7 +396,7 @@ export function parseIdArguments(
       } else if (own !== target && token.target !== target) {
         throw new ValidationError(
           `${kind.label}s reference different projects ('${target}' and '${own}'). ` +
-            `Pass IDs from one project per call: ${usageHint}`,
+            `Pass IDs from one project per call: ${asInvocationCommand(usageHint)}`,
           "positional",
         );
       }
@@ -429,7 +430,7 @@ export function parseIdArguments(
     chosen = first ? [first] : [];
     const extra = typed.filter((token) => token !== first);
     warnings.push(
-      `Extra arguments ignored: ${extra.map((token) => token.text).join(" ")}. Expected: ${usageHint}`,
+      `Extra arguments ignored: ${extra.map((token) => token.text).join(" ")}. Expected: ${asInvocationCommand(usageHint)}`,
     );
   }
 
@@ -542,7 +543,7 @@ function pathTargetArg(
   }
   if (slash === 0 || slash === prefix.length - 1) {
     throw new ValidationError(
-      `Invalid format: "${text}" needs an organization and a project before the ID.\n\nUsage: ${usageHint}`,
+      `Invalid format: "${text}" needs an organization and a project before the ID.\n\nUsage: ${asInvocationCommand(usageHint)}`,
       "positional",
     );
   }

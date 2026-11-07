@@ -33,6 +33,7 @@ import {
   type ProjectWithOrg,
   resolveOrgDisplayName,
 } from "./api-client.js";
+import { sentry } from "./app-identity.js";
 import {
   looksLikeIssueShortId,
   type ParsedOrgProject,
@@ -186,7 +187,7 @@ export async function resolveTargetSlugs(
     throw new ResolutionError(
       "Organization",
       "could not be resolved to a slug",
-      "sentry org list",
+      sentry`org list`,
     );
   }
   cacheResolvedProject(info, org, project);
@@ -1030,7 +1031,7 @@ export function projectSearchNotFoundSuggestions(
   if (resolution.scopedOrg) {
     return [
       `No project with this name found in organization '${resolution.scopedOrg}'`,
-      `Check the organization slug or try: sentry project list ${resolution.scopedOrg}/`,
+      `Check the organization slug or try: ${sentry`project list ${resolution.scopedOrg}/`}`,
     ];
   }
   return ["No project with this slug found in any accessible organization"];
@@ -1112,7 +1113,7 @@ export async function fetchProjectId(
       throw new ResolutionError(
         `Project '${project}'`,
         `not found in organization '${org}'`,
-        `sentry project list ${org}/`,
+        sentry`project list ${org}/`,
         buildProjectNotFoundSuggestions(org, project, similar),
       );
     }
@@ -1220,7 +1221,7 @@ function combineProjectNotFoundErrors(
   return new ResolutionError(
     `Projects ${misses.map(({ slug }) => `'${slug}'`).join(", ")}`,
     `not found in organization '${org}'`,
-    `sentry project list ${org}/`,
+    sentry`project list ${org}/`,
     [...specific, ...shared],
   );
 }
@@ -1281,7 +1282,7 @@ export async function resolveProjectIdsInOrg(
       throw new ResolutionError(
         `Project '${slug}'`,
         `has no numeric ID in organization '${org}'`,
-        `sentry project list ${org}/`,
+        sentry`project list ${org}/`,
       );
     }
     return id;
@@ -1446,7 +1447,7 @@ export async function resolveAllTargets(
       if (org || project) {
         throw new ContextError(
           "Organization and project",
-          options.usageHint ?? "sentry <command> <org>/<project>",
+          options.usageHint ?? sentry`<command> <org>/<project>`,
           [],
         );
       }
@@ -1665,7 +1666,7 @@ export async function resolveOrgAndProject(
       if (org || project) {
         throw new ContextError(
           "Organization and project",
-          options.usageHint ?? "sentry <command> <org>/<project>",
+          options.usageHint ?? sentry`<command> <org>/<project>`,
           [],
         );
       }
@@ -1916,7 +1917,7 @@ async function promptForOrgProject(): Promise<ResolvedTarget | null> {
     throw new ResolutionError(
       `Organization '${orgSlug}'`,
       "has no accessible projects",
-      `sentry project list ${orgSlug}/`,
+      sentry`project list ${orgSlug}/`,
     );
   }
 
@@ -1938,7 +1939,7 @@ async function promptForOrgProject(): Promise<ResolvedTarget | null> {
     setDefaultOrganization(orgSlug);
     setDefaultProject(projectSlug);
     log.info(
-      `Saved ${orgSlug}/${projectSlug} as your default. Change it with: sentry cli defaults org <slug>`,
+      `Saved ${orgSlug}/${projectSlug} as your default. Change it with: ${sentry`cli defaults org <slug>`}`,
     );
   } catch (error) {
     log.debug("Failed to persist selected org/project as default", error);
@@ -2049,14 +2050,14 @@ async function buildAccountContextError(
     );
   }
   alternatives.push(
-    `List projects example: sentry project list ${shellQuote(`${exampleOrg}/`)}`,
+    `List projects example: ${sentry`project list ${shellQuote(`${exampleOrg}/`)}`}`,
   );
   const notes = candidates.flatMap((candidate) =>
     candidate.note ? [candidate.note] : [],
   );
   if (shownOrgs.length < orgs.length) {
     notes.push(`Showing ${shownOrgs.length} of ${orgs.length} organizations.`);
-    alternatives.push("List all organizations: sentry org list");
+    alternatives.push(`List all organizations: ${sentry`org list`}`);
   }
   return new ContextError(
     "Organization and project",
@@ -2093,7 +2094,7 @@ export async function guideOrgProjectFailure(
   > &
     Partial<Pick<ResolveOptions, "cwd">>,
 ): Promise<ResolvedTarget> {
-  const usageHint = options.usageHint ?? "sentry <command> <org>/<project>";
+  const usageHint = options.usageHint ?? sentry`<command> <org>/<project>`;
 
   if (canPromptForTarget(options.interactive)) {
     const picked = await promptForOrgProject();
@@ -2263,7 +2264,7 @@ export async function resolveProjectBoundSlug(
       "is an organization, not a project",
       usageHint.replace("<org>/<project>", `${projectSlug}/<project>`),
       [
-        `List projects: sentry project list ${projectSlug}/`,
+        `List projects: ${sentry`project list ${projectSlug}/`}`,
         `Specify a project: ${projectSlug}/<project>`,
       ],
     );
@@ -2445,8 +2446,7 @@ export async function resolveProjectBoundTarget(
   commandName: string,
   options: ResolveProjectBoundTargetOptions = {},
 ): Promise<ResolvedProjectBoundTarget> {
-  const usageHint =
-    options.usageHint ?? `sentry ${commandName} <org>/<project>`;
+  const usageHint = options.usageHint ?? sentry`${commandName} <org>/<project>`;
 
   switch (parsed.type) {
     case "explicit": {
@@ -2457,7 +2457,7 @@ export async function resolveProjectBoundTarget(
     case "org-all":
       throw new ContextError(
         "Project",
-        `sentry ${commandName} ${parsed.org}/<project>`,
+        sentry`${commandName} ${parsed.org}/<project>`,
         [],
       );
 
@@ -2470,8 +2470,8 @@ export async function resolveProjectBoundTarget(
         throw new ResolutionError(
           `'${parsed.projectSlug}'`,
           "is an organization, not a project",
-          `sentry ${commandName} ${parsed.projectSlug}/<project>`,
-          [`List projects: sentry project list ${parsed.projectSlug}/`],
+          sentry`${commandName} ${parsed.projectSlug}/<project>`,
+          [`List projects: ${sentry`project list ${parsed.projectSlug}/`}`],
         );
       }
 
@@ -2494,12 +2494,12 @@ export async function resolveProjectBoundTarget(
       const { projects } = resolution;
       if (projects.length > 1) {
         const projectOptions = projects
-          .map((m) => `  sentry ${commandName} ${m.orgSlug}/${m.slug}`)
+          .map((m) => `  ${sentry`${commandName} ${m.orgSlug}/${m.slug}`}`)
           .join("\n");
         throw new ResolutionError(
           `Project '${resolution.displaySlug}'`,
           "is ambiguous",
-          `sentry ${commandName} <org>/${parsed.projectSlug}`,
+          sentry`${commandName} <org>/${parsed.projectSlug}`,
           [
             `Found in ${projects.length} organizations. Specify one:\n${projectOptions}`,
           ],
@@ -2716,7 +2716,7 @@ export async function resolveProjectBoundTargets(
         throw new ResolutionError(
           `Organization '${org}'`,
           "has no accessible projects",
-          `sentry project list ${org}/`,
+          sentry`project list ${org}/`,
           ["Check that you have access to projects in this organization"],
         );
       }
@@ -2740,8 +2740,10 @@ export async function resolveProjectBoundTargets(
         throw new ResolutionError(
           `'${displaySlug}'`,
           "looks like an issue short ID, not a project slug",
-          `sentry issue view ${displaySlug}`,
-          ["To list issues in a project: sentry issue list <org>/<project>"],
+          sentry`issue view ${displaySlug}`,
+          [
+            `To list issues in a project: ${sentry`issue list <org>/<project>`}`,
+          ],
         );
       }
 
@@ -2755,7 +2757,7 @@ export async function resolveProjectBoundTargets(
           "is an organization, not a project",
           `${prefix} ${parsed.projectSlug}/`,
           [
-            `List projects: sentry project list ${parsed.projectSlug}/`,
+            `List projects: ${sentry`project list ${parsed.projectSlug}/`}`,
             `Specify a project: ${prefix} ${parsed.projectSlug}/<project>`,
           ],
         );
@@ -2852,7 +2854,7 @@ export async function resolveOrgOptionalTarget(
   parsed: ParsedOrgProject,
   cwd: string,
   commandName: string,
-  usageHint = `sentry ${commandName} <target>`,
+  usageHint = sentry`${commandName} <target>`,
 ): Promise<ResolvedOrgOptionalTarget> {
   // org-all: resolve the org slug only
   if (parsed.type === "org-all") {
@@ -2866,7 +2868,7 @@ export async function resolveOrgOptionalTarget(
     if (!resolved) {
       throw new ContextError("Organization", usageHint, [
         "SENTRY_ORG environment variable",
-        "sentry cli defaults",
+        sentry`cli defaults`,
       ]);
     }
     return withTelemetryContext({ org: resolved.org });
@@ -2909,7 +2911,7 @@ export async function resolveOrgOnlyTarget(
   parsed: ParsedOrgProject,
   cwd: string,
   commandName: string,
-  usageHint = `sentry ${commandName} <target>`,
+  usageHint = sentry`${commandName} <target>`,
 ): Promise<string> {
   if (parsed.type === "auto-detect") {
     const resolved = await resolveOrg({ cwd });

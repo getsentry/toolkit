@@ -8,6 +8,7 @@
 import { isatty } from "node:tty";
 import type { SentryContext } from "../../context.js";
 import { triggerSolutionPlanning } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { ApiError, CliError } from "../../lib/errors.js";
@@ -318,7 +319,7 @@ export const planCommand = buildCommand({
           "Plan creation timed out after 6 minutes. Try again or check the issue in Sentry web UI.",
         timeoutHint:
           "The plan may still be generated in the background.\n" +
-          `  Or retry: sentry issue plan ${issueArg.text}`,
+          `  Or retry: ${sentry`issue plan ${issueArg.text}`}`,
       });
 
       if (finalState.status === "ERROR") {

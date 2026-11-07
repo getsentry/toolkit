@@ -22,6 +22,7 @@ import {
   CodeMappingSchema,
   uploadCodeMappings,
 } from "../../lib/api/code-mappings.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   parseFilePath,
@@ -258,7 +259,7 @@ export const uploadCommand = buildCommand({
     if (!repository) {
       throw new ContextError(
         "Repository name",
-        "sentry code-mappings upload <path> --repo <owner/repo>",
+        sentry`code-mappings upload <path> --repo <owner/repo>`,
         [
           "Could not auto-detect repository from git remotes",
           "Provide --repo explicitly",

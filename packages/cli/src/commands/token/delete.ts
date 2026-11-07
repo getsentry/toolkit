@@ -10,6 +10,7 @@
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { deleteOrgAuthToken, listOrgAuthTokens } from "../../lib/api-client.js";
+import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import { selectAccountForOrg } from "../../lib/db/auth.js";
 import { ResolutionError, ValidationError } from "../../lib/errors.js";
@@ -108,7 +109,7 @@ export function parseTokenArguments(args: readonly string[]): TokenInput {
   if (args.some((arg) => TOKEN_VALUE_PATTERN.test(arg))) {
     throw new ValidationError(
       "That looks like a token value, not a token ID or name. Use the ID " +
-        "or name from 'sentry token list'.",
+        `or name from '${sentry`token list`}'.`,
       "token-id",
     );
   }
@@ -120,7 +121,7 @@ export function parseTokenArguments(args: readonly string[]): TokenInput {
   // Never choose one of several tokens for a destructive action.
   if (ids.length > 1) {
     throw new ValidationError(
-      `Revoke one token at a time, not ${ids.length}: ${USAGE_HINT}`,
+      `Revoke one token at a time, not ${ids.length}: ${asInvocationCommand(USAGE_HINT)}`,
       "token-id",
     );
   }
@@ -167,7 +168,7 @@ async function findToken(org: string, ref: TokenRef): Promise<OrgAuthToken> {
     throw new ResolutionError(
       `Org auth token ${label}`,
       `not found in ${org}`,
-      `sentry token list ${org}`,
+      sentry`token list ${org}`,
       ["It may already be revoked."],
     );
   }
@@ -176,7 +177,7 @@ async function findToken(org: string, ref: TokenRef): Promise<OrgAuthToken> {
     const ids = matches.map((t) => t.id).join(", ");
     throw new ValidationError(
       `${matches.length} org auth tokens in ${org} are named '${ref.name}' ` +
-        `(IDs ${ids}). Pass the ID instead: sentry token delete ${org}/<token-id>`,
+        `(IDs ${ids}). Pass the ID instead: ${sentry`token delete ${org}/<token-id>`}`,
       "token-id",
     );
   }

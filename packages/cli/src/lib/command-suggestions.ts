@@ -9,6 +9,8 @@
  * Populated from CLI-Q3 telemetry analysis (~100 events, 85 users).
  */
 
+import { asInvocationCommand } from "./app-identity.js";
+
 /** A suggestion for an unknown command token. */
 export type CommandSuggestion = {
   /** The command to suggest (shown in "Tip:" hint) */
@@ -107,7 +109,13 @@ export function getCommandSuggestion(
   const key = routeContext
     ? `${routeContext}/${unknownToken.toLowerCase()}`
     : `/${unknownToken.toLowerCase()}`;
-  return SUGGESTIONS.get(key);
+  const suggestion = SUGGESTIONS.get(key);
+  return (
+    suggestion && {
+      ...suggestion,
+      command: asInvocationCommand(suggestion.command),
+    }
+  );
 }
 
 /**

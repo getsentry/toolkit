@@ -14,6 +14,7 @@ import {
   listReleasesPaginated,
   type ReleaseSortValue,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import type { ParsedOrgProject } from "../../lib/arg-parsing.js";
 import {
   choiceParser,
@@ -260,7 +261,7 @@ function buildReleaseListConfig(
   return {
     paginationKey: PAGINATION_KEY,
     entityPlural: "releases",
-    commandPrefix: "sentry release list",
+    commandPrefix: sentry`release list`,
     listForOrg: async (org) => {
       const { data } = await listReleasesPaginated(org, {
         perPage: 100,
@@ -503,7 +504,7 @@ async function handleAutoDetectWithProject(
   if (unique.length === 0) {
     return {
       items: [],
-      hint: "No project detected. Specify a target: sentry release list <org>/<project>",
+      hint: `No project detected. Specify a target: ${sentry`release list <org>/<project>`}`,
     };
   }
 

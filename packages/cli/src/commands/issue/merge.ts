@@ -22,6 +22,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { type MergeIssuesResult, mergeIssues } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseIssueReference } from "../../lib/completion-target.js";
 import {
@@ -337,10 +338,10 @@ export const mergeCommand = buildCommand({
     if (effectiveArgs.length < 2) {
       const hint =
         args.length === 1
-          ? "Tip: you can also write: sentry issue merge CLI-K9 --into CLI-15H"
-          : "Example: sentry issue merge CLI-K9 CLI-15H CLI-15N";
+          ? `Tip: you can also write: ${sentry`issue merge CLI-K9 --into CLI-15H`}`
+          : `Example: ${sentry`issue merge CLI-K9 CLI-15H CLI-15N`}`;
       throw new ValidationError(
-        `'sentry ${COMMAND_PATH}' needs at least 2 issue IDs (got ${args.length}).\n\n` +
+        `'${sentry`${COMMAND_PATH}`}' needs at least 2 issue IDs (got ${args.length}).\n\n` +
           hint,
       );
     }

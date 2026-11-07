@@ -7,7 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { chmod, chown, stat } from "node:fs/promises";
 import type { SentryContext } from "../../context.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { getConfigDir, getDbPath, getRawDatabase } from "../../lib/db/index.js";
 import {
@@ -339,8 +339,8 @@ function ownershipInstructions(
   return (
     "To fix ownership, run one of:\n\n" +
     `  sudo chown -R ${username} "${configDir}"\n\n` +
-    "Or let sentry fix it automatically:\n\n" +
-    `  sudo ${asInvocationCommand("sentry cli fix")}`
+    "Or fix it automatically:\n\n" +
+    `  sudo ${sentry`cli fix`}`
   );
 }
 

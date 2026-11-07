@@ -5,6 +5,7 @@
  */
 
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { ApiError, stringifyUnknown } from "../../lib/errors.js";
@@ -186,6 +187,8 @@ export const explainCommand = buildCommand({
     });
     return isBatch
       ? undefined
-      : { hint: `To create a plan, run: sentry issue plan ${primaryArg}` };
+      : {
+          hint: `To create a plan, run: ${sentry`issue plan ${primaryArg}`}`,
+        };
   },
 });

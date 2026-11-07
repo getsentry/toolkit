@@ -243,6 +243,7 @@ export function initMcpTelemetry(config: McpServerConfig): void {
   const scopeContext = {
     "app.server.version": CLI_VERSION,
     // Tells `@sentry/mcp-server` installs apart from `sentry mcp`.
+    // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a telemetry value, not a hint.
     "app.server.distribution": name === "sentry" ? "sentry mcp" : packageName,
     "app.transport": "stdio",
     "app.upstream.host": config.sentryHost,

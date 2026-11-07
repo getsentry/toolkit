@@ -23,6 +23,7 @@
  * `func` runs.
  */
 
+import { asInvocationCommand, sentry } from "./app-identity.js";
 import {
   firstNonBlankLine,
   type ListTarget,
@@ -111,7 +112,7 @@ export function orgProjectTarget<R>(
       requireExplicitTarget(
         parsed,
         "Project target",
-        `sentry ${commandNameOf(context)} <org>/<project>`,
+        sentry`${commandNameOf(context)} <org>/<project>`,
       ),
   );
 }
@@ -170,7 +171,9 @@ export function parseOrgInput(
   }
   const org = text.endsWith("/") ? text.slice(0, -1) : text;
   if (!org || org.includes("/")) {
-    const usage = usageHint ? `\n\nUsage: ${usageHint}` : "";
+    const usage = usageHint
+      ? `\n\nUsage: ${asInvocationCommand(usageHint)}`
+      : "";
     throw new ValidationError(
       `Expected an organization, not '${text}': this takes no project.${usage}`,
       "organization",
@@ -216,7 +219,7 @@ export const orgTarget = boundPositional(
     resolveOrgInput(
       input,
       context.cwd,
-      `sentry ${commandNameOf(context)} <org>`,
+      sentry`${commandNameOf(context)} <org>`,
     ),
 );
 

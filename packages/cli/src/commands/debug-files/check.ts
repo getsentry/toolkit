@@ -13,6 +13,7 @@
  */
 
 import type { SentryContext } from "../../context.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { type DifArchiveInfo, parseDebugFile } from "../../lib/dif/index.js";
 import { parseFilePath } from "../../lib/completion-target.js";
@@ -186,7 +187,7 @@ export const checkCommand = buildCommand({
       // using it here keeps the exit-code observable in tests.
       this.process.exitCode = 1;
       return {
-        hint: `No usable debug information found. Try: ${USAGE_HINT}`,
+        hint: `No usable debug information found. Try: ${asInvocationCommand(USAGE_HINT)}`,
       };
     }
   },

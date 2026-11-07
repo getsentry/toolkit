@@ -22,6 +22,7 @@ import {
   type RetryPolicy,
   type TransportCache,
 } from "@sentry/api/client";
+import { sentry } from "./app-identity.js";
 import { formatAuthHeader } from "./auth-header.js";
 import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
@@ -249,8 +250,8 @@ function buildTimeoutHint(idempotent: boolean): string {
     ? "Try again."
     : "The change may still have been applied; check before trying again.";
   const check = isSentrySaasUrl(baseUrl)
-    ? "Check Sentry's status with: sentry status"
-    : `Check the server's health with: sentry status --url ${baseUrl}`;
+    ? `Check Sentry's status with: ${sentry`status`}`
+    : `Check the server's health with: ${sentry`status --url ${baseUrl}`}`;
   return `The Sentry API at ${baseUrl} did not respond in time. ${retry}\n  ${check}`;
 }
 

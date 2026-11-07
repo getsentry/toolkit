@@ -17,6 +17,7 @@ import {
   getProductTrials,
   startProductTrial,
 } from "../../lib/api-client.js";
+import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
 import { detectSwappedTrialArgs } from "../../lib/arg-parsing.js";
 import { openBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
@@ -123,7 +124,7 @@ export function parseTrialStartArguments(
   }
   if (extra.length > 0) {
     throw new ValidationError(
-      `Too many arguments: ${extra.join(" ")}. Expected: ${USAGE_HINT}`,
+      `Too many arguments: ${extra.join(" ")}. Expected: ${asInvocationCommand(USAGE_HINT)}`,
       "positional",
     );
   }
@@ -193,7 +194,7 @@ export const startCommand = buildCommand({
         const { org } = await resolveOrgInput(
           input.org,
           context.cwd,
-          "sentry trial start <name> <org>",
+          sentry`trial start <name> <org>`,
         );
         return { name: input.name, org };
       },
