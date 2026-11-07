@@ -7,6 +7,7 @@
 
 import {
   listOrganizationEvents,
+  listOrganizationEventsTimeseries,
   type OrganizationEventsTimeseriesResponse,
 } from "@sentry/api";
 
@@ -18,11 +19,12 @@ import { resolveOrgRegion } from "../region.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import {
   API_MAX_PER_PAGE,
-  apiRequestToRegion,
+  getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   paginate,
   unwrapPaginatedResult,
+  unwrapResult,
   validateResponse,
 } from "./infrastructure.js";
 
@@ -93,35 +95,34 @@ export type EventsTimeSeriesResponse = Omit<
 /**
  * Query aggregate values over time without grouping or pagination.
  *
- * Uses the same regional transport as `queryEvents` because the generated
- * SDK input types do not support repeated `yAxis` or duration-string intervals.
  * Returns the complete API response, including sampling and ingestion metadata.
  */
 export async function queryEventsTimeSeries(
   orgSlug: string,
   options: ExploreTimeSeriesQueryOptions,
 ): Promise<EventsTimeSeriesResponse> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion<EventsTimeSeriesResponse>(
-    regionUrl,
-    `/organizations/${orgSlug}/events-timeseries/`,
-    {
-      params: {
-        dataset: options.dataset ?? "errors",
-        yAxis: options.fields,
-        query: options.query || undefined,
-        project: options.projectId,
-        interval: options.interval,
-        statsPeriod:
-          options.start || options.end
-            ? undefined
-            : (options.statsPeriod ?? "24h"),
-        start: options.start,
-        end: options.end,
-      },
+  const result = await listOrganizationEventsTimeseries({
+    ...(await getOrgSdkConfig(orgSlug)),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      dataset: options.dataset ?? "errors",
+      yAxis: options.fields,
+      query: options.query || undefined,
+      project:
+        options.projectId === undefined ? undefined : [options.projectId],
+      interval: options.interval,
+      statsPeriod:
+        options.start || options.end
+          ? undefined
+          : (options.statsPeriod ?? "24h"),
+      start: options.start,
+      end: options.end,
     },
+  });
+  return unwrapResult<EventsTimeSeriesResponse>(
+    result,
+    "Failed to query events time series",
   );
-  return data;
 }
 
 /**

@@ -5,6 +5,7 @@
  */
 
 import {
+  getOrganizationTrace,
   getOrganizationTraceMeta,
   type ListOrganizationTraceItemAttributesData,
   type ListOrganizationTraceItemAttributesQueryAttributeType,
@@ -34,6 +35,7 @@ export type { TraceItemAttribute, TraceItemDetail } from "../../types/index.js";
 
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import { isAllDigits } from "../utils.js";
 
 import {
@@ -43,6 +45,7 @@ import {
   type PaginatedResponse,
   paginate,
   unwrapPaginatedResult,
+  unwrapResult,
   unwrapValidatedResult,
   validateResponse,
 } from "./infrastructure.js";
@@ -129,23 +132,22 @@ async function requestTrace(
   traceId: string,
   params: GetDetailedTraceOptions & { statsPeriod?: string },
 ): Promise<TraceSpan[]> {
-  const { data } = await apiRequestToRegion<TraceSpan[]>(
-    regionUrl,
-    `/organizations/${orgSlug}/trace/${traceId}/`,
-    {
-      params: {
-        timestamp: params.timestamp,
-        statsPeriod: params.statsPeriod,
-        additional_attributes: params.additionalAttributes,
-      },
+  const result = await getOrganizationTrace({
+    ...getSdkClientConfig(regionUrl),
+    path: { organization_id_or_slug: orgSlug, trace_id: traceId },
+    query: {
+      timestamp:
+        params.timestamp === undefined ? undefined : String(params.timestamp),
+      statsPeriod: params.statsPeriod,
+      additional_attributes: params.additionalAttributes,
     },
-  );
+  });
+  const data = unwrapResult<TraceSpan[]>(result, "Failed to get trace");
   return data.map(normalizeTraceSpan);
 }
 
 /**
  * Get detailed trace with nested children structure.
- * This is an internal endpoint not covered by the public API.
  * Uses region-aware routing for multi-region support.
  *
  * The endpoint always returns spans from every project in the trace; it

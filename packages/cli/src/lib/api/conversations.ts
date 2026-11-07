@@ -4,14 +4,17 @@
  * Functions for listing and retrieving agent conversation data from the Sentry
  * Explore agent conversations endpoints.
  *
- * Both endpoints are in `@sentry/api`. The list still goes through
- * `apiRequestToRegion` because its generated query has no `sort`. The details
- * call uses the generated operation; its spans are untyped records there, so
- * the response is still checked with `AgentConversationDetailsSchema`.
+ * Both endpoints use their generated `@sentry/api` operations, and their
+ * responses are still checked with the CLI's own schemas
+ * (`ConversationListItemSchema`, `AgentConversationDetailsSchema`).
  * Pagination follows the `Link` header.
  */
 
-import { retrieveOrganizationAiConversation } from "@sentry/api";
+import {
+  type ListOrganizationAiConversationsData,
+  listOrganizationAiConversations,
+  retrieveOrganizationAiConversation,
+} from "@sentry/api";
 import { array } from "valibot";
 
 import {
@@ -25,20 +28,29 @@ import {
 
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 
 import {
   API_MAX_PER_PAGE,
-  apiRequestToRegion,
   getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   paginate,
-  parseLinkHeader,
   unwrapPaginatedResult,
   validateResponse,
 } from "./infrastructure.js";
 
 const log = logger.withTag("api.conversations");
+
+type ConversationListOptions = {
+  query?: string;
+  sort?: NonNullable<ListOrganizationAiConversationsData["query"]>["sort"];
+  cursor?: string;
+  statsPeriod?: string;
+  start?: string;
+  end?: string;
+  project?: string;
+};
 
 /**
  * Fetch a single page of conversations from the agent conversations endpoint.
@@ -49,51 +61,34 @@ const log = logger.withTag("api.conversations");
 async function fetchConversationsPage(
   regionUrl: string,
   orgSlug: string,
-  options: {
-    query?: string;
-    sort?: string;
-    cursor?: string;
-    statsPeriod?: string;
-    start?: string;
-    end?: string;
-    project?: string;
-  },
+  options: ConversationListOptions,
   perPage: number,
 ): Promise<PaginatedResponse<ConversationListItem[]>> {
-  const params: Record<string, string> = {
-    per_page: String(perPage),
-  };
-  if (options.statsPeriod) {
-    params.statsPeriod = options.statsPeriod;
-  }
-  if (options.start) {
-    params.start = options.start;
-  }
-  if (options.end) {
-    params.end = options.end;
-  }
-  if (options.cursor) {
-    params.cursor = options.cursor;
-  }
-  if (options.query) {
-    params.query = options.query;
-  }
-  if (options.sort) {
-    params.sort = options.sort;
-  }
-  if (options.project) {
-    params.project = options.project;
-  }
-
-  const { data, headers } = await apiRequestToRegion<ConversationListItem[]>(
-    regionUrl,
-    `/organizations/${orgSlug}/agents/conversations/`,
-    { params, schema: array(ConversationListItemSchema) },
+  const result = await listOrganizationAiConversations({
+    ...getSdkClientConfig(regionUrl),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      per_page: perPage,
+      statsPeriod: options.statsPeriod || undefined,
+      start: options.start || undefined,
+      end: options.end || undefined,
+      cursor: options.cursor || undefined,
+      query: options.query || undefined,
+      sort: options.sort,
+      project: options.project ? [options.project] : undefined,
+    },
+  });
+  const page = unwrapPaginatedResult<unknown>(
+    result,
+    "Failed to list agent conversations",
   );
-
-  const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
-
-  return { data, nextCursor };
+  const data = validateResponse(
+    array(ConversationListItemSchema),
+    page.data,
+    `/organizations/${orgSlug}/agents/conversations/`,
+    page.response?.status ?? 0,
+  );
+  return { data, nextCursor: page.nextCursor };
 }
 
 /**
@@ -108,16 +103,7 @@ async function fetchConversationsPage(
  */
 export async function listConversations(
   orgSlug: string,
-  options: {
-    query?: string;
-    sort?: string;
-    limit?: number;
-    cursor?: string;
-    statsPeriod?: string;
-    start?: string;
-    end?: string;
-    project?: string;
-  } = {},
+  options: ConversationListOptions & { limit?: number } = {},
 ): Promise<PaginatedResponse<ConversationListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   return await paginate(options, (perPage, cursor) =>

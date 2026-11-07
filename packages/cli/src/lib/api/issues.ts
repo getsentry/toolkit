@@ -12,6 +12,8 @@ import {
   getOrganizationIssue,
   listOrganizationIssues,
   resolveOrganizationShortId,
+  updateOrganizationIssue,
+  updateOrganizationIssues,
 } from "@sentry/api";
 
 import type { SentryIssue } from "../../types/index.js";
@@ -24,14 +26,12 @@ import {
 } from "../custom-ca.js";
 import { applyCustomHeaders } from "../custom-headers.js";
 import { ApiError, ValidationError } from "../errors.js";
-import { resolveOrgRegion } from "../region.js";
 import { invalidateCachedResponsesMatching } from "../response-cache.js";
 import { getApiBaseUrl } from "../sentry-client.js";
 
 import {
   API_MAX_PER_PAGE,
   apiRequest,
-  apiRequestToRegion,
   getOrgSdkConfig,
   type PaginatedResponse,
   paginate,
@@ -612,23 +612,20 @@ export async function updateIssueStatus(
     orgSlug?: string;
   },
 ): Promise<SentryIssue> {
-  const body: Record<string, unknown> = { status };
-  if (options?.statusDetails) {
-    body.statusDetails = options.statusDetails;
-  }
-  if (options?.substatus) {
-    body.substatus = options.substatus;
-  }
+  const body = {
+    status,
+    ...(options?.statusDetails && { statusDetails: options.statusDetails }),
+    ...(options?.substatus && { substatus: options.substatus }),
+  };
 
   if (options?.orgSlug) {
     // Region-aware org-scoped endpoint — preferred when org is known.
-    const regionUrl = await resolveOrgRegion(options.orgSlug);
-    const { data } = await apiRequestToRegion<SentryIssue>(
-      regionUrl,
-      `/organizations/${encodeURIComponent(options.orgSlug)}/issues/${encodeURIComponent(issueId)}/`,
-      { method: "PUT", body },
-    );
-    return data;
+    const result = await updateOrganizationIssue({
+      ...(await getOrgSdkConfig(options.orgSlug)),
+      path: { organization_id_or_slug: options.orgSlug, issue_id: issueId },
+      body,
+    });
+    return unwrapResult<SentryIssue>(result, "Failed to update issue");
   }
 
   // Legacy global endpoint — works without org but not region-aware.
@@ -670,49 +667,43 @@ export async function mergeIssues(
       `Need at least 2 issues to merge (got ${groupIds.length}).`,
     );
   }
-  // The bulk mutate endpoint takes repeated numeric `?id=X` query params plus
-  // a `{merge: true}` body. `updateOrganizationIssues` would fit, but its body
-  // type marks every field required until getsentry/sentry#130348 lands.
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const query = groupIds.map((id) => `id=${encodeURIComponent(id)}`).join("&");
-  const path = `/organizations/${encodeURIComponent(orgSlug)}/issues/?${query}`;
-  type MergeResponse = { merge: MergeIssuesResult };
-  try {
-    const { data } = await apiRequestToRegion<MergeResponse>(regionUrl, path, {
-      method: "PUT",
-      body: { merge: true },
-    });
-    // HTTP-layer invalidation covers the region-scoped caches via the
-    // prefix sweep on `/organizations/{org}/issues/`, but it can't see
-    // the affected IDs (they're in query params, stripped from the
-    // URL the hook sees). Manually clear each affected issue's legacy
-    // cross-origin cache so subsequent `getIssue(id)` doesn't serve
-    // stale data.
-    const apiBase = getApiBaseUrl().replace(TRAILING_SLASH_RE, "");
-    const affectedIds = data.merge.children.toSpliced(0, 0, data.merge.parent);
-    await Promise.all(
-      affectedIds.map((id) =>
-        invalidateCachedResponsesMatching(
-          `${apiBase}/api/0/issues/${encodeURIComponent(id)}/`,
-        ),
-      ),
+  const result = await updateOrganizationIssues({
+    ...(await getOrgSdkConfig(orgSlug)),
+    path: { organization_id_or_slug: orgSlug },
+    query: { id: groupIds.map(Number) },
+    body: { merge: true },
+  });
+  const merge = unwrapResult<{ merge?: MergeIssuesResult } | null>(
+    result,
+    "Failed to merge issues",
+  )?.merge;
+  // The bulk-mutate endpoint returns 204 when no matching issues are
+  // found — e.g. IDs out of scope, or issues deleted between resolution
+  // and the merge call.
+  if (!merge) {
+    throw new ApiError(
+      `No matching issues found for merge in '${orgSlug}'.`,
+      204,
+      "All provided issue IDs are out of scope or no longer exist.",
+      `/organizations/${encodeURIComponent(orgSlug)}/issues/?${groupIds.map((id) => `id=${encodeURIComponent(id)}`).join("&")}`,
     );
-    return data.merge;
-  } catch (error) {
-    // The bulk-mutate endpoint returns 204 when no matching issues are
-    // found — e.g. IDs out of scope, or issues deleted between resolution
-    // and the merge call. Catch the generic "no body" ApiError and re-throw
-    // with a friendlier user-facing message.
-    if (error instanceof ApiError && error.status === 204) {
-      throw new ApiError(
-        `No matching issues found for merge in '${orgSlug}'.`,
-        204,
-        "All provided issue IDs are out of scope or no longer exist.",
-        path,
-      );
-    }
-    throw error;
   }
+  // HTTP-layer invalidation covers the region-scoped caches via the
+  // prefix sweep on `/organizations/{org}/issues/`, but it can't see
+  // the affected IDs (they're in query params, stripped from the
+  // URL the hook sees). Manually clear each affected issue's legacy
+  // cross-origin cache so subsequent `getIssue(id)` doesn't serve
+  // stale data.
+  const apiBase = getApiBaseUrl().replace(TRAILING_SLASH_RE, "");
+  const affectedIds = merge.children.toSpliced(0, 0, merge.parent);
+  await Promise.all(
+    affectedIds.map((id) =>
+      invalidateCachedResponsesMatching(
+        `${apiBase}/api/0/issues/${encodeURIComponent(id)}/`,
+      ),
+    ),
+  );
+  return merge;
 }
 
 /**
