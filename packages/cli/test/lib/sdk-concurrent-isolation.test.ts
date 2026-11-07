@@ -8,6 +8,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
 } from "node:fs";
@@ -30,6 +31,7 @@ const JSON_HEADERS = { "Content-Type": "application/json" };
 
 const TOKEN_A = "sntryu_isolation-identity-a";
 const TOKEN_B = "sntryu_isolation-identity-b";
+const PROJECT_PATH = "/api/0/projects/acme/frontend/";
 
 type RecordedRequest = {
   host: string;
@@ -100,7 +102,7 @@ function sentryApi(requests: RecordedRequest[], overlap = 1): typeof fetch {
         links: { regionUrl },
       });
     }
-    if (url.pathname === "/api/0/projects/acme/frontend/") {
+    if (url.pathname === PROJECT_PATH) {
       return json(
         { id: "2", slug: "frontend", name: `Frontend ${identity}` },
         { "Cache-Control": "private, max-age=300", Vary: "Authorization" },
@@ -141,13 +143,21 @@ describe("createSentrySDK() clients in one process", () => {
   }
 
   /**
-   * Wait for the response cache to hold `count` entries. Cache writes are
-   * fire-and-forget, so a call can return before its entries land.
+   * Wait for the response cache to hold `count` entries for the project
+   * endpoint (one per identity). Cache writes are fire-and-forget, so a call
+   * can return before its entry lands. Writes go through a `.tmp` file that
+   * is then renamed, so only finished `.json` entries count.
    */
-  async function waitForCacheEntries(count: number): Promise<void> {
+  async function waitForProjectCacheEntries(count: number): Promise<void> {
     const dir = join(root, "config", "cache", "api-responses");
     await vi.waitFor(() => {
-      expect(existsSync(dir) ? readdirSync(dir).length : 0).toBe(count);
+      const entries = existsSync(dir) ? readdirSync(dir) : [];
+      const projectEntries = entries.filter(
+        (entry) =>
+          entry.endsWith(".json") &&
+          readFileSync(join(dir, entry), "utf8").includes(PROJECT_PATH),
+      );
+      expect(projectEntries).toHaveLength(count);
     });
   }
 
@@ -222,11 +232,11 @@ describe("createSentrySDK() clients in one process", () => {
     const first = await sdk({ ...persisted, token: TOKEN_A }).project.view({
       orgProject: "acme/frontend",
     });
-    await waitForCacheEntries(1);
+    await waitForProjectCacheEntries(1);
     const second = await sdk({ ...persisted, token: TOKEN_B }).project.view({
       orgProject: "acme/frontend",
     });
-    await waitForCacheEntries(2);
+    await waitForProjectCacheEntries(2);
     const malformed = sdk({
       ...persisted,
       token: "synthetic\nbad-token",
@@ -237,7 +247,7 @@ describe("createSentrySDK() clients in one process", () => {
     await expect(malformed).rejects.toThrow();
     expect(
       requests
-        .filter((request) => request.path === "/api/0/projects/acme/frontend/")
+        .filter((request) => request.path === PROJECT_PATH)
         .map((request) => identityOf(request.authorization)),
     ).toEqual(["A", "B"]);
   });
@@ -249,7 +259,7 @@ describe("createSentrySDK() clients in one process", () => {
 
     const cachedA = sdk({ persist: true, token: TOKEN_A });
     await cachedA.project.view({ orgProject: "acme/frontend" });
-    await waitForCacheEntries(1);
+    await waitForProjectCacheEntries(1);
     const uncachedB = await sdk({ token: TOKEN_B }).project.view({
       orgProject: "acme/frontend",
     });
@@ -261,7 +271,7 @@ describe("createSentrySDK() clients in one process", () => {
     expect(JSON.stringify(cachedAgain)).toContain('"name":"Frontend A"');
     expect(
       requests
-        .filter((request) => request.path === "/api/0/projects/acme/frontend/")
+        .filter((request) => request.path === PROJECT_PATH)
         .map((request) => identityOf(request.authorization)),
     ).toEqual(["A", "B"]);
   });
@@ -296,13 +306,11 @@ describe("createSentrySDK() clients in one process", () => {
     const client = sdk({ persist: true, token: TOKEN_A });
 
     await client.run("project", "view", "acme/frontend", "--fresh");
-    await waitForCacheEntries(1);
+    await waitForProjectCacheEntries(1);
     await client.run("project", "view", "acme/frontend");
 
     expect(
-      requests.filter(
-        (request) => request.path === "/api/0/projects/acme/frontend/",
-      ),
+      requests.filter((request) => request.path === PROJECT_PATH),
     ).toHaveLength(1);
   });
 });
