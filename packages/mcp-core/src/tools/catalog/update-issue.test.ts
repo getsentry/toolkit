@@ -628,7 +628,7 @@ describe("update_issue", () => {
     expect(output.current.status).toBe("resolvedInRelease");
   });
 
-  it("rejects a release resolution for an issue that is already resolved", async () => {
+  it("skips a release resolution when the issue is already resolved", async () => {
     let putCalled = false;
     mswServer.use(
       http.get(
@@ -647,23 +647,23 @@ describe("update_issue", () => {
       ),
     );
 
-    await expect(
-      updateIssue.handler(
-        {
-          organizationSlug: "sentry-mcp-evals",
-          issueId: "CLOUDFLARE-MCP-41",
-          status: "resolved",
-          inRelease: "backend@1.4.2",
-          assignedTo: undefined,
-          issueUrl: undefined,
-          regionUrl: null,
-        },
-        serverContext,
-      ),
-    ).rejects.toThrow(
-      "The issue is already resolved (`resolved`). To resolve it in a different release or commit, first set `status` to `unresolved`, then resolve it again.",
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        inRelease: "backend@1.4.2",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
     );
+
     expect(putCalled).toBe(false);
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.current.status).toBe("resolved");
   });
 
   it("skips a plain resolve when the issue is already resolved in a release", async () => {
