@@ -1414,8 +1414,9 @@
         },
         "url": {
           "type": "string",
+          "maxLength": 255,
           "format": "uri",
-          "description": "URL to check."
+          "description": "URL to check (max 255 characters)."
         },
         "intervalSeconds": {
           "type": "integer",
@@ -1438,18 +1439,12 @@
         "headers": {
           "type": "array",
           "items": {
-            "type": "array",
-            "items": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "string"
-              }
-            ],
-            "additionalItems": false,
             "minItems": 2,
-            "maxItems": 2
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "description": "Optional HTTP headers as an array of [name, value] pairs, e.g. [[\"Accept\",\"application/json\"]]."
         },
@@ -15174,6 +15169,7 @@
         },
         "url": {
           "type": "string",
+          "maxLength": 255,
           "format": "uri"
         },
         "intervalSeconds": {
@@ -15196,18 +15192,12 @@
         "headers": {
           "type": "array",
           "items": {
-            "type": "array",
-            "items": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "string"
-              }
-            ],
-            "additionalItems": false,
             "minItems": 2,
-            "maxItems": 2
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "description": "Optional HTTP headers as an array of [name, value] pairs, e.g. [[\"Accept\",\"application/json\"]]."
         },
