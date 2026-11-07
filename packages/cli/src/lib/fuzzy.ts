@@ -5,6 +5,8 @@
  * shell completions, platform suggestions, and error messages.
  */
 
+import fuzzysort from "fuzzysort";
+
 /**
  * Compute the Levenshtein edit distance between two strings.
  *
@@ -68,7 +70,7 @@ function editDistance(a: string, b: string, prefixThreshold?: number): number {
 const EXACT_SCORE = 0;
 const PREFIX_SCORE = 1;
 const CONTAINS_SCORE = 2;
-/** Fuzzy scores start at this offset so they always rank below contains matches. */
+/** Fuzzy scores start at this offset so they always rank below contains and subsequence matches. */
 const FUZZY_BASE_SCORE = 3;
 
 /** Options for {@link fuzzyMatch}. */
@@ -100,8 +102,17 @@ function matchScore(
   if (lowerCandidate.includes(lowerPartial)) {
     return CONTAINS_SCORE;
   }
-  if (search && partial.length < 3) {
-    return;
+  if (search) {
+    // Letters in order but apart (`fw` in `frontend-web`) rank between
+    // contains and typo matches. fuzzysort scores run from 0 to 1, higher
+    // is better, so a tighter match lands closer to contains.
+    const subsequence = fuzzysort.single(partial, candidate);
+    if (subsequence) {
+      return CONTAINS_SCORE + 1 - subsequence.score;
+    }
+    if (partial.length < 3) {
+      return;
+    }
   }
   const dist = editDistance(
     lowerPartial,
@@ -119,14 +130,17 @@ function matchScore(
  * 1. **Exact match** → score 0 (highest priority)
  * 2. **Prefix match** → score 1 (partial is a prefix of candidate)
  * 3. **Contains match** → score 2 (partial appears as substring)
- * 4. **Fuzzy match** → score 3 + Levenshtein distance (capped by threshold)
+ * 4. **Subsequence match**, search mode only → between 2 and 3, from
+ *    fuzzysort (the partial's letters appear in order, apart)
+ * 5. **Fuzzy match** → score 3 + Levenshtein distance (capped by threshold)
  *
  * Threshold: `max(2, floor(partial.length / 3))`. This means `"isseu"`
  * (length 5, threshold 2) matches `"issue"` (distance 2). Candidates
  * beyond the threshold are excluded entirely.
  *
- * Search mode requires literal matches for one- and two-character queries.
- * Longer queries also match candidate prefixes within `floor(length / 3)`
+ * Search mode also matches letters that appear in order but apart, so `fw`
+ * finds `frontend-web`. Typos need three or more characters. Those queries
+ * also match candidate prefixes within `floor(length / 3)`
  * edits, without counting the unfinished suffix. Full-name typo tolerance
  * stays unchanged. Use this mode for selectors and incomplete completions,
  * not automatic resolution of submitted names.
