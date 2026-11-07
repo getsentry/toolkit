@@ -804,8 +804,8 @@ describe("getDetailedTrace", () => {
     const url = new URL(getCapturedUrls()[0]!);
     expect(url.searchParams.get("timestamp")).toBe("1700000000");
     expect(url.searchParams.get("statsPeriod")).toBeNull();
-    expect(url.searchParams.get("limit")).toBe("10000");
-    expect(url.searchParams.get("project")).toBe("-1");
+    expect(url.searchParams.has("limit")).toBe(false);
+    expect(url.searchParams.has("project")).toBe(false);
   });
 
   test("queries 14d and does not retry when spans are returned", async () => {
@@ -859,18 +859,16 @@ describe("getDetailedTrace", () => {
     ).toBeNull();
   });
 
-  test("forwards project and additional attributes on both lookups", async () => {
+  test("forwards additional attributes on both lookups", async () => {
     const { getCapturedUrls } = mockSequential([[], [SPAN]]);
 
     await getDetailedTrace("my-org", "abc123def456", {
-      projectId: 42,
       additionalAttributes: ["gen_ai.request.model"],
     });
 
     expect(getCapturedUrls()).toHaveLength(2);
     for (const raw of getCapturedUrls()) {
       const url = new URL(raw);
-      expect(url.searchParams.get("project")).toBe("42");
       expect(url.searchParams.getAll("additional_attributes")).toEqual([
         "gen_ai.request.model",
       ]);

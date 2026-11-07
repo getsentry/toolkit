@@ -16,6 +16,7 @@ import {
   getOrganizationWorkflow,
   type GetOrganizationWorkflowResponse,
   listOrganizationDetectors,
+  listOrganizationWorkflows,
   updateOrganizationDetector,
   updateOrganizationWorkflow,
   type UpdateOrganizationDetectorResponse,
@@ -33,12 +34,9 @@ import {
   metricAlertSource,
 } from "../../types/metric-alert.js";
 import { ApiError, ValidationError } from "../errors.js";
-import { resolveOrgRegion } from "../region.js";
 import {
-  apiRequestToRegion,
   getOrgSdkConfig,
   type PaginatedResponse,
-  parseLinkHeader,
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
@@ -244,7 +242,7 @@ function mapDetectorToMetricAlertRule(
 // Issue alerts
 //
 // Issue alert rules are read from the org-scoped `/organizations/{org}/workflows/`
-// endpoint (filtered by `projectSlug`). The legacy project-scoped
+// endpoint (filtered by `project`). The legacy project-scoped
 // `/projects/{org}/{project}/rules/` endpoint was deprecated on 2026-05-14 and
 // now returns HTTP 410 during recurring brownouts (getsentry/cli#1182). The
 // workflows endpoint returns rule-shaped payloads, so the existing
@@ -254,7 +252,7 @@ function mapDetectorToMetricAlertRule(
 /**
  * Keep only workflows that are attached to a detector.
  *
- * A `projectSlug`-filtered workflows response can also include unattached
+ * A project-filtered workflows response can also include unattached
  * org-level workflows; those are not issue alert rules, so we drop any entry
  * with no `detectorIds`. Mirrors the sentry-mcp filter of the same name.
  */
@@ -277,20 +275,21 @@ export async function listIssueAlertsPaginated(
   projectSlug: string,
   options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<IssueAlertRule[]>> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data, headers } = await apiRequestToRegion<IssueAlertRule[]>(
-    regionUrl,
-    `/organizations/${orgSlug}/workflows/`,
-    {
-      params: {
-        projectSlug,
-        sortBy: "-id",
-        per_page: options.perPage,
-        cursor: options.cursor,
-      },
+  const config = await getOrgSdkConfig(orgSlug);
+  const result = await listOrganizationWorkflows({
+    ...config,
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      project: [projectSlug],
+      sortBy: "-id",
+      per_page: options.perPage,
+      cursor: options.cursor,
     },
+  });
+  const { data, nextCursor } = unwrapPaginatedResult<IssueAlertRule[]>(
+    result,
+    "Failed to list issue alert rules",
   );
-  const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
   return { data: filterAttachedIssueAlertRules(data), nextCursor };
 }
 
@@ -366,11 +365,15 @@ export async function getIssueAlertRule(
   projectSlug: string,
   ruleId: string,
 ): Promise<IssueAlertRule> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion<IssueAlertRule[]>(
-    regionUrl,
-    `/organizations/${orgSlug}/workflows/`,
-    { params: { projectSlug, id: ruleId, per_page: 1 } },
+  const config = await getOrgSdkConfig(orgSlug);
+  const result = await listOrganizationWorkflows({
+    ...config,
+    path: { organization_id_or_slug: orgSlug },
+    query: { project: [projectSlug], id: [Number(ruleId)], per_page: 1 },
+  });
+  const data = unwrapResult<IssueAlertRule[]>(
+    result,
+    "Failed to fetch issue alert rule",
   );
   const rule = filterAttachedIssueAlertRules(data)[0];
   if (!rule) {

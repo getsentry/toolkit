@@ -130,15 +130,12 @@ describe("issues.ts", () => {
       expect(result.title).toBe("Test Issue");
     });
 
-    test("passes collapse query params when provided", async () => {
+    test("passes only the collapse values the details endpoint reads", async () => {
       const issue = mockIssue();
       globalThis.fetch = mockFetch(async (input, init) => {
         const req = new Request(input!, init);
         const url = new URL(req.url);
-        expect(url.searchParams.getAll("collapse")).toEqual([
-          "stats",
-          "lifetime",
-        ]);
+        expect(url.searchParams.getAll("collapse")).toEqual(["stats"]);
         return new Response(JSON.stringify(issue), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -165,16 +162,13 @@ describe("issues.ts", () => {
       expect(result.id).toBe("12345");
     });
 
-    test("passes collapse query params when provided", async () => {
+    test("passes only the collapse values the details endpoint reads", async () => {
       const issue = mockIssue();
       globalThis.fetch = mockFetch(async (input, init) => {
         const req = new Request(input!, init);
         const url = new URL(req.url);
         expect(url.pathname).toContain("/organizations/test-org/issues/12345/");
-        expect(url.searchParams.getAll("collapse")).toEqual([
-          "stats",
-          "filtered",
-        ]);
+        expect(url.searchParams.getAll("collapse")).toEqual(["stats"]);
         return new Response(JSON.stringify(issue), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -182,7 +176,20 @@ describe("issues.ts", () => {
       });
 
       await getIssueInOrg("test-org", "12345", {
-        collapse: ["stats", "filtered"],
+        collapse: ["stats", "lifetime", "filtered", "unhandled"],
+      });
+    });
+
+    test("omits collapse when no value applies to the details endpoint", async () => {
+      const issue = mockIssue();
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const url = new URL(new Request(input!, init).url);
+        expect(url.searchParams.has("collapse")).toBe(false);
+        return Response.json(issue);
+      });
+
+      await getIssueInOrg("test-org", "12345", {
+        collapse: ["lifetime", "filtered"],
       });
     });
   });
@@ -1158,8 +1165,8 @@ describe("traces.ts", () => {
         );
         const url = new URL(req.url);
         expect(url.searchParams.get("timestamp")).toBe("1700000000");
-        expect(url.searchParams.get("limit")).toBe("10000");
-        expect(url.searchParams.get("project")).toBe("-1");
+        expect(url.searchParams.has("limit")).toBe(false);
+        expect(url.searchParams.has("project")).toBe(false);
         return new Response(JSON.stringify(spans), {
           status: 200,
           headers: { "Content-Type": "application/json" },

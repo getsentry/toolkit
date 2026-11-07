@@ -9,6 +9,7 @@ import {
   createOrganizationDashboard,
   getOrganizationDashboard,
   listOrganizationDashboards,
+  listOrganizationEvents,
   updateOrganizationDashboard,
 } from "@sentry/api";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
@@ -36,10 +37,12 @@ import {
   type TimeseriesResult,
   type WidgetDataResult,
 } from "../../types/dashboard.js";
+import type { EventsDataset } from "../datasets.js";
 import { reportCliError } from "../error-reporting.js";
 import { ApiError, stringifyUnknown } from "../errors.js";
 
 import { resolveOrgRegion } from "../region.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 
 import {
   apiRequestToRegion,
@@ -49,6 +52,7 @@ import {
   parseLinkHeader,
   unwrapPaginatedResult,
   unwrapResult,
+  unwrapValidatedResult,
 } from "./infrastructure.js";
 
 /**
@@ -506,13 +510,17 @@ type WidgetQueryParams = {
   options?: WidgetQueryOptions;
 };
 
+/** Widget query params once the widget's type has resolved to a dataset. */
+type DatasetWidgetQueryParams = WidgetQueryParams & { dataset: EventsDataset };
+
 async function queryWidgetTimeseries(
-  params: WidgetQueryParams,
+  params: DatasetWidgetQueryParams,
 ): Promise<TimeseriesResult> {
   const {
     regionUrl,
     orgSlug,
     widget,
+    dataset,
     statsPeriod,
     start,
     end,
@@ -524,12 +532,11 @@ async function queryWidgetTimeseries(
   for (const query of widget.queries ?? []) {
     const aggregates = query.aggregates ?? [];
     const columns = query.columns ?? [];
-    const dataset = mapWidgetTypeToDataset(widget.widgetType);
 
     const reqParams: Record<string, string | string[] | number | undefined> = {
       yAxis: aggregates,
       query: query.conditions || undefined,
-      dataset: dataset ?? undefined,
+      dataset,
       statsPeriod,
       start,
       end,
@@ -572,12 +579,13 @@ async function queryWidgetTimeseries(
  * @param options - Additional query options
  */
 async function queryWidgetTable(
-  params: WidgetQueryParams,
+  params: DatasetWidgetQueryParams,
 ): Promise<TableResult> {
   const {
     regionUrl,
     orgSlug,
     widget,
+    dataset,
     statsPeriod,
     start,
     end,
@@ -588,27 +596,29 @@ async function queryWidgetTable(
     ...(query?.columns ?? []),
     ...(query?.aggregates ?? []),
   ];
-  const dataset = mapWidgetTypeToDataset(widget.widgetType);
   const request = resolveEventsSort({ fields, sort: query?.orderby });
 
-  const { data } = await apiRequestToRegion(
-    regionUrl,
-    `/organizations/${orgSlug}/events/`,
-    {
-      params: {
-        field: request.fields,
-        query: query?.conditions || undefined,
-        dataset: dataset ?? undefined,
-        statsPeriod,
-        start,
-        end,
-        sort: request.sort,
-        per_page: widget.limit ?? 10,
-        environment: options.environment,
-        project: options.project?.map(String),
-      },
-      schema: EventsTableResponseSchema,
+  const result = await listOrganizationEvents({
+    ...getSdkClientConfig(regionUrl),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      field: request.fields,
+      query: query?.conditions || undefined,
+      dataset,
+      statsPeriod,
+      start,
+      end,
+      sort: request.sort,
+      per_page: widget.limit ?? 10,
+      environment: options.environment,
+      project: options.project,
     },
+  });
+  const data = unwrapValidatedResult(
+    result,
+    "Failed to query widget data",
+    EventsTableResponseSchema,
+    `/organizations/${orgSlug}/events/`,
   );
 
   const meta = data.meta;
@@ -666,13 +676,14 @@ async function queryWidgetData(
   try {
     // Chart types → timeseries
     if (TIMESERIES_DISPLAY_TYPES.has(displayType)) {
-      return await queryWidgetTimeseries(params);
+      return await queryWidgetTimeseries({ ...params, dataset });
     }
 
     // big_number → single scalar value
     if (widget.displayType === "big_number") {
       const tableResult = await queryWidgetTable({
         ...params,
+        dataset,
         widget: { ...widget, limit: 1 },
       });
       const row = tableResult.rows[0];
@@ -687,7 +698,7 @@ async function queryWidgetData(
 
     // Table types → tabular
     if (TABLE_DISPLAY_TYPES.has(displayType)) {
-      return await queryWidgetTable(params);
+      return await queryWidgetTable({ ...params, dataset });
     }
 
     return {

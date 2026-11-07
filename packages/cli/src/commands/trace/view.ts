@@ -45,7 +45,7 @@ import {
   type BoundArguments,
   boundArguments,
 } from "../../lib/positional-parse.js";
-import { resolveOrg, toNumericId } from "../../lib/resolve-target.js";
+import { resolveOrg } from "../../lib/resolve-target.js";
 import { buildTraceUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import {
@@ -568,19 +568,15 @@ export const viewCommand = buildCommand({
       ? fieldSelection.additionalAttributes
       : undefined;
 
-    // Resolve numeric project ID for API-level filtering
-    let numericProjectId: number | undefined;
+    // Keep failing on an unknown project. The trace endpoint ignores
+    // `project` and returns spans from every project in the trace.
     if (projectFilter) {
-      const projectData = await getProject(org, projectFilter);
-      numericProjectId = toNumericId(projectData.id);
+      await getProject(org, projectFilter);
     }
 
     // The replay lookup runs alongside the trace fetch to avoid adding latency.
     const [spans, replayId] = await Promise.all([
-      getDetailedTrace(org, traceId, {
-        additionalAttributes,
-        projectId: numericProjectId,
-      }),
+      getDetailedTrace(org, traceId, { additionalAttributes }),
       lookupTraceReplay(org, traceId),
     ]);
 
