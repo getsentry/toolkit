@@ -4,6 +4,7 @@ import { routes } from "../../src/app.js";
 import { type CliEntry, isMcpInvocation, runCli } from "../../src/cli.js";
 import { MCP_SKILL_NAMES } from "../../src/commands/mcp.js";
 import { ValidationError } from "../../src/lib/errors.js";
+import { logger, parseLogLevel } from "../../src/lib/logger.js";
 import { routes as mcpServerRoutes } from "../../src/mcp-server-app.js";
 import { SENTRY_CLI } from "../../src/sentry-cli.js";
 import { useTestConfigDir } from "../helpers.js";
@@ -156,6 +157,24 @@ describe("running `mcp`", () => {
 
     expect(mocks.serveMcp).toHaveBeenCalledOnce();
     expect(mocks.serveMcp.mock.lastCall?.[2]).toEqual({ org: "acme" });
+  });
+
+  test("applies SENTRY_LOG_LEVEL before the server starts", async () => {
+    const originalLevel = logger.level;
+    vi.stubEnv("SENTRY_LOG_LEVEL", "error");
+    let levelAtStart: number | undefined;
+    mocks.serveMcp.mockImplementation(() => {
+      levelAtStart = logger.level;
+      return Promise.resolve();
+    });
+    try {
+      await runCli(["mcp"], SENTRY_CLI);
+    } finally {
+      vi.unstubAllEnvs();
+      logger.level = originalLevel;
+    }
+
+    expect(levelAtStart).toBe(parseLogLevel("error"));
   });
 
   test("serves through Stricli, without the CLI's telemetry", async () => {

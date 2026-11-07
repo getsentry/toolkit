@@ -233,7 +233,6 @@ export function initMcpTelemetry(config: McpServerConfig): void {
   try {
     process.cwd();
   } catch (error) {
-    // Log only the message: rendering the error's stack calls `process.cwd()`.
     log.debug(
       `Working directory is unavailable, starting without telemetry: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -365,7 +364,13 @@ export function installProcessHandlers(): (
       return;
     }
     exiting = true;
-    logger.info(`${signal} received, shutting down...`);
+    // The client may have closed stderr before the signal; exit cleanly anyway.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- stderr may already be closed; shutting down is the only recovery.
+    try {
+      logger.info(`${signal} received, shutting down...`);
+    } catch {
+      // stderr may already be closed
+    }
     await flush(SENTRY_FLUSH_TIMEOUT_MS);
     // oxlint-disable-next-line sentry-cli/no-process-exit -- signal shutdown, after the flush.
     process.exit(0);

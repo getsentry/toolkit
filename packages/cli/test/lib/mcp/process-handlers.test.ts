@@ -76,6 +76,17 @@ describe("installProcessHandlers", () => {
     expect(exit).toHaveBeenCalledWith(0);
   });
 
+  test("a signal shuts down cleanly when stderr is already closed", async () => {
+    vi.mocked(logger.info).mockImplementation(() => {
+      throw Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+    });
+    installProcessHandlers();
+
+    handlers.get("SIGTERM")?.();
+    await settle();
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+
   test("a fatal error exits non-zero when its report hits a closed stderr", async () => {
     // The code each exit would end the process with: its argument, or
     // `process.exitCode` when it has none.
