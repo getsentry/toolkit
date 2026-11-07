@@ -66,28 +66,28 @@ const docs: OrgListCommandDocs = {
   examples: [
     {
       description: "List installed integrations (auto-detect org)",
-      command: "sentry integration list",
+      run: "integration list",
     },
     {
       description: "List integrations in a specific org",
-      command: "sentry integration list my-org/",
+      run: "integration list my-org/",
     },
     {
       description: "Fetch the next page",
-      command: "sentry integration list my-org/ -c next",
+      run: "integration list my-org/ -c next",
     },
     {
       description: "Only integrations whose name or provider matches a glob",
-      command: "sentry integration list 'my-org/git*'",
+      run: "integration list 'my-org/git*'",
     },
     {
       description:
         "Integrations named like 'GitHub' (fuzzy when nothing matches exactly)",
-      command: "sentry integration list my-org/githb",
+      run: "integration list my-org/githb",
     },
     {
       description: "Output as JSON",
-      command: "sentry integration list --json",
+      run: "integration list --json",
     },
   ],
 };

@@ -50,15 +50,15 @@ export const viewCommand = buildCommand({
       {
         description:
           "View an issue alert rule by ID (organization and project auto-detected)",
-        command: "sentry alert issues view 12345",
+        run: "alert issues view 12345",
       },
       {
         description: "View by ID in an explicit project",
-        command: "sentry alert issues view my-org/my-project/12345",
+        run: "alert issues view my-org/my-project/12345",
       },
       {
         description: "View by name",
-        command: "sentry alert issues view my-org/my-project/'Error Spike'",
+        run: "alert issues view my-org/my-project/'Error Spike'",
       },
     ],
   },

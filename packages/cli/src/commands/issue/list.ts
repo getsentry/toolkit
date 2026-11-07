@@ -1668,50 +1668,48 @@ export const listCommand = buildListCommand("issue", {
     examples: [
       {
         description: "List issues (project auto-detected)",
-        command: "sentry issue list",
+        run: "issue list",
       },
       {
         description: "List issues in a specific project",
-        command: "sentry issue list my-org/frontend",
+        run: "issue list my-org/frontend",
       },
       {
         description: "Several projects in the same organization",
-        command: "sentry issue list my-org/frontend,backend,worker",
+        run: "issue list my-org/frontend,backend,worker",
       },
       {
         description: "All projects in an organization",
-        command: "sentry issue list my-org/",
+        run: "issue list my-org/",
       },
       {
         description: "Search for a project across organizations",
-        command: "sentry issue list frontend",
+        run: "issue list frontend",
       },
       {
         description: "Show only unresolved issues",
-        command: 'sentry issue list my-org/frontend --query "is:unresolved"',
+        run: 'issue list my-org/frontend --query "is:unresolved"',
       },
       {
         description: "Sort by frequency",
-        command: "sentry issue list my-org/frontend --sort freq --limit 20",
+        run: "issue list my-org/frontend --sort freq --limit 20",
       },
       {
         description: "Sort by Sentry's recommended relevance ranking",
-        command: "sentry issue list my-org/frontend --sort recommended",
+        run: "issue list my-org/frontend --sort recommended",
       },
       {
         description:
           "Multiple filters (space-separated terms are combined with AND)",
-        command:
-          'sentry issue list --query "is:unresolved level:error assigned:me"',
+        run: 'issue list --query "is:unresolved level:error assigned:me"',
       },
       {
         description: "Negation and wildcards",
-        command:
-          'sentry issue list --query "!browser:Chrome message:*timeout*"',
+        run: 'issue list --query "!browser:Chrome message:*timeout*"',
       },
       {
         description: "Match multiple values for one key",
-        command: 'sentry issue list --query "browser:[Chrome,Firefox]"',
+        run: 'issue list --query "browser:[Chrome,Firefox]"',
       },
     ],
   },

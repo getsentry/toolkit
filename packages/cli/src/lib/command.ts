@@ -463,20 +463,6 @@ function enrichDocsWithSchema(
   };
 }
 
-/**
- * An example step as the running program would run it. Examples are help
- * metadata written for the `sentry` binary, shared with the generated docs
- * and skill references, so only `--help` swaps the leading program name.
- */
-function exampleForRunningProgram(step: string): string {
-  return step.startsWith(EXAMPLE_PROGRAM)
-    ? `${getInvocationCommand()} ${step.slice(EXAMPLE_PROGRAM.length)}`
-    : step;
-}
-
-/** The program name that starts a `docs.examples` step. */
-const EXAMPLE_PROGRAM = "sentry ";
-
 /** Render command-owned examples in native help without exposing custom fields to Stricli. */
 function prepareNativeDocs(
   docs: CommandDocumentation,
@@ -487,7 +473,7 @@ function prepareNativeDocs(
   }
   const rendered = examples
     .map((example) => {
-      const steps = exampleSteps(example).map(exampleForRunningProgram);
+      const steps = exampleSteps(example, getInvocationCommand());
       return steps.length === 1
         ? `  ${steps[0]} # ${example.description}`
         : [`  # ${example.description}`, ...steps.map((s) => `  ${s}`)].join(

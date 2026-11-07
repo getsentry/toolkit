@@ -162,18 +162,18 @@ export const startCommand = buildCommand({
       `Valid trial names: ${NAMES_LIST}\n\n` +
       "Use 'plan' to start a Business plan trial (opens billing page).",
     examples: [
-      { description: "Start a Seer trial", command: "sentry trial start seer" },
+      { description: "Start a Seer trial", run: "trial start seer" },
       {
         description: "Start a trial for a specific organization",
-        command: "sentry trial start replays my-org",
+        run: "trial start replays my-org",
       },
       {
         description: "Start a Business plan trial (opens the browser)",
-        command: "sentry trial start plan",
+        run: "trial start plan",
       },
       {
         description: "Output the result as JSON",
-        command: "sentry trial start --json seer",
+        run: "trial start --json seer",
       },
     ],
   },

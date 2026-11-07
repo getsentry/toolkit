@@ -37,16 +37,16 @@ export const showCommand = buildCommand({
     examples: [
       {
         description: "Show the current status of Sentry's services",
-        command: "sentry status",
+        run: "status",
       },
       {
         description: "Get machine-readable status (useful in scripts)",
-        command: "sentry status --json",
+        run: "status --json",
       },
       {
         description:
           "Check a self-hosted or regional status page (Statuspage CNAME)",
-        command: "sentry status --url https://status.acme.com",
+        run: "status --url https://status.acme.com",
       },
     ],
   },

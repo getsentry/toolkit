@@ -1591,74 +1591,68 @@ export const apiCommand = buildCommand({
     examples: [
       {
         description: "List organizations",
-        command: "sentry api organizations/",
+        run: "api organizations/",
       },
       {
         description: "Read a page and its pagination metadata",
-        command: "sentry api organizations/ -f per_page=2 --json",
+        run: "api organizations/ -f per_page=2 --json",
       },
       {
         description: "Continue the same query using shared pagination",
-        command: "sentry api organizations/ -f per_page=2 --cursor next --json",
+        run: "api organizations/ -f per_page=2 --cursor next --json",
       },
       {
         description: "Return to the previously visited page",
-        command: "sentry api organizations/ -f per_page=2 --cursor prev --json",
+        run: "api organizations/ -f per_page=2 --cursor prev --json",
       },
       {
         description: "Get a specific issue",
-        command: "sentry api issues/123456789/",
+        run: "api issues/123456789/",
       },
       {
         description: "Create a release",
-        command:
-          "sentry api organizations/my-org/releases/ -X POST -F version=1.0.0",
+        run: "api organizations/my-org/releases/ -X POST -F version=1.0.0",
       },
       {
         description: "Update an issue status",
-        command: "sentry api issues/123456789/ -X PUT -F status=resolved",
+        run: "api issues/123456789/ -X PUT -F status=resolved",
       },
       {
         description: "Send an inline JSON body",
-        command:
-          'sentry api issues/123456789/ -X PUT -d \'{"status":"resolved"}\'',
+        run: 'api issues/123456789/ -X PUT -d \'{"status":"resolved"}\'',
       },
       {
         description: "Set a nested field",
-        command:
-          "sentry api projects/my-org/my-project/ -X PUT -F options[sampleRate]=0.5",
+        run: "api projects/my-org/my-project/ -X PUT -F options[sampleRate]=0.5",
       },
       {
         description: "Assign an issue",
-        command:
-          'sentry api issues/123456789/ -X PUT --field assignedTo="user@example.com"',
+        run: 'api issues/123456789/ -X PUT --field assignedTo="user@example.com"',
       },
       {
         description: "Delete a project",
-        command: "sentry api projects/my-org/my-project/ -X DELETE",
+        run: "api projects/my-org/my-project/ -X DELETE",
       },
       {
         description: "Add custom headers",
-        command: 'sentry api organizations/ -H "X-Custom: value"',
+        run: 'api organizations/ -H "X-Custom: value"',
       },
       {
         description: "Read the request body from a file",
-        command:
-          "sentry api projects/my-org/my-project/releases/ -X POST --input release.json",
+        run: "api projects/my-org/my-project/releases/ -X POST --input release.json",
       },
       {
         description: "Show the full HTTP request and response",
-        command: "sentry api organizations/ --verbose",
+        run: "api organizations/ --verbose",
       },
       {
         description: "Preview the request without sending it",
-        command: "sentry api organizations/ --dry-run",
+        run: "api organizations/ --dry-run",
       },
       {
         description:
           "Save a binary response, such as an event attachment, to a file",
-        command:
-          'sentry api "https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1" > screenshot.png',
+        run: 'api "https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1" > screenshot.png',
       },
     ],
   },

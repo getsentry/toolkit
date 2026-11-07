@@ -56,19 +56,19 @@ export const restoreCommand = buildCommand({
     examples: [
       {
         description: "Restore by dashboard title and revision number",
-        command: "sentry dashboard restore 'Frontend Performance' --revision 3",
+        run: "dashboard restore 'Frontend Performance' --revision 3",
       },
       {
         description: "Restore by dashboard ID",
-        command: "sentry dashboard restore 12345 --revision 42",
+        run: "dashboard restore 12345 --revision 42",
       },
       {
         description: "Pass the organization explicitly",
-        command: "sentry dashboard restore my-org/ 12345 --revision 42",
+        run: "dashboard restore my-org/ 12345 --revision 42",
       },
       {
         description: "Output the restored dashboard as JSON",
-        command: "sentry dashboard restore 12345 --revision 42 --json",
+        run: "dashboard restore 12345 --revision 42 --json",
       },
     ],
   },

@@ -38,7 +38,7 @@ export const listCommand = buildCommand({
     examples: [
       {
         description: "Show stored accounts (* marks the active one)",
-        command: "sentry auth list",
+        run: "auth list",
       },
     ],
   },

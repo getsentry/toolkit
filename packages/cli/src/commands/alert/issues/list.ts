@@ -506,24 +506,24 @@ export const listCommand = buildListCommand("alert issues", {
     examples: [
       {
         description: "List issue alert rules (project auto-detected)",
-        command: "sentry alert issues list",
+        run: "alert issues list",
       },
       {
         description: "List issue alert rules for a project",
-        command: "sentry alert issues list my-org/my-project",
+        run: "alert issues list my-org/my-project",
       },
       {
         description: "Filter rules by name",
-        command: 'sentry alert issues list my-org/my-project --query "spike"',
+        run: 'alert issues list my-org/my-project --query "spike"',
       },
       {
         description:
           "List issue alert rules for all projects in an organization",
-        command: "sentry alert issues list my-org/",
+        run: "alert issues list my-org/",
       },
       {
         description: "Find a project across organizations",
-        command: "sentry alert issues list frontend",
+        run: "alert issues list frontend",
       },
     ],
   },

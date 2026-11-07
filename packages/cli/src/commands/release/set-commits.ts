@@ -386,33 +386,31 @@ export const setCommitsCommand = buildCommand({
     examples: [
       {
         description: "Associate commits using the repository integration",
-        command: "sentry release set-commits 1.0.0 --auto",
+        run: "release set-commits 1.0.0 --auto",
       },
       {
         description: "Set commits from local git history",
-        command: "sentry release set-commits my-org/1.0.0 --local",
+        run: "release set-commits my-org/1.0.0 --local",
       },
       {
         description: "Read up to 50 local commits",
-        command: "sentry release set-commits 1.0.0 --local --initial-depth 50",
+        run: "release set-commits 1.0.0 --local --initial-depth 50",
       },
       {
         description: "Only include commits that touch specific paths",
-        command:
-          "sentry release set-commits 1.0.0 --path apps/mobile,packages/shared-ui",
+        run: "release set-commits 1.0.0 --path apps/mobile,packages/shared-ui",
       },
       {
         description: "Read local commits since a previous release tag",
-        command: "sentry release set-commits 1.0.0 --from v0.9.0",
+        run: "release set-commits 1.0.0 --from v0.9.0",
       },
       {
         description: "Set an explicit commit range",
-        command:
-          "sentry release set-commits 1.0.0 --commit owner/repo@abc123..def456",
+        run: "release set-commits 1.0.0 --commit owner/repo@abc123..def456",
       },
       {
         description: "Clear the release's commits",
-        command: "sentry release set-commits 1.0.0 --clear",
+        run: "release set-commits 1.0.0 --clear",
       },
     ],
   },

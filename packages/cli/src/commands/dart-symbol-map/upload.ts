@@ -173,18 +173,15 @@ export const uploadCommand = buildCommand({
     examples: [
       {
         description: "Upload a Dart symbol map with a debug ID",
-        command:
-          "sentry dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json",
+        run: "dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json",
       },
       {
         description: "Validate without uploading",
-        command:
-          "sentry dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json --no-upload",
+        run: "dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json --no-upload",
       },
       {
         description: "Output as JSON",
-        command:
-          "sentry dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json --json",
+        run: "dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json --json",
       },
     ],
   },

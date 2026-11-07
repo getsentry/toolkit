@@ -358,18 +358,15 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View a single span",
-        command:
-          "sentry span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890",
+        run: "span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890",
       },
       {
         description: "View multiple spans at once",
-        command:
-          "sentry span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890 b2c3d4e5f6789012",
+        run: "span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890 b2c3d4e5f6789012",
       },
       {
         description: "Specify the organization and project explicitly",
-        command:
-          "sentry span view my-org/backend/abc123def456abc123def456abc12345 a1b2c3d4e5f67890",
+        run: "span view my-org/backend/abc123def456abc123def456abc12345 a1b2c3d4e5f67890",
       },
     ],
   },

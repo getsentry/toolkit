@@ -47,11 +47,11 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Delete a metric alert rule (prompts for confirmation)",
-        command: "sentry alert metrics delete my-org/12345",
+        run: "alert metrics delete my-org/12345",
       },
       {
         description: "Delete a rule selected by name without prompting",
-        command: "sentry alert metrics delete my-org/'P95 alert' --yes",
+        run: "alert metrics delete my-org/'P95 alert' --yes",
       },
     ],
   },

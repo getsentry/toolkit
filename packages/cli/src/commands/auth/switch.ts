@@ -90,17 +90,16 @@ export const switchCommand = buildCommand({
     examples: [
       {
         description: "Pick the active account from a searchable list",
-        command: "sentry auth switch",
+        run: "auth switch",
       },
       {
         description: "Switch to a specific account",
-        command: "sentry auth switch jane@example.com",
+        run: "auth switch jane@example.com",
       },
       {
         description:
           "Pick the account on one server when the same email is stored twice",
-        command:
-          "sentry auth switch jane@example.com --url https://sentry.example.com",
+        run: "auth switch jane@example.com --url https://sentry.example.com",
       },
     ],
   },

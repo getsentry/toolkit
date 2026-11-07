@@ -1358,50 +1358,46 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View an event",
-        command: "sentry event view abc123def456abc123def456abc12345",
+        run: "event view abc123def456abc123def456abc12345",
       },
       {
         description: "View a specific event using an issue short ID",
-        command: "sentry event view PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac",
+        run: "event view PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac",
       },
       {
         description: "View a specific event with an explicit organization",
-        command:
-          "sentry event view my-org/PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac",
+        run: "event view my-org/PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac",
       },
       {
         description: "View the latest event for an issue",
-        command: "sentry event view PROJ-ABC",
+        run: "event view PROJ-ABC",
       },
       {
         description:
           "View the latest event of the most recent unresolved issue in a project",
-        command: "sentry event view my-org/my-project",
+        run: "event view my-org/my-project",
       },
       {
         description: "View the latest event of the most frequent issue",
-        command: "sentry event view @most_frequent",
+        run: "event view @most_frequent",
       },
       {
         description: "Open in the browser",
-        command: "sentry event view abc123def456abc123def456abc12345 -w",
+        run: "event view abc123def456abc123def456abc12345 -w",
       },
       {
         description:
           "Download an attachment listed by --json (with sentry api)",
-        command:
-          "sentry api 'https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1' > screenshot.png",
+        run: "api 'https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1' > screenshot.png",
       },
       {
         description: "View an event in an explicit project",
-        command:
-          "sentry event view my-org/my-project abc123def456abc123def456abc12345",
+        run: "event view my-org/my-project abc123def456abc123def456abc12345",
       },
       {
         description:
           "View several events, finding the project across organizations",
-        command:
-          "sentry event view my-project abc123def456abc123def456abc12345 def456abc123def456abc123def45678",
+        run: "event view my-project abc123def456abc123def456abc12345 def456abc123def456abc123def45678",
       },
     ],
   },

@@ -202,24 +202,20 @@ export const editCommand = buildCommand({
     examples: [
       {
         description: "Rename an issue alert rule",
-        command:
-          "sentry alert issues edit my-org/my-project/12345 --name 'Prod errors'",
+        run: "alert issues edit my-org/my-project/12345 --name 'Prod errors'",
       },
       {
         description: "Disable a rule selected by name",
-        command:
-          "sentry alert issues edit my-org/my-project/'Old name' --status disabled",
+        run: "alert issues edit my-org/my-project/'Old name' --status disabled",
       },
       {
         description:
           "Rename and enable a rule (organization and project auto-detected)",
-        command:
-          "sentry alert issues edit 12345 --name 'Renamed' --status active",
+        run: "alert issues edit 12345 --name 'Renamed' --status active",
       },
       {
         description: "Replace the rule's conditions",
-        command:
-          'sentry alert issues edit my-org/my-project/12345 --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\'',
+        run: 'alert issues edit my-org/my-project/12345 --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\'',
       },
     ],
   },

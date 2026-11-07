@@ -63,13 +63,13 @@ export const listCommand = buildCommand({
     examples: [
       {
         description: "List tokens (auto-detect org)",
-        command: "sentry token list",
+        run: "token list",
       },
       {
         description: "List tokens in a specific org",
-        command: "sentry token list my-org",
+        run: "token list my-org",
       },
-      { description: "Output as JSON", command: "sentry token list --json" },
+      { description: "Output as JSON", run: "token list --json" },
     ],
   },
   output: {

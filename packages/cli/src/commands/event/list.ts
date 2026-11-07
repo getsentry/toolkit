@@ -88,39 +88,39 @@ export const listCommand = buildListCommand("event", {
     examples: [
       {
         description: "List events for an issue (short ID)",
-        command: "sentry event list PROJ-ABC",
+        run: "event list PROJ-ABC",
       },
       {
         description: "List events for an issue (numeric ID)",
-        command: "sentry event list 123456789",
+        run: "event list 123456789",
       },
       {
         description: "List events for the most recent issue",
-        command: "sentry event list @latest --limit 50",
+        run: "event list @latest --limit 50",
       },
       {
         description: "Filter by search query",
-        command: 'sentry event list PROJ-ABC --query "browser:Chrome"',
+        run: 'event list PROJ-ABC --query "browser:Chrome"',
       },
       {
         description: "Include full event bodies (stacktraces)",
-        command: "sentry event list PROJ-ABC --full",
+        run: "event list PROJ-ABC --full",
       },
       {
         description: "Limit results and time range",
-        command: "sentry event list PROJ-ABC --limit 50 --period 24h",
+        run: "event list PROJ-ABC --limit 50 --period 24h",
       },
       {
         description: "Fetch the next page",
-        command: "sentry event list PROJ-ABC -c next",
+        run: "event list PROJ-ABC -c next",
       },
       {
         description: "Fetch the previous page",
-        command: "sentry event list PROJ-ABC -c prev",
+        run: "event list PROJ-ABC -c prev",
       },
       {
         description: "Output as JSON",
-        command: "sentry event list PROJ-ABC --json",
+        run: "event list PROJ-ABC --json",
       },
     ],
   },

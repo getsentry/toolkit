@@ -40,15 +40,15 @@ export const deploysCommand = buildCommand({
     examples: [
       {
         description: "List deploys for a release",
-        command: "sentry release deploys 1.0.0",
+        run: "release deploys 1.0.0",
       },
       {
         description: "List deploys for a release in an explicit organization",
-        command: "sentry release deploys my-org/1.0.0",
+        run: "release deploys my-org/1.0.0",
       },
       {
         description: "Output as JSON",
-        command: "sentry release deploys 1.0.0 --json",
+        run: "release deploys 1.0.0 --json",
       },
     ],
   },

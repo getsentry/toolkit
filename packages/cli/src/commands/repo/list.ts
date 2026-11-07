@@ -73,26 +73,26 @@ const docs: OrgListCommandDocs = {
   examples: [
     {
       description: "List repositories (organization auto-detected)",
-      command: "sentry repo list",
+      run: "repo list",
     },
     {
       description: "List repositories in an organization",
-      command: "sentry repo list my-org/",
+      run: "repo list my-org/",
     },
     {
       description: "Fetch the next page",
-      command: "sentry repo list my-org/ -c next",
+      run: "repo list my-org/ -c next",
     },
     {
       description: "Only repositories whose name matches a glob",
-      command: "sentry repo list 'my-org/getsentry/*'",
+      run: "repo list 'my-org/getsentry/*'",
     },
     {
       description:
         "Repositories named like 'sentry-python' (fuzzy when nothing matches exactly)",
-      command: "sentry repo list my-org/sentry-pyhton",
+      run: "repo list my-org/sentry-pyhton",
     },
-    { description: "Output as JSON", command: "sentry repo list --json" },
+    { description: "Output as JSON", run: "repo list --json" },
   ],
 };
 

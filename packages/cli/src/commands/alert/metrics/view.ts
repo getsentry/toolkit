@@ -40,19 +40,19 @@ export const viewCommand = buildCommand({
       {
         description:
           "View a metric alert rule by ID (organization auto-detected)",
-        command: "sentry alert metrics view 12345",
+        run: "alert metrics view 12345",
       },
       {
         description: "View by ID in an explicit organization",
-        command: "sentry alert metrics view my-org/12345",
+        run: "alert metrics view my-org/12345",
       },
       {
         description: "View by name",
-        command: "sentry alert metrics view my-org/'P95 latency alert'",
+        run: "alert metrics view my-org/'P95 latency alert'",
       },
       {
         description: "Inspect native thresholds and notification workflows",
-        command: "sentry alert metrics view my-org/12345 --json",
+        run: "alert metrics view my-org/12345 --json",
       },
     ],
   },

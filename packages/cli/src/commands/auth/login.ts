@@ -503,42 +503,40 @@ export const loginCommand = buildCommand({
     examples: [
       {
         description: "Log in with OAuth (device flow)",
-        command: "sentry auth login",
+        run: "auth login",
       },
       {
         description: "Log in with an API token",
-        command: "sentry auth login --token YOUR_SENTRY_API_TOKEN",
+        run: "auth login --token YOUR_SENTRY_API_TOKEN",
       },
       {
         description: "Request only read-only scopes",
-        command: "sentry auth login --read-only",
+        run: "auth login --read-only",
       },
       {
         description: "Request specific scopes (repeatable or comma-separated)",
-        command: "sentry auth login --scope project:read --scope org:read",
+        run: "auth login --scope project:read --scope org:read",
       },
       {
         description: "Log in to a self-hosted instance",
-        command: "sentry auth login --url https://sentry.example.com",
+        run: "auth login --url https://sentry.example.com",
       },
       {
         description: "Log in to a self-hosted instance with a token",
-        command:
-          "sentry auth login --token YOUR_TOKEN --url https://sentry.example.com",
+        run: "auth login --token YOUR_TOKEN --url https://sentry.example.com",
       },
       {
         description:
           "Add (or log in again to) a specific account without prompting",
-        command: "sentry auth login jane@example.com",
+        run: "auth login jane@example.com",
       },
       {
         description: "Add an account on a specific server",
-        command:
-          "sentry auth login jane@example.com --url https://sentry.example.com",
+        run: "auth login jane@example.com --url https://sentry.example.com",
       },
       {
         description: "Same as --url, using the account notation",
-        command: "sentry auth login jane@example.com:sentry.example.com",
+        run: "auth login jane@example.com:sentry.example.com",
       },
     ],
   },

@@ -449,52 +449,51 @@ export const schemaCommand = buildCommand({
       "operations, and endpoint details. Search by API concepts or CLI command paths; " +
       "discovery results explain matches and related commands. Use with --json for machine-readable output.",
     examples: [
-      { description: "List all API resources", command: "sentry schema" },
+      { description: "List all API resources", run: "schema" },
       {
         description: "Browse issue endpoints",
-        command: "sentry schema issues",
+        run: "schema issues",
       },
       {
         description: "Find list operations (there may be multiple candidates)",
-        command: "sentry schema issues list",
+        run: "schema issues list",
       },
       {
         description: "Find APIs used by log listing",
-        command: "sentry schema log list",
+        run: "schema log list",
       },
       {
         description:
           "Find APIs used by trace listing, including command aliases",
-        command: "sentry schema trace ls",
+        run: "schema trace ls",
       },
       {
         description: "Find APIs used by a command group",
-        command: "sentry schema alert metrics",
+        run: "schema alert metrics",
       },
       {
         description: "Find APIs used by a nested command",
-        command: "sentry schema alert metrics view",
+        run: "schema alert metrics view",
       },
       {
         description: "Look up an endpoint by its exact operation ID",
-        command: "sentry schema listOrganizationEvents",
+        run: "schema listOrganizationEvents",
       },
       {
         description: "Look up an endpoint by HTTP method and path",
-        command:
-          'sentry schema "GET /api/0/organizations/{organization_id_or_slug}/issues/"',
+        run: 'schema "GET /api/0/organizations/{organization_id_or_slug}/issues/"',
       },
       {
         description: "Search for monitoring-related endpoints",
-        command: "sentry schema --search monitor",
+        run: "schema --search monitor",
       },
       {
         description: "Browse resources matching a glob",
-        command: "sentry schema 'monitor*'",
+        run: "schema 'monitor*'",
       },
       {
         description: "Flat list of every endpoint",
-        command: "sentry schema --all",
+        run: "schema --all",
       },
     ],
   },

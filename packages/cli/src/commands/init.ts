@@ -54,11 +54,11 @@ export const initCommand = buildCommand({
     examples: [
       {
         description: "Print the setup guide",
-        command: "sentry init",
+        run: "init",
       },
       {
         description: "Print the guide as JSON",
-        command: "sentry init --json",
+        run: "init --json",
       },
     ],
   },

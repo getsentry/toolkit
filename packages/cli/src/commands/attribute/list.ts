@@ -206,68 +206,62 @@ export const listCommand = buildListCommand("attribute", {
     examples: [
       {
         description: "List span attribute keys for a project",
-        command: "sentry attribute list my-org/my-project",
+        run: "attribute list my-org/my-project",
       },
       {
         description: "List log attribute keys across the whole organization",
-        command: "sentry attribute list my-org/ --dataset logs",
+        run: "attribute list my-org/ --dataset logs",
       },
       {
         description:
           "String attributes whose names contain gen_ai (case-sensitive)",
-        command: "sentry attribute list my-org/ gen_ai --type string",
+        run: "attribute list my-org/ gen_ai --type string",
       },
       {
         description: "Discover candidates alongside an attribute",
-        command: "sentry attribute list my-org/ has:gen_ai.request.model",
+        run: "attribute list my-org/ has:gen_ai.request.model",
       },
       {
         description:
           "Discover candidates alongside several keys (one quoted argument)",
-        command:
-          "sentry attribute list my-org/ 'has:gen_ai.request.model has:gen_ai.usage.input_tokens'",
+        run: "attribute list my-org/ 'has:gen_ai.request.model has:gen_ai.usage.input_tokens'",
       },
       {
         description: "Text and has: filters together",
-        command: "sentry attribute list my-org/ 'gen_ai has:http.method'",
+        run: "attribute list my-org/ 'gen_ai has:http.method'",
       },
       {
         description:
           "Discover candidates using the last 24 hours (includes built-in and virtual keys)",
-        command: "sentry attribute list my-org/ --period 24h",
+        run: "attribute list my-org/ --period 24h",
       },
       {
         description: "Show more than the default 25",
-        command: "sentry attribute list my-org/my-project -n 100",
+        run: "attribute list my-org/my-project -n 100",
       },
       {
         description: "Show the next page of the previous listing (same flags)",
-        command: "sentry attribute list my-org/my-project -n 100 -c next",
+        run: "attribute list my-org/my-project -n 100 -c next",
       },
       {
         description: "Filter spans that have a discovered key",
-        command:
-          "sentry span list my-org/my-project -q 'has:gen_ai.request.model'",
+        run: "span list my-org/my-project -q 'has:gen_ai.request.model'",
       },
       {
         description: "Find a custom numeric attribute by name",
-        command:
-          "sentry attribute list my-org/my-project cart.total --type number",
+        run: "attribute list my-org/my-project cart.total --type number",
       },
       {
         description: "Show a discovered typed key as a span column",
-        command:
-          "sentry span list my-org/my-project --fields 'tags[cart.total,number]'",
+        run: "span list my-org/my-project --fields 'tags[cart.total,number]'",
       },
       {
         description: "Group a metric by a discovered attribute",
-        command:
-          "sentry explore my-org/ --dataset metrics -m llm.token_usage -F gen_ai.request.model",
+        run: "explore my-org/ --dataset metrics -m llm.token_usage -F gen_ai.request.model",
       },
       {
         description: "Select fields as JSON",
-        command:
-          "sentry attribute list my-org/ --json --fields key,type,source",
+        run: "attribute list my-org/ --json --fields key,type,source",
       },
     ],
   },

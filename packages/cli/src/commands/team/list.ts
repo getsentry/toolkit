@@ -72,26 +72,26 @@ const docs: OrgListCommandDocs = {
   examples: [
     {
       description: "List teams (organization auto-detected)",
-      command: "sentry team list",
+      run: "team list",
     },
     {
       description: "List teams in an organization",
-      command: "sentry team list my-org/",
+      run: "team list my-org/",
     },
     {
       description: "Fetch the next page",
-      command: "sentry team list my-org/ -c next",
+      run: "team list my-org/ -c next",
     },
     {
       description: "Only teams whose slug or name matches a glob",
-      command: "sentry team list 'my-org/back*'",
+      run: "team list 'my-org/back*'",
     },
     {
       description:
         "Teams named like 'backend' when no such project exists (fuzzy)",
-      command: "sentry team list my-org/backnd",
+      run: "team list my-org/backnd",
     },
-    { description: "Output as JSON", command: "sentry team list --json" },
+    { description: "Output as JSON", run: "team list --json" },
   ],
 };
 

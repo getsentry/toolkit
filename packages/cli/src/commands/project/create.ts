@@ -687,25 +687,23 @@ export const createCommand = buildCommand({
     examples: [
       {
         description: "Create a project (every project is a name:platform pair)",
-        command: "sentry project create my-new-app:javascript-nextjs",
+        run: "project create my-new-app:javascript-nextjs",
       },
       {
         description: "Create several projects with their own platforms",
-        command:
-          "sentry project create web:javascript api:python-django worker:node",
+        run: "project create web:javascript api:python-django worker:node",
       },
       {
         description: "Create under a specific organization and team",
-        command:
-          "sentry project create my-org/my-new-app:python --team backend-team",
+        run: "project create my-org/my-new-app:python --team backend-team",
       },
       {
         description: "Preview without creating",
-        command: "sentry project create my-new-app:node --dry-run",
+        run: "project create my-new-app:node --dry-run",
       },
       {
         description: "Output the created project as JSON",
-        command: "sentry project create my-app:go --json",
+        run: "project create my-app:go --json",
       },
     ],
   },

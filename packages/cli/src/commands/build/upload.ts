@@ -194,36 +194,31 @@ export const uploadCommand = buildCommand({
     examples: [
       {
         description: "Upload an Android build",
-        command: "sentry build upload ./app-release.apk",
+        run: "build upload ./app-release.apk",
       },
       {
         description: "Upload an XCArchive directory",
-        command: "sentry build upload ./MyApp.xcarchive",
+        run: "build upload ./MyApp.xcarchive",
       },
       {
         description: "Upload an IPA with a build configuration",
-        command:
-          "sentry build upload ./MyApp.ipa --build-configuration Release",
+        run: "build upload ./MyApp.ipa --build-configuration Release",
       },
       {
         description: "Attach debug symbols to an IPA",
-        command:
-          "sentry build upload ./MyApp.ipa --dsym ./MyApp.app.dSYM --dsym ./frameworks-dsyms.zip",
+        run: "build upload ./MyApp.ipa --dsym ./MyApp.app.dSYM --dsym ./frameworks-dsyms.zip",
       },
       {
         description: "Upload with release notes",
-        command:
-          'sentry build upload ./app.aab --build-configuration Release --release-notes "Nightly"',
+        run: 'build upload ./app.aab --build-configuration Release --release-notes "Nightly"',
       },
       {
         description: "Tag a build with install groups",
-        command:
-          "sentry build upload ./app.aab --install-group qa --install-group beta",
+        run: "build upload ./app.aab --install-group qa --install-group beta",
       },
       {
         description: "Attach explicit git metadata",
-        command:
-          'sentry build upload ./app.aab --head-sha "$GIT_SHA" --pr-number 42 --base-ref main',
+        run: 'build upload ./app.aab --head-sha "$GIT_SHA" --pr-number 42 --base-ref main',
       },
     ],
   },

@@ -342,19 +342,19 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View the auto-detected project",
-        command: "sentry project view",
+        run: "project view",
       },
       {
         description: "View project details",
-        command: "sentry project view my-org/frontend",
+        run: "project view my-org/frontend",
       },
       {
         description: "Open the project in the browser",
-        command: "sentry project view my-org/frontend -w",
+        run: "project view my-org/frontend -w",
       },
       {
         description: "Find a project across organizations",
-        command: "sentry project view frontend",
+        run: "project view frontend",
       },
     ],
   },

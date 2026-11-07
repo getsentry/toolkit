@@ -340,19 +340,16 @@ export const uploadCommand = buildCommand({
     examples: [
       {
         description: "Upload a folder of screenshots as a snapshot for an app",
-        command:
-          "sentry snapshots upload ./screenshots --app-id com.example.app",
+        run: "snapshots upload ./screenshots --app-id com.example.app",
       },
       {
         description:
           "Upload only a subset of images (removals/renames not inferred on PRs)",
-        command:
-          "sentry snapshots upload ./screenshots --app-id my-app --selective",
+        run: "snapshots upload ./screenshots --app-id my-app --selective",
       },
       {
         description: "Only flag images that differ by more than 1%",
-        command:
-          "sentry snapshots upload ./screenshots --app-id my-app --diff-threshold 0.01",
+        run: "snapshots upload ./screenshots --app-id my-app --diff-threshold 0.01",
       },
     ],
   },

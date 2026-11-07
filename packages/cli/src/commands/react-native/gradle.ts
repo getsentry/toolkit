@@ -140,13 +140,11 @@ export const gradleCommand = buildCommand({
       {
         description:
           "Upload a bundle and sourcemap by debug ID (called by the Gradle plugin)",
-        command:
-          "sentry react-native gradle --bundle index.android.bundle --sourcemap index.android.bundle.map",
+        run: "react-native gradle --bundle index.android.bundle --sourcemap index.android.bundle.map",
       },
       {
         description: "Also associate with a release and distribution",
-        command:
-          "sentry react-native gradle --bundle index.android.bundle --sourcemap index.android.bundle.map --release com.example.app@1.0.0 --dist 1000",
+        run: "react-native gradle --bundle index.android.bundle --sourcemap index.android.bundle.map --release com.example.app@1.0.0 --dist 1000",
       },
     ],
   },

@@ -1154,43 +1154,43 @@ export const upgradeCommand = buildCommand({
     examples: [
       {
         description: "Update to the latest version on the persisted channel",
-        command: "sentry cli upgrade",
+        run: "cli upgrade",
       },
       {
         description: "Check for updates without installing",
-        command: "sentry cli upgrade --check",
+        run: "cli upgrade --check",
       },
       {
         description: "Switch to the nightly channel and update",
-        command: "sentry cli upgrade nightly",
+        run: "cli upgrade nightly",
       },
       {
         description: "Switch back to the stable channel and update",
-        command: "sentry cli upgrade stable",
+        run: "cli upgrade stable",
       },
       {
         description: "Install a specific stable version",
-        command: "sentry cli upgrade 0.5.0",
+        run: "cli upgrade 0.5.0",
       },
       {
         description: "Return to the version before the last upgrade",
-        command: "sentry cli upgrade undo",
+        run: "cli upgrade undo",
       },
       {
         description: "Force re-download even if up to date",
-        command: "sentry cli upgrade --force",
+        run: "cli upgrade --force",
       },
       {
         description: "Force using npm to upgrade",
-        command: "sentry cli upgrade --method npm",
+        run: "cli upgrade --method npm",
       },
       {
         description: "Upgrade from cached patches (no network)",
-        command: "sentry cli upgrade --offline",
+        run: "cli upgrade --offline",
       },
       {
         description: "Skip reinstalling agent skills",
-        command: "sentry cli upgrade --no-agent-skills",
+        run: "cli upgrade --no-agent-skills",
       },
     ],
   },

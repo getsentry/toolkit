@@ -123,15 +123,15 @@ export const resolveCommand = buildCommand({
       {
         description:
           "Report how each JS file's sourcemap resolves and whether a debug ID is injected",
-        command: "sentry sourcemap resolve ./dist",
+        run: "sourcemap resolve ./dist",
       },
       {
         description: "Output as JSON",
-        command: "sentry sourcemap resolve ./dist --json",
+        run: "sourcemap resolve ./dist --json",
       },
       {
         description: "Only scan some extensions",
-        command: "sentry sourcemap resolve ./build --ext .js,.mjs",
+        run: "sourcemap resolve ./build --ext .js,.mjs",
       },
     ],
   },

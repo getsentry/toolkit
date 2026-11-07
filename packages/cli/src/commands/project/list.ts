@@ -863,44 +863,44 @@ export const listCommand = buildListCommand("project", {
     examples: [
       {
         description: "List projects (organization auto-detected)",
-        command: "sentry project list",
+        run: "project list",
       },
       {
         description: "List all projects in an organization",
-        command: "sentry project list my-org/",
+        run: "project list my-org/",
       },
       {
         description: "Several projects in the same organization",
-        command: "sentry project list my-org/frontend,backend",
+        run: "project list my-org/frontend,backend",
       },
       {
         description: "Filter by platform",
-        command: "sentry project list my-org/ --platform javascript",
+        run: "project list my-org/ --platform javascript",
       },
       {
         description: "Only projects whose slug or name matches a glob",
-        command: "sentry project list 'my-org/web-*'",
+        run: "project list 'my-org/web-*'",
       },
       {
         description:
           "Projects named like 'frontend' (fuzzy when nothing matches exactly)",
-        command: "sentry project list my-org/frontnd",
+        run: "project list my-org/frontnd",
       },
       {
         description: "Find a project across organizations",
-        command: "sentry project list frontend",
+        run: "project list frontend",
       },
       {
         description: "Fetch the next page",
-        command: "sentry project list my-org/ -c next",
+        run: "project list my-org/ -c next",
       },
       {
         description: "Show more results",
-        command: "sentry project list my-org/ --limit 50",
+        run: "project list my-org/ --limit 50",
       },
       {
         description: "Output as JSON",
-        command: "sentry project list my-org/ --json",
+        run: "project list my-org/ --json",
       },
     ],
   },

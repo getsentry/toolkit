@@ -512,15 +512,15 @@ export const listCommand = buildListCommand("alert metrics", {
     examples: [
       {
         description: "List metric alert rules (organization auto-detected)",
-        command: "sentry alert metrics list",
+        run: "alert metrics list",
       },
       {
         description: "List metric alert rules for an organization",
-        command: "sentry alert metrics list my-org/",
+        run: "alert metrics list my-org/",
       },
       {
         description: "Fetch the next page",
-        command: "sentry alert metrics list my-org/ -c next",
+        run: "alert metrics list my-org/ -c next",
       },
     ],
   },

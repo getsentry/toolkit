@@ -201,19 +201,19 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Revoke token ID 12345 (auto-detect org)",
-        command: "sentry token delete 12345",
+        run: "token delete 12345",
       },
       {
         description: "Revoke the token named github-actions",
-        command: "sentry token delete my-org/github-actions",
+        run: "token delete my-org/github-actions",
       },
       {
         description: "Preview revoking token ID 12345",
-        command: "sentry token delete my-org/12345 --dry-run",
+        run: "token delete my-org/12345 --dry-run",
       },
       {
         description: "Revoke without the confirmation prompt",
-        command: "sentry token delete my-org/12345 --yes",
+        run: "token delete my-org/12345 --yes",
       },
     ],
   },

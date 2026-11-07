@@ -50,15 +50,15 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Delete an issue alert rule (prompts for confirmation)",
-        command: "sentry alert issues delete my-org/my-project/12345",
+        run: "alert issues delete my-org/my-project/12345",
       },
       {
         description: "Delete a rule selected by name without prompting",
-        command: "sentry alert issues delete my-org/my-project/'My Rule' --yes",
+        run: "alert issues delete my-org/my-project/'My Rule' --yes",
       },
       {
         description: "Preview the deletion",
-        command: "sentry alert issues delete my-org/my-project/12345 --dry-run",
+        run: "alert issues delete my-org/my-project/12345 --dry-run",
       },
     ],
   },
