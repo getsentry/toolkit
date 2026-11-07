@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-feedback
-version: 0.49.0-dev.0
+version: 0.49.0
 description: Manage User Feedback
 requires:
   bins: ["sentry"]
