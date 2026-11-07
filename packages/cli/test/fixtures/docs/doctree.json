@@ -1,0 +1,303 @@
+{
+  "path": "/",
+  "slug": "",
+  "frontmatter": {
+    "title": "Home"
+  },
+  "children": [
+    {
+      "path": "platforms",
+      "slug": "platforms",
+      "frontmatter": {
+        "title": "Platforms"
+      },
+      "children": [
+        {
+          "path": "platforms/javascript",
+          "slug": "javascript",
+          "frontmatter": {
+            "title": "Browser JavaScript",
+            "description": "Learn how to manually set up Sentry in your JavaScript app and capture your first errors."
+          },
+          "children": [
+            {
+              "path": "platforms/javascript/sourcemaps",
+              "slug": "sourcemaps",
+              "frontmatter": {
+                "title": "Source Maps",
+                "description": "Upload your source maps to Sentry to enable readable stack traces in your errors."
+              },
+              "children": [
+                {
+                  "path": "platforms/javascript/sourcemaps/uploading",
+                  "slug": "uploading",
+                  "frontmatter": {
+                    "title": "Uploading Source Maps",
+                    "description": "Learn how to provide your source maps to Sentry for the JavaScript SDK."
+                  },
+                  "children": [
+                    {
+                      "path": "platforms/javascript/sourcemaps/uploading/vite",
+                      "slug": "vite",
+                      "frontmatter": {
+                        "title": "Vite",
+                        "description": "Upload your source maps with the Sentry Vite Plugin."
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "path": "platforms/javascript/guides",
+              "slug": "guides",
+              "frontmatter": {
+                "title": ""
+              },
+              "children": [
+                {
+                  "path": "platforms/javascript/guides/cloudflare",
+                  "slug": "cloudflare",
+                  "frontmatter": {
+                    "title": "Cloudflare",
+                    "description": "Learn how to manually set up Sentry for Cloudflare Workers and capture your first events."
+                  },
+                  "children": [
+                    {
+                      "path": "platforms/javascript/guides/cloudflare/tracing",
+                      "slug": "tracing",
+                      "frontmatter": {
+                        "title": "Set Up Tracing",
+                        "description": "Learn how to enable tracing in your app."
+                      }
+                    },
+                    {
+                      "path": "platforms/javascript/guides/cloudflare/frameworks",
+                      "slug": "frameworks",
+                      "frontmatter": {
+                        "title": "Frameworks on Cloudflare",
+                        "description": "Learn how to set up the Cloudflare SDK with popular frameworks like Astro, SvelteKit, and Remix."
+                      },
+                      "children": [
+                        {
+                          "path": "platforms/javascript/guides/cloudflare/frameworks/tanstack-start",
+                          "slug": "tanstack-start",
+                          "frontmatter": {
+                            "title": "TanStack Start on Cloudflare",
+                            "description": "Learn how to instrument your TanStack Start app on Cloudflare Workers and capture your first errors with Sentry."
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "path": "platforms/javascript/guides/nextjs",
+                  "slug": "nextjs",
+                  "frontmatter": {
+                    "title": "Next.js",
+                    "description": "Learn how to set up Sentry in your Next.js application using the installation wizard and capture your first events."
+                  },
+                  "children": [
+                    {
+                      "path": "platforms/javascript/guides/nextjs/manual-setup",
+                      "slug": "manual-setup",
+                      "frontmatter": {
+                        "title": "Manual Setup",
+                        "description": "Learn how to set up and configure Sentry in your Next.js application, capture your first errors, logs and traces and view them in Sentry."
+                      }
+                    },
+                    {
+                      "path": "platforms/javascript/guides/nextjs/sourcemaps",
+                      "slug": "sourcemaps",
+                      "frontmatter": {
+                        "title": "Source Maps",
+                        "description": "Upload your source maps to Sentry to enable readable stack traces in your errors."
+                      },
+                      "children": [
+                        {
+                          "path": "platforms/javascript/guides/nextjs/sourcemaps/uploading",
+                          "slug": "uploading",
+                          "frontmatter": {
+                            "title": ""
+                          },
+                          "children": [
+                            {
+                              "path": "platforms/javascript/guides/nextjs/sourcemaps/uploading/vite",
+                              "slug": "vite",
+                              "frontmatter": {
+                                "title": "Vite",
+                                "description": "Upload your source maps with the Sentry Vite Plugin."
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "path": "platforms/javascript/guides/nextjs/tracing",
+                      "slug": "tracing",
+                      "frontmatter": {
+                        "title": "Set Up Tracing",
+                        "description": "Monitor performance across all Next.js runtimes: client, server, and edge."
+                      }
+                    }
+                  ]
+                },
+                {
+                  "path": "platforms/javascript/guides/react",
+                  "slug": "react",
+                  "frontmatter": {
+                    "title": "React",
+                    "description": "Learn how to set up Sentry in your React application and capture your first events."
+                  },
+                  "children": [
+                    {
+                      "path": "platforms/javascript/guides/react/sourcemaps",
+                      "slug": "sourcemaps",
+                      "frontmatter": {
+                        "title": "Source Maps",
+                        "description": "Upload your source maps to Sentry to enable readable stack traces in your errors."
+                      },
+                      "children": [
+                        {
+                          "path": "platforms/javascript/guides/react/sourcemaps/uploading",
+                          "slug": "uploading",
+                          "frontmatter": {
+                            "title": "Uploading Source Maps",
+                            "description": "Learn how to provide your source maps to Sentry for the JavaScript SDK."
+                          },
+                          "children": [
+                            {
+                              "path": "platforms/javascript/guides/react/sourcemaps/uploading/vite",
+                              "slug": "vite",
+                              "frontmatter": {
+                                "title": "Vite",
+                                "description": "Upload your source maps with the Sentry Vite Plugin."
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "path": "platforms/javascript/guides/react/tracing",
+                      "slug": "tracing",
+                      "frontmatter": {
+                        "title": "Set Up Tracing",
+                        "description": "Learn how to enable tracing in your app."
+                      }
+                    },
+                    {
+                      "path": "platforms/javascript/guides/react/user-feedback",
+                      "slug": "user-feedback",
+                      "frontmatter": {
+                        "title": "Set Up User Feedback",
+                        "description": "Learn how to enable User Feedback in your app using the Sentry JavaScript SDK."
+                      }
+                    }
+                  ]
+                },
+                {
+                  "path": "platforms/javascript/guides/tanstackstart-react",
+                  "slug": "tanstackstart-react",
+                  "frontmatter": {
+                    "title": "TanStack Start React",
+                    "description": "Learn how to set up and configure Sentry in your TanStack Start React application using the installation wizard, capture your first errors, logs and traces and view them in Sentry."
+                  },
+                  "children": [
+                    {
+                      "path": "platforms/javascript/guides/tanstackstart-react/tracing",
+                      "slug": "tracing",
+                      "frontmatter": {
+                        "title": "Set Up Tracing",
+                        "description": "Learn how to enable tracing in your app."
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "path": "platforms/python",
+          "slug": "python",
+          "frontmatter": {
+            "title": "Python",
+            "description": "Learn how to set up Sentry in your Python app, capture your first events and traces, and view them in Sentry."
+          },
+          "children": [
+            {
+              "path": "platforms/python/integrations",
+              "slug": "integrations",
+              "frontmatter": {
+                "title": "Integrations",
+                "description": "Sentry provides additional integrations designed to change configuration or add instrumentation to your application."
+              },
+              "children": [
+                {
+                  "path": "platforms/python/integrations/celery",
+                  "slug": "celery",
+                  "frontmatter": {
+                    "title": "Celery",
+                    "description": "Learn how to set up Sentry in your Celery app, capture your first events and traces, and view them in Sentry."
+                  }
+                },
+                {
+                  "path": "platforms/python/integrations/django",
+                  "slug": "django",
+                  "frontmatter": {
+                    "title": "Django",
+                    "description": "Learn how to set up Sentry in your Django app, capture your first events and traces, and view them in Sentry."
+                  }
+                },
+                {
+                  "path": "platforms/python/integrations/fastapi",
+                  "slug": "fastapi",
+                  "frontmatter": {
+                    "title": "FastAPI",
+                    "description": "Learn how to set up Sentry in your FastAPI app, capture your first events and traces, and view them in Sentry."
+                  }
+                },
+                {
+                  "path": "platforms/python/integrations/django__v1.x",
+                  "slug": "django__v1.x",
+                  "frontmatter": {
+                    "title": "Django (1.x)"
+                  }
+                },
+                {
+                  "path": "platforms/python/integrations/internal-only",
+                  "slug": "internal-only",
+                  "frontmatter": {
+                    "title": "Internal Only",
+                    "sidebar_hidden": true
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "path": "platforms/react-native",
+          "slug": "react-native",
+          "frontmatter": {
+            "title": "React Native",
+            "description": "Learn how to set up Sentry's React Native SDK and capture your first events."
+          },
+          "children": [
+            {
+              "path": "platforms/react-native/tracing",
+              "slug": "tracing",
+              "frontmatter": {
+                "title": "Set Up Tracing",
+                "description": "Learn how to enable tracing in your app using the Sentry React Native SDK and discover valuable performance insights of your application."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -22,7 +22,7 @@ Best practices and operational guidance for AI coding agents using the Sentry CL
 - **Just run the command** — the CLI handles authentication and org/project detection automatically. Don't pre-authenticate or look up org/project before running commands. The CLI prompts for login if needed.
 - **Prefer CLI commands over raw API calls** — the CLI has dedicated commands for most tasks. Reach for `sentry issue view`, `sentry issue list`, `sentry trace view`, etc. before constructing API calls manually or fetching external documentation.
 - **Use `sentry init` to add Sentry to a project** — it prints step-by-step setup instructions for you to follow: log in, pick a Sentry project, choose features with the user, install the SDK, and verify that a test error arrives. It also covers upgrading an existing setup.
-- **Use `sentry docs` for setup questions** — if you need to know how to configure a Sentry SDK or feature, run `sentry docs "your question"` to query the documentation directly. This is faster and more accurate than fetching docs externally.
+- **Use `sentry docs` for setup questions** — to configure a Sentry SDK or feature, run `sentry docs <keywords>` (for example `sentry docs nextjs tracing`) and fetch the Markdown URLs it prints. This is faster and more accurate than searching the web for docs.
 - **Use `sentry schema` to explore the API** — run `sentry schema` to list API resources or `sentry schema <query...>` to search by API concepts or CLI command paths. Use `sentry help <command>` for CLI flags and usage examples.
 - **Use `sentry issue view` to investigate issues** — when asked about a specific issue (e.g., `CLI-G5`, `PROJECT-123`), use `sentry issue view` directly. Multiple IDs can be passed in one invocation: `sentry issue view A B C --json` returns an array of the same objects.
 - **Use `--json` for machine-readable output** — pipe through `jq` for filtering. Human-readable output includes formatting that is hard to parse.
@@ -162,11 +162,14 @@ sentry local -f ai
 #### Query Sentry Documentation
 
 ```bash
-# Ask a documentation question
-sentry docs "How do I configure tracing in Next.js?"
+# Find pages by keywords; each result is a title and a Markdown URL to fetch
+sentry docs nextjs tracing
 
-# Search the documentation index
-sentry docs list "source maps"
+# Combine topics in one query
+sentry docs tracing cloudflare tanstack start
+
+# Filter URL paths or titles with a regex, like grep -e
+sentry docs -e '/python/integrations/(django|flask)$'
 ```
 
 #### Check Sentry Service Status
@@ -347,7 +350,7 @@ When querying the Events API (directly or via `sentry api`), valid dataset value
 - **Quoting a log regex**: Log search supports regular expressions as `key://pattern//` (RE2, case-sensitive, `(?i)` to ignore case, `!key://pattern//` to negate). Don't wrap it in quotes — `message:"//...//"` is a literal match. Prefer `*wildcards*` for plain substrings.
 - **Not using `--web`**: View commands support `-w`/`--web` to open the resource in the browser — useful for sharing links.
 - **Fetching API schemas instead of using the CLI**: Prefer `sentry schema` to browse the API and `sentry api` to make requests — the CLI handles authentication and endpoint resolution, so there's rarely a need to download OpenAPI specs separately.
-- **Fetching Sentry docs externally**: Use `sentry docs "your question"` to query Sentry's documentation from the CLI — this returns concise answers with source links, without needing to fetch or parse documentation pages.
+- **Searching the web for Sentry docs**: Use `sentry docs <keywords>` to find the current docs pages, then fetch their Markdown URLs.
 - **Release version mismatch**: The `org/version` positional is `<org-slug>/<version>`, where `org/` is the org, not part of the version. `sentry release create sentry/1.0.0` creates version `1.0.0` in org `sentry`. If your `Sentry.init()` uses `release: "1.0.0"`, this is correct. Don't double-prefix like `sentry/myapp/1.0.0`.
 - **Running `set-commits --auto` without a git checkout**: `--auto` needs a local git repo to discover the origin remote URL and HEAD commit. In CI, ensure `actions/checkout` with `fetch-depth: 0` runs before `set-commits --auto`.
 - **Using `sentry api` when CLI commands suffice**: `sentry issue list --json` and `sentry issue view --json` already include `shortId`, `title`, `count`, `userCount`, `priority`, `level`, `status`, `permalink`, and other fields at the top level. When using `--fields` to select specific fields like `count` or `userCount`, the CLI automatically ensures these fields are present in the API response. Use `--fields` to select specific fields and `--help` to see all available fields. Only fall back to `sentry api` for data the CLI doesn't expose.
@@ -574,10 +577,9 @@ Manage Sentry dashboards
 
 ### Docs
 
-Search and query current Sentry documentation
+Search the Sentry documentation
 
-- `sentry docs list <keywords...>` — Find Sentry documentation pages by keyword
-- `sentry docs query <question...>` — Ask a cited question about Sentry documentation
+- `sentry docs <words...>` — Search the Sentry documentation
 
 → Full flags and examples: `references/docs.md`
 

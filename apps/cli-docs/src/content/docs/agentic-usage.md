@@ -57,7 +57,7 @@ With this skill, agents can:
 - **AI analysis** - Get root cause analysis and fix plans via Seer AI
 - **Browse projects** - List projects and organizations you have access to
 - **Explore the API** - Browse API endpoints with `sentry schema` and make arbitrary requests with `sentry api`
-- **Query documentation** - Ask questions about Sentry setup and configuration with `sentry docs`
+- **Search documentation** - Find current Sentry setup and configuration pages with `sentry docs`
 - **Make API calls** - Execute arbitrary Sentry API requests
 - **Authenticate** - Help you set up CLI authentication
 - **View agent conversations** - List and inspect AI agent conversation transcripts with `sentry agent-conversation`
@@ -72,11 +72,11 @@ When you ask your agent about Sentry errors or want to investigate an issue, the
 - "What's the stack trace for ISSUE-123?" → `sentry issue view ISSUE-123`
 - "List all projects in my organization" → `sentry project list my-org/`
 - "What API endpoints exist for releases?" → `sentry schema releases`
-- "How do I set up source maps for Next.js?" → `sentry docs "source maps Next.js"`
+- "How do I set up source maps for Next.js?" → `sentry docs nextjs source maps`
 - "What is Sentry's status right now?" → `sentry status`
 - "Show me recent agent conversations" → `sentry agent-conversation list`
 
-The CLI has dedicated commands for most Sentry tasks, so agents should prefer `sentry` commands over constructing raw API calls. The `sentry docs` command queries Sentry's documentation directly from the terminal, the `sentry schema` command provides built-in API exploration, and `sentry api` handles authenticated requests for anything not covered by a dedicated command.
+The CLI has dedicated commands for most Sentry tasks, so agents should prefer `sentry` commands over constructing raw API calls. The `sentry docs` command searches Sentry's documentation from the terminal, the `sentry schema` command provides built-in API exploration, and `sentry api` handles authenticated requests for anything not covered by a dedicated command.
 
 The skill uses your existing CLI authentication, so you'll need to run `sentry auth login` first if you haven't already.
 
