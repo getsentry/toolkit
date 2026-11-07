@@ -9,11 +9,12 @@ import {
   createOrganizationDashboard,
   getOrganizationDashboard,
   listOrganizationDashboards,
+  listOrganizationEvents,
   updateOrganizationDashboard,
 } from "@sentry/api";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
 
-import { array, safeParse } from "valibot";
+import { array } from "valibot";
 
 import {
   type DashboardDetail,
@@ -23,9 +24,10 @@ import {
   DashboardRevisionSchema,
   type DashboardWidget,
   type ErrorResult,
-  type EventsStatsSeries,
-  EventsStatsSeriesSchema,
   EventsTableResponseSchema,
+  type EventsTimeseriesResponse,
+  EventsTimeseriesResponseSchema,
+  type EventsTimeseriesSeries,
   mapWidgetTypeToDataset,
   type ScalarResult,
   TABLE_DISPLAY_TYPES,
@@ -35,10 +37,12 @@ import {
   type TimeseriesResult,
   type WidgetDataResult,
 } from "../../types/dashboard.js";
+import type { EventsDataset } from "../datasets.js";
 import { reportCliError } from "../error-reporting.js";
 import { ApiError, stringifyUnknown } from "../errors.js";
 
 import { resolveOrgRegion } from "../region.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 
 import {
   apiRequestToRegion,
@@ -48,6 +52,7 @@ import {
   parseLinkHeader,
   unwrapPaginatedResult,
   unwrapResult,
+  unwrapValidatedResult,
 } from "./infrastructure.js";
 
 /**
@@ -295,7 +300,7 @@ export function periodToSeconds(period: string): number | undefined {
 
 /**
  * Valid Sentry API interval values, ascending.
- * The API accepts these specific bucket sizes for events-stats.
+ * The API accepts these specific bucket sizes for events-timeseries.
  */
 const VALID_INTERVALS = ["1m", "5m", "15m", "30m", "1h", "4h", "12h", "1d"];
 
@@ -346,77 +351,141 @@ export function computeOptimalInterval(
   return best ?? VALID_INTERVALS[0];
 }
 
+/** Legend label for the catch-all series of a grouped query. */
+const OTHER_LABEL = "Other";
+
 /**
- * Parse an events-stats response into a normalized timeseries result.
+ * Build a human-readable label for one events-timeseries series.
  *
- * The events-stats API returns different shapes:
- * - **Simple** (no grouping): `{ data: [...], meta: {...} }` — a single series
- * - **Grouped** (topEvents > 0): `{ "group-label": { data: [...] }, ... }` — one series per group
+ * Mirrors the Sentry UI legend: the "Other" bucket is labelled as such,
+ * grouped series are labelled by their group-by values joined with ",",
+ * and ungrouped series are labelled by their `yAxis`. When a grouped
+ * query has several y-axes the axis is appended so labels stay unique.
  *
- * @param raw - Raw JSON response from events-stats
- * @param yAxis - The aggregate function name(s) used as label(s)
+ * A real group whose value is "Other" is labelled "Other ()" (as
+ * events-stats did) so it never collides with the catch-all series, which
+ * the renderers pin last and exclude from scaling by label.
  */
-function parseEventsStatsResponse(
-  raw: unknown,
-  yAxis: string[],
-): TimeseriesResult {
-  const series: TimeseriesResult["series"] = [];
-
-  // Try parsing as a single series first (simple query, no grouping)
-  const singleResult = safeParse(EventsStatsSeriesSchema, raw);
-  if (singleResult.success) {
-    for (const axis of yAxis) {
-      series.push({
-        label: axis,
-        values: extractTimeseriesValues(singleResult.output),
-        unit: singleResult.output.meta?.units?.[axis] ?? null,
-      });
-    }
-    return { type: "timeseries", series };
+function timeseriesLabel(
+  series: EventsTimeseriesSeries,
+  multipleAxes: boolean,
+): string {
+  if (series.meta.isOther) {
+    return multipleAxes ? `${OTHER_LABEL} ${series.yAxis}` : OTHER_LABEL;
   }
-
-  // Grouped response: record of group-label → series
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    const entries = Object.entries(raw as Record<string, unknown>).filter(
-      ([, v]) => v && typeof v === "object" && "data" in (v as object),
-    );
-
-    // Sort by order field if present
-    entries.sort((a, b) => {
-      const aOrder = (a[1] as { order?: number }).order ?? 0;
-      const bOrder = (b[1] as { order?: number }).order ?? 0;
-      return aOrder - bOrder;
-    });
-
-    for (const [groupLabel, groupData] of entries) {
-      const parsed = safeParse(EventsStatsSeriesSchema, groupData);
-      if (parsed.success) {
-        series.push({
-          label: groupLabel,
-          values: extractTimeseriesValues(parsed.output),
-          unit: parsed.output.meta?.units?.[yAxis[0] ?? ""] ?? null,
-        });
-      }
-    }
+  if (series.groupBy && series.groupBy.length > 0) {
+    const joined = series.groupBy
+      .map(({ value }) => {
+        if (value === null || value === undefined) {
+          return "(no value)";
+        }
+        if (typeof value === "string") {
+          return value;
+        }
+        if (typeof value === "number" || typeof value === "boolean") {
+          return String(value);
+        }
+        return JSON.stringify(value);
+      })
+      .join(",");
+    const group = joined === OTHER_LABEL ? `${OTHER_LABEL} ()` : joined;
+    return multipleAxes ? `${group} ${series.yAxis}` : group;
   }
-
-  return { type: "timeseries", series };
+  return series.yAxis;
 }
 
-/** Extract {timestamp, value} pairs from an events-stats series. */
-function extractTimeseriesValues(
-  series: EventsStatsSeries,
-): { timestamp: number; value: number }[] {
-  return series.data.map(([timestamp, counts]) => ({
-    timestamp,
-    value: counts[0]?.count ?? 0,
-  }));
+/**
+ * Coerce a bucket value to a number for the renderers.
+ *
+ * Empty buckets arrive as null, and string-typed aggregates on the errors
+ * dataset arrive as strings (empty when no event carries the field).
+ */
+function bucketValue(value: number | string | null): number {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (value === null || value === "") {
+    return 0;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** Sort key for a series: explicit order first, "Other" after everything. */
+function seriesSortKey(series: EventsTimeseriesSeries): number {
+  if (series.meta.isOther) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return series.meta.order ?? 0;
+}
+
+/**
+ * Parse an events-timeseries response into a normalized timeseries result.
+ *
+ * The response is `{ timeSeries: [...] }` with one entry per y-axis (and per
+ * group when `topEvents` is set). Timestamps are converted from epoch
+ * milliseconds to seconds and null or string buckets become numbers so the
+ * renderers see the same shape they always have.
+ *
+ * @param response - Validated events-timeseries response
+ * @param yAxis - The aggregate function name(s) that were requested
+ */
+function parseEventsTimeseriesResponse(
+  response: EventsTimeseriesResponse,
+  yAxis: string[],
+): TimeseriesResult {
+  const multipleAxes = yAxis.length > 1;
+  // Keep the API order; the "Other" bucket has no order and renders last.
+  const ordered = [...response.timeSeries].sort(
+    (a, b) => seriesSortKey(a) - seriesSortKey(b),
+  );
+
+  return {
+    type: "timeseries",
+    series: ordered.map((s) => ({
+      label: timeseriesLabel(s, multipleAxes),
+      values: s.values.map(({ timestamp, value }) => ({
+        timestamp: Math.floor(timestamp / 1000),
+        value: bucketValue(value),
+      })),
+      unit: s.meta.valueUnit ?? null,
+    })),
+  };
+}
+
+/**
+ * Build the topEvents params for a grouped timeseries query.
+ *
+ * Mirrors the Sentry UI: `groupBy` carries the group-by columns plus the
+ * aggregates (and the sort column, which Sentry requires to be selected),
+ * and the "Other" series is only requested for a single-axis, single-query
+ * widget.
+ */
+function buildTopEventsParams(
+  widget: DashboardWidget,
+  columns: string[],
+  aggregates: string[],
+  orderby: string | undefined,
+): Record<string, string | string[] | number | undefined> {
+  const { fields, sort } = resolveEventsSort({
+    fields: [...columns, ...aggregates],
+    sort: orderby,
+  });
+  const params: Record<string, string | string[] | number | undefined> = {
+    groupBy: fields,
+    sort,
+    topEvents: widget.limit ?? 5,
+  };
+  if (aggregates.length !== 1 || (widget.queries?.length ?? 1) !== 1) {
+    params.excludeOther = "1";
+  }
+  return params;
 }
 
 /**
  * Query time-series data for a chart widget.
  *
- * Calls `GET /organizations/{org}/events-stats/` with params derived
+ * Calls `GET /organizations/{org}/events-timeseries/` with params derived
  * from the widget's queries (aggregates, conditions, columns for grouping).
  *
  * @param regionUrl - Region base URL
@@ -441,13 +510,17 @@ type WidgetQueryParams = {
   options?: WidgetQueryOptions;
 };
 
+/** Widget query params once the widget's type has resolved to a dataset. */
+type DatasetWidgetQueryParams = WidgetQueryParams & { dataset: EventsDataset };
+
 async function queryWidgetTimeseries(
-  params: WidgetQueryParams,
+  params: DatasetWidgetQueryParams,
 ): Promise<TimeseriesResult> {
   const {
     regionUrl,
     orgSlug,
     widget,
+    dataset,
     statsPeriod,
     start,
     end,
@@ -459,13 +532,11 @@ async function queryWidgetTimeseries(
   for (const query of widget.queries ?? []) {
     const aggregates = query.aggregates ?? [];
     const columns = query.columns ?? [];
-    const hasGroupBy = columns.length > 0;
-    const dataset = mapWidgetTypeToDataset(widget.widgetType);
 
     const reqParams: Record<string, string | string[] | number | undefined> = {
       yAxis: aggregates,
       query: query.conditions || undefined,
-      dataset: dataset ?? undefined,
+      dataset,
       statsPeriod,
       start,
       end,
@@ -475,26 +546,20 @@ async function queryWidgetTimeseries(
     };
 
     // Group-by columns enable topEvents mode
-    if (hasGroupBy) {
-      // Sort by the aggregate to get the actual top N groups. Every dataset
-      // honors sort, but the errors path rejects a sort column that is not in
-      // `field`, so select the aggregates alongside the group-by columns.
-      const { fields, sort } = resolveEventsSort({
-        fields: [...columns, ...aggregates],
-        sort: query.orderby,
-      });
-      reqParams.field = fields;
-      reqParams.sort = sort;
-      reqParams.topEvents = widget.limit ?? 5;
+    if (columns.length > 0) {
+      Object.assign(
+        reqParams,
+        buildTopEventsParams(widget, columns, aggregates, query.orderby),
+      );
     }
 
-    const { data: raw } = await apiRequestToRegion<unknown>(
+    const { data } = await apiRequestToRegion<EventsTimeseriesResponse>(
       regionUrl,
-      `/organizations/${orgSlug}/events-stats/`,
-      { params: reqParams },
+      `/organizations/${orgSlug}/events-timeseries/`,
+      { params: reqParams, schema: EventsTimeseriesResponseSchema },
     );
 
-    const parsed = parseEventsStatsResponse(raw, aggregates);
+    const parsed = parseEventsTimeseriesResponse(data, aggregates);
     allSeries.push(...parsed.series);
   }
 
@@ -514,12 +579,13 @@ async function queryWidgetTimeseries(
  * @param options - Additional query options
  */
 async function queryWidgetTable(
-  params: WidgetQueryParams,
+  params: DatasetWidgetQueryParams,
 ): Promise<TableResult> {
   const {
     regionUrl,
     orgSlug,
     widget,
+    dataset,
     statsPeriod,
     start,
     end,
@@ -530,27 +596,29 @@ async function queryWidgetTable(
     ...(query?.columns ?? []),
     ...(query?.aggregates ?? []),
   ];
-  const dataset = mapWidgetTypeToDataset(widget.widgetType);
   const request = resolveEventsSort({ fields, sort: query?.orderby });
 
-  const { data } = await apiRequestToRegion(
-    regionUrl,
-    `/organizations/${orgSlug}/events/`,
-    {
-      params: {
-        field: request.fields,
-        query: query?.conditions || undefined,
-        dataset: dataset ?? undefined,
-        statsPeriod,
-        start,
-        end,
-        sort: request.sort,
-        per_page: widget.limit ?? 10,
-        environment: options.environment,
-        project: options.project?.map(String),
-      },
-      schema: EventsTableResponseSchema,
+  const result = await listOrganizationEvents({
+    ...getSdkClientConfig(regionUrl),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      field: request.fields,
+      query: query?.conditions || undefined,
+      dataset,
+      statsPeriod,
+      start,
+      end,
+      sort: request.sort,
+      per_page: widget.limit ?? 10,
+      environment: options.environment,
+      project: options.project,
     },
+  });
+  const data = unwrapValidatedResult(
+    result,
+    "Failed to query widget data",
+    EventsTableResponseSchema,
+    `/organizations/${orgSlug}/events/`,
   );
 
   const meta = data.meta;
@@ -567,7 +635,7 @@ async function queryWidgetTable(
  * Dispatch a widget data query to the appropriate endpoint.
  *
  * Routes by display type:
- * - Chart types (line, area, bar) → events-stats (timeseries)
+ * - Chart types (line, area, bar) → events-timeseries
  * - Table types (table, top_n) → events (tabular)
  * - big_number → events with per_page=1, wrapped as scalar
  * - Others → unsupported
@@ -608,13 +676,14 @@ async function queryWidgetData(
   try {
     // Chart types → timeseries
     if (TIMESERIES_DISPLAY_TYPES.has(displayType)) {
-      return await queryWidgetTimeseries(params);
+      return await queryWidgetTimeseries({ ...params, dataset });
     }
 
     // big_number → single scalar value
     if (widget.displayType === "big_number") {
       const tableResult = await queryWidgetTable({
         ...params,
+        dataset,
         widget: { ...widget, limit: 1 },
       });
       const row = tableResult.rows[0];
@@ -629,7 +698,7 @@ async function queryWidgetData(
 
     // Table types → tabular
     if (TABLE_DISPLAY_TYPES.has(displayType)) {
-      return await queryWidgetTable(params);
+      return await queryWidgetTable({ ...params, dataset });
     }
 
     return {

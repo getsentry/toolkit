@@ -40,6 +40,7 @@ import {
 } from "./generate-skill-markdown.js";
 import { stripAllowCommandMarkers } from "./fragment-commands.js";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
+import { logger } from "../src/lib/logger.js";
 
 const DOCS_DIR = `${DOCS_CONTENT}/commands`;
 const DOCS_CONTENT_DIR = DOCS_CONTENT;
@@ -431,7 +432,7 @@ export async function emit(): Promise<void> {
 
   await writeFile(CONFIG_PATH, configContent);
 
-  console.log(
+  logger.success(
     `Generated ${generatedFiles.length} command doc pages + ${INDEX_PATH} + ${CONFIG_PATH}`,
   );
 }

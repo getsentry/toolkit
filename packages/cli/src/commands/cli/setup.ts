@@ -483,6 +483,7 @@ function printWelcomeMessage(
   emit("");
   emit("Get started:");
   emit("  sentry auth     Authenticate with Sentry");
+  emit("  sentry mcp      Run the Sentry MCP server for your AI agent");
   emit("  sentry --help   See all available commands");
   emit("");
   emit("https://cli.sentry.dev");
@@ -838,7 +839,6 @@ export const setupCommand = buildCommand({
       flags.method !== "curl" ||
       flags.quiet ||
       flags["ensure-auth-scopes"] ||
-      getEnv().SENTRY_INIT === "1" ||
       Boolean(getEnv().SENTRY_SETUP_CODE) ||
       !(interactivePromptsAllowed() && isatty(0) && isatty(1) && isatty(2))
     ) {

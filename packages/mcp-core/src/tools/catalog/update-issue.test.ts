@@ -1,10 +1,24 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
 import { issueFixture, mswServer } from "@sentry/mcp-server-mocks";
+import { HttpResponse, http } from "msw";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { logIssue } from "../../telem/logging";
 import { prepareToolParams } from "../catalog-runtime/availability.js";
-import updateIssue from "./update-issue.js";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content.js";
+import updateIssue, { updateIssueOutputSchema } from "./update-issue.js";
+
+vi.mock("../../telem/logging", () => ({
+  logIssue: vi.fn(),
+}));
 
 type MockIssue = typeof issueFixture;
+
+function structured(result: unknown) {
+  assertStructuredOnlyResult(result);
+  return updateIssueOutputSchema.parse(getStructuredContent(result));
+}
 
 const serverContext = {
   constraints: {
@@ -23,6 +37,7 @@ function createIssue(overrides: Partial<MockIssue> = {}): MockIssue {
 
 afterEach(() => {
   mswServer.resetHandlers();
+  vi.clearAllMocks();
 });
 
 describe("update_issue", () => {
@@ -38,28 +53,100 @@ describe("update_issue", () => {
       },
       serverContext,
     );
-    expect(result).toMatchInlineSnapshot(`
-      "# Issue CLOUDFLARE-MCP-41 Updated in **sentry-mcp-evals**
-
-      **Issue**: Error: Tool list_organizations is already registered
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
-
-      ## Changes Made
-
-      **Status**: unresolved → **resolved**
-
-      ## Current Status
-
-      **Status**: resolved
-      **Assigned To**: Jane Developer
-
-      ## Response Notes
-
-      - The issue has been updated in Sentry.
-      - Full issue details: \`get_sentry_resource(resourceType="issue", organizationSlug="sentry-mcp-evals", resourceId="CLOUDFLARE-MCP-41")\`
-      - The issue is now marked as resolved and will no longer generate alerts
-      "
+    expect(structured(result)).toMatchInlineSnapshot(`
+      {
+        "changes": {
+          "assignedTo": null,
+          "ignoreBehavior": null,
+          "status": {
+            "from": "unresolved",
+            "to": "resolved",
+          },
+        },
+        "current": {
+          "assignedTo": "Jane Developer",
+          "ignoreBehavior": null,
+          "status": "resolved",
+        },
+        "effect": "The issue is now marked as resolved and will no longer generate alerts",
+        "issueId": "CLOUDFLARE-MCP-41",
+        "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+        "organizationSlug": "sentry-mcp-evals",
+        "reasonComment": null,
+        "title": "Error: Tool list_organizations is already registered",
+        "updated": true,
+      }
     `);
+  });
+
+  it("does not leak raw issue fields into structured content", async () => {
+    const leakyIssue = {
+      ...createIssue({ status: "resolved" }),
+      culprit: "must-not-leak-culprit",
+      metadata: { value: "must-not-leak-metadata" },
+    };
+    mswServer.use(
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(leakyIssue),
+        { once: true },
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    assertStructuredOnlyResult(result);
+    // Serialize the raw result: parsing with the output schema would strip
+    // unknown keys and hide a leak.
+    const serialized = JSON.stringify(result);
+    expect(serialized).toContain("CLOUDFLARE-MCP-41");
+    expect(serialized).not.toContain("must-not-leak");
+  });
+
+  it("reports updated=false when the PUT returns the issue unchanged", async () => {
+    const unchangedIssue = createIssue();
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(unchangedIssue),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(unchangedIssue),
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.changes).toEqual({
+      status: null,
+      ignoreBehavior: null,
+      assignedTo: null,
+    });
+    expect(output.current.status).toBe("unresolved");
+    expect(output.effect).toBeNull();
   });
 
   it("updates issue assignment", async () => {
@@ -74,27 +161,65 @@ describe("update_issue", () => {
       },
       serverContext,
     );
-    expect(result).toMatchInlineSnapshot(`
-      "# Issue CLOUDFLARE-MCP-41 Updated in **sentry-mcp-evals**
-
-      **Issue**: Error: Tool list_organizations is already registered
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
-
-      ## Changes Made
-
-      **Assigned To**: Jane Developer → **john.doe**
-
-      ## Current Status
-
-      **Status**: unresolved
-      **Assigned To**: john.doe
-
-      ## Response Notes
-
-      - The issue has been updated in Sentry.
-      - Full issue details: \`get_sentry_resource(resourceType="issue", organizationSlug="sentry-mcp-evals", resourceId="CLOUDFLARE-MCP-41")\`
-      "
+    expect(structured(result)).toMatchInlineSnapshot(`
+      {
+        "changes": {
+          "assignedTo": {
+            "from": "Jane Developer",
+            "to": "john.doe",
+          },
+          "ignoreBehavior": null,
+          "status": null,
+        },
+        "current": {
+          "assignedTo": "john.doe",
+          "ignoreBehavior": null,
+          "status": "unresolved",
+        },
+        "effect": null,
+        "issueId": "CLOUDFLARE-MCP-41",
+        "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+        "organizationSlug": "sentry-mcp-evals",
+        "reasonComment": null,
+        "title": "Error: Tool list_organizations is already registered",
+        "updated": true,
+      }
     `);
+  });
+
+  it("reports a reassignment between users with the same name", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () =>
+          HttpResponse.json(
+            createIssue({ assignedTo: { type: "user", id: "7", name: "Me" } }),
+          ),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () =>
+          HttpResponse.json(
+            createIssue({ assignedTo: { type: "user", id: "8", name: "Me" } }),
+          ),
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: undefined,
+        assignedTo: "user:8",
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    const output = structured(result);
+    expect(output.updated).toBe(true);
+    expect(output.changes.assignedTo).toEqual({ from: "Me", to: "Me" });
   });
 
   it("unassigns an issue", async () => {
@@ -129,10 +254,12 @@ describe("update_issue", () => {
     );
 
     expect(requestBody).toEqual({ assignedTo: "" });
-    expect(result).toContain(
-      "**Assigned To**: Jane Developer → **Unassigned**",
-    );
-    expect(result).toContain("**Assigned To**: Unassigned");
+    const output = structured(result);
+    expect(output.changes.assignedTo).toEqual({
+      from: "Jane Developer",
+      to: "Unassigned",
+    });
+    expect(output.current.assignedTo).toBe("Unassigned");
   });
 
   it("skips status updates when the requested status is already set", async () => {
@@ -169,8 +296,9 @@ describe("update_issue", () => {
     );
 
     expect(putCalled).toBe(false);
-    expect(result).toContain("No changes were needed.");
-    expect(result).toContain("**Status**: resolved");
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.current.status).toBe("resolved");
   });
 
   it("skips assignment updates when the requested assignee is already set", async () => {
@@ -204,8 +332,13 @@ describe("update_issue", () => {
     );
 
     expect(putCalled).toBe(false);
-    expect(result).toContain("No changes were needed.");
-    expect(result).not.toContain("→");
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.changes).toEqual({
+      status: null,
+      ignoreBehavior: null,
+      assignedTo: null,
+    });
   });
 
   it("updates both status and assignment", async () => {
@@ -220,28 +353,32 @@ describe("update_issue", () => {
       },
       serverContext,
     );
-    expect(result).toMatchInlineSnapshot(`
-      "# Issue CLOUDFLARE-MCP-41 Updated in **sentry-mcp-evals**
-
-      **Issue**: Error: Tool list_organizations is already registered
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
-
-      ## Changes Made
-
-      **Status**: unresolved → **resolved**
-      **Assigned To**: Jane Developer → **You**
-
-      ## Current Status
-
-      **Status**: resolved
-      **Assigned To**: me
-
-      ## Response Notes
-
-      - The issue has been updated in Sentry.
-      - Full issue details: \`get_sentry_resource(resourceType="issue", organizationSlug="sentry-mcp-evals", resourceId="CLOUDFLARE-MCP-41")\`
-      - The issue is now marked as resolved and will no longer generate alerts
-      "
+    expect(structured(result)).toMatchInlineSnapshot(`
+      {
+        "changes": {
+          "assignedTo": {
+            "from": "Jane Developer",
+            "to": "You",
+          },
+          "ignoreBehavior": null,
+          "status": {
+            "from": "unresolved",
+            "to": "resolved",
+          },
+        },
+        "current": {
+          "assignedTo": "me",
+          "ignoreBehavior": null,
+          "status": "resolved",
+        },
+        "effect": "The issue is now marked as resolved and will no longer generate alerts",
+        "issueId": "CLOUDFLARE-MCP-41",
+        "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+        "organizationSlug": "sentry-mcp-evals",
+        "reasonComment": null,
+        "title": "Error: Tool list_organizations is already registered",
+        "updated": true,
+      }
     `);
   });
 
@@ -280,11 +417,13 @@ describe("update_issue", () => {
       serverContext,
     );
 
-    expect(result).toContain(
-      "**Status**: unresolved → **resolvedInNextRelease**",
-    );
-    expect(result).toContain("**Status**: resolvedInNextRelease");
-    expect(result).toContain(
+    const output = structured(result);
+    expect(output.changes.status).toEqual({
+      from: "unresolved",
+      to: "resolvedInNextRelease",
+    });
+    expect(output.current.status).toBe("resolvedInNextRelease");
+    expect(output.effect).toBe(
       "The issue is now marked as resolved in the upcoming release",
     );
   });
@@ -325,8 +464,9 @@ describe("update_issue", () => {
     );
 
     expect(putCalled).toBe(false);
-    expect(result).toContain("No changes were needed.");
-    expect(result).toContain("**Status**: resolvedInNextRelease");
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.current.status).toBe("resolvedInNextRelease");
   });
 
   it("assigns issue to team by slug", async () => {
@@ -341,8 +481,7 @@ describe("update_issue", () => {
       },
       serverContext,
     );
-    expect(result).toContain("Assigned To");
-    expect(result).toContain("team:the-goats");
+    expect(structured(result).changes.assignedTo?.to).toBe("team:the-goats");
   });
 
   it("ignores issue until it escalates by default", async () => {
@@ -357,29 +496,32 @@ describe("update_issue", () => {
       },
       serverContext,
     );
-    expect(result).toMatchInlineSnapshot(`
-      "# Issue CLOUDFLARE-MCP-41 Updated in **sentry-mcp-evals**
-
-      **Issue**: Error: Tool list_organizations is already registered
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
-
-      ## Changes Made
-
-      **Status**: unresolved → **ignored**
-      **Ignore Behavior**: **Until escalating**
-
-      ## Current Status
-
-      **Status**: ignored
-      **Ignore Behavior**: Until escalating
-      **Assigned To**: Jane Developer
-
-      ## Response Notes
-
-      - The issue has been updated in Sentry.
-      - Full issue details: \`get_sentry_resource(resourceType="issue", organizationSlug="sentry-mcp-evals", resourceId="CLOUDFLARE-MCP-41")\`
-      - The issue is now ignored until it escalates
-      "
+    expect(structured(result)).toMatchInlineSnapshot(`
+      {
+        "changes": {
+          "assignedTo": null,
+          "ignoreBehavior": {
+            "from": null,
+            "to": "Until escalating",
+          },
+          "status": {
+            "from": "unresolved",
+            "to": "ignored",
+          },
+        },
+        "current": {
+          "assignedTo": "Jane Developer",
+          "ignoreBehavior": "Until escalating",
+          "status": "ignored",
+        },
+        "effect": "The issue is now ignored until it escalates",
+        "issueId": "CLOUDFLARE-MCP-41",
+        "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+        "organizationSlug": "sentry-mcp-evals",
+        "reasonComment": null,
+        "title": "Error: Tool list_organizations is already registered",
+        "updated": true,
+      }
     `);
   });
 
@@ -396,8 +538,9 @@ describe("update_issue", () => {
       },
       serverContext,
     );
-    expect(result).toContain("**Ignore Behavior**: Forever");
-    expect(result).toContain("The issue is now ignored indefinitely");
+    const output = structured(result);
+    expect(output.current.ignoreBehavior).toBe("Forever");
+    expect(output.effect).toBe("The issue is now ignored indefinitely");
   });
 
   it("ignores issue until it occurs a set number of times", async () => {
@@ -415,29 +558,32 @@ describe("update_issue", () => {
       },
       serverContext,
     );
-    expect(result).toMatchInlineSnapshot(`
-      "# Issue CLOUDFLARE-MCP-41 Updated in **sentry-mcp-evals**
-
-      **Issue**: Error: Tool list_organizations is already registered
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
-
-      ## Changes Made
-
-      **Status**: unresolved → **ignored**
-      **Ignore Behavior**: **Until it occurs 100 times in 60 minutes**
-
-      ## Current Status
-
-      **Status**: ignored
-      **Ignore Behavior**: Until it occurs 100 times in 60 minutes
-      **Assigned To**: Jane Developer
-
-      ## Response Notes
-
-      - The issue has been updated in Sentry.
-      - Full issue details: \`get_sentry_resource(resourceType="issue", organizationSlug="sentry-mcp-evals", resourceId="CLOUDFLARE-MCP-41")\`
-      - The issue is now ignored until it occurs 100 times in 60 minutes
-      "
+    expect(structured(result)).toMatchInlineSnapshot(`
+      {
+        "changes": {
+          "assignedTo": null,
+          "ignoreBehavior": {
+            "from": null,
+            "to": "Until it occurs 100 times in 60 minutes",
+          },
+          "status": {
+            "from": "unresolved",
+            "to": "ignored",
+          },
+        },
+        "current": {
+          "assignedTo": "Jane Developer",
+          "ignoreBehavior": "Until it occurs 100 times in 60 minutes",
+          "status": "ignored",
+        },
+        "effect": "The issue is now ignored until it occurs 100 times in 60 minutes",
+        "issueId": "CLOUDFLARE-MCP-41",
+        "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+        "organizationSlug": "sentry-mcp-evals",
+        "reasonComment": null,
+        "title": "Error: Tool list_organizations is already registered",
+        "updated": true,
+      }
     `);
   });
 
@@ -485,10 +631,12 @@ describe("update_issue", () => {
     expect(lastRequestBody).toEqual({
       assignedTo: "john.doe",
     });
-    expect(result).toContain(
-      "**Ignore Behavior**: Until it occurs 3 times in 60 minutes",
+    const output = structured(result);
+    expect(output.current.ignoreBehavior).toBe(
+      "Until it occurs 3 times in 60 minutes",
     );
-    expect(result).not.toContain("The issue is now ignored");
+    expect(output.changes.ignoreBehavior).toBeNull();
+    expect(output.effect).toBeNull();
   });
 
   it("updates condition-based ignore behavior for already ignored issues", async () => {
@@ -545,11 +693,13 @@ describe("update_issue", () => {
       ignoreCount: 10,
       ignoreWindow: 30,
     });
-    expect(result).toContain(
-      "**Ignore Behavior**: Until it occurs 3 times in 60 minutes → **Until it occurs 10 times in 30 minutes**",
-    );
-    expect(result).toContain(
-      "**Ignore Behavior**: Until it occurs 10 times in 30 minutes",
+    const output = structured(result);
+    expect(output.changes.ignoreBehavior).toEqual({
+      from: "Until it occurs 3 times in 60 minutes",
+      to: "Until it occurs 10 times in 30 minutes",
+    });
+    expect(output.current.ignoreBehavior).toBe(
+      "Until it occurs 10 times in 30 minutes",
     );
   });
 
@@ -592,10 +742,9 @@ describe("update_issue", () => {
     );
 
     expect(putCalled).toBe(false);
-    expect(result).toContain("No changes were needed.");
-    expect(result).toContain(
-      "**Ignore Behavior**: Until it occurs 3 more times",
-    );
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.current.ignoreBehavior).toBe("Until it occurs 3 more times");
   });
 
   it("rejects cross-family ignore changes for already ignored issues", async () => {
@@ -676,8 +825,9 @@ describe("update_issue", () => {
     );
 
     expect(putCalled).toBe(false);
-    expect(result).toContain("No changes were needed.");
-    expect(result).toContain("**Ignore Behavior**: Forever");
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.current.ignoreBehavior).toBe("Forever");
   });
 
   it("treats archived_forever as authoritative over stale ignore details", async () => {
@@ -718,8 +868,9 @@ describe("update_issue", () => {
     );
 
     expect(putCalled).toBe(false);
-    expect(result).toContain("No changes were needed.");
-    expect(result).toContain("**Ignore Behavior**: Forever");
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.current.ignoreBehavior).toBe("Forever");
   });
 
   it("validates required parameters", async () => {
@@ -884,9 +1035,11 @@ describe("update_issue", () => {
     expect(commentPosted).toEqual({
       text: "Resolved because the root cause was fixed in PR #123",
     });
-    expect(result).toContain(
-      '**Comment posted**: "Resolved because the root cause was fixed in PR #123"',
-    );
+    expect(structured(result).reasonComment).toEqual({
+      status: "posted",
+      text: "Resolved because the root cause was fixed in PR #123",
+      error: null,
+    });
   });
 
   it("does not post a comment when reason is not provided", async () => {
@@ -975,10 +1128,13 @@ describe("update_issue", () => {
     expect(commentPosted).toEqual({
       text: "Confirmed this is no longer an issue after deploy",
     });
-    expect(result).toContain("No changes were needed.");
-    expect(result).toContain(
-      '**Comment posted**: "Confirmed this is no longer an issue after deploy"',
-    );
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.reasonComment).toEqual({
+      status: "posted",
+      text: "Confirmed this is no longer an issue after deploy",
+      error: null,
+    });
   });
 
   it("does not throw when comment posting fails after a successful update", async () => {
@@ -1020,9 +1176,69 @@ describe("update_issue", () => {
     );
 
     // Update succeeded — output should show it
-    expect(result).toContain("**Status**: unresolved → **resolved**");
+    const output = structured(result);
+    expect(output.changes.status).toEqual({
+      from: "unresolved",
+      to: "resolved",
+    });
     // Comment failure should be reported gracefully, not thrown
-    expect(result).toContain("**Comment not posted**");
+    expect(output.reasonComment?.status).toBe("not_posted");
+    expect(output.reasonComment?.error).toEqual(expect.any(String));
+  });
+
+  it("does not call logIssue when comment posting fails with a 403 permission error", async () => {
+    const currentIssue = createIssue({
+      status: "unresolved",
+      statusDetails: {},
+    });
+    const updatedIssue = createIssue({
+      status: "resolved",
+      statusDetails: {},
+    });
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(currentIssue),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(updatedIssue),
+      ),
+      http.post(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/notes/",
+        () =>
+          HttpResponse.json(
+            { detail: "You do not have permission to perform this action." },
+            { status: 403 },
+          ),
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+        reason: "Resolving because fix deployed",
+      },
+      serverContext,
+    );
+
+    // Update succeeded — output should show it
+    const output = structured(result);
+    expect(output.changes.status).toEqual({
+      from: "unresolved",
+      to: "resolved",
+    });
+    // Comment failure should be reported gracefully, not thrown
+    expect(output.reasonComment?.status).toBe("not_posted");
+    expect(output.reasonComment?.error).toEqual(expect.any(String));
+    // Expected 403 permission errors must NOT be logged as Sentry issues
+    expect(logIssue).not.toHaveBeenCalled();
   });
 
   it("treats a duplicate comment as already present on the no-changes path", async () => {
@@ -1059,11 +1275,13 @@ describe("update_issue", () => {
       serverContext,
     );
 
-    expect(result).toContain("No changes were needed.");
-    expect(result).toContain(
-      '**Comment already present**: "Resolving because fix deployed"',
-    );
-    expect(result).not.toContain("**Comment not posted**");
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.reasonComment).toEqual({
+      status: "already_present",
+      text: "Resolving because fix deployed",
+      error: null,
+    });
   });
 
   it("strips null bytes from reason before posting as a comment", () => {

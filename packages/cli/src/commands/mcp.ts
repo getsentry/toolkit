@@ -134,7 +134,7 @@ export const mcpCommand = buildCommand({
       ],
     },
     flags: {
-      "access-token": stringFlag("Deprecated: set SENTRY_AUTH_TOKEN instead"),
+      "access-token": deprecatedStringFlag("SENTRY_AUTH_TOKEN"),
       host: deprecatedStringFlag("SENTRY_HOST"),
       url: deprecatedStringFlag("SENTRY_URL"),
       "insecure-http": deprecatedBooleanFlag("an http:// SENTRY_URL"),

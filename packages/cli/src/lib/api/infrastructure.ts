@@ -133,7 +133,7 @@ function enrich403Detail(rawDetail: string | undefined): string {
  *
  * @see https://github.com/getsentry/sentry/blob/934f1473f198a62f9268d7140b80cd9ca1e59bb9/src/sentry/api/authentication.py#L536-L539
  */
-export function enrich401Detail(rawDetail: string | undefined): string {
+function enrich401Detail(rawDetail: string | undefined): string {
   // Seat-limit lockout, not an auth failure. Sentry returns 401 with
   // `code: member-disabled-over-limit` when the org is over its member limit
   // and the caller's seat is disabled — re-authenticating cannot fix this.
@@ -142,7 +142,7 @@ export function enrich401Detail(rawDetail: string | undefined): string {
       "Your account is disabled in this organization because it is over its member limit.",
       "This is a billing/seat-limit issue, not an auth problem — re-authenticating won't help.",
       "Ask an org owner to upgrade the plan or free up a seat, then retry.",
-      "Or target a different org, e.g.:  sentry init my-other-org/",
+      "Or target a different org, e.g.:  sentry issue list my-other-org/",
     ].join("\n  ");
   }
 
@@ -822,33 +822,75 @@ export async function apiRequestToRegion<T>(
   }
 
   if (schema) {
-    const result = safeParse(schema, data);
-    if (!result.success) {
-      // Attach structured validation issues to the Sentry event so we can
-      // diagnose exactly which field(s) failed validation — the ApiError.detail
-      // string alone may not be visible in the Sentry issue overview.
-      // Strip valibot issues to metadata only (path/type/message) before
-      // attaching — full issues embed the raw failing `input` value.
-      Sentry.setContext("schema_validation", {
-        endpoint,
-        status: response.status,
-        issues: result.issues.slice(0, 10).map((i) => ({
-          // Strip raw input from path items — only keep structural path keys.
-          path: i.path?.map((p) => ({ key: p.key, type: p.type })),
-          type: i.type,
-          message: i.message,
-        })),
-      });
-      throw new ApiError(
-        `Unexpected response format from ${endpoint}`,
-        response.status,
-        result.issues.map((issue) => issue.message).join(", "),
-      );
-    }
-    return { data: result.output, headers: response.headers };
+    return {
+      data: validateResponse(schema, data, endpoint, response.status),
+      headers: response.headers,
+    };
   }
 
   return { data: data as T, headers: response.headers };
+}
+
+/**
+ * Validate a response body against the CLI's schema for it.
+ *
+ * Used for raw requests and for `@sentry/api` results whose generated type is
+ * looser than what the CLI reads (e.g. untyped span records).
+ *
+ * @param schema - Valibot schema for the response body
+ * @param data - Parsed response body
+ * @param endpoint - API path, named in the error message
+ * @param status - HTTP status of the response
+ * @throws {ApiError} When the body does not match the schema
+ */
+export function validateResponse<T>(
+  schema: GenericSchema<unknown, T>,
+  data: unknown,
+  endpoint: string,
+  status: number,
+): T {
+  const result = safeParse(schema, data);
+  if (!result.success) {
+    // Attach structured validation issues to the Sentry event so we can
+    // diagnose exactly which field(s) failed validation — the ApiError.detail
+    // string alone may not be visible in the Sentry issue overview.
+    // Strip valibot issues to metadata only (path/type/message) before
+    // attaching — full issues embed the raw failing `input` value.
+    Sentry.setContext("schema_validation", {
+      endpoint,
+      status,
+      issues: result.issues.slice(0, 10).map((i) => ({
+        // Strip raw input from path items — only keep structural path keys.
+        path: i.path?.map((p) => ({ key: p.key, type: p.type })),
+        type: i.type,
+        message: i.message,
+      })),
+    });
+    throw new ApiError(
+      `Unexpected response format from ${endpoint}`,
+      status,
+      result.issues.map((issue) => issue.message).join(", "),
+    );
+  }
+  return result.output;
+}
+
+/**
+ * Unwrap an @sentry/api SDK result and validate its body with the CLI's schema.
+ *
+ * @param result - The result from an SDK function call
+ * @param context - Human-readable context for HTTP error messages
+ * @param schema - Valibot schema for the response body
+ * @param endpoint - API path, named in schema-mismatch errors
+ */
+export function unwrapValidatedResult<T>(
+  result: Pick<SdkResult, "data" | "error" | "response">,
+  context: string,
+  schema: GenericSchema<unknown, T>,
+  endpoint: string,
+): T {
+  const data = unwrapResult<unknown>(result, context);
+  return validateResponse(schema, data, endpoint, result.response?.status ?? 0);
 }
 
 /**

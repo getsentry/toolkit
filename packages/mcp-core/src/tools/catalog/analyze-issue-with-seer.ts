@@ -31,6 +31,7 @@ import type { ServerContext } from "../../types";
 
 export default defineTool({
   name: "analyze_issue_with_seer",
+  title: "Analyze Issue with Seer",
   skills: ["seer"], // Only available in seer skill
   requiredScopes: [], // No Sentry API scopes required - authorization via 'seer' skill
   description: [

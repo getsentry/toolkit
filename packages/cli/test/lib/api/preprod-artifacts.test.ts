@@ -1,8 +1,10 @@
 /**
  * Tests for the preprod-artifacts (mobile build) API.
  *
- * Pure URL helpers are tested directly. `getBuildInstallDetails` mocks the
- * region request layer; `downloadBuildArtifact` mocks `customFetch` and the
+ * Pure URL helpers are tested directly. Calls that use `@sentry/api`
+ * operations get an SDK config whose `fetch` is mocked; calls still on
+ * `apiRequestToRegion` mock that helper. `downloadBuildArtifact` mocks
+ * `customFetch` and the
  * auth-token getter so the streaming write and — critically — the
  * same-origin-only auth attachment can be verified without a network.
  */
@@ -19,22 +21,36 @@ const {
   apiRequestToRegionMock,
   apiRequestToRegionNoContentMock,
   getAuthTokenMock,
+  sdkFetchMock,
   uploadMissingChunksMock,
 } = vi.hoisted(() => ({
   customFetchMock: vi.fn(),
   apiRequestToRegionMock: vi.fn(),
   apiRequestToRegionNoContentMock: vi.fn(() => Promise.resolve()),
   getAuthTokenMock: vi.fn<() => string | undefined>(() => "secret-token"),
+  sdkFetchMock: vi.fn<(request: Request) => Promise<Response>>(),
   uploadMissingChunksMock: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("../../../src/lib/region.js", () => ({
   resolveOrgRegion: vi.fn(async () => "https://us.sentry.io"),
 }));
-vi.mock("../../../src/lib/api/infrastructure.js", () => ({
-  apiRequestToRegion: apiRequestToRegionMock,
-  apiRequestToRegionNoContent: apiRequestToRegionNoContentMock,
-}));
+vi.mock("../../../src/lib/api/infrastructure.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../../src/lib/api/infrastructure.js")
+    >();
+  return {
+    ...actual,
+    apiRequestToRegion: apiRequestToRegionMock,
+    apiRequestToRegionNoContent: apiRequestToRegionNoContentMock,
+    getOrgSdkConfig: vi.fn(() => ({
+      baseUrl: "https://us.sentry.io",
+      fetch: sdkFetchMock,
+      throwOnError: false as const,
+    })),
+  };
+});
 vi.mock("../../../src/lib/custom-ca.js", () => ({
   customFetch: customFetchMock,
 }));
@@ -105,25 +121,31 @@ describe("buildFormatFromUrl", () => {
 
 describe("getBuildInstallDetails", () => {
   beforeEach(() => {
-    apiRequestToRegionMock.mockReset();
+    sdkFetchMock.mockReset();
   });
 
   test("hits the install-details endpoint and returns parsed data", async () => {
-    apiRequestToRegionMock.mockResolvedValue({
-      data: { isInstallable: true, installUrl: "https://u/" },
-      headers: new Headers(),
-    });
+    sdkFetchMock.mockResolvedValue(
+      Response.json({ isInstallable: true, installUrl: "https://u/" }),
+    );
 
     const result = await getBuildInstallDetails("my-org", "build 1");
 
     expect(result).toEqual({ isInstallable: true, installUrl: "https://u/" });
-    const lastCall = apiRequestToRegionMock.mock.calls.at(-1);
-    expect(lastCall?.[0]).toBe("https://us.sentry.io");
+    const request = sdkFetchMock.mock.calls.at(-1)?.[0];
+    expect(request?.method).toBe("GET");
     // Build id is URL-encoded into the path.
-    expect(lastCall?.[1]).toBe(
-      "organizations/my-org/preprodartifacts/build%201/install-details/",
+    expect(request?.url).toBe(
+      "https://us.sentry.io/api/0/organizations/my-org/preprodartifacts/build%201/install-details/",
     );
-    expect(lastCall?.[2]?.schema).toBeDefined();
+  });
+
+  test("rejects a response that does not match the schema", async () => {
+    sdkFetchMock.mockResolvedValue(Response.json({ installUrl: 42 }));
+
+    await expect(getBuildInstallDetails("my-org", "b1")).rejects.toThrow(
+      "Unexpected response format from organizations/my-org/preprodartifacts/b1/install-details/",
+    );
   });
 });
 
@@ -453,11 +475,10 @@ describe("snapshots", () => {
   });
 
   test("getLatestBaseSnapshot maps the response and forwards params", async () => {
-    // apiRequestToRegion returns schema-validated snake_case data.
-    apiRequestToRegionMock.mockResolvedValue({
-      data: { head_artifact_id: "art-1", image_count: 5 },
-      headers: new Headers(),
-    });
+    sdkFetchMock.mockReset();
+    sdkFetchMock.mockResolvedValue(
+      Response.json({ head_artifact_id: "art-1", image_count: 5 }),
+    );
 
     await expect(
       getLatestBaseSnapshot("my-org", "my-app", {
@@ -466,21 +487,43 @@ describe("snapshots", () => {
       }),
     ).resolves.toEqual({ headArtifactId: "art-1", imageCount: 5 });
     // app_id + optional branch/project go through as query params.
-    const params = apiRequestToRegionMock.mock.calls.at(-1)?.[2]?.params;
-    expect(params).toEqual({
+    const url = new URL(sdkFetchMock.mock.calls.at(-1)?.[0].url ?? "");
+    expect(url.pathname).toBe(
+      "/api/0/organizations/my-org/preprodartifacts/snapshots/latest-base/",
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
       app_id: "my-app",
       branch: "main",
       project: "proj-1",
     });
   });
 
+  test("getLatestBaseSnapshot returns null for a null body", async () => {
+    sdkFetchMock.mockReset();
+    sdkFetchMock.mockResolvedValue(Response.json(null));
+    await expect(getLatestBaseSnapshot("my-org", "my-app")).resolves.toBeNull();
+  });
+
   test("getLatestBaseSnapshot returns null on 404", async () => {
-    apiRequestToRegionMock.mockRejectedValue(
-      new ApiError("not found", 404, "", "endpoint"),
+    sdkFetchMock.mockReset();
+    sdkFetchMock.mockResolvedValue(
+      Response.json({ detail: "Not found" }, { status: 404 }),
     );
     await expect(
       getLatestBaseSnapshot("my-org", "missing"),
     ).resolves.toBeNull();
+  });
+
+  test("getLatestBaseSnapshot rethrows other HTTP errors", async () => {
+    sdkFetchMock.mockReset();
+    sdkFetchMock.mockResolvedValue(
+      Response.json({ detail: "Boom" }, { status: 500 }),
+    );
+    const error = await getLatestBaseSnapshot("my-org", "my-app").catch(
+      (e) => e,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(500);
   });
 
   test("waitForSnapshotArchive triggers a build then resolves when ready", async () => {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest";
 import {
+  asInvocationCommand,
   asRunningAppCommand,
   getLoginCommand,
   getUrlLoginCommand,
@@ -50,5 +51,18 @@ describe("app identity", () => {
     );
     expect(asRunningAppCommand("npx sentry auth")).toBe("npx sentry auth");
     expect(asRunningAppCommand("sentry-cli login")).toBe("sentry-cli login");
+  });
+
+  test("command hints run this program again", () => {
+    const command = "sentry cli fix";
+    expect(asInvocationCommand(command)).toBe(command);
+
+    setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
+    expect(asInvocationCommand(command)).toBe("sentry-mcp cli fix");
+
+    process.env.npm_command = "exec";
+    expect(asInvocationCommand(command)).toBe(
+      "npx -y @sentry/mcp-server cli fix",
+    );
   });
 });

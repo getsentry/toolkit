@@ -8,6 +8,7 @@ The token cost of tool metadata that MCP sends to clients via `tools/list`:
 
 - Tool names and descriptions
 - Parameter schemas (JSON Schema)
+- Output schemas (`outputSchema`, JSON Schema) for tools that declare one
 - Total overhead per tool and across all tools
 
 **Exclusions:**
@@ -27,9 +28,9 @@ pnpm run measure-tokens
 ```
 📊 MCP Server Token Cost Report
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Total Tokens:     14,068
-Tool Count:       24
-Average/Tool:     586
+Total Tokens:     75,759
+Tool Count:       73
+Average/Tool:     1,038
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Per-Tool Breakdown:
@@ -37,9 +38,9 @@ Per-Tool Breakdown:
 ┌─────────────────────────────┬────────┬─────────┐
 │ Tool                        │ Tokens │ % Total │
 ├─────────────────────────────┼────────┼─────────┤
-│ search_events               │   1192 │    8.5% │
-│ update_issue                │   1166 │    8.3% │
-│ search_docs                 │    975 │    6.9% │
+│ get_alert_rule              │   2517 │    3.3% │
+│ find_releases               │   2033 │    2.7% │
+│ update_alert_rule           │   1975 │    2.6% │
 ...
 ```
 
@@ -58,11 +59,11 @@ JSON format:
 
 ```json
 {
-  "total_tokens": 14068,
-  "tool_count": 24,
-  "avg_tokens_per_tool": 586,
+  "total_tokens": 75759,
+  "tool_count": 73,
+  "avg_tokens_per_tool": 1038,
   "tools": [
-    {"name": "search_events", "tokens": 1192, "percentage": 8.5},
+    {"name": "get_alert_rule", "tokens": 2517, "percentage": 3.3},
     ...
   ]
 }
@@ -87,19 +88,18 @@ GitHub Actions workflow runs on every PR and push to main:
 
 ## Understanding the Results
 
-- ~14,068 tokens total
-- ~586 tokens/tool average
+Run `pnpm run measure-tokens` for current numbers; the examples above are a
+snapshot and go stale.
 
-**Tool count limits:**
-
-- **Target:** ≤20 tools (current best practice)
-- **Maximum:** ≤25 tools (hard limit for AI agents)
+**Tool count limits:** the gateway surface (`TOP_LEVEL_TOOL_NAMES`) targets ≤20
+tools, hard limit 25. `EXPOSE_ALL_TOOLS` lists every tool and relies on harness
+tool search.
 
 **When to investigate:**
 
-- Total tokens increase >10% without new tools
-- Individual tool >1,000 tokens (indicates overly verbose descriptions)
-- New tool adds >500 tokens (review description clarity)
+- Total tokens increase >10% without new tools or new output schemas
+- A tool sits well above the average (check the top of the per-tool table)
+- A new tool, or a new output schema, adds far more than its neighbours
 
 ## Implementation Details
 
@@ -123,7 +123,7 @@ tsx measure-token-cost.ts --help       # Show help
 - Remove redundant examples
 - Focus on unique, non-obvious details
 
-**Simplify parameter schemas:**
+**Simplify parameter and output schemas:**
 
 - Use `.describe()` sparingly
 - Avoid duplicate descriptions in nested schemas

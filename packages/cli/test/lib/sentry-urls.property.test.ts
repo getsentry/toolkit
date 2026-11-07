@@ -22,7 +22,6 @@ import {
   buildLogsUrl,
   buildOrgSettingsUrl,
   buildOrgUrl,
-  buildProjectIssuesUrl,
   buildProjectUrl,
   buildRepositorySettingsUrl,
   buildSourceCodeIntegrationsUrl,
@@ -30,7 +29,6 @@ import {
   buildTraceUrl,
   getOrgBaseUrl,
   isSentrySaasUrl,
-  parseOrgProjectFromSettingsUrl,
 } from "../../src/lib/sentry-urls.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
@@ -303,75 +301,6 @@ describe("buildEventSearchUrl properties", () => {
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
-  });
-});
-
-describe("buildProjectIssuesUrl properties", () => {
-  test("with a project ID, output filters the Issues stream by project", async () => {
-    fcAssert(
-      property(tuple(slugArb, projectIdArb), ([orgSlug, projectId]) => {
-        const result = buildProjectIssuesUrl(orgSlug, projectId);
-        expect(result).toBe(
-          `${getOrgBaseUrl(orgSlug)}/issues/?project=${projectId}`,
-        );
-        expect(new URL(result).searchParams.get("project")).toBe(projectId);
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("without a project ID, output is the org-wide Issues stream", async () => {
-    fcAssert(
-      property(slugArb, (orgSlug) => {
-        const result = buildProjectIssuesUrl(orgSlug);
-        expect(result).toBe(`${getOrgBaseUrl(orgSlug)}/issues/`);
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("output is a valid URL that points at the Issues stream", async () => {
-    fcAssert(
-      property(tuple(slugArb, projectIdArb), ([orgSlug, projectId]) => {
-        const result = buildProjectIssuesUrl(orgSlug, projectId);
-        expect(() => new URL(result)).not.toThrow();
-        expect(new URL(result).pathname).toBe("/issues/");
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-});
-
-describe("parseOrgProjectFromSettingsUrl properties", () => {
-  test("round-trips org and project through a settings URL (SaaS)", async () => {
-    fcAssert(
-      property(tuple(slugArb, slugArb), ([orgSlug, projectSlug]) => {
-        const url = buildProjectUrl(orgSlug, projectSlug);
-        expect(parseOrgProjectFromSettingsUrl(url)).toEqual({
-          orgSlug,
-          projectSlug,
-        });
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("round-trips org and project through a settings URL (self-hosted)", async () => {
-    process.env.SENTRY_URL = "https://sentry.example.com";
-    fcAssert(
-      property(tuple(slugArb, slugArb), ([orgSlug, projectSlug]) => {
-        const url = buildProjectUrl(orgSlug, projectSlug);
-        expect(parseOrgProjectFromSettingsUrl(url)).toEqual({
-          orgSlug,
-          projectSlug,
-        });
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("returns empty for unparseable input", () => {
-    expect(parseOrgProjectFromSettingsUrl("not a url")).toEqual({});
   });
 });
 

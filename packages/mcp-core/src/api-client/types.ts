@@ -131,6 +131,7 @@ import type {
   TransactionEventSchema,
   TransactionProfileSampleSchema,
   TransactionProfileSchema,
+  LegacySpeedscopeProfileSchema,
   UnknownEventSchema,
   UptimeCheckListSchema,
   UptimeCheckSchema,
@@ -309,6 +310,15 @@ export type ProfileChunk = z.infer<typeof ProfileChunkSchema>;
 export type ProfileChunkResponse = z.infer<typeof ProfileChunkResponseSchema>;
 export type ProfileChunkSample = z.infer<typeof ProfileChunkSampleSchema>;
 export type TransactionProfile = z.infer<typeof TransactionProfileSchema>;
+export type LegacySpeedscopeProfile = z.infer<
+  typeof LegacySpeedscopeProfileSchema
+>;
+
+export function isLegacySpeedscopeProfile(
+  profile: TransactionProfile | LegacySpeedscopeProfile,
+): profile is LegacySpeedscopeProfile {
+  return profile.format === "speedscope";
+}
 export type TransactionProfileSample = z.infer<
   typeof TransactionProfileSampleSchema
 >;

@@ -135,6 +135,15 @@ organization once, at startup, and every call uses it. To use accounts on
 different servers at once (say, sentry.io and a self-hosted server), configure
 one MCP server per host via `SENTRY_HOST`.
 
+With a scope (`<org>/`, `<org>/<project>`, `--org`, `--project`), the server
+checks it with that credential before it connects: one request for the
+organization, then, for a project, one for the project on the organization's
+region (`links.regionUrl`). When Sentry answers 404, the server prints
+which part of the scope was not found on stderr and exits with the resolution
+exit code (23), instead of failing every call with a generic 404. Any other
+answer (401, 403, 5xx), a network failure, or no answer within 3 seconds starts
+the server as before.
+
 ## Upgrading From Older `@sentry/mcp-server` Versions
 
 Older releases had their own device code flow, bundled client ID, and token
@@ -152,6 +161,7 @@ deprecated (see above). `auth status`, `auth list`,
 | `packages/cli/src/commands/mcp.ts`                                  | `mcp` command flags and help                                  |
 | `packages/cli/src/lib/mcp/server.ts`                                | Agent providers, telemetry, and stdio startup                 |
 | `packages/cli/src/lib/mcp/account-router.ts`                        | Per-call routing between stored accounts                      |
+| `packages/cli/src/lib/mcp/scope-check.ts`                           | Startup check that the `<org>/[<project>]` scope exists       |
 | `packages/mcp-core/src/internal/tool-helpers/credential-routing.ts` | Applies `ServerContext.credentialRouter` to tool calls        |
 | `packages/cli/src/lib/db/auth.ts`                                   | CLI token storage and `refreshToken()`                        |
 | `packages/cli/src/lib/token-host.ts`                                | Host-scoping checks                                           |

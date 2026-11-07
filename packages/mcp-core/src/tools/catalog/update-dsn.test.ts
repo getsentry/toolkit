@@ -1,7 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { http, HttpResponse } from "msw";
-import { mswServer } from "@sentry/mcp-server-mocks";
-import updateDsn from "./update-dsn.js";
+import { clientKeyFixture, mswServer } from "@sentry/mcp-server-mocks";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content";
+import updateDsn, { updateDsnOutputSchema } from "./update-dsn.js";
+
+function getDsn(result: unknown) {
+  assertStructuredOnlyResult(result);
+  const content = getStructuredContent(result);
+  const parsed = updateDsnOutputSchema.parse(content);
+  expect(parsed).toEqual(content);
+  return parsed.dsn;
+}
 import { UserInputError } from "../../errors.js";
 
 describe("update_dsn", () => {
@@ -24,26 +36,27 @@ describe("update_dsn", () => {
         userId: "1",
       },
     );
-    expect(result).toMatchInlineSnapshot(`
-      "# Updated DSN in **sentry-mcp-evals/cloudflare-mcp**
-
-      **DSN ID**: d20df0a1ab5031c7f3c7edca9c02814d
-      **DSN**: https://d20df0a1ab5031c7f3c7edca9c02814d@o4509106732793856.ingest.us.sentry.io/4509109104082945
-      **Name**: New Key Name
-      **Status**: Inactive
-      **Rate Limit**: Disabled
-      **Browser SDK Version**: 8.x
-      **Loader Options**: Replay: Enabled, Performance: Enabled, Debug: Disabled
-
-      ## Updates Applied
-      - Updated name to "New Key Name"
-      - Updated status to inactive
-
-      ## Response Notes
-
-      - Please tell the user the updated DSN settings.
-      "
+    const dsn = getDsn(result);
+    expect(dsn).toMatchInlineSnapshot(`
+      {
+        "browserSdkVersion": "8.x",
+        "dsn": "https://d20df0a1ab5031c7f3c7edca9c02814d@o4509106732793856.ingest.us.sentry.io/4509109104082945",
+        "id": "d20df0a1ab5031c7f3c7edca9c02814d",
+        "isActive": false,
+        "loaderOptions": {
+          "hasDebug": false,
+          "hasPerformance": true,
+          "hasReplay": true,
+        },
+        "name": "New Key Name",
+        "rateLimit": null,
+      }
     `);
+    // Only the public DSN is exposed; secret keys and other key metadata stay private.
+    const text = JSON.stringify(dsn);
+    expect(text).not.toContain(clientKeyFixture.secret);
+    expect(text).not.toContain(clientKeyFixture.dsn.secret);
+    expect(text).not.toContain("dateCreated");
   });
 
   it("updates rate limit settings", async () => {
@@ -65,8 +78,10 @@ describe("update_dsn", () => {
         userId: "1",
       },
     );
-    expect(result).toContain("**Rate Limit**: 100 events per 3600 seconds");
-    expect(result).toContain("- Updated rate limit to 100 events per 3600s");
+    expect(getDsn(result).rateLimit).toEqual({
+      count: 100,
+      windowSeconds: 3600,
+    });
   });
 
   it("treats zero-valued rate limit updates as disabled", async () => {
@@ -88,8 +103,7 @@ describe("update_dsn", () => {
         userId: "1",
       },
     );
-    expect(result).toContain("**Rate Limit**: Disabled");
-    expect(result).toContain("- Updated rate limit disabled");
+    expect(getDsn(result).rateLimit).toBeNull();
   });
 
   it("treats zero-valued API rate limit responses as disabled", async () => {
@@ -137,8 +151,7 @@ describe("update_dsn", () => {
       },
     );
 
-    expect(result).toContain("**Rate Limit**: Disabled");
-    expect(result).toContain("- Updated rate limit to 100 events per 3600s");
+    expect(getDsn(result).rateLimit).toBeNull();
   });
 
   it("disables rate limit entirely", async () => {
@@ -159,8 +172,7 @@ describe("update_dsn", () => {
         userId: "1",
       },
     );
-    expect(result).toContain("**Rate Limit**: Disabled");
-    expect(result).toContain("- Updated rate limit disabled");
+    expect(getDsn(result).rateLimit).toBeNull();
   });
 
   it("updates loader options", async () => {
@@ -185,10 +197,13 @@ describe("update_dsn", () => {
         userId: "1",
       },
     );
-    expect(result).toContain(
-      "**Loader Options**: Replay: Enabled, Performance: Disabled, Debug: Enabled, Feedback: Enabled, Logs & Metrics: Enabled",
-    );
-    expect(result).toContain("- Updated loader options updated");
+    expect(getDsn(result).loaderOptions).toEqual({
+      hasReplay: true,
+      hasPerformance: false,
+      hasDebug: true,
+      hasFeedback: true,
+      hasLogsAndMetrics: true,
+    });
   });
 
   it("throws when no update fields are provided", async () => {

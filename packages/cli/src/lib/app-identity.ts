@@ -58,6 +58,16 @@ export function getInvocationCommand(): string {
     : identity.name;
 }
 
+/**
+ * `command` as a hint that runs this program again: a leading `sentry `
+ * becomes {@link getInvocationCommand}.
+ */
+export function asInvocationCommand(command: string): string {
+  return command.startsWith("sentry ")
+    ? `${getInvocationCommand()}${command.slice("sentry".length)}`
+    : command;
+}
+
 /** Command that signs in to the active Sentry host. */
 export function getLoginCommand(): string {
   return `${getInvocationCommand()} auth login`;

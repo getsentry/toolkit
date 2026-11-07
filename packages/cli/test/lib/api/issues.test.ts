@@ -203,7 +203,7 @@ describe("mergeIssues", () => {
     expect(capturedUrl).toContain("id=100");
     expect(capturedUrl).toContain("id=200");
     expect(capturedUrl).toContain("id=300");
-    expect(capturedBody).toEqual({ merge: 1 });
+    expect(capturedBody).toEqual({ merge: true });
     expect(result).toEqual({ parent: "100", children: ["200", "300"] });
   });
 

@@ -405,7 +405,7 @@ describe("MCP Handler", () => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(structuredContent, null, 2),
+              text: JSON.stringify(structuredContent),
             },
           ],
           structuredContent,

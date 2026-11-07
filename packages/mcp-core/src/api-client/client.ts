@@ -121,7 +121,7 @@ import {
   isPublicSentryHost,
   type TraceMetricIdentifier,
 } from "../utils/url-utils";
-import { USER_AGENT } from "../version";
+import { getUserAgent } from "../version";
 import {
   AgenticOnboardingRunSchema,
   AIConversationDetailsResponseSchema,
@@ -190,7 +190,7 @@ import {
   TeamSchema,
   TraceMetaSchema,
   TraceSchema,
-  TransactionProfileSchema,
+  TransactionProfileResponseSchema,
   UptimeCheckListSchema,
   UptimeMonitorListSchema,
   UptimeMonitorSchema,
@@ -264,6 +264,7 @@ import type {
   Trace,
   TraceMeta,
   TransactionProfile,
+  LegacySpeedscopeProfile,
   UptimeCheckList,
   UptimeMonitor,
   UptimeMonitorList,
@@ -686,7 +687,7 @@ export class SentryApiService {
 
   /** Headers for every request after `Content-Type`. */
   private requestHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { "User-Agent": USER_AGENT };
+    const headers: Record<string, string> = { "User-Agent": getUserAgent() };
     if (this.accessToken !== null) {
       const authorization = sentryBearerHeader(this.accessToken);
       if (authorization === null) {
@@ -5007,11 +5008,13 @@ export class SentryApiService {
       profileId: string;
     },
     opts?: RequestOptions,
-  ): Promise<TransactionProfile> {
+  ): Promise<TransactionProfile | LegacySpeedscopeProfile> {
+    // Legacy (e.g. Android) profiles are returned as speedscope output even
+    // when `format=sample` is requested, so they have no `profile` key.
     return await getTransactionProfile(
       this.target(opts?.host),
       params,
-      TransactionProfileSchema,
+      TransactionProfileResponseSchema,
     );
   }
 

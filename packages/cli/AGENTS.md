@@ -233,7 +233,7 @@ Formatting and rendering logic belongs in `src/lib/formatters/<domain>.ts`. If a
 
 Reference: `src/lib/formatters/replay.ts` (extracted from `replay/view.ts`), `src/lib/formatters/trace.ts`, `src/lib/formatters/human.ts`.
 
-Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output.
+Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output. Oxlint's `no-console` bans `console.*` in every package that uses `@sentry/logger` (`packages/cli`, including `script/` and `test/`, and `packages/logger`). Scripts and test helpers import the same `logger` from `src/lib/logger.ts`. A call that must bypass the logger, such as stdout a parent process reads, gets an `oxlint-disable-next-line no-console -- <reason>` comment.
 
 ### Declaring Command Output
 
@@ -508,9 +508,8 @@ takes:
 | Org, project, issue, dashboard target | the bound parsers above (`boundPositional(kind, …)`, `boundArguments({ kind, … })`, `listTargetPositional`, `issuePositional`, `releaseParameter`) | `ORG_TARGET` org slugs; `ORG_PROJECT_TARGET` `org/`, `org/project`, aliases; `ISSUE_TARGET` plus cached issue short IDs; `DASHBOARD_TARGET` cached dashboards |
 | File or directory path (`--output`, `--ignore-file`) | `parseFilePath` | entries of the partial's directory, directories with a trailing `/` |
 | Directory | `parseDirectoryPath` | directories only |
-| Target or directory (`init`) | `boundArguments({ kind: ORG_PROJECT_OR_DIRECTORY_TARGET, … })` | `org/project` targets, or directories once the word looks like a path (`./`, `/`, `~/`), so a suggestion is never read as a target |
 | Fixed values | `choiceParser(values)`, or `choiceParser(values, parse)` to keep a command's own validating parser (`choiceParser(VALID_SORT_VALUES, parseSort)`). Take the values from the module that defines them | those values; a variadic positional completes only its first word (`cli defaults <key> <value>`). Without `parse` the parser returns its input, so the command still validates it |
-| Comma-separated fixed values (`--scope`, `--features`) | `choiceListParser(values)` (or `(values, parse)`) | the next item of the list, leaving out the items already in it (`org:read,org:w` → `org:read,org:write`) |
+| Comma-separated fixed values (`--scope`) | `choiceListParser(values)` (or `(values, parse)`) | the next item of the list, leaving out the items already in it (`org:read,org:w` → `org:read,org:write`) |
 | Platform | `parsePlatform` | platform identifiers, common ones first |
 | Something that already exists in Sentry, as a flag value (`--environment`, `--release`, `--team`, `--owner`, `--integration`, `--app`, `--dsn`, `--workflow`, `--project`, `issue tags <key>`) | `parseEnvironment`, `parseEnvironmentList`, `parseRelease`, `parseTeam`, `parseOwner` (`team:<id>`), `parseIntegration`, `parseSentryApp`, `parseAppLinkField` (`name=value`), `parseDsn`, `parseWorkflowList`, `parseProjectSlug`, `parseProjectList`, `parseTagKey` | cached entities of the org the command's target names, else of every org, each once; the `*List` parsers complete the last item of a comma-separated list |
 | Field or aggregate of a dataset (`explore --field`/`--sort`, `dashboard widget --group-by`/`--query`/`--sort`, `alert metrics --aggregate`) | `fieldParser`, `fieldOrAggregateParser`, `aggregateParser` (`fn(field)`), or `aggregateShorthandParser` (`fn:field`), given a `DatasetCompletion`: what completes on each dataset (start from `DATASET_FIELDS`), the command's `--dataset` aliases, and its default dataset | the fields of the dataset the `--dataset` typed names (else the default; every dataset when there is none): cached attribute keys of spans, logs, and trace metrics, cached issue tag keys for errors, or a fixed set (replays), matched one `.` segment at a time (`span.d` finds `span.duration`, never `span.op`); then its whole aggregates (`aggregates`), and its aggregate functions as `fn()`, and `fn(field)` once a name is typed in full (`p95` → `p95(span.duration)`). Widgets take the functions of `aggregateFunctionsOf` in `types/dashboard.ts`; `alert metrics --aggregate` takes the narrower ones metric alerts accept (`METRIC_ALERT_FIELD_COMPLETION`). A word starting with `-` completes flag names, so a descending sort's `-` is typed after completing |
@@ -612,7 +611,7 @@ Split by argument type — do not mix the conventions:
   `{ multi: true }` to `parseOrgProjectArg`; never enable it for
   mutation or single-project commands.
 - **Optional flags → comma-separated (sometimes also repeatable).** Split the
-  flag value on `,`: `--features errors,tracing`, set-commits `--path a,b`,
+  flag value on `,`: set-commits `--path a,b`,
   `auth login --scope a,b`. Use `value.split(",")` (repeatable array flags:
   `flags.x.flatMap((v) => v.split(","))`).
 
@@ -822,7 +821,7 @@ Use `"date"` for timestamp-based sort (not `"time"`). Export sort types from the
 
 All command docs and skill files are generated via `pnpm run generate:docs`. This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
 
-- **One process**: the `generate:*` scripts (except `generate:grammar`, a plain Node script) call `script/generate.ts`, which runs the requested steps in one process so the route tree loads once. Phase 1 writes what the tree imports (API schema, grammars, output-schema field data, banner), runs those steps concurrently, and must not load the tree; its steps must not read each other's outputs. Phase 2 stubs the generated files the tree imports (`script/lib/route-tree-stubs.ts`), then runs each step's exported `emit()`. Scripts that load the tree without generating, such as `check-fragments`, leave those stubs behind, so `ensure-generated.mjs` treats a file that still holds its stub (`script/lib/route-tree-stub-files.mjs`) as missing. Phase-2 modules may import the tree statically, because the runner imports them only after the stubs exist. A new generator exports `emit()` and gets a step in `script/generate.ts`, with no stub code of its own. A phase-2 step may also declare `prepare`, which the runner calls as the run begins: `command-api` uses it to parse `src/` in a worker thread (`script/lib/command-api-analysis.ts`) during phase 1 and the tree load. The worker reads the API schema once the `schema` step finishes, and `command-api` runs last because its `emit` waits for that worker. In `package.json`, call the runner (`tsx script/generate.ts <steps>`) rather than chaining `pnpm run generate:*`. `docs` names every step but `sdk`, including `schema`, so callers need not run `generate:schema` first.
+- **One process**: the `generate:*` scripts (except `generate:grammar`, a plain Node script) call `script/generate.ts`, which runs the requested steps in one process so the route tree loads once. Phase 1 writes what the tree imports (API schema, grammars, output-schema field data, banner, the `sentry init` guide), runs those steps concurrently, and must not load the tree; its steps must not read each other's outputs. Phase 2 stubs the generated files the tree imports (`script/lib/route-tree-stubs.ts`), then runs each step's exported `emit()`. Scripts that load the tree without generating, such as `check-fragments`, leave those stubs behind, so `ensure-generated.mjs` treats a file that still holds its stub (`script/lib/route-tree-stub-files.mjs`) as missing. Phase-2 modules may import the tree statically, because the runner imports them only after the stubs exist. A new generator exports `emit()` and gets a step in `script/generate.ts`, with no stub code of its own. A phase-2 step may also declare `prepare`, which the runner calls as the run begins: `command-api` uses it to parse `src/` in a worker thread (`script/lib/command-api-analysis.ts`) during phase 1 and the tree load. The worker reads the API schema once the `schema` step finishes, and `command-api` runs last because its `emit` waits for that worker. In `package.json`, call the runner (`tsx script/generate.ts <steps>`) rather than chaining `pnpm run generate:*`. `docs` names every step but `sdk`, including `schema`, so callers need not run `generate:schema` first.
 - **Skipped steps**: a phase-1 step with `files` in `script/generate.ts` runs only when the content hash of its inputs or outputs differs from its entry in `src/generated/.stamps.json` (`script/lib/step-stamp.ts`). When such a step starts reading a new file or package, add it to that step's inputs. `output-schemas` and the phase-2 steps have no stamp: their inputs are the source they import, which is no short list.
 
 - **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
@@ -909,8 +908,7 @@ CliError (base, exitCode=1)
 ├── DeviceFlowError (exitCode=51 — OAuth flow)
 ├── SeerError (exitCode=40–42 by reason — 'not_enabled' | 'no_budget' | 'ai_disabled')
 ├── TimeoutError (exitCode=31 — operation timed out)
-├── UpgradeError (exitCode=50 — upgrade failures)
-└── WizardError (exitCode=61–64 by workflow step — init wizard error)
+└── UpgradeError (exitCode=50 — upgrade failures)
 ```
 
 > Exit code ranges: 1x=auth, 2x=input/config, 3x=API/network, 4x=feature/billing,
@@ -1095,9 +1093,7 @@ Commands select a capability wrapper instead of performing API lookups:
   that returned 404.
 
 Do not call `findProjectsBySlug()` or implement org fallback directly in a
-command. `sentry init` is the intentional not-found exception: it calls the
-classifier with fuzzy recovery disabled, then treats `not-found` as a new
-project name. Issue-short-ID recovery in `commands/issue/utils.ts` is not CLI
+command. Issue-short-ID recovery in `commands/issue/utils.ts` is not CLI
 target resolution and may perform its own project lookup. The
 `no-direct-target-resolution` CLI Oxlint rule enforces this command-layer
 boundary.

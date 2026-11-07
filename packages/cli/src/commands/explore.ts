@@ -37,7 +37,11 @@ import {
   hasPreviousPage,
   resolveCursor,
 } from "../lib/db/pagination.js";
-import { buildDatasetParser, datasetDisplayName } from "../lib/datasets.js";
+import {
+  buildDatasetParser,
+  datasetDisplayName,
+  isEventsDataset,
+} from "../lib/datasets.js";
 import { toSearchQueryError, ValidationError } from "../lib/errors.js";
 import { toExploreFieldError } from "../lib/explore-errors.js";
 import {
@@ -514,8 +518,15 @@ function resolveEventsQuery(
     legacyTransactions && userQuery === IS_TRANSACTION_FILTER
       ? undefined
       : userQuery;
+  const apiDataset = legacyTransactions ? "spans" : dataset;
+  if (!isEventsDataset(apiDataset)) {
+    throw new ValidationError(
+      `The ${datasetDisplayName(apiDataset)} dataset can't be queried through the Events API.`,
+      "dataset",
+    );
+  }
   return {
-    dataset: legacyTransactions ? "spans" : dataset,
+    dataset: apiDataset,
     query:
       scope && scopedQuery ? `${scope} (${scopedQuery})` : scope || scopedQuery,
   };

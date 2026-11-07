@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
 import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -60,7 +61,7 @@ for (const flag of ["--version", "-v"]) {
   });
 }
 
-test("--help lists only mcp, auth, and help", () => {
+test("--help lists only mcp, auth, cli, and help", () => {
   const result = run(["--help"]);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /^USAGE\n {2}sentry-mcp mcp /);
@@ -70,7 +71,7 @@ test("--help lists only mcp, auth, and help", () => {
       .trim()
       .split("\n")
       .map((line) => line.trim().split(/\s+/)[0]),
-    ["mcp", "auth", "help"],
+    ["mcp", "auth", "cli", "help"],
   );
 });
 
@@ -113,6 +114,19 @@ test("runs the CLI's auth commands", () => {
   assert.match(
     result.stderr,
     /Not authenticated\. Run 'sentry-mcp auth login'/,
+  );
+});
+
+test("runs only the CLI's defaults and fix under cli", () => {
+  const result = run(["cli", "--help"]);
+  assert.equal(result.status, 0, result.stderr);
+  const commands = result.stdout.split("COMMANDS\n")[1] ?? "";
+  assert.deepEqual(
+    commands
+      .trim()
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/)[0]),
+    ["defaults", "fix"],
   );
 });
 
@@ -200,6 +214,8 @@ async function serveStdio(args, extraEnv, { deletedCwd } = {}) {
     const [initialize, toolsList] = await responses;
     assert.equal(initialize.id, 1);
     assert.ok(initialize.result?.serverInfo, JSON.stringify(initialize));
+    // The package ships at the CLI version, not mcp-core's.
+    assert.equal(initialize.result.serverInfo.version, version);
     assert.equal(toolsList.id, 2);
     assert.ok(toolsList.result?.tools.length > 0, JSON.stringify(toolsList));
     // The server exits once the client closes stdin. A leftover timer, such
@@ -225,6 +241,88 @@ test("serves MCP over stdio with SENTRY_AUTH_TOKEN", async () => {
     SENTRY_AUTH_TOKEN: "sntryu_test",
   });
   assert.doesNotMatch(stderr, /deprecated/);
+});
+
+test("sends the package version in the Sentry User-Agent", async () => {
+  // A bundle with two copies of mcp-core's version module would report the
+  // right serverInfo but send mcp-core's version upstream.
+  const userAgents = [];
+  const sentry = createServer((req, res) => {
+    userAgents.push(req.headers["user-agent"]);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({ id: "1", name: "Test", email: "test@example.com" }),
+    );
+  });
+  await new Promise((resolve) => sentry.listen(0, "127.0.0.1", resolve));
+  const child = spawn(process.execPath, [bin], {
+    env: {
+      ...env,
+      SENTRY_AUTH_TOKEN: "sntryu_test",
+      SENTRY_URL: `http://127.0.0.1:${sentry.address().port}`,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  // Drain stderr so a chatty server can't fill the pipe, and show it on failure.
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  try {
+    const whoami = new Promise((resolve, reject) => {
+      const fail = (message) => reject(new Error(`${message}\n${stderr}`));
+      let buffer = "";
+      child.on("close", (code) => fail(`server exited (${code})`));
+      child.stdout.on("data", (chunk) => {
+        buffer += chunk;
+        const parts = buffer.split("\n");
+        buffer = parts.pop() ?? "";
+        for (const line of parts.filter(Boolean)) {
+          let message;
+          try {
+            message = JSON.parse(line);
+          } catch {
+            fail(`non-JSON stdout line: ${line}`);
+            return;
+          }
+          if (message.id === 2) resolve(message);
+        }
+      });
+      setTimeout(() => fail("no whoami response"), 20_000).unref();
+    });
+    const send = (message) =>
+      child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
+    send({
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "bundle-test", version: "1.0.0" },
+      },
+    });
+    send({ method: "notifications/initialized" });
+    send({
+      id: 2,
+      method: "tools/call",
+      params: { name: "whoami", arguments: {} },
+    });
+    const response = await whoami;
+    assert.ok(
+      !response.result?.isError,
+      `${JSON.stringify(response)}\n${stderr}`,
+    );
+    assert.ok(
+      userAgents.length > 0,
+      `whoami made no Sentry request\n${stderr}`,
+    );
+    for (const userAgent of userAgents) {
+      assert.equal(userAgent, `sentry-mcp/${version} (https://mcp.sentry.dev)`);
+    }
+  } finally {
+    child.kill();
+    sentry.close();
+  }
 });
 
 test("rejects the removed --sentry-dsn instead of serving", () => {

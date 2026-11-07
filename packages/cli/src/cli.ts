@@ -6,7 +6,8 @@
  * The runner does not know which commands exist: each binary passes a
  * {@link CliEntry} that loads its own application. `sentry` (`bin.ts`,
  * `index.ts`) runs every command; `@sentry/mcp-server` (`mcp-server.ts`) runs
- * `mcp`, `auth`, and `help`, so its bundle leaves the rest out.
+ * `mcp`, `auth`, `cli defaults`, `cli fix`, and `help`, so its bundle leaves
+ * the rest out.
  *
  * Extracted from `bin.ts` so the logic is testable and reusable without
  * top-level side effects. `bin.ts` remains a thin wrapper that registers
@@ -283,6 +284,13 @@ async function runMcpServer(
   const { getExitCode } = await import("./lib/errors.js");
   const { error } = await import("./lib/formatters/colors.js");
   const { splitInlineFlagValues } = await import("./lib/mcp/args.js");
+  const { getEnvLogLevel, setLogLevel } = await import("./lib/logger.js");
+  // The server's startup warnings go through the logger, so apply
+  // SENTRY_LOG_LEVEL here as runCli does; --log-level still wins.
+  const envLogLevel = getEnvLogLevel();
+  if (envLogLevel !== null) {
+    setLogLevel(envLogLevel);
+  }
   try {
     await run(
       app,

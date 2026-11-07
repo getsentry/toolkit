@@ -1,7 +1,7 @@
 {
   "name": "@sentry/mcp-server",
   "mcpName": "io.github.getsentry/sentry-mcp",
-  "version": "0.48.0-dev.0",
+  "version": "0.49.0-dev.0",
   "description": "Sentry MCP server over stdio: the CLI's `sentry mcp` server, bundled without the rest of the CLI",
   "sentryCi": {
     "build": "bundle",
@@ -41,7 +41,7 @@
   ],
   "scripts": {
     "bundle": "pnpm --filter @sentry/mcp-core run build && pnpm --filter sentry run generate && tsx script/bundle.ts",
-    "test:bundle": "node --test test/bundle.test.mjs"
+    "test:bundle": "node --test test/bundle.test.mjs test/server-json.test.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.1",

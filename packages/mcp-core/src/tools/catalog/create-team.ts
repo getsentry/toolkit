@@ -16,6 +16,7 @@ export const createTeamOutputSchema = z.object({
 
 export default defineTool({
   name: "create_team",
+  title: "Create Team",
   skills: ["project-management"], // Only available in project-management skill
   requiredScopes: ["team:write"],
   description: [

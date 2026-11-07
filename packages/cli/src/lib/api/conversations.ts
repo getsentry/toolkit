@@ -4,14 +4,14 @@
  * Functions for listing and retrieving agent conversation data from the Sentry
  * Explore agent conversations endpoints.
  *
- * The `/organizations/{org}/agents/conversations/` endpoints are PRIVATE and not
- * yet in `@sentry/api` (getsentry/sentry-api-schema). Call them via
- * `apiRequestToRegion` with local Valibot schemas (same pattern as `logs.ts` /
- * `traces.ts`). Details response shape is documented on
- * `AgentConversationDetailsSchema`. Pagination uses `parseLinkHeader`. Revisit
- * once these endpoints land in `@sentry/api`.
+ * Both endpoints are in `@sentry/api`. The list still goes through
+ * `apiRequestToRegion` because its generated query has no `sort`. The details
+ * call uses the generated operation; its spans are untyped records there, so
+ * the response is still checked with `AgentConversationDetailsSchema`.
+ * Pagination follows the `Link` header.
  */
 
+import { retrieveOrganizationAiConversation } from "@sentry/api";
 import { array } from "valibot";
 
 import {
@@ -29,10 +29,13 @@ import { resolveOrgRegion } from "../region.js";
 import {
   API_MAX_PER_PAGE,
   apiRequestToRegion,
+  getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   paginate,
   parseLinkHeader,
+  unwrapPaginatedResult,
+  validateResponse,
 } from "./infrastructure.js";
 
 const log = logger.withTag("api.conversations");
@@ -136,15 +139,8 @@ export async function getConversationSpans(
   truncated: boolean;
   title: string | null;
 }> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-
-  const params: Record<string, string> = {
-    per_page: String(options.perPage ?? 1000),
-    statsPeriod: options.statsPeriod ?? "30d",
-  };
-  if (options.project) {
-    params.project = options.project;
-  }
+  const config = getOrgSdkConfig();
+  const endpoint = `/organizations/${orgSlug}/agents/conversations/${encodeURIComponent(conversationId)}/`;
 
   const spans: AgentConversationSpan[] = [];
   let stats: ConversationStats | undefined;
@@ -152,24 +148,36 @@ export async function getConversationSpans(
   let cursor: string | undefined;
 
   for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-    if (cursor) {
-      params.cursor = cursor;
-    }
-
-    const { data, headers } =
-      await apiRequestToRegion<AgentConversationDetails>(
-        regionUrl,
-        `/organizations/${orgSlug}/agents/conversations/${encodeURIComponent(conversationId)}/`,
-        { params, schema: AgentConversationDetailsSchema },
-      );
+    const result = await retrieveOrganizationAiConversation({
+      ...config,
+      path: {
+        organization_id_or_slug: orgSlug,
+        conversation_id: conversationId,
+      },
+      query: {
+        per_page: options.perPage ?? 1000,
+        statsPeriod: options.statsPeriod ?? "30d",
+        project: options.project ? [options.project] : undefined,
+        cursor,
+      },
+    });
+    const pageResult = unwrapPaginatedResult<unknown>(
+      result,
+      "Failed to get agent conversation",
+    );
+    const data: AgentConversationDetails = validateResponse(
+      AgentConversationDetailsSchema,
+      pageResult.data,
+      endpoint,
+      pageResult.response?.status ?? 0,
+    );
 
     if (page === 0) {
       stats = data.stats;
       title = data.title;
     }
     spans.push(...data.spans);
-    const parsed = parseLinkHeader(headers.get("link") ?? null);
-    cursor = parsed.nextCursor;
+    cursor = pageResult.nextCursor;
     if (!cursor) {
       break;
     }
