@@ -100,9 +100,14 @@ function matchScore(
   }
   if (search) {
     const match = searchScore(lowerPartial, lowerCandidate);
-    return match === undefined
-      ? undefined
-      : CONTAINS_SCORE + 1 - match / SEARCH_SCALE;
+    if (match !== undefined) {
+      return CONTAINS_SCORE + 1 - match / SEARCH_SCALE;
+    }
+    // Below that, a long name with more edits than the search typo allows
+    // still matches as a whole (`committers` finds `commits`).
+    if (partial.length < TYPO_MIN_LENGTH) {
+      return;
+    }
   }
   const dist = editDistance(lowerPartial, lowerCandidate);
   const threshold = Math.max(2, Math.floor(partial.length / 3));
@@ -229,15 +234,17 @@ function prefixDistances(a: string, b: string): number[] {
  * (length 5, threshold 2) matches `"issue"` (distance 2). Candidates
  * beyond the threshold are excluded entirely.
  *
- * Search mode replaces the fuzzy tier, for unfinished input in selectors,
- * filters, and completions. Between the contains and fuzzy tiers, it ranks
- * the better of two matches:
+ * Search mode is for unfinished input in selectors, filters, and
+ * completions. Between the contains and fuzzy tiers, it ranks the better of
+ * two matches:
  * - **Scatter**: the letters appear in order but apart, so `fw` finds
  *   `frontend-web`. A tight scatter ranks higher.
  * - **Typo**: four or more characters within one edit of a word's start,
  *   or two edits from six characters on. Swapping two neighbors counts as
  *   one edit, so `isseu` finds `issue` and `frone` finds `frontend-web`.
  *   A typo beats a loose scatter but not a tight one.
+ *
+ * The fuzzy tier still applies in search mode from four characters on.
  *
  * When `partial` is empty, all candidates are returned (sorted alphabetically).
  *

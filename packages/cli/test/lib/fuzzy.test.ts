@@ -203,6 +203,12 @@ describe("fuzzyMatch: search mode", () => {
     ).toEqual(["sentry-javascript"]);
   });
 
+  test("falls back to full-name typos past the search typo limit", () => {
+    expect(fuzzyMatch("committers", ["commits"], { mode: "search" })).toEqual([
+      "commits",
+    ]);
+  });
+
   test("needs four characters for a typo", () => {
     expect(fuzzyMatch("isu", ["sui"], { mode: "search" })).toEqual([]);
   });
