@@ -416,7 +416,9 @@ export async function translateIssuesWithSeer({
     query,
     requiredFeature: SEER_ISSUES_SEARCH_FEATURE,
   });
-  if (!run) {
+  // search_issues only takes a relative period, so an absolute range would be
+  // dropped silently. Fall back instead of searching the wrong window.
+  if (!run || run.result.start || run.result.end) {
     return null;
   }
   return {

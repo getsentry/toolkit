@@ -1151,6 +1151,31 @@ describe("search_issues", () => {
       expect(issueRequests[0]?.searchParams.get("statsPeriod")).toBe("30d");
     });
 
+    it("falls back to the agent when Seer returns an absolute time range", async () => {
+      mockGenerateText.mockResolvedValue(
+        mockAIResponse("is:unresolved", "date"),
+      );
+      mswServer.use(
+        mockOrganization(SEER_FEATURES),
+        mockSeerState({
+          responses: [
+            {
+              ...seerQuery,
+              stats_period: "",
+              start: "2026-01-01T00:00:00",
+              end: "2026-01-02T00:00:00",
+            },
+          ],
+        }),
+      );
+
+      await runSearch(seerParams, mockContext);
+
+      expect(mockSeerStart).toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+      expect(issueRequests[0]?.searchParams.get("query")).toBe("is:unresolved");
+    });
+
     it.each([
       ["the rollout flag is off", ["gen-ai-issues-search"], {}],
       ["issues search is off", ["mcp-search-events-seer-translate"], {}],
