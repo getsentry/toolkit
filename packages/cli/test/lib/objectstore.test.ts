@@ -1,9 +1,9 @@
 /**
- * Tests for the minimal Objectstore HTTP client.
+ * Tests for the CLI adapter over the `@sentry/api/client` Objectstore client.
  *
- * `customFetch` is mocked so URL construction, the `x-os-auth` header, the
- * batch request/response protocol, and PUT request shape can be verified
- * without a network.
+ * The batch protocol itself is tested in `@sentry/api`. These tests check what
+ * the CLI adds: requests go through `customFetch`, files are read from disk,
+ * and failures surface as CLI `ApiError`s.
  */
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -16,11 +16,8 @@ const { customFetchMock } = vi.hoisted(() => ({ customFetchMock: vi.fn() }));
 vi.mock("../../src/lib/custom-ca.js", () => ({ customFetch: customFetchMock }));
 
 import {
-  buildObjectUrl,
-  encodeHeaderValue,
   findExistingObjects,
   type ObjectstoreConfig,
-  putObject,
   putObjects,
 } from "../../src/lib/objectstore.js";
 
@@ -35,21 +32,14 @@ const config: ObjectstoreConfig = {
   expirationPolicy: "ttl:30d",
 };
 
+const BATCH_URL =
+  "https://objectstore.example.com/v1/objects:batch/preprod_snapshots/org=123;project=456/";
+
 beforeEach(() => {
   customFetchMock.mockReset();
 });
 afterEach(() => {
   vi.restoreAllMocks();
-});
-
-describe("buildObjectUrl", () => {
-  test("joins usecase, scope, and key (stripping a trailing slash)", () => {
-    expect(
-      buildObjectUrl({ ...config, usecase: "preprod" }, "123/456/abc"),
-    ).toBe(
-      "https://objectstore.example.com/v1/objects/preprod/org=123;project=456/123/456/abc",
-    );
-  });
 });
 
 /** Build a batch response in the server's `multipart/form-data` shape. */
@@ -75,24 +65,15 @@ function batchResponse(
 
 /** Decode a captured batch request body as multipart form data. */
 async function sentParts(init: RequestInit): Promise<FormDataEntryValue[]> {
-  const headers = init.headers as Record<string, string>;
+  const headers = new Headers(init.headers);
   const form = await new Response(init.body as BodyInit, {
-    headers: { "content-type": headers["content-type"] as string },
+    headers: { "content-type": headers.get("content-type") as string },
   }).formData();
   return form.getAll("part");
 }
 
-describe("encodeHeaderValue", () => {
-  test("leaves visible ASCII alone and escapes %, controls, and non-ASCII", () => {
-    expect(encodeHeaderValue("1/2/abc")).toBe("1/2/abc");
-    expect(encodeHeaderValue("100% done")).toBe("100%25 done");
-    expect(encodeHeaderValue("r\u00e9port")).toBe("r%C3%A9port");
-    expect(encodeHeaderValue("a\nb")).toBe("a%0Ab");
-  });
-});
-
 describe("findExistingObjects", () => {
-  test("sends all HEADs in one batch request and returns existing keys", async () => {
+  test("sends HEADs as one batch through customFetch", async () => {
     customFetchMock.mockResolvedValue(
       batchResponse([
         { index: 1, status: "404 Not Found" },
@@ -106,70 +87,39 @@ describe("findExistingObjects", () => {
     expect([...existing].sort()).toEqual(["k0", "k2"]);
     expect(customFetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = customFetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(
-      "https://objectstore.example.com/v1/objects:batch/preprod_snapshots/org=123;project=456/",
-    );
+    expect(url).toBe(BATCH_URL);
     expect(init.method).toBe("POST");
-    expect(init.headers["x-os-auth"]).toBe("Bearer jwt-token");
+    expect(new Headers(init.headers).get("x-os-auth")).toBe("Bearer jwt-token");
     expect(await sentParts(init)).toHaveLength(3);
-    const raw = Buffer.from(init.body).toString();
-    expect(raw).toContain("x-sn-batch-operation-kind: head\r\n");
-    expect(raw).toContain("x-sn-batch-operation-key: k1\r\n");
   });
 
-  test("splits more than 1000 keys into batches sent concurrently", async () => {
-    let inFlight = 0;
-    let maxInFlight = 0;
-    customFetchMock.mockImplementation(async (_url, init: RequestInit) => {
-      inFlight += 1;
-      maxInFlight = Math.max(maxInFlight, inFlight);
-      const count = (await sentParts(init)).length;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      inFlight -= 1;
-      return batchResponse(
-        Array.from({ length: count }, (_, index) => ({
-          index,
-          status: "200 OK",
-        })),
-      );
-    });
-    const keys = Array.from({ length: 2500 }, (_, i) => `k${i}`);
+  test("throws a CLI ApiError with the request URL when the batch fails", async () => {
+    customFetchMock.mockResolvedValue(
+      new Response(null, { status: 429, statusText: "Too Many Requests" }),
+    );
 
-    const existing = await findExistingObjects(config, keys);
+    const error = await findExistingObjects(config, ["k0"]).catch((e) => e);
 
-    expect(existing.size).toBe(2500);
-    expect(customFetchMock).toHaveBeenCalledTimes(3);
-    expect(maxInFlight).toBe(3);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.status).toBe(429);
+    expect(error.endpoint).toBe(BATCH_URL);
   });
 
-  test("throws on a per-operation error other than 404", async () => {
+  test("throws a CLI ApiError for a failed operation inside a batch", async () => {
     customFetchMock.mockResolvedValue(
       batchResponse([
         { index: 0, status: "200 OK" },
         { index: 1, status: "429 Too Many Requests", body: "slow down" },
       ]),
     );
-    await expect(findExistingObjects(config, ["k0", "k1"])).rejects.toThrow(
-      ApiError,
-    );
-  });
 
-  test("throws when the batch request itself fails", async () => {
-    customFetchMock.mockResolvedValue(
-      new Response(null, { status: 429, statusText: "Too Many Requests" }),
+    const error = await findExistingObjects(config, ["k0", "k1"]).catch(
+      (e) => e,
     );
-    const error = await findExistingObjects(config, ["k0"]).catch((e) => e);
+
     expect(error).toBeInstanceOf(ApiError);
     expect(error.status).toBe(429);
-  });
-
-  test("throws when the response is missing an operation", async () => {
-    customFetchMock.mockResolvedValue(
-      batchResponse([{ index: 0, status: "200 OK" }]),
-    );
-    await expect(findExistingObjects(config, ["k0", "k1"])).rejects.toThrow(
-      ApiError,
-    );
+    expect(error.endpoint).toMatch(/\/v1\/objects\/preprod_snapshots\/.*\/k1$/);
   });
 });
 
@@ -191,7 +141,7 @@ describe("putObjects", () => {
     customFetchMock.mockImplementation(async (_url, init: RequestInit) =>
       init.method === "POST"
         ? batchResponse([{ index: 0, status: "201 Created" }])
-        : { ok: true, status: 201 },
+        : new Response(null, { status: 201 }),
     );
 
     await putObjects(config, [
@@ -200,17 +150,13 @@ describe("putObjects", () => {
     ]);
 
     expect(customFetchMock).toHaveBeenCalledTimes(2);
-    const [, batchInit] = customFetchMock.mock.calls.find(
+    const [batchUrl, batchInit] = customFetchMock.mock.calls.find(
       ([, init]) => init.method === "POST",
     ) ?? [undefined, undefined];
+    expect(batchUrl).toBe(BATCH_URL);
     const parts = await sentParts(batchInit);
-    expect(parts).toHaveLength(1);
     // Parts without a filename decode as strings.
-    expect(parts[0]).toBe("\x01\x02\x03");
-    const raw = Buffer.from(batchInit.body).toString("latin1");
-    expect(raw).toContain("x-sn-batch-operation-kind: insert\r\n");
-    expect(raw).toContain("x-sn-batch-operation-key: 1/2/small\r\n");
-    expect(raw).toContain("x-sn-expiration: ttl:30d\r\n");
+    expect(parts).toEqual(["\x01\x02\x03"]);
 
     const [putUrl, putInit] = customFetchMock.mock.calls.find(
       ([, init]) => init.method === "PUT",
@@ -221,43 +167,25 @@ describe("putObjects", () => {
     expect(putInit.body.byteLength).toBe(1024 * 1024 + 1);
   });
 
-  test("throws when an insert in the batch fails", async () => {
+  test("throws a CLI ApiError when an insert in the batch fails", async () => {
     const small = join(dir, "small.png");
     await writeFile(small, new Uint8Array([1]));
     customFetchMock.mockResolvedValue(
       batchResponse([{ index: 0, status: "500 Internal Server Error" }]),
     );
+
+    const error = await putObjects(config, [{ key: "k", path: small }]).catch(
+      (e) => e,
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.status).toBe(500);
+  });
+
+  test("fails before any request when a file is missing", async () => {
     await expect(
-      putObjects(config, [{ key: "k", path: small }]),
-    ).rejects.toThrow(ApiError);
-  });
-});
-
-describe("putObject", () => {
-  test("PUTs the body with auth + expiration headers", async () => {
-    customFetchMock.mockResolvedValue({ ok: true, status: 200 });
-    const body = new Uint8Array([1, 2, 3]);
-    await putObject(config, "123/456/abc", body);
-
-    const [url, init] = customFetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(
-      "https://objectstore.example.com/v1/objects/preprod_snapshots/org=123;project=456/123/456/abc",
-    );
-    expect(init.method).toBe("PUT");
-    expect(init.headers["x-os-auth"]).toBe("Bearer jwt-token");
-    expect(init.headers["x-sn-expiration"]).toBe("ttl:30d");
-    expect(init.body).toBe(body);
-    expect(init.signal).toBeInstanceOf(AbortSignal);
-  });
-
-  test("throws on a non-2xx response", async () => {
-    customFetchMock.mockResolvedValue({
-      ok: false,
-      status: 413,
-      statusText: "too large",
-    });
-    await expect(putObject(config, "k", new Uint8Array([0]))).rejects.toThrow(
-      ApiError,
-    );
+      putObjects(config, [{ key: "k", path: join(dir, "missing.png") }]),
+    ).rejects.toThrow(/ENOENT/);
+    expect(customFetchMock).not.toHaveBeenCalled();
   });
 });
