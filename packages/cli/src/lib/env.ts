@@ -27,10 +27,10 @@ export function withEnv<T>(env: NodeJS.ProcessEnv, callback: () => T): T {
 }
 
 /**
- * Internal env var `createSentrySDK({ persist: false })` sets for one
- * invocation. With it set, the invocation reads and writes nothing local: the
- * database is a null store, and the response cache, `.sentryclirc` files,
- * custom CA files, version checks, and telemetry are off.
+ * Internal env var `createSentrySDK()` sets for each invocation unless it's
+ * created with `persist: true`. With it set, the invocation reads `cli.db`
+ * through a read-only view and writes no local state: the response cache, the
+ * pagination cursor stack, and version checks are off.
  */
 export const NO_PERSISTENCE_ENV_VAR = "SENTRY_CLI_NO_PERSISTENCE";
 

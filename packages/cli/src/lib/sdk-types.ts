@@ -67,12 +67,12 @@ export type SentryOptions = {
   env?: Readonly<Record<string, string | undefined>>;
 
   /**
-   * Keep local state between calls (default `true`). When `false`, nothing is
-   * read from or written to disk: no `cli.db` (stored logins, defaults,
-   * caches), no response cache, no `.sentryclirc` files, no custom CA files,
-   * no version check, and no telemetry. Pass `token` with it. List commands
-   * then reject `cursor: "next"` and `"prev"`; pass the `nextCursor` of the
-   * previous result instead.
+   * Write local state, as the CLI does (default `false`). When off, calls
+   * still read what the CLI stored in `cli.db` (logins, defaults, cached
+   * lookups) and `.sentryclirc` files, but write nothing: no `cli.db` writes
+   * (and no `cli.db` is created), no response cache, and no version check.
+   * List commands then reject `cursor: "next"` and `"prev"`; pass the
+   * `nextCursor` of the previous result instead.
    */
   persist?: boolean;
 

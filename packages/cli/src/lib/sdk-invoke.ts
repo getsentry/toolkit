@@ -40,7 +40,7 @@ function buildIsolatedEnv(
   jsonByDefault = true,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...(options?.env ?? process.env) };
-  if (options?.persist === false) {
+  if (options?.persist !== true) {
     env[NO_PERSISTENCE_ENV_VAR] = "1";
   }
   if (options?.token) {

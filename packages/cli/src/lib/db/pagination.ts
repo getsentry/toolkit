@@ -188,10 +188,10 @@ export function resolveCursor(
     return { cursor: undefined, direction: "first" };
   }
 
-  // "next" and "prev" read the stored cursor stack, which isn't kept
+  // "next" and "prev" read the stored cursor stack, which isn't written
   if (isPersistenceDisabled()) {
     throw new ValidationError(
-      `--cursor ${cursorFlag} needs saved pagination state, which isn't kept with persistence off. Pass the nextCursor from the previous result instead.`,
+      `--cursor ${cursorFlag} needs saved pagination state, which SDK calls only keep with persist: true. Pass the nextCursor from the previous result instead.`,
       "cursor",
     );
   }

@@ -1,17 +1,27 @@
 /**
- * `createSentrySDK({ persist: false })`: commands run against the API with no
- * config directory, and nothing is written to disk.
+ * `createSentrySDK()` persistence: by default commands read what the CLI
+ * stored and `.sentryclirc` files, but write nothing to disk.
  */
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import createSentrySDK from "../../src/index.js";
-import { closeDatabase } from "../../src/lib/db/index.js";
+import {
+  resetAuthRowCache,
+  resetAuthTokenCache,
+  setAuthToken,
+} from "../../src/lib/db/auth.js";
+import { closeDatabase, getDbPath } from "../../src/lib/db/index.js";
 import { withEnv } from "../../src/lib/env.js";
-import { NO_PERSISTENCE_ENV_VAR } from "../../src/lib/env.js";
-import { computeTelemetryEffective } from "../../src/lib/telemetry.js";
 import { mockFetch } from "../helpers.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -27,7 +37,11 @@ function json(body: unknown, headers: Record<string, string> = {}): Response {
   });
 }
 
-type RecordedRequest = { method: string; url: URL };
+type RecordedRequest = {
+  method: string;
+  url: URL;
+  authorization: string | null;
+};
 
 /** Whether a request went to sentry.io (or one of its region hosts). */
 function isSentryHost({ url }: RecordedRequest): boolean {
@@ -39,7 +53,11 @@ function sentryApi(requests: RecordedRequest[]): typeof fetch {
   return mockFetch(async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
-    requests.push({ method: request.method, url });
+    requests.push({
+      method: request.method,
+      url,
+      authorization: request.headers.get("Authorization"),
+    });
     const path = url.pathname;
     if (path === "/api/0/organizations/acme/") {
       return json({ id: "1", slug: "acme", name: "Acme" });
@@ -84,7 +102,7 @@ function sentryApi(requests: RecordedRequest[]): typeof fetch {
   });
 }
 
-describe("createSentrySDK({ persist: false })", () => {
+describe("createSentrySDK() without persist", () => {
   let root: string;
   let configDir: string;
   let requests: RecordedRequest[];
@@ -104,13 +122,30 @@ describe("createSentrySDK({ persist: false })", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
+  /** The base env for each call, as `test/preload.ts` sets for the rest. */
+  function testEnv() {
+    return { SENTRY_CONFIG_DIR: configDir, SENTRY_CLI_NO_TELEMETRY: "1" };
+  }
+
   function sdk() {
     return createSentrySDK({
       token: "sntrys_no-persistence-test",
-      persist: false,
       cwd: root,
-      env: { SENTRY_CONFIG_DIR: configDir },
+      env: testEnv(),
     });
+  }
+
+  /** Store a login in `cli.db` the way `sentry auth login` does. */
+  function storeLogin(token: string): string {
+    mkdirSync(configDir, { recursive: true });
+    const dbPath = withEnv(testEnv(), () => {
+      setAuthToken(token);
+      return getDbPath();
+    });
+    closeDatabase();
+    resetAuthTokenCache();
+    resetAuthRowCache();
+    return dbPath;
   }
 
   test("runs a read command", async () => {
@@ -146,7 +181,7 @@ describe("createSentrySDK({ persist: false })", () => {
 
     await expect(
       client.team.list({ orgProject: "acme/", limit: 1, cursor: "next" }),
-    ).rejects.toThrow(/persistence off/);
+    ).rejects.toThrow(/persist: true/);
     expect(existsSync(configDir)).toBe(false);
   });
 
@@ -167,23 +202,42 @@ describe("createSentrySDK({ persist: false })", () => {
     expect(requests.every(isSentryHost)).toBe(true);
   });
 
-  test("ignores .sentryclirc", async () => {
+  test("reads .sentryclirc", async () => {
     writeFileSync(
       join(root, ".sentryclirc"),
-      "[defaults]\nurl = https://rc.example.com\n",
+      "[defaults]\norg = acme\nproject = frontend\n",
     );
 
-    await sdk().project.view({ orgProject: "acme/frontend" });
+    await sdk().project.view({});
 
-    expect(requests.length).toBeGreaterThan(0);
-    expect(requests.every(isSentryHost)).toBe(true);
+    expect(
+      requests.some((r) => r.url.pathname === "/api/0/projects/acme/frontend/"),
+    ).toBe(true);
+    expect(existsSync(configDir)).toBe(false);
   });
 
-  test("turns telemetry off", () => {
-    const effective = withEnv({ [NO_PERSISTENCE_ENV_VAR]: "1" }, () =>
-      computeTelemetryEffective(),
-    );
+  test("reads a stored login and leaves cli.db unchanged", async () => {
+    const dbPath = storeLogin("sntrys_stored-login");
+    const before = readFileSync(dbPath);
 
-    expect(effective).toEqual({ enabled: false, source: "persistence" });
+    await createSentrySDK({
+      cwd: root,
+      env: testEnv(),
+    }).project.view({ orgProject: "acme/frontend" });
+    closeDatabase();
+
+    expect(requests.at(-1)?.authorization).toBe("Bearer sntrys_stored-login");
+    expect(readFileSync(dbPath).equals(before)).toBe(true);
+  });
+
+  test("writes local state with persist: true", async () => {
+    await createSentrySDK({
+      token: "sntrys_no-persistence-test",
+      persist: true,
+      cwd: root,
+      env: testEnv(),
+    }).project.view({ orgProject: "acme/frontend" });
+
+    expect(existsSync(configDir)).toBe(true);
   });
 });

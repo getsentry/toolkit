@@ -66,7 +66,7 @@ const INTERNAL_ENV_VARS = new Map<string, string>([
   ],
   [
     "SENTRY_CLI_NO_PERSISTENCE",
-    "set by createSentrySDK({ persist: false }) for one invocation",
+    "set by createSentrySDK() unless persist: true, for one invocation",
   ],
   ["SENTRY_RN_BUNDLE_COMMAND", "internal react-native wrapper plumbing"],
   ["SENTRY_RN_NO_DEBUG_ID", "internal react-native wrapper plumbing"],

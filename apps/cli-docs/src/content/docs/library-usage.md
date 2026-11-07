@@ -175,7 +175,7 @@ const sdk = createSentrySDK({ token: "...", text: true, cwd: "/my/project" });
 | `cwd` | `string` | `process.cwd()` | Working directory for DSN auto-detection |
 | `headers` | `Record<string, string>` | — | Extra HTTP headers for self-hosted instances behind a reverse proxy (same as [`SENTRY_CUSTOM_HEADERS`](../configuration/#sentry_custom_headers)); ignored for sentry.io |
 | `env` | `Record<string, string \| undefined>` | `process.env` | Environment each invocation starts from; pass `{}` to ignore `process.env` |
-| `persist` | `boolean` | `true` | Keep local state between calls; see [No persistence](#no-persistence) |
+| `persist` | `boolean` | `false` | Write local state like the CLI does; see [Persistence](#persistence) |
 | `signal` | `AbortSignal` | — | Abort signal for cancelling streaming commands |
 
 ## Return Values
@@ -228,23 +228,34 @@ Concurrent calls are not supported in the current version.
 Calls should be sequential (awaited one at a time).
 :::
 
-## No persistence
+## Persistence
 
-By default the SDK keeps the same local state as the CLI: stored logins,
-defaults, and caches in the config directory, plus the response cache. Pass
-`persist: false` to keep nothing:
+By default the SDK reads what the CLI stored, but writes nothing. Calls use
+stored logins and defaults from a `sentry auth login` on the same machine, and
+`.sentryclirc` files, but don't create or change `cli.db`, and the response
+cache and version check are off. When there's no `cli.db`, or it can't be
+opened, calls run without it.
+
+Pass `persist: true` to write local state the way the CLI does:
 
 ```typescript
-const sdk = createSentrySDK({ token: "sntrys_...", persist: false, env: {} });
+const sdk = createSentrySDK({ persist: true });
 ```
 
-Each call then reads and writes no local files: no `cli.db`, no response
-cache, no `.sentryclirc`, no custom CA file, no version check, and no
-telemetry. Pass a `token`, since stored logins aren't read.
+Without it, list commands reject `cursor: "next"` and `"prev"`, since the
+saved cursor stack isn't kept. Pass back the `nextCursor` from the previous
+result instead.
 
-List commands return a `nextCursor`. Pass it back as `cursor` for the next
-page: `cursor: "next"` and `"prev"` need the saved cursor stack and are
-rejected.
+On a server, pass a `token`, and an `env` with only what the call needs so
+the server's own environment (such as a `SENTRY_DSN`) doesn't change which
+org and project a command targets:
+
+```typescript
+const sdk = createSentrySDK({
+  token: "sntrys_...",
+  env: { SENTRY_CLI_NO_TELEMETRY: "1" },
+});
+```
 
 ## Comparison with Subprocess
 

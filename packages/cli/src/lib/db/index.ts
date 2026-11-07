@@ -4,7 +4,7 @@
  * bundled WASM driver (`node-sqlite3-wasm`, Node < 22.15) behind one API.
  */
 
-import { chmodSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -18,7 +18,7 @@ const _require = createRequire(import.meta.url);
 const log = logger.withTag("db");
 
 import { migrateFromJson } from "./migration.js";
-import { nullDatabase } from "./null-store.js";
+import { nullDatabase, readOnlyView } from "./read-only.js";
 import {
   createResilientDatabase,
   isReadonlyHandlingSilenced,
@@ -135,13 +135,41 @@ function setDbPermissions(): void {
  * a read-only config directory, a corrupt file), this warns and uses an
  * in-memory database for the rest of the process, so the command still runs.
  *
- * An invocation with persistence off gets the null store: no file is opened
- * and nothing is kept, not even in memory.
+ * An invocation with persistence off gets a read-only view instead (see
+ * {@link getReadOnlyDatabase}).
  */
 export function getDatabase(): DatabaseHandle {
   if (isPersistenceDisabled()) {
+    return getReadOnlyDatabase();
+  }
+  return getSharedDatabase(true);
+}
+
+/**
+ * The database for an invocation with persistence off: it reads what the CLI
+ * stored (logins, defaults, cached lookups) and writes nothing. With no
+ * `cli.db` on disk, or one that won't open, it's the null store, so this
+ * never creates the file or warns.
+ */
+function getReadOnlyDatabase(): DatabaseHandle {
+  const dbPath = getDbPath();
+  if (detached || (dbOpenedPath !== dbPath && !existsSync(dbPath))) {
     return nullDatabase;
   }
+  try {
+    const shared = getSharedDatabase(false);
+    return openError === undefined ? readOnlyView(shared) : nullDatabase;
+  } catch (error) {
+    log.debug(`Not reading the local database: ${stringifyUnknown(error)}`);
+    return nullDatabase;
+  }
+}
+
+/**
+ * The process-wide connection, opened on first use. `warn` says whether a
+ * failed open warns or only logs at debug level.
+ */
+function getSharedDatabase(warn: boolean): Database {
   const dbPath = detached ? ":memory:" : getDbPath();
 
   // Auto-invalidate if config directory changed (for tests)
@@ -166,7 +194,7 @@ export function getDatabase(): DatabaseHandle {
     const message =
       `Could not open the local database at ${dbPath}: ${stringifyUnknown(error)}. ` +
       "Caching and settings won't persist for this run.";
-    if (isReadonlyHandlingSilenced()) {
+    if (!warn || isReadonlyHandlingSilenced()) {
       log.debug(message);
     } else {
       log.warn(message);
@@ -239,15 +267,13 @@ declare const SENTRY_CLI_COMPLETION_BUILD: boolean | undefined;
 /**
  * The telemetry module, required lazily so the database modules never import
  * `@sentry/node` (~100ms). `undefined` when telemetry is off: the `__complete`
- * fast path sets `SENTRY_CLI_NO_TELEMETRY=1` and never loads it, and an
- * invocation with persistence off has no telemetry.
+ * fast path sets `SENTRY_CLI_NO_TELEMETRY=1` and never loads it.
  */
 function lazyTelemetry(): typeof import("../telemetry.js") | undefined {
   if (
     (typeof SENTRY_CLI_COMPLETION_BUILD !== "undefined" &&
       SENTRY_CLI_COMPLETION_BUILD) ||
-    getEnv().SENTRY_CLI_NO_TELEMETRY === "1" ||
-    isPersistenceDisabled()
+    getEnv().SENTRY_CLI_NO_TELEMETRY === "1"
   ) {
     return;
   }
