@@ -22,7 +22,7 @@ import {
   prefetchNightlyPatches,
   prefetchStablePatches,
 } from "./delta-upgrade.js";
-import { getEnv } from "./env.js";
+import { getEnv, isPersistenceDisabled } from "./env.js";
 import { isUserError } from "./errors.js";
 import { cyan, muted } from "./formatters/colors.js";
 import { GLOBAL_FLAGS } from "./global-flags.js";
@@ -452,11 +452,12 @@ export function resetUpdateNotificationState(): void {
 }
 
 /**
- * Check if update checking is disabled via environment variable.
+ * Check if update checking is disabled via environment variable, or because
+ * persistence is off for this invocation.
  * Checked at runtime to support test isolation.
  */
 function isUpdateCheckDisabled(): boolean {
-  return getEnv().SENTRY_CLI_NO_UPDATE_CHECK === "1";
+  return getEnv().SENTRY_CLI_NO_UPDATE_CHECK === "1" || isPersistenceDisabled();
 }
 
 /**

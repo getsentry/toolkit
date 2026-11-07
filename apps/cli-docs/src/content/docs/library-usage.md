@@ -174,6 +174,8 @@ const sdk = createSentrySDK({ token: "...", text: true, cwd: "/my/project" });
 | `text` | `boolean` | `false` | Return human-readable text instead of parsed JSON (`run()` only) |
 | `cwd` | `string` | `process.cwd()` | Working directory for DSN auto-detection |
 | `headers` | `Record<string, string>` | — | Extra HTTP headers for self-hosted instances behind a reverse proxy (same as [`SENTRY_CUSTOM_HEADERS`](../configuration/#sentry_custom_headers)); ignored for sentry.io |
+| `env` | `Record<string, string \| undefined>` | `process.env` | Environment each invocation starts from; pass `{}` to ignore `process.env` |
+| `persist` | `boolean` | `false` | Write local state like the CLI does; see [Persistence](#persistence) |
 | `signal` | `AbortSignal` | — | Abort signal for cancelling streaming commands |
 
 ## Return Values
@@ -225,6 +227,35 @@ copy of the environment. This means:
 Concurrent calls are not supported in the current version.
 Calls should be sequential (awaited one at a time).
 :::
+
+## Persistence
+
+By default the SDK reads what the CLI stored, but writes nothing. Calls use
+stored logins and defaults from a `sentry auth login` on the same machine, and
+`.sentryclirc` files, but don't create or change `cli.db`, and the response
+cache and version check are off. When there's no `cli.db`, or it can't be
+opened, calls run without it.
+
+Pass `persist: true` to write local state the way the CLI does:
+
+```typescript
+const sdk = createSentrySDK({ persist: true });
+```
+
+Without it, list commands reject `cursor: "next"` and `"prev"`, since the
+saved cursor stack isn't kept. Pass back the `nextCursor` from the previous
+result instead.
+
+On a server, pass a `token`, and an `env` with only what the call needs so
+the server's own environment (such as a `SENTRY_DSN`) doesn't change which
+org and project a command targets:
+
+```typescript
+const sdk = createSentrySDK({
+  token: "sntrys_...",
+  env: { SENTRY_CLI_NO_TELEMETRY: "1" },
+});
+```
 
 ## Comparison with Subprocess
 

@@ -597,3 +597,12 @@ export class Database {
     };
   }
 }
+
+/**
+ * The part of {@link Database} that `getDatabase()` callers use. The null
+ * store (`null-store.ts`) implements it without a SQLite driver.
+ */
+export type DatabaseHandle = Pick<
+  Database,
+  "exec" | "query" | "transaction" | "close"
+>;

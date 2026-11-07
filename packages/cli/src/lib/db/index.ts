@@ -4,12 +4,12 @@
  * bundled WASM driver (`node-sqlite3-wasm`, Node < 22.15) behind one API.
  */
 
-import { chmodSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DB_FILENAME, resolveConfigDir } from "../config-dir.js";
-import { getEnv } from "../env.js";
+import { getEnv, isPersistenceDisabled } from "../env.js";
 import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 
@@ -18,12 +18,13 @@ const _require = createRequire(import.meta.url);
 const log = logger.withTag("db");
 
 import { migrateFromJson } from "./migration.js";
+import { nullDatabase, readOnlyView } from "./read-only.js";
 import {
   createResilientDatabase,
   isReadonlyHandlingSilenced,
 } from "./resilient.js";
 import { initSchema, runMigrations } from "./schema.js";
-import { Database } from "./sqlite.js";
+import { Database, type DatabaseHandle } from "./sqlite.js";
 
 export {
   CONFIG_DIR_ENV_VAR,
@@ -133,8 +134,44 @@ function setDbPermissions(): void {
  * disk. When `cli.db` can't be opened (a WAL file the WASM driver can't read,
  * a read-only config directory, a corrupt file), this warns and uses an
  * in-memory database for the rest of the process, so the command still runs.
+ *
+ * An invocation with persistence off gets a read-only view instead (see
+ * {@link getReadOnlyDatabase}).
  */
-export function getDatabase(): Database {
+export function getDatabase(): DatabaseHandle {
+  if (isPersistenceDisabled()) {
+    return getReadOnlyDatabase();
+  }
+  return getSharedDatabase({ fallback: true });
+}
+
+/**
+ * The database for an invocation with persistence off: it reads what the CLI
+ * stored (logins, defaults, cached lookups) and writes nothing. With no
+ * `cli.db` on disk, or one that won't open, it's the null store, so this
+ * never creates the file or warns.
+ */
+function getReadOnlyDatabase(): DatabaseHandle {
+  const dbPath = getDbPath();
+  if (detached || (dbOpenedPath !== dbPath && !existsSync(dbPath))) {
+    return nullDatabase;
+  }
+  try {
+    const shared = getSharedDatabase({ fallback: false });
+    return openError === undefined ? readOnlyView(shared) : nullDatabase;
+  } catch (error) {
+    log.debug(`Not reading the local database: ${stringifyUnknown(error)}`);
+    return nullDatabase;
+  }
+}
+
+/**
+ * The process-wide connection, opened on first use. With `fallback`, a failed
+ * open warns and installs an in-memory database for the rest of the process.
+ * Without it, the error is thrown and nothing is installed, so a read-only
+ * caller can't leave a later persisting call on the in-memory copy.
+ */
+function getSharedDatabase({ fallback }: { fallback: boolean }): Database {
   const dbPath = detached ? ":memory:" : getDbPath();
 
   // Auto-invalidate if config directory changed (for tests)
@@ -153,7 +190,7 @@ export function getDatabase(): Database {
   try {
     db = openDatabase(dbPath);
   } catch (error) {
-    if (dbPath === ":memory:") {
+    if (dbPath === ":memory:" || !fallback) {
       throw error;
     }
     const message =
@@ -286,6 +323,9 @@ export function detachDatabase(): void {
  * auto-repair logic (which would cause infinite loops).
  */
 export function getRawDatabase(): Database {
+  if (isPersistenceDisabled()) {
+    throw new Error("The local database is off for this invocation");
+  }
   if (!rawDb) {
     // Ensure database is initialized
     getDatabase();
