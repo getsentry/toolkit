@@ -73,7 +73,7 @@ function reportBestEffortFailure(message: string, error: unknown): void {
  * @returns All projects in the organization
  */
 export async function listProjects(orgSlug: string): Promise<SentryProject[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const { data: allResults } = await autoPaginate(async (cursor) => {
     const result = await listOrganizationProjects({
@@ -123,7 +123,7 @@ export async function listProjectsPaginated(
   orgSlug: string,
   options: { cursor?: string; perPage?: number; query?: string } = {},
 ): Promise<PaginatedResponse<SentryProject[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const perPage = Math.min(
     options.perPage ?? API_MAX_PER_PAGE,
     API_MAX_PER_PAGE,
@@ -218,7 +218,7 @@ export async function createProject(
   teamSlug: string,
   body: CreateProjectBody,
 ): Promise<SentryProject> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await createTeamProject({
     ...config,
     path: {
@@ -376,7 +376,7 @@ export async function createProjectWithAutoTeam(
   orgSlug: string,
   body: CreateProjectBody,
 ): Promise<CreatedAutoTeamProjectDetails> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await createOrganizationProject({
     ...config,
     path: { organization_id_or_slug: orgSlug },
@@ -407,7 +407,7 @@ export async function deleteProject(
   orgSlug: string,
   projectSlug: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await sdkDeleteProject({
     ...config,
     path: {
@@ -632,7 +632,7 @@ export async function getProject(
   orgSlug: string,
   projectSlug: string,
 ): Promise<SentryProject> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   // `collapse=organization` is server-supported but absent from the OpenAPI
   // spec, so the SDK types `query` as `never` on `GetProjectData`. Cast just
@@ -713,7 +713,7 @@ export async function listProjectDsns(
   projectSlug: string,
   options: { limit?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<ProjectDsn[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   return await paginate(options, async (perPage, cursor) => {
     // The SDK omits the shared per_page parameter supported by this endpoint.
@@ -747,7 +747,7 @@ export async function listOrganizationDsns(
   orgSlug: string,
   options: { limit?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<(ProjectDsn & { project: string })[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const projectLookups = new Map<number, Promise<string>>();
   const limitProjectLookups = pLimit(ORG_FANOUT_CONCURRENCY);
 
@@ -796,7 +796,7 @@ export async function getProjectKeys(
   projectSlug: string,
   options: { status?: "active" | "inactive" } = {},
 ): Promise<ProjectKey[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listProjectKeys({
     ...config,

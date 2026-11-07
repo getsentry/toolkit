@@ -210,7 +210,7 @@ export async function listIssuesPaginated(
     projects === undefined && projectSlug ? `project:${projectSlug}` : "";
   const fullQuery = [projectFilter, options.query].filter(Boolean).join(" ");
 
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationIssues({
     ...config,
@@ -349,7 +349,7 @@ export async function getIssueInOrg(
 ): Promise<SentryIssue> {
   const collapse = toIssueDetailsCollapse(options?.collapse);
   const result = await getOrganizationIssue({
-    ...(await getOrgSdkConfig(orgSlug)),
+    ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug, issue_id: issueId },
     query: collapse ? { collapse } : undefined,
   });
@@ -371,7 +371,7 @@ export async function getIssueByShortId(
   options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
   const normalizedShortId = shortId.toUpperCase();
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   let data: { group?: SentryIssue };
   try {

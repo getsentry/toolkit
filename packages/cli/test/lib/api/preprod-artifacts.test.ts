@@ -44,7 +44,7 @@ vi.mock("../../../src/lib/api/infrastructure.js", async (importOriginal) => {
     ...actual,
     apiRequestToRegion: apiRequestToRegionMock,
     apiRequestToRegionNoContent: apiRequestToRegionNoContentMock,
-    getOrgSdkConfig: vi.fn(async () => ({
+    getOrgSdkConfig: vi.fn(() => ({
       baseUrl: "https://us.sentry.io",
       fetch: sdkFetchMock,
       throwOnError: false as const,

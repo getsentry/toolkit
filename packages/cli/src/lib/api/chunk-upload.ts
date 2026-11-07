@@ -156,7 +156,7 @@ export type UploadEncoding = (typeof UPLOAD_CODECS)[number];
 export async function getChunkUploadOptions(
   orgSlug: string,
 ): Promise<ChunkServerOptions> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await getOrganizationChunkUploadOptions({
     ...config,
     path: { organization_id_or_slug: orgSlug },
@@ -603,7 +603,7 @@ export async function assembleDebugFiles(
   project: string,
   body: NonNullable<AssembleProjectDebugFilesData["body"]>,
 ): Promise<DifAssembleResponse> {
-  const config = await getOrgSdkConfig(org);
+  const config = getOrgSdkConfig();
   const result = await assembleProjectDebugFiles({
     ...config,
     path: { organization_id_or_slug: org, project_id_or_slug: project },
@@ -628,7 +628,7 @@ export async function assembleArtifactBundle(
   org: string,
   body: NonNullable<AssembleOrganizationArtifactBundleData["body"]>,
 ): Promise<AssembleResponse> {
-  const config = await getOrgSdkConfig(org);
+  const config = getOrgSdkConfig();
   const result = await assembleOrganizationArtifactBundle({
     ...config,
     path: { organization_id_or_slug: org },

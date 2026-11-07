@@ -84,7 +84,7 @@ export async function getBuildInstallDetails(
   org: string,
   buildId: string,
 ): Promise<BuildInstallDetails> {
-  const config = await getOrgSdkConfig(org);
+  const config = getOrgSdkConfig();
   const result = await getOrganizationPreprodArtifactInstallDetails({
     ...config,
     path: { organization_id_or_slug: org, artifact_id: buildId },
@@ -391,7 +391,7 @@ export async function getLatestBaseSnapshot(
   appId: string,
   opts: { branch?: string; project?: string } = {},
 ): Promise<LatestBaseSnapshot | null> {
-  const config = await getOrgSdkConfig(org);
+  const config = getOrgSdkConfig();
   try {
     const result = await getOrganizationPreprodArtifactSnapshotLatestBase({
       ...config,

@@ -260,7 +260,7 @@ export async function getReplay(
   orgSlug: string,
   replayId: string,
 ): Promise<ReplayDetails> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await getOrganizationReplay({
     ...config,
     path: { organization_id_or_slug: orgSlug, replay_id: replayId },
@@ -379,7 +379,7 @@ async function fetchReplayRecordingSegmentsPage(
   options: FetchReplayRecordingSegmentsPageOptions,
 ): Promise<PaginatedResponse<ListProjectReplayRecordingSegmentsResponse>> {
   const { cursor, orgSlug, projectSlugOrId, replayId } = options;
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await listProjectReplayRecordingSegments({
     ...config,
     path: {
@@ -412,7 +412,7 @@ export async function listReplayIdsForIssue(
 ): Promise<string[]> {
   const normalizedIssueId = String(issueId);
   const result = await getOrganizationReplayCount({
-    ...(await getOrgSdkConfig(orgSlug)),
+    ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug },
     query: {
       data_source: "errors",

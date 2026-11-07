@@ -71,7 +71,7 @@ export async function triggerRootCauseAnalysis(
   issueId: string,
 ): Promise<{ run_id?: number; sentry_run_id: string | null }> {
   const result = await startOrganizationIssueAutofix({
-    ...(await getOrgSdkConfig(orgSlug)),
+    ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug, issue_id: issueId },
     body: { step: "root_cause", referrer: "api.cli" },
   });
@@ -94,7 +94,7 @@ export async function getAutofixState(
   issueId: string,
 ): Promise<AutofixState | null> {
   const result = await getOrganizationIssueAutofixState({
-    ...(await getOrgSdkConfig(orgSlug)),
+    ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug, issue_id: issueId },
   });
   const data = unwrapValidatedResult(
@@ -134,7 +134,7 @@ export async function triggerSolutionPlanning(
     typeof runId === "string" ? { sentry_run_id: runId } : { run_id: runId };
 
   const result = await startOrganizationIssueAutofix({
-    ...(await getOrgSdkConfig(orgSlug)),
+    ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug, issue_id: issueId },
     body: { step: "solution", ...runIdBodyField, referrer: "api.cli" },
   });

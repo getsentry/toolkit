@@ -71,7 +71,7 @@ export async function listDashboardsPaginated(
   orgSlug: string,
   options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<DashboardListItem[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationDashboards({
     ...config,
@@ -96,7 +96,7 @@ export async function getDashboard(
   orgSlug: string,
   dashboardId: string,
 ): Promise<DashboardDetail> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await getOrganizationDashboard({
     ...config,
@@ -123,7 +123,7 @@ export async function createDashboard(
   orgSlug: string,
   body: { title: string; widgets?: DashboardWidget[]; projects?: number[] },
 ): Promise<DashboardDetail> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await createOrganizationDashboard({
     ...config,
@@ -156,7 +156,7 @@ export async function updateDashboard(
     period?: string | null;
   },
 ): Promise<DashboardDetail> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await updateOrganizationDashboard({
     ...config,

@@ -9,6 +9,7 @@
 import { promisify } from "node:util";
 import { zstdCompress as zstdCompressCb } from "node:zlib";
 import {
+  type BaseUrlRequest,
   createSentryClient,
   parseSentryLinkHeader,
   type SdkResult,
@@ -520,12 +521,27 @@ export function appendSearchParams(
 }
 
 /**
- * Get SDK config for an organization's region.
- * Resolves the org's region URL and returns the config.
+ * `resolveBaseUrl` for `@sentry/api` clients: a request whose path names an
+ * organization goes to that organization's region, on the server of the
+ * stored account that knows it ({@link resolveOrgRegion}). An explicit
+ * server still limits the accounts. Unscoped paths keep the base URL.
  */
-export async function getOrgSdkConfig(orgSlug: string) {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  return getSdkClientConfig(regionUrl);
+async function resolveOrgBaseUrl({
+  baseUrl,
+  scope,
+}: BaseUrlRequest): Promise<string> {
+  return scope ? await resolveOrgRegion(scope.organization) : baseUrl;
+}
+
+/**
+ * SDK config that sends each request to the region of the organization its
+ * path names ({@link resolveOrgBaseUrl}).
+ */
+export function getOrgSdkConfig() {
+  return {
+    ...getSdkClientConfig(getApiBaseUrl()),
+    resolveBaseUrl: resolveOrgBaseUrl,
+  };
 }
 
 /**
@@ -1040,7 +1056,8 @@ export type PreparedRawApiRequest = {
 };
 
 /**
- * Prepare a raw request without fetching or refreshing credentials.
+ * Prepare a raw request without sending it or refreshing credentials; an
+ * org-scoped path may look up the organization's region first.
  * Existing params retain append semantics; query overrides use the SDK's
  * replacement semantics for decoded page cursors and page sizes.
  */
@@ -1050,9 +1067,14 @@ export async function prepareRawApiRequest(
   query?: Record<string, unknown>,
 ): Promise<PreparedRawApiRequest> {
   const { method = "GET", body, params, headers, baseUrl } = options;
+  // A full URL keeps the request on its server; otherwise the path's
+  // organization picks the account, server, and region.
   const config = baseUrl
     ? getSdkConfig(baseUrl, { bufferResponseBody: true })
-    : getDefaultSdkConfig({ bufferResponseBody: true, path: endpoint });
+    : {
+        ...getDefaultSdkConfig({ bufferResponseBody: true }),
+        resolveBaseUrl: resolveOrgBaseUrl,
+      };
   const isStringBody = typeof body === "string";
   const request = await createSentryClient(config).client.prepareRequest({
     method,

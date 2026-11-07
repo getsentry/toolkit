@@ -338,7 +338,7 @@ export async function listTraceItemAttributes(
   orgSlug: string,
   options: ListTraceItemAttributesOptions,
 ): Promise<PaginatedResponse<TraceItemAttributeDefinition[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   // `per_page` is accepted by the endpoint's paginator but missing from the
   // SDK's generated query type, so widen the type rather than cast the call.
   const query: TraceItemAttributesQuery & { per_page?: number } = {
@@ -381,7 +381,7 @@ export async function getTraceMeta(
   traceId: string,
   statsPeriod = "14d",
 ): Promise<TraceMeta> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await getOrganizationTraceMeta({
     ...config,
     path: { organization_id_or_slug: orgSlug, trace_id: traceId },
@@ -582,7 +582,7 @@ async function fetchTransactionsPage(
     .join(" ");
 
   const result = await listOrganizationEvents({
-    ...(await getOrgSdkConfig(orgSlug)),
+    ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug },
     query: {
       dataset: "spans",
@@ -729,7 +729,7 @@ async function fetchSpansPage(
   }
 
   const result = await listOrganizationEvents({
-    ...(await getOrgSdkConfig(orgSlug)),
+    ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug },
     query: {
       dataset: "spans",

@@ -125,7 +125,7 @@ export async function getConversationSpans(
   truncated: boolean;
   title: string | null;
 }> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const endpoint = `/organizations/${orgSlug}/agents/conversations/${encodeURIComponent(conversationId)}/`;
 
   const spans: AgentConversationSpan[] = [];

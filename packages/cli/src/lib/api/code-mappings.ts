@@ -97,7 +97,7 @@ export async function uploadCodeMappings(
   options: CodeMappingsUploadOptions,
 ): Promise<MergedCodeMappingsResponse> {
   const { org, project, repository, defaultBranch, mappings } = options;
-  const config = await getOrgSdkConfig(org);
+  const config = getOrgSdkConfig();
   const endpoint = `organizations/${org}/code-mappings/bulk/`;
 
   const merged: MergedCodeMappingsResponse = {

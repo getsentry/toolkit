@@ -189,7 +189,7 @@ export async function listLogs(
     .filter(Boolean)
     .join(" ");
 
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   // Merge extra fields (from --fields) with the default set, deduplicating
   const fields = options.extraFields?.length
@@ -304,7 +304,7 @@ function getLogLookupWindow(
  * Batch size must not exceed {@link API_MAX_PER_PAGE}.
  */
 type GetLogsBatchOptions = {
-  config: Awaited<ReturnType<typeof getOrgSdkConfig>>;
+  config: ReturnType<typeof getOrgSdkConfig>;
   extraFields?: string[];
   /** Numeric project ID for direct project selection. @see {@link ListLogsOptions.projectId} */
   projectId?: number;
@@ -415,7 +415,7 @@ export async function getLogs(
   options: GetLogsOptions = {},
 ): Promise<DetailedSentryLog[]> {
   const { extraFields, projectId } = options;
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const batchOptions: GetLogsBatchOptions = { config, extraFields, projectId };
 
   // Single batch — no splitting needed

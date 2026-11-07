@@ -275,7 +275,7 @@ export async function listIssueAlertsPaginated(
   projectSlug: string,
   options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<IssueAlertRule[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await listOrganizationWorkflows({
     ...config,
     path: { organization_id_or_slug: orgSlug },
@@ -302,7 +302,7 @@ export async function getIssueAlertWorkflowDocument(
   orgSlug: string,
   workflowId: string,
 ): Promise<GetOrganizationWorkflowResponse> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await getOrganizationWorkflow({
     ...config,
     path: {
@@ -327,7 +327,7 @@ export async function resolveErrorDetectorId(
   orgSlug: string,
   projectSlug: string,
 ): Promise<number> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await listOrganizationDetectors({
     ...config,
     path: { organization_id_or_slug: orgSlug },
@@ -365,7 +365,7 @@ export async function getIssueAlertRule(
   projectSlug: string,
   ruleId: string,
 ): Promise<IssueAlertRule> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await listOrganizationWorkflows({
     ...config,
     path: { organization_id_or_slug: orgSlug },
@@ -416,7 +416,7 @@ export async function listMetricAlertsPaginated(
   orgSlug: string,
   options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<MetricAlertRule[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await listOrganizationDetectors({
     ...config,
     path: { organization_id_or_slug: orgSlug },
@@ -473,7 +473,7 @@ async function getMetricDetector(
   orgSlug: string,
   ruleId: string,
 ): Promise<MetricDetector> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await getOrganizationDetector({
     ...config,
     // The SDK types detector_id as number, but detector IDs are opaque strings
@@ -516,7 +516,7 @@ export async function deleteIssueAlertRule(
   orgSlug: string,
   ruleId: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await deleteOrganizationWorkflow({
     ...config,
     path: {
@@ -538,7 +538,7 @@ export async function updateIssueAlertRule(
   workflowId: string,
   body: Record<string, unknown>,
 ): Promise<UpdateOrganizationWorkflowResponse> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await updateOrganizationWorkflow({
     ...config,
     path: {
@@ -568,7 +568,7 @@ export async function createIssueAlertRule(
   orgSlug: string,
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await createOrganizationWorkflow({
     ...config,
     path: { organization_id_or_slug: orgSlug },
@@ -774,7 +774,7 @@ export async function deleteMetricAlertRule(
   orgSlug: string,
   ruleId: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await deleteOrganizationDetector({
     ...config,
     // Detector IDs are opaque strings the API accepts verbatim; the SDK types
@@ -834,7 +834,7 @@ export async function putMetricAlertRule(
   ruleId: string,
   body: Record<string, unknown>,
 ): Promise<UpdateOrganizationDetectorResponse> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await updateOrganizationDetector({
     ...config,
     path: {
@@ -867,7 +867,7 @@ export async function createMetricAlertRule(
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const projectSlug = resolveDetectorProject(body);
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await createOrganizationProjectDetector({
     ...config,
     path: {
