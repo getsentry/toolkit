@@ -97,6 +97,19 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
     }
   });
 
+  it("asks Claude Code to load only get_sentry_resource upfront", async () => {
+    const listed = await withClient(
+      getContext(),
+      async (client) => (await client.listTools()).tools,
+    );
+
+    expect(
+      listed
+        .filter((tool) => tool._meta)
+        .map((tool) => [tool.name, tool._meta]),
+    ).toEqual([["get_sentry_resource", { "anthropic/alwaysLoad": true }]]);
+  });
+
   it("lists the replacements of deprecated tools instead of the tools", async () => {
     const toolNames = await listToolNames(getContext());
     const deprecatedTools = Object.values(tools).filter(

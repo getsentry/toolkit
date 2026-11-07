@@ -88,9 +88,11 @@ Only tool names and server instructions load at session start; the model calls
 - `ENABLE_TOOL_SEARCH` accepts `true`, `false`, `auto`, and `auto:N`.
 - Older models load everything up front. So do sessions with
   `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`, HIPAA sessions, and Azure Foundry.
-- A server can keep chosen tools loaded with `_meta["anthropic/alwaysLoad"]`,
-  for example `get_sentry_resource`. The key is specific to Claude Code, and
-  long-term support is uncertain.
+- A server can keep chosen tools loaded with `_meta["anthropic/alwaysLoad"]`.
+  We set it on `get_sentry_resource` only, through the tool's `_meta` config,
+  so a pasted Sentry URL works without a tool search first. The key is specific
+  to Claude Code, and long-term support is uncertain. A user's server-level
+  `alwaysLoad` setting can override it.
 - Description caps: 4,096 characters for upfront tools and server instructions,
   16,384 for deferred tools.
 - No fixed tool cap; the context window is the limit.

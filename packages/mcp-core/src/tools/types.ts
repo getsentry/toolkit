@@ -155,6 +155,11 @@ export interface ToolConfig<
     idempotentHint?: boolean;
     openWorldHint: boolean;
   };
+  /**
+   * Client-specific tool metadata exported as `_meta` in tools/list, such as
+   * `anthropic/alwaysLoad` (see docs/mcp/harnesses.md).
+   */
+  _meta?: Record<string, unknown>;
   handler: ToolHandler<TSchema, ToolOutputFor<TOutputSchema>>;
   /**
    * Optional hook invoked when the handler throws, for tool-specific failure

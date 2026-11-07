@@ -404,6 +404,7 @@ function configureServer({
       inputSchema: filteredInputSchema,
       outputSchema: tool.outputSchema,
       annotations: tool.annotations,
+      _meta: tool._meta,
     };
     const handleToolCall = async (params: unknown): Promise<CallToolResult> => {
       // Get the active MCP server span and attach request-scoped attributes.
