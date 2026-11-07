@@ -5,7 +5,6 @@
  * from src/lib/api/dashboards.ts.
  */
 
-import { safeParse } from "valibot";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   computeOptimalInterval,
@@ -22,18 +21,24 @@ import type {
 const {
   apiRequestToRegionMock,
   listOrganizationEventsMock,
+  listOrganizationEventsTimeseriesMock,
   reportCliErrorMock,
   resolveOrgRegionMock,
 } = vi.hoisted(() => ({
   apiRequestToRegionMock: vi.fn(),
   listOrganizationEventsMock: vi.fn(),
+  listOrganizationEventsTimeseriesMock: vi.fn(),
   reportCliErrorMock: vi.fn(),
   resolveOrgRegionMock: vi.fn(),
 }));
 
 vi.mock("@sentry/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@sentry/api")>();
-  return { ...actual, listOrganizationEvents: listOrganizationEventsMock };
+  return {
+    ...actual,
+    listOrganizationEvents: listOrganizationEventsMock,
+    listOrganizationEventsTimeseries: listOrganizationEventsTimeseriesMock,
+  };
 });
 
 vi.mock("../../../src/lib/error-reporting.js", () => ({
@@ -332,8 +337,11 @@ describe("widget sort resolution", () => {
   });
 
   test("selects the aggregate for grouped error timeseries so the sort is accepted", async () => {
-    apiRequestToRegionMock.mockReset();
-    apiRequestToRegionMock.mockResolvedValue({ data: { timeSeries: [] } });
+    listOrganizationEventsTimeseriesMock.mockReset();
+    listOrganizationEventsTimeseriesMock.mockResolvedValue({
+      data: { timeSeries: [] },
+      response: new Response(),
+    });
     const dashboard = makeDashboard([
       {
         title: "Errors by node",
@@ -354,11 +362,11 @@ describe("widget sort resolution", () => {
 
     await queryAllWidgets(REGION, "test-org", dashboard);
 
-    expect(apiRequestToRegionMock).toHaveBeenCalledWith(
-      REGION,
-      "/organizations/test-org/events-timeseries/",
+    expect(listOrganizationEventsTimeseriesMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        params: expect.objectContaining({
+        baseUrl: REGION,
+        path: { organization_id_or_slug: "test-org" },
+        query: expect.objectContaining({
           dataset: "errors",
           query: "has:failure.node",
           groupBy: ["failure.node", "count()"],
@@ -368,8 +376,9 @@ describe("widget sort resolution", () => {
       }),
     );
     // Single axis, single query: the "Other" series is requested.
-    const params = apiRequestToRegionMock.mock.calls[0]?.[2]?.params;
-    expect(params).not.toHaveProperty("excludeOther");
+    const query =
+      listOrganizationEventsTimeseriesMock.mock.calls[0]?.[0]?.query;
+    expect(query).not.toHaveProperty("excludeOther");
   });
 });
 
@@ -447,34 +456,15 @@ describe("queryAllWidgets timeseries", () => {
   const ORG = "my-org";
 
   beforeEach(() => {
-    apiRequestToRegionMock.mockReset();
+    listOrganizationEventsTimeseriesMock.mockReset();
   });
 
-  /**
-   * Resolve the request with `data`, validating it against the `schema`
-   * option the way the real `apiRequestToRegion` does.
-   */
+  /** Resolve the request with `data`; the CLI validates it against its schema. */
   function mockResponse(data: unknown): void {
-    apiRequestToRegionMock.mockImplementation(
-      async (
-        _region: string,
-        endpoint: string,
-        options: { schema?: Parameters<typeof safeParse>[0] } = {},
-      ) => {
-        if (!options.schema) {
-          return { data };
-        }
-        const result = safeParse(options.schema, data);
-        if (!result.success) {
-          throw new ApiError(
-            `${endpoint}: unexpected response format`,
-            0,
-            result.issues.map((issue) => issue.message).join(", "),
-          );
-        }
-        return { data: result.output };
-      },
-    );
+    listOrganizationEventsTimeseriesMock.mockResolvedValue({
+      data,
+      response: new Response(),
+    });
   }
 
   /** Series meta the API always sends. */
@@ -492,17 +482,15 @@ describe("queryAllWidgets timeseries", () => {
     return { timestamp, value, incomplete: false };
   }
 
-  /** Extract the single call's endpoint and params. */
+  /** Extract the single call's path and query params. */
   function lastRequest(): {
-    endpoint: string;
+    path: Record<string, unknown>;
     params: Record<string, unknown>;
   } {
-    const call = apiRequestToRegionMock.mock.calls[0] as [
-      string,
-      string,
-      { params: Record<string, unknown> },
+    const [options] = listOrganizationEventsTimeseriesMock.mock.calls[0] as [
+      { path: Record<string, unknown>; query: Record<string, unknown> },
     ];
-    return { endpoint: call[1], params: call[2].params };
+    return { path: options.path, params: options.query };
   }
 
   test("queries events-timeseries and normalizes an ungrouped series", async () => {
@@ -540,9 +528,8 @@ describe("queryAllWidgets timeseries", () => {
       period: "24h",
     });
 
-    const { endpoint, params } = lastRequest();
-    expect(endpoint).toBe(`/organizations/${ORG}/events-timeseries/`);
-    expect(apiRequestToRegionMock.mock.calls[0]?.[2]).toHaveProperty("schema");
+    const { path, params } = lastRequest();
+    expect(path).toEqual({ organization_id_or_slug: ORG });
     expect(params.dataset).toBe("errors");
     expect(params.yAxis).toEqual(["count()"]);
     expect(params.statsPeriod).toBe("24h");

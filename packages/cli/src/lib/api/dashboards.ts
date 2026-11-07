@@ -9,7 +9,9 @@ import {
   createOrganizationDashboard,
   getOrganizationDashboard,
   listOrganizationDashboards,
+  type ListOrganizationEventsTimeseriesData,
   listOrganizationEvents,
+  listOrganizationEventsTimeseries,
   updateOrganizationDashboard,
 } from "@sentry/api";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
@@ -466,12 +468,15 @@ function buildTopEventsParams(
   columns: string[],
   aggregates: string[],
   orderby: string | undefined,
-): Record<string, string | string[] | number | undefined> {
+): Pick<
+  EventsTimeseriesQuery,
+  "groupBy" | "sort" | "topEvents" | "excludeOther"
+> {
   const { fields, sort } = resolveEventsSort({
     fields: [...columns, ...aggregates],
     sort: orderby,
   });
-  const params: Record<string, string | string[] | number | undefined> = {
+  const params: ReturnType<typeof buildTopEventsParams> = {
     groupBy: fields,
     sort,
     topEvents: widget.limit ?? 5,
@@ -510,6 +515,8 @@ type WidgetQueryParams = {
   options?: WidgetQueryOptions;
 };
 
+type EventsTimeseriesQuery = ListOrganizationEventsTimeseriesData["query"];
+
 /** Widget query params once the widget's type has resolved to a dataset. */
 type DatasetWidgetQueryParams = WidgetQueryParams & { dataset: EventsDataset };
 
@@ -533,30 +540,29 @@ async function queryWidgetTimeseries(
     const aggregates = query.aggregates ?? [];
     const columns = query.columns ?? [];
 
-    const reqParams: Record<string, string | string[] | number | undefined> = {
-      yAxis: aggregates,
-      query: query.conditions || undefined,
-      dataset,
-      statsPeriod,
-      start,
-      end,
-      interval: computeOptimalInterval(statsPeriod, widget, periodSeconds),
-      environment: options.environment,
-      project: options.project?.map(String),
-    };
-
-    // Group-by columns enable topEvents mode
-    if (columns.length > 0) {
-      Object.assign(
-        reqParams,
-        buildTopEventsParams(widget, columns, aggregates, query.orderby),
-      );
-    }
-
-    const { data } = await apiRequestToRegion<EventsTimeseriesResponse>(
-      regionUrl,
+    const result = await listOrganizationEventsTimeseries({
+      ...getSdkClientConfig(regionUrl),
+      path: { organization_id_or_slug: orgSlug },
+      query: {
+        yAxis: aggregates,
+        query: query.conditions || undefined,
+        dataset,
+        statsPeriod,
+        start,
+        end,
+        interval: computeOptimalInterval(statsPeriod, widget, periodSeconds),
+        environment: options.environment,
+        project: options.project,
+        // Group-by columns enable topEvents mode
+        ...(columns.length > 0 &&
+          buildTopEventsParams(widget, columns, aggregates, query.orderby)),
+      },
+    });
+    const data = unwrapValidatedResult(
+      result,
+      "Failed to query widget data",
+      EventsTimeseriesResponseSchema,
       `/organizations/${orgSlug}/events-timeseries/`,
-      { params: reqParams, schema: EventsTimeseriesResponseSchema },
     );
 
     const parsed = parseEventsTimeseriesResponse(data, aggregates);

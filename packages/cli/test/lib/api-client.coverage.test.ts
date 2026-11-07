@@ -310,6 +310,38 @@ describe("issues.ts", () => {
       expect(result.status).toBe("resolved");
       expect(capturedBody).toEqual({ status: "resolved" });
     });
+
+    test("sends PUT to the org-scoped endpoint when the org is known", async () => {
+      const issue = mockIssue({ status: "ignored" });
+      let capturedUrl = "";
+      let capturedBody: unknown;
+
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const req = new Request(input!, init);
+        capturedUrl = req.url;
+        capturedBody = await req.json();
+        expect(req.method).toBe("PUT");
+        return new Response(JSON.stringify(issue), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const result = await updateIssueStatus("12345", "ignored", {
+        orgSlug: "test-org",
+        substatus: "archived_until_condition_met",
+        statusDetails: { ignoreCount: 10, ignoreWindow: 60 },
+      });
+      expect(result.status).toBe("ignored");
+      expect(capturedUrl).toContain(
+        "/api/0/organizations/test-org/issues/12345/",
+      );
+      expect(capturedBody).toEqual({
+        status: "ignored",
+        statusDetails: { ignoreCount: 10, ignoreWindow: 60 },
+        substatus: "archived_until_condition_met",
+      });
+    });
   });
 
   describe("listIssuesAllPages", () => {
