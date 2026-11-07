@@ -622,7 +622,7 @@ export async function updateIssueStatus(
   if (options?.orgSlug) {
     // Region-aware org-scoped endpoint — preferred when org is known.
     const result = await updateOrganizationIssue({
-      ...(await getOrgSdkConfig(options.orgSlug)),
+      ...getOrgSdkConfig(),
       path: { organization_id_or_slug: options.orgSlug, issue_id: issueId },
       body,
     });
@@ -669,7 +669,7 @@ export async function mergeIssues(
     );
   }
   const result = await updateOrganizationIssues({
-    ...(await getOrgSdkConfig(orgSlug)),
+    ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug },
     query: { id: groupIds.map(Number) },
     body: { merge: true },
