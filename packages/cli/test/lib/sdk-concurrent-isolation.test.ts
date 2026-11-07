@@ -23,6 +23,7 @@ import {
 } from "../../src/lib/db/auth.js";
 import { closeDatabase } from "../../src/lib/db/index.js";
 import { withEnv } from "../../src/lib/env.js";
+import { isSentrySaasUrl } from "../../src/lib/sentry-urls.js";
 import { mockFetch } from "../helpers.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -89,7 +90,7 @@ function sentryApi(requests: RecordedRequest[], overlap = 1): typeof fetch {
 
     if (url.pathname === "/api/0/organizations/acme/") {
       // SaaS splits regions per identity; a self-hosted host is its own region.
-      const regionUrl = url.hostname.endsWith("sentry.io")
+      const regionUrl = isSentrySaasUrl(url.href)
         ? `https://${identity === "A" ? "us" : "de"}.sentry.io`
         : url.origin;
       return json({
