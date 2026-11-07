@@ -2389,6 +2389,15 @@ export const AgenticOnboardingStageStatusUpdateSchema = z.enum([
   "failed",
 ]);
 
+const AgenticOnboardingConnectExtraSchema = z
+  .object({ method: z.enum(["cli", "mcp"]) })
+  .strict();
+
+export const AgenticOnboardingConnectStageInputSchema = z.enum([
+  "connect_agent",
+  "connect_mcp",
+]);
+
 const AgenticOnboardingCreateProjectExtraSchema = z
   .object({
     projectSlugs: z.array(z.string().trim().min(1)),
@@ -2403,6 +2412,7 @@ const AgenticOnboardingVerificationErrorExtraSchema = z
 
 const AgenticOnboardingStageWithoutExtraSchema =
   AgenticOnboardingStageSchema.exclude([
+    "connect_mcp",
     "create_project",
     "receive_verification_error",
   ]);
@@ -2413,6 +2423,10 @@ const AgenticOnboardingStageStateBaseSchema = z.object({
 });
 
 export const AgenticOnboardingStageStateSchema = z.discriminatedUnion("stage", [
+  AgenticOnboardingStageStateBaseSchema.extend({
+    stage: z.literal("connect_mcp"),
+    extra: AgenticOnboardingConnectExtraSchema.nullable(),
+  }),
   AgenticOnboardingStageStateBaseSchema.extend({
     stage: z.literal("create_project"),
     extra: AgenticOnboardingCreateProjectExtraSchema.nullable(),
@@ -2454,6 +2468,10 @@ const AgenticOnboardingStatusUpdateBaseSchema = z.object({
 export const AgenticOnboardingStatusUpdateSchema = z.discriminatedUnion(
   "stage",
   [
+    AgenticOnboardingStatusUpdateBaseSchema.extend({
+      stage: AgenticOnboardingConnectStageInputSchema,
+      extra: AgenticOnboardingConnectExtraSchema.optional(),
+    }),
     AgenticOnboardingStatusUpdateBaseSchema.extend({
       stage: z.literal("create_project"),
       extra: AgenticOnboardingCreateProjectExtraSchema.optional(),
