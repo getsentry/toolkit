@@ -4,6 +4,7 @@
 
 import { writeFile } from "node:fs/promises";
 import type { CaseResult, EvalReport, ModelResult } from "./types.js";
+import { logger } from "../../../src/lib/logger.js";
 
 /** Format a single case result as console lines */
 function formatCaseResult(c: CaseResult): string {
@@ -36,26 +37,27 @@ function formatModelResult(model: ModelResult, threshold: number): string {
   return lines.join("\n");
 }
 
-/** Print a console report of all model results */
+/** Print a report of all model results */
 export function printReport(report: EvalReport): void {
-  console.log("");
-  console.log("Skill Eval Results");
-  console.log("══════════════════");
-  console.log(`Threshold: ${(report.threshold * 100).toFixed(0)}%`);
-  console.log("");
+  const lines = [
+    "Skill Eval Results",
+    "══════════════════",
+    `Threshold: ${(report.threshold * 100).toFixed(0)}%`,
+    "",
+  ];
 
   for (const model of report.models) {
-    console.log(formatModelResult(model, report.threshold));
+    lines.push(formatModelResult(model, report.threshold));
   }
 
   // Summary
-  console.log("══════════════════");
+  lines.push("══════════════════");
   for (const model of report.models) {
     const pct = (model.score * 100).toFixed(1);
     const status = model.score >= report.threshold ? "PASS" : "FAIL";
-    console.log(`${status} ${model.model}: ${pct}%`);
+    lines.push(`${status} ${model.model}: ${pct}%`);
   }
-  console.log("");
+  logger.log(`\n${lines.join("\n")}\n`);
 }
 
 /** Write the full eval report to a JSON file */
@@ -64,7 +66,7 @@ export async function writeJsonReport(
   path: string,
 ): Promise<void> {
   await writeFile(path, JSON.stringify(report, null, 2));
-  console.log(`Results written to ${path}`);
+  logger.success(`Results written to ${path}`);
 }
 
 /** Check if all models meet the threshold, return appropriate exit code */

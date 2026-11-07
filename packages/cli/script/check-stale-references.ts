@@ -25,12 +25,13 @@ import { readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { blankCodeBlocks } from "./markdown.js";
 import { DOCS_CONTENT } from "./paths.js";
+import { logger } from "../src/lib/logger.js";
 
 const pkg = JSON.parse(await readFile("package.json", "utf-8"));
 const currentPM: string = (pkg.packageManager ?? "").split("@")[0];
 
 if (!currentPM) {
-  console.error("✗ Cannot determine package manager from package.json");
+  logger.error("Cannot determine package manager from package.json");
   process.exit(1);
 }
 
@@ -40,7 +41,7 @@ const ALL_PACKAGE_MANAGERS = ["bun", "yarn", "pnpm", "npm"];
 const stalePMs = ALL_PACKAGE_MANAGERS.filter((pm) => pm !== currentPM);
 
 if (stalePMs.length === 0) {
-  console.log("✓ No stale package manager patterns to check");
+  logger.success("No stale package manager patterns to check");
   process.exit(0);
 }
 
@@ -144,17 +145,18 @@ for (const filePath of FILES_TO_SCAN) {
 }
 
 if (findings.length === 0) {
-  console.log(
-    `✓ No stale package manager references found (current: ${currentPM}, checked: ${FILES_TO_SCAN.length} files)`,
+  logger.success(
+    `No stale package manager references found (current: ${currentPM}, checked: ${FILES_TO_SCAN.length} files)`,
   );
   process.exit(0);
 }
 
-console.error(
-  `✗ Found ${findings.length} stale package manager reference(s) (current PM: ${currentPM}):\n`,
+logger.error(
+  [
+    `Found ${findings.length} stale package manager reference(s) (current PM: ${currentPM}):\n`,
+    ...findings.map(
+      (f) => `  ${f.file}:${f.line}: ${f.text}\n    → ${f.reason}\n`,
+    ),
+  ].join("\n"),
 );
-for (const f of findings) {
-  console.error(`  ${f.file}:${f.line}: ${f.text}`);
-  console.error(`    → ${f.reason}\n`);
-}
 process.exit(1);

@@ -27,6 +27,7 @@ import { findFragmentCommandIssues } from "./fragment-commands.js";
 import { writeRouteTreeStubs } from "./lib/route-tree-stubs.js";
 import { markdownHeadings } from "./markdown.js";
 import { DOCS_FRAGMENTS } from "./paths.js";
+import { logger } from "../src/lib/logger.js";
 
 await writeRouteTreeStubs();
 
@@ -58,7 +59,7 @@ try {
     MD_EXTENSION_RE.test(f),
   );
 } catch {
-  console.error(`ERROR: Fragment directory not found: ${FRAGMENTS_DIR}`);
+  logger.error(`Fragment directory not found: ${FRAGMENTS_DIR}`);
   process.exit(1);
 }
 
@@ -306,25 +307,27 @@ for (const [routeName, route] of multiCommandRoutes) {
 // ---------------------------------------------------------------------------
 
 if (warnings.length > 0) {
-  console.warn(
-    `\n${warnings.length} subcommand coverage warning(s)${isStrict ? " (treated as errors with --strict)" : ""}:\n`,
+  logger.warn(
+    [
+      `${warnings.length} subcommand coverage warning(s)${isStrict ? " (treated as errors with --strict)" : ""}:\n`,
+      ...warnings.map((w) => `  ⚠ ${w}`),
+    ].join("\n"),
   );
-  for (const w of warnings) {
-    console.warn(`  ⚠ ${w}`);
-  }
 }
 
 if (errors.length > 0) {
-  console.error(`\nFound ${errors.length} fragment validation error(s):\n`);
-  for (const err of errors) {
-    console.error(`  ✗ ${err}`);
-  }
+  logger.error(
+    [
+      `Found ${errors.length} fragment validation error(s):\n`,
+      ...errors.map((err) => `  ✗ ${err}`),
+    ].join("\n"),
+  );
   process.exit(1);
 }
 
-console.log(
-  `\nAll ${actualFragments.size} command fragment files valid (${routeNames.size} routes + index)`,
+logger.success(
+  `All ${actualFragments.size} command fragment files valid (${routeNames.size} routes + index)`,
 );
-console.log(
+logger.success(
   `All ${REQUIRED_TOP_LEVEL_FRAGMENTS.length} top-level fragment(s) valid`,
 );

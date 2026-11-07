@@ -28,6 +28,7 @@
 import { readFile } from "node:fs/promises";
 import { glob } from "tinyglobby";
 import { ENV_VAR_REGISTRY } from "../src/lib/env-registry.js";
+import { logger } from "../src/lib/logger.js";
 
 /**
  * Well-known env vars that don't start with `SENTRY_` but are still part of the
@@ -219,15 +220,17 @@ for (const name of INTERNAL_ENV_VARS.keys()) {
 }
 
 if (errors.length > 0) {
-  console.error(`\nFound ${errors.length} env var coverage issue(s):\n`);
-  for (const err of errors) {
-    console.error(`  ✗ ${err}\n`);
-  }
+  logger.error(
+    [
+      `Found ${errors.length} env var coverage issue(s):\n`,
+      ...errors.map((err) => `  ✗ ${err}\n`),
+    ].join("\n"),
+  );
   process.exit(1);
 }
 
-console.log(
-  `✓ All ${referenced.size} user-facing env var(s) read in src/ and ` +
+logger.success(
+  `All ${referenced.size} user-facing env var(s) read in src/ and ` +
     `${installerReads.size} read by the installers are documented ` +
     `(${registryNames.size} in registry, ${INTERNAL_ENV_VARS.size} internal).`,
 );
