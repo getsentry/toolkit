@@ -2511,12 +2511,16 @@ export const EventsTimeSeriesValueSchema = z
     value: z.union([z.number(), z.string()]).nullish(),
     incomplete: z.boolean(),
     incompleteReason: z.string().optional(),
+    comparisonValue: z.union([z.number(), z.string()]).nullish(),
+    filled: z.boolean().optional(),
+    smoothed: z.boolean().optional(),
+    comparisonFilled: z.boolean().optional(),
+    comparisonSmoothed: z.boolean().optional(),
   })
   .passthrough();
 
 /**
- * Response from the events-timeseries endpoint. The MCP always requests a
- * single yAxis without topEvents, so `timeSeries` holds exactly one series.
+ * Response from the events-timeseries endpoint in request axis order.
  */
 export const EventsTimeSeriesResponseSchema = z
   .object({
