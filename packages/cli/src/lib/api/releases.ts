@@ -741,24 +741,24 @@ export async function setCommitsWithRefs(
   version: string,
   refs: CommitRef[],
 ): Promise<SentryRelease> {
-  const encodedOrg = encodeApiPathSegment(orgSlug);
-  if (encodedOrg === null) {
+  // The SDK percent-encodes path values but lets `.` and `..` through, which
+  // would collapse the path; reject them here.
+  if (encodeApiPathSegment(orgSlug) === null) {
     throw new ValidationError("Invalid organization slug", "organization");
   }
-  const encodedVersion = encodeApiPathSegment(version);
-  if (encodedVersion === null) {
+  if (encodeApiPathSegment(version) === null) {
     throw new ValidationError("Invalid release version", "version");
   }
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion<SentryRelease>(
-    regionUrl,
-    `organizations/${encodedOrg}/releases/${encodedVersion}/`,
-    {
-      method: "PUT",
-      body: { refs },
-    },
+  const config = await getOrgSdkConfig(orgSlug);
+  const result = await updateOrganizationRelease({
+    ...config,
+    path: { organization_id_or_slug: orgSlug, version },
+    body: { refs },
+  });
+  return unwrapResult<SentryRelease>(
+    result,
+    `Failed to set commits on release '${version}'`,
   );
-  return data;
 }
 
 /**
