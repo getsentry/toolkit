@@ -10,7 +10,7 @@
  * Used by: span list, span view, trace view, trace logs, log list.
  */
 
-import { asInvocationCommand } from "./app-identity.js";
+import { asInvocationCommand, sentry } from "./app-identity.js";
 import {
   type ParsedOrgProject,
   parseOrgProjectArg,
@@ -302,9 +302,7 @@ async function recoverTraceId(
   const result = await recoverHexId(rawTraceId, "trace", ctx);
   return handleRecoveryResult(result, failure, {
     entityType: "trace",
-    canonicalCommand: asInvocationCommand(
-      `sentry trace view ${ctx.org || "<org>"}/${ctx.project ?? "<project>"}/<id>`,
-    ),
+    canonicalCommand: sentry`trace view ${ctx.org || "<org>"}/${ctx.project ?? "<project>"}/<id>`,
     logTag: "trace-target",
   });
 }
@@ -424,7 +422,7 @@ export async function resolveTraceOrgProject(
     case "org-scoped":
       throw new ContextError("Specific project", usageHint, [
         `Use: ${asInvocationCommand(usageHint.replace(USAGE_TARGET_RE, `${parsed.org}/<project>/${parsed.traceId}`))}`,
-        `List projects: ${asInvocationCommand(`sentry project list ${parsed.org}/`)}`,
+        `List projects: ${sentry`project list ${parsed.org}/`}`,
       ]);
 
     case "auto-detect": {

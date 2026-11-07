@@ -17,7 +17,7 @@
  * apply.
  */
 
-import { asInvocationCommand } from "./app-identity.js";
+import { sentry } from "./app-identity.js";
 import { ValidationError } from "./errors.js";
 import { ID_KINDS, parseIdArguments } from "./id-arguments.js";
 import { type ParsedSentryUrl, parseSentryUrl } from "./sentry-url-parser.js";
@@ -64,7 +64,7 @@ export function parseDashboardArgs(
       throw new ValidationError(
         "Dashboard ID or title is required.\n\n" +
           "The URL provided contains an org but no dashboard ID.\n" +
-          `Try: ${asInvocationCommand(`sentry dashboard <command> ${url.org}/ <id-or-title>`)}`,
+          `Try: ${sentry`dashboard <command> ${url.org}/ <id-or-title>`}`,
         "dashboard",
       );
     }
@@ -136,9 +136,9 @@ export function parseDashboardListArgs(
     const orgNote = url.org ? ` in '${url.org}'` : "";
     throw new ValidationError(
       "This looks like a dashboard URL. To view a specific dashboard:\n\n" +
-        `  ${asInvocationCommand(`sentry dashboard view ${orgPrefix}${url.dashboardId}`)}\n\n` +
+        `  ${sentry`dashboard view ${orgPrefix}${url.dashboardId}`}\n\n` +
         `To list dashboards${orgNote}:\n\n` +
-        `  ${asInvocationCommand(`sentry dashboard list${orgSuffix}`)}`,
+        `  ${sentry`dashboard list${orgSuffix}`}`,
       "dashboard",
     );
   }

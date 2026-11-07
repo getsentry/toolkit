@@ -10,7 +10,7 @@ import type { InferOutput } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { resolveAccountSelector } from "../../lib/account-selection.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   parseAccountSelector,
@@ -321,13 +321,11 @@ function mergeAccountOrgs(results: AccountOrgs[]): {
  */
 function reloginCommand(account: AccountSummary): string {
   if (account.email) {
-    return asInvocationCommand(
-      `sentry auth login ${accountSelectorOf(account)}`,
-    );
+    return sentry`auth login ${accountSelectorOf(account)}`;
   }
   return account.host
-    ? asInvocationCommand(`sentry auth login --url ${account.host}`)
-    : asInvocationCommand("sentry auth login");
+    ? sentry`auth login --url ${account.host}`
+    : sentry`auth login`;
 }
 
 /**
@@ -354,7 +352,7 @@ function resolveAccounts(selector?: string): AccountSummary[] | undefined {
     }
     const account = resolveAccountSelector(
       selector,
-      asInvocationCommand("sentry org list --account"),
+      sentry`org list --account`,
       {
         fuzzy: true,
       },
@@ -513,12 +511,10 @@ export const listCommand = buildCommand({
       hints.push(`Showing ${flags.limit} of ${orgs.length} organizations`);
     }
     if (entries.length > 0) {
-      hints.push(
-        `Tip: Use '${asInvocationCommand("sentry org view <slug>")}' for details`,
-      );
+      hints.push(`Tip: Use '${sentry`org view <slug>`}' for details`);
     } else if (filter && merged.orgs.length > 0) {
       hints.push(
-        `None of your ${merged.orgs.length} organizations match '${filter}'. Run '${asInvocationCommand("sentry org list")}' to see them all.`,
+        `None of your ${merged.orgs.length} organizations match '${filter}'. Run '${sentry`org list`}' to see them all.`,
       );
     }
 

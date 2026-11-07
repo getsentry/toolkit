@@ -28,7 +28,7 @@ import { addBreadcrumb } from "@sentry/node";
 
 import type { SpanListItem } from "../types/index.js";
 import { listLogs, listSpans, queryEvents } from "./api-client.js";
-import { asInvocationCommand } from "./app-identity.js";
+import { asInvocationCommand, sentry } from "./app-identity.js";
 import {
   type ParsedOrgProject,
   ProjectSpecificationType,
@@ -629,7 +629,7 @@ function buildNoMatchHint(
     return (
       `No event matched this prefix in the last ${window}. ` +
       "Sentry cannot search by a partial event ID — pass the full " +
-      `32-character ID printed by \`${asInvocationCommand("sentry event list")}\`.`
+      `32-character ID printed by \`${sentry`event list`}\`.`
     );
   }
   return (

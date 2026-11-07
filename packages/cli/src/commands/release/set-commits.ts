@@ -14,7 +14,7 @@ import {
   setCommitsLocal,
   setCommitsWithRefs,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
 import {
   parseFilePath,
@@ -71,12 +71,8 @@ function setCommitsFromLocal(
     throw validationError(
       `Cannot read local commits: ${cwd} is not a git checkout.`,
       [
-        asInvocationCommand(
-          `sentry release set-commits ${org}/${version} --commit owner/repo@<commit-sha>`,
-        ),
-        asInvocationCommand(
-          `sentry release set-commits ${org}/${version} --auto`,
-        ),
+        sentry`release set-commits ${org}/${version} --commit owner/repo@<commit-sha>`,
+        sentry`release set-commits ${org}/${version} --auto`,
       ],
       "local",
       "--local reads git history, so it needs the .git directory. Builds that exclude it (Docker, Vercel) can pass the commit with --commit.",
@@ -248,12 +244,8 @@ function parseCommitRefs(
       throw validationError(
         `Invalid commit format '${trimmed}'. Expected REPO@SHA or REPO@PREV..SHA.`,
         [
-          asInvocationCommand(
-            "sentry release set-commits 1.0.0 --commit owner/repo@abc123",
-          ),
-          asInvocationCommand(
-            "sentry release set-commits 1.0.0 --commit owner/repo@prev..abc123",
-          ),
+          sentry`release set-commits 1.0.0 --commit owner/repo@abc123`,
+          sentry`release set-commits 1.0.0 --commit owner/repo@prev..abc123`,
         ],
         "commit",
       );
@@ -303,11 +295,7 @@ function parseLocalScope(flags: {
   if (flags.path !== undefined && paths.length === 0) {
     throw validationError(
       "--path requires at least one non-empty path.",
-      [
-        asInvocationCommand(
-          "sentry release set-commits 1.0.0 --path apps/mobile,packages/shared",
-        ),
-      ],
+      [sentry`release set-commits 1.0.0 --path apps/mobile,packages/shared`],
       "path",
     );
   }
@@ -316,20 +304,12 @@ function parseLocalScope(flags: {
       "--path cannot be combined with --auto or --commit. Those modes expand commit ranges on the server; --path filters local git history only.",
       flags.commit
         ? [
-            asInvocationCommand(
-              "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
-            ),
-            asInvocationCommand(
-              "sentry release set-commits 1.0.0 --local --path apps/mobile",
-            ),
+            sentry`release set-commits 1.0.0 --from v0.9.0 --path apps/mobile`,
+            sentry`release set-commits 1.0.0 --local --path apps/mobile`,
           ]
         : [
-            asInvocationCommand(
-              "sentry release set-commits 1.0.0 --local --path apps/mobile",
-            ),
-            asInvocationCommand(
-              "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
-            ),
+            sentry`release set-commits 1.0.0 --local --path apps/mobile`,
+            sentry`release set-commits 1.0.0 --from v0.9.0 --path apps/mobile`,
           ],
       "path",
     );
@@ -339,7 +319,7 @@ function parseLocalScope(flags: {
   if (flags.from !== undefined && !from) {
     throw validationError(
       "--from requires a non-empty git ref (tag, branch, or commit).",
-      [asInvocationCommand("sentry release set-commits 1.0.0 --from v0.9.0")],
+      [sentry`release set-commits 1.0.0 --from v0.9.0`],
       "from",
       FROM_RANGE_NOTE,
     );
@@ -351,10 +331,8 @@ function parseLocalScope(flags: {
     throw validationError(
       `--from must be a git ref, not a CLI flag (received '${from}').`,
       [
-        asInvocationCommand("sentry release set-commits 1.0.0 --from v0.9.0"),
-        asInvocationCommand(
-          "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
-        ),
+        sentry`release set-commits 1.0.0 --from v0.9.0`,
+        sentry`release set-commits 1.0.0 --from v0.9.0 --path apps/mobile`,
       ],
       "from",
       FROM_DASHED_REF_NOTE,
@@ -364,12 +342,8 @@ function parseLocalScope(flags: {
     throw validationError(
       "--from cannot be combined with --auto or --commit. Those modes expand commit ranges on the server; --from reads local git history.",
       [
-        asInvocationCommand(
-          "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
-        ),
-        asInvocationCommand(
-          "sentry release set-commits 1.0.0 --local --initial-depth 50",
-        ),
+        sentry`release set-commits 1.0.0 --from v0.9.0 --path apps/mobile`,
+        sentry`release set-commits 1.0.0 --local --initial-depth 50`,
       ],
       "from",
       FROM_RANGE_NOTE,
@@ -535,13 +509,9 @@ export const setCommitsCommand = buildCommand({
       throw validationError(
         "Only one of --auto, --local, or --commit can be used at a time.",
         [
-          asInvocationCommand("sentry release set-commits 1.0.0 --auto"),
-          asInvocationCommand(
-            "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
-          ),
-          asInvocationCommand(
-            "sentry release set-commits 1.0.0 --commit owner/repo@abc123..def456",
-          ),
+          sentry`release set-commits 1.0.0 --auto`,
+          sentry`release set-commits 1.0.0 --from v0.9.0 --path apps/mobile`,
+          sentry`release set-commits 1.0.0 --commit owner/repo@abc123..def456`,
         ],
         "commit",
       );

@@ -3,7 +3,7 @@
  * identifier, parsed before the command runs.
  */
 
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import {
@@ -47,7 +47,7 @@ export function feedbackPositional(command: string) {
             if (!feedback) {
               throw new ContextError(
                 "Feedback ID",
-                asInvocationCommand(`sentry feedback ${command} <feedback>`),
+                sentry`feedback ${command} <feedback>`,
               );
             }
             return await resolveFeedback(feedback, context.cwd, command);

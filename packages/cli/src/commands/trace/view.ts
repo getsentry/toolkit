@@ -15,7 +15,7 @@ import {
   getProject,
   type TraceItemDetail,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { looksLikeIssueShortId, spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
@@ -80,14 +80,14 @@ function buildViewHint(
   summary: ReturnType<typeof computeTraceSummary>,
 ): string {
   if (projectFilter) {
-    return `Filtered to project '${projectFilter}'. Full trace: ${asInvocationCommand(`sentry trace view ${org}/${traceId}`)}`;
+    return `Filtered to project '${projectFilter}'. Full trace: ${sentry`trace view ${org}/${traceId}`}`;
   }
   if (summary.projects.length > 1) {
     const projectList = summary.projects.join(", ");
     const firstProject = summary.projects[0];
-    return `This trace spans ${summary.projects.length} projects (${projectList}). Filter: ${asInvocationCommand(`sentry trace view ${org}/${firstProject}/${traceId}`)}`;
+    return `This trace spans ${summary.projects.length} projects (${projectList}). Filter: ${sentry`trace view ${org}/${firstProject}/${traceId}`}`;
   }
-  return `Tip: Open in browser with '${asInvocationCommand(`sentry trace view --web ${traceId}`)}'`;
+  return `Tip: Open in browser with '${sentry`trace view --web ${traceId}`}'`;
 }
 
 /**
@@ -122,7 +122,7 @@ export function parseTraceViewInput(args: readonly string[]): TraceViewInput {
   return {
     trace: parseTraceArgumentsInput(args, USAGE_HINT),
     ...(shortId && {
-      suggestion: `Did you mean: ${asInvocationCommand(`sentry issue view ${first}`)}`,
+      suggestion: `Did you mean: ${sentry`issue view ${first}`}`,
     }),
   };
 }
@@ -407,10 +407,7 @@ async function resolveTraceFromIssue(
 
   const resolved = await resolveOrg({ cwd });
   if (!resolved) {
-    throw new ContextError(
-      "Organization",
-      asInvocationCommand(`sentry issue view ${issueShortId}`),
-    );
+    throw new ContextError("Organization", sentry`issue view ${issueShortId}`);
   }
   const org = resolved.org;
 
@@ -426,7 +423,7 @@ async function resolveTraceFromIssue(
   if (!traceId) {
     throw new ValidationError(
       `Could not find a trace for issue '${issueShortId}'. The latest event has no trace context.\n\n` +
-        `Try: ${asInvocationCommand(`sentry issue view ${issueShortId}`)}`,
+        `Try: ${sentry`issue view ${issueShortId}`}`,
     );
   }
 
@@ -455,7 +452,7 @@ function fetchTraceSpanDetails(
   if (totalCount > LARGE_TRACE_WARN_THRESHOLD) {
     log.warn(
       `Trace has ${totalCount} spans \u2014 this may take a moment. ` +
-        `Use '${asInvocationCommand("sentry span view")}' for specific spans.`,
+        `Use '${sentry`span view`}' for specific spans.`,
     );
   }
 
@@ -594,9 +591,7 @@ export const viewCommand = buildCommand({
       throw new ResolutionError(
         `Trace '${traceId}'`,
         "not found",
-        asInvocationCommand(
-          `sentry trace view ${org}/${project ?? "<project>"}/${traceId}`,
-        ),
+        sentry`trace view ${org}/${project ?? "<project>"}/${traceId}`,
         [
           "Check that you are querying the right org/project",
           "The trace may be past your plan's retention window",

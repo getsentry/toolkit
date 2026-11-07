@@ -7,7 +7,7 @@
  * for it (plus whatever the endpoint needs) on first use.
  */
 
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { ApiError, AuthError, ContextError } from "../../lib/errors.js";
 import { runInteractiveLogin } from "../../lib/interactive-login.js";
 import { ensureScopesForAction } from "../../lib/scope-recovery.js";
@@ -95,7 +95,7 @@ export function explainTokenForbidden(
   const detail = scopeMissing
     ? `Your saved login doesn't include ${scopes}. Re-authorization needs an interactive terminal and is skipped with --yes, --json, or --dry-run.\n  ` +
       "Run this command once in a terminal without --yes, --json, or --dry-run to re-authorize."
-    : `Org auth tokens can only be managed with a CLI login from '${asInvocationCommand("sentry auth login")}'. ` +
+    : `Org auth tokens can only be managed with a CLI login from '${sentry`auth login`}'. ` +
       "Personal tokens, org auth tokens, and SENTRY_AUTH_TOKEN can't manage them.\n  " +
       `The login also needs ${scopes}, and your org role must allow it.`;
   return new ApiError(

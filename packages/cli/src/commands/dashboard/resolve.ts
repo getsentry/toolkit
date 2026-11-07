@@ -12,7 +12,7 @@ import {
   getOrganization,
   listDashboardsPaginated,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import type { ParsedOrgProject } from "../../lib/arg-parsing.js";
 import {
   DATASET_FIELDS,
@@ -465,21 +465,19 @@ async function build404Error(
     throw new ResolutionError(
       `Organization ${org}`,
       "not found or has no dashboards",
-      asInvocationCommand("sentry dashboard list <org>/"),
+      sentry`dashboard list <org>/`,
       [
-        `Verify the organization slug with: ${asInvocationCommand("sentry org list")}`,
+        `Verify the organization slug with: ${sentry`org list`}`,
         "Check that you have access to the organization",
       ],
     );
   }
-  const listHint = asInvocationCommand(
-    `sentry dashboard list ${ctx.orgSlug ?? "<org>"}/`,
-  );
+  const listHint = sentry`dashboard list ${ctx.orgSlug ?? "<org>"}/`;
   if (ctx.dashboardId) {
     // Fetch available dashboards to suggest alternatives
     const alternatives = [
       "The dashboard may have been deleted",
-      `Check the dashboard ID or title with: ${asInvocationCommand("sentry dashboard list")}`,
+      `Check the dashboard ID or title with: ${sentry`dashboard list`}`,
     ];
     if (ctx.orgSlug) {
       try {
@@ -507,7 +505,7 @@ async function build404Error(
   throw new ResolutionError(
     `Organization ${org}`,
     "not found",
-    asInvocationCommand("sentry org list"),
+    sentry`org list`,
     ["Verify the organization slug and your access"],
   );
 }
@@ -523,14 +521,14 @@ function build403Error(
     throw new ResolutionError(
       `Dashboard ${ctx.dashboardId} in ${org}`,
       "access denied",
-      asInvocationCommand(`sentry dashboard list ${ctx.orgSlug ?? "<org>"}/`),
+      sentry`dashboard list ${ctx.orgSlug ?? "<org>"}/`,
       [message, "Check your organization membership and role"],
     );
   }
   throw new ResolutionError(
     `Dashboards in ${org}`,
     "access denied",
-    asInvocationCommand("sentry org list"),
+    sentry`org list`,
     [message, "Check your organization membership and role"],
   );
 }

@@ -11,7 +11,7 @@ import {
   fetchSentryStatus,
   SENTRY_STATUS_PAGE_URL,
 } from "../../lib/api/status-page.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseUrl } from "../../lib/completion-target.js";
 import { formatSentryStatus } from "../../lib/formatters/human.js";
@@ -67,7 +67,7 @@ export const showCommand = buildCommand({
 
     if (status.indicator !== "none") {
       return {
-        hint: `Run \`${asInvocationCommand("sentry status")}\` again to refresh, or open ${status.url}`,
+        hint: `Run \`${sentry`status`}\` again to refresh, or open ${status.url}`,
       };
     }
   },

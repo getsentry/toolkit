@@ -6,7 +6,7 @@
 
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
-import { asInvocationCommand } from "../../../lib/app-identity.js";
+import { sentry } from "../../../lib/app-identity.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
   aggregateShorthandParser,
@@ -90,14 +90,14 @@ function parseAddPositionalArgs(args: readonly string[]): {
     throw new ValidationError(
       "Widget title is required as a positional argument.\n\n" +
         "Example:\n" +
-        `  ${asInvocationCommand('sentry dashboard widget add <dashboard> "My Widget" --display line --query count')}`,
+        `  ${sentry`dashboard widget add <dashboard> "My Widget" --display line --query count`}`,
       "title",
     );
   }
   if (args.length > 3) {
     throw new ValidationError(
       `Too many positional arguments (got ${args.length}, expected at most 3).\n\n` +
-        `Usage: ${asInvocationCommand("sentry dashboard widget add [<org/project>] <dashboard> <title>")}`,
+        `Usage: ${sentry`dashboard widget add [<org/project>] <dashboard> <title>`}`,
       "positional",
     );
   }

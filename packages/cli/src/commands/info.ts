@@ -8,7 +8,7 @@
 
 import type { SentryContext } from "../context.js";
 import { getCurrentUser } from "../lib/api/users.js";
-import { asInvocationCommand } from "../lib/app-identity.js";
+import { sentry } from "../lib/app-identity.js";
 import { buildCommand } from "../lib/command.js";
 import { DEFAULT_SENTRY_URL } from "../lib/constants.js";
 import { isAuthenticated } from "../lib/db/auth.js";
@@ -180,8 +180,8 @@ export const infoCommand = buildCommand({
       this.process.exitCode = 1;
       return {
         hint: failed
-          ? `Not authenticated. Run \`${asInvocationCommand("sentry auth login")}\`.`
-          : `No default organization/project. Set them with \`${asInvocationCommand("sentry cli defaults org <org>")}\` and \`${asInvocationCommand("sentry cli defaults project <project>")}\`.`,
+          ? `Not authenticated. Run \`${sentry`auth login`}\`.`
+          : `No default organization/project. Set them with \`${sentry`cli defaults org <org>`}\` and \`${sentry`cli defaults project <project>`}\`.`,
       };
     }
     return { hint: "Configuration verified." };

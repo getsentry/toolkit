@@ -359,19 +359,72 @@ function untaggedParser(value) {
 }
 
 /**
- * A `sentry <command>` hint: the CLI binary name, then a subcommand or a
- * `<placeholder>` for one.
+ * Top-level routes of the CLI, read from `src/command-manifest.ts` (one
+ * `name: route(…)` or `name: hidden(…)` entry each). Only `sentry <route>`
+ * is a command; `sentry binary` or `sentry v1.2` is prose.
  */
-const SENTRY_COMMAND_RE = /(?:^|[\s`'"(])sentry [a-z<]/;
+const ROUTE_NAMES = new Set(
+  [
+    ...readFileSync(
+      new URL("../src/command-manifest.ts", import.meta.url),
+      "utf-8",
+    ).matchAll(/^ {2}"?([a-z][a-z0-9-]*)"?: (?:route|hidden)\(/gm),
+  ].map(([, routeName]) => routeName),
+);
+
+/** Stands in for an interpolation, which may be any word. */
+const INTERPOLATION = "\uFFFC";
+
+/**
+ * `sentry` and the word after it: a route, a flag, a `<placeholder>`, or an
+ * interpolation.
+ */
+const SENTRY_WORD_RE =
+  /(?:^|[\s`'"(])sentry (\uFFFC|<|--?[a-z]|[a-z][a-z0-9-]*)/g;
+
+/** Whether `text` names a `sentry <command>`. */
+function namesSentryCommand(text) {
+  for (const [, word] of text.matchAll(SENTRY_WORD_RE)) {
+    if (
+      word === INTERPOLATION ||
+      word === "<" ||
+      word.startsWith("-") ||
+      ROUTE_NAMES.has(word)
+    )
+      return true;
+  }
+  return false;
+}
 
 /** A whole `sentry <command>`, such as a usage line or a command prefix. */
-const WHOLE_SENTRY_COMMAND_RE = /^sentry [a-z<]/;
+function isWholeSentryCommand(text) {
+  return namesSentryCommand(text) && text.startsWith("sentry ");
+}
 
-/** Calls that turn a `sentry …` command into the running program's command. */
-const INVOCATION_HELPERS = new Set([
-  "asInvocationCommand",
-  "asRunningAppCommand",
-]);
+/** The tag that builds a command hint: `` sentry`issue list` ``. */
+function isSentryTag(node) {
+  return (
+    node.type === "TaggedTemplateExpression" &&
+    node.tag.type === "Identifier" &&
+    node.tag.name === "sentry"
+  );
+}
+
+/** A call of the runtime form, for commands held in variables. */
+function isInvocationCall(node) {
+  return (
+    node.type === "CallExpression" &&
+    node.callee.type === "Identifier" &&
+    node.callee.name === "asInvocationCommand"
+  );
+}
+
+/** Text of a template literal, each interpolation as one word. */
+function templateText(node) {
+  return node.quasis
+    .map((quasi) => quasi.value.cooked ?? "")
+    .join(INTERPOLATION);
+}
 
 /** Properties whose text is command help, written for the `sentry` binary. */
 const HELP_TEXT_KEYS = new Set([
@@ -389,15 +442,11 @@ function hasFunctionAncestor(node) {
   return false;
 }
 
-/** Whether `node` sits in an invocation helper call or in command help text. */
+/** Whether `node` sits in a command hint helper or in command help text. */
 function isInvocationSafe(node) {
   for (let current = node.parent; current; current = current.parent) {
     if (FUNCTION_TYPES.has(current.type)) return false;
-    if (
-      current.type === "CallExpression" &&
-      INVOCATION_HELPERS.has(current.callee.name)
-    )
-      return true;
+    if (isSentryTag(current) || isInvocationCall(current)) return true;
     if (
       current.type === "Property" &&
       HELP_TEXT_KEYS.has(current.key?.name ?? current.key?.value)
@@ -857,39 +906,56 @@ const rules = {
     },
   ),
   "no-hardcoded-sentry-command": rule(
-    "Hints must name the program that is running (`npx sentry`, `sentry-mcp`, ...): wrap the `sentry …` command in asInvocationCommand() from lib/app-identity.js.",
+    "Hints must name the program that is running (`npx sentry`, `sentry-mcp`, ...): write the command with the sentry`…` tag from lib/app-identity.js, as sentry`issue list`.",
     (_context, file, report) => {
       if (!file.includes("/src/")) return {};
       const check = (node, text) => {
-        if (!SENTRY_COMMAND_RE.test(text) || isInvocationSafe(node)) return;
+        if (!namesSentryCommand(text) || isInvocationSafe(node)) return;
         // A module-level constant that holds a whole command is data: the
         // code that prints it wraps it, as ContextError and org-list do.
-        if (WHOLE_SENTRY_COMMAND_RE.test(text) && !hasFunctionAncestor(node))
-          return;
+        if (isWholeSentryCommand(text) && !hasFunctionAncestor(node)) return;
         report(node);
       };
+      // The running program is known only once an entry point has started,
+      // so a hint built at module load would still name `sentry`.
+      const checkModuleLevel = (node) => {
+        if (!hasFunctionAncestor(node))
+          report(
+            node,
+            "Build the hint inside the function that prints it, not at module load: the running program is not known yet.",
+          );
+      };
       return {
-        // The running program is known only once an entry point has started,
-        // so a call evaluated at module load would still name `sentry`.
         CallExpression(node) {
-          if (
-            INVOCATION_HELPERS.has(node.callee.name) &&
-            !hasFunctionAncestor(node)
-          )
+          if (!isInvocationCall(node)) return;
+          checkModuleLevel(node);
+          const [arg] = node.arguments;
+          const text =
+            arg?.type === "Literal"
+              ? arg.value
+              : arg?.type === "TemplateLiteral"
+                ? templateText(arg)
+                : undefined;
+          if (typeof text === "string" && text.startsWith("sentry "))
             report(
               node,
-              "Call asInvocationCommand() where the hint is built, not at module load: the running program is not known yet.",
+              "Write a literal command with the sentry`…` tag; asInvocationCommand() is for commands held in variables.",
+            );
+        },
+        TaggedTemplateExpression(node) {
+          if (!isSentryTag(node)) return;
+          checkModuleLevel(node);
+          if (templateText(node.quasi).startsWith("sentry "))
+            report(
+              node,
+              "The sentry`…` tag adds the program name; leave `sentry` out of the text.",
             );
         },
         Literal(node) {
           if (typeof node.value === "string") check(node, node.value);
         },
         TemplateLiteral(node) {
-          // Each interpolation stands in for a word, so `sentry ${cmd}` counts.
-          check(
-            node,
-            node.quasis.map((quasi) => quasi.value.cooked ?? "").join("x"),
-          );
+          if (!isSentryTag(node.parent)) check(node, templateText(node));
         },
       };
     },

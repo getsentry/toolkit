@@ -43,7 +43,7 @@ import {
   listOrganizations,
   type PaginatedResponse,
 } from "./api-client.js";
-import { asInvocationCommand } from "./app-identity.js";
+import { asInvocationCommand, sentry } from "./app-identity.js";
 import { explicitProjectSlugs, type ParsedOrgProject } from "./arg-parsing.js";
 import {
   advancePaginationState,
@@ -1056,7 +1056,7 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
       "is an organization, not a project",
       `${asInvocationCommand(config.commandPrefix)} ${projectSlug}/`,
       [
-        `List projects: ${asInvocationCommand(`sentry project list ${projectSlug}/`)}`,
+        `List projects: ${sentry`project list ${projectSlug}/`}`,
         `Specify a project: ${asInvocationCommand(config.commandPrefix)} ${projectSlug}/<project>`,
       ],
     );

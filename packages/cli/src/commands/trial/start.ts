@@ -17,7 +17,7 @@ import {
   getProductTrials,
   startProductTrial,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
 import { detectSwappedTrialArgs } from "../../lib/arg-parsing.js";
 import { openBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
@@ -194,7 +194,7 @@ export const startCommand = buildCommand({
         const { org } = await resolveOrgInput(
           input.org,
           context.cwd,
-          asInvocationCommand("sentry trial start <name> <org>"),
+          sentry`trial start <name> <org>`,
         );
         return { name: input.name, org };
       },

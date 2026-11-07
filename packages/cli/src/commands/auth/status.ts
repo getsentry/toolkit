@@ -6,7 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   type AuthConfig,
@@ -282,8 +282,8 @@ export const statusCommand = buildCommand({
         classifySentryToken(effectiveToken) === "org-auth-token";
       return {
         hint: isOrgToken
-          ? `Run \`${asInvocationCommand("sentry auth whoami")}\` to see which organization this token belongs to`
-          : `Run \`${asInvocationCommand("sentry auth whoami")}\` to see which user this token belongs to`,
+          ? `Run \`${sentry`auth whoami`}\` to see which organization this token belongs to`
+          : `Run \`${sentry`auth whoami`}\` to see which user this token belongs to`,
       };
     }
   },

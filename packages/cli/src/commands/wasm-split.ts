@@ -18,7 +18,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import type { SentryContext } from "../context.js";
-import { asInvocationCommand } from "../lib/app-identity.js";
+import { sentry } from "../lib/app-identity.js";
 import { buildCommand } from "../lib/command.js";
 import {
   parseFilePath,
@@ -170,7 +170,7 @@ export const wasmSplitCommand = buildCommand({
   async *func(this: SentryContext, flags: WasmSplitFlags, input: string) {
     if (!input?.trim()) {
       throw new ValidationError(
-        `Wasm file path is required: ${asInvocationCommand("sentry wasm-split <input>")}`,
+        `Wasm file path is required: ${sentry`wasm-split <input>`}`,
         "input",
       );
     }

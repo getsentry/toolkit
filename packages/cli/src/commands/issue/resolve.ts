@@ -24,7 +24,7 @@ import {
   type ResolveStatusDetails,
   updateIssueStatus,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { choiceParser } from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
@@ -185,9 +185,7 @@ export const resolveCommand = buildCommand({
         // issue's org — we can't resolve the commit without knowing the org.
         throw new ContextError(
           "Organization",
-          asInvocationCommand(
-            "sentry issue resolve <org>/<issue> --in @commit",
-          ),
+          sentry`issue resolve <org>/<issue> --in @commit`,
           [],
           "--in @commit needs an organization context to look up the Sentry repo registry.",
         );

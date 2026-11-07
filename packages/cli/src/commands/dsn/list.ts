@@ -10,7 +10,7 @@ import {
   listOrganizationDsns,
   listProjectDsns,
 } from "../../lib/api/projects.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import { textParser } from "../../lib/completion-target.js";
 import {
@@ -87,9 +87,7 @@ async function listForOrganization(
   advancePaginationState(PAGINATION_KEY, contextKey, direction, nextCursor);
   const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
   const hasMore = !!nextCursor;
-  const command = asInvocationCommand(
-    `sentry dsn list ${target} --limit ${flags.limit}`,
-  );
+  const command = sentry`dsn list ${target} --limit ${flags.limit}`;
 
   return {
     items: data.map((dsn) => ({ ...dsn, org })),

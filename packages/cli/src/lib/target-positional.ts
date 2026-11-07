@@ -23,7 +23,7 @@
  * `func` runs.
  */
 
-import { asInvocationCommand } from "./app-identity.js";
+import { asInvocationCommand, sentry } from "./app-identity.js";
 import {
   firstNonBlankLine,
   type ListTarget,
@@ -112,7 +112,7 @@ export function orgProjectTarget<R>(
       requireExplicitTarget(
         parsed,
         "Project target",
-        asInvocationCommand(`sentry ${commandNameOf(context)} <org>/<project>`),
+        sentry`${commandNameOf(context)} <org>/<project>`,
       ),
   );
 }
@@ -219,7 +219,7 @@ export const orgTarget = boundPositional(
     resolveOrgInput(
       input,
       context.cwd,
-      asInvocationCommand(`sentry ${commandNameOf(context)} <org>`),
+      sentry`${commandNameOf(context)} <org>`,
     ),
 );
 

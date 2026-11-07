@@ -8,7 +8,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { getCurrentUser } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { type AccountSummary, listAccounts } from "../../lib/db/accounts.js";
 import { getAuthConfig, getAuthToken } from "../../lib/db/auth.js";
@@ -84,10 +84,10 @@ export const whoamiCommand = buildCommand({
         throw new ResolutionError(
           "Organization auth tokens (sntrys_...)",
           "are not tied to a user — `whoami` needs a user-scoped credential",
-          asInvocationCommand("sentry auth status"),
+          sentry`auth status`,
           [
-            `Use an OAuth token from \`${asInvocationCommand("sentry auth login")}\` or a personal access token`,
-            `Run \`${asInvocationCommand("sentry org list")}\` to list organizations this token can access`,
+            `Use an OAuth token from \`${sentry`auth login`}\` or a personal access token`,
+            `Run \`${sentry`org list`}\` to list organizations this token can access`,
           ],
         );
       }
@@ -104,7 +104,7 @@ export const whoamiCommand = buildCommand({
       };
       yield new CommandOutput(data);
       return {
-        hint: `Run \`${asInvocationCommand("sentry auth login")}\` for user-scoped authentication`,
+        hint: `Run \`${sentry`auth login`}\` for user-scoped authentication`,
       };
     }
 
@@ -161,6 +161,6 @@ export function formatOtherIdentitiesHint(user: {
   const you = user.name || user.username || user.email || `user ${user.id}`;
   return (
     `You are ${you}, but you can be whoever you want — as long as it's one of: ` +
-    `${others.map(formatAccountLabel).join(", ")}. Run '${asInvocationCommand("sentry auth switch")}'.`
+    `${others.map(formatAccountLabel).join(", ")}. Run '${sentry`auth switch`}'.`
   );
 }

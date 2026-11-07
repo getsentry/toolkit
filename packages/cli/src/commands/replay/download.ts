@@ -12,7 +12,7 @@ import {
   getReplayRecordingSegments,
   resolveReplay,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseFilePath } from "../../lib/completion-target.js";
 import { ApiError, ResolutionError } from "../../lib/errors.js";
@@ -119,9 +119,7 @@ export const downloadCommand = buildCommand({
         throw new ResolutionError(
           `Replay '${replayId}'`,
           "not found",
-          asInvocationCommand(
-            `sentry replay download ${resolved.org}/${replayId}`,
-          ),
+          sentry`replay download ${resolved.org}/${replayId}`,
           [
             "Check that you are querying the right organization",
             "The replay may be past your retention window",
@@ -182,7 +180,7 @@ function noRecordingError(org: string, replayId: string): ResolutionError {
   return new ResolutionError(
     `Replay '${replayId}'`,
     "has no recording to download",
-    asInvocationCommand(`sentry replay view ${org}/${replayId}`),
+    sentry`replay view ${org}/${replayId}`,
     ["The replay may be archived or past your retention window"],
   );
 }

@@ -9,7 +9,7 @@ import {
   pointDefaultUrlAtAccount,
   resolveAccountSelector,
 } from "../../lib/account-selection.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   ACCOUNT_SERVER_TARGET,
@@ -177,11 +177,7 @@ export const logoutCommand = buildCommand({
     if (selectors.length > 0) {
       targets = uniqueAccounts(
         selectors.map((sel) =>
-          resolveAccountSelector(
-            sel,
-            asInvocationCommand("sentry auth logout"),
-            { url: flags.url },
-          ),
+          resolveAccountSelector(sel, sentry`auth logout`, { url: flags.url }),
         ),
       );
     } else {
@@ -191,7 +187,7 @@ export const logoutCommand = buildCommand({
     if (targets.length === 0) {
       return yield new CommandOutput({
         loggedOut: false,
-        message: `No account is active. Run '${asInvocationCommand("sentry auth list")}' and pass an account to log out of, or 'all'.`,
+        message: `No account is active. Run '${sentry`auth list`}' and pass an account to log out of, or 'all'.`,
       });
     }
 

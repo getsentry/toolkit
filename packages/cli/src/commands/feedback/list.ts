@@ -10,7 +10,7 @@ import {
   getProject,
   listFeedback,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import { textParser } from "../../lib/completion-target.js";
 import {
@@ -112,9 +112,7 @@ function pageHint(
   flags: Pick<ListFlags, "status" | "limit" | "query" | "period">,
 ): string {
   return appendFeedbackFlags(
-    asInvocationCommand(
-      `sentry feedback list ${formatScope(org, project)} -c ${direction}`,
-    ),
+    sentry`feedback list ${formatScope(org, project)} -c ${direction}`,
     flags,
   );
 }
@@ -289,7 +287,7 @@ export const listCommand = buildListCommand("feedback", {
       const count = `Showing ${feedback.length} feedback item${feedback.length === 1 ? "" : "s"}.`;
       const first = feedback[0];
       const viewHint = first
-        ? `Use '${asInvocationCommand(`sentry feedback view ${resolved.org}/${first.shortId}`)}' for details.`
+        ? `Use '${sentry`feedback view ${resolved.org}/${first.shortId}`}' for details.`
         : undefined;
       hint = nav
         ? `${count} ${nav}`

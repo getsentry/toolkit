@@ -14,7 +14,7 @@
 import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { existsSync } from "node:fs";
 import type { SentryContext } from "../../context.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   type DifSourcesInfo,
@@ -212,7 +212,7 @@ export const printSourcesCommand = buildCommand({
       };
     }
     return {
-      hint: `Bundle these into a source bundle with: ${asInvocationCommand(`sentry debug-files bundle-sources ${path}`)}`,
+      hint: `Bundle these into a source bundle with: ${sentry`debug-files bundle-sources ${path}`}`,
     };
   },
 });

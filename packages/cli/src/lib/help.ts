@@ -6,7 +6,7 @@
  * Commands are auto-generated from Stricli's route structure.
  */
 
-import { asInvocationCommand, asRunningAppCommand } from "./app-identity.js";
+import { sentry } from "./app-identity.js";
 import { formatBanner } from "./banner.js";
 import { isAuthenticated } from "./db/auth.js";
 import { detectAgent } from "./detect-agent.js";
@@ -137,9 +137,7 @@ function toHelpCommand(
       .filter((sub: RouteMapEntry) => !sub.hidden)
       .map((sub: RouteMapEntry) => sub.name.original);
     return {
-      usage: asRunningAppCommand(
-        `sentry ${routeName} ${pickSubcommands(routeName, subNames).join(" | ")}`,
-      ),
+      usage: sentry`${routeName} ${pickSubcommands(routeName, subNames).join(" | ")}`,
       description: brief,
     };
   }
@@ -151,13 +149,13 @@ function toHelpCommand(
       getPositionalString(entry.target.parameters.positional);
     const usageSuffix = placeholder ? ` ${placeholder}` : "";
     return {
-      usage: asRunningAppCommand(`sentry ${routeName}${usageSuffix}`),
+      usage: sentry`${routeName}${usageSuffix}`,
       description: brief,
     };
   }
 
   return {
-    usage: asRunningAppCommand(`sentry ${routeName}`),
+    usage: sentry`${routeName}`,
     description: brief,
   };
 }
@@ -319,9 +317,7 @@ type CustomHelpOptions = {
  */
 export function printCustomHelp(options: CustomHelpOptions = {}): string {
   const loggedIn = isAuthenticated();
-  const example = asInvocationCommand(
-    loggedIn ? "sentry issue list" : "sentry auth",
-  );
+  const example = loggedIn ? sentry`issue list` : sentry`auth`;
   const overview = Boolean(options.overview) && !detectAgent();
 
   const header: string[] = [];
@@ -371,9 +367,7 @@ export function printCustomHelp(options: CustomHelpOptions = {}): string {
   // Example
   lines.push(`  ${muted("try:")} ${magenta(example)}`);
   if (overview) {
-    lines.push(
-      `  ${muted("all commands:")} ${magenta(asInvocationCommand("sentry help"))}`,
-    );
+    lines.push(`  ${muted("all commands:")} ${magenta(sentry`help`)}`);
   }
   lines.push("");
 
@@ -862,7 +856,7 @@ function formatCommandHuman(cmd: CommandInfo): string {
  */
 function formatGroupHuman(group: RouteInfo): string {
   const lines: string[] = [];
-  lines.push(asRunningAppCommand(`sentry ${group.name}`));
+  lines.push(sentry`${group.name}`);
   lines.push("");
   lines.push(`  ${group.brief}`);
   lines.push("");

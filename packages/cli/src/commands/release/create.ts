@@ -7,7 +7,7 @@
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { createRelease } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   parseProjectList,
@@ -207,7 +207,7 @@ export const createCommand = buildCommand({
 
     const hint = flags.finalize
       ? "Release created and finalized."
-      : `Release created. Finalize with: ${asInvocationCommand(`sentry release finalize ${version}`)}`;
+      : `Release created. Finalize with: ${sentry`release finalize ${version}`}`;
     return { hint };
   },
 });

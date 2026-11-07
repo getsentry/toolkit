@@ -11,7 +11,7 @@ import {
   getDetailedTrace,
   type TraceItemDetail,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { spansFlag } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
@@ -117,8 +117,8 @@ export function parseSpanViewInput(rawArgs: readonly string[]): SpanViewInput {
       first && ID_KINDS.span.isId(first)
         ? [
             `'${first}' looks like a span ID (16 characters), not a trace ID`,
-            `Provide the trace ID first: ${asInvocationCommand(`sentry span view <trace-id> ${validateSpanId(first)}`)}`,
-            `Use '${asInvocationCommand("sentry trace list")}' to find trace IDs`,
+            `Provide the trace ID first: ${sentry`span view <trace-id> ${validateSpanId(first)}`}`,
+            `Use '${sentry`trace list`}' to find trace IDs`,
           ]
         : [],
     );
@@ -126,7 +126,7 @@ export function parseSpanViewInput(rawArgs: readonly string[]): SpanViewInput {
 
   if (first === undefined) {
     throw new ContextError("Span ID", USAGE_HINT, [
-      `Use '${asInvocationCommand(`sentry span list ${target}`)}' to find span IDs within this trace`,
+      `Use '${sentry`span list ${target}`}' to find span IDs within this trace`,
     ]);
   }
 
@@ -151,7 +151,7 @@ function parseTrace(traceArg: string, spanId: string): TraceArgumentsInput {
     }
     throw new ContextError("Trace ID", USAGE_HINT, [
       `'${traceArg}' is missing a trace ID before the span ID '${spanId}'`,
-      `Provide the trace ID: ${asInvocationCommand(`sentry span view ${traceArg}/<trace-id> ${spanId}`)}`,
+      `Provide the trace ID: ${sentry`span view ${traceArg}/<trace-id> ${spanId}`}`,
     ]);
   }
 }
@@ -200,9 +200,7 @@ async function validateAndRecoverSpanId(
     const result = await recoverHexId(rawSpanId, "span", ctx);
     return handleRecoveryResult(result, err, {
       entityType: "span",
-      canonicalCommand: asInvocationCommand(
-        `sentry span view ${ctx.org}/${ctx.project}/${ctx.traceId} <id>`,
-      ),
+      canonicalCommand: sentry`span view ${ctx.org}/${ctx.project}/${ctx.traceId} <id>`,
       logTag: "span.view",
     });
   }

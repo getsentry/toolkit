@@ -62,7 +62,7 @@ describe("formatConflictError", () => {
     expect(error).toContain("Project ID: 456");
     expect(error).toContain("Project ID: 101112");
     expect(error).toContain("sentry <command> <org>/<project>");
-    expect(error).toContain("sentry config set defaults.org");
+    expect(error).toContain("sentry cli defaults org");
   });
 
   test("formats error with DSN without projectId", () => {
@@ -186,7 +186,7 @@ describe("formatNoDsnError", () => {
     expect(error).toContain("JavaScript/TypeScript source code");
     expect(error).toContain("export SENTRY_DSN=");
     expect(error).toContain("sentry <command> <org>/<project>");
-    expect(error).toContain("sentry config set defaults.org");
+    expect(error).toContain("sentry cli defaults org");
   });
 
   test("includes accessible projects when showProjects is true", async () => {

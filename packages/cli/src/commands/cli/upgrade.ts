@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import type { SentryContext } from "../../context.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   compareVersions,
   determineInstallDir,
@@ -98,7 +98,7 @@ function prepareLocalDatabaseForDowngrade(): void {
   } catch (error) {
     log.warn(
       `Could not prepare the local database for an older CLI: ${stringifyUnknown(error)}. ` +
-        `If the older CLI fails, delete ${getDbPath()} and run \`${asInvocationCommand("sentry auth login")}\`.`,
+        `If the older CLI fails, delete ${getDbPath()} and run \`${sentry`auth login`}\`.`,
     );
   }
 }
@@ -133,7 +133,7 @@ async function backupLocalDatabase(
   } catch (error) {
     log.warn(
       `Could not back up the local database: ${stringifyUnknown(error)}. ` +
-        `\`${asInvocationCommand("sentry cli upgrade undo")}\` won't be able to return to this version.`,
+        `\`${sentry`cli upgrade undo`}\` won't be able to return to this version.`,
     );
     return;
   }
@@ -357,7 +357,7 @@ async function resolveTargetWithFallback(opts: {
       throw new UpgradeError(
         "unsupported_operation",
         "Cannot switch channels in offline mode — the cached version belongs to the current channel. " +
-          `Run '${asInvocationCommand("sentry cli upgrade")}' with network access to switch channels.`,
+          `Run '${sentry`cli upgrade`}' with network access to switch channels.`,
       );
     }
     // Read the cached version BEFORE persisting the channel — setReleaseChannel
@@ -424,7 +424,7 @@ function validateMethod(
       throw new UpgradeError(
         "unsupported_operation",
         `Homebrew can't install an earlier version, so undo can't return to ${pinnedVersion} through it. ` +
-          `Run \`${asInvocationCommand("sentry cli upgrade undo --method curl")}\` to return to it as a standalone install; ` +
+          `Run \`${sentry`cli upgrade undo --method curl`}\` to return to it as a standalone install; ` +
           "the Homebrew one may still come first in PATH.",
       );
     }
@@ -582,8 +582,8 @@ function buildCheckResult(opts: {
   if (CLI_VERSION !== target) {
     const cmd =
       versionArg && !CHANNEL_VERSIONS.has(versionArg)
-        ? asInvocationCommand(`sentry cli upgrade ${target}`)
-        : asInvocationCommand("sentry cli upgrade");
+        ? sentry`cli upgrade ${target}`
+        : sentry`cli upgrade`;
     result.warnings = [`Run '${cmd}' to update.`];
   }
 
@@ -693,7 +693,7 @@ async function spawnWithRetry(
         throw new UpgradeError(
           "execution_failed",
           `Downloaded binary not found at ${binaryPath}. ` +
-            `The download may have been interrupted — rerun \`${asInvocationCommand("sentry cli upgrade")}\`.`,
+            `The download may have been interrupted — rerun \`${sentry`cli upgrade`}\`.`,
         );
       }
       if (!isEbusyError(error) || attempt === SPAWN_MAX_ATTEMPTS) {
@@ -1040,7 +1040,6 @@ async function migrateToStandaloneForNightly(opts: {
   };
   const warnings: string[] = [];
   warnings.push(
-    // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- names the binary, not a command.
     `Your ${method}-installed sentry may still appear earlier in PATH.`,
   );
   const hint = uninstallHints[method];

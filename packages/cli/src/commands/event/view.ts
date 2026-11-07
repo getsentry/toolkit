@@ -17,7 +17,7 @@ import {
   type ResolvedEvent,
   resolveEventInOrg,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
 import {
   type IssueSelector,
   issueSelectorHelp,
@@ -187,7 +187,7 @@ export function jsonTransformEventView(data: EventViewData, fields?: string[]) {
 function replayHint(org: string, event: SentryEvent): string | undefined {
   const replayId = getReplayIdFromEvent(event);
   return replayId
-    ? `Related replay: ${asInvocationCommand(`sentry replay view ${org}/${replayId}`)}`
+    ? `Related replay: ${sentry`replay view ${org}/${replayId}`}`
     : undefined;
 }
 
@@ -365,7 +365,7 @@ export function parseEventViewInput(args: readonly string[]): EventViewInput {
     // There is no "latest event of a project" endpoint — the latest-event
     // lookup is keyed by issue, so a bare "latest" has nothing to resolve
     throw new ContextError("Issue ID", BARE_LATEST_HINT, [
-      `'latest' resolves the newest event of an issue — pass an issue ID, e.g. '${asInvocationCommand("sentry event view 17370")}'`,
+      `'latest' resolves the newest event of an issue — pass an issue ID, e.g. '${sentry`event view 17370`}'`,
       `Or use the @latest selector for the latest event of the most recent unresolved issue: ${SELECTOR_HINT}`,
     ]);
   }
@@ -595,9 +595,7 @@ async function validateAndRecoverEventId(
     const result = await recoverHexId(rawEventId, "event", recoveryCtx);
     return handleRecoveryResult(result, err, {
       entityType: "event",
-      canonicalCommand: asInvocationCommand(
-        `sentry event view ${recoveryCtx.org || "<org>"}/${recoveryCtx.project ?? "<project>"}/<id>`,
-      ),
+      canonicalCommand: sentry`event view ${recoveryCtx.org || "<org>"}/${recoveryCtx.project ?? "<project>"}/<id>`,
       logTag: "event.view",
     });
   }
@@ -694,9 +692,7 @@ export async function resolveEventTarget(
       const resolved = await resolveProjectBoundSlug(
         parsed.projectSlug,
         USAGE_HINT,
-        asInvocationCommand(
-          `sentry event view <org>/${parsed.projectSlug} ${eventId}`,
-        ),
+        sentry`event view <org>/${parsed.projectSlug} ${eventId}`,
         parsed.originalSlug,
       );
       target = {
@@ -751,7 +747,7 @@ export async function resolveOrgAllTarget(
     throw new ResolutionError(
       `Event ${eventId} in organization "${org}"`,
       "not found",
-      asInvocationCommand(`sentry event view ${org}/<project> ${eventId}`),
+      sentry`event view ${org}/<project> ${eventId}`,
     );
   }
   return {
@@ -784,7 +780,7 @@ export async function resolveAutoDetectTarget(
       .withTag("event.view")
       .warn(
         `Found event in ${resolved.org}/${resolved.project}. ` +
-          `Use: ${asInvocationCommand(`sentry event view ${resolved.org}/${resolved.project} ${eventId}`)}`,
+          `Use: ${sentry`event view ${resolved.org}/${resolved.project} ${eventId}`}`,
       );
     return {
       org: resolved.org,
@@ -966,14 +962,14 @@ export async function fetchEventWithContext(
       // Nudge the user when the event ID looks like an issue short ID
       if (issueForm(eventId) === "short-id") {
         suggestions.unshift(
-          `This looks like an issue short ID. Try: ${asInvocationCommand(`sentry issue view ${eventId}`)}`,
+          `This looks like an issue short ID. Try: ${sentry`issue view ${eventId}`}`,
         );
       }
 
       throw new ResolutionError(
         `Event '${eventId}'`,
         `not found in ${org}/${project}`,
-        asInvocationCommand(`sentry event view ${org}/<project> ${eventId}`),
+        sentry`event view ${org}/<project> ${eventId}`,
         suggestions,
       );
     }
@@ -1044,9 +1040,7 @@ async function resolveSelectorScope(
       return await resolveProjectBoundSlug(
         parsed.projectSlug,
         SELECTOR_HINT,
-        asInvocationCommand(
-          `sentry event view <org>/${parsed.projectSlug}/${selector}`,
-        ),
+        sentry`event view <org>/${parsed.projectSlug}/${selector}`,
         parsed.originalSlug,
       );
     case ProjectSpecificationType.AutoDetect: {
@@ -1134,10 +1128,7 @@ async function resolveIssueIdShortcut(
       : undefined;
   const resolved = await resolveOrg({ org: explicitOrg, cwd });
   if (!resolved) {
-    throw new ContextError(
-      "Organization",
-      asInvocationCommand(`sentry event view ${issueId}`),
-    );
+    throw new ContextError("Organization", sentry`event view ${issueId}`);
   }
   const org = resolved.org;
   log.info(`Fetching latest event for issue ${issueId}...`);
@@ -1198,7 +1189,7 @@ async function resolveIssueShortcut(
     if (!resolved) {
       throw new ContextError(
         "Organization",
-        asInvocationCommand(`sentry issue view ${issueShortId}`),
+        sentry`issue view ${issueShortId}`,
       );
     }
 
@@ -1211,7 +1202,7 @@ async function resolveIssueShortcut(
         throw new ResolutionError(
           `Issue '${issueShortId}'`,
           "has no associated project",
-          asInvocationCommand(`sentry event view <org>/<project> ${eventId}`),
+          sentry`event view <org>/<project> ${eventId}`,
           ["Specify the project explicitly to view this event"],
         );
       }
@@ -1240,7 +1231,7 @@ async function resolveIssueShortcut(
     return {
       org: resolved.org,
       data,
-      hint: `Tip: Use '${asInvocationCommand(`sentry issue view ${issueShortId}`)}' to view the full issue`,
+      hint: `Tip: Use '${sentry`issue view ${issueShortId}`}' to view the full issue`,
     };
   }
 

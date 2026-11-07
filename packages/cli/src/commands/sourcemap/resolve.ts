@@ -10,7 +10,7 @@
 import { tableCell } from "@sentry/toolkit-core/markdown";
 import { relative, resolve as resolvePath } from "node:path";
 import type { SentryContext } from "../../context.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceListParser,
@@ -237,7 +237,7 @@ export const resolveCommand = buildCommand({
     }
     if (withDebugId < files.length) {
       return {
-        hint: `Run \`${asInvocationCommand("sentry sourcemap inject")}\` to add debug IDs to files missing them.`,
+        hint: `Run \`${sentry`sourcemap inject`}\` to add debug IDs to files missing them.`,
       };
     }
     return {};

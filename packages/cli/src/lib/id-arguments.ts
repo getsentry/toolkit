@@ -33,7 +33,7 @@
  */
 
 import { parse } from "../generated/id-arguments-grammar.js";
-import { asInvocationCommand } from "./app-identity.js";
+import { asInvocationCommand, sentry } from "./app-identity.js";
 import { looksLikeIssueShortId } from "./arg-parsing.js";
 import { ContextError, ValidationError } from "./errors.js";
 import {
@@ -268,7 +268,7 @@ export const ID_KINDS = {
     validate: (value) => {
       if (!isAllDigits(value)) {
         throw new ValidationError(
-          `Invalid integration ID '${value}'. Use the numeric ID from '${asInvocationCommand("sentry integration list")}'.`,
+          `Invalid integration ID '${value}'. Use the numeric ID from '${sentry`integration list`}'.`,
           "integration-id",
         );
       }

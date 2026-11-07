@@ -14,7 +14,7 @@ import {
   listIssuesAllPages,
 } from "../../lib/api-client.js";
 import { extractRequiredScopes } from "../../lib/api-scope.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   CURSOR_KEYWORDS,
   formatProjectTarget,
@@ -385,11 +385,11 @@ function formatListHeader(title: string): string {
 function formatListFooter(mode: "single" | "multi" | "none"): string {
   switch (mode) {
     case "single":
-      return `\nTip: Use '${asInvocationCommand("sentry issue view <ID>")}' to view details (bold part works as shorthand).`;
+      return `\nTip: Use '${sentry`issue view <ID>`}' to view details (bold part works as shorthand).`;
     case "multi":
-      return `\nTip: Use '${asInvocationCommand("sentry issue view <ALIAS>")}' to view details (see ALIAS column).`;
+      return `\nTip: Use '${sentry`issue view <ALIAS>`}' to view details (see ALIAS column).`;
     default:
-      return `\nTip: Use '${asInvocationCommand("sentry issue view <SHORT_ID>")}' to view issue details.`;
+      return `\nTip: Use '${sentry`issue view <SHORT_ID>`}' to view issue details.`;
   }
 }
 
@@ -722,7 +722,7 @@ function trimWithProjectGuarantee(
 /** Re-run the failed search with an explicit target, preserving search and output flags. */
 function contextRecoveryCommand(target: string, flags: ListFlags): string {
   const parts = [
-    asInvocationCommand(`sentry issue list ${shellQuote(target)}`),
+    sentry`issue list ${shellQuote(target)}`,
     `--limit ${flags.limit}`,
     `--sort ${flags.sort}`,
     `--period ${shellQuote(formatTimeRangeFlag(flags.period))}`,
@@ -766,10 +766,7 @@ function pageHint(
   target: string,
   flags: ListFlags,
 ): string {
-  return appendIssueFlags(
-    asInvocationCommand(`sentry issue list ${target} -c ${direction}`),
-    flags,
-  );
+  return appendIssueFlags(sentry`issue list ${target} -c ${direction}`, flags);
 }
 
 /**
@@ -1067,7 +1064,7 @@ function build400Detail(
   }
 
   suggestions.push(
-    `Verify you have access to the target project: ${asInvocationCommand("sentry project list <org>/")}`,
+    `Verify you have access to the target project: ${sentry`project list <org>/`}`,
   );
 
   return formatDetailWithSuggestions(lines, suggestions);
@@ -1186,14 +1183,10 @@ function build403Detail(originalDetail: unknown): string {
       "  • Check token scopes at: https://sentry.io/settings/account/api/auth-tokens/",
     );
   } else {
-    lines.push(
-      `  • Re-authenticate with: ${asInvocationCommand("sentry auth login")}`,
-    );
+    lines.push(`  • Re-authenticate with: ${sentry`auth login`}`);
   }
 
-  lines.push(
-    `  • Verify project membership: ${asInvocationCommand("sentry project list <org>/")}`,
-  );
+  lines.push(`  • Verify project membership: ${sentry`project list <org>/`}`);
 
   return lines.join("\n  ");
 }
@@ -1206,7 +1199,7 @@ function build403Detail(originalDetail: unknown): string {
  */
 function appendProjectMembershipHint(detail: string | undefined): string {
   const base = detail ?? "You do not have permission to perform this action.";
-  return `${base}\n  Verify project membership: ${asInvocationCommand("sentry project list <org>/")}`;
+  return `${base}\n  Verify project membership: ${sentry`project list <org>/`}`;
 }
 
 /**
@@ -1825,7 +1818,7 @@ export const listCommand = buildListCommand("issue", {
         compact: true,
       } satisfies IssueListResult);
       return {
-        hint: `Tip: Use '${asInvocationCommand(`sentry issue view ${shortId}`)}' for full details`,
+        hint: `Tip: Use '${sentry`issue view ${shortId}`}' for full details`,
       };
     }
 

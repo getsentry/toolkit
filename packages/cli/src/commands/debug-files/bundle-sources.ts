@@ -18,7 +18,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { createSourceBundle } from "../../lib/dif/index.js";
 import { parseFilePath } from "../../lib/completion-target.js";
@@ -183,7 +183,7 @@ export const bundleSourcesCommand = buildCommand({
     });
 
     return {
-      hint: `Created ${outputPath} with ${result.fileCount} source file(s). Upload with: ${asInvocationCommand("sentry debug-files upload")}`,
+      hint: `Created ${outputPath} with ${result.fileCount} source file(s). Upload with: ${sentry`debug-files upload`}`,
     };
   },
 });

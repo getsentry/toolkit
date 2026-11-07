@@ -34,6 +34,7 @@ import {
   asInvocationCommand,
   getLoginCommand,
   getUrlLoginCommand,
+  sentry,
 } from "./app-identity.js";
 
 // ---------------------------------------------------------------------------
@@ -379,8 +380,8 @@ function defaultContextAlternatives(): string[] {
   return [
     "Run from a directory with a Sentry DSN in source code or .env files",
     "Set SENTRY_ORG and SENTRY_PROJECT (or SENTRY_DSN) environment variables",
-    `Run '${asInvocationCommand("sentry org list")}' to find your organization slug`,
-    `Run '${asInvocationCommand("sentry project list <org>/")}' to find project slugs`,
+    `Run '${sentry`org list`}' to find your organization slug`,
+    `Run '${sentry`project list <org>/`}' to find project slugs`,
   ];
 }
 
@@ -745,8 +746,8 @@ export class SeerError extends CliError {
     // where the prompt can't fire — hence the direct command suggestion
     // (CLI-1D/BW/98, 237 users combined).
     const trialHint = this.orgSlug
-      ? `\n\nStart a free trial:\n  ${asInvocationCommand(`sentry trial start seer ${this.orgSlug}`)}`
-      : `\n\nYou may be eligible for a free trial:\n  ${asInvocationCommand("sentry trial list")}`;
+      ? `\n\nStart a free trial:\n  ${sentry`trial start seer ${this.orgSlug}`}`
+      : `\n\nYou may be eligible for a free trial:\n  ${sentry`trial list`}`;
 
     // When org slug is known, provide direct URLs to settings
     if (this.orgSlug) {

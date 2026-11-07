@@ -25,7 +25,7 @@ import {
   getOrganization,
   getProject,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { getCachedOrgRole } from "../../lib/db/regions.js";
 import { ApiError } from "../../lib/errors.js";
 import {
@@ -102,7 +102,7 @@ async function buildPermissionError(
   return new ApiError(
     `Permission denied: cannot delete ${label}.\n\n` +
       `This requires a ${rolesWithAccess} role, or a token with the 'project:admin' scope.\n` +
-      `  Check your role:  ${asInvocationCommand(`sentry org view ${orgSlug}`)}`,
+      `  Check your role:  ${sentry`org view ${orgSlug}`}`,
     403,
   );
 }

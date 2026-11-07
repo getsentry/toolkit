@@ -553,11 +553,16 @@ tester.run(
     valid: [
       {
         filename: source,
-        code: "function hint() { return `Run '${asInvocationCommand(\"sentry auth login\")}' first.`; }",
+        code: "function hint() { return `Run '${sentry`auth login`}' first.`; }",
       },
       {
         filename: source,
-        code: "function hint(org) { return asInvocationCommand(`sentry project list ${org}/`); }",
+        code: "function hint(org) { return sentry`project list ${org}/`; }",
+      },
+      // A command held in a variable goes through the runtime form.
+      {
+        filename: source,
+        code: "function hint(usageHint) { return `Use: ${asInvocationCommand(usageHint)}`; }",
       },
       {
         filename: commands,
@@ -566,6 +571,11 @@ tester.run(
       {
         filename: source,
         code: "const message = 'Sentry CLI could not reach sentry.io';",
+      },
+      // Only `sentry <route>` is a command; the binary's name in prose is not.
+      {
+        filename: commands,
+        code: "function label(file, version) { return [`sentry entries in ${file}`, 'sentry binary', `Installed sentry v${version}`]; }",
       },
       // A module-level usage line is data: ContextError and friends wrap it.
       {
@@ -588,7 +598,8 @@ tester.run(
         code: "function hint(org) { return `Try: sentry project list ${org}/`; }",
         errors: 1,
       },
-      // An interpolated subcommand or a <command> placeholder is still a command.
+      // An interpolated subcommand, a <command> placeholder, or a flag is
+      // still a command.
       {
         filename: commands,
         code: "function hint(name) { return `Run sentry ${name} <org>/`; }",
@@ -597,6 +608,11 @@ tester.run(
       {
         filename: commands,
         code: "function hint() { return '  sentry <command> <org>/<project>'; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function hint() { return '  sentry --help   See all commands'; }",
         errors: 1,
       },
       // Every command runs under npx or another name, not only sentry-mcp.
@@ -610,10 +626,27 @@ tester.run(
         code: "const MESSAGE = 'Usage: sentry local run -- <command>';",
         errors: 1,
       },
+      // A literal command takes the tag, not the runtime form.
+      {
+        filename: source,
+        code: "function hint() { return asInvocationCommand('sentry auth login'); }",
+        errors: 1,
+      },
+      // The tag adds the program name itself.
+      {
+        filename: source,
+        code: "function hint() { return sentry`sentry auth login`; }",
+        errors: 1,
+      },
       // At module load the running program is not known yet.
       {
         filename: source,
-        code: "const HINT = asInvocationCommand('sentry auth login');",
+        code: "const HINT = sentry`auth login`;",
+        errors: 1,
+      },
+      {
+        filename: source,
+        code: "const HINT = asInvocationCommand(USAGE_HINT);",
         errors: 1,
       },
     ],

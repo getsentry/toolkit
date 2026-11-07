@@ -6,7 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { listTransactions } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import { choiceParser, textParser } from "../../lib/completion-target.js";
 import {
@@ -111,10 +111,7 @@ function nextPageHint(
   project: string,
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
-  return appendTraceFlags(
-    asInvocationCommand(`sentry trace list ${org}/${project} -c next`),
-    flags,
-  );
+  return appendTraceFlags(sentry`trace list ${org}/${project} -c next`, flags);
 }
 
 /** Build the CLI hint for fetching the previous page, preserving active flags. */
@@ -123,10 +120,7 @@ function prevPageHint(
   project: string,
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
-  return appendTraceFlags(
-    asInvocationCommand(`sentry trace list ${org}/${project} -c prev`),
-    flags,
-  );
+  return appendTraceFlags(sentry`trace list ${org}/${project} -c prev`, flags);
 }
 
 /**
@@ -342,7 +336,7 @@ export const listCommand = buildListCommand("trace", {
       const countText = `Showing ${traces.length} trace${traces.length === 1 ? "" : "s"}.`;
       hint = nav
         ? `${countText} ${nav}`
-        : `${countText} Use '${asInvocationCommand("sentry trace view <TRACE_ID>")}' to view the full span tree.`;
+        : `${countText} Use '${sentry`trace view <TRACE_ID>`}' to view the full span tree.`;
     }
 
     yield new CommandOutput({

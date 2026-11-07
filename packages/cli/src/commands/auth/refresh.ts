@@ -11,7 +11,7 @@
  */
 
 import type { SentryContext } from "../../context.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { choiceListParser } from "../../lib/completion-target.js";
 import {
@@ -194,7 +194,7 @@ session (similar to \`gh auth refresh -s <scope>\`).
       throw new AuthError(
         "invalid",
         "No refresh token available. You may be using a manual API token.\n" +
-          `Run '${asInvocationCommand("sentry auth login")}' to authenticate with OAuth and enable auto-refresh.`,
+          `Run '${sentry`auth login`}' to authenticate with OAuth and enable auto-refresh.`,
       );
     }
 

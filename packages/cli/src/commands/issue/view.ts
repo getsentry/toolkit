@@ -6,7 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { getLatestEvent, listReplayIdsForIssue } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { issueSelectorHelp, spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
@@ -444,7 +444,7 @@ export const viewCommand = buildCommand({
       requestedCount: issueArgs.length,
     });
     return {
-      hint: `Tip: Use '${asInvocationCommand(`sentry issue explain ${primaryArg}`)}' for AI root cause analysis`,
+      hint: `Tip: Use '${sentry`issue explain ${primaryArg}`}' for AI root cause analysis`,
     };
   },
 });

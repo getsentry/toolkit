@@ -8,7 +8,7 @@
 
 import { parse as parseTarget } from "../generated/org-project-target-grammar.js";
 import type { LogSortDirection } from "./api/logs.js";
-import { asInvocationCommand } from "./app-identity.js";
+import { sentry } from "./app-identity.js";
 import { ContextError, ValidationError, validationError } from "./errors.js";
 import { validateResourceId } from "./input-validation.js";
 import { isGlobFilter } from "./list-filter.js";
@@ -224,10 +224,10 @@ export function rejectIssueCommandTokenWithNumericSuffix(
     `"${arg}" looks like a command token plus a suffix, not an issue short ID.\n` +
       `  Parsed as project '${normalizedProject}' + suffix '${suffix}', but '${normalizedProject}' is an issue command name.`,
     [
-      asInvocationCommand("sentry issue view PROJECT-1"),
-      asInvocationCommand("sentry issue explain PROJECT-1"),
-      asInvocationCommand("sentry issue explain 123456789"),
-      asInvocationCommand("sentry issue explain my-org/project/PROJECT-G"),
+      sentry`issue view PROJECT-1`,
+      sentry`issue explain PROJECT-1`,
+      sentry`issue explain 123456789`,
+      sentry`issue explain my-org/project/PROJECT-G`,
     ],
     "issue",
   );
@@ -678,7 +678,7 @@ function rejectAtSelector(value: string, label: string): void {
     const article = "aeiouAEIOU".includes(label.charAt(0)) ? "an" : "a";
     throw new ValidationError(
       `'${value}' is an issue selector, not ${article} ${label}.\n` +
-        `  Use: ${asInvocationCommand(`sentry issue view ${value}`)}`,
+        `  Use: ${sentry`issue view ${value}`}`,
       label,
     );
   }

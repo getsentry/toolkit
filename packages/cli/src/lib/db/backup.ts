@@ -23,7 +23,7 @@ import {
   stat,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { asInvocationCommand } from "../app-identity.js";
+import { sentry } from "../app-identity.js";
 import { stringifyUnknown, UpgradeError } from "../errors.js";
 import { logger } from "../logger.js";
 import {
@@ -189,7 +189,7 @@ export async function getUndoBackup(
   if (!last) {
     throw new UpgradeError(
       "unsupported_operation",
-      `Nothing to undo: no upgrade made with \`${asInvocationCommand("sentry cli upgrade")}\` was recorded.`,
+      `Nothing to undo: no upgrade made with \`${sentry`cli upgrade`}\` was recorded.`,
     );
   }
   if (last.toVersion !== currentVersion) {
@@ -276,7 +276,7 @@ function carryOverAccounts(
   if (!current) {
     return;
   }
-  const loginHint = `Your logins are as they were in ${backup.version}; run \`${asInvocationCommand("sentry auth login")}\` if you need another.`;
+  const loginHint = `Your logins are as they were in ${backup.version}; run \`${sentry`auth login`}\` if you need another.`;
   if (!tableExists(restored, "accounts")) {
     if (current.rows.length > 0) {
       return `${backup.version} stores logins in an older format, so your current logins could not be kept. ${loginHint}`;

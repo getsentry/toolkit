@@ -8,7 +8,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { getCustomerTrialInfo } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -246,13 +246,11 @@ export const listCommand = buildCommand({
       (e) => e.status === "available" && e.category !== "plan",
     );
     if (hasAvailableProduct) {
-      hints.push(
-        `Tip: Use '${asInvocationCommand("sentry trial start <name>")}' to start a trial`,
-      );
+      hints.push(`Tip: Use '${sentry`trial start <name>`}' to start a trial`);
     }
     if (planEntry?.status === "available") {
       hints.push(
-        `Tip: Use '${asInvocationCommand("sentry trial start plan")}' to start a Business plan trial`,
+        `Tip: Use '${sentry`trial start plan`}' to start a Business plan trial`,
       );
     }
 

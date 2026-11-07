@@ -9,7 +9,7 @@
 
 import { access, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { asInvocationCommand } from "./app-identity.js";
+import { sentry } from "./app-identity.js";
 import { logger } from "./logger.js";
 
 /** Wrangler project configuration filenames, in resolution order. */
@@ -421,7 +421,7 @@ function injectIntoPackageScript(
   }
   if (script.slice(packageWrangler.end).trim()) {
     logger.warn(
-      `Could not inject SENTRY_SPOTLIGHT into compound package script "${invocation.name}"; run ${asInvocationCommand("sentry local run")} without an explicit command to use auto-detection`,
+      `Could not inject SENTRY_SPOTLIGHT into compound package script "${invocation.name}"; run ${sentry`local run`} without an explicit command to use auto-detection`,
     );
     return unchanged;
   }

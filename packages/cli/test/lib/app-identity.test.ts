@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "vitest";
 import {
   asInvocationCommand,
-  asRunningAppCommand,
   getLoginCommand,
   getUrlLoginCommand,
+  sentry,
   setAppIdentity,
 } from "../../src/lib/app-identity.js";
 import {
@@ -48,13 +48,41 @@ describe("app identity", () => {
     expect(getLoginCommand()).toBe("npx -y @sentry/mcp-server auth login");
   });
 
-  test("rewrites only a leading `sentry ` in example commands", () => {
+  test("rewrites only a leading `sentry ` in runtime commands", () => {
     setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
-    expect(asRunningAppCommand("sentry auth login --url x")).toBe(
+    expect(asInvocationCommand("sentry auth login --url x")).toBe(
       "sentry-mcp auth login --url x",
     );
-    expect(asRunningAppCommand("npx sentry auth")).toBe("npx sentry auth");
-    expect(asRunningAppCommand("sentry-cli login")).toBe("sentry-cli login");
+    expect(asInvocationCommand("npx sentry auth")).toBe("npx sentry auth");
+    expect(asInvocationCommand("sentry-cli login")).toBe("sentry-cli login");
+  });
+
+  test("the sentry tag names the running program", () => {
+    const org = "acme";
+    expect(sentry`issue list ${org}/`).toBe("sentry issue list acme/");
+
+    setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
+    expect(sentry`issue list ${org}/`).toBe("sentry-mcp issue list acme/");
+
+    process.env.npm_command = "exec";
+    expect(sentry`issue list ${org}/`).toBe(
+      "npx -y @sentry/mcp-server issue list acme/",
+    );
+  });
+
+  test("the sentry tag rewrites interpolated commands once", () => {
+    setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
+    const usage = "sentry issue view <id>";
+    expect(sentry`help ${usage}`).toBe(
+      "sentry-mcp help sentry-mcp issue view <id>",
+    );
+    const built = sentry`issue view 1`;
+    expect(sentry`help ${built}`).toBe(
+      "sentry-mcp help sentry-mcp issue view 1",
+    );
+    expect(sentry`issue list ${"sentry"}/`).toBe(
+      "sentry-mcp issue list sentry/",
+    );
   });
 
   test("command hints run this program again", () => {

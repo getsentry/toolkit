@@ -10,7 +10,7 @@
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { compare as semverCompare } from "semver";
-import { asInvocationCommand } from "./app-identity.js";
+import { sentry } from "./app-identity.js";
 import type { UpgradeSource } from "./binary.js";
 import { CLI_VERSION } from "./constants.js";
 import { getReleaseChannel } from "./db/release-channel.js";
@@ -428,14 +428,14 @@ function formatStandardUpdateNotification(latestVersion: string): string {
   const label =
     channel === "nightly" ? "New nightly available:" : "Update available:";
 
-  return `\n${muted(label)} ${cyan(CLI_VERSION)} -> ${cyan(latestVersion)}  Run ${cyan(`"${asInvocationCommand("sentry cli upgrade")}"`)} to update.\n`;
+  return `\n${muted(label)} ${cyan(CLI_VERSION)} -> ${cyan(latestVersion)}  Run ${cyan(`"${sentry`cli upgrade`}"`)} to update.\n`;
 }
 
 function formatContextualUpdateNotification(latestVersion: string): string {
   return (
     `\n${muted("A new version of sentry-cli is available")} (${cyan(latestVersion)})${muted(".")} ` +
     `${muted("Upgrading may resolve this — we fix a lot of bugs in every release.")} ` +
-    `${muted("Run")} ${cyan(`"${asInvocationCommand("sentry cli upgrade")}"`)} ${muted("to update.")}\n`
+    `${muted("Run")} ${cyan(`"${sentry`cli upgrade`}"`)} ${muted("to update.")}\n`
   );
 }
 

@@ -26,7 +26,7 @@ import {
   listTeams,
   MEMBER_PROJECT_CREATION_DISABLED_DETAIL,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
 import { parseOrgProjectInput } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseTeam, PROJECT_SPEC_TARGET } from "../../lib/completion-target.js";
@@ -135,10 +135,10 @@ function buildPlatformError(nameArg: string, platform?: string): string {
     `${heading}\n` +
     didYouMean +
     "\nUsage:\n" +
-    `  ${asInvocationCommand(`sentry project create ${nameArg}:<platform>`)}\n\n` +
+    `  ${sentry`project create ${nameArg}:<platform>`}\n\n` +
     `Common platforms:\n\n${platformTable}\n` +
-    `Run '${asInvocationCommand("sentry platform list")}' to see all valid platform identifiers.\n` +
-    `Run '${asInvocationCommand("sentry project create <name>:<platform>")}' with any valid Sentry platform identifier.`
+    `Run '${sentry`platform list`}' to see all valid platform identifiers.\n` +
+    `Run '${sentry`project create <name>:<platform>`}' with any valid Sentry platform identifier.`
   );
 }
 
@@ -181,9 +181,7 @@ async function handleCreateProject404(opts: {
       throw new ResolutionError(
         `Team '${teamSlug}'`,
         `not found in ${orgSlug}`,
-        asInvocationCommand(
-          `sentry project create ${orgSlug}/${name}:${platform} --team <team-slug>`,
-        ),
+        sentry`project create ${orgSlug}/${name}:${platform} --team <team-slug>`,
         [`Available teams: ${teams.map((t) => t.slug).join(", ")}`],
       );
     }
@@ -203,12 +201,10 @@ async function handleCreateProject404(opts: {
   throw new ResolutionError(
     `Project '${name}' in ${orgSlug}`,
     "could not be created",
-    asInvocationCommand(
-      `sentry project create ${orgSlug}/${name}:${platform} --team <team-slug>`,
-    ),
+    sentry`project create ${orgSlug}/${name}:${platform} --team <team-slug>`,
     [
       "The organization or team may not exist, or you may lack access",
-      `List teams: ${asInvocationCommand(`sentry team list ${orgSlug}/`)}`,
+      `List teams: ${sentry`team list ${orgSlug}/`}`,
     ],
   );
 }
@@ -325,7 +321,7 @@ function projectExistsError(orgSlug: string, name: string): CliError {
   const slug = slugify(name);
   return new CliError(
     `A project named '${name}' already exists in ${orgSlug}.\n\n` +
-      `View it: ${asInvocationCommand(`sentry project view ${orgSlug}/${slug}`)}`,
+      `View it: ${sentry`project view ${orgSlug}/${slug}`}`,
   );
 }
 

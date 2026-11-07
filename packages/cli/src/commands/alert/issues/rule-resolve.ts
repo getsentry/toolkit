@@ -10,7 +10,7 @@ import {
   isNotFoundApiError,
   listIssueAlertsPaginated,
 } from "../../../lib/api-client.js";
-import { asInvocationCommand } from "../../../lib/app-identity.js";
+import { asInvocationCommand, sentry } from "../../../lib/app-identity.js";
 import { ORG_PROJECT_TARGET } from "../../../lib/completion-target.js";
 import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
@@ -134,7 +134,7 @@ export async function resolveIssueAlertRule(
     if (hits.length > 1) {
       throw new ValidationError(
         `Alert rule ID '${ref}' matched multiple projects.\n` +
-          `Use an explicit target: ${asInvocationCommand("sentry alert issues <command> <org>/<project>/<rule-id>")}`,
+          `Use an explicit target: ${sentry`alert issues <command> <org>/<project>/<rule-id>`}`,
       );
     }
     throw new ResolutionError(
@@ -168,7 +168,7 @@ export async function resolveIssueAlertRule(
   if (hits.length > 1) {
     throw new ValidationError(
       `Alert rule name '${ref}' matched multiple projects.\n` +
-        `Use an explicit target: ${asInvocationCommand("sentry alert issues <command> <org>/<project>/<rule-id-or-name>")}`,
+        `Use an explicit target: ${sentry`alert issues <command> <org>/<project>/<rule-id-or-name>`}`,
     );
   }
 

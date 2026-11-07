@@ -1,4 +1,4 @@
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   choiceParser,
   parseBindHost,
@@ -1137,7 +1137,7 @@ export const serverCommand = buildCommand({
       printLocalViewerHint(session.streamUrl, flags.format === "json");
       logger.info(`  Session: ${bold(session.id)} (${session.label})`);
       logger.info(
-        `  Capabilities: ${asInvocationCommand(`sentry local session view ${session.id} --json`)}`,
+        `  Capabilities: ${sentry`local session view ${session.id} --json`}`,
       );
       logger.info("Press Ctrl-C to stop.");
       await openLocalUiIfRequested(
@@ -1248,7 +1248,7 @@ export const serverCommand = buildCommand({
       `  Set ${bold("SENTRY_SPOTLIGHT")}=${listenUrl}/stream in your app`,
     );
     logger.info(
-      `  Or run: ${bold(asInvocationCommand(`sentry local run -p ${boundPort} -- <your-command>`))}`,
+      `  Or run: ${bold(sentry`local run -p ${boundPort} -- <your-command>`)}`,
     );
     if (activeFilters.size > 0) {
       logger.info(`  Filtering: ${[...activeFilters].join(", ")}`);

@@ -5,7 +5,7 @@
  */
 
 import type { SentryContext } from "../../context.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { listAccounts } from "../../lib/db/accounts.js";
 import {
@@ -66,16 +66,16 @@ export const listCommand = buildCommand({
     }
     if (stored.length > 1) {
       return {
-        hint: `Switch accounts with '${asInvocationCommand("sentry auth switch <email>")}'.`,
+        hint: `Switch accounts with '${sentry`auth switch <email>`}'.`,
       };
     }
     if (stored.length === 0) {
       return {
-        hint: `Log in with '${asInvocationCommand("sentry auth login")}'.`,
+        hint: `Log in with '${sentry`auth login`}'.`,
       };
     }
     return {
-      hint: `Add another account with '${asInvocationCommand("sentry auth login")}'.`,
+      hint: `Add another account with '${sentry`auth login`}'.`,
     };
   },
 });

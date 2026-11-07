@@ -21,7 +21,7 @@ import {
   type PaginatedResponse,
   searchProjects,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   explicitProjectSlugs,
   formatProjectTarget,
@@ -376,9 +376,7 @@ async function fetchAutoDetectProjects(
 /** Build a pagination hint for auto-detect JSON output. */
 function autoDetectPaginationHint(orgs: string[], filter?: string): string {
   const org = orgs.length === 1 ? (orgs[0] as string) : "<org>";
-  return asInvocationCommand(
-    `sentry project list ${orgFilterTarget(org, filter, shellQuote)} --json`,
-  );
+  return sentry`project list ${orgFilterTarget(org, filter, shellQuote)} --json`;
 }
 
 /** Build the truncation header for auto-detect mode. */
@@ -395,7 +393,7 @@ function autoDetectHeader(
     const org = orgs[0] as string;
     return (
       `Showing ${count} projects (more available). ` +
-      `Use '${asInvocationCommand(`sentry project list ${org}/`)}' for paginated results.`
+      `Use '${sentry`project list ${org}/`}' for paginated results.`
     );
   }
   return `Showing ${count} projects (more available). Use --limit to show more.`;
@@ -410,7 +408,7 @@ function selfHostedWarning(
   }
   return (
     `Note: ${skippedSelfHosted} DSN(s) could not be resolved. ` +
-    `Specify the organization explicitly: ${asInvocationCommand("sentry project list <org>/")}`
+    `Specify the organization explicitly: ${sentry`project list <org>/`}`
   );
 }
 
@@ -461,7 +459,7 @@ export async function handleAutoDetect(
       hintParts.push(footer);
     }
     hintParts.push(
-      `Tip: Use '${asInvocationCommand("sentry project view <org>/<project>")}' for details`,
+      `Tip: Use '${sentry`project view <org>/<project>`}' for details`,
     );
   }
 
@@ -512,7 +510,7 @@ export async function handleExplicit(
           items: [],
           hint:
             `No project '${projectSlug}' in '${org}', and no projects matching '${projectSlug}' on platform '${flags.platform}'.\n` +
-            `Tip: Use '${asInvocationCommand(`sentry project list ${org}/`)}' to see all projects`,
+            `Tip: Use '${sentry`project list ${org}/`}' to see all projects`,
         };
       }
     }
@@ -520,7 +518,7 @@ export async function handleExplicit(
       items: [],
       hint:
         `No project '${projectSlug}' found in organization '${org}'.\n` +
-        `Tip: Use '${asInvocationCommand(`sentry project list ${org}/`)}' to see all projects`,
+        `Tip: Use '${sentry`project list ${org}/`}' to see all projects`,
     };
   }
   const project: ProjectWithOrg = { ...projectResult.value, orgSlug: org };
@@ -536,7 +534,7 @@ export async function handleExplicit(
 
   return {
     items: filtered,
-    hint: `Tip: Use '${asInvocationCommand(`sentry project view ${org}/${projectSlug}`)}' for details`,
+    hint: `Tip: Use '${sentry`project view ${org}/${projectSlug}`}' for details`,
   };
 }
 
@@ -576,14 +574,14 @@ async function handleExplicitProjects(
       items: [],
       hint:
         `No projects found among: ${slugs.map((slug) => `'${slug}'`).join(", ")}.\n` +
-        `Tip: Use '${asInvocationCommand(`sentry project list ${org}/`)}' to see all projects`,
+        `Tip: Use '${sentry`project list ${org}/`}' to see all projects`,
     };
   }
 
   const hintParts: string[] = [];
   if (missing.length > 0) {
     hintParts.push(
-      `Missing: ${missing.join(", ")}. Tip: Use '${asInvocationCommand(`sentry project list ${org}/`)}' to see all projects`,
+      `Missing: ${missing.join(", ")}. Tip: Use '${sentry`project list ${org}/`}' to see all projects`,
     );
   }
   if (nameFiltered.length > 0) {
@@ -598,7 +596,7 @@ async function handleExplicitProjects(
   }
   if (hintParts.length === 0) {
     hintParts.push(
-      `Tip: Use '${asInvocationCommand(`sentry project view ${org}/<project>`)}' for details`,
+      `Tip: Use '${sentry`project view ${org}/<project>`}' for details`,
     );
   }
 
@@ -663,7 +661,7 @@ export async function handleOrgAll(
   let hint: string | undefined;
   let header: string | undefined;
 
-  const base = asInvocationCommand(`sentry project list ${org}/`);
+  const base = sentry`project list ${org}/`;
   const suffix = flags.platform ? ` --platform ${flags.platform}` : "";
   const navHint = paginationHint({
     hasPrev,
@@ -691,7 +689,7 @@ export async function handleOrgAll(
     } else {
       header = `Showing ${filtered.length} projects`;
     }
-    const tip = `Tip: Use '${asInvocationCommand("sentry project view <org>/<project>")}' for details`;
+    const tip = `Tip: Use '${sentry`project view <org>/<project>`}' for details`;
     hint = tip;
   }
 
@@ -738,7 +736,7 @@ async function handleOrgAllFiltered(
       matches.length > items.length
         ? `Showing ${items.length} of ${matches.length} matches. Use --limit to show more.`
         : `Showing ${items.length} projects`,
-    hint: `Tip: Use '${asInvocationCommand("sentry project view <org>/<project>")}' for details`,
+    hint: `Tip: Use '${sentry`project view <org>/<project>`}' for details`,
   };
 }
 
@@ -824,7 +822,7 @@ export async function handleProjectSearch(
   return {
     items: limited,
     header,
-    hint: `Tip: Use '${asInvocationCommand("sentry project view <org>/<project>")}' for details`,
+    hint: `Tip: Use '${sentry`project view <org>/<project>`}' for details`,
   };
 }
 
@@ -839,7 +837,7 @@ function handleProjectSearchNotFound(
   throw new ResolutionError(
     `Project '${resolution.displaySlug}'`,
     "not found",
-    asInvocationCommand(`sentry project list <org>/${projectSlug}`),
+    sentry`project list <org>/${projectSlug}`,
     projectSearchNotFoundSuggestions(resolution),
   );
 }

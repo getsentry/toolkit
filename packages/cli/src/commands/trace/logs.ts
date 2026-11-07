@@ -6,7 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { type LogSortDirection, listTraceLogs } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   buildProjectQuery,
   parseLogSort,
@@ -283,7 +283,7 @@ export const logsCommand = buildCommand({
 
     const emptyMessage =
       `No logs found for trace ${traceId} in the last ${formatTimeRangeFlag(flags.period)}.\n\n` +
-      `Try a longer period: ${asInvocationCommand(`sentry trace logs --period 30d ${traceId}`)}`;
+      `Try a longer period: ${sentry`trace logs --period 30d ${traceId}`}`;
 
     yield new CommandOutput({
       logs,
@@ -295,11 +295,11 @@ export const logsCommand = buildCommand({
     // Build hint with real values for easy copy-paste
     if (projectFilter) {
       return {
-        hint: `Filtered to project '${projectFilter}'. Full trace logs: ${asInvocationCommand(`sentry trace logs ${org}/${traceId}`)}`,
+        hint: `Filtered to project '${projectFilter}'. Full trace logs: ${sentry`trace logs ${org}/${traceId}`}`,
       };
     }
     return {
-      hint: `Filter by project: ${asInvocationCommand(`sentry trace logs ${org}/<project>/${traceId}`)}`,
+      hint: `Filter by project: ${sentry`trace logs ${org}/<project>/${traceId}`}`,
     };
   },
 });

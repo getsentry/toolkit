@@ -5,7 +5,7 @@
  * Provides helpful context and suggestions for resolving issues.
  */
 
-import { asInvocationCommand } from "../app-identity.js";
+import { sentry } from "../app-identity.js";
 import { getDsnSourceDescription } from "./detector.js";
 import { SENTRY_DSN_ENV } from "./env.js";
 import { getAccessibleProjects } from "./resolver.js";
@@ -32,15 +32,11 @@ export function formatConflictError(result: DsnDetectionResult): string {
   });
 
   lines.push("To resolve, specify which project to use:");
-  lines.push(`  ${asInvocationCommand("sentry <command> <org>/<project>")}`);
+  lines.push(`  ${sentry`<command> <org>/<project>`}`);
   lines.push("");
   lines.push("Or set a default project:");
-  lines.push(
-    `  ${asInvocationCommand("sentry config set defaults.org <org>")}`,
-  );
-  lines.push(
-    `  ${asInvocationCommand("sentry config set defaults.project <project>")}`,
-  );
+  lines.push(`  ${sentry`cli defaults org <org>`}`);
+  lines.push(`  ${sentry`cli defaults project <project>`}`);
 
   return lines.join("\n");
 }
@@ -97,15 +93,11 @@ export async function formatNoDsnError(
   );
   lines.push("");
   lines.push("3. Specify project explicitly:");
-  lines.push(`   ${asInvocationCommand("sentry <command> <org>/<project>")}`);
+  lines.push(`   ${sentry`<command> <org>/<project>`}`);
   lines.push("");
   lines.push("4. Set default project:");
-  lines.push(
-    `   ${asInvocationCommand("sentry config set defaults.org <org>")}`,
-  );
-  lines.push(
-    `   ${asInvocationCommand("sentry config set defaults.project <project>")}`,
-  );
+  lines.push(`   ${sentry`cli defaults org <org>`}`);
+  lines.push(`   ${sentry`cli defaults project <project>`}`);
 
   return lines.join("\n");
 }
@@ -129,7 +121,7 @@ export function formatResolutionError(error: Error, dsnRaw: string): string {
     "  - The DSN is invalid or expired",
     "",
     "Try specifying the project explicitly:",
-    `  ${asInvocationCommand("sentry <command> <org>/<project>")}`,
+    `  ${sentry`<command> <org>/<project>`}`,
   ];
 
   return lines.join("\n");

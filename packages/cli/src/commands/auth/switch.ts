@@ -10,7 +10,7 @@ import {
   promptForAccount,
   resolveAccountSelector,
 } from "../../lib/account-selection.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   ACCOUNT_SERVER_TARGET,
@@ -46,7 +46,7 @@ async function pickAccount(
   accounts: AccountSummary[],
   url: string | undefined,
 ): Promise<AccountSummary | undefined> {
-  const command = asInvocationCommand("sentry auth switch");
+  const command = sentry`auth switch`;
   if (selector !== undefined) {
     return resolveAccountSelector(selector, command, { url, fuzzy: true });
   }
@@ -58,9 +58,7 @@ async function pickAccount(
       `Account on '${url}'`,
       "not found",
       `${command} [account] --url <server>`,
-      [
-        `Run '${asInvocationCommand("sentry auth list")}' to see stored accounts`,
-      ],
+      [`Run '${sentry`auth list`}' to see stored accounts`],
     );
   }
   const [only] = candidates;
@@ -155,7 +153,7 @@ export const switchCommand = buildCommand({
 
     if (!target.usable) {
       return {
-        hint: `This account's session has ended. Run '${asInvocationCommand("sentry auth login")}' to log in again.`,
+        hint: `This account's session has ended. Run '${sentry`auth login`}' to log in again.`,
       };
     }
     if (getAuthConfig()?.source.startsWith("env:")) {

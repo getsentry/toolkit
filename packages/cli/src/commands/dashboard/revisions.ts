@@ -8,7 +8,7 @@ import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { paginate } from "../../lib/api/infrastructure.js";
 import { listDashboardRevisionsPaginated } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   advancePaginationState,
@@ -211,12 +211,8 @@ export const revisionsCommand = buildCommand({
     const nav = paginationHint({
       hasPrev: !!hasPrev,
       hasMore,
-      prevHint: asInvocationCommand(
-        `sentry dashboard revisions ${orgSlug}/ ${dashboardId} -c prev`,
-      ),
-      nextHint: asInvocationCommand(
-        `sentry dashboard revisions ${orgSlug}/ ${dashboardId} -c next`,
-      ),
+      prevHint: sentry`dashboard revisions ${orgSlug}/ ${dashboardId} -c prev`,
+      nextHint: sentry`dashboard revisions ${orgSlug}/ ${dashboardId} -c next`,
     });
     const navStr = nav ? ` ${nav}` : "";
 
@@ -227,7 +223,7 @@ export const revisionsCommand = buildCommand({
     return {
       hint:
         `Showing ${revisions.length} revision(s) for dashboard ${dashboardId}.${navStr}\n` +
-        `Restore: ${asInvocationCommand(`sentry dashboard restore ${orgSlug}/ ${dashboardId} --revision <revision-id>`)}\n` +
+        `Restore: ${sentry`dashboard restore ${orgSlug}/ ${dashboardId} --revision <revision-id>`}\n` +
         `Dashboard: ${url}`,
     };
   },

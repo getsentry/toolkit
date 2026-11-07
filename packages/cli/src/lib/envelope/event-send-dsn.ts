@@ -8,7 +8,7 @@
 
 import { isAbsolute } from "node:path";
 import { getProjectKeys } from "../api/projects.js";
-import { asInvocationCommand } from "../app-identity.js";
+import { sentry } from "../app-identity.js";
 import { getAuthConfig } from "../db/auth.js";
 import { ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -21,7 +21,7 @@ const DSN_PREFIX_RE = /^https?:\/\//i;
 
 /** Usage example shown on missing-DSN errors. */
 function eventSendDsnHint(): string {
-  return asInvocationCommand("sentry event send <dsn> -m 'My message'");
+  return sentry`event send <dsn> -m 'My message'`;
 }
 
 /** User-facing missing-DSN message covering every resolution source. */
@@ -125,8 +125,8 @@ async function dsnFromProjectTarget(
 ): Promise<string> {
   if (!getAuthConfig()) {
     throw new ConfigError(
-      `Cannot resolve project '${target}' without a logged-in session. Pass the DSN as the first argument or run ${asInvocationCommand("sentry auth login")}.`,
-      asInvocationCommand("sentry auth login"),
+      `Cannot resolve project '${target}' without a logged-in session. Pass the DSN as the first argument or run ${sentry`auth login`}.`,
+      sentry`auth login`,
     );
   }
   const { org, project } = await resolveProjectBoundFromArg(

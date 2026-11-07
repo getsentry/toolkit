@@ -21,7 +21,7 @@ import {
 import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceParser,
@@ -337,7 +337,7 @@ function augmentPathForNode(
 function autoDetectErrorMessage(): string {
   return [
     "No command provided and could not auto-detect a dev script.",
-    `Usage: ${asInvocationCommand("sentry local run -- <command>")}`,
+    `Usage: ${sentry`local run -- <command>`}`,
     "",
     "Supported auto-detection:",
     "  - package.json (scripts: dev, develop, serve, start)",
@@ -597,7 +597,7 @@ export const runCommand = buildCommand({
     logger.info(`Starting: ${bold(wrangler.args.join(" "))}`);
     logger.info(
       daemonSessionId
-        ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use ${asInvocationCommand(`sentry local session view ${daemonSessionId} --json`)} for its ingest URL.`
+        ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use ${sentry`local session view ${daemonSessionId} --json`} for its ingest URL.`
         : `SENTRY_SPOTLIGHT=${spotlightUrl}`,
     );
 

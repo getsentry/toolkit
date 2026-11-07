@@ -11,7 +11,7 @@ import {
   resolveOrgDisplayName,
   tryGetPrimaryDsn,
 } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
 import {
   type ParsedOrgProject,
   ProjectSpecificationType,
@@ -297,7 +297,7 @@ async function resolveViewTargets(
       const resolved = await resolveProjectBoundSlug(
         parsed.projectSlug,
         USAGE_HINT,
-        asInvocationCommand(`sentry project view <org>/${parsed.projectSlug}`),
+        sentry`project view <org>/${parsed.projectSlug}`,
         parsed.originalSlug,
       );
       return {
@@ -316,7 +316,7 @@ async function resolveViewTargets(
     case ProjectSpecificationType.OrgAll:
       throw new ContextError(
         "Specific project",
-        asInvocationCommand(`sentry project view ${parsed.org}/<project>`),
+        sentry`project view ${parsed.org}/<project>`,
         ["Specify the full org/project target, not just the organization"],
       );
 

@@ -6,7 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { listIssueEvents } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import {
   advancePaginationState,
@@ -53,10 +53,7 @@ function nextPageHint(
   issueArg: string,
   flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
-  return appendEventsFlags(
-    asInvocationCommand(`sentry issue events ${issueArg} -c next`),
-    flags,
-  );
+  return appendEventsFlags(sentry`issue events ${issueArg} -c next`, flags);
 }
 
 /** Build the CLI hint for fetching the previous page, preserving active flags. */
@@ -64,10 +61,7 @@ function prevPageHint(
   issueArg: string,
   flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
-  return appendEventsFlags(
-    asInvocationCommand(`sentry issue events ${issueArg} -c prev`),
-    flags,
-  );
+  return appendEventsFlags(sentry`issue events ${issueArg} -c prev`, flags);
 }
 
 // ---------------------------------------------------------------------------
@@ -191,7 +185,7 @@ export const eventsCommand = buildListCommand("issue", {
       const countText = `Showing ${events.length} event${events.length === 1 ? "" : "s"}.`;
       hint = nav
         ? `${countText} ${nav}`
-        : `${countText} Use '${asInvocationCommand("sentry event view <EVENT_ID>")}' to view full event details.`;
+        : `${countText} Use '${sentry`event view <EVENT_ID>`}' to view full event details.`;
     }
 
     yield new CommandOutput({
