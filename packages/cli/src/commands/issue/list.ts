@@ -185,7 +185,7 @@ function defaultIssueSort(): SortValue {
 }
 
 /** Usage hint for ContextError messages */
-const USAGE_HINT = "sentry issue list <org>/<project>";
+const usageHint = () => sentry`issue list <org>/<project>`;
 
 /** Options returned by {@link buildListApiOptions}. */
 type ListApiOptions = {
@@ -1219,7 +1219,7 @@ async function handleResolvedTargets(
   const { targets, footer, skippedSelfHosted, detectedDsns, soleOrg } =
     await resolveProjectBoundTargets(parsed, {
       cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
       formatRecoveryCommand: (target) => contextRecoveryCommand(target, flags),
       projectSearchResolution,
       enrichProjectIds: true,
@@ -1237,12 +1237,12 @@ async function handleResolvedTargets(
     if (skippedSelfHosted) {
       throw new ContextError(
         "Organization and project",
-        USAGE_HINT,
+        usageHint(),
         undefined,
         `Found ${skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`,
       );
     }
-    throw new ContextError("Organization and project", USAGE_HINT);
+    throw new ContextError("Organization and project", usageHint());
   }
 
   // Build a compound cursor context key that encodes the full target set +
@@ -1517,7 +1517,7 @@ async function handleResolvedTargets(
 const issueListMeta: ListCommandMeta = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "issues",
-  commandPrefix: "sentry issue list",
+  commandPrefix: () => sentry`issue list`,
 };
 
 /**

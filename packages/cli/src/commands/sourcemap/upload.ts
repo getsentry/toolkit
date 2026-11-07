@@ -39,6 +39,7 @@ import {
   type InjectResult,
   resolveUploadTarget,
 } from "../../lib/sourcemap/inject.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Result type for the upload command. */
 type UploadCommandResult = {
@@ -74,7 +75,7 @@ function formatUploadResult(data: UploadCommandResult): string {
   return renderMarkdown(mdKvTable(rows));
 }
 
-const USAGE_HINT = "sentry sourcemap upload <directory>";
+const usageHint = () => sentry`sourcemap upload <directory>`;
 
 /**
  * Compute the longest common directory prefix across a list of paths.
@@ -415,10 +416,10 @@ export const uploadCommand = buildCommand({
 
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 

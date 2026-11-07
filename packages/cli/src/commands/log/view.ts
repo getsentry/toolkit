@@ -70,7 +70,7 @@ type ViewFlags = {
 };
 
 /** Usage hint for ContextError messages */
-const USAGE_HINT = "sentry log view <org>/<project> <log-id> [<log-id>...]";
+const usageHint = () => sentry`log view <org>/<project> <log-id> [<log-id>...]`;
 
 /**
  * Parse positional arguments for log view.
@@ -99,7 +99,7 @@ export function parsePositionalArgs(args: readonly string[]): {
   suggestion?: string;
 } {
   const { target, ids, warnings } = parseIdArguments(args, ID_KINDS.log, {
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
     multiple: true,
     needsProject: true,
     validate: false,
@@ -178,7 +178,7 @@ async function resolveTarget(
     case "project-search": {
       const result = await resolveProjectBoundSlug(
         parsed.projectSlug,
-        USAGE_HINT,
+        usageHint(),
         sentry`log view <org>/${parsed.projectSlug} ${rawLogIds.join(" ")}`,
         parsed.originalSlug,
       );
@@ -195,10 +195,10 @@ async function resolveTarget(
     }
 
     case "org-all":
-      throw new ContextError("Specific project", USAGE_HINT, []);
+      throw new ContextError("Specific project", usageHint(), []);
 
     case "auto-detect":
-      return await resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
+      return await resolveOrgAndProject({ cwd, usageHint: usageHint() });
 
     default: {
       const _exhaustiveCheck: never = parsed;
@@ -250,7 +250,7 @@ async function resolveLogViewInput(
     context.cwd,
   );
   if (!target) {
-    throw new ContextError("Organization and project", USAGE_HINT);
+    throw new ContextError("Organization and project", usageHint());
   }
   // `log.warn` preserves emission order regardless of await order, and a
   // throwing recovery (multi-match ResolutionError) exits via

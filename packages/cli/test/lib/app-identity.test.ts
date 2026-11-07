@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
 import {
-  asInvocationCommand,
   getLoginCommand,
   getUrlLoginCommand,
   sentry,
@@ -48,15 +47,6 @@ describe("app identity", () => {
     expect(getLoginCommand()).toBe("npx -y @sentry/mcp-server auth login");
   });
 
-  test("rewrites only a leading `sentry ` in runtime commands", () => {
-    setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
-    expect(asInvocationCommand("sentry auth login --url x")).toBe(
-      "sentry-mcp auth login --url x",
-    );
-    expect(asInvocationCommand("npx sentry auth")).toBe("npx sentry auth");
-    expect(asInvocationCommand("sentry-cli login")).toBe("sentry-cli login");
-  });
-
   test("the sentry tag names the running program", () => {
     const org = "acme";
     expect(sentry`issue list ${org}/`).toBe("sentry issue list acme/");
@@ -70,45 +60,40 @@ describe("app identity", () => {
     );
   });
 
-  test("the sentry tag rewrites interpolated commands once", () => {
+  test("the sentry tag inserts interpolated values as they are", () => {
     setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
-    const usage = "sentry issue view <id>";
-    expect(sentry`help ${usage}`).toBe(
-      "sentry-mcp help sentry-mcp issue view <id>",
-    );
     const built = sentry`issue view 1`;
     expect(sentry`help ${built}`).toBe(
       "sentry-mcp help sentry-mcp issue view 1",
+    );
+    // Text that only looks like a command, such as a search, stays as typed
+    const query = "sentry issue view";
+    expect(sentry`issue list --query ${query}`).toBe(
+      "sentry-mcp issue list --query sentry issue view",
     );
     expect(sentry`issue list ${"sentry"}/`).toBe(
       "sentry-mcp issue list sentry/",
     );
   });
 
-  test("command hints run this program again", () => {
-    const command = "sentry cli fix";
-    expect(asInvocationCommand(command)).toBe(command);
-
+  test("a command kept in a constant is built when it is shown", () => {
+    const usageHint = () => sentry`org list`;
     setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
-    expect(asInvocationCommand(command)).toBe("sentry-mcp cli fix");
+    expect(usageHint()).toBe("sentry-mcp org list");
 
     process.env.npm_command = "exec";
-    expect(asInvocationCommand(command)).toBe(
-      "npx -y @sentry/mcp-server cli fix",
-    );
+    const context = new ContextError("Organization", usageHint());
+    expect(context.command).toBe("npx -y @sentry/mcp-server org list");
+    expect(context.message).toContain("npx -y @sentry/mcp-server org list");
   });
 
-  test("error usage lines name the running program under npx", () => {
+  test("error usage lines are shown as given", () => {
     process.env.npm_command = "exec";
-    const context = new ContextError("Organization", "sentry org list");
-    expect(context.command).toBe("npx -y sentry org list");
-    expect(context.message).toContain("npx -y sentry org list");
-
     const resolution = new ResolutionError(
       "Project 'web'",
       "not found",
-      "sentry project view <org>/web",
-      ["sentry project list <org>/"],
+      sentry`project view <org>/web`,
+      [sentry`project list <org>/`],
     );
     expect(resolution.hint).toBe("npx -y sentry project view <org>/web");
     expect(resolution.suggestions).toEqual([

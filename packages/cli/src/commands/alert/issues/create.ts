@@ -49,9 +49,10 @@ import type {
   IssueAlertCreateOutput,
 } from "../../../output-schemas/alert.js";
 import { IssueAlertCreateOutputSchema } from "../../../generated/output-schemas/alert.js";
+import { sentry } from "../../../lib/app-identity.js";
 
-const USAGE_HINT =
-  "sentry alert issues create <target> --name <name> --condition <json> --action <json>";
+const usageHint = () =>
+  sentry`alert issues create <target> --name <name> --condition <json> --action <json>`;
 
 type CreateFlags = {
   readonly name: string;
@@ -86,11 +87,11 @@ async function resolveCreateTarget(
 ): Promise<ResolvedTarget> {
   const { targets } = await resolveProjectBoundTargets(parsed, {
     cwd,
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
   });
   const [target, ...others] = targets;
   if (!target) {
-    throw new ContextError("Organization and project", USAGE_HINT);
+    throw new ContextError("Organization and project", usageHint());
   }
   if (others.length > 0) {
     throw new ValidationError(

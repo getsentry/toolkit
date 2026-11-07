@@ -261,7 +261,7 @@ function buildReleaseListConfig(
   return {
     paginationKey: PAGINATION_KEY,
     entityPlural: "releases",
-    commandPrefix: sentry`release list`,
+    commandPrefix: () => sentry`release list`,
     listForOrg: async (org) => {
       const { data } = await listReleasesPaginated(org, {
         perPage: 100,

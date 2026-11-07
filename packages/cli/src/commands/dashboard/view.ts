@@ -38,6 +38,7 @@ import type {
 import { type DashboardArguments, dashboardArguments } from "./arguments.js";
 import { withDashboardErrors } from "./resolve.js";
 import { DashboardViewOutputSchema } from "../../generated/output-schemas/dashboard.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Default auto-refresh interval in seconds */
 const DEFAULT_REFRESH_INTERVAL = 60;
@@ -217,7 +218,7 @@ export const viewCommand = buildCommand({
   parameters: {
     positional: dashboardArguments({
       placeholder: "org/project/dashboard",
-      usageHint: "sentry dashboard view <org>/ <id>",
+      usageHint: () => sentry`dashboard view <org>/ <id>`,
     }),
     flags: {
       web: {

@@ -20,9 +20,10 @@ import type { AlertRuleArgument } from "../arguments.js";
 import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
 import type { IssueAlertDeleteOutput } from "../../../output-schemas/alert.js";
 import { IssueAlertDeleteOutputSchema } from "../../../generated/output-schemas/alert.js";
+import { sentry } from "../../../lib/app-identity.js";
 
-const USAGE_HINT =
-  "sentry alert issues delete <org>/<project>/<rule-id-or-name>";
+const usageHint = () =>
+  sentry`alert issues delete <org>/<project>/<rule-id-or-name>`;
 
 type DeleteFlags = {
   readonly yes: boolean;
@@ -69,7 +70,7 @@ export const deleteCommand = buildDeleteCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        issueRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
+        issueRuleParameter(usageHint, "Rule id or name (same as view)"),
       ],
     },
   },
@@ -80,7 +81,7 @@ export const deleteCommand = buildDeleteCommand({
   ) {
     const { cwd } = this;
     const { ref, target: parsed } = await ruleArg.resolved;
-    requireExplicitTarget(parsed, "Issue alert target", USAGE_HINT);
+    requireExplicitTarget(parsed, "Issue alert target", usageHint());
     if (parsed.type !== "explicit") {
       throw new ValidationError(
         "Issue alert delete requires an explicit <org>/<project>/<rule-id-or-name> target.",
@@ -90,16 +91,16 @@ export const deleteCommand = buildDeleteCommand({
 
     const { targets } = await resolveProjectBoundTargets(parsed, {
       cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (targets.length === 0) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
 
     const { target, rule } = await resolveIssueAlertRule(
       targets,
       ref,
-      USAGE_HINT,
+      usageHint(),
     );
 
     const key = `${target.org}/${target.project}/${rule.id}`;

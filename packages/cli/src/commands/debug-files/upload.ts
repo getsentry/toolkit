@@ -36,7 +36,6 @@ import {
   type DebugFileUploadResult,
   uploadDebugFiles,
 } from "../../lib/api/debug-files.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
 import {
   createIl2cppLineMapping,
@@ -64,10 +63,11 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("debug-files.upload");
 
-const USAGE_HINT = "sentry debug-files upload <path>...";
+const usageHint = () => sentry`debug-files upload <path>...`;
 
 /** Relative path to Xcode's DerivedData folder under the user's home dir. */
 const DERIVED_DATA_SUBPATH = "Library/Developer/Xcode/DerivedData";
@@ -393,7 +393,7 @@ function* doDryRun(
     hint:
       oversizedCount > 0
         ? `${oversizedCount} file(s) would be skipped for exceeding the maximum file size.`
-        : `No debug information files found. Try: ${asInvocationCommand(USAGE_HINT)}`,
+        : `No debug information files found. Try: ${usageHint()}`,
   };
 }
 
@@ -433,7 +433,7 @@ function* doNothingToUpload(
   }
   log.warn("No debug information files found.");
   return {
-    hint: `No debug information files found. Try: ${asInvocationCommand(USAGE_HINT)}`,
+    hint: `No debug information files found. Try: ${usageHint()}`,
   };
 }
 
@@ -712,7 +712,7 @@ export const uploadCommand = buildCommand({
   async *func(this: SentryContext, flags: UploadFlags, ...paths: string[]) {
     const scanTargets = collectScanPaths(paths, Boolean(flags["derived-data"]));
     if (scanTargets.length === 0) {
-      throw new ContextError("Debug file path(s)", USAGE_HINT, []);
+      throw new ContextError("Debug file path(s)", usageHint(), []);
     }
     const { wait, maxWaitMs } = resolveWaitMode(flags);
     const requireAll = Boolean(flags["require-all"]);
@@ -738,10 +738,10 @@ export const uploadCommand = buildCommand({
     if (!flags["no-upload"]) {
       resolved = await resolveOrgAndProject({
         cwd: this.cwd,
-        usageHint: USAGE_HINT,
+        usageHint: usageHint(),
       });
       if (!resolved) {
-        throw new ContextError("Organization and project", USAGE_HINT);
+        throw new ContextError("Organization and project", usageHint());
       }
       serverOptions = await getChunkUploadOptions(resolved.org);
       if (serverOptions.maxFileSize && serverOptions.maxFileSize > 0) {
@@ -785,7 +785,7 @@ export const uploadCommand = buildCommand({
     // `resolved` is guaranteed set here: the non-dry-run branch above resolved
     // it or threw.
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
 
     return yield* doUpload(setExitCode, {

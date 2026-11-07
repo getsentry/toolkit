@@ -68,7 +68,7 @@ type ViewFlags = {
 };
 
 /** Usage hint for ContextError messages */
-const USAGE_HINT = "sentry trace view [<org>/<project>/]<trace-id>";
+const usageHint = () => sentry`trace view [<org>/<project>/]<trace-id>`;
 
 /**
  * Build a contextual hint with real values for easy copy-paste.
@@ -120,7 +120,7 @@ export function parseTraceViewInput(args: readonly string[]): TraceViewInput {
     return { issueShortId: first };
   }
   return {
-    trace: parseTraceArgumentsInput(args, USAGE_HINT),
+    trace: parseTraceArgumentsInput(args, usageHint()),
     ...(shortId && {
       suggestion: `Did you mean: ${sentry`issue view ${first}`}`,
     }),
@@ -149,7 +149,7 @@ async function resolveTraceViewInput(
   const target = await resolveTraceOrgOptionalProject(
     parsed,
     context.cwd,
-    USAGE_HINT,
+    usageHint(),
   );
   return {
     ...target,

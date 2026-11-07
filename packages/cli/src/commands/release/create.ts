@@ -26,7 +26,7 @@ import { type ReleaseTarget, releaseParameter } from "./parse.js";
 import { ReleaseCreateOutputSchema } from "../../generated/output-schemas/release.js";
 import type { ReleaseCreateOutputFields } from "../../output-schemas/release.js";
 
-const USAGE_HINT = "sentry release create [<org>/]<version>";
+const usageHint = () => sentry`release create [<org>/]<version>`;
 
 /** The release `--dry-run` reports: the request body, shaped like a release. */
 type ReleaseCreateDryRun = WithOutputFields<
@@ -126,7 +126,7 @@ export const createCommand = buildCommand({
       kind: "tuple",
       parameters: [
         releaseParameter(
-          USAGE_HINT,
+          usageHint,
           "[<org>/]<version> - Release version to create",
         ),
       ],

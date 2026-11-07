@@ -19,8 +19,9 @@ import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
 import type { ReleaseUpdateOutput } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 import { ReleaseUpdateOutputSchema } from "../../generated/output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release restore [<org>/]<version>";
+const usageHint = () => sentry`release restore [<org>/]<version>`;
 
 /**
  * Render the human-readable result of restoring a release.
@@ -73,7 +74,7 @@ export const restoreCommand = buildCommand({
       kind: "tuple",
       parameters: [
         releaseParameter(
-          USAGE_HINT,
+          usageHint,
           "[<org>/]<version> - Release version to restore",
         ),
       ],

@@ -49,36 +49,30 @@ export function getInvocationCommand(): string {
 }
 
 /**
- * `command` as a hint that runs this program again: a leading `sentry `
- * becomes {@link getInvocationCommand}. For commands held in runtime data,
- * such as a usage line passed to an error; write literal hints with the
- * {@link sentry} tag.
- */
-export function asInvocationCommand(command: string): string {
-  return command.startsWith("sentry ")
-    ? `${getInvocationCommand()}${command.slice("sentry".length)}`
-    : command;
-}
-
-/**
  * Tag for a hint that runs this program again, written without the program
  * name: `` sentry`issue list ${org}/` `` gives `sentry issue list acme/`,
  * `npx -y sentry issue list acme/`, or `sentry-mcp issue list acme/`.
  *
- * An interpolated value that is itself a `sentry …` command gets the same
- * treatment, and a value this tag already built keeps its prefix, so a
- * command is never named twice.
+ * Interpolated values are inserted as they are. A command built with this
+ * tag already names the program, so nesting one never names it twice, and
+ * text that only looks like a command is never rewritten.
+ *
+ * The program is known only once an entry point has started, so build the
+ * hint where it is shown. A command kept in a constant or a table is a
+ * {@link LazyCommand}: `` const usageHint = () => sentry`issue view <id>` ``.
  */
 export function sentry(
   strings: TemplateStringsArray,
   ...values: unknown[]
 ): string {
-  let text = strings[0] ?? "";
-  values.forEach((value, i) => {
-    text += asInvocationCommand(String(value)) + (strings[i + 1] ?? "");
-  });
+  const text = strings.reduce(
+    (built, part, i) => `${built}${String(values[i - 1])}${part}`,
+  );
   return `${getInvocationCommand()} ${text}`;
 }
+
+/** A command hint built when it is shown, as `() => sentry`issue view <id>``. */
+export type LazyCommand = () => string;
 
 /** Command that signs in to the active Sentry host. */
 export function getLoginCommand(): string {

@@ -17,8 +17,9 @@ import { buildMetricAlertsUrl } from "../../../lib/sentry-web-urls.js";
 import { isAllDigits } from "../../../lib/utils.js";
 import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
+import { sentry } from "../../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry alert metrics view <org>/<rule-id-or-name>";
+const usageHint = () => sentry`alert metrics view <org>/<rule-id-or-name>`;
 
 type ViewFlags = {
   readonly web: boolean;
@@ -71,7 +72,7 @@ export const viewCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        metricRuleParameter(USAGE_HINT, "Metric alert rule ID or name"),
+        metricRuleParameter(usageHint, "Metric alert rule ID or name"),
       ],
     },
     flags: {
@@ -106,7 +107,7 @@ export const viewCommand = buildCommand({
       return;
     }
 
-    const result = await resolveMetricAlertRule([org], ref, USAGE_HINT);
+    const result = await resolveMetricAlertRule([org], ref, usageHint());
     // Name resolution uses the compact list projection; inspect the detail
     // document so it has the same conditions and links as an ID lookup.
     const rule = isAllDigits(ref)

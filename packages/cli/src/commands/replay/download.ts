@@ -44,8 +44,8 @@ type DownloadFlags = {
   readonly fresh: boolean;
 };
 
-const USAGE_HINT =
-  "sentry replay download [<org>/<project>/]<replay-id> | <replay-url>";
+const usageHint = () =>
+  sentry`replay download [<org>/<project>/]<replay-id> | <replay-url>`;
 
 const log = logger.withTag("replay.download");
 
@@ -85,7 +85,7 @@ export const downloadCommand = buildCommand({
     human: formatReplayDownloadResult,
   },
   parameters: {
-    positional: replayArguments("download", USAGE_HINT),
+    positional: replayArguments("download", usageHint),
     flags: {
       output: {
         kind: "parsed",

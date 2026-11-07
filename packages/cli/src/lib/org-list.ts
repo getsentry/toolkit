@@ -43,7 +43,7 @@ import {
   listOrganizations,
   type PaginatedResponse,
 } from "./api-client.js";
-import { asInvocationCommand, sentry } from "./app-identity.js";
+import { type LazyCommand, sentry } from "./app-identity.js";
 import { explicitProjectSlugs, type ParsedOrgProject } from "./arg-parsing.js";
 import {
   advancePaginationState,
@@ -414,8 +414,8 @@ export type ListCommandMeta = {
   paginationKey: string;
   /** Plural entity name for messages (e.g., "teams") */
   entityPlural: string;
-  /** CLI command prefix for hints (e.g., "sentry team list") */
-  commandPrefix: string;
+  /** The command, for hints (e.g., `() => sentry`team list``) */
+  commandPrefix: LazyCommand;
 };
 
 /** Minimal flags required by the shared infrastructure. */
@@ -710,7 +710,7 @@ export async function handleOrgAll<TEntity, TWithOrg>(
   let hint: string | undefined;
   let header: string | undefined;
 
-  const base = `${asInvocationCommand(config.commandPrefix)} ${org}/`;
+  const base = `${config.commandPrefix()} ${org}/`;
   const navHint = paginationHint({
     hasPrev,
     hasMore,
@@ -807,13 +807,13 @@ export async function handleAutoDetect<TEntity, TWithOrg>(
   if (skippedSelfHosted) {
     hintParts.push(
       `Note: ${skippedSelfHosted} DSN(s) could not be resolved. ` +
-        `Specify the organization explicitly: ${asInvocationCommand(config.commandPrefix)} <org>/`,
+        `Specify the organization explicitly: ${config.commandPrefix()} <org>/`,
     );
   }
 
   if (limited.length > 0) {
     hintParts.push(
-      `Tip: Use '${asInvocationCommand(config.commandPrefix)} ${orgFilterTarget("<org>", filter)}' to filter by organization`,
+      `Tip: Use '${config.commandPrefix()} ${orgFilterTarget("<org>", filter)}' to filter by organization`,
     );
   }
 
@@ -858,7 +858,7 @@ function buildFetchedItemsResult<TEntity, TWithOrg>(
   const hintParts: string[] = [];
   if (items.length > limited.length) {
     const paginateTip = orgSlugForHint
-      ? ` Use '${asInvocationCommand(config.commandPrefix)} ${orgSlugForHint}/' for paginated results.`
+      ? ` Use '${config.commandPrefix()} ${orgSlugForHint}/' for paginated results.`
       : "";
     hintParts.push(
       `Showing ${limited.length} of ${items.length} ${config.entityPlural}.${paginateTip}`,
@@ -922,7 +922,7 @@ export async function handleExplicitOrg<TEntity, TWithOrg>(
   }
 
   if (items.length > 0 && !filtered) {
-    const tip = `Tip: Use '${asInvocationCommand(config.commandPrefix)} ${org}/' for paginated results`;
+    const tip = `Tip: Use '${config.commandPrefix()} ${org}/' for paginated results`;
     result.hint = result.hint ? `${result.hint}\n${tip}` : tip;
   }
 
@@ -974,7 +974,7 @@ export async function handleExplicitProject<TEntity, TWithOrg>(
   });
 
   if (items.length > 0 && !filtered) {
-    const tip = `Tip: Use '${asInvocationCommand(config.commandPrefix)} ${org}/' to see all ${config.entityPlural} in the org`;
+    const tip = `Tip: Use '${config.commandPrefix()} ${org}/' to see all ${config.entityPlural} in the org`;
     result.hint = result.hint ? `${result.hint}\n${tip}` : tip;
   }
 
@@ -1054,10 +1054,10 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
     throw new ResolutionError(
       `'${projectSlug}'`,
       "is an organization, not a project",
-      `${asInvocationCommand(config.commandPrefix)} ${projectSlug}/`,
+      `${config.commandPrefix()} ${projectSlug}/`,
       [
         `List projects: ${sentry`project list ${projectSlug}/`}`,
-        `Specify a project: ${asInvocationCommand(config.commandPrefix)} ${projectSlug}/<project>`,
+        `Specify a project: ${config.commandPrefix()} ${projectSlug}/<project>`,
       ],
     );
   }
@@ -1074,7 +1074,7 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
     throw new ResolutionError(
       `Project '${resolution.displaySlug}'`,
       "not found",
-      `${asInvocationCommand(config.commandPrefix)} <org>/${projectSlug}`,
+      `${config.commandPrefix()} <org>/${projectSlug}`,
       projectSearchNotFoundSuggestions(resolution),
     );
   }
@@ -1233,7 +1233,7 @@ async function handleExplicitByName<TEntity, TWithOrg>(
       items: [],
       hint:
         `No project '${name}' in '${org}', and no ${config.entityPlural} named like it.\n` +
-        `Tip: Use '${asInvocationCommand(config.commandPrefix)} ${org}/' to see all ${config.entityPlural}`,
+        `Tip: Use '${config.commandPrefix()} ${org}/' to see all ${config.entityPlural}`,
     };
   }
   const note = `No project '${name}' in '${org}'. Matching ${config.entityPlural} by name instead.`;
@@ -1281,7 +1281,7 @@ function withNameFilter<TEntity, TWithOrg>(
   const { namesOf, listForProject } = config;
   if (!namesOf) {
     throw new Error(
-      `'${asInvocationCommand(config.commandPrefix)}' got a name filter but its config has no namesOf.`,
+      `'${config.commandPrefix()}' got a name filter but its config has no namesOf.`,
     );
   }
   const keep = (entities: TEntity[]) => filterByName(entities, filter, namesOf);
@@ -1341,7 +1341,7 @@ function buildDefaultHandlers<TEntity, TWithOrg>(
     return () =>
       Promise.reject(
         new Error(
-          `No handler for '${mode}' mode in '${asInvocationCommand(config.commandPrefix)}'. ` +
+          `No handler for '${mode}' mode in '${config.commandPrefix()}'. ` +
             "Provide a full OrgListConfig or an override for this mode.",
         ),
       );
@@ -1560,12 +1560,12 @@ export async function dispatchOrgScopedList<TEntity, TWithOrg>(
   if (flags.cursor && !cursorAllowedModes.includes(effectiveParsed.type)) {
     const hint =
       effectiveParsed.type === "project-search"
-        ? `\n\nDid you mean '${asInvocationCommand(config.commandPrefix)} ${effectiveParsed.projectSlug}/'? ` +
+        ? `\n\nDid you mean '${config.commandPrefix()} ${effectiveParsed.projectSlug}/'? ` +
           `A bare name searches for a project — add a trailing slash to list an org's ${config.entityPlural}.`
         : "";
     throw new ValidationError(
       "The --cursor flag requires the <org>/ pattern " +
-        `(e.g., ${asInvocationCommand(config.commandPrefix)} my-org/).` +
+        `(e.g., ${config.commandPrefix()} my-org/).` +
         hint,
       "cursor",
     );

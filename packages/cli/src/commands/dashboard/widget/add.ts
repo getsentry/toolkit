@@ -69,8 +69,8 @@ type AddFlags = WidgetQueryFlags &
     readonly fields?: string[];
   };
 
-const USAGE_HINT =
-  "sentry dashboard widget add <org>/ <dashboard> <title> --display <type>";
+const usageHint = () =>
+  sentry`dashboard widget add <org>/ <dashboard> <title> --display <type>`;
 
 /** `widget add` arguments: the dashboard, then the widget title. */
 type WidgetAddInput = DashboardInput & { readonly title: string };
@@ -176,10 +176,10 @@ export const addCommand = buildCommand({
       kind: DASHBOARD_TARGET,
       parse: (args): WidgetAddInput => {
         const { dashboardArgs, title } = parseAddPositionalArgs(args);
-        return { ...parseDashboardInput(dashboardArgs, USAGE_HINT), title };
+        return { ...parseDashboardInput(dashboardArgs, usageHint()), title };
       },
       resolve: (input: WidgetAddInput, context: SentryContext) =>
-        resolveDashboardInput(input, context.cwd, USAGE_HINT),
+        resolveDashboardInput(input, context.cwd, usageHint()),
     }),
     flags: {
       display: {

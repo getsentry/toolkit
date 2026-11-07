@@ -10,7 +10,6 @@
 import { inlineCode } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { deleteIntegration, getIntegration } from "../../lib/api-client.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import { ApiError, ValidationError } from "../../lib/errors.js";
 import { renderMarkdown } from "../../lib/formatters/markdown.js";
@@ -33,9 +32,10 @@ import {
   parseOrgInput,
   resolveOrgInput,
 } from "../../lib/target-positional.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const USAGE = "[<org>/]<integration-id>";
-const USAGE_HINT = `sentry integration delete ${USAGE}`;
+const usageHint = () => sentry`integration delete ${USAGE}`;
 
 const log = logger.withTag("integration.delete");
 
@@ -110,17 +110,17 @@ export function parseIntegrationArguments(
   const { target, ids, baseUrl, warnings } = parseIdArguments(
     args,
     ID_KINDS.integration,
-    { usageHint: USAGE_HINT, multiple: true },
+    { usageHint: usageHint(), multiple: true },
   );
   // Not an ignored extra: deleting one of several IDs would surprise
   if (ids.length > 1) {
     throw new ValidationError(
-      `Remove one integration at a time, not ${ids.length}: ${asInvocationCommand(USAGE_HINT)}`,
+      `Remove one integration at a time, not ${ids.length}: ${usageHint()}`,
       "integration-id",
     );
   }
   const [id = ""] = ids;
-  const org = parseOrgInput(target, USAGE_HINT);
+  const org = parseOrgInput(target, usageHint());
   return { id, org: baseUrl ? { ...org, baseUrl } : org, warnings };
 }
 
@@ -195,7 +195,7 @@ export const deleteCommand = buildDeleteCommand({
         const { org } = await resolveOrgInput(
           input.org,
           context.cwd,
-          USAGE_HINT,
+          usageHint(),
         );
         return { org, id: input.id };
       },

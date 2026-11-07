@@ -10,7 +10,7 @@
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { deleteOrgAuthToken, listOrgAuthTokens } from "../../lib/api-client.js";
-import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import { selectAccountForOrg } from "../../lib/db/auth.js";
 import { ResolutionError, ValidationError } from "../../lib/errors.js";
@@ -41,7 +41,7 @@ import {
 } from "./shared.js";
 
 const USAGE = "[<org>/]<token-id-or-name>";
-const USAGE_HINT = `sentry token delete ${USAGE}`;
+const usageHint = () => sentry`token delete ${USAGE}`;
 const log = logger.withTag("token.delete");
 
 /** Sentry org (`sntrys_`) and user (`sntryu_`) auth token values. */
@@ -116,12 +116,12 @@ export function parseTokenArguments(args: readonly string[]): TokenInput {
   const { target, ids, name, baseUrl, warnings } = parseIdArguments(
     args,
     ID_KINDS.token,
-    { usageHint: USAGE_HINT, multiple: true },
+    { usageHint: usageHint(), multiple: true },
   );
   // Never choose one of several tokens for a destructive action.
   if (ids.length > 1) {
     throw new ValidationError(
-      `Revoke one token at a time, not ${ids.length}: ${asInvocationCommand(USAGE_HINT)}`,
+      `Revoke one token at a time, not ${ids.length}: ${usageHint()}`,
       "token-id",
     );
   }
@@ -138,14 +138,14 @@ export function parseTokenArguments(args: readonly string[]): TokenInput {
     const scoped = parseOrgScopedArg(
       unscopedName,
       "Token ID or name",
-      USAGE_HINT,
+      usageHint(),
     );
     orgArg = scoped.orgSlug;
     ref = { name: scoped.value };
   } else if (name !== undefined) {
     ref = { name };
   }
-  const org = parseOrgInput(orgArg, USAGE_HINT);
+  const org = parseOrgInput(orgArg, usageHint());
   return { ...ref, org: baseUrl ? { ...org, baseUrl } : org, warnings };
 }
 
@@ -234,7 +234,7 @@ export const deleteCommand = buildDeleteCommand({
         const { org } = await resolveOrgInput(
           input.org,
           context.cwd,
-          USAGE_HINT,
+          usageHint(),
         );
         const ref: TokenRef =
           input.id === undefined ? { name: input.name } : { id: input.id };

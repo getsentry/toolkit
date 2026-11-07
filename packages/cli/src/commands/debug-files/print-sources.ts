@@ -14,7 +14,7 @@
 import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { existsSync } from "node:fs";
 import type { SentryContext } from "../../context.js";
-import { asInvocationCommand, sentry } from "../../lib/app-identity.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   type DifSourcesInfo,
@@ -28,7 +28,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { readDebugFile } from "./read-file.js";
 
-const USAGE_HINT = "sentry debug-files print-sources <path>";
+const usageHint = () => sentry`debug-files print-sources <path>`;
 
 const log = logger.withTag("debug-files.print-sources");
 
@@ -194,7 +194,7 @@ export const printSourcesCommand = buildCommand({
 
     if (objects.length === 0) {
       return {
-        hint: `No objects found in '${path}'. Try: ${asInvocationCommand(USAGE_HINT)}`,
+        hint: `No objects found in '${path}'. Try: ${usageHint()}`,
       };
     }
     const total = objects.reduce((sum, object) => sum + object.files.length, 0);
@@ -208,7 +208,7 @@ export const printSourcesCommand = buildCommand({
         };
       }
       return {
-        hint: `No referenced sources found in '${path}'. Try: ${asInvocationCommand(USAGE_HINT)}`,
+        hint: `No referenced sources found in '${path}'. Try: ${usageHint()}`,
       };
     }
     return {

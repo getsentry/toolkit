@@ -96,7 +96,7 @@ function formatTraceLogsHuman(data: TraceLogsData): string {
 const DEFAULT_PERIOD = "14d";
 
 /** Usage hint shown in error messages */
-const USAGE_HINT = "sentry trace logs [<org>/[<project>/]]<trace-id>";
+const usageHint = () => sentry`trace logs [<org>/[<project>/]]<trace-id>`;
 
 /**
  * Parse --limit flag, delegating range validation to shared utility.
@@ -116,7 +116,7 @@ type TraceLogsArguments = BoundArguments<TraceTargetInput, TraceLogsTarget>;
 
 /** Parse `trace logs` arguments, without side effects. */
 function parseTraceLogsInput(args: readonly string[]): TraceTargetInput {
-  return parseTraceTargetInput(args, USAGE_HINT);
+  return parseTraceTargetInput(args, usageHint());
 }
 
 /**
@@ -132,7 +132,7 @@ async function resolveTraceLogsTarget(
   const { traceId, org } = await resolveTraceOrg(
     parsed,
     context.cwd,
-    USAGE_HINT,
+    usageHint(),
   );
   return {
     traceId,

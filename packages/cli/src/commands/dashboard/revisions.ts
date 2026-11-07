@@ -146,7 +146,7 @@ export const revisionsCommand = buildCommand({
   parameters: {
     positional: dashboardArguments({
       placeholder: "org/dashboard",
-      usageHint: "sentry dashboard revisions <org>/ <id>",
+      usageHint: () => sentry`dashboard revisions <org>/ <id>`,
     }),
     flags: {
       limit: buildListLimitFlag("revisions"),

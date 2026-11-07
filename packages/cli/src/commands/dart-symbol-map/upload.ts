@@ -21,6 +21,7 @@ import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("dart-symbol-map.upload");
 
@@ -42,7 +43,7 @@ type DartSymbolMapUploadResult = {
 
 // Formatter
 
-const USAGE_HINT = "sentry dart-symbol-map upload --debug-id <uuid> <path>";
+const usageHint = () => sentry`dart-symbol-map upload --debug-id <uuid> <path>`;
 
 /** Format human-readable output for upload results. */
 function formatUploadResult(data: DartSymbolMapUploadResult): string {
@@ -254,10 +255,10 @@ export const uploadCommand = buildCommand({
     // 4. Resolve org/project
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 

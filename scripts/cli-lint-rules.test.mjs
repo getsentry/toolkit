@@ -559,10 +559,14 @@ tester.run(
         filename: source,
         code: "function hint(org) { return sentry`project list ${org}/`; }",
       },
-      // A command held in a variable goes through the runtime form.
+      // A command kept in a constant or table is built when it is shown.
+      {
+        filename: commands,
+        code: "const usageHint = () => sentry`issue list <org>/<project>`;",
+      },
       {
         filename: source,
-        code: "function hint(usageHint) { return `Use: ${asInvocationCommand(usageHint)}`; }",
+        code: "const SUGGESTIONS = new Map([['issue/get', { command: () => sentry`issue view <id>` }]]);",
       },
       {
         filename: commands,
@@ -576,11 +580,6 @@ tester.run(
       {
         filename: commands,
         code: "function label(file, version) { return [`sentry entries in ${file}`, 'sentry binary', `Installed sentry v${version}`]; }",
-      },
-      // A module-level usage line is data: ContextError and friends wrap it.
-      {
-        filename: commands,
-        code: "const USAGE_HINT = 'sentry issue list <org>/<project>';",
       },
       {
         filename: commands,
@@ -626,10 +625,10 @@ tester.run(
         code: "const MESSAGE = 'Usage: sentry local run -- <command>';",
         errors: 1,
       },
-      // A literal command takes the tag, not the runtime form.
+      // A usage line in a constant is shown as written, so it needs the tag.
       {
-        filename: source,
-        code: "function hint() { return asInvocationCommand('sentry auth login'); }",
+        filename: commands,
+        code: "const USAGE_HINT = 'sentry issue list <org>/<project>';",
         errors: 1,
       },
       // The tag adds the program name itself.
@@ -646,7 +645,7 @@ tester.run(
       },
       {
         filename: source,
-        code: "const HINT = asInvocationCommand(USAGE_HINT);",
+        code: "const config = { commandPrefix: sentry`team list` };",
         errors: 1,
       },
     ],

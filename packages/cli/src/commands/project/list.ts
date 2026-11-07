@@ -846,7 +846,7 @@ function handleProjectSearchNotFound(
 const projectListMeta: ListCommandMeta = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "projects",
-  commandPrefix: "sentry project list",
+  commandPrefix: () => sentry`project list`,
 };
 
 export const listCommand = buildListCommand("project", {

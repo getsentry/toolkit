@@ -23,7 +23,7 @@
  * `func` runs.
  */
 
-import { asInvocationCommand, sentry } from "./app-identity.js";
+import { sentry } from "./app-identity.js";
 import {
   firstNonBlankLine,
   type ListTarget,
@@ -171,9 +171,7 @@ export function parseOrgInput(
   }
   const org = text.endsWith("/") ? text.slice(0, -1) : text;
   if (!org || org.includes("/")) {
-    const usage = usageHint
-      ? `\n\nUsage: ${asInvocationCommand(usageHint)}`
-      : "";
+    const usage = usageHint ? `\n\nUsage: ${usageHint}` : "";
     throw new ValidationError(
       `Expected an organization, not '${text}': this takes no project.${usage}`,
       "organization",

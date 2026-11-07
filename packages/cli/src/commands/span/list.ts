@@ -183,7 +183,7 @@ export const PROJECT_PAGINATION_KEY = "span-search";
 const COMMAND_NAME = "span list";
 
 /** Usage hint for trace-mode ContextError messages */
-const TRACE_USAGE_HINT = "sentry span list [<org>/<project>/]<trace-id>";
+const traceUsageHint = () => sentry`span list [<org>/<project>/]<trace-id>`;
 
 /**
  * Parse --limit flag, delegating range validation to shared utility.
@@ -232,7 +232,7 @@ type SpanListArguments = BoundArguments<SpanListInput, SpanListTarget>;
  * @internal Exported for testing
  */
 export function parseSpanListInput(args: readonly string[]): SpanListInput {
-  const input = parseDualModeInput(args, TRACE_USAGE_HINT, {
+  const input = parseDualModeInput(args, traceUsageHint(), {
     needsProject: true,
   });
   if (input.mode === "trace") {
@@ -253,7 +253,7 @@ async function resolveSpanListTarget(
     const resolved = await resolveTraceOrgProject(
       parsed,
       context.cwd,
-      TRACE_USAGE_HINT,
+      traceUsageHint(),
     );
     return { mode: "trace", ...resolved };
   }

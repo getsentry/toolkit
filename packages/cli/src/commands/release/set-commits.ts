@@ -43,7 +43,7 @@ import { SentryReleaseSchema } from "../../generated/output-schemas/release.js";
 
 const log = logger.withTag("release.set-commits");
 
-const USAGE_HINT = "sentry release set-commits [<org>/]<version>";
+const usageHint = () => sentry`release set-commits [<org>/]<version>`;
 
 /** Diagnostic note shared by --from validation errors. */
 const FROM_RANGE_NOTE =
@@ -424,7 +424,7 @@ export const setCommitsCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        releaseParameter(USAGE_HINT, "[<org>/]<version> - Release version"),
+        releaseParameter(usageHint, "[<org>/]<version> - Release version"),
       ],
     },
     flags: {

@@ -14,7 +14,8 @@ import {
   resolveIssueAlertRule,
 } from "./rule-resolve.js";
 
-const USAGE_HINT = "sentry alert issues view <org>/<project>/<rule-id-or-name>";
+const usageHint = () =>
+  sentry`alert issues view <org>/<project>/<rule-id-or-name>`;
 
 type ViewFlags = {
   readonly web: boolean;
@@ -77,7 +78,7 @@ export const viewCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        issueRuleParameter(USAGE_HINT, "Issue alert rule ID or name"),
+        issueRuleParameter(usageHint, "Issue alert rule ID or name"),
       ],
     },
     flags: {
@@ -110,7 +111,7 @@ export const viewCommand = buildCommand({
       usageHint: sentry`alert issues view <org>/<project>/<rule-id-or-name>`,
     });
     if (targets.length === 0) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
 
     if (flags.web) {
@@ -123,7 +124,7 @@ export const viewCommand = buildCommand({
       return;
     }
 
-    const result = await resolveIssueAlertRule(targets, ref, USAGE_HINT);
+    const result = await resolveIssueAlertRule(targets, ref, usageHint());
     yield new CommandOutput(result);
   },
 });

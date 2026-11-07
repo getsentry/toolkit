@@ -421,7 +421,7 @@ export const listCommand = buildListCommand("dashboard", {
     schema: DashboardListItemSchema,
   },
   parameters: {
-    positional: dashboardListArguments("sentry dashboard list <org>/"),
+    positional: dashboardListArguments(() => sentry`dashboard list <org>/`),
     flags: {
       web: {
         kind: "boolean",

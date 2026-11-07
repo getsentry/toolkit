@@ -59,7 +59,7 @@ type CodeMappingsUploadResult = {
 
 // Formatter
 
-const USAGE_HINT = "sentry code-mappings upload <path>";
+const usageHint = () => sentry`code-mappings upload <path>`;
 
 /** Format human-readable output for upload results. */
 function formatUploadResult(data: CodeMappingsUploadResult): string {
@@ -246,10 +246,10 @@ export const uploadCommand = buildCommand({
     // 2. Resolve org/project
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 

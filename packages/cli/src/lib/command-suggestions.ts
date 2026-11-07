@@ -9,7 +9,7 @@
  * Populated from CLI-Q3 telemetry analysis (~100 events, 85 users).
  */
 
-import { asInvocationCommand } from "./app-identity.js";
+import { type LazyCommand, sentry } from "./app-identity.js";
 
 /** A suggestion for an unknown command token. */
 export type CommandSuggestion = {
@@ -27,72 +27,75 @@ export type CommandSuggestion = {
  * Keep registered commands and aliases out of this map: runtime error
  * handlers also consult it. Prefer native suggestions only for exact equivalents.
  */
-const SUGGESTIONS: ReadonlyMap<string, CommandSuggestion> = new Map([
+const SUGGESTIONS: ReadonlyMap<
+  string,
+  Omit<CommandSuggestion, "command"> & { command: LazyCommand }
+> = new Map([
   // --- view synonyms (~15 events) ---
-  ["issue/get", { command: "sentry issue view <issue-id>" }],
-  ["issue/details", { command: "sentry issue view <issue-id>" }],
-  ["issue/detail", { command: "sentry issue view <issue-id>" }],
-  ["issue/info", { command: "sentry issue view <issue-id>" }],
+  ["issue/get", { command: () => sentry`issue view <issue-id>` }],
+  ["issue/details", { command: () => sentry`issue view <issue-id>` }],
+  ["issue/detail", { command: () => sentry`issue view <issue-id>` }],
+  ["issue/info", { command: () => sentry`issue view <issue-id>` }],
 
   // --- mutation commands (~8 events) ---
-  ["issue/close", { command: "sentry issue resolve <issue-id>" }],
+  ["issue/close", { command: () => sentry`issue resolve <issue-id>` }],
   [
     "issue/update",
     {
-      command:
-        "sentry api /api/0/organizations/{org}/issues/{issue_id}/ --method PUT",
+      command: () =>
+        sentry`api /api/0/organizations/{org}/issues/{issue_id}/ --method PUT`,
       explanation: "Issue mutations are available via the API",
     },
   ],
   [
     "issue/set-status",
     {
-      command:
-        'sentry api /api/0/organizations/{org}/issues/{issue_id}/ --method PUT --data \'{"status":"..."}\'',
+      command: () =>
+        sentry`api /api/0/organizations/{org}/issues/{issue_id}/ --method PUT --data '{"status":"..."}'`,
       explanation: "Issue status changes are available via the API",
     },
   ],
   [
     "issue/assign",
     {
-      command:
-        'sentry api /api/0/organizations/{org}/issues/{issue_id}/ --method PUT --data \'{"assignedTo":"..."}\'',
+      command: () =>
+        sentry`api /api/0/organizations/{org}/issues/{issue_id}/ --method PUT --data '{"assignedTo":"..."}'`,
       explanation: "Issue assignment is available via the API",
     },
   ],
   [
     "issue/comment",
     {
-      command:
-        'sentry api /api/0/organizations/{org}/issues/{issue_id}/comments/ --method POST --data \'{"text":"..."}\'',
+      command: () =>
+        sentry`api /api/0/organizations/{org}/issues/{issue_id}/comments/ --method POST --data '{"text":"..."}'`,
       explanation: "Issue commenting is available via the API",
     },
   ],
 
   // --- old sentry-cli commands (~5 events) ---
-  ["cli/info", { command: "sentry auth status" }],
-  ["cli/send-event", { command: "sentry event send" }],
-  ["cli/issues", { command: "sentry issue list" }],
-  ["cli/logs", { command: "sentry log list" }],
+  ["cli/info", { command: () => sentry`auth status` }],
+  ["cli/send-event", { command: () => sentry`event send` }],
+  ["cli/issues", { command: () => sentry`issue list` }],
+  ["cli/logs", { command: () => sentry`log list` }],
 
   // --- dashboard synonyms ---
-  ["dashboard/default-overview", { command: "sentry dashboard list" }],
+  ["dashboard/default-overview", { command: () => sentry`dashboard list` }],
 
   // --- issue trends (from telemetry) ---
   [
     "issue/trends",
     {
-      command: "sentry issue list --sort freq",
+      command: () => sentry`issue list --sort freq`,
       explanation: "Use issue list with sort options for trend analysis",
     },
   ],
 
   // --- issue latest-event (from telemetry) ---
-  ["issue/latest-event", { command: "sentry issue view <issue-id>" }],
+  ["issue/latest-event", { command: () => sentry`issue view <issue-id>` }],
 
   // --- issue search/find ---
-  ["issue/search", { command: "sentry issue list --query <search>" }],
-  ["issue/find", { command: "sentry issue list --query <search>" }],
+  ["issue/search", { command: () => sentry`issue list --query <search>` }],
+  ["issue/find", { command: () => sentry`issue list --query <search>` }],
 ]);
 
 /**
@@ -113,7 +116,7 @@ export function getCommandSuggestion(
   return (
     suggestion && {
       ...suggestion,
-      command: asInvocationCommand(suggestion.command),
+      command: suggestion.command(),
     }
   );
 }

@@ -26,8 +26,9 @@ import {
 import type { SentryRelease } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 import { SentryReleaseSchema } from "../../generated/output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release view [<org>/]<version>";
+const usageHint = () => sentry`release view [<org>/]<version>`;
 
 /** Wrap a plain "—" in muted color for consistent table styling. */
 function mutedIfDash(value: string): string {
@@ -187,7 +188,7 @@ export const viewCommand = buildCommand({
       kind: "tuple",
       parameters: [
         releaseParameter(
-          USAGE_HINT,
+          usageHint,
           "[<org>/]<version> - Release version to view",
         ),
       ],
