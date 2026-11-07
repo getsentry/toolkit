@@ -31,6 +31,7 @@ import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
+import { asInvocationCommand } from "./app-identity.js";
 import { DEFAULT_SENTRY_URL, normalizeUrl } from "./constants.js";
 import {
   getActiveAccountId,
@@ -535,7 +536,7 @@ async function validateAndFetchUser(
     // Transient network error — keep the token, warn the user
     log.debug("Token validation failed with transient error", error);
     result.warnings.push(
-      "Could not validate token (network error). Token was stored — run 'sentry auth status' to verify.",
+      `Could not validate token (network error). Token was stored — run '${asInvocationCommand("sentry auth status")}' to verify.`,
     );
     return true;
   }

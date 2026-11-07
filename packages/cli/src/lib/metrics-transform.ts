@@ -7,6 +7,7 @@
  */
 
 import type { MetricMeta } from "./api/explore.js";
+import { asInvocationCommand } from "./app-identity.js";
 import { ResolutionError } from "./errors.js";
 import { fuzzyMatch } from "./fuzzy.js";
 
@@ -50,7 +51,9 @@ export function resolveMetricField(
     throw new ResolutionError(
       `Aggregation '${agg}'`,
       `not recognized. Valid aggregations: ${[...VALID_AGGS].join(", ")}`,
-      `sentry explore my-org/ -m ${metricName} --agg sum --dataset metrics`,
+      asInvocationCommand(
+        `sentry explore my-org/ -m ${metricName} --agg sum --dataset metrics`,
+      ),
     );
   }
 
@@ -66,7 +69,9 @@ export function resolveMetricField(
     throw new ResolutionError(
       `Metric '${metricName}'`,
       "not found in this project",
-      `sentry explore my-org/ -m ${metricName} --dataset metrics --period 7d`,
+      asInvocationCommand(
+        `sentry explore my-org/ -m ${metricName} --dataset metrics --period 7d`,
+      ),
       suggestions.length > 0
         ? [`Similar metrics: ${suggestions.join(", ")}`]
         : ["Use a wider --period to search for older metrics"],

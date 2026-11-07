@@ -21,6 +21,7 @@ import type {
   SentryRelease,
   SentryRepository,
 } from "../../types/index.js";
+import { asInvocationCommand } from "../app-identity.js";
 import { getCiCheckout } from "../ci.js";
 import { getEnv } from "../env.js";
 import {
@@ -500,11 +501,13 @@ function resolveAutoCheckout(
   throw validationError(
     "Could not determine the repository: there is no 'origin' git remote and no CI repository variables (GITHUB_REPOSITORY, CI_PROJECT_PATH, VERCEL_GIT_REPO_SLUG, ...). --auto needs one of them to match a Sentry repository.",
     [
-      `sentry release set-commits ${target} --commit owner/repo@<commit-sha>`,
+      asInvocationCommand(
+        `sentry release set-commits ${target} --commit owner/repo@<commit-sha>`,
+      ),
       ...(inGitCheckout
         ? [
             "git remote add origin <url>",
-            `sentry release set-commits ${target} --local`,
+            asInvocationCommand(`sentry release set-commits ${target} --local`),
           ]
         : []),
     ],
@@ -601,12 +604,13 @@ function noMatchingRepositoryError(
   const commit = checkout.commit ?? readHeadCommit(cwd) ?? "<commit-sha>";
   const target = `${orgSlug}/${version}`;
   const examples = [
-    ...suggestions.map(
-      (name) =>
+    ...suggestions.map((name) =>
+      asInvocationCommand(
         `sentry release set-commits ${target} --commit '${name}@${commit}'`,
+      ),
     ),
     ...(isInsideGitWorkTree(cwd)
-      ? [`sentry release set-commits ${target} --local`]
+      ? [asInvocationCommand(`sentry release set-commits ${target} --local`)]
       : []),
   ];
   const didYouMean =
@@ -646,9 +650,13 @@ function noRepoIntegrationError(
   cwd?: string,
 ): ApiError {
   const detail = buildValidationMessage(connectIntegrationHint(orgSlug), [
-    `sentry integration list ${orgSlug}/`,
+    asInvocationCommand(`sentry integration list ${orgSlug}/`),
     ...(isInsideGitWorkTree(cwd)
-      ? [`sentry release set-commits ${orgSlug}/${version} --local`]
+      ? [
+          asInvocationCommand(
+            `sentry release set-commits ${orgSlug}/${version} --local`,
+          ),
+        ]
       : []),
   ]);
   return new ApiError(
@@ -880,7 +888,9 @@ export async function explainSetCommitsError(
     : (ref?.commit ?? "<commit-sha>");
   const target = `${orgSlug}/${version}`;
   const commitExample = (name: string) =>
-    `sentry release set-commits ${target} --commit '${name}@${commit}'`;
+    asInvocationCommand(
+      `sentry release set-commits ${target} --commit '${name}@${commit}'`,
+    );
   const headline = `Sentry organization '${orgSlug}' has no repository named '${repository}'.`;
 
   let match: SentryRepository | undefined;
@@ -909,7 +919,7 @@ export async function explainSetCommitsError(
   if (hasRepositories === false) {
     return validationError(
       `${headline} It has no repositories yet, so it cannot associate commits.`,
-      [`sentry integration list ${orgSlug}/`],
+      [asInvocationCommand(`sentry integration list ${orgSlug}/`)],
       COMMIT_REPOSITORY_FIELD,
       connectIntegrationHint(orgSlug),
     );
@@ -924,7 +934,10 @@ export async function explainSetCommitsError(
       : "";
   return validationError(
     `${headline}${didYouMean}`,
-    [...suggestions.map(commitExample), `sentry repo list ${orgSlug}/`],
+    [
+      ...suggestions.map(commitExample),
+      asInvocationCommand(`sentry repo list ${orgSlug}/`),
+    ],
     COMMIT_REPOSITORY_FIELD,
     `Add the repository to Sentry through your source code integration: ${buildRepositorySettingsUrl(orgSlug)}`,
   );

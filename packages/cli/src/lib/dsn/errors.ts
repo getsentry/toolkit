@@ -5,6 +5,7 @@
  * Provides helpful context and suggestions for resolving issues.
  */
 
+import { asInvocationCommand } from "../app-identity.js";
 import { getDsnSourceDescription } from "./detector.js";
 import { SENTRY_DSN_ENV } from "./env.js";
 import { getAccessibleProjects } from "./resolver.js";
@@ -34,8 +35,12 @@ export function formatConflictError(result: DsnDetectionResult): string {
   lines.push("  sentry <command> <org>/<project>");
   lines.push("");
   lines.push("Or set a default project:");
-  lines.push("  sentry config set defaults.org <org>");
-  lines.push("  sentry config set defaults.project <project>");
+  lines.push(
+    `  ${asInvocationCommand("sentry config set defaults.org <org>")}`,
+  );
+  lines.push(
+    `  ${asInvocationCommand("sentry config set defaults.project <project>")}`,
+  );
 
   return lines.join("\n");
 }
@@ -95,8 +100,12 @@ export async function formatNoDsnError(
   lines.push("   sentry <command> <org>/<project>");
   lines.push("");
   lines.push("4. Set default project:");
-  lines.push("   sentry config set defaults.org <org>");
-  lines.push("   sentry config set defaults.project <project>");
+  lines.push(
+    `   ${asInvocationCommand("sentry config set defaults.org <org>")}`,
+  );
+  lines.push(
+    `   ${asInvocationCommand("sentry config set defaults.project <project>")}`,
+  );
 
   return lines.join("\n");
 }

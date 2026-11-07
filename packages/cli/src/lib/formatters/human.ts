@@ -1828,7 +1828,7 @@ function buildAuthDetailRows(data: AuthStatusData): [string, string][] {
   if (data.accounts !== undefined && data.accounts > 1) {
     rows.push([
       "Accounts",
-      `${data.accounts} stored (${inlineCode("sentry auth list")})`,
+      `${data.accounts} stored (${inlineCode(asInvocationCommand("sentry auth list"))})`,
     ]);
   }
   if (data.token) {
@@ -2046,8 +2046,8 @@ export function formatProjectCreated(result: ProjectCreatedResult): string {
   } else if (result.teamSource === "auto-selected") {
     lines.push(
       dry
-        ? `> **Note:** Would use team '${text(result.teamSlug)}'. See all teams: \`sentry team list\``
-        : `> **Note:** Using team '${text(result.teamSlug)}'. See all teams: \`sentry team list\``,
+        ? `> **Note:** Would use team '${text(result.teamSlug)}'. See all teams: \`${asInvocationCommand("sentry team list")}\``
+        : `> **Note:** Using team '${text(result.teamSlug)}'. See all teams: \`${asInvocationCommand("sentry team list")}\``,
     );
     lines.push("");
   }
@@ -2072,7 +2072,7 @@ export function formatProjectCreated(result: ProjectCreatedResult): string {
   if (!dry && !tipsSuppressed()) {
     lines.push("");
     lines.push(
-      `*Tip: Use \`sentry project view ${result.orgSlug}/${result.project.slug}\` for details*`,
+      `*Tip: Use \`${asInvocationCommand(`sentry project view ${result.orgSlug}/${result.project.slug}`)}\` for details*`,
     );
   }
 

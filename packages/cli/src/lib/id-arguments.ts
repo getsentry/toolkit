@@ -33,6 +33,7 @@
  */
 
 import { parse } from "../generated/id-arguments-grammar.js";
+import { asInvocationCommand } from "./app-identity.js";
 import { looksLikeIssueShortId } from "./arg-parsing.js";
 import { ContextError, ValidationError } from "./errors.js";
 import {
@@ -167,7 +168,7 @@ function searchable(kind: IdKind, listCommand: string): IdKind {
       if (!(kind.isId(value) || kind.mayBeId(value)) && search.isText(value)) {
         const label = kind.label.charAt(0).toLowerCase() + kind.label.slice(1);
         throw new ValidationError(
-          `Not a ${label}: "${value}". To search, try \`${search.command} --query ${shellQuote(value)}\`.\n\n` +
+          `Not a ${label}: "${value}". To search, try \`${asInvocationCommand(search.command)} --query ${shellQuote(value)}\`.\n\n` +
             `If it names a project, pass the ${label} after it: <org>/<project> <${label}>`,
           "positional",
         );
@@ -212,16 +213,19 @@ const ISSUE_KIND: IdKind & {
 
 /** The kinds of ID commands take. Commands use these instead of their own. */
 export const ID_KINDS = {
+  // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- searchable() builds the hint.
   trace: hexKind("Trace ID", "sentry trace list", (url) => url.traceId),
   // `event list` searches an issue's events, so there is no search to hint
   event: hexKind("Event ID", null, (url) => url.eventId),
   // Replays are looked up in an org, so a replay URL needs one
   replay: hexKind(
     "Replay ID",
+    // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- searchable() builds the hint.
     "sentry replay list",
     (url) => (url.org ? url.replayId : undefined),
     "https://sentry.io/organizations/{org}/explore/replays/{replayId}/",
   ),
+  // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- searchable() builds the hint.
   log: hexKind("Log ID", "sentry log list", () => undefined),
   span: searchable(
     {
@@ -231,6 +235,7 @@ export const ID_KINDS = {
       validate: validateSpanId,
       fromUrl: () => undefined,
     },
+    // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- searchable() builds the hint.
     "sentry span list",
   ),
   // A numeric ID, or a title: `Latency/p95`, `Top 10`, or unquoted words
@@ -267,7 +272,7 @@ export const ID_KINDS = {
     validate: (value) => {
       if (!isAllDigits(value)) {
         throw new ValidationError(
-          `Invalid integration ID '${value}'. Use the numeric ID from 'sentry integration list'.`,
+          `Invalid integration ID '${value}'. Use the numeric ID from '${asInvocationCommand("sentry integration list")}'.`,
           "integration-id",
         );
       }

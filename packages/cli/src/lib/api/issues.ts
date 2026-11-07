@@ -9,6 +9,7 @@ import { listOrganizationIssues } from "@sentry/api";
 
 import type { SentryIssue } from "../../types/index.js";
 import type { IssueSubstatus } from "../../types/sentry.js";
+import { asInvocationCommand } from "../app-identity.js";
 import {
   buildTlsErrorDetail,
   customFetch,
@@ -365,8 +366,8 @@ export async function getIssueByShortId(
         404,
         [
           "The issue may have been deleted or merged",
-          `Verify the short ID and org: sentry issue view ${orgSlug}/${normalizedShortId}`,
-          `List issues in this org: sentry issue list ${orgSlug}/`,
+          `Verify the short ID and org: ${asInvocationCommand(`sentry issue view ${orgSlug}/${normalizedShortId}`)}`,
+          `List issues in this org: ${asInvocationCommand(`sentry issue list ${orgSlug}/`)}`,
         ].join("\n  "),
       );
     }

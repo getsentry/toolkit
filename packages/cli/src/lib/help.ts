@@ -6,7 +6,7 @@
  * Commands are auto-generated from Stricli's route structure.
  */
 
-import { asRunningAppCommand } from "./app-identity.js";
+import { asInvocationCommand, asRunningAppCommand } from "./app-identity.js";
 import { formatBanner } from "./banner.js";
 import { isAuthenticated } from "./db/auth.js";
 import { detectAgent } from "./detect-agent.js";
@@ -217,10 +217,7 @@ function fitToTerminalHeight(
   );
 }
 
-const EXAMPLE_LOGGED_OUT = "sentry auth";
-const EXAMPLE_LOGGED_IN = "sentry issue list";
 const DOCS_URL = "https://cli.sentry.dev/getting-started/";
-const FULL_HELP_COMMAND = "sentry help";
 
 /**
  * Format the command list with aligned descriptions.
@@ -320,7 +317,9 @@ type CustomHelpOptions = {
  */
 export function printCustomHelp(options: CustomHelpOptions = {}): string {
   const loggedIn = isAuthenticated();
-  const example = loggedIn ? EXAMPLE_LOGGED_IN : EXAMPLE_LOGGED_OUT;
+  const example = asInvocationCommand(
+    loggedIn ? "sentry issue list" : "sentry auth",
+  );
   const overview = Boolean(options.overview) && !detectAgent();
 
   const header: string[] = [];
@@ -370,7 +369,9 @@ export function printCustomHelp(options: CustomHelpOptions = {}): string {
   // Example
   lines.push(`  ${muted("try:")} ${magenta(example)}`);
   if (overview) {
-    lines.push(`  ${muted("all commands:")} ${magenta(FULL_HELP_COMMAND)}`);
+    lines.push(
+      `  ${muted("all commands:")} ${magenta(asInvocationCommand("sentry help"))}`,
+    );
   }
   lines.push("");
 

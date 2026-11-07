@@ -30,7 +30,11 @@ import {
   buildOrgSettingsUrl,
   buildSeerSettingsUrl,
 } from "./sentry-urls.js";
-import { getLoginCommand, getUrlLoginCommand } from "./app-identity.js";
+import {
+  asInvocationCommand,
+  getLoginCommand,
+  getUrlLoginCommand,
+} from "./app-identity.js";
 
 // ---------------------------------------------------------------------------
 // Exit code constants
@@ -370,12 +374,15 @@ export class OutputError extends CliError {
   }
 }
 
-const DEFAULT_CONTEXT_ALTERNATIVES = [
-  "Run from a directory with a Sentry DSN in source code or .env files",
-  "Set SENTRY_ORG and SENTRY_PROJECT (or SENTRY_DSN) environment variables",
-  "Run 'sentry org list' to find your organization slug",
-  "Run 'sentry project list <org>/' to find project slugs",
-] as const;
+/** Ways to provide context when auto-detection found none. */
+function defaultContextAlternatives(): string[] {
+  return [
+    "Run from a directory with a Sentry DSN in source code or .env files",
+    "Set SENTRY_ORG and SENTRY_PROJECT (or SENTRY_DSN) environment variables",
+    `Run '${asInvocationCommand("sentry org list")}' to find your organization slug`,
+    `Run '${asInvocationCommand("sentry project list <org>/")}' to find project slugs`,
+  ];
+}
 
 /**
  * Build the formatted context error message with usage hints.
@@ -489,9 +496,7 @@ export class ContextError extends CliError {
   ) {
     // When alternatives is omitted, auto-detection was tried and failed
     const isAutoDetect = alternatives === undefined;
-    const resolvedAlternatives = alternatives ?? [
-      ...DEFAULT_CONTEXT_ALTERNATIVES,
-    ];
+    const resolvedAlternatives = alternatives ?? defaultContextAlternatives();
 
     // Include full formatted message so it's shown even when caught by external handlers
     super(
@@ -735,8 +740,8 @@ export class SeerError extends CliError {
     // where the prompt can't fire — hence the direct command suggestion
     // (CLI-1D/BW/98, 237 users combined).
     const trialHint = this.orgSlug
-      ? `\n\nStart a free trial:\n  sentry trial start seer ${this.orgSlug}`
-      : "\n\nYou may be eligible for a free trial:\n  sentry trial list";
+      ? `\n\nStart a free trial:\n  ${asInvocationCommand(`sentry trial start seer ${this.orgSlug}`)}`
+      : `\n\nYou may be eligible for a free trial:\n  ${asInvocationCommand("sentry trial list")}`;
 
     // When org slug is known, provide direct URLs to settings
     if (this.orgSlug) {

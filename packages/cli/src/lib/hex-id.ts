@@ -8,6 +8,7 @@
  * rather than rolling their own patterns.
  */
 
+import { asInvocationCommand } from "./app-identity.js";
 import { ValidationError } from "./errors.js";
 
 /**
@@ -165,7 +166,7 @@ export function validateHexId(value: string, label: string): string {
       // 16-char hex looks like a span ID
       message +=
         "\n\nThis looks like a span ID (16 characters). " +
-        `If you have the trace ID, try: sentry span view <trace-id> ${display}`;
+        `If you have the trace ID, try: ${asInvocationCommand(`sentry span view <trace-id> ${display}`)}`;
     } else if (NON_HEX_RE.test(normalized)) {
       // Contains non-hex characters — likely a slug, name, or truncated input.
       // The hex-id-recovery module at the command layer provides more specific

@@ -339,7 +339,7 @@ function ownershipInstructions(
   return (
     "To fix ownership, run one of:\n\n" +
     `  sudo chown -R ${username} "${configDir}"\n\n` +
-    "Or let sentry fix it automatically:\n\n" +
+    "Or fix it automatically:\n\n" +
     `  sudo ${asInvocationCommand("sentry cli fix")}`
   );
 }

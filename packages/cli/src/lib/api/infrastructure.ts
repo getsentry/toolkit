@@ -29,7 +29,7 @@ import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
 
 import { extractRequiredScopes } from "../api-scope.js";
-import { getUrlLoginCommand } from "../app-identity.js";
+import { asInvocationCommand, getUrlLoginCommand } from "../app-identity.js";
 import {
   type CredentialContext,
   getActiveEnvVarName,
@@ -102,12 +102,12 @@ function enrich403Detail(rawDetail: string | undefined): string {
     const scopeArgs = scopes.map((s) => `--scope ${s}`).join(" ");
     lines.push(
       `Your token is missing the required scope(s) '${scopes.join("', '")}'.`,
-      `Re-authenticate with: sentry auth refresh ${scopeArgs}`,
+      `Re-authenticate with: ${asInvocationCommand(`sentry auth refresh ${scopeArgs}`)}`,
     );
   } else {
     lines.push(
       "You may not have access to this resource.",
-      "Re-authenticate with: sentry auth login",
+      `Re-authenticate with: ${asInvocationCommand("sentry auth login")}`,
     );
   }
   return lines.join("\n  ");
@@ -141,7 +141,7 @@ function enrich401Detail(rawDetail: string | undefined): string {
       "Your account is disabled in this organization because it is over its member limit.",
       "This is a billing/seat-limit issue, not an auth problem — re-authenticating won't help.",
       "Ask an org owner to upgrade the plan or free up a seat, then retry.",
-      "Or target a different org, e.g.:  sentry issue list my-other-org/",
+      `Or target a different org, e.g.:  ${asInvocationCommand("sentry issue list my-other-org/")}`,
     ].join("\n  ");
   }
 
@@ -158,7 +158,7 @@ function enrich401Detail(rawDetail: string | undefined): string {
   } else {
     lines.push(
       "Not authenticated or your session has expired.",
-      "Re-authenticate with: sentry auth login",
+      `Re-authenticate with: ${asInvocationCommand("sentry auth login")}`,
     );
   }
   return lines.join("\n  ");
@@ -338,7 +338,7 @@ function buildNetworkErrorDetail(error: unknown): string {
   const steps = [causeHint ?? "Check your network connection and try again."];
   steps.push(
     isSentrySaasUrl(baseUrl)
-      ? "Check Sentry's status with: sentry status"
+      ? `Check Sentry's status with: ${asInvocationCommand("sentry status")}`
       : describeUrlSource(),
   );
   return [`Unable to reach Sentry at ${baseUrl}: ${cause}`, "", ...steps].join(

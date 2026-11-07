@@ -132,8 +132,8 @@ function resolveLoginScope(flags: LoginFlags): string | undefined {
         `${conflicting} cannot be used with --token — OAuth scope is fixed when the token is issued, so the CLI cannot narrow an existing token's permissions.`,
         "",
         "To restrict OAuth scopes, drop --token and use the device flow:",
-        "  sentry auth login --read-only",
-        "  sentry auth login --scope project:read --scope org:read",
+        `  ${asInvocationCommand("sentry auth login --read-only")}`,
+        `  ${asInvocationCommand("sentry auth login --scope project:read --scope org:read")}`,
         "",
         "Or create a scoped User Auth Token in Sentry (Account → Auth Tokens) and pass it without --read-only/--scope.",
       ].join("\n"),
@@ -305,8 +305,8 @@ export function rcTokenHint(
     : ` --url ${effectiveHost}`;
   return (
     `Found a token in .sentryclirc (${rcConfig.sources.token}). ` +
-    "To import it: sentry cli import | " +
-    `To pass it directly: sentry auth login --token <token>${urlHint}`
+    `To import it: ${asInvocationCommand("sentry cli import")} | ` +
+    `To pass it directly: ${asInvocationCommand(`sentry auth login --token <token>${urlHint}`)}`
   );
 }
 
@@ -391,7 +391,7 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     // Non-interactive (piped, CI): print message and block
     if (!isatty(0)) {
       log.info(
-        "You are already authenticated. Use 'sentry auth login <email>' to add another account, " +
+        `You are already authenticated. Use '${asInvocationCommand("sentry auth login <email>")}' to add another account, ` +
           "or '--force' to replace the current login.",
       );
       return false;
@@ -402,7 +402,7 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     const identity = userInfo ? formatUserIdentity(userInfo) : "current user";
     const confirmed = await prompt(
       `Already authenticated as ${identity}. Add another account? ` +
-        "(The current account stays saved; see 'sentry auth list'. Use --force to replace it.)",
+        `(The current account stays saved; see '${asInvocationCommand("sentry auth list")}'. Use --force to replace it.)`,
       { type: "confirm", initial: false },
     );
 

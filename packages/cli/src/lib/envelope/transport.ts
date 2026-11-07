@@ -12,6 +12,7 @@
  */
 
 import { getEnvelopeEndpointWithUrlEncodedAuth, makeDsn } from "@sentry/core";
+import { asInvocationCommand } from "../app-identity.js";
 import { detectDsn } from "../dsn/index.js";
 import { ApiError, ConfigError, ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -107,7 +108,7 @@ export async function resolveIngestDsn(
  */
 export function requireDsn(
   flags: DsnFlags,
-  usageHint = "sentry bash-hook --dsn <your-dsn>",
+  usageHint = asInvocationCommand("sentry bash-hook --dsn <your-dsn>"),
 ): string {
   const dsn = resolveDsn(flags);
   if (dsn) {

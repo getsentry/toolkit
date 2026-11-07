@@ -156,6 +156,10 @@ Top-level layout:
   bundle (built by `packages/mcp-server/script/bundle.ts`). It must not import anything that
   only the CLI needs; the bundle script fails on commands, markdown rendering,
   agent skills, completions, terminal images, and the SQLite WASM fallback.
+  Hints in code the bundle can run name the running program: build them with
+  `asInvocationCommand("sentry …")` from `src/lib/app-identity.ts`, inside the
+  function that builds the hint. Lint (`sentry-cli/no-hardcoded-sentry-command`)
+  rejects a bare `sentry …` command outside command help text.
 - **`src/commands/`** — one directory per command group (`agent-conversation`,
   `alert`, `auth`, `build`, `cli`, `code-mappings`, `dart-symbol-map`,
   `dashboard`, `debug-files`, `docs`, `dsn`, `event`, `feedback`, `integration`, `issue`, `local`,

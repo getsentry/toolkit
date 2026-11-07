@@ -103,6 +103,7 @@
         "sentry-cli/no-regex-markdown-parsing": "error",
         "sentry-cli/json-transform-uses-fields": "error",
         "sentry-cli/no-runtime-output-schema-imports": "error",
+        "sentry-cli/no-hardcoded-sentry-command": "error",
         "no-restricted-imports": [
           "error",
           {

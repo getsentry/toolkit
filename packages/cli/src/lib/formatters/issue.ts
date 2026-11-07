@@ -4,6 +4,7 @@
 
 import type { InferOutput } from "valibot";
 import type { SentryIssue } from "../../types/index.js";
+import { asInvocationCommand } from "../app-identity.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { formatEventDetails, formatIssueDetails } from "./human.js";
 import { filterFieldsIfSet } from "./json.js";
@@ -44,7 +45,7 @@ function formatReplaySection(org: string | null, replayIds: string[]): string {
   for (const replayId of visibleReplayIds) {
     if (org) {
       lines.push(
-        `- \`${replayId}\` (view: \`sentry replay view ${org}/${replayId}\`)`,
+        `- \`${replayId}\` (view: \`${asInvocationCommand(`sentry replay view ${org}/${replayId}`)}\`)`,
       );
     } else {
       lines.push(`- \`${replayId}\``);

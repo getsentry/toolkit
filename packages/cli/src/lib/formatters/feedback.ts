@@ -14,6 +14,7 @@ import type {
   SentryEvent,
   SentryFeedback,
 } from "../../types/index.js";
+import { asInvocationCommand } from "../app-identity.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { formatEventDetails } from "./human.js";
 import { colorTag, mdKvTable, renderMarkdown } from "./markdown.js";
@@ -316,8 +317,10 @@ function formatFeedbackOverview(data: FeedbackViewResult): string {
     const project = feedback.project?.slug;
     const command =
       data.org && project
-        ? `sentry event view ${data.org}/${project}/${associatedEventId}`
-        : `sentry event view ${associatedEventId}`;
+        ? asInvocationCommand(
+            `sentry event view ${data.org}/${project}/${associatedEventId}`,
+          )
+        : asInvocationCommand(`sentry event view ${associatedEventId}`);
     rows.push(["Linked error", feedbackCodeSpan(command)]);
   }
 
@@ -363,8 +366,8 @@ function formatRelatedReplays(data: FeedbackViewResult): string {
   const lines = ["### Additional Replays", ""];
   for (const replayId of additionalIds.slice(0, MAX_REPLAY_IDS_SHOWN)) {
     const command = data.org
-      ? `sentry replay view ${data.org}/${replayId}`
-      : `sentry replay view ${replayId}`;
+      ? asInvocationCommand(`sentry replay view ${data.org}/${replayId}`)
+      : asInvocationCommand(`sentry replay view ${replayId}`);
     lines.push(
       `- ${feedbackCodeSpan(replayId)} (${feedbackCodeSpan(command)})`,
     );

@@ -358,6 +358,52 @@ function untaggedParser(value) {
   return undefined;
 }
 
+/** A `sentry <command>` hint: the CLI binary name, then a subcommand. */
+const SENTRY_COMMAND_RE = /(?:^|[\s`'"(])sentry [a-z]/;
+
+/**
+ * Files that `@sentry/mcp-server` can run: all of `src/` but the commands it
+ * does not ship and `app.ts`. Keep in step with `FORBIDDEN_INPUTS` in
+ * packages/mcp-server/script/bundle.ts.
+ */
+const CLI_ONLY_SOURCE_RE =
+  /\/src\/(?:app\.ts$|commands\/(?!auth\/|cli\/(?:defaults|fix)\.ts$|help\.ts$|mcp\.ts$))/;
+
+/** Calls that turn a `sentry …` command into the running program's command. */
+const INVOCATION_HELPERS = new Set([
+  "asInvocationCommand",
+  "asRunningAppCommand",
+]);
+
+/** Properties whose text is CLI help, rendered for the `sentry` binary. */
+const HELP_TEXT_KEYS = new Set(["docs", "fullDescription"]);
+
+/** Whether `node` sits inside a function body. */
+function hasFunctionAncestor(node) {
+  for (let current = node.parent; current; current = current.parent) {
+    if (FUNCTION_TYPES.has(current.type)) return true;
+  }
+  return false;
+}
+
+/** Whether `node` sits in an invocation helper call or in command help text. */
+function isInvocationSafe(node) {
+  for (let current = node.parent; current; current = current.parent) {
+    if (FUNCTION_TYPES.has(current.type)) return false;
+    if (
+      current.type === "CallExpression" &&
+      INVOCATION_HELPERS.has(current.callee.name)
+    )
+      return true;
+    if (
+      current.type === "Property" &&
+      HELP_TEXT_KEYS.has(current.key?.name ?? current.key?.value)
+    )
+      return true;
+  }
+  return false;
+}
+
 const rules = {
   "no-silent-catch": rule(
     "Handle or report caught errors instead of discarding them.",
@@ -798,6 +844,39 @@ const rules = {
         },
         ImportExpression(node) {
           if (buildOnly(node.source.value)) report(node);
+        },
+      };
+    },
+  ),
+  "no-hardcoded-sentry-command": rule(
+    "Hints in code that @sentry/mcp-server runs must name the running program: wrap the `sentry …` command in asInvocationCommand() from lib/app-identity.js.",
+    (_context, file, report) => {
+      if (!file.includes("/src/") || CLI_ONLY_SOURCE_RE.test(file)) return {};
+      const check = (node, text) => {
+        if (SENTRY_COMMAND_RE.test(text) && !isInvocationSafe(node))
+          report(node);
+      };
+      return {
+        // The running program is known only once an entry point has started,
+        // so a call evaluated at module load would still name `sentry`.
+        CallExpression(node) {
+          if (
+            INVOCATION_HELPERS.has(node.callee.name) &&
+            !hasFunctionAncestor(node)
+          )
+            report(
+              node,
+              "Call asInvocationCommand() where the hint is built, not at module load: the running program is not known yet.",
+            );
+        },
+        Literal(node) {
+          if (typeof node.value === "string") check(node, node.value);
+        },
+        TemplateLiteral(node) {
+          check(
+            node,
+            node.quasis.map((quasi) => quasi.value.cooked ?? "").join(""),
+          );
         },
       };
     },

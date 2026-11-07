@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, sep } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { prerelease as semverPrerelease, valid as semverValid } from "semver";
+import { asInvocationCommand } from "./app-identity.js";
 import {
   acquireLock,
   cleanupOldBinary,
@@ -1180,7 +1181,7 @@ async function waitForBinaryVisible(path: string): Promise<number> {
   throw new UpgradeError(
     "execution_failed",
     `Downloaded binary is missing or empty at ${path}. ` +
-      "This is usually transient — rerun `sentry cli upgrade` to retry.",
+      `This is usually transient — rerun \`${asInvocationCommand("sentry cli upgrade")}\` to retry.`,
   );
 }
 
@@ -1247,7 +1248,7 @@ export async function downloadBinaryToTemp(
         "offline_cache_miss",
         offline === "explicit"
           ? `Cannot upgrade to ${version} in offline mode — no pre-downloaded update is available. ` +
-              "Run `sentry cli upgrade` without `--offline` to download the update directly."
+              `Run \`${asInvocationCommand("sentry cli upgrade")}\` without \`--offline\` to download the update directly.`
           : `Cannot upgrade to ${version} — the network is unavailable and no pre-downloaded update was found. ` +
               "Check your internet connection and try again.",
       );

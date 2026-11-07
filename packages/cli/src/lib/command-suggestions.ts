@@ -9,6 +9,8 @@
  * Populated from CLI-Q3 telemetry analysis (~100 events, 85 users).
  */
 
+import { asInvocationCommand } from "./app-identity.js";
+
 /** A suggestion for an unknown command token. */
 export type CommandSuggestion = {
   /** The command to suggest (shown in "Tip:" hint) */
@@ -25,6 +27,8 @@ export type CommandSuggestion = {
  * Keep registered commands and aliases out of this map: runtime error
  * handlers also consult it. Prefer native suggestions only for exact equivalents.
  */
+// getCommandSuggestion() passes each command through asInvocationCommand().
+/* oxlint-disable sentry-cli/no-hardcoded-sentry-command */
 const SUGGESTIONS: ReadonlyMap<string, CommandSuggestion> = new Map([
   // --- view synonyms (~15 events) ---
   ["issue/get", { command: "sentry issue view <issue-id>" }],
@@ -92,6 +96,7 @@ const SUGGESTIONS: ReadonlyMap<string, CommandSuggestion> = new Map([
   ["issue/search", { command: "sentry issue list --query <search>" }],
   ["issue/find", { command: "sentry issue list --query <search>" }],
 ]);
+/* oxlint-enable sentry-cli/no-hardcoded-sentry-command */
 
 /**
  * Look up a suggestion for an unknown command token.
@@ -107,7 +112,13 @@ export function getCommandSuggestion(
   const key = routeContext
     ? `${routeContext}/${unknownToken.toLowerCase()}`
     : `/${unknownToken.toLowerCase()}`;
-  return SUGGESTIONS.get(key);
+  const suggestion = SUGGESTIONS.get(key);
+  return (
+    suggestion && {
+      ...suggestion,
+      command: asInvocationCommand(suggestion.command),
+    }
+  );
 }
 
 /**

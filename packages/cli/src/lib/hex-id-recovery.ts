@@ -28,6 +28,7 @@ import { addBreadcrumb } from "@sentry/node";
 
 import type { SpanListItem } from "../types/index.js";
 import { listLogs, listSpans, queryEvents } from "./api-client.js";
+import { asInvocationCommand } from "./app-identity.js";
 import {
   type ParsedOrgProject,
   ProjectSpecificationType,
@@ -184,6 +185,8 @@ const URL_FRAGMENT_PREFIXES = ["span-", "txn-", "event-", "trace-"] as const;
 const OVER_NESTED_MIN_SEGMENTS = 4;
 
 /** Per-command slug redirect hints (used by the `looks-like-slug` branch). */
+// buildSlugHint() passes each command through asInvocationCommand().
+/* oxlint-disable sentry-cli/no-hardcoded-sentry-command */
 const SLUG_REDIRECT_COMMAND: Record<HexEntityType, string> = {
   event: "sentry issue list",
   trace: "sentry trace list",
@@ -191,6 +194,7 @@ const SLUG_REDIRECT_COMMAND: Record<HexEntityType, string> = {
   // Spans are trace-scoped — a slug-only input can't map to a list command.
   span: "",
 };
+/* oxlint-enable sentry-cli/no-hardcoded-sentry-command */
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for tests)
@@ -589,7 +593,7 @@ function buildSlugHint(
   const orgPart = org ? `${org}/` : "<org>/";
   const cmd = SLUG_REDIRECT_COMMAND[entityType];
   if (cmd) {
-    return `'${input}' looks like a project slug, not a ${entityType} ID. Try: ${cmd} ${orgPart}${input}`;
+    return `'${input}' looks like a project slug, not a ${entityType} ID. Try: ${asInvocationCommand(cmd)} ${orgPart}${input}`;
   }
   return `'${input}' looks like a project slug, not a ${entityType} ID. Spans are identified by 16 hex chars within a trace.`;
 }
@@ -628,7 +632,7 @@ function buildNoMatchHint(
     return (
       `No event matched this prefix in the last ${window}. ` +
       "Sentry cannot search by a partial event ID — pass the full " +
-      "32-character ID printed by `sentry event list`."
+      `32-character ID printed by \`${asInvocationCommand("sentry event list")}\`.`
     );
   }
   return (

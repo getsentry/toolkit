@@ -5,6 +5,7 @@
  */
 
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
+import { asInvocationCommand } from "./app-identity.js";
 import {
   type AccountSummary,
   findAccounts,
@@ -92,9 +93,11 @@ export function resolveAccountSelector(
     similar.length > 0
       ? [
           ...similar.map((a) => `Did you mean ${describeAccount(a)}?`),
-          "Run 'sentry auth list' to see stored accounts",
+          `Run '${asInvocationCommand("sentry auth list")}' to see stored accounts`,
         ]
-      : ["Run 'sentry auth list' to see stored accounts"],
+      : [
+          `Run '${asInvocationCommand("sentry auth list")}' to see stored accounts`,
+        ],
   );
 }
 

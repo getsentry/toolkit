@@ -545,3 +545,58 @@ tester.run(
     ],
   },
 );
+
+const authCommand = "/repo/packages/cli/src/commands/auth/example.ts";
+
+tester.run(
+  "no-hardcoded-sentry-command",
+  plugin.rules["no-hardcoded-sentry-command"],
+  {
+    valid: [
+      {
+        filename: source,
+        code: "function hint() { return `Run '${asInvocationCommand(\"sentry auth login\")}' first.`; }",
+      },
+      {
+        filename: source,
+        code: "function hint(org) { return asInvocationCommand(`sentry project list ${org}/`); }",
+      },
+      {
+        filename: authCommand,
+        code: "buildCommand({ docs: { fullDescription: 'Run `sentry auth status` to check.', examples: [{ command: 'sentry auth login' }] } });",
+      },
+      {
+        filename: source,
+        code: "const message = 'Sentry CLI could not reach sentry.io';",
+      },
+      // Commands that @sentry/mcp-server does not ship only run as `sentry`.
+      {
+        filename: commands,
+        code: "function hint() { return 'Run sentry issue list'; }",
+      },
+    ],
+    invalid: [
+      {
+        filename: source,
+        code: "function hint() { return \"Run 'sentry auth login' first.\"; }",
+        errors: 1,
+      },
+      {
+        filename: authCommand,
+        code: "function hint(org) { return `Try: sentry project list ${org}/`; }",
+        errors: 1,
+      },
+      {
+        filename: "/repo/packages/cli/src/commands/cli/fix.ts",
+        code: "log.warn('Run sentry cli fix');",
+        errors: 1,
+      },
+      // At module load the running program is not known yet.
+      {
+        filename: source,
+        code: "const HINT = asInvocationCommand('sentry auth login');",
+        errors: 1,
+      },
+    ],
+  },
+);
