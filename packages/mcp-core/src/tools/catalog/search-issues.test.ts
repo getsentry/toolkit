@@ -33,6 +33,31 @@ vi.mock("ai", async (importOriginal) => {
   };
 });
 
+const SEER_FEATURES = [
+  "mcp-search-events-seer-translate",
+  "gen-ai-issues-search",
+];
+
+// Sentry only serializes features when explicitly requested.
+const mockOrganization = (
+  features: string[],
+  { hideAiFeatures = false } = {},
+) =>
+  http.get(
+    "https://sentry.io/api/0/organizations/:org/",
+    ({ request, params }) =>
+      HttpResponse.json({
+        id: "1",
+        slug: params.org,
+        name: "Test Org",
+        ...(new URL(request.url).searchParams.get("include_feature_flags") ===
+        "1"
+          ? { features }
+          : {}),
+        hideAiFeatures,
+      }),
+  );
+
 const EMPTY_NOTE =
   "No issues found matching your search criteria. Try adjusting your search criteria or time range.";
 
@@ -92,6 +117,8 @@ describe("search_issues", () => {
     process.env.OPENAI_API_KEY = "test-key";
     process.env.OPENROUTER_API_KEY = "";
     mockGenerateText.mockResolvedValue(mockAIResponse());
+    // Seer translation stays off unless a test enables it.
+    mswServer.use(mockOrganization([]));
   });
 
   it.each([null, "https://tenant.my.sentry.io"])(
@@ -1024,5 +1051,177 @@ describe("search_issues", () => {
         mockContext,
       ),
     ).rejects.toThrow();
+  });
+  describe("with Seer", () => {
+    const seerParams = {
+      organizationSlug: "test-org",
+      query: "my unresolved issues from the last day",
+      sort: "date" as const,
+      projectSlugOrId: "123",
+      regionUrl: null,
+      limit: 10,
+      period: "30d" as const,
+      includeExplanation: true,
+    };
+    const seerQuery = {
+      query: "is:unresolved assigned_or_suggested:me",
+      sort: "freq",
+      group_by: [],
+      visualization: [],
+      mode: "",
+      stats_period: "24h",
+      start: null,
+      end: null,
+    };
+    const mockSeerStart = vi.fn(async ({ request }: { request: Request }) => {
+      expect(await request.json()).toEqual({
+        project_ids: [123],
+        natural_language_query: seerParams.query,
+        strategy: "Issues",
+      });
+      return HttpResponse.json({ run_id: 1, sentry_run_id: "run-uuid" });
+    });
+    const mockSeerState = (response: Record<string, unknown>) =>
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/search-agent/state/run-uuid/",
+        () =>
+          HttpResponse.json({
+            session: { status: "completed", final_response: response },
+            sentry_run_id: "run-uuid",
+          }),
+      );
+    const issueRequests: URL[] = [];
+
+    beforeEach(() => {
+      mockSeerStart.mockClear();
+      issueRequests.length = 0;
+      mswServer.use(
+        http.post(
+          "https://sentry.io/api/0/organizations/test-org/search-agent/start/",
+          mockSeerStart,
+        ),
+        http.get(
+          "https://sentry.io/api/0/organizations/*/issues/",
+          ({ request }) => {
+            issueRequests.push(new URL(request.url));
+            return HttpResponse.json([]);
+          },
+        ),
+      );
+    });
+
+    it("translates natural language with Seer's Issues strategy", async () => {
+      mswServer.use(
+        mockOrganization(SEER_FEATURES),
+        mockSeerState({ responses: [seerQuery], unsupported_reason: null }),
+      );
+
+      const result = await runSearch(seerParams, mockContext);
+
+      expect(mockSeerStart).toHaveBeenCalledTimes(1);
+      expect(mockGenerateText).not.toHaveBeenCalled();
+      expect(
+        issueRequests.map((url) => Object.fromEntries(url.searchParams)),
+      ).toEqual([
+        expect.objectContaining({
+          query: "is:unresolved assigned_or_suggested:me",
+          sort: "freq",
+          statsPeriod: "24h",
+          project: "123",
+        }),
+      ]);
+      expect(result.explanation).toBe("Translated by Seer's search agent.");
+      expect(result.executedSearch).toMatchObject({
+        sort: "freq",
+        period: "24h",
+      });
+    });
+
+    it("keeps the requested sort and period when Seer returns neither", async () => {
+      mswServer.use(
+        mockOrganization(SEER_FEATURES),
+        mockSeerState({
+          responses: [{ ...seerQuery, sort: "trends", stats_period: "" }],
+        }),
+      );
+
+      await runSearch(seerParams, mockContext);
+
+      expect(issueRequests[0]?.searchParams.get("sort")).toBe("date");
+      expect(issueRequests[0]?.searchParams.get("statsPeriod")).toBe("30d");
+    });
+
+    it("falls back to the agent when Seer returns an absolute time range", async () => {
+      mockGenerateText.mockResolvedValue(
+        mockAIResponse("is:unresolved", "date"),
+      );
+      mswServer.use(
+        mockOrganization(SEER_FEATURES),
+        mockSeerState({
+          responses: [
+            {
+              ...seerQuery,
+              stats_period: "",
+              start: "2026-01-01T00:00:00",
+              end: "2026-01-02T00:00:00",
+            },
+          ],
+        }),
+      );
+
+      await runSearch(seerParams, mockContext);
+
+      expect(mockSeerStart).toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+      expect(issueRequests[0]?.searchParams.get("query")).toBe("is:unresolved");
+    });
+
+    it.each([
+      ["the rollout flag is off", ["gen-ai-issues-search"], {}],
+      ["issues search is off", ["mcp-search-events-seer-translate"], {}],
+      ["AI features are hidden", SEER_FEATURES, { hideAiFeatures: true }],
+    ])("falls back to the agent when %s", async (_name, features, options) => {
+      mockGenerateText.mockResolvedValue(
+        mockAIResponse("is:unresolved", "date"),
+      );
+      mswServer.use(mockOrganization(features, options));
+
+      await runSearch(seerParams, mockContext);
+
+      expect(mockSeerStart).not.toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+      expect(issueRequests[0]?.searchParams.get("query")).toBe("is:unresolved");
+    });
+
+    it("falls back to the agent when Seer returns 403", async () => {
+      mockGenerateText.mockResolvedValue(
+        mockAIResponse("is:unresolved", "date"),
+      );
+      mswServer.use(
+        mockOrganization(SEER_FEATURES),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/search-agent/state/run-uuid/",
+          () => HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
+        ),
+      );
+
+      await runSearch(seerParams, mockContext);
+
+      expect(mockSeerStart).toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+      expect(issueRequests[0]?.searchParams.get("query")).toBe("is:unresolved");
+    });
+
+    it.each(["is:unresolved", "firstSeen:-24h", "userCount:>100"])(
+      "skips Seer for Sentry search syntax %s",
+      async (query) => {
+        mockGenerateText.mockResolvedValue(mockAIResponse(query, "date"));
+        mswServer.use(mockOrganization(SEER_FEATURES));
+
+        await runSearch({ ...seerParams, query }, mockContext);
+
+        expect(mockSeerStart).not.toHaveBeenCalled();
+      },
+    );
   });
 });
