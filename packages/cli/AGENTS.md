@@ -233,7 +233,7 @@ Formatting and rendering logic belongs in `src/lib/formatters/<domain>.ts`. If a
 
 Reference: `src/lib/formatters/replay.ts` (extracted from `replay/view.ts`), `src/lib/formatters/trace.ts`, `src/lib/formatters/human.ts`.
 
-Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output. Oxlint's `no-console` bans `console.*` everywhere in `src/`; a call that must bypass the logger gets an `oxlint-disable-next-line no-console -- <reason>` comment.
+Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output. Oxlint's `no-console` bans `console.*` in every package that uses `@sentry/logger` (`packages/cli`, including `script/` and `test/`, and `packages/logger`). Scripts and test helpers import the same `logger` from `src/lib/logger.ts`. A call that must bypass the logger, such as stdout a parent process reads, gets an `oxlint-disable-next-line no-console -- <reason>` comment.
 
 ### Declaring Command Output
 
