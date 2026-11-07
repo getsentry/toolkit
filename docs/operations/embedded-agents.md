@@ -239,19 +239,19 @@ npx @sentry/mcp-server@latest 2>&1 | grep "Using"
 Expected output:
 
 ```
-Using openai responses API for AI-powered search tools (from EMBEDDED_AGENT_PROVIDER).
+ℹ Using openai responses API for AI-powered search tools (from EMBEDDED_AGENT_PROVIDER).
 ```
 
 Or:
 
 ```
-Using anthropic for AI-powered search tools (auto-detected).
+ℹ Using anthropic for AI-powered search tools (auto-detected).
 ```
 
 Or:
 
 ```
-Using openrouter for AI-powered search tools (auto-detected).
+ℹ Using openrouter for AI-powered search tools (auto-detected).
 ```
 
 ## Troubleshooting
@@ -296,7 +296,7 @@ npx @sentry/mcp-server@latest
 Should output:
 
 ```
-Using openai responses API for AI-powered search tools (from EMBEDDED_AGENT_PROVIDER).
+ℹ Using openai responses API for AI-powered search tools (from EMBEDDED_AGENT_PROVIDER).
 ```
 
 ## Related Documentation

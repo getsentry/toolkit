@@ -14,6 +14,7 @@ const { installProcessHandlers } =
   await import("../../../src/lib/mcp/server.js");
 const { installStreamErrorHandlers } =
   await import("../../../src/lib/stream-errors.js");
+const { logger } = await import("../../../src/lib/logger.js");
 
 type Handler = (...args: unknown[]) => void;
 
@@ -40,7 +41,8 @@ beforeEach(() => {
   exit = vi
     .spyOn(process, "exit")
     .mockImplementation((() => undefined) as typeof process.exit);
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.spyOn(logger, "error").mockImplementation(() => undefined);
+  vi.spyOn(logger, "info").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
@@ -97,7 +99,7 @@ describe("installProcessHandlers", () => {
     installStreamErrorHandlers();
     const exitAfterError = installProcessHandlers();
     // The client closed its pipes: writing the report raises EPIPE.
-    vi.mocked(console.error).mockImplementation(() => {
+    vi.mocked(logger.error).mockImplementation(() => {
       stderrError?.(Object.assign(new Error("write EPIPE"), { code: "EPIPE" }));
     });
 
