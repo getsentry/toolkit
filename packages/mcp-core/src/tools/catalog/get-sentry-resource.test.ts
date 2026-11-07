@@ -63,6 +63,12 @@ function mockOrganization(org: string) {
   );
 }
 
+function issuePayload(result: unknown) {
+  return getIssueDetailsOutputSchema.parse(
+    getStructuredContent(result as Parameters<typeof getStructuredContent>[0]),
+  );
+}
+
 function callHandler(params: {
   url?: string;
   resourceType?:
@@ -188,19 +194,15 @@ describe("get_sentry_resource", () => {
       { organizationSlug: "sentry-mcp-evals", resourceId: "CLOUDFLARE-MCP-41" },
     ])("resolves issue from alias params %o", async (params) => {
       const result = await callHandler(params);
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("resolves issue from subdomain URL (my-org.sentry.io)", async () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
-      expect(result).toContain(
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
+      expect(issuePayload(result).issue.title).toBe(
         "Error: Tool list_organizations is already registered",
       );
     });
@@ -209,27 +211,21 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://sentry.io/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("resolves issue from /organizations/{org}/ URL", async () => {
       const result = await callHandler({
         url: "https://sentry.io/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("resolves issue with trailing slash", async () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
   });
 
@@ -239,11 +235,9 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/events/7ca573c0f4814912aaa9bdc77d1a7d51",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
-      expect(result).toContain(
-        "**Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51",
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
+      expect(issuePayload(result).event.id).toBe(
+        "7ca573c0f4814912aaa9bdc77d1a7d51",
       );
     });
 
@@ -251,8 +245,8 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://sentry.io/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/events/7ca573c0f4814912aaa9bdc77d1a7d51",
       });
-      expect(result).toContain(
-        "**Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51",
+      expect(issuePayload(result).event.id).toBe(
+        "7ca573c0f4814912aaa9bdc77d1a7d51",
       );
     });
   });
@@ -731,9 +725,7 @@ describe("get_sentry_resource", () => {
         url: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
         resourceType: "issue",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("rejects unsupported override (issue on trace URL)", async () => {
@@ -754,9 +746,7 @@ describe("get_sentry_resource", () => {
         organizationSlug: "sentry-mcp-evals",
         resourceId: "CLOUDFLARE-MCP-41",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("uppercases issue resourceId", async () => {
@@ -765,9 +755,7 @@ describe("get_sentry_resource", () => {
         organizationSlug: "sentry-mcp-evals",
         resourceId: "cloudflare-mcp-41",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("fetches event by eventId", async () => {
@@ -776,13 +764,13 @@ describe("get_sentry_resource", () => {
         organizationSlug: "sentry-mcp-evals",
         resourceId: "7ca573c0f4814912aaa9bdc77d1a7d51",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
+      expect(issuePayload(result).event.id).toBe(
+        "7ca573c0f4814912aaa9bdc77d1a7d51",
       );
-      expect(result).toContain(
-        "**Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51",
-      );
-      expect(result).toContain("**user.geo**: US, United States");
+      expect(issuePayload(result).event.user?.geo).toMatchObject({
+        countryCode: "US",
+      });
     });
 
     it("fetches trace by traceId", async () => {
@@ -1204,55 +1192,88 @@ describe("event package selection", () => {
         { ...params, packageNames: ["example"] },
         baseContext,
       );
-      expect(result).not.toContain("unrelated");
+      expect(JSON.stringify(result)).not.toContain("unrelated");
       expect(result).toMatchInlineSnapshot(`
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
-
-        **Description**: Error: Tool list_organizations is already registered
-        **Culprit**: Object.fetch(index)
-        **First Seen**: 2025-04-03T22:51:19.403Z
-        **Last Seen**: 2025-04-12T11:34:11.000Z
-        **Occurrences**: 25
-        **Users Impacted**: 1
-        **Status**: unresolved
-        **Substatus**: ongoing
-        **Assigned To**: Jane Developer (User)
-        **Issue Type**: error
-        **Issue Category**: error
-        **Platform**: javascript
-        **Project**: CLOUDFLARE-MCP
-        **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
-
-        ## Event Details
-
-        **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
-        **Type**: default
-        **Occurred At**: 2025-10-02T12:00:00.000Z
-        **Message**:
-        Something went wrong
-
-        ### Error
-
-        \`\`\`
-        Something went wrong
-        \`\`\`
-
-        ### Tags
-
-        **level**: \`error\`
-        **environment**: \`production\`
-
-
-        ### Selected Package Versions
-
-        - \`example\`: \`1.2.3\`
-
-        ## Response Notes
-
-        - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
-        - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
-        - Issue event search: Use the Sentry tool \`search_issue_events\`
-        "
+        {
+          "structuredContent": {
+            "aiConversations": null,
+            "codeLocation": null,
+            "event": {
+              "contexts": null,
+              "crashedThread": null,
+              "csp": null,
+              "evidence": null,
+              "exceptions": null,
+              "extra": null,
+              "id": "7ca573c0f4814912aaa9bdc77d1a7d51",
+              "message": "Something went wrong",
+              "metricAlert": null,
+              "occurredAt": "2025-10-02T12:00:00.000Z",
+              "packageVersions": {
+                "metadataAvailable": true,
+                "packages": [
+                  {
+                    "name": "example",
+                    "status": "recorded",
+                    "truncated": false,
+                    "version": "1.2.3",
+                  },
+                ],
+              },
+              "performance": null,
+              "platform": "python",
+              "request": null,
+              "tags": [
+                {
+                  "key": "level",
+                  "value": "error",
+                },
+                {
+                  "key": "environment",
+                  "value": "production",
+                },
+              ],
+              "threadCount": 0,
+              "threads": null,
+              "type": "default",
+              "user": null,
+            },
+            "externalIssues": null,
+            "issue": {
+              "assignedTo": "Jane Developer",
+              "culprit": "Object.fetch(index)",
+              "firstSeen": "2025-04-03T22:51:19.403000Z",
+              "issueCategory": "error",
+              "issueType": "error",
+              "lastSeen": "2025-04-12T11:34:11Z",
+              "location": null,
+              "occurrences": 25,
+              "platform": "javascript",
+              "project": "CLOUDFLARE-MCP",
+              "queryPattern": null,
+              "seerActionability": null,
+              "shortId": "CLOUDFLARE-MCP-41",
+              "status": "unresolved",
+              "substatus": "ongoing",
+              "title": "Error: Tool list_organizations is already registered",
+              "url": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+              "usersImpacted": 1,
+            },
+            "replays": null,
+            "seer": null,
+            "suggestedActions": [
+              {
+                "arguments": {
+                  "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+                },
+                "reason": "Read the breadcrumb trail leading up to this event.",
+                "toolName": "get_issue_breadcrumbs",
+                "type": "tool_call",
+              },
+            ],
+            "suspectCommit": null,
+          },
+        }
       `);
     },
   );
