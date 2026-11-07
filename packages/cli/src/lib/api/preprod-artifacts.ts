@@ -15,9 +15,17 @@
 import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { promisify } from "node:util";
+import { zstdCompress as zstdCompressCb } from "node:zlib";
 import {
+  type AssembleProjectPreprodArtifactData,
+  assembleProjectPreprodArtifact,
   getOrganizationPreprodArtifactInstallDetails,
   getOrganizationPreprodArtifactSnapshotLatestBase,
+  getOrganizationPreprodSnapshotArchiveStatus,
+  startOrganizationPreprodSnapshotArchive,
+  type UploadProjectPreprodArtifactSnapshotData,
+  uploadProjectPreprodArtifactSnapshot,
 } from "@sentry/api";
 import {
   array,
@@ -32,6 +40,7 @@ import {
   tuple,
 } from "valibot";
 import { formatAuthHeader } from "../auth-header.js";
+import type { VcsBody } from "../build/vcs.js";
 import { customFetch } from "../custom-ca.js";
 import { getAuthToken } from "../db/auth.js";
 import { ApiError, TimeoutError, ValidationError } from "../errors.js";
@@ -49,8 +58,8 @@ import {
 } from "./chunk-upload.js";
 import {
   apiRequestToRegion,
-  apiRequestToRegionNoContent,
   getOrgSdkConfig,
+  unwrapResult,
   unwrapValidatedResult,
 } from "./infrastructure.js";
 
@@ -199,7 +208,7 @@ export type BuildUploadMetadata = {
    * Pre-flattened VCS fields (snake_case, e.g. `head_sha`, `provider`) merged
    * into the assemble body. Built via `vcsInfoToBody` in the build/vcs module.
    */
-  vcs?: Record<string, unknown>;
+  vcs?: VcsBody;
 };
 
 /** Options for {@link uploadBuild}. */
@@ -230,8 +239,11 @@ function buildAssembleBody(
   checksum: string,
   chunkShas: string[],
   metadata: BuildUploadMetadata,
-): Record<string, unknown> {
-  const body: Record<string, unknown> = { checksum, chunks: chunkShas };
+): NonNullable<AssembleProjectPreprodArtifactData["body"]> {
+  const body: NonNullable<AssembleProjectPreprodArtifactData["body"]> = {
+    checksum,
+    chunks: chunkShas,
+  };
   if (metadata.buildConfiguration) {
     body.build_configuration = metadata.buildConfiguration;
   }
@@ -269,8 +281,13 @@ export async function uploadBuild(
     contentPath,
     serverOptions.chunkSize,
   );
+  // Chunks go to the org's region; the assemble call routes by org itself.
   const regionUrl = await resolveOrgRegion(org);
   const endpoint = `projects/${org}/${project}/files/preprodartifacts/assemble/`;
+  // This loop already re-sends the identical body to poll, and the server
+  // reuses the in-progress artifact row (get_or_create), so a transport
+  // retry is no riskier than the next poll.
+  const config = getOrgSdkConfig({ idempotent: true });
 
   const body = buildAssembleBody(
     overallChecksum,
@@ -280,15 +297,18 @@ export async function uploadBuild(
 
   const deadline = Date.now() + ASSEMBLE_MAX_WAIT_MS;
   while (Date.now() < deadline) {
-    const { data } = await apiRequestToRegion(regionUrl, endpoint, {
-      method: "POST",
+    const result = await assembleProjectPreprodArtifact({
+      ...config,
+      path: { organization_id_or_slug: org, project_id_or_slug: project },
       body,
-      schema: BuildAssembleResponseSchema,
-      // This loop already re-sends the identical body to poll, and the server
-      // reuses the in-progress artifact row (get_or_create), so a transport
-      // retry is no riskier than the next poll.
-      idempotent: true,
     });
+    // The CLI schema also reads `detail`, which error states carry.
+    const data = unwrapValidatedResult(
+      result,
+      "Failed to assemble build",
+      BuildAssembleResponseSchema,
+      endpoint,
+    );
 
     if (data.state === "error") {
       throw new ApiError(
@@ -466,6 +486,15 @@ export type CreateSnapshotResponse = InferOutput<
   typeof CreateSnapshotResponseSchema
 >;
 
+/** Body of the create-snapshot request. */
+export type SnapshotManifest = NonNullable<
+  UploadProjectPreprodArtifactSnapshotData["body"]
+>;
+
+/** zstd compressor, or null when the runtime lacks zstd support. */
+const zstdCompressAsync =
+  typeof zstdCompressCb === "function" ? promisify(zstdCompressCb) : null;
+
 /**
  * Create a preprod snapshot from an uploaded image manifest.
  *
@@ -476,21 +505,28 @@ export type CreateSnapshotResponse = InferOutput<
 export async function createPreprodSnapshot(
   org: string,
   project: string,
-  manifest: Record<string, unknown>,
+  manifest: SnapshotManifest,
 ): Promise<CreateSnapshotResponse> {
-  const regionUrl = await resolveOrgRegion(org);
-  const { data } = await apiRequestToRegion(
-    regionUrl,
+  // A large image suite makes a large manifest; compress like the legacy CLI,
+  // and send plain JSON when the runtime lacks zstd.
+  const compressed = zstdCompressAsync
+    ? await zstdCompressAsync(Buffer.from(JSON.stringify(manifest)))
+    : undefined;
+  const result = await uploadProjectPreprodArtifactSnapshot({
+    ...getOrgSdkConfig(),
+    path: { organization_id_or_slug: org, project_id_or_slug: project },
+    body: manifest,
+    ...(compressed && {
+      bodySerializer: () => compressed,
+      headers: { "Content-Encoding": "zstd" },
+    }),
+  });
+  return unwrapValidatedResult(
+    result,
+    "Failed to create snapshot",
+    CreateSnapshotResponseSchema,
     `projects/${org}/${project}/preprodartifacts/snapshots/`,
-    {
-      method: "POST",
-      body: manifest,
-      // A large image suite makes a large manifest; compress like the legacy CLI.
-      bodyEncoding: "zstd",
-      schema: CreateSnapshotResponseSchema,
-    },
   );
-  return data;
 }
 
 const SnapshotArchiveStatusSchema = object({ ready: boolean() });
@@ -504,11 +540,15 @@ export async function getSnapshotArchiveReady(
   org: string,
   snapshotId: string,
 ): Promise<boolean> {
-  const regionUrl = await resolveOrgRegion(org);
-  const { data } = await apiRequestToRegion(
-    regionUrl,
+  const result = await getOrganizationPreprodSnapshotArchiveStatus({
+    ...getOrgSdkConfig(),
+    path: { organization_id_or_slug: org, snapshot_id: snapshotId },
+  });
+  const data = unwrapValidatedResult(
+    result,
+    "Failed to check snapshot archive",
+    SnapshotArchiveStatusSchema,
     snapshotArchiveEndpoint(org, snapshotId),
-    { schema: SnapshotArchiveStatusSchema },
   );
   return data.ready;
 }
@@ -522,12 +562,11 @@ export async function triggerSnapshotArchiveBuild(
   org: string,
   snapshotId: string,
 ): Promise<void> {
-  const regionUrl = await resolveOrgRegion(org);
-  await apiRequestToRegionNoContent(
-    regionUrl,
-    snapshotArchiveEndpoint(org, snapshotId),
-    { method: "POST" },
-  );
+  const result = await startOrganizationPreprodSnapshotArchive({
+    ...getOrgSdkConfig(),
+    path: { organization_id_or_slug: org, snapshot_id: snapshotId },
+  });
+  unwrapResult(result, "Failed to start snapshot archive build");
 }
 
 /**

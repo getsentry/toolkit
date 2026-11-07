@@ -47,6 +47,18 @@ export type VcsInfo = {
   prNumber?: number;
 };
 
+/** {@link VcsInfo} as the snake_case fields of build and snapshot request bodies. */
+export type VcsBody = {
+  head_sha?: string;
+  base_sha?: string;
+  provider?: string;
+  head_repo_name?: string;
+  base_repo_name?: string;
+  head_ref?: string;
+  base_ref?: string;
+  pr_number?: number;
+};
+
 /** Git-metadata flags accepted by build/snapshot upload commands. */
 export type VcsFlags = {
   "head-sha"?: string;
@@ -311,8 +323,8 @@ export function collectVcsMetadata(
  * Flatten {@link VcsInfo} into the snake_case fields merged into the build
  * assemble body. Empty/undefined values are omitted.
  */
-export function vcsInfoToBody(vcs: VcsInfo): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
+export function vcsInfoToBody(vcs: VcsInfo): VcsBody {
+  const body: VcsBody = {};
   if (vcs.headSha) {
     body.head_sha = vcs.headSha;
   }
