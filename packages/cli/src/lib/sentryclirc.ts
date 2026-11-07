@@ -22,7 +22,7 @@ import { join } from "node:path";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { normalizeUrl } from "./constants.js";
 import { hasStoredAccountForHost } from "./db/auth.js";
-import { getConfigDir } from "./db/index.js";
+import { CONFIG_DIR_ENV_VAR, getConfigDir } from "./db/index.js";
 import { getEnv, isPersistenceDisabled } from "./env.js";
 import { HostScopeError } from "./errors.js";
 import { parseIni } from "./ini.js";
@@ -58,10 +58,24 @@ export type SentryCliRcConfig = {
 };
 
 /**
- * Process-lifetime cache keyed by cwd.
+ * The part of the active env that decides where the global `.sentryclirc`
+ * lives. SDK calls can each pass their own `env`, so the caches here are
+ * keyed by it instead of being fixed for the process.
+ */
+function configDirKey(): string {
+  return getEnv()[CONFIG_DIR_ENV_VAR] ?? "";
+}
+
+/**
+ * Process-lifetime cache keyed by cwd and config dir override.
  * Stores promises (not resolved values) so concurrent callers share the same load.
  */
 const cache = new Map<string, Promise<SentryCliRcConfig>>();
+
+/** Cache key for `cwd`: the merged config also depends on the global file. */
+function cacheKey(cwd: string): string {
+  return `${configDirKey()}\0${cwd}`;
+}
 
 /**
  * Fields we extract from an INI config, keyed by section.field.
@@ -196,8 +210,8 @@ async function tryApplyFile(
   }
 }
 
-/** Lazy-cached set of global `.sentryclirc` paths (stable for the process lifetime) */
-let globalPaths: Set<string> | null = null;
+/** Lazy-cached set of global `.sentryclirc` paths, per config dir override */
+let globalPaths: { key: string; paths: Set<string> } | null = null;
 
 /**
  * Global paths checked as fallback after the walk-up.
@@ -206,13 +220,17 @@ let globalPaths: Set<string> | null = null;
  * Used by the import engine to classify files by location.
  */
 export function getGlobalPaths(): Set<string> {
-  if (!globalPaths) {
-    globalPaths = new Set([
-      join(getConfigDir(), CONFIG_FILENAME),
-      join(homedir(), CONFIG_FILENAME),
-    ]);
+  const key = configDirKey();
+  if (globalPaths?.key !== key) {
+    globalPaths = {
+      key,
+      paths: new Set([
+        join(getConfigDir(), CONFIG_FILENAME),
+        join(homedir(), CONFIG_FILENAME),
+      ]),
+    };
   }
-  return globalPaths;
+  return globalPaths.paths;
 }
 
 /**
@@ -273,7 +291,7 @@ export function setSentryCliRcCache(
   if (isPersistenceDisabled()) {
     return;
   }
-  cache.set(cwd, Promise.resolve(config));
+  cache.set(cacheKey(cwd), Promise.resolve(config));
 }
 
 /**
@@ -320,7 +338,8 @@ export function loadSentryCliRc(cwd: string): Promise<SentryCliRcConfig> {
   if (isPersistenceDisabled()) {
     return Promise.resolve(createSentryCliRcConfig());
   }
-  const cached = cache.get(cwd);
+  const key = cacheKey(cwd);
+  const cached = cache.get(key);
   if (cached) {
     return cached;
   }
@@ -328,10 +347,10 @@ export function loadSentryCliRc(cwd: string): Promise<SentryCliRcConfig> {
   // Evict from cache on failure so subsequent calls retry instead of
   // permanently returning a rejected promise.
   const promise = doLoad(cwd).catch((error) => {
-    cache.delete(cwd);
+    cache.delete(key);
     throw error;
   });
-  cache.set(cwd, promise);
+  cache.set(key, promise);
   return promise;
 }
 
