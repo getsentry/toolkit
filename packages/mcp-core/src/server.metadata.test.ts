@@ -229,28 +229,22 @@ describe.each(Object.keys(MODES))("%s mode", (mode) => {
 });
 
 describe("outputSchema skip lists", () => {
-  const listings = (name: string) =>
-    [...surfaces.values()].flatMap(({ tools }) =>
-      tools.filter((tool) => tool.name === name),
+  const listed = () =>
+    new Map(
+      [...surfaces.values()].flatMap(({ tools }) =>
+        tools.map((tool) => [tool.name, tool] as const),
+      ),
     );
 
   it("name listed tools without an outputSchema", () => {
+    const tools = listed();
     const problems = [
       ...Object.keys(OUTPUT_SCHEMA_EXEMPT).map((name) => ["EXEMPT", name]),
       ...Object.keys(OUTPUT_SCHEMA_PENDING).map((name) => ["PENDING", name]),
     ].flatMap(([list, name]) => {
-      const tools = listings(name);
-      if (tools.length === 0) {
-        return [`${name}: in OUTPUT_SCHEMA_${list} but not listed`];
-      }
-      // a PENDING tool can declare its outputSchema to experimental sessions
-      // first, so it is stale once every surface declares one; an EXEMPT tool
-      // is stale as soon as any surface does
-      const stale =
-        list === "PENDING"
-          ? tools.every((tool) => tool.outputSchema)
-          : tools.some((tool) => tool.outputSchema);
-      if (stale) {
+      const tool = tools.get(name);
+      if (!tool) return [`${name}: in OUTPUT_SCHEMA_${list} but not listed`];
+      if (tool.outputSchema) {
         return [
           `${name}: has an outputSchema now; delete its OUTPUT_SCHEMA_${list} entry`,
         ];

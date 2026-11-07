@@ -15,9 +15,7 @@ vi.mock("../internal/tool-helpers/define", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../internal/tool-helpers/define")>();
   const defineTool: typeof actual.defineTool = (config) => {
-    // an experimentalOutputSchema covers only the sessions that return structuredContent
-    const experimental = !config.outputSchema;
-    const outputSchema = config.outputSchema ?? config.experimentalOutputSchema;
+    const { outputSchema } = config;
     if (!outputSchema) {
       return actual.defineTool(config);
     }
@@ -28,9 +26,6 @@ vi.mock("../internal/tool-helpers/define", async (importOriginal) => {
         return result;
       }
       if (typeof result !== "object" || !("structuredContent" in result)) {
-        if (experimental) {
-          return result;
-        }
         throw new Error(
           `${config.name} has an outputSchema but returned no structuredContent`,
         );

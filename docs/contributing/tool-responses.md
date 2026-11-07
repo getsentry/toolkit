@@ -234,11 +234,6 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
   markdown and omit `structuredContent` until they have a real structured
   payload. Do not attach sparse structured side-channels such as
   `suggestedActions` alone on top of markdown.
-- A tool whose structured payload is still behind experimental mode declares
-  `experimentalOutputSchema` instead. The server advertises it to experimental
-  sessions only, and tsc cannot check the handler against it. The test guard
-  checks every `structuredContent` result against it, and the tool's tests
-  must cover every structured path.
 - If a tool declares `outputSchema`, every successful `structuredContent` result
   must conform to that schema. `defineTool` enforces this at compile time: the
   handler must return `structuredResult(...)` typed as the schema's `z.output`,
@@ -306,11 +301,8 @@ reason:
 - `OUTPUT_SCHEMA_PENDING` for tools whose `outputSchema` has not landed, with
   the PR, for example `"pending getsentry/toolkit#2004"`.
 
-An `OUTPUT_SCHEMA_EXEMPT` entry fails once any session lists its tool with an
-`outputSchema`. An `OUTPUT_SCHEMA_PENDING` entry fails once every session that
-lists the tool has one, so a tool whose `experimentalOutputSchema` reaches
-experimental sessions first stays pending until it graduates. The PR that
-makes an entry stale also deletes it. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
+An entry fails once its tool has an `outputSchema`, so the PR that adds one
+also deletes the entry. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
 with a comment that says which client reads it.
 
 ## Suggested Actions
