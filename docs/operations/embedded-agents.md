@@ -222,8 +222,8 @@ Override the default model for each provider:
 # OpenAI (default: gpt-5)
 export OPENAI_MODEL=gpt-4
 
-# Anthropic (default: claude-opus-4-5-20251101)
-export ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+# Anthropic (default: claude-sonnet-5-5)
+export ANTHROPIC_MODEL=claude-opus-5-5
 
 # OpenRouter (default: openai/gpt-5.6-luna @ high)
 export OPENROUTER_MODEL=anthropic/claude-sonnet-4
