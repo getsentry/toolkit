@@ -16,11 +16,11 @@
  * Loaded lazily with the rest of the server, as it pulls in mcp-core.
  */
 
+import { SentryApiService } from "@sentry/mcp-core/api-client";
 import {
-  ApiNotFoundError,
-  SentryApiService,
-} from "@sentry/mcp-core/api-client";
-import { validateRegionUrl } from "@sentry/mcp-core/internal/tool-helpers/validate-region-url";
+  allowedRegionHost,
+  lookupConstraints,
+} from "@sentry/mcp-core/constraint-lookup";
 import { getInvocationCommand } from "../app-identity.js";
 import { ResolutionError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -30,61 +30,6 @@ const log = logger.withTag("mcp.scope");
 
 /** How long startup waits for each request before serving without it. */
 const SCOPE_CHECK_TIMEOUT_MS = 3000;
-
-type ScopeCheckResult<T> =
-  | { status: "ok"; value: T }
-  | { status: "not-found" }
-  | { status: "unknown" };
-
-/**
- * Whether `request` finds the resource: "unknown" for any failure but a 404,
- * and when it takes longer than `timeoutMs`.
- */
-async function probe<T>(
-  request: () => Promise<T>,
-  timeoutMs: number,
-): Promise<ScopeCheckResult<T>> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<ScopeCheckResult<T>>((resolve) => {
-    timer = setTimeout(() => {
-      log.debug(`MCP server scope check timed out after ${timeoutMs}ms`);
-      resolve({ status: "unknown" });
-    }, timeoutMs);
-    timer.unref();
-  });
-  const outcome = request().then(
-    (value): ScopeCheckResult<T> => ({ status: "ok", value }),
-    (error: unknown): ScopeCheckResult<T> => {
-      if (error instanceof ApiNotFoundError) {
-        return { status: "not-found" };
-      }
-      log.debug("Could not check the MCP server scope", error);
-      return { status: "unknown" };
-    },
-  );
-  try {
-    return await Promise.race([outcome, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * The host for the org's project requests: its `links.regionUrl` when
- * mcp-core's `validateRegionUrl` accepts it (the configured host or a known
- * Sentry region), else the configured host.
- */
-function regionHost(regionUrl: string | undefined, sentryHost: string): string {
-  if (!regionUrl) {
-    return sentryHost;
-  }
-  try {
-    return validateRegionUrl(regionUrl, sentryHost);
-  } catch (error) {
-    log.debug("Ignoring the organization's region URL", error);
-    return sentryHost;
-  }
-}
 
 function organizationNotFound(org: string, scope: string): ResolutionError {
   return new ResolutionError(
@@ -133,36 +78,27 @@ export async function assertMcpScopeExists(
     protocol: config.sentryProtocol,
     accessToken,
   });
-  const org = await probe(
-    () => api.getOrganization(organizationSlug, { detailed: false }),
-    timeoutMs,
+  const { organization, project } = await lookupConstraints(
+    api,
+    { organizationSlug, projectSlug },
+    {
+      projectHost: (regionUrl) =>
+        allowedRegionHost(regionUrl, config.sentryHost),
+      organizationTimeoutMs: timeoutMs,
+      projectTimeoutMs: timeoutMs,
+      detailed: false,
+    },
   );
-  if (org.status === "not-found") {
+  for (const lookup of [organization, project]) {
+    if (lookup?.status === "unknown") {
+      log.debug("Could not check the MCP server scope", lookup.error);
+    }
+  }
+  if (organization.status === "not-found") {
     throw organizationNotFound(organizationSlug, scope);
   }
-  // Without the org, its region is unknown, so a project 404 would prove
-  // nothing.
-  if (!projectSlug || org.status === "unknown") {
-    return;
-  }
-
-  // Projects live on the org's region, not the control silo (multi-region
-  // SaaS), so ask there.
-  const project = await probe(
-    () =>
-      api.getProject(
-        {
-          organizationSlug,
-          projectSlugOrId: projectSlug,
-          collapse: "organization",
-        },
-        {
-          host: regionHost(org.value.links?.regionUrl, config.sentryHost),
-        },
-      ),
-    timeoutMs,
-  );
-  if (project.status === "not-found") {
+  // Without the org, its region is unknown, so the project was not checked.
+  if (projectSlug && project?.status === "not-found") {
     throw projectNotFound(organizationSlug, projectSlug);
   }
 }
