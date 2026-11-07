@@ -17,7 +17,13 @@ const PRESENTATION_HINT =
 const EMPTY_NOTE =
   "No issues found matching your search criteria. Try adjusting your search criteria or time range.";
 
-const ISSUE_SORTS = ["date", "freq", "new", "user", "recommended"] as const;
+export const ISSUE_SORTS = [
+  "date",
+  "freq",
+  "new",
+  "user",
+  "recommended",
+] as const;
 
 export type IssueSort = (typeof ISSUE_SORTS)[number];
 

@@ -21,7 +21,11 @@
  */
 
 import {
+  closeSync,
+  existsSync,
+  openSync,
   readFileSync,
+  readSync,
   rmdirSync,
   rmSync,
   statSync,
@@ -413,6 +417,76 @@ function removeLockOwner(dbPath: string): void {
   }
 }
 
+/** Offset of the write-version byte in the SQLite file header. */
+const HEADER_WRITE_VERSION_OFFSET = 18;
+
+/** Header file-format version that marks a WAL-mode database. */
+const WAL_FORMAT_VERSION = 2;
+
+/**
+ * Whether the database file at `dbPath` is in WAL mode.
+ *
+ * WAL mode is stored in the file header, so a database that the native
+ * driver put in WAL mode stays in it after that process exits.
+ */
+function isWalModeFile(dbPath: string): boolean {
+  if (dbPath === ":memory:" || dbPath === "") {
+    return false;
+  }
+  let fd: number | undefined;
+  try {
+    fd = openSync(dbPath, "r");
+    const header = Buffer.alloc(HEADER_WRITE_VERSION_OFFSET + 1);
+    const bytesRead = readSync(fd, header, 0, header.length, 0);
+    return (
+      bytesRead === header.length &&
+      header[HEADER_WRITE_VERSION_OFFSET] === WAL_FORMAT_VERSION
+    );
+  } catch (error) {
+    // ENOENT: a new database (the common first-run case).
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      log.debug("Could not read the SQLite file header", error);
+    }
+    return false;
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd);
+    }
+  }
+}
+
+/**
+ * Switch a WAL-mode database back to a rollback journal so the WASM driver
+ * can use it.
+ *
+ * The native driver (Node.js 22.15+ and the standalone binary) puts `cli.db`
+ * in WAL mode. The WASM driver has no shared memory, so SQLite can't open a
+ * WAL database through it: every statement that reads the file fails with
+ * "unable to open database file". In exclusive locking mode SQLite reads WAL
+ * without shared memory, so the switch runs in that mode. The native driver
+ * turns WAL back on the next time it opens the file.
+ *
+ * Skipped while a `-shm` file exists: a native process may have the database
+ * open, and changing the journal mode under it isn't safe. Opening then fails
+ * as it did before.
+ */
+// oxlint-disable-next-line typescript/no-explicit-any -- WASM driver types are loaded lazily
+function leaveWalMode(db: any, dbPath: string): void {
+  if (!isWalModeFile(dbPath)) {
+    return;
+  }
+  if (existsSync(`${dbPath}-shm`)) {
+    log.debug(
+      `Leaving ${dbPath} in WAL mode: another process may have it open`,
+    );
+    return;
+  }
+  db.exec("PRAGMA locking_mode = EXCLUSIVE");
+  db.exec("PRAGMA journal_mode = DELETE");
+  db.exec("PRAGMA locking_mode = NORMAL");
+  log.debug(`Switched ${dbPath} from WAL to a rollback journal`);
+}
+
 /**
  * SQLite database wrapper.
  *
@@ -443,6 +517,12 @@ export class Database {
       // Record ourselves so a later invocation can tell whether a leftover
       // lock (e.g. after we're SIGINT-killed mid-write) is orphaned or live.
       writeLockOwner(path);
+      try {
+        leaveWalMode(this.db, path);
+      } catch (error) {
+        this.close();
+        throw error;
+      }
     }
   }
 

@@ -50,6 +50,7 @@ import {
   sdkRunCalls,
 } from "./sdk-run-calls.js";
 import { shellCommands } from "./shell-words.js";
+import { logger } from "../src/lib/logger.js";
 
 await writeRouteTreeStubs();
 
@@ -379,15 +380,16 @@ for (const file of sourceFiles) {
 }
 
 if (findings.length === 0) {
-  console.log(
-    `✓ ${checked} sentry examples in ${files.length + SDK_EXAMPLE_FILES.length + sourceFiles.length} files match the CLI`,
+  logger.success(
+    `${checked} sentry examples in ${files.length + SDK_EXAMPLE_FILES.length + sourceFiles.length} files match the CLI`,
   );
   process.exit(0);
 }
 
-console.error(`✗ ${findings.length} doc example problem(s):\n`);
-for (const f of findings) {
-  console.error(`  ${f.file}: ${f.example}`);
-  console.error(`    → ${f.problem}\n`);
-}
+logger.error(
+  [
+    `${findings.length} doc example problem(s):\n`,
+    ...findings.map((f) => `  ${f.file}: ${f.example}\n    → ${f.problem}\n`),
+  ].join("\n"),
+);
 process.exit(1);

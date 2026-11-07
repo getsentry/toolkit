@@ -122,6 +122,15 @@
       }
     },
     {
+      "files": [
+        "packages/cli/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/logger/**/*.{ts,tsx,js,mjs,cjs}"
+      ],
+      "rules": {
+        "no-console": "error"
+      }
+    },
+    {
       "files": ["packages/cli/script/**/*.ts"],
       "rules": {
         "sentry-cli/no-regex-markdown-parsing": "error"

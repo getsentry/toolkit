@@ -76,12 +76,18 @@ let silent = false;
 
 /**
  * Skip read-only writes silently for the rest of this process: no permission
- * repair and no stderr warning. Used by shell completion, where each TAB press
- * is a new process and any stderr output would land in the user's prompt. The
- * next normal command still repairs and warns.
+ * repair and no stderr warning, including the one for a `cli.db` that can't be
+ * opened at all. Used by shell completion, where each TAB press is a new
+ * process and any stderr output would land in the user's prompt. The next
+ * normal command still repairs and warns.
  */
 export function silenceReadonlyHandling(): void {
   silent = true;
+}
+
+/** Whether {@link silenceReadonlyHandling} was called in this process. */
+export function isReadonlyHandlingSilenced(): boolean {
+  return silent;
 }
 
 /**

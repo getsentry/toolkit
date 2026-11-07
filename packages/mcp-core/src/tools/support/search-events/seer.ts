@@ -23,9 +23,13 @@ export const SEER_SEARCH_AGENT_TIMEOUT = 60 * 1000; // 1 minute
 // Sentry's sentinel for all projects the user can access.
 const ALL_ACCESSIBLE_PROJECTS = -1;
 
-// Gradual rollout flag for Seer translation in search_events. The search agent
+// Gradual rollout flag for Seer translation in the search tools. The search agent
 // endpoints themselves are ungated; `hideAiFeatures` is checked separately.
 const SEER_TRANSLATE_FEATURE = "mcp-search-events-seer-translate";
+// Sentry requires this flag for the search agent's `Issues` strategy.
+const SEER_ISSUES_SEARCH_FEATURE = "gen-ai-issues-search";
+
+const SEER_EXPLANATION = "Translated by Seer's search agent.";
 
 const SEER_STRATEGIES = {
   errors: "Errors",
@@ -217,7 +221,7 @@ function toSearchTranslation(
     .filter(([, query]) => query)
     .map(([type, query]) => `${type} \`${query}\``);
 
-  let explanation = "Translated by Seer's search agent.";
+  let explanation = SEER_EXPLANATION;
   let warning: string | undefined;
   if (crossEventFilters.length > 0) {
     if (timeSeries) {
@@ -244,32 +248,48 @@ function toSearchTranslation(
   };
 }
 
+type SearchAgentStrategy =
+  | (typeof SEER_STRATEGIES)[SeerSearchDataset]
+  | "Issues";
+
+interface SearchAgentRun {
+  result: z.output<typeof SearchAgentQuerySchema>;
+  projectIds: number[];
+  runId: string;
+  organizationFeatures: string[];
+}
+
 /**
- * Translates a natural language query with Seer's search agent.
+ * Starts a search agent run and polls it until it finishes.
  *
  * Returns null when Seer is unavailable for the organization, cannot translate
- * the query, or does not finish in time, so the caller can fall back to the
- * embedded agent or direct query syntax.
+ * the query, or does not finish in time.
  */
-export async function translateWithSeer({
+async function runSearchAgent({
   apiService,
   organizationSlug,
   projectId,
-  dataset,
+  strategy,
   query,
+  requiredFeature,
 }: {
   apiService: SentryApiService;
   organizationSlug: string;
   projectId?: string;
-  dataset: SeerSearchDataset;
+  strategy: SearchAgentStrategy;
   query: string;
-}): Promise<SeerSearchTranslation | null> {
+  // A strategy-specific flag that Sentry also checks before starting the run.
+  requiredFeature?: string;
+}): Promise<SearchAgentRun | null> {
   try {
     const organizationFeatures = await getSeerSearchAgentFeatures(
       apiService,
       organizationSlug,
     );
-    if (!organizationFeatures) {
+    if (
+      !organizationFeatures ||
+      (requiredFeature && !organizationFeatures.includes(requiredFeature))
+    ) {
       return null;
     }
 
@@ -277,7 +297,7 @@ export async function translateWithSeer({
       organizationSlug,
       projectIds: [projectId ? Number(projectId) : ALL_ACCESSIBLE_PROJECTS],
       naturalLanguageQuery: query,
-      strategy: SEER_STRATEGIES[dataset],
+      strategy,
     });
 
     const deadline = Date.now() + SEER_SEARCH_AGENT_TIMEOUT;
@@ -292,18 +312,12 @@ export async function translateWithSeer({
         if (!result) {
           return null;
         }
-        // Seer can suggest broadening a project-scoped search, e.g. to other
-        // services in the same trace. With all projects requested there is
-        // nothing to add.
-        const suggestedProjectIds = projectId
-          ? (session.final_response?.project_ids ?? []).filter(
-              (id) => id !== Number(projectId),
-            )
-          : [];
-        return toSearchTranslation(result, dataset, suggestedProjectIds, {
+        return {
+          result,
+          projectIds: session.final_response?.project_ids ?? [],
           runId: run.sentry_run_id,
           organizationFeatures,
-        });
+        };
       }
       if (session?.status === "error") {
         return null;
@@ -326,4 +340,91 @@ export async function translateWithSeer({
     logWarn(error, { extra: { organizationSlug } });
     return null;
   }
+}
+
+/**
+ * Translates a natural language query with Seer's search agent.
+ *
+ * Returns null when Seer is unavailable for the organization, cannot translate
+ * the query, or does not finish in time, so the caller can fall back to the
+ * embedded agent or direct query syntax.
+ */
+export async function translateWithSeer({
+  apiService,
+  organizationSlug,
+  projectId,
+  dataset,
+  query,
+}: {
+  apiService: SentryApiService;
+  organizationSlug: string;
+  projectId?: string;
+  dataset: SeerSearchDataset;
+  query: string;
+}): Promise<SeerSearchTranslation | null> {
+  const run = await runSearchAgent({
+    apiService,
+    organizationSlug,
+    projectId,
+    strategy: SEER_STRATEGIES[dataset],
+    query,
+  });
+  if (!run) {
+    return null;
+  }
+  // Seer can suggest broadening a project-scoped search, e.g. to other
+  // services in the same trace. With all projects requested there is nothing
+  // to add.
+  const suggestedProjectIds = projectId
+    ? run.projectIds.filter((id) => id !== Number(projectId))
+    : [];
+  return toSearchTranslation(run.result, dataset, suggestedProjectIds, run);
+}
+
+export interface SeerIssueSearchTranslation {
+  query: string;
+  // Empty when Seer returned no sort.
+  sort: string;
+  // Empty unless the user asked for a time period.
+  statsPeriod: string;
+  explanation: string;
+}
+
+/**
+ * Translates a natural language issue search with Seer's `Issues` strategy.
+ *
+ * Sentry gates that strategy on `gen-ai-issues-search` on top of the shared
+ * Seer translation checks. Returns null when any of them fail, so the caller
+ * can fall back to the embedded agent or direct query syntax.
+ */
+export async function translateIssuesWithSeer({
+  apiService,
+  organizationSlug,
+  projectId,
+  query,
+}: {
+  apiService: SentryApiService;
+  organizationSlug: string;
+  projectId?: string;
+  query: string;
+}): Promise<SeerIssueSearchTranslation | null> {
+  const run = await runSearchAgent({
+    apiService,
+    organizationSlug,
+    projectId,
+    strategy: "Issues",
+    query,
+    requiredFeature: SEER_ISSUES_SEARCH_FEATURE,
+  });
+  // search_issues only takes a relative period, so an absolute range would be
+  // dropped silently. Fall back instead of searching the wrong window.
+  if (!run || run.result.start || run.result.end) {
+    return null;
+  }
+  return {
+    query: run.result.query,
+    sort: run.result.sort.trim(),
+    statsPeriod: run.result.stats_period,
+    explanation: SEER_EXPLANATION,
+  };
 }

@@ -285,6 +285,13 @@ async function runMcpServer(
   const { getExitCode } = await import("./lib/errors.js");
   const { error } = await import("./lib/formatters/colors.js");
   const { splitInlineFlagValues } = await import("./lib/mcp/args.js");
+  const { getEnvLogLevel, setLogLevel } = await import("./lib/logger.js");
+  // The server's startup warnings go through the logger, so apply
+  // SENTRY_LOG_LEVEL here as runCli does; --log-level still wins.
+  const envLogLevel = getEnvLogLevel();
+  if (envLogLevel !== null) {
+    setLogLevel(envLogLevel);
+  }
   try {
     await run(
       app,

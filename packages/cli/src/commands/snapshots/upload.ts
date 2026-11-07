@@ -42,9 +42,9 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import {
+  findExistingObjects,
   type ObjectstoreConfig,
-  objectExists,
-  putObject,
+  putObjects,
 } from "../../lib/objectstore.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
 import {
@@ -58,9 +58,6 @@ import {
 const log = logger.withTag("snapshots.upload");
 
 const USAGE_HINT = "sentry snapshots upload <path> --app-id <id>";
-
-/** Concurrency for objectstore HEAD/PUT requests. */
-const UPLOAD_CONCURRENCY = 8;
 
 /** Flags accepted by `snapshots upload`. */
 type UploadFlags = {
@@ -204,17 +201,6 @@ async function resolveSelective(
   return { selective, allImageNames };
 }
 
-/** Run `fn` over `items` with bounded concurrency. */
-async function runPooled<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  for (let i = 0; i < items.length; i += limit) {
-    await Promise.all(items.slice(i, i + limit).map(fn));
-  }
-}
-
 /** A per-image manifest metadata entry (width/height override sidecar). */
 function imageMetadata(image: CollectedImage): Record<string, unknown> {
   return {
@@ -276,17 +262,15 @@ async function uploadImages(
     log.warn(`Duplicate paths encountered, skipping: ${duplicates.join(", ")}`);
   }
 
-  // HEAD to find objects already present, then PUT only the missing ones.
-  const existing = new Set<string>();
-  await runPooled(prepared, UPLOAD_CONCURRENCY, async (item) => {
-    if (await objectExists(config, item.key)) {
-      existing.add(item.key);
-    }
-  });
+  // Batched HEADs find objects already present, then only the missing ones are
+  // uploaded. Batching keeps the request count low enough to stay under the
+  // Sentry proxy's per-request rate limit.
+  const existing = await findExistingObjects(
+    config,
+    prepared.map((item) => item.key),
+  );
   const missing = prepared.filter((item) => !existing.has(item.key));
-  await runPooled(missing, UPLOAD_CONCURRENCY, async (item) => {
-    await putObject(config, item.key, await readFile(item.path));
-  });
+  await putObjects(config, missing);
 
   return {
     entries,

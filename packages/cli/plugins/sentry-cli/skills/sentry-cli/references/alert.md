@@ -190,18 +190,18 @@ Edit an issue alert rule
 |-------|------|-------------|
 | `id` | string | Alert rule ID |
 | `name` | string | Alert rule name |
-| `organizationId` | string |  |
-| `createdBy` | string \| null |  |
-| `dateCreated` | string |  |
-| `dateUpdated` | string |  |
-| `triggers` | object \| null |  |
-| `actionFilters` | array \| null |  |
-| `environment` | string \| null |  |
-| `config` | object |  |
-| `detectorIds` | array \| null |  |
-| `enabled` | boolean |  |
-| `lastTriggered` | string \| null |  |
-| `owner` | string \| null |  |
+| `organizationId` | string | ID of the organization the alert belongs to |
+| `createdBy` | string \| null | ID of the user who created the alert |
+| `dateCreated` | string | When the alert was created (ISO 8601) |
+| `dateUpdated` | string | When the alert was last updated (ISO 8601) |
+| `triggers` | object \| null | Conditions on which the alert triggers |
+| `actionFilters` | array \| null | Filters to run before actions fire, each with the actions to fire |
+| `environment` | string \| null | Name of the environment the alert is limited to. Null for all environments |
+| `config` | object | Configuration of the alert, such as frequency in minutes |
+| `detectorIds` | array \| null | IDs of the monitors connected to the alert |
+| `enabled` | boolean | Whether the alert is enabled |
+| `lastTriggered` | string \| null | When the alert last fired (ISO 8601) |
+| `owner` | string \| null | Team or user that owns the alert, such as user:123 or team:456 |
 | `org` | string | Organization slug |
 | `project` | string | Project slug |
 | `status` | string | Rule status (active, disabled) |
@@ -389,21 +389,21 @@ Edit a metric alert rule
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `owner` | object \| null |  |
-| `createdBy` | string \| null |  |
-| `latestGroup` | object \| null |  |
-| `description` | string \| null |  |
+| `owner` | object \| null | Team or user that owns the monitor |
+| `createdBy` | string \| null | ID of the user who created the monitor |
+| `latestGroup` | object \| null | Latest issue the monitor created |
+| `description` | string \| null | Description of the monitor |
 | `id` | string | Alert rule ID |
-| `projectId` | string \| null |  |
+| `projectId` | string \| null | ID of the project the monitor belongs to |
 | `name` | string | Alert rule name |
-| `type` | string |  |
-| `workflowIds` | array \| null |  |
-| `dateCreated` | string |  |
-| `dateUpdated` | string |  |
-| `dataSources` | array \| null |  |
-| `conditionGroup` | object \| null |  |
-| `config` | object |  |
-| `enabled` | boolean |  |
+| `type` | string | Type of the monitor, such as metric_issue or error |
+| `workflowIds` | array \| null | IDs of the alerts connected to the monitor |
+| `dateCreated` | string | When the monitor was created (ISO 8601) |
+| `dateUpdated` | string | When the monitor was last updated (ISO 8601) |
+| `dataSources` | array \| null | Data sources the monitor evaluates, such as a query subscription |
+| `conditionGroup` | object \| null | Conditions that decide the monitor's status |
+| `config` | object | Configuration of the monitor, which depends on its type |
+| `enabled` | boolean | Whether the monitor is enabled |
 | `org` | string | Organization slug |
 | `status` | string | Rule status (active, disabled) |
 
