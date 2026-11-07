@@ -23,7 +23,7 @@ import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { normalizeUrl } from "./constants.js";
 import { hasStoredAccountForHost } from "./db/auth.js";
 import { getConfigDir } from "./db/index.js";
-import { getEnv } from "./env.js";
+import { getEnv, isPersistenceDisabled } from "./env.js";
 import { HostScopeError } from "./errors.js";
 import { parseIni } from "./ini.js";
 import { logger } from "./logger.js";
@@ -183,6 +183,10 @@ async function tryApplyFile(
   filePath: string,
   isGlobal: boolean,
 ): Promise<void> {
+  // With persistence off, no .sentryclirc applies.
+  if (isPersistenceDisabled()) {
+    return;
+  }
   const content = await tryReadSentryCliRc(filePath);
   if (content !== null) {
     log.debug(
@@ -264,6 +268,11 @@ export function setSentryCliRcCache(
   cwd: string,
   config: SentryCliRcConfig,
 ): void {
+  // An invocation with persistence off read no files, so its empty config
+  // must not answer later invocations.
+  if (isPersistenceDisabled()) {
+    return;
+  }
   cache.set(cwd, Promise.resolve(config));
 }
 
@@ -308,6 +317,9 @@ async function doLoad(cwd: string): Promise<SentryCliRcConfig> {
  * @returns Merged config (empty fields if no files found)
  */
 export function loadSentryCliRc(cwd: string): Promise<SentryCliRcConfig> {
+  if (isPersistenceDisabled()) {
+    return Promise.resolve(createSentryCliRcConfig());
+  }
   const cached = cache.get(cwd);
   if (cached) {
     return cached;

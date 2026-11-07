@@ -18,7 +18,7 @@ import { homedir } from "node:os";
 import type { Span } from "@sentry/core";
 import type { Writer } from "../types/index.js";
 import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
-import { withEnv } from "./env.js";
+import { NO_PERSISTENCE_ENV_VAR, withEnv } from "./env.js";
 import { stringifyUnknown } from "./errors.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
 
@@ -31,14 +31,18 @@ function hasStreamingFlag(args: string[]): boolean {
 }
 
 /**
- * Build an isolated env from options, inheriting the consumer's process.env.
- * Sets auth token, host URL, default org/project, and output format.
+ * Build an isolated env from options, starting from `options.env` or the
+ * consumer's process.env. Sets auth token, host URL, default org/project,
+ * output format, and the no-persistence flag.
  */
 function buildIsolatedEnv(
   options?: SentryOptions,
   jsonByDefault = true,
 ): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  const env: NodeJS.ProcessEnv = { ...(options?.env ?? process.env) };
+  if (options?.persist === false) {
+    env[NO_PERSISTENCE_ENV_VAR] = "1";
+  }
   if (options?.token) {
     env.SENTRY_AUTH_TOKEN = options.token;
     env.SENTRY_FORCE_ENV_TOKEN = "1";

@@ -23,7 +23,7 @@ import { rootCertificates } from "node:tls";
 const _require = createRequire(import.meta.url);
 import { asInvocationCommand } from "./app-identity.js";
 import { getDefaultCaCert } from "./db/defaults.js";
-import { getEnv } from "./env.js";
+import { getEnv, isPersistenceDisabled } from "./env.js";
 import { stringifyUnknown } from "./errors.js";
 import { logger } from "./logger.js";
 import { isSentrySaasUrl } from "./sentry-urls.js";
@@ -120,10 +120,11 @@ function injectIntoNodeTls(customPem: string): void {
  * Resolve custom CA certificates. Runs once per process.
  *
  * Tries sources in priority order: stored default, NODE_EXTRA_CA_CERTS.
- * First readable PEM wins.
+ * First readable PEM wins. An invocation with persistence off reads no CA
+ * file and leaves resolution to the next invocation that persists.
  */
 function resolve(): void {
-  if (hasResolved) {
+  if (hasResolved || isPersistenceDisabled()) {
     return;
   }
   hasResolved = true;

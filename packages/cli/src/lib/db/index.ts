@@ -9,7 +9,7 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DB_FILENAME, resolveConfigDir } from "../config-dir.js";
-import { getEnv } from "../env.js";
+import { getEnv, isPersistenceDisabled } from "../env.js";
 import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 
@@ -18,12 +18,13 @@ const _require = createRequire(import.meta.url);
 const log = logger.withTag("db");
 
 import { migrateFromJson } from "./migration.js";
+import { nullDatabase } from "./null-store.js";
 import {
   createResilientDatabase,
   isReadonlyHandlingSilenced,
 } from "./resilient.js";
 import { initSchema, runMigrations } from "./schema.js";
-import { Database } from "./sqlite.js";
+import { Database, type DatabaseHandle } from "./sqlite.js";
 
 export {
   CONFIG_DIR_ENV_VAR,
@@ -133,8 +134,14 @@ function setDbPermissions(): void {
  * disk. When `cli.db` can't be opened (a WAL file the WASM driver can't read,
  * a read-only config directory, a corrupt file), this warns and uses an
  * in-memory database for the rest of the process, so the command still runs.
+ *
+ * An invocation with persistence off gets the null store: no file is opened
+ * and nothing is kept, not even in memory.
  */
-export function getDatabase(): Database {
+export function getDatabase(): DatabaseHandle {
+  if (isPersistenceDisabled()) {
+    return nullDatabase;
+  }
   const dbPath = detached ? ":memory:" : getDbPath();
 
   // Auto-invalidate if config directory changed (for tests)
@@ -232,13 +239,15 @@ declare const SENTRY_CLI_COMPLETION_BUILD: boolean | undefined;
 /**
  * The telemetry module, required lazily so the database modules never import
  * `@sentry/node` (~100ms). `undefined` when telemetry is off: the `__complete`
- * fast path sets `SENTRY_CLI_NO_TELEMETRY=1` and never loads it.
+ * fast path sets `SENTRY_CLI_NO_TELEMETRY=1` and never loads it, and an
+ * invocation with persistence off has no telemetry.
  */
 function lazyTelemetry(): typeof import("../telemetry.js") | undefined {
   if (
     (typeof SENTRY_CLI_COMPLETION_BUILD !== "undefined" &&
       SENTRY_CLI_COMPLETION_BUILD) ||
-    getEnv().SENTRY_CLI_NO_TELEMETRY === "1"
+    getEnv().SENTRY_CLI_NO_TELEMETRY === "1" ||
+    isPersistenceDisabled()
   ) {
     return;
   }
@@ -286,6 +295,9 @@ export function detachDatabase(): void {
  * auto-repair logic (which would cause infinite loops).
  */
 export function getRawDatabase(): Database {
+  if (isPersistenceDisabled()) {
+    throw new Error("The local database is off for this invocation");
+  }
   if (!rawDb) {
     // Ensure database is initialized
     getDatabase();

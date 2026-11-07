@@ -59,6 +59,24 @@ export type SentryOptions = {
   headers?: Record<string, string>;
 
   /**
+   * Environment variables each invocation starts from, before the options
+   * above are applied. Defaults to `process.env`. Pass `{}` on a server whose
+   * `process.env` holds its own settings (such as a `SENTRY_DSN`) that must not
+   * change how commands resolve their target.
+   */
+  env?: Readonly<Record<string, string | undefined>>;
+
+  /**
+   * Keep local state between calls (default `true`). When `false`, nothing is
+   * read from or written to disk: no `cli.db` (stored logins, defaults,
+   * caches), no response cache, no `.sentryclirc` files, no custom CA files,
+   * no version check, and no telemetry. Pass `token` with it. List commands
+   * then reject `cursor: "next"` and `"prev"`; pass the `nextCursor` of the
+   * previous result instead.
+   */
+  persist?: boolean;
+
+  /**
    * Abort signal for cancelling streaming commands.
    * When aborted, streaming iterables stop on the next poll cycle.
    * Consumer `break` in `for await...of` also triggers abort automatically.

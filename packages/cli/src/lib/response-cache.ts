@@ -29,7 +29,7 @@ import { createBodyCodec } from "@sentry/toolkit-core/response-cache/codec";
 
 import { getIdentityFingerprint } from "./db/auth.js";
 import { getConfigDir } from "./db/index.js";
-import { getEnv } from "./env.js";
+import { getEnv, isPersistenceDisabled } from "./env.js";
 import { logger } from "./logger.js";
 import { createFileStore, type FileStore } from "./response-cache-store.js";
 import { recordCacheHit, withCacheSpan } from "./telemetry.js";
@@ -166,20 +166,21 @@ export function resetCacheState(): void {
  * Reads are skipped when:
  * - `disableResponseCache()` was called (`--fresh` flag)
  * - `SENTRY_NO_CACHE=1` environment variable is set
+ * - persistence is off for this invocation
  */
 export function isCacheDisabled(): boolean {
-  return cacheReadBypassed || getEnv().SENTRY_NO_CACHE === "1";
+  return cacheReadBypassed || isCacheWriteDisabled();
 }
 
 /**
  * Check if cache writes are disabled.
  *
- * Only the `SENTRY_NO_CACHE=1` env var disables writes. The `--fresh` flag
- * intentionally allows writes so that the freshly-fetched response replaces
- * any stale cache entry.
+ * Only the `SENTRY_NO_CACHE=1` env var and persistence being off disable
+ * writes. The `--fresh` flag intentionally allows writes so that the
+ * freshly-fetched response replaces any stale cache entry.
  */
 function isCacheWriteDisabled(): boolean {
-  return getEnv().SENTRY_NO_CACHE === "1";
+  return getEnv().SENTRY_NO_CACHE === "1" || isPersistenceDisabled();
 }
 
 // ---------------------------------------------------------------------------
@@ -376,6 +377,9 @@ export async function invalidateCachedResponsesMatching(
   prefix: string,
   identity = getIdentityFingerprint(),
 ): Promise<void> {
+  if (isPersistenceDisabled()) {
+    return;
+  }
   try {
     await getStore().deleteMatching(identity, prefix);
   } catch (error) {
@@ -389,6 +393,9 @@ export async function invalidateCachedResponsesMatching(
  * Called on `auth logout` and `auth login` since cached data is tied to the user.
  */
 export async function clearResponseCache(): Promise<void> {
+  if (isPersistenceDisabled()) {
+    return;
+  }
   try {
     await getStore().clear();
   } catch (error) {

@@ -33,7 +33,7 @@ import {
   detectAgent,
   detectAgentFromProcessTree,
 } from "./detect-agent.js";
-import { getEnv } from "./env.js";
+import { getEnv, isPersistenceDisabled } from "./env.js";
 import {
   classifySilenced,
   enrichEventWithGroupingTags,
@@ -122,6 +122,7 @@ export type TelemetryEffective = {
    * Which layer determined the result:
    * - `"env:SENTRY_CLI_NO_TELEMETRY"` — env var opt-out
    * - `"env:DO_NOT_TRACK"` — industry-standard opt-out
+   * - `"persistence"` — the SDK invocation runs with `persist: false`
    * - `"preference"` — persistent `sentry cli defaults telemetry` setting
    * - `"default"` — no override, telemetry enabled by default
    */
@@ -134,8 +135,9 @@ export type TelemetryEffective = {
  * Priority (highest to lowest):
  * 1. `SENTRY_CLI_NO_TELEMETRY=1` — explicit CLI env var opt-out
  * 2. `DO_NOT_TRACK=1` — industry-standard opt-out
- * 3. SQLite persistent preference — `sentry cli defaults telemetry on/off`
- * 4. Default: enabled
+ * 3. An SDK invocation with `persist: false`
+ * 4. SQLite persistent preference — `sentry cli defaults telemetry on/off`
+ * 5. Default: enabled
  *
  * The DB read is wrapped in try/catch — if the database is uninitialized
  * or corrupted, we fall through to the default (enabled).
@@ -147,6 +149,10 @@ export function computeTelemetryEffective(): TelemetryEffective {
 
   if (getEnv()[DO_NOT_TRACK_ENV_VAR] === "1") {
     return { enabled: false, source: `env:${DO_NOT_TRACK_ENV_VAR}` };
+  }
+
+  if (isPersistenceDisabled()) {
+    return { enabled: false, source: "persistence" };
   }
 
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
