@@ -31,6 +31,7 @@ import type {
   Writer,
 } from "../../types/index.js";
 import { resolveOrgDisplayName } from "../api-client.js";
+import { asInvocationCommand } from "../app-identity.js";
 import { stringifyUnknown } from "../errors.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { withSerializeSpan } from "../telemetry.js";
@@ -2239,7 +2240,9 @@ export function formatFixResult(data: FixResult): string {
       `${colorTag("green", "✓")} No issues found. Database schema and permissions are correct.`,
     );
   } else if (data.dryRun && data.issues.length > 0 && !data.repairFailed) {
-    lines.push("Run `sentry cli fix` to apply fixes.");
+    lines.push(
+      `Run \`${asInvocationCommand("sentry cli fix")}\` to apply fixes.`,
+    );
   } else if (!data.repairFailed) {
     lines.push(`${colorTag("green", "✓")} All issues repaired successfully.`);
   }

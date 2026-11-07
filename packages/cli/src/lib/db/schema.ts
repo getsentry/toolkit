@@ -12,6 +12,7 @@
  */
 
 import { uuidv7 } from "uuidv7";
+import { asInvocationCommand } from "../app-identity.js";
 import { getEnv } from "../env.js";
 import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
@@ -1001,14 +1002,14 @@ function adaptNewerSchema(db: Database, storedVersion: number): void {
   const versions = `schema ${storedVersion}; this CLI uses ${CURRENT_SCHEMA_VERSION}`;
   if (getEnv()[NO_AUTO_REPAIR_ENV] === "1") {
     logger.warn(
-      `The local database was written by a newer Sentry CLI (${versions}). Run \`sentry cli fix\` to adapt it.`,
+      `The local database was written by a newer Sentry CLI (${versions}). Run \`${asInvocationCommand("sentry cli fix")}\` to adapt it.`,
     );
     return;
   }
   const { failed } = repairSchema(db);
   if (failed.length > 0) {
     logger.warn(
-      `Could not adapt the local database written by a newer Sentry CLI (${versions}): ${failed.join("; ")}. Run \`sentry cli fix\`.`,
+      `Could not adapt the local database written by a newer Sentry CLI (${versions}): ${failed.join("; ")}. Run \`${asInvocationCommand("sentry cli fix")}\`.`,
     );
     return;
   }

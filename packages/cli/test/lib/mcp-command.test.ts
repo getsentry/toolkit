@@ -107,10 +107,10 @@ describe("isMcpInvocation", () => {
 });
 
 describe("@sentry/mcp-server application", () => {
-  test("has only mcp, auth, and help, with mcp as the default", () => {
+  test("has only mcp, auth, cli, and help, with mcp as the default", () => {
     expect(
       mcpServerRoutes.getAllEntries().map((entry) => entry.name.original),
-    ).toEqual(["mcp", "auth", "help"]);
+    ).toEqual(["mcp", "auth", "cli", "help"]);
     expect(mcpServerRoutes.getDefaultCommand()).toBe(
       mcpServerRoutes.getRoutingTargetForInput("mcp"),
     );

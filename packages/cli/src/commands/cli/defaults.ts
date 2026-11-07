@@ -13,6 +13,7 @@
 
 import { resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { choiceParser } from "../../lib/completion-target.js";
 import { normalizeUrl } from "../../lib/constants.js";
@@ -359,7 +360,7 @@ export const defaultsCommand = buildCommand({
     // Too many arguments
     if (rest.length > 0) {
       throw new ValidationError(
-        "Too many arguments. Usage: sentry cli defaults [<key> [<value>]]",
+        `Too many arguments. Usage: ${asInvocationCommand("sentry cli defaults")} [<key> [<value>]]`,
         "args",
       );
     }
@@ -369,7 +370,7 @@ export const defaultsCommand = buildCommand({
       rawKeyArg !== undefined && SHOW_ALL_VERBS.has(rawKeyArg.toLowerCase());
     if (isShowVerb && (valueArg !== undefined || flags.clear)) {
       throw new ValidationError(
-        `'${rawKeyArg}' shows all defaults and takes no value or --clear. Use 'sentry cli defaults' to show all, or 'sentry cli defaults --clear' to clear all.`,
+        `'${rawKeyArg}' shows all defaults and takes no value or --clear. Use '${asInvocationCommand("sentry cli defaults")}' to show all, or '${asInvocationCommand("sentry cli defaults --clear")}' to clear all.`,
         "args",
       );
     }
@@ -426,7 +427,7 @@ export const defaultsCommand = buildCommand({
     if (flags.clear) {
       if (valueArg !== undefined) {
         throw new ValidationError(
-          `Cannot use --clear with a value. Use either 'sentry cli defaults ${keyArg} --clear' or 'sentry cli defaults ${keyArg} <value>'.`,
+          `Cannot use --clear with a value. Use either '${asInvocationCommand(`sentry cli defaults ${keyArg} --clear`)}' or '${asInvocationCommand(`sentry cli defaults ${keyArg} <value>`)}'.`,
           "args",
         );
       }

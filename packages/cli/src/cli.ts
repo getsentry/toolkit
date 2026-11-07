@@ -6,7 +6,8 @@
  * The runner does not know which commands exist: each binary passes a
  * {@link CliEntry} that loads its own application. `sentry` (`bin.ts`,
  * `index.ts`) runs every command; `@sentry/mcp-server` (`mcp-server.ts`) runs
- * `mcp`, `auth`, and `help`, so its bundle leaves the rest out.
+ * `mcp`, `auth`, `cli defaults`, `cli fix`, and `help`, so its bundle leaves
+ * the rest out.
  *
  * Extracted from `bin.ts` so the logic is testable and reusable without
  * top-level side effects. `bin.ts` remains a thin wrapper that registers
