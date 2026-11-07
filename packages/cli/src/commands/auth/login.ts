@@ -2,7 +2,7 @@ import { isatty } from "node:tty";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
 import { pointDefaultUrlAtAccount } from "../../lib/account-selection.js";
-import { getCurrentUser, getUserRegions } from "../../lib/api-client.js";
+import { checkTokenAccess, getCurrentUser } from "../../lib/api-client.js";
 import { sentry } from "../../lib/app-identity.js";
 import { normalizeAuthToken } from "../../lib/auth-header.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
@@ -432,7 +432,7 @@ async function discardTokenLogin(
 
 /**
  * Handle a failure while validating a user-supplied `--token` via
- * {@link getUserRegions}. A 401/403 means the token itself is rejected (invalid
+ * {@link checkTokenAccess}. A 401/403 means the token itself is rejected (invalid
  * or insufficiently scoped) — remove the account it was stored as, restore the
  * previously active account, and raise a user-facing {@link AuthError}.
  * Any other failure (network, 5xx, parse) is NOT a token problem, so the
@@ -650,8 +650,8 @@ export const loginCommand = buildCommand({
     const newAccount = email !== undefined || !flags.force;
 
     if (token !== undefined) {
-      // Save token first (with host scope), then validate by fetching user
-      // regions. It is always stored as its own account so a rejected token
+      // Save token first (with host scope), then validate it by listing
+      // orgs. It is always stored as its own account so a rejected token
       // never touches the stored ones; with `--force` the stored login for
       // this server (never another server's) is replaced only once the new
       // token checks out.
@@ -665,7 +665,7 @@ export const loginCommand = buildCommand({
       });
 
       try {
-        await getUserRegions();
+        await checkTokenAccess();
       } catch (error) {
         await handleTokenValidationError(error, accountId, previousAccountId);
       }
