@@ -135,7 +135,7 @@ export function buildUsageTip(
   }
   const target = project ? `${org}/${project}` : `${org}/<project>`;
   const command = dataset === "logs" ? "log list" : "span list";
-  return `Tip: Filter or add to columns with: sentry ${command} ${target} -q ${shellQuote(`has:${key}`)} --fields ${shellQuote(key)}`;
+  return `Tip: Filter or add to columns with: ${asInvocationCommand(`sentry ${command} ${target} -q ${shellQuote(`has:${key}`)} --fields ${shellQuote(key)}`)}`;
 }
 
 /**

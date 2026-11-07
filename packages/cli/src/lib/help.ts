@@ -137,7 +137,9 @@ function toHelpCommand(
       .filter((sub: RouteMapEntry) => !sub.hidden)
       .map((sub: RouteMapEntry) => sub.name.original);
     return {
-      usage: `sentry ${routeName} ${pickSubcommands(routeName, subNames).join(" | ")}`,
+      usage: asRunningAppCommand(
+        `sentry ${routeName} ${pickSubcommands(routeName, subNames).join(" | ")}`,
+      ),
       description: brief,
     };
   }
@@ -149,13 +151,13 @@ function toHelpCommand(
       getPositionalString(entry.target.parameters.positional);
     const usageSuffix = placeholder ? ` ${placeholder}` : "";
     return {
-      usage: `sentry ${routeName}${usageSuffix}`,
+      usage: asRunningAppCommand(`sentry ${routeName}${usageSuffix}`),
       description: brief,
     };
   }
 
   return {
-    usage: `sentry ${routeName}`,
+    usage: asRunningAppCommand(`sentry ${routeName}`),
     description: brief,
   };
 }
@@ -873,6 +875,7 @@ function formatGroupHuman(group: RouteInfo): string {
 
   // Strip "sentry <group> " prefix to get subcommand name.
   // For nested routes like "sentry dashboard widget add", this yields "widget add".
+  // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- matches command paths, not a hint.
   const prefix = `sentry ${group.name} `;
   const subName = (cmd: CommandInfo) =>
     cmd.path.startsWith(prefix)

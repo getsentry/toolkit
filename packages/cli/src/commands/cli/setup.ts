@@ -488,7 +488,9 @@ function printWelcomeMessage(
   emit(
     `  ${asInvocationCommand("sentry mcp")}      Run the Sentry MCP server for your AI agent`,
   );
-  emit("  sentry --help   See all available commands");
+  emit(
+    `  ${asInvocationCommand("sentry --help")}   See all available commands`,
+  );
   emit("");
   emit("https://cli.sentry.dev");
 }

@@ -341,7 +341,7 @@ export const mergeCommand = buildCommand({
           ? `Tip: you can also write: ${asInvocationCommand("sentry issue merge CLI-K9 --into CLI-15H")}`
           : `Example: ${asInvocationCommand("sentry issue merge CLI-K9 CLI-15H CLI-15N")}`;
       throw new ValidationError(
-        `'sentry ${COMMAND_PATH}' needs at least 2 issue IDs (got ${args.length}).\n\n` +
+        `'${asInvocationCommand(`sentry ${COMMAND_PATH}`)}' needs at least 2 issue IDs (got ${args.length}).\n\n` +
           hint,
       );
     }

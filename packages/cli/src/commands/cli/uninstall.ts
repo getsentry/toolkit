@@ -28,7 +28,6 @@ import { homedir } from "node:os";
 import { basename, dirname } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { getSkillInstallPath } from "../../lib/agent-skills.js";
-import { asInvocationCommand } from "../../lib/app-identity.js";
 import { isHomebrewInstall } from "../../lib/binary.js";
 import { getCompletionPath } from "../../lib/completions.js";
 import {
@@ -297,9 +296,8 @@ function gatherArtifacts(home: string): UninstallArtifact[] {
     // self-deletion and tell the user to remove it manually.
     if (process.platform === "win32") {
       artifacts.push({
-        label: asInvocationCommand(
-          "sentry binary (manual removal needed on Windows)",
-        ),
+        // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- names the binary, not a command.
+        label: "sentry binary (manual removal needed on Windows)",
         path: binaryPath,
         exists: true,
         remove: () =>
@@ -311,7 +309,8 @@ function gatherArtifacts(home: string): UninstallArtifact[] {
       });
     } else {
       artifacts.push({
-        label: asInvocationCommand("sentry binary"),
+        // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- names the binary, not a command.
+        label: "sentry binary",
         path: binaryPath,
         exists: true,
         remove: async () => {

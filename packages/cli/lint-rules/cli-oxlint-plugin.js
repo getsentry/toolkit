@@ -358,11 +358,14 @@ function untaggedParser(value) {
   return undefined;
 }
 
-/** A `sentry <command>` hint: the CLI binary name, then a subcommand. */
-const SENTRY_COMMAND_RE = /(?:^|[\s`'"(])sentry [a-z]/;
+/**
+ * A `sentry <command>` hint: the CLI binary name, then a subcommand or a
+ * `<placeholder>` for one.
+ */
+const SENTRY_COMMAND_RE = /(?:^|[\s`'"(])sentry [a-z<]/;
 
 /** A whole `sentry <command>`, such as a usage line or a command prefix. */
-const WHOLE_SENTRY_COMMAND_RE = /^sentry [a-z]/;
+const WHOLE_SENTRY_COMMAND_RE = /^sentry [a-z<]/;
 
 /** Calls that turn a `sentry …` command into the running program's command. */
 const INVOCATION_HELPERS = new Set([
@@ -882,9 +885,10 @@ const rules = {
           if (typeof node.value === "string") check(node, node.value);
         },
         TemplateLiteral(node) {
+          // Each interpolation stands in for a word, so `sentry ${cmd}` counts.
           check(
             node,
-            node.quasis.map((quasi) => quasi.value.cooked ?? "").join(""),
+            node.quasis.map((quasi) => quasi.value.cooked ?? "").join("x"),
           );
         },
       };

@@ -14,6 +14,7 @@
  * stream error handlers and calls `startCli()`.
  */
 
+import { asInvocationCommand } from "./lib/app-identity.js";
 import type { CliApplication } from "./lib/application.js";
 import { redactCredentialText } from "./lib/credential-redaction.js";
 import { CliError, formatError } from "./lib/errors.js";
@@ -157,7 +158,7 @@ async function recoverUnknownCommandHelp(
     const { warning } = await import("./lib/formatters/colors.js");
     process.stderr.write(
       warning(
-        `Tip: use --help for help (e.g., sentry ${groupArgs.join(" ")} --help)\n`,
+        `Tip: use --help for help (e.g., ${asInvocationCommand(`sentry ${groupArgs.join(" ")} --help`)})\n`,
       ),
     );
     await executor(["help", ...groupArgs]);

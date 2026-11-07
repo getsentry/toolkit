@@ -16,6 +16,7 @@
 import type { Aliases, Command, CommandContext } from "@stricli/core";
 import type { GenericSchema } from "valibot";
 import type { SentryContext } from "../context.js";
+import { asInvocationCommand } from "./app-identity.js";
 import { type ListTargetOptions, parseCursorFlag } from "./arg-parsing.js";
 import {
   buildCommand,
@@ -474,7 +475,7 @@ export function interceptSubcommand(
   }
   stderr.write(
     warning(
-      `Tip: "${target.trim()}" is a subcommand. Running: sentry ${routeName} ${target.trim()}\n`,
+      `Tip: "${target.trim()}" is a subcommand. Running: ${asInvocationCommand(`sentry ${routeName} ${target.trim()}`)}\n`,
     ),
   );
   return;

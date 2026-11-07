@@ -112,7 +112,7 @@ export function orgProjectTarget<R>(
       requireExplicitTarget(
         parsed,
         "Project target",
-        `sentry ${commandNameOf(context)} <org>/<project>`,
+        asInvocationCommand(`sentry ${commandNameOf(context)} <org>/<project>`),
       ),
   );
 }
@@ -219,7 +219,7 @@ export const orgTarget = boundPositional(
     resolveOrgInput(
       input,
       context.cwd,
-      `sentry ${commandNameOf(context)} <org>`,
+      asInvocationCommand(`sentry ${commandNameOf(context)} <org>`),
     ),
 );
 

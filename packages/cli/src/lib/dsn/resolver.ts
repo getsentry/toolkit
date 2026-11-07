@@ -11,6 +11,7 @@ import {
   listProjects,
   resolveOrgDisplayName,
 } from "../api-client.js";
+import { asInvocationCommand } from "../app-identity.js";
 import { getCachedDsn, updateCachedResolution } from "../db/dsn-cache.js";
 import { getDsnSourceDescription } from "./detector.js";
 import type {
@@ -60,7 +61,7 @@ export async function resolveProject(
     if (!project?.organization) {
       throw new Error(
         "Cannot resolve project: DSN could not be matched to any accessible project. " +
-          "You may not have access, or specify the target explicitly: sentry <command> <org>/<project>",
+          `You may not have access, or specify the target explicitly: ${asInvocationCommand("sentry <command> <org>/<project>")}`,
       );
     }
 

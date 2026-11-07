@@ -1447,7 +1447,8 @@ export async function resolveAllTargets(
       if (org || project) {
         throw new ContextError(
           "Organization and project",
-          options.usageHint ?? "sentry <command> <org>/<project>",
+          options.usageHint ??
+            asInvocationCommand("sentry <command> <org>/<project>"),
           [],
         );
       }
@@ -1666,7 +1667,8 @@ export async function resolveOrgAndProject(
       if (org || project) {
         throw new ContextError(
           "Organization and project",
-          options.usageHint ?? "sentry <command> <org>/<project>",
+          options.usageHint ??
+            asInvocationCommand("sentry <command> <org>/<project>"),
           [],
         );
       }
@@ -2096,7 +2098,9 @@ export async function guideOrgProjectFailure(
   > &
     Partial<Pick<ResolveOptions, "cwd">>,
 ): Promise<ResolvedTarget> {
-  const usageHint = options.usageHint ?? "sentry <command> <org>/<project>";
+  const usageHint =
+    options.usageHint ??
+    asInvocationCommand("sentry <command> <org>/<project>");
 
   if (canPromptForTarget(options.interactive)) {
     const picked = await promptForOrgProject();
@@ -2449,7 +2453,8 @@ export async function resolveProjectBoundTarget(
   options: ResolveProjectBoundTargetOptions = {},
 ): Promise<ResolvedProjectBoundTarget> {
   const usageHint =
-    options.usageHint ?? `sentry ${commandName} <org>/<project>`;
+    options.usageHint ??
+    asInvocationCommand(`sentry ${commandName} <org>/<project>`);
 
   switch (parsed.type) {
     case "explicit": {
@@ -2460,7 +2465,7 @@ export async function resolveProjectBoundTarget(
     case "org-all":
       throw new ContextError(
         "Project",
-        `sentry ${commandName} ${parsed.org}/<project>`,
+        asInvocationCommand(`sentry ${commandName} ${parsed.org}/<project>`),
         [],
       );
 
@@ -2473,7 +2478,9 @@ export async function resolveProjectBoundTarget(
         throw new ResolutionError(
           `'${parsed.projectSlug}'`,
           "is an organization, not a project",
-          `sentry ${commandName} ${parsed.projectSlug}/<project>`,
+          asInvocationCommand(
+            `sentry ${commandName} ${parsed.projectSlug}/<project>`,
+          ),
           [
             `List projects: ${asInvocationCommand(`sentry project list ${parsed.projectSlug}/`)}`,
           ],
@@ -2499,12 +2506,17 @@ export async function resolveProjectBoundTarget(
       const { projects } = resolution;
       if (projects.length > 1) {
         const projectOptions = projects
-          .map((m) => `  sentry ${commandName} ${m.orgSlug}/${m.slug}`)
+          .map(
+            (m) =>
+              `  ${asInvocationCommand(`sentry ${commandName} ${m.orgSlug}/${m.slug}`)}`,
+          )
           .join("\n");
         throw new ResolutionError(
           `Project '${resolution.displaySlug}'`,
           "is ambiguous",
-          `sentry ${commandName} <org>/${parsed.projectSlug}`,
+          asInvocationCommand(
+            `sentry ${commandName} <org>/${parsed.projectSlug}`,
+          ),
           [
             `Found in ${projects.length} organizations. Specify one:\n${projectOptions}`,
           ],
@@ -2859,7 +2871,7 @@ export async function resolveOrgOptionalTarget(
   parsed: ParsedOrgProject,
   cwd: string,
   commandName: string,
-  usageHint = `sentry ${commandName} <target>`,
+  usageHint = asInvocationCommand(`sentry ${commandName} <target>`),
 ): Promise<ResolvedOrgOptionalTarget> {
   // org-all: resolve the org slug only
   if (parsed.type === "org-all") {
@@ -2916,7 +2928,7 @@ export async function resolveOrgOnlyTarget(
   parsed: ParsedOrgProject,
   cwd: string,
   commandName: string,
-  usageHint = `sentry ${commandName} <target>`,
+  usageHint = asInvocationCommand(`sentry ${commandName} <target>`),
 ): Promise<string> {
   if (parsed.type === "auto-detect") {
     const resolved = await resolveOrg({ cwd });

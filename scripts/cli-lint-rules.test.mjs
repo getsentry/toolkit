@@ -588,6 +588,17 @@ tester.run(
         code: "function hint(org) { return `Try: sentry project list ${org}/`; }",
         errors: 1,
       },
+      // An interpolated subcommand or a <command> placeholder is still a command.
+      {
+        filename: commands,
+        code: "function hint(name) { return `Run sentry ${name} <org>/`; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function hint() { return '  sentry <command> <org>/<project>'; }",
+        errors: 1,
+      },
       // Every command runs under npx or another name, not only sentry-mcp.
       {
         filename: commands,

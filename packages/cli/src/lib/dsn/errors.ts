@@ -32,7 +32,7 @@ export function formatConflictError(result: DsnDetectionResult): string {
   });
 
   lines.push("To resolve, specify which project to use:");
-  lines.push("  sentry <command> <org>/<project>");
+  lines.push(`  ${asInvocationCommand("sentry <command> <org>/<project>")}`);
   lines.push("");
   lines.push("Or set a default project:");
   lines.push(
@@ -97,7 +97,7 @@ export async function formatNoDsnError(
   );
   lines.push("");
   lines.push("3. Specify project explicitly:");
-  lines.push("   sentry <command> <org>/<project>");
+  lines.push(`   ${asInvocationCommand("sentry <command> <org>/<project>")}`);
   lines.push("");
   lines.push("4. Set default project:");
   lines.push(
@@ -129,7 +129,7 @@ export function formatResolutionError(error: Error, dsnRaw: string): string {
     "  - The DSN is invalid or expired",
     "",
     "Try specifying the project explicitly:",
-    "  sentry <command> <org>/<project>",
+    `  ${asInvocationCommand("sentry <command> <org>/<project>")}`,
   ];
 
   return lines.join("\n");

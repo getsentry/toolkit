@@ -39,7 +39,7 @@ import {
 } from "@stricli/core";
 import type { GenericSchema } from "valibot";
 import type { Writer } from "../types/index.js";
-import { asRunningAppCommand } from "./app-identity.js";
+import { asInvocationCommand, asRunningAppCommand } from "./app-identity.js";
 import { appendCacheHint } from "./cache-hint.js";
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
@@ -744,7 +744,7 @@ export function buildCommand<
     }
     ctx.stderr.write(
       warning(
-        `Tip: use --help for help (e.g., sentry ${pathSegments.join(" ")} --help)\n\n`,
+        `Tip: use --help for help (e.g., ${asInvocationCommand(`sentry ${pathSegments.join(" ")} --help`)})\n\n`,
       ),
     );
     stdout.write(`${formatHelpHuman(result)}\n`);
