@@ -3550,6 +3550,36 @@ describe("API query builders", () => {
       expect(repos[0].externalSlug).toBeNull();
       expect(repos[0].externalId).toBeNull();
     });
+
+    it("should accept GitLab repos with a numeric externalSlug", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (key: string) =>
+            key === "content-type" ? "application/json" : null,
+        },
+        json: () =>
+          Promise.resolve([
+            {
+              id: "202",
+              name: "Ready2Eat / Ready2Eat - Monorepo",
+              provider: { id: "integrations:gitlab", name: "GitLab" },
+              status: "active",
+              externalSlug: 12345678,
+              externalId: "gitlab.com:12345678",
+              integrationId: "42",
+            },
+          ]),
+      });
+
+      const repos = await apiService.listRepos({
+        organizationSlug: "test-org",
+      });
+
+      expect(repos).toHaveLength(1);
+      expect(repos[0].externalSlug).toBe("12345678");
+    });
   });
 
   describe("linkProjectRepository", () => {

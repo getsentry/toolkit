@@ -112,7 +112,8 @@ export const RepositorySchema = z
       })
       .passthrough(),
     status: z.string(),
-    externalSlug: z.string().nullish(),
+    // GitLab repositories report their numeric project ID as externalSlug.
+    externalSlug: z.union([z.string(), z.number()]).transform(String).nullish(),
     externalId: z.string().nullish(),
     integrationId: z.union([z.string(), z.number()]).nullable().optional(),
   })
