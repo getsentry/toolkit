@@ -18,7 +18,7 @@ import { homedir } from "node:os";
 import type { Span } from "@sentry/core";
 import type { Writer } from "../types/index.js";
 import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
-import { NO_PERSISTENCE_ENV_VAR, withEnv } from "./env.js";
+import { NO_PERSISTENCE_ENV_VAR, withInvocation } from "./env.js";
 import { stringifyUnknown } from "./errors.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
 
@@ -414,7 +414,7 @@ async function executeWithCapture<T>(
 ): Promise<T> {
   const env = buildIsolatedEnv(options);
   const cwd = options?.cwd ?? process.cwd();
-  return await withEnv(env, async () => {
+  return await withInvocation(env, async () => {
     const { withCustomHeadersOverride } = await import("./custom-headers.js");
     return await withCustomHeadersOverride(options?.headers, async () => {
       const captureCtx = await buildCaptureContext(env, cwd);
@@ -492,7 +492,7 @@ function executeWithStream<T>(
 
   // Fire-and-forget — command runs in background
   const env = buildIsolatedEnv(options);
-  const invocation = withEnv(env, async () => {
+  const invocation = withInvocation(env, async () => {
     const cwd = options?.cwd ?? process.cwd();
 
     let captureCtx: CaptureContext | undefined;

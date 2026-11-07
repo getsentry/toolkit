@@ -11,6 +11,7 @@
  */
 
 import { DEFAULT_SENTRY_URL, getConfiguredSentryUrl } from "../constants.js";
+import { invocationState } from "../env.js";
 import { logger } from "../logger.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import {
@@ -203,17 +204,17 @@ export function resetTrustedRegionUrlsForTesting(): void {
   clearTrustedHostState();
 }
 
-/** When true, getCachedOrganizations() returns empty (forces API fetch). */
-let orgCacheDisabled = false;
+/** Per invocation: when set, getCachedOrganizations() returns empty (forces API fetch). */
+const orgCacheState = invocationState(() => ({ readDisabled: false }));
 
 /** Disable the org listing cache for this invocation (e.g., `--fresh` flag). */
 export function disableOrgCache(): void {
-  orgCacheDisabled = true;
+  orgCacheState().readDisabled = true;
 }
 
 /** Re-enable the org listing cache. Exported for testing. */
 export function enableOrgCache(): void {
-  orgCacheDisabled = false;
+  orgCacheState().readDisabled = false;
 }
 
 type OrgRegionRow = {
@@ -498,7 +499,7 @@ export function getCachedOrganizations(
   sourceOrigin = getActiveSourceOrigin(),
   identity = getIdentityFingerprint(),
 ): CachedOrg[] {
-  if (orgCacheDisabled) {
+  if (orgCacheState().readDisabled) {
     return [];
   }
 

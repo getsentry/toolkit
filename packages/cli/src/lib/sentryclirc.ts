@@ -23,7 +23,7 @@ import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { normalizeUrl } from "./constants.js";
 import { hasStoredAccountForHost } from "./db/auth.js";
 import { CONFIG_DIR_ENV_VAR, getConfigDir } from "./db/index.js";
-import { getEnv } from "./env.js";
+import { getEnv, invocationState } from "./env.js";
 import { HostScopeError } from "./errors.js";
 import { parseIni } from "./ini.js";
 import { logger } from "./logger.js";
@@ -351,13 +351,16 @@ export function loadSentryCliRc(cwd: string): Promise<SentryCliRcConfig> {
  * Mirrors the boot-time snapshot pattern in `env-token-host.ts`
  * (`pinnedHost` + getter): lets the synchronous env-token-ignored hint
  * name the real source instead of claiming the user set an env var they
- * never did, without re-awaiting the async rc loader.
+ * never did, without re-awaiting the async rc loader. Per invocation, so an
+ * SDK call with its own token is never told it came from another call's rc.
  */
-let rcInjectedTokenSource: string | undefined;
+const rcInjectedTokenSource = invocationState<{ path: string | undefined }>(
+  () => ({ path: undefined }),
+);
 
 /** Read the pinned rc-injected token source. See {@link rcInjectedTokenSource}. */
 export function getRcInjectedTokenSource(): string | undefined {
-  return rcInjectedTokenSource;
+  return rcInjectedTokenSource().path;
 }
 
 /**
@@ -387,7 +390,7 @@ export async function applySentryCliRcEnvShim(cwd: string): Promise<void> {
       `Setting SENTRY_AUTH_TOKEN from ${CONFIG_FILENAME} (${config.sources.token})`,
     );
     env.SENTRY_AUTH_TOKEN = config.token;
-    rcInjectedTokenSource = config.sources.token;
+    rcInjectedTokenSource().path = config.sources.token;
   }
 
   const normalizedRcUrl = config.url ? normalizeUrl(config.url) : undefined;
@@ -444,5 +447,5 @@ export function clearSentryCliRcCache(): void {
   cache.clear();
   // Reset global paths — tests change SENTRY_CONFIG_DIR between runs
   globalPaths = null;
-  rcInjectedTokenSource = undefined;
+  rcInjectedTokenSource().path = undefined;
 }

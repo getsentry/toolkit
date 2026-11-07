@@ -29,7 +29,7 @@ import { createBodyCodec } from "@sentry/toolkit-core/response-cache/codec";
 
 import { getIdentityFingerprint } from "./db/auth.js";
 import { getConfigDir } from "./db/index.js";
-import { getEnv, isPersistenceDisabled } from "./env.js";
+import { getEnv, invocationState, isPersistenceDisabled } from "./env.js";
 import { logger } from "./logger.js";
 import { createFileStore, type FileStore } from "./response-cache-store.js";
 import { recordCacheHit, withCacheSpan } from "./telemetry.js";
@@ -92,26 +92,29 @@ function getStore(): FileStore {
 }
 
 // ---------------------------------------------------------------------------
-// Last cache-hit age — process-global signal for cache-age hints
+// Per-invocation cache state: last cache-hit age and the `--fresh` bypass
 // ---------------------------------------------------------------------------
 
 /**
- * Age of the most recent cache hit, in milliseconds.
- *
- * Set inside {@link lookupCachedResponse} on a hit, cleared at the start of each
+ * `lastHitAgeMs` is the age of the most recent cache hit. It is set inside
+ * {@link lookupCachedResponse} on a hit and cleared at the start of each
  * `authenticatedFetch` call in `sentry-client.ts`. Commands read it via
  * {@link getLastCacheHitAge} to show "cached · 3m ago · use -f to refresh".
  *
- * Safe because the CLI is single-process, single-command — no races.
+ * `readBypassed` is set by `--fresh`. Both are per invocation, so one SDK
+ * call never reports another call's cache hit or keeps its bypass.
  */
-let lastCacheHitAgeMs: number | undefined;
+const cacheState = invocationState<{
+  lastHitAgeMs: number | undefined;
+  readBypassed: boolean;
+}>(() => ({ lastHitAgeMs: undefined, readBypassed: false }));
 
 /**
  * Get the age (in ms) of the most recent cache hit, or `undefined` if the
  * last request was not served from cache.
  */
 export function getLastCacheHitAge(): number | undefined {
-  return lastCacheHitAgeMs;
+  return cacheState().lastHitAgeMs;
 }
 
 /**
@@ -119,7 +122,7 @@ export function getLastCacheHitAge(): number | undefined {
  * call so the signal reflects only the current request.
  */
 export function clearLastCacheHitAge(): void {
-  lastCacheHitAgeMs = undefined;
+  cacheState().lastHitAgeMs = undefined;
 }
 
 /**
@@ -129,23 +132,17 @@ export function clearLastCacheHitAge(): void {
  * @internal Exported for testing
  */
 export function setLastCacheHitAgeForTesting(ageMs: number): void {
-  lastCacheHitAgeMs = ageMs;
+  cacheState().lastHitAgeMs = ageMs;
 }
 
-// ---------------------------------------------------------------------------
-// Cache bypass control
-// ---------------------------------------------------------------------------
-
-let cacheReadBypassed = false;
-
 /**
- * Bypass cache reads for the current process.
+ * Bypass cache reads for the current invocation.
  *
  * Called when `--fresh` flag is passed to a command. Fresh API responses are
  * still written to cache so subsequent invocations serve updated data.
  */
 export function disableResponseCache(): void {
-  cacheReadBypassed = true;
+  cacheState().readBypassed = true;
 }
 
 /**
@@ -158,7 +155,7 @@ export function disableResponseCache(): void {
  * @internal Exported for testing
  */
 export function resetCacheState(): void {
-  cacheReadBypassed = false;
+  cacheState().readBypassed = false;
 }
 
 /**
@@ -169,7 +166,7 @@ export function resetCacheState(): void {
  * - persistence is off for this invocation
  */
 export function isCacheDisabled(): boolean {
-  return cacheReadBypassed || isCacheWriteDisabled();
+  return cacheState().readBypassed || isCacheWriteDisabled();
 }
 
 /**
@@ -254,7 +251,7 @@ export async function lookupCachedResponse(
         span.setAttribute("cache.item_size", lookup.size);
 
         // Surface cache age for command-level hints (getsentry/cli#785 #1)
-        lastCacheHitAgeMs = Date.now() - lookup.createdAt;
+        cacheState().lastHitAgeMs = Date.now() - lookup.createdAt;
         return lookup;
       } catch (error) {
         // Corrupted or version-incompatible policy or body — treat as a miss
