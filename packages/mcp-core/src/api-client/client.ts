@@ -466,14 +466,16 @@ const EventsValidationIssueSchema = z
     ...(error ? { error } : {}),
   }));
 
+// Self-hosted Sentry builds that predate getsentry/sentry#117962 omit `name`
+// on dataset entries; `validateEvents` fills it from the requested dataset.
 const EventsNamedValidationIssueSchema = z
   .object({
-    name: z.string(),
+    name: z.string().optional(),
     valid: z.boolean(),
     error: ValidationErrorSchema,
   })
-  .transform(({ name, valid, error }): EventsNamedValidationIssue => ({
-    name,
+  .transform(({ name, valid, error }) => ({
+    ...(name !== undefined ? { name } : {}),
     valid,
     ...(error ? { error } : {}),
   }));
@@ -513,17 +515,20 @@ const EventsQueryValidationSchema = z
     ...(error ? { error } : {}),
   }));
 
-const EventsValidationResponseSchema = z
-  .object({
-    valid: z.boolean(),
-    projects: EventsValidationIssueListSchema,
-    dataset: EventsNamedValidationIssueListSchema,
-    environment: EventsValidationIssueListSchema,
-    field: EventsAttributeValidationListSchema,
-    query: EventsQueryValidationSchema,
-    orderby: EventsAttributeValidationListSchema,
-  })
-  .transform((result): EventsValidationResult => result);
+const EventsValidationResponseSchema = z.object({
+  valid: z.boolean(),
+  projects: EventsValidationIssueListSchema,
+  dataset: EventsNamedValidationIssueListSchema,
+  // `environment` and `query` were added in getsentry/sentry#117781; older
+  // self-hosted builds omit them, which means nothing was validated there.
+  environment: EventsValidationIssueListSchema.default([]),
+  field: EventsAttributeValidationListSchema,
+  query: EventsQueryValidationSchema.default(() => ({
+    valid: true,
+    fields: [],
+  })),
+  orderby: EventsAttributeValidationListSchema,
+});
 
 const TraceItemAttributeContextSchema = z.object({
   isConvention: z.boolean().optional(),
@@ -3126,7 +3131,15 @@ export class SentryApiService {
     ) {
       throw createApiError(body.detail, 400, body.detail, body);
     }
-    return EventsValidationResponseSchema.parse(body);
+    const parsed = EventsValidationResponseSchema.parse(body);
+    const requestedDataset = normalizeEventsDataset(dataset);
+    return {
+      ...parsed,
+      dataset: parsed.dataset.map((issue): EventsNamedValidationIssue => ({
+        ...issue,
+        name: issue.name ?? requestedDataset,
+      })),
+    };
   }
 
   /**
