@@ -75,6 +75,20 @@ const CHECKS = {
     )
       ? undefined
       : `icons are ${JSON.stringify(serverJson.icons)}`,
+  // The registry drops `false` booleans from a listing, and Craft's
+  // mcp-registry target fails a release when the listing and the manifest
+  // differ. Leave these fields out instead: `false` is their default.
+  "no environment variable sets a boolean to false": () => {
+    const spelledOut = (npmPackage?.environmentVariables ?? []).flatMap(
+      (variable) =>
+        Object.entries(variable)
+          .filter(([, value]) => value === false)
+          .map(([key]) => `${variable.name}.${key}`),
+    );
+    return spelledOut.length > 0
+      ? `remove ${spelledOut.join(", ")}`
+      : undefined;
+  },
   "environment variables match the CLI": () => {
     const declared = npmPackage?.environmentVariables ?? [];
     const byName = new Map(
@@ -90,7 +104,7 @@ const CHECKS = {
     }
     // `auth login` works without a token, so the token is optional.
     const token = byName.get("SENTRY_AUTH_TOKEN");
-    if (token && (token.isRequired !== false || token.isSecret !== true)) {
+    if (token && (token.isRequired || token.isSecret !== true)) {
       problems.push("SENTRY_AUTH_TOKEN must be optional and secret");
     }
     for (const name of ["SENTRY_HOST", "SENTRY_URL"]) {
