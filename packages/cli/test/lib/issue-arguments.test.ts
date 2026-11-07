@@ -68,6 +68,20 @@ describe("parseIssueArgument", () => {
     expect(parseIssueArgument(arg)).toEqual({ text: arg, parsed });
   });
 
+  // CLI-1G1: agents pass a short ID and numeric ID (or several IDs) as one
+  // argument. That is a search, never "Invalid issue identifier: contains a
+  // space".
+  test.each([
+    ["CLI-1G1 7441717161", "CLI-1G1 7441717161"],
+    ["IOS-HK IOS-R3", "IOS-HK IOS-R3"],
+    ["  login timeout  ", "login timeout"],
+  ])("searches for text with spaces: %j (CLI-1G1)", (arg, query) => {
+    expect(parseIssueArgument(arg)).toEqual({
+      text: arg,
+      parsed: { type: "search", query },
+    });
+  });
+
   test("keeps the argument as typed and parses its first line", () => {
     expect(parseIssueArgument("\n  CLI-G  \nCLI-H\n")).toEqual({
       text: "\n  CLI-G  \nCLI-H\n",
@@ -156,6 +170,17 @@ describe("parseIssueArguments", () => {
       "IOS-2",
       "IOS-3",
       "IOS-4",
+    ]);
+  });
+
+  test("splits a short ID and numeric ID passed as one argument (CLI-1G1)", () => {
+    expect(
+      parseIssueArguments(["CLI-1G1 7441717161"], { usageHint }).map(
+        ({ parsed }) => parsed,
+      ),
+    ).toEqual([
+      { type: "project-search", projectSlug: "cli", suffix: "1G1" },
+      { type: "numeric", id: "7441717161" },
     ]);
   });
 
