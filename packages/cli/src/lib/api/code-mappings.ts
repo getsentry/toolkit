@@ -9,6 +9,7 @@
  * Auth: requires `org:ci` scope.
  */
 
+import { bulkUpsertOrganizationCodeMappings } from "@sentry/api";
 import {
   array,
   type InferOutput,
@@ -21,8 +22,7 @@ import {
 } from "valibot";
 
 import { logger } from "../logger.js";
-import { resolveOrgRegion } from "../region.js";
-import { apiRequestToRegion } from "./infrastructure.js";
+import { getOrgSdkConfig, unwrapValidatedResult } from "./infrastructure.js";
 
 const log = logger.withTag("api.code-mappings");
 
@@ -97,7 +97,7 @@ export async function uploadCodeMappings(
   options: CodeMappingsUploadOptions,
 ): Promise<MergedCodeMappingsResponse> {
   const { org, project, repository, defaultBranch, mappings } = options;
-  const regionUrl = await resolveOrgRegion(org);
+  const config = await getOrgSdkConfig(org);
   const endpoint = `organizations/${org}/code-mappings/bulk/`;
 
   const merged: MergedCodeMappingsResponse = {
@@ -119,19 +119,24 @@ export async function uploadCodeMappings(
       );
     }
 
-    const { data } = await apiRequestToRegion<BulkCodeMappingsResponse>(
-      regionUrl,
-      endpoint,
-      {
-        method: "POST",
-        body: {
-          project,
-          repository,
-          defaultBranch,
-          mappings: batch,
-        },
-        schema: BulkCodeMappingsResponseSchema,
+    const result = await bulkUpsertOrganizationCodeMappings({
+      ...config,
+      path: { organization_id_or_slug: org },
+      body: {
+        project,
+        repository,
+        default_branch: defaultBranch,
+        mappings: batch.map((mapping) => ({
+          stack_root: mapping.stackRoot,
+          source_root: mapping.sourceRoot,
+        })),
       },
+    });
+    const data = unwrapValidatedResult(
+      result,
+      "Failed to upload code mappings",
+      BulkCodeMappingsResponseSchema,
+      endpoint,
     );
 
     merged.created += data.created;

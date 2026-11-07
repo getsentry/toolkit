@@ -2,22 +2,22 @@
  * Seer AI API functions
  *
  * Functions for Seer-powered root cause analysis, autofix state,
- * and solution planning. Uses the agent-based (explorer) endpoint
- * which returns blocks instead of steps.
+ * and solution planning. The autofix endpoint returns agent blocks
+ * instead of steps.
  */
 
 import {
-  type AutofixResponse,
-  AutofixResponseSchema,
-  type AutofixState,
-} from "../../types/seer.js";
+  getOrganizationIssueAutofixState,
+  type StartOrganizationIssueAutofixResponse,
+  startOrganizationIssueAutofix,
+} from "@sentry/api";
+import { AutofixResponseSchema, type AutofixState } from "../../types/seer.js";
 
-import { resolveOrgRegion } from "../region.js";
-
-import { apiRequestToRegion } from "./infrastructure.js";
-
-/** Query params to activate the agent-based autofix endpoint */
-const EXPLORER_MODE_PARAMS = { mode: "explorer" };
+import {
+  getOrgSdkConfig,
+  unwrapResult,
+  unwrapValidatedResult,
+} from "./infrastructure.js";
 
 /**
  * Normalize agent status values to the uppercase format used throughout the CLI.
@@ -70,20 +70,15 @@ export async function triggerRootCauseAnalysis(
   orgSlug: string,
   issueId: string,
 ): Promise<{ run_id?: number; sentry_run_id: string | null }> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-
-  const { data } = await apiRequestToRegion<{
-    run_id?: number;
-    sentry_run_id: string | null;
-  }>(regionUrl, `/organizations/${orgSlug}/issues/${issueId}/autofix/`, {
-    method: "POST",
-    params: EXPLORER_MODE_PARAMS,
-    body: {
-      step: "root_cause",
-      referrer: "api.cli",
-    },
+  const result = await startOrganizationIssueAutofix({
+    ...(await getOrgSdkConfig(orgSlug)),
+    path: { organization_id_or_slug: orgSlug, issue_id: issueId },
+    body: { step: "root_cause", referrer: "api.cli" },
   });
-  return data;
+  return unwrapResult<StartOrganizationIssueAutofixResponse>(
+    result,
+    "Failed to start root cause analysis",
+  );
 }
 
 /**
@@ -98,15 +93,15 @@ export async function getAutofixState(
   orgSlug: string,
   issueId: string,
 ): Promise<AutofixState | null> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-
-  const { data } = await apiRequestToRegion<AutofixResponse>(
-    regionUrl,
+  const result = await getOrganizationIssueAutofixState({
+    ...(await getOrgSdkConfig(orgSlug)),
+    path: { organization_id_or_slug: orgSlug, issue_id: issueId },
+  });
+  const data = unwrapValidatedResult(
+    result,
+    "Failed to get autofix state",
+    AutofixResponseSchema,
     `/organizations/${orgSlug}/issues/${issueId}/autofix/`,
-    {
-      params: EXPLORER_MODE_PARAMS,
-      schema: AutofixResponseSchema,
-    },
   );
 
   if (!data.autofix) {
@@ -134,24 +129,17 @@ export async function triggerSolutionPlanning(
   issueId: string,
   runId: string | number,
 ): Promise<unknown> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-
   // A UUID sent under run_id (an IntegerField) fails server-side validation.
   const runIdBodyField =
     typeof runId === "string" ? { sentry_run_id: runId } : { run_id: runId };
 
-  const { data } = await apiRequestToRegion(
-    regionUrl,
-    `/organizations/${orgSlug}/issues/${issueId}/autofix/`,
-    {
-      method: "POST",
-      params: EXPLORER_MODE_PARAMS,
-      body: {
-        step: "solution",
-        ...runIdBodyField,
-        referrer: "api.cli",
-      },
-    },
+  const result = await startOrganizationIssueAutofix({
+    ...(await getOrgSdkConfig(orgSlug)),
+    path: { organization_id_or_slug: orgSlug, issue_id: issueId },
+    body: { step: "solution", ...runIdBodyField, referrer: "api.cli" },
+  });
+  return unwrapResult<StartOrganizationIssueAutofixResponse>(
+    result,
+    "Failed to start solution planning",
   );
-  return data;
 }

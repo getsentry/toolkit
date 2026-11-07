@@ -114,8 +114,6 @@ export const TRACE_LOOKUP_FALLBACK_STATS_PERIOD = "90d";
 type GetDetailedTraceOptions = {
   /** Extra attribute names to include on each span */
   additionalAttributes?: string[];
-  /** Numeric project ID to filter spans. Omit or -1 for all projects. */
-  projectId?: number;
   /**
    * Unix timestamp (seconds) of a known event in this trace.
    * The backend then searches ±1.5 days around it and does not widen.
@@ -138,8 +136,6 @@ async function requestTrace(
       params: {
         timestamp: params.timestamp,
         statsPeriod: params.statsPeriod,
-        limit: 10_000,
-        project: params.projectId ?? -1,
         additional_attributes: params.additionalAttributes,
       },
     },
@@ -152,8 +148,8 @@ async function requestTrace(
  * This is an internal endpoint not covered by the public API.
  * Uses region-aware routing for multi-region support.
  *
- * When `projectId` is provided, the API returns only spans belonging to that
- * project. Pass `-1` (or omit) to fetch spans from all projects.
+ * The endpoint always returns spans from every project in the trace; it
+ * ignores the `project` and `limit` params.
  *
  * Time window (matches the Sentry UI):
  * - Known event `timestamp` → one query around that instant (no retry).
@@ -161,7 +157,7 @@ async function requestTrace(
  *
  * @param orgSlug - Organization slug
  * @param traceId - The trace ID (from event.contexts.trace.trace_id)
- * @param options - Optional timestamp, additional attributes, and project filter
+ * @param options - Optional timestamp and additional attributes
  * @returns Array of root spans with nested children
  */
 export async function getDetailedTrace(
@@ -170,10 +166,7 @@ export async function getDetailedTrace(
   options: GetDetailedTraceOptions = {},
 ): Promise<TraceSpan[]> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  const shared = {
-    additionalAttributes: options.additionalAttributes,
-    projectId: options.projectId,
-  };
+  const shared = { additionalAttributes: options.additionalAttributes };
   const timestamp =
     options.timestamp !== undefined && Number.isFinite(options.timestamp)
       ? options.timestamp

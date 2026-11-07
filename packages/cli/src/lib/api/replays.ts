@@ -6,6 +6,7 @@
 
 import {
   getOrganizationReplay,
+  getOrganizationReplayCount,
   type ListProjectReplayRecordingSegmentsResponse,
   listProjectReplayRecordingSegments,
 } from "@sentry/api";
@@ -186,6 +187,10 @@ function normalizeReplayProjectId<
 
 /**
  * Fetch a single page of replays from the organization replay index.
+ *
+ * Stays on the raw transport: the default fields include `info_ids` and
+ * `warning_ids`, which `replay list --json` prints but the generated
+ * `listOrganizationReplays` field enum leaves out.
  */
 async function fetchReplayPage(
   regionUrl: string,
@@ -406,20 +411,24 @@ export async function listReplayIdsForIssue(
   issueId: string | number,
 ): Promise<string[]> {
   const normalizedIssueId = String(issueId);
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion(
-    regionUrl,
-    `/organizations/${orgSlug}/replay-count/`,
-    {
-      params: {
-        data_source: "events",
-        project: "-1",
-        query: `issue.id:[${normalizedIssueId}]`,
-        returnIds: true,
-        statsPeriod: "90d",
-      },
-      schema: ReplayIdsByResourceSchema,
+  const result = await getOrganizationReplayCount({
+    ...(await getOrgSdkConfig(orgSlug)),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      data_source: "errors",
+      project: [-1],
+      query: `issue.id:[${normalizedIssueId}]`,
+      returnIds: true,
+      statsPeriod: "90d",
     },
+  });
+  // With `returnIds`, the endpoint maps each issue to replay IDs instead of
+  // the counts its documented response describes.
+  const data = unwrapValidatedResult(
+    result,
+    "Failed to list replays for issue",
+    ReplayIdsByResourceSchema,
+    `/organizations/${orgSlug}/replay-count/`,
   );
 
   return data[normalizedIssueId] ?? [];

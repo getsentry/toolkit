@@ -4,8 +4,12 @@
  * Functions for listing, retrieving, and updating Sentry issues.
  */
 
-import type { ListOrganizationIssuesData } from "@sentry/api";
+import type {
+  GetOrganizationIssueData,
+  ListOrganizationIssuesData,
+} from "@sentry/api";
 import {
+  getOrganizationIssue,
   listOrganizationIssues,
   resolveOrganizationShortId,
 } from "@sentry/api";
@@ -110,6 +114,34 @@ export function buildIssueListCollapse(options: {
   return collapse;
 }
 
+/** Collapse values the issue details endpoint acts on. */
+type IssueDetailsCollapseField = NonNullable<
+  NonNullable<GetOrganizationIssueData["query"]>["collapse"]
+>[number];
+
+const ISSUE_DETAILS_COLLAPSE_FIELDS: ReadonlySet<string> =
+  new Set<IssueDetailsCollapseField>(["release", "stats", "tags"]);
+
+function isIssueDetailsCollapseField(
+  field: string,
+): field is IssueDetailsCollapseField {
+  return ISSUE_DETAILS_COLLAPSE_FIELDS.has(field);
+}
+
+/**
+ * Keep the collapse values the issue details endpoint reads. It ignores
+ * `lifetime`, `filtered` and `unhandled`, which only the list and short-ID
+ * endpoints act on.
+ */
+function toIssueDetailsCollapse(
+  collapse: IssueCollapseField[] | undefined,
+): IssueDetailsCollapseField[] | undefined {
+  const fields = collapse?.flatMap((field) =>
+    isIssueDetailsCollapseField(field) ? [field] : [],
+  );
+  return fields?.length ? fields : undefined;
+}
+
 /**
  * Collapse fields for single-issue detail endpoints.
  *
@@ -121,7 +153,8 @@ export function buildIssueListCollapse(options: {
  * Note: On the **list** endpoint, `collapse=lifetime` strips top-level
  * `count`, `userCount`, `firstSeen`, `lastSeen` (see #969). The detail
  * endpoint preserves these fields regardless of collapse — safe to include
- * `lifetime` here.
+ * `lifetime` here. The short-ID endpoint acts on all four values; the issue
+ * details endpoint acts only on `stats`, so {@link getIssueInOrg} drops the rest.
  */
 export const ISSUE_DETAIL_COLLAPSE: IssueCollapseField[] = [
   "stats",
@@ -292,8 +325,9 @@ export function getIssue(
   issueId: string,
   options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
+  const collapse = toIssueDetailsCollapse(options?.collapse);
   return apiRequest<SentryIssue>(`/issues/${issueId}/`, {
-    params: options?.collapse ? { collapse: options.collapse } : undefined,
+    params: collapse ? { collapse } : undefined,
   });
 }
 
@@ -302,10 +336,6 @@ export function getIssue(
  *
  * Uses the org-scoped endpoint with region-aware routing.
  * Preferred over {@link getIssue} when the org slug is available.
- *
- * Uses raw `apiRequestToRegion` instead of the SDK's `getOrganizationIssue`
- * because its `collapse` type allows only `release`, `stats` and `tags`, not
- * the `lifetime`, `filtered` and `unhandled` values the CLI sends.
  *
  * @param orgSlug - Organization slug (used for region routing)
  * @param issueId - Numeric issue ID
@@ -316,15 +346,13 @@ export async function getIssueInOrg(
   issueId: string,
   options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion<SentryIssue>(
-    regionUrl,
-    `/organizations/${orgSlug}/issues/${issueId}/`,
-    {
-      params: options?.collapse ? { collapse: options.collapse } : undefined,
-    },
-  );
-  return data;
+  const collapse = toIssueDetailsCollapse(options?.collapse);
+  const result = await getOrganizationIssue({
+    ...(await getOrgSdkConfig(orgSlug)),
+    path: { organization_id_or_slug: orgSlug, issue_id: issueId },
+    query: collapse ? { collapse } : undefined,
+  });
+  return unwrapResult<SentryIssue>(result, "Failed to get issue");
 }
 
 /**
@@ -642,9 +670,9 @@ export async function mergeIssues(
       `Need at least 2 issues to merge (got ${groupIds.length}).`,
     );
   }
-  // The bulk mutate endpoint accepts repeated `?id=X` query params plus a
-  // `{merge: 1}` body. The SDK wraps this but its typed `query` shape
-  // doesn't expose the array semantics cleanly, so use raw request.
+  // The bulk mutate endpoint takes repeated numeric `?id=X` query params plus
+  // a `{merge: true}` body. `updateOrganizationIssues` would fit, but its body
+  // type marks every field required until getsentry/sentry#130348 lands.
   const regionUrl = await resolveOrgRegion(orgSlug);
   const query = groupIds.map((id) => `id=${encodeURIComponent(id)}`).join("&");
   const path = `/organizations/${encodeURIComponent(orgSlug)}/issues/?${query}`;
@@ -652,7 +680,7 @@ export async function mergeIssues(
   try {
     const { data } = await apiRequestToRegion<MergeResponse>(regionUrl, path, {
       method: "PUT",
-      body: { merge: 1 },
+      body: { merge: true },
     });
     // HTTP-layer invalidation covers the region-scoped caches via the
     // prefix sweep on `/organizations/{org}/issues/`, but it can't see

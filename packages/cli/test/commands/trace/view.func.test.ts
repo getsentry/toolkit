@@ -281,7 +281,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "test-org",
       "aaaa1111bbbb2222cccc3333dddd4444",
-      { additionalAttributes: ["http.method"], projectId: 42 },
+      { additionalAttributes: ["http.method"] },
     );
     expect(output).toEqual({
       traceId: "aaaa1111bbbb2222cccc3333dddd4444",
@@ -371,7 +371,7 @@ describe("viewCommand.func", () => {
       expect(getDetailedTraceSpy).toHaveBeenCalledWith(
         "test-org",
         "aaaa1111bbbb2222cccc3333dddd4444",
-        { additionalAttributes: ["http.method"], projectId: 42 },
+        { additionalAttributes: ["http.method"] },
       );
     },
   );
@@ -405,7 +405,7 @@ describe("viewCommand.func", () => {
       expect(getDetailedTraceSpy).toHaveBeenCalledWith(
         "test-org",
         "aaaa1111bbbb2222cccc3333dddd4444",
-        { additionalAttributes, projectId: 42 },
+        { additionalAttributes },
       );
     },
   );
@@ -460,7 +460,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "test-org",
       "aaaa1111bbbb2222cccc3333dddd4444",
-      { additionalAttributes: undefined, projectId: 42 },
+      { additionalAttributes: undefined },
     );
     expect(fetchMultiSpanDetailsSpy).toHaveBeenCalled();
   });
@@ -504,7 +504,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "test-org",
       "aaaa1111bbbb2222cccc3333dddd4444",
-      { additionalAttributes: ["spans.foo"], projectId: 42 },
+      { additionalAttributes: ["spans.foo"] },
     );
   });
 
@@ -515,7 +515,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "test-org",
       "aaaa1111bbbb2222cccc3333dddd4444",
-      { additionalAttributes: undefined, projectId: 42 },
+      { additionalAttributes: undefined },
     );
     expect(fetchMultiSpanDetailsSpy).toHaveBeenCalled();
   });
@@ -619,7 +619,6 @@ describe("viewCommand.func", () => {
       expect(await renderJson("replayId")).toEqual({ replayId: REPLAY_ID });
       expect(getDetailedTraceSpy).toHaveBeenCalledWith("test-org", TRACE_ID, {
         additionalAttributes: undefined,
-        projectId: undefined,
       });
     });
   });
@@ -715,10 +714,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "my-org",
       "aaaa1111bbbb2222cccc3333dddd4444",
-      expect.objectContaining({ projectId: undefined }),
-    );
-    expect(getDetailedTraceSpy.mock.calls[0]?.[2]).not.toHaveProperty(
-      "timestamp",
+      { additionalAttributes: undefined },
     );
   });
 
@@ -861,7 +857,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "test-org",
       traceIdFromEvent,
-      { additionalAttributes: undefined, projectId: undefined },
+      { additionalAttributes: undefined },
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

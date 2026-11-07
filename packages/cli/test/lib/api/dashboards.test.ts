@@ -19,12 +19,22 @@ import type {
   DashboardWidget,
 } from "../../../src/types/dashboard.js";
 
-const { apiRequestToRegionMock, reportCliErrorMock, resolveOrgRegionMock } =
-  vi.hoisted(() => ({
-    apiRequestToRegionMock: vi.fn(),
-    reportCliErrorMock: vi.fn(),
-    resolveOrgRegionMock: vi.fn(),
-  }));
+const {
+  apiRequestToRegionMock,
+  listOrganizationEventsMock,
+  reportCliErrorMock,
+  resolveOrgRegionMock,
+} = vi.hoisted(() => ({
+  apiRequestToRegionMock: vi.fn(),
+  listOrganizationEventsMock: vi.fn(),
+  reportCliErrorMock: vi.fn(),
+  resolveOrgRegionMock: vi.fn(),
+}));
+
+vi.mock("@sentry/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@sentry/api")>();
+  return { ...actual, listOrganizationEvents: listOrganizationEventsMock };
+});
 
 vi.mock("../../../src/lib/error-reporting.js", () => ({
   reportCliError: reportCliErrorMock,
@@ -284,8 +294,11 @@ describe("widget sort resolution", () => {
   const REGION = "https://us.sentry.io";
 
   test("sorts error table widgets by their first aggregate", async () => {
-    apiRequestToRegionMock.mockReset();
-    apiRequestToRegionMock.mockResolvedValue({ data: { data: [], meta: {} } });
+    listOrganizationEventsMock.mockReset();
+    listOrganizationEventsMock.mockResolvedValue({
+      data: { data: [], meta: {} },
+      response: new Response(),
+    });
     const dashboard = makeDashboard([
       {
         title: "Top failures",
@@ -305,11 +318,11 @@ describe("widget sort resolution", () => {
 
     await queryAllWidgets(REGION, "test-org", dashboard);
 
-    expect(apiRequestToRegionMock).toHaveBeenCalledWith(
-      REGION,
-      "/organizations/test-org/events/",
+    expect(listOrganizationEventsMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        params: expect.objectContaining({
+        baseUrl: REGION,
+        path: { organization_id_or_slug: "test-org" },
+        query: expect.objectContaining({
           dataset: "errors",
           field: ["failure.node", "count()"],
           sort: "-count()",
@@ -379,38 +392,48 @@ describe("widget query failures", () => {
     },
   ]);
 
+  /** Resolve the events request with an SDK error result. */
+  function mockErrorResult(
+    status: number,
+    statusText: string,
+    detail: string,
+  ): void {
+    listOrganizationEventsMock.mockReset();
+    listOrganizationEventsMock.mockResolvedValue({
+      error: { detail },
+      response: new Response(null, { status, statusText }),
+    });
+  }
+
   test("reports through the shared policy and keeps the API detail", async () => {
-    const error = new ApiError(
-      "API request failed: 400 Bad Request",
+    mockErrorResult(
       400,
+      "Bad Request",
       "tags[view_ms,number] is invalid for parameter 1 in p50.\nIts a string type field.",
-      "/organizations/test-org/events/",
     );
-    apiRequestToRegionMock.mockReset();
-    apiRequestToRegionMock.mockRejectedValue(error);
     reportCliErrorMock.mockReset();
 
     const results = await queryAllWidgets(REGION, "test-org", dashboard);
 
-    expect(reportCliErrorMock).toHaveBeenCalledWith(error);
+    expect(reportCliErrorMock).toHaveBeenCalledWith(expect.any(ApiError));
+    expect(reportCliErrorMock.mock.calls[0]?.[0]).toMatchObject({
+      status: 400,
+    });
     expect(results.get(0)).toEqual({
       type: "error",
       message:
-        "API request failed: 400 Bad Request: tags[view_ms,number] is invalid for parameter 1 in p50. Its a string type field.",
+        "Failed to query widget data: 400 Bad Request: tags[view_ms,number] is invalid for parameter 1 in p50. Its a string type field.",
     });
   });
 
   test("does not repeat a status-text detail", async () => {
-    apiRequestToRegionMock.mockReset();
-    apiRequestToRegionMock.mockRejectedValue(
-      new ApiError("API request failed: 404 Not Found", 404, "Not Found"),
-    );
+    mockErrorResult(404, "Not Found", "Not Found");
 
     const results = await queryAllWidgets(REGION, "test-org", dashboard);
 
     expect(results.get(0)).toEqual({
       type: "error",
-      message: "API request failed: 404 Not Found",
+      message: "Failed to query widget data: 404 Not Found",
     });
   });
 });
