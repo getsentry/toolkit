@@ -86,6 +86,7 @@ The table below lists the most common development variables. For the complete re
 | `SENTRY_URL` | Alias for `SENTRY_HOST` | `https://sentry.io` |
 | `SENTRY_CLIENT_ID` | Sentry OAuth app client ID | Public sentry.io client ID |
 | `SENTRY_SETUP_CODE` | One-time setup code for headless authentication | — |
+| `SENTRY_ONBOARDING_RUN_CODE` | Onboarding run code for `sentry onboarding progress` | — |
 | `SENTRY_CONFIG_DIR` | Override credentials/cache directory (XDG default: ~/.config/sentry/) | `~/.config/sentry/` |
 | `SENTRY_LOG_LEVEL` | Diagnostic log level (`error`, `warn`, `log`, `info`, `debug`, `trace`) | `info` |
 | `SENTRY_CLI_NO_TELEMETRY` | Disable CLI telemetry (error tracking) | — |

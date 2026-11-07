@@ -74,6 +74,7 @@ toolkit/
 │       │   │   ├── local/       # close, create, list, reset, restart, retention, run, serve, start, status, stop, view
 │       │   │   ├── log/         # list, view
 │       │   │   ├── monitor/     # list, run
+│       │   │   ├── onboarding/  # progress
 │       │   │   ├── org/         # list, view
 │       │   │   ├── platform/    # list
 │       │   │   ├── proguard/    # upload, uuid

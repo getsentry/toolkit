@@ -806,6 +806,12 @@ describe("setFlagContext", () => {
     expect(JSON.stringify(setTagSpy.mock.calls)).not.toContain("sntryu_secret");
   });
 
+  test("redacts the onboarding --run-code value", () => {
+    setFlagContext({ "run-code": "abcd12efg0" });
+    expect(setTagSpy).toHaveBeenCalledWith("flag.run-code", "[REDACTED]");
+    expect(JSON.stringify(setTagSpy.mock.calls)).not.toContain("abcd12efg0");
+  });
+
   test("still sets the tag when token flag is present (presence is useful signal)", () => {
     setFlagContext({ token: "any-token-value" });
     // The tag is set (so we know --token was used), but the value is redacted

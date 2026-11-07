@@ -18,6 +18,7 @@
  * - replays: replay listing and detail lookup
  * - traces: trace details and transactions
  * - logs: log listing, detailed fetch, trace-logs
+ * - onboarding: agent onboarding progress reporting
  * - seer: Seer AI root cause analysis and planning
  * - trials: product trial management
  * - users: current user info
@@ -216,6 +217,7 @@ export {
   listRepositoriesCached,
   listRepositoriesPaginated,
 } from "./api/repositories.js";
+export { updateOnboardingStatus } from "./api/onboarding.js";
 export {
   getAutofixState,
   triggerRootCauseAnalysis,
