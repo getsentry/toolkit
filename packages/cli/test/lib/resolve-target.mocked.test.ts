@@ -285,6 +285,30 @@ describe("resolveOrg", () => {
     expect(result).toBeNull();
   });
 
+  test("resolves DSN numeric orgId from the fetched org list when the cache stays cold", async () => {
+    // listOrganizationsUncached may skip writing org_id rows (unverified
+    // region), so the returned list must be checked directly.
+    mockGetDefaultOrganization.mockReturnValue(null);
+    mockDetectDsn.mockResolvedValue({
+      raw: "https://abc@o1169445.ingest.us.sentry.io/456",
+      protocol: "https",
+      publicKey: "abc",
+      host: "o1169445.ingest.us.sentry.io",
+      projectId: "456",
+      orgId: "1169445",
+      source: "env",
+    });
+    mockGetCachedProject.mockReturnValue(null);
+    mockGetOrgByNumericId.mockReturnValue(undefined);
+    mockListOrganizationsUncached.mockResolvedValue([
+      { id: "1169445", slug: "my-org", name: "My Org" },
+    ]);
+
+    const result = await resolveOrg({ cwd: "/test" });
+
+    expect(result?.org).toBe("my-org");
+  });
+
   test("keeps DSN numeric orgId when the org list cannot be fetched", async () => {
     mockGetDefaultOrganization.mockReturnValue(null);
     mockDetectDsn.mockResolvedValue({

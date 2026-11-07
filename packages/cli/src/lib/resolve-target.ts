@@ -418,18 +418,31 @@ async function normalizeNumericOrg(orgId: string): Promise<string | null> {
   // Slow path: fetch org list to populate numeric ID → slug mapping.
   // resolveEffectiveOrg doesn't handle bare numeric IDs (only o-prefixed),
   // so we do a targeted refresh via listOrganizationsUncached().
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  let organizations: { id: string; slug: string }[];
   try {
     const { listOrganizationsUncached } = await import("./api-client.js");
-    await listOrganizationsUncached();
-  } catch {
+    organizations = await listOrganizationsUncached();
+  } catch (error) {
+    // Can't verify membership (offline, not authenticated): keep the raw ID
+    // so the downstream API call reports the real error.
+    log.debug(`Org list refresh failed while resolving org ID '${orgId}'`, error);
     return orgId;
   }
 
-  // Retry cache after refresh. The org list is now fresh, so a miss means
-  // the user has no access to an org with this ID.
+  // Match against the fetched list itself: listOrganizationsUncached skips
+  // writing the ID → slug cache when a region can't be verified, so a cache
+  // miss alone doesn't prove the org is inaccessible.
+  const match = organizations.find((org) => String(org.id) === orgId);
+  if (match) {
+    return match.slug;
+  }
   const afterRefresh = getOrgByNumericId(orgId);
-  return afterRefresh?.slug ?? null;
+  if (afterRefresh) {
+    return afterRefresh.slug;
+  }
+  // The full membership list was fetched and has no org with this ID, so the
+  // user can't access it (e.g. a placeholder DSN like o123.ingest.sentry.io).
+  return null;
 }
 
 /**
