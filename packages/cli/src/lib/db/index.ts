@@ -142,7 +142,7 @@ export function getDatabase(): DatabaseHandle {
   if (isPersistenceDisabled()) {
     return getReadOnlyDatabase();
   }
-  return getSharedDatabase(true);
+  return getSharedDatabase({ fallback: true });
 }
 
 /**
@@ -157,7 +157,7 @@ function getReadOnlyDatabase(): DatabaseHandle {
     return nullDatabase;
   }
   try {
-    const shared = getSharedDatabase(false);
+    const shared = getSharedDatabase({ fallback: false });
     return openError === undefined ? readOnlyView(shared) : nullDatabase;
   } catch (error) {
     log.debug(`Not reading the local database: ${stringifyUnknown(error)}`);
@@ -166,10 +166,12 @@ function getReadOnlyDatabase(): DatabaseHandle {
 }
 
 /**
- * The process-wide connection, opened on first use. `warn` says whether a
- * failed open warns or only logs at debug level.
+ * The process-wide connection, opened on first use. With `fallback`, a failed
+ * open warns and installs an in-memory database for the rest of the process.
+ * Without it, the error is thrown and nothing is installed, so a read-only
+ * caller can't leave a later persisting call on the in-memory copy.
  */
-function getSharedDatabase(warn: boolean): Database {
+function getSharedDatabase({ fallback }: { fallback: boolean }): Database {
   const dbPath = detached ? ":memory:" : getDbPath();
 
   // Auto-invalidate if config directory changed (for tests)
@@ -188,13 +190,13 @@ function getSharedDatabase(warn: boolean): Database {
   try {
     db = openDatabase(dbPath);
   } catch (error) {
-    if (dbPath === ":memory:") {
+    if (dbPath === ":memory:" || !fallback) {
       throw error;
     }
     const message =
       `Could not open the local database at ${dbPath}: ${stringifyUnknown(error)}. ` +
       "Caching and settings won't persist for this run.";
-    if (!warn || isReadonlyHandlingSilenced()) {
+    if (isReadonlyHandlingSilenced()) {
       log.debug(message);
     } else {
       log.warn(message);

@@ -21,6 +21,7 @@ import {
 } from "../../../src/lib/db/resilient.js";
 import { __setDriverForTests } from "../../../src/lib/db/sqlite.js";
 import { getMetadata, setMetadata } from "../../../src/lib/db/utils.js";
+import { NO_PERSISTENCE_ENV_VAR, withEnv } from "../../../src/lib/env.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 const getConfigDir = useTestConfigDir("db-open-fallback-");
@@ -83,6 +84,21 @@ describe("getDatabase when cli.db can't be opened", () => {
     captureStderr();
     getDatabase();
     closeDatabase();
+
+    rmSync(dbPath);
+    expect(writeAndReadMetadata()).toBe("ok");
+    expect(getRawDatabase()).toBeDefined();
+  });
+
+  test("a read-only call that can't open cli.db leaves later calls on the file", () => {
+    const dbPath = join(getConfigDir(), "cli.db");
+    writeFileSync(dbPath, NOT_A_DATABASE);
+    const stderr = captureStderr();
+
+    withEnv({ ...process.env, [NO_PERSISTENCE_ENV_VAR]: "1" }, () =>
+      getDatabase(),
+    );
+    expect(stderr()).not.toContain("Could not open the local database");
 
     rmSync(dbPath);
     expect(writeAndReadMetadata()).toBe("ok");
