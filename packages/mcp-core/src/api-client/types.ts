@@ -214,6 +214,14 @@ export type Commit = z.infer<typeof CommitSchema>;
 export type Issue = z.infer<typeof IssueSchema>;
 export type IssueActivity = z.infer<typeof IssueActivitySchema>;
 export type IssueComment = z.infer<typeof IssueCommentSchema>;
+
+/**
+ * `statusDetails` that resolve an issue in a specific release or commit.
+ * Sentry validates both against its own release and commit records.
+ */
+export type IssueResolutionDetails =
+  | { inRelease: string }
+  | { inCommit: { commit: string; repository: string } };
 export type Monitor = z.infer<typeof MonitorSchema>;
 export type MonitorCheckIn = z.infer<typeof MonitorCheckInSchema>;
 export type MonitorStat = z.infer<typeof MonitorStatSchema>;
