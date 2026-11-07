@@ -12,6 +12,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { zstdDecompressSync } from "node:zlib";
 import { parse, safeParse } from "valibot";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ApiError, EXIT, ValidationError } from "../../../src/lib/errors.js";
@@ -19,14 +20,12 @@ import { ApiError, EXIT, ValidationError } from "../../../src/lib/errors.js";
 const {
   customFetchMock,
   apiRequestToRegionMock,
-  apiRequestToRegionNoContentMock,
   getAuthTokenMock,
   sdkFetchMock,
   uploadMissingChunksMock,
 } = vi.hoisted(() => ({
   customFetchMock: vi.fn(),
   apiRequestToRegionMock: vi.fn(),
-  apiRequestToRegionNoContentMock: vi.fn(() => Promise.resolve()),
   getAuthTokenMock: vi.fn<() => string | undefined>(() => "secret-token"),
   sdkFetchMock: vi.fn<(request: Request) => Promise<Response>>(),
   uploadMissingChunksMock: vi.fn(() => Promise.resolve()),
@@ -43,7 +42,6 @@ vi.mock("../../../src/lib/api/infrastructure.js", async (importOriginal) => {
   return {
     ...actual,
     apiRequestToRegion: apiRequestToRegionMock,
-    apiRequestToRegionNoContent: apiRequestToRegionNoContentMock,
     getOrgSdkConfig: vi.fn(() => ({
       baseUrl: "https://us.sentry.io",
       fetch: sdkFetchMock,
@@ -77,6 +75,7 @@ vi.mock("../../../src/lib/api/chunk-upload.js", async (importOriginal) => {
   };
 });
 
+import { getOrgSdkConfig } from "../../../src/lib/api/infrastructure.js";
 import {
   buildFormatFromUrl,
   createPreprodSnapshot,
@@ -248,12 +247,27 @@ describe("downloadBuildArtifact", () => {
   });
 });
 
+/** JSON body of the last SDK request, decompressing a zstd body. */
+async function lastSdkRequestBody(): Promise<Record<string, unknown>> {
+  const request = sdkFetchMock.mock.calls.at(-1)?.[0];
+  if (!request) {
+    throw new Error("no SDK request was sent");
+  }
+  const bytes = Buffer.from(await request.arrayBuffer());
+  const json =
+    request.headers.get("Content-Encoding") === "zstd"
+      ? zstdDecompressSync(bytes).toString()
+      : bytes.toString();
+  return JSON.parse(json);
+}
+
 describe("uploadBuild", () => {
   let contentPath: string;
   let buildTmpDir: string;
 
   beforeEach(async () => {
-    apiRequestToRegionMock.mockReset();
+    sdkFetchMock.mockReset();
+    vi.mocked(getOrgSdkConfig).mockClear();
     uploadMissingChunksMock.mockClear();
     buildTmpDir = await mkdtemp(join(tmpdir(), "preprod-build-"));
     contentPath = join(buildTmpDir, "normalized.zip");
@@ -265,10 +279,12 @@ describe("uploadBuild", () => {
   });
 
   test("returns the artifactUrl and folds metadata into the assemble body", async () => {
-    apiRequestToRegionMock.mockResolvedValue({
-      data: { state: "ok", artifactUrl: "https://sentry.io/artifact/1" },
-      headers: new Headers(),
-    });
+    sdkFetchMock.mockResolvedValue(
+      Response.json({
+        state: "ok",
+        artifactUrl: "https://sentry.io/artifact/1",
+      }),
+    );
 
     const url = await uploadBuild({
       org: "my-org",
@@ -282,18 +298,19 @@ describe("uploadBuild", () => {
     });
 
     expect(url).toBe("https://sentry.io/artifact/1");
-    const call = apiRequestToRegionMock.mock.calls.at(-1);
-    expect(call?.[1]).toBe(
-      "projects/my-org/my-project/files/preprodartifacts/assemble/",
+    const request = sdkFetchMock.mock.calls.at(-1)?.[0];
+    expect(request?.method).toBe("POST");
+    expect(request?.url).toBe(
+      "https://us.sentry.io/api/0/projects/my-org/my-project/files/preprodartifacts/assemble/",
     );
-    const body = call?.[2]?.body as Record<string, unknown>;
+    const body = await lastSdkRequestBody();
     expect(body.checksum).toEqual(expect.any(String));
     expect(Array.isArray(body.chunks)).toBe(true);
     expect(body.build_configuration).toBe("Release");
     expect(body.release_notes).toBe("notes");
     expect(body.install_groups).toEqual(["qa", "beta"]);
     // Opted into transport retries: the poll loop re-sends the same body anyway.
-    expect(call?.[2]?.idempotent).toBe(true);
+    expect(getOrgSdkConfig).toHaveBeenCalledWith({ idempotent: true });
     // No missing chunks on the first (and only) response.
     expect(uploadMissingChunksMock).not.toHaveBeenCalled();
   });
@@ -302,15 +319,16 @@ describe("uploadBuild", () => {
     // Real timers: uploadBuild now hashes the wrapper via async file I/O before
     // the first assemble POST, which does not interleave cleanly with fake
     // timers. The single real inter-poll sleep (~1s) is tolerable.
-    apiRequestToRegionMock
-      .mockResolvedValueOnce({
-        data: { state: "created", missingChunks: ["deadbeef"] },
-        headers: new Headers(),
-      })
-      .mockResolvedValueOnce({
-        data: { state: "ok", artifactUrl: "https://sentry.io/artifact/2" },
-        headers: new Headers(),
-      });
+    sdkFetchMock
+      .mockResolvedValueOnce(
+        Response.json({ state: "created", missingChunks: ["deadbeef"] }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          state: "ok",
+          artifactUrl: "https://sentry.io/artifact/2",
+        }),
+      );
 
     await expect(
       uploadBuild({
@@ -324,10 +342,12 @@ describe("uploadBuild", () => {
   });
 
   test("flattens vcs fields into the top level of the assemble body", async () => {
-    apiRequestToRegionMock.mockResolvedValue({
-      data: { state: "ok", artifactUrl: "https://sentry.io/artifact/9" },
-      headers: new Headers(),
-    });
+    sdkFetchMock.mockResolvedValue(
+      Response.json({
+        state: "ok",
+        artifactUrl: "https://sentry.io/artifact/9",
+      }),
+    );
 
     await uploadBuild({
       org: "my-org",
@@ -336,10 +356,7 @@ describe("uploadBuild", () => {
       metadata: { vcs: { head_sha: "abc", provider: "github", pr_number: 3 } },
     });
 
-    const body = apiRequestToRegionMock.mock.calls.at(-1)?.[2]?.body as Record<
-      string,
-      unknown
-    >;
+    const body = await lastSdkRequestBody();
     // Flattened alongside checksum/chunks — not nested under a "vcs" key.
     expect(body.head_sha).toBe("abc");
     expect(body.provider).toBe("github");
@@ -348,10 +365,12 @@ describe("uploadBuild", () => {
   });
 
   test("omits optional metadata fields when unset", async () => {
-    apiRequestToRegionMock.mockResolvedValue({
-      data: { state: "ok", artifactUrl: "https://sentry.io/artifact/3" },
-      headers: new Headers(),
-    });
+    sdkFetchMock.mockResolvedValue(
+      Response.json({
+        state: "ok",
+        artifactUrl: "https://sentry.io/artifact/3",
+      }),
+    );
 
     await uploadBuild({
       org: "my-org",
@@ -360,18 +379,14 @@ describe("uploadBuild", () => {
       metadata: {},
     });
 
-    const body = apiRequestToRegionMock.mock.calls.at(-1)?.[2]?.body as Record<
-      string,
-      unknown
-    >;
+    const body = await lastSdkRequestBody();
     expect(Object.keys(body).sort()).toEqual(["checksum", "chunks"]);
   });
 
   test("throws ApiError when assembly reports an error", async () => {
-    apiRequestToRegionMock.mockResolvedValue({
-      data: { state: "error", detail: "bad build" },
-      headers: new Headers(),
-    });
+    sdkFetchMock.mockResolvedValue(
+      Response.json({ state: "error", detail: "bad build" }),
+    );
 
     await expect(
       uploadBuild({
@@ -384,10 +399,7 @@ describe("uploadBuild", () => {
   });
 
   test("fails fast when finished (ok) without an artifact URL", async () => {
-    apiRequestToRegionMock.mockResolvedValue({
-      data: { state: "ok" },
-      headers: new Headers(),
-    });
+    sdkFetchMock.mockResolvedValue(Response.json({ state: "ok" }));
 
     await expect(
       uploadBuild({
@@ -403,7 +415,6 @@ describe("uploadBuild", () => {
 describe("snapshots", () => {
   beforeEach(() => {
     apiRequestToRegionMock.mockReset();
-    apiRequestToRegionNoContentMock.mockClear();
     customFetchMock.mockReset();
   });
 
@@ -457,21 +468,31 @@ describe("snapshots", () => {
     },
   );
 
-  test("createPreprodSnapshot POSTs the manifest and parses the response", async () => {
-    apiRequestToRegionMock.mockResolvedValue({
-      data: { artifactId: "snap-1", imageCount: 3, snapshotUrl: "https://s" },
-    });
-    const manifest = { app_id: "app", images: {} };
+  test("createPreprodSnapshot POSTs the zstd-compressed manifest and parses the response", async () => {
+    sdkFetchMock.mockReset();
+    sdkFetchMock.mockResolvedValue(
+      Response.json({
+        artifactId: "snap-1",
+        snapshotMetricsId: "200",
+        imageCount: 3,
+        snapshotUrl: "https://s",
+      }),
+    );
+    const manifest = {
+      app_id: "app",
+      images: { "a.png": { content_hash: "abc", width: 1, height: 2 } },
+    };
     const res = await createPreprodSnapshot("my-org", "my-project", manifest);
     expect(res.artifactId).toBe("snap-1");
     expect(res.imageCount).toBe(3);
-    const [, endpoint, options] =
-      apiRequestToRegionMock.mock.calls.at(-1) ?? [];
-    expect(endpoint).toBe(
-      "projects/my-org/my-project/preprodartifacts/snapshots/",
+    const request = sdkFetchMock.mock.calls.at(-1)?.[0];
+    expect(request?.method).toBe("POST");
+    expect(request?.url).toBe(
+      "https://us.sentry.io/api/0/projects/my-org/my-project/preprodartifacts/snapshots/",
     );
-    expect(options.method).toBe("POST");
-    expect(options.body).toBe(manifest);
+    expect(request?.headers.get("Content-Encoding")).toBe("zstd");
+    expect(request?.headers.get("Content-Type")).toBe("application/json");
+    await expect(lastSdkRequestBody()).resolves.toEqual(manifest);
   });
 
   test("getLatestBaseSnapshot maps the response and forwards params", async () => {
@@ -527,28 +548,59 @@ describe("snapshots", () => {
   });
 
   test("waitForSnapshotArchive triggers a build then resolves when ready", async () => {
-    apiRequestToRegionMock
-      .mockResolvedValueOnce({ data: { ready: false }, headers: new Headers() })
-      .mockResolvedValueOnce({ data: { ready: true }, headers: new Headers() });
+    sdkFetchMock.mockReset();
+    sdkFetchMock
+      .mockResolvedValueOnce(Response.json({ ready: false }))
+      .mockResolvedValueOnce(
+        Response.json(
+          { detail: "Building your snapshot archive" },
+          { status: 202 },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json({ ready: true }));
     const onBuild = vi.fn();
 
-    await waitForSnapshotArchive("my-org", "snap-1", onBuild);
+    await waitForSnapshotArchive("my-org", "snap 1", onBuild);
 
-    expect(apiRequestToRegionNoContentMock).toHaveBeenCalledTimes(1);
+    const requests = sdkFetchMock.mock.calls.map(([request]) => [
+      request.method,
+      request.url,
+    ]);
+    const url =
+      "https://us.sentry.io/api/0/organizations/my-org/preprodartifacts/snapshots/snap%201/archive/";
+    expect(requests).toEqual([
+      ["GET", url],
+      ["POST", url],
+      ["GET", url],
+    ]);
     expect(onBuild).toHaveBeenCalledTimes(1);
   });
 
   test("waitForSnapshotArchive skips the build when already ready", async () => {
-    apiRequestToRegionMock.mockResolvedValue({
-      data: { ready: true },
-      headers: new Headers(),
-    });
+    sdkFetchMock.mockReset();
+    sdkFetchMock.mockResolvedValue(Response.json({ ready: true }));
     const onBuild = vi.fn();
 
     await waitForSnapshotArchive("my-org", "snap-1", onBuild);
 
-    expect(apiRequestToRegionNoContentMock).not.toHaveBeenCalled();
+    expect(sdkFetchMock).toHaveBeenCalledTimes(1);
+    expect(sdkFetchMock.mock.calls[0]?.[0].method).toBe("GET");
     expect(onBuild).not.toHaveBeenCalled();
+  });
+
+  test("waitForSnapshotArchive surfaces a failed build start", async () => {
+    sdkFetchMock.mockReset();
+    sdkFetchMock
+      .mockResolvedValueOnce(Response.json({ ready: false }))
+      .mockResolvedValueOnce(
+        Response.json({ detail: "Try again later" }, { status: 503 }),
+      );
+
+    const error = await waitForSnapshotArchive("my-org", "snap-1").catch(
+      (e) => e,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(503);
   });
 
   test("openSnapshotArchive returns the response for streaming", async () => {

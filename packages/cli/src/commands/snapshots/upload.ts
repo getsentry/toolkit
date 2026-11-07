@@ -13,6 +13,7 @@ import {
   type CreateSnapshotResponse,
   createPreprodSnapshot,
   fetchSnapshotsUploadOptions,
+  type SnapshotManifest,
 } from "../../lib/api/preprod-artifacts.js";
 import {
   collectVcsMetadata,
@@ -202,8 +203,11 @@ async function resolveSelective(
   return { selective, allImageNames };
 }
 
+/** Manifest entries keyed by relative image path. */
+type ManifestImages = SnapshotManifest["images"];
+
 /** A per-image manifest metadata entry (width/height override sidecar). */
-function imageMetadata(image: CollectedImage): Record<string, unknown> {
+function imageMetadata(image: CollectedImage): ManifestImages[string] {
   return {
     ...image.sidecar,
     content_hash: image.hash,
@@ -215,7 +219,7 @@ function imageMetadata(image: CollectedImage): Record<string, unknown> {
 /** Result of uploading images to objectstore. */
 type UploadImagesResult = {
   /** Manifest entries keyed by relative image path. */
-  entries: Record<string, Record<string, unknown>>;
+  entries: ManifestImages;
   /** Number of images newly uploaded. */
   uploaded: number;
   /** Number of images skipped (already present). */
@@ -245,7 +249,7 @@ async function uploadImages(
     );
   }
 
-  const entries: Record<string, Record<string, unknown>> = {};
+  const entries: ManifestImages = {};
   const prepared: { path: string; key: string }[] = [];
   const duplicates: string[] = [];
   for (const image of images) {
@@ -283,7 +287,7 @@ async function uploadImages(
 /** Inputs for {@link buildManifest}. */
 type ManifestOptions = {
   appId: string;
-  entries: Record<string, Record<string, unknown>>;
+  entries: ManifestImages;
   diffThreshold?: number;
   selective: boolean;
   allImageNames?: string[];
@@ -291,8 +295,8 @@ type ManifestOptions = {
 };
 
 /** Build the snapshot manifest body (VcsInfo flattened at the top level). */
-function buildManifest(opts: ManifestOptions): Record<string, unknown> {
-  const manifest: Record<string, unknown> = {
+function buildManifest(opts: ManifestOptions): SnapshotManifest {
+  const manifest: SnapshotManifest = {
     app_id: opts.appId,
     images: opts.entries,
     ...vcsInfoToBody(opts.vcs),
