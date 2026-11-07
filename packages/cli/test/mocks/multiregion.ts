@@ -40,7 +40,7 @@ export const EU_PROJECTS: Record<string, string[]> = {
 };
 
 type MultiRegionOptions = {
-  /** If true, control silo returns 404 for /users/me/regions/ (self-hosted mode) */
+  /** If true, the control silo serves orgs without region links (self-hosted mode) */
   selfHostedMode?: boolean;
   /** If true, only return the US region (single-region mode) */
   singleRegionMode?: boolean;
@@ -240,14 +240,6 @@ function createControlSiloRoutes(
   ];
 
   if (options.selfHostedMode) {
-    // Self-hosted mode: regions endpoint returns 404
-    routes.push({
-      method: "GET",
-      path: "/api/0/users/me/regions/",
-      response: notFoundFixture,
-      status: 404,
-    });
-
     // Self-hosted is a single monolith deployment: the control silo serves
     // organizations directly, with no region/links concept (matches the
     // Rust sentry-cli's "Self-hosted/monolith deployments serve the same
@@ -259,14 +251,6 @@ function createControlSiloRoutes(
     });
   } else if (options.singleRegionMode) {
     // Single region mode: only the US region exists
-    routes.push({
-      method: "GET",
-      path: "/api/0/users/me/regions/",
-      response: {
-        regions: [{ name: "us", url: usRegionUrl }],
-      },
-    });
-
     // The control silo's org listing endpoint returns every org the user
     // belongs to (here, just the US region's) in one response.
     routes.push({
@@ -275,18 +259,7 @@ function createControlSiloRoutes(
       response: withRegionLinks(usOrganizationsFixture, usRegionUrl),
     });
   } else {
-    // Multi-region mode: return both regions
-    routes.push({
-      method: "GET",
-      path: "/api/0/users/me/regions/",
-      response: {
-        regions: [
-          { name: "us", url: usRegionUrl },
-          { name: "de", url: euRegionUrl },
-        ],
-      },
-    });
-
+    // Multi-region mode: orgs in both regions
     // The control silo's org listing endpoint returns every org across
     // *all* regions in a single paginated response — no per-region
     // fan-out. Each org is tagged with its own regionUrl so the CLI can
