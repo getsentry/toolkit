@@ -87,8 +87,8 @@ function matchScore(
   candidate: string,
   search: boolean,
 ): number | undefined {
-  const lowerPartial = foldCase(partial);
-  const lowerCandidate = foldCase(candidate);
+  const lowerPartial = partial.toLowerCase();
+  const lowerCandidate = candidate.toLowerCase();
   if (lowerCandidate === lowerPartial) {
     return EXACT_SCORE;
   }
@@ -183,7 +183,7 @@ function typoScore(
   // Compare against the rest of the candidate, not only the word, so
   // `sentyr-javascrpt` still finds `sentry-javascript`.
   for (const at of starts) {
-    if (!WORD_CHAR_RE.test(candidate[at] ?? "")) {
+    if (!WORD_START_RE.test(candidate.slice(at, at + 2))) {
       continue;
     }
     const distances = prefixDistances(
@@ -207,38 +207,31 @@ function typoScore(
 }
 
 const WORD_CHAR_RE = /[\p{L}\p{N}]/u;
+// Reads two code units so a letter outside the BMP still counts.
+const WORD_START_RE = /^[\p{L}\p{N}]/u;
 const UPPER_RE = /\p{Lu}/u;
 const LOWER_RE = /\p{Ll}/u;
 
 /**
- * Lowercase one character at a time and keep each one's UTF-16 length, so
- * word start indices from the original candidate stay valid. "İ" lowercases
- * to "i" plus a combining dot; only the "i" is kept.
- */
-function foldCase(text: string): string {
-  let folded = "";
-  for (const char of text) {
-    folded += char.toLowerCase().slice(0, char.length);
-  }
-  return folded;
-}
-
-/**
  * Ascending word start indices: after a symbol or space, or at a capital
- * after a lowercase letter, so `isolationScope` has two. Reads the
- * candidate before {@link foldCase} so camelCase boundaries survive.
+ * after a lowercase letter, so `isolationScope` has two. Reads case from the
+ * candidate but returns indices into `candidate.toLowerCase()`, which can be
+ * longer: "İ" lowercases to "i" plus a combining dot.
  */
 function wordStarts(candidate: string): Set<number> {
   const starts = new Set([0]);
-  for (let at = 1; at < candidate.length; at++) {
-    const char = candidate[at] ?? "";
-    const before = candidate[at - 1] ?? "";
+  let at = 0;
+  let before = "";
+  for (const char of candidate) {
     if (
-      !WORD_CHAR_RE.test(before) ||
-      (UPPER_RE.test(char) && LOWER_RE.test(before))
+      at > 0 &&
+      (!WORD_CHAR_RE.test(before) ||
+        (UPPER_RE.test(char) && LOWER_RE.test(before)))
     ) {
       starts.add(at);
     }
+    at += char.toLowerCase().length;
+    before = char;
   }
   return starts;
 }
