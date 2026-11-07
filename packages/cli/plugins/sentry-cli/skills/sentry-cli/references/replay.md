@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-replay
-version: 0.49.0
+version: 0.50.0-dev.0
 description: Search and inspect Session Replays
 requires:
   bins: ["sentry"]

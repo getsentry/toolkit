@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-api
-version: 0.49.0
+version: 0.50.0-dev.0
 description: Make an authenticated API request
 requires:
   bins: ["sentry"]
