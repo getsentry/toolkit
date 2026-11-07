@@ -425,7 +425,10 @@ async function normalizeNumericOrg(orgId: string): Promise<string | null> {
   } catch (error) {
     // Can't verify membership (offline, not authenticated): keep the raw ID
     // so the downstream API call reports the real error.
-    log.debug(`Org list refresh failed while resolving org ID '${orgId}'`, error);
+    log.debug(
+      `Org list refresh failed while resolving org ID '${orgId}'`,
+      error,
+    );
     return orgId;
   }
 
