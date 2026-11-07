@@ -15,6 +15,7 @@ import {
   updateOrganizationIssue,
   updateOrganizationIssues,
 } from "@sentry/api";
+import pLimit from "p-limit";
 
 import type { SentryIssue } from "../../types/index.js";
 import type { IssueSubstatus } from "../../types/sentry.js";
@@ -27,13 +28,11 @@ import {
 } from "../custom-ca.js";
 import { applyCustomHeaders } from "../custom-headers.js";
 import { ApiError, ValidationError } from "../errors.js";
-import { invalidateCachedResponsesMatching } from "../response-cache.js";
-import { getApiBaseUrl } from "../sentry-client.js";
 
 import {
   API_MAX_PER_PAGE,
-  apiRequest,
   getOrgSdkConfig,
+  ORG_FANOUT_CONCURRENCY,
   type PaginatedResponse,
   paginate,
   unwrapPaginatedResult,
@@ -314,29 +313,10 @@ export async function listIssuesAllPages(
 }
 
 /**
- * Get a specific issue by numeric ID.
- *
- * Uses the legacy unscoped endpoint — no org context or region routing.
- * Prefer {@link getIssueInOrg} when the org slug is known.
- *
- * @param issueId - Numeric issue ID
- * @param options - Optional collapse fields to skip expensive backend queries
- */
-export function getIssue(
-  issueId: string,
-  options?: { collapse?: IssueCollapseField[] },
-): Promise<SentryIssue> {
-  const collapse = toIssueDetailsCollapse(options?.collapse);
-  return apiRequest<SentryIssue>(`/issues/${issueId}/`, {
-    params: collapse ? { collapse } : undefined,
-  });
-}
-
-/**
  * Get a specific issue by numeric ID, scoped to an organization.
  *
- * Uses the org-scoped endpoint with region-aware routing.
- * Preferred over {@link getIssue} when the org slug is available.
+ * Uses the org-scoped endpoint with region-aware routing. Without a known
+ * org, use {@link findIssueInOrgs}.
  *
  * @param orgSlug - Organization slug (used for region routing)
  * @param issueId - Numeric issue ID
@@ -354,6 +334,56 @@ export async function getIssueInOrg(
     query: collapse ? { collapse } : undefined,
   });
   return unwrapResult<SentryIssue>(result, "Failed to get issue");
+}
+
+/**
+ * Find a numeric issue in whichever of the given organizations owns it.
+ *
+ * Asks each org's region rather than the unscoped `GET /issues/{id}/`,
+ * which Sentry deprecated for cell routing and browns out with 410s.
+ * Org-scoped issue routes exist on every Sentry since 24.1. Orgs are tried
+ * concurrently; no new request starts once one returns the issue.
+ *
+ * @param orgSlugs - Organizations to search, in preference order
+ * @param issueId - Numeric issue ID
+ * @param options - Optional collapse fields to skip expensive backend queries
+ * @returns The owning org and the issue, or null when no org returns it
+ * @throws {ApiError} When no org has it and one failed with something other
+ *   than a 404 or 403, since the issue may live in that org
+ */
+export async function findIssueInOrgs(
+  orgSlugs: readonly string[],
+  issueId: string,
+  options?: { collapse?: IssueCollapseField[] },
+): Promise<{ org: string; issue: SentryIssue } | null> {
+  const limit = pLimit(ORG_FANOUT_CONCURRENCY);
+  let found: { org: string; issue: SentryIssue } | null = null;
+  let failure: unknown;
+  await Promise.all(
+    orgSlugs.map((org) =>
+      limit(async () => {
+        if (found) {
+          return;
+        }
+        try {
+          const issue = await getIssueInOrg(org, issueId, options);
+          found ??= { org, issue };
+        } catch (error) {
+          if (
+            error instanceof ApiError &&
+            (error.status === 404 || error.status === 403)
+          ) {
+            return;
+          }
+          failure ??= error;
+        }
+      }),
+    ),
+  );
+  if (!found && failure) {
+    throw failure;
+  }
+  return found;
 }
 
 /**
@@ -599,44 +629,30 @@ export type IgnoreStatusDetails = {
  *   optional `statusDetails` sets conditions (see {@link IgnoreStatusDetails}).
  * - `"unresolved"` — reopens the issue; no additional options needed.
  *
- * When `options.orgSlug` is provided, the request is routed to that org's
- * region via the org-scoped endpoint. Without it, falls back to the legacy
- * global `/issues/{id}/` endpoint (works but not region-aware).
+ * The request goes to `options.orgSlug`'s region through the org-scoped
+ * endpoint.
  */
 export async function updateIssueStatus(
   issueId: string,
   status: "resolved" | "unresolved" | "ignored",
-  options?: {
+  options: {
     statusDetails?: ResolveStatusDetails | IgnoreStatusDetails;
     /** Substatus for archive granularity. */
     substatus?: IssueSubstatus;
-    orgSlug?: string;
+    orgSlug: string;
   },
 ): Promise<SentryIssue> {
   const body = {
     status,
-    ...(options?.statusDetails && { statusDetails: options.statusDetails }),
-    ...(options?.substatus && { substatus: options.substatus }),
+    ...(options.statusDetails && { statusDetails: options.statusDetails }),
+    ...(options.substatus && { substatus: options.substatus }),
   };
-
-  if (options?.orgSlug) {
-    // Region-aware org-scoped endpoint — preferred when org is known.
-    const result = await updateOrganizationIssue({
-      ...getOrgSdkConfig(),
-      path: { organization_id_or_slug: options.orgSlug, issue_id: issueId },
-      body,
-    });
-    return unwrapResult<SentryIssue>(result, "Failed to update issue");
-  }
-
-  // Legacy global endpoint — works without org but not region-aware.
-  return await apiRequest<SentryIssue>(
-    `/issues/${encodeURIComponent(issueId)}/`,
-    {
-      method: "PUT",
-      body,
-    },
-  );
+  const result = await updateOrganizationIssue({
+    ...getOrgSdkConfig(),
+    path: { organization_id_or_slug: options.orgSlug, issue_id: issueId },
+    body,
+  });
+  return unwrapResult<SentryIssue>(result, "Failed to update issue");
 }
 
 /** Result of a successful issue-merge operation. */
@@ -689,21 +705,6 @@ export async function mergeIssues(
       `/organizations/${encodeURIComponent(orgSlug)}/issues/?${groupIds.map((id) => `id=${encodeURIComponent(id)}`).join("&")}`,
     );
   }
-  // HTTP-layer invalidation covers the region-scoped caches via the
-  // prefix sweep on `/organizations/{org}/issues/`, but it can't see
-  // the affected IDs (they're in query params, stripped from the
-  // URL the hook sees). Manually clear each affected issue's legacy
-  // cross-origin cache so subsequent `getIssue(id)` doesn't serve
-  // stale data.
-  const apiBase = getApiBaseUrl().replace(TRAILING_SLASH_RE, "");
-  const affectedIds = merge.children.toSpliced(0, 0, merge.parent);
-  await Promise.all(
-    affectedIds.map((id) =>
-      invalidateCachedResponsesMatching(
-        `${apiBase}/api/0/issues/${encodeURIComponent(id)}/`,
-      ),
-    ),
-  );
   return merge;
 }
 

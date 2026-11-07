@@ -22,7 +22,7 @@ import type {
   SentryProject,
 } from "../types/index.js";
 import {
-  findProjectByDsnKey,
+  findProjectByDsn,
   findProjectsByPattern,
   findProjectsBySlug,
   getProject,
@@ -426,8 +426,8 @@ async function normalizeNumericOrg(orgId: string): Promise<string> {
 }
 
 /**
- * Resolve a DSN without orgId by searching for the project via DSN public key.
- * Uses the /api/0/projects?query=dsn:<key> endpoint.
+ * Resolve a DSN without orgId by asking the user's organizations for it
+ * (see {@link findProjectByDsn}).
  *
  * @param dsn - Detected DSN (must have publicKey)
  * @returns Resolved target or null if resolution failed
@@ -453,7 +453,7 @@ async function resolveDsnByPublicKey(
 
   // Cache miss — search for project by DSN public key
   const result = await withAuthGuard(async () => {
-    const projectInfo = await findProjectByDsnKey(dsn.publicKey);
+    const projectInfo = await findProjectByDsn(dsn.raw, dsn.publicKey);
 
     if (!projectInfo) {
       return null;
@@ -496,7 +496,7 @@ async function resolveDsnByPublicKey(
  * 1. DSNs with orgId: the DSN already encodes org+project identity, so no
  *    discovery API call is made — cached slugs are used when available,
  *    otherwise the target is built from the DSN's numeric IDs.
- * 2. DSNs without orgId: Use findProjectByDsnKey(publicKey) API
+ * 2. DSNs without orgId: Use findProjectByDsn() API
  *
  * @param dsn - Detected DSN to resolve
  * @returns Resolved target or null if resolution failed

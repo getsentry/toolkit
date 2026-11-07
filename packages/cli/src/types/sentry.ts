@@ -312,6 +312,17 @@ export const UserRegionsResponseSchema = object({
 
 export type UserRegionsResponse = InferOutput<typeof UserRegionsResponseSchema>;
 
+/**
+ * Response from `/api/0/organizations/{org}/dsn-lookup/`. The endpoint is
+ * private, so `@sentry/api` has no type for it.
+ */
+export const DsnLookupResponseSchema = looseObject({
+  organizationSlug: string(),
+  projectSlug: string(),
+  projectId: string(),
+  projectName: string(),
+});
+
 // User
 
 /**

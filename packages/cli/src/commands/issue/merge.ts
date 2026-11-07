@@ -108,22 +108,8 @@ async function resolveAllIssues(
     ),
   );
 
-  // Every resolved issue must have a concrete org slug — otherwise we
-  // can't safely decide whether a merge is cross-org. A bare numeric ID
-  // that couldn't pick up an org from DSN/env/config would return
-  // `org: undefined`; those must error before we proceed.
-  const missingOrg = resolved.filter((r) => !r.org);
-  if (missingOrg.length > 0) {
-    const badIds = missingOrg.map((r) => r.issue.shortId).join(", ");
-    throw new ValidationError(
-      `Could not determine the organization for: ${badIds}.\n\n` +
-        "Provide the org explicitly (e.g. <org>/<issue>) so the merge\n" +
-        "can verify all issues belong to the same organization.",
-    );
-  }
-
-  // Collect the fully-resolved orgs and require a single one.
-  const orgs = new Set(resolved.map((r) => r.org as string));
+  // Collect the resolved orgs and require a single one.
+  const orgs = new Set(resolved.map((r) => r.org));
   if (orgs.size > 1) {
     throw new ValidationError(
       `Cannot merge issues across organizations (${[...orgs].join(", ")}).\n\n` +
@@ -133,8 +119,7 @@ async function resolveAllIssues(
 
   const [org] = orgs;
   if (!org) {
-    // Unreachable — resolved.length >= 1 (callers guard for <2) and we
-    // just asserted every entry has a non-empty org.
+    // Unreachable — resolved.length >= 1 (callers guard for <2).
     throw new CliError("Internal error: resolved issue missing org slug.");
   }
 

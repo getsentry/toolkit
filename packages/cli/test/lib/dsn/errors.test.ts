@@ -19,7 +19,7 @@ const { mockListOrganizations, mockListProjects } = vi.hoisted(() => ({
 vi.mock("../../../src/lib/api-client.js", () => ({
   listOrganizations: mockListOrganizations,
   listProjects: mockListProjects,
-  findProjectByDsnKey: vi.fn(() => Promise.resolve(null)),
+  findProjectByDsn: vi.fn(() => Promise.resolve(null)),
 }));
 
 describe("formatConflictError", () => {

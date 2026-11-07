@@ -23,8 +23,8 @@ import { buildCommandHint, resolveIssue } from "../issue/utils.js";
 
 /** Result of resolving and category-checking a modern Feedback issue. */
 export type ResolvedFeedback = {
-  /** Resolved organization slug, when available. */
-  org: string | undefined;
+  /** Resolved organization slug. */
+  org: string;
   /** Category-constrained Feedback issue. */
   feedback: SentryFeedback;
 };
@@ -122,7 +122,7 @@ export async function resolveFeedback(
     throw new ResolutionError(
       `Issue '${issue.shortId}'`,
       "is not User Feedback",
-      sentry`issue view ${org ? `${org}/` : ""}${issue.shortId}`,
+      sentry`issue view ${org}/${issue.shortId}`,
       [`Use a Feedback ID from: ${sentry`feedback list`}`],
     );
   }

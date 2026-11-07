@@ -24,10 +24,8 @@ import {
   type ResolveStatusDetails,
   updateIssueStatus,
 } from "../../lib/api-client.js";
-import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { choiceParser } from "../../lib/completion-target.js";
-import { ContextError } from "../../lib/errors.js";
 import { formatIssueDetails, muted } from "../../lib/formatters/index.js";
 import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -179,16 +177,6 @@ export const resolveCommand = buildCommand({
     if (parsed?.kind === "static") {
       statusDetails = parsed.details;
     } else if (parsed?.kind === "commit") {
-      if (!org) {
-        // Sentry's InCommit validator looks up the repo by name within the
-        // issue's org — we can't resolve the commit without knowing the org.
-        throw new ContextError(
-          "Organization",
-          sentry`issue resolve <org>/<issue> --in @commit`,
-          [],
-          "--in @commit needs an organization context to look up the Sentry repo registry.",
-        );
-      }
       const resolved = await resolveCommitSpec(parsed.spec, org, cwd);
       statusDetails = { inCommit: resolved };
     }

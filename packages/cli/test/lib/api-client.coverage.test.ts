@@ -23,7 +23,7 @@ import {
   getCurrentUser,
   getDetailedTrace,
   getEvent,
-  getIssue,
+  findIssueInOrgs,
   getIssueByShortId,
   getIssueInOrg,
   getLatestEvent,
@@ -113,36 +113,60 @@ function linkHeader(cursor: string, hasResults: boolean): string {
 // =============================================================================
 
 describe("issues.ts", () => {
-  describe("getIssue", () => {
-    test("fetches issue by numeric ID via legacy endpoint", async () => {
+  describe("findIssueInOrgs", () => {
+    test("returns the issue from the org that has it, skipping 404s and 403s", async () => {
       const issue = mockIssue();
+      const requested: string[] = [];
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
-        expect(req.url).toContain("/api/0/issues/12345/");
-        return new Response(JSON.stringify(issue), {
-          status: 200,
+        const { pathname } = new URL(new Request(input!, init).url);
+        requested.push(pathname);
+        if (pathname.includes("/organizations/has-it/")) {
+          return new Response(JSON.stringify(issue), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const status = pathname.includes("/no-access/") ? 403 : 404;
+        return new Response(JSON.stringify({ detail: "nope" }), {
+          status,
           headers: { "Content-Type": "application/json" },
         });
       });
 
-      const result = await getIssue("12345");
-      expect(result.id).toBe("12345");
-      expect(result.title).toBe("Test Issue");
+      const result = await findIssueInOrgs(
+        ["other", "no-access", "has-it"],
+        "12345",
+      );
+      expect(result?.org).toBe("has-it");
+      expect(result?.issue.id).toBe("12345");
+      expect(requested.some((p) => p.startsWith("/api/0/issues/"))).toBe(false);
     });
 
-    test("passes only the collapse values the details endpoint reads", async () => {
-      const issue = mockIssue();
+    test("returns null when no org has the issue", async () => {
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(JSON.stringify({ detail: "Not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
+
+      expect(await findIssueInOrgs(["a", "b"], "12345")).toBeNull();
+    });
+
+    test("throws an unexpected error when no org has the issue", async () => {
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
-        const url = new URL(req.url);
-        expect(url.searchParams.getAll("collapse")).toEqual(["stats"]);
-        return new Response(JSON.stringify(issue), {
-          status: 200,
+        const { pathname } = new URL(new Request(input!, init).url);
+        const status = pathname.includes("/organizations/broken/") ? 500 : 404;
+        return new Response(JSON.stringify({ detail: "boom" }), {
+          status,
           headers: { "Content-Type": "application/json" },
         });
       });
 
-      await getIssue("12345", { collapse: ["stats", "lifetime"] });
+      await expect(
+        findIssueInOrgs(["missing", "broken"], "12345"),
+      ).rejects.toMatchObject({ status: 500 });
     });
   });
 
@@ -291,27 +315,7 @@ describe("issues.ts", () => {
   });
 
   describe("updateIssueStatus", () => {
-    test("sends PUT request with status body", async () => {
-      const issue = mockIssue({ status: "resolved" });
-      let capturedBody: unknown;
-
-      globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
-        capturedBody = await req.json();
-        expect(req.method).toBe("PUT");
-        expect(req.url).toContain("/api/0/issues/12345/");
-        return new Response(JSON.stringify(issue), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      });
-
-      const result = await updateIssueStatus("12345", "resolved");
-      expect(result.status).toBe("resolved");
-      expect(capturedBody).toEqual({ status: "resolved" });
-    });
-
-    test("sends PUT to the org-scoped endpoint when the org is known", async () => {
+    test("sends PUT to the org-scoped endpoint", async () => {
       const issue = mockIssue({ status: "ignored" });
       let capturedUrl = "";
       let capturedBody: unknown;
