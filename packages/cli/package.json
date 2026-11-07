@@ -129,7 +129,6 @@
     "fast-check": "^4.8.0",
     "fflate": "^0.8.3",
     "fossilize": "^0.10.1",
-    "fuzzysort": "^4.0.2",
     "hono": "catalog:",
     "http-cache-semantics": "^4.2.0",
     "ignore": "^7.0.5",
