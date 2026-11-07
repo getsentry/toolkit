@@ -6,7 +6,11 @@ import {
   getUrlLoginCommand,
   setAppIdentity,
 } from "../../src/lib/app-identity.js";
-import { AuthError } from "../../src/lib/errors.js";
+import {
+  AuthError,
+  ContextError,
+  ResolutionError,
+} from "../../src/lib/errors.js";
 import { useEnvSandbox } from "../helpers.js";
 
 useEnvSandbox(["npm_command"]);
@@ -64,5 +68,23 @@ describe("app identity", () => {
     expect(asInvocationCommand(command)).toBe(
       "npx -y @sentry/mcp-server cli fix",
     );
+  });
+
+  test("error usage lines name the running program under npx", () => {
+    process.env.npm_command = "exec";
+    const context = new ContextError("Organization", "sentry org list");
+    expect(context.command).toBe("npx -y sentry org list");
+    expect(context.message).toContain("npx -y sentry org list");
+
+    const resolution = new ResolutionError(
+      "Project 'web'",
+      "not found",
+      "sentry project view <org>/web",
+      ["sentry project list <org>/"],
+    );
+    expect(resolution.hint).toBe("npx -y sentry project view <org>/web");
+    expect(resolution.suggestions).toEqual([
+      "npx -y sentry project list <org>/",
+    ]);
   });
 });

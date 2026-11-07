@@ -14,6 +14,7 @@
 import type { SentryContext } from "../../context.js";
 import type { SpanSortValue } from "../../lib/api/traces.js";
 import { listSpans } from "../../lib/api-client.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import {
   type ParsedOrgProject,
   parseOrgProjectInput,
@@ -293,7 +294,9 @@ function traceNextPageHint(
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   return appendFlagHints(
-    `sentry span list ${org}/${project}/${traceId} -c next`,
+    asInvocationCommand(
+      `sentry span list ${org}/${project}/${traceId} -c next`,
+    ),
     flags,
   );
 }
@@ -306,7 +309,9 @@ function tracePrevPageHint(
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   return appendFlagHints(
-    `sentry span list ${org}/${project}/${traceId} -c prev`,
+    asInvocationCommand(
+      `sentry span list ${org}/${project}/${traceId} -c prev`,
+    ),
     flags,
   );
 }
@@ -317,7 +322,10 @@ function projectNextPageHint(
   project: string,
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
-  return appendFlagHints(`sentry span list ${org}/${project} -c next`, flags);
+  return appendFlagHints(
+    asInvocationCommand(`sentry span list ${org}/${project} -c next`),
+    flags,
+  );
 }
 
 /** Build the CLI hint for fetching the previous page in project mode. */
@@ -326,7 +334,10 @@ function projectPrevPageHint(
   project: string,
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
-  return appendFlagHints(`sentry span list ${org}/${project} -c prev`, flags);
+  return appendFlagHints(
+    asInvocationCommand(`sentry span list ${org}/${project} -c prev`),
+    flags,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -493,7 +504,7 @@ async function handleTraceMode(
     const countText = `Showing ${flatSpans.length} span${flatSpans.length === 1 ? "" : "s"}.`;
     hint = nav
       ? `${countText} ${nav}`
-      : `${countText} Use 'sentry span view ${traceId} <span-id>' to view span details.`;
+      : `${countText} Use '${asInvocationCommand(`sentry span view ${traceId} <span-id>`)}' to view span details.`;
   }
 
   return {
@@ -580,7 +591,7 @@ async function handleProjectMode(
     const countText = `Showing ${flatSpans.length} span${flatSpans.length === 1 ? "" : "s"}.`;
     hint = nav
       ? `${countText} ${nav}`
-      : `${countText} Use 'sentry span view <trace-id> <span-id>' to view span details.`;
+      : `${countText} Use '${asInvocationCommand("sentry span view <trace-id> <span-id>")}' to view span details.`;
   }
 
   return {

@@ -213,19 +213,16 @@ const ISSUE_KIND: IdKind & {
 
 /** The kinds of ID commands take. Commands use these instead of their own. */
 export const ID_KINDS = {
-  // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- searchable() builds the hint.
   trace: hexKind("Trace ID", "sentry trace list", (url) => url.traceId),
   // `event list` searches an issue's events, so there is no search to hint
   event: hexKind("Event ID", null, (url) => url.eventId),
   // Replays are looked up in an org, so a replay URL needs one
   replay: hexKind(
     "Replay ID",
-    // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- searchable() builds the hint.
     "sentry replay list",
     (url) => (url.org ? url.replayId : undefined),
     "https://sentry.io/organizations/{org}/explore/replays/{replayId}/",
   ),
-  // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- searchable() builds the hint.
   log: hexKind("Log ID", "sentry log list", () => undefined),
   span: searchable(
     {
@@ -235,7 +232,6 @@ export const ID_KINDS = {
       validate: validateSpanId,
       fromUrl: () => undefined,
     },
-    // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- searchable() builds the hint.
     "sentry span list",
   ),
   // A numeric ID, or a title: `Latency/p95`, `Top 10`, or unquoted words
@@ -400,7 +396,7 @@ export function parseIdArguments(
       } else if (own !== target && token.target !== target) {
         throw new ValidationError(
           `${kind.label}s reference different projects ('${target}' and '${own}'). ` +
-            `Pass IDs from one project per call: ${usageHint}`,
+            `Pass IDs from one project per call: ${asInvocationCommand(usageHint)}`,
           "positional",
         );
       }
@@ -434,7 +430,7 @@ export function parseIdArguments(
     chosen = first ? [first] : [];
     const extra = typed.filter((token) => token !== first);
     warnings.push(
-      `Extra arguments ignored: ${extra.map((token) => token.text).join(" ")}. Expected: ${usageHint}`,
+      `Extra arguments ignored: ${extra.map((token) => token.text).join(" ")}. Expected: ${asInvocationCommand(usageHint)}`,
     );
   }
 
@@ -547,7 +543,7 @@ function pathTargetArg(
   }
   if (slash === 0 || slash === prefix.length - 1) {
     throw new ValidationError(
-      `Invalid format: "${text}" needs an organization and a project before the ID.\n\nUsage: ${usageHint}`,
+      `Invalid format: "${text}" needs an organization and a project before the ID.\n\nUsage: ${asInvocationCommand(usageHint)}`,
       "positional",
     );
   }

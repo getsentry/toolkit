@@ -15,6 +15,7 @@ import type {
   TraceItemAttributeDataset,
   TraceItemAttributeDefinition,
 } from "../../lib/api/traces.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import {
   ATTRIBUTE_TYPES,
   parseAttributeFilter,
@@ -130,7 +131,7 @@ export function buildUsageTip(
   const { key } = example;
   if (dataset === "tracemetrics") {
     const target = project ? `${org}/${project}` : `${org}/`;
-    return `Tip: Group metrics with: sentry explore ${target} --dataset metrics -m <metric> -F ${shellQuote(key)}`;
+    return `Tip: Group metrics with: ${asInvocationCommand(`sentry explore ${target} --dataset metrics -m <metric> -F ${shellQuote(key)}`)}`;
   }
   const target = project ? `${org}/${project}` : `${org}/<project>`;
   const command = dataset === "logs" ? "log list" : "span list";
@@ -174,7 +175,11 @@ function pageHint(
   filter: string | undefined,
 ): string {
   const filterArg = filter ? ` ${shellQuote(filter)}` : "";
-  const parts = [`sentry attribute list ${scope}${filterArg} -c ${direction}`];
+  const parts = [
+    asInvocationCommand(
+      `sentry attribute list ${scope}${filterArg} -c ${direction}`,
+    ),
+  ];
   if (flags.dataset !== DEFAULT_DATASET) {
     parts.push(`--dataset ${datasetDisplayName(flags.dataset)}`);
   }

@@ -10,6 +10,7 @@
 import { inlineCode } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { deleteIntegration, getIntegration } from "../../lib/api-client.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import { ApiError, ValidationError } from "../../lib/errors.js";
 import { renderMarkdown } from "../../lib/formatters/markdown.js";
@@ -114,7 +115,7 @@ export function parseIntegrationArguments(
   // Not an ignored extra: deleting one of several IDs would surprise
   if (ids.length > 1) {
     throw new ValidationError(
-      `Remove one integration at a time, not ${ids.length}: ${USAGE_HINT}`,
+      `Remove one integration at a time, not ${ids.length}: ${asInvocationCommand(USAGE_HINT)}`,
       "integration-id",
     );
   }

@@ -156,10 +156,6 @@ Top-level layout:
   bundle (built by `packages/mcp-server/script/bundle.ts`). It must not import anything that
   only the CLI needs; the bundle script fails on commands, markdown rendering,
   agent skills, completions, terminal images, and the SQLite WASM fallback.
-  Hints in code the bundle can run name the running program: build them with
-  `asInvocationCommand("sentry …")` from `src/lib/app-identity.ts`, inside the
-  function that builds the hint. Lint (`sentry-cli/no-hardcoded-sentry-command`)
-  rejects a bare `sentry …` command outside command help text.
 - **`src/commands/`** — one directory per command group (`agent-conversation`,
   `alert`, `auth`, `build`, `cli`, `code-mappings`, `dart-symbol-map`,
   `dashboard`, `debug-files`, `docs`, `dsn`, `event`, `feedback`, `integration`, `issue`, `local`,
@@ -830,6 +826,7 @@ All command docs and skill files are generated via `pnpm run generate:docs`. Thi
 
 - **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
+- **Hints name the running program**: the same code runs as `sentry`, `npx sentry`, and `sentry-mcp`, so build a hint's command with `asInvocationCommand("sentry …")` from `src/lib/app-identity.ts`, inside the function that builds the hint. A module-level usage line (`USAGE_HINT`, `commandPrefix`) is fine when the code that prints it wraps it, as `ContextError`, `ResolutionError`, `buildValidationMessage`, and `org-list` do. Command help (`docs`, `fullDescription`, `brief`, `examples`) stays `sentry …`. Lint (`sentry-cli/no-hardcoded-sentry-command`) enforces this.
 - **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write examples in `fullDescription` (an `Examples:` block, or indented `sentry …` lines under any label) or an Examples heading in a fragment; the `sentry-cli/no-examples-in-full-description` lint rule and `pnpm run check:fragments` reject both.
 - **Target syntax belongs to the positional**: describe accepted target forms in the positional `brief` (use `ORG_ALL_TARGET_BRIEF` or `PROJECT_TARGET_BRIEF` from `src/lib/list-command.ts` for `[<org>/][<project>]` targets), not in a `Target patterns:` block. The brief renders in `--help`, the generated docs, and the skill references.
 - Use fragments in `apps/cli-docs/src/fragments/commands/` only for prose the command metadata can't carry: guides, permissions, caveats.

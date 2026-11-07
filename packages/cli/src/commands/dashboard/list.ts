@@ -13,6 +13,7 @@ import {
   API_MAX_PER_PAGE,
   listDashboardsPaginated,
 } from "../../lib/api-client.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { openInBrowser } from "../../lib/browser.js";
 import {
   advancePaginationState,
@@ -352,8 +353,12 @@ function buildHint(
   const navRaw = paginationHint({
     hasPrev: !!result.hasPrev,
     hasMore: !!result.hasMore,
-    prevHint: `sentry dashboard list ${orgSlug}/${filterArg} -c prev`,
-    nextHint: `sentry dashboard list ${orgSlug}/${filterArg} -c next`,
+    prevHint: asInvocationCommand(
+      `sentry dashboard list ${orgSlug}/${filterArg} -c prev`,
+    ),
+    nextHint: asInvocationCommand(
+      `sentry dashboard list ${orgSlug}/${filterArg} -c next`,
+    ),
   });
   const nav = navRaw ? ` ${navRaw}` : "";
   const url = buildDashboardsListUrl(orgSlug);

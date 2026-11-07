@@ -3,6 +3,7 @@
  */
 
 import { listFeedback, updateIssueStatus } from "../../lib/api-client.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import type { IssueSelector } from "../../lib/arg-parsing.js";
 import {
   ApiError,
@@ -48,7 +49,7 @@ async function resolveFeedbackSelector(
   if (!org) {
     throw new ContextError(
       "Organization",
-      `sentry feedback ${command} <org>/@latest`,
+      asInvocationCommand(`sentry feedback ${command} <org>/@latest`),
     );
   }
 
@@ -61,7 +62,7 @@ async function resolveFeedbackSelector(
     throw new ResolutionError(
       "Selector '@latest'",
       "found no unresolved User Feedback",
-      `sentry feedback list ${org}/ --status all`,
+      asInvocationCommand(`sentry feedback list ${org}/ --status all`),
       ["The @latest selector only matches unresolved Feedback."],
     );
   }
@@ -102,15 +103,17 @@ export async function resolveFeedback(
       issueArg: feedbackArg,
       cwd,
       command,
-      commandBase: "sentry feedback",
+      commandBase: asInvocationCommand("sentry feedback"),
     });
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       throw new ResolutionError(
         `Feedback '${text}'`,
         "not found",
-        buildCommandHint(command, text, "sentry feedback"),
-        ["List available Feedback: sentry feedback list"],
+        buildCommandHint(command, text, asInvocationCommand("sentry feedback")),
+        [
+          `List available Feedback: ${asInvocationCommand("sentry feedback list")}`,
+        ],
       );
     }
     throw error;
@@ -121,8 +124,12 @@ export async function resolveFeedback(
     throw new ResolutionError(
       `Issue '${issue.shortId}'`,
       "is not User Feedback",
-      `sentry issue view ${org ? `${org}/` : ""}${issue.shortId}`,
-      ["Use a Feedback ID from: sentry feedback list"],
+      asInvocationCommand(
+        `sentry issue view ${org ? `${org}/` : ""}${issue.shortId}`,
+      ),
+      [
+        `Use a Feedback ID from: ${asInvocationCommand("sentry feedback list")}`,
+      ],
     );
   }
 

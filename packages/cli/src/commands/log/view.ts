@@ -10,6 +10,7 @@ import pLimit from "p-limit";
 
 import type { SentryContext } from "../../context.js";
 import { getLogItemDetail, getLogs } from "../../lib/api-client.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import {
   looksLikeIssueShortId,
   type OrgProjectInput,
@@ -111,7 +112,7 @@ export function parsePositionalArgs(args: readonly string[]): {
     ...(args.length > 1 &&
       first &&
       looksLikeIssueShortId(first) && {
-        suggestion: `Did you mean: sentry issue view ${first}`,
+        suggestion: `Did you mean: ${asInvocationCommand(`sentry issue view ${first}`)}`,
       }),
   };
 }
@@ -139,7 +140,9 @@ async function validateAndRecoverLogId(
     });
     return handleRecoveryResult(result, err, {
       entityType: "log",
-      canonicalCommand: `sentry log view ${target.org}/${target.project}/<id>`,
+      canonicalCommand: asInvocationCommand(
+        `sentry log view ${target.org}/${target.project}/<id>`,
+      ),
       logTag: "log.view",
     });
   }
@@ -178,7 +181,9 @@ async function resolveTarget(
       const result = await resolveProjectBoundSlug(
         parsed.projectSlug,
         USAGE_HINT,
-        `sentry log view <org>/${parsed.projectSlug} ${rawLogIds.join(" ")}`,
+        asInvocationCommand(
+          `sentry log view <org>/${parsed.projectSlug} ${rawLogIds.join(" ")}`,
+        ),
         parsed.originalSlug,
       );
       if (
@@ -379,7 +384,7 @@ function throwNotFoundError(
     throw new ResolutionError(
       `Log '${id}'`,
       `not found in ${org}/${project}`,
-      `sentry log view ${org}/${project}/${id}`,
+      asInvocationCommand(`sentry log view ${org}/${project}/${id}`),
       suggestions,
     );
   }

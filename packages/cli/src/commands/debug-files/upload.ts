@@ -36,6 +36,7 @@ import {
   type DebugFileUploadResult,
   uploadDebugFiles,
 } from "../../lib/api/debug-files.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
 import {
   createIl2cppLineMapping,
@@ -392,7 +393,7 @@ function* doDryRun(
     hint:
       oversizedCount > 0
         ? `${oversizedCount} file(s) would be skipped for exceeding the maximum file size.`
-        : `No debug information files found. Try: ${USAGE_HINT}`,
+        : `No debug information files found. Try: ${asInvocationCommand(USAGE_HINT)}`,
   };
 }
 
@@ -431,7 +432,9 @@ function* doNothingToUpload(
     };
   }
   log.warn("No debug information files found.");
-  return { hint: `No debug information files found. Try: ${USAGE_HINT}` };
+  return {
+    hint: `No debug information files found. Try: ${asInvocationCommand(USAGE_HINT)}`,
+  };
 }
 
 /**

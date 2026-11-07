@@ -21,6 +21,7 @@ import {
   triggerRootCauseAnalysis,
   tryGetIssueByShortId,
 } from "../../lib/api-client.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import type { IssueSelector } from "../../lib/arg-parsing.js";
 import {
   clearCachedIssueOrg,
@@ -130,7 +131,7 @@ export async function mapIssueArgsConcurrently<T>(
 export function buildCommandHint(
   command: string,
   issueId: string,
-  base = "sentry issue",
+  base = asInvocationCommand("sentry issue"),
   trailingArgs: readonly string[] = [],
 ): string {
   return appendCommandArguments(
@@ -625,7 +626,9 @@ export async function findSelectorIssue(
     throw new ResolutionError(
       `Selector '${selector}'`,
       "no unresolved issues found",
-      `sentry issue list ${org}/${project ?? ""} -q "is:resolved"`,
+      asInvocationCommand(
+        `sentry issue list ${org}/${project ?? ""} -q "is:resolved"`,
+      ),
       [
         `The ${SELECTOR_LABELS[selector]} issue selector only matches unresolved issues.`,
       ],
@@ -670,7 +673,9 @@ async function resolveIssueSearch(
     return { org, issue };
   }
 
-  const listCommand = `sentry issue list ${org}/ --query ${shellQuote(query)}`;
+  const listCommand = asInvocationCommand(
+    `sentry issue list ${org}/ --query ${shellQuote(query)}`,
+  );
   if (!issue) {
     throw new ResolutionError(
       `Search ${shellQuote(query)}`,
@@ -925,7 +930,8 @@ export async function resolveIssue(
   options: ResolveIssueOptions,
 ): Promise<ResolvedIssueResult> {
   const { cwd, command, commandBase, trailingArgs = [] } = options;
-  const effectiveCommandBase = commandBase ?? "sentry issue";
+  const effectiveCommandBase =
+    commandBase ?? asInvocationCommand("sentry issue");
   const { text, parsed, baseUrl } = issueArgumentOf(options.issueArg);
   if (baseUrl) {
     applySentryUrlContext(baseUrl);
@@ -1216,7 +1222,7 @@ export async function pollAutofixState(
     timeoutHint ??
     "The analysis may still complete in the background.\n" +
       `  View in Sentry: ${issueUrl}\n` +
-      `  Or retry:       sentry issue explain ${issueId}`;
+      `  Or retry:       ${asInvocationCommand(`sentry issue explain ${issueId}`)}`;
 
   return await poll<AutofixState>({
     fetchState: () => getAutofixState(orgSlug, issueId),

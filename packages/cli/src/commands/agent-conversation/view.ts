@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { getConversationSpans } from "../../lib/api-client.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import {
@@ -91,7 +92,7 @@ export function parseConversationArguments(
   }
   if (ids.length > 1) {
     throw new ValidationError(
-      `View one conversation at a time: ${USAGE_HINT}`,
+      `View one conversation at a time: ${asInvocationCommand(USAGE_HINT)}`,
       "conversation-id",
     );
   }

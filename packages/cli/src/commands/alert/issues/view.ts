@@ -1,4 +1,5 @@
 import type { SentryContext } from "../../../context.js";
+import { asInvocationCommand } from "../../../lib/app-identity.js";
 import { openInBrowser } from "../../../lib/browser.js";
 import { buildCommand } from "../../../lib/command.js";
 import { ContextError } from "../../../lib/errors.js";
@@ -106,7 +107,9 @@ export const viewCommand = buildCommand({
 
     const { targets } = await resolveProjectBoundTargets(parsed, {
       cwd,
-      usageHint: "sentry alert issues view <org>/<project>/<rule-id-or-name>",
+      usageHint: asInvocationCommand(
+        "sentry alert issues view <org>/<project>/<rule-id-or-name>",
+      ),
     });
     if (targets.length === 0) {
       throw new ContextError("Organization and project", USAGE_HINT);

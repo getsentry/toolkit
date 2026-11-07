@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { getProject, listConversations } from "../../lib/api-client.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import { parseText, textParser } from "../../lib/completion-target.js";
 import {
@@ -302,8 +303,12 @@ export const listCommand = buildListCommand("agent-conversation", {
       hint: paginationHint({
         hasMore,
         hasPrev: !!hasPrev,
-        nextHint: `sentry agent-conversation list ${scope} -c next${flagSuffix}`,
-        prevHint: `sentry agent-conversation list ${scope} -c prev${flagSuffix}`,
+        nextHint: asInvocationCommand(
+          `sentry agent-conversation list ${scope} -c next${flagSuffix}`,
+        ),
+        prevHint: asInvocationCommand(
+          `sentry agent-conversation list ${scope} -c prev${flagSuffix}`,
+        ),
       }),
     };
   },

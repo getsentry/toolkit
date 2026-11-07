@@ -185,8 +185,6 @@ const URL_FRAGMENT_PREFIXES = ["span-", "txn-", "event-", "trace-"] as const;
 const OVER_NESTED_MIN_SEGMENTS = 4;
 
 /** Per-command slug redirect hints (used by the `looks-like-slug` branch). */
-// buildSlugHint() passes each command through asInvocationCommand().
-/* oxlint-disable sentry-cli/no-hardcoded-sentry-command */
 const SLUG_REDIRECT_COMMAND: Record<HexEntityType, string> = {
   event: "sentry issue list",
   trace: "sentry trace list",
@@ -194,7 +192,6 @@ const SLUG_REDIRECT_COMMAND: Record<HexEntityType, string> = {
   // Spans are trace-scoped — a slug-only input can't map to a list command.
   span: "",
 };
-/* oxlint-enable sentry-cli/no-hardcoded-sentry-command */
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for tests)

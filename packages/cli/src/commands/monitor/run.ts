@@ -24,6 +24,7 @@ import {
   uuid4,
 } from "@sentry/core";
 import type { SentryContext } from "../../context.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
 import {
   buildCheckIn,
@@ -283,13 +284,13 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
 
     if (!monitorSlug) {
       throw new ValidationError(
-        `No monitor slug provided. Usage: ${USAGE_HINT}`,
+        `No monitor slug provided. Usage: ${asInvocationCommand(USAGE_HINT)}`,
         "monitor-slug",
       );
     }
     if (command.length === 0) {
       throw new ValidationError(
-        `No command provided. Usage: ${USAGE_HINT}`,
+        `No command provided. Usage: ${asInvocationCommand(USAGE_HINT)}`,
         "command",
       );
     }

@@ -6,6 +6,7 @@
  * slug separators. This module provides version-aware parsing.
  */
 
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
@@ -55,7 +56,7 @@ export function parseReleaseArg(
 
   if (!arg) {
     throw new ValidationError(
-      `Release version is required.\n\n  Usage: ${usageHint}`,
+      `Release version is required.\n\n  Usage: ${asInvocationCommand(usageHint)}`,
       "version",
     );
   }

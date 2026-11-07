@@ -11,6 +11,7 @@ import {
   listReplays,
   type ReplaySortValue,
 } from "../../lib/api-client.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import {
   choiceParser,
@@ -200,7 +201,9 @@ function nextPageHint(
   flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">,
 ): string {
   return appendReplayFlags(
-    `sentry replay list ${formatScope(org, project)} -c next`,
+    asInvocationCommand(
+      `sentry replay list ${formatScope(org, project)} -c next`,
+    ),
     flags,
   );
 }
@@ -211,7 +214,9 @@ function prevPageHint(
   flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">,
 ): string {
   return appendReplayFlags(
-    `sentry replay list ${formatScope(org, project)} -c prev`,
+    asInvocationCommand(
+      `sentry replay list ${formatScope(org, project)} -c prev`,
+    ),
     flags,
   );
 }
@@ -426,7 +431,7 @@ export const listCommand = buildListCommand("replay", {
       const countText = `Showing ${replays.length} replay${replays.length === 1 ? "" : "s"}.`;
       const firstReplay = replays[0];
       const replayHint = firstReplay
-        ? `Use 'sentry replay view ${resolved.org}/${firstReplay.id}' for details.`
+        ? `Use '${asInvocationCommand(`sentry replay view ${resolved.org}/${firstReplay.id}`)}' for details.`
         : undefined;
       hint = nav
         ? `${countText} ${nav}`

@@ -11,6 +11,7 @@ import {
   resolveOrgDisplayName,
   tryGetPrimaryDsn,
 } from "../../lib/api-client.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import {
   type ParsedOrgProject,
   ProjectSpecificationType,
@@ -75,9 +76,13 @@ function buildContextError(skippedSelfHosted?: number): ContextError {
  */
 async function handleWebView(resolvedTargets: ResolvedTarget[]): Promise<void> {
   if (resolvedTargets.length > 1) {
-    throw new ContextError("Single project", `${USAGE_HINT} -w`, [
-      `Found ${resolvedTargets.length} projects — specify which project to open in browser`,
-    ]);
+    throw new ContextError(
+      "Single project",
+      `${asInvocationCommand(USAGE_HINT)} -w`,
+      [
+        `Found ${resolvedTargets.length} projects — specify which project to open in browser`,
+      ],
+    );
   }
 
   const target = resolvedTargets[0];
@@ -292,7 +297,7 @@ async function resolveViewTargets(
       const resolved = await resolveProjectBoundSlug(
         parsed.projectSlug,
         USAGE_HINT,
-        `sentry project view <org>/${parsed.projectSlug}`,
+        asInvocationCommand(`sentry project view <org>/${parsed.projectSlug}`),
         parsed.originalSlug,
       );
       return {
@@ -311,7 +316,7 @@ async function resolveViewTargets(
     case ProjectSpecificationType.OrgAll:
       throw new ContextError(
         "Specific project",
-        `sentry project view ${parsed.org}/<project>`,
+        asInvocationCommand(`sentry project view ${parsed.org}/<project>`),
         ["Specify the full org/project target, not just the organization"],
       );
 

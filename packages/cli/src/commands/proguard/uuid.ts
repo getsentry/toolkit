@@ -8,6 +8,7 @@
 
 import { readFile } from "node:fs/promises";
 import type { SentryContext } from "../../context.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseFilePath } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
@@ -70,7 +71,7 @@ export const uuidCommand = buildCommand({
     if (!path?.trim()) {
       throw new ContextError(
         "Mapping file path",
-        "sentry proguard uuid <path>",
+        asInvocationCommand("sentry proguard uuid <path>"),
         [],
       );
     }

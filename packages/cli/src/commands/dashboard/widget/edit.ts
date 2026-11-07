@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
+import { asInvocationCommand } from "../../../lib/app-identity.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
   aggregateShorthandParser,
@@ -359,7 +360,7 @@ export const editCommand = buildCommand({
       throw new ValidationError(
         "Specify --index or --title to identify the widget to edit.\n\n" +
           "Example:\n" +
-          "  sentry dashboard widget edit <dashboard> --title 'My Widget' --display bar",
+          `  ${asInvocationCommand("sentry dashboard widget edit <dashboard> --title 'My Widget' --display bar")}`,
         "index",
       );
     }

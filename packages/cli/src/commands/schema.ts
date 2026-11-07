@@ -20,6 +20,7 @@ import {
   type SchemaEndpoint,
   searchEndpoints,
 } from "../lib/api-schema.js";
+import { asInvocationCommand } from "../lib/app-identity.js";
 import { buildCommand } from "../lib/command.js";
 import { choiceParser, parseText } from "../lib/completion-target.js";
 import { OutputError, ResolutionError } from "../lib/errors.js";
@@ -231,13 +232,22 @@ function jsonTransformSchema(data: SchemaResult, fields?: string[]): unknown {
 function noResourceMatchError(resource: string): ResolutionError {
   const names = getResourceSummaries().map((r) => r.name);
   const [closest] = fuzzyMatch(resource, names, { maxResults: 1 });
-  const browseHint = "sentry schema";
-  const searchHint = `sentry schema --search ${resource}    Search endpoints by keyword`;
+  const browseHint = asInvocationCommand("sentry schema");
+  const searchHint = asInvocationCommand(
+    `sentry schema --search ${resource}    Search endpoints by keyword`,
+  );
   // Lead with the closest resource name when a typo has an obvious fix
   // (e.g. "committers" → "commits"); otherwise point at the full browse.
-  const primaryHint = closest ? `sentry schema ${closest}` : browseHint;
+  const primaryHint = closest
+    ? asInvocationCommand(`sentry schema ${closest}`)
+    : browseHint;
   const suggestions = closest
-    ? ["sentry schema                    Browse all resources", searchHint]
+    ? [
+        asInvocationCommand(
+          "sentry schema                    Browse all resources",
+        ),
+        searchHint,
+      ]
     : [searchHint];
   return new ResolutionError(
     `Resource "${resource}"`,
@@ -290,8 +300,10 @@ function pathNotFoundError(
       `Endpoint '${label}'`,
       "does not exist in the schema",
       example
-        ? `sentry schema "${example.method} ${example.path}"`
-        : "sentry schema",
+        ? asInvocationCommand(
+            `sentry schema "${example.method} ${example.path}"`,
+          )
+        : asInvocationCommand("sentry schema"),
       [`Available methods at this path: ${methods}`],
     );
   }
@@ -299,16 +311,22 @@ function pathNotFoundError(
   const segment = lastConcreteSegment(query.path);
   const resourceExists =
     segment !== undefined && getEndpointsByResource(segment).length > 0;
-  let hint = "sentry schema";
+  let hint = asInvocationCommand("sentry schema");
   if (resourceExists) {
-    hint = `sentry schema ${segment}`;
+    hint = asInvocationCommand(`sentry schema ${segment}`);
   } else if (segment) {
-    hint = `sentry schema --search ${segment}`;
+    hint = asInvocationCommand(`sentry schema --search ${segment}`);
   }
-  const suggestions = ["sentry schema                    Browse all resources"];
+  const suggestions = [
+    asInvocationCommand(
+      "sentry schema                    Browse all resources",
+    ),
+  ];
   if (resourceExists && segment) {
     suggestions.unshift(
-      `sentry schema --search ${segment}    Search endpoints by keyword`,
+      asInvocationCommand(
+        `sentry schema --search ${segment}    Search endpoints by keyword`,
+      ),
     );
   }
   throw new ResolutionError(
@@ -364,8 +382,12 @@ function resolveGlobQuery(resource: string): SchemaResult {
     throw new ResolutionError(
       `Pattern "${resource}"`,
       "matched no resources",
-      "sentry schema",
-      ["sentry schema --all    List every endpoint in a flat table"],
+      asInvocationCommand("sentry schema"),
+      [
+        asInvocationCommand(
+          "sentry schema --all    List every endpoint in a flat table",
+        ),
+      ],
     );
   }
   const endpoints = matched.flatMap((r) => getEndpointsByResource(r.name));

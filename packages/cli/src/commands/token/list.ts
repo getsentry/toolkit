@@ -8,6 +8,7 @@ import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { OrgAuthTokenSchema } from "../../generated/output-schemas/token.js";
 import { listOrgAuthTokens } from "../../lib/api-client.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { selectAccountForOrg } from "../../lib/db/auth.js";
 import { colorTag } from "../../lib/formatters/markdown.js";
@@ -107,7 +108,7 @@ export const listCommand = buildCommand({
     yield new CommandOutput(tokens);
     if (tokens.length === 0) {
       return {
-        hint: `Create one with: sentry token create ${resolved.org}/<name>`,
+        hint: `Create one with: ${asInvocationCommand(`sentry token create ${resolved.org}/<name>`)}`,
       };
     }
   },

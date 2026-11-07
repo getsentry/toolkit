@@ -6,6 +6,7 @@
  */
 
 import type { SentryContext } from "../../context.js";
+import { asInvocationCommand } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceListParser,
@@ -196,7 +197,7 @@ export const injectCommand = buildCommand({
 
     if (modified > 0) {
       return {
-        hint: "Run `sentry sourcemap upload` to upload the injected files to Sentry",
+        hint: `Run \`${asInvocationCommand("sentry sourcemap upload")}\` to upload the injected files to Sentry`,
       };
     }
     return {};

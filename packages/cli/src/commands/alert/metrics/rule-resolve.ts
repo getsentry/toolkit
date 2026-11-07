@@ -10,6 +10,7 @@ import {
   listMetricAlertsPaginated,
   type MetricAlertRule,
 } from "../../../lib/api-client.js";
+import { asInvocationCommand } from "../../../lib/app-identity.js";
 import { ORG_TARGET } from "../../../lib/completion-target.js";
 import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
@@ -38,7 +39,7 @@ export function parseMetricRuleArg(
   const trimmed = arg.trim();
   if (!trimmed) {
     throw new ValidationError(
-      `Rule id or name is required.\nUse: ${usageHint}`,
+      `Rule id or name is required.\nUse: ${asInvocationCommand(usageHint)}`,
       "rule",
     );
   }
@@ -50,7 +51,7 @@ export function parseMetricRuleArg(
   const slashCount = countChar(trimmed, "/");
   if (slashCount > 1) {
     throw new ValidationError(
-      `Metric alerts are org-scoped — use '<org>/<rule-id-or-name>', not '<org>/<project>/<rule>'.\nUse: ${usageHint}`,
+      `Metric alerts are org-scoped — use '<org>/<rule-id-or-name>', not '<org>/<project>/<rule>'.\nUse: ${asInvocationCommand(usageHint)}`,
       "rule",
     );
   }
@@ -60,7 +61,7 @@ export function parseMetricRuleArg(
   const ref = trimmed.slice(lastSlash + 1).trim();
   if (!ref) {
     throw new ValidationError(
-      `Invalid rule reference '${arg}' (missing id or name after org).\nUse: ${usageHint}`,
+      `Invalid rule reference '${arg}' (missing id or name after org).\nUse: ${asInvocationCommand(usageHint)}`,
       "rule",
     );
   }
@@ -129,7 +130,7 @@ export async function resolveMetricAlertRule(
     if (hits.length > 1) {
       throw new ValidationError(
         `Alert rule ID '${ref}' matched multiple organizations.\n` +
-          "Use an explicit target: sentry alert metrics <command> <org>/<rule-id>",
+          `Use an explicit target: ${asInvocationCommand("sentry alert metrics <command> <org>/<rule-id>")}`,
       );
     }
     throw new ResolutionError(
@@ -163,7 +164,7 @@ export async function resolveMetricAlertRule(
   if (hits.length > 1) {
     throw new ValidationError(
       `Alert rule name '${ref}' matched multiple organizations.\n` +
-        "Use an explicit target: sentry alert metrics <command> <org>/<rule-id-or-name>",
+        `Use an explicit target: ${asInvocationCommand("sentry alert metrics <command> <org>/<rule-id-or-name>")}`,
     );
   }
 

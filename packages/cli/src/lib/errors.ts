@@ -497,10 +497,12 @@ export class ContextError extends CliError {
     // When alternatives is omitted, auto-detection was tried and failed
     const isAutoDetect = alternatives === undefined;
     const resolvedAlternatives = alternatives ?? defaultContextAlternatives();
+    // Commands hold usage lines written as `sentry …`
+    const usage = asInvocationCommand(command);
 
     // Include full formatted message so it's shown even when caught by external handlers
     super(
-      buildContextMessage(resource, command, resolvedAlternatives, {
+      buildContextMessage(resource, usage, resolvedAlternatives, {
         note,
         isAutoDetect,
       }),
@@ -508,7 +510,7 @@ export class ContextError extends CliError {
     );
     this.name = "ContextError";
     this.resource = resource;
-    this.command = command;
+    this.command = usage;
     this.alternatives = resolvedAlternatives;
     this.note = note;
 
@@ -563,15 +565,18 @@ export class ResolutionError extends CliError {
     hint: string,
     suggestions: string[] = [],
   ) {
+    // The hint and suggestions are often usage lines written as `sentry …`
+    const usage = asInvocationCommand(hint);
+    const commands = suggestions.map(asInvocationCommand);
     super(
-      buildResolutionMessage(resource, headline, hint, suggestions),
+      buildResolutionMessage(resource, headline, usage, commands),
       EXIT.RESOLUTION,
     );
     this.name = "ResolutionError";
     this.resource = resource;
     this.headline = headline;
-    this.hint = hint;
-    this.suggestions = suggestions;
+    this.hint = usage;
+    this.suggestions = commands;
   }
 
   override format(): string {
@@ -600,7 +605,7 @@ export function buildValidationMessage(
   if (examples.length > 0) {
     lines.push("", "Try:");
     for (const example of examples) {
-      lines.push(`  ${example}`);
+      lines.push(`  ${asInvocationCommand(example)}`);
     }
   }
   if (note) {

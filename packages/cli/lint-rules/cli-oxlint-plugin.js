@@ -361,13 +361,8 @@ function untaggedParser(value) {
 /** A `sentry <command>` hint: the CLI binary name, then a subcommand. */
 const SENTRY_COMMAND_RE = /(?:^|[\s`'"(])sentry [a-z]/;
 
-/**
- * Files that `@sentry/mcp-server` can run: all of `src/` but the commands it
- * does not ship and `app.ts`. Keep in step with `FORBIDDEN_INPUTS` in
- * packages/mcp-server/script/bundle.ts.
- */
-const CLI_ONLY_SOURCE_RE =
-  /\/src\/(?:app\.ts$|commands\/(?!auth\/|cli\/(?:defaults|fix)\.ts$|help\.ts$|mcp\.ts$))/;
+/** A whole `sentry <command>`, such as a usage line or a command prefix. */
+const WHOLE_SENTRY_COMMAND_RE = /^sentry [a-z]/;
 
 /** Calls that turn a `sentry …` command into the running program's command. */
 const INVOCATION_HELPERS = new Set([
@@ -375,8 +370,13 @@ const INVOCATION_HELPERS = new Set([
   "asRunningAppCommand",
 ]);
 
-/** Properties whose text is CLI help, rendered for the `sentry` binary. */
-const HELP_TEXT_KEYS = new Set(["docs", "fullDescription"]);
+/** Properties whose text is command help, written for the `sentry` binary. */
+const HELP_TEXT_KEYS = new Set([
+  "docs",
+  "fullDescription",
+  "brief",
+  "examples",
+]);
 
 /** Whether `node` sits inside a function body. */
 function hasFunctionAncestor(node) {
@@ -398,6 +398,11 @@ function isInvocationSafe(node) {
     if (
       current.type === "Property" &&
       HELP_TEXT_KEYS.has(current.key?.name ?? current.key?.value)
+    )
+      return true;
+    if (
+      current.type === "VariableDeclarator" &&
+      HELP_TEXT_KEYS.has(current.id?.name)
     )
       return true;
   }
@@ -849,12 +854,16 @@ const rules = {
     },
   ),
   "no-hardcoded-sentry-command": rule(
-    "Hints in code that @sentry/mcp-server runs must name the running program: wrap the `sentry …` command in asInvocationCommand() from lib/app-identity.js.",
+    "Hints must name the program that is running (`npx sentry`, `sentry-mcp`, ...): wrap the `sentry …` command in asInvocationCommand() from lib/app-identity.js.",
     (_context, file, report) => {
-      if (!file.includes("/src/") || CLI_ONLY_SOURCE_RE.test(file)) return {};
+      if (!file.includes("/src/")) return {};
       const check = (node, text) => {
-        if (SENTRY_COMMAND_RE.test(text) && !isInvocationSafe(node))
-          report(node);
+        if (!SENTRY_COMMAND_RE.test(text) || isInvocationSafe(node)) return;
+        // A module-level constant that holds a whole command is data: the
+        // code that prints it wraps it, as ContextError and org-list do.
+        if (WHOLE_SENTRY_COMMAND_RE.test(text) && !hasFunctionAncestor(node))
+          return;
+        report(node);
       };
       return {
         // The running program is known only once an entry point has started,

@@ -546,8 +546,6 @@ tester.run(
   },
 );
 
-const authCommand = "/repo/packages/cli/src/commands/auth/example.ts";
-
 tester.run(
   "no-hardcoded-sentry-command",
   plugin.rules["no-hardcoded-sentry-command"],
@@ -562,17 +560,21 @@ tester.run(
         code: "function hint(org) { return asInvocationCommand(`sentry project list ${org}/`); }",
       },
       {
-        filename: authCommand,
+        filename: commands,
         code: "buildCommand({ docs: { fullDescription: 'Run `sentry auth status` to check.', examples: [{ command: 'sentry auth login' }] } });",
       },
       {
         filename: source,
         code: "const message = 'Sentry CLI could not reach sentry.io';",
       },
-      // Commands that @sentry/mcp-server does not ship only run as `sentry`.
+      // A module-level usage line is data: ContextError and friends wrap it.
       {
         filename: commands,
-        code: "function hint() { return 'Run sentry issue list'; }",
+        code: "const USAGE_HINT = 'sentry issue list <org>/<project>';",
+      },
+      {
+        filename: commands,
+        code: "const docs = { examples: [{ command: 'sentry issue list' }] };",
       },
     ],
     invalid: [
@@ -582,13 +584,19 @@ tester.run(
         errors: 1,
       },
       {
-        filename: authCommand,
+        filename: commands,
         code: "function hint(org) { return `Try: sentry project list ${org}/`; }",
         errors: 1,
       },
+      // Every command runs under npx or another name, not only sentry-mcp.
       {
-        filename: "/repo/packages/cli/src/commands/cli/fix.ts",
-        code: "log.warn('Run sentry cli fix');",
+        filename: commands,
+        code: "function hint() { return 'Run sentry issue list'; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const MESSAGE = 'Usage: sentry local run -- <command>';",
         errors: 1,
       },
       // At module load the running program is not known yet.

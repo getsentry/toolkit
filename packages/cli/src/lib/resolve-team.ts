@@ -22,6 +22,7 @@
 
 import type { SentryTeam } from "../types/index.js";
 import { createTeam, listOrganizations, listTeams } from "./api-client.js";
+import { asInvocationCommand } from "./app-identity.js";
 import {
   ApiError,
   AuthError,
@@ -122,7 +123,7 @@ async function handleListTeamsError(
     throw new ResolutionError(
       `Organization '${orgSlug}'`,
       `could not be accessed (${error.status})`,
-      `${options.usageHint} --team <team-slug>`,
+      `${asInvocationCommand(options.usageHint)} --team <team-slug>`,
       ["The organization may not exist, or you may lack access"],
     );
   }
@@ -208,10 +209,11 @@ function resolveEmptyTeams(
 ): Promise<ResolvedTeam> | ResolvedTeam {
   if (!options.autoCreateSlug) {
     const teamsUrl = `${getSentryBaseUrl()}/settings/${orgSlug}/teams/`;
-    throw new ContextError("Team", `${options.usageHint} --team <team-slug>`, [
-      `No teams found in org '${orgSlug}'`,
-      `Create a team at ${teamsUrl}`,
-    ]);
+    throw new ContextError(
+      "Team",
+      `${asInvocationCommand(options.usageHint)} --team <team-slug>`,
+      [`No teams found in org '${orgSlug}'`, `Create a team at ${teamsUrl}`],
+    );
   }
   if (options.dryRun) {
     return { slug: options.autoCreateSlug, source: "auto-created" };
@@ -278,7 +280,7 @@ export async function buildOrgNotFoundError(
   }
 
   const orgHint = await fetchOrgListHint(
-    `Specify org explicitly: ${usageHint}`,
+    `Specify org explicitly: ${asInvocationCommand(usageHint)}`,
   );
 
   const suggestions: string[] = [];

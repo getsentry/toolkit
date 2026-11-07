@@ -6,6 +6,7 @@
  */
 
 import type { SentryContext } from "../context.js";
+import { asInvocationCommand } from "../lib/app-identity.js";
 import { buildCommand } from "../lib/command.js";
 import { parseFilePath, parseText } from "../lib/completion-target.js";
 import { CliError, EXIT } from "../lib/errors.js";
@@ -54,8 +55,8 @@ export const sendEnvelopeCommand = buildCommand({
   ) {
     const fileArgs = files.length > 0 ? ` ${files.join(" ")}` : " <file>";
     throw new CliError(
-      "`sentry send-envelope` has been removed.\n" +
-        `Use: sentry event send --raw${fileArgs}`,
+      `\`${asInvocationCommand("sentry send-envelope")}\` has been removed.\n` +
+        `Use: ${asInvocationCommand(`sentry event send --raw${fileArgs}`)}`,
       EXIT.GENERAL,
     );
   },
