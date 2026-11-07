@@ -8,10 +8,12 @@
 import {
   createOrganizationDashboard,
   getOrganizationDashboard,
+  listOrganizationDashboardRevisions,
   listOrganizationDashboards,
   type ListOrganizationEventsTimeseriesData,
   listOrganizationEvents,
   listOrganizationEventsTimeseries,
+  restoreOrganizationDashboardRevision,
   updateOrganizationDashboard,
 } from "@sentry/api";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
@@ -43,18 +45,16 @@ import type { EventsDataset } from "../datasets.js";
 import { reportCliError } from "../error-reporting.js";
 import { ApiError, stringifyUnknown } from "../errors.js";
 
-import { resolveOrgRegion } from "../region.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
 
 import {
-  apiRequestToRegion,
   getOrgSdkConfig,
   ORG_FANOUT_CONCURRENCY,
   type PaginatedResponse,
-  parseLinkHeader,
   unwrapPaginatedResult,
   unwrapResult,
   unwrapValidatedResult,
+  validateResponse,
 } from "./infrastructure.js";
 
 /**
@@ -192,29 +192,26 @@ export async function listDashboardRevisionsPaginated(
   dashboardId: string,
   options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<DashboardRevision[]>> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const params: Record<string, string | number | undefined> = {
-    per_page: options.perPage,
-    cursor: options.cursor,
-  };
-
-  const { data, headers } = await apiRequestToRegion<DashboardRevision[]>(
-    regionUrl,
+  const config = getOrgSdkConfig();
+  const result = await listOrganizationDashboardRevisions({
+    ...config,
+    path: {
+      organization_id_or_slug: orgSlug,
+      dashboard_id: dashboardId as unknown as number,
+    },
+    query: { per_page: options.perPage, cursor: options.cursor },
+  });
+  const { response, ...page } = unwrapPaginatedResult<unknown>(
+    result,
+    `Failed to list revisions for dashboard '${dashboardId}'`,
+  );
+  const data = validateResponse(
+    array(DashboardRevisionSchema),
+    page.data,
     `/organizations/${orgSlug}/dashboards/${dashboardId}/revisions/`,
-    { params, schema: array(DashboardRevisionSchema) },
+    response?.status ?? 0,
   );
-
-  const { nextCursor, prevCursor } = parseLinkHeader(
-    headers.get("link") ?? null,
-  );
-  const out: PaginatedResponse<DashboardRevision[]> = { data };
-  if (nextCursor !== undefined) {
-    out.nextCursor = nextCursor;
-  }
-  if (prevCursor !== undefined) {
-    out.prevCursor = prevCursor;
-  }
-  return out;
+  return { ...page, data };
 }
 
 /**
@@ -230,14 +227,21 @@ export async function restoreDashboardRevision(
   dashboardId: string,
   revisionId: string,
 ): Promise<DashboardDetail> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const encodedRevisionId = encodeURIComponent(revisionId);
-  const { data } = await apiRequestToRegion<DashboardDetail>(
-    regionUrl,
-    `/organizations/${orgSlug}/dashboards/${dashboardId}/revisions/${encodedRevisionId}/restore/`,
-    { method: "POST", schema: DashboardDetailSchema },
+  const config = getOrgSdkConfig();
+  const result = await restoreOrganizationDashboardRevision({
+    ...config,
+    path: {
+      organization_id_or_slug: orgSlug,
+      dashboard_id: dashboardId as unknown as number,
+      revision_id: revisionId as unknown as number,
+    },
+  });
+  return unwrapValidatedResult(
+    result,
+    `Failed to restore revision '${revisionId}' of dashboard '${dashboardId}'`,
+    DashboardDetailSchema,
+    `/organizations/${orgSlug}/dashboards/${dashboardId}/revisions/${revisionId}/restore/`,
   );
-  return data;
 }
 
 // ---------------------------------------------------------------------------

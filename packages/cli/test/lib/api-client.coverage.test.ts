@@ -2059,8 +2059,9 @@ describe("logs.ts (detailed)", () => {
         const req = new Request(input!, init);
         const url = new URL(req.url);
         expect(url.pathname).toContain("/organizations/test-org/trace-logs/");
-        expect(url.searchParams.get("traceId")).toBe("abc123def456");
+        expect(url.searchParams.getAll("traceId")).toEqual(["abc123def456"]);
         expect(url.searchParams.get("statsPeriod")).toBe("14d");
+        expect(url.searchParams.getAll("sort")).toEqual(["-timestamp"]);
         return new Response(JSON.stringify(traceLogsResponse), {
           status: 200,
           headers: { "Content-Type": "application/json" },

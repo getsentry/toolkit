@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   computeOptimalInterval,
+  listDashboardRevisionsPaginated,
   periodToSeconds,
   queryAllWidgets,
   restoreDashboardRevision,
@@ -19,25 +20,28 @@ import type {
 } from "../../../src/types/dashboard.js";
 
 const {
-  apiRequestToRegionMock,
+  listOrganizationDashboardRevisionsMock,
   listOrganizationEventsMock,
   listOrganizationEventsTimeseriesMock,
   reportCliErrorMock,
-  resolveOrgRegionMock,
+  restoreOrganizationDashboardRevisionMock,
 } = vi.hoisted(() => ({
-  apiRequestToRegionMock: vi.fn(),
+  listOrganizationDashboardRevisionsMock: vi.fn(),
   listOrganizationEventsMock: vi.fn(),
   listOrganizationEventsTimeseriesMock: vi.fn(),
   reportCliErrorMock: vi.fn(),
-  resolveOrgRegionMock: vi.fn(),
+  restoreOrganizationDashboardRevisionMock: vi.fn(),
 }));
 
 vi.mock("@sentry/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@sentry/api")>();
   return {
     ...actual,
+    listOrganizationDashboardRevisions: listOrganizationDashboardRevisionsMock,
     listOrganizationEvents: listOrganizationEventsMock,
     listOrganizationEventsTimeseries: listOrganizationEventsTimeseriesMock,
+    restoreOrganizationDashboardRevision:
+      restoreOrganizationDashboardRevisionMock,
   };
 });
 
@@ -45,43 +49,101 @@ vi.mock("../../../src/lib/error-reporting.js", () => ({
   reportCliError: reportCliErrorMock,
 }));
 
-vi.mock("../../../src/lib/region.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../../src/lib/region.js")>();
-  return { ...actual, resolveOrgRegion: resolveOrgRegionMock };
-});
-
-vi.mock("../../../src/lib/api/infrastructure.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../../../src/lib/api/infrastructure.js")
-    >();
-  return { ...actual, apiRequestToRegion: apiRequestToRegionMock };
-});
-
 // ---------------------------------------------------------------------------
 // restoreDashboardRevision
 // ---------------------------------------------------------------------------
 
 describe("restoreDashboardRevision", () => {
-  test("posts to the revision restore endpoint", async () => {
+  test("restores the revision through the generated operation", async () => {
     const dashboard = {
       id: "123",
       title: "Restored Dashboard",
       widgets: [],
     } as DashboardDetail;
-    resolveOrgRegionMock.mockResolvedValue("https://us.sentry.io");
-    apiRequestToRegionMock.mockResolvedValue({ data: dashboard });
+    restoreOrganizationDashboardRevisionMock.mockResolvedValue({
+      data: dashboard,
+      response: new Response(),
+    });
 
     await expect(
       restoreDashboardRevision("test-org", "123", "42"),
-    ).resolves.toBe(dashboard);
+    ).resolves.toEqual(dashboard);
 
-    expect(apiRequestToRegionMock).toHaveBeenCalledWith(
-      "https://us.sentry.io",
-      "/organizations/test-org/dashboards/123/revisions/42/restore/",
-      expect.objectContaining({ method: "POST" }),
+    expect(restoreOrganizationDashboardRevisionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: {
+          organization_id_or_slug: "test-org",
+          dashboard_id: "123",
+          revision_id: "42",
+        },
+      }),
     );
+  });
+
+  test("names the revision when the API rejects the restore", async () => {
+    restoreOrganizationDashboardRevisionMock.mockResolvedValue({
+      error: { detail: "Revision not found" },
+      response: new Response(null, { status: 404, statusText: "Not Found" }),
+    });
+
+    const error = await restoreDashboardRevision("test-org", "123", "42").catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 404 });
+    expect((error as ApiError).message).toContain("revision '42'");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listDashboardRevisionsPaginated
+// ---------------------------------------------------------------------------
+
+describe("listDashboardRevisionsPaginated", () => {
+  const revision = {
+    id: "7",
+    title: "Before edit",
+    dateCreated: "2026-11-01T00:00:00Z",
+    createdBy: null,
+    source: "edit",
+  };
+
+  test("returns validated revisions and the Link cursors", async () => {
+    listOrganizationDashboardRevisionsMock.mockResolvedValue({
+      data: [revision],
+      response: new Response(null, {
+        headers: {
+          link:
+            '<https://us.sentry.io/x/?cursor=0:0:1>; rel="previous"; results="false"; cursor="0:0:1", ' +
+            '<https://us.sentry.io/x/?cursor=0:25:0>; rel="next"; results="true"; cursor="0:25:0"',
+        },
+      }),
+    });
+
+    const page = await listDashboardRevisionsPaginated("test-org", "123", {
+      perPage: 25,
+      cursor: "0:0:0",
+    });
+
+    expect(page.data).toEqual([revision]);
+    expect(page.nextCursor).toBe("0:25:0");
+    expect(listOrganizationDashboardRevisionsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { organization_id_or_slug: "test-org", dashboard_id: "123" },
+        query: { per_page: 25, cursor: "0:0:0" },
+      }),
+    );
+  });
+
+  test("rejects a response that does not match the revision schema", async () => {
+    listOrganizationDashboardRevisionsMock.mockResolvedValue({
+      data: [{ id: 7 }],
+      response: new Response(),
+    });
+
+    await expect(
+      listDashboardRevisionsPaginated("test-org", "123"),
+    ).rejects.toThrow("Unexpected response format");
   });
 });
 
