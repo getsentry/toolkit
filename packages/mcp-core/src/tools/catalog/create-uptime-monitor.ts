@@ -17,6 +17,7 @@ import {
   ParamUptimeMonitorStatus,
   ParamUptimeOwner,
   ParamUptimeTimeoutMs,
+  toUptimeHeaderPairs,
   toUptimeMonitorSummary,
   uptimeMonitorSummarySchema,
 } from "./support/uptime-monitors";
@@ -52,7 +53,11 @@ export default defineTool({
     regionUrl: ParamRegionUrl.nullable().default(null),
     projectSlug: ParamProjectSlug,
     name: z.string().trim().min(1).max(128).describe("Monitor display name."),
-    url: z.string().url().describe("URL to check."),
+    url: z
+      .string()
+      .url()
+      .max(255)
+      .describe("URL to check (max 255 characters)."),
     intervalSeconds: ParamUptimeIntervalSeconds,
     timeoutMs: ParamUptimeTimeoutMs.default(5000),
     method: ParamUptimeHttpMethod.optional(),
@@ -118,7 +123,7 @@ export default defineTool({
       intervalSeconds: params.intervalSeconds,
       timeoutMs: params.timeoutMs,
       method: params.method,
-      headers: params.headers,
+      headers: params.headers && toUptimeHeaderPairs(params.headers),
       body: params.body,
       status: params.status,
       owner: params.owner,
