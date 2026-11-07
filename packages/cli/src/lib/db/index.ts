@@ -10,6 +10,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { DB_FILENAME, resolveConfigDir } from "../config-dir.js";
 import { getEnv } from "../env.js";
+import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 
 const _require = createRequire(import.meta.url);
@@ -17,7 +18,10 @@ const _require = createRequire(import.meta.url);
 const log = logger.withTag("db");
 
 import { migrateFromJson } from "./migration.js";
-import { createResilientDatabase } from "./resilient.js";
+import {
+  createResilientDatabase,
+  isReadonlyHandlingSilenced,
+} from "./resilient.js";
 import { initSchema, runMigrations } from "./schema.js";
 import { Database } from "./sqlite.js";
 
@@ -39,6 +43,12 @@ let db: Database | null = null;
 /** Raw, unwrapped database (used for repair operations) */
 let rawDb: Database | null = null;
 let dbOpenedPath: string | null = null;
+/**
+ * Why `cli.db` could not be opened, once {@link getDatabase} fell back to an
+ * in-memory database. {@link getRawDatabase} throws it so repair and backup
+ * code never mistake the in-memory database for `cli.db`.
+ */
+let openError: unknown;
 /**
  * Set once {@link detachDatabase} hands `cli.db` to another CLI version.
  * Later reads in this process use a throwaway in-memory database instead.
@@ -116,7 +126,14 @@ function setDbPermissions(): void {
   }
 }
 
-/** Get or initialize the database connection. */
+/**
+ * Get or initialize the database connection.
+ *
+ * The database is a cache and settings store; no command needs it to be on
+ * disk. When `cli.db` can't be opened (a WAL file the WASM driver can't read,
+ * a read-only config directory, a corrupt file), this warns and uses an
+ * in-memory database for the rest of the process, so the command still runs.
+ */
 export function getDatabase(): Database {
   const dbPath = detached ? ":memory:" : getDbPath();
 
@@ -126,13 +143,40 @@ export function getDatabase(): Database {
     db = null;
     rawDb = null;
     dbOpenedPath = null;
+    openError = undefined;
   }
 
   if (db) {
     return db;
   }
 
-  if (!detached) {
+  try {
+    db = openDatabase(dbPath);
+  } catch (error) {
+    if (dbPath === ":memory:") {
+      throw error;
+    }
+    const message =
+      `Could not open the local database at ${dbPath}: ${stringifyUnknown(error)}. ` +
+      "Caching and settings won't persist for this run.";
+    if (isReadonlyHandlingSilenced()) {
+      log.debug(message);
+    } else {
+      log.warn(message);
+    }
+    openError = error;
+    db = openDatabase(":memory:");
+  }
+  dbOpenedPath = dbPath;
+  registerExitHandler();
+
+  return db;
+}
+
+/** Open, configure, and migrate the database at `dbPath`, and wrap it. */
+function openDatabase(dbPath: string): Database {
+  const onDisk = dbPath !== ":memory:";
+  if (onDisk) {
     ensureConfigDir();
   }
 
@@ -155,24 +199,21 @@ export function getDatabase(): Database {
     rawDb.exec("PRAGMA foreign_keys = ON");
     rawDb.exec("PRAGMA synchronous = NORMAL");
 
-    if (!detached) {
+    if (onDisk) {
       setDbPermissions();
     }
     initSchema(rawDb);
     runMigrations(rawDb);
-    if (!detached) {
+    if (onDisk) {
       migrateFromJson(rawDb);
     }
 
     // Both wrappers repair schema errors and skip read-only writes; the traced
     // one also adds query spans when telemetry is on.
-    db =
+    return (
       lazyTelemetry()?.createTracedDatabase(rawDb) ??
-      createResilientDatabase(rawDb);
-    dbOpenedPath = dbPath;
-    registerExitHandler();
-
-    return db;
+      createResilientDatabase(rawDb)
+    );
   } catch (error) {
     // Clean up on initialization failure to prevent connection leak
     rawDb.close();
@@ -223,6 +264,7 @@ export function closeDatabase(): void {
     rawDb = null;
     dbOpenedPath = null;
   }
+  openError = undefined;
   detached = false;
 }
 
@@ -247,6 +289,9 @@ export function getRawDatabase(): Database {
   if (!rawDb) {
     // Ensure database is initialized
     getDatabase();
+  }
+  if (openError !== undefined) {
+    throw openError;
   }
   // After getDatabase() call, rawDb is guaranteed to be set
   if (!rawDb) {
