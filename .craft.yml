@@ -108,6 +108,9 @@ workspaces:
 
             def install
               bin.install Dir["sentry-*"].first => "sentry"
+              # The release asset is a bare gzip, so the unpacked binary has no
+              # exec bit. Homebrew's cleaner only fixes that after `install`.
+              chmod 0755, bin/"sentry"
               # Homebrew-managed completion dirs survive the build sandbox and
               # are cleaned up by `brew uninstall`. Writing into $HOME from
               # post_install does not work: it runs under a throwaway HOME.
