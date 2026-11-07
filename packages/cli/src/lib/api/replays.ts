@@ -5,6 +5,7 @@
  */
 
 import {
+  getOrganizationReplay,
   type ListProjectReplayRecordingSegmentsResponse,
   listProjectReplayRecordingSegments,
 } from "@sentry/api";
@@ -35,6 +36,7 @@ import {
   paginate,
   parseLinkHeader,
   unwrapPaginatedResult,
+  unwrapValidatedResult,
 } from "./infrastructure.js";
 
 const log = logger.withTag("api.replays");
@@ -253,16 +255,19 @@ export async function getReplay(
   orgSlug: string,
   replayId: string,
 ): Promise<ReplayDetails> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion(
-    regionUrl,
+  const config = await getOrgSdkConfig(orgSlug);
+  const result = await getOrganizationReplay({
+    ...config,
+    path: { organization_id_or_slug: orgSlug, replay_id: replayId },
+  });
+  const data = unwrapValidatedResult(
+    result,
+    "Failed to get replay",
+    ReplayDetailsResponseSchema as GenericSchema<
+      unknown,
+      ReplayDetailsResponse
+    >,
     `/organizations/${orgSlug}/replays/${replayId}/`,
-    {
-      schema: ReplayDetailsResponseSchema as GenericSchema<
-        unknown,
-        ReplayDetailsResponse
-      >,
-    },
   );
   return normalizeReplayProjectId(data.data);
 }

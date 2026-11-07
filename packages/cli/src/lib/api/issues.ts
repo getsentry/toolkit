@@ -5,7 +5,10 @@
  */
 
 import type { ListOrganizationIssuesData } from "@sentry/api";
-import { listOrganizationIssues } from "@sentry/api";
+import {
+  listOrganizationIssues,
+  resolveOrganizationShortId,
+} from "@sentry/api";
 
 import type { SentryIssue } from "../../types/index.js";
 import type { IssueSubstatus } from "../../types/sentry.js";
@@ -29,6 +32,7 @@ import {
   type PaginatedResponse,
   paginate,
   unwrapPaginatedResult,
+  unwrapResult,
 } from "./infrastructure.js";
 
 const TRAILING_SLASH_RE = /\/$/;
@@ -299,9 +303,9 @@ export function getIssue(
  * Uses the org-scoped endpoint with region-aware routing.
  * Preferred over {@link getIssue} when the org slug is available.
  *
- * Uses raw `apiRequestToRegion` instead of the SDK's `retrieveAnIssue`
- * because the SDK types declare `query?: never`, blocking `collapse`
- * and other query parameters. See: https://github.com/getsentry/sentry-api-schema/issues/63
+ * Uses raw `apiRequestToRegion` instead of the SDK's `getOrganizationIssue`
+ * because its `collapse` type allows only `release`, `stats` and `tags`, not
+ * the `lifetime`, `filtered` and `unhandled` values the CLI sends.
  *
  * @param orgSlug - Organization slug (used for region routing)
  * @param issueId - Numeric issue ID
@@ -328,10 +332,6 @@ export async function getIssueInOrg(
  * Requires organization context to resolve the short ID.
  * Uses region-aware routing for multi-region support.
  *
- * Uses raw `apiRequestToRegion` instead of the SDK's `resolveAShortId`
- * because the SDK types declare `query?: never`, blocking `collapse`
- * and other query parameters. See: https://github.com/getsentry/sentry-api-schema/
- *
  * @param orgSlug - Organization slug
  * @param shortId - Short ID (e.g., "CLI-G5", "SPOTLIGHT-ELECTRON-4D")
  * @param options - Optional collapse fields to skip expensive backend queries
@@ -342,18 +342,19 @@ export async function getIssueByShortId(
   options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
   const normalizedShortId = shortId.toUpperCase();
-  const regionUrl = await resolveOrgRegion(orgSlug);
+  const config = await getOrgSdkConfig(orgSlug);
 
   let data: { group?: SentryIssue };
   try {
-    const result = await apiRequestToRegion<{ group?: SentryIssue }>(
-      regionUrl,
-      `/organizations/${orgSlug}/shortids/${normalizedShortId}/`,
-      {
-        params: options?.collapse ? { collapse: options.collapse } : undefined,
-      },
+    const result = await resolveOrganizationShortId({
+      ...config,
+      path: { organization_id_or_slug: orgSlug, issue_id: normalizedShortId },
+      query: options?.collapse ? { collapse: options.collapse } : undefined,
+    });
+    data = unwrapResult<{ group?: SentryIssue }>(
+      result,
+      "Failed to resolve short ID",
     );
-    data = result.data;
   } catch (error) {
     // Enrich 404 errors with actionable context. The generic
     // "Failed to resolve short ID: 404 Not Found" is the most common

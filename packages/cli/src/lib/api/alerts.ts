@@ -10,6 +10,7 @@ import {
   createOrganizationProjectDetector,
   createOrganizationWorkflow,
   deleteOrganizationDetector,
+  deleteOrganizationWorkflow,
   getOrganizationDetector,
   type GetOrganizationDetectorResponse,
   getOrganizationWorkflow,
@@ -35,7 +36,6 @@ import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import {
   apiRequestToRegion,
-  apiRequestToRegionNoContent,
   getOrgSdkConfig,
   type PaginatedResponse,
   parseLinkHeader,
@@ -513,12 +513,15 @@ export async function deleteIssueAlertRule(
   orgSlug: string,
   ruleId: string,
 ): Promise<void> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  await apiRequestToRegionNoContent(
-    regionUrl,
-    `/organizations/${orgSlug}/workflows/${encodeURIComponent(ruleId)}/`,
-    { method: "DELETE" },
-  );
+  const config = await getOrgSdkConfig(orgSlug);
+  const result = await deleteOrganizationWorkflow({
+    ...config,
+    path: {
+      organization_id_or_slug: orgSlug,
+      workflow_id: Number(ruleId),
+    },
+  });
+  unwrapResult(result, `Failed to delete issue alert rule '${ruleId}'`);
 }
 
 /**

@@ -30,44 +30,44 @@ View details of one or more events
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | string |  |
-| `groupID` | string \| null |  |
+| `id` | string | ID of the event |
+| `groupID` | string \| null | ID of the issue the event belongs to |
 | `eventID` | string | UUID-format event ID |
-| `projectID` | string |  |
-| `message` | string \| null |  |
-| `title` | string |  |
-| `location` | string \| null |  |
-| `user` | object \| null |  |
-| `tags` | array |  |
-| `platform` | string \| null |  |
-| `dateReceived` | string \| null |  |
-| `contexts` | object \| null |  |
-| `size` | number \| null |  |
-| `entries` | array |  |
-| `dist` | string \| null |  |
-| `sdk` | object \| null |  |
-| `context` | object \| null |  |
-| `packages` | object |  |
-| `type` | string |  |
-| `metadata` | object |  |
-| `errors` | array |  |
+| `projectID` | string | ID of the project the event belongs to |
+| `message` | string \| null | Event message |
+| `title` | string | Event title |
+| `location` | string \| null | Source location of the event, such as a file and line |
+| `user` | object \| null | User context of the event |
+| `tags` | array | Tags attached to the event |
+| `platform` | string \| null | Platform of the event, such as python or javascript |
+| `dateReceived` | string \| null | When Sentry received the event (ISO 8601) |
+| `contexts` | object \| null | Contexts of the event, such as device, os, browser and runtime |
+| `size` | number \| null | Size of the event payload in bytes |
+| `entries` | array | Event interfaces, such as exception, breadcrumbs and request, each with a type and data |
+| `dist` | string \| null | Distribution of the release the event was sent with |
+| `sdk` | object \| null | SDK that sent the event |
+| `context` | object \| null | Additional data sent with the event in its extra field |
+| `packages` | object | Modules loaded when the event occurred, keyed by module name with their versions |
+| `type` | string | Event type, such as error, default or transaction |
+| `metadata` | object | Event metadata |
+| `errors` | array | Errors Sentry found while processing the event |
 | `occurrence` | object \| null |  |
-| `_meta` | object |  |
-| `crashFile` | string \| null |  |
-| `culprit` | string \| null |  |
-| `dateCreated` | string |  |
-| `fingerprints` | array |  |
-| `groupingConfig` | object |  |
-| `startTimestamp` | number |  |
-| `endTimestamp` | number |  |
-| `measurements` | object \| null |  |
-| `breakdowns` | object \| null |  |
-| `release` | object \| null |  |
-| `userReport` | object \| null |  |
-| `sdkUpdates` | array |  |
-| `resolvedWith` | array |  |
-| `nextEventID` | string \| null |  |
-| `previousEventID` | string \| null |  |
+| `_meta` | object | Metadata about changes Sentry made to the event's fields, such as data scrubbing or trimming |
+| `crashFile` | string \| null | Crash report attachment of the event, if any |
+| `culprit` | string \| null | Function or module that caused the event |
+| `dateCreated` | string | When the event occurred (ISO 8601) |
+| `fingerprints` | array | Grouping hashes calculated for the event |
+| `groupingConfig` | object | Grouping configuration used to group the event |
+| `startTimestamp` | number | When the transaction started, as a Unix timestamp in seconds |
+| `endTimestamp` | number | When the transaction ended, as a Unix timestamp in seconds |
+| `measurements` | object \| null | Measurements recorded for the transaction, such as web vitals, keyed by name |
+| `breakdowns` | object \| null | Span operation breakdowns for the transaction, keyed by breakdown name |
+| `release` | object \| null | Release the event was sent with. Null when the event has no release |
+| `userReport` | object \| null | User feedback submitted for the event. Null when there's none |
+| `sdkUpdates` | array | Suggested updates for the SDK that sent the event |
+| `resolvedWith` | array | How the event's stack frames were resolved during processing, such as which source map lookup method was used |
+| `nextEventID` | string \| null | ID of the next event in the issue. Null for the latest event or when adjacentEvents is collapsed |
+| `previousEventID` | string \| null | ID of the previous event in the issue. Null for the first event or when adjacentEvents is collapsed |
 | `formatted` | object | Event rendered as Markdown, XML, or JSON; only returned for API requests with llmFormat |
 | `trace` | object \| null | Trace context, or null when unavailable |
 | `attachments` | array | Event attachments; each includes metadata and an absolute authenticated download URL |

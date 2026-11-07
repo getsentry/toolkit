@@ -5,10 +5,12 @@
  */
 
 import {
+  getOrganizationTraceMeta,
   type ListOrganizationTraceItemAttributesData,
   type ListOrganizationTraceItemAttributesQueryAttributeType,
   type ListOrganizationTraceItemAttributesQueryDataset,
   type ListOrganizationTraceItemAttributesResponse,
+  listOrganizationEvents,
   listOrganizationTraceItemAttributes,
 } from "@sentry/api";
 import pLimit from "p-limit";
@@ -40,8 +42,9 @@ import {
   getOrgSdkConfig,
   type PaginatedResponse,
   paginate,
-  parseLinkHeader,
   unwrapPaginatedResult,
+  unwrapValidatedResult,
+  validateResponse,
 } from "./infrastructure.js";
 
 const log = logger.withTag("api.traces");
@@ -383,17 +386,18 @@ export async function getTraceMeta(
   traceId: string,
   statsPeriod = "14d",
 ): Promise<TraceMeta> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-
-  const { data } = await apiRequestToRegion<TraceMeta>(
-    regionUrl,
+  const config = await getOrgSdkConfig(orgSlug);
+  const result = await getOrganizationTraceMeta({
+    ...config,
+    path: { organization_id_or_slug: orgSlug, trace_id: traceId },
+    query: { statsPeriod },
+  });
+  return unwrapValidatedResult<TraceMeta>(
+    result,
+    "Failed to get trace metadata",
+    TraceMetaSchema,
     `/organizations/${orgSlug}/trace-meta/${traceId}/`,
-    {
-      params: { statsPeriod },
-      schema: TraceMetaSchema,
-    },
   );
-  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -565,7 +569,6 @@ type ListTransactionsOptions = {
  * multi-page (auto-paginating) fetches.
  */
 async function fetchTransactionsPage(
-  regionUrl: string,
   orgSlug: string,
   projectSlug: string,
   options: ListTransactionsOptions,
@@ -583,38 +586,40 @@ async function fetchTransactionsPage(
     .filter(Boolean)
     .join(" ");
 
-  const { data: response, headers } =
-    await apiRequestToRegion<TransactionsResponse>(
-      regionUrl,
-      `/organizations/${orgSlug}/events/`,
-      {
-        params: {
-          dataset: "spans",
-          field: TRANSACTION_FIELDS,
-          project:
-            numericProjectId === undefined
-              ? undefined
-              : String(numericProjectId),
-          // Convert empty string to undefined so ky omits the param entirely;
-          // sending `query=` causes the Sentry API to behave differently than
-          // omitting the parameter.
-          query: fullQuery || undefined,
-          per_page: perPage,
-          statsPeriod:
-            options.start || options.end
-              ? undefined
-              : (options.statsPeriod ?? "7d"),
-          start: options.start,
-          end: options.end,
-          sort: options.sort === "duration" ? "-span.duration" : "-timestamp",
-          cursor: options.cursor,
-        },
-        schema: TransactionsResponseSchema,
-      },
-    );
-
-  const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
-  return { data: response.data, nextCursor };
+  const result = await listOrganizationEvents({
+    ...(await getOrgSdkConfig(orgSlug)),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      dataset: "spans",
+      field: TRANSACTION_FIELDS,
+      project:
+        numericProjectId === undefined ? undefined : [String(numericProjectId)],
+      // Convert empty string to undefined so the param is omitted entirely;
+      // sending `query=` causes the Sentry API to behave differently than
+      // omitting the parameter.
+      query: fullQuery || undefined,
+      per_page: perPage,
+      statsPeriod:
+        options.start || options.end
+          ? undefined
+          : (options.statsPeriod ?? "7d"),
+      start: options.start,
+      end: options.end,
+      sort: options.sort === "duration" ? "-span.duration" : "-timestamp",
+      cursor: options.cursor,
+    },
+  });
+  const page = unwrapPaginatedResult<unknown>(
+    result,
+    "Failed to list transactions",
+  );
+  const response: TransactionsResponse = validateResponse(
+    TransactionsResponseSchema,
+    page.data,
+    `/organizations/${orgSlug}/events/`,
+    page.response?.status ?? 0,
+  );
+  return { data: response.data, nextCursor: page.nextCursor };
 }
 
 /**
@@ -639,10 +644,8 @@ export async function listTransactions(
   projectSlug: string,
   options: ListTransactionsOptions = {},
 ): Promise<PaginatedResponse<TransactionListItem[]>> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
   return await paginate(options, (perPage, cursor) =>
     fetchTransactionsPage(
-      regionUrl,
       orgSlug,
       projectSlug,
       { ...options, cursor },
@@ -703,7 +706,6 @@ type ListSpansOptions = {
  * multi-page (auto-paginating) fetches.
  */
 async function fetchSpansPage(
-  regionUrl: string,
   orgSlug: string,
   projectSlug: string,
   options: ListSpansOptions,
@@ -731,31 +733,33 @@ async function fetchSpansPage(
     projectParam = String(numericProjectId);
   }
 
-  const { data: response, headers } = await apiRequestToRegion<SpansResponse>(
-    regionUrl,
-    `/organizations/${orgSlug}/events/`,
-    {
-      params: {
-        dataset: "spans",
-        field: fields,
-        project: projectParam,
-        query: fullQuery || undefined,
-        per_page: perPage,
-        statsPeriod:
-          options.start || options.end
-            ? undefined
-            : (options.statsPeriod ?? "7d"),
-        start: options.start,
-        end: options.end,
-        sort: options.sort === "duration" ? "-span.duration" : "-timestamp",
-        cursor: options.cursor,
-      },
-      schema: SpansResponseSchema,
+  const result = await listOrganizationEvents({
+    ...(await getOrgSdkConfig(orgSlug)),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      dataset: "spans",
+      field: fields,
+      project: projectParam === undefined ? undefined : [projectParam],
+      query: fullQuery || undefined,
+      per_page: perPage,
+      statsPeriod:
+        options.start || options.end
+          ? undefined
+          : (options.statsPeriod ?? "7d"),
+      start: options.start,
+      end: options.end,
+      sort: options.sort === "duration" ? "-span.duration" : "-timestamp",
+      cursor: options.cursor,
     },
+  });
+  const page = unwrapPaginatedResult<unknown>(result, "Failed to list spans");
+  const response: SpansResponse = validateResponse(
+    SpansResponseSchema,
+    page.data,
+    `/organizations/${orgSlug}/events/`,
+    page.response?.status ?? 0,
   );
-
-  const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
-  return { data: response.data, nextCursor };
+  return { data: response.data, nextCursor: page.nextCursor };
 }
 
 /**
@@ -775,14 +779,7 @@ export async function listSpans(
   projectSlug: string,
   options: ListSpansOptions = {},
 ): Promise<PaginatedResponse<SpanListItem[]>> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
   return await paginate(options, (perPage, cursor) =>
-    fetchSpansPage(
-      regionUrl,
-      orgSlug,
-      projectSlug,
-      { ...options, cursor },
-      perPage,
-    ),
+    fetchSpansPage(orgSlug, projectSlug, { ...options, cursor }, perPage),
   );
 }

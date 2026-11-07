@@ -16,6 +16,10 @@ import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
+  getOrganizationPreprodArtifactInstallDetails,
+  getOrganizationPreprodArtifactSnapshotLatestBase,
+} from "@sentry/api";
+import {
   array,
   boolean,
   type InferOutput,
@@ -46,6 +50,8 @@ import {
 import {
   apiRequestToRegion,
   apiRequestToRegionNoContent,
+  getOrgSdkConfig,
+  unwrapValidatedResult,
 } from "./infrastructure.js";
 
 const log = logger.withTag("api.preprod-artifacts");
@@ -78,14 +84,19 @@ export async function getBuildInstallDetails(
   org: string,
   buildId: string,
 ): Promise<BuildInstallDetails> {
-  const regionUrl = await resolveOrgRegion(org);
-  const endpoint = `organizations/${org}/preprodartifacts/${encodeURIComponent(
-    buildId,
-  )}/install-details/`;
-  const { data } = await apiRequestToRegion(regionUrl, endpoint, {
-    schema: BuildInstallDetailsSchema,
+  const config = await getOrgSdkConfig(org);
+  const result = await getOrganizationPreprodArtifactInstallDetails({
+    ...config,
+    path: { organization_id_or_slug: org, artifact_id: buildId },
   });
-  return data;
+  return unwrapValidatedResult(
+    result,
+    "Failed to get build install details",
+    BuildInstallDetailsSchema,
+    `organizations/${org}/preprodartifacts/${encodeURIComponent(
+      buildId,
+    )}/install-details/`,
+  );
 }
 
 /**
@@ -380,15 +391,19 @@ export async function getLatestBaseSnapshot(
   appId: string,
   opts: { branch?: string; project?: string } = {},
 ): Promise<LatestBaseSnapshot | null> {
-  const regionUrl = await resolveOrgRegion(org);
+  const config = await getOrgSdkConfig(org);
   try {
-    const { data } = await apiRequestToRegion(
-      regionUrl,
+    const result = await getOrganizationPreprodArtifactSnapshotLatestBase({
+      ...config,
+      path: { organization_id_or_slug: org },
+      query: { app_id: appId, branch: opts.branch, project: opts.project },
+    });
+    // The generated type has no null body; the CLI treats one as "no base".
+    const data = unwrapValidatedResult(
+      result,
+      "Failed to get latest base snapshot",
+      nullable(LatestBaseSnapshotSchema),
       `organizations/${org}/preprodartifacts/snapshots/latest-base/`,
-      {
-        params: { app_id: appId, branch: opts.branch, project: opts.project },
-        schema: nullable(LatestBaseSnapshotSchema),
-      },
     );
     return data
       ? { headArtifactId: data.head_artifact_id, imageCount: data.image_count }
