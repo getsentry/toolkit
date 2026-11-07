@@ -86,12 +86,11 @@ export const bundleSourcesCommand = buildCommand({
       {
         description:
           "Bundle a debug file's referenced source files (run on the build machine)",
-        command: "sentry debug-files bundle-sources ./libexample.so",
+        run: "debug-files bundle-sources ./libexample.so",
       },
       {
         description: "Write the bundle to a specific path",
-        command:
-          "sentry debug-files bundle-sources ./app.pdb --output ./app.src.zip",
+        run: "debug-files bundle-sources ./app.pdb --output ./app.src.zip",
       },
     ],
   },

@@ -125,43 +125,35 @@ export const addCommand = buildCommand({
     examples: [
       {
         description: "Add a counter widget",
-        command:
-          "sentry dashboard widget add 'My Dashboard' \"Error Count\" --display big_number --query count",
+        run: "dashboard widget add 'My Dashboard' \"Error Count\" --display big_number --query count",
       },
       {
         description: "Use a dashboard ID in an explicit organization",
-        command:
-          'sentry dashboard widget add my-org/12345 "Error Count" --display big_number --query count',
+        run: 'dashboard widget add my-org/12345 "Error Count" --display big_number --query count',
       },
       {
         description: "Line chart with group-by",
-        command:
-          "sentry dashboard widget add 'My Dashboard' \"Errors by Browser\" --display line --query count --group-by browser.name",
+        run: "dashboard widget add 'My Dashboard' \"Errors by Browser\" --display line --query count --group-by browser.name",
       },
       {
         description: "Table with multiple aggregates, sorted descending",
-        command:
-          "sentry dashboard widget add 'My Dashboard' \"Top Endpoints\" --display table --query count --query p95:span.duration --group-by transaction --sort -count --limit 10",
+        run: "dashboard widget add 'My Dashboard' \"Top Endpoints\" --display table --query count --query p95:span.duration --group-by transaction --sort -count --limit 10",
       },
       {
         description: "Bar chart with a search filter",
-        command:
-          'sentry dashboard widget add \'My Dashboard\' "Slow Requests" --display bar --query p95:span.duration --where "span.op:http.client" --group-by span.description',
+        run: 'dashboard widget add \'My Dashboard\' "Slow Requests" --display bar --query p95:span.duration --where "span.op:http.client" --group-by span.description',
       },
       {
         description: "P95 latency KPI",
-        command:
-          "sentry dashboard widget add 'My Dashboard' \"P95\" --display big_number --query p95:span.duration",
+        run: "dashboard widget add 'My Dashboard' \"P95\" --display big_number --query p95:span.duration",
       },
       {
         description: "Throughput KPI",
-        command:
-          "sentry dashboard widget add 'My Dashboard' \"Throughput\" --display big_number --query epm",
+        run: "dashboard widget add 'My Dashboard' \"Throughput\" --display big_number --query epm",
       },
       {
         description: "Custom metric percentiles from the tracemetrics dataset",
-        command:
-          'sentry dashboard widget add \'My Dashboard\' "Latency" --display line --dataset tracemetrics --query "p50(value,completion.duration_ms,distribution,none)" --query "p90(value,completion.duration_ms,distribution,none)"',
+        run: 'dashboard widget add \'My Dashboard\' "Latency" --display line --dataset tracemetrics --query "p50(value,completion.duration_ms,distribution,none)" --query "p90(value,completion.duration_ms,distribution,none)"',
       },
     ],
   },

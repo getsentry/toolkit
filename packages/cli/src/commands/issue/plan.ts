@@ -228,19 +228,19 @@ export const planCommand = buildCommand({
     examples: [
       {
         description: "Generate a fix plan (runs explain first if needed)",
-        command: "sentry issue plan 123456789",
+        run: "issue plan 123456789",
       },
       {
         description: "Generate a fix plan for the most recent issue",
-        command: "sentry issue plan @latest",
+        run: "issue plan @latest",
       },
       {
         description: "Use a short ID with an organization prefix",
-        command: "sentry issue plan my-org/MYPROJECT-ABC",
+        run: "issue plan my-org/MYPROJECT-ABC",
       },
       {
         description: "Force a fresh plan even if one already exists",
-        command: "sentry issue plan 123456789 --force",
+        run: "issue plan 123456789 --force",
       },
     ],
   },

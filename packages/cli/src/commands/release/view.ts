@@ -163,19 +163,19 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View release details",
-        command: "sentry release view 1.0.0",
+        run: "release view 1.0.0",
       },
       {
         description: "View a release in an explicit organization",
-        command: "sentry release view my-org/1.0.0",
+        run: "release view my-org/1.0.0",
       },
       {
         description: "View a release whose version contains a package name",
-        command: 'sentry release view "sentry-cli@0.24.0"',
+        run: 'release view "sentry-cli@0.24.0"',
       },
       {
         description: "Output as JSON",
-        command: "sentry release view 1.0.0 --json",
+        run: "release view 1.0.0 --json",
       },
     ],
   },

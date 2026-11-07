@@ -88,26 +88,26 @@ const docs: OrgListCommandDocs = {
   examples: [
     {
       description: "List monitors (organization auto-detected)",
-      command: "sentry monitor list",
+      run: "monitor list",
     },
     {
       description: "List cron monitors in an organization",
-      command: "sentry monitor list my-org/",
+      run: "monitor list my-org/",
     },
     {
       description: "Fetch the next page",
-      command: "sentry monitor list my-org/ -c next",
+      run: "monitor list my-org/ -c next",
     },
     {
       description: "Only monitors whose slug or name matches a glob",
-      command: "sentry monitor list 'my-org/nightly-*'",
+      run: "monitor list 'my-org/nightly-*'",
     },
     {
       description:
         "Monitors named like 'nightly' (fuzzy when nothing matches exactly)",
-      command: "sentry monitor list my-org/nigthly",
+      run: "monitor list my-org/nigthly",
     },
-    { description: "Output as JSON", command: "sentry monitor list --json" },
+    { description: "Output as JSON", run: "monitor list --json" },
   ],
 };
 

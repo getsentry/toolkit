@@ -56,15 +56,15 @@ export const archiveCommand = buildCommand({
       {
         description:
           "Archive a release (hide it from the default list, but keep it)",
-        command: "sentry release archive 1.0.0",
+        run: "release archive 1.0.0",
       },
       {
         description: "Archive a release in an explicit organization",
-        command: "sentry release archive my-org/1.0.0",
+        run: "release archive my-org/1.0.0",
       },
       {
         description: "Preview without archiving",
-        command: "sentry release archive my-org/1.0.0 --dry-run",
+        run: "release archive my-org/1.0.0 --dry-run",
       },
     ],
   },

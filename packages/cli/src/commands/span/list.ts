@@ -614,49 +614,47 @@ export const listCommand = buildListCommand("span", {
     examples: [
       {
         description: "List recent spans in the current project",
-        command: "sentry span list",
+        run: "span list",
       },
       {
         description: "Find all DB spans",
-        command: 'sentry span list -q "op:db"',
+        run: 'span list -q "op:db"',
       },
       {
         description: "Slow spans in the last 24 hours",
-        command: 'sentry span list -q "duration:>100ms" --period 24h',
+        run: 'span list -q "duration:>100ms" --period 24h',
       },
       {
         description: "Sort by slowest first",
-        command: "sentry span list --sort duration",
+        run: "span list --sort duration",
       },
       {
         description: "List spans within a specific trace",
-        command: "sentry span list abc123def456abc123def456abc12345",
+        run: "span list abc123def456abc123def456abc12345",
       },
       {
         description: "Show only spans from one project within a trace",
-        command:
-          "sentry span list my-org/cli-server/abc123def456abc123def456abc12345",
+        run: "span list my-org/cli-server/abc123def456abc123def456abc12345",
       },
       {
         description: "Filter a trace's spans to several projects",
-        command:
-          'sentry span list abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
+        run: 'span list abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
       },
       {
         description: "Fetch the next page",
-        command: "sentry span list -c next",
+        run: "span list -c next",
       },
       {
         description: "List spans in an explicit project",
-        command: "sentry span list my-org/cli-server",
+        run: "span list my-org/cli-server",
       },
       {
         description: "Find a project across organizations, then list a trace",
-        command: "sentry span list cli-server abc123def456abc123def456abc12345",
+        run: "span list cli-server abc123def456abc123def456abc12345",
       },
       {
         description: "Fetch the next page of a trace",
-        command: "sentry span list abc123def456abc123def456abc12345 -c next",
+        run: "span list abc123def456abc123def456abc12345 -c next",
       },
     ],
   },

@@ -675,11 +675,14 @@ export const fixCommand = buildCommand({
       "to transfer ownership back to the current user:\n\n" +
       "  sudo sentry cli fix",
     examples: [
-      { description: "Fix database issues", command: "sentry cli fix" },
-      { description: "Fix root-owned files", command: "sudo sentry cli fix" },
+      { description: "Fix database issues", run: "cli fix" },
+      {
+        description: "Fix root-owned files",
+        run: { prefix: "sudo ", args: "cli fix" },
+      },
       {
         description: "Show what would be fixed without making changes",
-        command: "sentry cli fix --dry-run",
+        run: "cli fix --dry-run",
       },
     ],
   },

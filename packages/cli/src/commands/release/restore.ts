@@ -53,15 +53,15 @@ export const restoreCommand = buildCommand({
     examples: [
       {
         description: "Restore a previously archived release",
-        command: "sentry release restore 1.0.0",
+        run: "release restore 1.0.0",
       },
       {
         description: "Restore a release in an explicit organization",
-        command: "sentry release restore my-org/1.0.0",
+        run: "release restore my-org/1.0.0",
       },
       {
         description: "Preview without restoring",
-        command: "sentry release restore 1.0.0 --dry-run",
+        run: "release restore 1.0.0 --dry-run",
       },
     ],
   },

@@ -33,12 +33,11 @@ export const uuidCommand = buildCommand({
     examples: [
       {
         description: "Compute the UUID for a ProGuard/R8 mapping file",
-        command:
-          "sentry proguard uuid ./app/build/outputs/mapping/release/mapping.txt",
+        run: "proguard uuid ./app/build/outputs/mapping/release/mapping.txt",
       },
       {
         description: "Output as JSON (includes the file path)",
-        command: "sentry proguard uuid mapping.txt --json",
+        run: "proguard uuid mapping.txt --json",
       },
     ],
   },

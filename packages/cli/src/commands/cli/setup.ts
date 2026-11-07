@@ -641,27 +641,27 @@ export const setupCommand = buildCommand({
     examples: [
       {
         description: "Run full setup (PATH, completions, agent skills)",
-        command: "sentry cli setup",
+        run: "cli setup",
       },
       {
         description: "Record the install method",
-        command: "sentry cli setup --method curl",
+        run: "cli setup --method curl",
       },
       {
         description: "Place the binary and configure the shell",
-        command: "sentry cli setup --install",
+        run: "cli setup --install",
       },
       {
         description: "Skip PATH modification",
-        command: "sentry cli setup --no-modify-path",
+        run: "cli setup --no-modify-path",
       },
       {
         description: "Skip shell completions",
-        command: "sentry cli setup --no-completions",
+        run: "cli setup --no-completions",
       },
       {
         description: "Skip agent skill installation",
-        command: "sentry cli setup --no-agent-skills",
+        run: "cli setup --no-agent-skills",
       },
     ],
   },

@@ -310,29 +310,28 @@ export const listCommand = buildListCommand("dsn", {
       {
         description:
           "List client keys for detected projects, including monorepos",
-        command: "sentry dsn list",
+        run: "dsn list",
       },
       {
         description: "List enabled and disabled DSNs for one project",
-        command: "sentry dsn list my-org/my-project",
+        run: "dsn list my-org/my-project",
       },
       {
         description:
           "List DSNs across all accessible projects in an organization",
-        command: "sentry dsn list my-org/",
+        run: "dsn list my-org/",
       },
       {
         description: "Fetch the next page",
-        command: "sentry dsn list my-org/ --limit 10 -c next",
+        run: "dsn list my-org/ --limit 10 -c next",
       },
       {
         description: "Fetch the previous page",
-        command: "sentry dsn list my-org/ --limit 10 -c prev",
+        run: "dsn list my-org/ --limit 10 -c prev",
       },
       {
         description: "Select public DSN fields as JSON",
-        command:
-          "sentry dsn list my-org/my-project --json --fields name,dsn,isActive",
+        run: "dsn list my-org/my-project --json --fields name,dsn,isActive",
       },
     ],
   },

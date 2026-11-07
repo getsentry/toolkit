@@ -107,31 +107,31 @@ export const explainCommand = buildCommand({
       {
         description:
           "Analyze the root cause of an issue (may take a few minutes for new issues)",
-        command: "sentry issue explain 123456789",
+        run: "issue explain 123456789",
       },
       {
         description: "Explain the most recent issue",
-        command: "sentry issue explain @latest",
+        run: "issue explain @latest",
       },
       {
         description: "Explain the most frequently occurring issue",
-        command: "sentry issue explain @most_frequent",
+        run: "issue explain @most_frequent",
       },
       {
         description: "Use a short ID with an organization prefix",
-        command: "sentry issue explain my-org/MYPROJECT-ABC",
+        run: "issue explain my-org/MYPROJECT-ABC",
       },
       {
         description: "Analyze multiple issues in one invocation",
-        command: "sentry issue explain FRONT-ABC BACK-2",
+        run: "issue explain FRONT-ABC BACK-2",
       },
       {
         description: "Force a fresh analysis",
-        command: "sentry issue explain 123456789 --force",
+        run: "issue explain 123456789 --force",
       },
       {
         description: "Output root causes as JSON",
-        command: "sentry issue explain 123456789 --json",
+        run: "issue explain 123456789 --json",
       },
     ],
   },

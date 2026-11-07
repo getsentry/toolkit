@@ -414,7 +414,7 @@ tester.run(
     valid: [
       {
         filename: commands,
-        code: "buildCommand({ docs: { fullDescription: 'Lists items.', examples: [{ description: 'List', command: 'sentry list' }] } });",
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.', examples: [{ description: 'List', run: 'list' }] } });",
       },
       {
         filename: commands,
@@ -570,7 +570,7 @@ tester.run(
       },
       {
         filename: commands,
-        code: "buildCommand({ docs: { fullDescription: 'Run `sentry auth status` to check.', examples: [{ command: 'sentry auth login' }] } });",
+        code: "buildCommand({ docs: { fullDescription: 'Run `sentry auth status` to check.', examples: [{ run: 'auth login' }, { run: ['auth login', { prefix: 'sudo ', args: 'cli fix' }] }] } });",
       },
       {
         filename: source,
@@ -583,7 +583,7 @@ tester.run(
       },
       {
         filename: commands,
-        code: "const docs = { examples: [{ command: 'sentry issue list' }] };",
+        code: "const docs = { examples: [{ run: 'issue list' }] };",
       },
     ],
     invalid: [
@@ -629,6 +629,17 @@ tester.run(
       {
         filename: commands,
         code: "const USAGE_HINT = 'sentry issue list <org>/<project>';",
+        errors: 1,
+      },
+      // Example steps leave out the program name; each renderer adds it.
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { examples: [{ run: 'sentry issue list' }] } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { examples: [{ run: ['issue list', { prefix: 'sudo ', args: 'sentry cli fix' }] }] } });",
         errors: 1,
       },
       // The tag adds the program name itself.

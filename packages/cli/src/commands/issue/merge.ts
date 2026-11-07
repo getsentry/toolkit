@@ -276,20 +276,19 @@ export const mergeCommand = buildCommand({
       {
         description:
           "Let Sentry pick the parent (typically the largest by event count)",
-        command: "sentry issue merge CLI-K9 CLI-15H CLI-15N",
+        run: "issue merge CLI-K9 CLI-15H CLI-15N",
       },
       {
         description: "Pin the canonical parent explicitly",
-        command: "sentry issue merge CLI-K9 CLI-15H CLI-15N --into CLI-K9",
+        run: "issue merge CLI-K9 CLI-15H CLI-15N --into CLI-K9",
       },
       {
         description: "Use organization-qualified IDs",
-        command:
-          "sentry issue merge my-org/CLI-K9 my-org/CLI-15H --into my-org/CLI-K9",
+        run: "issue merge my-org/CLI-K9 my-org/CLI-15H --into my-org/CLI-K9",
       },
       {
         description: "Use project-alias IDs",
-        command: "sentry issue merge cli-k9 cli-15h --into cli-k9",
+        run: "issue merge cli-k9 cli-15h --into cli-k9",
       },
     ],
   },

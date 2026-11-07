@@ -204,11 +204,11 @@ export const statusCommand = buildCommand({
     examples: [
       {
         description: "Check authentication status",
-        command: "sentry auth status",
+        run: "auth status",
       },
       {
         description: "Include the raw token",
-        command: "sentry auth status --show-token",
+        run: "auth status --show-token",
       },
     ],
   },

@@ -405,25 +405,25 @@ export const listCommand = buildCommand({
       "(best matches first), or as a glob like 'acme-*'.\n\n" +
       "Alias: `sentry orgs` → `sentry org list`",
     examples: [
-      { description: "List organizations", command: "sentry org list" },
+      { description: "List organizations", run: "org list" },
       {
         description:
           "Only organizations whose slug or name matches (fuzzy, best matches first)",
-        command: "sentry org list acme",
+        run: "org list acme",
       },
       {
         description: "Only organizations matching a glob",
-        command: "sentry org list 'acme-*'",
+        run: "org list 'acme-*'",
       },
       {
         description: "Only one account's organizations",
-        command: "sentry org list --account jane@acme.com",
+        run: "org list --account jane@acme.com",
       },
       {
         description: "Same email on several servers: add the server",
-        command: "sentry org list -a jane@example.com:sentry.io",
+        run: "org list -a jane@example.com:sentry.io",
       },
-      { description: "Output as JSON", command: "sentry org list --json" },
+      { description: "Output as JSON", run: "org list --json" },
     ],
   },
   output: { human: formatOrgListHuman, schema: OrgListEntrySchema },

@@ -139,15 +139,15 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Delete a project (prompts for confirmation)",
-        command: "sentry project delete my-org/old-project",
+        run: "project delete my-org/old-project",
       },
       {
         description: "Delete without confirmation",
-        command: "sentry project delete my-org/old-project --yes",
+        run: "project delete my-org/old-project --yes",
       },
       {
         description: "Preview the deletion",
-        command: "sentry project delete my-org/old-project --dry-run",
+        run: "project delete my-org/old-project --dry-run",
       },
     ],
   },

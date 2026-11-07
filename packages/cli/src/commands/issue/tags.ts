@@ -51,22 +51,20 @@ export const tagsCommand = buildCommand({
     examples: [
       {
         description: "Show which releases concentrate an issue's events",
-        command: "sentry issue tags my-org/FRONT-ABC release",
+        run: "issue tags my-org/FRONT-ABC release",
       },
       {
         description:
           "Inspect server distribution for the latest issue in production",
-        command:
-          "sentry issue tags @latest server_name --environment production",
+        run: "issue tags @latest server_name --environment production",
       },
       {
         description: "Get browser counts and timestamps as JSON",
-        command: "sentry issue tags FRONT-ABC browser.name --json",
+        run: "issue tags FRONT-ABC browser.name --json",
       },
       {
         description: "Select the aggregate fields for a release distribution",
-        command:
-          "sentry issue tags FRONT-ABC release --json --fields key,totalValues,topValues",
+        run: "issue tags FRONT-ABC release --json --fields key,totalValues,topValues",
       },
     ],
   },

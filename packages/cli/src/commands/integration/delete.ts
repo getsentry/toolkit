@@ -164,15 +164,15 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Remove an integration (auto-detect org)",
-        command: "sentry integration delete 12345",
+        run: "integration delete 12345",
       },
       {
         description: "Preview removing an integration",
-        command: "sentry integration delete my-org/12345 --dry-run",
+        run: "integration delete my-org/12345 --dry-run",
       },
       {
         description: "Remove without the confirmation prompt",
-        command: "sentry integration delete my-org/12345 --yes",
+        run: "integration delete my-org/12345 --yes",
       },
     ],
   },

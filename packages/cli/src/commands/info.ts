@@ -123,17 +123,17 @@ export const infoCommand = buildCommand({
     examples: [
       {
         description: "Print the resolved config and verify authentication",
-        command: "sentry info",
+        run: "info",
       },
       {
         description:
           "Verify only authentication (don't require a default org/project)",
-        command: "sentry info --no-defaults",
+        run: "info --no-defaults",
       },
       {
         description:
           "Machine-readable status for external tooling (always exits 0)",
-        command: "sentry info --config-status-json",
+        run: "info --config-status-json",
       },
     ],
   },

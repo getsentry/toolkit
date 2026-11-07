@@ -153,35 +153,31 @@ export const logsCommand = buildCommand({
     examples: [
       {
         description: "View logs for a trace",
-        command: "sentry trace logs abc123def456abc123def456abc12345",
+        run: "trace logs abc123def456abc123def456abc12345",
       },
       {
         description: "Filter trace logs to one project",
-        command:
-          "sentry trace logs my-org/cli-server/abc123def456abc123def456abc12345",
+        run: "trace logs my-org/cli-server/abc123def456abc123def456abc12345",
       },
       {
         description: "Filter trace logs to several projects",
-        command:
-          'sentry trace logs abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
+        run: 'trace logs abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
       },
       {
         description: "Search with a longer time window",
-        command:
-          "sentry trace logs --period 30d abc123def456abc123def456abc12345",
+        run: "trace logs --period 30d abc123def456abc123def456abc12345",
       },
       {
         description: "Only error logs",
-        command:
-          "sentry trace logs -q 'severity:error' abc123def456abc123def456abc12345",
+        run: "trace logs -q 'severity:error' abc123def456abc123def456abc12345",
       },
       {
         description: "Output as JSON",
-        command: "sentry trace logs --json abc123def456abc123def456abc12345",
+        run: "trace logs --json abc123def456abc123def456abc12345",
       },
       {
         description: "Logs for a trace in an explicit organization",
-        command: "sentry trace logs my-org/abc123def456abc123def456abc12345",
+        run: "trace logs my-org/abc123def456abc123def456abc12345",
       },
     ],
   },

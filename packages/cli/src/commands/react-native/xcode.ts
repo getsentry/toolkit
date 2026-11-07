@@ -442,7 +442,7 @@ export const xcodeCommand = buildCommand({
       {
         description:
           "Run as the Xcode build phase (usually added automatically to your build script)",
-        command: "sentry react-native xcode",
+        run: "react-native xcode",
       },
     ],
   },

@@ -82,31 +82,31 @@ export const eventsCommand = buildListCommand("issue", {
     examples: [
       {
         description: "List recent events for an issue",
-        command: "sentry issue events FRONT-ABC",
+        run: "issue events FRONT-ABC",
       },
       {
         description: "List events for the most recent issue",
-        command: "sentry issue events @latest --limit 50",
+        run: "issue events @latest --limit 50",
       },
       {
         description: "Filter events by search query",
-        command: 'sentry issue events FRONT-ABC --query "browser:Chrome"',
+        run: 'issue events FRONT-ABC --query "browser:Chrome"',
       },
       {
         description: "Show full event details",
-        command: "sentry issue events FRONT-ABC --full",
+        run: "issue events FRONT-ABC --full",
       },
       {
         description: "Limit results and filter by time period",
-        command: "sentry issue events FRONT-ABC --limit 50 --period 24h",
+        run: "issue events FRONT-ABC --limit 50 --period 24h",
       },
       {
         description: "Fetch the next page",
-        command: "sentry issue events FRONT-ABC -c next",
+        run: "issue events FRONT-ABC -c next",
       },
       {
         description: "Output as JSON",
-        command: "sentry issue events FRONT-ABC --json",
+        run: "issue events FRONT-ABC --json",
       },
     ],
   },

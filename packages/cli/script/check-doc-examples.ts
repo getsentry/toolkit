@@ -332,7 +332,7 @@ function commandExamples(
   }
   const source = `\`${["sentry", ...path].join(" ")}\` help`;
   return (target.__examples ?? []).flatMap((e) =>
-    exampleSteps(e).map((invocation) => ({ source, invocation })),
+    exampleSteps(e, "sentry").map((invocation) => ({ source, invocation })),
   );
 }
 

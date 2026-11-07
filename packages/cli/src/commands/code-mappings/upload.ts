@@ -184,20 +184,19 @@ export const uploadCommand = buildCommand({
     examples: [
       {
         description: "Upload code mappings from a JSON file",
-        command: "sentry code-mappings upload mappings.json",
+        run: "code-mappings upload mappings.json",
       },
       {
         description: "Specify the repository explicitly",
-        command: "sentry code-mappings upload mappings.json --repo owner/repo",
+        run: "code-mappings upload mappings.json --repo owner/repo",
       },
       {
         description: "Specify the repository and default branch",
-        command:
-          "sentry code-mappings upload mappings.json --repo owner/repo --default-branch develop",
+        run: "code-mappings upload mappings.json --repo owner/repo --default-branch develop",
       },
       {
         description: "Output as JSON",
-        command: "sentry code-mappings upload mappings.json --json",
+        run: "code-mappings upload mappings.json --json",
       },
     ],
   },

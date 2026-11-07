@@ -126,25 +126,21 @@ export const createCommand = buildCommand({
     examples: [
       {
         description: "Alert on new issues and email a team",
-        command:
-          'sentry alert issues create my-org/my-project --name \'New Issues\' --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
+        run: 'alert issues create my-org/my-project --name \'New Issues\' --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
       },
       {
         description:
           "Preview a high-priority alert that emails a user at most every 30 minutes",
-        command:
-          'sentry alert issues create my-org/my-project --name \'High Priority\' --condition \'{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}\' --frequency 30 --dry-run',
+        run: 'alert issues create my-org/my-project --name \'High Priority\' --condition \'{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}\' --frequency 30 --dry-run',
       },
       {
         description: "Alert on new issues and regressions, using trigger names",
-        command:
-          'sentry alert issues create my-org/my-project --name \'New or Regressed\' --condition first-seen,regression --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
+        run: 'alert issues create my-org/my-project --name \'New or Regressed\' --condition first-seen,regression --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
       },
       {
         description:
           "Alert when an issue sees more than 50 events in a day (filters only, checked on every event)",
-        command:
-          'sentry alert issues create my-org/my-project --name \'Busy Issues\' --filter \'{"type":"event_frequency_count","comparison":{"value":50,"interval":"1d"},"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\' --frequency 1440',
+        run: 'alert issues create my-org/my-project --name \'Busy Issues\' --filter \'{"type":"event_frequency_count","comparison":{"value":50,"interval":"1d"},"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\' --frequency 1440',
       },
     ],
   },

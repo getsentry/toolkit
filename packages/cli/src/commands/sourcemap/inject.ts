@@ -76,19 +76,19 @@ export const injectCommand = buildCommand({
     examples: [
       {
         description: "Inject debug IDs into all JS files in dist/",
-        command: "sentry sourcemap inject ./dist",
+        run: "sourcemap inject ./dist",
       },
       {
         description: "Preview changes without writing",
-        command: "sentry sourcemap inject ./dist --dry-run",
+        run: "sourcemap inject ./dist --dry-run",
       },
       {
         description: "Only process specific extensions",
-        command: "sentry sourcemap inject ./build --ext .js,.mjs",
+        run: "sourcemap inject ./build --ext .js,.mjs",
       },
       {
         description: "Allow a directory with no sourcemaps",
-        command: "sentry sourcemap inject ./maybe-empty --allow-empty",
+        run: "sourcemap inject ./maybe-empty --allow-empty",
       },
     ],
   },

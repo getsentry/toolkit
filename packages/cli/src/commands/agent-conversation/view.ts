@@ -116,15 +116,15 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View full transcript (organization auto-detected)",
-        command: "sentry agent-conversation view conv-123",
+        run: "agent-conversation view conv-123",
       },
       {
         description: "Explicit organization",
-        command: "sentry agent-conversation view my-org/conv-123",
+        run: "agent-conversation view my-org/conv-123",
       },
       {
         description: "JSON output",
-        command: "sentry agent-conversation view my-org/conv-123 --json",
+        run: "agent-conversation view my-org/conv-123 --json",
       },
     ],
   },

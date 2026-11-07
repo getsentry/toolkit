@@ -38,11 +38,11 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View organization details",
-        command: "sentry org view my-org",
+        run: "org view my-org",
       },
       {
         description: "Open in the browser",
-        command: "sentry org view my-org -w",
+        run: "org view my-org -w",
       },
     ],
   },

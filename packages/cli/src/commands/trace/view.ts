@@ -477,51 +477,45 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View trace details with the span tree",
-        command: "sentry trace view abc123def456abc123def456abc12345",
+        run: "trace view abc123def456abc123def456abc12345",
       },
       {
         description: "Show the full trace across all projects",
-        command: "sentry trace view my-org/abc123def456abc123def456abc12345",
+        run: "trace view my-org/abc123def456abc123def456abc12345",
       },
       {
         description: "Filter the span tree to one project",
-        command:
-          "sentry trace view my-org/cli-server/abc123def456abc123def456abc12345",
+        run: "trace view my-org/cli-server/abc123def456abc123def456abc12345",
       },
       {
         description: "Recover the trace from an issue short ID",
-        command: "sentry trace view PROJ-123",
+        run: "trace view PROJ-123",
       },
       {
         description: "Open the trace in the browser",
-        command: "sentry trace view abc123def456abc123def456abc12345 -w",
+        run: "trace view abc123def456abc123def456abc12345 -w",
       },
       {
         description: "Find a project across organizations",
-        command:
-          "sentry trace view cli-server abc123def456abc123def456abc12345",
+        run: "trace view cli-server abc123def456abc123def456abc12345",
       },
       {
         description:
           "Select the trace ID and an attribute across the whole span tree",
-        command:
-          "sentry trace view abc123def456abc123def456abc12345 --json --fields traceId,http.method",
+        run: "trace view abc123def456abc123def456abc12345 --json --fields traceId,http.method",
       },
       {
         description: "Keep full spans while requesting an additional attribute",
-        command:
-          "sentry trace view abc123def456abc123def456abc12345 --json --fields spans,http.method",
+        run: "trace view abc123def456abc123def456abc12345 --json --fields spans,http.method",
       },
       {
         description: "Select IDs and detail attributes from root spans only",
-        command:
-          "sentry trace view abc123def456abc123def456abc12345 --json --fields spans.span_id,spans.data.http.method",
+        run: "trace view abc123def456abc123def456abc12345 --json --fields spans.span_id,spans.data.http.method",
       },
       {
         description:
           "Select an additional attribute from immediate child spans",
-        command:
-          "sentry trace view abc123def456abc123def456abc12345 --json --fields spans.children.additional_attributes.http.method",
+        run: "trace view abc123def456abc123def456abc12345 --json --fields spans.children.additional_attributes.http.method",
       },
     ],
   },

@@ -192,21 +192,19 @@ export const editCommand = buildCommand({
     examples: [
       {
         description: "Rename a metric alert rule",
-        command: "sentry alert metrics edit my-org/12345 --name 'Error budget'",
+        run: "alert metrics edit my-org/12345 --name 'Error budget'",
       },
       {
         description: "Disable a rule",
-        command: "sentry alert metrics edit my-org/12345 --status disabled",
+        run: "alert metrics edit my-org/12345 --status disabled",
       },
       {
         description: "Change the query and time window",
-        command:
-          'sentry alert metrics edit my-org/12345 --query "environment:prod event.type:error" --time-window 15',
+        run: 'alert metrics edit my-org/12345 --query "environment:prod event.type:error" --time-window 15',
       },
       {
         description: "Switch the dataset",
-        command:
-          "sentry alert metrics edit my-org/12345 --time-window 15 --dataset spans",
+        run: "alert metrics edit my-org/12345 --time-window 15 --dataset spans",
       },
     ],
   },

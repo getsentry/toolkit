@@ -81,15 +81,15 @@ export const createCommand = buildCommand({
     examples: [
       {
         description: "Create a token (auto-detect org)",
-        command: "sentry token create github-actions",
+        run: "token create github-actions",
       },
       {
         description: "Create a token in a specific org",
-        command: "sentry token create my-org/github-actions",
+        run: "token create my-org/github-actions",
       },
       {
         description: "Output as JSON, including the token value",
-        command: "sentry token create my-org/github-actions --json",
+        run: "token create my-org/github-actions --json",
       },
     ],
   },

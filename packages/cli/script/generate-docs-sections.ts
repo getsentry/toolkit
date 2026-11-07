@@ -924,7 +924,7 @@ function commandAt(path: string[]): Command {
  */
 function sdkRunStatement(path: string[], variable: string): string {
   for (const example of commandAt(path).__examples ?? []) {
-    const steps = exampleSteps(example);
+    const steps = exampleSteps(example, "sentry");
     const commands = steps.length === 1 ? shellCommands(steps[0] ?? "") : [];
     const words = commands.length === 1 ? (commands[0] ?? []) : [];
     if (words[0] === "sentry" && words.some((w) => w.startsWith("-"))) {

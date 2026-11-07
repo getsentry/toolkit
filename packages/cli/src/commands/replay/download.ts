@@ -66,18 +66,15 @@ export const downloadCommand = buildCommand({
       {
         description:
           "Download a replay as rrweb JSON to ./<replay-id>.rrweb.json",
-        command:
-          "sentry replay download my-org/346789a703f6454384f1de473b8b9fcc",
+        run: "replay download my-org/346789a703f6454384f1de473b8b9fcc",
       },
       {
         description: "Choose where the file goes",
-        command:
-          "sentry replay download my-org/346789a703f6454384f1de473b8b9fcc --output ./replay.json",
+        run: "replay download my-org/346789a703f6454384f1de473b8b9fcc --output ./replay.json",
       },
       {
         description: "Download from a replay URL",
-        command:
-          "sentry replay download https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/",
+        run: "replay download https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/",
       },
     ],
   },

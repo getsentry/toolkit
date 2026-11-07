@@ -84,15 +84,15 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Delete a release (prompts for confirmation)",
-        command: "sentry release delete my-org/1.0.0",
+        run: "release delete my-org/1.0.0",
       },
       {
         description: "Skip confirmation",
-        command: "sentry release delete my-org/1.0.0 --yes",
+        run: "release delete my-org/1.0.0 --yes",
       },
       {
         description: "Preview without deleting",
-        command: "sentry release delete my-org/1.0.0 --dry-run",
+        run: "release delete my-org/1.0.0 --dry-run",
       },
     ],
   },

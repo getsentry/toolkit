@@ -169,15 +169,15 @@ export const createCommand = buildCommand({
     examples: [
       {
         description: "Create a dashboard (organization auto-detected)",
-        command: "sentry dashboard create 'Frontend Performance'",
+        run: "dashboard create 'Frontend Performance'",
       },
       {
         description: "Create a dashboard in an explicit organization",
-        command: "sentry dashboard create my-org/ 'My Dashboard'",
+        run: "dashboard create my-org/ 'My Dashboard'",
       },
       {
         description: "Use the organization of an explicit project",
-        command: "sentry dashboard create my-org/my-project 'My Dashboard'",
+        run: "dashboard create my-org/my-project 'My Dashboard'",
       },
     ],
   },

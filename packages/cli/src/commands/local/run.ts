@@ -407,39 +407,38 @@ export const runCommand = buildCommand({
     examples: [
       {
         description: "Run a Node.js dev server with the local server enabled",
-        command: "sentry local run -- npm run dev",
+        run: "local run -- npm run dev",
       },
       {
         description: "Run a Django dev server with the local server enabled",
-        command: "sentry local run -- python manage.py runserver",
+        run: "local run -- python manage.py runserver",
       },
       {
         description:
           "Capture into a daemon session, inspect it after the app exits, then clean up",
-        command: [
-          "sentry local run --session web -- npm run dev",
-          "sentry local session list --json",
-          "sentry local session view web --json",
-          "sentry local session retention web --max-envelopes 2000",
-          "sentry local event list web --json",
-          "sentry local event view web <event-id> --json",
-          "sentry local envelope list web --json",
-          "sentry local envelope view web <envelope-id> --json",
-          "sentry local session reset web",
-          "sentry local session close web",
-          "sentry local daemon status",
-          "sentry local daemon stop",
+        run: [
+          "local run --session web -- npm run dev",
+          "local session list --json",
+          "local session view web --json",
+          "local session retention web --max-envelopes 2000",
+          "local event list web --json",
+          "local event view web <event-id> --json",
+          "local envelope list web --json",
+          "local envelope view web <envelope-id> --json",
+          "local session reset web",
+          "local session close web",
+          "local daemon status",
+          "local daemon stop",
         ],
       },
       {
         description: "Run your app and open the Sentry Local UI",
-        command: "sentry local run --open -- npm run dev",
+        run: "local run --open -- npm run dev",
       },
       {
         description:
           "Stream agent-relevant NDJSON without SDK housekeeping envelopes",
-        command:
-          "sentry local run --format json -f error -f transaction -f log -f ai -- npm run dev",
+        run: "local run --format json -f error -f transaction -f log -f ai -- npm run dev",
       },
     ],
   },

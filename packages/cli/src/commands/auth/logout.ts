@@ -100,25 +100,24 @@ export const logoutCommand = buildCommand({
       {
         description:
           "Log out of the active account (the most recently used other account becomes active)",
-        command: "sentry auth logout",
+        run: "auth logout",
       },
       {
         description: "Log out of a specific account",
-        command: "sentry auth logout jane@example.com",
+        run: "auth logout jane@example.com",
       },
       {
         description: "Log out of several accounts (space- or comma-separated)",
-        command: "sentry auth logout jane@example.com,jane@personal.dev",
+        run: "auth logout jane@example.com,jane@personal.dev",
       },
       {
         description:
           "Pick the account on one server when the same email is stored twice",
-        command:
-          "sentry auth logout jane@example.com --url https://sentry.example.com",
+        run: "auth logout jane@example.com --url https://sentry.example.com",
       },
       {
         description: "Log out of every stored account",
-        command: "sentry auth logout all",
+        run: "auth logout all",
       },
     ],
   },

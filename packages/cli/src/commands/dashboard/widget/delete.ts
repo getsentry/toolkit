@@ -49,16 +49,15 @@ export const deleteCommand = buildDeleteCommand(
       examples: [
         {
           description: "Delete a widget by title",
-          command:
-            "sentry dashboard widget delete 'My Dashboard' --title 'Error Rate'",
+          run: "dashboard widget delete 'My Dashboard' --title 'Error Rate'",
         },
         {
           description: "Delete a widget by index",
-          command: "sentry dashboard widget delete 12345 --index 0",
+          run: "dashboard widget delete 12345 --index 0",
         },
         {
           description: "Preview the deletion",
-          command: "sentry dashboard widget delete 12345 --index 0 --dry-run",
+          run: "dashboard widget delete 12345 --index 0 --dry-run",
         },
       ],
     },

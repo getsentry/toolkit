@@ -266,57 +266,57 @@ export const defaultsCommand = buildCommand({
     examples: [
       {
         description: "Show all current defaults",
-        command: "sentry cli defaults",
+        run: "cli defaults",
       },
       {
         description: "Same as above (aliases: ls, show)",
-        command: "sentry cli defaults list",
+        run: "cli defaults list",
       },
       {
         description: "Set the default organization",
-        command: "sentry cli defaults org my-org",
+        run: "cli defaults org my-org",
       },
       {
         description: "Set the default project",
-        command: "sentry cli defaults project my-project",
+        run: "cli defaults project my-project",
       },
       {
         description: "Set the default Sentry URL (self-hosted)",
-        command: "sentry cli defaults url https://sentry.example.com",
+        run: "cli defaults url https://sentry.example.com",
       },
       {
         description:
           "Set custom HTTP headers (self-hosted, e.g. for IAP/proxies)",
-        command: 'sentry cli defaults headers "X-IAP: token"',
+        run: 'cli defaults headers "X-IAP: token"',
       },
       {
         description:
           "Set a custom CA certificate (self-hosted, behind a TLS proxy)",
-        command: "sentry cli defaults ca-cert /path/to/ca.pem",
+        run: "cli defaults ca-cert /path/to/ca.pem",
       },
       {
         description: "Disable telemetry",
-        command: "sentry cli defaults telemetry off",
+        run: "cli defaults telemetry off",
       },
       {
         description: "Stop installing agent skills on upgrade",
-        command: "sentry cli defaults agent-skills off",
+        run: "cli defaults agent-skills off",
       },
       {
         description: "Disable inline terminal images",
-        command: "sentry cli defaults graphics off",
+        run: "cli defaults graphics off",
       },
       {
         description: "Hide Tip: hints in command output",
-        command: "sentry cli defaults tips off",
+        run: "cli defaults tips off",
       },
       {
         description: "Clear a single default",
-        command: "sentry cli defaults org --clear",
+        run: "cli defaults org --clear",
       },
       {
         description: "Clear all defaults without prompting",
-        command: "sentry cli defaults --clear --yes",
+        run: "cli defaults --clear --yes",
       },
     ],
   },

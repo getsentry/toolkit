@@ -1025,33 +1025,33 @@ export const serverCommand = buildCommand({
     examples: [
       {
         description: "Start the server and tail events",
-        command: "sentry local",
+        run: "local",
       },
-      { description: "Use a custom port", command: "sentry local --port 9000" },
+      { description: "Use a custom port", run: "local --port 9000" },
       {
         description:
           "Receive into a daemon session that outlives this terminal",
-        command: "sentry local serve --session worker",
+        run: "local serve --session worker",
       },
       {
         description: "Only show errors and logs (filter out transactions)",
-        command: "sentry local -f error -f log",
+        run: "local -f error -f log",
       },
       {
         description: "Only show AI/agent spans",
-        command: "sentry local -f ai",
+        run: "local -f ai",
       },
       {
         description: "Suppress per-envelope tail output",
-        command: "sentry local --quiet",
+        run: "local --quiet",
       },
       {
         description: "Stream NDJSON for scripts and agents",
-        command: "sentry local --format json",
+        run: "local --format json",
       },
       {
         description: "Start the server and open the Sentry Local UI",
-        command: "sentry local --open",
+        run: "local --open",
       },
     ],
   },

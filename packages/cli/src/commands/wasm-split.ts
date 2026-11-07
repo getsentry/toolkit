@@ -74,27 +74,28 @@ export const wasmSplitCommand = buildCommand({
     examples: [
       {
         description: "Add a build ID to a module in place and print it",
-        command: "sentry wasm-split app.wasm",
+        run: "wasm-split app.wasm",
       },
       {
         description: "Capture the build ID for a later upload",
-        command: "BUILD_ID=$(sentry wasm-split app.wasm)",
+        run: {
+          prefix: "BUILD_ID=$(",
+          args: "wasm-split app.wasm",
+          suffix: ")",
+        },
       },
       {
         description:
           "Split debug data into a companion and ship a stripped binary",
-        command:
-          "sentry wasm-split app.wasm --debug-out app.debug.wasm --strip",
+        run: "wasm-split app.wasm --debug-out app.debug.wasm --strip",
       },
       {
         description: "Also drop function names from the shipped binary",
-        command:
-          "sentry wasm-split app.wasm -d app.debug.wasm --strip --strip-names",
+        run: "wasm-split app.wasm -d app.debug.wasm --strip --strip-names",
       },
       {
         description: "Point browsers at a companion served from a CDN",
-        command:
-          "sentry wasm-split app.wasm -o dist/app.wasm -d dist/app.debug.wasm --strip --external-dwarf-url https://cdn.example.com/debug/app.debug.wasm",
+        run: "wasm-split app.wasm -o dist/app.wasm -d dist/app.debug.wasm --strip --external-dwarf-url https://cdn.example.com/debug/app.debug.wasm",
       },
     ],
   },

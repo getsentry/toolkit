@@ -461,20 +461,19 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View a log entry",
-        command: "sentry log view 968c763c740cfda8b6728f27fb9e9b01",
+        run: "log view 968c763c740cfda8b6728f27fb9e9b01",
       },
       {
         description: "Specify the project explicitly",
-        command:
-          "sentry log view my-org/backend 968c763c740cfda8b6728f27fb9e9b01",
+        run: "log view my-org/backend 968c763c740cfda8b6728f27fb9e9b01",
       },
       {
         description: "Open in the browser",
-        command: "sentry log view 968c763c740cfda8b6728f27fb9e9b01 -w",
+        run: "log view 968c763c740cfda8b6728f27fb9e9b01 -w",
       },
       {
         description: "Find a project across organizations",
-        command: "sentry log view backend 968c763c740cfda8b6728f27fb9e9b01",
+        run: "log view backend 968c763c740cfda8b6728f27fb9e9b01",
       },
     ],
   },

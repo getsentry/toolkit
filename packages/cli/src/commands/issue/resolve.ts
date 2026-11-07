@@ -114,35 +114,34 @@ export const resolveCommand = buildCommand({
     examples: [
       {
         description: "Resolve immediately (no regression tracking)",
-        command: "sentry issue resolve CLI-G5",
+        run: "issue resolve CLI-G5",
       },
       {
         description:
           "Resolve in a specific release (newer releases flag regressions)",
-        command: "sentry issue resolve CLI-G5 --in 0.26.1",
+        run: "issue resolve CLI-G5 --in 0.26.1",
       },
       {
         description: "Monorepo-style release versions work too",
-        command: "sentry issue resolve CLI-G5 --in spotlight@1.2.3",
+        run: "issue resolve CLI-G5 --in spotlight@1.2.3",
       },
       {
         description: "Resolve in the next release",
-        command: "sentry issue resolve CLI-G5 --in @next",
+        run: "issue resolve CLI-G5 --in @next",
       },
       {
         description:
           "Resolve in the current git HEAD (auto-detects the Sentry repo from your origin remote)",
-        command: "sentry issue resolve CLI-G5 --in @commit",
+        run: "issue resolve CLI-G5 --in @commit",
       },
       {
         description:
           "Resolve in an explicit commit and repo (no git inspection)",
-        command:
-          "sentry issue resolve CLI-G5 --in @commit:getsentry/cli@abc123def",
+        run: "issue resolve CLI-G5 --in @commit:getsentry/cli@abc123def",
       },
       {
         description: "Resolve an issue in an explicit organization",
-        command: "sentry issue resolve my-org/CLI-G5",
+        run: "issue resolve my-org/CLI-G5",
       },
     ],
   },

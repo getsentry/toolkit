@@ -420,6 +420,24 @@ const HELP_TEXT_KEYS = new Set([
   "examples",
 ]);
 
+/** Key of a property node, as written. */
+function propertyKey(node) {
+  return node.key?.name ?? node.key?.value;
+}
+
+/**
+ * Whether `node` is a step of a `docs.examples` entry: the `run` value, an
+ * element of a `run` array, or the `args` of a `{ prefix, args }` step.
+ */
+function isExampleStep(node) {
+  let current = node.parent;
+  if (current?.type === "Property" && propertyKey(current) === "args") {
+    current = current.parent?.parent;
+  }
+  if (current?.type === "ArrayExpression") current = current.parent;
+  return current?.type === "Property" && propertyKey(current) === "run";
+}
+
 /** Whether `node` sits inside a function body. */
 function hasFunctionAncestor(node) {
   for (let current = node.parent; current; current = current.parent) {
@@ -919,7 +937,16 @@ const rules = {
             );
         },
         Literal(node) {
-          if (typeof node.value === "string") check(node, node.value);
+          if (typeof node.value !== "string") return;
+          if (isExampleStep(node)) {
+            if (node.value.startsWith("sentry "))
+              report(
+                node,
+                "Write example steps without the program name, as `issue list`: help, docs and skills each add it.",
+              );
+            return;
+          }
+          check(node, node.value);
         },
         TemplateLiteral(node) {
           if (!isSentryTag(node.parent)) check(node, templateText(node));

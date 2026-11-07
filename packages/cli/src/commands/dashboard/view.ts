@@ -169,44 +169,44 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View a dashboard by title",
-        command: "sentry dashboard view 'Frontend Performance'",
+        run: "dashboard view 'Frontend Performance'",
       },
       {
         description: "View a dashboard by ID",
-        command: "sentry dashboard view 12345",
+        run: "dashboard view 12345",
       },
       {
         description: "View by ID in an explicit organization",
-        command: "sentry dashboard view my-org/12345",
+        run: "dashboard view my-org/12345",
       },
       {
         description: "Include project context in the same argument",
-        command: "sentry dashboard view my-org/my-project/12345",
+        run: "dashboard view my-org/my-project/12345",
       },
       {
         description:
           "Pass the organization separately, e.g. for titles that contain a slash",
-        command: 'sentry dashboard view my-org/ "incidents/2026"',
+        run: 'dashboard view my-org/ "incidents/2026"',
       },
       {
         description: "Override the time period",
-        command: "sentry dashboard view 12345 --period 7d",
+        run: "dashboard view 12345 --period 7d",
       },
       {
         description: "Render charts with sixel graphics",
-        command: "sentry dashboard view 12345 --renderer sixel",
+        run: "dashboard view 12345 --renderer sixel",
       },
       {
         description: "Auto-refresh every 30 seconds",
-        command: "sentry dashboard view 'Backend Performance' --refresh 30",
+        run: "dashboard view 'Backend Performance' --refresh 30",
       },
       {
         description: "Output as JSON",
-        command: "sentry dashboard view 12345 --json",
+        run: "dashboard view 12345 --json",
       },
       {
         description: "Open in the browser",
-        command: "sentry dashboard view 12345 -w",
+        run: "dashboard view 12345 -w",
       },
     ],
   },

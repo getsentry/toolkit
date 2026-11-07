@@ -650,32 +650,32 @@ export const listCommand = buildListCommand("release", {
     examples: [
       {
         description: "List releases (project auto-detected)",
-        command: "sentry release list",
+        run: "release list",
       },
       {
         description: "List all releases in an organization",
-        command: "sentry release list my-org/",
+        run: "release list my-org/",
       },
       {
         description: "List releases for one project",
-        command: "sentry release list my-org/my-project",
+        run: "release list my-org/my-project",
       },
       {
         description: "Sort by crash-free sessions",
-        command: "sentry release list --sort cfs",
+        run: "release list --sort cfs",
       },
       {
         description: "Filter by environment",
-        command: "sentry release list --environment production",
+        run: "release list --environment production",
       },
       {
         description: "Show the last 7 days of health data",
-        command: "sentry release list --period 7d",
+        run: "release list --period 7d",
       },
-      { description: "Output as JSON", command: "sentry release list --json" },
+      { description: "Output as JSON", run: "release list --json" },
       {
         description: "Fetch the next page",
-        command: "sentry release list my-org/ -c next",
+        run: "release list my-org/ -c next",
       },
     ],
   },

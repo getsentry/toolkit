@@ -118,23 +118,23 @@ export const revisionsCommand = buildCommand({
     examples: [
       {
         description: "List revisions by dashboard title",
-        command: "sentry dashboard revisions 'Frontend Performance'",
+        run: "dashboard revisions 'Frontend Performance'",
       },
       {
         description: "List revisions by dashboard ID",
-        command: "sentry dashboard revisions 12345",
+        run: "dashboard revisions 12345",
       },
       {
         description: "Pass the organization explicitly",
-        command: "sentry dashboard revisions my-org/ 12345",
+        run: "dashboard revisions my-org/ 12345",
       },
       {
         description: "Fetch the next page",
-        command: "sentry dashboard revisions my-org/ 12345 -c next",
+        run: "dashboard revisions my-org/ 12345 -c next",
       },
       {
         description: "Output as JSON",
-        command: "sentry dashboard revisions my-org/ 12345 --json",
+        run: "dashboard revisions my-org/ 12345 --json",
       },
     ],
   },

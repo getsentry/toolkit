@@ -324,7 +324,7 @@ export function buildCommandInfo(cmd: Command, path: string): CommandInfo {
     aliases: cmd.parameters.aliases ?? {},
     examples: (cmd.__examples ?? []).map(
       (example) =>
-        `# ${example.description}\n${exampleSteps(example).join("\n")}`,
+        `# ${example.description}\n${exampleSteps(example, "sentry").join("\n")}`,
     ),
     jsonFields: cmd.__jsonFields?.length ? [...cmd.__jsonFields] : undefined,
     ...(cmd.__destructive ? { destructive: true as const } : {}),

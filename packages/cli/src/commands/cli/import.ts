@@ -278,23 +278,23 @@ export const importCommand = buildCommand({
     examples: [
       {
         description: "Scan for .sentryclirc files and import interactively",
-        command: "sentry cli import",
+        run: "cli import",
       },
       {
         description: "Preview what would be imported",
-        command: "sentry cli import --dry-run",
+        run: "cli import --dry-run",
       },
       {
         description: "Skip the confirmation prompt (CI-safe)",
-        command: "sentry cli import --yes",
+        run: "cli import --yes",
       },
       {
         description: "Explicitly trust a self-hosted URL",
-        command: "sentry cli import --url https://sentry.example.com",
+        run: "cli import --url https://sentry.example.com",
       },
       {
         description: "Skip API validation of the imported token",
-        command: "sentry cli import --skip-validation",
+        run: "cli import --skip-validation",
       },
     ],
   },

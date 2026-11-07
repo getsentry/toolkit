@@ -324,31 +324,27 @@ export const viewCommand = buildCommand({
       {
         description:
           "View a replay by ID (organization and project auto-detected)",
-        command: "sentry replay view 346789a703f6454384f1de473b8b9fcc",
+        run: "replay view 346789a703f6454384f1de473b8b9fcc",
       },
       {
         description: "View a replay in an explicit organization",
-        command: "sentry replay view my-org/346789a703f6454384f1de473b8b9fcc",
+        run: "replay view my-org/346789a703f6454384f1de473b8b9fcc",
       },
       {
         description: "View a replay with explicit org/project context",
-        command:
-          "sentry replay view my-org/frontend/346789a703f6454384f1de473b8b9fcc",
+        run: "replay view my-org/frontend/346789a703f6454384f1de473b8b9fcc",
       },
       {
         description: "View a replay from its URL",
-        command:
-          "sentry replay view https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/",
+        run: "replay view https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/",
       },
       {
         description: "View the replay linked to a trace",
-        command:
-          "sentry replay view my-org/frontend/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        run: "replay view my-org/frontend/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       },
       {
         description: "Open a replay in the browser",
-        command:
-          "sentry replay view my-org/346789a703f6454384f1de473b8b9fcc --web",
+        run: "replay view my-org/346789a703f6454384f1de473b8b9fcc --web",
       },
     ],
   },
