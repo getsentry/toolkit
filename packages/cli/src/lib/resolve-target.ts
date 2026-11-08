@@ -391,14 +391,20 @@ export async function resolveOrgFromDsn(
  *
  * 1. Local DB cache lookup (getOrgByNumericId — fast, no API call)
  * 2. Refresh org list via listOrganizationsUncached to populate mapping
- * 3. Falls back to original ID if resolution fails
+ * 3. Falls back to original ID only if the refresh itself fails (offline,
+ *    not authenticated), so the downstream API call reports the real error
+ *
+ * Returns `null` when the org list was fetched but none of the user's orgs
+ * has this numeric ID. That happens for placeholder DSNs copied from docs or
+ * examples (e.g. `o123.ingest.sentry.io/456`); using the raw ID would send a
+ * nonexistent org to the API and fail with a confusing 404 (CLI-T6).
  *
  * Non-numeric identifiers (already slugs) are returned unchanged.
  *
  * @param orgId - Raw org identifier from DSN (numeric ID or slug)
- * @returns Org slug for API calls
+ * @returns Org slug for API calls, or null if no accessible org matches
  */
-async function normalizeNumericOrg(orgId: string): Promise<string> {
+async function normalizeNumericOrg(orgId: string): Promise<string | null> {
   if (!isAllDigits(orgId)) {
     return orgId;
   }
@@ -412,17 +418,34 @@ async function normalizeNumericOrg(orgId: string): Promise<string> {
   // Slow path: fetch org list to populate numeric ID → slug mapping.
   // resolveEffectiveOrg doesn't handle bare numeric IDs (only o-prefixed),
   // so we do a targeted refresh via listOrganizationsUncached().
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  let organizations: { id: string; slug: string }[];
   try {
     const { listOrganizationsUncached } = await import("./api-client.js");
-    await listOrganizationsUncached();
-  } catch {
+    organizations = await listOrganizationsUncached();
+  } catch (error) {
+    // Can't verify membership (offline, not authenticated): keep the raw ID
+    // so the downstream API call reports the real error.
+    log.debug(
+      `Org list refresh failed while resolving org ID '${orgId}'`,
+      error,
+    );
     return orgId;
   }
 
-  // Retry cache after refresh
+  // Match against the fetched list itself: listOrganizationsUncached skips
+  // writing the ID → slug cache when a region can't be verified, so a cache
+  // miss alone doesn't prove the org is inaccessible.
+  const match = organizations.find((org) => String(org.id) === orgId);
+  if (match) {
+    return match.slug;
+  }
   const afterRefresh = getOrgByNumericId(orgId);
-  return afterRefresh?.slug ?? orgId;
+  if (afterRefresh) {
+    return afterRefresh.slug;
+  }
+  // The full membership list was fetched and has no org with this ID, so the
+  // user can't access it (e.g. a placeholder DSN like o123.ingest.sentry.io).
+  return null;
 }
 
 /**
@@ -2186,8 +2209,16 @@ export async function resolveOrg(
       // cache is cold. Normalize to a slug so API endpoints that reject
       // numeric IDs (e.g., dashboards) work correctly.
       const resolvedOrg = await normalizeNumericOrg(result.org);
-      setOrgProjectContext([resolvedOrg], []);
-      return { org: resolvedOrg, detectedFrom: result.detectedFrom };
+      if (resolvedOrg) {
+        setOrgProjectContext([resolvedOrg], []);
+        return { org: resolvedOrg, detectedFrom: result.detectedFrom };
+      }
+      // The DSN names an org none of the user's organizations match (often a
+      // placeholder DSN like o123.ingest.sentry.io/456). Don't send it to the
+      // API; fall through to the account's organizations instead.
+      log.warn(
+        `Ignoring organization ID '${result.org}' from ${result.detectedFrom}: none of your organizations has this ID`,
+      );
     }
   } catch {
     // Fall through to the account's organizations
