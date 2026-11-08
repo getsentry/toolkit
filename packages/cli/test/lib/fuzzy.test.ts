@@ -219,6 +219,29 @@ describe("fuzzyMatch: search mode", () => {
     expect(fuzzyMatch("isu", ["sui"], { mode: "search" })).toEqual([]);
   });
 
+  test("treats a camelCase capital as a word start", () => {
+    expect(fuzzyMatch("curnet", ["getCurrentHub"], { mode: "search" })).toEqual(
+      ["getCurrentHub"],
+    );
+    expect(
+      fuzzyMatch("iss", ["isolationscope", "isolationScope"], {
+        mode: "search",
+      }),
+    ).toEqual(["isolationScope", "isolationscope"]);
+  });
+
+  test("matches a query that was lowercased before the call", () => {
+    // "İ".toLowerCase() is "i" plus a combining dot, two code units.
+    expect(
+      fuzzyMatch("İs".toLowerCase(), ["İstanbul"], { mode: "search" }),
+    ).toEqual(["İstanbul"]);
+    expect(
+      fuzzyMatch("iss", ["İsolationscope", "İsolationScope"], {
+        mode: "search",
+      }),
+    ).toEqual(["İsolationScope", "İsolationscope"]);
+  });
+
   test("ranks a tight scatter over a typo over a loose scatter", () => {
     expect(
       fuzzyMatch(

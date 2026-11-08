@@ -99,7 +99,11 @@ function matchScore(
     return CONTAINS_SCORE;
   }
   if (search) {
-    const match = searchScore(lowerPartial, lowerCandidate);
+    const match = searchScore(
+      lowerPartial,
+      lowerCandidate,
+      wordStarts(candidate),
+    );
     if (match !== undefined) {
       return CONTAINS_SCORE + 1 - match / SEARCH_SCALE;
     }
@@ -115,20 +119,28 @@ function matchScore(
 }
 
 /** The better of a scatter and a typo match, between 0 and 1000. */
-function searchScore(partial: string, candidate: string): number | undefined {
-  const scatter = scatterScore(partial, candidate);
+function searchScore(
+  partial: string,
+  candidate: string,
+  starts: Set<number>,
+): number | undefined {
+  const scatter = scatterScore(partial, candidate, starts);
   // No typo can beat a scatter this tight, so skip the edit distances.
   if (scatter !== undefined && scatter >= TYPO_SCORE) {
     return scatter;
   }
-  const typo = typoScore(partial, candidate);
+  const typo = typoScore(partial, candidate, starts);
   if (scatter === undefined || typo === undefined) {
     return scatter ?? typo;
   }
   return Math.max(scatter, typo);
 }
 
-function scatterScore(partial: string, candidate: string): number | undefined {
+function scatterScore(
+  partial: string,
+  candidate: string,
+  starts: Set<number>,
+): number | undefined {
   let first = -1;
   let last = -1;
   let wordStarts = 0;
@@ -138,7 +150,7 @@ function scatterScore(partial: string, candidate: string): number | undefined {
     if (at === -1) {
       return;
     }
-    if (isWordStart(candidate, at)) {
+    if (starts.has(at)) {
       wordStarts += 1;
     }
     if (first === -1) {
@@ -158,7 +170,11 @@ function scatterScore(partial: string, candidate: string): number | undefined {
  * Compare `partial` with the text from each word start, so an unfinished
  * word still counts. Allows one edit for short input and two for longer input.
  */
-function typoScore(partial: string, candidate: string): number | undefined {
+function typoScore(
+  partial: string,
+  candidate: string,
+  starts: Set<number>,
+): number | undefined {
   if (partial.length < TYPO_MIN_LENGTH) {
     return;
   }
@@ -166,10 +182,13 @@ function typoScore(partial: string, candidate: string): number | undefined {
   let best: { at: number; distance: number } | undefined;
   // Compare against the rest of the candidate, not only the word, so
   // `sentyr-javascrpt` still finds `sentry-javascript`.
-  for (const word of candidate.matchAll(WORD_RE)) {
+  for (const at of starts) {
+    if (!WORD_START_RE.test(candidate.slice(at, at + 2))) {
+      continue;
+    }
     const distances = prefixDistances(
       partial,
-      candidate.slice(word.index, word.index + partial.length + allowed),
+      candidate.slice(at, at + partial.length + allowed),
     );
     // Each extra or missing letter costs an edit, so lengths further than
     // `allowed` from the input can't match.
@@ -180,18 +199,41 @@ function typoScore(partial: string, candidate: string): number | undefined {
         distance <= allowed &&
         (!best || distance < best.distance)
       ) {
-        best = { at: word.index, distance };
+        best = { at, distance };
       }
     }
   }
   return best && Math.max(TYPO_SCORE / best.distance - best.at, 1);
 }
 
-const WORD_RE = /[\p{L}\p{N}]+/gu;
 const WORD_CHAR_RE = /[\p{L}\p{N}]/u;
+// Reads two code units so a letter outside the BMP still counts.
+const WORD_START_RE = /^[\p{L}\p{N}]/u;
+const UPPER_RE = /\p{Lu}/u;
+const LOWER_RE = /\p{Ll}/u;
 
-function isWordStart(text: string, at: number): boolean {
-  return at === 0 || !WORD_CHAR_RE.test(text[at - 1] ?? "");
+/**
+ * Ascending word start indices: after a symbol or space, or at a capital
+ * after a lowercase letter, so `isolationScope` has two. Reads case from the
+ * candidate but returns indices into `candidate.toLowerCase()`, which can be
+ * longer: "İ" lowercases to "i" plus a combining dot.
+ */
+function wordStarts(candidate: string): Set<number> {
+  const starts = new Set([0]);
+  let at = 0;
+  let before = "";
+  for (const char of candidate) {
+    if (
+      at > 0 &&
+      (!WORD_CHAR_RE.test(before) ||
+        (UPPER_RE.test(char) && LOWER_RE.test(before)))
+    ) {
+      starts.add(at);
+    }
+    at += char.toLowerCase().length;
+    before = char;
+  }
+  return starts;
 }
 
 /**
