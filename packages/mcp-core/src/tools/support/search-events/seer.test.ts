@@ -2,7 +2,7 @@ import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { SentryApiService } from "../../../api-client";
-import { translateWithSeer } from "./seer";
+import { type SeerSearchDataset, translateWithSeer } from "./seer";
 
 const baseUrl = "https://sentry.io/api/0/organizations/test-org";
 const apiService = new SentryApiService({ accessToken: "test-token" });
@@ -47,15 +47,41 @@ function mockTranslation(
   );
 }
 
-const translate = async () =>
+const translate = async (dataset: SeerSearchDataset = "spans") =>
   await translateWithSeer({
     apiService,
     organizationSlug: "test-org",
-    dataset: "spans",
+    dataset,
     query: "requests per hour",
   });
 
 describe("Seer time series translation", () => {
+  const datasets: SeerSearchDataset[] = ["spans", "logs", "metrics"];
+  it.each(datasets)(
+    "excludes non-bucketed Seer charts from %s time series",
+    async (dataset) => {
+      mockTranslation([
+        { y_axes: ["count_unique(user)"], interval: null },
+        { y_axes: ["count()"], interval: "1h" },
+        { y_axes: ["count()"] },
+      ]);
+
+      expect((await translate(dataset))?.timeSeries).toEqual({
+        axes: [{ yAxis: "count()" }],
+        interval: "1h",
+      });
+    },
+  );
+
+  it("rejects transformations on a non-bucketed chart beside a time series", async () => {
+    mockTranslation([
+      { y_axes: ["count()"], interval: null, transformations: ["fill(zero)"] },
+      { y_axes: ["count()"], interval: "1h" },
+    ]);
+
+    await expect(translate()).rejects.toThrow("supported time-series request");
+  });
+
   it.each([null, "1h"])(
     "accepts null transformations with interval %s",
     async (interval) => {

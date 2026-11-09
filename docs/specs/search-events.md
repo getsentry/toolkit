@@ -203,6 +203,8 @@ includes its executed interval, units, nullable bucket values, comparisons,
 transformation flags. Null is a gap rather than zero. Transformed axes omit totals and label their maximum as `derivedMaximum`.
 
 Errors and profiles retain their existing single-axis inferred charts.
+Seer-inferred time series include only charts with the selected non-null
+interval; unbucketed aggregate charts are excluded.
 
 Grouped output, cross-event filters on transformed searches, and mismatched
 returned axes produce actionable errors. Sentry deployments that ignore

@@ -211,7 +211,11 @@ function toSearchTranslation(
   if (
     !timeSeriesOverride &&
     hasTransformations &&
-    (result.mode !== "aggregates" || !chartWithInterval)
+    (result.mode !== "aggregates" ||
+      !chartWithInterval ||
+      result.visualization.some(
+        (chart) => (chart.transformations?.length ?? 0) > 0 && !chart.interval,
+      ))
   ) {
     throw new UserInputError(
       "The translated transformations need a supported time-series request. Supply explicit timeSeries.axes and interval instead.",
@@ -241,7 +245,9 @@ function toSearchTranslation(
       ? TimeSeriesConfigSchema.parse({
           axes: (dataset === "errors" && !hasTransformations
             ? [chartWithInterval]
-            : result.visualization
+            : result.visualization.filter(
+                (chart) => chart.interval === chartWithInterval.interval,
+              )
           ).flatMap((chart) =>
             chart.y_axes.map((yAxis) => ({
               yAxis,
