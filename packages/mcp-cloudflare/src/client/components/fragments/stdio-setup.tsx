@@ -14,7 +14,7 @@ export default function StdioSetup() {
   const mcpStdioSnippet = `npx ${NPM_PACKAGE_NAME}@latest`;
 
   const selfHostedHostExample = [
-    `${mcpStdioSnippet}`,
+    mcpStdioSnippet,
     "--access-token=sentry-user-token",
     "--host=sentry.example.com",
   ].join(" \\\n  ");
@@ -63,10 +63,9 @@ export default function StdioSetup() {
         </ul>
         <p>Now wire up that token to the MCP configuration:</p>
         <CodeSnippet
-          snippet={[
-            `${mcpStdioSnippet}`,
-            "--access-token=sentry-user-token",
-          ].join(" \\\n  ")}
+          snippet={[mcpStdioSnippet, "--access-token=sentry-user-token"].join(
+            " \\\n  ",
+          )}
         />
         <div className="mt-6">
           <h4 className="text-base font-semibold text-slate-100">

@@ -2423,9 +2423,7 @@ export function formatUpgradeResult(data: UpgradeResult): string {
     default: {
       // Exhaustive check — all action types should be handled above
       const _: never = data.action;
-      lines.push(
-        `${ACTION_DESCRIPTIONS[_ as UpgradeResult["action"]] ?? "Done"}`,
-      );
+      lines.push(ACTION_DESCRIPTIONS[_ as UpgradeResult["action"]] ?? "Done");
     }
   }
 

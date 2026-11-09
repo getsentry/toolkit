@@ -161,7 +161,7 @@ export async function resolveCommitSpec(
   if (!match) {
     throw new ValidationError(
       `--in @commit:${spec.repository}@${spec.commit}: no Sentry repository named '${spec.repository}' in organization '${orgSlug}'.\n\n` +
-        `${formatAvailableRepos(sentryRepos)}`,
+        formatAvailableRepos(sentryRepos),
       "in",
     );
   }
