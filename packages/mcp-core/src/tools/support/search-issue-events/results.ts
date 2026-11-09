@@ -186,7 +186,7 @@ export function buildIssueEventResults(
     });
   }
 
-  const first = events[0];
+  const first = events.at(0);
   const action = first
     ? buildSuggestedToolAction({
         toolName: "get_sentry_resource",

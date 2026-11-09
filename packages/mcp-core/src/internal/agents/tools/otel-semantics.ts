@@ -82,7 +82,7 @@ import webengine from "./data/webengine.json";
 import zos from "./data/zos.json";
 
 // Create the namespaceData object
-const namespaceData: Record<string, NamespaceData> = {
+const namespaceData: Partial<Record<string, NamespaceData>> = {
   android,
   app,
   artifact,

@@ -162,13 +162,11 @@ export async function callEmbeddedAgent<
       // See: https://github.com/getsentry/sentry-mcp/issues/623
       providerOptions: provider.getProviderOptions(),
       onStepFinish: (event) => {
-        if (event.toolCalls && event.toolCalls.length > 0) {
-          for (const toolCall of event.toolCalls) {
-            capturedToolCalls.push({
-              toolName: toolCall.toolName,
-              args: toolCall.input,
-            });
-          }
+        for (const toolCall of event.toolCalls) {
+          capturedToolCalls.push({
+            toolName: toolCall.toolName,
+            args: toolCall.input,
+          });
         }
       },
     });
@@ -184,7 +182,6 @@ export async function callEmbeddedAgent<
 
     if (
       typeof rawOutput === "object" &&
-      rawOutput !== null &&
       "error" in rawOutput &&
       typeof (rawOutput as { error?: unknown }).error === "string"
     ) {

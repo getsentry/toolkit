@@ -373,8 +373,8 @@ describe("get_monitor_details", () => {
   });
 
   it("uses StatsMixin time parameters for monitor stats", async () => {
-    let checkInsRequestUrl: string | null = null;
-    let statsRequestUrl: string | null = null;
+    let checkInsRequestUrl: string | undefined;
+    let statsRequestUrl: string | undefined;
     const monitorResponse = {
       id: "4509100000000001",
       slug: "nightly-import",
@@ -430,14 +430,14 @@ describe("get_monitor_details", () => {
       context,
     );
 
-    expect(checkInsRequestUrl).not.toBeNull();
+    expect(checkInsRequestUrl).toBeDefined();
     const checkInsParams = new URL(checkInsRequestUrl ?? "").searchParams;
     expect(checkInsParams.get("environment")).toBe("production");
     expect(checkInsParams.get("start")).toBe("2025-04-14T02:00:00.000Z");
     expect(checkInsParams.get("end")).toBe("2025-04-14T03:00:00.000Z");
     expect(checkInsParams.get("statsPeriod")).toBeNull();
 
-    expect(statsRequestUrl).not.toBeNull();
+    expect(statsRequestUrl).toBeDefined();
     const params = new URL(statsRequestUrl ?? "").searchParams;
     expect(params.get("environment")).toBe("production");
     expect(params.get("since")).toBe("1744596000");
@@ -489,8 +489,8 @@ describe("get_monitor_details", () => {
   });
 
   it("defaults null period to a 24h monitor window", async () => {
-    let checkInsRequestUrl: string | null = null;
-    let statsRequestUrl: string | null = null;
+    let checkInsRequestUrl: string | undefined;
+    let statsRequestUrl: string | undefined;
     const monitorResponse = {
       id: "4509100000000001",
       slug: "nightly-import",
@@ -546,11 +546,11 @@ describe("get_monitor_details", () => {
       context,
     );
 
-    expect(checkInsRequestUrl).not.toBeNull();
+    expect(checkInsRequestUrl).toBeDefined();
     const checkInsParams = new URL(checkInsRequestUrl ?? "").searchParams;
     expect(checkInsParams.get("statsPeriod")).toBe("24h");
 
-    expect(statsRequestUrl).not.toBeNull();
+    expect(statsRequestUrl).toBeDefined();
     const statsParams = new URL(statsRequestUrl ?? "").searchParams;
     expect(statsParams.get("statsPeriod")).toBeNull();
     expect(statsParams.get("since")).not.toBeNull();

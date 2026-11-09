@@ -147,7 +147,7 @@ function matchesIntegration(url: URL, integration: IssueIntegration): boolean {
   const provider = integration.provider.key;
   const domain = integrationDomain(integration);
   const path = pathOf(url);
-  const owner = path.split("/")[1];
+  const owner = path.split("/").at(1);
 
   switch (provider) {
     case "github":
@@ -165,7 +165,7 @@ function matchesIntegration(url: URL, integration: IssueIntegration): boolean {
       // Older personal installations store only the username as domainName.
       const installedOwner =
         domain?.host === "bitbucket.org"
-          ? pathOf(domain).split("/")[1]
+          ? pathOf(domain).split("/").at(1)
           : integration.name;
       return owner?.toLowerCase() === installedOwner?.toLowerCase();
     }
@@ -316,7 +316,7 @@ export async function unlinkExternalIssue(
       `Multiple linked issues match this URL. Provide integrationId to select one: ${describeIntegrations(matches.map(({ integration }) => integration))}.`,
     );
   }
-  const match = matches[0];
+  const match = matches.at(0);
   if (!match) {
     // Custom Apps can own any URL, including one with a native provider shape.
     if (!params.integrationId) return await unlinkAppIssue(apiService, params);

@@ -162,10 +162,12 @@ describe("buildFlamegraphAnalysis", () => {
     });
 
     const [topPath] = analysis.hotPaths;
-    expect(topPath?.stack.map((index) => analysis.frames[index]?.file)).toEqual(
-      ["main.py", "utils.py", "psycopg2/pool.py"],
-    );
-    expect(topPath?.stack.at(-1)).toBe(topPath?.leaf);
+    expect(topPath.stack.map((index) => analysis.frames[index]?.file)).toEqual([
+      "main.py",
+      "utils.py",
+      "psycopg2/pool.py",
+    ]);
+    expect(topPath.stack.at(-1)).toBe(topPath.leaf);
     expect(analysis.topFunctions).toHaveLength(3);
   });
 

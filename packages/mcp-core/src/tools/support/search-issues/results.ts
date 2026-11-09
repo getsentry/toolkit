@@ -157,7 +157,7 @@ export function buildIssueResults(
       issue.seerFixabilityScore == null
         ? null
         : getSeerActionabilityLabel(issue.seerFixabilityScore),
-    projectSlug: issue.project?.slug ?? null,
+    projectSlug: issue.project.slug,
   }));
 
   return structuredResult({
@@ -187,7 +187,7 @@ function buildIssueActions(
   issues: SearchIssuesStructuredContent["issues"],
   params: BuildIssueResultsParams,
 ): SuggestedToolAction[] {
-  const first = issues[0];
+  const first = issues.at(0);
   const feedback = issues.find((issue) => issue.issueCategory === "feedback");
   const targets = [
     first && first !== feedback

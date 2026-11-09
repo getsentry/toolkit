@@ -103,7 +103,7 @@ export const searchEventsAgentOutputSchema = z
       }
 
       // Only validate if both sort and fields are present
-      if (!data.sort || !data.fields || data.fields.length === 0) {
+      if (!data.sort || data.fields.length === 0) {
         return true;
       }
 

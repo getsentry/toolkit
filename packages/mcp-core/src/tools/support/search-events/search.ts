@@ -187,10 +187,7 @@ function formatEnvironmentFilter(
     return undefined;
   }
   if (environments.length === 1) {
-    const environmentValue = environments[0];
-    return environmentValue === undefined
-      ? undefined
-      : `environment:${formatSearchValue(environmentValue)}`;
+    return `environment:${formatSearchValue(environments[0])}`;
   }
   return `environment:[${environments.map(formatSearchValue).join(",")}]`;
 }
@@ -897,7 +894,7 @@ async function executeSearchEvents(
     // Time series requests use yAxis/interval, so sort is not required.
     if (
       !timeSeries &&
-      !parsed.sort?.trim() &&
+      !parsed.sort.trim() &&
       !(shouldTrustExplicitSearchParams && hasExplicitSort)
     ) {
       throw new UserInputError(
@@ -928,7 +925,7 @@ async function executeSearchEvents(
     sortParam =
       shouldTrustExplicitSearchParams && explicitSort
         ? explicitSort
-        : parsed.sort?.trim() || defaultSortForDataset(dataset);
+        : parsed.sort.trim() || defaultSortForDataset(dataset);
     explanation = parsed.explanation;
     environment = params.environment ?? parsed.environment;
 

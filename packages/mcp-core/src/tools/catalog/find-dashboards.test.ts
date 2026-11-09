@@ -96,7 +96,7 @@ describe("find_dashboards", () => {
   });
 
   it("filters explicit dashboard project IDs in project-constrained sessions", async () => {
-    let requestUrl: string | null = null;
+    let requestUrl: string | undefined;
     const paths: string[] = [];
     mswServer.use(
       http.get(
@@ -372,7 +372,7 @@ describe("find_dashboards", () => {
   });
 
   it("resumes a project cursor within the first API page", async () => {
-    let requestUrl: string | null = null;
+    let requestUrl: string | undefined;
     const firstPageCursor = `mcp-dashboard-project:${Buffer.from(
       JSON.stringify({
         v: 1,
@@ -514,7 +514,7 @@ describe("find_dashboards", () => {
   });
 
   it("passes search, sort, cursor, and limit query parameters", async () => {
-    let requestUrl: string | null = null;
+    let requestUrl: string | undefined;
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/",

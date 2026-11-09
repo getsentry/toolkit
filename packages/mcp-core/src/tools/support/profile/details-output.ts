@@ -147,7 +147,7 @@ function buildSampleAnalysis(
 
   const topFrames = [...frameCounts.entries()]
     .flatMap(([frameIndex, count]) => {
-      const frame = profile.frames[frameIndex];
+      const frame = profile.frames.at(frameIndex);
       if (!frame || (options.focusOnUserCode && !frame.in_app)) {
         return [];
       }

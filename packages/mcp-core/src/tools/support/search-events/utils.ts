@@ -380,7 +380,7 @@ function searchFilterOccurrences(query: string): SearchFilterOccurrence[] {
   // so a structured filter rewritten into one is still a downgrade.
   for (const match of masked.matchAll(SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN)) {
     const key = (match.groups?.regexKey ?? match.groups?.key)?.toLowerCase();
-    if (!key || match.index === undefined) {
+    if (!key) {
       continue;
     }
 
@@ -862,10 +862,7 @@ export async function fetchCustomAttributes(
     for (const attr of attributesResponse) {
       if (attr.key && !attr.key.startsWith("sentry:")) {
         customAttributes[attr.key] = { ...attr, name: attr.name || attr.key };
-        // Track field type from the attribute response with validation
-        if (attr.type) {
-          fieldTypes[attr.key] = attr.type;
-        }
+        fieldTypes[attr.key] = attr.type;
       }
     }
   }
@@ -1360,7 +1357,7 @@ export function createDatasetAttributesTool(options: {
       const recommendedFields = RECOMMENDED_FIELDS[normalizedDataset];
 
       // Combine field types from both static config and dynamic API
-      const allFieldTypes: Record<string, TraceItemAttributeType> = {
+      const allFieldTypes: Partial<Record<string, TraceItemAttributeType>> = {
         ...updatedFieldTypes,
       };
       const staticNumericFields =

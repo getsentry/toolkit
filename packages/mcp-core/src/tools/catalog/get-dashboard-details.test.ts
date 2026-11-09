@@ -180,7 +180,7 @@ describe("get_dashboard_details", () => {
   });
 
   it("resolves dashboard titles after applying the active project constraint", async () => {
-    let requestUrl: string | null = null;
+    let requestUrl: string | undefined;
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/",
