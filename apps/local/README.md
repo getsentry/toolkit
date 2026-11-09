@@ -55,7 +55,8 @@ receiver's envelope retention limit when replaying a large corpus.
 
 - Errors include exception causes, captured source lines and local variables,
   breadcrumbs, request/context data, tags, modules, VS Code links for absolute
-  local paths, and a copyable Markdown summary for AI assistants.
+  local paths, a copyable Markdown summary for AI assistants, and the
+  attachments the SDK sent for the event (collapsed until previewed).
 - AI inspection reads standard `gen_ai.*` and Vercel AI fields from both embedded
   transaction spans and standalone spans. Prompts, responses, token usage and
   tool arguments/results appear when the SDK captured them. Child AI steps stay
