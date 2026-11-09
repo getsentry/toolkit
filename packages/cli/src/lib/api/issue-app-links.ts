@@ -335,8 +335,8 @@ async function getLinkForm(
       JSON.stringify(component.error),
     );
   }
-  // The component schema is typed per component type, but its form fields
-  // are app-defined, so validate the link form here.
+  // ComponentsSchema leaves each app's schema unchecked, so validate only
+  // this app's link form here.
   const { schema } = component;
   const form = safeParse(
     LinkFormSchema,
