@@ -129,14 +129,16 @@ export function AttachmentDetail({
     </section>
   );
 }
-export function EnvelopeAttachments({
+export function AttachmentList({
+  label,
   attachments,
 }: {
+  label: string;
   attachments: readonly LocalFeedItem[];
 }) {
   if (!attachments.length) return null;
   return (
-    <section aria-label="Envelope attachments" className="space-y-4">
+    <section aria-label={label} className="space-y-4">
       {attachments.map((attachment) => (
         <AttachmentDetail key={attachment.id} item={attachment} collapsible />
       ))}
