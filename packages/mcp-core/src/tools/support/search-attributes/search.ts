@@ -1,7 +1,6 @@
 import type { Tag, TraceItemAttribute } from "../../../api-client";
 import { UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
-import { withProviderFallback } from "../../../internal/agents/provider-fallback";
 import { apiServiceFromContext } from "../../../internal/tool-helpers/api";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import type { ServerContext } from "../../../types";

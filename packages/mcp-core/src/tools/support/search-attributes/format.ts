@@ -50,10 +50,7 @@ export function formatListResult({
   const labels = DATASET_LABELS[dataset];
   const lines: string[] = [];
 
-  if (importantInfo) {
-    importantInfo.map((info) => lines.push(info));
-  }
-
+  lines.push(...importantInfo);
   lines.push(
     `# ${labels.title} in **${organizationSlug}** (last ${period})`,
     "",
