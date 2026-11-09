@@ -34,10 +34,14 @@ const LINK: AppIssueLink = {
   webUrl: URL,
 };
 const INSTALLATION = {
-  uuid: "install-uuid",
+  uuid: "4f1c2b7e-9a3d-4c8e-b6f2-0d5e8a7c1b39",
   status: "installed",
   organization: { slug: ORG },
-  app: { uuid: "app-uuid", slug: "linear", sentryAppId: 12 },
+  app: {
+    uuid: "a7d3e9c1-5b2f-4e6a-8c4d-2f1b9e0a6c57",
+    slug: "linear",
+    sentryAppId: 12,
+  },
 };
 const FORM = {
   uri: "/hooks/sentry/issues/link",
@@ -46,10 +50,15 @@ const FORM = {
   ],
 };
 const COMPONENT = {
-  uuid: "component-uuid",
+  uuid: "c2e8f4a6-1d7b-4a3c-9e5f-7b0d2c8a4e16",
   type: "issue-link",
   error: "",
-  sentryApp: { uuid: "app-uuid", slug: "linear", name: "Linear", avatars: [] },
+  sentryApp: {
+    uuid: "a7d3e9c1-5b2f-4e6a-8c4d-2f1b9e0a6c57",
+    slug: "linear",
+    name: "Linear",
+    avatars: [],
+  },
   installationUuid: INSTALLATION.uuid,
   schema: { link: FORM },
 };
@@ -59,6 +68,7 @@ let calls: Request[];
 let links: AppIssueLink[];
 let choices: [string, string][];
 let form: unknown;
+let otherComponents: unknown[];
 let installation: typeof INSTALLATION;
 let actionStatus: number;
 let actionLink: AppIssueLink;
@@ -76,6 +86,7 @@ beforeEach(async () => {
   links = [];
   choices = [["linear-uuid", "ENG-42: Fix the crash"]];
   form = FORM;
+  otherComponents = [];
   installation = INSTALLATION;
   actionStatus = 201;
   actionLink = LINK;
@@ -90,7 +101,10 @@ beforeEach(async () => {
       return json([installation]);
     }
     if (path.endsWith("/sentry-app-components/")) {
-      return json([{ ...COMPONENT, schema: { link: form } }]);
+      return json([
+        { ...COMPONENT, schema: { link: form } },
+        ...otherComponents,
+      ]);
     }
     if (path.endsWith("/external-requests/")) {
       return json({ choices });
@@ -128,7 +142,7 @@ describe("app issue-link action", () => {
         request.url.includes("external-requests"),
       );
       expect(search?.url).toContain(
-        "https://sentry.io/api/0/sentry-app-installations/install-uuid/",
+        `https://sentry.io/api/0/sentry-app-installations/${INSTALLATION.uuid}/`,
       );
       expect(search?.url).toContain("query=ENG-42");
       expect(search?.url).toContain("projectId=77");
@@ -399,6 +413,25 @@ describe("app issue-link action", () => {
       "does not expose",
     );
     expect(writes()).toHaveLength(0);
+  });
+
+  test("ignores another app's component schema that the API spec doesn't describe", async () => {
+    otherComponents = [
+      {
+        ...COMPONENT,
+        uuid: "5e0b7d2c-8f4a-4c1e-a3b6-9d2f7e1c0a48",
+        sentryApp: {
+          uuid: "6b1f8e3d-2c5a-4d7b-9e0f-3a8c1d6b2e74",
+          slug: "legacy-tracker",
+          name: "Legacy Tracker",
+          avatars: [],
+        },
+        // No `create` form, and a link URI without the leading slash.
+        schema: { type: "issue-link", link: { uri: "link" } },
+      },
+    ];
+    const prepared = await resolveAppIssueLink(OPTIONS);
+    expect(prepared.fields).toEqual({ issueId: "linear-uuid" });
   });
 
   test("does not allow user fields to override the action URI or target", async () => {

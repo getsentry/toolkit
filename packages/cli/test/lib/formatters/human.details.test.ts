@@ -333,6 +333,16 @@ describe("formatIssueDetails", () => {
     expect(result).toContain("→");
   });
 
+  test("omits the release row for releases with only a version", () => {
+    const issue = createMockIssue({
+      firstRelease: { version: "backend@1.0.0+abc123" },
+      lastRelease: { version: "backend@1.0.0+abc123" },
+    });
+
+    const result = stripAnsi(formatIssueDetails(issue));
+    expect(result).not.toContain("Release");
+  });
+
   test("includes assignee name", () => {
     const issue = createMockIssue({
       assignedTo: { name: "John Doe" },
