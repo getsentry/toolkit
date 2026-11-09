@@ -224,14 +224,14 @@ function createControlSiloRoutes(
   options: MultiRegionOptions,
 ): MockRoute[] {
   const routes: MockRoute[] = [
-    // Auth / current user via /auth/ endpoint (works with all token types)
+    // Current user fallback for servers whose /users/me/ rejects tokens
     {
       method: "GET",
       path: "/api/0/auth/",
       response: userFixture,
     },
 
-    // User info via legacy /users/me/ endpoint (kept for backward compatibility)
+    // Current user
     {
       method: "GET",
       path: "/api/0/users/me/",

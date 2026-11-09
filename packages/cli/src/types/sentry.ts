@@ -294,10 +294,7 @@ export type ProjectKey = Partial<SdkProjectKey> & {
 
 // Internal types with Valibot schemas (runtime-validated, not in @sentry/api)
 
-/**
- * Response from `/api/0/organizations/{org}/dsn-lookup/`. The endpoint is
- * private, so `@sentry/api` has no type for it.
- */
+/** The fields the CLI reads from `/api/0/organizations/{org}/dsn-lookup/`. */
 export const DsnLookupResponseSchema = looseObject({
   organizationSlug: string(),
   projectSlug: string(),
@@ -308,12 +305,11 @@ export const DsnLookupResponseSchema = looseObject({
 // User
 
 /**
- * Minimal user schema for the `/auth/` endpoint response.
+ * The user fields the CLI reads from `/users/me/` and its `/auth/` fallback,
+ * which return the same body.
  *
  * All optional fields use `.nullish()` (accepts both `null` and `undefined`)
  * because the Sentry API can return `null` for any of these.
- * Note: `@sentry/api` doesn't export types for the `/auth/` endpoint —
- * it's undocumented, so we define this schema manually.
  */
 export const SentryUserSchema = looseObject({
   id: string(),
