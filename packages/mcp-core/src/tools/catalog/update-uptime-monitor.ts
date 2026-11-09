@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ApiValidationError } from "../../api-client/index";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -26,6 +27,21 @@ import {
 export const updateUptimeMonitorOutputSchema = z.object({
   monitor: uptimeMonitorSummarySchema,
 });
+
+const seatErrorSchema = z.object({ status: z.array(z.string()).min(1) });
+
+// The API client only keeps a field error's body as raw text in `detail`.
+function getSeatErrorReason(error: unknown): string | undefined {
+  if (!(error instanceof ApiValidationError) || !error.detail) {
+    return undefined;
+  }
+  try {
+    const parsed = seatErrorSchema.safeParse(JSON.parse(error.detail));
+    return parsed.success ? parsed.data.status[0] : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function hasDefinedUpdate(
   value: unknown,
@@ -138,25 +154,36 @@ export default defineTool({
       );
     }
 
-    const monitor = await apiService.updateUptimeMonitor({
-      organizationSlug,
-      projectSlug: params.projectSlug,
-      uptimeMonitorId: params.uptimeMonitorId,
-      name: params.name,
-      url: params.url,
-      intervalSeconds: params.intervalSeconds,
-      timeoutMs: params.timeoutMs,
-      method: params.method,
-      headers: params.headers && toUptimeHeaderPairs(params.headers),
-      body: params.body,
-      status: params.status,
-      owner: params.owner,
-      environment: params.environment,
-      traceSampling: params.traceSampling,
-      responseCaptureEnabled: params.responseCaptureEnabled,
-      recoveryThreshold: params.recoveryThreshold,
-      downtimeThreshold: params.downtimeThreshold,
-    });
+    const monitor = await apiService
+      .updateUptimeMonitor({
+        organizationSlug,
+        projectSlug: params.projectSlug,
+        uptimeMonitorId: params.uptimeMonitorId,
+        name: params.name,
+        url: params.url,
+        intervalSeconds: params.intervalSeconds,
+        timeoutMs: params.timeoutMs,
+        method: params.method,
+        headers: params.headers && toUptimeHeaderPairs(params.headers),
+        body: params.body,
+        status: params.status,
+        owner: params.owner,
+        environment: params.environment,
+        traceSampling: params.traceSampling,
+        responseCaptureEnabled: params.responseCaptureEnabled,
+        recoveryThreshold: params.recoveryThreshold,
+        downtimeThreshold: params.downtimeThreshold,
+      })
+      .catch((error: unknown) => {
+        const reason = params.status === "active" && getSeatErrorReason(error);
+        if (reason) {
+          throw new UserInputError(
+            `Could not enable this uptime monitor: ${reason}. The monitor is still disabled. Do not retry until a billing admin raises the organization's pay-as-you-go budget in Sentry's billing settings, or another uptime monitor is disabled.`,
+            { cause: error },
+          );
+        }
+        throw error;
+      });
 
     return structuredResult({
       monitor: toUptimeMonitorSummary(
