@@ -29,6 +29,7 @@ describe("generated SDK flag types", () => {
     const explore = paramsType("ExploreParams");
     expect(explore).toContain("limit?: number;");
     expect(explore).toContain("timeSeries?: string;");
+    expect(explore).toContain("transform?: Array<string>;");
     expect(explore).not.toContain("interval?:");
   });
 

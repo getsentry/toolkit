@@ -31,6 +31,7 @@ Query aggregate event data (Explore)
 - `-e, --environment <value>... - Environment filter (repeatable, comma-separated)`
 - `-n, --limit <value> - Number of table rows (1-1000, default: 25)`
 - `-b, --time-series <value> - Query time series (default: auto; optional bucket duration, e.g., 15m)`
+- `--transform <value>... - Ordered per-axis stage, e.g., 0:fill(linear) (repeatable; requires --time-series)`
 - `-t, --period <value> - Time range: "7d", "2024-01-01..2024-02-01", ">=2024-01-01" - (default: "24h")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
@@ -76,6 +77,9 @@ sentry explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series 
 
 # A metric over time using its discovered type and unit
 sentry explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg -b -t 1h
+
+# Compare independent transformations for duplicate latency axes
+sentry explore my-org/cli --dataset spans -F 'p95(span.duration)' -F 'p95(span.duration)' -b 5m -t 24h --transform '0:fill(linear)' --transform '0:smooth(sma,3)' --transform '1:smooth(ema,3,0.5)'
 
 # Sum a custom metric (e.g., LLM token usage) across an organization
 sentry explore my-org/ -m llm.token_usage --dataset metrics --period 7d
