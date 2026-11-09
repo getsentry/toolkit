@@ -4,7 +4,8 @@
 
 Pass a filter to `sentry org list` to only list organizations whose slug or
 name matches it, best matches first. Matching ignores case and accepts exact
-matches, prefixes, substrings, small typos, or a glob such as `'acme-*'`.
+matches, prefixes, substrings, letters in order (`fw` finds `frontend-web`),
+small typos, or a glob such as `'acme-*'`.
 
 ## Multiple accounts
 

@@ -3,8 +3,10 @@
 ## Log IDs
 
 Copy the full ID from the `ID` column in `sentry log list` or `sentry trace logs`
-into `sentry log view`. An abbreviated prefix can match multiple logs and cannot
-be expanded into a unique full ID by itself.
+into `sentry log view`. A partial ID of at least 8 hex characters is looked up
+among the project's logs from the last 30 days: a single match is used with a
+warning, and several matches fail with a list of candidates. Pass the full
+32-character ID for older logs.
 
 Log IDs can be found:
 

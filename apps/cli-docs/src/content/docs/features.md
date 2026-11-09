@@ -9,7 +9,7 @@ The Sentry CLI includes several features designed to streamline your workflow, e
 
 When the CLI asks you to choose an organization or project, type to filter the loaded options by name or slug. The filter appears as `/text` below the list. Matching ignores case and tolerates small typos. Use arrow keys to navigate, Enter to select, and Backspace to edit. Esc clears the filter before cancelling; Ctrl+C cancels immediately.
 
-Selectors tolerate typos in unfinished prefixes: `frone` can find `frontend-web`. Queries with one or two characters match literal text only, so `ap` finds `api` but `zz` does not find `ui`.
+Selectors also match letters in order, even when they're apart: `fw` finds `frontend-web`. From four characters on, selectors tolerate a typo at a word start: `frone` can find `frontend-web`.
 
 ## DSN Auto-Detection
 

@@ -7,7 +7,8 @@
   `--no-well-known`), the current directory (unless `--no-cwd`), and any
   `--path`/`-p` directories, recursively.
 - Restrict the search with `--type`/`-t` (repeatable): `dsym`, `elf`, `pe`,
-  `pdb`, `portablepdb`, `sourcebundle`, `breakpad`, `proguard`, `jvm`.
+  `pdb`, `portablepdb`, `sourcebundle`, `breakpad`, `proguard`, `jvm`,
+  `wasm`.
 - A debug identifier must match exactly, including any PE/PDB age suffix. A
   Breakpad symbol file is listed when it matches, but does **not** satisfy the
   request (the id is still reported as missing).
