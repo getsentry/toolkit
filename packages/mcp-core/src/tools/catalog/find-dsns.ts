@@ -19,13 +19,11 @@ export const findDsnsOutputSchema = z.object({
       isActive: z.boolean(),
       rateLimit: z
         .object({
-          window: z.number().describe("Rate limit window in seconds."),
-          count: z
-            .number()
-            .describe("Maximum errors accepted within the window."),
+          count: z.number(),
+          windowSeconds: z.number(),
         })
         .nullable()
-        .describe("The DSN's rate limit, or null when no limit is set."),
+        .describe("Null when rate limiting is disabled."),
     }),
   ),
 });
@@ -80,8 +78,8 @@ export default defineTool({
         isActive: clientKey.isActive,
         rateLimit: clientKey.rateLimit
           ? {
-              window: clientKey.rateLimit.window,
               count: clientKey.rateLimit.count,
+              windowSeconds: clientKey.rateLimit.window,
             }
           : null,
       })),

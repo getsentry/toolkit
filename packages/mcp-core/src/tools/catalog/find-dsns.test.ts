@@ -62,7 +62,7 @@ describe("find_dsns", () => {
             "name": "Production",
             "rateLimit": {
               "count": 1000,
-              "window": 3600,
+              "windowSeconds": 3600,
             },
           },
           {
