@@ -31,6 +31,8 @@ const SENTRY_CREDENTIAL = new RegExp(
   String.raw`\bsntry[suc]_[A-Za-z0-9._~+/=-]+(?:(?:\r\n|(?! )[\s\x00-\x1f\x7f-\x9f]|${ESCAPED_CONTROL})[ \t]*[A-Za-z0-9._~+/=-]+)*`,
   "gi",
 );
+// Onboarding run tokens grant write access to a run's progress.
+const RUN_TOKEN = /(\brun_?token\\*["']?\s*[=:]\s*\\*["']?)[A-Za-z0-9]+/gi;
 
 /**
  * Use the runtime's final delimiter because an invalid token can contain quotes.
@@ -87,5 +89,6 @@ export function redactCredentialText(text: string): string {
         : `${quote}[REDACTED]${quote}`,
     )
     .replace(BEARER_CREDENTIAL, "Bearer [REDACTED]")
-    .replace(SENTRY_CREDENTIAL, "[REDACTED]");
+    .replace(SENTRY_CREDENTIAL, "[REDACTED]")
+    .replace(RUN_TOKEN, "$1[REDACTED]");
 }
