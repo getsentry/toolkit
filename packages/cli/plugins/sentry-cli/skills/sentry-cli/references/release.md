@@ -38,7 +38,7 @@ List releases with adoption and health metrics
 | `version` | string | Release version |
 | `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open or archived) |
+| `status` | string | Release status |
 | `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
 | `dateCreated` | string \| null | When the release was created (ISO 8601) |
@@ -53,7 +53,7 @@ List releases with adoption and health metrics
 | `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project, keyed by project slug |
 | `orgSlug` | string | Organization slug |
 | `targetProject` | string | Project slug, when listing several |
 
@@ -106,7 +106,7 @@ View release details with health metrics
 | `version` | string | Release version |
 | `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open or archived) |
+| `status` | string | Release status |
 | `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
 | `dateCreated` | string \| null | When the release was created (ISO 8601) |
@@ -121,7 +121,7 @@ View release details with health metrics
 | `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project, keyed by project slug |
 
 **Examples:**
 
@@ -164,7 +164,7 @@ Create a release
 | `version` | string | Release version |
 | `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open or archived) |
+| `status` | string | Release status |
 | `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
 | `dateCreated` | string \| null | When the release was created (ISO 8601) |
@@ -179,7 +179,7 @@ Create a release
 | `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release (only slug with --dry-run) |
-| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project, keyed by project slug |
 | `dryRun` | boolean | True when --dry-run made no change |
 
 **Examples:**
@@ -236,7 +236,7 @@ Finalize a release
 | `version` | string | Release version |
 | `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open or archived) |
+| `status` | string | Release status |
 | `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
 | `dateCreated` | string \| null | When the release was created (ISO 8601) |
@@ -251,7 +251,7 @@ Finalize a release
 | `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project, keyed by project slug |
 | `dryRun` | boolean | True when --dry-run made no change |
 | `org` | string | Organization slug (--dry-run) |
 | `released` | string | Release date to set (--dry-run) |
@@ -332,7 +332,7 @@ Archive a release
 | `version` | string | Release version |
 | `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open or archived) |
+| `status` | string | Release status |
 | `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
 | `dateCreated` | string \| null | When the release was created (ISO 8601) |
@@ -347,7 +347,7 @@ Archive a release
 | `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project, keyed by project slug |
 | `dryRun` | boolean | True when --dry-run made no change |
 | `org` | string | Organization slug (--dry-run) |
 
@@ -385,7 +385,7 @@ Restore an archived release
 | `version` | string | Release version |
 | `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open or archived) |
+| `status` | string | Release status |
 | `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
 | `dateCreated` | string \| null | When the release was created (ISO 8601) |
@@ -400,7 +400,7 @@ Restore an archived release
 | `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project, keyed by project slug |
 | `dryRun` | boolean | True when --dry-run made no change |
 | `org` | string | Organization slug (--dry-run) |
 
@@ -529,7 +529,7 @@ Set commits for a release
 | `version` | string | Release version |
 | `shortVersion` | string | Shortened release version |
 | `versionInfo` | object \| null | Parsed version information |
-| `status` | string | Release status (open or archived) |
+| `status` | string | Release status |
 | `ref` | string \| null | Version control reference, such as a commit SHA or tag |
 | `url` | string \| null | Release URL |
 | `dateCreated` | string \| null | When the release was created (ISO 8601) |
@@ -544,7 +544,7 @@ Set commits for a release
 | `authors` | array | Authors of the release's commits |
 | `owner` | object \| null | Release owner |
 | `projects` | array | Projects in the release |
-| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project, keyed by project slug |
 
 **Examples:**
 
