@@ -31,7 +31,8 @@ const SENTRY_CREDENTIAL = new RegExp(
   String.raw`\bsntry[suc]_[A-Za-z0-9._~+/=-]+(?:(?:\r\n|(?! )[\s\x00-\x1f\x7f-\x9f]|${ESCAPED_CONTROL})[ \t]*[A-Za-z0-9._~+/=-]+)*`,
   "gi",
 );
-// Onboarding run tokens grant write access to a run's progress.
+// Onboarding run tokens grant write access to a run's progress. They have no
+// prefix to match on, so match the field name instead.
 const RUN_TOKEN = /(\brun_?token\\*["']?\s*[=:]\s*\\*["']?)[A-Za-z0-9]+/gi;
 
 /**
