@@ -751,7 +751,7 @@ export async function getSharedIssue(
   try {
     result = await getOrganizationSharedIssue({
       baseUrl: normalizedBase,
-      fetch: fetchUnauthenticated as unknown as typeof fetch,
+      fetch: fetchUnauthenticated,
       headers,
       parseAs: "json",
       path: { organization_id_or_slug: orgSlug, share_id: shareId },

@@ -604,9 +604,7 @@ export function formatSingleSpan(
   const semanticOp = inferSemanticOp(flat);
   const op =
     semanticOp ??
-    (typeof flat["sentry.op"] === "string"
-      ? (flat["sentry.op"] as string)
-      : undefined);
+    (typeof flat["sentry.op"] === "string" ? flat["sentry.op"] : undefined);
   if (op && op !== "default" && op !== "unknown") {
     msg = `[${sanitize(op)}] ${msg}`;
   }

@@ -86,15 +86,13 @@ function setServerOptions(overrides: Record<string, unknown>): void {
   vi.mocked(getChunkUploadOptions).mockResolvedValue({
     ...BASE_SERVER_OPTIONS,
     ...overrides,
-  } as Awaited<ReturnType<typeof getChunkUploadOptions>>);
+  });
 }
 
 beforeEach(() => {
   assembleMock.mockReset();
   uploadChunkPayloadsMock.mockClear();
-  vi.mocked(getChunkUploadOptions).mockResolvedValue(
-    BASE_SERVER_OPTIONS as Awaited<ReturnType<typeof getChunkUploadOptions>>,
-  );
+  vi.mocked(getChunkUploadOptions).mockResolvedValue(BASE_SERVER_OPTIONS);
 });
 
 afterEach(() => {
@@ -140,7 +138,7 @@ describe("uploadDebugFiles", () => {
     const keys = Object.keys(body);
     expect(keys).toHaveLength(1);
     expect(keys[0]).toMatch(/^[0-9a-f]{40}$/);
-    const entry = body[keys[0] as string];
+    const entry = body[keys[0]];
     expect(entry?.name).toBe("libfoo.so");
     expect(entry?.debug_id).toBe("abc123-def");
     expect(Array.isArray(entry?.chunks)).toBe(true);
@@ -183,7 +181,7 @@ describe("uploadDebugFiles", () => {
     assembleMock.mockImplementationOnce(
       async (_org: string, _project: string, assembleBody: object) => {
         const body = assembleBody as Record<string, { chunks: string[] }>;
-        const key = Object.keys(body)[0] as string;
+        const key = Object.keys(body)[0];
         return {
           [key]: { state: "not_found", missingChunks: body[key]?.chunks },
         };
@@ -191,7 +189,7 @@ describe("uploadDebugFiles", () => {
     );
     assembleMock.mockImplementationOnce(
       async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody as object)[0] as string;
+        const key = Object.keys(assembleBody)[0];
         return { [key]: { state: "created" } };
       },
     );
@@ -216,13 +214,13 @@ describe("uploadDebugFiles", () => {
 
     assembleMock.mockImplementationOnce(
       async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody as object)[0] as string;
+        const key = Object.keys(assembleBody)[0];
         return { [key]: { state: "assembling" } };
       },
     );
     assembleMock.mockImplementationOnce(
       async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody as object)[0] as string;
+        const key = Object.keys(assembleBody)[0];
         return { [key]: { state: "ok" } };
       },
     );
@@ -244,7 +242,7 @@ describe("uploadDebugFiles", () => {
     const dif = makeDif("broken.so", "debug bytes", "id-3");
     assembleMock.mockImplementationOnce(
       async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody as object)[0] as string;
+        const key = Object.keys(assembleBody)[0];
         return { [key]: { state: "error", detail: "corrupt object" } };
       },
     );
@@ -265,7 +263,7 @@ describe("uploadDebugFiles", () => {
     // Always "assembling" → never terminal. maxWaitMs=0 trips the deadline.
     assembleMock.mockImplementation(
       async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody as object)[0] as string;
+        const key = Object.keys(assembleBody)[0];
         return { [key]: { state: "assembling" } };
       },
     );
@@ -421,13 +419,13 @@ describe("uploadDebugFiles", () => {
     // would poll forever without sending anything.
     assembleMock.mockImplementationOnce(
       async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody as object)[0] as string;
+        const key = Object.keys(assembleBody)[0];
         return { [key]: { state: "not_found" } };
       },
     );
     assembleMock.mockImplementationOnce(
       async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody as object)[0] as string;
+        const key = Object.keys(assembleBody)[0];
         return { [key]: { state: "ok" } };
       },
     );
@@ -505,7 +503,7 @@ describe("uploadDebugFiles", () => {
     // well before the requested 60s.
     assembleMock.mockImplementation(
       async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody as object)[0] as string;
+        const key = Object.keys(assembleBody)[0];
         return { [key]: { state: "assembling" } };
       },
     );
@@ -528,7 +526,7 @@ describe("uploadDebugFiles", () => {
     const dif = makeDif("ok.so", "debug bytes", "id-ok");
     assembleMock.mockImplementationOnce(
       async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody as object)[0] as string;
+        const key = Object.keys(assembleBody)[0];
         return { [key]: { state: "ok" } };
       },
     );

@@ -11,7 +11,7 @@ function mockOk(body: unknown): {
   let capturedUrl = "";
   let capturedMethod = "";
   globalThis.fetch = mockFetch(async (input, init) => {
-    const req = new Request(input!, init);
+    const req = new Request(input, init);
     capturedUrl = req.url;
     capturedMethod = req.method;
     return new Response(JSON.stringify(body), {

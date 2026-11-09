@@ -40,9 +40,7 @@ describe("Local session snapshot", () => {
     const session = store.create({ label: "web", cwd: "/work/web" });
     const capabilities = store.getCapabilities(session.id);
     // A caller passing the stored session still writes no capability
-    writeLocalSessionSnapshot(process.pid, [
-      { ...session, ...capabilities } as LocalSession,
-    ]);
+    writeLocalSessionSnapshot(process.pid, [{ ...session, ...capabilities }]);
 
     const path = join(getConfigDir(), LOCAL_SESSION_SNAPSHOT_FILENAME);
     const text = await readFile(path, "utf8");

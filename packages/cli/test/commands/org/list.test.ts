@@ -74,7 +74,7 @@ beforeEach(async () => {
   usersByToken = {};
   requests = [];
   originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(input, init);
     const url = new URL(req.url);
     const token = req.headers.get("Authorization")?.replace(/^Bearer /, "");
@@ -101,7 +101,7 @@ beforeEach(async () => {
         links: { organizationUrl: o.regionUrl, regionUrl: o.regionUrl },
       })),
     );
-  }) as typeof globalThis.fetch;
+  };
 });
 
 afterEach(() => {
@@ -159,7 +159,7 @@ async function runListHuman(filter?: string): Promise<string> {
 function slugsWithAccount(entries: Record<string, unknown>[]): string[][] {
   return entries.map((e) => [
     e.slug as string,
-    ((e.account as { email?: string } | undefined)?.email ?? "") as string,
+    (e.account as { email?: string } | undefined)?.email ?? "",
   ]);
 }
 

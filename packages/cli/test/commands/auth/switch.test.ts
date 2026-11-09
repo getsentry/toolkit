@@ -142,7 +142,7 @@ describe("auth list", () => {
       await resetHostScopingState();
       requests = [];
       originalFetch = globalThis.fetch;
-      globalThis.fetch = (async (
+      globalThis.fetch = async (
         input: RequestInfo | URL,
         init?: RequestInit,
       ) => {
@@ -158,7 +158,7 @@ describe("auth list", () => {
           });
         }
         return Response.json({ detail: "Invalid token" }, { status: 401 });
-      }) as typeof globalThis.fetch;
+      };
     });
 
     afterEach(async () => {

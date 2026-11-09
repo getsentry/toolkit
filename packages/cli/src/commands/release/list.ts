@@ -170,9 +170,7 @@ function formatSessionSparkline(r: SentryRelease): string {
   if (!health) {
     return "";
   }
-  const points = extractSessionPoints(
-    health.stats as Record<string, unknown> | undefined,
-  );
+  const points = extractSessionPoints(health.stats);
   if (points.length === 0) {
     return "";
   }

@@ -109,8 +109,8 @@ function extractTraceMetricFromAggregate(
   }
 
   return normalizeTraceMetric({
-    name: args[1]!,
-    type: args[2]!,
+    name: args[1],
+    type: args[2],
     unit: args[3],
   });
 }

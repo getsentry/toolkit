@@ -59,7 +59,7 @@ beforeEach(async () => {
     hashAlgorithm: "sha1",
     concurrency: 8,
     compression: ["gzip"],
-  } as Awaited<ReturnType<typeof chunkUpload.getChunkUploadOptions>>);
+  });
 });
 
 afterEach(async () => {
@@ -128,7 +128,7 @@ async function runUpload(
   let output = "";
   let error = "";
   const mockContext: SentryContext = {
-    process: { ...process, exitCode: undefined } as typeof process,
+    process: { ...process, exitCode: undefined },
     env: process.env,
     cwd: tempDir,
     homeDir: "/tmp",
@@ -375,7 +375,7 @@ describe("sentry debug-files upload", () => {
       hashAlgorithm: "sha1",
       concurrency: 8,
       compression: ["gzip"],
-    } as Awaited<ReturnType<typeof chunkUpload.getChunkUploadOptions>>);
+    });
     const spy = vi.spyOn(debugFilesApi, "uploadDebugFiles");
 
     const { exitCode } = await runUpload([tempDir]);
@@ -408,7 +408,7 @@ describe("sentry debug-files upload", () => {
       hashAlgorithm: "sha1",
       concurrency: 8,
       compression: ["gzip"],
-    } as Awaited<ReturnType<typeof chunkUpload.getChunkUploadOptions>>);
+    });
 
     const spy = vi.spyOn(debugFilesApi, "uploadDebugFiles").mockResolvedValue([
       {

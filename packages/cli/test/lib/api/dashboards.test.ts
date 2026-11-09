@@ -202,7 +202,7 @@ function makeWidget(layoutW?: number, interval?: string): DashboardWidget {
     layout:
       layoutW !== undefined ? { x: 0, y: 0, w: layoutW, h: 2 } : undefined,
     interval,
-  } as DashboardWidget;
+  };
 }
 
 describe("computeOptimalInterval", () => {

@@ -362,8 +362,7 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
               // Map signal kills to 128+N (Unix convention: e.g. 130 for
               // SIGINT, 137 for SIGKILL, 143 for SIGTERM) so CI pipelines
               // and shell scripts inspecting $? see the correct exit code.
-              const sigNum =
-                osConstants.signals[signal as keyof typeof osConstants.signals];
+              const sigNum = osConstants.signals[signal];
               resolve(128 + (sigNum ?? 1));
             } else {
               resolve(1);

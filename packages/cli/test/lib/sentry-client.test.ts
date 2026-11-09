@@ -39,12 +39,12 @@ afterEach(() => {
 });
 
 function getAuthenticatedFetch(): typeof fetch {
-  return getSdkConfig(REGION_URL).fetch as typeof fetch;
+  return getSdkConfig(REGION_URL).fetch;
 }
 
 /** Fetch for callers that opted in to replaying writes (chunk uploads). */
 function getIdempotentFetch(): typeof fetch {
-  return getSdkConfig(REGION_URL, { idempotent: true }).fetch as typeof fetch;
+  return getSdkConfig(REGION_URL, { idempotent: true }).fetch;
 }
 
 function jsonResponse(
@@ -149,7 +149,7 @@ describe("fetchWithRetry / buildAttemptFactory", () => {
       callCount += 1;
       const body = init?.body;
       if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
-        seen.push(new TextDecoder().decode(body as ArrayBuffer));
+        seen.push(new TextDecoder().decode(body));
       } else if (typeof body === "string") {
         seen.push(body);
       } else if (body) {
@@ -201,7 +201,7 @@ describe("fetchWithRetry / buildAttemptFactory", () => {
 
     globalThis.fetch = mockFetch(async (input, init) => {
       callCount += 1;
-      const req = new Request(input as string, init);
+      const req = new Request(input, init);
       contentTypes.push(req.headers.get("content-type"));
       bodies.push(await req.text());
       if (callCount === 1) {
@@ -355,7 +355,7 @@ describe("non-idempotent requests", () => {
     setAuthToken("initial-token", 3600, "test-refresh-token");
     const seen: { auth: string | null; body: string }[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input as Request, init);
+      const req = new Request(input, init);
       if (req.url.includes("/oauth/token/")) {
         return jsonResponse({
           access_token: "refreshed-token",
@@ -503,7 +503,7 @@ describe("429 rate limiting", () => {
   test("retries a POST on 429, since the request was rejected before processing", async () => {
     const bodies: string[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {
-      bodies.push(await new Request(input as string, init).text());
+      bodies.push(await new Request(input, init).text());
       return bodies.length === 1
         ? jsonResponse(
             { detail: "slow down" },

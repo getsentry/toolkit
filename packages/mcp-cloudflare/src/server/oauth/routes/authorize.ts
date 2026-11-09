@@ -365,7 +365,7 @@ export default new Hono<{ Bindings: Env }>()
     // Build signed state for redirect to Sentry (10 minute validity)
     const now = Date.now();
     const payload: OAuthState = {
-      req: oauthReqWithSkills as unknown as Record<string, unknown>,
+      req: oauthReqWithSkills,
       iat: now,
       exp: now + 10 * 60 * 1000,
     };

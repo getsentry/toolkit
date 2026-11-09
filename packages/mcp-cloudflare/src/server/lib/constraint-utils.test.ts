@@ -45,7 +45,7 @@ function createMockKV(options?: {
     delete: vi.fn(),
     list: vi.fn(),
     getWithMetadata: vi.fn(),
-  } as unknown as KVNamespace;
+  };
 }
 
 /**

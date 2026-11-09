@@ -81,10 +81,7 @@ export async function listProjects(orgSlug: string): Promise<SentryProject[]> {
     const result = await listOrganizationProjects({
       ...config,
       path: { organization_id_or_slug: orgSlug },
-      query: { cursor, per_page: API_MAX_PER_PAGE } as {
-        cursor?: string;
-        per_page?: number;
-      },
+      query: { cursor, per_page: API_MAX_PER_PAGE },
     });
     return unwrapPaginatedResult<SentryProject[]>(
       result,
@@ -138,7 +135,7 @@ export async function listProjectsPaginated(
       cursor: options.cursor,
       per_page: perPage,
       query: options.query,
-    } as { cursor?: string; per_page?: number; query?: string },
+    },
   });
 
   return unwrapPaginatedResult<SentryProject[]>(

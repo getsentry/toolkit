@@ -578,10 +578,7 @@ export function buildCommand<
     builderArgs.skipRcUrlCheck === true || builderArgs.auth === "dsn";
 
   // Merge global flags into the command's flag definitions.
-  const existingParams = (builderArgs.parameters ?? {}) as Record<
-    string,
-    unknown
-  >;
+  const existingParams = builderArgs.parameters ?? {};
   const existingFlags = (existingParams.flags ?? {}) as Record<string, unknown>;
 
   const { mergedFlags, commandOwnsOrg, commandOwnsProject, stripKeys } =
@@ -799,7 +796,7 @@ export function buildCommand<
       commandOwnsProject,
     );
 
-    const cleanFlags = cleanRawFlags(flags as Record<string, unknown>);
+    const cleanFlags = cleanRawFlags(flags);
     setFlagContext(cleanFlags);
     if (args.length > 0) {
       setArgsContext(args.flatMap(rawPositional));

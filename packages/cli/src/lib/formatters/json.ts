@@ -196,7 +196,7 @@ export function filterFields<T>(data: T, fields: string[]): Partial<T> {
     ) as unknown as Partial<T>;
   }
   if (data === null || data === undefined || typeof data !== "object") {
-    return data as Partial<T>;
+    return data;
   }
   const projection = projectFields(data, fields);
   return (projection.found ? projection.value : {}) as Partial<T>;

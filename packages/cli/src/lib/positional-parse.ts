@@ -205,7 +205,7 @@ export function skipLeadingArgument<P>(
 ): P {
   const parseAll =
     typeof positional === "object" && positional !== null
-      ? argumentParsers.get(positional as object)
+      ? argumentParsers.get(positional)
       : undefined;
   if (!parseAll) {
     return positional;

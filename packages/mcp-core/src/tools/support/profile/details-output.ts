@@ -216,7 +216,7 @@ function getTransactionProfileDurationNs(
     return null;
   }
 
-  const duration = elapsed[elapsed.length - 1]! - elapsed[0]!;
+  const duration = elapsed[elapsed.length - 1] - elapsed[0];
   return duration > 0 ? Math.round(duration) : null;
 }
 
