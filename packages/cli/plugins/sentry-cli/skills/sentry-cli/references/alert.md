@@ -197,7 +197,7 @@ Edit an issue alert rule
 | `triggers` | object \| null | Conditions on which the alert triggers |
 | `actionFilters` | array \| null | Filters to run before actions fire, each with the actions to fire |
 | `environment` | string \| null | Name of the environment the alert is limited to. Null for all environments |
-| `config` | object | Configuration of the alert, such as frequency in minutes |
+| `config` | unknown | Configuration of the alert, such as frequency in minutes |
 | `detectorIds` | array \| null | IDs of the monitors connected to the alert |
 | `enabled` | boolean | Whether the alert is enabled |
 | `lastTriggered` | string \| null | When the alert last fired (ISO 8601) |
@@ -402,7 +402,7 @@ Edit a metric alert rule
 | `dateUpdated` | string | When the monitor was last updated (ISO 8601) |
 | `dataSources` | array \| null | Data sources the monitor evaluates, such as a query subscription |
 | `conditionGroup` | object \| null | Conditions that decide the monitor's status |
-| `config` | object |  |
+| `config` | object \| unknown |  |
 | `enabled` | boolean | Whether the monitor is enabled |
 | `org` | string | Organization slug |
 | `status` | string | Rule status (active, disabled) |

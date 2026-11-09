@@ -333,14 +333,15 @@ describe("formatIssueDetails", () => {
     expect(result).toContain("→");
   });
 
-  test("omits the release row for releases with only a version", () => {
+  test("falls back to version for releases Sentry could not load", () => {
+    // Sentry returns only `version` when the release row no longer exists.
     const issue = createMockIssue({
-      firstRelease: { version: "backend@1.0.0+abc123" },
-      lastRelease: { version: "backend@1.0.0+abc123" },
+      firstRelease: { version: "backend@1.0.0" },
+      lastRelease: { version: "backend@2.0.0" },
     });
 
     const result = stripAnsi(formatIssueDetails(issue));
-    expect(result).not.toContain("Release");
+    expect(result).toContain("backend@1.0.0 → backend@2.0.0");
   });
 
   test("includes assignee name", () => {

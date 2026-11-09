@@ -798,15 +798,16 @@ function formatPriorityLabel(priority?: string | null): string {
 }
 
 /**
- * The short version of an issue's first or last release. The API also
- * documents a release with only `version`, which has no `shortVersion`.
+ * Display version of an issue's first or last release. Sentry returns only
+ * `version` for a release it can't load, so fall back to it.
  */
-function releaseShortVersion(
+function releaseVersion(
   release: SentryIssue["firstRelease"],
 ): string | undefined {
-  return release && "shortVersion" in release
-    ? release.shortVersion
-    : undefined;
+  if (!release) {
+    return;
+  }
+  return "shortVersion" in release ? release.shortVersion : release.version;
 }
 
 /**
@@ -862,8 +863,8 @@ export function formatIssueDetails(issue: SentryIssue): string {
     ]);
   }
 
-  const firstReleaseVersion = releaseShortVersion(issue.firstRelease);
-  const lastReleaseVersion = releaseShortVersion(issue.lastRelease);
+  const firstReleaseVersion = releaseVersion(issue.firstRelease);
+  const lastReleaseVersion = releaseVersion(issue.lastRelease);
   if (firstReleaseVersion || lastReleaseVersion) {
     const first = text(stringifyUnknown(firstReleaseVersion ?? ""));
     const last = text(stringifyUnknown(lastReleaseVersion ?? ""));

@@ -33,12 +33,13 @@ const LINK: AppIssueLink = {
   displayName: "ENG-42",
   webUrl: URL,
 };
+const APP_UUID = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
 const INSTALLATION = {
-  uuid: "4f1c2b7e-9a3d-4c8e-b6f2-0d5e8a7c1b39",
+  uuid: "8d9f5e2a-3b4c-4d6e-9f01-2a3b4c5d6e7f",
   status: "installed",
   organization: { slug: ORG },
   app: {
-    uuid: "a7d3e9c1-5b2f-4e6a-8c4d-2f1b9e0a6c57",
+    uuid: APP_UUID,
     slug: "linear",
     sentryAppId: 12,
   },
@@ -50,17 +51,17 @@ const FORM = {
   ],
 };
 const COMPONENT = {
-  uuid: "c2e8f4a6-1d7b-4a3c-9e5f-7b0d2c8a4e16",
+  uuid: "5c6d7e8f-9a0b-4c1d-8e2f-3a4b5c6d7e8f",
   type: "issue-link",
   error: "",
   sentryApp: {
-    uuid: "a7d3e9c1-5b2f-4e6a-8c4d-2f1b9e0a6c57",
+    uuid: APP_UUID,
     slug: "linear",
     name: "Linear",
     avatars: [],
   },
   installationUuid: INSTALLATION.uuid,
-  schema: { link: FORM },
+  schema: { type: "issue-link", link: FORM, create: FORM },
 };
 
 let originalFetch: typeof globalThis.fetch;
@@ -102,7 +103,7 @@ beforeEach(async () => {
     }
     if (path.endsWith("/sentry-app-components/")) {
       return json([
-        { ...COMPONENT, schema: { link: form } },
+        { ...COMPONENT, schema: { ...COMPONENT.schema, link: form } },
         ...otherComponents,
       ]);
     }
@@ -408,7 +409,10 @@ describe("app issue-link action", () => {
   });
 
   test("rejects unsupported app link forms instead of using direct registration", async () => {
-    form = undefined;
+    form = {
+      uri: "/hooks/sentry/issues/link",
+      required_fields: [{ name: "issueId", type: "checkbox" }],
+    };
     await expect(resolveAppIssueLink(OPTIONS)).rejects.toThrow(
       "does not expose",
     );
