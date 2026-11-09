@@ -52,6 +52,25 @@ describe("IssueActivitySchema", () => {
 });
 
 describe("IssueSchema", () => {
+  it("accepts a relative permalink from self-hosted Sentry without a url-prefix", () => {
+    const issue = {
+      id: "123",
+      shortId: "ANDROID-1",
+      title: "Error",
+      firstSeen: "2025-01-01T00:00:00Z",
+      lastSeen: "2025-01-02T00:00:00Z",
+      count: "1",
+      userCount: 0,
+      permalink: "/organizations/sentry/issues/123/",
+      project: { id: "5", name: "android", slug: "android" },
+      status: "unresolved",
+      culprit: null,
+    };
+    expect(IssueSchema.parse(issue).permalink).toBe(
+      "/organizations/sentry/issues/123/",
+    );
+  });
+
   it("should parse a standard error issue", () => {
     const errorIssue = {
       id: "123456",

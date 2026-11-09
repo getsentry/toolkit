@@ -853,7 +853,9 @@ export const IssueSchema = z
     lastSeen: z.string().datetime().nullable(),
     count: z.union([z.string(), z.number()]),
     userCount: z.union([z.string(), z.number()]),
-    permalink: z.string().url(),
+    // Self-hosted Sentry builds this from `system.url-prefix`; when that option
+    // is unset the API returns a relative path, so do not require an absolute URL.
+    permalink: z.string(),
     project: ProjectSchema,
     platform: z.string().nullable().optional(),
     status: z.string(),

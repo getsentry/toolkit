@@ -2339,6 +2339,35 @@ describe("listIssues request", () => {
     expect(params.getAll("project")).toEqual(["123"]);
     expect(params.getAll("collapse")).toEqual(["unhandled"]);
   });
+
+  it("accepts relative permalinks returned by self-hosted Sentry", async () => {
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/test-org/issues/", () =>
+        HttpResponse.json([
+          {
+            id: "123",
+            shortId: "ANDROID-1",
+            title: "Error",
+            firstSeen: "2025-01-01T00:00:00Z",
+            lastSeen: "2025-01-02T00:00:00Z",
+            count: "1",
+            userCount: 0,
+            permalink: "/organizations/test-org/issues/123/",
+            project: { id: "5", name: "android", slug: "android" },
+            status: "unresolved",
+            culprit: null,
+          },
+        ]),
+      ),
+    );
+
+    const issues = await new SentryApiService({
+      accessToken: "test-token",
+    }).listIssues({ organizationSlug: "test-org" });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.permalink).toBe("/organizations/test-org/issues/123/");
+  });
 });
 
 describe("host configuration", () => {
