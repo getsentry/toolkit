@@ -197,6 +197,20 @@ Sentry CLI configuration directory (`$XDG_CONFIG_HOME/sentry/`, defaulting to
 `~/.config/sentry/`, overridable with `SENTRY_CONFIG_DIR`) across runs to keep
 automatic refresh working.
 
+### Setup Code
+
+To log in without a browser, for example on a headless machine, set
+`SENTRY_SETUP_CODE` to a setup code from Sentry. The install script redeems it
+when no login is stored yet:
+
+```bash
+curl https://cli.sentry.dev/install -fsS | SENTRY_SETUP_CODE=... bash
+```
+
+With the CLI already installed, run `SENTRY_SETUP_CODE=... sentry auth bootstrap`.
+Each code is short-lived and works once. See
+[Setup codes](../commands/auth/#setup-codes) for details.
+
 ### API Token
 
 Alternatively, you can use an API token directly:

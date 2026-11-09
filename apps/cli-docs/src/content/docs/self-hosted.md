@@ -32,7 +32,7 @@ Pass your instance URL with the `--url` flag. It registers the host as trusted:
 SENTRY_CLIENT_ID=your-client-id sentry auth login --url https://sentry.example.com
 ```
 
-`--url` is required even when `SENTRY_HOST` or `SENTRY_URL` is already set. Without it, `sentry auth login` refuses to log in to a self-hosted host.
+`--url` is required even when `SENTRY_HOST` or `SENTRY_URL` is already set. Without it, `sentry auth login` refuses to log in to a self-hosted host. An `<email>:<server>` argument, such as `sentry auth login jane@example.com:sentry.example.com`, sets `--url` the same way.
 
 :::tip
 You can export both variables in your shell profile so every CLI invocation picks them up:
@@ -44,7 +44,7 @@ export SENTRY_CLIENT_ID=your-client-id
 :::
 
 :::note
-The `--url` flag is the only way to register a trust anchor for a new host. Without it, the CLI refuses to log in to any self-hosted instance URL, including one picked up from an environment variable or a `.sentryclirc` file. This protects you from credential leaks and OAuth phishing.
+For `sentry auth login`, the `--url` flag (or the server in an `<email>:<server>` argument) is the only way to register a trust anchor for a new host. Without it, the CLI refuses to log in to any self-hosted instance URL, including one picked up from an environment variable or a `.sentryclirc` file. This protects you from credential leaks and OAuth phishing.
 :::
 
 ### With an API Token

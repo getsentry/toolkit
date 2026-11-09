@@ -24,9 +24,9 @@ HTTP instance and `--force` to replace the stored login for the issuing server.
 
 ## Self-hosted Sentry
 
-Pass `--url` to log in to a self-hosted instance. Setting `SENTRY_HOST` or
-`SENTRY_URL` alone is not enough: the CLI refuses to log in to a self-hosted
-host unless `--url` confirms it.
+Pass `--url` (or an `<email>:<server>` argument) to log in to a self-hosted
+instance. Setting `SENTRY_HOST` or `SENTRY_URL` alone is not enough: the CLI
+refuses to log in to a self-hosted host unless `--url` confirms it.
 
 See [Self-Hosted Sentry](../../self-hosted/) for details.
 

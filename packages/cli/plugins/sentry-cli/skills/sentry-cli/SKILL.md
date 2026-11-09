@@ -389,6 +389,7 @@ npm install -g sentry
 
 ```bash
 sentry auth
+curl https://cli.sentry.dev/install -fsS | SENTRY_SETUP_CODE=... bash
 sentry auth --token YOUR_SENTRY_API_TOKEN
 sentry auth status
 sentry auth logout
