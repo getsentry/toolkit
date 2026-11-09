@@ -71,15 +71,17 @@ export async function runSearchAttributes(
 
   const dataset = params.dataset;
   const listAttributes = (importantInfo?: string[], notes?: string[]) =>
-    formatListResult({
-      organizationSlug,
-      dataset,
-      period,
-      attributes: rows,
-      limit: params.limit ?? LIST_LIMIT,
-      notes,
-      importantInfo,
-    });
+    [
+      ...formatListResult({
+        organizationSlug,
+        dataset,
+        period,
+        attributes: rows,
+        limit: params.limit ?? LIST_LIMIT,
+        notes,
+        importantInfo,
+      }),
+    ].join("\n");
 
   if (query) {
     if (!hasAgentProvider()) {

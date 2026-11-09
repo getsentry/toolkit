@@ -33,7 +33,7 @@ interface QuerySettings {
   period: string;
 }
 
-export function formatListResult({
+export function* formatListResult({
   organizationSlug,
   dataset,
   period,
@@ -46,41 +46,37 @@ export function formatListResult({
   limit: number;
   notes?: string[];
   importantInfo?: string[];
-}): string {
+}) {
   const labels = DATASET_LABELS[dataset];
-  const lines: string[] = [];
 
-  if (importantInfo) {
-    importantInfo.map((info) => lines.push(info));
-  }
+  yield* importantInfo;
+  yield `# ${labels.title} in **${organizationSlug}** (last ${period})`;
+  yield "";
 
-  lines.push(
-    `# ${labels.title} in **${organizationSlug}** (last ${period})`,
-    "",
-  );
   if (attributes.length === 0) {
-    return formatNoneSeen(lines, labels.title.toLowerCase(), period);
+    yield* formatNoneSeen(labels.title.toLowerCase(), period);
+    return;
   }
 
-  lines.push(
-    "**Suggested presentation:** A table works well here, with each attribute's type, description, deprecation status, replacement attributes, and whether it's added by Sentry.",
-    "",
-    "Please tell the user each attribute's type, description, examples, whether they were added by sentry, and which attributes are deprecated and what replaces them.",
-    "",
-  );
+  yield "**Suggested presentation:** A table works well here, with each attribute's type, description, deprecation status, replacement attributes, and whether it's added by Sentry.";
+  yield "";
+  yield "Please tell the user each attribute's type, description, examples, whether they were added by sentry, and which attributes are deprecated and what replaces them.";
+  yield "";
 
   const sorted = sortAttributes(attributes, dataset);
   const shown = sorted.slice(0, limit);
 
-  lines.push(...formatAttributeTable(shown), "", "## Response Notes", "");
+  yield* formatAttributeTable(shown);
+  yield "";
+  yield "## Response Notes";
+  yield "";
   if (shown.length < sorted.length) {
-    lines.push(`- Showing ${shown.length} of ${sorted.length}.`);
+    yield `- Showing ${shown.length} of ${sorted.length}.`;
   }
-  lines.push(
-    `- Use a key with \`${labels.associatedTool}\` to query its values.`,
-    ...notes.map((note) => `- ${note}`),
-  );
-  return lines.join("\n");
+  yield `- Use a key with \`${labels.associatedTool}\` to query its values.`;
+  for (const note of notes) {
+    yield `- ${note}`;
+  }
 }
 
 /**
@@ -102,26 +98,20 @@ function sortAttributes(
   );
 }
 
-function formatNoneSeen(lines: string[], noun: string, period: string): string {
-  lines.push(
-    `No ${noun} were seen in the last ${period}.`,
-    "",
-    "## Response Notes",
-    "",
-    "- Try a longer `period` or a different `dataset`.",
-  );
-  return lines.join("\n");
+function* formatNoneSeen(noun: string, period: string) {
+  yield `No ${noun} were seen in the last ${period}.`;
+  yield "";
+  yield "## Response Notes";
+  yield "";
+  yield "- Try a longer `period` or a different `dataset`.";
 }
 
-function formatAttributeTable(attributes: TraceItemAttribute[]): string[] {
-  return [
-    "| Attribute | Type | Description | Added by Sentry | Deprecated | Replacement Attribute |",
-    "| --- | --- | --- | --- | --- | --- |",
-    ...attributes.map(
-      (attribute) =>
-        `| \`${escapeCell(attribute.key)}\` | ${attribute.type} | ${escapeCell(describeCell(attribute))} | ${attribute.attributeSource.source_type === "sentry" ? "yes" : ""} | ${attribute.context?.isDeprecated ? "yes" : ""} | ${escapeCell(attribute.context?.replacementAttribute ?? "")} |`,
-    ),
-  ];
+function* formatAttributeTable(attributes: TraceItemAttribute[]) {
+  yield "| Attribute | Type | Description | Added by Sentry | Deprecated | Replacement Attribute |";
+  yield "| --- | --- | --- | --- | --- | --- |";
+  for (const attribute of attributes) {
+    yield `| \`${escapeCell(attribute.key)}\` | ${attribute.type} | ${escapeCell(describeCell(attribute))} | ${attribute.attributeSource.source_type === "sentry" ? "yes" : ""} | ${attribute.context?.isDeprecated ? "yes" : ""} | ${escapeCell(attribute.context?.replacementAttribute ?? "")} |`;
+  }
 }
 
 /** Blank when there's no description */
