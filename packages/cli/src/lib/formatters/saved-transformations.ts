@@ -3,28 +3,32 @@ import { text } from "@sentry/toolkit-core/markdown";
 import type { DashboardWidgetQuery } from "../../types/dashboard.js";
 
 /**
- * Markdown bullets describing a widget's saved transformations, one per
- * aggregate position that has any. Empty when none are saved, so widgets
- * without transformations keep their existing output.
+ * Markdown bullets for every saved aggregate position, including empty
+ * transformation lists. Reports unavailable settings when the server omits them.
+ * Empty when every query reports no saved transformations.
  */
 export function formatSavedTransformationLines(
   queries: readonly DashboardWidgetQuery[] | undefined,
 ): string[] {
-  return (queries ?? []).flatMap((query, queryIndex) =>
-    (
-      listSavedAggregateTransformations(
-        query.aggregates ?? [],
-        query.transformations,
-      ) ?? []
-    )
-      .filter((entry) => entry.transformations.length > 0)
-      .map((entry) => `- Query ${queryIndex + 1} · ${text(entry.description)}`),
-  );
+  return (queries ?? []).flatMap((query, queryIndex) => {
+    const transformations = listSavedAggregateTransformations(
+      query.aggregates ?? [],
+      query.transformations,
+    );
+    if (transformations === null) {
+      return [
+        `- Query ${queryIndex + 1} · unavailable (this Sentry server does not report transformations)`,
+      ];
+    }
+    return (transformations ?? []).map(
+      (entry) => `- Query ${queryIndex + 1} · ${text(entry.description)}`,
+    );
+  });
 }
 
 /**
- * Markdown section describing every widget's saved transformations, or an
- * empty string when no widget has any.
+ * Markdown section describing saved transformations and unavailable settings,
+ * or an empty string when no widget has either.
  */
 export function formatDashboardSavedTransformations(
   widgets: readonly {

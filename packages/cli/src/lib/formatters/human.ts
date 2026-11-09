@@ -2510,7 +2510,6 @@ function formatWidgetLayoutLine(widget: DashboardWidget): string {
   return `Layout: position (${x},${y}), size ${w}×${h}`;
 }
 
-/** Saved transformations section for a widget, or nothing when none are saved. */
 function formatWidgetTransformationLines(widget: DashboardWidget): string[] {
   const lines = formatSavedTransformationLines(widget.queries);
   return lines.length > 0 ? ["", "Saved transformations:", ...lines] : [];
