@@ -602,7 +602,8 @@ describe("findProjectByDsn (multi-region)", () => {
       expect(project?.slug).toBe("eu-project");
       expect(captureSpy).toHaveBeenCalledTimes(1);
       expect(captureSpy.mock.calls[0]?.[0]).toMatchObject({
-        message: "Network error",
+        status: 0,
+        cause: { message: "Network error" },
       });
     } finally {
       captureSpy.mockRestore();
