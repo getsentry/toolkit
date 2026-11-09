@@ -86,19 +86,25 @@ export function getHumanInterventionGuidance(status: string): string {
   return "";
 }
 
-export const SEER_OUT_OF_CREDITS_MESSAGE =
-  "Your organization does not have enough Seer credits. Someone with billing access can turn on auto-reload in Sentry.";
+export const SEER_START_OUT_OF_CREDITS_MESSAGE =
+  "Your organization does not have enough credits to start an Autofix run. Someone with billing access can turn on auto-reload in Sentry.";
+
+export const SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE =
+  "Your organization does not have enough credits to continue your Autofix run. Someone with billing access can turn on auto-reload in Sentry.";
+
+const SEER_NO_QUOTA_MESSAGE =
+  "Your organization does not have enough Seer quota to start an Autofix run.";
 
 /**
- * Explain a 402 from starting a run. Sentry sends the credits 402 as
- * `{ detail }`. The quota 402 is a bare string the API client can't parse,
- * so it gets the fallback.
+ * Explain a 402 from starting a run. Sentry sends the out-of-credits 402 as
+ * `{ detail }` and the out-of-quota 402 as a bare string, which the API client
+ * can't parse.
  */
 export function getSeerPaymentRequiredMessage(responseBody: unknown): string {
   if (isPlainObject(responseBody) && typeof responseBody.detail === "string") {
-    return responseBody.detail;
+    return SEER_START_OUT_OF_CREDITS_MESSAGE;
   }
-  return "Your organization does not have enough Seer budget to start an analysis.";
+  return SEER_NO_QUOTA_MESSAGE;
 }
 
 /**
@@ -108,7 +114,7 @@ export function getFailureReasonGuidance(
   failureReason: string | null | undefined,
 ): string {
   if (failureReason === "out_of_credits") {
-    return `\n${SEER_OUT_OF_CREDITS_MESSAGE}\n`;
+    return `\n${SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE}\n`;
   }
   return "";
 }

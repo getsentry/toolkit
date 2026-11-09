@@ -47,7 +47,7 @@ import {
   getAutofixArtifactSummaries,
   getStatusDisplayName,
   isTerminalStatus,
-  SEER_OUT_OF_CREDITS_MESSAGE,
+  SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE,
 } from "./tool-helpers/seer";
 import { formatToolCallInstruction } from "./tool-helpers/tool-call-formatting";
 import { isPlainObject } from "./type-guards";
@@ -2202,7 +2202,7 @@ function formatSeerSummary(autofixState: AutofixRunState | undefined): string {
     parts.push("");
     parts.push("**Status:** Analysis failed.");
     if (autofix.failure_reason === "out_of_credits") {
-      parts.push(SEER_OUT_OF_CREDITS_MESSAGE);
+      parts.push(SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE);
     }
   } else if (autofix.status === "awaiting_user_input") {
     parts.push("");
