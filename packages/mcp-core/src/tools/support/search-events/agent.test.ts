@@ -53,7 +53,13 @@ it("keeps null transformations invalid for explicit caller input", () => {
   ).toBe(false);
 });
 
-it("accepts ordered duplicate axes from embedded translation", () => {
+it.each([
+  { shape: "ordered", legacy: {} },
+  {
+    shape: "mixed legacy and ordered",
+    legacy: { yAxis: "count()", transformations: ["fill(locf)"] },
+  },
+])("preserves ordered axes in $shape embedded translation", ({ legacy }) => {
   const translated = searchEventsAgentOutputSchema.parse({
     dataset: "spans",
     query: "span.op:db",
@@ -61,6 +67,7 @@ it("accepts ordered duplicate axes from embedded translation", () => {
     sort: "",
     timeRange: { statsPeriod: "24h" },
     timeSeries: {
+      ...legacy,
       axes: [
         { yAxis: "count()", transformations: ["fill(zero)", "smooth(sma,3)"] },
         { yAxis: "count()", transformations: ["smooth(asap)"] },
@@ -76,6 +83,23 @@ it("accepts ordered duplicate axes from embedded translation", () => {
     ],
     interval: "1h",
   });
+});
+
+it("rejects invalid ordered axes instead of falling back to a legacy series", () => {
+  expect(
+    searchEventsAgentOutputSchema.safeParse({
+      dataset: "spans",
+      query: "span.op:db",
+      fields: [],
+      sort: "",
+      timeRange: null,
+      timeSeries: {
+        yAxis: "count()",
+        axes: [{ yAxis: "count()", transformations: ["smooth(sma,0)"] }],
+        interval: "1h",
+      },
+    }).success,
+  ).toBe(false);
 });
 
 it("normalizes legacy embedded time series without dropping its transformations", () => {

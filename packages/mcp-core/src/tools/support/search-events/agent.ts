@@ -40,7 +40,9 @@ export function hasSuccessfulSearchValidation(
 const agentTransformationsSchema = TransformationsSchema.nullish().transform(
   (transformations) => transformations ?? undefined,
 );
-const agentTimeSeriesConfigSchema = TimeSeriesConfigSchema.extend({
+// Prefer ordered axes when a model also emits legacy top-level fields.
+const agentTimeSeriesConfigSchema = z.object({
+  ...TimeSeriesConfigSchema.shape,
   axes: z
     .array(
       TimeSeriesConfigSchema.shape.axes.element.extend({
@@ -74,6 +76,8 @@ export const searchEventsAgentOutputSchema = z
       .union([
         agentTimeSeriesConfigSchema,
         z.object({
+          // Never downgrade malformed ordered output to a legacy series.
+          axes: z.never().optional(),
           yAxis: z
             .string()
             .describe(

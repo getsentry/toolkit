@@ -104,7 +104,8 @@ QUERY MODES:
 
 TIME SERIES (data over time):
 - When the user asks for a metric OVER TIME ("over time", "per hour", "by day", "trend", "time series"), set the \`timeSeries\` field instead of returning an error.
-- \`timeSeries.yAxis\` = the aggregate to plot (e.g. "count()", "count_unique(user)", "sum(span.duration)"). Put the aggregate here, NOT in \`fields\`.
+- \`timeSeries.axes\` = an ordered array of series, e.g. [{"yAxis":"count()"}, {"yAxis":"sum(span.duration)"}]. Include every requested series, even when aggregates repeat. Put aggregates here, NOT in \`fields\`.
+- Each axis may include its own ordered \`transformations\` array when requested, e.g. {"yAxis":"count()","transformations":["fill(zero)","smooth(sma,3)"]}.
 - \`timeSeries.interval\` = a bucket size like "1h" or "1d" ONLY when the user names a granularity ("per hour" → "1h", "daily" → "1d"). Otherwise leave it null so Sentry picks a sensible bucket for the time range — never require the user to specify it.
 - Leave \`timeSeries\` null for normal queries and single-total aggregates.
 
