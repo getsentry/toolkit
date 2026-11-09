@@ -109,7 +109,7 @@ The MCP OAuth Provider is built with `@cloudflare/workers-oauth-provider` and pr
 1. **Dynamic client registration** - MCP clients can register on-demand
 2. **PKCE support** - Secure authorization code flow
 3. **Token management** - Issues and validates MCP tokens
-4. **Consent UI** - Custom approval screen for permissions. Cancel redirects the MCP client to its registered `redirect_uri` with `error=access_denied` (RFC 6749 §4.1.2.1). **Use a different Sentry account** adds `force_prompt=1` to the Sentry redirect, so Sentry shows the signed-in user and **Switch account** instead of silently reusing the browser session. It is preselected when the client sends OIDC `prompt=select_account`, `consent`, or `login`; metadata advertises `prompt_values_supported: ["consent", "select_account"]`.
+4. **Consent UI** - Custom approval screen for permissions. Cancel redirects the MCP client to its registered `redirect_uri` with `error=access_denied` (RFC 6749 §4.1.2.1). When the client sends OIDC `prompt=select_account`, `consent`, or `login`, the Sentry redirect carries `force_prompt=1`, so Sentry shows the signed-in user and **Switch account** instead of silently reusing the browser session. Metadata advertises `prompt_values_supported: ["consent", "select_account"]`. Without `prompt`, the flow is unchanged.
 5. **Token encryption** - Stores Sentry tokens encrypted in MCP token props
 
 ### Sentry OAuth Integration

@@ -387,11 +387,6 @@ export interface ApprovalDialogOptions {
    * Skill IDs to preselect. When omitted, all approvable skills are selected.
    */
   defaultSkills?: string[];
-  /**
-   * Preselect "Use a different Sentry account", e.g. when the client sent an
-   * OIDC `prompt` asking for account selection.
-   */
-  defaultSwitchAccount?: boolean;
 }
 
 /**
@@ -467,7 +462,6 @@ export async function renderApprovalDialog(
     state,
     cookieSecret,
     defaultSkills,
-    defaultSwitchAccount = false,
   } = options;
   const defaultSkillIds =
     defaultSkills === undefined
@@ -1016,17 +1010,6 @@ export async function renderApprovalDialog(
                 <div class="approval-column">
                   ${redirectWarningsHtml}
 
-                  <label class="permission-item">
-                    <input type="checkbox" name="switch_account" value="1"${defaultSwitchAccount ? " checked" : ""}>
-                    <span class="permission-checkbox"></span>
-                    <div class="permission-content">
-                      <div class="permission-header">
-                        <span class="permission-name">Use a different Sentry account</span>
-                      </div>
-                      <div class="permission-description">Sentry shows which account you're signed in as and lets you switch before you connect.</div>
-                    </div>
-                  </label>
-
                   ${
                     policyUri || tosUri
                       ? `<p class="policy-links">By approving, you agree to ${clientName}'s ${
@@ -1071,8 +1054,6 @@ export interface ParsedApprovalResult {
   skills: string[];
   /** Whether the user approved or denied authorization. */
   decision: "approve" | "deny";
-  /** Whether the user asked to pick a Sentry account instead of reusing the session. */
-  switchAccount: boolean;
 }
 
 /**
@@ -1095,7 +1076,6 @@ export async function parseRedirectApproval(
   let clientId: string | undefined;
   let skills: string[];
   let decision: "approve" | "deny";
-  let switchAccount: boolean;
 
   try {
     const formData = await request.formData();
@@ -1128,7 +1108,6 @@ export async function parseRedirectApproval(
     // Forms opened before this field existed submit no decision; those were
     // approval-only forms, so preserve their original behavior.
     decision = formDecision === "deny" ? "deny" : "approve";
-    switchAccount = formData.get("switch_account") === "1";
   } catch (error) {
     logError(error, {
       loggerScope: ["cloudflare", "approval-dialog"],
@@ -1142,13 +1121,7 @@ export async function parseRedirectApproval(
   }
 
   if (decision === "deny") {
-    return {
-      decision,
-      state,
-      headers: new Headers(),
-      skills: [],
-      switchAccount,
-    };
+    return { decision, state, headers: new Headers(), skills: [] };
   }
 
   // Get existing approved clients
@@ -1180,7 +1153,7 @@ export async function parseRedirectApproval(
     ),
   );
 
-  return { decision, state, headers, skills, switchAccount };
+  return { decision, state, headers, skills };
 }
 
 // sanitizeHtml function is now imported from "./html-utils"

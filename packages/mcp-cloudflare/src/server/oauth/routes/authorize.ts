@@ -228,13 +228,16 @@ export default new Hono<{ Bindings: Env }>()
       },
       scope: approvalScope,
       redirectUri: oauthReqInfoWithResource.redirectUri,
-      state: { oauthReqInfo: oauthReqInfoWithResource },
+      state: {
+        oauthReqInfo: oauthReqInfoWithResource,
+        // Clients such as Copilot CLI send an OIDC `prompt` to add another
+        // account. Kept in the signed form state, outside the auth request.
+        forcePrompt: promptRequestsAccountSelection(
+          requestUrl.searchParams.get("prompt"),
+        ),
+      },
       cookieSecret: c.env.COOKIE_SECRET,
       defaultSkills,
-      // Clients such as Copilot CLI send an OIDC `prompt` to add another account.
-      defaultSwitchAccount: promptRequestsAccountSelection(
-        requestUrl.searchParams.get("prompt"),
-      ),
     });
 
     const registrationMethodTelemetry =
@@ -273,7 +276,7 @@ export default new Hono<{ Bindings: Env }>()
       return c.text("Invalid request", 400);
     }
 
-    const { state, headers, skills, decision, switchAccount } = result;
+    const { state, headers, skills, decision } = result;
 
     if (!state.oauthReqInfo) {
       return c.text("Invalid request", 400);
@@ -388,6 +391,6 @@ export default new Hono<{ Bindings: Env }>()
       oauthReqWithSkills,
       headers,
       signedState,
-      switchAccount,
+      state.forcePrompt === true,
     );
   });
