@@ -37,6 +37,7 @@
         "allow": ["URL", "URLSearchParams"]
       }
     ],
+    "typescript/no-unnecessary-type-arguments": "error",
     "jsx-a11y/interactive-supports-focus": "off",
     "unicorn/prefer-spread": "error"
   },

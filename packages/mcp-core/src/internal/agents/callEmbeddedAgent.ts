@@ -110,7 +110,7 @@ interface EmbeddedAgentResult<T> {
  */
 export async function callEmbeddedAgent<
   TOutput,
-  TSchema extends z.ZodType<TOutput, unknown>,
+  TSchema extends z.ZodType<TOutput>,
 >({
   system,
   prompt,
@@ -395,7 +395,7 @@ function extractJsonCandidates(text: string): string[] {
  */
 function rescueFromText<TOutput>(
   text: string,
-  schema: z.ZodType<TOutput, unknown>,
+  schema: z.ZodType<TOutput>,
 ): TOutput | null {
   for (const candidate of extractJsonCandidates(text)) {
     try {
