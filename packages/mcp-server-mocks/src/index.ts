@@ -1320,11 +1320,6 @@ export const restHandlers = buildHandlers([
   },
   {
     method: "get",
-    path: "/api/0/organizations/sentry-mcp-evals/seer/credit-check/",
-    fetch: () => HttpResponse.json({ hasEnoughCredits: true }),
-  },
-  {
-    method: "get",
     path: "/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/autofix/",
     fetch: () => HttpResponse.json({ autofix: null }),
   },

@@ -1368,28 +1368,6 @@ export const AutofixRunStateSchema = z.object({
     .nullable(),
 });
 
-// Operations from Sentry's `SeerOperation` (`src/sentry/seer/credits.py`).
-export const SeerCreditOperationSchema = z.enum([
-  "agent_chat_message",
-  "autofix_root_cause",
-  "autofix_solution",
-  "autofix_code_changes",
-  "autofix_open_pr",
-  "autofix_pr_iteration",
-]);
-
-/**
- * Whether the organization has enough Seer credits to run an operation.
- *
- * Upstream source of truth in getsentry/sentry:
- * - `src/sentry/seer/endpoints/organization_seer_credit_check.py`
- */
-export const SeerCreditCheckSchema = z
-  .object({
-    hasEnoughCredits: z.boolean(),
-  })
-  .passthrough();
-
 /**
  * Schemas for Seer's search agent, which translates natural language into
  * Sentry search queries.

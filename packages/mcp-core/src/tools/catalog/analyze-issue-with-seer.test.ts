@@ -439,6 +439,61 @@ describe("analyze_issue_with_seer", () => {
     },
   );
 
+  it.each([
+    [
+      "out of credits",
+      {
+        detail:
+          "Your organization does not have enough credits to start an Autofix run.",
+      },
+      "Your organization does not have enough credits to start an Autofix run.",
+    ],
+    [
+      "out of quota",
+      "No budget for Seer Autofix.",
+      "Your organization does not have enough Seer budget to start an analysis.",
+    ],
+  ])(
+    "explains why the run did not start when Sentry answers 402 (%s)",
+    async (_label, body, expected) => {
+      let getCallCount = 0;
+
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-402/autofix/",
+          () => {
+            getCallCount++;
+            return HttpResponse.json({ autofix: null });
+          },
+        ),
+        http.post(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-402/autofix/",
+          () => HttpResponse.json(body, { status: 402 }),
+        ),
+      );
+
+      const result = await analyzeIssueWithSeer.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          issueId: "CLOUDFLARE-MCP-402",
+          instruction: undefined,
+        },
+        {
+          constraints: { organizationSlug: undefined },
+          accessToken: "access-token",
+          userId: "1",
+        },
+      );
+
+      expect(result).toBe(
+        `# Seer Analysis for Issue CLOUDFLARE-MCP-402\n\n## Analysis Not Started\n\n${expected}\n`,
+      );
+      // No polling after a refused start.
+      expect(getCallCount).toBe(1);
+    },
+  );
+
   it("returns unsupported message for metric issues without calling Seer", async () => {
     let autofixRequests = 0;
 

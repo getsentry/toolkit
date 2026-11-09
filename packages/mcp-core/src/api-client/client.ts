@@ -180,7 +180,6 @@ import {
   RepositoryListSchema,
   SearchAgentStartSchema,
   SearchAgentStateSchema,
-  SeerCreditCheckSchema,
   SentryAppComponentListSchema,
   SentryAppExternalRequestOptionsSchema,
   SentryAppInstallationListSchema,
@@ -255,7 +254,6 @@ import type {
   ReplayList,
   SearchAgentStart,
   SearchAgentState,
-  SeerCreditOperation,
   SentryAppComponentList,
   SentryAppExternalRequestOptions,
   SentryAppInstallationList,
@@ -4742,27 +4740,6 @@ export class SentryApiService {
       opts,
     );
     return SearchAgentStateSchema.parse(body);
-  }
-
-  // GET https://us.sentry.io/api/0/organizations/my-org/seer/credit-check/?operation=autofix_root_cause
-  async hasSeerCredits(
-    {
-      organizationSlug,
-      operation,
-    }: {
-      organizationSlug: string;
-      operation: SeerCreditOperation;
-    },
-    opts?: RequestOptions,
-  ): Promise<boolean> {
-    const queryParams = new URLSearchParams({ operation });
-    const body = await this.requestJSON(
-      apiPath`/organizations/${organizationSlug}/seer/credit-check/` +
-        `?${queryParams.toString()}`,
-      undefined,
-      opts,
-    );
-    return SeerCreditCheckSchema.parse(body).hasEnoughCredits;
   }
 
   /**

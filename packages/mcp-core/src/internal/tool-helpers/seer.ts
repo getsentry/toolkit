@@ -1,12 +1,7 @@
 import { z } from "zod";
-import {
-  ApiNotFoundError,
-  ApiValidationError,
-  type AutofixRunState,
-  type SentryApiService,
-} from "../../api-client/index";
-import type { Issue, SeerCreditOperation } from "../../api-client/types";
-import { logIssue, logWarn } from "../../telem/logging";
+import type { AutofixRunState } from "../../api-client/index";
+import type { Issue } from "../../api-client/types";
+import { isPlainObject } from "../type-guards";
 
 type AutofixRun = NonNullable<AutofixRunState["autofix"]>;
 
@@ -95,6 +90,18 @@ export const SEER_OUT_OF_CREDITS_MESSAGE =
   "Your organization does not have enough Seer credits. Someone with billing access can turn on auto-reload in Sentry.";
 
 /**
+ * Explain a 402 from starting a run. Sentry sends the credits 402 as
+ * `{ detail }`. The quota 402 is a bare string the API client can't parse,
+ * so it gets the fallback.
+ */
+export function getSeerPaymentRequiredMessage(responseBody: unknown): string {
+  if (isPlainObject(responseBody) && typeof responseBody.detail === "string") {
+    return responseBody.detail;
+  }
+  return "Your organization does not have enough Seer budget to start an analysis.";
+}
+
+/**
  * Explain why a failed run stopped, when Seer gives a reason we can explain.
  */
 export function getFailureReasonGuidance(
@@ -104,30 +111,6 @@ export function getFailureReasonGuidance(
     return `\n${SEER_OUT_OF_CREDITS_MESSAGE}\n`;
   }
   return "";
-}
-
-/**
- * Whether the organization has enough Seer credits for the operation.
- */
-export async function hasSeerCredits(
-  apiService: SentryApiService,
-  organizationSlug: string,
-  operation: SeerCreditOperation,
-): Promise<boolean> {
-  try {
-    return await apiService.hasSeerCredits({ organizationSlug, operation });
-  } catch (error) {
-    if (error instanceof ApiValidationError || error instanceof z.ZodError) {
-      // Sentry rejected the operation or answered in a shape we don't expect,
-      // so our contract with Sentry drifted.
-      logIssue(error, {
-        contexts: { request: { organizationSlug, operation } },
-      });
-    } else if (!(error instanceof ApiNotFoundError)) {
-      logWarn(error, { extra: { organizationSlug, operation } });
-    }
-    return true;
-  }
 }
 
 function escapeXmlAttribute(value: string | number): string {

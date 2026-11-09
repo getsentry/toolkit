@@ -56,7 +56,6 @@ import type {
   AutofixRunStateSchema,
   SearchAgentStartSchema,
   SearchAgentStateSchema,
-  SeerCreditOperationSchema,
   ClientKeyListSchema,
   ClientKeySchema,
   CommitListSchema,
@@ -244,7 +243,6 @@ export type AutofixRun = z.infer<typeof AutofixRunSchema>;
 export type AutofixRunState = z.infer<typeof AutofixRunStateSchema>;
 export type SearchAgentStart = z.infer<typeof SearchAgentStartSchema>;
 export type SearchAgentState = z.infer<typeof SearchAgentStateSchema>;
-export type SeerCreditOperation = z.infer<typeof SeerCreditOperationSchema>;
 export type AssignedTo = z.infer<typeof AssignedToSchema>;
 export type ReplayDetails = z.infer<typeof ReplayDetailsSchema>;
 export type ReplayList = z.infer<typeof ReplayListResponseSchema>["data"];
