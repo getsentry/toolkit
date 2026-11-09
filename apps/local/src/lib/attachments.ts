@@ -100,15 +100,15 @@ export function eventAttachments(
   event: LocalFeedItem,
   items: readonly LocalFeedItem[],
 ): LocalFeedItem[] {
-  const ids = new Set(
-    [
-      text(event.envelopeHeader?.event_id),
-      text(record(event.payload).event_id),
-    ].filter((id): id is string => id !== undefined),
-  );
-  if (!ids.size) return [];
+  const ids = [
+    text(event.envelopeHeader?.event_id),
+    text(record(event.payload).event_id),
+  ].filter((id): id is string => id !== undefined);
+  if (!ids.length) return [];
   return items.filter((candidate) => {
     const id = text(candidate.envelopeHeader?.event_id);
-    return candidate.type === "attachment" && id !== undefined && ids.has(id);
+    return (
+      candidate.type === "attachment" && id !== undefined && ids.includes(id)
+    );
   });
 }
