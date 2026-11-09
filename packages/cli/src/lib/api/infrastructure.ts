@@ -6,32 +6,43 @@
  * other modules in `src/lib/api/` import from.
  */
 
-import { promisify } from "node:util";
-import { zstdCompress as zstdCompressCb } from "node:zlib";
 import {
+  type BaseUrlRequest,
+  createSentryClient,
   parseSentryLinkHeader,
   type SdkResult,
   SentryApiError,
 } from "@sentry/api";
-import { buildSentryApiUrl } from "@sentry/toolkit-core/api-request";
 import {
   API_MAX_PER_PAGE,
+  buildSentryApiUrl,
+  decodePageCursor as decodeCursorPosition,
   fetchAllPages as fetchEveryPage,
   type FetchAllPagesFailure,
+  type CursorPosition,
   paginate as paginateFrom,
-} from "@sentry/toolkit-core/pagination";
+  readErrorResponse,
+} from "@sentry/api/client";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
 
 import { extractRequiredScopes } from "../api-scope.js";
+import { getUrlLoginCommand, sentry } from "../app-identity.js";
 import {
   type CredentialContext,
   getActiveEnvVarName,
   isEnvTokenActive,
 } from "../db/auth.js";
+import { getConfiguredSentryUrl } from "../constants.js";
 import { getEnv } from "../env.js";
-import { ApiError, AuthError, stringifyUnknown } from "../errors.js";
+import {
+  ApiError,
+  CliError,
+  type FunctionArgument,
+  stringifyUnknown,
+  TimeoutError,
+} from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
 import {
@@ -40,6 +51,7 @@ import {
   getSdkConfig,
 } from "../sentry-client.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
+import { isSentrySaasUrl } from "../sentry-urls.js";
 
 /**
  * Enrich a 403 Forbidden error detail with actionable guidance.
@@ -89,12 +101,12 @@ function enrich403Detail(rawDetail: string | undefined): string {
     const scopeArgs = scopes.map((s) => `--scope ${s}`).join(" ");
     lines.push(
       `Your token is missing the required scope(s) '${scopes.join("', '")}'.`,
-      `Re-authenticate with: sentry auth refresh ${scopeArgs}`,
+      `Re-authenticate with: ${sentry`auth refresh ${scopeArgs}`}`,
     );
   } else {
     lines.push(
       "You may not have access to this resource.",
-      "Re-authenticate with: sentry auth login",
+      `Re-authenticate with: ${sentry`auth login`}`,
     );
   }
   return lines.join("\n  ");
@@ -119,7 +131,7 @@ function enrich403Detail(rawDetail: string | undefined): string {
  *
  * @see https://github.com/getsentry/sentry/blob/934f1473f198a62f9268d7140b80cd9ca1e59bb9/src/sentry/api/authentication.py#L536-L539
  */
-export function enrich401Detail(rawDetail: string | undefined): string {
+function enrich401Detail(rawDetail: string | undefined): string {
   // Seat-limit lockout, not an auth failure. Sentry returns 401 with
   // `code: member-disabled-over-limit` when the org is over its member limit
   // and the caller's seat is disabled — re-authenticating cannot fix this.
@@ -128,7 +140,7 @@ export function enrich401Detail(rawDetail: string | undefined): string {
       "Your account is disabled in this organization because it is over its member limit.",
       "This is a billing/seat-limit issue, not an auth problem — re-authenticating won't help.",
       "Ask an org owner to upgrade the plan or free up a seat, then retry.",
-      "Or target a different org, e.g.:  sentry init my-other-org/",
+      `Or target a different org, e.g.:  ${sentry`issue list my-other-org/`}`,
     ].join("\n  ");
   }
 
@@ -145,7 +157,7 @@ export function enrich401Detail(rawDetail: string | undefined): string {
   } else {
     lines.push(
       "Not authenticated or your session has expired.",
-      "Re-authenticate with: sentry auth login",
+      `Re-authenticate with: ${sentry`auth login`}`,
     );
   }
   return lines.join("\n  ");
@@ -189,20 +201,10 @@ function enrichDetail(
  */
 export const parseLinkHeader = parseSentryLinkHeader;
 
-/** zstd body compressor, or null when the runtime lacks zstd support. */
-const zstdCompressAsync =
-  typeof zstdCompressCb === "function" ? promisify(zstdCompressCb) : null;
-
 /** Options for raw API requests to Sentry endpoints. */
 export type ApiRequestOptions<T = unknown> = {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   body?: unknown;
-  /**
-   * Compress the JSON body with zstd and send `Content-Encoding: zstd`. Useful
-   * for large bodies (e.g. a snapshot manifest). Silently falls back to plain
-   * JSON when the runtime lacks zstd support.
-   */
-  bodyEncoding?: "zstd";
   /** Query parameters. String arrays create repeated keys (e.g., tags=1&tags=2) */
   params?: Record<string, string | number | boolean | string[] | undefined>;
   /** Optional valibot schema for runtime validation of response data */
@@ -219,6 +221,121 @@ export type ApiRequestOptions<T = unknown> = {
 };
 
 /**
+ * Structured fields of a JSON error body: its string `code` (e.g.
+ * `invalid_search_query`) and the rejected `function` and `argument`, with an
+ * optional `hint` (sent with `invalid_function_argument`).
+ */
+function readErrorFields(body: unknown): {
+  code?: string;
+  functionArgument?: FunctionArgument;
+} {
+  if (body === null || typeof body !== "object") {
+    return {};
+  }
+  const fields = body as Record<string, unknown>;
+  const code = typeof fields.code === "string" ? fields.code : undefined;
+  if (
+    typeof fields.function !== "string" ||
+    typeof fields.argument !== "string"
+  ) {
+    return { code };
+  }
+  const functionArgument: FunctionArgument = {
+    function: fields.function,
+    argument: fields.argument,
+  };
+  if (typeof fields.hint === "string") {
+    functionArgument.hint = fields.hint;
+  }
+  return { code, functionArgument };
+}
+
+const CONNECT_TIMEOUT_HINT =
+  "The connection timed out. Check network access and firewall rules on this machine.";
+
+/** Next steps for Node (undici) connection error codes, keyed by `code`. */
+const NETWORK_CAUSE_HINTS: Record<string, string> = {
+  ENOTFOUND:
+    "The hostname could not be resolved. Check that the URL is right and that DNS works on this machine.",
+  EAI_AGAIN:
+    "DNS lookup failed temporarily. Check DNS on this machine and try again.",
+  ECONNREFUSED:
+    "The server refused the connection. Check that the URL and port are right and that Sentry is running.",
+  ECONNRESET:
+    "The connection was reset. A proxy or firewall may be interrupting the request; try again.",
+  ETIMEDOUT: CONNECT_TIMEOUT_HINT,
+  UND_ERR_CONNECT_TIMEOUT: CONNECT_TIMEOUT_HINT,
+};
+
+/** Max `cause` links to follow; undici nests at most a couple. */
+const MAX_CAUSE_DEPTH = 5;
+
+/**
+ * Find the innermost error behind a fetch failure.
+ *
+ * undici rejects with `TypeError: fetch failed` for every connection failure
+ * and puts the real cause on `cause`: a system error with an errno `code`
+ * (`ENOTFOUND`, `ECONNREFUSED`, ...) or a plain Error (`bad port`).
+ */
+function findNetworkCause(
+  error: unknown,
+): { message: string; code?: string } | undefined {
+  let found: { message: string; code?: string } | undefined;
+  let current: unknown = error;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth++) {
+    if (!(current instanceof Error)) {
+      break;
+    }
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === "string") {
+      return { message: current.message, code };
+    }
+    found = { message: current.message };
+    current = current.cause;
+  }
+  return found;
+}
+
+/**
+ * Say where a self-hosted URL comes from, and how to point at another server.
+ * SENTRY_HOST wins over SENTRY_URL (getConfiguredSentryUrl), then the login.
+ */
+function describeUrlSource(): string {
+  if (getConfiguredSentryUrl()) {
+    const urlVar = getEnv().SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL";
+    return `This URL comes from ${urlVar}. If it is not your Sentry server, set ${urlVar} to the right URL.`;
+  }
+  return `This URL comes from your login. To use another server, run: ${getUrlLoginCommand()} <url>`;
+}
+
+/**
+ * Build the user-facing detail for a request that got no HTTP response.
+ *
+ * Names the Sentry URL that was contacted, the underlying cause (not just
+ * "fetch failed"), and next steps that match it.
+ */
+function buildNetworkErrorDetail(error: unknown): string {
+  // Same resolution as request routing: env, then the stored login's host.
+  const baseUrl = getApiBaseUrl();
+  const networkCause = findNetworkCause(error);
+  const cause =
+    networkCause?.message ??
+    (error instanceof Error ? error.message : stringifyUnknown(error));
+  const causeHint = networkCause?.code
+    ? NETWORK_CAUSE_HINTS[networkCause.code]
+    : undefined;
+  const steps = [causeHint ?? "Check your network connection and try again."];
+  steps.push(
+    isSentrySaasUrl(baseUrl)
+      ? `Check Sentry's status with: ${sentry`status`}`
+      : describeUrlSource(),
+  );
+  return [`Unable to reach Sentry at ${baseUrl}: ${cause}`, "", ...steps].join(
+    "\n  ",
+  );
+}
+
+/**
  * Throw an ApiError from a failed @sentry/api SDK response.
  *
  * @param error - The error object from the SDK (contains status code and detail)
@@ -232,13 +349,15 @@ export function throwApiError(
 ): never {
   // Network-level failure: no HTTP response received (DNS, timeout, ECONNREFUSED, etc.)
   if (!response) {
-    const cause =
-      error instanceof Error ? error.message : stringifyUnknown(error);
-    throw new ApiError(
+    const apiError = new ApiError(
       `${context}: Network error`,
       0,
-      `Unable to reach Sentry API. Cause: ${cause}\n\n  Check your internet connection and try again.`,
+      buildNetworkErrorDetail(error),
     );
+    // Keep the original error so error reporting can recognize a raw
+    // `fetch failed` (user environment) behind this wrapper.
+    apiError.cause = error;
+    throw apiError;
   }
 
   if (error instanceof SentryApiError) {
@@ -264,7 +383,7 @@ export function throwApiError(
     status,
     enrichDetail(status, detail, hasUsableDetail),
     undefined,
-    is403,
+    { enriched403: is403, ...readErrorFields(error) },
   );
 }
 
@@ -273,8 +392,9 @@ export function throwApiError(
  *
  * When `throwOnError` is false (our default), the SDK catches errors from
  * the fetch function and returns them in `{ error }`. This includes our
- * AuthError from refreshToken(). We must re-throw known error types (AuthError,
- * ApiError) directly so callers can distinguish auth failures from API errors.
+ * AuthError from refreshToken(). We must re-throw CLI errors (AuthError,
+ * ApiError, TimeoutError, ...) directly so callers can distinguish auth
+ * failures from API errors and users see the error's own guidance.
  *
  * @param result - The result from an SDK function call
  * @param context - Human-readable context for error messages
@@ -286,8 +406,14 @@ export function unwrapResult<T>(
 ): T {
   if ("error" in result) {
     const { error } = result;
-    // Preserve known error types that were caught by the SDK from our fetch function
-    if (error instanceof AuthError || error instanceof ApiError) {
+    // Name the failed operation, like ApiError does, and keep the hint.
+    if (error instanceof TimeoutError) {
+      throw new TimeoutError(`${context}: ${error.message}`, error.hint);
+    }
+    // Preserve other CLI errors thrown by our fetch function (AuthError,
+    // ApiError, HostScopeError, ...). They already carry the right message
+    // and next step; wrapping them as "Network error" would hide both.
+    if (error instanceof CliError) {
       throw error;
     }
     throwApiError(error, result.response, context);
@@ -383,12 +509,29 @@ export function appendSearchParams(
 }
 
 /**
- * Get SDK config for an organization's region.
- * Resolves the org's region URL and returns the config.
+ * `resolveBaseUrl` for `@sentry/api` clients: a request whose path names an
+ * organization goes to that organization's region, on the server of the
+ * stored account that knows it ({@link resolveOrgRegion}). An explicit
+ * server still limits the accounts. Unscoped paths keep the base URL.
  */
-export async function getOrgSdkConfig(orgSlug: string) {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  return getSdkClientConfig(regionUrl);
+async function resolveOrgBaseUrl({
+  baseUrl,
+  scope,
+}: BaseUrlRequest): Promise<string> {
+  return scope ? await resolveOrgRegion(scope.organization) : baseUrl;
+}
+
+/**
+ * SDK config that sends each request to the region of the organization its
+ * path names ({@link resolveOrgBaseUrl}).
+ */
+export function getOrgSdkConfig(
+  options: Parameters<typeof getSdkClientConfig>[1] = {},
+) {
+  return {
+    ...getSdkClientConfig(getApiBaseUrl(), options),
+    resolveBaseUrl: resolveOrgBaseUrl,
+  };
 }
 
 /**
@@ -409,6 +552,13 @@ export const MAX_PAGINATION_PAGES = Math.max(
  * auto-paginate for larger `--limit`s via {@link paginate}.
  */
 export { API_MAX_PER_PAGE };
+
+export { consumeCursorPage, type CursorPosition } from "@sentry/api/client";
+
+/** Decode a shared cursor, reporting unreadable legacy bookmarks through the CLI logger. */
+export function decodePageCursor(raw: string | undefined): CursorPosition {
+  return decodeCursorPosition(raw, (message) => logger.warn(message));
+}
 
 /**
  * Maximum concurrent API requests when fanning out across organizations or regions.
@@ -492,7 +642,7 @@ export async function autoPaginate<T>(
  * This is the only supported way to build a limit-bounded list; the
  * `sentry-cli/no-manual-pagination` lint rule rejects hand-written loops
  * (#1458, #1608). Page sizing and resume-safe cursors live in
- * `@sentry/toolkit-core/pagination`, shared with the MCP; this wrapper sets
+ * `@sentry/api/client`, shared with the MCP; this wrapper sets
  * the CLI's page cap and default limit and logs the CLI's warnings.
  *
  * Callers own region resolution and query building inside `fetchPage`, and
@@ -592,7 +742,6 @@ export async function apiRequestToRegion<T>(
   const {
     method = "GET",
     body,
-    bodyEncoding,
     params,
     schema,
     credential,
@@ -613,20 +762,10 @@ export async function apiRequestToRegion<T>(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  let requestBody: string | Uint8Array | undefined;
-  if (body !== undefined) {
-    const json = JSON.stringify(body);
-    if (bodyEncoding === "zstd" && zstdCompressAsync) {
-      requestBody = await zstdCompressAsync(Buffer.from(json));
-      headers["Content-Encoding"] = "zstd";
-    } else {
-      requestBody = json;
-    }
-  }
   const response = await fetchFn(url, {
     method,
     headers,
-    body: requestBody,
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -662,33 +801,75 @@ export async function apiRequestToRegion<T>(
   }
 
   if (schema) {
-    const result = safeParse(schema, data);
-    if (!result.success) {
-      // Attach structured validation issues to the Sentry event so we can
-      // diagnose exactly which field(s) failed validation — the ApiError.detail
-      // string alone may not be visible in the Sentry issue overview.
-      // Strip valibot issues to metadata only (path/type/message) before
-      // attaching — full issues embed the raw failing `input` value.
-      Sentry.setContext("schema_validation", {
-        endpoint,
-        status: response.status,
-        issues: result.issues.slice(0, 10).map((i) => ({
-          // Strip raw input from path items — only keep structural path keys.
-          path: i.path?.map((p) => ({ key: p.key, type: p.type })),
-          type: i.type,
-          message: i.message,
-        })),
-      });
-      throw new ApiError(
-        `Unexpected response format from ${endpoint}`,
-        response.status,
-        result.issues.map((issue) => issue.message).join(", "),
-      );
-    }
-    return { data: result.output, headers: response.headers };
+    return {
+      data: validateResponse(schema, data, endpoint, response.status),
+      headers: response.headers,
+    };
   }
 
   return { data: data as T, headers: response.headers };
+}
+
+/**
+ * Validate a response body against the CLI's schema for it.
+ *
+ * Used for raw requests and for `@sentry/api` results whose generated type is
+ * looser than what the CLI reads (e.g. untyped span records).
+ *
+ * @param schema - Valibot schema for the response body
+ * @param data - Parsed response body
+ * @param endpoint - API path, named in the error message
+ * @param status - HTTP status of the response
+ * @throws {ApiError} When the body does not match the schema
+ */
+export function validateResponse<T>(
+  schema: GenericSchema<unknown, T>,
+  data: unknown,
+  endpoint: string,
+  status: number,
+): T {
+  const result = safeParse(schema, data);
+  if (!result.success) {
+    // Attach structured validation issues to the Sentry event so we can
+    // diagnose exactly which field(s) failed validation — the ApiError.detail
+    // string alone may not be visible in the Sentry issue overview.
+    // Strip valibot issues to metadata only (path/type/message) before
+    // attaching — full issues embed the raw failing `input` value.
+    Sentry.setContext("schema_validation", {
+      endpoint,
+      status,
+      issues: result.issues.slice(0, 10).map((i) => ({
+        // Strip raw input from path items — only keep structural path keys.
+        path: i.path?.map((p) => ({ key: p.key, type: p.type })),
+        type: i.type,
+        message: i.message,
+      })),
+    });
+    throw new ApiError(
+      `Unexpected response format from ${endpoint}`,
+      status,
+      result.issues.map((issue) => issue.message).join(", "),
+    );
+  }
+  return result.output;
+}
+
+/**
+ * Unwrap an @sentry/api SDK result and validate its body with the CLI's schema.
+ *
+ * @param result - The result from an SDK function call
+ * @param context - Human-readable context for HTTP error messages
+ * @param schema - Valibot schema for the response body
+ * @param endpoint - API path, named in schema-mismatch errors
+ */
+export function unwrapValidatedResult<T>(
+  result: Pick<SdkResult, "data" | "error" | "response">,
+  context: string,
+  schema: GenericSchema<unknown, T>,
+  endpoint: string,
+): T {
+  const data = unwrapResult<unknown>(result, context);
+  return validateResponse(schema, data, endpoint, result.response?.status ?? 0);
 }
 
 /**
@@ -702,25 +883,20 @@ async function throwRawApiError(
   response: Response,
   endpoint: string,
 ): Promise<never> {
+  const body = await readErrorResponse(response);
   let detail: string | undefined;
-  try {
-    const text = await response.text();
-    try {
-      const parsed = JSON.parse(text) as { detail?: string };
-      // Enriched statuses (403, 401) pass undefined when there is no
-      // usable string detail so the enrichment renders without a noisy
-      // `{"detail":null}` prefix. Other statuses get the full JSON as
-      // a debug aid.
-      if (typeof parsed.detail === "string") {
-        detail = parsed.detail;
-      } else if (response.status !== 403 && response.status !== 401) {
-        detail = JSON.stringify(parsed);
-      }
-    } catch {
-      detail = text || undefined;
-    }
-  } catch {
+  if (body.text === undefined) {
     detail = response.statusText;
+  } else if (body.parseError !== undefined) {
+    detail = body.text || undefined;
+  } else if (body.detail !== undefined) {
+    detail = body.detail;
+  } else if (response.status !== 403 && response.status !== 401) {
+    // Enriched statuses (403, 401) pass undefined when there is no
+    // usable string detail so the enrichment renders without a noisy
+    // `{"detail":null}` prefix. Other statuses get the full JSON as
+    // a debug aid.
+    detail = JSON.stringify(body.json);
   }
   // Attach a small allowlisted subset of response headers to the Sentry
   // event as context. This lets us distinguish Sentry-app 4xx/5xx (which
@@ -742,7 +918,7 @@ async function throwRawApiError(
     response.status,
     enrichDetail(response.status, detail, detail !== undefined),
     endpoint,
-    is403,
+    { enriched403: is403, ...readErrorFields(body.json) },
   );
 }
 
@@ -842,8 +1018,62 @@ export function isTextualContentType(contentType: string | null): boolean {
   return false;
 }
 
+/** Options for a raw request, retaining the CLI's transport and body policies. */
+type RawApiRequestOptions = ApiRequestOptions & {
+  /** Explicit caller headers, before authentication and proxy headers. */
+  headers?: Record<string, string>;
+  /** Caller-selected Sentry origin or instance prefix, checked at dispatch. */
+  baseUrl?: string;
+};
+
+/** A request snapshot and the CLI transport that will authenticate it. */
+export type PreparedRawApiRequest = {
+  /** SDK-prepared URL, headers, method and body; single-use when sent. */
+  request: Request;
+  /** Authenticated transport, including raw response buffering and host checks. */
+  fetch: ReturnType<typeof getSdkConfig>["fetch"];
+};
+
 /**
- * Make a raw API request that returns full response details.
+ * Prepare a raw request without sending it or refreshing credentials; an
+ * org-scoped path may look up the organization's region first.
+ * Existing params retain append semantics; query overrides use the SDK's
+ * replacement semantics for decoded page cursors and page sizes.
+ */
+export async function prepareRawApiRequest(
+  endpoint: string,
+  options: RawApiRequestOptions = {},
+  query?: Record<string, unknown>,
+): Promise<PreparedRawApiRequest> {
+  const { method = "GET", body, params, headers, baseUrl } = options;
+  // A full URL keeps the request on its server; otherwise the path's
+  // organization picks the account, server, and region.
+  const config = baseUrl
+    ? getSdkConfig(baseUrl, { bufferResponseBody: true })
+    : {
+        ...getDefaultSdkConfig({ bufferResponseBody: true }),
+        resolveBaseUrl: resolveOrgBaseUrl,
+      };
+  const isStringBody = typeof body === "string";
+  const request = await createSentryClient(config).client.prepareRequest({
+    method,
+    url: buildSentryApiUrl("", appendSearchParams(endpoint, params)),
+    query,
+    body,
+    headers: isStringBody ? { "Content-Type": null, ...headers } : headers,
+    ...(isStringBody ? { bodySerializer: null } : {}),
+  });
+  // Raw requests honor an explicit Content-Type even without a body; the SDK
+  // otherwise removes it for bodyless operations and empty serialized bodies.
+  const contentType = new Headers(headers).get("content-type");
+  if (contentType !== null) {
+    request.headers.set("content-type", contentType);
+  }
+  return { request, fetch: config.fetch };
+}
+
+/**
+ * Send a prepared or endpoint-based raw request and return full response details.
  * Unlike apiRequest, this does not throw on non-2xx responses.
  * Used by the 'sentry api' command for direct API access.
  *
@@ -851,69 +1081,26 @@ export function isTextualContentType(contentType: string | null): boolean {
  * ({@link isTextualContentType}). Non-textual bodies are returned as
  * `Uint8Array` so binary downloads stay byte-for-byte intact.
  *
- * @param endpoint - API endpoint path (e.g., "/organizations/")
- * @param options - Request options including method, body, params, custom headers, and optional trusted base URL
+ * @param endpoint - API endpoint path or the prepared request used for its preview
+ * @param options - Options used when preparing an endpoint-based request
  * @returns Response status, status text, headers, and parsed body
  * @throws {AuthError} On authentication failure
  * @throws {HostScopeError} Before credentials are attached to an untrusted origin
  */
 export async function rawApiRequest(
-  endpoint: string,
-  options: ApiRequestOptions & {
-    headers?: Record<string, string>;
-    /**
-     * Sentry instance or regional base URL. The authenticated fetch rejects
-     * origins outside the active token's trust scope before adding credentials.
-     */
-    baseUrl?: string;
-  } = {},
+  endpoint: string | PreparedRawApiRequest,
+  options: RawApiRequestOptions = {},
 ): Promise<{
   status: number;
   statusText: string;
   headers: Headers;
   body: unknown;
 }> {
-  const {
-    method = "GET",
-    body,
-    params,
-    headers: customHeaders = {},
-    baseUrl,
-  } = options;
-
-  // Both configs share createAuthenticatedFetch(), whose prepareHeaders()
-  // enforces isRequestOriginTrusted() before attaching Authorization.
-  const config = baseUrl
-    ? getSdkConfig(baseUrl, { bufferResponseBody: true })
-    : getDefaultSdkConfig({ bufferResponseBody: true });
-
-  const endpointWithParams = appendSearchParams(endpoint, params);
-  const url = buildSentryApiUrl(config.baseUrl, endpointWithParams);
-
-  // Build request headers and body.
-  // String bodies: no Content-Type unless the caller explicitly provides one.
-  // Object bodies: application/json (auto-stringified).
-  const isStringBody = typeof body === "string";
-  const hasContentType = Object.keys(customHeaders).some(
-    (k) => k.toLowerCase() === "content-type",
-  );
-
-  const headers: Record<string, string> = { ...customHeaders };
-  if (!(isStringBody || hasContentType) && body !== undefined) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  let requestBody: string | undefined;
-  if (body !== undefined) {
-    requestBody = isStringBody ? body : JSON.stringify(body);
-  }
-
-  const fetchFn = config.fetch;
-  const response = await fetchFn(url, {
-    method,
-    headers,
-    body: requestBody,
-  });
+  const prepared =
+    typeof endpoint === "string"
+      ? await prepareRawApiRequest(endpoint, options)
+      : endpoint;
+  const response = await prepared.fetch(prepared.request);
 
   const contentType = response.headers.get("content-type");
   let responseBody: unknown;

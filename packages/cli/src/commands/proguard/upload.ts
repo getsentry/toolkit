@@ -13,12 +13,14 @@ import type { SentryContext } from "../../context.js";
 import type { ProguardMapping } from "../../lib/api/proguard.js";
 import { uploadProguardMappings } from "../../lib/api/proguard.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath, parseText } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { computeProguardUuid } from "../../lib/proguard.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("proguard.upload");
 
@@ -44,7 +46,7 @@ type ProguardUploadResult = {
 
 // ── Formatter ───────────────────────────────────────────────────────
 
-const USAGE_HINT = "sentry proguard upload <path>...";
+const usageHint = () => sentry`proguard upload <path>...`;
 
 /** Format human-readable output for upload results. */
 function formatUploadResult(data: ProguardUploadResult): string {
@@ -160,25 +162,23 @@ export const uploadCommand = buildCommand({
     examples: [
       {
         description: "Upload a ProGuard/R8 mapping file",
-        command:
-          "sentry proguard upload ./app/build/outputs/mapping/release/mapping.txt",
+        run: "proguard upload ./app/build/outputs/mapping/release/mapping.txt",
       },
       {
         description: "Upload multiple mapping files",
-        command: "sentry proguard upload mapping-release.txt mapping-debug.txt",
+        run: "proguard upload mapping-release.txt mapping-debug.txt",
       },
       {
         description: "Validate without uploading",
-        command: "sentry proguard upload mapping.txt --no-upload",
+        run: "proguard upload mapping.txt --no-upload",
       },
       {
         description: "Fail if no mapping files are found (useful in CI)",
-        command: "sentry proguard upload ./mapping/ --require-one",
+        run: "proguard upload ./mapping/ --require-one",
       },
       {
         description: "Upload with an explicit UUID",
-        command:
-          "sentry proguard upload mapping.txt --uuid 5db7294d-87fc-5726-a5c0-4a90679657a5",
+        run: "proguard upload mapping.txt --uuid 5db7294d-87fc-5726-a5c0-4a90679657a5",
       },
     ],
   },
@@ -190,14 +190,14 @@ export const uploadCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Paths to ProGuard/R8 mapping files",
-        parse: String,
+        parse: parseFilePath,
         placeholder: "path",
       },
     },
     flags: {
       uuid: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Force a specific UUID instead of computing from file content " +
           "(only valid with a single file)",
@@ -234,7 +234,7 @@ export const uploadCommand = buildCommand({
           "path",
         );
       }
-      throw new ContextError("Mapping file path(s)", USAGE_HINT, []);
+      throw new ContextError("Mapping file path(s)", usageHint(), []);
     }
 
     // 2. Validate --uuid with multiple files is ambiguous
@@ -263,7 +263,7 @@ export const uploadCommand = buildCommand({
 
     // 6. --no-upload: just print UUIDs and return (no auth needed)
     if (flags["no-upload"]) {
-      yield new CommandOutput<ProguardUploadResult>({
+      yield new CommandOutput({
         mappings: uniqueMappings.map((m) => ({ path: m.path, uuid: m.uuid })),
         filesUploaded: 0,
       });
@@ -278,10 +278,10 @@ export const uploadCommand = buildCommand({
     // 7. Resolve org/project
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 
@@ -293,7 +293,7 @@ export const uploadCommand = buildCommand({
     });
 
     // 9. Yield result
-    yield new CommandOutput<ProguardUploadResult>({
+    yield new CommandOutput({
       org,
       project,
       mappings: uniqueMappings.map((m) => ({ path: m.path, uuid: m.uuid })),

@@ -348,10 +348,7 @@ describe("listCommand.func — standard mode", () => {
 
   beforeEach(() => {
     listLogsSpy = vi.spyOn(apiClient, "listLogs");
-    resolveOrgProjectSpy = vi.spyOn(
-      resolveTarget,
-      "resolveProjectBoundFromArg",
-    );
+    resolveOrgProjectSpy = vi.spyOn(resolveTarget, "resolveProjectBoundTarget");
     vi.spyOn(resolveTarget, "resolveLogProjectId").mockResolvedValue(undefined);
     withProgressSpy = vi
       .spyOn(polling, "withProgress")
@@ -737,6 +734,7 @@ describe("listCommand.func — trace mode", () => {
         traceId: TRACE_ID,
       }),
       "/tmp",
+      "log list",
       expect.any(String),
     );
   });
@@ -760,7 +758,7 @@ describe("listCommand.func — positional disambiguation", () => {
       .spyOn(apiClient, "listTraceLogs")
       .mockResolvedValue([]);
     resolveOrgProjectSpy = vi
-      .spyOn(resolveTarget, "resolveProjectBoundFromArg")
+      .spyOn(resolveTarget, "resolveProjectBoundTarget")
       .mockResolvedValue({ org: ORG, project: PROJECT });
     resolveTraceOrgSpy = vi
       .spyOn(traceTarget, "resolveTraceOrg")
@@ -962,7 +960,7 @@ describe("listCommand.func — trace mode org resolution failure", () => {
 
 /**
  * Collect all output written to a `process.stderr.write` spy.
- * Handles both string and Buffer arguments from consola/logger.
+ * Handles both string and Buffer arguments from the logger.
  */
 function collectProcessStderr(
   spy: ReturnType<typeof spyOn<typeof process.stderr, "write">>,
@@ -1003,7 +1001,7 @@ describe("listCommand.func — flag validation", () => {
     // downstream resolution, not flag validation. Mock resolution to reject
     // with a non-ValidationError so we can verify flag validation passed.
     const resolveOrgProjectSpy = vi
-      .spyOn(resolveTarget, "resolveProjectBoundFromArg")
+      .spyOn(resolveTarget, "resolveProjectBoundTarget")
       .mockRejectedValueOnce(
         new ContextError("Organization", "sentry log list"),
       );
@@ -1035,10 +1033,7 @@ describe("listCommand.func — follow mode (standard)", () => {
   beforeEach(() => {
     sigint = interceptSigint();
     listLogsSpy = vi.spyOn(apiClient, "listLogs");
-    resolveOrgProjectSpy = vi.spyOn(
-      resolveTarget,
-      "resolveProjectBoundFromArg",
-    );
+    resolveOrgProjectSpy = vi.spyOn(resolveTarget, "resolveProjectBoundTarget");
     vi.spyOn(resolveTarget, "resolveLogProjectId").mockResolvedValue(undefined);
     isPlainSpy = vi.spyOn(formatters, "isPlainOutput").mockReturnValue(true);
     updateNotifSpy = vi

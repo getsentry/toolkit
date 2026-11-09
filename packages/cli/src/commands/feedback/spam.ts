@@ -3,13 +3,13 @@
  */
 
 import type { SentryContext } from "../../context.js";
-import { updateIssueStatus } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { formatSpamFeedback } from "../../lib/formatters/feedback.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { disableResponseCache } from "../../lib/response-cache.js";
-import { SentryFeedbackSchema } from "../../types/index.js";
-import { feedbackIdPositional, resolveFeedback } from "./utils.js";
+import { type FeedbackTarget, feedbackPositional } from "./positional.js";
+import { updateFeedbackStatus } from "./utils.js";
+import { SentryFeedbackSchema } from "../../generated/output-schemas/feedback.js";
 
 export const spamCommand = buildCommand({
   docs: {
@@ -21,20 +21,19 @@ export const spamCommand = buildCommand({
     examples: [
       {
         description: "Move a Feedback item to the spam mailbox",
-        command: "sentry feedback spam FRONTEND-2SDJ",
+        run: "feedback spam FRONTEND-2SDJ",
       },
       {
         description: "Mark as spam by numeric ID",
-        command: "sentry feedback spam 5146636313",
+        run: "feedback spam 5146636313",
       },
       {
         description: "Specify an organization explicitly",
-        command: "sentry feedback spam my-org/FRONTEND-2SDJ",
+        run: "feedback spam my-org/FRONTEND-2SDJ",
       },
       {
         description: "Return selected fields from the updated Feedback",
-        command:
-          "sentry feedback spam FRONTEND-2SDJ --json --fields id,shortId,status",
+        run: "feedback spam FRONTEND-2SDJ --json --fields id,shortId,status",
       },
     ],
   },
@@ -43,19 +42,12 @@ export const spamCommand = buildCommand({
     schema: SentryFeedbackSchema,
   },
   parameters: {
-    positional: feedbackIdPositional,
+    positional: feedbackPositional("spam"),
   },
-  async *func(this: SentryContext, _flags, feedbackArg: string) {
+  async *func(this: SentryContext, _flags, target: FeedbackTarget) {
     disableResponseCache();
-    const { org, feedback } = await resolveFeedback(
-      feedbackArg,
-      this.cwd,
-      "spam",
+    yield new CommandOutput(
+      await updateFeedbackStatus(await target.resolved, "ignored"),
     );
-    const updated = await updateIssueStatus(feedback.id, "ignored", {
-      orgSlug: org,
-    });
-
-    yield new CommandOutput(updated);
   },
 });

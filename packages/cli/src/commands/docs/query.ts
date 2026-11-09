@@ -1,5 +1,6 @@
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseText } from "../../lib/completion-target.js";
 import { detectDocsContext } from "../../lib/docs-context.js";
 import { queryDocs } from "../../lib/docs-service.js";
 import { ValidationError } from "../../lib/errors.js";
@@ -34,19 +35,19 @@ export const queryCommand = buildCommand({
     examples: [
       {
         description: "Ask a documentation question",
-        command: 'sentry docs "How do I configure tracing in Next.js?"',
+        run: 'docs "How do I configure tracing in Next.js?"',
       },
       {
         description: "Use the explicit subcommand",
-        command: 'sentry docs query "How do I upload source maps?"',
+        run: 'docs query "How do I upload source maps?"',
       },
       {
         description: "Use the search alias",
-        command: 'sentry docs search "How does session replay mask text?"',
+        run: 'docs search "How does session replay mask text?"',
       },
       {
         description: "Output the answer as JSON",
-        command: 'sentry docs "How do I configure tracing?" --json',
+        run: 'docs "How do I configure tracing?" --json',
       },
     ],
   },
@@ -57,7 +58,7 @@ export const queryCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Natural-language docs question",
-        parse: String,
+        parse: parseText,
         placeholder: "question",
       },
     },
@@ -81,6 +82,6 @@ export const queryCommand = buildCommand({
       },
       async () => await queryDocs(query, detectedContext),
     );
-    yield new CommandOutput<QueryOutput>({ ...result, detectedContext });
+    yield new CommandOutput({ ...result, detectedContext });
   },
 });

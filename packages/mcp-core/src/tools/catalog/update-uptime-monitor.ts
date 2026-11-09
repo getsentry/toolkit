@@ -18,6 +18,7 @@ import {
   ParamUptimeMonitorStatus,
   ParamUptimeOwner,
   ParamUptimeTimeoutMs,
+  toUptimeHeaderPairs,
   toUptimeMonitorSummary,
   uptimeMonitorSummarySchema,
 } from "./support/uptime-monitors";
@@ -34,6 +35,7 @@ function hasDefinedUpdate(
 
 export default defineTool({
   name: "update_uptime_monitor",
+  title: "Update Uptime Monitor",
   skills: ["project-management"],
   requiredScopes: ["project:write"],
   description: [
@@ -64,7 +66,7 @@ export default defineTool({
       .min(1)
       .describe("Uptime monitor ID (detector id)."),
     name: z.string().trim().min(1).max(128).optional(),
-    url: z.string().url().optional(),
+    url: z.string().url().max(255).optional(),
     intervalSeconds: ParamUptimeIntervalSeconds.optional(),
     timeoutMs: ParamUptimeTimeoutMs.optional(),
     method: ParamUptimeHttpMethod.optional(),
@@ -145,7 +147,7 @@ export default defineTool({
       intervalSeconds: params.intervalSeconds,
       timeoutMs: params.timeoutMs,
       method: params.method,
-      headers: params.headers,
+      headers: params.headers && toUptimeHeaderPairs(params.headers),
       body: params.body,
       status: params.status,
       owner: params.owner,

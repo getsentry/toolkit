@@ -1,6 +1,7 @@
 import type { SentryContext } from "../../context.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseText, textParser } from "../../lib/completion-target.js";
 import { type DocsListResponse, listDocs } from "../../lib/docs-service.js";
 import { ValidationError } from "../../lib/errors.js";
 import { muted } from "../../lib/formatters/colors.js";
@@ -40,15 +41,15 @@ export const listCommand = buildCommand({
     examples: [
       {
         description: "Search the documentation index",
-        command: 'sentry docs list "source maps"',
+        run: 'docs list "source maps"',
       },
       {
         description: "Limit the number of results",
-        command: 'sentry docs list "session replay privacy" --limit 5',
+        run: 'docs list "session replay privacy" --limit 5',
       },
       {
         description: "Output as JSON",
-        command: 'sentry docs list "source maps" --json',
+        run: 'docs list "source maps" --json',
       },
     ],
   },
@@ -57,7 +58,7 @@ export const listCommand = buildCommand({
     flags: {
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: "Maximum matches to return (1-20)",
         default: "8",
       },
@@ -67,7 +68,7 @@ export const listCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Documentation keywords",
-        parse: String,
+        parse: parseText,
         placeholder: "keywords",
       },
     },

@@ -10,8 +10,7 @@ rule:
     - pattern: console.debug($$$ARGS)
 files:
   - packages/mcp-core/src/**/*.ts
-  - packages/mcp-server/src/**/*.ts
+  - packages/cli/src/lib/mcp/**/*.ts
 ignores:
-  - packages/mcp-server/src/cli/**
   - "**/*.test.ts"
   - "**/*.d.ts"

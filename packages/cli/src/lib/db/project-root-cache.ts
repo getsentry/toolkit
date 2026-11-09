@@ -10,8 +10,7 @@
 
 import { stat } from "node:fs/promises";
 import type { ProjectRootReason } from "../dsn/project-root.js";
-import { recordCacheHit } from "../telemetry.js";
-import { getDatabase, maybeCleanupCaches } from "./index.js";
+import { getDatabase, maybeCleanupCaches, recordCacheHit } from "./index.js";
 import { runUpsert } from "./utils.js";
 
 /** Cache TTL in milliseconds (24 hours) */

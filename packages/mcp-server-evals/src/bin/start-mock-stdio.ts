@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { buildServer } from "@sentry/mcp-core/server";
-import { startStdio } from "@sentry/mcp-server/transports/stdio";
+import { startStdio } from "@sentry/mcp-core/transports/stdio";
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { SKILLS, type Skill } from "@sentry/mcp-core/skills";
 import type { ServerContext } from "@sentry/mcp-core/types";
@@ -36,7 +36,10 @@ const context: ServerContext = {
   },
 };
 
-const server = buildServer({ context, experimentalMode: true });
+const server = buildServer({
+  context,
+  experimentalMode: true,
+});
 
 // Run in-process MCP with all skills so MSW mocks apply
 startStdio(server, context).catch((err: unknown) => {

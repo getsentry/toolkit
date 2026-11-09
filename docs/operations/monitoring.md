@@ -8,14 +8,18 @@ Different Sentry SDKs for different environments:
 
 - **Core server**: `@sentry/core` (platform-agnostic)
 - **Cloudflare Workers**: `@sentry/cloudflare`
-- **Node.js stdio**: `@sentry/node`
+- **Node.js stdio**: `@sentry/node`. The stdio server always reports to the
+  Sentry CLI's project (`SENTRY_CLI_DSN`) and honors the CLI's opt-outs
+  (`SENTRY_CLI_NO_TELEMETRY=1`, `DO_NOT_TRACK=1`, or
+  `sentry cli defaults telemetry off`). It never reads `SENTRY_DSN`: a server
+  started from a project shell or IDE would inherit the app's DSN.
 - **React client**: `@sentry/react`
 
 ## Core Server Instrumentation
 
 ### Error Logging
 
-See `logIssue` in `packages/mcp-server/src/telem/logging.ts` (documented in [Logging Reference](logging.md)) for the canonical way to create an Issue and structured log entry.
+See `logIssue` in `packages/mcp-core/src/telem/logging.ts` (documented in [Logging Reference](logging.md)) for the canonical way to create an Issue and structured log entry.
 
 For event schema failures, see [Event Validation Diagnostics](../../TELEMETRY.md#event-validation-diagnostics)
 for the `contextType` diagnostic and its privacy constraints.
@@ -129,7 +133,8 @@ export default Sentry.withSentry((env) => getSentryConfig(env), {
 import * as Sentry from "@sentry/node";
 
 Sentry.init({
-  dsn: process.env.SENTRY_DSN,
+  dsn: SENTRY_CLI_DSN,
+  enabled: isTelemetryEnabled(),
   environment: process.env.NODE_ENV || "production",
   integrations: [Sentry.nodeProfilingIntegration()],
   tracesSampleRate: 0.1,
@@ -162,6 +167,7 @@ Current MCP spans also use related OpenTelemetry attributes outside the `mcp.*` 
 - `gen_ai.tool.name` - The tool name
 - `jsonrpc.request.id` - The JSON-RPC request ID
 - `rpc.response.status_code` - The JSON-RPC response status or error code
+- `error.type` - Why a failed tool span failed: `tool_error` for an `isError` tool result (set by the Sentry SDK), or `unknown_tool` for a call to a tool name the server does not register
 - `network.transport` - Transport protocol (`pipe` for stdio, `tcp` or `quic` for HTTP)
 - `gen_ai.tool.call.arguments.<key>` - Per-key effective tool arguments after constraints
 - `gen_ai.tool.call.result` - Tool result payload when explicitly recorded for low-risk structured outputs
@@ -177,6 +183,7 @@ These are Sentry MCP application attributes that are not part of the MCP semanti
 - `app.constraint.organization_slug` - Session organization constraint
 - `app.constraint.project_slug` - Session project constraint
 - `app.server.mode.experimental` - Whether experimental tools are enabled for this MCP request or stdio session
+- `app.server.distribution` - stdio only: `@sentry/mcp-server` for the npm package, `sentry mcp` for the CLI command
 - `app.consent.skill.<skill>.granted` - Per-skill boolean attributes for skills granted to the MCP request. Skill ids are normalized with `-` replaced by `_`
 - `app.upstream.host` - Upstream Sentry host configured for the server
 - `app.url.full` - MCP URL configured for stdio
@@ -350,9 +357,8 @@ Interpretation:
 VITE_SENTRY_DSN=https://...@sentry.io/...
 VITE_SENTRY_ENVIRONMENT=production
 
-# Node.js (runtime)
-SENTRY_DSN=https://...@sentry.io/...
-NODE_ENV=production
+# Node.js stdio (runtime): telemetry goes to the CLI's project; opt out with
+SENTRY_CLI_NO_TELEMETRY=1
 ```
 
 ## Best Practices
@@ -365,7 +371,7 @@ NODE_ENV=production
 
 ## References
 
-- Core logging: `packages/mcp-server/src/logging.ts`
+- Core logging: `packages/mcp-core/src/logging.ts`
 - Worker config: `packages/mcp-cloudflare/src/server/sentry.config.ts`
-- Tracing helpers: `packages/mcp-server/src/tracing.ts`
+- Tracing helpers: `packages/mcp-core/src/tracing.ts`
 - Sentry docs: https://docs.sentry.io/

@@ -1,0 +1,107 @@
+[
+  {
+    "key": "browser",
+    "name": "Browser",
+    "totalValues": 25,
+    "topValues": [
+      {
+        "key": "browser",
+        "name": "Chrome 134",
+        "value": "Chrome 134",
+        "count": 25,
+        "lastSeen": "2025-04-07T12:23:39.000Z",
+        "firstSeen": "2025-04-03T22:51:19.000Z"
+      }
+    ]
+  },
+  {
+    "key": "environment",
+    "name": "Environment",
+    "totalValues": 25,
+    "topValues": [
+      {
+        "key": "environment",
+        "name": "development",
+        "value": "development",
+        "count": 25,
+        "lastSeen": "2025-04-07T12:23:39.000Z",
+        "firstSeen": "2025-04-03T22:51:19.000Z"
+      }
+    ]
+  },
+  {
+    "key": "handled",
+    "name": "Handled",
+    "totalValues": 25,
+    "topValues": [
+      {
+        "key": "handled",
+        "name": "no",
+        "value": "no",
+        "count": 25,
+        "lastSeen": "2025-04-07T12:23:39.000Z",
+        "firstSeen": "2025-04-03T22:51:19.000Z"
+      }
+    ]
+  },
+  {
+    "key": "level",
+    "name": "Level",
+    "totalValues": 25,
+    "topValues": [
+      {
+        "key": "level",
+        "name": "error",
+        "value": "error",
+        "count": 25,
+        "lastSeen": "2025-04-07T12:23:39.000Z",
+        "firstSeen": "2025-04-03T22:51:19.000Z"
+      }
+    ]
+  },
+  {
+    "key": "mechanism",
+    "name": "Mechanism",
+    "totalValues": 25,
+    "topValues": [
+      {
+        "key": "mechanism",
+        "name": "cloudflare",
+        "value": "cloudflare",
+        "count": 25,
+        "lastSeen": "2025-04-07T12:23:39.000Z",
+        "firstSeen": "2025-04-03T22:51:19.000Z"
+      }
+    ]
+  },
+  {
+    "key": "runtime.name",
+    "name": "Runtime.Name",
+    "totalValues": 25,
+    "topValues": [
+      {
+        "key": "runtime.name",
+        "name": "cloudflare",
+        "value": "cloudflare",
+        "count": 25,
+        "lastSeen": "2025-04-07T12:23:39.000Z",
+        "firstSeen": "2025-04-03T22:51:19.000Z"
+      }
+    ]
+  },
+  {
+    "key": "url",
+    "name": "URL",
+    "totalValues": 24,
+    "topValues": [
+      {
+        "key": "url",
+        "name": "http://localhost:5173/messages/123",
+        "value": "http://localhost:5173/messages/123",
+        "count": 24,
+        "lastSeen": "2025-04-07T12:23:39.000Z",
+        "firstSeen": "2025-04-03T22:51:19.000Z"
+      }
+    ]
+  }
+]

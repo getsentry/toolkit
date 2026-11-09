@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-alert
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Manage Sentry alert rules
 requires:
   bins: ["sentry"]
@@ -85,7 +85,7 @@ Create an issue alert rule
 
 **Flags:**
 - `--name <value> - Rule name`
-- `-c, --condition <value>... - Condition object JSON (repeatable, or pass one JSON array)`
+- `-c, --condition <value>... - Trigger condition JSON or name such as first-seen (repeatable, or pass one JSON array)`
 - `-a, --action <value>... - Action object JSON (repeatable, or pass one JSON array)`
 - `--frequency <value> - Frequency in minutes - (default: 30)`
 - `--environment <value> - Environment filter`
@@ -93,6 +93,18 @@ Create an issue alert rule
 - `-m, --filter-match <value> - Filter match mode: all or any`
 - `--owner <value> - Owner (team:user style value accepted by Sentry API)`
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `status` | string | Rule status (active, disabled) |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `body` | object | Request body that would be sent (--dry-run) |
+| `project` | string | Project slug |
 
 **Examples:**
 
@@ -102,6 +114,12 @@ sentry alert issues create my-org/my-project --name 'New Issues' --condition '{"
 
 # Preview a high-priority alert that emails a user at most every 30 minutes
 sentry alert issues create my-org/my-project --name 'High Priority' --condition '{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}' --action '{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}' --frequency 30 --dry-run
+
+# Alert on new issues and regressions, using trigger names
+sentry alert issues create my-org/my-project --name 'New or Regressed' --condition first-seen,regression --action '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}'
+
+# Alert when an issue sees more than 50 events in a day (filters only, checked on every event)
+sentry alert issues create my-org/my-project --name 'Busy Issues' --filter '{"type":"event_frequency_count","comparison":{"value":50,"interval":"1d"},"conditionResult":true}' --action '{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}' --frequency 1440
 ```
 
 ### `sentry alert issues delete <org/project/rule-id-or-name>`
@@ -120,6 +138,17 @@ Delete an issue alert rule
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dryRun` | boolean | True when --dry-run made no change |
+| `deleted` | boolean | True when the rule was deleted |
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `project` | string | Project slug |
 
 **Examples:**
 
@@ -147,13 +176,35 @@ Edit an issue alert rule
 **Flags:**
 - `--name <value> - New rule name`
 - `--status <value> - Rule status: active or disabled`
-- `-c, --condition <value>... - Condition object JSON (repeatable, or pass one JSON array)`
+- `-c, --condition <value>... - Trigger condition JSON or name such as first-seen (repeatable, or pass one JSON array)`
 - `-a, --action <value>... - Action object JSON (repeatable, or pass one JSON array)`
 - `--frequency <value> - Frequency in minutes`
 - `--environment <value> - Environment value (pass empty string to clear)`
 - `--filter <value>... - Filter object JSON (repeatable, or pass one JSON array)`
 - `-m, --filter-match <value> - Filter match mode: all or any`
 - `--owner <value> - Owner value (pass empty string to clear)`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `organizationId` | string | ID of the organization the alert belongs to |
+| `createdBy` | string \| null | ID of the user who created the alert |
+| `dateCreated` | string | When the alert was created (ISO 8601) |
+| `dateUpdated` | string | When the alert was last updated (ISO 8601) |
+| `triggers` | object \| null | Conditions on which the alert triggers |
+| `actionFilters` | array \| null | Filters to run before actions fire, each with the actions to fire |
+| `environment` | string \| null | Name of the environment the alert is limited to. Null for all environments |
+| `config` | object | Configuration of the alert, such as frequency in minutes |
+| `detectorIds` | array \| null | IDs of the monitors connected to the alert |
+| `enabled` | boolean | Whether the alert is enabled |
+| `lastTriggered` | string \| null | When the alert last fired (ISO 8601) |
+| `owner` | string \| null | Team or user that owns the alert, such as user:123 or team:456 |
+| `org` | string | Organization slug |
+| `project` | string | Project slug |
+| `status` | string | Rule status (active, disabled) |
 
 **Examples:**
 
@@ -253,6 +304,17 @@ Create a metric alert rule
 - `--workflow <value>... - Alert (workflow) id to notify (repeatable or comma-separated)`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `status` | string | Rule status (active, disabled) |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `body` | object | Request body that would be sent (--dry-run) |
+
 **Examples:**
 
 ```bash
@@ -279,6 +341,16 @@ Delete a metric alert rule
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dryRun` | boolean | True when --dry-run made no change |
+| `deleted` | boolean | True when the rule was deleted |
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
 
 **Examples:**
 
@@ -312,6 +384,28 @@ Edit a metric alert rule
 - `--environment <value> - Environment value (pass empty string to clear)`
 - `--owner <value> - Owner value (pass empty string to clear)`
 - `--workflow <value>... - Replace connected alert (workflow) ids (repeatable or comma-separated; empty string disconnects all)`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `owner` | object \| null | Team or user that owns the monitor |
+| `createdBy` | string \| null | ID of the user who created the monitor |
+| `latestGroup` | object \| null | Latest issue the monitor created |
+| `description` | string \| null | Description of the monitor |
+| `id` | string | Alert rule ID |
+| `projectId` | string \| null | ID of the project the monitor belongs to |
+| `name` | string | Alert rule name |
+| `type` | string | Type of the monitor, such as metric_issue or error |
+| `workflowIds` | array \| null | IDs of the alerts connected to the monitor |
+| `dateCreated` | string | When the monitor was created (ISO 8601) |
+| `dateUpdated` | string | When the monitor was last updated (ISO 8601) |
+| `dataSources` | array \| null | Data sources the monitor evaluates, such as a query subscription |
+| `conditionGroup` | object \| null | Conditions that decide the monitor's status |
+| `config` | object | Configuration of the monitor, which depends on its type |
+| `enabled` | boolean | Whether the monitor is enabled |
+| `org` | string | Organization slug |
+| `status` | string | Rule status (active, disabled) |
 
 **Examples:**
 

@@ -61,7 +61,7 @@ export const SKILLS: Record<Skill, SkillDefinition> = {
     id: "project-management",
     name: "Manage Projects & Teams",
     description:
-      "Create and modify projects, teams, DSNs, cron monitor environments, uptime monitors, metric monitors, and alert rules",
+      "Create and modify projects, teams, DSNs, cron monitors and their environments, uptime monitors, metric monitors, and alert rules",
     defaultEnabled: false,
     order: 5,
   },
@@ -135,6 +135,55 @@ export function isEnabledBySkills(
 ): boolean {
   if (!grantedSkills || toolSkills.length === 0) return false;
   return toolSkills.some((skill) => grantedSkills.has(skill));
+}
+
+/** Tools a disabled skill leaves enabled, and the granted skills keeping them. */
+export interface RetainedSkillTools {
+  tools: string[];
+  grantedBy: Skill[];
+}
+
+/**
+ * Report a disabled skill that removes none of its tools.
+ *
+ * A tool stays enabled while any granted skill lists it, so disabling a skill
+ * whose tools all belong to another granted skill changes nothing. Returns
+ * the tools that stay enabled, or `undefined` when disabling the skill
+ * removes at least one tool. Foundational tools, which list every skill, are
+ * ignored because no skill grant can remove them.
+ */
+export function findRetainedSkillTools(
+  tools: Record<string, { skills: readonly Skill[] }>,
+  grantedSkills: ReadonlySet<Skill>,
+  disabledSkill: Skill,
+): RetainedSkillTools | undefined {
+  const retained: string[] = [];
+  const grantedBy = new Set<Skill>();
+  for (const [name, tool] of Object.entries(tools)) {
+    if (
+      !tool.skills.includes(disabledSkill) ||
+      ALL_SKILLS.every((skill) => tool.skills.includes(skill))
+    ) {
+      continue;
+    }
+    const keeping = tool.skills.filter(
+      (skill) => skill !== disabledSkill && grantedSkills.has(skill),
+    );
+    if (keeping.length === 0) {
+      return undefined;
+    }
+    retained.push(name);
+    for (const skill of keeping) {
+      grantedBy.add(skill);
+    }
+  }
+  if (retained.length === 0) {
+    return undefined;
+  }
+  return {
+    tools: retained.sort(),
+    grantedBy: ALL_SKILLS.filter((skill) => grantedBy.has(skill)),
+  };
 }
 
 // Parse and validate skills from input

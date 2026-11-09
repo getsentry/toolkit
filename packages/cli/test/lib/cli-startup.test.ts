@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { startCli } from "../../src/cli.js";
+import { SENTRY_CLI } from "../../src/sentry-cli.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- spy on the startup dependency
 import * as upgrade from "../../src/lib/upgrade.js";
 import { useTestConfigDir } from "../helpers.js";
@@ -22,7 +23,7 @@ test("fatal errors preserve their name while redacting credentials", async () =>
 
   try {
     process.argv = ["node", "sentry", "--help"];
-    await startCli();
+    await startCli(SENTRY_CLI);
 
     expect(cleanup).toHaveBeenCalledOnce();
     expect(stderr).toHaveBeenLastCalledWith(

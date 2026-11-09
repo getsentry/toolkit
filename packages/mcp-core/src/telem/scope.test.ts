@@ -110,14 +110,11 @@ describe("organization telemetry", () => {
       constraints: { organizationSlug: "sentry-mcp-evals" },
     },
     {
-      description: "URL-derived organizations through catalog execution",
-      name: "execute_sentry_tool",
+      description: "URL-derived organizations",
+      name: "get_issue_breadcrumbs",
       args: {
-        name: "get_issue_breadcrumbs",
-        arguments: {
-          issueUrl:
-            "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/",
-        },
+        issueUrl:
+          "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/",
       },
       constraints: {},
     },
@@ -173,13 +170,10 @@ describe("request and tool telemetry", () => {
         clientId: "telemetry-test-client",
         grantedSkills: new Set(["inspect"]),
       }),
-      "execute_sentry_tool",
+      "get_issue_breadcrumbs",
       {
-        name: "get_issue_breadcrumbs",
-        arguments: {
-          issueUrl:
-            "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/",
-        },
+        issueUrl:
+          "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/",
       },
     );
     expect(beforeSendSpan).toHaveBeenCalledWith(

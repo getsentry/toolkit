@@ -23,6 +23,7 @@
 
 import { readFile } from "node:fs/promises";
 import { DOCS_CONTENT } from "./paths.js";
+import { logger } from "../src/lib/logger.js";
 
 const GUIDE = `${DOCS_CONTENT}/getting-started.mdx`;
 
@@ -100,14 +101,16 @@ for (const { file, reads, flags, help } of installers) {
 }
 
 if (problems.length === 0) {
-  console.log(
-    `✓ Installer options are documented (${installers.map((i) => i.file).join(", ")})`,
+  logger.success(
+    `Installer options are documented (${installers.map((i) => i.file).join(", ")})`,
   );
   process.exit(0);
 }
 
-console.error(`✗ ${problems.length} undocumented installer option(s):\n`);
-for (const problem of problems) {
-  console.error(`  ${problem}`);
-}
+logger.error(
+  [
+    `${problems.length} undocumented installer option(s):\n`,
+    ...problems.map((problem) => `  ${problem}`),
+  ].join("\n"),
+);
 process.exit(1);

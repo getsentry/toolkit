@@ -563,6 +563,18 @@ describe("formatLogDetails", () => {
       expect(result).toContain("u_99");
     });
 
+    test("fallback: shows Markdown in extraFields names and values literally", () => {
+      const log = createDetailedTestLog({
+        "a|b": "**bold** [link](https://example.com)",
+      } as DetailedSentryLog);
+      const result = stripAnsi(
+        formatLogDetails(log, "test-org", undefined, ["a|b"]),
+      );
+
+      expect(result).toContain("a│b");
+      expect(result).toContain("**bold** [link](https://example.com)");
+    });
+
     test("renders array attributes with JSON.stringify instead of [object Object]", () => {
       const attrsWithArray: TraceItemAttribute[] = [
         { name: "tags", type: "array", value: ["prod", "web"] },
@@ -622,7 +634,7 @@ describe("buildLogRowCells", () => {
     const log = { ...createTestLog(), email: "user@example.com" };
     const cells = buildLogRowCells(log, true, true, ["email"]);
     expect(cells.length).toBe(5);
-    expect(cells[4]).toContain("user@example.com");
+    expect(renderInlineMarkdown(cells[4] ?? "")).toContain("user@example.com");
   });
 
   test("extra field shows empty for null values", () => {

@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-org
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Sentry organizations
 requires:
   bins: ["sentry"]
@@ -25,6 +25,27 @@ List organizations
 - `-n, --limit <value> - Maximum number of organizations to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-a, --account <value> - Only list organizations of this account (email, username, or account id; <who>:<server> for one server; env:SENTRY_AUTH_TOKEN)`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Organization ID |
+| `slug` | string | Organization slug |
+| `name` | string | Organization name |
+| `dateCreated` | string | When the organization was created (ISO 8601) |
+| `status` | object | Organization status |
+| `isEarlyAdopter` | boolean | Whether the organization is an early adopter |
+| `require2FA` | boolean | Whether members must use two-factor authentication |
+| `features` | array | Features enabled for the organization |
+| `avatar` | object | Organization avatar |
+| `links` | object | Organization and region URLs |
+| `hasAuthProvider` | boolean | Whether SSO is configured for the organization |
+| `allowMemberInvite` | boolean | Whether members can invite other members |
+| `allowMemberProjectCreation` | boolean | Whether members can create projects |
+| `orgRole` | string | Your role in the organization |
+| `region` | string | Region, when orgs span several (e.g. US, EU) |
+| `account` | object | Account the org was listed under, across accounts |
 
 **Examples:**
 
@@ -61,6 +82,25 @@ View details of an organization
 **Flags:**
 - `-w, --web - Open in browser`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Organization ID |
+| `slug` | string | Organization slug |
+| `name` | string | Organization name |
+| `dateCreated` | string | When the organization was created (ISO 8601) |
+| `status` | object | Organization status |
+| `isEarlyAdopter` | boolean | Whether the organization is an early adopter |
+| `require2FA` | boolean | Whether members must use two-factor authentication |
+| `features` | array | Features enabled for the organization |
+| `avatar` | object | Organization avatar |
+| `links` | object | Organization and region URLs |
+| `hasAuthProvider` | boolean | Whether SSO is configured for the organization |
+| `allowMemberInvite` | boolean | Whether members can invite other members |
+| `allowMemberProjectCreation` | boolean | Whether members can create projects |
+| `orgRole` | string | Your role in the organization |
 
 **Examples:**
 

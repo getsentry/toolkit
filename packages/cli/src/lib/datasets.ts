@@ -3,7 +3,25 @@
  * aliases, and the API names they map to.
  */
 
+import type { ListOrganizationEventsData } from "@sentry/api";
 import { ValidationError } from "./errors.js";
+
+/** Datasets the public `events/` and `events-timeseries/` endpoints accept. */
+export type EventsDataset = ListOrganizationEventsData["query"]["dataset"];
+
+const EVENTS_DATASETS: ReadonlySet<string> = new Set<EventsDataset>([
+  "errors",
+  "logs",
+  "profile_functions",
+  "spans",
+  "tracemetrics",
+  "uptime_results",
+]);
+
+/** Whether `dataset` is one the public Events endpoints accept. */
+export function isEventsDataset(dataset: string): dataset is EventsDataset {
+  return EVENTS_DATASETS.has(dataset);
+}
 
 /** API-level dataset names */
 export type ExploreDataset =
@@ -51,7 +69,9 @@ export function datasetDisplayName(dataset: string): string {
  * @param allowed - API datasets the command supports, in help order
  * @param passthrough - Extra lowercase values accepted and returned as-is
  *   (e.g. explore's legacy `transactions`)
- * @returns The parser and the user-facing names for help and errors
+ * @returns The parser, the user-facing names for help and errors, and
+ *   the API dataset of each name and alias (lowercase), without the
+ *   passthrough values
  */
 export function buildDatasetParser<
   T extends ExploreDataset,
@@ -59,8 +79,17 @@ export function buildDatasetParser<
 >(
   allowed: readonly T[],
   passthrough: readonly P[] = [],
-): { parse: (value: string) => T | P; names: readonly string[] } {
+): {
+  parse: (value: string) => T | P;
+  names: readonly string[];
+  aliases: Readonly<Record<string, T>>;
+} {
   const names = allowed.map(datasetDisplayName);
+  const aliases = Object.fromEntries(
+    Object.entries(ALIASES).filter(([, dataset]) =>
+      (allowed as readonly ExploreDataset[]).includes(dataset),
+    ),
+  ) as Record<string, T>;
   const parse = (value: string): T | P => {
     const lower = value.trim().toLowerCase();
     const resolved = ALIASES[lower];
@@ -75,5 +104,5 @@ export function buildDatasetParser<
       "dataset",
     );
   };
-  return { parse, names };
+  return { parse, names, aliases };
 }

@@ -564,7 +564,7 @@ describe("alert issues list pagination", () => {
       expect.objectContaining({
         project: "org-two/myproj",
         status: 500,
-        message: expect.stringContaining("API request failed"),
+        message: expect.stringContaining("Failed to list issue alert rules"),
       }),
     ]);
     expect(warnSpy).toHaveBeenCalledWith(
@@ -574,7 +574,7 @@ describe("alert issues list pagination", () => {
     );
   });
 
-  test("all project failures preserve ApiError status and endpoint", async () => {
+  test("all project failures preserve ApiError status", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const req = new Request(input, init);
       const url = new URL(req.url);
@@ -610,7 +610,6 @@ describe("alert issues list pagination", () => {
     ).rejects.toMatchObject({
       name: "ApiError",
       status: 403,
-      endpoint: "/organizations/test-org/workflows/",
     } satisfies Partial<ApiError>);
   });
 

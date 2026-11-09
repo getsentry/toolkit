@@ -31,14 +31,24 @@
  */
 
 import {
+  ArgumentScannerError,
   type Command,
   type CommandContext,
   buildCommand as stricliCommand,
   numberParser as stricliNumberParser,
 } from "@stricli/core";
+import type { GenericSchema } from "valibot";
 import type { Writer } from "../types/index.js";
+import { getInvocationCommand, sentry } from "./app-identity.js";
 import { appendCacheHint } from "./cache-hint.js";
 import { type CommandExample, exampleSteps } from "./command-example.js";
+import {
+  choiceListParser,
+  ORG_TARGET,
+  parseProjectSlug,
+  parseText,
+  withCompletionTarget,
+} from "./completion-target.js";
 import { getAuthConfig, hasUsableStoredAccount } from "./db/auth.js";
 import { getEnv } from "./env.js";
 import { AuthError, CliError, OutputError } from "./errors.js";
@@ -48,7 +58,7 @@ import {
   ClearScreen,
   CommandOutput,
   type CommandReturn,
-  extractSchemaFields,
+  type CommandYield,
   formatSchemaForHelp,
   type HumanRenderer,
   type OutputConfig,
@@ -69,6 +79,7 @@ import {
 import {
   applyBoundPositionals,
   checkDestructive,
+  isHelpArgument,
   rawPositional,
 } from "./positional-parse.js";
 import { setArgsContext, setFlagContext, withTracing } from "./telemetry.js";
@@ -125,17 +136,21 @@ export type CommandDocumentation =
  * The return value (`CommandReturn`) is captured by the wrapper and
  * rendered after all yields are consumed. Hints live exclusively on
  * the return value — never on individual yields.
+ *
+ * `OUTPUT` is the data type of the command's {@link OutputConfig}; each
+ * yielded {@link CommandOutput} must carry it.
  */
-type SentryCommandFunction<
+export type SentryCommandFunction<
   FLAGS extends BaseFlags,
   ARGS extends BaseArgs,
   CONTEXT extends CommandContext,
+  OUTPUT,
 > = (
   this: CONTEXT,
   flags: FLAGS,
   ...args: ARGS
   // void is required here — generators that don't return a value have implicit void return, which is distinct from undefined in TypeScript's type system
-) => AsyncGenerator<unknown, CommandReturn | void, undefined>;
+) => AsyncGenerator<CommandYield<OUTPUT>, CommandReturn | void, undefined>;
 
 /**
  * Arguments for building a command with a local function.
@@ -145,10 +160,17 @@ type LocalCommandBuilderArguments<
   FLAGS extends BaseFlags,
   ARGS extends BaseArgs,
   CONTEXT extends CommandContext,
+  OUTPUT,
+  SCHEMA extends GenericSchema,
+  TRANSFORMED,
 > = {
   readonly parameters?: Record<string, unknown>;
   readonly docs: CommandDocumentation;
-  readonly func: SentryCommandFunction<FLAGS, ARGS, CONTEXT>;
+  /**
+   * `NoInfer` makes `OUTPUT` come from `output` alone, so a yield that
+   * doesn't match the output config is an error instead of widening it.
+   */
+  readonly func: SentryCommandFunction<FLAGS, ARGS, CONTEXT, NoInfer<OUTPUT>>;
   /**
    * Output configuration — controls flag injection and auto-rendering.
    *
@@ -164,8 +186,7 @@ type LocalCommandBuilderArguments<
    * })
    * ```
    */
-  // oxlint-disable-next-line typescript/no-explicit-any -- Variance erasure — OutputConfig<T>.human is contravariant in T, but the builder erases T because it doesn't know the output type. Using `any` allows commands to declare OutputConfig<SpecificType> while the wrapper handles it generically.
-  readonly output?: OutputConfig<any>;
+  readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED>;
   /**
    * Whether the command requires authentication. Defaults to `true`.
    *
@@ -189,7 +210,8 @@ type LocalCommandBuilderArguments<
    *
    * Set to `true` for commands that establish or tear down host trust
    * (`auth login`, `auth logout`) — they must run even when a
-   * repo-local `.sentryclirc` URL mismatches the current token.
+   * repo-local `.sentryclirc` URL mismatches the current token — and
+   * for commands that send nothing to Sentry (`init`).
    */
   readonly skipRcUrlCheck?: boolean;
   /**
@@ -263,7 +285,7 @@ export const JSON_FLAG = {
  */
 export const FIELDS_FLAG = {
   kind: "parsed" as const,
-  parse: String,
+  parse: parseText,
   brief:
     "Comma-separated fields to include in JSON output (dot.notation supported)",
   optional: true as const,
@@ -283,7 +305,7 @@ export const FIELDS_FLAG = {
  */
 const ORG_FLAG = {
   kind: "parsed" as const,
-  parse: String,
+  parse: withCompletionTarget(ORG_TARGET, (input: string) => input),
   brief: "Organization slug",
   optional: true as const,
   hidden: true as const,
@@ -297,7 +319,7 @@ const ORG_FLAG = {
  */
 const PROJECT_FLAG = {
   kind: "parsed" as const,
-  parse: String,
+  parse: parseProjectSlug,
   brief: "Project slug",
   optional: true as const,
   hidden: true as const,
@@ -402,20 +424,19 @@ export function applyOrgProjectFlags(
 
 /**
  * Build the `--fields` flag definition, enriched with available field names
- * when a schema is registered on the output config.
+ * when a schema is registered on the output config. Its values complete
+ * every field path of the schema, one list item at a time.
  */
 // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig type is erased at the builder level
 function buildFieldsFlag(outputConfig?: OutputConfig<any>) {
-  if (!outputConfig?.schema) {
+  const schema = outputConfig?.schema;
+  if (!schema?.fields.length) {
     return FIELDS_FLAG;
   }
-  const schemaFields = extractSchemaFields(outputConfig.schema);
-  if (schemaFields.length === 0) {
-    return FIELDS_FLAG;
-  }
-  const fieldNames = schemaFields.map((f) => f.name).join(", ");
+  const fieldNames = schema.fields.map((f) => f.name).join(", ");
   return {
     ...FIELDS_FLAG,
+    parse: choiceListParser(schema.paths),
     brief: `${FIELDS_FLAG.brief}. Available: ${fieldNames}`,
   };
 }
@@ -430,11 +451,8 @@ function enrichDocsWithSchema(
   // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig type is erased at the builder level
   outputConfig?: OutputConfig<any>,
 ): CommandDocumentation {
-  if (!outputConfig?.schema) {
-    return docs;
-  }
-  const schemaFields = extractSchemaFields(outputConfig.schema);
-  if (schemaFields.length === 0) {
+  const schemaFields = outputConfig?.schema?.fields;
+  if (!schemaFields?.length) {
     return docs;
   }
   const jsonFieldsDoc = formatSchemaForHelp(schemaFields);
@@ -455,7 +473,7 @@ function prepareNativeDocs(
   }
   const rendered = examples
     .map((example) => {
-      const steps = exampleSteps(example);
+      const steps = exampleSteps(example, getInvocationCommand());
       return steps.length === 1
         ? `  ${steps[0]} # ${example.description}`
         : [`  # ${example.description}`, ...steps.map((s) => `  ${s}`)].join(
@@ -537,11 +555,24 @@ export function buildCommand<
   const FLAGS extends BaseFlags = NonNullable<unknown>,
   const ARGS extends BaseArgs = [],
   const CONTEXT extends CommandContext = CommandContext,
+  OUTPUT = never,
+  SCHEMA extends GenericSchema = GenericSchema,
+  TRANSFORMED = unknown,
 >(
-  builderArgs: LocalCommandBuilderArguments<FLAGS, ARGS, CONTEXT>,
+  builderArgs: LocalCommandBuilderArguments<
+    FLAGS,
+    ARGS,
+    CONTEXT,
+    OUTPUT,
+    SCHEMA,
+    TRANSFORMED
+  >,
 ): Command<CONTEXT> {
   const originalFunc = builderArgs.func;
-  const outputConfig = builderArgs.output;
+  // The wrapper renders whatever the generator yields; the builder
+  // signature already tied the yields to this config.
+  // oxlint-disable-next-line typescript/no-explicit-any -- OutputConfig<T>.human is contravariant in T, so the erased config can't be OutputConfig<unknown>
+  const outputConfig: OutputConfig<any> | undefined = builderArgs.output;
   const requiresAuth = builderArgs.auth !== false && builderArgs.auth !== "dsn";
   const skipRcUrlCheck =
     builderArgs.skipRcUrlCheck === true || builderArgs.auth === "dsn";
@@ -692,16 +723,13 @@ export function buildCommand<
     },
     args: unknown[],
   ): Promise<boolean> {
-    if (!(err instanceof CliError) || err instanceof OutputError) {
+    const recoverable =
+      (err instanceof CliError && !(err instanceof OutputError)) ||
+      err instanceof ArgumentScannerError;
+    if (!recoverable) {
       return false;
     }
-    if (
-      args.length === 0 ||
-      !args.some((a) => {
-        const raw = rawPositional(a);
-        return raw === "help" || raw === "--h" || raw === "-help";
-      })
-    ) {
+    if (!args.flatMap(rawPositional).some(isHelpArgument)) {
       return false;
     }
     if (!ctx.commandPrefix || ctx.directInvoke) {
@@ -716,7 +744,7 @@ export function buildCommand<
     }
     ctx.stderr.write(
       warning(
-        `Tip: use --help for help (e.g., sentry ${pathSegments.join(" ")} --help)\n\n`,
+        `Tip: use --help for help (e.g., ${sentry`${pathSegments.join(" ")} --help`})\n\n`,
       ),
     );
     stdout.write(`${formatHelpHuman(result)}\n`);
@@ -733,12 +761,29 @@ export function buildCommand<
   ) {
     // Callers that skip Stricli's scanner (SDK invoke, tests) pass raw
     // strings, and omitted optional positionals are undefined; give bound
-    // positionals the value Stricli would.
-    const args = applyBoundPositionals(
-      positionalArgs,
-      existingParams.positional,
-      this,
-    );
+    // positionals the value Stricli would. `boundArguments` positionals are
+    // parsed here for every caller.
+    let args: unknown[];
+    let argumentError: ArgumentScannerError | undefined;
+    try {
+      args = applyBoundPositionals(
+        positionalArgs,
+        existingParams.positional,
+        this,
+      );
+    } catch (error) {
+      // Next to a `help` argument, fail where it can turn into the help
+      if (
+        !(
+          error instanceof ArgumentScannerError &&
+          positionalArgs.some(isHelpArgument)
+        )
+      ) {
+        throw error;
+      }
+      argumentError = error;
+      args = positionalArgs;
+    }
 
     applyLoggingFlags(
       flags[LOG_LEVEL_KEY] as LogLevelName | undefined,
@@ -757,7 +802,7 @@ export function buildCommand<
     const cleanFlags = cleanRawFlags(flags as Record<string, unknown>);
     setFlagContext(cleanFlags);
     if (args.length > 0) {
-      setArgsContext(args.map(rawPositional));
+      setArgsContext(args.flatMap(rawPositional));
     }
 
     // Environment-based JSON mode (used by library entry point)
@@ -770,7 +815,7 @@ export function buildCommand<
 
     // Suppress prompts when parsed command flags require unattended or
     // machine-readable execution. Using parsed flags avoids confusing aliases
-    // such as list command `-n` (limit) with init's `-n` (dry-run).
+    // such as list command `-n` (limit) with `sentry api`'s `-n` (dry-run).
     setInteractivePromptsAllowed(
       !(
         cleanFlags.json === true ||
@@ -820,6 +865,10 @@ export function buildCommand<
     // `sentry issue list help`). Without this, the auth prompt would fire
     // before the help-recovery path could show the command's help text.
     try {
+      if (argumentError) {
+        throw argumentError;
+      }
+
       // A usable stored account defers the check: the command's target may
       // select it even when the account in effect is logged out.
       if (requiresAuth && !getAuthConfig() && !hasUsableStoredAccount()) {
@@ -927,12 +976,12 @@ export function buildCommand<
     (cmd as unknown as Record<string, unknown>).__destructive = true;
   }
 
-  // Attach the JSON schema to the built command as a non-standard property.
+  // Attach the JSON fields to the built command as a non-standard property.
   // introspect.ts reads this to populate CommandInfo.jsonFields for help
   // output and SKILL.md generation.
   if (outputConfig?.schema) {
-    (cmd as unknown as Record<string, unknown>).__jsonSchema =
-      outputConfig.schema;
+    (cmd as unknown as Record<string, unknown>).__jsonFields =
+      outputConfig.schema.fields;
   }
 
   // Expose the unwrapped generator for internal dispatchers (e.g. bare

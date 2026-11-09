@@ -45,7 +45,7 @@ export function findIncompatibleJsonSchemaUnions(
     return schema.flatMap((item, index) =>
       findIncompatibleJsonSchemaUnions(
         item,
-        path.concat(String(index)),
+        [...path, String(index)],
         insideUnion,
       ),
     );
@@ -61,7 +61,7 @@ export function findIncompatibleJsonSchemaUnions(
       continue;
     }
 
-    const nextPath = path.concat(keyword);
+    const nextPath = [...path, keyword];
     const pathLabel = nextPath.join(".");
 
     if (atRoot) {
@@ -88,7 +88,7 @@ export function findIncompatibleJsonSchemaUnions(
       continue;
     }
     violations.push(
-      ...findIncompatibleJsonSchemaUnions(value, path.concat(key), insideUnion),
+      ...findIncompatibleJsonSchemaUnions(value, [...path, key], insideUnion),
     );
   }
 

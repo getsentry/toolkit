@@ -4,6 +4,7 @@
  * Provides formatting utilities for displaying Sentry logs in the CLI.
  */
 
+import { tableCell, text } from "@sentry/toolkit-core/markdown";
 import type {
   DetailedSentryLog,
   SentryLog,
@@ -13,8 +14,7 @@ import { stringifyUnknown } from "../errors.js";
 import { buildTraceUrl } from "../sentry-web-urls.js";
 import {
   colorTag,
-  escapeMarkdownCell,
-  escapeMarkdownInline,
+  escapeMarkdownLines,
   mdKvTable,
   mdRow,
   mdTableHeader,
@@ -149,7 +149,7 @@ export function buildLogRowCells(
   const level = padSeverity
     ? formatSeverity(log.severity)
     : formatSeverityLabel(log.severity);
-  const message = escapeMarkdownCell(log.message ?? "");
+  const message = tableCell(log.message ?? "");
   const trace =
     includeTrace && log.trace ? ` \`[${log.trace.slice(0, 8)}]\`` : "";
   const cells: string[] = [id, timestamp, level, `${message}${trace}`];
@@ -157,7 +157,7 @@ export function buildLogRowCells(
     for (const field of extraFields) {
       const val = log[field];
       cells.push(
-        escapeMarkdownCell(
+        tableCell(
           val !== null && val !== undefined ? stringifyUnknown(val) : "",
         ),
       );
@@ -369,7 +369,7 @@ export function formatLogDetails(
     lines.push("");
     lines.push("**Message:**");
     lines.push("");
-    lines.push(`> ${escapeMarkdownInline(log.message).replace(/\n/g, "\n> ")}`);
+    lines.push(`> ${escapeMarkdownLines(log.message).replace(/\n/g, "\n> ")}`);
   }
 
   // Context section
@@ -464,8 +464,10 @@ export function formatLogDetails(
       lines.push(
         mdKvTable(
           customAttrs.map((a) => [
-            a.name,
-            a.type === "array" ? JSON.stringify(a.value) : String(a.value),
+            text(a.name),
+            text(
+              a.type === "array" ? JSON.stringify(a.value) : String(a.value),
+            ),
           ]),
           "Custom Attributes",
         ),
@@ -475,7 +477,7 @@ export function formatLogDetails(
     // Fallback: no trace-items detail available, show only explicitly requested fields
     const customRows: [string, string][] = extraFields
       .filter((f) => log[f] !== null && log[f] !== undefined)
-      .map((f) => [f, String(log[f])]);
+      .map((f) => [text(f), text(String(log[f]))]);
     if (customRows.length > 0) {
       lines.push("");
       lines.push(mdKvTable(customRows, "Custom Attributes"));

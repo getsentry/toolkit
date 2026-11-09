@@ -18,8 +18,10 @@ import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { createSourceBundle } from "../../lib/dif/index.js";
+import { parseFilePath } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -32,7 +34,7 @@ import { readDebugFile } from "./read-file.js";
 
 const log = logger.withTag("debug-files.bundle-sources");
 
-const USAGE_HINT = "sentry debug-files bundle-sources <path>";
+const usageHint = () => sentry`debug-files bundle-sources <path>`;
 
 /** Structured result for the bundle-sources command. */
 type BundleSourcesResult = {
@@ -84,12 +86,11 @@ export const bundleSourcesCommand = buildCommand({
       {
         description:
           "Bundle a debug file's referenced source files (run on the build machine)",
-        command: "sentry debug-files bundle-sources ./libexample.so",
+        run: "debug-files bundle-sources ./libexample.so",
       },
       {
         description: "Write the bundle to a specific path",
-        command:
-          "sentry debug-files bundle-sources ./app.pdb --output ./app.src.zip",
+        run: "debug-files bundle-sources ./app.pdb --output ./app.src.zip",
       },
     ],
   },
@@ -102,7 +103,7 @@ export const bundleSourcesCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the debug information file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -110,7 +111,7 @@ export const bundleSourcesCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Output path for the source bundle ZIP (default: <path>.src.zip)",
         optional: true,
@@ -152,14 +153,14 @@ export const bundleSourcesCommand = buildCommand({
       // this.process === the global process in production (see buildContext);
       // using it here keeps the exit-code observable in tests.
       this.process.exitCode = 1;
-      yield new CommandOutput<BundleSourcesResult>({
+      yield new CommandOutput({
         path,
         outputPath: null,
         debugId: result.debugId,
         fileCount: 0,
       });
       return {
-        hint: `No source files found on disk for '${path}'. This is normally run on the build machine. Try: ${USAGE_HINT}`,
+        hint: `No source files found on disk for '${path}'. This is normally run on the build machine. Try: ${usageHint()}`,
       };
     }
 
@@ -173,7 +174,7 @@ export const bundleSourcesCommand = buildCommand({
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, result.bundle);
 
-    yield new CommandOutput<BundleSourcesResult>({
+    yield new CommandOutput({
       path,
       outputPath,
       debugId: result.debugId,
@@ -181,7 +182,7 @@ export const bundleSourcesCommand = buildCommand({
     });
 
     return {
-      hint: `Created ${outputPath} with ${result.fileCount} source file(s). Upload with: sentry debug-files upload`,
+      hint: `Created ${outputPath} with ${result.fileCount} source file(s). Upload with: ${sentry`debug-files upload`}`,
     };
   },
 });

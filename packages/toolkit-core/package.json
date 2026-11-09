@@ -7,22 +7,6 @@
     "node": ">=22.13"
   },
   "exports": {
-    "./api-request": {
-      "types": "./src/api-request.ts",
-      "default": "./src/api-request.ts"
-    },
-    "./api-retry": {
-      "types": "./src/api-retry.ts",
-      "default": "./src/api-retry.ts"
-    },
-    "./api-path-segment": {
-      "types": "./src/api-path-segment.ts",
-      "default": "./src/api-path-segment.ts"
-    },
-    "./auth-token": {
-      "types": "./src/auth-token.ts",
-      "default": "./src/auth-token.ts"
-    },
     "./events-fields": {
       "types": "./src/events-fields.ts",
       "default": "./src/events-fields.ts"
@@ -35,6 +19,14 @@
       "types": "./src/metric-monitor.ts",
       "default": "./src/metric-monitor.ts"
     },
+    "./games": {
+      "types": "./src/games.ts",
+      "default": "./src/games.ts"
+    },
+    "./mcp-limits": {
+      "types": "./src/mcp-limits.ts",
+      "default": "./src/mcp-limits.ts"
+    },
     "./oauth-device": {
       "types": "./src/oauth-device.ts",
       "default": "./src/oauth-device.ts"
@@ -43,10 +35,6 @@
       "types": "./src/oauth-poll.ts",
       "default": "./src/oauth-poll.ts"
     },
-    "./pagination": {
-      "types": "./src/pagination.ts",
-      "default": "./src/pagination.ts"
-    },
     "./region-cache": {
       "types": "./src/region-cache.ts",
       "default": "./src/region-cache.ts"
@@ -54,10 +42,6 @@
     "./resource-identity": {
       "types": "./src/resource-identity.ts",
       "default": "./src/resource-identity.ts"
-    },
-    "./response-cache": {
-      "types": "./src/response-cache/index.ts",
-      "default": "./src/response-cache/index.ts"
     },
     "./response-cache/codec": {
       "types": "./src/response-cache/codec.ts",
@@ -74,20 +58,27 @@
     "./sentry-origin": {
       "types": "./src/sentry-origin.ts",
       "default": "./src/sentry-origin.ts"
+    },
+    "./markdown": {
+      "types": "./src/markdown.ts",
+      "default": "./src/markdown.ts"
     }
   },
   "scripts": {
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
-    "tsc": "tsc --noEmit"
+    "tsc": "tsc --noEmit && tsc -p tsconfig.browser.json"
   },
   "dependencies": {
-    "@sentry/search-syntax": "catalog:",
-    "http-cache-semantics": "^4.2.0"
+    "@sentry/api": "catalog:",
+    "@sentry/search-syntax": "catalog:"
   },
   "devDependencies": {
-    "@types/http-cache-semantics": "^4.2.0",
     "fast-check": "^4.8.0",
+    "marked": "catalog:",
+    "mdast-util-from-markdown": "catalog:",
+    "mdast-util-gfm": "catalog:",
+    "micromark-extension-gfm": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

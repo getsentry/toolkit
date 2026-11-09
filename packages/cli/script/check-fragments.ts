@@ -20,26 +20,16 @@
  *   tsx script/check-fragments.ts --strict   # Errors for missing subcommands
  */
 
-import { mkdirSync, readdirSync } from "node:fs";
-import { access, readFile, writeFile } from "node:fs/promises";
+import { readdirSync } from "node:fs";
+import { access, readFile } from "node:fs/promises";
 import type { RouteInfo, RouteMap } from "../src/lib/introspect.js";
 import { findFragmentCommandIssues } from "./fragment-commands.js";
+import { writeRouteTreeStubs } from "./lib/route-tree-stubs.js";
 import { markdownHeadings } from "./markdown.js";
 import { DOCS_FRAGMENTS } from "./paths.js";
+import { logger } from "../src/lib/logger.js";
 
-// Ensure skill-content stub exists (see generate-command-docs.ts for rationale)
-const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
-const skillContentExists = await access(SKILL_CONTENT_PATH).then(
-  () => true,
-  () => false,
-);
-if (!skillContentExists) {
-  mkdirSync("src/generated", { recursive: true });
-  await writeFile(
-    SKILL_CONTENT_PATH,
-    "export const SKILL_FILES: [string, string][] = [];\n",
-  );
-}
+await writeRouteTreeStubs();
 
 const { routes } = await import("../src/app.js");
 const { extractAllRoutes } = await import("../src/lib/introspect.js");
@@ -69,7 +59,7 @@ try {
     MD_EXTENSION_RE.test(f),
   );
 } catch {
-  console.error(`ERROR: Fragment directory not found: ${FRAGMENTS_DIR}`);
+  logger.error(`Fragment directory not found: ${FRAGMENTS_DIR}`);
   process.exit(1);
 }
 
@@ -317,25 +307,27 @@ for (const [routeName, route] of multiCommandRoutes) {
 // ---------------------------------------------------------------------------
 
 if (warnings.length > 0) {
-  console.warn(
-    `\n${warnings.length} subcommand coverage warning(s)${isStrict ? " (treated as errors with --strict)" : ""}:\n`,
+  logger.warn(
+    [
+      `${warnings.length} subcommand coverage warning(s)${isStrict ? " (treated as errors with --strict)" : ""}:\n`,
+      ...warnings.map((w) => `  ⚠ ${w}`),
+    ].join("\n"),
   );
-  for (const w of warnings) {
-    console.warn(`  ⚠ ${w}`);
-  }
 }
 
 if (errors.length > 0) {
-  console.error(`\nFound ${errors.length} fragment validation error(s):\n`);
-  for (const err of errors) {
-    console.error(`  ✗ ${err}`);
-  }
+  logger.error(
+    [
+      `Found ${errors.length} fragment validation error(s):\n`,
+      ...errors.map((err) => `  ✗ ${err}`),
+    ].join("\n"),
+  );
   process.exit(1);
 }
 
-console.log(
-  `\nAll ${actualFragments.size} command fragment files valid (${routeNames.size} routes + index)`,
+logger.success(
+  `All ${actualFragments.size} command fragment files valid (${routeNames.size} routes + index)`,
 );
-console.log(
+logger.success(
   `All ${REQUIRED_TOP_LEVEL_FRAGMENTS.length} top-level fragment(s) valid`,
 );

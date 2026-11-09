@@ -76,7 +76,7 @@ export function parseAttributeFilter(
     );
   }
   return {
-    query: hasTerms.size > 0 ? Array.from(hasTerms).join(" ") : undefined,
+    query: hasTerms.size > 0 ? [...hasTerms].join(" ") : undefined,
     name,
   };
 }
@@ -109,5 +109,5 @@ export function parseAttributeTypes(
     }
     types.add(value);
   }
-  return types.size > 0 ? Array.from(types) : undefined;
+  return types.size > 0 ? [...types] : undefined;
 }

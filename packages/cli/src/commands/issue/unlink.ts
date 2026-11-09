@@ -11,8 +11,9 @@ import {
 } from "../../lib/mutate-command.js";
 import {
   EXTERNAL_ISSUE_FLAGS,
-  EXTERNAL_ISSUE_POSITIONALS,
+  externalIssuePositionals,
 } from "./link-utils.js";
+import { type IssueTarget, requireIssueArgument } from "./positional.js";
 import { resolveOrgAndIssueId } from "./utils.js";
 
 type UnlinkFlags = {
@@ -34,37 +35,34 @@ export const unlinkCommand = buildDeleteCommand({
     examples: [
       {
         description: "Unlink a GitHub issue (prompts for confirmation)",
-        command:
-          "sentry issue unlink FRONT-123 https://github.com/example/app/issues/42",
+        run: "issue unlink FRONT-123 https://github.com/example/app/issues/42",
       },
       {
         description: "Unlink a GitHub pull request without prompting",
-        command:
-          "sentry issue unlink FRONT-123 https://github.com/example/app/pull/43 --yes",
+        run: "issue unlink FRONT-123 https://github.com/example/app/pull/43 --yes",
       },
       {
         description: "Unlink a Jira issue in an explicit organization",
-        command:
-          "sentry issue unlink my-org/FRONT-123 https://example.atlassian.net/browse/APP-42 --yes",
+        run: "issue unlink my-org/FRONT-123 https://example.atlassian.net/browse/APP-42 --yes",
       },
       {
         description: "Check whether a link exists without removing it",
-        command:
-          "sentry issue unlink FRONT-123 https://linear.app/example/issue/APP-42/fix-error --dry-run",
+        run: "issue unlink FRONT-123 https://linear.app/example/issue/APP-42/fix-error --dry-run",
       },
     ],
   },
   output: { human: formatIssueLinkResult },
   parameters: {
-    positional: EXTERNAL_ISSUE_POSITIONALS,
+    positional: externalIssuePositionals("unlink"),
     flags: EXTERNAL_ISSUE_FLAGS,
   },
   async *func(
     this: SentryContext,
     flags: UnlinkFlags,
-    issueArg: string,
+    target: IssueTarget,
     url: string,
   ) {
+    const issueArg = requireIssueArgument(target.parsed, { command: "unlink" });
     const { org, issueId } = await resolveOrgAndIssueId({
       issueArg,
       cwd: this.cwd,
@@ -72,8 +70,8 @@ export const unlinkCommand = buildDeleteCommand({
     });
     if (!(flags["dry-run"] || isConfirmationBypassed(flags))) {
       const confirmed = await confirmByTyping(
-        issueArg,
-        `Type '${issueArg}' to unlink ${url}:`,
+        issueArg.text,
+        `Type '${issueArg.text}' to unlink ${url}:`,
       );
       if (!confirmed) {
         return { hint: "Cancelled." };

@@ -3,7 +3,7 @@
  *
  * Tests the `sentry cli setup` command end-to-end through Stricli's run().
  *
- * Status messages go through consola (→ process.stderr). Tests capture stderr
+ * Status messages go through the logger (→ process.stderr). Tests capture stderr
  * via a spy on process.stderr.write and assert on the collected output.
  */
 
@@ -43,6 +43,15 @@ vi.mock("../../../src/lib/scope-recovery.js", async (importOriginal) => ({
   ensureCurrentOAuthScopes: vi.fn(),
 }));
 
+vi.mock("../../../src/lib/completion-warmup.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../src/lib/completion-warmup.js")
+  >()),
+  warmCachesAfterLogin: vi.fn(async () => {
+    // no-op: covered by test/lib/completion-warmup.test.ts
+  }),
+}));
+
 vi.mock("../../../src/lib/windows-path.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../../../src/lib/windows-path.js")
@@ -51,7 +60,10 @@ vi.mock("../../../src/lib/windows-path.js", async (importOriginal) => ({
 }));
 
 import { app } from "../../../src/app.js";
+import { warmCachesAfterLogin } from "../../../src/lib/completion-warmup.js";
 import type { SentryContext } from "../../../src/context.js";
+import { getAccountRow } from "../../../src/lib/db/accounts.js";
+import { EXIT } from "../../../src/lib/errors.js";
 import { getAuthConfig, setAuthToken } from "../../../src/lib/db/auth.js";
 import {
   getOnOffPreference,
@@ -66,11 +78,13 @@ import {
   getProcessInfoFromOS,
   setProcessInfoProvider,
 } from "../../../src/lib/detect-agent.js";
+import { setOrgRegions } from "../../../src/lib/db/regions.js";
 import { setEnv } from "../../../src/lib/env.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- dynamic setup imports are mocked at the module boundary
 import * as interactiveLogin from "../../../src/lib/interactive-login.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- dynamic setup imports are mocked at the module boundary
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
+import { resetAuthenticatedFetch } from "../../../src/lib/sentry-client.js";
 import { whichSync } from "../../../src/lib/which.js";
 import { addToWindowsUserPath } from "../../../src/lib/windows-path.js";
 import { useTestConfigDir } from "../../helpers.js";
@@ -86,11 +100,11 @@ function mockFetch(
 }
 
 /**
- * Create a mock Stricli context and a stderr capture for consola output.
+ * Create a mock Stricli context and a stderr capture for logger output.
  *
  * The context provides process/env stubs for the setup command, while
- * `getOutput()` returns the combined consola output captured from
- * `process.stderr.write` (where consola routes all messages).
+ * `getOutput()` returns the combined logger output captured from
+ * `process.stderr.write` (where the logger routes all messages).
  */
 function createMockContext(
   overrides: Partial<{
@@ -127,7 +141,10 @@ function createMockContext(
         }),
       },
       stderr: {
-        write: vi.fn((_s: string) => true),
+        write: vi.fn((s: string) => {
+          stderrChunks.push(String(s));
+          return true;
+        }),
       },
       stdin: process.stdin,
       env,
@@ -149,7 +166,10 @@ function createMockContext(
       }),
     },
     stderr: {
-      write: vi.fn((_s: string) => true),
+      write: vi.fn((s: string) => {
+        stderrChunks.push(String(s));
+        return true;
+      }),
     },
     stdin: process.stdin,
     setFlags: () => {
@@ -804,6 +824,9 @@ describe("sentry cli setup", () => {
       // Should show welcome message, not "Setup complete!"
       expect(combined).toContain("Installed sentry v");
       expect(combined).toContain("Get started:");
+      expect(combined).toContain(
+        "  sentry mcp      Run the Sentry MCP server for your AI agent",
+      );
       expect(combined).toContain("sentry auth");
       expect(combined).toContain("sentry --help");
       expect(combined).toContain("cli.sentry.dev");
@@ -963,6 +986,7 @@ describe("sentry cli setup", () => {
         existingBinary?: boolean;
         install?: boolean;
         method?: string;
+        completions?: boolean;
       } = {},
     ) {
       const sourcePath = join(testDir, "sentry-download");
@@ -1000,7 +1024,7 @@ describe("sentry cli setup", () => {
               "--method",
               options.method ?? "curl",
               "--no-modify-path",
-              "--no-completions",
+              ...(options.completions ? [] : ["--no-completions"]),
               "--no-agent-skills",
               ...(options.flags ?? []),
             ],
@@ -1008,6 +1032,130 @@ describe("sentry cli setup", () => {
           ),
       };
     }
+
+    test.each([true, false])(
+      "redeems a setup code with completions=%s without opening a browser",
+      async (completions) => {
+        vi.mocked(warmCachesAfterLogin).mockClear();
+
+        const claim = Buffer.from(
+          JSON.stringify({ url: "https://sentry.io", iat: 1 }),
+        ).toString("base64");
+        const code = "sntryc_" + claim + "_" + "a".repeat(43);
+        const fixture = createInstall({
+          completions,
+          env: { SENTRY_SETUP_CODE: code },
+        });
+        const fetch = vi.fn().mockResolvedValue(
+          Response.json({
+            access_token: "setup-token",
+            refresh_token: "refresh-token",
+            expires_in: 3600,
+            token_type: "bearer",
+          }),
+        );
+        vi.stubGlobal("fetch", fetch);
+        try {
+          await fixture.run();
+          expect(readFileSync(fixture.binaryPath, "utf8")).toBe(
+            "fixture-binary",
+          );
+          expect(fetch).toHaveBeenCalledTimes(1);
+          expect(getAuthConfig()?.token).toBe("setup-token");
+          expect(warmCachesAfterLogin).toHaveBeenCalledTimes(
+            completions ? 1 : 0,
+          );
+          expect(fixture.getOutput()).toContain(
+            "Authenticated with Sentry using the setup code",
+          );
+          expect(fixture.getOutput()).not.toContain(code);
+          expect(interactiveLogin.runInteractiveLogin).not.toHaveBeenCalled();
+          expect(fixture.context.process.exitCode).toBe(0);
+        } finally {
+          vi.unstubAllGlobals();
+        }
+      },
+    );
+
+    test("finishes installation configuration when setup-code redemption fails", async () => {
+      const claim = Buffer.from(
+        JSON.stringify({ url: "https://sentry.io" }),
+      ).toString("base64");
+      const code = "sntryc_" + claim + "_" + "a".repeat(43);
+      const fixture = createInstall({ env: { SENTRY_SETUP_CODE: code } });
+      const fetch = vi
+        .fn()
+        .mockResolvedValue(
+          Response.json({ error: "invalid_grant" }, { status: 400 }),
+        );
+      vi.stubGlobal("fetch", fetch);
+
+      try {
+        await fixture.run();
+
+        expect(fetch).toHaveBeenCalledOnce();
+        expect(getInstallInfo()?.path).toBe(fixture.binaryPath);
+        expect(getOnOffPreference("agent-skills")).toBe(false);
+        expect(readFileSync(fixture.binaryPath, "utf8")).toBe("fixture-binary");
+        expect(fixture.context.process.exitCode).toBeGreaterThan(0);
+        expect(fixture.getOutput()).not.toContain(code);
+        expect(interactiveLogin.runInteractiveLogin).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    test.each([true, false])(
+      "keeps stored authentication with a retained code when install=%s",
+      async (install) => {
+        setAuthToken("existing-token");
+        const fixture = createInstall({
+          install,
+          env: { SENTRY_SETUP_CODE: "consumed-code" },
+        });
+        const fetch = vi.fn();
+        vi.stubGlobal("fetch", fetch);
+        try {
+          await fixture.run();
+          expect(getAuthConfig()?.token).toBe("existing-token");
+          expect(fetch).not.toHaveBeenCalled();
+          expect(fixture.context.process.exitCode).toBe(0);
+        } finally {
+          vi.unstubAllGlobals();
+        }
+      },
+    );
+
+    test.each([true, false])(
+      "shows a bootstrap recovery command for an expired login when install=%s",
+      async (install) => {
+        const account = setAuthToken("expired-token", -1, undefined, {
+          host: "https://sentry.io",
+        });
+        const claim = Buffer.from(
+          JSON.stringify({ url: "https://sentry.io" }),
+        ).toString("base64");
+        const code = "sntryc_" + claim + "_" + "a".repeat(43);
+        const fixture = createInstall({
+          install,
+          env: { SENTRY_SETUP_CODE: code },
+        });
+        const fetch = vi.fn();
+        vi.stubGlobal("fetch", fetch);
+        try {
+          await fixture.run();
+          expect(fixture.context.process.exitCode).toBe(EXIT.VALIDATION);
+          expect(fixture.getOutput()).toContain(
+            "sentry auth bootstrap --force",
+          );
+          expect(fixture.getOutput()).not.toContain(code);
+          expect(fetch).not.toHaveBeenCalled();
+          expect(getAccountRow(account)?.token).toBe("expired-token");
+        } finally {
+          vi.unstubAllGlobals();
+        }
+      },
+    );
 
     test("starts OAuth only after installing the binary and displaying success", async () => {
       const fixture = createInstall();
@@ -1027,6 +1175,25 @@ describe("sentry cli setup", () => {
       expect(fixture.context.process.exitCode).toBe(0);
       expect(fixture.getOutput()).toContain("Authenticated with Sentry.");
     });
+
+    test.each([
+      [true, 1],
+      [false, 0],
+    ])(
+      "warms caches for the new login when completions=%s",
+      async (completions, calls) => {
+        vi.mocked(interactiveLogin.runInteractiveLogin).mockResolvedValue({
+          method: "oauth",
+          configPath: getConfigDir(),
+        });
+        vi.mocked(warmCachesAfterLogin).mockClear();
+
+        await createInstall({ completions }).run();
+
+        expect(interactiveLogin.runInteractiveLogin).toHaveBeenCalledOnce();
+        expect(warmCachesAfterLogin).toHaveBeenCalledTimes(calls);
+      },
+    );
 
     test.each([0, 1, 2])("skips login when fd %i is not a TTY", async (fd) => {
       vi.mocked(isatty).mockImplementation((candidate) => candidate !== fd);
@@ -1067,7 +1234,6 @@ describe("sentry cli setup", () => {
     });
 
     test.each([
-      { env: { SENTRY_INIT: "1" } },
       { env: { SENTRY_AUTH_TOKEN: "existing-token" } },
       { env: { SENTRY_OUTPUT_FORMAT: "json" } },
       { flags: ["--quiet"] },
@@ -1709,5 +1875,120 @@ describe("sentry cli setup — --channel flag", () => {
     );
 
     expect(getOutput()).not.toContain("Recorded release channel: nightly");
+  });
+});
+
+describe("sentry cli setup — attribute completion warm-up", () => {
+  useTestConfigDir("test-setup-warmup-");
+
+  let testDir: string;
+  let restoreStderr: (() => void) | undefined;
+  let datasets: string[];
+
+  beforeEach(() => {
+    testDir = join(
+      "/tmp",
+      `setup-warmup-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    mkdirSync(testDir, { recursive: true });
+    datasets = [];
+    originalFetch = globalThis.fetch;
+    resetAuthenticatedFetch();
+    mockFetch(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      if (url.pathname.endsWith("/trace-items/attributes/")) {
+        datasets.push(url.searchParams.get("dataset") ?? "");
+      }
+      return Response.json([]);
+    });
+  });
+
+  afterEach(() => {
+    restoreStderr?.();
+    restoreStderr = undefined;
+    globalThis.fetch = originalFetch;
+    resetAuthenticatedFetch();
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  /** Run setup with completions on, plus `flags`; returns its output. */
+  async function runSetup(flags: string[] = []): Promise<string> {
+    const { context, getOutput, restore } = createMockContext({
+      homeDir: testDir,
+      execPath: join(testDir, "bin", "sentry"),
+      env: {
+        PATH: `/usr/bin:${join(testDir, "bin")}:/bin`,
+        SHELL: "/bin/bash",
+      },
+    });
+    restoreStderr = restore;
+    await run(
+      app,
+      ["cli", "setup", "--no-modify-path", "--no-agent-skills", ...flags],
+      context,
+    );
+    restore();
+    restoreStderr = undefined;
+    return getOutput();
+  }
+
+  test("fetches each dataset of a logged-in user's org once, then not again on the next run", async () => {
+    setAuthToken("stored-token");
+    setOrgRegions([
+      {
+        slug: "acme",
+        regionUrl: "https://us.sentry.io",
+        orgId: "1",
+        orgName: "Acme",
+      },
+    ]);
+    // Keys stored by the warm-up keep the next setup from fetching again
+    mockFetch(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      const dataset = url.searchParams.get("dataset") ?? "";
+      datasets.push(dataset);
+      return Response.json([
+        {
+          key: `${dataset}.key`,
+          name: `${dataset}.key`,
+          attributeType: "string",
+          attributeSource: { source_type: "sentry" },
+        },
+      ]);
+    });
+
+    const output = await runSetup();
+
+    expect(datasets.sort((a, b) => a.localeCompare(b))).toEqual([
+      "logs",
+      "spans",
+      "tracemetrics",
+    ]);
+    expect(output).not.toContain("failed");
+
+    datasets = [];
+    await runSetup();
+    expect(datasets).toEqual([]);
+  });
+
+  test("skips the warm-up with --no-completions", async () => {
+    setAuthToken("stored-token");
+    setOrgRegions([
+      {
+        slug: "acme",
+        regionUrl: "https://us.sentry.io",
+        orgId: "1",
+        orgName: "Acme",
+      },
+    ]);
+
+    await runSetup(["--no-completions"]);
+
+    expect(datasets).toEqual([]);
+  });
+
+  test("skips the warm-up without a stored login", async () => {
+    await runSetup();
+    expect(datasets).toEqual([]);
   });
 });

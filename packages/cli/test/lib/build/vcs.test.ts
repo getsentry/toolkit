@@ -20,12 +20,15 @@ const gitMock = vi.hoisted(() => ({
   getRemoteDefaultBranch: vi.fn(() => "main"),
 }));
 
-vi.mock("../../../src/lib/git.js", () => gitMock);
+vi.mock("../../../src/lib/git.js", async (importOriginal) => {
+  const { normalizeSha, SHA1_RE } =
+    await importOriginal<typeof import("../../../src/lib/git.js")>();
+  return { ...gitMock, normalizeSha, SHA1_RE };
+});
 
 import { ValidationError } from "../../../src/lib/errors.js";
 import {
   collectVcsMetadata,
-  isCi,
   vcsInfoToBody,
 } from "../../../src/lib/build/vcs.js";
 
@@ -44,20 +47,6 @@ afterEach(() => {
       rmSync(dir, { recursive: true, force: true });
     }
   }
-});
-
-describe("isCi", () => {
-  test("true when a CI variable is set", () => {
-    expect(isCi({ GITHUB_ACTIONS: "true" })).toBe(true);
-    expect(isCi({ CI: "1" })).toBe(true);
-  });
-
-  test("false with no CI variables (and ignores opt-out values)", () => {
-    expect(isCi({})).toBe(false);
-    expect(isCi({ CI: "" })).toBe(false);
-    expect(isCi({ CI: "false" })).toBe(false);
-    expect(isCi({ CI: "0" })).toBe(false);
-  });
 });
 
 describe("vcsInfoToBody", () => {

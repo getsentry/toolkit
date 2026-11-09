@@ -15,12 +15,19 @@ import type {
   TraceItemAttributeDataset,
   TraceItemAttributeDefinition,
 } from "../../lib/api/traces.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   ATTRIBUTE_TYPES,
   parseAttributeFilter,
   parseAttributeTypes,
 } from "../../lib/attribute-search.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import {
+  choiceListParser,
+  choiceParser,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { buildDatasetParser, datasetDisplayName } from "../../lib/datasets.js";
 import {
   advancePaginationState,
@@ -124,11 +131,11 @@ export function buildUsageTip(
   const { key } = example;
   if (dataset === "tracemetrics") {
     const target = project ? `${org}/${project}` : `${org}/`;
-    return `Tip: Group metrics with: sentry explore ${target} --dataset metrics -m <metric> -F ${shellQuote(key)}`;
+    return `Tip: Group metrics with: ${sentry`explore ${target} --dataset metrics -m <metric> -F ${shellQuote(key)}`}`;
   }
   const target = project ? `${org}/${project}` : `${org}/<project>`;
   const command = dataset === "logs" ? "log list" : "span list";
-  return `Tip: Filter or add to columns with: sentry ${command} ${target} -q ${shellQuote(`has:${key}`)} --fields ${shellQuote(key)}`;
+  return `Tip: Filter or add to columns with: ${sentry`${command} ${target} -q ${shellQuote(`has:${key}`)} --fields ${shellQuote(key)}`}`;
 }
 
 /**
@@ -168,7 +175,7 @@ function pageHint(
   filter: string | undefined,
 ): string {
   const filterArg = filter ? ` ${shellQuote(filter)}` : "";
-  const parts = [`sentry attribute list ${scope}${filterArg} -c ${direction}`];
+  const parts = [sentry`attribute list ${scope}${filterArg} -c ${direction}`];
   if (flags.dataset !== DEFAULT_DATASET) {
     parts.push(`--dataset ${datasetDisplayName(flags.dataset)}`);
   }
@@ -199,68 +206,62 @@ export const listCommand = buildListCommand("attribute", {
     examples: [
       {
         description: "List span attribute keys for a project",
-        command: "sentry attribute list my-org/my-project",
+        run: "attribute list my-org/my-project",
       },
       {
         description: "List log attribute keys across the whole organization",
-        command: "sentry attribute list my-org/ --dataset logs",
+        run: "attribute list my-org/ --dataset logs",
       },
       {
         description:
           "String attributes whose names contain gen_ai (case-sensitive)",
-        command: "sentry attribute list my-org/ gen_ai --type string",
+        run: "attribute list my-org/ gen_ai --type string",
       },
       {
         description: "Discover candidates alongside an attribute",
-        command: "sentry attribute list my-org/ has:gen_ai.request.model",
+        run: "attribute list my-org/ has:gen_ai.request.model",
       },
       {
         description:
           "Discover candidates alongside several keys (one quoted argument)",
-        command:
-          "sentry attribute list my-org/ 'has:gen_ai.request.model has:gen_ai.usage.input_tokens'",
+        run: "attribute list my-org/ 'has:gen_ai.request.model has:gen_ai.usage.input_tokens'",
       },
       {
         description: "Text and has: filters together",
-        command: "sentry attribute list my-org/ 'gen_ai has:http.method'",
+        run: "attribute list my-org/ 'gen_ai has:http.method'",
       },
       {
         description:
           "Discover candidates using the last 24 hours (includes built-in and virtual keys)",
-        command: "sentry attribute list my-org/ --period 24h",
+        run: "attribute list my-org/ --period 24h",
       },
       {
         description: "Show more than the default 25",
-        command: "sentry attribute list my-org/my-project -n 100",
+        run: "attribute list my-org/my-project -n 100",
       },
       {
         description: "Show the next page of the previous listing (same flags)",
-        command: "sentry attribute list my-org/my-project -n 100 -c next",
+        run: "attribute list my-org/my-project -n 100 -c next",
       },
       {
         description: "Filter spans that have a discovered key",
-        command:
-          "sentry span list my-org/my-project -q 'has:gen_ai.request.model'",
+        run: "span list my-org/my-project -q 'has:gen_ai.request.model'",
       },
       {
         description: "Find a custom numeric attribute by name",
-        command:
-          "sentry attribute list my-org/my-project cart.total --type number",
+        run: "attribute list my-org/my-project cart.total --type number",
       },
       {
         description: "Show a discovered typed key as a span column",
-        command:
-          "sentry span list my-org/my-project --fields 'tags[cart.total,number]'",
+        run: "span list my-org/my-project --fields 'tags[cart.total,number]'",
       },
       {
         description: "Group a metric by a discovered attribute",
-        command:
-          "sentry explore my-org/ --dataset metrics -m llm.token_usage -F gen_ai.request.model",
+        run: "explore my-org/ --dataset metrics -m llm.token_usage -F gen_ai.request.model",
       },
       {
         description: "Select fields as JSON",
-        command:
-          "sentry attribute list my-org/ --json --fields key,type,source",
+        run: "attribute list my-org/ --json --fields key,type,source",
       },
     ],
   },
@@ -283,7 +284,7 @@ export const listCommand = buildListCommand("attribute", {
           placeholder: "filter",
           brief:
             "Text in attribute names and/or has:<key> terms, e.g. 'gen_ai has:http.method'",
-          parse: String,
+          parse: parseText,
           optional: true,
         },
       ],
@@ -291,13 +292,13 @@ export const listCommand = buildListCommand("attribute", {
     flags: {
       dataset: {
         kind: "parsed",
-        parse: DATASETS.parse,
+        parse: choiceParser(DATASETS.names, DATASETS.parse),
         brief: `Dataset to list attributes for (${DATASETS.names.join(", ")})`,
         default: DEFAULT_DATASET,
       },
       type: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser(ATTRIBUTE_TYPES),
         brief: `Only show attributes of these types: ${ATTRIBUTE_TYPES.join(", ")}. Repeat the flag for each type or pass a comma-separated list (e.g. --type string,number)`,
         variadic: true,
         optional: true,
@@ -305,8 +306,9 @@ export const listCommand = buildListCommand("attribute", {
       period: LIST_PERIOD_FLAG,
       limit: {
         ...buildListLimitFlag("attributes"),
-        parse: (value: string) =>
+        parse: textParser((value: string) =>
           validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT),
+        ),
       },
     },
     aliases: {

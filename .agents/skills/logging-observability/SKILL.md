@@ -9,7 +9,7 @@ Enforce correct logging and error handling patterns in the sentry-mcp codebase. 
 
 ## Error Hierarchy
 
-### API Errors (`packages/mcp-core/src/api-client/errors.ts`)
+### API Errors (`@sentry/api/client`)
 
 ```
 ApiError (base class)
@@ -299,7 +299,7 @@ When reviewing code for logging correctness, verify each item:
 ## Reference Files
 
 - Logging functions: `packages/mcp-core/src/telem/logging.ts`
-- Error hierarchy: `packages/mcp-core/src/api-client/errors.ts`
+- Error hierarchy: [`errors.ts` in `@sentry/api/client`](https://github.com/getsentry/sentry-api-schema/blob/main/lib/api-client/errors.ts)
 - Error formatting: `packages/mcp-core/src/internal/error-handling.ts`
 - Agent tool wrapper: `packages/mcp-core/src/internal/agents/tools/utils.ts`
 - Full error handling guide: `docs/error-handling.md`

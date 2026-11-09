@@ -10,30 +10,46 @@ import {
   putMetricAlertRule,
 } from "../../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
+import {
+  aggregateParser,
+  choiceParser,
+  parseEnvironment,
+  parseOwner,
+  parseProjectList,
+  parseText,
+  parseWorkflowList,
+} from "../../../lib/completion-target.js";
 import { stringifyUnknown, ValidationError } from "../../../lib/errors.js";
 import { warning } from "../../../lib/formatters/colors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
-import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
+import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
 import {
   METRIC_ALERT_DATASET_BRIEF,
+  METRIC_ALERT_DATASET_NAMES,
   parseMetricTriggers,
 } from "../../../types/metric-alert.js";
 import {
+  METRIC_ALERT_FIELD_COMPLETION,
+  METRIC_TIME_WINDOW_VALUES,
   normalizeMetricDataset,
   normalizeProjectList,
   parseJsonObjectList,
   parseStatusFlag,
   parseWorkflowIds,
   resolveMetricDataset,
+  RULE_STATUSES,
   statusToMetricValue,
   validateMetricDataset,
   validateMetricTimeWindow,
 } from "../mutation-utils.js";
-import { parseMetricRuleArg, resolveMetricAlertRule } from "./rule-resolve.js";
-import { metricAlertStatusLabel } from "./status.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
+import type { MetricAlertEditOutput } from "../../../output-schemas/alert.js";
+import { MetricAlertEditOutputSchema } from "../../../generated/output-schemas/alert.js";
+import { sentry } from "../../../lib/app-identity.js";
 
-const USAGE_HINT =
-  "sentry alert metrics edit <org>/<rule-id-or-name> --name <n> | --status active|disabled";
+const usageHint = () =>
+  sentry`alert metrics edit <org>/<rule-id-or-name> --name <n> | --status active|disabled`;
 
 type EditFlags = {
   readonly name?: string;
@@ -49,11 +65,6 @@ type EditFlags = {
   readonly workflow?: string[];
   readonly json: boolean;
   readonly fields?: string[];
-};
-
-type EditResult = Record<string, unknown> & {
-  org: string;
-  id: string;
 };
 
 function hasMetricMutations(flags: EditFlags): boolean {
@@ -168,7 +179,7 @@ function validateMetricBody(
   }
 }
 
-function formatEdited(r: EditResult): string {
+function formatEdited(r: MetricAlertEditOutput): string {
   return `Updated metric alert rule ${r.id} in ${r.org}: ${String(r.name)} (${String(r.status)}).`;
 }
 
@@ -181,105 +192,99 @@ export const editCommand = buildCommand({
     examples: [
       {
         description: "Rename a metric alert rule",
-        command: "sentry alert metrics edit my-org/12345 --name 'Error budget'",
+        run: "alert metrics edit my-org/12345 --name 'Error budget'",
       },
       {
         description: "Disable a rule",
-        command: "sentry alert metrics edit my-org/12345 --status disabled",
+        run: "alert metrics edit my-org/12345 --status disabled",
       },
       {
         description: "Change the query and time window",
-        command:
-          'sentry alert metrics edit my-org/12345 --query "environment:prod event.type:error" --time-window 15',
+        run: 'alert metrics edit my-org/12345 --query "environment:prod event.type:error" --time-window 15',
       },
       {
         description: "Switch the dataset",
-        command:
-          "sentry alert metrics edit my-org/12345 --time-window 15 --dataset spans",
+        run: "alert metrics edit my-org/12345 --time-window 15 --dataset spans",
       },
     ],
   },
   output: {
     human: formatEdited,
-    jsonTransform: (r: EditResult) => r,
+    schema: MetricAlertEditOutputSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/rule-id-or-name",
-          brief: "Rule id or name (same as view)",
-          parse: String,
-        },
+        metricRuleParameter(usageHint, "Rule id or name (same as view)"),
       ],
     },
     flags: {
       name: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "New rule name",
       },
       status: {
         kind: "parsed",
-        parse: parseStatusFlag,
+        parse: choiceParser(RULE_STATUSES, parseStatusFlag),
         optional: true,
         brief: "active or disabled",
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         optional: true,
         brief: "Metric query filter",
       },
       aggregate: {
         kind: "parsed",
-        parse: String,
+        parse: aggregateParser(METRIC_ALERT_FIELD_COMPLETION),
         optional: true,
         brief: "Aggregate expression",
       },
       dataset: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(METRIC_ALERT_DATASET_NAMES),
         optional: true,
         brief: METRIC_ALERT_DATASET_BRIEF,
       },
       "time-window": {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(METRIC_TIME_WINDOW_VALUES, numberParser),
         optional: true,
         brief: "Evaluation window in minutes",
       },
       trigger: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         optional: true,
         brief: "Trigger object JSON (repeatable, or pass one JSON array)",
       },
       project: {
         kind: "parsed",
-        parse: String,
+        parse: parseProjectList,
         variadic: true,
         optional: true,
         brief: "Project slug filter (repeatable or comma-separated)",
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironment,
         optional: true,
         brief: "Environment value (pass empty string to clear)",
       },
       owner: {
         kind: "parsed",
-        parse: String,
+        parse: parseOwner,
         optional: true,
         brief: "Owner value (pass empty string to clear)",
       },
       workflow: {
         kind: "parsed",
-        parse: String,
+        parse: parseWorkflowList,
         variadic: true,
         optional: true,
         brief:
@@ -291,20 +296,20 @@ export const editCommand = buildCommand({
       p: "project",
     },
   },
-  async *func(this: SentryContext, flags: EditFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: EditFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
     validateMetricEditFlags(flags);
-    const { ref, targetArg } = parseMetricRuleArg(arg, USAGE_HINT);
-    const org = await resolveOrgOnlyFromArg(
-      targetArg,
-      cwd,
-      "alert metrics edit",
-    );
+    const { ref, target } = await ruleArg.resolved;
+    const org = await resolveOrgOnlyTarget(target, cwd, "alert metrics edit");
     const orgSlugs = [org];
     const { orgSlug, rule } = await resolveMetricAlertRule(
       orgSlugs,
       ref,
-      USAGE_HINT,
+      usageHint(),
     );
     const body = {
       ...(await getMetricAlertRuleDocument(orgSlug, rule.id)),
@@ -320,7 +325,8 @@ export const editCommand = buildCommand({
       ...updated,
       org: orgSlug,
       id: stringifyUnknown(updated.id ?? rule.id),
-      status: metricAlertStatusLabel(updated.status),
-    } satisfies EditResult);
+      // The detectors endpoint returns `enabled` rather than `status`.
+      status: updated.enabled === false ? "disabled" : "active",
+    } satisfies MetricAlertEditOutput);
   },
 });

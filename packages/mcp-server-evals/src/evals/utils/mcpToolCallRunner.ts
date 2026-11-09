@@ -25,7 +25,6 @@ export function McpToolCallTaskRunner(
       args: ["--filter", "@sentry/mcp-server-evals", "start"],
       env: {
         ...process.env,
-        SENTRY_ACCESS_TOKEN: "mocked-access-token",
         SENTRY_HOST: "sentry.io",
       },
     });
@@ -38,8 +37,7 @@ export function McpToolCallTaskRunner(
         tools,
         system: [
           "You are a Sentry assistant with access to Sentry MCP tools.",
-          "Use search_sentry_tools only when you need to discover the right Sentry operation or inspect its schema.",
-          "When you already know the right Sentry tool name, use that tool directly through the available MCP tools.",
+          "Call the Sentry tool that matches the request directly through the available MCP tools.",
         ].join("\n"),
         prompt: input,
         stopWhen: stepCountIs(maxSteps),

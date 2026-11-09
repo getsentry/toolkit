@@ -12,8 +12,8 @@
 import { accessSync, constants, existsSync, mkdirSync } from "node:fs";
 import { rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { captureException } from "@sentry/node";
 import { SKILL_FILES } from "../generated/skill-content.js";
+import { reportCliError } from "./error-reporting.js";
 
 /** Where skills are installed */
 export type AgentSkillLocation = {
@@ -87,7 +87,7 @@ async function atomicWriteFile(
     await rename(tempPath, destPath);
   } catch (error) {
     await rm(tempPath, { force: true }).catch((cleanupError) => {
-      captureException(cleanupError, {
+      reportCliError(cleanupError, {
         level: "debug",
         tags: { "setup.step": "agent-skills-cleanup" },
       });
@@ -128,7 +128,7 @@ async function writeSkillFiles(
       referenceCount,
     };
   } catch (error) {
-    captureException(error, {
+    reportCliError(error, {
       level: "warning",
       tags: { "setup.step": "agent-skills" },
     });

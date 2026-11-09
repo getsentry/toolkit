@@ -6,7 +6,6 @@
 
 import type { SentryContext } from "../../../context.js";
 import { deleteIssueAlertRule } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { ContextError, ValidationError } from "../../../lib/errors.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { logger } from "../../../lib/logger.js";
@@ -17,10 +16,14 @@ import {
   requireExplicitTarget,
 } from "../../../lib/mutate-command.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
-import { parseIssueRuleArg, resolveIssueAlertRule } from "./rule-resolve.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
+import type { IssueAlertDeleteOutput } from "../../../output-schemas/alert.js";
+import { IssueAlertDeleteOutputSchema } from "../../../generated/output-schemas/alert.js";
+import { sentry } from "../../../lib/app-identity.js";
 
-const USAGE_HINT =
-  "sentry alert issues delete <org>/<project>/<rule-id-or-name>";
+const usageHint = () =>
+  sentry`alert issues delete <org>/<project>/<rule-id-or-name>`;
 
 type DeleteFlags = {
   readonly yes: boolean;
@@ -30,19 +33,11 @@ type DeleteFlags = {
   readonly fields?: string[];
 };
 
-type DeleteResult = {
-  org: string;
-  project: string;
-  ruleId: string;
-  name: string;
-  dryRun?: boolean;
-};
-
-function formatDeleted(r: DeleteResult): string {
+function formatDeleted(r: IssueAlertDeleteOutput): string {
   if (r.dryRun) {
-    return `Would delete issue alert rule '${r.name}' (id ${r.ruleId}) in ${r.org}/${r.project}.`;
+    return `Would delete issue alert rule '${r.name}' (id ${r.id}) in ${r.org}/${r.project}.`;
   }
-  return `Deleted issue alert rule '${r.name}' (id ${r.ruleId}) in ${r.org}/${r.project}.`;
+  return `Deleted issue alert rule '${r.name}' (id ${r.id}) in ${r.org}/${r.project}.`;
 }
 
 export const deleteCommand = buildDeleteCommand({
@@ -55,54 +50,38 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Delete an issue alert rule (prompts for confirmation)",
-        command: "sentry alert issues delete my-org/my-project/12345",
+        run: "alert issues delete my-org/my-project/12345",
       },
       {
         description: "Delete a rule selected by name without prompting",
-        command: "sentry alert issues delete my-org/my-project/'My Rule' --yes",
+        run: "alert issues delete my-org/my-project/'My Rule' --yes",
       },
       {
         description: "Preview the deletion",
-        command: "sentry alert issues delete my-org/my-project/12345 --dry-run",
+        run: "alert issues delete my-org/my-project/12345 --dry-run",
       },
     ],
   },
   output: {
     human: formatDeleted,
-    jsonTransform: (r: DeleteResult) =>
-      r.dryRun
-        ? {
-            dryRun: true,
-            org: r.org,
-            project: r.project,
-            id: r.ruleId,
-            name: r.name,
-          }
-        : {
-            deleted: true,
-            org: r.org,
-            project: r.project,
-            id: r.ruleId,
-            name: r.name,
-          },
+    schema: IssueAlertDeleteOutputSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/project/rule-id-or-name",
-          brief: "Rule id or name (same as view)",
-          parse: String,
-        },
+        issueRuleParameter(usageHint, "Rule id or name (same as view)"),
       ],
     },
   },
-  async *func(this: SentryContext, flags: DeleteFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: DeleteFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
-    const { ref, targetArg } = parseIssueRuleArg(arg, USAGE_HINT);
-    const parsed = parseOrgProjectArg(targetArg);
-    requireExplicitTarget(parsed, "Issue alert target", USAGE_HINT);
+    const { ref, target: parsed } = await ruleArg.resolved;
+    requireExplicitTarget(parsed, "Issue alert target", usageHint());
     if (parsed.type !== "explicit") {
       throw new ValidationError(
         "Issue alert delete requires an explicit <org>/<project>/<rule-id-or-name> target.",
@@ -112,28 +91,28 @@ export const deleteCommand = buildDeleteCommand({
 
     const { targets } = await resolveProjectBoundTargets(parsed, {
       cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (targets.length === 0) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
 
     const { target, rule } = await resolveIssueAlertRule(
       targets,
       ref,
-      USAGE_HINT,
+      usageHint(),
     );
 
     const key = `${target.org}/${target.project}/${rule.id}`;
     const name = rule.name;
     if (flags["dry-run"]) {
       yield new CommandOutput({
+        dryRun: true,
         org: target.org,
         project: target.project,
-        ruleId: rule.id,
+        id: rule.id,
         name,
-        dryRun: true,
-      } satisfies DeleteResult);
+      } satisfies IssueAlertDeleteOutput);
       return;
     }
 
@@ -150,10 +129,11 @@ export const deleteCommand = buildDeleteCommand({
 
     await deleteIssueAlertRule(target.org, rule.id);
     yield new CommandOutput({
+      deleted: true,
       org: target.org,
       project: target.project,
-      ruleId: rule.id,
+      id: rule.id,
       name,
-    } satisfies DeleteResult);
+    } satisfies IssueAlertDeleteOutput);
   },
 });

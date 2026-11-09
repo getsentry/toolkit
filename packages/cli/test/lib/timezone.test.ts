@@ -1,8 +1,8 @@
 /**
  * Tests for src/lib/timezone.ts
  *
- * Covers the pure helpers (`formatLogTime`, `fixedOffsetZone`) and the
- * decision logic of `initTimezone`. The bug being guarded against: SEA
+ * Covers the pure helper `fixedOffsetZone` and the decision logic of
+ * `initTimezone`. The bug being guarded against: SEA
  * binaries fall back to UTC when they cannot resolve the OS zone, so log
  * timestamps appear hours off from the user's local clock.
  */
@@ -11,53 +11,9 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   detectOsTimezone,
   fixedOffsetZone,
-  formatLogTime,
   initTimezone,
   runtimeTimezone,
 } from "../../src/lib/timezone.js";
-
-describe("formatLogTime", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  test("renders 24-hour HH:MM:SS in local time", () => {
-    // 2024-01-15T14:28:59Z. Force a +480 (US/Pacific standard, UTC-8) offset so
-    // the local wall-clock is 06:28:59 regardless of the host machine's zone.
-    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(480);
-    const date = new Date("2024-01-15T14:28:59.000Z");
-    expect(formatLogTime(date)).toBe("06:28:59");
-  });
-
-  test("UTC offset renders the UTC wall-clock", () => {
-    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(0);
-    const date = new Date("2024-01-15T14:28:59.000Z");
-    expect(formatLogTime(date)).toBe("14:28:59");
-  });
-
-  test("east-of-UTC (negative offset) shifts forward", () => {
-    // Berlin winter is UTC+1 → getTimezoneOffset() === -60.
-    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(-60);
-    const date = new Date("2024-01-15T23:30:00.000Z");
-    // 23:30Z + 1h = 00:30 next day → wraps to 00:30.
-    expect(formatLogTime(date)).toBe("00:30:00");
-  });
-
-  test("zero-pads single-digit components", () => {
-    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(0);
-    const date = new Date("2024-01-15T01:02:03.000Z");
-    expect(formatLogTime(date)).toBe("01:02:03");
-  });
-
-  test("output is always 8 chars in HH:MM:SS shape", () => {
-    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(0);
-    for (let h = 0; h < 24; h++) {
-      const date = new Date(Date.UTC(2024, 0, 1, h, h % 60, (h * 2) % 60));
-      const out = formatLogTime(date);
-      expect(out).toMatch(/^\d{2}:\d{2}:\d{2}$/);
-    }
-  });
-});
 
 describe("fixedOffsetZone", () => {
   test("west of UTC (positive offset) → Etc/GMT+N", () => {

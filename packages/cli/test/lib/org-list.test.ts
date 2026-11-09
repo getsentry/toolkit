@@ -141,7 +141,7 @@ function makeConfig(
   return {
     paginationKey: "test-list",
     entityPlural: "widgets",
-    commandPrefix: "sentry widget list",
+    commandPrefix: () => "sentry widget list",
     listForOrg: vi.fn(() => Promise.resolve([])),
     listPaginated: vi.fn(() =>
       Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
@@ -155,7 +155,7 @@ function makeConfig(
 const META_ONLY: ListCommandMeta = {
   paginationKey: "meta-list",
   entityPlural: "things",
-  commandPrefix: "sentry thing list",
+  commandPrefix: () => "sentry thing list",
 };
 
 function createStdout() {

@@ -5,16 +5,19 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
+import { setServerVersion } from "../version";
 import {
+  ApiClientError,
   ApiNotFoundError,
   ApiPermissionError,
   ApiRateLimitError,
   ApiServerError,
   ApiValidationError,
-} from "./errors";
+} from "@sentry/api/client";
 import { z } from "zod";
 
 describe("validateEvents error bodies", () => {
@@ -105,6 +108,71 @@ describe("validateEvents error bodies", () => {
       }
     },
   );
+});
+
+describe("validateEvents non-JSON responses", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  it("classifies the endpoint's empty feature-gate 400 as a client error", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        () => new HttpResponse(null, { status: 400 }),
+      ),
+    );
+    const api = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+    await expect(
+      api.validateEvents({ organizationSlug: "test-org" }),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+
+  it.each(["text/plain", "text/html"])(
+    "classifies a 400 %s response as a client error",
+    async (contentType) => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/validate/",
+          () =>
+            new HttpResponse("Invalid query", {
+              status: 400,
+              headers: { "Content-Type": contentType },
+            }),
+        ),
+      );
+      const api = new SentryApiService({
+        host: "sentry.io",
+        accessToken: "test-token",
+      });
+      await expect(
+        api.validateEvents({ organizationSlug: "test-org" }),
+      ).rejects.toBeInstanceOf(ApiValidationError);
+    },
+  );
+
+  it("does not classify a successful HTML response as user input", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        () =>
+          new HttpResponse("<html>Unexpected response</html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+          }),
+      ),
+    );
+    const api = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+    const result = api.validateEvents({ organizationSlug: "test-org" });
+    await expect(result).rejects.toThrow(
+      "Expected JSON response but received HTML",
+    );
+    await expect(result).rejects.not.toBeInstanceOf(ApiClientError);
+  });
 });
 
 describe("API bearer token validation", () => {
@@ -1502,7 +1570,42 @@ describe("transient 5xx retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not retry a 5xx that the caller opted into via allowStatuses", async () => {
+  it("retries a write Sentry marks idempotent", async () => {
+    const mapped = () =>
+      new Response(
+        JSON.stringify({
+          created: 1,
+          updated: 0,
+          errors: 0,
+          mappings: [{ stackRoot: "", sourceRoot: "", status: "created" }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(serviceUnavailable())
+      .mockResolvedValueOnce(mapped());
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    // `POST /code-mappings/bulk/` carries `x-sentry-idempotent` in the schema.
+    const promise = apiService.linkProjectRepository({
+      organizationSlug: "my-org",
+      projectSlug: "my-project",
+      repository: "my-org/my-repo",
+    });
+    await vi.runAllTimersAsync();
+
+    await expect(promise).resolves.toMatchObject({ created: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("POST");
+  });
+
+  it("returns an allowed 5xx as-is once the transport stops retrying", async () => {
     const fetchMock = vi.fn().mockResolvedValue(serviceUnavailable());
     globalThis.fetch = fetchMock;
 
@@ -1512,8 +1615,8 @@ describe("transient 5xx retry", () => {
     });
 
     // getEventAttachment passes allowStatuses so the caller can inspect the raw
-    // response; such requests must be returned as-is, never retried.
-    const response = await (
+    // response. Retries happen in the transport, before the status is checked.
+    const pending = (
       apiService as unknown as {
         request: (
           path: string,
@@ -1522,9 +1625,93 @@ describe("transient 5xx retry", () => {
         ) => Promise<Response>;
       }
     ).request("/auth/", undefined, { allowStatuses: [503] });
+    await vi.runAllTimersAsync();
 
-    expect(response.status).toBe(503);
+    expect((await pending).status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("network failure retry", () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  const connectionReset = () => {
+    const error = new Error("fetch failed");
+    error.cause = new Error("read ECONNRESET");
+    return error;
+  };
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.useRealTimers();
+  });
+
+  it("retries a GET after a network failure and succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(connectionReset())
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "1",
+            name: "Test User",
+            email: "t@example.com",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    const promise = apiService.getAuthenticatedUser();
+    await vi.runAllTimersAsync();
+
+    expect((await promise).id).toBe("1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a POST after a network failure", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(connectionReset());
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    const promise = apiService.createTeam({
+      organizationSlug: "my-org",
+      name: "My Team",
+    });
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toThrow(/Connection reset/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a malformed token, which fails before fetch", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "bad\ntoken",
+    });
+
+    await expect(apiService.getAuthenticatedUser()).rejects.toThrow(
+      /Malformed authentication token/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -1696,6 +1883,20 @@ describe("rate limit retry", () => {
     }
   });
 
+  it("sends a still-limited GET at most maxRetries + 1 times", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async () => rateLimited(nowSeconds + 1));
+    globalThis.fetch = fetchMock;
+
+    const promise = apiService().getAuthenticatedUser();
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toBeInstanceOf(ApiRateLimitError);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("stops waiting when the request is aborted", async () => {
     const fetchMock = vi.fn().mockResolvedValue(rateLimited(nowSeconds + 1));
     globalThis.fetch = fetchMock;
@@ -1712,6 +1913,30 @@ describe("rate limit retry", () => {
     await expect(promise).rejects.toBe(reason);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps the caller's abort reason for an in-flight request", async () => {
+    const fetchMock = vi.fn(
+      (_input: Request | string | URL, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          );
+        }),
+    );
+    globalThis.fetch = fetchMock;
+    const controller = new AbortController();
+    const reason = new Error("tool call cancelled");
+
+    const promise = rawRequest(apiService())("/auth/", {
+      signal: controller.signal,
+    });
+    promise.catch(() => {});
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    controller.abort(reason);
+
+    await expect(promise).rejects.toBe(reason);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("request headers", () => {
@@ -1723,6 +1948,35 @@ describe("request headers", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    setServerVersion(undefined);
+  });
+
+  it("sends the host's version in the User-Agent", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "1",
+          name: "Test User",
+          email: "test@example.com",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    setServerVersion("0.48.0-test");
+
+    await new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    }).getAuthenticatedUser();
+
+    const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0];
+    expect(new Headers(requestInit.headers).get("User-Agent")).toBe(
+      "sentry-mcp/0.48.0-test (https://mcp.sentry.dev)",
+    );
   });
 
   it("should send MCP client headers when clientId and clientName are set", async () => {
@@ -1753,12 +2007,18 @@ describe("request headers", () => {
 
     const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0];
-    expect(requestInit.headers["X-Sentry-MCP-Client-Id"]).toBe("abc123");
-    expect(requestInit.headers["X-Sentry-MCP-Client-Name"]).toBe("Claude Code");
-    expect(requestInit.headers["X-Sentry-MCP-Client-Family"]).toBe(
-      "claude-code",
+    expect(new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Id")).toBe(
+      "abc123",
     );
-    expect(requestInit.headers["X-Sentry-MCP-Utm-Source"]).toBe("plugin");
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Name"),
+    ).toBe("Claude Code");
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Family"),
+    ).toBe("claude-code");
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Utm-Source"),
+    ).toBe("plugin");
   });
 
   it("should not send MCP client headers when clientId and clientName are not set", async () => {
@@ -1785,10 +2045,18 @@ describe("request headers", () => {
 
     const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0];
-    expect(requestInit.headers["X-Sentry-MCP-Client-Id"]).toBeUndefined();
-    expect(requestInit.headers["X-Sentry-MCP-Client-Name"]).toBeUndefined();
-    expect(requestInit.headers["X-Sentry-MCP-Client-Family"]).toBeUndefined();
-    expect(requestInit.headers["X-Sentry-MCP-Utm-Source"]).toBeUndefined();
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Id"),
+    ).toBeNull();
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Name"),
+    ).toBeNull();
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Family"),
+    ).toBeNull();
+    expect(
+      new Headers(requestInit.headers).get("X-Sentry-MCP-Utm-Source"),
+    ).toBeNull();
   });
 });
 
@@ -2040,6 +2308,36 @@ describe("organization SDK list pages", () => {
       "repeated pagination cursor",
     );
     expect(requests).toBe(2);
+  });
+});
+
+describe("listIssues request", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  it("sends an empty query so Sentry does not apply is:unresolved", async () => {
+    let params = new URLSearchParams();
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/issues/",
+        ({ request }) => {
+          params = new URL(request.url).searchParams;
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    await new SentryApiService({ accessToken: "test-token" }).listIssues({
+      organizationSlug: "test-org",
+      projectId: "123",
+      sortBy: "freq",
+    });
+
+    expect(params.get("query")).toBe("");
+    expect(params.get("limit")).toBe("10");
+    expect(params.get("sort")).toBe("freq");
+    expect(params.get("statsPeriod")).toBe(DEFAULT_SEARCH_ISSUES_PERIOD);
+    expect(params.getAll("project")).toEqual(["123"]);
+    expect(params.getAll("collapse")).toEqual(["unhandled"]);
   });
 });
 
@@ -2412,6 +2710,7 @@ describe("API query builders", () => {
       // Mock the API response
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2451,6 +2750,7 @@ describe("API query builders", () => {
       // Mock the API response
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2488,6 +2788,7 @@ describe("API query builders", () => {
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2526,6 +2827,7 @@ describe("API query builders", () => {
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -2564,6 +2866,7 @@ describe("API query builders", () => {
 
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
@@ -2659,6 +2962,7 @@ describe("API query builders", () => {
 
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
@@ -3086,6 +3390,7 @@ describe("API query builders", () => {
     it("should call the repos endpoint without query", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3122,6 +3427,7 @@ describe("API query builders", () => {
         .fn()
         .mockResolvedValueOnce({
           ok: true,
+          status: 200,
           headers: new Headers({
             "content-type": "application/json",
             link: '<https://sentry.io/api/0/organizations/test-org/repos/?cursor=cursor-2>; rel="next"; results="true"; cursor="cursor-2"',
@@ -3138,6 +3444,7 @@ describe("API query builders", () => {
         })
         .mockResolvedValueOnce({
           ok: true,
+          status: 200,
           headers: new Headers({
             "content-type": "application/json",
           }),
@@ -3169,6 +3476,7 @@ describe("API query builders", () => {
     it("should include query parameter when provided", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3198,6 +3506,7 @@ describe("API query builders", () => {
     it("should return empty array when no repos exist", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3215,6 +3524,7 @@ describe("API query builders", () => {
     it("should accept repos with null externalSlug and externalId", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3259,6 +3569,7 @@ describe("API query builders", () => {
     it("should POST to the code mappings bulk endpoint", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3309,6 +3620,7 @@ describe("API query builders", () => {
     it("should handle updated mappings response", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
+        status: 200,
         headers: {
           get: (key: string) =>
             key === "content-type" ? "application/json" : null,
@@ -3367,6 +3679,7 @@ describe("API query builders", () => {
 
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) => {
               if (key === "content-type") {
@@ -3392,6 +3705,90 @@ describe("API query builders", () => {
     });
   });
 
+  describe("visitReplayRecordingSegments", () => {
+    let apiService: SentryApiService;
+
+    const linkHeader = (nextCursor: string | null) =>
+      [
+        '<https://sentry.io/api/0/>; rel="previous"; results="false"; cursor="0:0:1"',
+        `<https://sentry.io/api/0/>; rel="next"; results="${nextCursor ? "true" : "false"}"; cursor="${nextCursor ?? "0:0:0"}"`,
+      ].join(", ");
+
+    const mockPages = (pages: unknown[][][]) => {
+      const requestUrls: string[] = [];
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        const index = requestUrls.length;
+        requestUrls.push(url);
+        const nextCursor = index + 1 < pages.length ? `0:${index + 1}:0` : null;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: {
+            get: (key: string) =>
+              key === "content-type"
+                ? "application/json"
+                : key === "link"
+                  ? linkHeader(nextCursor)
+                  : null,
+          },
+          json: () => Promise.resolve(pages[index]),
+        });
+      });
+      return requestUrls;
+    };
+
+    beforeEach(() => {
+      apiService = new SentryApiService({
+        host: "sentry.io",
+        accessToken: "test-token",
+      });
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("follows the Link cursor until every segment is read", async () => {
+      const requestUrls = mockPages([[["a"], ["b"]], [["c"]]]);
+      const segments: unknown[][] = [];
+
+      const result = await apiService.visitReplayRecordingSegments(
+        {
+          organizationSlug: "test-org",
+          projectSlugOrId: "frontend",
+          replayId: "replay-123",
+          maxSegments: 10,
+        },
+        (events) => segments.push(events),
+      );
+
+      expect(segments).toEqual([["a"], ["b"], ["c"]]);
+      expect(result).toEqual({ segmentsRead: 3, truncated: false });
+      expect(requestUrls).toHaveLength(2);
+      expect(requestUrls[0]).toContain("per_page=100");
+      expect(requestUrls[1]).toContain("cursor=0%3A1%3A0");
+    });
+
+    it("stops at maxSegments and reports truncation", async () => {
+      const requestUrls = mockPages([[["a"], ["b"]], [["c"]]]);
+      const segments: unknown[][] = [];
+
+      const result = await apiService.visitReplayRecordingSegments(
+        {
+          organizationSlug: "test-org",
+          projectSlugOrId: "frontend",
+          replayId: "replay-123",
+          maxSegments: 2,
+        },
+        (events) => segments.push(events),
+      );
+
+      expect(segments).toEqual([["a"], ["b"]]);
+      expect(result).toEqual({ segmentsRead: 2, truncated: true });
+      expect(requestUrls).toHaveLength(1);
+    });
+  });
+
   describe("project identifier request shape regressions", () => {
     let apiService: SentryApiService;
 
@@ -3412,6 +3809,7 @@ describe("API query builders", () => {
         requestUrl = url;
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
@@ -3420,11 +3818,15 @@ describe("API query builders", () => {
         });
       });
 
-      await apiService.getReplayRecordingSegments({
-        organizationSlug: "test-org",
-        projectSlugOrId: "frontend",
-        replayId: "replay-123",
-      });
+      await apiService.visitReplayRecordingSegments(
+        {
+          organizationSlug: "test-org",
+          projectSlugOrId: "frontend",
+          replayId: "replay-123",
+          maxSegments: 10,
+        },
+        () => {},
+      );
 
       expect(requestUrl).toContain(
         "/projects/test-org/frontend/replays/replay-123/recording-segments/",
@@ -3438,6 +3840,7 @@ describe("API query builders", () => {
         requestUrl = url;
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,
@@ -3464,6 +3867,7 @@ describe("API query builders", () => {
         requestUrl = url;
         return Promise.resolve({
           ok: true,
+          status: 200,
           headers: {
             get: (key: string) =>
               key === "content-type" ? "application/json" : null,

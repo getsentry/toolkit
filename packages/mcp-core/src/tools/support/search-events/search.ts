@@ -19,6 +19,7 @@ import { scrubSensitiveText } from "../../../telem/sentry";
 import type { Scope } from "../../../permissions";
 import type { Skill } from "../../../skills";
 import type { ServerContext } from "../../../types";
+import type { StructuredToolOutput } from "../../types";
 import {
   isMetricsDataset,
   normalizeEventsDataset,
@@ -35,6 +36,7 @@ import {
   RECOMMENDED_FIELDS,
   TRACE_METRICS_SAMPLE_IDENTITY_FIELDS,
 } from "./config";
+import { buildDroppedEventsNote } from "./dropped-events-note";
 import { getFieldRecoveryHints } from "./field-hints";
 import {
   formatErrorResults,
@@ -45,11 +47,20 @@ import {
   formatTraceMetricsResults,
 } from "./formatters";
 import {
+  buildStructuredReplayResults,
   DEFAULT_REPLAY_SORT,
   DEFAULT_REPLAY_STATS_PERIOD,
   formatReplayResults,
   isValidReplaySort,
+  type SearchReplaysStructuredContent,
 } from "./replays";
+import {
+  buildStructuredEventsResult,
+  buildStructuredTimeSeriesResult,
+  type DatasetSearchStructuredContent,
+  type SearchEventsStructuredContent,
+  type StructuredSearchDataset,
+} from "./structured";
 import {
   isSeerSearchDataset,
   type SeerSearchTranslation,
@@ -58,6 +69,7 @@ import {
 } from "./seer";
 import {
   formatEventsValidationResults,
+  formatUntranslatedQueryNote,
   isAggregateQuery,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
@@ -76,6 +88,14 @@ type SearchEventsAgentResult = z.output<typeof searchEventsAgentOutputSchema>;
 
 function defaultSortForDataset(dataset: PublicEventsDataset | "replays") {
   return dataset === "replays" ? DEFAULT_REPLAY_SORT : DEFAULT_EVENTS_SORT;
+}
+
+function untranslatedQuerySyntaxExample(
+  dataset: PublicEventsDataset | "replays",
+): string {
+  if (dataset === "errors") return "level:error";
+  if (dataset === "logs") return "severity:error";
+  return "environment:production";
 }
 
 function defaultFieldsForDataset(dataset: PublicEventsDataset): string[] {
@@ -128,10 +148,14 @@ function buildRequestFields(
   dataset: PublicEventsDataset | "replays",
   fields: string[],
 ): string[] {
-  return dataset !== "replays" &&
-    isMetricsDataset(dataset) &&
-    !isAggregateQuery(fields)
-    ? Array.from(new Set([...fields, ...TRACE_METRICS_SAMPLE_IDENTITY_FIELDS]))
+  if (dataset === "replays" || isAggregateQuery(fields)) {
+    return fields;
+  }
+  if (dataset === "logs") {
+    return [...new Set([...fields, "id"])];
+  }
+  return isMetricsDataset(dataset)
+    ? [...new Set([...fields, ...TRACE_METRICS_SAMPLE_IDENTITY_FIELDS])]
     : fields;
 }
 
@@ -404,14 +428,32 @@ export interface SearchEventsParams {
   includeExplanation: boolean;
 }
 
-export interface RunSearchEventsOptions {
+export interface MarkdownSearchEventsOptions {
   /**
    * Keep the caller's dataset even when the embedded agent suggests another.
    * Dataset-specific tools (search_logs, search_traces, ...) set this so a
    * search never returns rows from a different dataset than the tool name.
    */
   lockDataset?: boolean;
+  output?: "markdown";
 }
+
+/**
+ * Returns the payload a dataset tool declares as its `outputSchema` instead
+ * of markdown. That schema is per dataset, so the dataset must be locked.
+ */
+export interface StructuredSearchEventsOptions {
+  lockDataset: true;
+  output: "structured";
+}
+
+export type RunSearchEventsOptions =
+  | MarkdownSearchEventsOptions
+  | StructuredSearchEventsOptions;
+
+type StructuredSearchEventsOutput =
+  | StructuredToolOutput<SearchEventsStructuredContent>
+  | StructuredToolOutput<SearchReplaysStructuredContent>;
 
 const searchLimitParam = z
   .number()
@@ -646,11 +688,32 @@ function trackSeerOutcome(
   });
 }
 
+export function runSearchEvents(
+  params: SearchEventsParams,
+  context: ServerContext,
+  options?: MarkdownSearchEventsOptions,
+): Promise<string>;
+export function runSearchEvents(
+  params: SearchEventsParams & { dataset: "replays" },
+  context: ServerContext,
+  options: StructuredSearchEventsOptions,
+): Promise<StructuredToolOutput<SearchReplaysStructuredContent>>;
+/**
+ * Unchecked narrowing: the builders return the shared payload with loose
+ * row links, and this overload asserts the links match `TDataset`'s output
+ * schema. That holds because structured runs lock the dataset and each row's
+ * links come from that dataset's `defineDatasetConfig`.
+ */
+export function runSearchEvents<TDataset extends StructuredSearchDataset>(
+  params: SearchEventsParams & { dataset: TDataset },
+  context: ServerContext,
+  options: StructuredSearchEventsOptions,
+): Promise<StructuredToolOutput<DatasetSearchStructuredContent<TDataset>>>;
 export async function runSearchEvents(
   params: SearchEventsParams,
   context: ServerContext,
   options: RunSearchEventsOptions = {},
-): Promise<string> {
+): Promise<string | StructuredSearchEventsOutput> {
   // Any failure after Seer translates the query counts as `error_on_load`.
   const seerOutcome: SeerOutcomeState = { translation: null, tracked: false };
   try {
@@ -666,8 +729,9 @@ async function executeSearchEvents(
   context: ServerContext,
   options: RunSearchEventsOptions,
   seerOutcome: SeerOutcomeState,
-): Promise<string> {
+): Promise<string | StructuredSearchEventsOutput> {
   const lockDataset = options.lockDataset === true;
+  const structured = options.output === "structured";
   const apiService = apiServiceFromContext(context, {
     regionUrl: params.regionUrl ?? undefined,
   });
@@ -702,6 +766,8 @@ async function executeSearchEvents(
   let explanation: string | undefined;
   let environment: string | string[] | null | undefined = params.environment;
   let timeSeries: { yAxis: string; interval: string | null } | null = null;
+  // Set only when the query ran as-is; shown when it then matches nothing.
+  let untranslatedQueryNote: string | null = null;
 
   const explicitSort = params.sort?.trim() || undefined;
   const hasExplicitDataset = params.dataset !== undefined;
@@ -892,6 +958,14 @@ async function executeSearchEvents(
       dataset === "replays"
         ? []
         : (params.fields ?? defaultFieldsForDataset(dataset));
+    const untranslatedNote = formatUntranslatedQueryNote(
+      params.query,
+      untranslatedQuerySyntaxExample(dataset),
+      dataset,
+    );
+    untranslatedQueryNote = untranslatedNote
+      ? `**Note:** ${untranslatedNote}`
+      : null;
   }
 
   // Flag any requested environment that doesn't exist (checking both the
@@ -916,15 +990,19 @@ async function executeSearchEvents(
     suggestedProjectIds.length > 0
       ? `**Note:** Seer suggested also searching project IDs ${suggestedProjectIds.join(", ")}, for example other services in the same trace. Omit \`projectSlug\` to search all accessible projects.`
       : "";
-  const leadingNote = [
+  const leadingNotes = [
     seerTranslation?.warning,
     environmentNote,
     projectSuggestionNote,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-  const withLeadingNote = (text: string): string =>
-    leadingNote ? `${leadingNote}\n\n${text}` : text;
+  ].filter((note): note is string => Boolean(note));
+  const notesFor = (resultCount: number): string[] =>
+    resultCount === 0 && untranslatedQueryNote
+      ? [...leadingNotes, untranslatedQueryNote]
+      : leadingNotes;
+  const withLeadingNote = (text: string, resultCount: number): string => {
+    const leadingNote = notesFor(resultCount).join("\n\n");
+    return leadingNote ? `${leadingNote}\n\n${text}` : text;
+  };
 
   if (dataset === "replays") {
     const replaySort = sortParam || DEFAULT_REPLAY_SORT;
@@ -970,7 +1048,7 @@ async function executeSearchEvents(
       replays.length,
     );
 
-    const replayOutput = formatReplayResults({
+    const replayParams = {
       replays,
       inputQuery: params.query || sentryQuery || "recent replays",
       includeExplanation: params.includeExplanation,
@@ -992,8 +1070,14 @@ async function executeSearchEvents(
       experimentalMode: context.experimentalMode ?? false,
       availableToolNames: context.availableToolNames,
       directToolNames: context.directToolNames,
-    });
-    return withLeadingNote(replayOutput);
+    };
+    if (structured) {
+      return buildStructuredReplayResults({
+        ...replayParams,
+        notes: notesFor(replays.length),
+      });
+    }
+    return withLeadingNote(formatReplayResults(replayParams), replays.length);
   }
 
   if (timeSeries) {
@@ -1006,23 +1090,35 @@ async function executeSearchEvents(
     // request shape — fields + orderby — which is not what a timeseries
     // sends (yAxis + interval, no fields/sort). events-timeseries validates
     // the query server-side, so a bad query still surfaces as an API error.
-    const series = await apiService.getEventsTimeSeries({
-      organizationSlug,
-      query: timeSeriesQuery,
-      yAxis: timeSeries.yAxis,
-      interval: timeSeries.interval ?? undefined,
-      projectId,
-      dataset,
-      ...timeParams,
-    });
+    // Fetch drops for the same window in parallel with the series: wall-clock
+    // cost is max(series, drops), not the sum. The note is appended only when
+    // unintentional drops are material.
+    const [series, droppedEventsNote] = await Promise.all([
+      apiService.getEventsTimeSeries({
+        organizationSlug,
+        query: timeSeriesQuery,
+        yAxis: timeSeries.yAxis,
+        interval: timeSeries.interval ?? undefined,
+        projectId,
+        dataset,
+        ...timeParams,
+      }),
+      buildDroppedEventsNote({
+        apiService,
+        organizationSlug,
+        projectId,
+        dataset: dataset as PublicEventsDataset,
+        interval: timeSeries.interval,
+        timeParams,
+        toolAvailable:
+          context.availableToolNames?.has("find_dropped_events") ?? false,
+      }),
+    ]);
     // A series always has buckets, so count the ones with data.
-    trackSeerOutcome(
-      seerOutcome,
-      params,
-      series.timeSeries
-        .flatMap((s) => s.values)
-        .filter((point) => point.value != null && point.value !== 0).length,
-    );
+    const pointsWithData = series.timeSeries
+      .flatMap((s) => s.values)
+      .filter((point) => point.value != null && point.value !== 0).length;
+    trackSeerOutcome(seerOutcome, params, pointsWithData);
     const statsUrl = apiService.getEventsExplorerUrl(
       organizationSlug,
       timeSeriesQuery,
@@ -1036,17 +1132,38 @@ async function executeSearchEvents(
       timeParams.start,
       timeParams.end,
     );
-    return withLeadingNote(
-      formatTimeSeriesResults({
+    if (structured) {
+      return buildStructuredTimeSeriesResult({
+        dataset,
         series,
         yAxis: timeSeries.yAxis,
         interval: timeSeries.interval,
         inputQuery: params.query || timeSeriesQuery,
         includeExplanation: params.includeExplanation,
         explanation,
+        query: timeSeriesQuery,
         timeRange: timeParams,
         url: statsUrl,
-      }),
+        notes: droppedEventsNote
+          ? [...notesFor(pointsWithData), droppedEventsNote]
+          : notesFor(pointsWithData),
+      });
+    }
+    const timeSeriesOutput = formatTimeSeriesResults({
+      series,
+      yAxis: timeSeries.yAxis,
+      interval: timeSeries.interval,
+      inputQuery: params.query || timeSeriesQuery,
+      includeExplanation: params.includeExplanation,
+      explanation,
+      timeRange: timeParams,
+      url: statsUrl,
+    });
+    return withLeadingNote(
+      droppedEventsNote
+        ? `${timeSeriesOutput}\n\n${droppedEventsNote}`
+        : timeSeriesOutput,
+      pointsWithData,
     );
   }
 
@@ -1210,16 +1327,48 @@ async function executeSearchEvents(
     directToolNames: context.directToolNames,
   };
 
+  if (structured) {
+    return buildStructuredEventsResult({
+      dataset,
+      eventData,
+      inputQuery: formatParams.inputQuery,
+      includeExplanation: params.includeExplanation,
+      explanation,
+      explorerUrl,
+      sentryQuery,
+      fields,
+      requestFields: finalRequestFields,
+      executedSearch: formatParams.executedSearch,
+      notes: notesFor(eventData.length),
+      session: {
+        apiService,
+        organizationSlug,
+        experimentalMode: formatParams.experimentalMode,
+        availableToolNames: context.availableToolNames,
+        directToolNames: context.directToolNames,
+      },
+    });
+  }
+
   switch (dataset) {
     case "errors":
-      return withLeadingNote(formatErrorResults(formatParams));
+      return withLeadingNote(
+        formatErrorResults(formatParams),
+        eventData.length,
+      );
     case "logs":
-      return withLeadingNote(formatLogResults(formatParams));
+      return withLeadingNote(formatLogResults(formatParams), eventData.length);
     case "spans":
-      return withLeadingNote(formatSpanResults(formatParams));
+      return withLeadingNote(formatSpanResults(formatParams), eventData.length);
     case "profiles":
-      return withLeadingNote(formatProfileResults(formatParams));
+      return withLeadingNote(
+        formatProfileResults(formatParams),
+        eventData.length,
+      );
     default:
-      return withLeadingNote(formatTraceMetricsResults(formatParams));
+      return withLeadingNote(
+        formatTraceMetricsResults(formatParams),
+        eventData.length,
+      );
   }
 }

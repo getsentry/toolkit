@@ -346,15 +346,35 @@ function averageColor(box: ColorBox): [number, number, number] {
 /** Collect the RGB values of every sufficiently-opaque pixel in `img`. */
 function collectOpaqueColors(img: DecodedImage): [number, number, number][] {
   const colors: [number, number, number][] = [];
-  for (let y = 0; y < img.height; y++) {
-    for (let x = 0; x < img.width; x++) {
-      const [r, g, b, a] = pixelAt(img, x, y);
-      if (a >= ALPHA_THRESHOLD) {
-        colors.push([r, g, b]);
-      }
+  const { data } = img;
+  const end = img.width * img.height * 4;
+  for (let i = 0; i < end; i += 4) {
+    if ((data[i + 3] ?? 255) >= ALPHA_THRESHOLD) {
+      colors.push([data[i] ?? 0, data[i + 1] ?? 0, data[i + 2] ?? 0]);
     }
   }
   return colors;
+}
+
+/**
+ * The unique colors in `colors`, in first-seen order, or `undefined` once
+ * there are more than `limit` of them.
+ */
+function distinctColors(
+  colors: [number, number, number][],
+  limit: number,
+): [number, number, number][] | undefined {
+  const seen = new Map<number, [number, number, number]>();
+  for (const c of colors) {
+    const key = c[0] * 65_536 + c[1] * 256 + c[2];
+    if (!seen.has(key)) {
+      if (seen.size === limit) {
+        return;
+      }
+      seen.set(key, c);
+    }
+  }
+  return [...seen.values()];
 }
 
 /**
@@ -399,6 +419,14 @@ export function buildPalette(
   const colors = collectOpaqueColors(img);
   if (colors.length === 0) {
     return [];
+  }
+
+  // Images that already fit the palette (flat graphics, gradient-banded
+  // banners) keep their exact colors. Median cut would otherwise keep
+  // splitting runs of identical colors, wasting palette slots and time.
+  const distinct = distinctColors(colors, size);
+  if (distinct) {
+    return distinct;
   }
 
   let boxes: ColorBox[] = [{ colors }];
@@ -552,11 +580,19 @@ export function encodeImageToSixel(
   const { width, height } = scaled;
   // Per-pixel palette index, or -1 for transparent (undrawn).
   const indices = new Int32Array(width * height).fill(-1);
+  // Images repeat colors heavily, so remember each color's nearest entry.
+  const nearest = new Map<number, number>();
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const [r, g, b, a] = pixelAt(scaled, x, y);
       if (a >= ALPHA_THRESHOLD) {
-        indices[y * width + x] = nearestPaletteIndex(palette, r, g, b);
+        const key = r * 65_536 + g * 256 + b;
+        let index = nearest.get(key);
+        if (index === undefined) {
+          index = nearestPaletteIndex(palette, r, g, b);
+          nearest.set(key, index);
+        }
+        indices[y * width + x] = index;
       }
     }
   }

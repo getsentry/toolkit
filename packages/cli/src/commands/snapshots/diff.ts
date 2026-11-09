@@ -13,6 +13,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseDirectoryPath, textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -236,17 +237,16 @@ export const diffCommand = buildCommand({
     examples: [
       {
         description: "Compare two directories of snapshot images locally",
-        command: "sentry snapshots diff ./baseline ./head",
+        run: "snapshots diff ./baseline ./head",
       },
       {
         description:
           "Exit non-zero if any images changed, with a custom threshold",
-        command:
-          "sentry snapshots diff ./baseline ./head --fail-on-diff --threshold 0.02",
+        run: "snapshots diff ./baseline ./head --fail-on-diff --threshold 0.02",
       },
       {
         description: "Write diff masks to a directory",
-        command: "sentry snapshots diff ./baseline ./head --output ./diffs/",
+        run: "snapshots diff ./baseline ./head --output ./diffs/",
       },
     ],
   },
@@ -259,12 +259,12 @@ export const diffCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the baseline image directory",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "base-dir",
         },
         {
           brief: "Path to the head image directory",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "head-dir",
         },
       ],
@@ -272,13 +272,13 @@ export const diffCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseDirectoryPath,
         brief: `Directory for diff mask images (default: ${DEFAULT_OUTPUT})`,
         optional: true,
       },
       threshold: {
         kind: "parsed",
-        parse: parseThreshold,
+        parse: textParser(parseThreshold),
         brief: "Pixel color difference threshold (0.0-1.0)",
         default: "0.01",
       },
@@ -346,7 +346,7 @@ export const diffCommand = buildCommand({
     }
 
     const summary = summarize(images);
-    yield new CommandOutput<DiffReport>({
+    yield new CommandOutput({
       baseDir,
       headDir,
       outputDir,

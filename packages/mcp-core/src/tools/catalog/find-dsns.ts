@@ -32,13 +32,15 @@ export const findDsnsOutputSchema = z.object({
 
 export default defineTool({
   name: "find_dsns",
+  title: "Find DSNs",
   skills: ["project-management"], // DSN management is part of project setup
   requiredScopes: ["project:read"],
   description: [
-    "List all Sentry DSNs for a specific project, including each DSN's status and rate limit.",
+    "List the DSNs (client keys) for a Sentry project: the SENTRY_DSN an SDK uses to send events. Each DSN includes its status and rate limit.",
     "",
     "Use this tool when you need to:",
     "- Retrieve a SENTRY_DSN for a specific project",
+    "- Configure a Sentry SDK for an existing project",
     "- Check whether a DSN is active or what rate limit it has",
     "",
     "<hints>",

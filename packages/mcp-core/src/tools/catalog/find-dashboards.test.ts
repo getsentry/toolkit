@@ -546,4 +546,45 @@ describe("find_dashboards", () => {
     expect(searchParams.get("cursor")).toBe("dashboard-cursor");
     expect(searchParams.get("per_page")).toBe("25");
   });
+
+  it("leaves null widget display types out of widgetTypes", async () => {
+    const [dashboard] = dashboardListFixture;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/",
+        () =>
+          HttpResponse.json([
+            {
+              ...dashboard,
+              widgetDisplay: ["line", null, "line"],
+              widgetPreview: [
+                { displayType: "line", layout: null },
+                { displayType: null, layout: null },
+                { displayType: "line", layout: null },
+              ],
+            },
+          ]),
+      ),
+    );
+
+    const result = await findDashboards.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        titleQuery: null,
+        sort: "title",
+        cursor: null,
+        limit: 25,
+      },
+      context,
+    );
+
+    const structuredContent = getStructuredContent(result);
+    expect(findDashboardsOutputSchema.parse(structuredContent)).toEqual(
+      structuredContent,
+    );
+    expect(structuredContent.dashboards).toMatchObject([
+      { widgetCount: 3, widgetTypes: ["line"] },
+    ]);
+  });
 });

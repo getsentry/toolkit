@@ -20,6 +20,7 @@ export const createDsnOutputSchema = z.object({
 
 export default defineTool({
   name: "create_dsn",
+  title: "Create DSN",
   skills: ["project-management"], // Only available in project-management skill
   requiredScopes: ["project:write"],
   description: [

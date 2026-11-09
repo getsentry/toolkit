@@ -19,6 +19,7 @@ export const deleteUptimeMonitorOutputSchema = z.object({
 
 export default defineTool({
   name: "delete_uptime_monitor",
+  title: "Delete Uptime Monitor",
   skills: ["project-management"],
   requiredScopes: ["project:write"],
   description: [

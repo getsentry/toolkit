@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-trial
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Manage product trials
 requires:
   bins: ["sentry"]
@@ -25,12 +25,14 @@ List product trials
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `name` | string | CLI trial name (e.g. seer), or "plan" for the plan trial |
 | `category` | string | Trial category (e.g. seerUsers, seerAutofix) |
-| `startDate` | string \| null | Start date (ISO 8601) |
-| `endDate` | string \| null | End date (ISO 8601) |
-| `reasonCode` | number | Reason code |
+| `status` | string | Trial status |
+| `daysRemaining` | number \| null | Days left on an active trial |
 | `isStarted` | boolean | Whether the trial has started |
 | `lengthDays` | number \| null | Trial duration in days |
+| `startDate` | string \| null | Start date (ISO 8601) |
+| `endDate` | string \| null | End date (ISO 8601) |
 
 **Examples:**
 
@@ -55,8 +57,7 @@ Start a product trial
 
 | Argument | Description |
 |----------|-------------|
-| `<name>` | Trial name (seer, replays, performance, spans, profiling, logs, monitors, uptime, plan) |
-| `[<org>]` | Organization slug (auto-detected if omitted) |
+| `<name> [<org>]` | Trial name (seer, replays, performance, spans, profiling, logs, monitors, uptime, plan) and organization slug (auto-detected if omitted) |
 
 **Examples:**
 

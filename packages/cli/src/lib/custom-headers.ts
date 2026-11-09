@@ -28,7 +28,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getDefaultHeaders } from "./db/defaults.js";
-import { getEnv } from "./env.js";
+import { getEnv, invocationState } from "./env.js";
 import { ConfigError } from "./errors.js";
 import { logger } from "./logger.js";
 import { isSentrySaasUrl } from "./sentry-urls.js";
@@ -36,6 +36,7 @@ import {
   getActiveTokenHost,
   isRequestOriginTrustedForCustomHeaders,
 } from "./token-host.js";
+import { getUrlLoginCommand } from "./app-identity.js";
 
 const log = logger.withTag("custom-headers");
 
@@ -80,11 +81,14 @@ let cachedHeaders: readonly [string, string][] | undefined;
 /** Tracks the raw source string that produced `cachedHeaders`, for invalidation. */
 let cachedRawSource: string | undefined;
 
-/** Whether the SaaS warning has already been logged this session. */
-let saasWarningLogged = false;
-
-/** Whether the untrusted-destination warning has already been logged. */
-let untrustedDestinationWarningLogged = false;
+/**
+ * Warnings already logged by this invocation. Per invocation, so each SDK
+ * call warns in its own stderr instead of only the first call in the process.
+ */
+const warningState = invocationState(() => ({
+  saasLogged: false,
+  untrustedDestinationLogged: false,
+}));
 
 /**
  * Structured headers set by the library API for the current invocation.
@@ -277,8 +281,9 @@ function passesSelfHostedGuard(): boolean {
   if (isSelfHosted()) {
     return true;
   }
-  if (!saasWarningLogged) {
-    saasWarningLogged = true;
+  const warnings = warningState();
+  if (!warnings.saasLogged) {
+    warnings.saasLogged = true;
     log.warn(
       "Custom headers are set but no self-hosted Sentry instance is configured. Headers will be ignored.",
     );
@@ -348,11 +353,12 @@ export function applyCustomHeaders(
   }
 
   if (!isTrusted) {
-    if (!untrustedDestinationWarningLogged) {
-      untrustedDestinationWarningLogged = true;
+    const warnings = warningState();
+    if (!warnings.untrustedDestinationLogged) {
+      warnings.untrustedDestinationLogged = true;
       log.warn(
         "Skipping custom headers for request to untrusted host. " +
-          "If this is legitimate, run 'sentry auth login --url <url>' against the intended instance.",
+          `If this is legitimate, run '${getUrlLoginCommand()} <url>' against the intended instance.`,
       );
     }
     return;
@@ -371,6 +377,7 @@ export function _resetCustomHeadersCache(): void {
   cachedHeaders = undefined;
   cachedRawSource = undefined;
   overrideHeaders = undefined;
-  saasWarningLogged = false;
-  untrustedDestinationWarningLogged = false;
+  const warnings = warningState();
+  warnings.saasLogged = false;
+  warnings.untrustedDestinationLogged = false;
 }

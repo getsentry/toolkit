@@ -5,39 +5,47 @@
  * Environment is the first positional arg (required), deploy name is optional second.
  */
 
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { createReleaseDeploy } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
-import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+  parseEnvironment,
+  parseText,
+  parseUrl,
+} from "../../lib/completion-target.js";
+import { ContextError, ValidationError } from "../../lib/errors.js";
+import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
-import type { SentryDeploy } from "../../types/index.js";
-import { parseReleaseArg } from "./parse.js";
+import type { SentryDeploy, WithOutputFields } from "../../types/index.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { ReleaseDeployOutputSchema } from "../../generated/output-schemas/release.js";
+import type { ReleaseDeployOutputFields } from "../../output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT =
-  "sentry release deploy [<org>/]<version> <environment> [name]";
+const usageHint = () =>
+  sentry`release deploy [<org>/]<version> <environment> [name]`;
 
-function formatDeployCreated(data: Record<string, unknown>): string {
-  if (data.dryRun) {
+/** JSON output: the created deploy, or the `--dry-run` preview. */
+type DeployOutput = WithOutputFields<
+  SentryDeploy,
+  typeof ReleaseDeployOutputFields
+>;
+
+function formatDeployCreated(deploy: DeployOutput): string {
+  if (deploy.dryRun) {
     return renderMarkdown(
-      `Would create deploy for ${safeCodeSpan(String(data.environment))} environment (dry run)`,
+      `Would create deploy for ${inlineCode(deploy.environment)} environment (dry run)`,
     );
   }
-  const deploy = data as unknown as SentryDeploy;
   const lines: string[] = [];
   lines.push("## Deploy Created");
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["ID", deploy.id]);
-  kvRows.push(["Environment", safeCodeSpan(deploy.environment)]);
+  kvRows.push(["ID", deploy.id ?? "—"]);
+  kvRows.push(["Environment", inlineCode(deploy.environment)]);
   kvRows.push(["Name", deploy.name || "—"]);
   kvRows.push(["URL", deploy.url || "—"]);
   kvRows.push([
@@ -53,34 +61,24 @@ function formatDeployCreated(data: Record<string, unknown>): string {
 }
 
 /**
- * Parse the deploy positionals: `[org/]version`, `environment`, optional `name`.
+ * Check the deploy positionals after the release: the required
+ * `environment` and an optional `name`.
  *
- * The first arg is parsed as the release target (version with optional org prefix).
- * The second arg is the required environment. The third is an optional deploy
- * name — multi-word names must be quoted (e.g. `"Deploy #42"`), matching standard
- * CLI conventions and avoiding the silent `args.join(" ")` defect.
+ * The deploy name is a single positional — multi-word names must be quoted
+ * (e.g. `"Deploy #42"`), matching standard CLI conventions and avoiding the
+ * silent `args.join(" ")` defect.
  *
- * @param target - The `[<org>/]<version>` release target
  * @param environment - The deploy environment
  * @param name - Optional deploy name
  */
 function parseDeployArgs(
-  target: string,
-  environment: string,
+  environment: string | undefined,
   name?: string,
-): {
-  version: string;
-  orgSlug?: string;
-  environment: string;
-  name?: string;
-} {
-  if (!(target && environment)) {
-    throw new ContextError("Release version and environment", USAGE_HINT, []);
+): { environment: string; name?: string } {
+  if (!environment) {
+    throw new ContextError("Environment", usageHint(), []);
   }
-
-  const { version, orgSlug } = parseReleaseArg(target, USAGE_HINT);
-
-  return { version, orgSlug, environment, name: name || undefined };
+  return { environment, name: name || undefined };
 }
 
 export const deployCommand = buildCommand({
@@ -91,49 +89,45 @@ export const deployCommand = buildCommand({
     examples: [
       {
         description: "Create a deploy",
-        command: "sentry release deploy 1.0.0 production",
+        run: "release deploy 1.0.0 production",
       },
       {
         description: "Create a named deploy in an explicit organization",
-        command: 'sentry release deploy my-org/1.0.0 staging "Deploy #42"',
+        run: 'release deploy my-org/1.0.0 staging "Deploy #42"',
       },
       {
         description: "Attach a deploy URL",
-        command:
-          "sentry release deploy 1.0.0 production --url https://example.com",
+        run: "release deploy 1.0.0 production --url https://example.com",
       },
       {
         description: "Record a deploy duration in seconds",
-        command: "sentry release deploy 1.0.0 production --time 120",
+        run: "release deploy 1.0.0 production --time 120",
       },
       {
         description: "Preview without creating",
-        command: "sentry release deploy 1.0.0 production --dry-run",
+        run: "release deploy 1.0.0 production --dry-run",
       },
     ],
   },
   output: {
     human: formatDeployCreated,
+    schema: ReleaseDeployOutputSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version",
-          parse: parseOrgTarget,
-        },
+        releaseParameter(usageHint, "[<org>/]<version> - Release version"),
         {
           placeholder: "environment",
           brief: "Deploy environment (e.g. production)",
-          parse: String,
+          parse: parseEnvironment,
         },
         {
           placeholder: "name",
           brief:
             'Optional deploy name (quote multi-word names, e.g. "Deploy #42")',
-          parse: String,
+          parse: parseText,
           optional: true,
         },
       ],
@@ -141,19 +135,19 @@ export const deployCommand = buildCommand({
     flags: {
       url: {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "URL for the deploy",
         optional: true,
       },
       started: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Deploy start time (ISO 8601)",
         optional: true,
       },
       finished: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Deploy finish time (ISO 8601)",
         optional: true,
       },
@@ -179,21 +173,12 @@ export const deployCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string,
+    target: ReleaseTarget,
     environmentArg: string,
     nameArg?: string,
   ) {
-    const { cwd } = this;
-
-    const { version, orgSlug, environment, name } = parseDeployArgs(
-      target,
-      environmentArg,
-      nameArg,
-    );
-    const resolved = await resolveOrg({ org: orgSlug, cwd });
-    if (!resolved) {
-      throw new ContextError("Organization", USAGE_HINT);
-    }
+    const { environment, name } = parseDeployArgs(environmentArg, nameArg);
+    const { version, org } = await target.resolved;
 
     const body: Parameters<typeof createReleaseDeploy>[2] = { environment };
     if (name) {
@@ -237,7 +222,7 @@ export const deployCommand = buildCommand({
       return { hint: "Dry run — no deploy was created." };
     }
 
-    const deploy = await createReleaseDeploy(resolved.org, version, body);
+    const deploy = await createReleaseDeploy(org, version, body);
     yield new CommandOutput(deploy);
   },
 });

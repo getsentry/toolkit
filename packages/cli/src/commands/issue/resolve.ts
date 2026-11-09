@@ -25,13 +25,14 @@ import {
   updateIssueStatus,
 } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { ContextError } from "../../lib/errors.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { formatIssueDetails, muted } from "../../lib/formatters/index.js";
+import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import type { SentryIssue } from "../../types/index.js";
 import { resolveCommitSpec } from "./resolve-commit-spec.js";
-import { issueIdPositional, resolveIssue } from "./utils.js";
+import { type IssueTarget, issuePositional } from "./positional.js";
 
 const log = logger.withTag("issue.resolve");
 
@@ -87,8 +88,11 @@ function formatResolved(result: ResolveResult): string {
   return `${head}\n\n${formatIssueDetails(issue)}`;
 }
 
-function jsonTransform(result: ResolveResult): unknown {
-  return { ...result.issue, resolved_in: result.spec ?? undefined };
+function jsonTransform(result: ResolveResult, fields?: string[]): unknown {
+  return filterFieldsIfSet(
+    { ...result.issue, resolved_in: result.spec ?? undefined },
+    fields,
+  );
 }
 
 export const resolveCommand = buildCommand({
@@ -108,35 +112,34 @@ export const resolveCommand = buildCommand({
     examples: [
       {
         description: "Resolve immediately (no regression tracking)",
-        command: "sentry issue resolve CLI-G5",
+        run: "issue resolve CLI-G5",
       },
       {
         description:
           "Resolve in a specific release (newer releases flag regressions)",
-        command: "sentry issue resolve CLI-G5 --in 0.26.1",
+        run: "issue resolve CLI-G5 --in 0.26.1",
       },
       {
         description: "Monorepo-style release versions work too",
-        command: "sentry issue resolve CLI-G5 --in spotlight@1.2.3",
+        run: "issue resolve CLI-G5 --in spotlight@1.2.3",
       },
       {
         description: "Resolve in the next release",
-        command: "sentry issue resolve CLI-G5 --in @next",
+        run: "issue resolve CLI-G5 --in @next",
       },
       {
         description:
           "Resolve in the current git HEAD (auto-detects the Sentry repo from your origin remote)",
-        command: "sentry issue resolve CLI-G5 --in @commit",
+        run: "issue resolve CLI-G5 --in @commit",
       },
       {
         description:
           "Resolve in an explicit commit and repo (no git inspection)",
-        command:
-          "sentry issue resolve CLI-G5 --in @commit:getsentry/cli@abc123def",
+        run: "issue resolve CLI-G5 --in @commit:getsentry/cli@abc123def",
       },
       {
         description: "Resolve an issue in an explicit organization",
-        command: "sentry issue resolve my-org/CLI-G5",
+        run: "issue resolve my-org/CLI-G5",
       },
     ],
   },
@@ -145,11 +148,14 @@ export const resolveCommand = buildCommand({
     jsonTransform,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: COMMAND }),
     flags: {
       in: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser([
+          RESOLVE_NEXT_RELEASE_SENTINEL,
+          RESOLVE_COMMIT_SENTINEL,
+        ]),
         brief: `Resolve in a release, next release, or commit ('<version>' | '${RESOLVE_NEXT_RELEASE_SENTINEL}' | '${RESOLVE_COMMIT_SENTINEL}' | '${RESOLVE_COMMIT_EXPLICIT_PREFIX}<repo>@<sha>')`,
         optional: true,
       },
@@ -158,15 +164,11 @@ export const resolveCommand = buildCommand({
       i: "in",
     },
   },
-  async *func(this: SentryContext, flags: ResolveFlags, issueArg: string) {
+  async *func(this: SentryContext, flags: ResolveFlags, target: IssueTarget) {
     const { cwd } = this;
     const parsed = parseResolveSpec(flags.in);
 
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd,
-      command: COMMAND,
-    });
+    const { org, issue } = await target.resolved;
 
     // Static specs (release / next-release / omitted) are ready to send.
     // Commit specs need git + Sentry-repo lookup before they become a
@@ -175,16 +177,6 @@ export const resolveCommand = buildCommand({
     if (parsed?.kind === "static") {
       statusDetails = parsed.details;
     } else if (parsed?.kind === "commit") {
-      if (!org) {
-        // Sentry's InCommit validator looks up the repo by name within the
-        // issue's org — we can't resolve the commit without knowing the org.
-        throw new ContextError(
-          "Organization",
-          "sentry issue resolve <org>/<issue> --in @commit",
-          [],
-          "--in @commit needs an organization context to look up the Sentry repo registry.",
-        );
-      }
       const resolved = await resolveCommitSpec(parsed.spec, org, cwd);
       statusDetails = { inCommit: resolved };
     }
@@ -197,7 +189,7 @@ export const resolveCommand = buildCommand({
     log.debug(
       `Resolved ${updated.shortId} ${describeSpec(statusDetails ?? null)}`,
     );
-    yield new CommandOutput<ResolveResult>({
+    yield new CommandOutput({
       issue: updated,
       spec: statusDetails ?? null,
     });

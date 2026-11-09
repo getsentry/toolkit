@@ -19,28 +19,26 @@ Fix any failures before proceeding.
 This is the primary QA path for tool behavior. Stdio runs the local MCP server
 against prod Sentry without depending on the Cloudflare worker, local `/mcp`
 route, or Cloudflare OAuth configuration.
-When validating code or tool changes, build first because the test client
-launches `packages/mcp-server/dist/index.js`:
+The test client launches `sentry mcp` from CLI source
+(`pnpm --dir packages/cli run cli mcp`), which reads mcp-core's build output, so
+build first when validating code or tool changes:
 
 ```bash
 pnpm -w run build
 ```
 
-Check auth first:
+Check auth first. `sentry mcp` uses the CLI's credentials:
 
 ```bash
-pnpm --filter @sentry/mcp-server start auth status
+pnpm --filter sentry run cli auth status
 ```
 
-If no cache exists, warm the device-code cache:
+If you are not logged in, log in once (or pass `--access-token` to the test
+client):
 
 ```bash
-pnpm --filter @sentry/mcp-server start auth login
+pnpm --filter sentry run cli auth login
 ```
-
-Device-code auth uses the bundled stdio public client ID, requires no client
-secret, is separate from the Cloudflare OAuth app, and caches the token in
-`~/.sentry/mcp.json`.
 
 First prove startup and auth:
 
@@ -60,15 +58,15 @@ pnpm -w run cli --transport stdio \
 
 Passing QA means the local CLI prints `Connected to MCP server (stdio)`, uses
 the expected MCP tool path, and returns real prod data that demonstrates the
-behavior. For catalog tools, expect `search_sentry_tools` followed by
-`execute_sentry_tool(name: <changed_tool>)`. For direct tools, expect the tool name in
-the transcript. `--list-tools` alone is not QA.
+behavior. Expect the changed tool name in the transcript; with
+`EXPOSE_ALL_TOOLS` off, expect `search_sentry_tools` followed by
+`execute_sentry_tool(name: <changed_tool>)` instead. `--list-tools` alone is
+not QA.
 
-For mutating catalog-only tools, avoid live prod changes unless there is a
-disposable resource prepared for the test. Add or run a server-level
-`execute_sentry_tool` dispatch test with MSW coverage to prove catalog
-discovery, generated schema exposure, constraint injection, and tool dispatch
-without changing real Sentry data.
+For mutating tools, avoid live prod changes unless there is a disposable
+resource prepared for the test. Add or run a server-level dispatch test with
+MSW coverage to prove generated schema exposure, constraint injection, and tool
+dispatch without changing real Sentry data.
 
 For output-format changes, also inspect the raw MCP tool result when possible,
 not only the LLM's final answer. The final answer can add model-specific text
@@ -96,9 +94,9 @@ For agent-client-specific behavior, replace the default harness prompt with the
 same realistic prod prompt used for stdio QA. Passing QA requires the same
 changed-tool transcript evidence, not only `whoami`.
 
-as an isolated auth cache. Real clients do not give stdio subprocesses a TTY,
-so warm the cache before running the harness. It also runs the built
-`packages/mcp-server/dist/index.js`, so build first to avoid stale code.
+Real clients do not give stdio subprocesses a TTY, so log in with
+`sentry auth login` before running the harness. Build first to avoid stale
+mcp-core code.
 
 ## 4. Cloudflare HTTP Only When Relevant
 
@@ -144,7 +142,7 @@ dev-time source execution:
 
 ```bash
 pnpm -w run build
-pnpm --filter @sentry/mcp-server start auth status
+pnpm --filter sentry run cli auth status
 pnpm -w run cli --transport stdio "who am I?"
 ```
 

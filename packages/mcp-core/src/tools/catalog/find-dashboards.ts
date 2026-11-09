@@ -223,6 +223,7 @@ async function listProjectVisibleDashboards({
 
 export default defineTool({
   name: "find_dashboards",
+  title: "Find Dashboards",
   skills: ["inspect"],
   requiredScopes: ["org:read"],
   description: [
@@ -327,7 +328,9 @@ export default defineTool({
         id: String(dashboard.id),
         title: dashboard.title,
         widgetCount: dashboard.widgetPreview.length,
-        widgetTypes: Array.from(new Set(dashboard.widgetDisplay)),
+        widgetTypes: [
+          ...new Set(dashboard.widgetDisplay.filter((type) => type !== null)),
+        ],
         projects: dashboard.projects.map(String),
         environments: dashboard.environment,
         createdBy: dashboard.createdBy

@@ -198,6 +198,16 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
+/** An org list response from the control silo. */
+function orgListResponse(slugs: string[]): Response {
+  return new Response(
+    JSON.stringify(
+      slugs.map((slug, i) => ({ id: String(i + 1), slug, name: slug })),
+    ),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
 describe("resolveOrgAndIssueId", () => {
   test("uses a custom command domain in deep resolution suggestions", async () => {
     const error = await resolveIssue({
@@ -215,80 +225,27 @@ describe("resolveOrgAndIssueId", () => {
     ]);
   });
 
-  test("throws for numeric ID (org cannot be resolved)", async () => {
+  test("finds a numeric ID by searching the user's orgs", async () => {
+    const calls: string[] = [];
     // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
-      const url = req.url;
-
-      // Numeric ID is fetched directly
-      if (url.includes("/issues/123456789/")) {
+      calls.push(req.url);
+      const { pathname } = new URL(req.url);
+      if (pathname === "/api/0/organizations/") {
+        return orgListResponse(["other-org", "my-org"]);
+      }
+      if (pathname === "/api/0/organizations/my-org/issues/123456789/") {
         return new Response(
-          JSON.stringify({
-            id: "123456789",
-            shortId: "PROJECT-ABC",
-            title: "Test Issue",
-            status: "unresolved",
-            platform: "javascript",
-            type: "error",
-            count: "10",
-            userCount: 5,
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
+          JSON.stringify({ id: "123456789", shortId: "PROJECT-ABC" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
-
       return new Response(JSON.stringify({ detail: "Not found" }), {
         status: 404,
       });
     };
 
-    // Numeric IDs don't have org context, so resolveOrgAndIssueId should throw
-    await expect(
-      resolveOrgAndIssueId({
-        issueArg: "123456789",
-        cwd: getConfigDir(),
-        command: "explain",
-      }),
-    ).rejects.toThrow("organization");
-  });
-
-  test("resolves numeric ID when API response includes subdomain-style permalink", async () => {
-    // @ts-expect-error - partial mock
-    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const req = new Request(input, init);
-      const url = req.url;
-
-      if (url.includes("/issues/123456789/")) {
-        return new Response(
-          JSON.stringify({
-            id: "123456789",
-            shortId: "PROJECT-ABC",
-            title: "Test Issue",
-            status: "unresolved",
-            platform: "javascript",
-            type: "error",
-            count: "10",
-            userCount: 5,
-            // Org slug embedded in subdomain-style permalink
-            permalink: "https://my-org.sentry.io/issues/123456789/",
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      }
-
-      return new Response(JSON.stringify({ detail: "Not found" }), {
-        status: 404,
-      });
-    };
-
-    // Org should be extracted from permalink — no longer throws
     const result = await resolveOrgAndIssueId({
       issueArg: "123456789",
       cwd: getConfigDir(),
@@ -296,48 +253,28 @@ describe("resolveOrgAndIssueId", () => {
     });
     expect(result.org).toBe("my-org");
     expect(result.issueId).toBe("123456789");
+    expect(calls.some((u) => /\/api\/0\/issues\//.test(u))).toBe(false);
   });
 
-  test("resolves numeric ID when API response includes path-style permalink", async () => {
+  test("throws a not-found error when no org has the numeric ID", async () => {
     // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const req = new Request(input, init);
-      const url = req.url;
-
-      if (url.includes("/issues/55555555/")) {
-        return new Response(
-          JSON.stringify({
-            id: "55555555",
-            shortId: "BACKEND-XY",
-            title: "Another Issue",
-            status: "unresolved",
-            platform: "python",
-            type: "error",
-            count: "1",
-            userCount: 1,
-            // Path-style permalink (sentry.io/organizations/{org}/issues/{id}/)
-            permalink:
-              "https://sentry.io/organizations/acme-corp/issues/55555555/",
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
+      const { pathname } = new URL(new Request(input, init).url);
+      if (pathname === "/api/0/organizations/") {
+        return orgListResponse(["org-a", "org-b"]);
       }
-
       return new Response(JSON.stringify({ detail: "Not found" }), {
         status: 404,
       });
     };
 
-    const result = await resolveOrgAndIssueId({
-      issueArg: "55555555",
-      cwd: getConfigDir(),
-      command: "explain",
-    });
-    expect(result.org).toBe("acme-corp");
-    expect(result.issueId).toBe("55555555");
+    await expect(
+      resolveOrgAndIssueId({
+        issueArg: "123456789",
+        cwd: getConfigDir(),
+        command: "explain",
+      }),
+    ).rejects.toThrow("123456789");
   });
 
   test("resolves explicit org prefix (org/ISSUE-ID)", async () => {
@@ -1086,33 +1023,25 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
     expect(getCachedIssueOrg("77777777")).toBe("cached-org");
   });
 
-  test("evicts stale cache entry on 404 and uses permalink org (does not leak stale slug)", async () => {
+  test("evicts a stale cache entry on 404 and searches the other orgs", async () => {
     const { setCachedIssueOrg, getCachedIssueOrg } =
       await import("../../../src/lib/db/issue-org-cache.js");
     // Seed a stale mapping that will 404 on the org-scoped endpoint.
     setCachedIssueOrg("88888888", "stale-org");
     setOrgRegion("stale-org", DEFAULT_SENTRY_URL);
-    setOrgRegion("correct-org", DEFAULT_SENTRY_URL);
 
+    const calls: string[] = [];
     // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
-      const url = req.url;
-      // Org-scoped call with the stale org → 404.
-      if (url.includes("/organizations/stale-org/issues/88888888/")) {
-        return new Response(JSON.stringify({ detail: "Not found" }), {
-          status: 404,
-        });
+      calls.push(req.url);
+      const { pathname } = new URL(req.url);
+      if (pathname === "/api/0/organizations/") {
+        return orgListResponse(["stale-org", "correct-org"]);
       }
-      // Legacy unscoped fallback returns the correct org via permalink.
-      if (/\/api\/0\/issues\/88888888\/(\?|$)/.test(url)) {
+      if (pathname === "/api/0/organizations/correct-org/issues/88888888/") {
         return new Response(
-          JSON.stringify({
-            id: "88888888",
-            shortId: "CORRECT-1",
-            permalink:
-              "https://sentry.io/organizations/correct-org/issues/88888888/",
-          }),
+          JSON.stringify({ id: "88888888", shortId: "CORRECT-1" }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
@@ -1127,32 +1056,29 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
       command: "view",
     });
 
-    // Critical assertion: the returned org is the CORRECT one from the
-    // permalink, NOT the stale cached slug.
     expect(result.org).toBe("correct-org");
-    expect(result.org).not.toBe("stale-org");
-    // The stale cache entry should have been evicted and replaced with
-    // the corrected mapping from the permalink.
     expect(getCachedIssueOrg("88888888")).toBe("correct-org");
+    // The search skips the org that just 404ed.
+    expect(
+      calls.filter((u) =>
+        u.includes("/organizations/stale-org/issues/88888888/"),
+      ),
+    ).toHaveLength(1);
   });
 
-  test("writes numeric-id → org mapping after legacy unscoped fallback", async () => {
+  test("writes the numeric-id → org mapping after an org search", async () => {
     const { getCachedIssueOrg } =
       await import("../../../src/lib/db/issue-org-cache.js");
-    setOrgRegion("fresh-org", DEFAULT_SENTRY_URL);
 
     // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const req = new Request(input, init);
-      // Match /api/0/issues/99999999/ regardless of query string (?collapse=...).
-      if (/\/api\/0\/issues\/99999999\/(\?|$)/.test(req.url)) {
+      const { pathname } = new URL(new Request(input, init).url);
+      if (pathname === "/api/0/organizations/") {
+        return orgListResponse(["other-org", "fresh-org"]);
+      }
+      if (pathname === "/api/0/organizations/fresh-org/issues/99999999/") {
         return new Response(
-          JSON.stringify({
-            id: "99999999",
-            shortId: "FRESH-1",
-            permalink:
-              "https://sentry.io/organizations/fresh-org/issues/99999999/",
-          }),
+          JSON.stringify({ id: "99999999", shortId: "FRESH-1" }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
@@ -1180,7 +1106,7 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
     setCachedIssueOrg("66666666", "still-valid-org");
     setOrgRegion("still-valid-org", DEFAULT_SENTRY_URL);
 
-    let legacyFallbackCalled = false;
+    let orgSearchStarted = false;
     // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
@@ -1190,23 +1116,18 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
           status: 500,
         });
       }
-      if (/\/api\/0\/issues\/66666666\/(\?|$)/.test(url)) {
-        legacyFallbackCalled = true;
-        return new Response(
-          JSON.stringify({
-            id: "66666666",
-            permalink:
-              "https://sentry.io/organizations/still-valid-org/issues/66666666/",
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
+      if (new URL(url).pathname === "/api/0/organizations/") {
+        return orgListResponse(["still-valid-org", "other-org"]);
+      }
+      if (url.includes("/organizations/other-org/issues/66666666/")) {
+        orgSearchStarted = true;
       }
       return new Response(JSON.stringify({ detail: "Not found" }), {
         status: 404,
       });
     };
 
-    // Error must propagate — the helper only falls back on 404, not on 5xx.
+    // Error must propagate — the helper only searches on 404, not on 5xx.
     await expect(
       resolveOrgAndIssueId({
         issueArg: "66666666",
@@ -1218,8 +1139,8 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
     // Cache must NOT have been evicted — the failure was transient, the
     // mapping may still be correct.
     expect(getCachedIssueOrg("66666666")).toBe("still-valid-org");
-    // Legacy fallback must NOT have been reached.
-    expect(legacyFallbackCalled).toBe(false);
+    // The org search must NOT have been reached.
+    expect(orgSearchStarted).toBe(false);
   });
 });
 
@@ -2411,7 +2332,12 @@ describe("resolveIssue with share URLs", () => {
         command: "view",
       }),
     ).rejects.toBeInstanceOf(ContextError);
-    expect(requests).toEqual([]);
+    // Only the account's org list may be read, to find a sole org
+    expect(
+      requests.filter(
+        (url) => new URL(url).pathname !== "/api/0/organizations/",
+      ),
+    ).toEqual([]);
   });
 
   test("reports an expired share link without fetching issue details", async () => {
@@ -2434,6 +2360,71 @@ describe("resolveIssue with share URLs", () => {
     });
     expect(requests).toEqual([
       `https://test-org.sentry.io/api/0/organizations/test-org/shared/issues/${shareId}/`,
+    ]);
+  });
+});
+
+describe("resolveIssue with search text", () => {
+  useEnvSandbox(["SENTRY_ORG", "SENTRY_PROJECT", "SENTRY_DSN"]);
+
+  /** Issues the search returns, and the queries it got */
+  function mockSearch(
+    issues: readonly { id: string; shortId: string; title: string }[],
+  ): URLSearchParams[] {
+    const queries: URLSearchParams[] = [];
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      if (url.pathname === "/api/0/organizations/my-org/issues/") {
+        queries.push(url.searchParams);
+        return Response.json(
+          issues.map((issue) => ({ ...issue, status: "unresolved" })),
+        );
+      }
+      return Response.json({ detail: "Not found" }, { status: 404 });
+    });
+    return queries;
+  }
+
+  function resolve(issueArg: string) {
+    process.env.SENTRY_ORG = "my-org";
+    return resolveIssue({ issueArg, cwd: getConfigDir(), command: "view" });
+  }
+
+  test("resolves the one issue the text matches, in the detected org", async () => {
+    const queries = mockSearch([
+      { id: "1", shortId: "CLI-G", title: "Login timeout" },
+    ]);
+    const result = await resolve("login timeout");
+    expect(result.org).toBe("my-org");
+    expect(result.issue.shortId).toBe("CLI-G");
+    expect(queries[0]?.get("query")).toBe("login timeout");
+  });
+
+  test("no match is a ResolutionError pointing at issue list", async () => {
+    mockSearch([]);
+    const error = await resolve("login timeout").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ResolutionError);
+    expect((error as ResolutionError).message).toContain(
+      "matched no issues in 'my-org'",
+    );
+    expect((error as ResolutionError).hint).toBe(
+      "sentry issue list my-org/ --query 'login timeout'",
+    );
+  });
+
+  test("several matches are a ResolutionError listing them", async () => {
+    mockSearch([
+      { id: "1", shortId: "CLI-G", title: "Login timeout" },
+      { id: "2", shortId: "CLI-H", title: "Login timeout on retry" },
+    ]);
+    const error = await resolve("login timeout").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ResolutionError);
+    expect((error as ResolutionError).message).toContain(
+      "matched 2 issues in 'my-org'",
+    );
+    expect((error as ResolutionError).suggestions).toEqual([
+      "sentry issue view my-org/CLI-G  (Login timeout)",
+      "sentry issue view my-org/CLI-H  (Login timeout on retry)",
     ]);
   });
 });

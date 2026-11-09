@@ -19,7 +19,7 @@ import {
   resetAuthenticatedFetch,
 } from "../../src/lib/sentry-client.js";
 import { initSentry } from "../../src/lib/telemetry.js";
-import { mockFetch, useTestConfigDir } from "../helpers.js";
+import { mockFetch, useEnvSandbox, useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("sentry-client-");
 
@@ -399,7 +399,8 @@ describe("429 rate limiting", () => {
       if (calls > 1) {
         return jsonResponse({ ok: true });
       }
-      // Server clock an hour behind ours: the Date header keeps the wait at 1s.
+      // Server clock an hour behind ours: the Date header bounds the wait to
+      // the 1s window (plus jitter) instead of an hour.
       const serverNow = Math.floor(Date.now() / 1000) - 3600;
       return jsonResponse(
         { detail: "Limit is 40 requests in 1 seconds" },
@@ -420,7 +421,7 @@ describe("429 rate limiting", () => {
 
     expect(res.status).toBe(200);
     expect(calls).toBe(2);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(900);
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 
   test("throws RateLimitError with the wait when it exceeds the cap", async () => {
@@ -465,7 +466,7 @@ describe("429 rate limiting", () => {
 
     expect(error).toBeInstanceOf(RateLimitError);
     expect((error as RateLimitError).format()).toContain("Retry in 1 second;");
-    // MAX_RETRIES = 2 → attempts 0, 1, 2.
+    // RETRY_POLICY.maxRetries = 2 → attempts 0, 1, 2.
     expect(calls).toBe(3);
   });
 
@@ -580,7 +581,7 @@ describe("fetchWithTimeout internal timeout classification", () => {
       expect((thrown as TimeoutError).message).toContain(
         "Request timed out after",
       );
-      // MAX_RETRIES = 2 → attempts 0, 1, 2.
+      // RETRY_POLICY.maxRetries = 2 → attempts 0, 1, 2.
       expect(calls).toBe(3);
     } finally {
       restore();
@@ -616,10 +617,55 @@ describe("fetchWithTimeout internal timeout classification", () => {
       expect((error as TimeoutError).hint).toContain(
         "may still have been applied",
       );
+      expect((error as TimeoutError).hint).toContain(
+        "Check Sentry's status with: sentry status",
+      );
       expect(calls).toBe(1);
     } finally {
       restore();
     }
+  });
+
+  describe("on a self-hosted server", () => {
+    useEnvSandbox(["SENTRY_URL", "SENTRY_HOST"]);
+
+    test("points at that server instead of the sentry.io status page", async () => {
+      setAuthToken("self-hosted-token", undefined, undefined, {
+        host: "https://sentry.example.com",
+        newAccount: true,
+      });
+      const marker = "___self-hosted-timeout-test___";
+      const restore = __injectTimeoutOverrideForTests({
+        pattern: new RegExp(`/${marker}/`),
+        timeoutMs: 50,
+      });
+
+      try {
+        globalThis.fetch = mockFetch(async (_input, init) => {
+          return await new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => reject(new DOMException("aborted", "AbortError")),
+              { once: true },
+            );
+          });
+        });
+
+        const error = await getAuthenticatedFetch()(
+          `https://sentry.example.com/${marker}/`,
+          { method: "POST", body: "{}" },
+        ).catch((err: unknown) => err);
+
+        expect(error).toBeInstanceOf(TimeoutError);
+        const hint = (error as TimeoutError).hint ?? "";
+        expect(hint).toContain(
+          "Check the server's health with: sentry status --url https://sentry.example.com",
+        );
+        expect(hint).not.toContain("status.sentry.io");
+      } finally {
+        restore();
+      }
+    });
   });
 });
 

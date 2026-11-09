@@ -9,6 +9,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { closeDatabase } from "../../src/lib/db/index.js";
+import { withEnv } from "../../src/lib/env.js";
 import {
   captureEnvTokenHost,
   resetEnvTokenHostForTesting,
@@ -212,6 +213,25 @@ token = sntrys_test
     expect(result1.org).toBe("first");
     expect(result2.org).toBe("second");
     expect(result1).not.toBe(result2);
+  });
+
+  test("keys the cache by the active config dir", async () => {
+    const dirA = join(testDir, "config-a");
+    const dirB = join(testDir, "config-b");
+    const cwd = join(testDir, "project");
+    for (const dir of [dirA, dirB, cwd]) {
+      mkdirSync(dir, { recursive: true });
+    }
+    writeRcFile(dirA, "[defaults]\norg = from-a\n");
+    writeRcFile(dirB, "[defaults]\norg = from-b\n");
+
+    const load = (configDir: string) =>
+      withEnv({ ...process.env, SENTRY_CONFIG_DIR: configDir }, () =>
+        loadSentryCliRc(cwd),
+      );
+
+    expect((await load(dirA)).org).toBe("from-a");
+    expect((await load(dirB)).org).toBe("from-b");
   });
 
   test("invalid INI content is gracefully handled", async () => {

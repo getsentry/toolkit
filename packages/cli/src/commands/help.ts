@@ -12,6 +12,7 @@
 
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
+import { parseCommandPath } from "../lib/completion-target.js";
 import { OutputError } from "../lib/errors.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import {
@@ -19,11 +20,12 @@ import {
   introspectAllCommands,
   introspectCommand,
 } from "../lib/help.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 export const helpCommand = buildCommand({
   auth: false,
   docs: {
-    brief: "Display help for a command",
+    brief: topLevelBrief("help"),
     fullDescription:
       "Display help information. Run 'sentry' for an overview, 'sentry help' " +
       "to list every command, " +
@@ -40,7 +42,7 @@ export const helpCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Command to get help for",
-        parse: String,
+        parse: parseCommandPath,
         placeholder: "command",
       },
     },

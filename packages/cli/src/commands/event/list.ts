@@ -9,6 +9,8 @@
 
 import type { SentryContext } from "../../context.js";
 import { listIssueEvents } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
+import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -23,12 +25,8 @@ import {
   serializeTimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import { IssueEventSchema } from "../../types/index.js";
-import {
-  buildCommandHint,
-  issueIdPositional,
-  resolveIssue,
-} from "../issue/utils.js";
+import { type IssueTarget, issuePositional } from "../issue/positional.js";
+import { buildCommandHint } from "../issue/utils.js";
 import {
   appendEventsFlags,
   EVENTS_ALIASES,
@@ -37,6 +35,7 @@ import {
   formatEventsHuman,
   jsonTransformEvents,
 } from "./shared-events.js";
+import { IssueEventSchema } from "../../generated/output-schemas/event.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -46,7 +45,7 @@ import {
 const COMMAND_NAME = "list";
 
 /** Base command prefix for error hints */
-const COMMAND_BASE = "sentry event";
+const commandBase = () => sentry`event`;
 
 /** Command key for pagination cursor storage */
 const PAGINATION_KEY = "event-list";
@@ -60,7 +59,7 @@ function nextPageHint(
   issueArg: string,
   flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
-  return appendEventsFlags(`sentry event list ${issueArg} -c next`, flags);
+  return appendEventsFlags(sentry`event list ${issueArg} -c next`, flags);
 }
 
 /** Build the CLI hint for fetching the previous page, preserving active flags. */
@@ -68,7 +67,7 @@ function prevPageHint(
   issueArg: string,
   flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
-  return appendEventsFlags(`sentry event list ${issueArg} -c prev`, flags);
+  return appendEventsFlags(sentry`event list ${issueArg} -c prev`, flags);
 }
 
 // ---------------------------------------------------------------------------
@@ -81,8 +80,7 @@ export const listCommand = buildListCommand("event", {
     fullDescription:
       "List events belonging to a Sentry issue.\n\n" +
       "Issue formats:\n" +
-      "  @latest          - Most recent unresolved issue\n" +
-      "  @most_frequent   - Issue with highest event frequency\n" +
+      issueSelectorHelp() +
       "  <org>/ID         - Explicit org: sentry/EXTENSION-7\n" +
       "  <project>-suffix - Project + suffix: cli-G\n" +
       "  ID               - Short ID: CLI-G\n" +
@@ -90,39 +88,39 @@ export const listCommand = buildListCommand("event", {
     examples: [
       {
         description: "List events for an issue (short ID)",
-        command: "sentry event list PROJ-ABC",
+        run: "event list PROJ-ABC",
       },
       {
         description: "List events for an issue (numeric ID)",
-        command: "sentry event list 123456789",
+        run: "event list 123456789",
       },
       {
         description: "List events for the most recent issue",
-        command: "sentry event list @latest --limit 50",
+        run: "event list @latest --limit 50",
       },
       {
         description: "Filter by search query",
-        command: 'sentry event list PROJ-ABC --query "browser:Chrome"',
+        run: 'event list PROJ-ABC --query "browser:Chrome"',
       },
       {
         description: "Include full event bodies (stacktraces)",
-        command: "sentry event list PROJ-ABC --full",
+        run: "event list PROJ-ABC --full",
       },
       {
         description: "Limit results and time range",
-        command: "sentry event list PROJ-ABC --limit 50 --period 24h",
+        run: "event list PROJ-ABC --limit 50 --period 24h",
       },
       {
         description: "Fetch the next page",
-        command: "sentry event list PROJ-ABC -c next",
+        run: "event list PROJ-ABC -c next",
       },
       {
         description: "Fetch the previous page",
-        command: "sentry event list PROJ-ABC -c prev",
+        run: "event list PROJ-ABC -c prev",
       },
       {
         description: "Output as JSON",
-        command: "sentry event list PROJ-ABC --json",
+        run: "event list PROJ-ABC --json",
       },
     ],
   },
@@ -132,34 +130,32 @@ export const listCommand = buildListCommand("event", {
     schema: IssueEventSchema,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({
+      command: COMMAND_NAME,
+      commandBase: commandBase,
+    }),
     flags: EVENTS_FLAGS,
     aliases: EVENTS_ALIASES,
   },
-  async *func(this: SentryContext, flags: EventsFlags, issueArg: string) {
-    // interceptSubcommand (in buildListCommand) may replace the positional
-    // with undefined when the user types e.g. "sentry events view" via the
-    // plural alias. The tip message is already printed — just bail out.
+  async *func(this: SentryContext, flags: EventsFlags, target: IssueTarget) {
+    // interceptSubcommand (in buildListCommand) may drop the positional when
+    // the user types e.g. "sentry events view" via the plural alias. The tip
+    // message is already printed — just bail out.
+    const issueArg = target.raw;
     if (!issueArg) {
       return;
     }
 
-    const { cwd } = this;
     const timeRange = flags.period;
 
     // Resolve issue using shared resolution logic (supports @latest, short IDs, etc.)
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd,
-      command: COMMAND_NAME,
-      commandBase: COMMAND_BASE,
-    });
+    const { org, issue } = await target.resolved;
 
     // Org is required for region-routed events endpoint
     if (!org) {
       throw new ContextError(
         "Organization",
-        buildCommandHint(COMMAND_NAME, issueArg, COMMAND_BASE),
+        buildCommandHint(COMMAND_NAME, issueArg, commandBase()),
       );
     }
 
@@ -213,7 +209,7 @@ export const listCommand = buildListCommand("event", {
       const countText = `Showing ${events.length} event${events.length === 1 ? "" : "s"}.`;
       hint = nav
         ? `${countText} ${nav}`
-        : `${countText} Use 'sentry event view <EVENT_ID>' to view full event details.`;
+        : `${countText} Use '${sentry`event view <EVENT_ID>`}' to view full event details.`;
     }
 
     yield new CommandOutput({

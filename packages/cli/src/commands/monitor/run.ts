@@ -34,13 +34,22 @@ import {
   resolveIngestDsn,
   sendEnvelopeRequest,
 } from "../../lib/envelope/transport.js";
+import {
+  choiceParser,
+  parseDsn,
+  parseEnvironment,
+  parseMonitorCommand,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { CliError, ConfigError, ValidationError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("monitor.run");
 
 /** Usage hint shown when no command is provided. */
-const USAGE_HINT = "sentry monitor run <monitor-slug> -- <command>";
+const usageHint = () => sentry`monitor run <monitor-slug> -- <command>`;
 
 type RunFlags = CheckInConfigFlags & {
   dsn?: string;
@@ -76,7 +85,7 @@ async function resolveCheckInDsn(
 
   throw new ConfigError(
     "No DSN found. Provide one via --dsn <dsn>, set the SENTRY_DSN environment variable, or run from a project where a DSN can be detected.",
-    USAGE_HINT,
+    usageHint(),
   );
 }
 
@@ -176,18 +185,19 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
     examples: [
       {
         description: "Wrap a command with cron monitor check-ins (DSN-based)",
-        command:
-          "SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 sentry monitor run nightly-job -- python manage.py cron",
+        run: {
+          prefix: "SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 ",
+          args: "monitor run nightly-job -- python manage.py cron",
+        },
       },
       {
         description:
           "The -- separator is optional when the command has no flags",
-        command: "sentry monitor run nightly-job npm run task",
+        run: "monitor run nightly-job npm run task",
       },
       {
         description: "Create or update the monitor on the first check-in",
-        command:
-          'sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh',
+        run: 'monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh',
       },
     ],
   },
@@ -197,61 +207,61 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
       kind: "array",
       parameter: {
         brief: "Monitor slug followed by the command to run",
-        parse: String,
+        parse: parseMonitorCommand,
         placeholder: "monitor-slug command",
       },
     },
     flags: {
       dsn: {
         kind: "parsed",
-        parse: String,
+        parse: parseDsn,
         brief: "DSN to send check-ins to (overrides SENTRY_DSN env var)",
         optional: true,
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironment,
         brief: "Environment of the monitor",
         default: "production",
       },
       schedule: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Upsert the monitor with this crontab schedule (e.g. '0 * * * *')",
         optional: true,
       },
       "check-in-margin": {
         kind: "parsed",
-        parse: parsePositiveInt,
+        parse: textParser(parsePositiveInt),
         brief:
           "Minutes after the expected check-in before it is missed (requires --schedule)",
         optional: true,
       },
       "max-runtime": {
         kind: "parsed",
-        parse: parsePositiveInt,
+        parse: textParser(parsePositiveInt),
         brief:
           "Minutes a check-in may run before timing out (requires --schedule)",
         optional: true,
       },
       timezone: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(Intl.supportedValuesOf("timeZone")),
         brief:
           "Timezone of the schedule, tz database string (requires --schedule)",
         optional: true,
       },
       "failure-issue-threshold": {
         kind: "parsed",
-        parse: parsePositiveInt,
+        parse: textParser(parsePositiveInt),
         brief:
           "Consecutive failures before an issue is created (requires --schedule)",
         optional: true,
       },
       "recovery-threshold": {
         kind: "parsed",
-        parse: parsePositiveInt,
+        parse: textParser(parsePositiveInt),
         brief:
           "Consecutive successes before an issue is resolved (requires --schedule)",
         optional: true,
@@ -275,13 +285,13 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
 
     if (!monitorSlug) {
       throw new ValidationError(
-        `No monitor slug provided. Usage: ${USAGE_HINT}`,
+        `No monitor slug provided. Usage: ${usageHint()}`,
         "monitor-slug",
       );
     }
     if (command.length === 0) {
       throw new ValidationError(
-        `No command provided. Usage: ${USAGE_HINT}`,
+        `No command provided. Usage: ${usageHint()}`,
         "command",
       );
     }
