@@ -457,6 +457,7 @@ export default defineTool({
     "- **IMPORTANT**: If user provides a Sentry URL, pass the ENTIRE URL to issueUrl parameter unchanged",
     "- When using issueUrl, all other parameters are automatically extracted - don't provide them separately",
     "- If using issueId (not URL), then organizationSlug is required",
+    "- To close the issue from a commit, put `Fixes <issue.shortId>` in the commit message, or `Fixes <issue.url>` when shortId is only digits",
     "</hints>",
   ].join("\n"),
   inputSchema: {
