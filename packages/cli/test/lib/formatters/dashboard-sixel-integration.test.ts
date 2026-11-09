@@ -116,6 +116,80 @@ describe("dashboard sixel integration", () => {
     expect(output).toContain('"1;1;320;144');
   });
 
+  test("keeps complete transformed tables outside the graphics canvas and widget height", () => {
+    const output = formatDashboardWithData(
+      makeDashboardData({
+        widgets: [
+          makeWidget({
+            title: "Derived",
+            layout: { x: 0, y: 0, w: 1, h: 1 },
+            data: {
+              type: "transformed_timeseries",
+              queries: [
+                {
+                  queryIndex: 0,
+                  requestedInterval: "5m",
+                  yAxes: ["avg(span.duration)", "avg(span.duration)"],
+                  transformations: {
+                    "0": ["fill(locf)"],
+                    "1": ["smooth(sma,3)"],
+                  },
+                  response: {
+                    timeSeries: [0, 1].map((axis) => ({
+                      yAxis: "avg(span.duration)",
+                      groupBy: [{ key: "span.op", value: "http.server" }],
+                      meta: {
+                        interval: 300_000,
+                        valueType: "duration",
+                        valueUnit: "millisecond",
+                      },
+                      values: [
+                        {
+                          timestamp: 1_700_000_000_000,
+                          value: null,
+                          incomplete: false,
+                          filled: false,
+                          smoothed: false,
+                        },
+                        {
+                          timestamp: 1_700_000_300_000,
+                          value: -1.25 - axis,
+                          comparisonValue: 2.75,
+                          incomplete: false,
+                          filled: true,
+                          smoothed: true,
+                        },
+                      ],
+                    })),
+                  },
+                },
+              ],
+            },
+          }),
+        ],
+      }),
+    );
+    expect(output).toContain(`${ESC}P`);
+    const appendix = output.slice(output.lastIndexOf(`${ESC}\\`) + 2);
+    for (const value of [
+      "Query 1, axis 1",
+      "Query 1, axis 2",
+      "http.server",
+      "null",
+      "-1.25",
+      "-2.25",
+      "2.75",
+      "filled",
+      "smoothed",
+      "false",
+      "true",
+      "millisecond",
+      "300000",
+    ]) {
+      expect(appendix).toContain(value);
+    }
+  });
+
   test("logs the selected sixel graphics renderer and its detected capabilities", () => {
     const debugSpy = vi.spyOn(logger, "debug");
 

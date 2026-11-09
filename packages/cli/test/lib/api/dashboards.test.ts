@@ -24,12 +24,14 @@ const {
   listOrganizationEventsMock,
   listOrganizationEventsTimeseriesMock,
   reportCliErrorMock,
+  getOrganizationMock,
   restoreOrganizationDashboardRevisionMock,
 } = vi.hoisted(() => ({
   listOrganizationDashboardRevisionsMock: vi.fn(),
   listOrganizationEventsMock: vi.fn(),
   listOrganizationEventsTimeseriesMock: vi.fn(),
   reportCliErrorMock: vi.fn(),
+  getOrganizationMock: vi.fn(),
   restoreOrganizationDashboardRevisionMock: vi.fn(),
 }));
 
@@ -44,6 +46,10 @@ vi.mock("@sentry/api", async (importOriginal) => {
       restoreOrganizationDashboardRevisionMock,
   };
 });
+
+vi.mock("../../../src/lib/api/organizations.js", () => ({
+  getOrganization: getOrganizationMock,
+}));
 
 vi.mock("../../../src/lib/error-reporting.js", () => ({
   reportCliError: reportCliErrorMock,
@@ -813,5 +819,261 @@ describe("queryAllWidgets timeseries", () => {
     });
 
     expect(results.get(0)).toMatchObject({ type: "error" });
+  });
+});
+
+describe("saved dashboard transformations", () => {
+  const region = "https://us.sentry.io";
+  const transformations = { "0": ["smooth(sma,3)"] };
+  const series = {
+    yAxis: "count()",
+    meta: { valueType: "integer", valueUnit: null, interval: 120_000 },
+    values: [
+      {
+        timestamp: 1_700_000_000_000,
+        value: null,
+        incomplete: false,
+        filled: false,
+        smoothed: false,
+      },
+    ],
+  };
+
+  function widget(overrides: Partial<DashboardWidget> = {}): DashboardWidget {
+    return {
+      title: "Derived",
+      widgetType: "spans",
+      displayType: "line",
+      interval: "2m",
+      queries: [{ aggregates: ["count()"], transformations }],
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    listOrganizationEventsTimeseriesMock.mockReset();
+    getOrganizationMock.mockReset();
+    getOrganizationMock.mockResolvedValue({
+      features: ["explore-interpolation-and-smoothing"],
+    });
+    listOrganizationEventsTimeseriesMock.mockResolvedValue({
+      response: new Response(),
+      data: { timeSeries: [series] },
+    });
+  });
+
+  test.each(["spans", "logs", "tracemetrics"])(
+    "preserves every saved query for %s with one capability lookup",
+    async (widgetType) => {
+      const aggregate =
+        widgetType === "tracemetrics"
+          ? "avg(value,latency,distribution,millisecond)"
+          : "count()";
+      const response = { timeSeries: [{ ...series, yAxis: aggregate }] };
+      listOrganizationEventsTimeseriesMock.mockResolvedValue({
+        response: new Response(),
+        data: response,
+      });
+      const queries = [
+        { aggregates: [aggregate], transformations },
+        { aggregates: [aggregate] },
+      ];
+      const dashboard = makeDashboard([
+        widget({ widgetType, queries }),
+        widget({ widgetType, queries }),
+      ]);
+      const result = await queryAllWidgets(region, "org", dashboard);
+      expect(result.get(0)).toEqual({
+        type: "transformed_timeseries",
+        queries: [
+          {
+            queryIndex: 0,
+            requestedInterval: "2m",
+            yAxes: [aggregate],
+            transformations,
+            response,
+          },
+          {
+            queryIndex: 1,
+            requestedInterval: "2m",
+            yAxes: [aggregate],
+            transformations: {},
+            response,
+          },
+        ],
+      });
+      expect(result.get(1)).toEqual(result.get(0));
+      expect(getOrganizationMock).toHaveBeenCalledTimes(1);
+      expect(
+        listOrganizationEventsTimeseriesMock.mock.calls[0]?.[0].query,
+      ).toMatchObject({
+        dataset: widgetType,
+        "transformations[0]": ["smooth(sma,3)"],
+      });
+    },
+  );
+
+  test("keeps saved and requested intervals independent of terminal size", async () => {
+    const savedColumns = process.stdout.columns;
+    try {
+      for (const width of [40, 240]) {
+        process.stdout.columns = width;
+        expect(computeOptimalInterval("24h", widget())).toBe("2m");
+        const result = await queryAllWidgets(
+          region,
+          "org",
+          makeDashboard([widget()]),
+          {
+            interval: "5m",
+            start: "2026-01-01T00:00:00Z",
+            end: "2026-01-01T01:00:00Z",
+            periodSeconds: 3600,
+          },
+        );
+        expect(result.get(0)).toMatchObject({
+          type: "transformed_timeseries",
+          queries: [
+            {
+              requestedInterval: "5m",
+              response: { timeSeries: [{ meta: { interval: 120_000 } }] },
+            },
+          ],
+        });
+        expect(
+          listOrganizationEventsTimeseriesMock.mock.calls.at(-1)?.[0].query,
+        ).toMatchObject({
+          interval: "5m",
+          statsPeriod: undefined,
+          start: "2026-01-01T00:00:00Z",
+          end: "2026-01-01T01:00:00Z",
+        });
+      }
+    } finally {
+      process.stdout.columns = savedColumns;
+    }
+  });
+
+  test.each([
+    ["spans", "table"],
+    ["logs", "big_number"],
+    ["error-events", "line"],
+    ["spans", "text"],
+    ["spans", "wheel"],
+  ])(
+    "reports transformed %s %s widgets without requesting raw data",
+    async (widgetType, displayType) => {
+      const result = await queryAllWidgets(
+        region,
+        "org",
+        makeDashboard([widget({ widgetType, displayType })]),
+      );
+      expect(result.get(0)).toEqual({
+        type: "unsupported",
+        reason: `Saved transformations are not supported for ${widgetType} ${displayType} widgets`,
+      });
+      expect(listOrganizationEventsTimeseriesMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test("reports unavailable transformations while rendering an ordinary sibling", async () => {
+    getOrganizationMock.mockResolvedValue({ features: [] });
+    const result = await queryAllWidgets(
+      region,
+      "org",
+      makeDashboard([
+        widget(),
+        { title: "Notes", displayType: "text", description: "Still works" },
+      ]),
+    );
+    expect(result.get(0)).toEqual({
+      type: "unsupported",
+      reason:
+        "Saved transformations require the explore-interpolation-and-smoothing feature, which is unavailable for this organization",
+    });
+    expect(result.get(1)).toEqual({ type: "text", content: "Still works" });
+    expect(listOrganizationEventsTimeseriesMock).not.toHaveBeenCalled();
+  });
+
+  test("retains empty results without inventing an executed interval", async () => {
+    listOrganizationEventsTimeseriesMock.mockResolvedValue({
+      response: new Response(),
+      data: { timeSeries: [] },
+    });
+    const result = await queryAllWidgets(
+      region,
+      "org",
+      makeDashboard([widget()]),
+    );
+    expect(result.get(0)).toEqual({
+      type: "transformed_timeseries",
+      queries: [
+        {
+          queryIndex: 0,
+          requestedInterval: "2m",
+          yAxes: ["count()"],
+          transformations,
+          response: { timeSeries: [] },
+        },
+      ],
+    });
+  });
+
+  test("reports a server that silently ignores saved transformations", async () => {
+    listOrganizationEventsTimeseriesMock.mockResolvedValue({
+      response: new Response(),
+      data: {
+        timeSeries: [
+          {
+            ...series,
+            values: [
+              { timestamp: 1_700_000_000_000, value: 3, incomplete: false },
+            ],
+          },
+        ],
+      },
+    });
+    const result = await queryAllWidgets(
+      region,
+      "org",
+      makeDashboard([widget()]),
+    );
+    expect(result.get(0)).toMatchObject({
+      type: "error",
+      message: expect.stringContaining("did not confirm execution"),
+    });
+  });
+
+  test("rejects misaligned response axes and invalid saved axis positions", async () => {
+    listOrganizationEventsTimeseriesMock.mockResolvedValue({
+      response: new Response(),
+      data: { timeSeries: [{ ...series, yAxis: "sum(span.duration)" }] },
+    });
+    const mismatched = await queryAllWidgets(
+      region,
+      "org",
+      makeDashboard([widget()]),
+    );
+    expect(mismatched.get(0)).toMatchObject({
+      type: "error",
+      message: expect.stringContaining("incompatible transformed axis order"),
+    });
+    const invalid = await queryAllWidgets(
+      region,
+      "org",
+      makeDashboard([
+        widget({
+          queries: [
+            {
+              aggregates: ["count()"],
+              transformations: { "1": ["fill(zero)"] },
+            },
+          ],
+        }),
+      ]),
+    );
+    expect(invalid.get(0)).toMatchObject({
+      type: "error",
+      message: expect.stringContaining("existing yAxis position"),
+    });
   });
 });

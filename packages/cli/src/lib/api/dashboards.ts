@@ -39,11 +39,12 @@ import {
   type TextResult,
   TIMESERIES_DISPLAY_TYPES,
   type TimeseriesResult,
+  type TransformedTimeseriesResult,
   type WidgetDataResult,
 } from "../../types/dashboard.js";
 import type { EventsDataset } from "../datasets.js";
 import { reportCliError } from "../error-reporting.js";
-import { ApiError, stringifyUnknown } from "../errors.js";
+import { ApiError, stringifyUnknown, ValidationError } from "../errors.js";
 
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
 
@@ -56,6 +57,7 @@ import {
   unwrapValidatedResult,
   validateResponse,
 } from "./infrastructure.js";
+import { getOrganization } from "./organizations.js";
 
 /**
  * List dashboards in an organization with cursor-based pagination.
@@ -250,6 +252,7 @@ export async function restoreDashboardRevision(
 
 /** Options for querying widget data */
 type WidgetQueryOptions = {
+  interval?: string;
   /** Override the dashboard's time period (e.g., "24h", "7d") */
   period?: string;
   /** Absolute start datetime (ISO-8601). Mutually exclusive with period. */
@@ -322,6 +325,9 @@ export function computeOptimalInterval(
   widget: DashboardWidget,
   periodSeconds?: number,
 ): string | undefined {
+  if (widget.interval) {
+    return widget.interval;
+  }
   const totalSeconds =
     periodSeconds ?? (statsPeriod ? periodToSeconds(statsPeriod) : undefined);
   if (!totalSeconds) {
@@ -505,6 +511,7 @@ function buildTopEventsParams(
  */
 /** Common params for widget query functions */
 type WidgetQueryParams = {
+  getTransformationSupport: () => Promise<boolean>;
   regionUrl: string;
   orgSlug: string;
   widget: DashboardWidget;
@@ -519,14 +526,15 @@ type WidgetQueryParams = {
   options?: WidgetQueryOptions;
 };
 
-type EventsTimeseriesQuery = ListOrganizationEventsTimeseriesData["query"];
+type EventsTimeseriesQuery = ListOrganizationEventsTimeseriesData["query"] &
+  Partial<Record<`transformations[${number}]`, string[]>>;
 
 /** Widget query params once the widget's type has resolved to a dataset. */
 type DatasetWidgetQueryParams = WidgetQueryParams & { dataset: EventsDataset };
 
 async function queryWidgetTimeseries(
   params: DatasetWidgetQueryParams,
-): Promise<TimeseriesResult> {
+): Promise<TimeseriesResult | TransformedTimeseriesResult> {
   const {
     regionUrl,
     orgSlug,
@@ -539,28 +547,51 @@ async function queryWidgetTimeseries(
     options = {},
   } = params;
   const allSeries: TimeseriesResult["series"] = [];
+  const transformed = hasTransformations(widget);
+  const queries: TransformedTimeseriesResult["queries"] = [];
+  const interval =
+    options.interval ??
+    computeOptimalInterval(statsPeriod, widget, periodSeconds);
 
-  for (const query of widget.queries ?? []) {
+  for (const [queryIndex, query] of (widget.queries ?? []).entries()) {
     const aggregates = query.aggregates ?? [];
     const columns = query.columns ?? [];
+
+    const reqParams: EventsTimeseriesQuery = {
+      yAxis: aggregates,
+      query: query.conditions || undefined,
+      dataset,
+      statsPeriod,
+      start,
+      end,
+      interval,
+      environment: options.environment,
+      project: options.project,
+      ...(columns.length > 0 &&
+        buildTopEventsParams(widget, columns, aggregates, query.orderby)),
+    };
+
+    for (const [index, transformations] of Object.entries(
+      query.transformations ?? {},
+    )) {
+      if (
+        !/^(0|[1-9][0-9]*)$/.test(index) ||
+        Number(index) >= aggregates.length
+      ) {
+        throw new ValidationError(
+          "Saved transformations must reference an existing yAxis position",
+          "transformations",
+        );
+      }
+      if (transformations.length > 0) {
+        reqParams[`transformations[${Number(index)}]`] = transformations;
+      }
+    }
 
     const result = await listOrganizationEventsTimeseries({
       ...getSdkClientConfig(regionUrl),
       path: { organization_id_or_slug: orgSlug },
-      query: {
-        yAxis: aggregates,
-        query: query.conditions || undefined,
-        dataset,
-        statsPeriod,
-        start,
-        end,
-        interval: computeOptimalInterval(statsPeriod, widget, periodSeconds),
-        environment: options.environment,
-        project: options.project,
-        // Group-by columns enable topEvents mode
-        ...(columns.length > 0 &&
-          buildTopEventsParams(widget, columns, aggregates, query.orderby)),
-      },
+      query: reqParams,
     });
     const data = unwrapValidatedResult(
       result,
@@ -569,11 +600,71 @@ async function queryWidgetTimeseries(
       `/organizations/${orgSlug}/events-timeseries/`,
     );
 
-    const parsed = parseEventsTimeseriesResponse(data, aggregates);
-    allSeries.push(...parsed.series);
+    if (transformed) {
+      validateTransformedResponse(
+        data,
+        aggregates,
+        query.transformations ?? {},
+      );
+      queries.push({
+        queryIndex,
+        requestedInterval: interval,
+        yAxes: aggregates,
+        transformations: query.transformations ?? {},
+        response: data,
+      });
+    } else {
+      const parsed = parseEventsTimeseriesResponse(data, aggregates);
+      allSeries.push(...parsed.series);
+    }
   }
 
-  return { type: "timeseries", series: allSeries };
+  return transformed
+    ? { type: "transformed_timeseries", queries }
+    : { type: "timeseries", series: allSeries };
+}
+
+function hasTransformations(widget: DashboardWidget): boolean {
+  return (widget.queries ?? []).some((query) =>
+    Object.values(query.transformations ?? {}).some(
+      (transformations) => transformations.length > 0,
+    ),
+  );
+}
+
+function validateTransformedResponse(
+  response: EventsTimeseriesResponse,
+  axes: string[],
+  transformations: Record<string, string[]>,
+): void {
+  if (axes.length === 0 || response.timeSeries.length % axes.length !== 0) {
+    throw new ValidationError(
+      "The server returned an incompatible transformed axis layout",
+      "transformations",
+    );
+  }
+  for (const [index, series] of response.timeSeries.entries()) {
+    const axisIndex = index % axes.length;
+    if (series.yAxis !== axes[axisIndex]) {
+      throw new ValidationError(
+        "The server returned an incompatible transformed axis order",
+        "transformations",
+      );
+    }
+    if (
+      (transformations[String(axisIndex)]?.length ?? 0) > 0 &&
+      series.values.some(
+        (bucket) =>
+          typeof bucket.filled !== "boolean" ||
+          typeof bucket.smoothed !== "boolean",
+      )
+    ) {
+      throw new ValidationError(
+        "The server did not confirm execution of the saved transformations. The feature may be unavailable on this server.",
+        "transformations",
+      );
+    }
+  }
 }
 
 /**
@@ -657,6 +748,17 @@ async function queryWidgetData(
   params: WidgetQueryParams,
 ): Promise<WidgetDataResult> {
   const { widget } = params;
+  const transformed = hasTransformations(widget);
+  if (
+    transformed &&
+    (!["spans", "logs", "tracemetrics"].includes(widget.widgetType ?? "") ||
+      !TIMESERIES_DISPLAY_TYPES.has(widget.displayType ?? ""))
+  ) {
+    return {
+      type: "unsupported",
+      reason: `Saved transformations are not supported for ${widget.widgetType} ${widget.displayType} widgets`,
+    };
+  }
 
   // Text widgets carry markdown in `description`, no API query needed
   if (widget.displayType === "text") {
@@ -684,6 +786,13 @@ async function queryWidgetData(
   }
 
   try {
+    if (transformed && !(await params.getTransformationSupport())) {
+      return {
+        type: "unsupported",
+        reason:
+          "Saved transformations require the explore-interpolation-and-smoothing feature, which is unavailable for this organization",
+      };
+    }
     // Chart types → timeseries
     if (TIMESERIES_DISPLAY_TYPES.has(displayType)) {
       return await queryWidgetTimeseries({ ...params, dataset });
@@ -799,6 +908,14 @@ export async function queryAllWidgets(
   };
 
   const results = new Map<number, WidgetDataResult>();
+  let transformationSupport: Promise<boolean> | undefined;
+  const getTransformationSupport = () =>
+    (transformationSupport ??= getOrganization(orgSlug).then(
+      (organization) =>
+        organization.features?.includes(
+          "explore-interpolation-and-smoothing",
+        ) ?? false,
+    ));
   if (widgets.length === 0) {
     return results;
   }
@@ -810,6 +927,7 @@ export async function queryAllWidgets(
     const batchResults = await Promise.allSettled(
       batch.map((widget) =>
         queryWidgetData({
+          getTransformationSupport,
           regionUrl,
           orgSlug,
           widget,

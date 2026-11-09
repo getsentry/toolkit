@@ -813,7 +813,7 @@ function cleanQuery(
   widgetId: string | undefined,
 ): DashboardWidgetQuery {
   return {
-    // Sentry preserves omitted pipelines by ID even when the feature is disabled.
+    // Sentry preserves omitted transformations by ID even when the feature is disabled.
     ...(widgetId !== undefined && q.id !== undefined
       ? { id: q.id }
       : q.transformations !== undefined
@@ -831,8 +831,8 @@ function cleanQuery(
 
 /**
  * Prepare a widget for PUT while retaining existing widget and query identities.
- * Existing queries omit pipelines so Sentry preserves their stored configuration.
- * New queries include pipelines verbatim, keyed by aggregate position.
+ * Existing queries omit transformations so Sentry preserves their stored configuration.
+ * New queries include transformations verbatim, keyed by aggregate position.
  *
  * @param widget - Widget object from GET response
  * @returns Widget safe for PUT (only API-accepted fields)
@@ -906,7 +906,7 @@ const sdkTimeseriesRow = sdkTimeseriesSeries.values.item.entries;
  * Built from the `@sentry/api` schema. `timestamp` is epoch milliseconds and
  * `value` is null for empty buckets.
  */
-const EventsTimeseriesRowSchema = object({
+const EventsTimeseriesRowSchema = looseObject({
   ...sdkTimeseriesRow,
   // The spec says `number | null`, but the errors dataset returns a string
   // for string-typed aggregates (for example `max()` over a measurement no
@@ -921,8 +921,9 @@ const EventsTimeseriesRowSchema = object({
  * (`topEvents > 0`) return one series per group per `yAxis`, with the
  * group identified by `groupBy` and the catch-all group by `meta.isOther`.
  */
-const EventsTimeseriesSeriesSchema = object({
+const EventsTimeseriesSeriesSchema = looseObject({
   ...sdkTimeseriesSeries,
+  meta: looseObject(sdkTimeseriesSeries.meta.entries),
   values: array(EventsTimeseriesRowSchema),
   // The spec marks `groupBy` optional only, but the "Other" series sends
   // `groupBy: null`.
@@ -934,8 +935,18 @@ export type EventsTimeseriesSeries = InferOutput<
 >;
 
 /** Top-level response from the events-timeseries API. */
-export const EventsTimeseriesResponseSchema = object({
+export const EventsTimeseriesResponseSchema = looseObject({
   ...sdkTimeseriesResponse,
+  meta: optional(
+    looseObject({
+      ...sdkTimeseriesResponse.meta.wrapped.entries,
+      ingestion: optional(
+        looseObject(
+          sdkTimeseriesResponse.meta.wrapped.entries.ingestion.wrapped.entries,
+        ),
+      ),
+    }),
+  ),
   timeSeries: array(EventsTimeseriesSeriesSchema),
 });
 
@@ -983,6 +994,20 @@ export const TimeseriesResultSchema = object({
       }),
     ),
     description("Series, one per aggregate or group"),
+  ),
+});
+
+/** Saved transformed queries retain API timestamps and intervals in milliseconds. */
+export const TransformedTimeseriesResultSchema = object({
+  type: resultKind("transformed_timeseries"),
+  queries: array(
+    object({
+      queryIndex: number(),
+      requestedInterval: optional(string()),
+      yAxes: array(string()),
+      transformations: record(string(), array(string())),
+      response: EventsTimeseriesResponseSchema,
+    }),
   ),
 });
 
@@ -1044,6 +1069,7 @@ export const ErrorResultSchema = object({
 export const WidgetDataResultSchema = pipe(
   variant("type", [
     TimeseriesResultSchema,
+    TransformedTimeseriesResultSchema,
     TableResultSchema,
     ScalarResultSchema,
     TextResultSchema,
@@ -1054,6 +1080,9 @@ export const WidgetDataResultSchema = pipe(
 );
 
 export type TimeseriesResult = InferOutput<typeof TimeseriesResultSchema>;
+export type TransformedTimeseriesResult = InferOutput<
+  typeof TransformedTimeseriesResultSchema
+>;
 export type TableResult = InferOutput<typeof TableResultSchema>;
 export type ScalarResult = InferOutput<typeof ScalarResultSchema>;
 export type TextResult = InferOutput<typeof TextResultSchema>;
