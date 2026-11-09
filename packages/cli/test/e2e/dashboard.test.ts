@@ -168,6 +168,16 @@ test("dashboard view executes saved transformations and retains full results in 
     ]) {
       expect(human.stdout).toContain(value);
     }
+    const overridden = await ctx.run([...args, "--interval", "2m", "--json"]);
+    expect(overridden.exitCode, overridden.stderr + overridden.stdout).toBe(0);
+    expect(requests.at(-1)!.searchParams.get("interval")).toBe("2m");
+    expect(JSON.parse(overridden.stdout).widgets[0].data.queries[0]).toEqual({
+      queryIndex: 0,
+      requestedInterval: "2m",
+      yAxes: ["count()", "count()"],
+      transformations,
+      response,
+    });
   } finally {
     server.stop();
   }
