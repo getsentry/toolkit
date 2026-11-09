@@ -318,8 +318,13 @@ async function getLinkForm(
       JSON.stringify(component.error),
     );
   }
-  // App-defined form schemas are intentionally untyped in the API contract.
-  const form = safeParse(LinkFormSchema, component.schema.link);
+  // The component schema is typed per component type, but its form fields
+  // are app-defined, so validate the link form here.
+  const { schema } = component;
+  const form = safeParse(
+    LinkFormSchema,
+    schema.type === "issue-link" ? schema.link : undefined,
+  );
   if (!form.success) {
     throw new ValidationError(
       `App ${installation.app.slug} does not expose a supported issue-link form`,
