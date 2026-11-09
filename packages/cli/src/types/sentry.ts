@@ -8,7 +8,7 @@
  * This keeps all SDK-documented fields available with correct types while making
  * non-core fields optional for flexibility (test mocks, partial API responses).
  *
- * Internal types not covered by the SDK (Region, User, logs) use Valibot schemas
+ * Internal types not covered by the SDK (User, logs) use Valibot schemas
  * for runtime validation. Event entry types (exceptions, breadcrumbs, etc.)
  * are plain TypeScript interfaces since they are only used for type annotations.
  */
@@ -62,7 +62,6 @@ import {
   transform,
   union,
   unknown,
-  url,
   variant,
 } from "valibot";
 
@@ -294,23 +293,6 @@ export type ProjectKey = Partial<SdkProjectKey> & {
 };
 
 // Internal types with Valibot schemas (runtime-validated, not in @sentry/api)
-
-// Region
-
-/** A Sentry region (e.g., US, EU) */
-export const RegionSchema = object({
-  name: string(),
-  url: pipe(string(), url()),
-});
-
-export type Region = InferOutput<typeof RegionSchema>;
-
-/** Response from /api/0/users/me/regions/ endpoint */
-export const UserRegionsResponseSchema = object({
-  regions: array(RegionSchema),
-});
-
-export type UserRegionsResponse = InferOutput<typeof UserRegionsResponseSchema>;
 
 /**
  * Response from `/api/0/organizations/{org}/dsn-lookup/`. The endpoint is

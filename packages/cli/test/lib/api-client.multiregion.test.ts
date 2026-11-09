@@ -9,8 +9,8 @@
 import * as Sentry from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  checkTokenAccess,
   findProjectByDsn,
-  getUserRegions,
   listOrganizations,
   listOrganizationsPage,
 } from "../../src/lib/api-client.js";
@@ -101,86 +101,67 @@ function createMultiRegionMockFetch(handlers: {
   };
 }
 
-describe("getUserRegions", () => {
-  test("returns regions from control silo", async () => {
+describe("checkTokenAccess", () => {
+  test("requests one page of orgs from the control silo", async () => {
+    const requestedUrls: string[] = [];
     globalThis.fetch = createMultiRegionMockFetch({
       controlSilo: (req) => {
-        if (req.url.includes("/users/me/regions/")) {
-          return new Response(
-            JSON.stringify({
-              regions: [
-                { name: "us", url: "https://us.sentry.io" },
-                { name: "de", url: "https://de.sentry.io" },
-              ],
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        return new Response(JSON.stringify({ detail: "Not found" }), {
-          status: 404,
-        });
+        requestedUrls.push(req.url);
+        return jsonResponse([]);
       },
     });
 
-    const regions = await getUserRegions();
+    await checkTokenAccess();
 
-    expect(regions).toHaveLength(2);
-    expect(regions[0]).toEqual({ name: "us", url: "https://us.sentry.io" });
-    expect(regions[1]).toEqual({ name: "de", url: "https://de.sentry.io" });
+    expect(requestedUrls).toHaveLength(1);
+    const url = new URL(requestedUrls[0] ?? "");
+    expect(url.origin).toBe("https://sentry.io");
+    expect(url.pathname).toBe("/api/0/organizations/");
+    expect(url.searchParams.get("per_page")).toBe("1");
   });
 
-  test("returns empty array when no regions", async () => {
+  test("throws a 403 for a token that can't list orgs", async () => {
     globalThis.fetch = createMultiRegionMockFetch({
-      controlSilo: (req) => {
-        if (req.url.includes("/users/me/regions/")) {
-          return new Response(
-            JSON.stringify({
-              regions: [],
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        return new Response(JSON.stringify({ detail: "Not found" }), {
-          status: 404,
-        });
-      },
+      controlSilo: () =>
+        jsonResponse(
+          { detail: "You do not have permission to perform this action." },
+          403,
+        ),
     });
 
-    const regions = await getUserRegions();
+    const error = await checkTokenAccess().catch((e: unknown) => e);
 
-    expect(regions).toHaveLength(0);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(403);
   });
 
-  test("returns single region for self-hosted", async () => {
+  test("asks the self-hosted server the token belongs to", async () => {
+    const savedUrl = process.env.SENTRY_URL;
+    process.env.SENTRY_URL = "http://localhost:9000";
+    setAuthToken("self-hosted-token", undefined, undefined, {
+      host: "http://localhost:9000",
+    });
+    const requestedUrls: string[] = [];
     globalThis.fetch = createMultiRegionMockFetch({
       controlSilo: (req) => {
-        if (req.url.includes("/users/me/regions/")) {
-          return new Response(
-            JSON.stringify({
-              regions: [{ name: "monolith", url: "https://sentry.io" }],
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        return new Response(JSON.stringify({ detail: "Not found" }), {
-          status: 404,
-        });
+        requestedUrls.push(req.url);
+        return jsonResponse([{ id: "1", slug: "sentry", name: "Sentry" }]);
       },
     });
 
-    const regions = await getUserRegions();
+    try {
+      await checkTokenAccess();
+    } finally {
+      if (savedUrl === undefined) {
+        delete process.env.SENTRY_URL;
+      } else {
+        process.env.SENTRY_URL = savedUrl;
+      }
+    }
 
-    expect(regions).toHaveLength(1);
-    expect(regions[0]).toEqual({ name: "monolith", url: "https://sentry.io" });
+    expect(requestedUrls.map((u) => new URL(u).origin)).toEqual([
+      "http://localhost:9000",
+    ]);
   });
 });
 

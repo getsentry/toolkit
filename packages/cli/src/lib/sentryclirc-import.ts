@@ -517,8 +517,8 @@ async function validateAndFetchUser(
   previousAccountId: string | undefined,
 ): Promise<boolean> {
   try {
-    const { getUserRegions } = await import("./api-client.js");
-    await getUserRegions();
+    const { checkTokenAccess } = await import("./api-client.js");
+    await checkTokenAccess();
     result.tokenValid = true;
   } catch (error) {
     if (isAuthFailure(error)) {
