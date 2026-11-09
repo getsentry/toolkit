@@ -13,6 +13,7 @@
 import { isatty } from "node:tty";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { textParser } from "../../lib/completion-target.js";
 import { getDefaultUrl } from "../../lib/db/defaults.js";
@@ -222,7 +223,7 @@ function enforceTrustGate(plan: ImportPlan): void {
   throw new HostScopeError(
     `Token (from ${tokenSource}) and URL (from ${urlSource}) come from different files.\n` +
       "To confirm you trust this URL, pass it explicitly:\n" +
-      `  sentry cli import --url ${plan.effective.url ?? "<url>"}`,
+      `  ${sentry`cli import --url ${plan.effective.url ?? "<url>"}`}`,
   );
 }
 
@@ -277,23 +278,23 @@ export const importCommand = buildCommand({
     examples: [
       {
         description: "Scan for .sentryclirc files and import interactively",
-        command: "sentry cli import",
+        run: "cli import",
       },
       {
         description: "Preview what would be imported",
-        command: "sentry cli import --dry-run",
+        run: "cli import --dry-run",
       },
       {
         description: "Skip the confirmation prompt (CI-safe)",
-        command: "sentry cli import --yes",
+        run: "cli import --yes",
       },
       {
         description: "Explicitly trust a self-hosted URL",
-        command: "sentry cli import --url https://sentry.example.com",
+        run: "cli import --url https://sentry.example.com",
       },
       {
         description: "Skip API validation of the imported token",
-        command: "sentry cli import --skip-validation",
+        run: "cli import --skip-validation",
       },
     ],
   },
@@ -389,7 +390,7 @@ export const importCommand = buildCommand({
 
     if (result.tokenValid === false) {
       return {
-        hint: "Token validation failed. Check your token and try: sentry auth login",
+        hint: `Token validation failed. Check your token and try: ${sentry`auth login`}`,
       };
     }
     if (result.imported) {

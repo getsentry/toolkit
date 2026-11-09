@@ -42,7 +42,7 @@ export async function getLatestEvent(
   orgSlug: string,
   issueId: string,
 ): Promise<SentryEvent> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await getOrganizationIssueEvent({
     ...config,
@@ -65,7 +65,7 @@ export async function getEvent(
   projectSlug: string,
   eventId: string,
 ): Promise<SentryEvent> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await getProjectEvent({
     ...config,
@@ -90,7 +90,7 @@ export async function listEventAttachments(
   projectSlug: string,
   eventId: string,
 ): Promise<EventAttachmentDetailsResponse[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const { data } = await autoPaginate(
     async (cursor) => {
       // The endpoint accepts `per_page`, but its generated SDK type omits it.
@@ -140,7 +140,7 @@ export async function resolveEventInOrg(
   orgSlug: string,
   eventId: string,
 ): Promise<ResolvedEvent | null> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await sdkResolveAnEventId({
     ...config,
@@ -259,7 +259,7 @@ export async function listIssueEvents(
 ): Promise<PaginatedResponse<IssueEvent[]>> {
   const { limit = 25, query, full, cursor, statsPeriod, start, end } = options;
 
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   return await paginate({ limit, cursor }, async (perPage, pageCursor) => {
     const result = await listOrganizationIssueEvents({

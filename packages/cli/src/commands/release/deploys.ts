@@ -13,8 +13,9 @@ import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import type { SentryDeploy } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 import { SentryDeploySchema } from "../../generated/output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release deploys [<org>/]<version>";
+const usageHint = () => sentry`release deploys [<org>/]<version>`;
 
 const DEPLOY_COLUMNS: Column<SentryDeploy>[] = [
   { header: "ENVIRONMENT", value: (d) => d.environment },
@@ -39,15 +40,15 @@ export const deploysCommand = buildCommand({
     examples: [
       {
         description: "List deploys for a release",
-        command: "sentry release deploys 1.0.0",
+        run: "release deploys 1.0.0",
       },
       {
         description: "List deploys for a release in an explicit organization",
-        command: "sentry release deploys my-org/1.0.0",
+        run: "release deploys my-org/1.0.0",
       },
       {
         description: "Output as JSON",
-        command: "sentry release deploys 1.0.0 --json",
+        run: "release deploys 1.0.0 --json",
       },
     ],
   },
@@ -59,7 +60,7 @@ export const deploysCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        releaseParameter(USAGE_HINT, "[<org>/]<version> - Release version"),
+        releaseParameter(usageHint, "[<org>/]<version> - Release version"),
       ],
     },
   },

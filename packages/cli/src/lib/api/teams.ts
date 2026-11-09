@@ -28,7 +28,7 @@ import { reportCliError } from "../error-reporting.js";
  * Uses region-aware routing for multi-region support.
  */
 export async function listTeams(orgSlug: string): Promise<SentryTeam[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationTeams({
     ...config,
@@ -51,7 +51,7 @@ export async function listTeamsPaginated(
   orgSlug: string,
   options: { cursor?: string; perPage?: number; query?: string } = {},
 ): Promise<PaginatedResponse<SentryTeam[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationTeams({
     ...config,
@@ -80,7 +80,7 @@ export async function listProjectTeams(
   orgSlug: string,
   projectSlug: string,
 ): Promise<SentryTeam[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await sdkListProjectTeams({
     ...config,
     path: {
@@ -107,7 +107,7 @@ export async function createTeam(
   orgSlug: string,
   slug: string,
 ): Promise<SentryTeam> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await createOrganizationTeam({
     ...config,
     path: { organization_id_or_slug: orgSlug },
@@ -142,7 +142,7 @@ export async function addMemberToTeam(
   teamSlug: string,
   memberId: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await addOrganizationMemberTeam({
     ...config,
     path: {

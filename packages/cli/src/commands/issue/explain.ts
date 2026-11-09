@@ -5,6 +5,7 @@
  */
 
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { ApiError, stringifyUnknown } from "../../lib/errors.js";
@@ -31,7 +32,7 @@ import {
 } from "./utils.js";
 
 const log = logger.withTag("issue.explain");
-const USAGE_HINT = "sentry issue explain <issue> [<issue>...]";
+const usageHint = () => sentry`issue explain <issue> [<issue>...]`;
 
 type ExplainFlags = {
   readonly json: boolean;
@@ -106,31 +107,31 @@ export const explainCommand = buildCommand({
       {
         description:
           "Analyze the root cause of an issue (may take a few minutes for new issues)",
-        command: "sentry issue explain 123456789",
+        run: "issue explain 123456789",
       },
       {
         description: "Explain the most recent issue",
-        command: "sentry issue explain @latest",
+        run: "issue explain @latest",
       },
       {
         description: "Explain the most frequently occurring issue",
-        command: "sentry issue explain @most_frequent",
+        run: "issue explain @most_frequent",
       },
       {
         description: "Use a short ID with an organization prefix",
-        command: "sentry issue explain my-org/MYPROJECT-ABC",
+        run: "issue explain my-org/MYPROJECT-ABC",
       },
       {
         description: "Analyze multiple issues in one invocation",
-        command: "sentry issue explain FRONT-ABC BACK-2",
+        run: "issue explain FRONT-ABC BACK-2",
       },
       {
         description: "Force a fresh analysis",
-        command: "sentry issue explain 123456789 --force",
+        run: "issue explain 123456789 --force",
       },
       {
         description: "Output root causes as JSON",
-        command: "sentry issue explain 123456789 --json",
+        run: "issue explain 123456789 --json",
       },
     ],
   },
@@ -141,7 +142,7 @@ export const explainCommand = buildCommand({
   parameters: {
     positional: issuesPositional({
       brief: "One or more issue IDs",
-      usageHint: USAGE_HINT,
+      usageHint: usageHint,
       distinct: true,
     }),
     flags: {
@@ -186,6 +187,8 @@ export const explainCommand = buildCommand({
     });
     return isBatch
       ? undefined
-      : { hint: `To create a plan, run: sentry issue plan ${primaryArg}` };
+      : {
+          hint: `To create a plan, run: ${sentry`issue plan ${primaryArg}`}`,
+        };
   },
 });

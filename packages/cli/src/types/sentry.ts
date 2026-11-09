@@ -312,6 +312,17 @@ export const UserRegionsResponseSchema = object({
 
 export type UserRegionsResponse = InferOutput<typeof UserRegionsResponseSchema>;
 
+/**
+ * Response from `/api/0/organizations/{org}/dsn-lookup/`. The endpoint is
+ * private, so `@sentry/api` has no type for it.
+ */
+export const DsnLookupResponseSchema = looseObject({
+  organizationSlug: string(),
+  projectSlug: string(),
+  projectId: string(),
+  projectName: string(),
+});
+
 // User
 
 /**
@@ -377,8 +388,27 @@ export type ReplayContext = {
   [key: string]: unknown;
 };
 
-/** High-level metadata returned by the organization trace-meta endpoint. */
-export const TraceMetaSchema = vOrganizationTraceMetaResponse;
+const sdkTraceMeta = vOrganizationTraceMetaResponse.entries;
+const sdkTransactionChildCount =
+  sdkTraceMeta.transactionChildCountMap.item.entries;
+
+/**
+ * High-level metadata returned by the organization trace-meta endpoint.
+ *
+ * Built from the `@sentry/api` schema. The spec says `transaction.event_id` is
+ * a string, but spans that belong to no transaction are counted under null.
+ */
+export const TraceMetaSchema = object({
+  ...sdkTraceMeta,
+  transactionChildCountMap: array(
+    object({
+      ...sdkTransactionChildCount,
+      "transaction.event_id": nullable(
+        sdkTransactionChildCount["transaction.event_id"],
+      ),
+    }),
+  ),
+});
 
 export type TraceMeta = InferOutput<typeof TraceMetaSchema>;
 

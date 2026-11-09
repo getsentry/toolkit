@@ -54,7 +54,6 @@ import {
   TimeoutError,
   UpgradeError,
   ValidationError,
-  WizardError,
 } from "./errors.js";
 import { isSaaS } from "./sentry-web-urls.js";
 
@@ -357,9 +356,6 @@ function deriveErrorKind(error: Error): string | undefined {
   if (error instanceof HostScopeError) {
     return "host_scope";
   }
-  if (error instanceof WizardError) {
-    return "wizard";
-  }
   // Catch-all for bare CliError — must be checked AFTER all subclasses
   // because instanceof matches the entire prototype chain.
   // ConfigError and OutputError intentionally fall through here:
@@ -566,7 +562,7 @@ export function enrichEventWithGroupingTags(
   event.tags["cli_error.class"] = exc.type;
 
   // Set kind from exception message prefix so server-side rules can group
-  // non-CliError exceptions (TypeError, Error, WizardCancelledError, etc.)
+  // non-CliError exceptions (TypeError, Error, etc.)
   // that bypass reportCliError (uncaught exceptions, unhandled rejections).
   if (exc.value) {
     event.tags["cli_error.kind"] = extractMessagePrefix(exc.value, 4);

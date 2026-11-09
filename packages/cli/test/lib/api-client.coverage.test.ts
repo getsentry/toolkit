@@ -23,7 +23,7 @@ import {
   getCurrentUser,
   getDetailedTrace,
   getEvent,
-  getIssue,
+  findIssueInOrgs,
   getIssueByShortId,
   getIssueInOrg,
   getLatestEvent,
@@ -113,39 +113,60 @@ function linkHeader(cursor: string, hasResults: boolean): string {
 // =============================================================================
 
 describe("issues.ts", () => {
-  describe("getIssue", () => {
-    test("fetches issue by numeric ID via legacy endpoint", async () => {
+  describe("findIssueInOrgs", () => {
+    test("returns the issue from the org that has it, skipping 404s and 403s", async () => {
       const issue = mockIssue();
+      const requested: string[] = [];
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
-        expect(req.url).toContain("/api/0/issues/12345/");
-        return new Response(JSON.stringify(issue), {
-          status: 200,
+        const { pathname } = new URL(new Request(input!, init).url);
+        requested.push(pathname);
+        if (pathname.includes("/organizations/has-it/")) {
+          return new Response(JSON.stringify(issue), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const status = pathname.includes("/no-access/") ? 403 : 404;
+        return new Response(JSON.stringify({ detail: "nope" }), {
+          status,
           headers: { "Content-Type": "application/json" },
         });
       });
 
-      const result = await getIssue("12345");
-      expect(result.id).toBe("12345");
-      expect(result.title).toBe("Test Issue");
+      const result = await findIssueInOrgs(
+        ["other", "no-access", "has-it"],
+        "12345",
+      );
+      expect(result?.org).toBe("has-it");
+      expect(result?.issue.id).toBe("12345");
+      expect(requested.some((p) => p.startsWith("/api/0/issues/"))).toBe(false);
     });
 
-    test("passes collapse query params when provided", async () => {
-      const issue = mockIssue();
+    test("returns null when no org has the issue", async () => {
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(JSON.stringify({ detail: "Not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
+
+      expect(await findIssueInOrgs(["a", "b"], "12345")).toBeNull();
+    });
+
+    test("throws an unexpected error when no org has the issue", async () => {
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
-        const url = new URL(req.url);
-        expect(url.searchParams.getAll("collapse")).toEqual([
-          "stats",
-          "lifetime",
-        ]);
-        return new Response(JSON.stringify(issue), {
-          status: 200,
+        const { pathname } = new URL(new Request(input!, init).url);
+        const status = pathname.includes("/organizations/broken/") ? 500 : 404;
+        return new Response(JSON.stringify({ detail: "boom" }), {
+          status,
           headers: { "Content-Type": "application/json" },
         });
       });
 
-      await getIssue("12345", { collapse: ["stats", "lifetime"] });
+      await expect(
+        findIssueInOrgs(["missing", "broken"], "12345"),
+      ).rejects.toMatchObject({ status: 500 });
     });
   });
 
@@ -165,16 +186,13 @@ describe("issues.ts", () => {
       expect(result.id).toBe("12345");
     });
 
-    test("passes collapse query params when provided", async () => {
+    test("passes only the collapse values the details endpoint reads", async () => {
       const issue = mockIssue();
       globalThis.fetch = mockFetch(async (input, init) => {
         const req = new Request(input!, init);
         const url = new URL(req.url);
         expect(url.pathname).toContain("/organizations/test-org/issues/12345/");
-        expect(url.searchParams.getAll("collapse")).toEqual([
-          "stats",
-          "filtered",
-        ]);
+        expect(url.searchParams.getAll("collapse")).toEqual(["stats"]);
         return new Response(JSON.stringify(issue), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -182,7 +200,20 @@ describe("issues.ts", () => {
       });
 
       await getIssueInOrg("test-org", "12345", {
-        collapse: ["stats", "filtered"],
+        collapse: ["stats", "lifetime", "filtered", "unhandled"],
+      });
+    });
+
+    test("omits collapse when no value applies to the details endpoint", async () => {
+      const issue = mockIssue();
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const url = new URL(new Request(input!, init).url);
+        expect(url.searchParams.has("collapse")).toBe(false);
+        return Response.json(issue);
+      });
+
+      await getIssueInOrg("test-org", "12345", {
+        collapse: ["lifetime", "filtered"],
       });
     });
   });
@@ -284,24 +315,36 @@ describe("issues.ts", () => {
   });
 
   describe("updateIssueStatus", () => {
-    test("sends PUT request with status body", async () => {
-      const issue = mockIssue({ status: "resolved" });
+    test("sends PUT to the org-scoped endpoint", async () => {
+      const issue = mockIssue({ status: "ignored" });
+      let capturedUrl = "";
       let capturedBody: unknown;
 
       globalThis.fetch = mockFetch(async (input, init) => {
         const req = new Request(input!, init);
+        capturedUrl = req.url;
         capturedBody = await req.json();
         expect(req.method).toBe("PUT");
-        expect(req.url).toContain("/api/0/issues/12345/");
         return new Response(JSON.stringify(issue), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       });
 
-      const result = await updateIssueStatus("12345", "resolved");
-      expect(result.status).toBe("resolved");
-      expect(capturedBody).toEqual({ status: "resolved" });
+      const result = await updateIssueStatus("12345", "ignored", {
+        orgSlug: "test-org",
+        substatus: "archived_until_condition_met",
+        statusDetails: { ignoreCount: 10, ignoreWindow: 60 },
+      });
+      expect(result.status).toBe("ignored");
+      expect(capturedUrl).toContain(
+        "/api/0/organizations/test-org/issues/12345/",
+      );
+      expect(capturedBody).toEqual({
+        status: "ignored",
+        statusDetails: { ignoreCount: 10, ignoreWindow: 60 },
+        substatus: "archived_until_condition_met",
+      });
     });
   });
 
@@ -1158,8 +1201,8 @@ describe("traces.ts", () => {
         );
         const url = new URL(req.url);
         expect(url.searchParams.get("timestamp")).toBe("1700000000");
-        expect(url.searchParams.get("limit")).toBe("10000");
-        expect(url.searchParams.get("project")).toBe("-1");
+        expect(url.searchParams.has("limit")).toBe(false);
+        expect(url.searchParams.has("project")).toBe(false);
         return new Response(JSON.stringify(spans), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -2016,8 +2059,9 @@ describe("logs.ts (detailed)", () => {
         const req = new Request(input!, init);
         const url = new URL(req.url);
         expect(url.pathname).toContain("/organizations/test-org/trace-logs/");
-        expect(url.searchParams.get("traceId")).toBe("abc123def456");
+        expect(url.searchParams.getAll("traceId")).toEqual(["abc123def456"]);
         expect(url.searchParams.get("statsPeriod")).toBe("14d");
+        expect(url.searchParams.getAll("sort")).toEqual(["-timestamp"]);
         return new Response(JSON.stringify(traceLogsResponse), {
           status: 200,
           headers: { "Content-Type": "application/json" },

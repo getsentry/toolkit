@@ -107,7 +107,7 @@ export {
 export { getIssueTag } from "./api/issue-tags.js";
 export {
   buildIssueListCollapse,
-  getIssue,
+  findIssueInOrgs,
   getIssueByShortId,
   getIssueInOrg,
   getSharedIssue,
@@ -151,7 +151,7 @@ export {
   createProjectWithAutoTeam,
   createProjectWithDsn,
   deleteProject,
-  findProjectByDsnKey,
+  findProjectByDsn,
   findProjectsByPattern,
   findProjectsBySlug,
   getProject,

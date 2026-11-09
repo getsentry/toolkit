@@ -11,6 +11,7 @@ import {
   isTracemetricsAggregate,
   parseFunction,
 } from "@sentry/toolkit-core/events-fields";
+import { vListOrganizationEventsTimeseriesResponse } from "@sentry/api/valibot";
 import {
   array,
   boolean,
@@ -29,12 +30,12 @@ import {
   record,
   safeParse,
   string,
-  tuple,
   union,
   unknown,
   variant,
 } from "valibot";
 
+import type { EventsDataset } from "../lib/datasets.js";
 import { ValidationError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import type {
@@ -891,43 +892,56 @@ export function prepareDashboardForUpdate(dashboard: DashboardDetail): {
 // ---------------------------------------------------------------------------
 // Widget data query types
 //
-// Types for responses from the events-stats and events API endpoints
+// Types for responses from the events-timeseries and events API endpoints
 // used to fetch actual widget data for dashboard rendering.
 // ---------------------------------------------------------------------------
 
-/**
- * Single data point from the events-stats API.
- * Format: [timestamp_epoch_seconds, [{count: value}]]
- */
-export const EventsStatsDataPointSchema = tuple([
-  number(),
-  array(object({ count: number() })),
-]);
-
-export type EventsStatsDataPoint = InferOutput<
-  typeof EventsStatsDataPointSchema
->;
+const sdkTimeseriesResponse = vListOrganizationEventsTimeseriesResponse.entries;
+const sdkTimeseriesSeries = sdkTimeseriesResponse.timeSeries.item.entries;
+const sdkTimeseriesRow = sdkTimeseriesSeries.values.item.entries;
 
 /**
- * A single time-series from events-stats.
+ * Single bucket from the events-timeseries API.
  *
- * In simple queries this is the top-level response.
- * In grouped queries (`topEvents > 0`) each group key maps to one of these.
+ * Built from the `@sentry/api` schema. `timestamp` is epoch milliseconds and
+ * `value` is null for empty buckets.
  */
-export const EventsStatsSeriesSchema = looseObject({
-  data: array(EventsStatsDataPointSchema),
-  order: optional(number()),
-  start: optional(union([string(), number()])),
-  end: optional(union([string(), number()])),
-  meta: optional(
-    looseObject({
-      fields: optional(record(string(), string())),
-      units: optional(record(string(), nullable(string()))),
-    }),
-  ),
+const EventsTimeseriesRowSchema = object({
+  ...sdkTimeseriesRow,
+  // The spec says `number | null`, but the errors dataset returns a string
+  // for string-typed aggregates (for example `max()` over a measurement no
+  // event carries), which arrives as "".
+  value: nullable(union([number(), string()])),
 });
 
-export type EventsStatsSeries = InferOutput<typeof EventsStatsSeriesSchema>;
+/**
+ * A single series from `GET /organizations/{org}/events-timeseries/`.
+ *
+ * Ungrouped queries return one series per `yAxis`. Grouped queries
+ * (`topEvents > 0`) return one series per group per `yAxis`, with the
+ * group identified by `groupBy` and the catch-all group by `meta.isOther`.
+ */
+const EventsTimeseriesSeriesSchema = object({
+  ...sdkTimeseriesSeries,
+  values: array(EventsTimeseriesRowSchema),
+  // The spec marks `groupBy` optional only, but the "Other" series sends
+  // `groupBy: null`.
+  groupBy: nullish(sdkTimeseriesSeries.groupBy.wrapped),
+});
+
+export type EventsTimeseriesSeries = InferOutput<
+  typeof EventsTimeseriesSeriesSchema
+>;
+
+/** Top-level response from the events-timeseries API. */
+export const EventsTimeseriesResponseSchema = object({
+  ...sdkTimeseriesResponse,
+  timeSeries: array(EventsTimeseriesSeriesSchema),
+});
+
+export type EventsTimeseriesResponse = InferOutput<
+  typeof EventsTimeseriesResponseSchema
+>;
 
 /**
  * Response from `GET /organizations/{org}/events/` (table format).
@@ -1057,7 +1071,7 @@ export type WidgetDataResult = InferOutput<typeof WidgetDataResultSchema>;
  * Widget types that don't map to a dataset (issue, preprod-app-size, etc.)
  * return null and are rendered as "unsupported".
  */
-const WIDGET_TYPE_TO_DATASET: Record<string, string> = {
+const WIDGET_TYPE_TO_DATASET: Partial<Record<string, EventsDataset>> = {
   spans: "spans",
   "error-events": "errors",
   logs: "logs",
@@ -1072,14 +1086,14 @@ const WIDGET_TYPE_TO_DATASET: Record<string, string> = {
  */
 export function mapWidgetTypeToDataset(
   widgetType: string | undefined,
-): string | null {
+): EventsDataset | null {
   if (!widgetType) {
     return null;
   }
   return WIDGET_TYPE_TO_DATASET[widgetType] ?? null;
 }
 
-/** Display types that use time-series data (events-stats endpoint) */
+/** Display types that use time-series data (events-timeseries endpoint) */
 export const TIMESERIES_DISPLAY_TYPES = new Set([
   "line",
   "area",

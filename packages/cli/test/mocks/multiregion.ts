@@ -119,7 +119,7 @@ function createRegionRoutes(
         return { status: 404, body: notFoundFixture };
       },
     },
-    // All projects (used by findProjectByDsnKey)
+    // All projects (used by findProjectByDsn)
     {
       method: "GET",
       path: "/api/0/projects/",

@@ -4,14 +4,17 @@
  * Functions for listing and retrieving agent conversation data from the Sentry
  * Explore agent conversations endpoints.
  *
- * The `/organizations/{org}/agents/conversations/` endpoints are PRIVATE and not
- * yet in `@sentry/api` (getsentry/sentry-api-schema). Call them via
- * `apiRequestToRegion` with local Valibot schemas (same pattern as `logs.ts` /
- * `traces.ts`). Details response shape is documented on
- * `AgentConversationDetailsSchema`. Pagination uses `parseLinkHeader`. Revisit
- * once these endpoints land in `@sentry/api`.
+ * Both endpoints use their generated `@sentry/api` operations, and their
+ * responses are still checked with the CLI's own schemas
+ * (`ConversationListItemSchema`, `AgentConversationDetailsSchema`).
+ * Pagination follows the `Link` header.
  */
 
+import {
+  type ListOrganizationAiConversationsData,
+  listOrganizationAiConversations,
+  retrieveOrganizationAiConversation,
+} from "@sentry/api";
 import { array } from "valibot";
 
 import {
@@ -25,17 +28,29 @@ import {
 
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 
 import {
   API_MAX_PER_PAGE,
-  apiRequestToRegion,
+  getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   paginate,
-  parseLinkHeader,
+  unwrapPaginatedResult,
+  validateResponse,
 } from "./infrastructure.js";
 
 const log = logger.withTag("api.conversations");
+
+type ConversationListOptions = {
+  query?: string;
+  sort?: NonNullable<ListOrganizationAiConversationsData["query"]>["sort"];
+  cursor?: string;
+  statsPeriod?: string;
+  start?: string;
+  end?: string;
+  project?: string;
+};
 
 /**
  * Fetch a single page of conversations from the agent conversations endpoint.
@@ -46,51 +61,34 @@ const log = logger.withTag("api.conversations");
 async function fetchConversationsPage(
   regionUrl: string,
   orgSlug: string,
-  options: {
-    query?: string;
-    sort?: string;
-    cursor?: string;
-    statsPeriod?: string;
-    start?: string;
-    end?: string;
-    project?: string;
-  },
+  options: ConversationListOptions,
   perPage: number,
 ): Promise<PaginatedResponse<ConversationListItem[]>> {
-  const params: Record<string, string> = {
-    per_page: String(perPage),
-  };
-  if (options.statsPeriod) {
-    params.statsPeriod = options.statsPeriod;
-  }
-  if (options.start) {
-    params.start = options.start;
-  }
-  if (options.end) {
-    params.end = options.end;
-  }
-  if (options.cursor) {
-    params.cursor = options.cursor;
-  }
-  if (options.query) {
-    params.query = options.query;
-  }
-  if (options.sort) {
-    params.sort = options.sort;
-  }
-  if (options.project) {
-    params.project = options.project;
-  }
-
-  const { data, headers } = await apiRequestToRegion<ConversationListItem[]>(
-    regionUrl,
-    `/organizations/${orgSlug}/agents/conversations/`,
-    { params, schema: array(ConversationListItemSchema) },
+  const result = await listOrganizationAiConversations({
+    ...getSdkClientConfig(regionUrl),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      per_page: perPage,
+      statsPeriod: options.statsPeriod || undefined,
+      start: options.start || undefined,
+      end: options.end || undefined,
+      cursor: options.cursor || undefined,
+      query: options.query || undefined,
+      sort: options.sort,
+      project: options.project ? [options.project] : undefined,
+    },
+  });
+  const page = unwrapPaginatedResult<unknown>(
+    result,
+    "Failed to list agent conversations",
   );
-
-  const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
-
-  return { data, nextCursor };
+  const data = validateResponse(
+    array(ConversationListItemSchema),
+    page.data,
+    `/organizations/${orgSlug}/agents/conversations/`,
+    page.response?.status ?? 0,
+  );
+  return { data, nextCursor: page.nextCursor };
 }
 
 /**
@@ -105,16 +103,7 @@ async function fetchConversationsPage(
  */
 export async function listConversations(
   orgSlug: string,
-  options: {
-    query?: string;
-    sort?: string;
-    limit?: number;
-    cursor?: string;
-    statsPeriod?: string;
-    start?: string;
-    end?: string;
-    project?: string;
-  } = {},
+  options: ConversationListOptions & { limit?: number } = {},
 ): Promise<PaginatedResponse<ConversationListItem[]>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
   return await paginate(options, (perPage, cursor) =>
@@ -136,15 +125,8 @@ export async function getConversationSpans(
   truncated: boolean;
   title: string | null;
 }> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-
-  const params: Record<string, string> = {
-    per_page: String(options.perPage ?? 1000),
-    statsPeriod: options.statsPeriod ?? "30d",
-  };
-  if (options.project) {
-    params.project = options.project;
-  }
+  const config = getOrgSdkConfig();
+  const endpoint = `/organizations/${orgSlug}/agents/conversations/${encodeURIComponent(conversationId)}/`;
 
   const spans: AgentConversationSpan[] = [];
   let stats: ConversationStats | undefined;
@@ -152,24 +134,36 @@ export async function getConversationSpans(
   let cursor: string | undefined;
 
   for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-    if (cursor) {
-      params.cursor = cursor;
-    }
-
-    const { data, headers } =
-      await apiRequestToRegion<AgentConversationDetails>(
-        regionUrl,
-        `/organizations/${orgSlug}/agents/conversations/${encodeURIComponent(conversationId)}/`,
-        { params, schema: AgentConversationDetailsSchema },
-      );
+    const result = await retrieveOrganizationAiConversation({
+      ...config,
+      path: {
+        organization_id_or_slug: orgSlug,
+        conversation_id: conversationId,
+      },
+      query: {
+        per_page: options.perPage ?? 1000,
+        statsPeriod: options.statsPeriod ?? "30d",
+        project: options.project ? [options.project] : undefined,
+        cursor,
+      },
+    });
+    const pageResult = unwrapPaginatedResult<unknown>(
+      result,
+      "Failed to get agent conversation",
+    );
+    const data: AgentConversationDetails = validateResponse(
+      AgentConversationDetailsSchema,
+      pageResult.data,
+      endpoint,
+      pageResult.response?.status ?? 0,
+    );
 
     if (page === 0) {
       stats = data.stats;
       title = data.title;
     }
     spans.push(...data.spans);
-    const parsed = parseLinkHeader(headers.get("link") ?? null);
-    cursor = parsed.nextCursor;
+    cursor = pageResult.nextCursor;
     if (!cursor) {
       break;
     }

@@ -280,7 +280,7 @@ function Install-SentryCli {
       $state.Step = 'init'
       & $tmpBinary init
       if ($LASTEXITCODE -ne 0) {
-        # Like the bash installer, report wizard failures to the caller but not
+        # Like the bash installer, report init failures to the caller but not
         # to installer telemetry: init errors are not installation failures.
         throw "sentry init failed with exit code $LASTEXITCODE"
       }

@@ -169,6 +169,7 @@ export {
   CustomerTrialInfoSchema,
   DetailedLogsResponseSchema,
   DetailedSentryLogSchema,
+  DsnLookupResponseSchema,
   type EventViewAttachment,
   ISSUE_LEVELS,
   ISSUE_STATUSES,

@@ -58,6 +58,7 @@ type ToolDefinition = {
   title: string;
   description: string | ((context: { experimentalMode: boolean }) => string);
   inputSchema: Record<string, ZodTypeAny>;
+  outputSchema?: ZodTypeAny;
   experimental?: boolean;
   hideInExperimentalMode?: boolean;
   deprecated?: { replacedBy: readonly string[] };
@@ -93,6 +94,11 @@ function formatToolsForMCP(tools: Record<string, ToolDefinition>) {
         experimentalMode: false,
       }),
       inputSchema: jsonSchema,
+      // matches @modelcontextprotocol/server's
+      // standardSchemaToJsonSchema(schema, "output") (draft-2020-12)
+      ...(tool.outputSchema && {
+        outputSchema: z.toJSONSchema(tool.outputSchema, { io: "output" }),
+      }),
       ...(tool.annotations && { annotations: tool.annotations }),
     };
   });

@@ -49,9 +49,10 @@ import type {
   IssueAlertCreateOutput,
 } from "../../../output-schemas/alert.js";
 import { IssueAlertCreateOutputSchema } from "../../../generated/output-schemas/alert.js";
+import { sentry } from "../../../lib/app-identity.js";
 
-const USAGE_HINT =
-  "sentry alert issues create <target> --name <name> --condition <json> --action <json>";
+const usageHint = () =>
+  sentry`alert issues create <target> --name <name> --condition <json> --action <json>`;
 
 type CreateFlags = {
   readonly name: string;
@@ -86,11 +87,11 @@ async function resolveCreateTarget(
 ): Promise<ResolvedTarget> {
   const { targets } = await resolveProjectBoundTargets(parsed, {
     cwd,
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
   });
   const [target, ...others] = targets;
   if (!target) {
-    throw new ContextError("Organization and project", USAGE_HINT);
+    throw new ContextError("Organization and project", usageHint());
   }
   if (others.length > 0) {
     throw new ValidationError(
@@ -125,25 +126,21 @@ export const createCommand = buildCommand({
     examples: [
       {
         description: "Alert on new issues and email a team",
-        command:
-          'sentry alert issues create my-org/my-project --name \'New Issues\' --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
+        run: 'alert issues create my-org/my-project --name \'New Issues\' --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
       },
       {
         description:
           "Preview a high-priority alert that emails a user at most every 30 minutes",
-        command:
-          'sentry alert issues create my-org/my-project --name \'High Priority\' --condition \'{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}\' --frequency 30 --dry-run',
+        run: 'alert issues create my-org/my-project --name \'High Priority\' --condition \'{"type":"new_high_priority_issue","comparison":true,"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"user","targetIdentifier":"56789"}}\' --frequency 30 --dry-run',
       },
       {
         description: "Alert on new issues and regressions, using trigger names",
-        command:
-          'sentry alert issues create my-org/my-project --name \'New or Regressed\' --condition first-seen,regression --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
+        run: 'alert issues create my-org/my-project --name \'New or Regressed\' --condition first-seen,regression --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\'',
       },
       {
         description:
           "Alert when an issue sees more than 50 events in a day (filters only, checked on every event)",
-        command:
-          'sentry alert issues create my-org/my-project --name \'Busy Issues\' --filter \'{"type":"event_frequency_count","comparison":{"value":50,"interval":"1d"},"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\' --frequency 1440',
+        run: 'alert issues create my-org/my-project --name \'Busy Issues\' --filter \'{"type":"event_frequency_count","comparison":{"value":50,"interval":"1d"},"conditionResult":true}\' --action \'{"type":"email","data":{},"config":{"targetType":"team","targetIdentifier":"1"}}\' --frequency 1440',
       },
     ],
   },

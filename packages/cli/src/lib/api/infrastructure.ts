@@ -6,9 +6,8 @@
  * other modules in `src/lib/api/` import from.
  */
 
-import { promisify } from "node:util";
-import { zstdCompress as zstdCompressCb } from "node:zlib";
 import {
+  type BaseUrlRequest,
   createSentryClient,
   parseSentryLinkHeader,
   type SdkResult,
@@ -29,7 +28,7 @@ import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
 
 import { extractRequiredScopes } from "../api-scope.js";
-import { getUrlLoginCommand } from "../app-identity.js";
+import { getUrlLoginCommand, sentry } from "../app-identity.js";
 import {
   type CredentialContext,
   getActiveEnvVarName,
@@ -102,12 +101,12 @@ function enrich403Detail(rawDetail: string | undefined): string {
     const scopeArgs = scopes.map((s) => `--scope ${s}`).join(" ");
     lines.push(
       `Your token is missing the required scope(s) '${scopes.join("', '")}'.`,
-      `Re-authenticate with: sentry auth refresh ${scopeArgs}`,
+      `Re-authenticate with: ${sentry`auth refresh ${scopeArgs}`}`,
     );
   } else {
     lines.push(
       "You may not have access to this resource.",
-      "Re-authenticate with: sentry auth login",
+      `Re-authenticate with: ${sentry`auth login`}`,
     );
   }
   return lines.join("\n  ");
@@ -132,7 +131,7 @@ function enrich403Detail(rawDetail: string | undefined): string {
  *
  * @see https://github.com/getsentry/sentry/blob/934f1473f198a62f9268d7140b80cd9ca1e59bb9/src/sentry/api/authentication.py#L536-L539
  */
-export function enrich401Detail(rawDetail: string | undefined): string {
+function enrich401Detail(rawDetail: string | undefined): string {
   // Seat-limit lockout, not an auth failure. Sentry returns 401 with
   // `code: member-disabled-over-limit` when the org is over its member limit
   // and the caller's seat is disabled — re-authenticating cannot fix this.
@@ -141,7 +140,7 @@ export function enrich401Detail(rawDetail: string | undefined): string {
       "Your account is disabled in this organization because it is over its member limit.",
       "This is a billing/seat-limit issue, not an auth problem — re-authenticating won't help.",
       "Ask an org owner to upgrade the plan or free up a seat, then retry.",
-      "Or target a different org, e.g.:  sentry init my-other-org/",
+      `Or target a different org, e.g.:  ${sentry`issue list my-other-org/`}`,
     ].join("\n  ");
   }
 
@@ -158,7 +157,7 @@ export function enrich401Detail(rawDetail: string | undefined): string {
   } else {
     lines.push(
       "Not authenticated or your session has expired.",
-      "Re-authenticate with: sentry auth login",
+      `Re-authenticate with: ${sentry`auth login`}`,
     );
   }
   return lines.join("\n  ");
@@ -202,20 +201,10 @@ function enrichDetail(
  */
 export const parseLinkHeader = parseSentryLinkHeader;
 
-/** zstd body compressor, or null when the runtime lacks zstd support. */
-const zstdCompressAsync =
-  typeof zstdCompressCb === "function" ? promisify(zstdCompressCb) : null;
-
 /** Options for raw API requests to Sentry endpoints. */
 export type ApiRequestOptions<T = unknown> = {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   body?: unknown;
-  /**
-   * Compress the JSON body with zstd and send `Content-Encoding: zstd`. Useful
-   * for large bodies (e.g. a snapshot manifest). Silently falls back to plain
-   * JSON when the runtime lacks zstd support.
-   */
-  bodyEncoding?: "zstd";
   /** Query parameters. String arrays create repeated keys (e.g., tags=1&tags=2) */
   params?: Record<string, string | number | boolean | string[] | undefined>;
   /** Optional valibot schema for runtime validation of response data */
@@ -338,7 +327,7 @@ function buildNetworkErrorDetail(error: unknown): string {
   const steps = [causeHint ?? "Check your network connection and try again."];
   steps.push(
     isSentrySaasUrl(baseUrl)
-      ? "Check Sentry's status with: sentry status"
+      ? `Check Sentry's status with: ${sentry`status`}`
       : describeUrlSource(),
   );
   return [`Unable to reach Sentry at ${baseUrl}: ${cause}`, "", ...steps].join(
@@ -520,12 +509,29 @@ export function appendSearchParams(
 }
 
 /**
- * Get SDK config for an organization's region.
- * Resolves the org's region URL and returns the config.
+ * `resolveBaseUrl` for `@sentry/api` clients: a request whose path names an
+ * organization goes to that organization's region, on the server of the
+ * stored account that knows it ({@link resolveOrgRegion}). An explicit
+ * server still limits the accounts. Unscoped paths keep the base URL.
  */
-export async function getOrgSdkConfig(orgSlug: string) {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  return getSdkClientConfig(regionUrl);
+async function resolveOrgBaseUrl({
+  baseUrl,
+  scope,
+}: BaseUrlRequest): Promise<string> {
+  return scope ? await resolveOrgRegion(scope.organization) : baseUrl;
+}
+
+/**
+ * SDK config that sends each request to the region of the organization its
+ * path names ({@link resolveOrgBaseUrl}).
+ */
+export function getOrgSdkConfig(
+  options: Parameters<typeof getSdkClientConfig>[1] = {},
+) {
+  return {
+    ...getSdkClientConfig(getApiBaseUrl(), options),
+    resolveBaseUrl: resolveOrgBaseUrl,
+  };
 }
 
 /**
@@ -736,7 +742,6 @@ export async function apiRequestToRegion<T>(
   const {
     method = "GET",
     body,
-    bodyEncoding,
     params,
     schema,
     credential,
@@ -757,20 +762,10 @@ export async function apiRequestToRegion<T>(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  let requestBody: string | Uint8Array | undefined;
-  if (body !== undefined) {
-    const json = JSON.stringify(body);
-    if (bodyEncoding === "zstd" && zstdCompressAsync) {
-      requestBody = await zstdCompressAsync(Buffer.from(json));
-      headers["Content-Encoding"] = "zstd";
-    } else {
-      requestBody = json;
-    }
-  }
   const response = await fetchFn(url, {
     method,
     headers,
-    body: requestBody,
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -806,33 +801,75 @@ export async function apiRequestToRegion<T>(
   }
 
   if (schema) {
-    const result = safeParse(schema, data);
-    if (!result.success) {
-      // Attach structured validation issues to the Sentry event so we can
-      // diagnose exactly which field(s) failed validation — the ApiError.detail
-      // string alone may not be visible in the Sentry issue overview.
-      // Strip valibot issues to metadata only (path/type/message) before
-      // attaching — full issues embed the raw failing `input` value.
-      Sentry.setContext("schema_validation", {
-        endpoint,
-        status: response.status,
-        issues: result.issues.slice(0, 10).map((i) => ({
-          // Strip raw input from path items — only keep structural path keys.
-          path: i.path?.map((p) => ({ key: p.key, type: p.type })),
-          type: i.type,
-          message: i.message,
-        })),
-      });
-      throw new ApiError(
-        `Unexpected response format from ${endpoint}`,
-        response.status,
-        result.issues.map((issue) => issue.message).join(", "),
-      );
-    }
-    return { data: result.output, headers: response.headers };
+    return {
+      data: validateResponse(schema, data, endpoint, response.status),
+      headers: response.headers,
+    };
   }
 
   return { data: data as T, headers: response.headers };
+}
+
+/**
+ * Validate a response body against the CLI's schema for it.
+ *
+ * Used for raw requests and for `@sentry/api` results whose generated type is
+ * looser than what the CLI reads (e.g. untyped span records).
+ *
+ * @param schema - Valibot schema for the response body
+ * @param data - Parsed response body
+ * @param endpoint - API path, named in the error message
+ * @param status - HTTP status of the response
+ * @throws {ApiError} When the body does not match the schema
+ */
+export function validateResponse<T>(
+  schema: GenericSchema<unknown, T>,
+  data: unknown,
+  endpoint: string,
+  status: number,
+): T {
+  const result = safeParse(schema, data);
+  if (!result.success) {
+    // Attach structured validation issues to the Sentry event so we can
+    // diagnose exactly which field(s) failed validation — the ApiError.detail
+    // string alone may not be visible in the Sentry issue overview.
+    // Strip valibot issues to metadata only (path/type/message) before
+    // attaching — full issues embed the raw failing `input` value.
+    Sentry.setContext("schema_validation", {
+      endpoint,
+      status,
+      issues: result.issues.slice(0, 10).map((i) => ({
+        // Strip raw input from path items — only keep structural path keys.
+        path: i.path?.map((p) => ({ key: p.key, type: p.type })),
+        type: i.type,
+        message: i.message,
+      })),
+    });
+    throw new ApiError(
+      `Unexpected response format from ${endpoint}`,
+      status,
+      result.issues.map((issue) => issue.message).join(", "),
+    );
+  }
+  return result.output;
+}
+
+/**
+ * Unwrap an @sentry/api SDK result and validate its body with the CLI's schema.
+ *
+ * @param result - The result from an SDK function call
+ * @param context - Human-readable context for HTTP error messages
+ * @param schema - Valibot schema for the response body
+ * @param endpoint - API path, named in schema-mismatch errors
+ */
+export function unwrapValidatedResult<T>(
+  result: Pick<SdkResult, "data" | "error" | "response">,
+  context: string,
+  schema: GenericSchema<unknown, T>,
+  endpoint: string,
+): T {
+  const data = unwrapResult<unknown>(result, context);
+  return validateResponse(schema, data, endpoint, result.response?.status ?? 0);
 }
 
 /**
@@ -998,7 +1035,8 @@ export type PreparedRawApiRequest = {
 };
 
 /**
- * Prepare a raw request without fetching or refreshing credentials.
+ * Prepare a raw request without sending it or refreshing credentials; an
+ * org-scoped path may look up the organization's region first.
  * Existing params retain append semantics; query overrides use the SDK's
  * replacement semantics for decoded page cursors and page sizes.
  */
@@ -1008,9 +1046,14 @@ export async function prepareRawApiRequest(
   query?: Record<string, unknown>,
 ): Promise<PreparedRawApiRequest> {
   const { method = "GET", body, params, headers, baseUrl } = options;
+  // A full URL keeps the request on its server; otherwise the path's
+  // organization picks the account, server, and region.
   const config = baseUrl
     ? getSdkConfig(baseUrl, { bufferResponseBody: true })
-    : getDefaultSdkConfig({ bufferResponseBody: true, path: endpoint });
+    : {
+        ...getDefaultSdkConfig({ bufferResponseBody: true }),
+        resolveBaseUrl: resolveOrgBaseUrl,
+      };
   const isStringBody = typeof body === "string";
   const request = await createSentryClient(config).client.prepareRequest({
     method,

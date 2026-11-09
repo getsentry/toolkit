@@ -44,11 +44,11 @@ export const leaderboardCommand = buildCommand({
     examples: [
       {
         description: "Show the top Snake scores",
-        command: "sentry games leaderboard",
+        run: "games leaderboard",
       },
       {
         description: "Show the scores as JSON",
-        command: "sentry games leaderboard --json",
+        run: "games leaderboard --json",
       },
     ],
   },

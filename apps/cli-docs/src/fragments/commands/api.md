@@ -4,6 +4,13 @@
 
 Endpoints are relative to `/api/0/` — the prefix is added automatically. Absolute HTTP(S) Sentry URLs also work; their origin is validated against your authenticated host.
 
+A relative endpoint that names an organization, such as
+`organizations/acme-corp/issues/` or `projects/acme-corp/web/`, is sent to that
+organization's region (for example `https://us.sentry.io`) with the stored
+account that knows it, as other commands do. The first request for an
+organization may look up its region, and `--dry-run` shows the URL that would be
+used. An absolute URL is sent as given.
+
 If a successful GET response is interrupted while downloading, the CLI retries
 within its existing limit of three attempts. This also applies to complete API
 responses read by other commands. The request timeout covers these response

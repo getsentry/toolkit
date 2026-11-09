@@ -28,6 +28,7 @@ test("binds the client when init runs inside the command's pre-init span", async
       agentProviderFromFlag: false,
       experimental: false,
       finalSkills: new Set(),
+      disabledSkills: [],
     });
   });
 

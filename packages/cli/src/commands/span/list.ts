@@ -14,6 +14,7 @@
 import type { SentryContext } from "../../context.js";
 import type { SpanSortValue } from "../../lib/api/traces.js";
 import { listSpans } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   type ParsedOrgProject,
   parseOrgProjectInput,
@@ -182,7 +183,7 @@ export const PROJECT_PAGINATION_KEY = "span-search";
 const COMMAND_NAME = "span list";
 
 /** Usage hint for trace-mode ContextError messages */
-const TRACE_USAGE_HINT = "sentry span list [<org>/<project>/]<trace-id>";
+const traceUsageHint = () => sentry`span list [<org>/<project>/]<trace-id>`;
 
 /**
  * Parse --limit flag, delegating range validation to shared utility.
@@ -231,7 +232,7 @@ type SpanListArguments = BoundArguments<SpanListInput, SpanListTarget>;
  * @internal Exported for testing
  */
 export function parseSpanListInput(args: readonly string[]): SpanListInput {
-  const input = parseDualModeInput(args, TRACE_USAGE_HINT, {
+  const input = parseDualModeInput(args, traceUsageHint(), {
     needsProject: true,
   });
   if (input.mode === "trace") {
@@ -252,7 +253,8 @@ async function resolveSpanListTarget(
     const resolved = await resolveTraceOrgProject(
       parsed,
       context.cwd,
-      TRACE_USAGE_HINT,
+      "span list",
+      traceUsageHint(),
     );
     return { mode: "trace", ...resolved };
   }
@@ -293,7 +295,7 @@ function traceNextPageHint(
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   return appendFlagHints(
-    `sentry span list ${org}/${project}/${traceId} -c next`,
+    sentry`span list ${org}/${project}/${traceId} -c next`,
     flags,
   );
 }
@@ -306,7 +308,7 @@ function tracePrevPageHint(
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
   return appendFlagHints(
-    `sentry span list ${org}/${project}/${traceId} -c prev`,
+    sentry`span list ${org}/${project}/${traceId} -c prev`,
     flags,
   );
 }
@@ -317,7 +319,7 @@ function projectNextPageHint(
   project: string,
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
-  return appendFlagHints(`sentry span list ${org}/${project} -c next`, flags);
+  return appendFlagHints(sentry`span list ${org}/${project} -c next`, flags);
 }
 
 /** Build the CLI hint for fetching the previous page in project mode. */
@@ -326,7 +328,7 @@ function projectPrevPageHint(
   project: string,
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
-  return appendFlagHints(`sentry span list ${org}/${project} -c prev`, flags);
+  return appendFlagHints(sentry`span list ${org}/${project} -c prev`, flags);
 }
 
 // ---------------------------------------------------------------------------
@@ -493,7 +495,7 @@ async function handleTraceMode(
     const countText = `Showing ${flatSpans.length} span${flatSpans.length === 1 ? "" : "s"}.`;
     hint = nav
       ? `${countText} ${nav}`
-      : `${countText} Use 'sentry span view ${traceId} <span-id>' to view span details.`;
+      : `${countText} Use '${sentry`span view ${traceId} <span-id>`}' to view span details.`;
   }
 
   return {
@@ -580,7 +582,7 @@ async function handleProjectMode(
     const countText = `Showing ${flatSpans.length} span${flatSpans.length === 1 ? "" : "s"}.`;
     hint = nav
       ? `${countText} ${nav}`
-      : `${countText} Use 'sentry span view <trace-id> <span-id>' to view span details.`;
+      : `${countText} Use '${sentry`span view <trace-id> <span-id>`}' to view span details.`;
   }
 
   return {
@@ -612,49 +614,47 @@ export const listCommand = buildListCommand("span", {
     examples: [
       {
         description: "List recent spans in the current project",
-        command: "sentry span list",
+        run: "span list",
       },
       {
         description: "Find all DB spans",
-        command: 'sentry span list -q "op:db"',
+        run: 'span list -q "op:db"',
       },
       {
         description: "Slow spans in the last 24 hours",
-        command: 'sentry span list -q "duration:>100ms" --period 24h',
+        run: 'span list -q "duration:>100ms" --period 24h',
       },
       {
         description: "Sort by slowest first",
-        command: "sentry span list --sort duration",
+        run: "span list --sort duration",
       },
       {
         description: "List spans within a specific trace",
-        command: "sentry span list abc123def456abc123def456abc12345",
+        run: "span list abc123def456abc123def456abc12345",
       },
       {
         description: "Show only spans from one project within a trace",
-        command:
-          "sentry span list my-org/cli-server/abc123def456abc123def456abc12345",
+        run: "span list my-org/cli-server/abc123def456abc123def456abc12345",
       },
       {
         description: "Filter a trace's spans to several projects",
-        command:
-          'sentry span list abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
+        run: 'span list abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
       },
       {
         description: "Fetch the next page",
-        command: "sentry span list -c next",
+        run: "span list -c next",
       },
       {
         description: "List spans in an explicit project",
-        command: "sentry span list my-org/cli-server",
+        run: "span list my-org/cli-server",
       },
       {
         description: "Find a project across organizations, then list a trace",
-        command: "sentry span list cli-server abc123def456abc123def456abc12345",
+        run: "span list cli-server abc123def456abc123def456abc12345",
       },
       {
         description: "Fetch the next page of a trace",
-        command: "sentry span list abc123def456abc123def456abc12345 -c next",
+        run: "span list abc123def456abc123def456abc12345 -c next",
       },
     ],
   },

@@ -30,7 +30,7 @@ import {
   buildOrgSettingsUrl,
   buildSeerSettingsUrl,
 } from "./sentry-urls.js";
-import { getLoginCommand, getUrlLoginCommand } from "./app-identity.js";
+import { getLoginCommand, getUrlLoginCommand, sentry } from "./app-identity.js";
 
 // ---------------------------------------------------------------------------
 // Exit code constants
@@ -93,14 +93,8 @@ export const EXIT = {
   // 60–69: Command-specific
   /** Command produced output but should exit non-zero */
   OUTPUT_ERROR: 60,
-  /** Init wizard error (generic) */
-  WIZARD: 61,
-  /** Init wizard: dependency installation failed */
-  WIZARD_DEPS: 62,
-  /** Init wizard: codemod plan or apply failed */
-  WIZARD_CODEMOD: 63,
-  /** Init wizard: user stopped after verification */
-  WIZARD_VERIFY: 64,
+  /** `sentry local run --verify` received no events from the SDK */
+  VERIFY_FAILED: 64,
 } as const;
 
 /**
@@ -376,18 +370,21 @@ export class OutputError extends CliError {
   }
 }
 
-const DEFAULT_CONTEXT_ALTERNATIVES = [
-  "Run from a directory with a Sentry DSN in source code or .env files",
-  "Set SENTRY_ORG and SENTRY_PROJECT (or SENTRY_DSN) environment variables",
-  "Run 'sentry org list' to find your organization slug",
-  "Run 'sentry project list <org>/' to find project slugs",
-] as const;
+/** Ways to provide context when auto-detection found none. */
+function defaultContextAlternatives(): string[] {
+  return [
+    "Run from a directory with a Sentry DSN in source code or .env files",
+    "Set SENTRY_ORG and SENTRY_PROJECT (or SENTRY_DSN) environment variables",
+    `Run '${sentry`org list`}' to find your organization slug`,
+    `Run '${sentry`project list <org>/`}' to find project slugs`,
+  ];
+}
 
 /**
  * Build the formatted context error message with usage hints.
  *
  * @param resource - What is required (e.g., "Organization", "Trace ID and span ID")
- * @param command - Single-line CLI usage example (e.g., "sentry org view <org-slug>")
+ * @param command - Single-line CLI usage example (e.g., sentry`org view <org-slug>`)
  * @param alternatives - Alternative ways to provide the context
  * @param note - Optional informational context (e.g., "Found 2 DSN(s) that could not be resolved").
  *   Rendered as a separate "Note:" section after alternatives. Use this for diagnostic
@@ -472,7 +469,7 @@ function buildResolutionMessage(
  *
  * @param resource - What is required (e.g., "Organization", "Organization and project").
  *   Use " and " to join compound resources — triggers plural grammar ("are required").
- * @param command - **Single-line** CLI usage example (e.g., "sentry org view <org-slug>").
+ * @param command - **Single-line** CLI usage example (e.g., sentry`org view <org-slug>`).
  *   Must not contain newlines — multi-line messages indicate a resolution failure
  *   that should use {@link ResolutionError}.
  * @param alternatives - Alternative ways to resolve (defaults to DSN/project detection hints).
@@ -495,9 +492,7 @@ export class ContextError extends CliError {
   ) {
     // When alternatives is omitted, auto-detection was tried and failed
     const isAutoDetect = alternatives === undefined;
-    const resolvedAlternatives = alternatives ?? [
-      ...DEFAULT_CONTEXT_ALTERNATIVES,
-    ];
+    const resolvedAlternatives = alternatives ?? defaultContextAlternatives();
 
     // Include full formatted message so it's shown even when caught by external handlers
     super(
@@ -741,8 +736,8 @@ export class SeerError extends CliError {
     // where the prompt can't fire — hence the direct command suggestion
     // (CLI-1D/BW/98, 237 users combined).
     const trialHint = this.orgSlug
-      ? `\n\nStart a free trial:\n  sentry trial start seer ${this.orgSlug}`
-      : "\n\nYou may be eligible for a free trial:\n  sentry trial list";
+      ? `\n\nStart a free trial:\n  ${sentry`trial start seer ${this.orgSlug}`}`
+      : `\n\nYou may be eligible for a free trial:\n  ${sentry`trial list`}`;
 
     // When org slug is known, provide direct URLs to settings
     if (this.orgSlug) {
@@ -791,24 +786,6 @@ export class TimeoutError extends CliError {
       msg += `\n\n${this.hint}`;
     }
     return msg;
-  }
-}
-
-/**
- * Error thrown by the init wizard when it has already displayed
- * the error via clack UI. The `rendered` flag tells the framework
- * error handler to skip its own formatting.
- */
-export class WizardError extends CliError {
-  readonly rendered: boolean;
-
-  constructor(
-    message: string,
-    options?: { rendered?: boolean; exitCode?: number },
-  ) {
-    super(message, options?.exitCode ?? EXIT.WIZARD);
-    this.name = "WizardError";
-    this.rendered = options?.rendered ?? true;
   }
 }
 
@@ -1060,8 +1037,7 @@ export function isUserError(error: unknown): boolean {
     error instanceof ValidationError ||
     error instanceof DeviceFlowError ||
     error instanceof SeerError ||
-    error instanceof OutputError ||
-    error instanceof WizardError
+    error instanceof OutputError
   ) {
     return true;
   }

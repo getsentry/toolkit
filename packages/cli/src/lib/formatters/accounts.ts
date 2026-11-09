@@ -4,6 +4,7 @@
  */
 
 import { text } from "@sentry/toolkit-core/markdown";
+import { sentry } from "../app-identity.js";
 import { type AccountSummary, hostnameOf } from "../db/accounts.js";
 import { colorTag, renderMarkdown } from "./markdown.js";
 import { formatTable } from "./table.js";
@@ -55,7 +56,7 @@ export type AccountListResult = {
 /** Human output for `sentry auth list`. */
 export function formatAccountList(data: AccountListResult): string {
   if (data.accounts.length === 0) {
-    return renderMarkdown("No stored accounts. Run `sentry auth login`.");
+    return renderMarkdown(`No stored accounts. Run \`${sentry`auth login`}\`.`);
   }
   return formatTable(data.accounts, [
     { header: "", value: (a) => (a.active ? "*" : ""), minWidth: 1 },
