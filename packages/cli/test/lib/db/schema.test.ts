@@ -251,6 +251,7 @@ describe("TABLE_SCHEMAS persistence", () => {
       .sort();
 
     expect(cacheTables).toEqual([
+      "completion_cache",
       "dsn_cache",
       "issue_org_cache",
       "org_regions",
@@ -259,6 +260,7 @@ describe("TABLE_SCHEMAS persistence", () => {
       "project_cache",
       "project_root_cache",
       "repo_cache",
+      "telemetry_envelope_queue",
     ]);
   });
 });

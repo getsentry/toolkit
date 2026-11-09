@@ -19,6 +19,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   compareVersions,
   determineInstallDir,
@@ -30,7 +31,16 @@ import {
   type UpgradeSource,
 } from "../../lib/binary.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { CLI_VERSION } from "../../lib/constants.js";
+import {
+  backupDatabase,
+  type DatabaseBackup,
+  discardDatabaseBackup,
+  getUndoBackup,
+  reinstateDatabaseBackup,
+  restoreDatabaseBackup,
+} from "../../lib/db/backup.js";
 import { getDbPath, getRawDatabase } from "../../lib/db/index.js";
 import {
   getReleaseChannel,
@@ -88,13 +98,137 @@ function prepareLocalDatabaseForDowngrade(): void {
   } catch (error) {
     log.warn(
       `Could not prepare the local database for an older CLI: ${stringifyUnknown(error)}. ` +
-        `If the older CLI fails, delete ${getDbPath()} and run \`sentry auth login\`.`,
+        `If the older CLI fails, delete ${getDbPath()} and run \`${sentry`auth login`}\`.`,
     );
+  }
+}
+
+/**
+ * What happens to the local database around the new binary's setup.
+ *
+ * Every version change first backs up the current database so
+ * `sentry cli upgrade undo` can return to it (#1623).
+ */
+type DatabasePlan = {
+  /** Version being installed. */
+  target: string;
+  /** Hand the database to a CLI that can't adapt a newer one (#1611). */
+  handOff: boolean;
+  /** Undo: put back the target version's own database. */
+  restore?: DatabaseBackup;
+  /** Set once `restore` succeeded; the hand-off is then unnecessary. */
+  restored?: boolean;
+  /** This version's database, saved before the new binary's setup. */
+  backup?: DatabaseBackup;
+  /** Notes about the database for the command result. */
+  warnings: string[];
+};
+
+/** Back up the database as this version's before another version owns it. */
+async function backupLocalDatabase(
+  target: string,
+): Promise<DatabaseBackup | undefined> {
+  try {
+    return await backupDatabase(getRawDatabase(), CLI_VERSION, target);
+  } catch (error) {
+    log.warn(
+      `Could not back up the local database: ${stringifyUnknown(error)}. ` +
+        `\`${sentry`cli upgrade undo`}\` won't be able to return to this version.`,
+    );
+    return;
+  }
+}
+
+/**
+ * Run once the new binary is downloaded, right before its setup, so a
+ * failed download leaves the database untouched.
+ *
+ * @param install - Whether setup installs the new binary itself, so this
+ *   version stays installed if setup fails.
+ * @throws {UpgradeError} When an undo that installs the binary itself could
+ *   not back up this version's database: a failed setup could then not put
+ *   it back, leaving this version with the restored one.
+ */
+async function prepareDatabaseForNewBinary(
+  plan: DatabasePlan,
+  install: boolean,
+): Promise<void> {
+  // Reinstalling this same version must not replace the record of the
+  // upgrade that led here.
+  if (plan.target !== CLI_VERSION) {
+    plan.backup = await backupLocalDatabase(plan.target);
+  }
+  if (plan.restore && install && !plan.backup) {
+    throw new UpgradeError(
+      "execution_failed",
+      `Undo stopped before installing ${plan.target}: this version's database could not be backed up, ` +
+        "so it couldn't be put back if the install failed. Nothing was changed.",
+    );
+  }
+  if (plan.restore) {
+    try {
+      plan.warnings.push(
+        ...(await restoreDatabaseBackup(getRawDatabase(), plan.restore)),
+      );
+      plan.restored = true;
+      return;
+    } catch (error) {
+      log.warn(
+        `Could not restore the database backup for ${plan.target}: ${stringifyUnknown(error)}.`,
+      );
+    }
+  }
+  if (plan.handOff) {
+    prepareLocalDatabaseForDowngrade();
+  }
+}
+
+/**
+ * Revert this run's backup, restore and hand-off after a setup that installs
+ * the new binary itself failed, so this version, still the installed one,
+ * keeps its own database and `sentry cli upgrade undo` still finds the
+ * upgrade that led here instead of the one that failed.
+ */
+async function revertDatabaseForFailedInstall(
+  plan: DatabasePlan,
+): Promise<void> {
+  const { backup } = plan;
+  if (!backup) {
+    return;
+  }
+  plan.backup = undefined;
+  try {
+    if (plan.restored || plan.handOff) {
+      await reinstateDatabaseBackup(backup);
+    } else {
+      await discardDatabaseBackup(backup);
+    }
+    // This version keeps its database, so there is nothing to hand off.
+    plan.restored = false;
+    plan.handOff = false;
+  } catch (error) {
+    log.warn(
+      `Could not revert the local database after the failed setup: ${stringifyUnknown(error)}.`,
+    );
+  }
+}
+
+/**
+ * Run after setup, even when it fails: another invocation of this CLI may
+ * have re-migrated the database meanwhile. A failure reverted by
+ * {@link revertDatabaseForFailedInstall} has nothing left to hand off.
+ */
+function finishDatabaseForNewBinary(plan: DatabasePlan): void {
+  if (plan.handOff && !plan.restored) {
+    prepareLocalDatabaseForDowngrade();
   }
 }
 
 /** Special version strings that select a channel rather than a specific release. */
 const CHANNEL_VERSIONS = new Set(["nightly", "stable"]);
+
+/** Version argument that returns to the version before the last upgrade. */
+const MAGIC_VERSION_FOR_UNDO = "undo";
 
 /**
  * Structured result of the upgrade command.
@@ -120,6 +254,8 @@ export type UpgradeResult = {
   offline?: boolean;
   /** Warnings to display (e.g., PATH shadowing from old package manager install) */
   warnings?: string[];
+  /** Set by `sentry cli upgrade undo`: the version whose database was restored. */
+  restoredDatabase?: string;
   /** Changelog summary for the version range. Absent for offline or on fetch failure. */
   changelog?: ChangelogSummary;
 };
@@ -221,7 +357,7 @@ async function resolveTargetWithFallback(opts: {
       throw new UpgradeError(
         "unsupported_operation",
         "Cannot switch channels in offline mode — the cached version belongs to the current channel. " +
-          "Run 'sentry cli upgrade' with network access to switch channels.",
+          `Run '${sentry`cli upgrade`}' with network access to switch channels.`,
       );
     }
     // Read the cached version BEFORE persisting the channel — setReleaseChannel
@@ -273,6 +409,7 @@ function validateMethod(
   method: InstallationMethod,
   versionArg: string | undefined,
   offline: boolean,
+  undo: boolean,
 ): void {
   if (method === "unknown") {
     throw new UpgradeError("unknown_method");
@@ -283,6 +420,14 @@ function validateMethod(
     ? undefined
     : versionArg?.replace(VERSION_PREFIX_REGEX, "");
   if (method === "brew" && pinnedVersion && !isNightlyVersion(pinnedVersion)) {
+    if (undo) {
+      throw new UpgradeError(
+        "unsupported_operation",
+        `Homebrew can't install an earlier version, so undo can't return to ${pinnedVersion} through it. ` +
+          `Run \`${sentry`cli upgrade undo --method curl`}\` to return to it as a standalone install; ` +
+          "the Homebrew one may still come first in PATH.",
+      );
+    }
     throw new UpgradeError(
       "unsupported_operation",
       "Homebrew does not support installing a specific version. Run 'brew upgrade getsentry/tools/sentry' to upgrade to the latest formula version.",
@@ -437,8 +582,8 @@ function buildCheckResult(opts: {
   if (CLI_VERSION !== target) {
     const cmd =
       versionArg && !CHANNEL_VERSIONS.has(versionArg)
-        ? `sentry cli upgrade ${target}`
-        : "sentry cli upgrade";
+        ? sentry`cli upgrade ${target}`
+        : sentry`cli upgrade`;
     result.warnings = [`Run '${cmd}' to update.`];
   }
 
@@ -548,7 +693,7 @@ async function spawnWithRetry(
         throw new UpgradeError(
           "execution_failed",
           `Downloaded binary not found at ${binaryPath}. ` +
-            "The download may have been interrupted — rerun `sentry cli upgrade`.",
+            `The download may have been interrupted — rerun \`${sentry`cli upgrade`}\`.`,
         );
       }
       if (!isEbusyError(error) || attempt === SPAWN_MAX_ATTEMPTS) {
@@ -581,8 +726,8 @@ type SetupOptions = {
   ensureAuthScopes: boolean;
   /** Skip agent skill installation during setup. */
   noAgentSkills: boolean;
-  /** Hand the local database to an older CLI around setup (#1611). */
-  handOffDatabase: boolean;
+  /** What to do with the local database around setup. */
+  database: DatabasePlan;
 };
 
 /**
@@ -597,10 +742,8 @@ type SetupOptions = {
  * For package manager upgrades: the binary is already in place, so setup only
  * updates completions, agent skills, and records metadata.
  *
- * With `handOffDatabase`, the database is handed off only once the older
- * binary is downloaded, so a failed download keeps the current login, and
- * again after setup even when it fails, in case another invocation of this
- * CLI re-migrated the database meanwhile.
+ * The database is backed up, restored or handed off only once the new
+ * binary is downloaded (see {@link prepareDatabaseForNewBinary}).
  */
 async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
   const {
@@ -611,18 +754,15 @@ async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
     installDir,
     ensureAuthScopes,
     noAgentSkills,
-    handOffDatabase,
+    database,
   } = opts;
-  const args = [
-    "cli",
-    "setup",
-    "--quiet",
-    "--method",
-    method,
-    "--channel",
-    channel,
-    "--no-modify-path",
-  ];
+  const args = ["cli", "setup", "--quiet", "--method", method];
+  // An undo leaves the channel to the database it restores, which records
+  // the one that version followed. `channel` only picks its artifact.
+  if (!database.restore) {
+    args.push("--channel", channel);
+  }
+  args.push("--no-modify-path");
   if (install) {
     args.push("--install");
   }
@@ -637,16 +777,18 @@ async function runSetupOnNewBinary(opts: SetupOptions): Promise<void> {
     ? { ...process.env, SENTRY_INSTALL_DIR: installDir }
     : undefined;
 
-  if (handOffDatabase) {
-    prepareLocalDatabaseForDowngrade();
-  }
-  let exitCode: number;
+  await prepareDatabaseForNewBinary(database, install);
+  let exitCode: number | undefined;
   try {
     exitCode = await spawnWithRetry(binaryPath, args, env);
   } finally {
-    if (handOffDatabase) {
-      prepareLocalDatabaseForDowngrade();
+    // With --install the new binary installs itself during setup, so a
+    // failed setup leaves this version installed. Package managers install
+    // before setup, so their new version is in place either way.
+    if (install && exitCode !== 0) {
+      await revertDatabaseForFailedInstall(database);
     }
+    finishDatabaseForNewBinary(database);
   }
   if (exitCode !== 0) {
     throw new UpgradeError(
@@ -715,7 +857,7 @@ async function executeStandardUpgrade(opts: {
   json?: boolean;
   noAgentSkills: boolean;
   source?: UpgradeSource;
-  handOffDatabase: boolean;
+  database: DatabasePlan;
 }): Promise<void> {
   const {
     method,
@@ -729,7 +871,7 @@ async function executeStandardUpgrade(opts: {
     json,
     noAgentSkills,
     source,
-    handOffDatabase,
+    database,
   } = opts;
 
   // Use the rolling "nightly" tag only when upgrading to latest nightly
@@ -779,7 +921,7 @@ async function executeStandardUpgrade(opts: {
         installDir,
         ensureAuthScopes: !json,
         noAgentSkills,
-        handOffDatabase,
+        database,
       });
     } finally {
       releaseLock(downloadResult.lockPath);
@@ -795,7 +937,7 @@ async function executeStandardUpgrade(opts: {
       install: false,
       ensureAuthScopes: !json,
       noAgentSkills,
-      handOffDatabase,
+      database,
     });
   }
 }
@@ -825,7 +967,7 @@ async function migrateToStandaloneForNightly(opts: {
   json?: boolean;
   source?: UpgradeSource;
   channel: ReleaseChannel;
-  handOffDatabase: boolean;
+  database: DatabasePlan;
 }): Promise<string[]> {
   const {
     method,
@@ -835,7 +977,7 @@ async function migrateToStandaloneForNightly(opts: {
     json,
     source,
     channel,
-    handOffDatabase,
+    database,
   } = opts;
   log.info("Nightly builds are only available as standalone binaries.");
   log.info("Migrating to standalone installation...");
@@ -880,7 +1022,7 @@ async function migrateToStandaloneForNightly(opts: {
       installDir,
       ensureAuthScopes: !json,
       noAgentSkills,
-      handOffDatabase,
+      database,
     });
   } finally {
     releaseLock(downloadResult.lockPath);
@@ -915,6 +1057,7 @@ async function migrateToStandaloneForNightly(opts: {
 async function resolveContext(
   version: string | undefined,
   flags: UpgradeFlags,
+  undo: boolean,
 ): Promise<{
   channel: ReleaseChannel;
   versionArg: string | undefined;
@@ -926,7 +1069,7 @@ async function resolveContext(
   const channelChanged = channel !== currentChannel;
 
   const method = flags.method ?? (await detectInstallationMethod());
-  validateMethod(method, versionArg, flags.offline);
+  validateMethod(method, versionArg, flags.offline, undo);
   return { channel, versionArg, channelChanged, method };
 }
 
@@ -1004,43 +1147,50 @@ export const upgradeCommand = buildCommand({
       "  stable  (default) Latest stable release\n" +
       "  nightly           Built from main, updated on every commit\n\n" +
       "The channel is persisted so that subsequent bare `sentry cli upgrade` calls\n" +
-      "use the same channel.",
+      "use the same channel.\n\n" +
+      "Before switching versions, the local database is backed up for the version\n" +
+      "being replaced. `sentry cli upgrade undo` reinstalls that version and restores\n" +
+      "its database, keeping your current logins when it can.",
     examples: [
       {
         description: "Update to the latest version on the persisted channel",
-        command: "sentry cli upgrade",
+        run: "cli upgrade",
       },
       {
         description: "Check for updates without installing",
-        command: "sentry cli upgrade --check",
+        run: "cli upgrade --check",
       },
       {
         description: "Switch to the nightly channel and update",
-        command: "sentry cli upgrade nightly",
+        run: "cli upgrade nightly",
       },
       {
         description: "Switch back to the stable channel and update",
-        command: "sentry cli upgrade stable",
+        run: "cli upgrade stable",
       },
       {
         description: "Install a specific stable version",
-        command: "sentry cli upgrade 0.5.0",
+        run: "cli upgrade 0.5.0",
+      },
+      {
+        description: "Return to the version before the last upgrade",
+        run: "cli upgrade undo",
       },
       {
         description: "Force re-download even if up to date",
-        command: "sentry cli upgrade --force",
+        run: "cli upgrade --force",
       },
       {
         description: "Force using npm to upgrade",
-        command: "sentry cli upgrade --method npm",
+        run: "cli upgrade --method npm",
       },
       {
         description: "Upgrade from cached patches (no network)",
-        command: "sentry cli upgrade --offline",
+        run: "cli upgrade --offline",
       },
       {
         description: "Skip reinstalling agent skills",
-        command: "sentry cli upgrade --no-agent-skills",
+        run: "cli upgrade --no-agent-skills",
       },
     ],
   },
@@ -1051,8 +1201,8 @@ export const upgradeCommand = buildCommand({
       parameters: [
         {
           brief:
-            'Specific version (e.g. 0.5.0), or "nightly"/"stable" to switch channel; omit to update within current channel',
-          parse: String,
+            'Specific version (e.g. 0.5.0), "nightly"/"stable" to switch channel, or "undo" to return to the previous version; omit to update within current channel',
+          parse: choiceParser([...CHANNEL_VERSIONS, MAGIC_VERSION_FOR_UNDO]),
           placeholder: "version",
           optional: true,
         },
@@ -1090,8 +1240,23 @@ export const upgradeCommand = buildCommand({
     },
   },
   async *func(this: SentryContext, flags: UpgradeFlags, version?: string) {
-    const { channel, versionArg, channelChanged, method } =
-      await resolveContext(version, flags);
+    const undo =
+      version?.toLowerCase() === MAGIC_VERSION_FOR_UNDO
+        ? await getUndoBackup(CLI_VERSION)
+        : undefined;
+    const resolvedContext = await resolveContext(
+      undo ? undo.version : version,
+      flags,
+      undo !== undefined,
+    );
+    const { versionArg, method } = resolvedContext;
+    // Undo downloads the earlier version's own artifact. Setup doesn't
+    // record this channel: the restored database already stores the one
+    // that version followed, and this one's is left alone.
+    const channel = undo
+      ? getArtifactChannel(undo.version)
+      : resolvedContext.channel;
+    const channelChanged = undo ? false : resolvedContext.channelChanged;
 
     log.debug(`Installation method: ${method}`);
     log.debug(`Current version: ${CLI_VERSION}`);
@@ -1104,8 +1269,11 @@ export const upgradeCommand = buildCommand({
           versionArg,
           offline: flags.offline,
           method,
-          persistChannelFn: () =>
-            persistChannel(channel, channelChanged, version),
+          persistChannelFn: () => {
+            if (!undo) {
+              persistChannel(channel, channelChanged, version);
+            }
+          },
         }),
     );
     // Early exit for check-only (online) and up-to-date results.
@@ -1168,8 +1336,13 @@ export const upgradeCommand = buildCommand({
     }
     const downgrade = isDowngrade(CLI_VERSION, target);
     log.debug(`${downgrade ? "Downgrading" : "Upgrading"} to ${target}`);
-    const handOffDatabase =
-      downgrade && compareVersions(target, SELF_ADAPTING_CLI_VERSION) < 0;
+    const database: DatabasePlan = {
+      target,
+      handOff:
+        downgrade && compareVersions(target, SELF_ADAPTING_CLI_VERSION) < 0,
+      restore: undo,
+      warnings: [],
+    };
 
     // Perform the actual upgrade
     let warnings: string[] | undefined;
@@ -1184,7 +1357,7 @@ export const upgradeCommand = buildCommand({
         json: flags.json,
         source,
         channel,
-        handOffDatabase,
+        database,
       });
     } else {
       await executeStandardUpgrade({
@@ -1199,11 +1372,12 @@ export const upgradeCommand = buildCommand({
         json: flags.json,
         noAgentSkills: flags["no-agent-skills"],
         source,
-        handOffDatabase,
+        database,
       });
     }
 
     const changelog = await changelogPromise;
+    const allWarnings = [...(warnings ?? []), ...database.warnings];
     yield new CommandOutput({
       action: downgrade ? "downgraded" : "upgraded",
       currentVersion: CLI_VERSION,
@@ -1212,7 +1386,8 @@ export const upgradeCommand = buildCommand({
       method,
       forced: flags.force,
       offline: offline ? true : undefined,
-      warnings,
+      warnings: allWarnings.length > 0 ? allWarnings : undefined,
+      restoredDatabase: database.restored ? target : undefined,
       changelog,
     } satisfies UpgradeResult);
     return;

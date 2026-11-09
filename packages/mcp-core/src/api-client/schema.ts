@@ -26,32 +26,12 @@
  * const issues = IssueListSchema.parse(await response.json());
  * // TypeScript now knows the exact shape of issues
  * ```
- *
- * @example Error Handling
- * ```typescript
- * const { data, success, error } = ApiErrorSchema.safeParse(response);
- * if (success) {
- *   throw new ApiError(data.detail, statusCode);
- * }
- * ```
  */
 import type {
   SentryIssueIdentity,
   SentryNamedResource,
 } from "@sentry/toolkit-core/resource-identity";
 import { z } from "zod";
-
-/**
- * Schema for Sentry API error responses.
- *
- * Uses .passthrough() to allow additional fields that may be present
- * in different error scenarios.
- */
-export const ApiErrorSchema = z
-  .object({
-    detail: z.string(),
-  })
-  .passthrough();
 
 export const UserSchema = z
   .object({
@@ -173,7 +153,7 @@ export const DashboardPermissionsSchema = z
 
 export const DashboardWidgetPreviewSchema = z
   .object({
-    displayType: z.string(),
+    displayType: z.string().nullable(),
     layout: z.record(z.string(), z.unknown()).nullable().optional(),
   })
   .passthrough();
@@ -209,7 +189,7 @@ export const DashboardWidgetSchema = z
     id: z.union([z.string(), z.number()]),
     title: z.string(),
     description: z.string().nullable().optional(),
-    displayType: z.string(),
+    displayType: z.string().nullable(),
     interval: z.string().nullable().optional(),
     dateCreated: z.string(),
     dashboardId: z.union([z.string(), z.number()]),
@@ -232,7 +212,7 @@ export const DashboardListItemSchema = z
     environment: z.array(z.string()).default([]),
     filters: DashboardFiltersSchema.default({}),
     lastVisited: z.string().nullable().optional(),
-    widgetDisplay: z.array(z.string()).default([]),
+    widgetDisplay: z.array(z.string().nullable()).default([]),
     widgetPreview: z.array(DashboardWidgetPreviewSchema).default([]),
     permissions: DashboardPermissionsSchema.nullable().optional(),
     isFavorited: z.boolean().optional(),
@@ -477,47 +457,13 @@ export const ReplayDetailsSchema = z
   })
   .passthrough();
 
-const ReplayRecordingPayloadSchema = z
-  .object({
-    op: z.string().optional().catch(undefined),
-    description: z.string().optional().catch(undefined),
-    message: z.string().optional().catch(undefined),
-    category: z.string().optional().catch(undefined),
-    type: z.string().optional().catch(undefined),
-    data: z
-      .object({
-        duration: z.number().optional().catch(undefined),
-      })
-      .passthrough()
-      .optional()
-      .catch(undefined),
-  })
-  .passthrough();
-
-export const ReplayRecordingEventSchema = z
-  .object({
-    timestamp: z.number().optional().catch(undefined),
-    type: z.number().optional().catch(undefined),
-    data: z
-      .object({
-        tag: z.string().optional().catch(undefined),
-        href: z.string().optional().catch(undefined),
-        payload: ReplayRecordingPayloadSchema.optional().catch(undefined),
-      })
-      .passthrough()
-      .optional()
-      .catch(undefined),
-  })
-  .passthrough();
-
-export const ReplayRecordingSegmentsSchema = z.array(
-  z.array(z.unknown()).transform((events) =>
-    events.flatMap((event) => {
-      const result = ReplayRecordingEventSchema.safeParse(event);
-      return result.success ? [result.data] : [];
-    }),
-  ),
-);
+/**
+ * One page from the recording-segments endpoint: a list of segments, each a
+ * list of rrweb and Sentry replay events. Events stay unknown because their
+ * shape varies by SDK and version; the replay timeline parser reads them
+ * defensively.
+ */
+export const ReplayRecordingSegmentPageSchema = z.array(z.array(z.unknown()));
 
 export const ReplayListResponseSchema = z.object({
   data: z.array(ReplayDetailsSchema),
@@ -929,6 +875,9 @@ export const IssueSchema = z
         title: z.string().nullable().optional(),
         location: z.string().nullable().optional(),
         value: z.string().nullable().optional(),
+        // Feedback issues carry who submitted them.
+        name: z.string().nullable().optional(),
+        contact_email: z.string().nullable().optional(),
       })
       .optional(),
     seerFixabilityScore: z.number().nullable().optional(),
@@ -1082,6 +1031,7 @@ const EventTagsSchema = z.preprocess((value) => {
 
 const BaseEventSchema = z.object({
   id: z.string(),
+  packages: z.record(z.string(), z.string().nullable()).nullish(),
   groupID: z.string().nullable().optional(),
   title: z.string(),
   message: z.string().nullable(),
@@ -1556,6 +1506,23 @@ export const IssueTagValuesSchema = z
     totalValues: tagValues.totalValues ?? tagValues.uniqueValues ?? 0,
     topValues: tagValues.topValues ?? [],
   }));
+
+/**
+ * Schema for the tag keys recorded on an issue, each with its event count.
+ *
+ * Only the keys are parsed; the top values Sentry returns with each key are
+ * dropped so one unusual value cannot fail the whole list.
+ *
+ * Upstream source of truth in getsentry/sentry:
+ * - `src/sentry/issues/endpoints/group_tags.py` (`GroupTagsEndpoint`)
+ * - `src/sentry/tagstore/types.py` (`TagKeySerializerResponse`)
+ */
+export const IssueTagKeyListSchema = z.array(
+  z.object({
+    key: z.string(),
+    totalValues: z.number().nullish(),
+  }),
+);
 
 /**
  * Schema for external issue link (e.g., Jira, GitHub Issues).
@@ -2176,9 +2143,9 @@ export const ProfileChunkSchema = z
     chunk_id: z.string(),
     profiler_id: z.string().optional(),
     event_id: z.string().optional(),
-    environment: z.preprocess((value) => value ?? null, z.string().nullable()),
+    environment: z.preprocess((value) => value || null, z.string().nullable()),
     platform: z.preprocess((value) => value ?? "unknown", z.string()),
-    release: z.preprocess((value) => value ?? "unknown", z.string()),
+    release: z.preprocess((value) => value || null, z.string().nullable()),
     version: z.preprocess((value) => value ?? "2", z.string()),
     profile: z.object({
       frames: z.array(ProfileFrameSchema),
@@ -2230,6 +2197,57 @@ const ProfileReleaseSchema = z
     z.null(),
   ])
   .optional();
+
+/**
+ * Schema for a legacy transaction profile response in speedscope format.
+ *
+ * The profiling service only honors `format=sample` for sample-format
+ * profiles. Legacy profiles (Android, React Native on Android) always come
+ * back as speedscope output: there is no `profile` key, only `profiles`,
+ * `shared`, and camelCase metadata. We only model the summary metadata here;
+ * the speedscope stack data is kept opaque.
+ */
+export const LegacySpeedscopeProfileSchema = z
+  .object({
+    platform: z.string(),
+    profileID: z.string().optional(),
+    transactionName: z.string().nullable().optional(),
+    durationNS: z
+      .union([z.string(), z.number()])
+      .transform((value) => Number(value))
+      .optional(),
+    profiles: z.array(z.unknown()),
+    shared: z.unknown().optional(),
+    metadata: z
+      .object({
+        deviceClassification: z.string().nullable().optional(),
+        deviceManufacturer: z.string().nullable().optional(),
+        deviceModel: z.string().nullable().optional(),
+        deviceOSName: z.string().nullable().optional(),
+        deviceOSVersion: z.string().nullable().optional(),
+        environment: z.string().nullable().optional(),
+        traceID: z.string().nullable().optional(),
+        transactionID: z.string().nullable().optional(),
+        transactionName: z.string().nullable().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough()
+  .transform((profile) => ({ ...profile, format: "speedscope" as const }));
+
+/**
+ * Returns true when a raw profile response body is speedscope output, which
+ * has `profiles` instead of a sample-format `profile` object.
+ */
+function isSpeedscopeProfilePayload(body: unknown): boolean {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    !("profile" in body) &&
+    Array.isArray((body as { profiles?: unknown }).profiles)
+  );
+}
 
 /**
  * Schema for a V1 transaction profile response.
@@ -2315,6 +2333,32 @@ export const TransactionProfileSchema = z
       .optional(),
   })
   .passthrough();
+
+/**
+ * Schema for a transaction profile details response.
+ *
+ * Validates speedscope bodies against `LegacySpeedscopeProfileSchema` and every
+ * other body against the strict `TransactionProfileSchema`, so a malformed
+ * sample-format profile still reports the sample-format issues.
+ */
+export const TransactionProfileResponseSchema = z
+  .unknown()
+  .transform((body, ctx) => {
+    const result = isSpeedscopeProfilePayload(body)
+      ? LegacySpeedscopeProfileSchema.safeParse(body)
+      : TransactionProfileSchema.safeParse(body);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        ctx.addIssue({
+          code: "custom",
+          message: issue.message,
+          path: issue.path,
+        });
+      }
+      return z.NEVER;
+    }
+    return result.data;
+  });
 
 export const AgenticOnboardingStageSchema = z.enum([
   "connect_mcp",

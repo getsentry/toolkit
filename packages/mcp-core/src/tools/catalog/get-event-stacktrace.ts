@@ -16,10 +16,11 @@ import { fetchAndFormatEventStacktrace } from "../support/event-stacktrace";
 
 export default defineTool({
   name: "get_event_stacktrace",
+  title: "Get Event Stacktrace",
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read"],
   description: [
-    "Get a full thread stacktrace from a specific Sentry event.",
+    "Get the full stack trace (stacktrace) for one thread of a specific Sentry event.",
     "",
     "Use this tool when you need to:",
     "- Fetch the full stacktrace for a thread listed in issue details",

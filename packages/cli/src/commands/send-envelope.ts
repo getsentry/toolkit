@@ -6,7 +6,9 @@
  */
 
 import type { SentryContext } from "../context.js";
+import { sentry } from "../lib/app-identity.js";
 import { buildCommand } from "../lib/command.js";
+import { parseFilePath, parseText } from "../lib/completion-target.js";
 import { CliError, EXIT } from "../lib/errors.js";
 
 export const sendEnvelopeCommand = buildCommand({
@@ -26,14 +28,14 @@ export const sendEnvelopeCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Path(s) to envelope file(s)",
-        parse: String,
+        parse: parseFilePath,
         optional: true,
       },
     },
     flags: {
       dsn: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "DSN",
         optional: true,
       },
@@ -53,8 +55,8 @@ export const sendEnvelopeCommand = buildCommand({
   ) {
     const fileArgs = files.length > 0 ? ` ${files.join(" ")}` : " <file>";
     throw new CliError(
-      "`sentry send-envelope` has been removed.\n" +
-        `Use: sentry event send --raw${fileArgs}`,
+      `\`${sentry`send-envelope`}\` has been removed.\n` +
+        `Use: ${sentry`event send --raw${fileArgs}`}`,
       EXIT.GENERAL,
     );
   },

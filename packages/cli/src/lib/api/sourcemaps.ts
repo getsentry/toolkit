@@ -23,8 +23,7 @@ import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import { type ZipCompression, ZipWriter } from "../sourcemap/zip.js";
 import {
-  type AssembleResponse,
-  AssembleResponseSchema,
+  assembleArtifactBundle,
   type ChunkInfo,
   type ChunkServerOptions,
   getChunkUploadOptions,
@@ -34,7 +33,6 @@ import {
   type UploadEncoding,
   uploadMissingChunks,
 } from "./chunk-upload.js";
-import { apiRequestToRegion } from "./infrastructure.js";
 
 // ── Re-exports for backward compatibility ───────────────────────────
 // These were originally defined in this module. External consumers
@@ -333,17 +331,7 @@ async function uploadArtifactBundle(opts: {
   };
 
   const assembleEndpoint = `organizations/${org}/artifactbundle/assemble/`;
-  const { data: firstAssemble } = await apiRequestToRegion<AssembleResponse>(
-    regionUrl,
-    assembleEndpoint,
-    {
-      method: "POST",
-      body: assembleBody,
-      schema: AssembleResponseSchema,
-      // Assembly state is keyed by checksum; re-sending only polls it.
-      idempotent: true,
-    },
-  );
+  const firstAssemble = await assembleArtifactBundle(org, assembleBody);
 
   // Fail fast on server-side assembly error
   if (firstAssemble.state === "error") {
@@ -379,9 +367,8 @@ async function uploadArtifactBundle(opts: {
   // Step 6: Poll assemble endpoint. With --wait, block until fully processed
   // ("ok"); otherwise return as soon as the chunks are accepted ("created").
   await pollAssembly({
-    regionUrl,
+    assemble: () => assembleArtifactBundle(org, assembleBody),
     endpoint: assembleEndpoint,
-    body: assembleBody,
     entityName: "Artifact bundle",
     waitForOk: wait,
     deadlineMs: maxWaitMs,

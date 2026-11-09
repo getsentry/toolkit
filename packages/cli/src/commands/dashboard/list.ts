@@ -5,6 +5,7 @@
  * and optional client-side glob filtering by title.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import picomatch from "picomatch";
 import type { SentryContext } from "../../context.js";
 import { MAX_PAGINATION_PAGES } from "../../lib/api/infrastructure.js";
@@ -12,9 +13,8 @@ import {
   API_MAX_PER_PAGE,
   listDashboardsPaginated,
 } from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
+import { sentry } from "../../lib/app-identity.js";
 import { openInBrowser } from "../../lib/browser.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -22,7 +22,7 @@ import {
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { filterFields } from "../../lib/formatters/json.js";
-import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
+import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../lib/formatters/table.js";
 import { fuzzyMatch } from "../../lib/fuzzy.js";
@@ -31,6 +31,7 @@ import {
   buildListLimitFlag,
   paginationHint,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   buildDashboardsListUrl,
@@ -39,10 +40,11 @@ import {
 import type { DashboardListItem } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
 import {
-  withDashboardErrors,
-  parseDashboardListArgs,
-  resolveOrgFromTarget,
-} from "./resolve.js";
+  type DashboardListArguments,
+  dashboardListArguments,
+} from "./arguments.js";
+import { withDashboardErrors } from "./resolve.js";
+import { DashboardListItemSchema } from "../../generated/output-schemas/dashboard.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "dashboard-list";
@@ -155,7 +157,7 @@ function formatDashboardListHuman(result: DashboardListResult): string {
     const url = buildDashboardUrl(result.orgSlug, d.id);
     return {
       id: d.id,
-      title: `${escapeMarkdownCell(d.title ?? "(untitled)")}\n${colorTag("muted", url)}`,
+      title: `${tableCell(d.title ?? "(untitled)")}\n${colorTag("muted", url)}`,
       widgets: String(d.widgetDisplay?.length ?? 0),
     };
   });
@@ -184,13 +186,13 @@ function formatDashboardListHuman(result: DashboardListResult): string {
 function jsonTransformDashboardList(
   result: DashboardListResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<DashboardListItem> {
   const items =
     fields && fields.length > 0
       ? result.dashboards.map((d) => filterFields(d, fields))
       : result.dashboards;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<DashboardListItem> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: !!result.hasPrev,
@@ -351,8 +353,8 @@ function buildHint(
   const navRaw = paginationHint({
     hasPrev: !!result.hasPrev,
     hasMore: !!result.hasMore,
-    prevHint: `sentry dashboard list ${orgSlug}/${filterArg} -c prev`,
-    nextHint: `sentry dashboard list ${orgSlug}/${filterArg} -c next`,
+    prevHint: sentry`dashboard list ${orgSlug}/${filterArg} -c prev`,
+    nextHint: sentry`dashboard list ${orgSlug}/${filterArg} -c next`,
   });
   const nav = navRaw ? ` ${navRaw}` : "";
   const url = buildDashboardsListUrl(orgSlug);
@@ -377,55 +379,49 @@ export const listCommand = buildListCommand("dashboard", {
     examples: [
       {
         description: "List dashboards (organization auto-detected)",
-        command: "sentry dashboard list",
+        run: "dashboard list",
       },
       {
         description: "List dashboards in an explicit organization",
-        command: "sentry dashboard list my-org/",
+        run: "dashboard list my-org/",
       },
       {
         description: "Use the organization of an explicit project",
-        command: "sentry dashboard list my-org/my-project",
+        run: "dashboard list my-org/my-project",
       },
       {
         description: "Filter by title glob",
-        command: "sentry dashboard list 'Backend*'",
+        run: "dashboard list 'Backend*'",
       },
       {
         description: "Filter within an organization",
-        command: "sentry dashboard list my-org/ '*API*'",
+        run: "dashboard list my-org/ '*API*'",
       },
       {
         description: "Fetch the next page",
-        command: "sentry dashboard list -c next",
+        run: "dashboard list -c next",
       },
       {
         description: "Fetch the previous page",
-        command: "sentry dashboard list -c prev",
+        run: "dashboard list -c prev",
       },
       {
         description: "Output JSON with the pagination envelope",
-        command: "sentry dashboard list --json",
+        run: "dashboard list --json",
       },
       {
         description: "Open the dashboard list in the browser",
-        command: "sentry dashboard list -w",
+        run: "dashboard list -w",
       },
     ],
   },
   output: {
     human: formatDashboardListHuman,
     jsonTransform: jsonTransformDashboardList,
+    schema: DashboardListItemSchema,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/title-filter",
-        brief: "[<org/project>] [<name-glob>]",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: dashboardListArguments(() => sentry`dashboard list <org>/`),
     flags: {
       web: {
         kind: "boolean",
@@ -436,16 +432,13 @@ export const listCommand = buildListCommand("dashboard", {
     },
     aliases: { w: "web", n: "limit" },
   },
-  async *func(this: SentryContext, flags: ListFlags, ...args: string[]) {
-    const { cwd } = this;
-
-    const { targetArg, titleFilter } = parseDashboardListArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard list <org>/",
-    );
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: DashboardListArguments,
+  ) {
+    const { titleFilter } = target.parsed;
+    const orgSlug = await target.resolved;
 
     if (flags.web) {
       await openInBrowser(buildDashboardsListUrl(orgSlug), "dashboards");

@@ -15,7 +15,6 @@
  */
 
 import { basename } from "node:path";
-import { isatty } from "node:tty";
 import pLimit from "p-limit";
 import type {
   CachedProject,
@@ -23,7 +22,7 @@ import type {
   SentryProject,
 } from "../types/index.js";
 import {
-  findProjectByDsnKey,
+  findProjectByDsn,
   findProjectsByPattern,
   findProjectsBySlug,
   getProject,
@@ -34,12 +33,13 @@ import {
   type ProjectWithOrg,
   resolveOrgDisplayName,
 } from "./api-client.js";
+import { sentry } from "./app-identity.js";
 import {
   looksLikeIssueShortId,
   type ParsedOrgProject,
   parseOrgProjectArg,
 } from "./arg-parsing.js";
-import { isAuthenticated } from "./db/auth.js";
+import { getAuthToken, isAuthenticated } from "./db/auth.js";
 import {
   getDefaultOrganization,
   getDefaultProject,
@@ -74,11 +74,12 @@ import {
   withAuthGuard,
 } from "./errors.js";
 import { fuzzyMatch } from "./fuzzy.js";
-import { interactivePromptsAllowed } from "./interactive-prompts.js";
+import { canShowSelectPrompt, selectWithFilter } from "./select-prompt.js";
 import { logger } from "./logger.js";
 import { resolveEffectiveOrg } from "./region.js";
 import { CONFIG_FILENAME, loadSentryCliRc } from "./sentryclirc.js";
 import { setOrgProjectContext, withTracingSpan } from "./telemetry.js";
+import { parseSntrysClaim } from "./token-claims.js";
 import { isAllDigits, shellQuote } from "./utils.js";
 
 const log = logger.withTag("resolve-target");
@@ -186,7 +187,7 @@ export async function resolveTargetSlugs(
     throw new ResolutionError(
       "Organization",
       "could not be resolved to a slug",
-      "sentry org list",
+      sentry`org list`,
     );
   }
   cacheResolvedProject(info, org, project);
@@ -390,14 +391,20 @@ export async function resolveOrgFromDsn(
  *
  * 1. Local DB cache lookup (getOrgByNumericId — fast, no API call)
  * 2. Refresh org list via listOrganizationsUncached to populate mapping
- * 3. Falls back to original ID if resolution fails
+ * 3. Falls back to original ID only if the refresh itself fails (offline,
+ *    not authenticated), so the downstream API call reports the real error
+ *
+ * Returns `null` when the org list was fetched but none of the user's orgs
+ * has this numeric ID. That happens for placeholder DSNs copied from docs or
+ * examples (e.g. `o123.ingest.sentry.io/456`); using the raw ID would send a
+ * nonexistent org to the API and fail with a confusing 404 (CLI-T6).
  *
  * Non-numeric identifiers (already slugs) are returned unchanged.
  *
  * @param orgId - Raw org identifier from DSN (numeric ID or slug)
- * @returns Org slug for API calls
+ * @returns Org slug for API calls, or null if no accessible org matches
  */
-async function normalizeNumericOrg(orgId: string): Promise<string> {
+async function normalizeNumericOrg(orgId: string): Promise<string | null> {
   if (!isAllDigits(orgId)) {
     return orgId;
   }
@@ -411,27 +418,44 @@ async function normalizeNumericOrg(orgId: string): Promise<string> {
   // Slow path: fetch org list to populate numeric ID → slug mapping.
   // resolveEffectiveOrg doesn't handle bare numeric IDs (only o-prefixed),
   // so we do a targeted refresh via listOrganizationsUncached().
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
+  let organizations: { id: string; slug: string }[];
   try {
     const { listOrganizationsUncached } = await import("./api-client.js");
-    await listOrganizationsUncached();
-  } catch {
+    organizations = await listOrganizationsUncached();
+  } catch (error) {
+    // Can't verify membership (offline, not authenticated): keep the raw ID
+    // so the downstream API call reports the real error.
+    log.debug(
+      `Org list refresh failed while resolving org ID '${orgId}'`,
+      error,
+    );
     return orgId;
   }
 
-  // Retry cache after refresh
+  // Match against the fetched list itself: listOrganizationsUncached skips
+  // writing the ID → slug cache when a region can't be verified, so a cache
+  // miss alone doesn't prove the org is inaccessible.
+  const match = organizations.find((org) => String(org.id) === orgId);
+  if (match) {
+    return match.slug;
+  }
   const afterRefresh = getOrgByNumericId(orgId);
-  return afterRefresh?.slug ?? orgId;
+  if (afterRefresh) {
+    return afterRefresh.slug;
+  }
+  // The full membership list was fetched and has no org with this ID, so the
+  // user can't access it (e.g. a placeholder DSN like o123.ingest.sentry.io).
+  return null;
 }
 
 /**
- * Resolve a DSN without orgId by searching for the project via DSN public key.
- * Uses the /api/0/projects?query=dsn:<key> endpoint.
+ * Resolve a DSN without orgId by asking the user's organizations for it
+ * (see {@link findProjectByDsn}).
  *
  * @param dsn - Detected DSN (must have publicKey)
  * @returns Resolved target or null if resolution failed
  */
-export async function resolveDsnByPublicKey(
+async function resolveDsnByPublicKey(
   dsn: DetectedDsn,
 ): Promise<ResolvedTarget | null> {
   const detectedFrom = getDsnSourceDescription(dsn);
@@ -452,7 +476,7 @@ export async function resolveDsnByPublicKey(
 
   // Cache miss — search for project by DSN public key
   const result = await withAuthGuard(async () => {
-    const projectInfo = await findProjectByDsnKey(dsn.publicKey);
+    const projectInfo = await findProjectByDsn(dsn.raw, dsn.publicKey);
 
     if (!projectInfo) {
       return null;
@@ -495,7 +519,7 @@ export async function resolveDsnByPublicKey(
  * 1. DSNs with orgId: the DSN already encodes org+project identity, so no
  *    discovery API call is made — cached slugs are used when available,
  *    otherwise the target is built from the DSN's numeric IDs.
- * 2. DSNs without orgId: Use findProjectByDsnKey(publicKey) API
+ * 2. DSNs without orgId: Use findProjectByDsn() API
  *
  * @param dsn - Detected DSN to resolve
  * @returns Resolved target or null if resolution failed
@@ -687,7 +711,12 @@ async function inferFromDirectoryName(cwd: string): Promise<ResolvedTargets> {
  * `/` distinguishes it from a plain project slug). When the combo form is
  * used, SENTRY_ORG is ignored.
  *
- * @returns Resolved org+project, org-only, or null if no env vars are set
+ * When no org is set, the org embedded in an org auth token (`sntrys_`) is
+ * used, matching legacy sentry-cli. Such a token only works for that org, so
+ * it is the only org that can succeed. This is what lets bundler-plugin and CI
+ * setups pass just a token and a project (CLI-3B).
+ *
+ * @returns Resolved org+project, org-only, or null if no org source is set
  */
 function resolveFromEnvVars(): {
   org: string;
@@ -724,6 +753,17 @@ function resolveFromEnvVars(): {
 
   if (envOrg) {
     return { org: envOrg, detectedFrom: "SENTRY_ORG env var" };
+  }
+
+  const tokenOrg = parseSntrysClaim(getAuthToken())?.org;
+  if (tokenOrg) {
+    return rawProject
+      ? {
+          org: tokenOrg,
+          project: rawProject,
+          detectedFrom: "org auth token / SENTRY_PROJECT env var",
+        }
+      : { org: tokenOrg, detectedFrom: "org auth token" };
   }
 
   return null;
@@ -799,7 +839,7 @@ async function findSimilarProjectsAcrossOrgs(
 
     // Deduplicate slugs so fuzzyMatch doesn't waste slots on the same
     // project appearing in multiple orgs.
-    const uniqueSlugs = Array.from(new Set(allProjects.map((p) => p.slug)));
+    const uniqueSlugs = [...new Set(allProjects.map((p) => p.slug))];
     const slugMatches = fuzzyMatch(slug, uniqueSlugs, { maxResults: 5 });
 
     // When a display name is provided (input contained spaces), also
@@ -816,7 +856,7 @@ async function findSimilarProjectsAcrossOrgs(
           nameToSlug.set(p.name, p.slug);
         }
       }
-      const uniqueNames = Array.from(nameToSlug.keys());
+      const uniqueNames = [...nameToSlug.keys()];
       const matchedNames = fuzzyMatch(displayName, uniqueNames, {
         maxResults: 5,
       });
@@ -826,9 +866,7 @@ async function findSimilarProjectsAcrossOrgs(
     }
 
     // Merge slug matches and name matches, preferring slug matches.
-    const mergedSlugs = Array.from(
-      new Set(slugMatches.concat(nameMatchedSlugs)),
-    );
+    const mergedSlugs = [...new Set([...slugMatches, ...nameMatchedSlugs])];
 
     // Expand matched slugs back to org-qualified entries (may include
     // the same slug from multiple orgs — that's correct for suggestions).
@@ -1016,7 +1054,7 @@ export function projectSearchNotFoundSuggestions(
   if (resolution.scopedOrg) {
     return [
       `No project with this name found in organization '${resolution.scopedOrg}'`,
-      `Check the organization slug or try: sentry project list ${resolution.scopedOrg}/`,
+      `Check the organization slug or try: ${sentry`project list ${resolution.scopedOrg}/`}`,
     ];
   }
   return ["No project with this slug found in any accessible organization"];
@@ -1098,7 +1136,7 @@ export async function fetchProjectId(
       throw new ResolutionError(
         `Project '${project}'`,
         `not found in organization '${org}'`,
-        `sentry project list ${org}/`,
+        sentry`project list ${org}/`,
         buildProjectNotFoundSuggestions(org, project, similar),
       );
     }
@@ -1206,7 +1244,7 @@ function combineProjectNotFoundErrors(
   return new ResolutionError(
     `Projects ${misses.map(({ slug }) => `'${slug}'`).join(", ")}`,
     `not found in organization '${org}'`,
-    `sentry project list ${org}/`,
+    sentry`project list ${org}/`,
     [...specific, ...shared],
   );
 }
@@ -1267,7 +1305,7 @@ export async function resolveProjectIdsInOrg(
       throw new ResolutionError(
         `Project '${slug}'`,
         `has no numeric ID in organization '${org}'`,
-        `sentry project list ${org}/`,
+        sentry`project list ${org}/`,
       );
     }
     return id;
@@ -1432,7 +1470,7 @@ export async function resolveAllTargets(
       if (org || project) {
         throw new ContextError(
           "Organization and project",
-          options.usageHint ?? "sentry <command> <org>/<project>",
+          options.usageHint ?? sentry`<command> <org>/<project>`,
           [],
         );
       }
@@ -1651,7 +1689,7 @@ export async function resolveOrgAndProject(
       if (org || project) {
         throw new ContextError(
           "Organization and project",
-          options.usageHint ?? "sentry <command> <org>/<project>",
+          options.usageHint ?? sentry`<command> <org>/<project>`,
           [],
         );
       }
@@ -1779,8 +1817,7 @@ async function resolveSoleAccountTarget(): Promise<ResolvedTarget | null> {
     return null;
   }
   try {
-    const orgs = await listOrganizations();
-    const org = orgs.length === 1 ? orgs[0] : undefined;
+    const org = await fetchSoleOrganization();
     if (!org) {
       return null;
     }
@@ -1796,6 +1833,39 @@ async function resolveSoleAccountTarget(): Promise<ResolvedTarget | null> {
   }
 }
 
+/** The account's only accessible organization, or `undefined` for zero or several. */
+async function fetchSoleOrganization(): Promise<
+  SentryOrganization | undefined
+> {
+  const orgs = await listOrganizations();
+  return orgs.length === 1 ? orgs[0] : undefined;
+}
+
+/**
+ * Last-resort org resolution for authenticated users: when the account can
+ * reach exactly one organization, it is the only possible org for an
+ * org-scoped command, so use it instead of failing auto-detection (CLI-3B).
+ *
+ * Returns `null` when not authenticated, when the lookup fails, or when the
+ * account has zero or several organizations. Never throws and never prompts.
+ */
+async function resolveSoleOrg(): Promise<ResolvedOrg | null> {
+  if (!isAuthenticated()) {
+    return null;
+  }
+  try {
+    const org = await fetchSoleOrganization();
+    if (!org) {
+      return null;
+    }
+    setOrgProjectContext([org.slug], []);
+    return { org: org.slug, detectedFrom: "your only accessible organization" };
+  } catch (error) {
+    log.debug("Account-based org auto-detect failed", error);
+    return null;
+  }
+}
+
 /**
  * Whether an interactive org/project picker may be shown. When `override` is
  * provided (e.g. derived from `--json`) it wins. Otherwise the picker is only
@@ -1807,7 +1877,7 @@ function canPromptForTarget(override?: boolean): boolean {
   if (override !== undefined) {
     return override;
   }
-  return interactivePromptsAllowed() && isatty(0) && isatty(1);
+  return canShowSelectPrompt();
 }
 
 /**
@@ -1823,7 +1893,6 @@ async function promptSelect(
   if (options.length === 1 && sole) {
     return sole.value;
   }
-  const { selectWithFilter } = await import("./init/ui/ink-ui.js");
   return await selectWithFilter({ message, options });
 }
 
@@ -1871,7 +1940,7 @@ async function promptForOrgProject(): Promise<ResolvedTarget | null> {
     throw new ResolutionError(
       `Organization '${orgSlug}'`,
       "has no accessible projects",
-      `sentry project list ${orgSlug}/`,
+      sentry`project list ${orgSlug}/`,
     );
   }
 
@@ -1893,7 +1962,7 @@ async function promptForOrgProject(): Promise<ResolvedTarget | null> {
     setDefaultOrganization(orgSlug);
     setDefaultProject(projectSlug);
     log.info(
-      `Saved ${orgSlug}/${projectSlug} as your default. Change it with: sentry cli defaults org <slug>`,
+      `Saved ${orgSlug}/${projectSlug} as your default. Change it with: ${sentry`cli defaults org <slug>`}`,
     );
   } catch (error) {
     log.debug("Failed to persist selected org/project as default", error);
@@ -2004,14 +2073,14 @@ async function buildAccountContextError(
     );
   }
   alternatives.push(
-    `List projects example: sentry project list ${shellQuote(`${exampleOrg}/`)}`,
+    `List projects example: ${sentry`project list ${shellQuote(`${exampleOrg}/`)}`}`,
   );
   const notes = candidates.flatMap((candidate) =>
     candidate.note ? [candidate.note] : [],
   );
   if (shownOrgs.length < orgs.length) {
     notes.push(`Showing ${shownOrgs.length} of ${orgs.length} organizations.`);
-    alternatives.push("List all organizations: sentry org list");
+    alternatives.push(`List all organizations: ${sentry`org list`}`);
   }
   return new ContextError(
     "Organization and project",
@@ -2048,7 +2117,7 @@ export async function guideOrgProjectFailure(
   > &
     Partial<Pick<ResolveOptions, "cwd">>,
 ): Promise<ResolvedTarget> {
-  const usageHint = options.usageHint ?? "sentry <command> <org>/<project>";
+  const usageHint = options.usageHint ?? sentry`<command> <org>/<project>`;
 
   if (canPromptForTarget(options.interactive)) {
     const picked = await promptForOrgProject();
@@ -2119,7 +2188,8 @@ export async function resolveConfiguredOrg(
 }
 
 /**
- * Resolve an org from arguments, environment, .sentryclirc, defaults, then DSN.
+ * Resolve an org from arguments, environment, .sentryclirc, defaults, then DSN,
+ * then the account's only accessible organization.
  * Configured context takes precedence over automatic detection.
  */
 export async function resolveOrg(
@@ -2139,13 +2209,25 @@ export async function resolveOrg(
       // cache is cold. Normalize to a slug so API endpoints that reject
       // numeric IDs (e.g., dashboards) work correctly.
       const resolvedOrg = await normalizeNumericOrg(result.org);
-      setOrgProjectContext([resolvedOrg], []);
-      return { org: resolvedOrg, detectedFrom: result.detectedFrom };
+      if (resolvedOrg) {
+        setOrgProjectContext([resolvedOrg], []);
+        return { org: resolvedOrg, detectedFrom: result.detectedFrom };
+      }
+      // The DSN names an org none of the user's organizations match (often a
+      // placeholder DSN like o123.ingest.sentry.io/456). Don't send it to the
+      // API; fall through to the account's organizations instead.
+      log.warn(
+        `Ignoring organization ID '${result.org}' from ${result.detectedFrom}: none of your organizations has this ID`,
+      );
     }
-    return result;
   } catch {
-    return null;
+    // Fall through to the account's organizations
   }
+
+  // 6. Authenticated last resort, like step 7 of resolveOrgAndProject: an
+  //    account with exactly one accessible org has no other org to pick
+  //    (CLI-3B). This only ever turns a null into a uniquely-determined org.
+  return await resolveSoleOrg();
 }
 
 /** Fetch and verify the full project selected by fuzzy recovery. */
@@ -2213,7 +2295,7 @@ export async function resolveProjectBoundSlug(
       "is an organization, not a project",
       usageHint.replace("<org>/<project>", `${projectSlug}/<project>`),
       [
-        `List projects: sentry project list ${projectSlug}/`,
+        `List projects: ${sentry`project list ${projectSlug}/`}`,
         `Specify a project: ${projectSlug}/<project>`,
       ],
     );
@@ -2395,8 +2477,7 @@ export async function resolveProjectBoundTarget(
   commandName: string,
   options: ResolveProjectBoundTargetOptions = {},
 ): Promise<ResolvedProjectBoundTarget> {
-  const usageHint =
-    options.usageHint ?? `sentry ${commandName} <org>/<project>`;
+  const usageHint = options.usageHint ?? sentry`${commandName} <org>/<project>`;
 
   switch (parsed.type) {
     case "explicit": {
@@ -2407,7 +2488,7 @@ export async function resolveProjectBoundTarget(
     case "org-all":
       throw new ContextError(
         "Project",
-        `sentry ${commandName} ${parsed.org}/<project>`,
+        sentry`${commandName} ${parsed.org}/<project>`,
         [],
       );
 
@@ -2420,8 +2501,8 @@ export async function resolveProjectBoundTarget(
         throw new ResolutionError(
           `'${parsed.projectSlug}'`,
           "is an organization, not a project",
-          `sentry ${commandName} ${parsed.projectSlug}/<project>`,
-          [`List projects: sentry project list ${parsed.projectSlug}/`],
+          sentry`${commandName} ${parsed.projectSlug}/<project>`,
+          [`List projects: ${sentry`project list ${parsed.projectSlug}/`}`],
         );
       }
 
@@ -2444,12 +2525,12 @@ export async function resolveProjectBoundTarget(
       const { projects } = resolution;
       if (projects.length > 1) {
         const projectOptions = projects
-          .map((m) => `  sentry ${commandName} ${m.orgSlug}/${m.slug}`)
+          .map((m) => `  ${sentry`${commandName} ${m.orgSlug}/${m.slug}`}`)
           .join("\n");
         throw new ResolutionError(
           `Project '${resolution.displaySlug}'`,
           "is ambiguous",
-          `sentry ${commandName} <org>/${parsed.projectSlug}`,
+          sentry`${commandName} <org>/${parsed.projectSlug}`,
           [
             `Found in ${projects.length} organizations. Specify one:\n${projectOptions}`,
           ],
@@ -2517,6 +2598,8 @@ export type MultiTargetResolutionResult = {
   footer?: string;
   skippedSelfHosted?: number;
   detectedDsns?: DetectedDsn[];
+  /** Set instead of `targets` when `orgWideFallback` applied. */
+  soleOrg?: string;
 };
 
 /** Options for {@link resolveProjectBoundTargets}. */
@@ -2540,6 +2623,12 @@ export type ResolveProjectBoundTargetsOptions = {
    * (e.g. "CLI-123") before attempting cross-org project search.
    */
   checkIssueShortId?: boolean;
+  /**
+   * Auto-detect mode only: when nothing is detected and the account can reach
+   * exactly one organization, return it as `soleOrg` (with no targets) instead
+   * of asking for a project. For commands that can run org-wide.
+   */
+  orgWideFallback?: boolean;
 };
 
 /**
@@ -2567,11 +2656,22 @@ export async function resolveProjectBoundTargets(
     projectSearchResolution,
     enrichProjectIds,
     checkIssueShortId,
+    orgWideFallback,
   } = opts;
 
   switch (parsed.type) {
     case "auto-detect": {
       const result = await resolveAllTargets({ cwd, usageHint });
+      if (
+        orgWideFallback &&
+        result.targets.length === 0 &&
+        !result.skippedSelfHosted
+      ) {
+        const sole = await resolveSoleOrg();
+        if (sole) {
+          return { targets: [], soleOrg: sole.org };
+        }
+      }
       // Only guide when there is genuinely no context. If DSNs WERE found but
       // could not be resolved (self-hosted / no access), `skippedSelfHosted` is
       // set — preserve the empty result so the caller surfaces the
@@ -2647,7 +2747,7 @@ export async function resolveProjectBoundTargets(
         throw new ResolutionError(
           `Organization '${org}'`,
           "has no accessible projects",
-          `sentry project list ${org}/`,
+          sentry`project list ${org}/`,
           ["Check that you have access to projects in this organization"],
         );
       }
@@ -2671,8 +2771,10 @@ export async function resolveProjectBoundTargets(
         throw new ResolutionError(
           `'${displaySlug}'`,
           "looks like an issue short ID, not a project slug",
-          `sentry issue view ${displaySlug}`,
-          ["To list issues in a project: sentry issue list <org>/<project>"],
+          sentry`issue view ${displaySlug}`,
+          [
+            `To list issues in a project: ${sentry`issue list <org>/<project>`}`,
+          ],
         );
       }
 
@@ -2686,7 +2788,7 @@ export async function resolveProjectBoundTargets(
           "is an organization, not a project",
           `${prefix} ${parsed.projectSlug}/`,
           [
-            `List projects: sentry project list ${parsed.projectSlug}/`,
+            `List projects: ${sentry`project list ${parsed.projectSlug}/`}`,
             `Specify a project: ${prefix} ${parsed.projectSlug}/<project>`,
           ],
         );
@@ -2783,7 +2885,7 @@ export async function resolveOrgOptionalTarget(
   parsed: ParsedOrgProject,
   cwd: string,
   commandName: string,
-  usageHint = `sentry ${commandName} <target>`,
+  usageHint = sentry`${commandName} <target>`,
 ): Promise<ResolvedOrgOptionalTarget> {
   // org-all: resolve the org slug only
   if (parsed.type === "org-all") {
@@ -2797,7 +2899,7 @@ export async function resolveOrgOptionalTarget(
     if (!resolved) {
       throw new ContextError("Organization", usageHint, [
         "SENTRY_ORG environment variable",
-        "sentry cli defaults",
+        sentry`cli defaults`,
       ]);
     }
     return withTelemetryContext({ org: resolved.org });
@@ -2840,7 +2942,7 @@ export async function resolveOrgOnlyTarget(
   parsed: ParsedOrgProject,
   cwd: string,
   commandName: string,
-  usageHint = `sentry ${commandName} <target>`,
+  usageHint = sentry`${commandName} <target>`,
 ): Promise<string> {
   if (parsed.type === "auto-detect") {
     const resolved = await resolveOrg({ cwd });

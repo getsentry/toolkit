@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Generate Skill Files from Stricli Command Metadata and Docs
  *
@@ -22,8 +21,16 @@
  *   docs/public/.well-known/skills/index.json
  */
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
+import { routes } from "../src/app.js";
+import {
+  type CommandInfo,
+  extractAllRoutes,
+  type FlagInfo,
+  type RouteInfo,
+  type RouteMap,
+} from "../src/lib/introspect.js";
 import {
   formatCommandArguments,
   formatCommandExamples,
@@ -35,33 +42,9 @@ import {
   markdownSection,
 } from "./markdown.js";
 import { DOCS_CONTENT, DOCS_PUBLIC } from "./paths.js";
+import { logger } from "../src/lib/logger.js";
 
-// Bootstrap: ensure the generated skill-content module exists before
-// importing the route tree (app.ts → agent-skills.ts → skill-content.ts).
-// On a fresh checkout the file won't exist, causing a module resolution
-// error. Write a minimal stub so the import resolves; the real content
-// is generated at the end of this script.
-// NOTE: This must run before the dynamic import() below because static
-// imports are hoisted by the runtime before any code executes.
 const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
-if (!existsSync(SKILL_CONTENT_PATH)) {
-  mkdirSync("src/generated", { recursive: true });
-  writeFileSync(
-    SKILL_CONTENT_PATH,
-    "export const SKILL_FILES: ReadonlyMap<string, string> = new Map();\n",
-  );
-}
-
-const { routes } = await import("../src/app.js");
-
-import type {
-  CommandInfo,
-  FlagInfo,
-  RouteInfo,
-  RouteMap,
-} from "../src/lib/introspect.js";
-import { extractAllRoutes } from "../src/lib/introspect.js";
-
 const SKILL_DIR = "plugins/sentry-cli/skills/sentry-cli";
 const OUTPUT_PATH = `${SKILL_DIR}/SKILL.md`;
 const PUBLIC_SKILL_DIR = `${DOCS_PUBLIC}/.well-known/skills/sentry-cli`;
@@ -690,48 +673,50 @@ function generateIndexJson(generatedFiles: GeneratedFiles): string {
 // Main
 // ---------------------------------------------------------------------------
 
-const files = await generateAllSkillFiles(routes as unknown as RouteMap);
+/** Write the skill, its references, the public skill index, and `skill-content.ts`. */
+export async function emit(): Promise<void> {
+  const files = await generateAllSkillFiles(routes as unknown as RouteMap);
 
-// The public references are a symlink to these generated plugin references.
-rmSync(`${SKILL_DIR}/references`, { recursive: true, force: true });
-for (const [relativePath, content] of files) {
-  const fullPath = `${SKILL_DIR}/${relativePath}`;
-  const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
-  mkdirSync(dir, { recursive: true });
-  await writeFile(fullPath, content);
-}
+  // The public references are a symlink to these generated plugin references.
+  rmSync(`${SKILL_DIR}/references`, { recursive: true, force: true });
+  for (const [relativePath, content] of files) {
+    const fullPath = `${SKILL_DIR}/${relativePath}`;
+    const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
+    mkdirSync(dir, { recursive: true });
+    await writeFile(fullPath, content);
+  }
 
-const publicSkill = files.get("SKILL.md");
-if (publicSkill === undefined) {
-  throw new Error("Generated skill is missing SKILL.md");
-}
-mkdirSync(PUBLIC_SKILL_DIR, { recursive: true });
-await writeFile(`${PUBLIC_SKILL_DIR}/SKILL.md`, publicSkill);
+  const publicSkill = files.get("SKILL.md");
+  if (publicSkill === undefined) {
+    throw new Error("Generated skill is missing SKILL.md");
+  }
+  mkdirSync(PUBLIC_SKILL_DIR, { recursive: true });
+  await writeFile(`${PUBLIC_SKILL_DIR}/SKILL.md`, publicSkill);
 
-// Write index.json
-const indexJson = generateIndexJson(files);
-const indexJsonDir = INDEX_JSON_PATH.substring(
-  0,
-  INDEX_JSON_PATH.lastIndexOf("/"),
-);
-mkdirSync(indexJsonDir, { recursive: true });
-await writeFile(INDEX_JSON_PATH, indexJson);
+  // Write index.json
+  const indexJson = generateIndexJson(files);
+  const indexJsonDir = INDEX_JSON_PATH.substring(
+    0,
+    INDEX_JSON_PATH.lastIndexOf("/"),
+  );
+  mkdirSync(indexJsonDir, { recursive: true });
+  await writeFile(INDEX_JSON_PATH, indexJson);
 
-// Generate src/generated/skill-content.ts with inlined file contents.
-// This embeds all skill files into the binary at build time so that
-// agent-skills.ts can install them without any network fetching.
-const skillEntries = [...files.entries()]
-  .sort(([a], [b]) => a.localeCompare(b))
-  .map(([path, content]) => {
-    const escaped = content
-      .replaceAll("\\", "\\\\")
-      .replaceAll("`", "\\`")
-      .replaceAll("${", "\\${");
-    return `  ["${path}", \`${escaped}\`],`;
-  })
-  .join("\n");
+  // Generate src/generated/skill-content.ts with inlined file contents.
+  // This embeds all skill files into the binary at build time so that
+  // agent-skills.ts can install them without any network fetching.
+  const skillEntries = [...files.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([path, content]) => {
+      const escaped = content
+        .replaceAll("\\", "\\\\")
+        .replaceAll("`", "\\`")
+        .replaceAll("${", "\\${");
+      return `  ["${path}", \`${escaped}\`],`;
+    })
+    .join("\n");
 
-const skillContentModule = `/**
+  const skillContentModule = `/**
  * Embedded skill file contents for agent skill installation.
  * Auto-generated by script/generate-skill.ts — do not edit manually.
  */
@@ -742,12 +727,13 @@ ${skillEntries}
 ]);
 `;
 
-await writeFile(SKILL_CONTENT_PATH, skillContentModule);
+  await writeFile(SKILL_CONTENT_PATH, skillContentModule);
 
-// Report what was generated
-const refCount = [...files.keys()].filter((k) =>
-  k.startsWith("references/"),
-).length;
-console.log(
-  `Generated ${OUTPUT_PATH} + ${refCount} reference files + ${INDEX_JSON_PATH} + ${SKILL_CONTENT_PATH}`,
-);
+  // Report what was generated
+  const refCount = [...files.keys()].filter((k) =>
+    k.startsWith("references/"),
+  ).length;
+  logger.success(
+    `Generated ${OUTPUT_PATH} + ${refCount} reference files + ${INDEX_JSON_PATH} + ${SKILL_CONTENT_PATH}`,
+  );
+}

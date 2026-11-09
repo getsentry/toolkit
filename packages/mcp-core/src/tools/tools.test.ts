@@ -16,11 +16,12 @@ import {
   TOP_LEVEL_TOOL_NAMES,
   WRAPPER_TOOL_NAMES,
 } from "./surfaces.js";
-import { isToolVisibleInMode, resolveDescription } from "./types.js";
+import {
+  isToolVisibleInMode,
+  MAX_TOOL_DESCRIPTION_LENGTH,
+  resolveDescription,
+} from "./types.js";
 
-// VSCode (via OpenAI) limits to 1024 characters, but its tough to hit that right now,
-// so instead lets limit the blast damage and hope that e.g. OpenAI will increase the limit.
-const DESCRIPTION_MAX_LENGTH = 2048;
 const PUBLIC_TOOL_HARD_LIMIT = 25;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CATALOG_DIR = path.join(__dirname, "catalog");
@@ -52,30 +53,34 @@ test(`all tool descriptions under maximum length`, () => {
         experimentalMode,
       }).length;
       assert(
-        length < DESCRIPTION_MAX_LENGTH,
-        `${tool.name} description must be less than ${DESCRIPTION_MAX_LENGTH} characters in ${experimentalMode ? "experimental" : "stable"} mode (was ${length})`,
+        length <= MAX_TOOL_DESCRIPTION_LENGTH,
+        `${tool.name} description must be at most ${MAX_TOOL_DESCRIPTION_LENGTH} characters in ${experimentalMode ? "experimental" : "stable"} mode (was ${length})`,
       );
     }
   }
 });
 
-test("all tools declare complete MCP safety annotations", () => {
+// server.metadata.test.ts checks the titles of listed tools. These tools never
+// appear in its tools/list: deprecated aliases, and the feedback tool, which
+// is hidden without a telemetry DSN.
+test("unlisted tools declare a unique display title", () => {
+  const all = Object.values(tools.default);
+  const unlisted = all.filter(
+    (tool) => tool.deprecated || tool.name === "submit_feedback_to_sentry_team",
+  );
+  assert(unlisted.length > 0, "expected deprecated or hidden tools");
+  for (const tool of unlisted) {
+    assert(tool.title.trim(), `${tool.name} must define a non-empty title`);
+    const owner = all.find(
+      (other) => other !== tool && other.title === tool.title,
+    );
+    assert(!owner, `${tool.name} reuses the title of ${owner?.name}`);
+  }
+});
+
+// server.metadata.test.ts checks that every hint is set.
+test("no tool is both read-only and destructive", () => {
   for (const tool of Object.values(tools.default)) {
-    // Every tool must declare readOnlyHint, destructiveHint, and openWorldHint
-    // explicitly (true or false, never undefined). Filters and confirmation
-    // gates rely on these, so an absent hint is a silent gap.
-    assert(
-      typeof tool.annotations.readOnlyHint === "boolean",
-      `${tool.name} must define readOnlyHint (true or false, not undefined)`,
-    );
-    assert(
-      typeof tool.annotations.destructiveHint === "boolean",
-      `${tool.name} must define destructiveHint (true or false, not undefined)`,
-    );
-    assert(
-      typeof tool.annotations.openWorldHint === "boolean",
-      `${tool.name} must define openWorldHint (true or false, not undefined)`,
-    );
     assert(
       !(
         tool.annotations.readOnlyHint === true &&
@@ -86,17 +91,17 @@ test("all tools declare complete MCP safety annotations", () => {
   }
 });
 
-test("public tool count stays within the hard limit in all modes", () => {
+// EXPOSE_ALL_TOOLS lists every tool and relies on harness tool search, so the
+// limit applies to the gateway surface that the flag falls back to.
+test("gateway tool count stays within the hard limit in all modes", () => {
   for (const experimentalMode of [false, true]) {
-    const visibleTools = Object.entries(tools.default).filter(
-      ([toolName, tool]) =>
-        isTopLevelToolName(toolName, experimentalMode) &&
-        isToolVisibleInMode(tool, experimentalMode),
+    const visibleTools = TOP_LEVEL_TOOL_NAMES.filter((toolName) =>
+      isToolVisibleInMode(tools.default[toolName], experimentalMode),
     );
 
     assert(
       visibleTools.length <= PUBLIC_TOOL_HARD_LIMIT,
-      `public non-agent tool count must stay at or below ${PUBLIC_TOOL_HARD_LIMIT} in ${experimentalMode ? "experimental" : "stable"} mode (was ${visibleTools.length})`,
+      `gateway tool count must stay at or below ${PUBLIC_TOOL_HARD_LIMIT} in ${experimentalMode ? "experimental" : "stable"} mode (was ${visibleTools.length})`,
     );
   }
 });
@@ -121,6 +126,34 @@ test("central direct exposure policy references existing tools", () => {
       !isDefaultTopLevelToolName(toolName),
       `wrapper tool '${toolName}' must not be directly exposed by default`,
     );
+  }
+});
+
+test("deprecated tools point to existing replacements", () => {
+  const toolsByName = new Map(
+    Object.values(tools.default).map((tool) => [tool.name, tool]),
+  );
+
+  for (const tool of toolsByName.values()) {
+    if (!tool.deprecated) {
+      continue;
+    }
+
+    assert(
+      tool.deprecated.replacedBy.length > 0,
+      `deprecated tool '${tool.name}' must name at least one replacement`,
+    );
+    for (const replacement of tool.deprecated.replacedBy) {
+      const replacementTool = toolsByName.get(replacement);
+      assert(
+        replacementTool,
+        `deprecated tool '${tool.name}' points to missing tool '${replacement}'`,
+      );
+      assert(
+        !replacementTool.deprecated,
+        `deprecated tool '${tool.name}' points to deprecated tool '${replacement}'`,
+      );
+    }
   }
 });
 

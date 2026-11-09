@@ -6,6 +6,10 @@ const workflow = readFileSync(
   new URL("../.github/workflows/deploy.yml", import.meta.url),
   "utf8",
 );
+const docsWorkflow = readFileSync(
+  new URL("../.github/workflows/deploy-docs-mcp.yml", import.meta.url),
+  "utf8",
+);
 const recovery = readFileSync(
   new URL(
     "../.github/workflows/recover-cloudflare-deployment.yml",
@@ -19,22 +23,32 @@ const smoke = readFileSync(
 );
 
 test("production deploy requires a successful Test run on this repository's main branch", () => {
-  assert.doesNotMatch(workflow, /if:\s*\$\{\{\s*false\s*\}\}/);
-  assert.match(workflow, /workflow_run\.conclusion == 'success'/);
-  assert.match(workflow, /workflow_run\.event == 'push'/);
-  assert.match(
-    workflow,
-    /workflow_run\.head_repository\.id == github\.event\.repository\.id/,
-  );
-  assert.match(workflow, /workflow_run\.head_branch == 'main'/);
-  assert.doesNotMatch(workflow, /^\s*workflow_dispatch:/m);
-  assert.match(
-    workflow,
-    /ref:\s*\$\{\{ github\.event\.workflow_run\.head_sha \}\}/,
-  );
-  assert.match(workflow, /environment:\s*production/);
+  for (const candidate of [workflow, docsWorkflow]) {
+    assert.doesNotMatch(candidate, /if:\s*\$\{\{\s*false\s*\}\}/);
+    // The trigger conditions gate the check job, which gates the deploy job.
+    const check = candidate.split("\n  check:\n")[1]?.split("\n  deploy:\n")[0];
+    assert.ok(check, "Missing check job before deploy job");
+    assert.match(check, /workflow_run\.conclusion == 'success'/);
+    assert.match(check, /workflow_run\.event == 'push'/);
+    assert.match(
+      check,
+      /workflow_run\.head_repository\.id == github\.event\.repository\.id/,
+    );
+    assert.match(check, /workflow_run\.head_branch == 'main'/);
+    assert.match(
+      candidate,
+      /ref:\s*\$\{\{ github\.event\.workflow_run\.head_sha \}\}/,
+    );
+    assert.match(candidate, /environment:\s*production/);
+    // A superseded revision skips the deploy job instead of failing it.
+    assert.match(
+      candidate,
+      /needs: check\n\s*if: \$\{\{ needs\.check\.outputs\.current == 'true' \}\}/,
+    );
+    assert.doesNotMatch(candidate, /^\s*workflow_dispatch:/m);
+    assert.match(candidate, /pnpm install --frozen-lockfile/);
+  }
   assert.match(workflow, /group:\s*mcp-production-deploy/);
-  assert.match(workflow, /pnpm install --frozen-lockfile/);
   assert.match(workflow, /cloudflare-deployment\.mjs capture/);
   assert.match(workflow, /cloudflare-deployment\.mjs uploaded/);
   assert.match(workflow, /cloudflare-deployment\.mjs stage/);
@@ -127,7 +141,7 @@ test("manual recovery requires the current main and a completed same-repo deploy
 });
 
 test("external actions use immutable commit pins", () => {
-  for (const [, action] of `${workflow}\n${recovery}`.matchAll(
+  for (const [, action] of `${workflow}\n${docsWorkflow}\n${recovery}`.matchAll(
     /^\s*(?:- )?uses:\s*([^\s#]+)/gm,
   )) {
     assert.match(action, /^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/, action);

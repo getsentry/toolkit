@@ -22,7 +22,13 @@ import {
   CodeMappingSchema,
   uploadCodeMappings,
 } from "../../lib/api/code-mappings.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  parseFilePath,
+  parseGitRepo,
+  parseVcsRef,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -53,7 +59,7 @@ type CodeMappingsUploadResult = {
 
 // Formatter
 
-const USAGE_HINT = "sentry code-mappings upload <path>";
+const usageHint = () => sentry`code-mappings upload <path>`;
 
 /** Format human-readable output for upload results. */
 function formatUploadResult(data: CodeMappingsUploadResult): string {
@@ -178,20 +184,19 @@ export const uploadCommand = buildCommand({
     examples: [
       {
         description: "Upload code mappings from a JSON file",
-        command: "sentry code-mappings upload mappings.json",
+        run: "code-mappings upload mappings.json",
       },
       {
         description: "Specify the repository explicitly",
-        command: "sentry code-mappings upload mappings.json --repo owner/repo",
+        run: "code-mappings upload mappings.json --repo owner/repo",
       },
       {
         description: "Specify the repository and default branch",
-        command:
-          "sentry code-mappings upload mappings.json --repo owner/repo --default-branch develop",
+        run: "code-mappings upload mappings.json --repo owner/repo --default-branch develop",
       },
       {
         description: "Output as JSON",
-        command: "sentry code-mappings upload mappings.json --json",
+        run: "code-mappings upload mappings.json --json",
       },
     ],
   },
@@ -204,7 +209,7 @@ export const uploadCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the code mappings JSON file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -212,14 +217,14 @@ export const uploadCommand = buildCommand({
     flags: {
       repo: {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRepo,
         brief:
           "Repository name (e.g., owner/repo). Auto-detected from git remote if omitted.",
         optional: true,
       },
       "default-branch": {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief:
           "Default branch name. Auto-detected from git remote HEAD if omitted.",
         optional: true,
@@ -240,10 +245,10 @@ export const uploadCommand = buildCommand({
     // 2. Resolve org/project
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 
@@ -253,7 +258,7 @@ export const uploadCommand = buildCommand({
     if (!repository) {
       throw new ContextError(
         "Repository name",
-        "sentry code-mappings upload <path> --repo <owner/repo>",
+        sentry`code-mappings upload <path> --repo <owner/repo>`,
         [
           "Could not auto-detect repository from git remotes",
           "Provide --repo explicitly",
@@ -289,7 +294,7 @@ export const uploadCommand = buildCommand({
       }));
 
     // 7. Yield result
-    yield new CommandOutput<CodeMappingsUploadResult>({
+    yield new CommandOutput({
       org,
       project,
       repository,

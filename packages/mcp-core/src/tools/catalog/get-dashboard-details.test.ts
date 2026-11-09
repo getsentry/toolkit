@@ -5,7 +5,21 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
-import getDashboardDetails from "./get-dashboard-details.js";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content";
+import getDashboardDetails, {
+  getDashboardDetailsOutputSchema,
+} from "./get-dashboard-details.js";
+
+function getDashboard(result: unknown) {
+  assertStructuredOnlyResult(result);
+  const content = getStructuredContent(result);
+  const parsed = getDashboardDetailsOutputSchema.parse(content);
+  expect(parsed).toEqual(content);
+  return parsed.dashboard;
+}
 
 const context = {
   constraints: {
@@ -34,68 +48,119 @@ describe("get_dashboard_details", () => {
       context,
     );
 
-    expect(result).toMatchInlineSnapshot(`
-      "# Dashboard Errors Overview in **sentry-mcp-evals**
-
-      **ID**: 101
-      **URL**: [Open Dashboard](https://sentry-mcp-evals.sentry.io/dashboard/101/?project=4509106749636608&statsPeriod=24h)
-      **Created**: 2025-04-14T10:15:00.000Z
-      **Created By**: Jane Developer
-      **Projects**: 4509106749636608
-      **Environments**: production
-      **Period**: 24h
-      **UTC**: true
-      **Expired**: false
-      **Favorited**: yes
-
-      ## Filters
-
-      - **release**: ["frontend@1.2.3"]
-      - **globalFilter**: [{"key":"browser.name","value":"Chrome"}]
-
-      ## Widgets
-
-      ### 1. Handled Errors
-
-      **ID**: 201
-      **Display Type**: line
-      **Widget Type**: error-events
-      **Dataset**: discover
-      **Interval**: 5m
-      **Layout**: x=0, y=0, w=6, h=2
-      **Description**: Handled errors over time
-
-      #### Queries
-
-      - **Query**
-        - Conditions: \`error.handled:true\`
-        - Fields: count()
-        - Aggregates: count()
-        - Sort: \`-count\`
-
-      ### 2. Top Issues
-
-      **ID**: 202
-      **Display Type**: table
-      **Widget Type**: error-events
-      **Dataset**: discover
-      **Interval**: 5m
-      **Limit**: 5
-      **Layout**: x=0, y=2, w=6, h=3
-
-      #### Queries
-
-      - **Top Issues**
-        - Conditions: \`is:unresolved\`
-        - Fields: issue, count()
-        - Aggregates: count()
-        - Columns: issue
-        - Sort: \`-count\`
-
-      ## Response Notes
-
-      - Dashboard widgets include saved query definitions, not live query results."
+    assertStructuredOnlyResult(result);
+    const content = getStructuredContent(result);
+    expect(getDashboardDetailsOutputSchema.parse(content)).toEqual(content);
+    expect(content).toMatchInlineSnapshot(`
+      {
+        "dashboard": {
+          "createdBy": "Jane Developer",
+          "createdByEmail": "jane@example.com",
+          "dateCreated": "2025-04-14T10:15:00.000Z",
+          "end": null,
+          "environments": [
+            "production",
+          ],
+          "expired": false,
+          "filters": {
+            "globalFilters": [
+              {
+                "dataset": "error-events",
+                "tagKey": "browser.name",
+                "value": "browser.name:[Chrome]",
+              },
+            ],
+            "releaseIds": [
+              "1234",
+            ],
+            "releases": [
+              "frontend@1.2.3",
+            ],
+          },
+          "id": "101",
+          "isFavorited": true,
+          "period": "24h",
+          "prebuiltId": null,
+          "projects": [
+            "4509106749636608",
+          ],
+          "start": null,
+          "title": "Errors Overview",
+          "url": "https://sentry-mcp-evals.sentry.io/dashboard/101/?project=4509106749636608&statsPeriod=24h",
+          "utc": true,
+          "widgets": [
+            {
+              "datasetSource": "discover",
+              "description": "Handled errors over time",
+              "displayType": "line",
+              "id": "201",
+              "interval": "5m",
+              "layout": {
+                "h": 2,
+                "w": 6,
+                "x": 0,
+                "y": 0,
+              },
+              "limit": null,
+              "queries": [
+                {
+                  "aggregates": [
+                    "count()",
+                  ],
+                  "columns": [],
+                  "conditions": "error.handled:true",
+                  "fields": [
+                    "count()",
+                  ],
+                  "name": null,
+                  "orderby": "-count",
+                },
+              ],
+              "title": "Handled Errors",
+              "widgetType": "error-events",
+            },
+            {
+              "datasetSource": "discover",
+              "description": null,
+              "displayType": "table",
+              "id": "202",
+              "interval": "5m",
+              "layout": {
+                "h": 3,
+                "w": 6,
+                "x": 0,
+                "y": 2,
+              },
+              "limit": 5,
+              "queries": [
+                {
+                  "aggregates": [
+                    "count()",
+                  ],
+                  "columns": [
+                    "issue",
+                  ],
+                  "conditions": "is:unresolved",
+                  "fields": [
+                    "issue",
+                    "count()",
+                  ],
+                  "name": "Top Issues",
+                  "orderby": "-count",
+                },
+              ],
+              "title": "Top Issues",
+              "widgetType": "error-events",
+            },
+          ],
+        },
+      }
     `);
+    const text = JSON.stringify(content);
+    // Backend-only fields stay out of the mapped payload.
+    for (const leaked of ["permissions", "teamsWithEditAccess"]) {
+      expect(text).not.toContain(leaked);
+    }
   });
 
   it("resolves an exact dashboard title", async () => {
@@ -108,9 +173,10 @@ describe("get_dashboard_details", () => {
       context,
     );
 
-    expect(result).toContain(
-      "# Dashboard Errors Overview in **sentry-mcp-evals**",
-    );
+    expect(getDashboard(result)).toMatchObject({
+      id: "101",
+      title: "Errors Overview",
+    });
   });
 
   it("resolves dashboard titles after applying the active project constraint", async () => {
@@ -158,10 +224,33 @@ describe("get_dashboard_details", () => {
       throw new Error("Expected dashboard list request to be captured.");
     }
     expect(new URL(requestUrl).searchParams.has("project")).toBe(false);
-    expect(result).toContain("**ID**: 102");
-    expect(result).toContain(
-      "https://sentry-mcp-evals.sentry.io/dashboard/102/?project=4509109104082945&statsPeriod=24h",
+    expect(getDashboard(result)).toMatchObject({
+      id: "102",
+      url: "https://sentry-mcp-evals.sentry.io/dashboard/102/?project=4509109104082945&statsPeriod=24h",
+    });
+  });
+
+  it("returns a null creator when Sentry has no usable identity", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/101/",
+        () => HttpResponse.json({ ...dashboardDetailsFixture, createdBy: {} }),
+      ),
     );
+
+    const dashboard = getDashboard(
+      await getDashboardDetails.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          dashboardIdOrTitle: "101",
+        },
+        context,
+      ),
+    );
+
+    expect(dashboard.createdBy).toBeNull();
+    expect(dashboard.createdByEmail).toBeNull();
   });
 
   it("returns candidates for ambiguous dashboard titles", async () => {
@@ -268,6 +357,34 @@ describe("get_dashboard_details", () => {
       context,
     );
 
-    expect(result).toContain("No widgets found.");
+    expect(getDashboard(result).widgets).toEqual([]);
+  });
+
+  it("accepts widgets whose display type is null", async () => {
+    const [widget] = dashboardDetailsFixture.widgets;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/101/",
+        () =>
+          HttpResponse.json({
+            ...dashboardDetailsFixture,
+            widgets: [{ ...widget, displayType: null }],
+          }),
+      ),
+    );
+
+    const result = await getDashboardDetails.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        dashboardIdOrTitle: "101",
+      },
+      context,
+    );
+
+    expect(getDashboard(result).widgets[0]).toMatchObject({
+      title: "Handled Errors",
+      displayType: null,
+    });
   });
 });

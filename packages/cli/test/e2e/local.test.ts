@@ -747,7 +747,7 @@ describe("Local daemon E2E", () => {
         "--input-type=module",
         "-e",
         `import * as Sentry from '@sentry/node';
-        Sentry.init({enableLogs: true, tracesSampleRate: 1});
+        Sentry.init({tracesSampleRate: 1});
         const id = Sentry.captureException(new Error('Local real SDK event'));
         console.error('SDK_EVENT:' + id);
         await Sentry.flush(2000);

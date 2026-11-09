@@ -1,6 +1,6 @@
 ---
 name: sentry-cli
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Guide for using the Sentry CLI to interact with Sentry from the command line. Use when the user asks about viewing issues, events, projects, organizations, making API calls, or authenticating with Sentry via CLI.
 requires:
   bins: ["sentry"]
@@ -21,8 +21,9 @@ Best practices and operational guidance for AI coding agents using the Sentry CL
 
 - **Just run the command** — the CLI handles authentication and org/project detection automatically. Don't pre-authenticate or look up org/project before running commands. The CLI prompts for login if needed.
 - **Prefer CLI commands over raw API calls** — the CLI has dedicated commands for most tasks. Reach for `sentry issue view`, `sentry issue list`, `sentry trace view`, etc. before constructing API calls manually or fetching external documentation.
+- **Use `sentry init` to add Sentry to a project** — it prints step-by-step setup instructions for you to follow: log in, pick a Sentry project, choose features with the user, install the SDK, and verify that a test error arrives. It also covers upgrading an existing setup.
 - **Use `sentry docs` for setup questions** — if you need to know how to configure a Sentry SDK or feature, run `sentry docs "your question"` to query the documentation directly. This is faster and more accurate than fetching docs externally.
-- **Use `sentry schema` to explore the API** — if you need to discover API endpoints, run `sentry schema` to browse interactively or `sentry schema <resource>` to search. This is faster than fetching OpenAPI specs externally.
+- **Use `sentry schema` to explore the API** — run `sentry schema` to list API resources or `sentry schema <query...>` to search by API concepts or CLI command paths. Use `sentry help <command>` for CLI flags and usage examples.
 - **Use `sentry issue view` to investigate issues** — when asked about a specific issue (e.g., `CLI-G5`, `PROJECT-123`), use `sentry issue view` directly. Multiple IDs can be passed in one invocation: `sentry issue view A B C --json` returns an array of the same objects.
 - **Use `--json` for machine-readable output** — pipe through `jq` for filtering. Human-readable output includes formatting that is hard to parse.
 - **The CLI auto-detects org/project — don't discover it yourself** — most commands work without explicit targets by checking `.sentryclirc` config files, scanning for DSNs in `.env` files and source code, and matching directory names. Do **not** run `sentry org list` and then `sentry project list` to figure out which project this checkout belongs to — that manual fan-out just replicates the detection the CLI already runs on every command. Only specify `<org>/<project>` when the CLI reports it can't detect the target or detects the wrong one.
@@ -46,7 +47,7 @@ The `sentry` CLI follows conventions from well-known tools — if you're familia
 
 ### Safety Rules
 
-- Always confirm with the user before running destructive commands: `alert issues delete`, `alert metrics delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `project delete`, `release delete`, `trial start`
+- Always confirm with the user before running destructive commands: `alert issues delete`, `alert metrics delete`, `cli uninstall`, `dashboard widget delete`, `integration delete`, `issue merge`, `issue unlink`, `project delete`, `release delete`, `token delete`, `trial start`
 - For mutations, verify the org/project context looks correct in the command output before proceeding with further changes
 - Never store or log authentication tokens — the CLI manages credentials automatically
 - If the CLI reports the wrong org/project, override with explicit `<org>/<project>` arguments
@@ -375,6 +376,10 @@ curl https://cli.sentry.dev/install -fsS | bash -s -- --no-completions
 curl https://cli.sentry.dev/install -fsS | bash -s -- --no-agent-skills
 curl https://cli.sentry.dev/install -fsS | SENTRY_INSTALL_DIR="$HOME/.local/bin" bash
 curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
+curl -fsSL https://cli.sentry.dev/install -o install
+curl -fsSL https://release-registry.services.sentry.io/apps/sentry/latest -o release.json
+expected=$(jq -er '.files.install.checksums["sha256-hex"]' release.json)
+echo "$expected  install" | sha256sum -c - && bash install
 
 # Or install via npm/pnpm/bun
 npm install -g sentry
@@ -397,6 +402,7 @@ Authenticate with Sentry
 
 - `sentry auth list` — List stored accounts
 - `sentry auth login [<email>]` — Authenticate with Sentry
+- `sentry auth bootstrap` — Authenticate using a one-time setup code
 - `sentry auth logout <account...>` — Log out of Sentry
 - `sentry auth refresh` — Refresh your OAuth access token
 - `sentry auth status` — View authentication status
@@ -432,6 +438,7 @@ Manage Sentry issues
 
 - `sentry issue list [<org/project>]` — List issues in a project
 - `sentry issue events <issue>` — List events for a specific issue
+- `sentry issue tags <issue> <key>` — Show the top values of an issue tag
 - `sentry issue explain <issue...>` — Analyze one or more issues using Seer AI
 - `sentry issue plan <issue>` — Generate a solution plan using Seer AI
 - `sentry issue view <issue...>` — View details of one or more issues
@@ -451,6 +458,7 @@ View, list, and send Sentry events
 - `sentry event view <org/project/event-id...>` — View details of one or more events
 - `sentry event list <issue>` — List events for an issue
 - `sentry event send <target-or-file...>` — Send a Sentry event
+- `sentry event analytics [<org/project>]` — Analytics for events Sentry accepted and dropped
 
 → Full flags and examples: `references/event.md`
 
@@ -478,6 +486,14 @@ Manage Sentry alert rules
 - `sentry alert metrics edit <org/rule-id-or-name>` — Edit a metric alert rule
 
 → Full flags and examples: `references/alert.md`
+
+### Attribute
+
+Explore span, log, and metric attributes
+
+- `sentry attribute list [<target>] [<filter>]` — List attribute keys for spans, logs, or metrics
+
+→ Full flags and examples: `references/attribute.md`
 
 ### Build
 
@@ -643,12 +659,22 @@ Work with Sentry teams
 
 → Full flags and examples: `references/team.md`
 
+### Token
+
+Manage org auth tokens
+
+- `sentry token list [<org>]` — List org auth tokens
+- `sentry token create <org/name>` — Create an org auth token
+- `sentry token delete [<org>/]<token-id-or-name>` — Revoke an org auth token
+
+→ Full flags and examples: `references/token.md`
+
 ### Integration
 
 Work with Sentry integrations
 
 - `sentry integration list [<org/project>]` — List installed integrations
-- `sentry integration delete <org/integration-id>` — Remove an installed integration
+- `sentry integration delete [<org>/]<integration-id>` — Remove an installed integration
 
 → Full flags and examples: `references/integration.md`
 
@@ -685,7 +711,7 @@ View Sentry logs
 
 Start a local Sentry MCP server
 
-- `sentry mcp` — Start a local Sentry MCP server
+- `sentry mcp [<org/project>]` — Start a local Sentry MCP server
 
 → Full flags and examples: `references/mcp.md`
 
@@ -756,9 +782,9 @@ Manage product trials
 
 ### Init
 
-Initialize Sentry in your project (experimental)
+Print instructions for a coding agent to set up Sentry
 
-- `sentry init [<target>] [<directory>]` — Initialize Sentry in your project (experimental)
+- `sentry init` — Print instructions for a coding agent to set up Sentry
 
 → Full flags and examples: `references/init.md`
 
@@ -797,7 +823,7 @@ Sentry for local development
 
 Browse the Sentry API schema
 
-- `sentry schema <resource...>` — Browse the Sentry API schema
+- `sentry schema <query...>` — Browse the Sentry API schema
 
 → Full flags and examples: `references/schema.md`
 

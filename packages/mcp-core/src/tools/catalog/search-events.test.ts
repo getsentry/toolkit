@@ -2143,7 +2143,7 @@ describe("search_events", () => {
                 count_dead_clicks: 3,
                 started_at: "2025-01-15T10:00:00Z",
                 browser: { name: "Chrome", version: "131.0.0" },
-                user: { display_name: "Jane Doe" },
+                user: { display_name: "Jane Doe", id: "user-42" },
                 urls: ["/checkout", "/checkout/payment", "/checkout/confirm"],
                 releases: ["frontend@1.2.3"],
                 trace_ids: ["a4d1aae7216b47ff8117cf4e09ce9d0a"],
@@ -2177,7 +2177,7 @@ describe("search_events", () => {
     expect(result).toContain("https://test-org.sentry.io/explore/replays/");
     expect(result).toContain("environment=production&environment=staging");
     expect(result).toContain("Environment: production, staging");
-    expect(result).toContain("Jane Doe");
+    expect(result).toContain("- **User**: Jane Doe (id `user-42`)");
     expect(result).toContain("2 errors");
   });
 
@@ -2657,6 +2657,65 @@ describe("search_events", () => {
     expect(mockGenerateText).toHaveBeenCalled();
     expect(result).toContain("Connection failed to database");
     expect(result).toContain("🔴 [ERROR]");
+    expect(result).toContain(
+      "- **Log URL**: https://test-org.sentry.io/explore/logs/?project=-1&logsPinned=log1",
+    );
+  });
+
+  it("does not request log IDs for aggregate logs queries", async () => {
+    let eventsRequestUrl: URL | undefined;
+
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse(
+        "logs",
+        "severity:error",
+        ["severity", "count()"],
+        undefined,
+        "-count()",
+      ),
+    );
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          eventsRequestUrl = new URL(request.url);
+          return HttpResponse.json({
+            data: [{ severity: "error", "count()": 3 }],
+          });
+        },
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        query: "count error logs by severity",
+        dataset: "errors",
+        fields: null,
+        sort: "-count()",
+        period: "14d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        constraints: {
+          organizationSlug: null,
+          regionUrl: null,
+          projectSlug: null,
+        },
+        accessToken: "test-token",
+        userId: "1",
+      },
+    );
+
+    expect(eventsRequestUrl!.searchParams.getAll("field")).toEqual([
+      "severity",
+      "count()",
+    ]);
+    expect(result).not.toContain("Log URL");
   });
 
   it("should repair direct search params with the agent when available", async () => {
@@ -2722,6 +2781,7 @@ describe("search_events", () => {
       "timestamp",
       "message",
       "severity",
+      "id",
     ]);
     expect(result).toContain("Connection failed to database");
   });
@@ -4778,6 +4838,64 @@ describe("search_events", () => {
       await searchEvents.handler(seerParams, context);
 
       expect(mockGenerateText).toHaveBeenCalled();
+    });
+
+    describe("without an agent provider", () => {
+      const untranslatedNote =
+        "**Note:** `query` was not translated from natural language because no embedded agent or Seer translation was available, so Sentry searched for it as literal text and found nothing. Retry with Sentry search syntax, such as `environment:production`, and use `period` for the time range.";
+
+      beforeEach(() => {
+        process.env.OPENAI_API_KEY = "";
+        process.env.ANTHROPIC_API_KEY = "";
+        process.env.OPENROUTER_API_KEY = "";
+        mswServer.use(
+          mockOrganization(["mcp-search-events-seer-translate"]),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/search-agent/state/run-uuid/",
+            () => HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
+          ),
+        );
+      });
+
+      it.each([
+        ["natural language with no results", seerParams.query, [], true],
+        [
+          "natural language with results",
+          seerParams.query,
+          [{ "span.description": "GET /api/users" }],
+          false,
+        ],
+        ["Sentry syntax with no results", "span.op:http.client", [], false],
+      ])(
+        "notes an untranslated query only when it finds nothing: %s",
+        async (_name, query, data, expectNote) => {
+          const sentQueries: Array<string | null> = [];
+          mswServer.use(
+            http.get(
+              "https://sentry.io/api/0/organizations/test-org/events/",
+              ({ request }) => {
+                sentQueries.push(
+                  new URL(request.url).searchParams.get("query"),
+                );
+                return HttpResponse.json({ data });
+              },
+            ),
+          );
+
+          const result = await searchEvents.handler(
+            { ...seerParams, query },
+            context,
+          );
+
+          expect(sentQueries).toEqual([query]);
+          expect(mockGenerateText).not.toHaveBeenCalled();
+          if (expectNote) {
+            expect(result).toContain(untranslatedNote);
+          } else {
+            expect(result).not.toContain("was not translated");
+          }
+        },
+      );
     });
 
     describe("assisted query outcome", () => {

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { marked } from "marked";
 
 const name = "sentry-cli";
@@ -14,14 +15,14 @@ function call(node, property) {
   return node.type === "CallExpression" && member(node.callee, property);
 }
 
-function rule(message, visitors) {
+function rule(message, visitors, schema = []) {
   return {
-    meta: { type: "problem", docs: { description: message }, schema: [] },
+    meta: { type: "problem", docs: { description: message }, schema },
     create(context) {
       const filename = context.filename.replaceAll("\\", "/");
       if (!filename.includes("/packages/cli/")) return {};
-      return visitors(context, filename, (node) =>
-        context.report({ node, message }),
+      return visitors(context, filename, (node, override = message) =>
+        context.report({ node, message: override }),
       );
     },
   };
@@ -56,11 +57,93 @@ function readsProperty(node, object, property) {
   );
 }
 
-/** Target positional types from `src/lib/target-positional.ts`. */
+const FUNCTION_TYPES = new Set([
+  "ArrowFunctionExpression",
+  "FunctionDeclaration",
+  "FunctionExpression",
+]);
+
+/**
+ * Top-level functions of a module by name: `function f() {}` and
+ * `const f = () => {}`, exported or not.
+ */
+function moduleFunctions(program) {
+  const functions = new Map();
+  for (const statement of program.body) {
+    const declaration =
+      statement.type === "ExportNamedDeclaration"
+        ? statement.declaration
+        : statement;
+    if (declaration?.type === "FunctionDeclaration" && declaration.id) {
+      functions.set(declaration.id.name, declaration);
+    }
+    if (declaration?.type === "VariableDeclaration") {
+      for (const declarator of declaration.declarations) {
+        if (
+          declarator.id.type === "Identifier" &&
+          FUNCTION_TYPES.has(declarator.init?.type)
+        )
+          functions.set(declarator.id.name, declarator.init);
+      }
+    }
+  }
+  return functions;
+}
+
+/** Whether a function reads its second parameter (the parsed `--fields`). */
+function readsFieldsParameter(fn) {
+  const fields = fn.params[1];
+  const name =
+    fields?.type === "AssignmentPattern" ? fields.left?.name : fields?.name;
+  return Boolean(name) && containsIdentifier(fn.body, name);
+}
+
+/** `jsonTransform: ...` properties anywhere under a node. */
+function jsonTransformProperties(node) {
+  const found = [];
+  someNode(node, (n) => {
+    if (
+      n.type === "Property" &&
+      (n.key?.name ?? n.key?.value) === "jsonTransform"
+    )
+      found.push(n);
+    return false;
+  });
+  return found;
+}
+
+/**
+ * Target positional types from `src/lib/target-positional.ts`, and
+ * `boundArguments` positionals (`BoundArguments` and the commands' aliases).
+ */
 const BOUND_TARGET_TYPES = new Set([
+  "ListCommandTarget",
   "OrgOptionalTarget",
   "OrgProjectTarget",
+  "OrgTarget",
   "ProjectBoundTarget",
+  "ReleaseTarget",
+  "AlertRuleArgument",
+  "BoundArguments",
+  "ConversationArguments",
+  "DashboardArguments",
+  "DashboardCreateArguments",
+  "DashboardListArguments",
+  "EventViewArguments",
+  "IntegrationArguments",
+  "IssuesArguments",
+  "LogListArguments",
+  "LogViewArguments",
+  "ProjectCreateArguments",
+  "ReplayArguments",
+  "SpanListArguments",
+  "SpanViewArguments",
+  "TokenArguments",
+  "TokenCreateTarget",
+  "TraceLogsArguments",
+  "TraceViewArguments",
+  "TrialStartArguments",
+  "WidgetAddArguments",
 ]);
 
 function boundTargetParams(fn) {
@@ -141,6 +224,247 @@ function regexSource(node) {
   return "";
 }
 
+/**
+ * Helpers that parse ID positionals by hand. Commands parse IDs with
+ * `parseIdArguments()` (src/lib/id-arguments.ts), so every command takes
+ * the same forms; issues take `issuePositional` or `issuesPositional`
+ * (src/commands/issue/positional.ts).
+ */
+const AD_HOC_ID_PARSING = new Set([
+  "parseSlashSeparatedArg",
+  "detectSwappedViewArgs",
+  "HEX_ID_RE",
+  "SPAN_ID_RE",
+]);
+
+/**
+ * Helpers that leave a target positional for `func` to parse:
+ * `withCompletionTarget` tags a parser that can leave the value raw, and the
+ * others parse a raw string (applying a pasted URL's server as they go).
+ * Commands take targets as bound positionals instead
+ * (src/lib/target-positional.ts, `boundArguments`), which parse before the
+ * command runs, carry the completion kind, and resolve on `target.resolved`.
+ */
+const UNBOUND_TARGET_PARSING = new Set([
+  "withCompletionTarget",
+  "parseOrgProjectArg",
+  "resolveOrgOnlyFromArg",
+  "resolveOrgOptionalFromArg",
+  "resolveProjectBoundFromArg",
+]);
+
+/** Whether `node` uses one of `names`; imports and `typeof` do not. */
+function usesName(node, names) {
+  return (
+    names.has(node.name) &&
+    node.parent?.type !== "ImportSpecifier" &&
+    node.parent?.type !== "TSTypeQuery"
+  );
+}
+
+/** Visitors reporting each use of one of `names` in a command file. */
+function bannedNames(file, names, report, message) {
+  if (!file.includes("/src/commands/")) return {};
+  return {
+    Identifier(node) {
+      if (usesName(node, names)) report(node, message);
+    },
+  };
+}
+
+const ID_ARGUMENT_PARSERS = new Set(["parseIdArguments", "parseIdArgument"]);
+
+/** Whether `node` is `ID_KINDS.<kind>`. */
+function isIdKind(node) {
+  return (
+    node?.type === "MemberExpression" &&
+    node.object.type === "Identifier" &&
+    node.object.name === "ID_KINDS"
+  );
+}
+
+/**
+ * Parameters exempt from shell completion coverage, shared with
+ * test/lib/completion-coverage.test.ts.
+ */
+const COMPLETION_EXEMPTIONS = JSON.parse(
+  readFileSync(
+    new URL("./completion-exemptions.json", import.meta.url),
+    "utf8",
+  ),
+).exemptions;
+
+/** Built-in conversions, which carry no completion kind. */
+const BUILTIN_PARSERS = new Set([
+  "String",
+  "Number",
+  "Boolean",
+  "BigInt",
+  "Date",
+  "parseInt",
+  "parseFloat",
+]);
+
+/** Objects whose static parsers (`JSON.parse`, `Number.parseInt`) are built-ins. */
+const BUILTIN_PARSER_OBJECTS = new Set(["JSON", "Number", "Date", "BigInt"]);
+
+/** The non-computed property `key` of an object literal. */
+function objectProperty(node, key) {
+  return node.properties.find(
+    (p) =>
+      p.type === "Property" &&
+      !p.computed &&
+      (p.key.name ?? p.key.value) === key,
+  );
+}
+
+/**
+ * The parameter an object literal defines, as the coverage test names it:
+ * `--name` for a flag, keyed by its name (flags can have a `placeholder`
+ * too), and `<placeholder>` for a positional, which sits in a tuple's
+ * `parameters` array or an array positional's `parameter`.
+ */
+function parameterName(node) {
+  const parent = node.parent;
+  if (
+    parent?.type === "Property" &&
+    parent.value === node &&
+    !parent.computed
+  ) {
+    const key = parent.key.name ?? parent.key.value;
+    if (key !== "parameter") return `--${key}`;
+  }
+  const placeholder = objectProperty(node, "placeholder")?.value;
+  if (placeholder?.type === "Literal" && typeof placeholder.value === "string")
+    return `<${placeholder.value}>`;
+  return undefined;
+}
+
+/** Why a `parse` value declares no completion kind, or `undefined`. */
+function untaggedParser(value) {
+  if (value.type === "Identifier" && BUILTIN_PARSERS.has(value.name))
+    return `\`${value.name}\` has no completion kind. Use parseText, textParser(${value.name}), or another tagged parser from src/lib/completion-target.ts.`;
+  if (
+    value.type === "MemberExpression" &&
+    value.object.type === "Identifier" &&
+    BUILTIN_PARSER_OBJECTS.has(value.object.name)
+  )
+    return `\`${value.object.name}.${value.property.name}\` has no completion kind. Wrap it in textParser() or choiceParser().`;
+  if (
+    value.type === "ArrowFunctionExpression" ||
+    value.type === "FunctionExpression"
+  )
+    return "An inline parser has no completion kind. Wrap it in textParser(), choiceParser(), or choiceListParser(), or use a bound parser.";
+  return undefined;
+}
+
+/**
+ * Top-level routes of the CLI, read from `src/command-manifest.ts` (one
+ * `name: route(…)` or `name: hidden(…)` entry each). Only `sentry <route>`
+ * is a command; `sentry binary` or `sentry v1.2` is prose.
+ */
+const ROUTE_NAMES = new Set(
+  [
+    ...readFileSync(
+      new URL("../src/command-manifest.ts", import.meta.url),
+      "utf-8",
+    ).matchAll(/^ {2}"?([a-z][a-z0-9-]*)"?: (?:route|hidden)\(/gm),
+  ].map(([, routeName]) => routeName),
+);
+
+/** Stands in for an interpolation, which may be any word. */
+const INTERPOLATION = "\uFFFC";
+
+/**
+ * `sentry` and the word after it: a route, a flag, a `<placeholder>`, or an
+ * interpolation.
+ */
+const SENTRY_WORD_RE =
+  /(?:^|[\s`'"(])sentry (\uFFFC|<|--?[a-z]|[a-z][a-z0-9-]*)/g;
+
+/** Whether `text` names a `sentry <command>`. */
+function namesSentryCommand(text) {
+  for (const [, word] of text.matchAll(SENTRY_WORD_RE)) {
+    if (
+      word === INTERPOLATION ||
+      word === "<" ||
+      word.startsWith("-") ||
+      ROUTE_NAMES.has(word)
+    )
+      return true;
+  }
+  return false;
+}
+
+/** The tag that builds a command hint: `` sentry`issue list` ``. */
+function isSentryTag(node) {
+  return (
+    node.type === "TaggedTemplateExpression" &&
+    node.tag.type === "Identifier" &&
+    node.tag.name === "sentry"
+  );
+}
+
+/** Text of a template literal, each interpolation as one word. */
+function templateText(node) {
+  return node.quasis
+    .map((quasi) => quasi.value.cooked ?? "")
+    .join(INTERPOLATION);
+}
+
+/** Properties whose text is command help, written for the `sentry` binary. */
+const HELP_TEXT_KEYS = new Set([
+  "docs",
+  "fullDescription",
+  "brief",
+  "examples",
+]);
+
+/** Key of a property node, as written. */
+function propertyKey(node) {
+  return node.key?.name ?? node.key?.value;
+}
+
+/**
+ * Whether `node` is a step of a `docs.examples` entry: the `run` value, an
+ * element of a `run` array, or the `args` of a `{ prefix, args }` step.
+ */
+function isExampleStep(node) {
+  let current = node.parent;
+  if (current?.type === "Property" && propertyKey(current) === "args") {
+    current = current.parent?.parent;
+  }
+  if (current?.type === "ArrayExpression") current = current.parent;
+  return current?.type === "Property" && propertyKey(current) === "run";
+}
+
+/** Whether `node` sits inside a function body. */
+function hasFunctionAncestor(node) {
+  for (let current = node.parent; current; current = current.parent) {
+    if (FUNCTION_TYPES.has(current.type)) return true;
+  }
+  return false;
+}
+
+/** Whether `node` sits in a command hint helper or in command help text. */
+function isInvocationSafe(node) {
+  for (let current = node.parent; current; current = current.parent) {
+    if (FUNCTION_TYPES.has(current.type)) return false;
+    if (isSentryTag(current)) return true;
+    if (
+      current.type === "Property" &&
+      HELP_TEXT_KEYS.has(current.key?.name ?? current.key?.value)
+    )
+      return true;
+    if (
+      current.type === "VariableDeclarator" &&
+      HELP_TEXT_KEYS.has(current.id?.name)
+    )
+      return true;
+  }
+  return false;
+}
+
 const rules = {
   "no-silent-catch": rule(
     "Handle or report caught errors instead of discarding them.",
@@ -160,6 +484,46 @@ const rules = {
               if (
                 handler?.type === "ArrowFunctionExpression" &&
                 silentBody(handler.body, handler.params[0])
+              )
+                report(node);
+            },
+          }
+        : {},
+  ),
+  // A raw capture skips the 4xx silencing and `api_error` context that
+  // reportCliError() applies, so user errors pile into one issue (CLI-10).
+  "no-raw-capture-exception": rule(
+    "Report errors with reportCliError() from lib/error-reporting.js. A raw captureException skips the 4xx silencing and API error context.",
+    (_context, file, report) =>
+      file.includes("/src/") && !file.endsWith("/src/lib/error-reporting.ts")
+        ? {
+            ImportDeclaration(node) {
+              if (!String(node.source.value).startsWith("@sentry/")) return;
+              for (const specifier of node.specifiers) {
+                if (specifier.imported?.name === "captureException")
+                  report(specifier);
+              }
+            },
+            CallExpression(node) {
+              if (call(node, "captureException")) report(node);
+            },
+          }
+        : {},
+  ),
+  "no-process-exit": rule(
+    "Do not force the process to exit: it drops pending telemetry and piped " +
+      "output. Release the handle that keeps the event loop alive (see " +
+      "close-dispatcher.ts), or fix it in the dependency that owns it. " +
+      "Signal, fatal error, and broken stream handlers may exit, with a " +
+      "disable comment that says why.",
+    (_context, file, report) =>
+      file.includes("/src/")
+        ? {
+            MemberExpression(node) {
+              if (
+                member(node, "exit") &&
+                (node.object.name === "process" ||
+                  member(node.object, "process"))
               )
                 report(node);
             },
@@ -306,8 +670,77 @@ const rules = {
         FunctionDeclaration: check,
         FunctionExpression: check,
         ArrowFunctionExpression: check,
+        ...bannedNames(
+          file,
+          UNBOUND_TARGET_PARSING,
+          report,
+          "Take the target as a bound positional (src/lib/target-positional.ts, boundArguments) instead of parsing it in func.",
+        ),
       };
     },
+  ),
+  "no-ad-hoc-id-arguments": rule(
+    "Parse ID positionals with parseIdArguments() and an ID_KINDS kind.",
+    (_context, file, report) => {
+      if (!file.includes("/src/") || file.endsWith("/lib/id-arguments.ts"))
+        return {};
+      return {
+        ...bannedNames(file, AD_HOC_ID_PARSING, report),
+        CallExpression(node) {
+          if (
+            ID_ARGUMENT_PARSERS.has(node.callee.name) &&
+            !isIdKind(node.arguments[1])
+          )
+            report(node);
+        },
+      };
+    },
+  ),
+  "require-completion-parser": rule(
+    "Give every positional and value-taking flag a parser that declares its completion kind.",
+    (context, file, report) => {
+      if (!file.includes("/src/commands/") && !file.includes("/src/lib/"))
+        return {};
+      const exemptions =
+        context.options[0]?.exemptions ?? COMPLETION_EXEMPTIONS;
+      const exempt = (node) => {
+        const parameter = parameterName(node);
+        return exemptions.some(
+          (entry) =>
+            file.endsWith(`/packages/cli/${entry.file}`) &&
+            entry.parameter === parameter,
+        );
+      };
+      return {
+        ObjectExpression(node) {
+          const parse = objectProperty(node, "parse");
+          if (!parse) return;
+          // boundArguments({ kind, parse, resolve }): `kind` is the
+          // completion kind, and `parse` reads every argument at once.
+          if (objectProperty(node, "resolve")) {
+            if (!objectProperty(node, "kind") && !exempt(node))
+              report(
+                node,
+                "Give boundArguments a completion `kind` (ORG_PROJECT_TARGET, …).",
+              );
+            return;
+          }
+          const kind = objectProperty(node, "kind")?.value;
+          const parsedFlag =
+            kind?.type === "Literal" && kind.value === "parsed";
+          if (!parsedFlag && !objectProperty(node, "brief")) return;
+          const reason = untaggedParser(parse.value);
+          if (reason && !exempt(node)) report(parse.value, reason);
+        },
+      };
+    },
+    [
+      {
+        type: "object",
+        properties: { exemptions: { type: "array" } },
+        additionalProperties: false,
+      },
+    ],
   ),
   "no-generic-is-record": rule(
     "Use a shape-specific guard instead of isRecord().",
@@ -408,6 +841,118 @@ const rules = {
             },
           }
         : {},
+  ),
+  // A transform that drops `fields` makes `--fields` a silent no-op:
+  // https://github.com/getsentry/toolkit/issues/1808
+  "json-transform-uses-fields": rule(
+    "A jsonTransform replaces the default --fields filtering, so it must read its fields parameter.",
+    (_context, file, report) =>
+      file.includes("/src/")
+        ? {
+            Program(program) {
+              const functions = moduleFunctions(program);
+              // Exported jsonTransform* helpers are shared by several
+              // commands, so check them where they are defined.
+              for (const [fnName, fn] of functions) {
+                if (
+                  fnName.startsWith("jsonTransform") &&
+                  !readsFieldsParameter(fn)
+                )
+                  report(fn);
+              }
+              for (const property of jsonTransformProperties(program)) {
+                const value = property.value;
+                if (FUNCTION_TYPES.has(value.type)) {
+                  if (!readsFieldsParameter(value)) report(property);
+                } else if (value.type === "Identifier") {
+                  // Imported transforms are checked in their own module.
+                  const fn = functions.get(value.name);
+                  if (
+                    fn &&
+                    !value.name.startsWith("jsonTransform") &&
+                    !readsFieldsParameter(fn)
+                  )
+                    report(property);
+                }
+              }
+            },
+          }
+        : {},
+  ),
+  "no-runtime-output-schema-imports": rule(
+    "src/output-schemas/ is build-only: use `import type` from it, and import the field data from src/generated/output-schemas/.",
+    (_context, file, report) => {
+      if (!file.includes("/src/") || file.includes("/src/output-schemas/"))
+        return {};
+      const buildOnly = (source) =>
+        typeof source === "string" &&
+        /(?:^|\/)output-schemas\//.test(source) &&
+        !/(?:^|\/)generated\/output-schemas\//.test(source);
+      // Only `import type` / `export type` is erased whole. Under
+      // `verbatimModuleSyntax`, `import { type X }` still loads the module.
+      return {
+        ImportDeclaration(node) {
+          if (buildOnly(node.source.value) && node.importKind !== "type")
+            report(node);
+        },
+        ExportNamedDeclaration(node) {
+          if (buildOnly(node.source?.value) && node.exportKind !== "type")
+            report(node);
+        },
+        ExportAllDeclaration(node) {
+          if (buildOnly(node.source.value) && node.exportKind !== "type")
+            report(node);
+        },
+        ImportExpression(node) {
+          if (buildOnly(node.source.value)) report(node);
+        },
+      };
+    },
+  ),
+  "no-hardcoded-sentry-command": rule(
+    "Hints must name the program that is running (`npx sentry`, `sentry-mcp`, ...): write the command with the sentry`…` tag from lib/app-identity.js, as sentry`issue list`.",
+    (_context, file, report) => {
+      if (!file.includes("/src/")) return {};
+      const check = (node, text) => {
+        if (!namesSentryCommand(text) || isInvocationSafe(node)) return;
+        report(node);
+      };
+      // The running program is known only once an entry point has started,
+      // so a hint built at module load would still name `sentry`.
+      const checkModuleLevel = (node) => {
+        if (!hasFunctionAncestor(node))
+          report(
+            node,
+            "Build the hint when it is shown, not at module load: the running program is not known yet. Keep a command in a constant or table as `() => sentry`…``.",
+          );
+      };
+      return {
+        TaggedTemplateExpression(node) {
+          if (!isSentryTag(node)) return;
+          checkModuleLevel(node);
+          if (templateText(node.quasi).startsWith("sentry "))
+            report(
+              node,
+              "The sentry`…` tag adds the program name; leave `sentry` out of the text.",
+            );
+        },
+        Literal(node) {
+          if (typeof node.value !== "string") return;
+          if (isExampleStep(node)) {
+            if (node.value.startsWith("sentry "))
+              report(
+                node,
+                "Write example steps without the program name, as `issue list`: help, docs and skills each add it.",
+              );
+            return;
+          }
+          check(node, node.value);
+        },
+        TemplateLiteral(node) {
+          if (!isSentryTag(node.parent)) check(node, templateText(node));
+        },
+      };
+    },
   ),
   "no-skipped-tests": rule(
     "Do not leave disabled tests in the suite.",

@@ -31,7 +31,7 @@ describe("resolveOrCreateTeam", () => {
     listTeamsSpy.mockRejectedValueOnce(apiError);
 
     const error = await resolveOrCreateTeam("chisme", {
-      usageHint: "sentry init",
+      usageHint: "sentry project create",
     }).catch((e) => e);
 
     expect(error).toBe(apiError);

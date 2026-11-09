@@ -27,11 +27,21 @@ import {
 } from "../../lib/build/index.js";
 import {
   collectVcsMetadata,
-  isCi,
+  VCS_PROVIDERS,
   type VcsFlags,
   vcsInfoToBody,
 } from "../../lib/build/vcs.js";
+import { isCi } from "../../lib/ci.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  choiceParser,
+  parseFilePath,
+  parseGitCommit,
+  parseGitRepo,
+  parseText,
+  parseVcsRef,
+  textParser,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -41,10 +51,11 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("build.upload");
 
-const USAGE_HINT = "sentry build upload <path>";
+const usageHint = () => sentry`build upload <path>`;
 
 /** Parse `--pr-number` as a non-negative integer. */
 function parsePrNumber(value: string): number {
@@ -183,36 +194,31 @@ export const uploadCommand = buildCommand({
     examples: [
       {
         description: "Upload an Android build",
-        command: "sentry build upload ./app-release.apk",
+        run: "build upload ./app-release.apk",
       },
       {
         description: "Upload an XCArchive directory",
-        command: "sentry build upload ./MyApp.xcarchive",
+        run: "build upload ./MyApp.xcarchive",
       },
       {
         description: "Upload an IPA with a build configuration",
-        command:
-          "sentry build upload ./MyApp.ipa --build-configuration Release",
+        run: "build upload ./MyApp.ipa --build-configuration Release",
       },
       {
         description: "Attach debug symbols to an IPA",
-        command:
-          "sentry build upload ./MyApp.ipa --dsym ./MyApp.app.dSYM --dsym ./frameworks-dsyms.zip",
+        run: "build upload ./MyApp.ipa --dsym ./MyApp.app.dSYM --dsym ./frameworks-dsyms.zip",
       },
       {
         description: "Upload with release notes",
-        command:
-          'sentry build upload ./app.aab --build-configuration Release --release-notes "Nightly"',
+        run: 'build upload ./app.aab --build-configuration Release --release-notes "Nightly"',
       },
       {
         description: "Tag a build with install groups",
-        command:
-          "sentry build upload ./app.aab --install-group qa --install-group beta",
+        run: "build upload ./app.aab --install-group qa --install-group beta",
       },
       {
         description: "Attach explicit git metadata",
-        command:
-          'sentry build upload ./app.aab --head-sha "$GIT_SHA" --pr-number 42 --base-ref main',
+        run: 'build upload ./app.aab --head-sha "$GIT_SHA" --pr-number 42 --base-ref main',
       },
     ],
   },
@@ -225,27 +231,27 @@ export const uploadCommand = buildCommand({
       parameter: {
         brief:
           "Path(s) to the build(s) to upload (APK, AAB, IPA, or XCArchive)",
-        parse: String,
+        parse: parseFilePath,
         placeholder: "path",
       },
     },
     flags: {
       "build-configuration": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Build configuration for the upload (defaults to the current version)",
         optional: true,
       },
       "release-notes": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Release notes for the build",
         optional: true,
       },
       "install-group": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Install group(s) for this build (repeatable); builds sharing a group show updates for each other",
         optional: true,
@@ -253,7 +259,7 @@ export const uploadCommand = buildCommand({
       },
       dsym: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "dSYM bundle, directory of bundles, or ZIP for a single IPA (repeatable)",
         optional: true,
@@ -261,52 +267,52 @@ export const uploadCommand = buildCommand({
       },
       "head-sha": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitCommit,
         brief: "VCS commit SHA (defaults to the current commit)",
         optional: true,
       },
       "base-sha": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitCommit,
         brief:
           "VCS base commit SHA (defaults to the merge-base with the base ref)",
         optional: true,
       },
       "vcs-provider": {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(VCS_PROVIDERS),
         brief: "VCS provider (defaults to the current remote's provider)",
         optional: true,
       },
       "head-repo-name": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRepo,
         brief:
           "Head repository name, e.g. owner/repo (defaults to the current)",
         optional: true,
       },
       "base-repo-name": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRepo,
         brief: "Base repository name, e.g. owner/repo (for forks)",
         optional: true,
       },
       "head-ref": {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief: "Head branch/reference (defaults to the current branch)",
         optional: true,
       },
       "base-ref": {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief:
           "Base branch/reference (defaults to the merge-base tracking ref)",
         optional: true,
       },
       "pr-number": {
         kind: "parsed",
-        parse: parsePrNumber,
+        parse: textParser(parsePrNumber),
         brief:
           "Pull request number (auto-detected in pull_request GitHub Actions runs)",
         optional: true,
@@ -337,10 +343,10 @@ export const uploadCommand = buildCommand({
 
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 
@@ -382,7 +388,7 @@ export const uploadCommand = buildCommand({
     }
 
     const uploadedCount = builds.filter((b) => b.error === null).length;
-    yield new CommandOutput<BuildUploadResult>({ builds, uploadedCount });
+    yield new CommandOutput({ builds, uploadedCount });
 
     // Deliberate deviation from the legacy CLI, which only exits non-zero when
     // *every* build fails: we fail loud on *any* failure so CI/agents never

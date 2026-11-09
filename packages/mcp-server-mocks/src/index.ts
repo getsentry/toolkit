@@ -44,6 +44,7 @@ import issueActivityFixture from "./fixtures/issue-activity.json" with { type: "
 import issueCommentsFixture from "./fixtures/issue-comments.json" with { type: "json" };
 import issueNullCulpritFixture from "./fixtures/issue-null-culprit.json" with { type: "json" };
 import issueTagValuesFixture from "./fixtures/issue-tag-values.json" with { type: "json" };
+import issueTagsFixture from "./fixtures/issue-tags.json" with { type: "json" };
 import issueUserReportsFixture from "./fixtures/issue-user-reports.json" with { type: "json" };
 import monitorFixture from "./fixtures/monitor.json" with { type: "json" };
 import monitorCheckInsFixture from "./fixtures/monitor-checkins.json" with { type: "json" };
@@ -1415,12 +1416,24 @@ export const restHandlers = buildHandlers([
     path: "/api/0/organizations/:org/issues/:issueId/user-reports/",
     fetch: () => HttpResponse.json(issueUserReportsFixture),
   },
-  // Issue tag values endpoints
+  // Issue tag keys and tag values endpoints
+  {
+    method: "get",
+    path: "/api/0/organizations/:org/issues/:issueId/tags/",
+    fetch: () => HttpResponse.json(issueTagsFixture),
+  },
   {
     method: "get",
     path: "/api/0/organizations/:org/issues/:issueId/tags/:tagKey/",
     fetch: ({ params }) => {
       const tagKey = params.tagKey as string;
+      // Sentry answers a key the issue does not have with a generic 404.
+      if (!issueTagsFixture.some((tag) => tag.key === tagKey)) {
+        return HttpResponse.json(
+          { detail: "The requested resource does not exist" },
+          { status: 404 },
+        );
+      }
       // Return fixture with the requested tag key
       return HttpResponse.json({
         ...issueTagValuesFixture,
@@ -1999,6 +2012,29 @@ When Sentry detects an abnormal spike in events, it automatically activates spik
       );
     },
   ),
+  // docs.sentry.io serves unknown pages as a 200 "Page Not Found" document
+  http.get("https://docs.sentry.io/ai/mcp.md", () => {
+    return new HttpResponse(
+      `---
+title: "Page Not Found"
+url: "https://docs.sentry.io/ai/mcp"
+---
+
+# Page Not Found
+
+The page \`/ai/mcp\` does not exist.
+
+## Find what you need
+
+- [Site index](https://docs.sentry.io/llms.txt) — LLM-optimized page listing`,
+      {
+        headers: {
+          "Content-Type": "text/markdown",
+          "X-Sentry-Docs-Not-Found": "1",
+        },
+      },
+    );
+  }),
   // Catch-all for other doc paths - return 404
   http.get("https://docs.sentry.io/*.md", () => {
     return new HttpResponse(null, { status: 404 });

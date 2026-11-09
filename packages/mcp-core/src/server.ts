@@ -1,4 +1,3 @@
-import { McpServer as LegacyMcpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 /**
  * MCP Server Configuration and Request Handling Infrastructure.
  *
@@ -19,8 +18,14 @@ import { McpServer as LegacyMcpServer } from "@modelcontextprotocol/sdk/server/m
  * });
  * ```
  */
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { McpServer as ModernMcpServer } from "@modelcontextprotocol/server";
+import {
+  type CallToolResult,
+  type JSONRPCRequest,
+  McpServer,
+  ProtocolError,
+  ProtocolErrorCode,
+  type Result,
+} from "@modelcontextprotocol/server";
 import {
   getActiveSpan,
   type SpanAttributeValue,
@@ -30,7 +35,10 @@ import {
 } from "@sentry/core";
 import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
-import { MCP_SERVER_NAME } from "./constants";
+import { isUnauthorizedHandled } from "./internal/tool-helpers/credential-routing";
+import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
+import { MCP_SERVER_INFO } from "./constants";
+import { buildServerInstructions } from "./server-instructions";
 import {
   formatErrorForUser,
   isExpectedToolError,
@@ -47,12 +55,105 @@ import {
   type ToolRegistry,
 } from "./tools/catalog-runtime/availability";
 import tools from "./tools/index";
+import { isCatalogInfrastructureToolName } from "./tools/surfaces";
 import type { StructuredToolOutput } from "./tools/types";
 import type { ServerContext } from "./types";
-import { LIB_VERSION } from "./version";
+import { getServerVersion } from "./version";
 
 function getSkillGrantedAttributeName(skill: Skill): string {
   return `app.consent.skill.${skill.replaceAll("-", "_")}.granted`;
+}
+
+/**
+ * Request-scoped attributes for the active `tools/call` span.
+ */
+function getToolCallSpanAttributes(
+  context: ServerContext,
+  experimentalMode: boolean,
+): Record<string, SpanAttributeValue> {
+  const attributes: Record<string, SpanAttributeValue> = {
+    "app.server.mode.experimental": experimentalMode,
+  };
+  if (context.transport) {
+    attributes["app.transport"] = context.transport;
+  }
+  if (context.clientFamily) {
+    attributes["app.client.family"] = context.clientFamily;
+  }
+  if (context.constraints.organizationSlug) {
+    attributes["app.constraint.organization_slug"] =
+      context.constraints.organizationSlug;
+  }
+  if (context.constraints.projectSlug) {
+    attributes["app.constraint.project_slug"] = context.constraints.projectSlug;
+  }
+  for (const skill of [...(context.grantedSkills ?? [])].sort()) {
+    attributes[getSkillGrantedAttributeName(skill)] = true;
+  }
+  return attributes;
+}
+
+type RequestHandler = (
+  request: JSONRPCRequest,
+  ctx: unknown,
+) => Promise<Result>;
+
+/**
+ * Makes calls to tool names this server did not register visible.
+ *
+ * The SDK rejects them with a -32602 JSON-RPC error before any of our
+ * handlers run. Sentry's MCP instrumentation treats -32602 as a client error
+ * and leaves the `tools/call` span status unset, so these calls showed up as
+ * successful 0ms spans without our request attributes. This marks the span as
+ * failed with `error.type: unknown_tool`, which keeps the call out of Sentry
+ * Issues, and explains the removed gateway tools that older sessions still
+ * call.
+ */
+function markUnknownToolCalls(
+  server: McpServer,
+  registeredToolNames: ReadonlySet<string>,
+  spanAttributes: Record<string, SpanAttributeValue>,
+): void {
+  // The SDK has no hook for unknown tool names, so this wraps its tools/call
+  // handler in the Protocol's private handler map.
+  // If an SDK upgrade changes it, this is a no-op.
+  const handlers = (server.server as unknown as { _requestHandlers?: unknown })
+    ._requestHandlers;
+  if (!(handlers instanceof Map)) {
+    return;
+  }
+  const requestHandlers = handlers as Map<string, RequestHandler>;
+  const handleToolsCall = requestHandlers.get("tools/call");
+  if (typeof handleToolsCall !== "function") {
+    return;
+  }
+
+  requestHandlers.set("tools/call", async (request, ctx) => {
+    const name = request.params?.name;
+    if (typeof name !== "string" || registeredToolNames.has(name)) {
+      return await handleToolsCall(request, ctx);
+    }
+
+    const activeSpan = getActiveSpan();
+    if (activeSpan) {
+      activeSpan.setAttributes({
+        ...spanAttributes,
+        "error.type": "unknown_tool",
+      });
+      activeSpan.setStatus({
+        code: 2, // error
+        message: "not_found",
+      });
+    }
+
+    if (isCatalogInfrastructureToolName(name)) {
+      throw new ProtocolError(
+        ProtocolErrorCode.InvalidParams,
+        `Tool ${name} was removed from the Sentry MCP server. Call Sentry tools directly by name. If they are missing from your tool list, reconnect the Sentry MCP server to refresh it.`,
+      );
+    }
+    return await handleToolsCall(request, ctx);
+  });
 }
 
 function isCallToolResult(output: unknown): output is CallToolResult {
@@ -89,6 +190,9 @@ function isStructuredToolOutput(
 /**
  * Wraps structured-only output in an MCP CallToolResult with generated JSON
  * text for clients that do not read structuredContent yet.
+ *
+ * The text is compact JSON because clients that read it send it to a model,
+ * and indentation adds tokens without adding data.
  */
 function structuredOutputToCallToolResult(
   output: StructuredToolOutput,
@@ -97,11 +201,65 @@ function structuredOutputToCallToolResult(
     content: [
       {
         type: "text" as const,
-        text: JSON.stringify(output.structuredContent, null, 2),
+        text: JSON.stringify(output.structuredContent),
       },
     ],
     structuredContent: output.structuredContent,
   };
+}
+
+/**
+ * Replaces lone UTF-16 surrogates in tool output with U+FFFD.
+ *
+ * Formatters truncate upstream text by UTF-16 index, so a cut can keep only
+ * half of an emoji. `JSON.stringify` writes that half as `\ud83d`, and strict
+ * JSON parsers such as serde_json in Codex reject the message and close the
+ * transport. Normalizing handler output here covers every tool, including
+ * structuredContent and the compatibility text generated from it.
+ *
+ * Runs on every tool call, so it copies on write: it returns the input itself
+ * when nothing changes, and copies only the arrays and objects on the path to
+ * a replaced string. V8 returns the same string from `toWellFormed()` when it
+ * is already well formed, so the `!==` checks are pointer comparisons.
+ */
+function toWellFormedOutput<T>(value: T): T {
+  if (typeof value === "string") {
+    return value.toWellFormed() as T;
+  }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    let copy: unknown[] | undefined;
+    for (let index = 0; index < value.length; index++) {
+      const next = toWellFormedOutput(value[index]);
+      if (next !== value[index]) {
+        copy ??= [...value];
+        copy[index] = next;
+      }
+    }
+    return (copy ?? value) as T;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  // `for...in` avoids allocating a key list per object on the common path.
+  let entries: [string, unknown][] | undefined;
+  let index = 0;
+  for (const key in record) {
+    if (!Object.hasOwn(record, key)) continue;
+    const item = record[key];
+    const nextKey = key.toWellFormed();
+    const next = toWellFormedOutput(item);
+    if (!entries && (nextKey !== key || next !== item)) {
+      entries = Object.entries(record).slice(0, index);
+    }
+    entries?.push([nextKey, next]);
+    index++;
+  }
+  return (entries ? Object.fromEntries(entries) : value) as T;
 }
 
 /**
@@ -113,7 +271,7 @@ function structuredOutputToCallToolResult(
  * @example Usage with stdio transport
  * ```typescript
  * import { buildServer } from "@sentry/mcp-core/server";
- * import { startStdio } from "@sentry/mcp-server/transports/stdio";
+ * import { startStdio } from "@sentry/mcp-core/transports/stdio";
  *
  * const context = {
  *   accessToken: process.env.SENTRY_TOKEN,
@@ -124,69 +282,69 @@ function structuredOutputToCallToolResult(
  * };
  *
  * const server = buildServer({ context });
- * await startStdio(server, context);
+ * const { closed } = await startStdio(server, context);
+ * await closed;
  * ```
  *
  */
-type McpServer = LegacyMcpServer | ModernMcpServer;
-
-type BuildServerOptions = {
-  context: ServerContext;
-  experimentalMode?: boolean;
-  tools?: ToolRegistry;
-};
-
-export function buildServer(
-  options: BuildServerOptions & { sdkVersion: "v2" },
-): ModernMcpServer;
-export function buildServer(options: BuildServerOptions): LegacyMcpServer;
 export function buildServer({
   context,
   experimentalMode = false,
   tools: customTools,
-  sdkVersion = "v1",
-}: BuildServerOptions & {
-  sdkVersion?: "v1" | "v2";
+}: {
+  context: ServerContext;
+  experimentalMode?: boolean;
+  tools?: ToolRegistry;
 }): McpServer {
   const contextWithModes: ServerContext = {
     ...context,
     experimentalMode,
   };
-  const serverInfo = {
-    name: MCP_SERVER_NAME,
-    version: LIB_VERSION,
-  };
-
-  if (sdkVersion === "v2") {
-    const server = new ModernMcpServer(serverInfo);
-    const registrations = configureServer({
-      server,
-      context: contextWithModes,
-      experimentalMode,
-      tools: customTools,
-    });
-    for (const { name, config, handler } of registrations) {
-      server.registerTool(name, config, handler);
-    }
-    if (registrations.length > 0) {
-      server.server.registerCapabilities({ tools: { listChanged: false } });
-    }
-    return wrapMcpServerWithSentry(server);
-  }
-
-  const server = new LegacyMcpServer(serverInfo);
+  const toolCallSpanAttributes = getToolCallSpanAttributes(
+    contextWithModes,
+    experimentalMode,
+  );
   const registrations = configureServer({
-    server,
     context: contextWithModes,
     experimentalMode,
     tools: customTools,
+    toolCallSpanAttributes,
   });
+  const server = new McpServer(
+    {
+      ...MCP_SERVER_INFO,
+      version: getServerVersion(),
+    },
+    {
+      maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
+      instructions: buildServerInstructions(
+        new Set(registrations.map(({ name }) => name)),
+      ),
+    },
+  );
+  server.server.onerror = (error) => {
+    const transportLogOptions: LogIssueOptions = {
+      loggerScope: ["server", "transport"] as const,
+      contexts: {
+        transport: {
+          phase: "server.onerror",
+        },
+      },
+    };
+
+    logIssue(error, transportLogOptions);
+  };
   for (const { name, config, handler } of registrations) {
     server.registerTool(name, config, handler);
   }
   // Registration enables this by default, but each server's tool catalog is fixed.
   if (registrations.length > 0) {
     server.server.registerCapabilities({ tools: { listChanged: false } });
+    markUnknownToolCalls(
+      server,
+      new Set(registrations.map(({ name }) => name)),
+      toolCallSpanAttributes,
+    );
   }
   return wrapMcpServerWithSentry(server);
 }
@@ -199,26 +357,19 @@ export function buildServer({
  * captured in closures for tool handler execution.
  */
 function configureServer({
-  server,
   context,
   experimentalMode = false,
   tools: customTools,
+  toolCallSpanAttributes,
 }: {
-  server: McpServer;
   context: ServerContext;
   experimentalMode?: boolean;
   tools?: ToolRegistry;
+  toolCallSpanAttributes: Record<string, SpanAttributeValue>;
 }) {
   const registrations = [];
   const registry: ToolRegistry = customTools ?? tools;
 
-  // Get granted skills from context for tool filtering
-  const grantedSkills: Set<Skill> | undefined = context.grantedSkills
-    ? new Set<Skill>(context.grantedSkills)
-    : undefined;
-  const grantedSkillIds = grantedSkills
-    ? Array.from(grantedSkills).sort()
-    : undefined;
   const availableTools = getAvailableTools({
     tools: registry,
     context,
@@ -236,19 +387,6 @@ function configureServer({
     ),
   };
 
-  server.server.onerror = (error) => {
-    const transportLogOptions: LogIssueOptions = {
-      loggerScope: ["server", "transport"] as const,
-      contexts: {
-        transport: {
-          phase: "server.onerror",
-        },
-      },
-    };
-
-    logIssue(error, transportLogOptions);
-  };
-
   for (const { tool } of toolsToRegister) {
     const filteredInputSchema = getFilteredInputSchema(
       tool,
@@ -261,6 +399,7 @@ function configureServer({
     });
 
     const toolRegistration = {
+      title: tool.title,
       description: resolvedDescription,
       inputSchema: filteredInputSchema,
       outputSchema: tool.outputSchema,
@@ -270,35 +409,7 @@ function configureServer({
       // Get the active MCP server span and attach request-scoped attributes.
       const activeSpan = getActiveSpan();
 
-      if (activeSpan) {
-        activeSpan.setAttribute(
-          "app.server.mode.experimental",
-          experimentalMode,
-        );
-        if (context.transport) {
-          activeSpan.setAttribute("app.transport", context.transport);
-        }
-        if (context.clientFamily) {
-          activeSpan.setAttribute("app.client.family", context.clientFamily);
-        }
-        if (context.constraints.organizationSlug) {
-          activeSpan.setAttribute(
-            "app.constraint.organization_slug",
-            context.constraints.organizationSlug,
-          );
-        }
-        if (context.constraints.projectSlug) {
-          activeSpan.setAttribute(
-            "app.constraint.project_slug",
-            context.constraints.projectSlug,
-          );
-        }
-        if (grantedSkillIds?.length) {
-          for (const skill of grantedSkillIds) {
-            activeSpan.setAttribute(getSkillGrantedAttributeName(skill), true);
-          }
-        }
-      }
+      activeSpan?.setAttributes(toolCallSpanAttributes);
 
       if (context.userId) {
         const user = {
@@ -349,11 +460,13 @@ function configureServer({
           }
         }
 
-        const output = await executeToolHandler({
-          tool,
-          params: rawParams,
-          context: contextWithToolAvailability,
-        });
+        const output = toWellFormedOutput(
+          await executeToolHandler({
+            tool,
+            params: rawParams,
+            context: contextWithToolAvailability,
+          }),
+        );
 
         if (activeSpan) {
           activeSpan.setStatus({
@@ -403,14 +516,20 @@ function configureServer({
         }
 
         // Upstream 401 during a tool call — route via the transport so it
-        // can revoke the MCP grant; swallow callback errors since the
-        // formatted tool response still needs to land.
+        // can revoke the MCP grant or refresh the token; swallow callback
+        // errors since the formatted tool response still needs to land.
+        // A routed call already refreshed its own credential.
         if (
           isApiAuthenticationErrorDeep(error) &&
+          !isUnauthorizedHandled(error) &&
           context.onUpstreamUnauthorized
         ) {
           try {
-            await context.onUpstreamUnauthorized();
+            const refreshedToken = await context.onUpstreamUnauthorized();
+            // Handlers read this shared copy, not the caller's context.
+            if (refreshedToken) {
+              contextWithToolAvailability.accessToken = refreshedToken;
+            }
           } catch {}
         }
 
@@ -435,9 +554,11 @@ function configureServer({
           content: [
             {
               type: "text" as const,
-              text: await formatErrorForUser(error, {
-                transport: context.transport,
-              }),
+              text: (
+                await formatErrorForUser(error, {
+                  transport: context.transport,
+                })
+              ).toWellFormed(),
             },
           ],
           isError: true,

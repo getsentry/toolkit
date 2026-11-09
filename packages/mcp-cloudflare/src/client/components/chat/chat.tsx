@@ -117,8 +117,7 @@ export function Chat({ isOpen, onClose, onLogout }: ChatProps) {
       const definitionsByName = new Map(
         TOOL_DEFINITIONS.map((t) => [t.name, t]),
       );
-      const detailed = metadata.tools
-        .slice()
+      const detailed = [...metadata.tools]
         .sort((a, b) => a.localeCompare(b))
         .map((name) => {
           const def = definitionsByName.get(name);

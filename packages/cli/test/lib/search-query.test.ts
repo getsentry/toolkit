@@ -435,7 +435,7 @@ describe("sanitizeQuery: edge cases", () => {
 
 describe("sanitizeQuery: regex filters", () => {
   // How the grammar reads regex patterns and keys is tested in
-  // packages/toolkit-core/src/search-syntax.test.ts. These cover the
+  // @sentry/search-syntax (getsentry/sentry). These cover the
   // sanitizer: patterns survive AND stripping and OR rewriting untouched.
   test("preserves repeated whitespace inside a pattern", () => {
     expect(sanitizeQuery("message://a  AND  b//")).toBe(

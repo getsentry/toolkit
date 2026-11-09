@@ -7,7 +7,8 @@
 import { mkdirSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, beforeEach } from "vitest";
+import { ArgumentParseError } from "@stricli/core";
+import { afterEach, beforeEach, expect } from "vitest";
 import {
   resetAccountSelection,
   resetAuthRowCache,
@@ -369,4 +370,14 @@ export function envWithoutAgent(): NodeJS.ProcessEnv {
   return Object.fromEntries(
     Object.entries(process.env).filter(([key]) => !agentKeys.has(key)),
   );
+}
+
+/**
+ * The error a command's positionals failed to parse with: arguments parse
+ * before `func` runs, so it reaches the caller wrapped in Stricli's
+ * ArgumentParseError. For `.catch()` on a command call.
+ */
+export function parseFailure(error: unknown): Error {
+  expect(error).toBeInstanceOf(ArgumentParseError);
+  return (error as ArgumentParseError).exception as Error;
 }

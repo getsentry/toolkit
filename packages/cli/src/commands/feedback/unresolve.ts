@@ -3,13 +3,13 @@
  */
 
 import type { SentryContext } from "../../context.js";
-import { updateIssueStatus } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { formatReopenedFeedback } from "../../lib/formatters/feedback.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { disableResponseCache } from "../../lib/response-cache.js";
-import { SentryFeedbackSchema } from "../../types/index.js";
-import { feedbackIdPositional, resolveFeedback } from "./utils.js";
+import { type FeedbackTarget, feedbackPositional } from "./positional.js";
+import { updateFeedbackStatus } from "./utils.js";
+import { SentryFeedbackSchema } from "../../generated/output-schemas/feedback.js";
 
 export const unresolveCommand = buildCommand({
   docs: {
@@ -22,24 +22,23 @@ export const unresolveCommand = buildCommand({
       {
         description:
           "Reopen a Feedback item, or return it from spam to the inbox",
-        command: "sentry feedback unresolve FRONTEND-2SDJ",
+        run: "feedback unresolve FRONTEND-2SDJ",
       },
       {
         description: "Reopen by numeric ID",
-        command: "sentry feedback unresolve 5146636313",
+        run: "feedback unresolve 5146636313",
       },
       {
         description: "`reopen` is an alias for `unresolve`",
-        command: "sentry feedback reopen FRONTEND-2SDJ",
+        run: "feedback reopen FRONTEND-2SDJ",
       },
       {
         description: "Specify an organization explicitly",
-        command: "sentry feedback unresolve my-org/FRONTEND-2SDJ",
+        run: "feedback unresolve my-org/FRONTEND-2SDJ",
       },
       {
         description: "Return selected fields from the updated Feedback",
-        command:
-          "sentry feedback unresolve FRONTEND-2SDJ --json --fields id,shortId,status",
+        run: "feedback unresolve FRONTEND-2SDJ --json --fields id,shortId,status",
       },
     ],
   },
@@ -48,19 +47,12 @@ export const unresolveCommand = buildCommand({
     schema: SentryFeedbackSchema,
   },
   parameters: {
-    positional: feedbackIdPositional,
+    positional: feedbackPositional("unresolve"),
   },
-  async *func(this: SentryContext, _flags, feedbackArg: string) {
+  async *func(this: SentryContext, _flags, target: FeedbackTarget) {
     disableResponseCache();
-    const { org, feedback } = await resolveFeedback(
-      feedbackArg,
-      this.cwd,
-      "unresolve",
+    yield new CommandOutput(
+      await updateFeedbackStatus(await target.resolved, "unresolved"),
     );
-    const updated = await updateIssueStatus(feedback.id, "unresolved", {
-      orgSlug: org,
-    });
-
-    yield new CommandOutput(updated);
   },
 });

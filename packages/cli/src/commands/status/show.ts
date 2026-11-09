@@ -11,7 +11,9 @@ import {
   fetchSentryStatus,
   SENTRY_STATUS_PAGE_URL,
 } from "../../lib/api/status-page.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseUrl } from "../../lib/completion-target.js";
 import { formatSentryStatus } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 
@@ -35,16 +37,16 @@ export const showCommand = buildCommand({
     examples: [
       {
         description: "Show the current status of Sentry's services",
-        command: "sentry status",
+        run: "status",
       },
       {
         description: "Get machine-readable status (useful in scripts)",
-        command: "sentry status --json",
+        run: "status --json",
       },
       {
         description:
           "Check a self-hosted or regional status page (Statuspage CNAME)",
-        command: "sentry status --url https://status.acme.com",
+        run: "status --url https://status.acme.com",
       },
     ],
   },
@@ -53,7 +55,7 @@ export const showCommand = buildCommand({
     flags: {
       url: {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "Status page base URL to query",
         default: SENTRY_STATUS_PAGE_URL,
       },
@@ -65,7 +67,7 @@ export const showCommand = buildCommand({
 
     if (status.indicator !== "none") {
       return {
-        hint: `Run \`sentry status\` again to refresh, or open ${status.url}`,
+        hint: `Run \`${sentry`status`}\` again to refresh, or open ${status.url}`,
       };
     }
   },

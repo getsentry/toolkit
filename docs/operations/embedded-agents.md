@@ -12,6 +12,8 @@ Sentry MCP uses embedded AI agents for the following tools:
 
 These tools require an LLM provider (OpenAI, Azure OpenAI, Anthropic, or OpenRouter) to be configured.
 
+`search_errors`, `search_logs`, `search_traces`, `search_metrics`, and `search_issues` first try Seer's search agent when the organization has the `mcp-search-events-seer-translate` rollout flag and has not hidden AI features. `search_issues` also needs `gen-ai-issues-search`, which Sentry requires for the `Issues` strategy. When Seer is unavailable or cannot translate the query, they fall back to the embedded agent.
+
 ## Provider Selection
 
 ### Explicit Configuration (Recommended)
@@ -59,7 +61,7 @@ Or:
 ```bash
 export EMBEDDED_AGENT_PROVIDER=azure-openai
 export OPENAI_API_KEY=sk-...
-npx @sentry/mcp-server --openai-base-url=https://example.openai.azure.com/openai/v1/
+npx @sentry/mcp-server@latest --openai-base-url=https://example.openai.azure.com/openai/v1/
 ```
 
 Or:
@@ -83,7 +85,7 @@ export EMBEDDED_AGENT_PROVIDER=openrouter
 #### Method 2: CLI Flag
 
 ```bash
-npx @sentry/mcp-server --agent-provider=openai --access-token=...
+npx @sentry/mcp-server@latest --agent-provider=openai
 ```
 
 #### Method 3: MCP Configuration File
@@ -95,9 +97,9 @@ In your MCP settings (e.g., Claude Desktop config):
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": ["@sentry/mcp-server"],
+      "args": ["@sentry/mcp-server@latest"],
       "env": {
-        "SENTRY_ACCESS_TOKEN": "your-token",
+        "SENTRY_AUTH_TOKEN": "your-token",
         "EMBEDDED_AGENT_PROVIDER": "openai",
         "OPENAI_API_KEY": "sk-..."
       }
@@ -137,9 +139,9 @@ Always set `EMBEDDED_AGENT_PROVIDER` when multiple API keys might be present:
   "mcpServers": {
     "sentry": {
       "command": "npx",
-      "args": ["@sentry/mcp-server"],
+      "args": ["@sentry/mcp-server@latest"],
       "env": {
-        "SENTRY_ACCESS_TOKEN": "your-token",
+        "SENTRY_AUTH_TOKEN": "your-token",
         "EMBEDDED_AGENT_PROVIDER": "openai",
         "OPENAI_API_KEY": "sk-..."
       }
@@ -194,7 +196,7 @@ For custom OpenAI-compatible endpoints or Anthropic proxies:
 ```bash
 export EMBEDDED_AGENT_PROVIDER=openai
 export OPENAI_API_KEY=sk-...
-npx @sentry/mcp-server --openai-base-url=https://custom.openai.example.com
+npx @sentry/mcp-server@latest --openai-base-url=https://custom.openai.example.com
 ```
 
 For Azure OpenAI or Azure-compatible deployment proxies, use the dedicated
@@ -206,10 +208,10 @@ export OPENAI_API_KEY=sk-...
 export OPENAI_API_VERSION=2024-02-15-preview
 
 # Azure v1 endpoint -> Responses API
-npx @sentry/mcp-server --openai-base-url=https://example.openai.azure.com/openai/v1/
+npx @sentry/mcp-server@latest --openai-base-url=https://example.openai.azure.com/openai/v1/
 
 # Deployment endpoint -> chat completions
-npx @sentry/mcp-server --openai-base-url=https://example.openai.azure.com/openai/deployments/my-assistant
+npx @sentry/mcp-server@latest --openai-base-url=https://example.openai.azure.com/openai/deployments/my-assistant
 ```
 
 ### Model Selection
@@ -233,25 +235,25 @@ export OPENROUTER_REASONING_EFFORT=high
 Check which provider is being used:
 
 ```bash
-npx @sentry/mcp-server --access-token=... 2>&1 | grep "Using"
+npx @sentry/mcp-server@latest 2>&1 | grep "Using"
 ```
 
 Expected output:
 
 ```
-Using openai responses API for AI-powered search tools (from EMBEDDED_AGENT_PROVIDER).
+ℹ Using openai responses API for AI-powered search tools (from EMBEDDED_AGENT_PROVIDER).
 ```
 
 Or:
 
 ```
-Using anthropic for AI-powered search tools (auto-detected).
+ℹ Using anthropic for AI-powered search tools (auto-detected).
 ```
 
 Or:
 
 ```
-Using openrouter for AI-powered search tools (auto-detected).
+ℹ Using openrouter for AI-powered search tools (auto-detected).
 ```
 
 ## Troubleshooting
@@ -290,13 +292,13 @@ export ANTHROPIC_API_KEY=sk-ant-test
 export OPENAI_API_KEY=sk-test
 export EMBEDDED_AGENT_PROVIDER=openai
 
-npx @sentry/mcp-server --access-token=...
+npx @sentry/mcp-server@latest
 ```
 
 Should output:
 
 ```
-Using openai responses API for AI-powered search tools (from EMBEDDED_AGENT_PROVIDER).
+ℹ Using openai responses API for AI-powered search tools (from EMBEDDED_AGENT_PROVIDER).
 ```
 
 ## Related Documentation

@@ -6,6 +6,8 @@
  */
 
 import { describe, expect, test } from "vitest";
+// Registers the CLI route map the help output is built from.
+import "../../src/app.js";
 import { bannerLinesForWidth, formatBanner } from "../../src/lib/banner.js";
 import { withEnv } from "../../src/lib/env.js";
 import { introspectAllCommands, printCustomHelp } from "../../src/lib/help.js";
@@ -24,7 +26,8 @@ function maxLineWidth(banner: string): number {
     0,
     ...stripAnsi(banner)
       .split("\n")
-      .map((line) => Array.from(line).length),
+      // oxlint-disable-next-line typescript/no-misused-spread -- width is measured in code points
+      .map((line) => [...line].length),
   );
 }
 
@@ -100,7 +103,7 @@ describe("printCustomHelp", () => {
       process.stdout.isTTY = false;
       const withoutBanner = printCustomHelp();
       // stdin stays non-TTY under vitest, so sixel opts out and the block-art
-      // banner is used — exercises the `sixelBanner(cols) ?? formatBanner(cols)`
+      // banner is used — exercises the `graphicsBanner(cols) ?? formatBanner(cols)`
       // fallback inside the TTY-only banner branch.
       process.stdout.isTTY = true;
       const withBanner = printCustomHelp();
@@ -203,7 +206,7 @@ describe("printCustomHelp overview", () => {
 
   test("lists every command and subcommand for explicit help", () => {
     const output = stripAnsi(humanHelp(false));
-    expect(output).toContain("sentry auth list | login | logout");
+    expect(output).toContain("sentry auth list | login | bootstrap | logout");
     expect(output).toContain("sentry dashboard");
     expect(output).not.toContain("all commands:");
     expect(commandLines(output).length).toBeGreaterThan(
@@ -217,7 +220,7 @@ describe("printCustomHelp overview", () => {
         printCustomHelp({ overview: true }),
       ),
     );
-    expect(output).toContain("sentry auth list | login | logout");
+    expect(output).toContain("sentry auth list | login | bootstrap | logout");
     expect(output).toContain("sentry dashboard");
     expect(output).not.toContain("all commands:");
   });

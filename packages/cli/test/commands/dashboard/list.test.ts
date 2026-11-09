@@ -10,6 +10,7 @@
  * integration tests focus on end-to-end behavior through the Stricli func().
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -433,6 +434,25 @@ describe("dashboard list command", () => {
     const parsed = JSON.parse(output);
     expect(parsed.data).toHaveLength(1);
     expect(parsed.data[0].title).toBe("API Monitoring");
+  });
+
+  test("a dashboard URL fails to parse with a view suggestion, before any request", async () => {
+    const { context } = createMockContext();
+    const func = await listCommand.loader();
+
+    const error = await func
+      .call(
+        context,
+        defaultFlags({ json: true }),
+        "https://my-org.sentry.io/dashboard/4326879/",
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect(String((error as ArgumentParseError).exception)).toContain(
+      "sentry dashboard view my-org/ 4326879",
+    );
+    expect(listDashboardsPaginatedSpy).not.toHaveBeenCalled();
   });
 
   test("glob filter is case-insensitive", async () => {

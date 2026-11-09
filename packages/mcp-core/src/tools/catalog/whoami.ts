@@ -1,16 +1,28 @@
 import { z } from "zod";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import {
+  listCredentialContexts,
+  mapCredentialContexts,
+} from "../../internal/tool-helpers/credential-routing";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import type { ServerContext } from "../../types";
 import { ALL_SKILLS } from "../../skills";
 
+const userSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  email: z.string(),
+});
+
 export const whoamiOutputSchema = z.object({
-  user: z.object({
-    id: z.string(),
-    name: z.string().nullable(),
-    email: z.string(),
-  }),
+  user: userSchema,
+  /**
+   * Every signed-in user when the server holds several logins (the stdio
+   * server's stored CLI accounts), `user` first. Tool calls use the login
+   * that can reach the organization they target.
+   */
+  accounts: z.array(userSchema).optional(),
   sessionConstraints: z
     .object({
       organizationSlug: z.string().optional(),
@@ -20,8 +32,17 @@ export const whoamiOutputSchema = z.object({
     .nullable(),
 });
 
+function toUser(user: {
+  id: string | number;
+  name?: string | null;
+  email: string;
+}): z.infer<typeof userSchema> {
+  return { id: String(user.id), name: user.name ?? null, email: user.email };
+}
+
 export default defineTool({
   name: "whoami",
+  title: "Who Am I",
   description: [
     "Identify the authenticated user in Sentry.",
     "",
@@ -40,9 +61,19 @@ export default defineTool({
   async handler(params, context: ServerContext) {
     // User data endpoints (like /auth/) should never use regionUrl
     // as they must always query the main API server, not region-specific servers
-    const apiService = apiServiceFromContext(context);
     // API client will throw ApiClientError/ApiServerError which the MCP server wrapper handles
-    const user = await apiService.getAuthenticatedUser();
+    const accounts = await listCredentialContexts(context);
+    const users =
+      accounts && accounts.length > 1
+        ? (
+            await mapCredentialContexts(accounts, async ({ context }) =>
+              toUser(
+                await apiServiceFromContext(context).getAuthenticatedUser(),
+              ),
+            )
+          ).map(({ value }) => value)
+        : [toUser(await apiServiceFromContext(context).getAuthenticatedUser())];
+    const [user] = users;
 
     const constraints = context.constraints;
     const sessionConstraints =
@@ -63,11 +94,8 @@ export default defineTool({
         : null;
 
     return structuredResult({
-      user: {
-        id: String(user.id),
-        name: user.name ?? null,
-        email: user.email,
-      },
+      user,
+      ...(users.length > 1 ? { accounts: users } : {}),
       sessionConstraints,
     });
   },

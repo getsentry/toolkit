@@ -18,20 +18,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assert as fcAssert, integer, property, uniqueArray } from "fast-check";
 import { afterEach, describe, expect, test } from "vitest";
-import { BANNER_SIXEL } from "../../src/generated/banner-sixel.js";
+import { BANNER_IMAGE } from "../../src/generated/banner-image.js";
 import {
   __resetSixelCache,
+  applyTmuxCaps,
   detectSixelCaps,
+  graphicsBanner,
   graphicsCellSize,
   optedOut,
   parseSixelCaps,
+  parseTmuxInfo,
+  probeQueries,
   readReply,
   selectGraphicsFormat,
   selectGraphicsFormatFromAvailability,
-  sixelBanner,
   sixelFits,
   terminalPixelWidth,
+  tmuxKittyPlacement,
 } from "../../src/lib/sixel.js";
+import { decodeImage, encodeImageToSixel } from "../../src/lib/sixel-image.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 const ESC = "\x1b";
@@ -176,11 +181,12 @@ describe("graphicsCellSize", () => {
   });
 });
 
-describe("sixelBanner", () => {
+describe("graphicsBanner", () => {
   test("returns undefined in a non-interactive (test) environment", () => {
     // Under vitest stdin/stdout are not TTYs, so the probe opts out and no
-    // sixel is emitted — the caller falls back to block art.
-    expect(sixelBanner(200)).toBeUndefined();
+    // image is emitted — the caller falls back to block art.
+    expect(graphicsBanner(200)).toBeUndefined();
+    expect(tmuxKittyPlacement(200)).toBeUndefined();
   });
 
   test("suppresses the image when opted out even with a TTY", () => {
@@ -196,7 +202,7 @@ describe("sixelBanner", () => {
       process.stdin.isTTY = true;
       process.env.SENTRY_NO_SIXEL = "1";
       __resetSixelCache();
-      expect(sixelBanner(200)).toBeUndefined();
+      expect(graphicsBanner(200)).toBeUndefined();
     } finally {
       process.stdout.isTTY = saved.stdout;
       process.stdin.isTTY = saved.stdin;
@@ -210,15 +216,123 @@ describe("sixelBanner", () => {
   });
 });
 
-describe("BANNER_SIXEL (generated)", () => {
-  test("is a well-formed sixel payload with positive dimensions", () => {
-    expect(BANNER_SIXEL.width).toBeGreaterThan(0);
-    expect(BANNER_SIXEL.height).toBeGreaterThan(0);
-    // DCS sixel introducer ... String Terminator.
-    expect(BANNER_SIXEL.data.startsWith(`${ESC}P`)).toBe(true);
-    expect(BANNER_SIXEL.data.endsWith(`${ESC}\\`)).toBe(true);
-    // Transparent background: P2 = 1 in the DCS parameters.
-    expect(BANNER_SIXEL.data.startsWith(`${ESC}P0;1;0q`)).toBe(true);
+describe("BANNER_IMAGE (generated)", () => {
+  test("is a PNG with positive dimensions", () => {
+    expect(BANNER_IMAGE.width).toBeGreaterThan(0);
+    expect(BANNER_IMAGE.height).toBeGreaterThan(0);
+    const png = Buffer.from(BANNER_IMAGE.png, "base64");
+    // PNG signature, then the IHDR width/height (big-endian at bytes 16..23).
+    expect(png.subarray(1, 4).toString("latin1")).toBe("PNG");
+    expect(png.readUInt32BE(16)).toBe(BANNER_IMAGE.width);
+    expect(png.readUInt32BE(20)).toBe(BANNER_IMAGE.height);
+  });
+
+  test("encodes to a transparent native-size sixel with its gradient colors", () => {
+    const image = decodeImage(Buffer.from(BANNER_IMAGE.png, "base64"), "png");
+    expect(image).toBeDefined();
+    const sixel = image && encodeImageToSixel(image, image.width, true);
+    // Transparent background: P2 = 1, then raster attributes at native size.
+    expect(
+      sixel?.startsWith(
+        `${ESC}P0;1;0q"1;1;${BANNER_IMAGE.width};${BANNER_IMAGE.height}`,
+      ),
+    ).toBe(true);
+    expect(sixel?.endsWith(`${ESC}\\`)).toBe(true);
+    // The banner is painted from 24 gradient bands, so the palette keeps
+    // those exact colors instead of filling all 128 slots.
+    const paletteEntries = sixel?.match(/#\d+;2;/g) ?? [];
+    expect(paletteEntries.length).toBeGreaterThan(0);
+    expect(paletteEntries.length).toBeLessThanOrEqual(24);
+  });
+});
+
+describe("parseTmuxInfo", () => {
+  test("reads allow-passthrough and the attached terminal's features", () => {
+    expect(parseTmuxInfo("on bpaste,clipboard,sixel,title\n")).toEqual({
+      passthrough: true,
+      outerSixel: true,
+    });
+    expect(parseTmuxInfo("all bpaste,title")).toEqual({
+      passthrough: true,
+      outerSixel: false,
+    });
+    expect(parseTmuxInfo("off sixel")).toEqual({
+      passthrough: false,
+      outerSixel: true,
+    });
+  });
+
+  test("treats tmux without allow-passthrough (pre-3.3) as disabled", () => {
+    expect(parseTmuxInfo(" bpaste,title")).toEqual({
+      passthrough: false,
+      outerSixel: false,
+    });
+  });
+});
+
+describe("probeQueries", () => {
+  test("outside tmux, sends the kitty query directly with DA1 last", () => {
+    const { query, sentinels } = probeQueries(undefined);
+    expect(query.startsWith(`${ESC}[16t${ESC}_G`)).toBe(true);
+    expect(query.endsWith(`${ESC}[c`)).toBe(true);
+    expect(sentinels).toBe(1);
+  });
+
+  test("inside tmux without passthrough, never sends the kitty query", () => {
+    // tmux would turn the bare APC into the pane title.
+    const { query, sentinels } = probeQueries({
+      passthrough: false,
+      outerSixel: false,
+    });
+    expect(query).toBe(`${ESC}[16t${ESC}[c`);
+    expect(sentinels).toBe(1);
+  });
+
+  test("inside tmux with passthrough, wraps the kitty query and a second DA1", () => {
+    const { query, sentinels } = probeQueries({
+      passthrough: true,
+      outerSixel: false,
+    });
+    const passthrough = query.slice(`${ESC}[16t${ESC}[c`.length);
+    expect(passthrough.startsWith(`${ESC}Ptmux;${ESC}${ESC}_G`)).toBe(true);
+    expect(passthrough.endsWith(`${ESC}${ESC}[c${ESC}\\`)).toBe(true);
+    expect(sentinels).toBe(2);
+  });
+});
+
+describe("applyTmuxCaps", () => {
+  const tmuxSixelDa = `${ESC}[6;20;10t${ESC}[?1;2;4c`;
+
+  test("ignores tmux's own sixel claim when the outer terminal lacks sixel", () => {
+    // e.g. Homebrew tmux (built with sixel) running inside Ghostty.
+    const caps = parseSixelCaps(tmuxSixelDa);
+    expect(caps.supported).toBe(true);
+    expect(
+      applyTmuxCaps(caps, { passthrough: false, outerSixel: false }),
+    ).toEqual({ supported: false });
+  });
+
+  test("keeps sixel when the outer terminal supports it", () => {
+    const caps = parseSixelCaps(tmuxSixelDa);
+    expect(
+      applyTmuxCaps(caps, { passthrough: false, outerSixel: true }),
+    ).toMatchObject({ supported: true, cellWidth: 10, cellHeight: 20 });
+  });
+
+  test("marks kitty found through passthrough as needing tmux placement", () => {
+    const reply = `${tmuxSixelDa}${ESC}_Gi=4271;OK${ESC}\\${ESC}[?62;22c`;
+    expect(
+      applyTmuxCaps(parseSixelCaps(reply), {
+        passthrough: true,
+        outerSixel: false,
+      }),
+    ).toEqual({
+      supported: false,
+      kitty: true,
+      tmux: true,
+      cellWidth: 10,
+      cellHeight: 20,
+    });
   });
 });
 
@@ -342,6 +456,51 @@ describe("readReply", () => {
         cellWidth: 10,
       });
     });
+  });
+
+  test("waits for every requested DA sentinel (tmux passthrough)", () => {
+    const reply = `${ESC}[?1;2;4c${ESC}_Gi=4271;OK${ESC}\\${ESC}[?62;22c`;
+    withReplyFile(reply, (fd) => {
+      expect(readReply(fd, 2)).toBe(reply);
+    });
+  });
+
+  test("keeps waiting through a quiet read for the passthrough sentinel", () => {
+    // tmux answers at once; the outer terminal's replies come after a gap
+    // longer than one read timeout.
+    const chunks = [
+      `${ESC}[?1;2;4c`,
+      "",
+      `${ESC}_Gi=4271;OK${ESC}\\${ESC}[?62;22c`,
+    ];
+    const reply = readReply(-1, 2, (buf) => {
+      const chunk = chunks.shift() ?? "";
+      return buf.write(chunk, "latin1");
+    });
+    expect(parseSixelCaps(reply)).toMatchObject({
+      supported: true,
+      kitty: true,
+    });
+    expect(chunks).toHaveLength(0);
+  });
+
+  test("gives up on the passthrough sentinel after repeated quiet reads", () => {
+    let reads = 0;
+    const reply = readReply(-1, 2, (buf) => {
+      reads += 1;
+      return reads === 1 ? buf.write(`${ESC}[?1;2;4c`, "latin1") : 0;
+    });
+    expect(reply).toBe(`${ESC}[?1;2;4c`);
+    expect(reads).toBe(5);
+  });
+
+  test("stops at the first quiet read when no sentinel is pending", () => {
+    let reads = 0;
+    readReply(-1, 1, (buf) => {
+      reads += 1;
+      return reads === 1 ? buf.write(`${ESC}[6;20;10t`, "latin1") : 0;
+    });
+    expect(reads).toBe(2);
   });
 
   test("returns an empty string at EOF with no reply", () => {

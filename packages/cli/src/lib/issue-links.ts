@@ -232,10 +232,6 @@ async function invalidateIssueLinks(
   await Promise.all([
     invalidateCachedResponsesMatching(new URL(issuePath, regionUrl).href),
     invalidateCachedResponsesMatching(new URL(issuePath, base).href),
-    invalidateCachedResponsesMatching(
-      new URL(`/api/0/issues/${encodeURIComponent(options.issueId)}/`, base)
-        .href,
-    ),
   ]);
 }
 

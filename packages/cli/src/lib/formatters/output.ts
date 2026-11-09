@@ -19,7 +19,7 @@
  * formatter — there is no divergent-data path.
  */
 
-import { type GenericSchema, getDescription } from "valibot";
+import type { GenericSchema, InferOutput } from "valibot";
 import type { Writer } from "../../types/index.js";
 import { plainSafeMuted } from "./human.js";
 import { filterFields, formatJson } from "./json.js";
@@ -91,15 +91,97 @@ export function resolveRenderer<T>(human: HumanOutput<T>): HumanRenderer<T> {
 export type HumanOutput<T> = ((data: T) => string) | (() => HumanRenderer<T>);
 
 /**
- * Output configuration declared on `buildCommand` for automatic rendering.
- *
- * When present, `--json` and `--fields` flags are injected and the wrapper
- * auto-renders yielded {@link CommandOutput} values.
- *
- * @typeParam T - Type of data the command yields (used by `human` formatter
- *   and serialized as-is to JSON)
+ * Keys `jsonExclude` can strip: the data's top-level keys, or each item's
+ * keys when the data is an array (see `applyJsonExclude`). Distributes over
+ * unions, so a key of any member counts.
  */
-export type OutputConfig<T> = {
+type JsonExcludeKey<T> = T extends readonly (infer Item)[]
+  ? Item extends unknown
+    ? keyof Item & string
+    : never
+  : keyof T & string;
+
+/**
+ * The JSON value `--fields` operates on: the data, or each item when the
+ * data is an array.
+ */
+type JsonItem<T> = T extends readonly (infer Item)[] ? Item : T;
+
+/**
+ * Holds when the JSON data satisfies `S`, so every field the schema
+ * documents exists on the data with a matching type. Otherwise it requires
+ * a property no schema has, and the error shows the schema's output type.
+ */
+export type SchemaMatches<T, S extends GenericSchema> = [JsonItem<T>] extends [
+  InferOutput<S>,
+]
+  ? unknown
+  : { "~outputMismatch": InferOutput<S> };
+
+/**
+ * The value `--fields` operates on in a `jsonTransform` result: each item of
+ * a `{ data: [...] }` envelope or an array, otherwise the result itself.
+ * Distributes over unions, so every shape the transform returns counts.
+ * `filterFields` on an array types its items as possibly `undefined`, so
+ * `null` and `undefined` items are dropped.
+ */
+type TransformItem<R> = NonNullable<
+  R extends { readonly data: readonly (infer Item)[] }
+    ? Item
+    : R extends readonly (infer Item)[]
+      ? Item
+      : R
+>;
+
+/**
+ * Every key of `T` as a required, defined field. A transform's items are
+ * `Partial` when `--fields` filters them, so the transform check compares
+ * which fields exist and their types, not whether they are optional.
+ */
+type PresentFields<T> = { [K in keyof T]-?: Exclude<T[K], undefined> };
+
+/** Flattens `T` so errors print its fields instead of the alias. */
+type Simplify<T> = { [K in keyof T]: T[K] } & {};
+
+/**
+ * The fields of `Schema` that `Data` lacks or types differently, with the
+ * type the schema documents. Index signatures (loose objects) are skipped.
+ */
+type MismatchedFields<Data, Schema> = {
+  [
+    K in keyof Schema as string extends K
+      ? never
+      : number extends K
+        ? never
+        : K extends keyof Data
+          ? [Data[K]] extends [Schema[K]]
+            ? never
+            : K
+          : K
+  ]: Schema[K];
+};
+
+/**
+ * Holds when every field `S` documents exists on the transform's item with
+ * a matching type. Otherwise it requires a property no schema has, and the
+ * error lists the mismatched fields. A transform that returns `unknown`
+ * never matches, so a transform with a schema must return a typed result.
+ */
+type TransformSchemaMatches<R, S extends GenericSchema> = [
+  PresentFields<TransformItem<R>>,
+] extends [PresentFields<InferOutput<S>>]
+  ? unknown
+  : {
+      "~outputMismatch": Simplify<
+        MismatchedFields<
+          PresentFields<TransformItem<R>>,
+          PresentFields<InferOutput<S>>
+        >
+      >;
+    };
+
+/** Fields shared by both forms of {@link OutputConfig}. */
+type OutputConfigBase<T> = {
   /**
    * Human-readable renderer.
    *
@@ -115,37 +197,66 @@ export type OutputConfig<T> = {
    * (e.g. pre-formatted terminal strings) and should not appear
    * in the JSON contract.
    *
-   * Ignored when {@link jsonTransform} is set — the transform is
-   * responsible for shaping the final JSON output.
+   * Ignored when {@link OutputConfig.jsonTransform} is set — the transform
+   * is responsible for shaping the final JSON output.
    */
-  jsonExclude?: ReadonlyArray<keyof T & string>;
-  /**
-   * Custom JSON serialization transform.
-   *
-   * When set, replaces the default JSON output path entirely.
-   * The function receives the raw command data and the parsed `--fields`
-   * list, and returns the final object to serialize.
-   *
-   * This is useful for list commands that wrap items in a
-   * `{ data, hasMore, nextCursor }` envelope and need per-element
-   * field filtering rather than top-level filtering.
-   *
-   * When `jsonTransform` is set, `jsonExclude` is ignored.
-   */
-  jsonTransform?: (data: T, fields?: string[]) => unknown;
-  /**
-   * Zod schema describing the shape of JSON output (after transform/exclude).
-   *
-   * For list commands with {@link jsonTransform}, this should describe the
-   * **item** type (what `--fields` operates on), not the envelope.
-   *
-   * Used for:
-   * - `--help` output: appends available JSON fields to the command description
-   * - `sentry help <cmd>`: structured field documentation
-   * - `generate-skill.ts`: SKILL.md field tables for AI agents
-   */
-  schema?: GenericSchema;
+  jsonExclude?: ReadonlyArray<JsonExcludeKey<T>>;
 };
+
+/**
+ * Output configuration declared on `buildCommand` for automatic rendering.
+ *
+ * When present, `--json` and `--fields` flags are injected and the wrapper
+ * auto-renders yielded {@link CommandOutput} values.
+ *
+ * `schema` describes the JSON output: the build-time copy of a valibot
+ * schema in `src/output-schemas/`, imported from
+ * `src/generated/output-schemas/` (see {@link OutputSchemaFields}). Declare
+ * the schema once and derive the command's output type from it; see
+ * "Declaring Command Output" in `packages/cli/AGENTS.md`. It drives
+ * `--help`, `sentry help <cmd>`, `--fields` completion, and the SKILL.md
+ * field tables.
+ *
+ * Without `jsonTransform`, the data (each item for array data) must satisfy
+ * `schema`, so a documented field the command doesn't produce is a compile
+ * error. With `jsonTransform`, `schema` describes the transform's **item**
+ * (what `--fields` operates on), and every field it documents must exist on
+ * that item with a matching type (see {@link TransformItem}).
+ *
+ * @typeParam T - Type of data the command yields (used by `human` formatter
+ *   and serialized as-is to JSON)
+ * @typeParam S - The valibot schema `schema` was read from, inferred by the
+ *   command builders
+ * @typeParam R - Type `jsonTransform` returns, inferred by the builders
+ */
+export type OutputConfig<
+  T,
+  S extends GenericSchema = GenericSchema,
+  R = unknown,
+> = OutputConfigBase<T> &
+  (
+    | {
+        jsonTransform?: undefined;
+        schema?: OutputSchemaFields<S> & SchemaMatches<T, S>;
+      }
+    | {
+        /**
+         * Custom JSON serialization transform.
+         *
+         * When set, replaces the default JSON output path entirely.
+         * The function receives the raw command data and the parsed
+         * `--fields` list, and returns the final object to serialize.
+         *
+         * This is useful for list commands that wrap items in a
+         * `{ data, hasMore, nextCursor }` envelope and need per-element
+         * field filtering rather than top-level filtering.
+         *
+         * When `jsonTransform` is set, `jsonExclude` is ignored.
+         */
+        jsonTransform: (data: T, fields?: string[]) => R;
+        schema?: OutputSchemaFields<S> & TransformSchemaMatches<R, S>;
+      }
+  );
 
 /**
  * Yield type for commands with {@link OutputConfig}.
@@ -181,6 +292,16 @@ export class ClearScreen {
   /** Brand field for instanceof checks — never read, just exists. */
   readonly _brand = "ClearScreen" as const;
 }
+
+/**
+ * Values a command generator may yield.
+ *
+ * `buildCommand` infers `T` from the command's {@link OutputConfig}, so a
+ * yielded {@link CommandOutput} must match the type that `human`,
+ * `jsonTransform`, and `jsonExclude` take. Commands without an output
+ * config get `T = never` and may only yield {@link ClearScreen}.
+ */
+export type CommandYield<T> = CommandOutput<T> | ClearScreen;
 
 /**
  * Return type for command generators.
@@ -330,9 +451,10 @@ export function renderCommandOutput(
 // ---------------------------------------------------------------------------
 
 /**
- * Field metadata extracted from a Zod schema for documentation.
+ * Metadata of one top-level field of an output schema.
  *
- * Populated by {@link extractSchemaFields} and consumed by:
+ * Read from the valibot schema at build time (`script/lib/output-schema-fields.ts`)
+ * and consumed by:
  * - `introspect.ts` → `CommandInfo.jsonFields`
  * - `help.ts` → human help output
  * - `generate-skill.ts` → SKILL.md field tables
@@ -348,177 +470,30 @@ export type SchemaFieldInfo = {
   optional: boolean;
 };
 
-/** Minimal structural view of a valibot schema's runtime shape. */
-type ValibotSchemaNode = {
-  type: string;
-  /** Inner schema for wrapper types (optional / nullable / nullish). */
-  wrapped?: ValibotSchemaNode;
-  /** Member schemas for union / picklist. */
-  options?: unknown[];
-  /** Item schema for array. */
-  item?: ValibotSchemaNode;
-  /** Field schemas for object / loose_object. */
-  entries?: Record<string, ValibotSchemaNode>;
-  /**
-   * Pipe steps for a `SchemaWithPipe` (e.g. `pipe(string(), description(...))`
-   * or the `pipe(unknown(), transform(Number), number())` coercion pattern).
-   * Each step carries a `kind` of `"schema"`, `"validation"`, `"transformation"`,
-   * or `"metadata"`.
-   */
-  pipe?: Array<{ type: string; kind: string }>;
+/**
+ * What the CLI needs at runtime from a command's output schema, read from it
+ * at build time: its top-level fields and every `--fields` path.
+ *
+ * The schemas themselves live in `src/output-schemas/`, which only the build
+ * loads. `script/generate-output-schemas.ts` writes one of these for each of
+ * their exports to `src/generated/output-schemas/`, under the same name.
+ *
+ * @typeParam S - The valibot schema it was read from. Type only: commands
+ *   derive their output type from it, and {@link OutputConfig} checks the
+ *   command's data against it.
+ */
+export type OutputSchemaFields<S extends GenericSchema = GenericSchema> = {
+  /** Top-level fields, for `--help`, `sentry help <cmd>` and the skill. */
+  readonly fields: readonly SchemaFieldInfo[];
+  /** Every field path in `--fields` dot notation, parents before children. */
+  readonly paths: readonly string[];
+  /** Never set; carries the schema's type. */
+  readonly "~schema"?: S;
 };
 
-/**
- * Resolve a piped schema (`pipe(...)`) to the node whose `type` reflects its
- * output — the last step with `kind === "schema"`. For the coercion pattern
- * `pipe(unknown(), transform(Number), number())` this is `number()`, not the
- * leading `unknown()`. Non-piped schemas are returned unchanged.
- */
-function unwrapPipe(schema: ValibotSchemaNode): ValibotSchemaNode {
-  if (!schema.pipe?.length) {
-    return schema;
-  }
-  const schemaSteps = schema.pipe.filter((step) => step.kind === "schema");
-  const last = schemaSteps.at(-1);
-  return (last as ValibotSchemaNode | undefined) ?? schema;
-}
-
-/** Leaf-type name mapping for {@link valibotTypeToString}. */
-const VALIBOT_TYPE_MAP: Record<string, string> = {
-  string: "string",
-  number: "number",
-  boolean: "boolean",
-  object: "object",
-  loose_object: "object",
-  array: "array",
-  record: "object",
-  null: "null",
-  unknown: "unknown",
-  any: "any",
-  picklist: "string",
-  enum: "string",
-  literal: "string",
-};
-
-/**
- * Resolve a valibot `union` into a deduplicated `" | "`-joined type string.
- *
- * Used by auto-generated `@sentry/api/valibot` schemas that represent nullable
- * fields as `union([string(), null_()])` instead of `nullable(string())`.
- */
-function resolveValibotUnion(options: ValibotSchemaNode[]): {
-  type: string;
-  optional: boolean;
-} {
-  let optional = false;
-  const parts: string[] = [];
-  for (const opt of options) {
-    const resolved = valibotTypeToString(opt);
-    if (resolved.optional) {
-      optional = true;
-    }
-    if (!parts.includes(resolved.type)) {
-      parts.push(resolved.type);
-    }
-  }
-  return { type: parts.join(" | "), optional };
-}
-
-/**
- * Map a valibot schema's runtime `type` to a human-readable string.
- *
- * Unwraps wrapper types (optional, nullable, nullish) and builds a composite
- * type string (e.g. "string | null" for `nullable(string())`). Delegates
- * union handling to {@link resolveValibotUnion}.
- */
-function valibotTypeToString(input: ValibotSchemaNode): {
-  type: string;
-  optional: boolean;
-} {
-  // Resolve `pipe(...)` schemas (incl. the coercion pattern) to their output
-  // schema before inspecting the type.
-  const schema = input ? unwrapPipe(input) : input;
-  if (!schema?.type) {
-    return { type: "unknown", optional: false };
-  }
-
-  // Unwrap wrapper types recursively.
-  if (schema.type === "optional" && schema.wrapped) {
-    const inner = valibotTypeToString(schema.wrapped);
-    return { type: inner.type, optional: true };
-  }
-  if (schema.type === "nullable" && schema.wrapped) {
-    const inner = valibotTypeToString(schema.wrapped);
-    const nullableType = inner.type.includes(" | null")
-      ? inner.type
-      : `${inner.type} | null`;
-    return { type: nullableType, optional: inner.optional };
-  }
-  if (schema.type === "nullish" && schema.wrapped) {
-    const inner = valibotTypeToString(schema.wrapped);
-    const nullableType = inner.type.includes(" | null")
-      ? inner.type
-      : `${inner.type} | null`;
-    return { type: nullableType, optional: true };
-  }
-  if (schema.type === "union" && schema.options?.length) {
-    return resolveValibotUnion(schema.options as ValibotSchemaNode[]);
-  }
-
-  return { type: VALIBOT_TYPE_MAP[schema.type] ?? "unknown", optional: false };
-}
-
-/**
- * Extract field metadata from a valibot object schema.
- *
- * Returns an array of {@link SchemaFieldInfo} describing each top-level
- * field's name, type, description, and optionality. Returns an empty
- * array for non-object schemas.
- *
- * @param schema - A valibot schema (typically `object({...})`)
- */
-export function extractSchemaFields(schema: GenericSchema): SchemaFieldInfo[] {
-  const node = schema as unknown as ValibotSchemaNode;
-
-  if (node.type !== "object" && node.type !== "loose_object") {
-    return [];
-  }
-
-  const entries = node.entries;
-  if (!entries) {
-    return [];
-  }
-
-  return Object.entries(entries).map(([name, fieldSchema]) => {
-    const { type, optional } = valibotTypeToString(fieldSchema);
-    return {
-      name,
-      type,
-      description: findDescription(fieldSchema),
-      optional,
-    };
-  });
-}
-
-/**
- * Find a `description()` pipe action for a field schema.
- *
- * `getDescription` does not recurse, and the description may sit under one or
- * more wrapper schemas — e.g. `optional(nullable(pipe(string(), description(...))))`
- * places it two `.wrapped` levels down. Walk the wrapper chain until a
- * description is found.
- */
-function findDescription(schema: ValibotSchemaNode): string | undefined {
-  let node: ValibotSchemaNode | undefined = schema;
-  while (node) {
-    const description = getDescription(node as unknown as GenericSchema);
-    if (description !== undefined) {
-      return description;
-    }
-    node = node.wrapped;
-  }
-  return;
-}
+/** The valibot schema type an {@link OutputSchemaFields} was read from. */
+export type SchemaOfFields<F> =
+  F extends OutputSchemaFields<infer S> ? S : never;
 
 /**
  * Format schema fields as a help text block for `--help` output.
@@ -530,7 +505,9 @@ function findDescription(schema: ValibotSchemaNode): string | undefined {
  *   count (string, optional) — Total event count
  * ```
  */
-export function formatSchemaForHelp(fields: SchemaFieldInfo[]): string {
+export function formatSchemaForHelp(
+  fields: readonly SchemaFieldInfo[],
+): string {
   if (fields.length === 0) {
     return "";
   }

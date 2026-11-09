@@ -60,6 +60,7 @@ interface SpanExpansionCandidate {
 
 export default defineTool({
   name: "get_trace_details",
+  title: "Get Trace Details",
   skills: ["inspect"], // Only available in inspect skill
   requiredScopes: ["event:read"],
   requiredCapabilities: ["traces"],

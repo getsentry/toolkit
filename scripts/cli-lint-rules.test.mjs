@@ -124,6 +124,269 @@ tester.run("no-silent-catch", plugin.rules["no-silent-catch"], {
   ],
 });
 
+tester.run("no-process-exit", plugin.rules["no-process-exit"], {
+  valid: [
+    { filename: source, code: "process.exitCode = 1;" },
+    { filename: source, code: "this.process.exitCode = code;" },
+    {
+      // Tests may stub process.exit
+      filename: "/repo/packages/cli/test/example.test.ts",
+      code: "vi.spyOn(process, 'exit'); process.exit(1);",
+    },
+  ],
+  invalid: [
+    { filename: source, code: "process.exit(1);", errors: 1 },
+    { filename: commands, code: "this.process.exit(0);", errors: 1 },
+    {
+      // A forced-exit timer is still a forced exit
+      filename: source,
+      code: "setTimeout(() => process.exit(process.exitCode ?? 0), 1000).unref();",
+      errors: 1,
+    },
+    { filename: source, code: "setTimeout(process.exit, 100);", errors: 1 },
+  ],
+});
+
+tester.run("no-ad-hoc-id-arguments", plugin.rules["no-ad-hoc-id-arguments"], {
+  valid: [
+    {
+      filename: commands,
+      code: "import { HEX_ID_RE } from './hex-id.js'; parseIdArguments(args, ID_KINDS.trace, options);",
+    },
+    {
+      filename: "/repo/packages/cli/src/lib/id-arguments.ts",
+      code: "parseIdArguments(args, kind, options);",
+    },
+  ],
+  invalid: [
+    {
+      filename: commands,
+      code: "parseSlashSeparatedArg(arg, label, hint);",
+      errors: 1,
+    },
+    {
+      // No command is exempt, not even `event view`, which also takes issues
+      filename: "/repo/packages/cli/src/commands/event/view.ts",
+      code: "parseSlashSeparatedArg(arg, label, hint);",
+      errors: 1,
+    },
+    {
+      filename: commands,
+      code: "const swapped = detectSwappedViewArgs(first, second);",
+      errors: 1,
+    },
+    { filename: commands, code: "HEX_ID_RE.test(value);", errors: 1 },
+    {
+      filename: source,
+      code: "parseIdArguments(args, { label: 'Thing ID', isId }, options);",
+      errors: 1,
+    },
+  ],
+});
+
+tester.run(
+  "require-target-resolution",
+  plugin.rules["require-target-resolution"],
+  {
+    valid: [
+      {
+        filename: commands,
+        code: "async function* run(flags, target: ReleaseTarget) { const { org } = await target.resolved; }",
+      },
+      {
+        filename: commands,
+        code: "import { parseOrgProjectArg } from './arg-parsing.js'; type Parsed = ReturnType<typeof parseOrgProjectArg>;",
+      },
+      {
+        // Libraries implement the bound positionals
+        filename: source,
+        code: "const parsed = parseOrgProjectArg(target);",
+      },
+    ],
+    invalid: [
+      {
+        filename: commands,
+        code: "async function* run(flags, target: ReleaseTarget) { return target.parsed; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "async function* run(flags, issues: IssuesArguments) { return issues.parsed; }",
+        errors: 1,
+      },
+      {
+        // Tagging a raw parser leaves the target for func to parse
+        filename: commands,
+        code: "const org = { parse: withCompletionTarget(ORG_TARGET, String) };",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "async function* run(flags, arg) { const parsed = parseOrgProjectArg(arg); }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const org = await resolveOrgOnlyFromArg(arg, cwd, 'alert metrics view');",
+        errors: 1,
+      },
+    ],
+  },
+);
+
+tester.run(
+  "require-completion-parser",
+  plugin.rules["require-completion-parser"],
+  {
+    valid: [
+      {
+        filename: commands,
+        code: "const flags = { limit: { kind: 'parsed', parse: textParser(Number), brief: 'Limit' } };",
+      },
+      {
+        filename: commands,
+        code: "const flags = { query: { kind: 'parsed', parse: parseText, brief: 'Query' }, sort: { kind: 'parsed', parse: choiceParser(SORTS, parseSort), brief: 'Sort' } };",
+      },
+      {
+        // boundArguments declares its completion kind next to its parser
+        filename: commands,
+        code: "boundArguments({ placeholder: 'issue', brief: 'Issue', kind: ISSUE_TARGET, parse: (raw) => parseIssues(raw), resolve });",
+      },
+      {
+        // Not a command parameter
+        filename: commands,
+        code: "const schema = { parse: (value) => value };",
+      },
+      {
+        // Outside command definitions and their helpers
+        filename: "/repo/packages/cli/script/example.ts",
+        code: "const flags = { port: { kind: 'parsed', parse: Number, brief: 'Port' } };",
+      },
+      {
+        filename: commands,
+        code: "const flags = { port: { kind: 'parsed', parse: Number, brief: 'Port' } };",
+        options: [
+          {
+            exemptions: [
+              {
+                file: "src/commands/example.ts",
+                command: "example",
+                parameter: "--port",
+                reason: "test",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        filename: commands,
+        code: "const positional = { kind: 'tuple', parameters: [{ placeholder: 'when', brief: 'When', parse: Date }] };",
+        options: [
+          {
+            exemptions: [
+              {
+                file: "src/commands/example.ts",
+                command: "example",
+                parameter: "<when>",
+                reason: "test",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        // A flag with a placeholder is still named by its flag name
+        filename: commands,
+        code: "const flags = { method: { kind: 'parsed', parse: String, brief: 'Method', placeholder: 'method' } };",
+        options: [
+          {
+            exemptions: [
+              {
+                file: "src/commands/example.ts",
+                command: "example",
+                parameter: "--method",
+                reason: "test",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        filename: commands,
+        code: "const positional = { kind: 'array', parameter: { placeholder: 'path', brief: 'Path', parse: String } };",
+        options: [
+          {
+            exemptions: [
+              {
+                file: "src/commands/example.ts",
+                command: "example",
+                parameter: "<path>",
+                reason: "test",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    invalid: [
+      {
+        filename: commands,
+        code: "const flags = { port: { kind: 'parsed', parse: Number, brief: 'Port' } };",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const flags = { name: { kind: 'parsed', parse: String, brief: 'Name' } };",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const flags = { data: { kind: 'parsed', parse: JSON.parse, brief: 'Data' } };",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const flags = { port: { kind: 'parsed', parse: (value) => Number(value), brief: 'Port' } };",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const flags = { port: { kind: 'parsed', parse(value) { return Number(value); }, brief: 'Port' } };",
+        errors: 1,
+      },
+      {
+        // Positionals too, and lib helpers that build parameters
+        filename: source,
+        code: "const positional = { kind: 'tuple', parameters: [{ placeholder: 'count', brief: 'Count', parse: parseInt }] };",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "boundArguments({ placeholder: 'issue', brief: 'Issue', parse: (raw) => parseIssues(raw), resolve });",
+        errors: 1,
+      },
+      {
+        // An exemption covers only the parameter it names
+        filename: commands,
+        code: "const flags = { port: { kind: 'parsed', parse: Number, brief: 'Port' } };",
+        options: [
+          {
+            exemptions: [
+              {
+                file: "src/commands/example.ts",
+                command: "example",
+                parameter: "--limit",
+                reason: "test",
+              },
+            ],
+          },
+        ],
+        errors: 1,
+      },
+    ],
+  },
+);
+
 tester.run("no-raw-metadata-queries", plugin.rules["no-raw-metadata-queries"], {
   valid: [
     {
@@ -151,7 +414,7 @@ tester.run(
     valid: [
       {
         filename: commands,
-        code: "buildCommand({ docs: { fullDescription: 'Lists items.', examples: [{ description: 'List', command: 'sentry list' }] } });",
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.', examples: [{ description: 'List', run: 'list' }] } });",
       },
       {
         filename: commands,
@@ -230,6 +493,170 @@ tester.run(
       {
         filename: "/repo/packages/cli/script/example.ts",
         code: "const heading = new RegExp(`^#{1,4}\\\\s+${name}`, 'im');",
+        errors: 1,
+      },
+    ],
+  },
+);
+
+tester.run(
+  "json-transform-uses-fields",
+  plugin.rules["json-transform-uses-fields"],
+  {
+    valid: [
+      {
+        filename: commands,
+        code: "buildCommand({ output: { jsonTransform: (r, fields) => filterFieldsIfSet(r.items, fields) } });",
+      },
+      {
+        filename: commands,
+        code: "function toJson(r, fields) { return filterFieldsIfSet(r, fields); }\nbuildCommand({ output: { jsonTransform: toJson } });",
+      },
+      {
+        filename: commands,
+        code: "export function jsonTransformList(r, fields = []) { return filterFields(r, fields); }",
+      },
+      {
+        filename: commands,
+        code: "import { toJson } from './shared.js';\nbuildCommand({ output: { jsonTransform: toJson } });",
+      },
+    ],
+    invalid: [
+      {
+        filename: commands,
+        code: "buildCommand({ output: { jsonTransform: (r) => r } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ output: { jsonTransform: (r, fields) => ({ id: r.id }) } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function toJson(r) { return { id: r.id }; }\nbuildCommand({ output: { jsonTransform: toJson } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function jsonTransform(r) { return { id: r.id }; }\nbuildCommand({ output: { jsonTransform } });",
+        errors: 1,
+      },
+    ],
+  },
+);
+
+tester.run(
+  "no-hardcoded-sentry-command",
+  plugin.rules["no-hardcoded-sentry-command"],
+  {
+    valid: [
+      {
+        filename: source,
+        code: "function hint() { return `Run '${sentry`auth login`}' first.`; }",
+      },
+      {
+        filename: source,
+        code: "function hint(org) { return sentry`project list ${org}/`; }",
+      },
+      // A command kept in a constant or table is built when it is shown.
+      {
+        filename: commands,
+        code: "const usageHint = () => sentry`issue list <org>/<project>`;",
+      },
+      {
+        filename: source,
+        code: "const SUGGESTIONS = new Map([['issue/get', { command: () => sentry`issue view <id>` }]]);",
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Run `sentry auth status` to check.', examples: [{ run: 'auth login' }, { run: ['auth login', { prefix: 'sudo ', args: 'cli fix' }] }] } });",
+      },
+      {
+        filename: source,
+        code: "const message = 'Sentry CLI could not reach sentry.io';",
+      },
+      // Only `sentry <route>` is a command; the binary's name in prose is not.
+      {
+        filename: commands,
+        code: "function label(file, version) { return [`sentry entries in ${file}`, 'sentry binary', `Installed sentry v${version}`]; }",
+      },
+      {
+        filename: commands,
+        code: "const docs = { examples: [{ run: 'issue list' }] };",
+      },
+    ],
+    invalid: [
+      {
+        filename: source,
+        code: "function hint() { return \"Run 'sentry auth login' first.\"; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function hint(org) { return `Try: sentry project list ${org}/`; }",
+        errors: 1,
+      },
+      // An interpolated subcommand, a <command> placeholder, or a flag is
+      // still a command.
+      {
+        filename: commands,
+        code: "function hint(name) { return `Run sentry ${name} <org>/`; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function hint() { return '  sentry <command> <org>/<project>'; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function hint() { return '  sentry --help   See all commands'; }",
+        errors: 1,
+      },
+      // Every command runs under npx or another name, not only sentry-mcp.
+      {
+        filename: commands,
+        code: "function hint() { return 'Run sentry issue list'; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const MESSAGE = 'Usage: sentry local run -- <command>';",
+        errors: 1,
+      },
+      // A usage line in a constant is shown as written, so it needs the tag.
+      {
+        filename: commands,
+        code: "const USAGE_HINT = 'sentry issue list <org>/<project>';",
+        errors: 1,
+      },
+      // Example steps leave out the program name; each renderer adds it.
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { examples: [{ run: 'sentry issue list' }] } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { examples: [{ run: ['issue list', { prefix: 'sudo ', args: 'sentry cli fix' }] }] } });",
+        errors: 1,
+      },
+      // The tag adds the program name itself.
+      {
+        filename: source,
+        code: "function hint() { return sentry`sentry auth login`; }",
+        errors: 1,
+      },
+      // At module load the running program is not known yet.
+      {
+        filename: source,
+        code: "const HINT = sentry`auth login`;",
+        errors: 1,
+      },
+      {
+        filename: source,
+        code: "const config = { commandPrefix: sentry`team list` };",
         errors: 1,
       },
     ],

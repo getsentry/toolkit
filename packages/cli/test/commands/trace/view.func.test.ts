@@ -8,6 +8,7 @@
  * the func() body without real HTTP calls or database access.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   flattenSpanTree,
@@ -45,6 +46,7 @@ import * as browser from "../../../src/lib/browser.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import {
+  ApiError,
   ContextError,
   ResolutionError,
   ValidationError,
@@ -118,6 +120,7 @@ describe("formatTraceView", () => {
 
 describe("viewCommand.func", () => {
   let getDetailedTraceSpy: ReturnType<typeof spyOn>;
+  let findTraceReplaySpy: ReturnType<typeof spyOn>;
   let fetchMultiSpanDetailsSpy: ReturnType<typeof spyOn>;
   let getIssueByShortIdSpy: ReturnType<typeof spyOn>;
   let getLatestEventSpy: ReturnType<typeof spyOn>;
@@ -214,6 +217,9 @@ describe("viewCommand.func", () => {
 
   beforeEach(async () => {
     getDetailedTraceSpy = vi.spyOn(apiClient, "getDetailedTrace");
+    findTraceReplaySpy = vi
+      .spyOn(apiClient, "findTraceReplay")
+      .mockResolvedValue(undefined);
     fetchMultiSpanDetailsSpy = vi
       .spyOn(apiClient, "fetchMultiSpanDetails")
       .mockResolvedValue(new Map());
@@ -237,6 +243,7 @@ describe("viewCommand.func", () => {
 
   afterEach(() => {
     getDetailedTraceSpy.mockRestore();
+    findTraceReplaySpy.mockRestore();
     fetchMultiSpanDetailsSpy.mockRestore();
     getIssueByShortIdSpy.mockRestore();
     getLatestEventSpy.mockRestore();
@@ -274,7 +281,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "test-org",
       "aaaa1111bbbb2222cccc3333dddd4444",
-      { additionalAttributes: ["http.method"], projectId: 42 },
+      { additionalAttributes: ["http.method"] },
     );
     expect(output).toEqual({
       traceId: "aaaa1111bbbb2222cccc3333dddd4444",
@@ -364,7 +371,7 @@ describe("viewCommand.func", () => {
       expect(getDetailedTraceSpy).toHaveBeenCalledWith(
         "test-org",
         "aaaa1111bbbb2222cccc3333dddd4444",
-        { additionalAttributes: ["http.method"], projectId: 42 },
+        { additionalAttributes: ["http.method"] },
       );
     },
   );
@@ -398,7 +405,7 @@ describe("viewCommand.func", () => {
       expect(getDetailedTraceSpy).toHaveBeenCalledWith(
         "test-org",
         "aaaa1111bbbb2222cccc3333dddd4444",
-        { additionalAttributes, projectId: 42 },
+        { additionalAttributes },
       );
     },
   );
@@ -453,7 +460,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "test-org",
       "aaaa1111bbbb2222cccc3333dddd4444",
-      { additionalAttributes: undefined, projectId: 42 },
+      { additionalAttributes: undefined },
     );
     expect(fetchMultiSpanDetailsSpy).toHaveBeenCalled();
   });
@@ -497,7 +504,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "test-org",
       "aaaa1111bbbb2222cccc3333dddd4444",
-      { additionalAttributes: ["spans.foo"], projectId: 42 },
+      { additionalAttributes: ["spans.foo"] },
     );
   });
 
@@ -508,7 +515,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "test-org",
       "aaaa1111bbbb2222cccc3333dddd4444",
-      { additionalAttributes: undefined, projectId: 42 },
+      { additionalAttributes: undefined },
     );
     expect(fetchMultiSpanDetailsSpy).toHaveBeenCalled();
   });
@@ -529,6 +536,91 @@ describe("viewCommand.func", () => {
     expect(output).toContain("aaaa1111bbbb2222cccc3333dddd4444");
     // Explicit org/project triggers project-filtered hint
     expect(output).toContain("Filtered to project");
+  });
+
+  describe("linked replays", () => {
+    const TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
+    const REPLAY_ID = "63f8ece8e1d24177bfedcec2bf391ee3";
+
+    async function renderHuman(): Promise<string> {
+      getDetailedTraceSpy.mockResolvedValue(sampleSpans);
+      const { context, stdoutWrite } = createMockContext();
+      const func = await viewCommand.loader();
+      await func.call(
+        context,
+        { json: false, web: false, spans: 100 },
+        "test-org/",
+        TRACE_ID,
+      );
+      return stdoutWrite.mock.calls.map((c) => c[0]).join("");
+    }
+
+    test("shows the stored replay ID without a hint", async () => {
+      findTraceReplaySpy.mockResolvedValue({ id: REPLAY_ID });
+
+      const output = await renderHuman();
+
+      expect(findTraceReplaySpy).toHaveBeenCalledWith("test-org", TRACE_ID);
+      expect(output).toMatch(new RegExp(`Replay ID\\s*│\\s*${REPLAY_ID}`));
+      expect(output).not.toContain("sentry replay view");
+    });
+
+    test("shows none when no replay is stored", async () => {
+      const output = await renderHuman();
+
+      expect(output).toMatch(/Replay ID\s*│\s*none/);
+    });
+
+    test("omits the row when the replay lookup fails", async () => {
+      findTraceReplaySpy.mockRejectedValue(
+        new ApiError("Forbidden", 403, "Forbidden"),
+      );
+
+      const output = await renderHuman();
+
+      expect(output).toContain(TRACE_ID);
+      expect(output).not.toMatch(/Replay ID\s*│/);
+    });
+
+    async function renderJson(
+      fields?: string,
+    ): Promise<Record<string, unknown>> {
+      getDetailedTraceSpy.mockResolvedValue(sampleSpans);
+      const { context, stdoutWrite } = createMockContext();
+      const func = await viewCommand.loader();
+      await func.call(
+        context,
+        { json: true, web: false, spans: 100, fields },
+        "test-org/",
+        TRACE_ID,
+      );
+      return JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    }
+
+    test("sets replayId to null in JSON when no replay is stored", async () => {
+      const output = await renderJson();
+
+      expect(output).toHaveProperty("replayId", null);
+    });
+
+    test("omits replayId from JSON when the lookup fails", async () => {
+      findTraceReplaySpy.mockRejectedValue(
+        new ApiError("Forbidden", 403, "Forbidden"),
+      );
+
+      const output = await renderJson();
+
+      expect(output).not.toHaveProperty("replayId");
+    });
+
+    test("selects replayId with --fields", async () => {
+      findTraceReplaySpy.mockResolvedValue({ id: REPLAY_ID });
+
+      expect(await renderJson("replayId")).toEqual({ replayId: REPLAY_ID });
+      expect(getDetailedTraceSpy).toHaveBeenCalledWith("test-org", TRACE_ID, {
+        additionalAttributes: undefined,
+      });
+    });
   });
 
   test("throws ResolutionError when no spans found", async () => {
@@ -622,10 +714,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "my-org",
       "aaaa1111bbbb2222cccc3333dddd4444",
-      expect.objectContaining({ projectId: undefined }),
-    );
-    expect(getDetailedTraceSpy.mock.calls[0]?.[2]).not.toHaveProperty(
-      "timestamp",
+      { additionalAttributes: undefined },
     );
   });
 
@@ -647,6 +736,39 @@ describe("viewCommand.func", () => {
         "aaaa1111bbbb2222cccc3333dddd4444",
       ),
     ).rejects.toThrow(ContextError);
+  });
+
+  test("a missing trace ID fails to parse, before any lookup", async () => {
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+
+    const error = await func
+      .call(context, { json: false, web: false, spans: 100 }, "my-org/web")
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ContextError,
+    );
+    expect(resolveOrgAndProjectSpy).not.toHaveBeenCalled();
+    expect(getDetailedTraceSpy).not.toHaveBeenCalled();
+  });
+
+  test("recovers a malformed trace ID when it resolves", async () => {
+    getDetailedTraceSpy.mockResolvedValue(sampleSpans);
+
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+    await func.call(
+      context,
+      { json: true, web: false, spans: 100 },
+      "my-org/aaaa1111bbbb2222cccc3333dddd4444ios",
+    );
+
+    expect(getDetailedTraceSpy).toHaveBeenCalledWith(
+      "my-org",
+      "aaaa1111bbbb2222cccc3333dddd4444",
+      expect.anything(),
+    );
   });
 
   test("resolves project search target", async () => {
@@ -683,7 +805,7 @@ describe("viewCommand.func", () => {
       "test-org/test-project",
     );
 
-    // Command should complete (warning goes to consola, not stdout)
+    // Command should complete (warning goes to the logger, not stdout)
     expect(getDetailedTraceSpy).toHaveBeenCalled();
   });
 
@@ -735,7 +857,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "test-org",
       traceIdFromEvent,
-      { additionalAttributes: undefined, projectId: undefined },
+      { additionalAttributes: undefined },
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

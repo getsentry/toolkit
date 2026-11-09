@@ -22,10 +22,11 @@ import { assertProjectRefWithinConstraint } from "./support/project-constraints"
 
 export default defineTool({
   name: "create_metric_monitor",
+  title: "Create Metric Monitor",
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [
-    "Create a Sentry Metric Monitor with Static, Percent or Dynamic detection in a project.",
+    "Create a Sentry Metric Monitor that detects when a metric, such as an error count or latency, crosses a threshold. Supports Static, Percent or Dynamic detection.",
     "Provide the complete query, detection config and conditions. Time windows and comparison deltas use seconds. Percent comparisons are absolute: 110 means 10% higher.",
     "To copy a monitor, use the query, config and conditionGroup from get_metric_monitor_details. Component IDs are discarded; new condition groups use logicType='any'.",
     "New monitors start ACTIVE and immediately evaluate data. Initially disabled creation is not supported. Use update_metric_monitor to disable an existing monitor.",

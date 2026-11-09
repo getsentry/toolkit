@@ -11,22 +11,20 @@
  * - Migration checks
  */
 
-import { createRequire } from "node:module";
 import { uuidv7 } from "uuidv7";
+import { sentry } from "../app-identity.js";
 import { getEnv } from "../env.js";
 import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { storedCredentialIdentity } from "./identity-hash.js";
 import type { Database } from "./sqlite.js";
 
-const _require = createRequire(import.meta.url);
-
-export const CURRENT_SCHEMA_VERSION = 19;
+export const CURRENT_SCHEMA_VERSION = 21;
 
 /** Environment variable to disable auto-repair */
 const NO_AUTO_REPAIR_ENV = "SENTRY_CLI_NO_AUTO_REPAIR";
 
-type SqliteType = "TEXT" | "INTEGER";
+type SqliteType = "TEXT" | "INTEGER" | "BLOB";
 
 export type ColumnDef = {
   type: SqliteType;
@@ -249,11 +247,11 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
   /**
    * Mapping from numeric issue group IDs to organization slugs.
    *
-   * Populated after `sentry issue view <numeric-id>` falls back to the legacy
-   * unscoped `/api/0/issues/{id}/` endpoint and extracts the org from the
-   * response permalink. Subsequent runs consult this cache to route directly
-   * via the org-scoped endpoint, avoiding the redundant unscoped lookup
-   * flagged as a "Consecutive HTTP" performance issue in Sentry.
+   * Populated after `sentry issue view <numeric-id>` finds the issue's org
+   * by searching the user's organizations. Subsequent runs consult this
+   * cache to make a single org-scoped request instead of repeating the
+   * search, which was flagged as a "Consecutive HTTP" performance issue in
+   * Sentry.
    *
    * Entries are best-effort: a stale mapping (issue moved / deleted / access
    * revoked) causes a 404 on the cached org call, which the caller evicts and
@@ -272,6 +270,30 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
         default: "(unixepoch() * 1000)",
       },
     },
+  },
+  /**
+   * Entities seen during normal CLI usage, kept for shell completion.
+   *
+   * `sentry __complete` reads this table instead of calling the API, so it can
+   * suggest issue short IDs and dashboards the user has already listed or
+   * viewed. `kind` names the entity type (see `db/completion-cache.ts`),
+   * `value` is what completion inserts and `label` is the description shells
+   * show next to it. Capped per kind and org, expired with the other caches,
+   * and cleared on logout because titles are scoped to the user's permissions.
+   */
+  completion_cache: {
+    columns: {
+      kind: { type: "TEXT", notNull: true },
+      org_slug: { type: "TEXT", notNull: true },
+      value: { type: "TEXT", notNull: true },
+      label: { type: "TEXT" },
+      last_seen: {
+        type: "INTEGER",
+        notNull: true,
+        default: "(unixepoch() * 1000)",
+      },
+    },
+    compositePrimaryKey: ["kind", "org_slug", "value"],
   },
   project_root_cache: {
     columns: {
@@ -305,6 +327,23 @@ export const TABLE_SCHEMAS: Record<string, TableSchema> = {
       command_path: { type: "TEXT", notNull: true },
       duration_ms: { type: "INTEGER", notNull: true },
       result_count: { type: "INTEGER", notNull: true },
+    },
+  },
+  /**
+   * Telemetry envelopes that failed to send, kept for a later run to retry
+   * (`src/lib/telemetry/offline-store.ts`). `envelope` holds the serialized
+   * envelope bytes; `size` is their length, for the byte cap. `is_error` is 1
+   * when the envelope has an error event, which is kept longer and dropped
+   * last over the caps. Rows past their max age are deleted on read. Dropping
+   * the table only loses telemetry that may never have been delivered anyway.
+   */
+  telemetry_envelope_queue: {
+    columns: {
+      id: { type: "INTEGER", primaryKey: true },
+      created_at: { type: "INTEGER", notNull: true },
+      is_error: { type: "INTEGER", notNull: true, default: "0" },
+      size: { type: "INTEGER", notNull: true },
+      envelope: { type: "BLOB", notNull: true },
     },
   },
 };
@@ -735,6 +774,7 @@ export type RepairAttemptResult<T> =
  * 2. Runs repairSchema() to fix missing tables/columns
  * 3. Retries the original operation
  *
+ * @param db - The raw (unwrapped) connection to repair
  * @param operation - The failed operation to retry after repair
  * @param error - The error that triggered the repair attempt
  * @returns An object indicating whether repair was attempted and the result.
@@ -743,6 +783,7 @@ export type RepairAttemptResult<T> =
  *          like stmt.get() that legitimately return undefined).
  */
 export function tryRepairAndRetry<T>(
+  db: Database,
   operation: () => T,
   error: unknown,
 ): RepairAttemptResult<T> {
@@ -765,13 +806,7 @@ export function tryRepairAndRetry<T>(
   let repairSucceeded = false;
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    // Dynamic imports to avoid circular dependencies with db/index.js
-    const { getRawDatabase } = _require("./index.js") as {
-      getRawDatabase: () => Database;
-    };
-
-    const rawDb = getRawDatabase();
-    const { fixed } = repairSchema(rawDb);
+    const { fixed } = repairSchema(db);
 
     if (fixed.length > 0) {
       logger.info(`Auto-repaired database: ${fixed.join(", ")}`);
@@ -967,14 +1002,14 @@ function adaptNewerSchema(db: Database, storedVersion: number): void {
   const versions = `schema ${storedVersion}; this CLI uses ${CURRENT_SCHEMA_VERSION}`;
   if (getEnv()[NO_AUTO_REPAIR_ENV] === "1") {
     logger.warn(
-      `The local database was written by a newer Sentry CLI (${versions}). Run \`sentry cli fix\` to adapt it.`,
+      `The local database was written by a newer Sentry CLI (${versions}). Run \`${sentry`cli fix`}\` to adapt it.`,
     );
     return;
   }
   const { failed } = repairSchema(db);
   if (failed.length > 0) {
     logger.warn(
-      `Could not adapt the local database written by a newer Sentry CLI (${versions}): ${failed.join("; ")}. Run \`sentry cli fix\`.`,
+      `Could not adapt the local database written by a newer Sentry CLI (${versions}): ${failed.join("; ")}. Run \`${sentry`cli fix`}\`.`,
     );
     return;
   }
@@ -1147,6 +1182,18 @@ export function runMigrations(db: Database): void {
       addColumnIfMissing(db, "org_regions", "account_id", "TEXT");
       backfillOrgRegionAccounts(db);
     })();
+  }
+
+  // Migration 19 -> 20: Add completion_cache for issue and dashboard shell
+  // completion from entities seen during normal CLI usage.
+  if (currentVersion < 20) {
+    db.exec(EXPECTED_TABLES.completion_cache as string);
+  }
+
+  // Migration 20 -> 21: Add telemetry_envelope_queue for telemetry envelopes
+  // that failed to send, retried by the next run.
+  if (currentVersion < 21) {
+    db.exec(EXPECTED_TABLES.telemetry_envelope_queue as string);
   }
 
   if (currentVersion < CURRENT_SCHEMA_VERSION) {

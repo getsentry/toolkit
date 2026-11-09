@@ -4,10 +4,9 @@
  * Tests for withTelemetry wrapper and opt-out behavior.
  */
 
-import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import {
   afterAll,
   afterEach,
@@ -27,21 +26,18 @@ import {
 } from "../../src/lib/errors.js";
 import {
   createTracedDatabase,
-  createWizardPromptTelemetry,
   getSentryTracePropagationTargets,
   initSentry,
   isEbadfError,
   isEpipeError,
   isUserApiError,
   recordApiErrorOnSpan,
-  resetReadonlyWarning,
   setArgsContext,
   setCommandSpanName,
   setFlagContext,
   setOrgProjectContext,
   withDbSpan,
   withFsSpan,
-  withHttpSpan,
   withSerializeSpan,
   withTelemetry,
   withTracing,
@@ -106,6 +102,23 @@ describe("initSentry", () => {
   test("uses 0.0.0-dev version when SENTRY_CLI_VERSION is not defined", () => {
     const client = initSentry(true);
     expect(client?.getOptions().release).toBe("0.0.0-dev");
+  });
+
+  test("library mode leaves the host's process hooks and channels alone", () => {
+    const client = initSentry(true, { libraryMode: true });
+    const names = client?.getOptions().integrations.map((i) => i.name) ?? [];
+    for (const hostHook of [
+      "OnUncaughtException",
+      "OnUnhandledRejection",
+      "Http",
+      "NodeFetch",
+      "WorkerThreads",
+      "Express",
+      "Postgres",
+      "OpenAI",
+    ]) {
+      expect(names).not.toContain(hostHook);
+    }
   });
 });
 
@@ -311,7 +324,7 @@ describe("withTelemetry", () => {
       ).rejects.toThrow(error);
       // Captured via reportCliError → Sentry.withScope
       expect(withScopeSpy).toHaveBeenCalled();
-      expect(captureSpy).toHaveBeenCalledWith(error);
+      expect(captureSpy).toHaveBeenCalledWith(error, undefined);
       withScopeSpy.mockRestore();
       captureSpy.mockRestore();
     });
@@ -379,6 +392,7 @@ describe("withTelemetry", () => {
         ).rejects.toThrow(MalformedAuthTokenError);
         expect(captureSpy).toHaveBeenCalledExactlyOnceWith(
           expect.any(MalformedAuthTokenError),
+          undefined,
         );
         expect(
           metricSpy.mock.calls.find((c) => c[0] === "cli.error.silenced"),
@@ -786,6 +800,12 @@ describe("setFlagContext", () => {
     expect(setTagSpy).toHaveBeenCalledWith("flag.token", "[REDACTED]");
   });
 
+  test("redacts the deprecated MCP --access-token value", () => {
+    setFlagContext({ "access-token": "sntryu_secret" });
+    expect(setTagSpy).toHaveBeenCalledWith("flag.access-token", "[REDACTED]");
+    expect(JSON.stringify(setTagSpy.mock.calls)).not.toContain("sntryu_secret");
+  });
+
   test("still sets the tag when token flag is present (presence is useful signal)", () => {
     setFlagContext({ token: "any-token-value" });
     // The tag is set (so we know --token was used), but the value is redacted
@@ -831,21 +851,6 @@ describe("setArgsContext", () => {
       values: ["123", '{"key":"value"}'],
       count: 2,
     });
-  });
-});
-
-describe("withHttpSpan", () => {
-  test("executes function and returns result", async () => {
-    const result = await withHttpSpan("GET", "/test", async () => "success");
-    expect(result).toBe("success");
-  });
-
-  test("propagates errors", async () => {
-    await expect(
-      withHttpSpan("POST", "/test", async () => {
-        throw new Error("http error");
-      }),
-    ).rejects.toThrow("http error");
   });
 });
 
@@ -1005,59 +1010,6 @@ describe("withTracingSpan", () => {
   });
 });
 
-describe("createWizardPromptTelemetry", () => {
-  test("records individual prompt waits and accumulates root wait time", async () => {
-    const setMeasurementSpy = vi.spyOn(Sentry, "setMeasurement");
-    const metricSpy = vi.spyOn(Sentry.metrics, "distribution");
-    let now = 100;
-    const performanceSpy = vi
-      .spyOn(globalThis.performance, "now")
-      .mockImplementation(() => now);
-    const telemetry = createWizardPromptTelemetry();
-
-    telemetry.setActiveStep("select-features", true);
-    const firstResult = await telemetry.tracePrompt("multiselect", async () => {
-      now = 125;
-      return ["errorMonitoring"];
-    });
-    telemetry.setActiveStep("select-features", false);
-    const secondResult = await telemetry.tracePrompt("confirm", async () => {
-      now = 140;
-      return true;
-    });
-
-    expect(firstResult).toEqual(["errorMonitoring"]);
-    expect(secondResult).toBe(true);
-    expect(setMeasurementSpy).toHaveBeenNthCalledWith(
-      1,
-      "wizard.user_wait_ms",
-      25,
-      "millisecond",
-      expect.anything(),
-    );
-    expect(setMeasurementSpy).toHaveBeenNthCalledWith(
-      2,
-      "wizard.user_wait_ms",
-      40,
-      "millisecond",
-      expect.anything(),
-    );
-    expect(metricSpy).toHaveBeenCalledWith("wizard.user_wait_ms", 25, {
-      attributes: {
-        prompt_kind: "multiselect",
-        workflow_step: "select-features",
-      },
-    });
-    expect(metricSpy).toHaveBeenCalledWith("wizard.user_wait_ms", 15, {
-      attributes: { prompt_kind: "confirm" },
-    });
-
-    performanceSpy.mockRestore();
-    metricSpy.mockRestore();
-    setMeasurementSpy.mockRestore();
-  });
-});
-
 describe("createTracedDatabase", () => {
   test("wraps database and traces query().get()", () => {
     const db = new Database(":memory:");
@@ -1175,108 +1127,6 @@ describe("createTracedDatabase", () => {
     }
 
     db.close();
-  });
-
-  describe("readonly database handling", () => {
-    let tmpDir: string;
-    let dbPath: string;
-
-    beforeEach(() => {
-      resetReadonlyWarning();
-
-      tmpDir = `${import.meta.dirname}/tmp-readonly-${Date.now()}`;
-      mkdirSync(tmpDir, { recursive: true });
-      dbPath = `${tmpDir}/test.db`;
-
-      const setupDb = new Database(dbPath);
-      setupDb.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
-      setupDb.exec("INSERT INTO test (id, name) VALUES (1, 'Alice')");
-      setupDb.close();
-
-      chmodSync(dbPath, 0o444);
-    });
-
-    afterEach(() => {
-      try {
-        chmodSync(dbPath, 0o644);
-      } catch {
-        // May already be cleaned up
-      }
-      rmSync(tmpDir, { recursive: true, force: true });
-    });
-
-    test("does not throw on write to readonly database", () => {
-      // bun:sqlite opens the file successfully — the error only surfaces on write
-      const db = new Database(dbPath);
-      const tracedDb = createTracedDatabase(db);
-
-      expect(() => {
-        tracedDb
-          .query("INSERT INTO test (id, name) VALUES (?, ?)")
-          .run(2, "Bob");
-      }).not.toThrow();
-
-      db.close();
-    });
-
-    test("reads still work on readonly database", () => {
-      const db = new Database(dbPath);
-      const tracedDb = createTracedDatabase(db);
-
-      const row = tracedDb.query("SELECT * FROM test WHERE id = ?").get(1) as {
-        id: number;
-        name: string;
-      };
-      expect(row).toEqual({ id: 1, name: "Alice" });
-
-      db.close();
-    });
-
-    test("all() and values() return empty arrays on readonly write", () => {
-      const db = new Database(dbPath);
-      const tracedDb = createTracedDatabase(db);
-
-      const allResult = tracedDb
-        .query("INSERT INTO test (id, name) VALUES (?, ?)")
-        .all(2, "Bob");
-      expect(allResult).toEqual([]);
-
-      // values() is bun:sqlite-specific; skip on Node.js
-      const stmt = tracedDb.query("INSERT INTO test (id, name) VALUES (?, ?)");
-      if (typeof stmt.values === "function") {
-        const valuesResult = stmt.values(3, "Charlie");
-        expect(valuesResult).toEqual([]);
-      }
-
-      db.close();
-    });
-
-    test("shows readonly warning when auto-repair fails", () => {
-      // Mock chmodSync to always throw, simulating a file owned by another user.
-      // This makes tryRepairReadonly fail and fall through to warnReadonlyDatabaseOnce.
-      const fs = require("node:fs");
-      const chmodSpy = vi.spyOn(fs, "chmodSync").mockImplementation(() => {
-        throw Object.assign(new Error("EPERM: operation not permitted"), {
-          code: "EPERM",
-        });
-      });
-
-      const db = new Database(dbPath);
-      const tracedDb = createTracedDatabase(db);
-
-      const stderrSpy = vi.spyOn(process.stderr, "write");
-
-      tracedDb.query("INSERT INTO test (id, name) VALUES (?, ?)").run(2, "Bob");
-
-      const output = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
-      // When repair fails, the warning message should appear instead
-      expect(output).toContain("read-only");
-      expect(output).toContain("sentry cli fix");
-
-      stderrSpy.mockRestore();
-      chmodSpy.mockRestore();
-      db.close();
-    });
   });
 });
 

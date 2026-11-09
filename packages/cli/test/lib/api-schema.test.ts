@@ -8,7 +8,6 @@ import {
   findEndpointsByPath,
   getAllEndpoints,
   getAllResources,
-  getEndpoint,
   getEndpointsByResource,
   getResourceSummaries,
   parseEndpointQuery,
@@ -81,27 +80,6 @@ describe("getEndpointsByResource", () => {
 
   test("returns empty array for unknown resource", () => {
     expect(getEndpointsByResource("nonexistent")).toEqual([]);
-  });
-});
-
-describe("getEndpoint", () => {
-  test("finds specific endpoint by operationId substring", () => {
-    const ep = getEndpoint("issues", "getOrganizationIssue");
-    expect(ep).toBeDefined();
-    expect(ep?.resource).toBe("issues");
-    expect(ep?.method).toBe("GET");
-    expect(ep?.fn).toBe("getOrganizationIssue");
-  });
-
-  test("is case-insensitive", () => {
-    const ep1 = getEndpoint("issues", "list");
-    const ep2 = getEndpoint("Issues", "List");
-    expect(ep1).toEqual(ep2);
-  });
-
-  test("returns undefined for unknown endpoint", () => {
-    expect(getEndpoint("issues", "xyznonexistent123")).toBeUndefined();
-    expect(getEndpoint("nonexistent", "list")).toBeUndefined();
   });
 });
 

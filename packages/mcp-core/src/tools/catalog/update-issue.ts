@@ -1,4 +1,5 @@
-import type { Issue } from "../../api-client/types";
+import { z } from "zod";
+import type { AssignedTo, Issue } from "../../api-client/types";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -7,6 +8,7 @@ import {
   assertIssueWithinProjectConstraint,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamAssignedTo,
   ParamIgnoreCount,
@@ -22,6 +24,7 @@ import {
   ParamReason,
   ParamRegionUrl,
 } from "../../schema";
+import { ApiClientError, ApiValidationError } from "@sentry/api/client";
 import { logIssue } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
@@ -311,32 +314,55 @@ function getIgnoreState(
   };
 }
 
-function buildNoChangesOutput(params: {
-  issue: Issue;
-  organizationSlug: string;
-  ignoreState: IgnoreState | null;
-  issueUrl: string;
-}): string {
-  const { issue, organizationSlug, ignoreState, issueUrl } = params;
-  let output = `# Issue ${issue.shortId} Already Matches Requested State in **${organizationSlug}**\n\n`;
-  output += `**Issue**: ${issue.title}\n`;
-  output += `**URL**: ${issueUrl}\n\n`;
+const valueChangeSchema = z.object({ from: z.string(), to: z.string() });
 
-  output += "## Changes Made\n\n";
-  output += "No changes were needed.\n";
+export const updateIssueOutputSchema = z.object({
+  organizationSlug: z.string(),
+  issueId: z.string(),
+  title: z.string(),
+  issueUrl: z.string(),
+  updated: z
+    .boolean()
+    .describe(
+      "Whether issue state changed. A posted reason comment is reported in reasonComment, not here.",
+    ),
+  changes: z.object({
+    status: valueChangeSchema.nullable(),
+    ignoreBehavior: z
+      .object({ from: z.string().nullable(), to: z.string() })
+      .nullable(),
+    assignedTo: valueChangeSchema.nullable(),
+  }),
+  current: z.object({
+    status: z.string(),
+    ignoreBehavior: z.string().nullable(),
+    assignedTo: z.string(),
+  }),
+  effect: z
+    .string()
+    .nullable()
+    .describe("What the new status means for the issue, when it changed."),
+  reasonComment: z
+    .object({
+      status: z.enum(["posted", "already_present", "not_posted"]),
+      text: z.string(),
+      error: z.string().nullable(),
+    })
+    .nullable()
+    .describe("Null when no reason was given."),
+});
 
-  output += "\n## Current Status\n\n";
-  output += `**Status**: ${getIssueStatusDisplay(issue)}\n`;
-  if (ignoreState) {
-    output += `**Ignore Behavior**: ${ignoreState.behavior}\n`;
-  }
-  output += `**Assigned To**: ${formatAssignedTo(issue.assignedTo ?? null)}\n`;
+type UpdateIssueOutput = z.infer<typeof updateIssueOutputSchema>;
 
-  output += "\n## Response Notes\n\n";
-  output += "- The issue already matched the requested state.\n";
-  output += `- Full issue details: \`get_sentry_resource(resourceType="issue", organizationSlug="${organizationSlug}", resourceId="${issue.shortId}")\`\n`;
-
-  return output;
+function getCurrentState(
+  issue: Issue,
+  ignoreState: IgnoreState | null,
+): UpdateIssueOutput["current"] {
+  return {
+    status: getIssueStatusDisplay(issue),
+    ignoreBehavior: ignoreState?.behavior ?? null,
+    assignedTo: formatAssignedTo(issue.assignedTo ?? null),
+  };
 }
 
 function isAssigneeAlreadySet(
@@ -574,9 +600,22 @@ function buildIgnoreUpdate(
 }
 
 type ReasonCommentResult =
-  | { posted: true }
+  | { posted: true; duplicate?: boolean }
   | { posted: false; skipped: true }
   | { posted: false; error: string };
+
+/**
+ * Sentry rejects a note whose text the same user already posted on the issue.
+ * That happens when a client retries `update_issue` with the same `reason`;
+ * the comment already exists, so the desired outcome is already achieved.
+ */
+function isDuplicateCommentError(error: unknown): boolean {
+  return (
+    error instanceof ApiValidationError &&
+    error.status === 400 &&
+    error.message.toLowerCase().includes("already posted that comment")
+  );
+}
 
 async function tryPostReasonComment(
   apiService: {
@@ -601,7 +640,12 @@ async function tryPostReasonComment(
     });
     return { posted: true };
   } catch (error) {
-    logIssue(error);
+    if (isDuplicateCommentError(error)) {
+      return { posted: true, duplicate: true };
+    }
+    if (!(error instanceof ApiClientError)) {
+      logIssue(error);
+    }
     return {
       posted: false,
       error: error instanceof Error ? error.message : String(error),
@@ -609,24 +653,41 @@ async function tryPostReasonComment(
   }
 }
 
-function formatReasonCommentLine(
+function getReasonComment(
   reason: string | undefined,
   result: ReasonCommentResult,
-): string {
+): UpdateIssueOutput["reasonComment"] {
   if (!reason || ("skipped" in result && result.skipped)) {
-    return "";
+    return null;
   }
   if (result.posted) {
-    return `- **Comment posted**: "${reason}"\n`;
+    return {
+      status: result.duplicate ? "already_present" : "posted",
+      text: reason,
+      error: null,
+    };
   }
-  if ("error" in result) {
-    return `- **Comment not posted**: ${result.error}\n`;
+  return {
+    status: "not_posted",
+    text: reason,
+    error: "error" in result ? result.error : null,
+  };
+}
+
+/**
+ * Identifies an assignee by actor so two users with the same display name
+ * still count as different assignees.
+ */
+function getAssigneeKey(assignedTo: AssignedTo): string {
+  if (assignedTo && typeof assignedTo === "object" && assignedTo.id != null) {
+    return `${assignedTo.type}:${assignedTo.id}`;
   }
-  return "";
+  return `name:${formatAssignedTo(assignedTo)}`;
 }
 
 export default defineTool({
   name: "update_issue",
+  title: "Update Issue",
   skills: ["triage"], // Only available in triage skill
   requiredScopes: ["event:write"],
   description: [
@@ -650,7 +711,7 @@ export default defineTool({
     "- Provide `issueUrl` or `organizationSlug` + `issueId`.",
     "- At least one of `status` or `assignedTo` is required.",
     "- Omit `assignedTo` to leave assignment unchanged. Pass `null` to unassign; otherwise use `user:ID` or `team:ID_OR_SLUG`.",
-    "- Use `execute_sentry_tool(name='whoami', arguments={})` to find your user ID for self-assignment.",
+    "- Use the `whoami` tool to find your user ID for self-assignment.",
     "- Status values: `resolved`, `resolvedInNextRelease`, `unresolved`, `ignored`.",
     "- `status='ignored'` defaults to `ignoreMode='untilEscalating'`.",
     "- Ignore modes: `untilEscalating`, `forever`, `forDuration`, `untilOccurrenceCount`, `untilUserCount`.",
@@ -680,6 +741,7 @@ export default defineTool({
     idempotentHint: false,
     openWorldHint: true,
   },
+  outputSchema: updateIssueOutputSchema,
   async handler(params, context: ServerContext) {
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
@@ -785,14 +847,17 @@ export default defineTool({
         params.reason,
       );
 
-      return (
-        buildNoChangesOutput({
-          issue: currentIssue,
-          organizationSlug: orgSlug,
-          ignoreState: currentIgnoreState,
-          issueUrl: requestedIssueUrl,
-        }) + formatReasonCommentLine(params.reason, commentResult)
-      );
+      return structuredResult({
+        organizationSlug: orgSlug,
+        issueId: currentIssue.shortId,
+        title: currentIssue.title,
+        issueUrl: requestedIssueUrl,
+        updated: false,
+        changes: { status: null, ignoreBehavior: null, assignedTo: null },
+        current: getCurrentState(currentIssue, currentIgnoreState),
+        effect: null,
+        reasonComment: getReasonComment(params.reason, commentResult),
+      } satisfies UpdateIssueOutput);
     }
 
     // Update the issue
@@ -821,72 +886,69 @@ export default defineTool({
     const updatedStatusDisplay = getIssueStatusDisplay(updatedIssue);
     const statusChanged = currentStatusDisplay !== updatedStatusDisplay;
     const assignmentChanged =
-      formatAssignedTo(currentIssue.assignedTo ?? null) !==
-      formatAssignedTo(updatedIssue.assignedTo ?? null);
+      getAssigneeKey(currentIssue.assignedTo ?? null) !==
+      getAssigneeKey(updatedIssue.assignedTo ?? null);
     const ignoreBehaviorChanged =
       currentIgnoreState?.behavior !== updatedIgnoreState?.behavior;
 
-    let output = `# Issue ${updatedIssue.shortId} Updated in **${orgSlug}**\n\n`;
-    output += `**Issue**: ${updatedIssue.title}\n`;
-    output += `**URL**: ${apiService.getIssueUrl(orgSlug, updatedIssue.shortId)}\n\n`;
-
-    // Show what changed
-    output += "## Changes Made\n\n";
-
-    if (statusChanged) {
-      output += `**Status**: ${currentStatusDisplay} → **${updatedStatusDisplay}**\n`;
-    }
-
-    if (
-      updatedIgnoreState &&
+    const showIgnoreChange =
+      updatedIgnoreState !== null &&
       (statusChanged || ignoreBehaviorChanged) &&
-      (ignoreBehaviorChanged || params.status === "ignored")
-    ) {
-      if (currentIgnoreState && ignoreBehaviorChanged) {
-        output += `**Ignore Behavior**: ${currentIgnoreState.behavior} → **${updatedIgnoreState.behavior}**\n`;
-      } else {
-        output += `**Ignore Behavior**: **${updatedIgnoreState.behavior}**\n`;
-      }
-    }
+      (ignoreBehaviorChanged || params.status === "ignored");
 
-    if (updateAssignedTo !== undefined && assignmentChanged) {
-      const oldAssignee = formatAssignedTo(currentIssue.assignedTo ?? null);
-      const newAssignee =
-        params.assignedTo === "me"
-          ? "You"
-          : formatAssignedTo(updatedIssue.assignedTo ?? null);
-      output += `**Assigned To**: ${oldAssignee} → **${newAssignee}**\n`;
-    }
-
-    output += "\n## Current Status\n\n";
-    output += `**Status**: ${updatedStatusDisplay}\n`;
-    if (updatedIgnoreState) {
-      output += `**Ignore Behavior**: ${updatedIgnoreState.behavior}\n`;
-    }
-    const currentAssignee = formatAssignedTo(updatedIssue.assignedTo ?? null);
-    output += `**Assigned To**: ${currentAssignee}\n`;
-
-    output += "\n## Response Notes\n\n";
-    output += `- The issue has been updated in Sentry.\n`;
-    output += `- Full issue details: \`get_sentry_resource(resourceType="issue", organizationSlug="${orgSlug}", resourceId="${updatedIssue.shortId}")\`\n`;
-
+    let effect: string | null = null;
     if (statusChanged && updatedStatusDisplay === "resolved") {
-      output += `- The issue is now marked as resolved and will no longer generate alerts\n`;
+      effect =
+        "The issue is now marked as resolved and will no longer generate alerts";
     } else if (
       statusChanged &&
       updatedStatusDisplay === "resolvedInNextRelease"
     ) {
-      output += `- The issue is now marked as resolved in the upcoming release\n`;
+      effect = "The issue is now marked as resolved in the upcoming release";
     } else if (
       updatedIgnoreState &&
       params.status === "ignored" &&
       (statusChanged || ignoreBehaviorChanged)
     ) {
-      output += `- ${updatedIgnoreState.message}\n`;
+      effect = updatedIgnoreState.message;
     }
 
-    output += formatReasonCommentLine(params.reason, commentResult);
+    const changes: UpdateIssueOutput["changes"] = {
+      status: statusChanged
+        ? { from: currentStatusDisplay, to: updatedStatusDisplay }
+        : null,
+      ignoreBehavior:
+        showIgnoreChange && updatedIgnoreState
+          ? {
+              from:
+                currentIgnoreState && ignoreBehaviorChanged
+                  ? currentIgnoreState.behavior
+                  : null,
+              to: updatedIgnoreState.behavior,
+            }
+          : null,
+      assignedTo:
+        updateAssignedTo !== undefined && assignmentChanged
+          ? {
+              from: formatAssignedTo(currentIssue.assignedTo ?? null),
+              to:
+                params.assignedTo === "me"
+                  ? "You"
+                  : formatAssignedTo(updatedIssue.assignedTo ?? null),
+            }
+          : null,
+    };
 
-    return output;
+    return structuredResult({
+      organizationSlug: orgSlug,
+      issueId: updatedIssue.shortId,
+      title: updatedIssue.title,
+      issueUrl: apiService.getIssueUrl(orgSlug, updatedIssue.shortId),
+      updated: Object.values(changes).some(Boolean),
+      changes,
+      current: getCurrentState(updatedIssue, updatedIgnoreState),
+      effect,
+      reasonComment: getReasonComment(params.reason, commentResult),
+    } satisfies UpdateIssueOutput);
   },
 });

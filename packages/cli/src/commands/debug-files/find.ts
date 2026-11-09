@@ -19,6 +19,11 @@ import {
   type FindResult,
   findDebugFiles,
 } from "../../lib/dif/find.js";
+import {
+  choiceParser,
+  parseDirectoryPath,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import { colorTag, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -119,17 +124,15 @@ export const findCommand = buildCommand({
     examples: [
       {
         description: "Locate debug files for a debug identifier on disk",
-        command: "sentry debug-files find <debug-id>",
+        run: "debug-files find <debug-id>",
       },
       {
         description: "Search only for dSYMs, including an extra directory",
-        command:
-          "sentry debug-files find <debug-id> --type dsym --path ./build",
+        run: "debug-files find <debug-id> --type dsym --path ./build",
       },
       {
         description: "Search only an explicit directory and output JSON",
-        command:
-          "sentry debug-files find <debug-id> --no-cwd --no-well-known -p /symbols --json",
+        run: "debug-files find <debug-id> --no-cwd --no-well-known -p /symbols --json",
       },
     ],
   },
@@ -144,13 +147,13 @@ export const findCommand = buildCommand({
       parameter: {
         placeholder: "id",
         brief: "Debug identifier(s) to search for",
-        parse: String,
+        parse: parseText,
       },
     },
     flags: {
       type: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(FIND_DIF_TYPES),
         variadic: true,
         brief:
           "Only consider debug files of the given type (repeatable). Default: all",
@@ -168,7 +171,7 @@ export const findCommand = buildCommand({
       },
       path: {
         kind: "parsed",
-        parse: String,
+        parse: parseDirectoryPath,
         variadic: true,
         brief: "Add a directory to search recursively (repeatable)",
         optional: true,
@@ -181,7 +184,7 @@ export const findCommand = buildCommand({
   },
   async *func(this: SentryContext, flags: FindFlags, ...ids: string[]) {
     if (ids.length === 0) {
-      yield new CommandOutput<FindResult>({ matches: [], missing: [] });
+      yield new CommandOutput({ matches: [], missing: [] });
       return { hint: "Provide one or more debug identifiers to search for." };
     }
 

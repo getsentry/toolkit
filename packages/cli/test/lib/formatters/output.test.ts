@@ -125,7 +125,7 @@ describe("renderCommandOutput", () => {
     render(w, png, config, { json: false });
     expect(w.chunks).toHaveLength(1);
     expect(w.chunks[0]).toBeInstanceOf(Uint8Array);
-    expect(Array.from(w.bytes)).toEqual([
+    expect([...w.bytes]).toEqual([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]);
     // No trailing newline added by the text formatter path
@@ -139,7 +139,7 @@ describe("renderCommandOutput", () => {
     };
     const bytes = new Uint8Array([0xff, 0x00, 0x80]);
     render(w, bytes, config, { json: true });
-    expect(Array.from(w.bytes)).toEqual([0xff, 0x00, 0x80]);
+    expect([...w.bytes]).toEqual([0xff, 0x00, 0x80]);
   });
 
   test("jsonExclude strips fields from JSON output", () => {

@@ -24,10 +24,11 @@
  * module only owns the recovery-specific control flow.
  */
 
-import { addBreadcrumb } from "@sentry/node-core/light";
+import { addBreadcrumb } from "@sentry/node";
 
 import type { SpanListItem } from "../types/index.js";
 import { listLogs, listSpans, queryEvents } from "./api-client.js";
+import { type LazyCommand, sentry } from "./app-identity.js";
 import {
   type ParsedOrgProject,
   ProjectSpecificationType,
@@ -184,17 +185,38 @@ const URL_FRAGMENT_PREFIXES = ["span-", "txn-", "event-", "trace-"] as const;
 const OVER_NESTED_MIN_SEGMENTS = 4;
 
 /** Per-command slug redirect hints (used by the `looks-like-slug` branch). */
-const SLUG_REDIRECT_COMMAND: Record<HexEntityType, string> = {
-  event: "sentry issue list",
-  trace: "sentry trace list",
-  log: "sentry log list",
+const SLUG_REDIRECT_COMMAND: Record<HexEntityType, LazyCommand | undefined> = {
+  event: () => sentry`issue list`,
+  trace: () => sentry`trace list`,
+  log: () => sentry`log list`,
   // Spans are trace-scoped — a slug-only input can't map to a list command.
-  span: "",
+  span: undefined,
 };
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for tests)
 // ---------------------------------------------------------------------------
+
+/**
+ * Strip URL fragment prefixes (`span-`, `trace-`, ...) from a lowercased
+ * input. Repeatedly, so it is idempotent: a pathological double-prefixed
+ * input like `span-span-abc` would otherwise keep its inner prefix.
+ */
+function stripUrlFragmentPrefixes(lowered: string): string {
+  let cleaned = lowered;
+  let stripped = true;
+  while (stripped) {
+    stripped = false;
+    for (const prefix of URL_FRAGMENT_PREFIXES) {
+      if (cleaned.startsWith(prefix)) {
+        cleaned = cleaned.slice(prefix.length);
+        stripped = true;
+        break;
+      }
+    }
+  }
+  return cleaned;
+}
 
 /**
  * Pre-normalize a raw input before further analysis. Pipeline:
@@ -216,24 +238,7 @@ export function preNormalize(input: string): {
   cleaned: string;
   sentinel?: string;
 } {
-  const lowered = input.trim().toLowerCase();
-
-  // Strip URL fragment prefixes repeatedly so the function is idempotent.
-  // A pathological double-prefixed input like `span-span-abc` would otherwise
-  // strip only the outer `span-` and leave the inner prefix in place, which
-  // breaks `preNormalize(preNormalize(x)) === preNormalize(x)`.
-  let cleaned = lowered;
-  let stripped = true;
-  while (stripped) {
-    stripped = false;
-    for (const prefix of URL_FRAGMENT_PREFIXES) {
-      if (cleaned.startsWith(prefix)) {
-        cleaned = cleaned.slice(prefix.length);
-        stripped = true;
-        break;
-      }
-    }
-  }
+  let cleaned = stripUrlFragmentPrefixes(input.trim().toLowerCase());
 
   // Sentinel check runs AFTER URL-prefix stripping so inputs like
   // `span-null` (shell variable leak through a URL-builder) surface as
@@ -343,6 +348,43 @@ export function looksLikeSlug(input: string): boolean {
   return !(PURE_HEX_RE.test(dashless) && dashless.length >= MIN_FUZZY_PREFIX);
 }
 
+/**
+ * {@link looksLikeSlug} after URL fragment prefixes are stripped: a prefix
+ * (`trace-<id>`) has a dash and letters, but does not make the input a slug.
+ */
+function looksLikeUnprefixedSlug(input: string): boolean {
+  return looksLikeSlug(stripUrlFragmentPrefixes(input.trim().toLowerCase()));
+}
+
+/**
+ * Whether `input`, not a valid ID, still has enough of one for
+ * {@link recoverHexId} to look it up: a hex prefix or ellipsized ID of at
+ * least {@link MIN_FUZZY_PREFIX} chars that is not a slug. The ID argument
+ * grammar uses it to read `<org>/<input>` as an ID to recover, not as a
+ * project.
+ */
+export function looksLikeHexIdFragment(input: string): boolean {
+  if (looksLikeUnprefixedSlug(input)) {
+    return false;
+  }
+  const { cleaned, sentinel } = preNormalize(input);
+  if (sentinel) {
+    return false;
+  }
+  return isLongEnough(extractHexCandidate(cleaned));
+}
+
+/** Whether `candidate` has enough hex chars for a fuzzy lookup */
+function isLongEnough(
+  candidate: HexCandidate | null,
+): candidate is HexCandidate {
+  return (
+    candidate !== null &&
+    (candidate.prefix.length >= MIN_FUZZY_PREFIX ||
+      (candidate.suffix?.length ?? 0) >= MIN_FUZZY_PREFIX)
+  );
+}
+
 /** Returns true for paths with 4+ slash-separated non-empty segments. */
 export function isOverNestedPath(input: string): boolean {
   return input.split("/").filter(Boolean).length >= OVER_NESTED_MIN_SEGMENTS;
@@ -445,7 +487,7 @@ export type FuzzyLookupAdapter = (ctx: LookupContext) => Promise<string[]>;
 
 /** Deduplicate while preserving order, then filter by prefix + suffix. */
 function filterByCandidate(ids: string[], candidate: HexCandidate): string[] {
-  const unique = Array.from(new Set(ids));
+  const unique = [...new Set(ids)];
   return unique.filter(
     (id) =>
       id.startsWith(candidate.prefix) &&
@@ -548,7 +590,7 @@ function buildSlugHint(
   const orgPart = org ? `${org}/` : "<org>/";
   const cmd = SLUG_REDIRECT_COMMAND[entityType];
   if (cmd) {
-    return `'${input}' looks like a project slug, not a ${entityType} ID. Try: ${cmd} ${orgPart}${input}`;
+    return `'${input}' looks like a project slug, not a ${entityType} ID. Try: ${cmd()} ${orgPart}${input}`;
   }
   return `'${input}' looks like a project slug, not a ${entityType} ID. Spans are identified by 16 hex chars within a trace.`;
 }
@@ -587,7 +629,7 @@ function buildNoMatchHint(
     return (
       `No event matched this prefix in the last ${window}. ` +
       "Sentry cannot search by a partial event ID — pass the full " +
-      "32-character ID printed by `sentry event list`."
+      `32-character ID printed by \`${sentry`event list`}\`.`
     );
   }
   return (
@@ -781,11 +823,12 @@ async function recoverHexIdInternal(
     return redirect;
   }
 
-  // Slug-shape check on the RAW input before fuzzy lookup. Slug-like
-  // inputs where the dashless form happens to start with enough hex
-  // chars (e.g. `cafe-babe-app` → `cafebabeapp`) would otherwise reach
+  // Slug-shape check on the input (without URL fragment prefixes, but
+  // before partial-UUID dashes are stripped) before fuzzy lookup.
+  // Slug-like inputs where the dashless form happens to start with enough
+  // hex chars (e.g. `cafe-babe-app` → `cafebabeapp`) would otherwise reach
   // runFuzzyLookup and waste an API call on a clearly-mistaken input.
-  if (looksLikeSlug(input)) {
+  if (looksLikeUnprefixedSlug(input)) {
     return {
       kind: "failed",
       original: input,
@@ -795,11 +838,7 @@ async function recoverHexIdInternal(
   }
 
   const candidate = extractHexCandidate(cleaned);
-  const longEnough =
-    candidate !== null &&
-    (candidate.prefix.length >= MIN_FUZZY_PREFIX ||
-      (candidate.suffix?.length ?? 0) >= MIN_FUZZY_PREFIX);
-  if (!(longEnough && candidate)) {
+  if (!isLongEnough(candidate)) {
     // Raw-input slug check already ran above; here it's either a short
     // pure-hex prefix or a short non-hex blob — neither is a slug.
     return {

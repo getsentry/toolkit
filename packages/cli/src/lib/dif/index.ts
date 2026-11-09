@@ -19,6 +19,7 @@ import {
   Archive,
   il2cppLineMapping,
   initSync,
+  type ObjectFile,
   SourceBundleWriter,
 } from "@sentry/symbolic";
 import { logger } from "../logger.js";
@@ -124,18 +125,54 @@ export function parseDebugFile(data: Uint8Array): DifArchiveInfo {
   using archive = new Archive(data);
   return {
     fileFormat: archive.fileFormat,
-    objects: archive.objects().map((o) => ({
-      debugId: o.debugId,
-      codeId: o.codeId ?? null,
-      arch: o.arch,
-      fileFormat: o.fileFormat,
-      kind: o.kind,
-      hasSymbols: o.hasSymbols,
-      hasDebugInfo: o.hasDebugInfo,
-      hasUnwindInfo: o.hasUnwindInfo,
-      hasSources: o.hasSources,
-    })),
+    objects: archive.objects().map(toObjectInfo),
   };
+}
+
+/** Copy a WASM object handle's metadata into plain values. */
+function toObjectInfo(o: ObjectFile): DifObjectInfo {
+  return {
+    debugId: o.debugId,
+    codeId: o.codeId ?? null,
+    arch: o.arch,
+    fileFormat: o.fileFormat,
+    kind: o.kind,
+    hasSymbols: o.hasSymbols,
+    hasDebugInfo: o.hasDebugInfo,
+    hasUnwindInfo: o.hasUnwindInfo,
+    hasSources: o.hasSources,
+  };
+}
+
+/** One object of a debug information file, as a standalone file. */
+export type DifObjectFile = {
+  /** The object's metadata. */
+  object: DifObjectInfo;
+  /** The bytes of a file that holds only this object. */
+  data: Uint8Array;
+};
+
+/**
+ * Parse a debug information file into one standalone file per object.
+ *
+ * Sentry accepts one object per uploaded debug file, so an archive with more
+ * than one object (e.g. a fat Mach-O with one slice per architecture) must be
+ * uploaded as one file per object. Each object's bytes come from symbolic's
+ * `ObjectFile.data()`, which for a fat Mach-O is the slice the object was
+ * parsed from. A single-object file is returned as-is, without a copy.
+ *
+ * @param data - The full contents of the object file.
+ * @returns One entry per object, in archive order.
+ * @throws If the buffer cannot be parsed as a known object format.
+ */
+export function splitDebugFile(data: Uint8Array): DifObjectFile[] {
+  ensureInitialized();
+  using archive = new Archive(data);
+  const objects = archive.objects();
+  return objects.map((o) => ({
+    object: toObjectInfo(o),
+    data: objects.length === 1 ? data : o.data(),
+  }));
 }
 
 /**

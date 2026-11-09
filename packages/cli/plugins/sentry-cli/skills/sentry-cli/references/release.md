@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-release
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Sentry releases
 requires:
   bins: ["sentry"]
@@ -29,6 +29,33 @@ List releases with adoption and health metrics
 - `--status <value> - Filter by status: open (default) or archived - (default: "open")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-c, --cursor <value> - Navigate pages: "next", "prev", "first" (or raw cursor string)`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened release version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+| `orgSlug` | string | Organization slug |
+| `targetProject` | string | Project slug, when listing several |
 
 **Examples:**
 
@@ -71,6 +98,31 @@ View release details with health metrics
 **Flags:**
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened release version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+
 **Examples:**
 
 ```bash
@@ -103,6 +155,32 @@ Create a release
 - `--ref <value> - Git ref (branch or tag name)`
 - `--url <value> - URL to the release source`
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened release version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release (only slug with --dry-run) |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+| `dryRun` | boolean | True when --dry-run made no change |
 
 **Examples:**
 
@@ -150,6 +228,34 @@ Finalize a release
 - `--url <value> - URL for the release`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened release version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `org` | string | Organization slug (--dry-run) |
+| `released` | string | Release date to set (--dry-run) |
+
 **Examples:**
 
 ```bash
@@ -183,6 +289,15 @@ Delete a release
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `deleted` | boolean | Whether the release was deleted |
+| `org` | string | Organization slug |
+| `version` | string | Release version |
+| `dryRun` | boolean | True when --dry-run made no change |
+
 **Examples:**
 
 ```bash
@@ -209,6 +324,33 @@ Archive a release
 **Flags:**
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened release version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `org` | string | Organization slug (--dry-run) |
+
 **Examples:**
 
 ```bash
@@ -234,6 +376,33 @@ Restore an archived release
 
 **Flags:**
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened release version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `org` | string | Organization slug (--dry-run) |
 
 **Examples:**
 
@@ -267,6 +436,19 @@ Create a deploy for a release
 - `-t, --time <value> - Deploy duration in seconds (sets started = now - time, finished = now)`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | The ID of the deploy |
+| `environment` | string | The environment name |
+| `name` | string \| null | The optional name of the deploy |
+| `url` | string \| null | The optional URL that points to the deploy |
+| `dateStarted` | string \| null | Start date (ISO 8601) |
+| `dateFinished` | string | Finish date (ISO 8601) |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `version` | string | Release version (--dry-run) |
+
 **Examples:**
 
 ```bash
@@ -296,6 +478,17 @@ List deploys for a release
 |----------|-------------|
 | `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version |
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | The ID of the deploy |
+| `environment` | string | The environment name |
+| `name` | string \| null | The optional name of the deploy |
+| `url` | string \| null | The optional URL that points to the deploy |
+| `dateStarted` | string \| null | Start date (ISO 8601) |
+| `dateFinished` | string | Finish date (ISO 8601) |
+
 **Examples:**
 
 ```bash
@@ -320,13 +513,38 @@ Set commits for a release
 | `<org/version>` | [&lt;org&gt;/]&lt;version&gt; - Release version |
 
 **Flags:**
-- `--auto - Auto-discover commits via repository integration (needs local git checkout)`
+- `--auto - Auto-discover commits via repository integration (needs a git checkout or CI repository variables)`
 - `--local - Read commits from local git history`
 - `--clear - Clear all commits from the release`
 - `--commit <value> - Explicit commit as REPO@SHA or REPO@PREV..SHA (comma-separated)`
 - `--path <value> - Filter commits to these paths (comma-separated). Implies --local.`
 - `--from <value> - Read the local range <ref>..HEAD (e.g. previous release tag). Implies --local.`
 - `--initial-depth <value> - Number of commits to read with --local - (default: "20")`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Release ID |
+| `version` | string | Release version |
+| `shortVersion` | string | Shortened release version |
+| `versionInfo` | object \| null | Parsed version information |
+| `status` | string | Release status (open or archived) |
+| `ref` | string \| null | Version control reference, such as a commit SHA or tag |
+| `url` | string \| null | Release URL |
+| `dateCreated` | string \| null | When the release was created (ISO 8601) |
+| `dateReleased` | string \| null | When the release went live (ISO 8601) |
+| `firstEvent` | string \| null | When the release received its first event (ISO 8601) |
+| `lastEvent` | string \| null | When the release received its most recent event (ISO 8601) |
+| `newGroups` | number | Number of new issues first seen in the release |
+| `commitCount` | number | Number of commits in the release |
+| `deployCount` | number | Number of deploys of the release |
+| `lastCommit` | object \| null | Most recent commit in the release |
+| `lastDeploy` | object \| null | Most recent deploy of the release |
+| `authors` | array | Authors of the release's commits |
+| `owner` | object \| null | Release owner |
+| `projects` | array | Projects in the release |
+| `adoptionStages` | object \| null | Adoption stage of the release in each project |
 
 **Examples:**
 

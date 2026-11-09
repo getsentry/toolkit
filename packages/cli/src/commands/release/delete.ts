@@ -7,11 +7,11 @@
  * flags and enforces the non-interactive guard before `func()` runs.
  */
 
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { deleteRelease, getRelease } from "../../lib/api-client.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
 import { ApiError } from "../../lib/errors.js";
-import { renderMarkdown, safeCodeSpan } from "../../lib/formatters/markdown.js";
+import { renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   buildDeleteCommand,
@@ -19,28 +19,26 @@ import {
   isConfirmationBypassed,
 } from "../../lib/mutate-command.js";
 import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
-import { resolveReleaseTarget } from "./parse.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { ReleaseDeleteOutputSchema } from "../../generated/output-schemas/release.js";
+import type { ReleaseDeleteOutput } from "../../output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release delete [<org>/]<version>";
+const usageHint = () => sentry`release delete [<org>/]<version>`;
 
-type DeleteResult = {
-  deleted: boolean;
-  org: string;
-  version: string;
-  dryRun?: boolean;
-};
+type DeleteResult = ReleaseDeleteOutput;
 
 function formatReleaseDeleted(result: DeleteResult): string {
   if (result.dryRun) {
     return renderMarkdown(
-      `Would delete release ${safeCodeSpan(result.version)} from **${result.org}**. (dry run)`,
+      `Would delete release ${inlineCode(result.version)} from **${result.org}**. (dry run)`,
     );
   }
   if (!result.deleted) {
     return "Cancelled.";
   }
   return renderMarkdown(
-    `Release ${safeCodeSpan(result.version)} deleted from **${result.org}**.`,
+    `Release ${inlineCode(result.version)} deleted from **${result.org}**.`,
   );
 }
 
@@ -86,41 +84,35 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Delete a release (prompts for confirmation)",
-        command: "sentry release delete my-org/1.0.0",
+        run: "release delete my-org/1.0.0",
       },
       {
         description: "Skip confirmation",
-        command: "sentry release delete my-org/1.0.0 --yes",
+        run: "release delete my-org/1.0.0 --yes",
       },
       {
         description: "Preview without deleting",
-        command: "sentry release delete my-org/1.0.0 --dry-run",
+        run: "release delete my-org/1.0.0 --dry-run",
       },
     ],
   },
   output: {
     human: formatReleaseDeleted,
+    schema: ReleaseDeleteOutputSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version to delete",
-          parse: parseOrgTarget,
-        },
+        releaseParameter(
+          usageHint,
+          "[<org>/]<version> - Release version to delete",
+        ),
       ],
     },
   },
-  async *func(this: SentryContext, flags: DeleteFlags, target: string) {
-    const { cwd } = this;
-
-    const { version, org } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+  async *func(this: SentryContext, flags: DeleteFlags, target: ReleaseTarget) {
+    const { version, org } = await target.resolved;
 
     // Verify the release exists before prompting for confirmation
     const release = await getRelease(org, version);

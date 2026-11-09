@@ -21,19 +21,27 @@ import {
 import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  choiceParser,
+  parseBindHost,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { detectDevCommand } from "../../lib/dev-script.js";
 import { CliError, EXIT, ValidationError } from "../../lib/errors.js";
 import { bold } from "../../lib/formatters/colors.js";
 import {
-  printLocalViewerHint,
+  FILTER_VALUES,
   type FilterValue,
-  type FormatValue,
+  FORMAT_VALUES,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
+  type FormatValue,
+  printLocalViewerHint,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
-import { DEFAULT_MAX_ENVELOPES } from "./retention-limits.js";
 import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
 import {
   createLocalDaemonSession,
@@ -74,9 +82,6 @@ type RunFlags = {
   readonly session?: string;
   readonly "max-envelopes"?: number;
 };
-
-/** Buffer size for the auto-started background server. */
-export const BUFFER_SIZE = DEFAULT_MAX_ENVELOPES;
 
 /**
  * Client-side env var prefixes that frameworks inline into browser bundles
@@ -328,17 +333,20 @@ function augmentPathForNode(
   };
 }
 
-const AUTO_DETECT_ERROR_MESSAGE = [
-  "No command provided and could not auto-detect a dev script.",
-  "Usage: sentry local run -- <command>",
-  "",
-  "Supported auto-detection:",
-  "  - package.json (scripts: dev, develop, serve, start)",
-  "  - manage.py (Django)",
-  "  - app.py / main.py (Python)",
-  "  - go.mod (Go)",
-  "  - docker-compose.yml / compose.yml (Docker Compose)",
-].join("\n");
+/** The error shown when no command was given and none was detected. */
+function autoDetectErrorMessage(): string {
+  return [
+    "No command provided and could not auto-detect a dev script.",
+    `Usage: ${sentry`local run -- <command>`}`,
+    "",
+    "Supported auto-detection:",
+    "  - package.json (scripts: dev, develop, serve, start)",
+    "  - manage.py (Django)",
+    "  - app.py / main.py (Python)",
+    "  - go.mod (Go)",
+    "  - docker-compose.yml / compose.yml (Docker Compose)",
+  ].join("\n");
+}
 
 /** Build the env vars for the child process. */
 function buildChildEnv(
@@ -375,7 +383,7 @@ async function resolveArgs(
   }
   const detected = await detectDevCommand(cwd);
   if (!detected) {
-    throw new ValidationError(AUTO_DETECT_ERROR_MESSAGE, "command");
+    throw new ValidationError(autoDetectErrorMessage(), "command");
   }
   logger.info(`Detected ${detected.source}: ${detected.args.join(" ")}`);
   return { args: detected.args, commandSource: detected.source };
@@ -399,39 +407,38 @@ export const runCommand = buildCommand({
     examples: [
       {
         description: "Run a Node.js dev server with the local server enabled",
-        command: "sentry local run -- npm run dev",
+        run: "local run -- npm run dev",
       },
       {
         description: "Run a Django dev server with the local server enabled",
-        command: "sentry local run -- python manage.py runserver",
+        run: "local run -- python manage.py runserver",
       },
       {
         description:
           "Capture into a daemon session, inspect it after the app exits, then clean up",
-        command: [
-          "sentry local run --session web -- npm run dev",
-          "sentry local session list --json",
-          "sentry local session view web --json",
-          "sentry local session retention web --max-envelopes 2000",
-          "sentry local event list web --json",
-          "sentry local event view web <event-id> --json",
-          "sentry local envelope list web --json",
-          "sentry local envelope view web <envelope-id> --json",
-          "sentry local session reset web",
-          "sentry local session close web",
-          "sentry local daemon status",
-          "sentry local daemon stop",
+        run: [
+          "local run --session web -- npm run dev",
+          "local session list --json",
+          "local session view web --json",
+          "local session retention web --max-envelopes 2000",
+          "local event list web --json",
+          "local event view web <event-id> --json",
+          "local envelope list web --json",
+          "local envelope view web <envelope-id> --json",
+          "local session reset web",
+          "local session close web",
+          "local daemon status",
+          "local daemon stop",
         ],
       },
       {
         description: "Run your app and open the Sentry Local UI",
-        command: "sentry local run --open -- npm run dev",
+        run: "local run --open -- npm run dev",
       },
       {
         description:
           "Stream agent-relevant NDJSON without SDK housekeeping envelopes",
-        command:
-          "sentry local run --format json -f error -f transaction -f log -f ai -- npm run dev",
+        run: "local run --format json -f error -f transaction -f log -f ai -- npm run dev",
       },
     ],
   },
@@ -440,26 +447,26 @@ export const runCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Command to run",
-        parse: String,
+        parse: parseText,
         placeholder: "command",
       },
     },
     flags: {
       port: {
         kind: "parsed",
-        parse: parsePort,
+        parse: textParser(parsePort),
         brief: "Port for the local server",
         default: String(DEFAULT_PORT),
       },
       host: {
         kind: "parsed",
-        parse: String,
+        parse: parseBindHost,
         brief: "Hostname for the local server",
         default: "localhost",
       },
       filter: {
         kind: "parsed",
-        parse: parseFilter,
+        parse: choiceParser(FILTER_VALUES, parseFilter),
         brief:
           "Only show items of this type (repeatable: error, transaction, log, ai)",
         variadic: true,
@@ -472,14 +479,14 @@ export const runCommand = buildCommand({
       },
       timeout: {
         kind: "parsed",
-        parse: parseTimeout,
+        parse: textParser(parseTimeout),
         brief:
           "Kill the child after N seconds (0 = no timeout; defaults to 30 s in --verify mode)",
         default: "0",
       },
       format: {
         kind: "parsed",
-        parse: parseFormat,
+        parse: choiceParser(FORMAT_VALUES, parseFormat),
         brief: "Output format: human (default) or json (NDJSON on stdout)",
         default: "human",
       },
@@ -496,7 +503,7 @@ export const runCommand = buildCommand({
       "max-envelopes": OPTIONAL_MAX_ENVELOPES_FLAG,
       session: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Create a daemon-owned telemetry session with this label",
         optional: true,
       },
@@ -589,7 +596,7 @@ export const runCommand = buildCommand({
     logger.info(`Starting: ${bold(wrangler.args.join(" "))}`);
     logger.info(
       daemonSessionId
-        ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use sentry local session view ${daemonSessionId} --json for its ingest URL.`
+        ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use ${sentry`local session view ${daemonSessionId} --json`} for its ingest URL.`
         : `SENTRY_SPOTLIGHT=${spotlightUrl}`,
     );
 
@@ -852,7 +859,7 @@ async function* runWithVerify(
       );
       throw new CliError(
         `Verification timed out after ${verifyTimeout}s`,
-        EXIT.WIZARD_VERIFY,
+        EXIT.VERIFY_FAILED,
       );
     }
     case "exited": {
@@ -860,7 +867,7 @@ async function* runWithVerify(
         logger.warn("Process exited before sending any events");
         throw new CliError(
           "Process exited before sending any events",
-          EXIT.WIZARD_VERIFY,
+          EXIT.VERIFY_FAILED,
         );
       }
       logger.warn(`Process crashed with code ${outcome.code}`);

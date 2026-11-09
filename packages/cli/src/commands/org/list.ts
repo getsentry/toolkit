@@ -5,10 +5,17 @@
  * when several are logged in.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
+import type { InferOutput } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { resolveAccountSelector } from "../../lib/account-selection.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  parseAccountSelector,
+  parseOrgSlug,
+} from "../../lib/completion-target.js";
 import { DEFAULT_SENTRY_HOST } from "../../lib/constants.js";
 import {
   type AccountSummary,
@@ -27,10 +34,9 @@ import {
 } from "../../lib/db/auth.js";
 import { fetchEnvAccountUser } from "../../lib/env-account.js";
 import { getAllOrgRegions } from "../../lib/db/regions.js";
-import { ApiError, AuthError } from "../../lib/errors.js";
+import { ApiError, AuthError, TimeoutError } from "../../lib/errors.js";
 import { formatAccountLabel } from "../../lib/formatters/accounts.js";
 import { getNestedValue } from "../../lib/formatters/json.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../lib/formatters/table.js";
 import { filterByName } from "../../lib/list-filter.js";
@@ -42,7 +48,16 @@ import {
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
 import { withProgress } from "../../lib/polling.js";
-import type { SentryOrganization, Writer } from "../../types/index.js";
+import type {
+  SentryOrganization,
+  WithOutputFields,
+  Writer,
+} from "../../types/index.js";
+import { OrgListEntrySchema } from "../../generated/output-schemas/org.js";
+import type {
+  OrgListAccountSchema,
+  OrgListEntryFields,
+} from "../../output-schemas/org.js";
 
 type ListFlags = {
   readonly limit: number;
@@ -52,46 +67,13 @@ type ListFlags = {
   readonly fields?: string[];
 };
 
-/**
- * The account an organization was listed under (no secrets): a stored
- * account, or the env token's virtual account.
- */
-type OrgListAccount = {
-  /**
-   * What `--account` accepts: `<who>:<server>`, e.g.
-   * `jane@acme.com:sentry.io` (just `<who>` when no server is recorded), as
-   * `sentry auth login` does too; `env:SENTRY_AUTH_TOKEN` for the env token.
-   */
-  name: string;
-  id: string;
-  email?: string;
-  username?: string;
-  /**
-   * The server part of `name`: `host[:port]`, or the full origin such as
-   * `http://localhost:8000` for a non-HTTPS server.
-   */
-  server?: string;
-  /** The server's full origin, e.g. `https://sentry.io`. */
-  host?: string;
-  /** Human label, e.g. `Jane <jane@acme.com> on sentry.io`. */
-  label: string;
-  /** The variable providing the token, for the env token's account. */
-  envVar?: string;
-};
+type OrgListAccount = InferOutput<typeof OrgListAccountSchema>;
 
-/**
- * An organization enriched with an optional region display name and the
- * stored account it was listed under.
- *
- * The `region` field is only present when the user's orgs span multiple
- * regions (e.g. both US and EU). `account` is only present when orgs from
- * several stored accounts are listed. Both are included in JSON output as
- * well, providing context to machine consumers.
- */
-type OrgListEntry = SentryOrganization & {
-  region?: string;
-  account?: OrgListAccount;
-};
+/** An organization with the fields of {@link OrgListEntryFields}. */
+type OrgListEntry = WithOutputFields<
+  SentryOrganization,
+  typeof OrgListEntryFields
+>;
 
 /** One account's fetched orgs plus its slug → region URL cache. */
 type AccountOrgs = {
@@ -181,7 +163,7 @@ function formatOrgListHuman(entries: OrgListEntry[]): string {
     )
     .map(([header, path]) => ({
       header,
-      value: (e) => escapeMarkdownCell(cellOf(e, path) ?? ""),
+      value: (e) => tableCell(cellOf(e, path) ?? ""),
     }));
 
   const parts: string[] = [];
@@ -278,7 +260,13 @@ async function fetchOrgsAcrossAccounts(
       continue;
     }
     const error = result.reason;
-    if (!(error instanceof AuthError || error instanceof ApiError)) {
+    if (
+      !(
+        error instanceof AuthError ||
+        error instanceof ApiError ||
+        error instanceof TimeoutError
+      )
+    ) {
       throw error;
     }
     firstError ??= error;
@@ -333,11 +321,11 @@ function mergeAccountOrgs(results: AccountOrgs[]): {
  */
 function reloginCommand(account: AccountSummary): string {
   if (account.email) {
-    return `sentry auth login ${accountSelectorOf(account)}`;
+    return sentry`auth login ${accountSelectorOf(account)}`;
   }
   return account.host
-    ? `sentry auth login --url ${account.host}`
-    : "sentry auth login";
+    ? sentry`auth login --url ${account.host}`
+    : sentry`auth login`;
 }
 
 /**
@@ -364,7 +352,7 @@ function resolveAccounts(selector?: string): AccountSummary[] | undefined {
     }
     const account = resolveAccountSelector(
       selector,
-      "sentry org list --account",
+      sentry`org list --account`,
       {
         fuzzy: true,
       },
@@ -417,35 +405,35 @@ export const listCommand = buildCommand({
       "(best matches first), or as a glob like 'acme-*'.\n\n" +
       "Alias: `sentry orgs` → `sentry org list`",
     examples: [
-      { description: "List organizations", command: "sentry org list" },
+      { description: "List organizations", run: "org list" },
       {
         description:
           "Only organizations whose slug or name matches (fuzzy, best matches first)",
-        command: "sentry org list acme",
+        run: "org list acme",
       },
       {
         description: "Only organizations matching a glob",
-        command: "sentry org list 'acme-*'",
+        run: "org list 'acme-*'",
       },
       {
         description: "Only one account's organizations",
-        command: "sentry org list --account jane@acme.com",
+        run: "org list --account jane@acme.com",
       },
       {
         description: "Same email on several servers: add the server",
-        command: "sentry org list -a jane@example.com:sentry.io",
+        run: "org list -a jane@example.com:sentry.io",
       },
-      { description: "Output as JSON", command: "sentry org list --json" },
+      { description: "Output as JSON", run: "org list --json" },
     ],
   },
-  output: { human: formatOrgListHuman },
+  output: { human: formatOrgListHuman, schema: OrgListEntrySchema },
   parameters: {
     flags: {
       limit: buildListLimitFlag("organizations"),
       fresh: FRESH_FLAG,
       account: {
         kind: "parsed",
-        parse: String,
+        parse: parseAccountSelector,
         brief:
           "Only list organizations of this account (email, username, or account id; <who>:<server> for one server; env:SENTRY_AUTH_TOKEN)",
         optional: true,
@@ -460,7 +448,7 @@ export const listCommand = buildCommand({
           placeholder: "filter",
           brief:
             "Only list organizations whose slug or name fuzzy-matches this text or matches this glob",
-          parse: String,
+          parse: parseOrgSlug,
           optional: true,
         },
       ],
@@ -523,10 +511,10 @@ export const listCommand = buildCommand({
       hints.push(`Showing ${flags.limit} of ${orgs.length} organizations`);
     }
     if (entries.length > 0) {
-      hints.push("Tip: Use 'sentry org view <slug>' for details");
+      hints.push(`Tip: Use '${sentry`org view <slug>`}' for details`);
     } else if (filter && merged.orgs.length > 0) {
       hints.push(
-        `None of your ${merged.orgs.length} organizations match '${filter}'. Run 'sentry org list' to see them all.`,
+        `None of your ${merged.orgs.length} organizations match '${filter}'. Run '${sentry`org list`}' to see them all.`,
       );
     }
 

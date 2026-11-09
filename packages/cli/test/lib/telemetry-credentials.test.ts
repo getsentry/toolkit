@@ -13,7 +13,7 @@ import {
   setContext,
   startSpan,
   withScope,
-} from "@sentry/node-core/light";
+} from "@sentry/node";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { extractMessagePrefix } from "../../src/lib/error-reporting.js";
 import { redactTelemetryEnvelope } from "../../src/lib/telemetry/credential-redaction.js";
@@ -39,7 +39,8 @@ function captureTelemetry() {
   }
   // Enable capture only after every delivery route is intercepted.
   client.getOptions().enabled = true;
-  client.getOptions().enableLogs = true;
+  // Library mode drops logs; lift that so log scrubbing is exercised too.
+  client.getOptions().beforeSendLog = undefined;
   client.init();
   function serializedEnvelope(type: string): string {
     const envelope = send.mock.calls.find(([entry]) =>
@@ -55,8 +56,10 @@ function captureTelemetry() {
 
 afterEach(async () => {
   await client?.close(0);
-  getCurrentScope().clear();
-  getIsolationScope().clear();
+  // v11 removed Scope.clear(); reset only the state these tests set.
+  for (const scope of [getCurrentScope(), getIsolationScope()]) {
+    scope.setContext("synthetic", null).clearBreadcrumbs();
+  }
   vi.restoreAllMocks();
 });
 

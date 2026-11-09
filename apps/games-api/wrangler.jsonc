@@ -1,0 +1,35 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ *
+ * The account comes from CLOUDFLARE_ACCOUNT_ID (Sentry Internal).
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sentry-games-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-21",
+  "compatibility_flags": ["nodejs_compat"],
+  // The Cache API is a no-op on workers.dev, so serve from a custom domain.
+  "routes": [{ "pattern": "games.sentry.new", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
+  "upload_source_maps": true,
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  "observability": { "enabled": true },
+  // SENTRY_GAMES_READ_TOKEN and SENTRY_DSN are secrets set with
+  // `wrangler secret put`.
+  "unsafe": {
+    "bindings": [
+      {
+        "name": "GAMES_RATE_LIMITER",
+        "type": "ratelimit",
+        "namespace_id": "7301",
+        "simple": {
+          "limit": 30,
+          "period": 60,
+        },
+      },
+    ],
+  },
+}

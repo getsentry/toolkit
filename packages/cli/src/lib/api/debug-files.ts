@@ -18,7 +18,6 @@
  *    collecting `error` details so the caller can report and exit non-zero.
  */
 
-import { type InferOutput, record, string } from "valibot";
 import { ApiError, ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
@@ -26,17 +25,18 @@ import {
   ASSEMBLE_MAX_WAIT_MS,
   ASSEMBLE_POLL_INTERVAL_MS,
   type AssembleResponse,
-  AssembleResponseSchema,
+  assembleDebugFiles,
   type ChunkInfo,
+  type ChunkPayload,
   type ChunkServerOptions,
   DEFAULT_MAX_DIF_SIZE,
+  type DifAssembleResponse,
   getChunkUploadOptions,
   hashBuffer,
   pickUploadEncoding,
   type UploadEncoding,
-  uploadMissingBufferChunks,
+  uploadChunkPayloads,
 } from "./chunk-upload.js";
-import { apiRequestToRegion } from "./infrastructure.js";
 
 const log = logger.withTag("api.debug-files");
 
@@ -52,6 +52,13 @@ export type DebugFileUpload = {
    * `skip_serializing_if none` in the wire format — omitted when absent.
    */
   debugId?: string;
+  /**
+   * Code id for file types the server cannot read it from (a DXIL shader's
+   * Aftermath hash). Omitted from the wire format when absent.
+   */
+  codeId?: string;
+  /** Shader group of a DXIL shader, stored with the file. Omitted when absent. */
+  shaderGroup?: string;
   /** Pre-read raw file content (chunked as-is). */
   content: Buffer;
 };
@@ -97,17 +104,23 @@ export type DebugFileUploadResult = {
   detail: string | null;
 };
 
-// ── Schemas ─────────────────────────────────────────────────────────
+// ── Internal types ──────────────────────────────────────────────────
 
 /**
- * DIF assemble response — keyed by overall checksum, each value has the same
- * shape as the standard assemble response.
+ * Maximum number of files per assemble request. The server processes every
+ * file of a request before answering, and shader uploads bring tens of
+ * thousands of files, so one request for all of them ran for minutes.
  */
-const DifAssembleResponseSchema = record(string(), AssembleResponseSchema);
+export const ASSEMBLE_BATCH_SIZE = 1000;
 
-type DifAssembleResponse = InferOutput<typeof DifAssembleResponseSchema>;
-
-// ── Internal types ──────────────────────────────────────────────────
+/** One file's entry in the assemble request body. */
+type AssembleFileEntry = {
+  name: string;
+  debug_id?: string;
+  code_id?: string;
+  shader_group?: string;
+  chunks: string[];
+};
 
 /** Per-file chunk metadata computed before the assemble request. */
 type ChunkedDif = {
@@ -141,19 +154,29 @@ type AssembleEvaluation = {
  */
 function buildAssembleBody(
   chunked: ChunkedDif[],
-): Record<string, { name: string; debug_id?: string; chunks: string[] }> {
-  const body: Record<
-    string,
-    { name: string; debug_id?: string; chunks: string[] }
-  > = {};
+): Record<string, AssembleFileEntry> {
+  const body: Record<string, AssembleFileEntry> = {};
   for (const cd of chunked) {
     body[cd.overallChecksum] = {
       name: cd.dif.name,
       ...(cd.dif.debugId ? { debug_id: cd.dif.debugId } : {}),
+      ...(cd.dif.codeId ? { code_id: cd.dif.codeId } : {}),
+      ...(cd.dif.shaderGroup ? { shader_group: cd.dif.shaderGroup } : {}),
       chunks: cd.chunks.map((c) => c.sha1),
     };
   }
   return body;
+}
+
+/** Split the files into assemble bodies of at most {@link ASSEMBLE_BATCH_SIZE}. */
+function buildAssembleBodies(
+  chunked: ChunkedDif[],
+): Record<string, AssembleFileEntry>[] {
+  const bodies: Record<string, AssembleFileEntry>[] = [];
+  for (let i = 0; i < chunked.length; i += ASSEMBLE_BATCH_SIZE) {
+    bodies.push(buildAssembleBody(chunked.slice(i, i + ASSEMBLE_BATCH_SIZE)));
+  }
+  return bodies;
 }
 
 /**
@@ -241,7 +264,10 @@ function classifyEntry(
   return { held: true, terminal, missing: [] };
 }
 
-/** Upload any chunks the server reported missing, across all files. */
+/**
+ * Upload every chunk the server reported missing, across all files, in
+ * batched requests. A chunk shared by several files is sent once.
+ */
 async function uploadMissing(params: {
   chunked: ChunkedDif[];
   missingChecksums: Set<string>;
@@ -254,36 +280,39 @@ async function uploadMissing(params: {
   if (missingChecksums.size === 0) {
     return;
   }
+  const payloads: ChunkPayload[] = [];
+  const queued = new Set<string>();
   for (const cd of chunked) {
-    await uploadMissingBufferChunks({
-      chunks: cd.chunks,
-      missingChecksums,
-      content: cd.dif.content,
-      serverOptions,
-      encoding,
-      regionUrl,
-    });
+    for (const chunk of cd.chunks) {
+      if (!missingChecksums.has(chunk.sha1) || queued.has(chunk.sha1)) {
+        continue;
+      }
+      queued.add(chunk.sha1);
+      payloads.push({
+        sha1: chunk.sha1,
+        data: cd.dif.content.subarray(chunk.offset, chunk.offset + chunk.size),
+      });
+    }
   }
+  await uploadChunkPayloads({
+    chunks: payloads,
+    serverOptions,
+    encoding,
+    regionUrl,
+  });
 }
 
-/** POST the assemble request and parse the keyed response. */
+/** POST one assemble request per batch and merge the keyed responses. */
 async function postAssemble(
-  regionUrl: string,
-  endpoint: string,
-  body: unknown,
+  org: string,
+  project: string,
+  bodies: readonly Record<string, AssembleFileEntry>[],
 ): Promise<DifAssembleResponse> {
-  // Assembly state is keyed by checksum; re-sending only polls it.
-  const { data } = await apiRequestToRegion<DifAssembleResponse>(
-    regionUrl,
-    endpoint,
-    {
-      method: "POST",
-      body,
-      schema: DifAssembleResponseSchema,
-      idempotent: true,
-    },
-  );
-  return data;
+  const merged: DifAssembleResponse = {};
+  for (const body of bodies) {
+    Object.assign(merged, await assembleDebugFiles(org, project, body));
+  }
+  return merged;
 }
 
 /** Build per-file results from the last-observed assemble response. */
@@ -446,7 +475,7 @@ export async function uploadDebugFiles(
 
   const regionUrl = await resolveOrgRegion(org);
   const endpoint = `projects/${org}/${project}/files/difs/assemble/`;
-  const body = buildAssembleBody(chunked);
+  const bodies = buildAssembleBodies(chunked);
 
   // Clamp the caller's requested wait to the server's advertised maximum.
   // Only in wait mode — in no-wait mode `maxWaitMs` is purely a hang guard for
@@ -454,17 +483,25 @@ export async function uploadDebugFiles(
   const effectiveMaxWaitMs = wait
     ? clampMaxWait(maxWaitMs, serverOptions.maxWait ?? 0)
     : maxWaitMs;
-  const deadline = Date.now() + effectiveMaxWaitMs;
-  let response = await postAssemble(regionUrl, endpoint, body);
+  let response = await postAssemble(org, project, bodies);
   let evaluation = evaluateAssembly(response, chunked, wait);
-  await uploadMissing({
-    chunked,
-    missingChecksums: evaluation.missingChecksums,
-    serverOptions,
-    encoding,
-    regionUrl,
-  });
+  if (evaluation.missingChecksums.size > 0) {
+    await uploadMissing({
+      chunked,
+      missingChecksums: evaluation.missingChecksums,
+      serverOptions,
+      encoding,
+      regionUrl,
+    });
+    // The server only starts assembling once it is asked again with the
+    // chunks in place, so re-assemble right after delivering them.
+    response = await postAssemble(org, project, bodies);
+    evaluation = evaluateAssembly(response, chunked, wait);
+  }
 
+  // The wait budget covers server-side processing, not the chunk upload,
+  // which for large sets can itself take longer than the budget.
+  const deadline = Date.now() + effectiveMaxWaitMs;
   while (!evaluation.done) {
     if (Date.now() >= deadline) {
       if (wait) {
@@ -484,7 +521,7 @@ export async function uploadDebugFiles(
     }
 
     await new Promise((r) => setTimeout(r, ASSEMBLE_POLL_INTERVAL_MS));
-    response = await postAssemble(regionUrl, endpoint, body);
+    response = await postAssemble(org, project, bodies);
     evaluation = evaluateAssembly(response, chunked, wait);
     await uploadMissing({
       chunked,

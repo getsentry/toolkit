@@ -3,7 +3,6 @@ import {
   getIssueAlertWorkflowDocument,
   getMetricAlertRule,
 } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
 import { buildCommand } from "../../../lib/command.js";
 import { ApiError } from "../../../lib/errors.js";
@@ -13,12 +12,14 @@ import {
 } from "../../../lib/formatters/alerts.js";
 import { filterFields } from "../../../lib/formatters/json.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
-import { resolveOrgOnlyFromArg } from "../../../lib/resolve-target.js";
+import { resolveOrgOnlyTarget } from "../../../lib/resolve-target.js";
 import { buildMetricAlertsUrl } from "../../../lib/sentry-web-urls.js";
 import { isAllDigits } from "../../../lib/utils.js";
-import { parseMetricRuleArg, resolveMetricAlertRule } from "./rule-resolve.js";
+import type { AlertRuleArgument } from "../arguments.js";
+import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
+import { sentry } from "../../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry alert metrics view <org>/<rule-id-or-name>";
+const usageHint = () => sentry`alert metrics view <org>/<rule-id-or-name>`;
 
 type ViewFlags = {
   readonly web: boolean;
@@ -39,19 +40,19 @@ export const viewCommand = buildCommand({
       {
         description:
           "View a metric alert rule by ID (organization auto-detected)",
-        command: "sentry alert metrics view 12345",
+        run: "alert metrics view 12345",
       },
       {
         description: "View by ID in an explicit organization",
-        command: "sentry alert metrics view my-org/12345",
+        run: "alert metrics view my-org/12345",
       },
       {
         description: "View by name",
-        command: "sentry alert metrics view my-org/'P95 latency alert'",
+        run: "alert metrics view my-org/'P95 latency alert'",
       },
       {
         description: "Inspect native thresholds and notification workflows",
-        command: "sentry alert metrics view my-org/12345 --json",
+        run: "alert metrics view my-org/12345 --json",
       },
     ],
   },
@@ -71,11 +72,7 @@ export const viewCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/rule-id-or-name",
-          brief: "Metric alert rule ID or name",
-          parse: String,
-        },
+        metricRuleParameter(usageHint, "Metric alert rule ID or name"),
       ],
     },
     flags: {
@@ -87,10 +84,13 @@ export const viewCommand = buildCommand({
     },
     aliases: { w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
-    const { ref, targetArg } = parseMetricRuleArg(arg, USAGE_HINT);
-    const parsed = parseOrgProjectArg(targetArg);
+    const { ref, target: parsed } = await ruleArg.resolved;
 
     if (flags.web && parsed.type === "org-all") {
       await openInBrowser(
@@ -100,18 +100,14 @@ export const viewCommand = buildCommand({
       return;
     }
 
-    const org = await resolveOrgOnlyFromArg(
-      targetArg,
-      cwd,
-      "alert metrics view",
-    );
+    const org = await resolveOrgOnlyTarget(parsed, cwd, "alert metrics view");
 
     if (flags.web) {
       await openInBrowser(buildMetricAlertsUrl(org), "metric alert rules");
       return;
     }
 
-    const result = await resolveMetricAlertRule([org], ref, USAGE_HINT);
+    const result = await resolveMetricAlertRule([org], ref, usageHint());
     // Name resolution uses the compact list projection; inspect the detail
     // document so it has the same conditions and links as an ID lookup.
     const rule = isAllDigits(ref)

@@ -78,7 +78,9 @@ describe("listIssueAlertsPaginated", () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const url = new URL(new Request(input!, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/workflows/");
-      expect(url.searchParams.get("projectSlug")).toBe("test-project");
+      expect(url.searchParams.getAll("project")).toEqual(["test-project"]);
+      expect(url.searchParams.has("projectSlug")).toBe(false);
+      expect(url.searchParams.get("sortBy")).toBe("-id");
       return Response.json([
         workflowRule({ id: "1", name: "Attached", detectorIds: [7] }),
         workflowRule({ id: "2", name: "Unattached", detectorIds: [] }),
@@ -96,8 +98,9 @@ describe("getIssueAlertRule", () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const url = new URL(new Request(input!, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/workflows/");
-      expect(url.searchParams.get("projectSlug")).toBe("test-project");
-      expect(url.searchParams.get("id")).toBe("42");
+      expect(url.searchParams.getAll("project")).toEqual(["test-project"]);
+      expect(url.searchParams.has("projectSlug")).toBe(false);
+      expect(url.searchParams.getAll("id")).toEqual(["42"]);
       return Response.json([workflowRule({ id: "42", name: "My Rule" })]);
     });
 
@@ -601,6 +604,38 @@ describe("createMetricAlertRule", () => {
       { type: "lt", comparison: 10, conditionResult: 75 },
       { type: "lt", comparison: 50, conditionResult: 50 },
       { type: "gte", comparison: 10, conditionResult: 0 },
+    ]);
+  });
+
+  test("drops empty trigger actions from detector conditions", async () => {
+    let sentBody: Record<string, unknown> = {};
+    globalThis.fetch = mockFetch(async (input, init) => {
+      sentBody = (await new Request(input!, init).json()) as Record<
+        string,
+        unknown
+      >;
+      return Response.json(metricDetector({ id: "1" }), { status: 201 });
+    });
+
+    await createMetricAlertRule("test-org", {
+      name: "Error spike",
+      query: "is:unresolved",
+      aggregate: "count()",
+      dataset: "errors",
+      timeWindow: 5,
+      triggers: [
+        { label: "critical", alertThreshold: 11, actions: [] },
+        { label: "warning", alertThreshold: 5, actions: [] },
+      ],
+      projects: ["backend"],
+    });
+
+    expect(
+      (sentBody.conditionGroup as Record<string, unknown>).conditions,
+    ).toEqual([
+      { type: "gt", comparison: 11, conditionResult: 75 },
+      { type: "gt", comparison: 5, conditionResult: 50 },
+      { type: "lte", comparison: 11, conditionResult: 0 },
     ]);
   });
 

@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-auth
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Authenticate with Sentry
 requires:
   bins: ["sentry"]
@@ -14,6 +14,21 @@ Authenticate with Sentry
 ### `sentry auth list`
 
 List stored accounts
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Account ID |
+| `active` | boolean | Whether commands use this account |
+| `host` | string | Sentry server URL |
+| `userId` | string | User ID |
+| `email` | string | User email |
+| `username` | string | Username |
+| `name` | string | User display name |
+| `usable` | boolean | Whether the credential can still be used or refreshed |
+| `expiresAt` | number | Token expiry (Unix milliseconds) |
+| `envVar` | string | Env var providing the token, if not stored |
 
 **Examples:**
 
@@ -70,6 +85,24 @@ sentry auth login jane@example.com --url https://sentry.example.com
 # Same as --url, using the account notation
 sentry auth login jane@example.com:sentry.example.com
 ```
+
+### `sentry auth bootstrap`
+
+Authenticate using a one-time setup code
+
+**Flags:**
+- `--force - Replace the stored login`
+- `--url <value> - Explicit issuing Sentry instance URL`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `method` | string |  |
+| `configPath` | string | Path to the stored CLI credentials |
+| `user` | object |  |
+| `expiresIn` | number |  |
+| `refreshEnabled` | boolean |  |
 
 ### `sentry auth logout <account...>`
 

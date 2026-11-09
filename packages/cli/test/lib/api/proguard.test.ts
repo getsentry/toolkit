@@ -5,28 +5,14 @@
  * ProGuard mappings are chunked as raw bytes (no ZIP wrapping).
  */
 
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { hashBuffer } from "../../../src/lib/api/chunk-upload.js";
-import { apiRequestToRegion } from "../../../src/lib/api/infrastructure.js";
 import { uploadProguardMappings } from "../../../src/lib/api/proguard.js";
+import { setAuthToken } from "../../../src/lib/db/auth.js";
+import { setOrgRegion } from "../../../src/lib/db/regions.js";
+import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
-vi.mock("../../../src/lib/api/infrastructure.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../../../src/lib/api/infrastructure.js")
-    >();
-  return { ...actual, apiRequestToRegion: vi.fn() };
-});
-vi.mock("../../../src/lib/region.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../../src/lib/region.js")>();
-  return {
-    ...actual,
-    resolveOrgRegion: vi.fn(async () => "https://us.sentry.io"),
-  };
-});
-
-const apiMock = vi.mocked(apiRequestToRegion);
+useTestConfigDir("api-proguard-");
 
 describe("hashBuffer", () => {
   test("single chunk for small content", () => {
@@ -106,28 +92,38 @@ describe("uploadProguardMappings", () => {
     compression: ["gzip"],
   };
 
+  let originalFetch: typeof globalThis.fetch;
+
   beforeEach(() => {
-    apiMock.mockReset();
+    originalFetch = globalThis.fetch;
+    setAuthToken("test-token");
+    setOrgRegion("test-org", "https://us.sentry.io");
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   test("assemble request names each mapping with a leading-slash /proguard/ path", async () => {
     let assembleBody: Record<string, { name: string; chunks: string[] }> = {};
 
-    apiMock.mockImplementation(
-      async (_regionUrl, endpoint, options?: { body?: unknown }) => {
-        if (endpoint.includes("chunk-upload/")) {
-          return { data: CHUNK_UPLOAD_OPTIONS } as never;
-        }
-        // DIF assemble endpoint: report every checksum as already "ok" so the
-        // upload short-circuits without needing to mock chunk uploads too.
-        assembleBody = options?.body as typeof assembleBody;
-        const response: Record<string, { state: string }> = {};
-        for (const checksum of Object.keys(assembleBody)) {
-          response[checksum] = { state: "ok" };
-        }
-        return { data: response } as never;
-      },
-    );
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      if (req.url.endsWith("/chunk-upload/")) {
+        return Response.json(CHUNK_UPLOAD_OPTIONS);
+      }
+      // DIF assemble endpoint: report every checksum as already "ok" so the
+      // upload short-circuits without needing to mock chunk uploads too.
+      expect(req.url).toBe(
+        "https://us.sentry.io/api/0/projects/test-org/test-project/files/difs/assemble/",
+      );
+      assembleBody = (await req.json()) as typeof assembleBody;
+      const response: Record<string, { state: string }> = {};
+      for (const checksum of Object.keys(assembleBody)) {
+        response[checksum] = { state: "ok" };
+      }
+      return Response.json(response);
+    });
 
     await uploadProguardMappings({
       org: "test-org",

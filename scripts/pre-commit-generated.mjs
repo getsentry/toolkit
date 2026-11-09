@@ -26,18 +26,6 @@ const GENERATED_TASKS = [
       "plugins/sentry-mcp-experimental/agents/sentry-mcp.md",
     ],
   },
-  {
-    name: "toolkit-core grammar parsers",
-    command: ["pnpm", "run", "generate:parsers"],
-    inputs: [
-      /^packages\/toolkit-core\/grammar\//,
-      /^scripts\/generate-parsers\.mjs$/,
-    ],
-    outputs: [
-      "packages/toolkit-core/src/generated/search-syntax-grammar.js",
-      "packages/toolkit-core/src/generated/search-syntax-grammar.d.ts",
-    ],
-  },
 ];
 
 function run(command) {

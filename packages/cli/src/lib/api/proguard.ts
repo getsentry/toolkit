@@ -12,7 +12,6 @@
  * - Multiple files are sent in a single assemble request
  */
 
-import { type InferOutput, record, string } from "valibot";
 import { ApiError } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
@@ -20,14 +19,14 @@ import {
   ASSEMBLE_MAX_WAIT_MS,
   ASSEMBLE_POLL_INTERVAL_MS,
   type AssembleResponse,
-  AssembleResponseSchema,
+  assembleDebugFiles,
   type ChunkInfo,
+  type DifAssembleResponse,
   getChunkUploadOptions,
   hashBuffer,
   pickUploadEncoding,
   uploadMissingBufferChunks,
 } from "./chunk-upload.js";
-import { apiRequestToRegion } from "./infrastructure.js";
 
 const log = logger.withTag("api.proguard");
 
@@ -52,16 +51,6 @@ export type ProguardUploadOptions = {
   /** Mapping files to upload. */
   mappings: ProguardMapping[];
 };
-
-// ── Schemas ─────────────────────────────────────────────────────────
-
-/**
- * DIF assemble response — keyed by overall checksum, each value has
- * the same shape as the standard assemble response.
- */
-const DifAssembleResponseSchema = record(string(), AssembleResponseSchema);
-
-type DifAssembleResponse = InferOutput<typeof DifAssembleResponseSchema>;
 
 // ── Internal types ──────────────────────────────────────────────────
 
@@ -168,17 +157,7 @@ export async function uploadProguardMappings(
   }
 
   // Step 4: Request DIF assembly — server reports which chunks it needs
-  const { data: firstAssemble } = await apiRequestToRegion<DifAssembleResponse>(
-    regionUrl,
-    assembleEndpoint,
-    {
-      method: "POST",
-      body: assembleBody,
-      schema: DifAssembleResponseSchema,
-      // Assembly state is keyed by checksum; re-sending only polls it.
-      idempotent: true,
-    },
-  );
+  const firstAssemble = await assembleDebugFiles(org, project, assembleBody);
 
   const checksums = chunkedMappings.map((cm) => cm.overallChecksum);
   const { allDone, missingChecksums } = checkAssembleResponse(
@@ -205,9 +184,8 @@ export async function uploadProguardMappings(
 
   // Step 6: Poll assemble endpoint until all mappings are done
   await pollDifAssembly({
-    regionUrl,
+    assemble: () => assembleDebugFiles(org, project, assembleBody),
     endpoint: assembleEndpoint,
-    body: assembleBody,
     checksums,
   });
 }
@@ -219,27 +197,17 @@ export async function uploadProguardMappings(
  * the state of every checksum entry until all are `"ok"` or `"created"`.
  */
 async function pollDifAssembly(params: {
-  regionUrl: string;
+  assemble: () => Promise<DifAssembleResponse>;
   endpoint: string;
-  body: unknown;
   checksums: string[];
 }): Promise<void> {
-  const { regionUrl, endpoint, body, checksums } = params;
+  const { assemble, endpoint, checksums } = params;
   const deadline = Date.now() + ASSEMBLE_MAX_WAIT_MS;
 
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, ASSEMBLE_POLL_INTERVAL_MS));
 
-    const { data: pollResult } = await apiRequestToRegion<DifAssembleResponse>(
-      regionUrl,
-      endpoint,
-      {
-        method: "POST",
-        body,
-        schema: DifAssembleResponseSchema,
-        idempotent: true,
-      },
-    );
+    const pollResult = await assemble();
 
     const { allDone } = checkAssembleResponse(pollResult, checksums, endpoint);
     if (allDone) {

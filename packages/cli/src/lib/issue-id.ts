@@ -10,7 +10,7 @@
  * - GitHub-style format: "org/project#PROJECT-ABC", "project#ABC" (the "#"
  *   replaces the final slash; handled in arg-parsing.ts)
  *
- * Note: parseIssueArg is in arg-parsing.ts for shared logic with org/project parsing.
+ * Note: issue arguments are parsed in issue-arguments.ts.
  */
 
 /** Pattern to detect short IDs (contain letters, vs numeric IDs which are just digits) */

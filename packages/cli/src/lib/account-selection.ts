@@ -4,8 +4,8 @@
  * and keep the default URL pointed at the active account's server.
  */
 
-import { isatty } from "node:tty";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
+import { sentry } from "./app-identity.js";
 import {
   type AccountSummary,
   findAccounts,
@@ -16,7 +16,7 @@ import {
 import { getDefaultUrl, setDefaultUrl } from "./db/defaults.js";
 import { ContextError, ResolutionError } from "./errors.js";
 import { formatAccountLabel } from "./formatters/accounts.js";
-import { interactivePromptsAllowed } from "./interactive-prompts.js";
+import { canShowSelectPrompt, selectWithFilter } from "./select-prompt.js";
 import { logger } from "./logger.js";
 
 const log = logger.withTag("auth.accounts");
@@ -93,9 +93,9 @@ export function resolveAccountSelector(
     similar.length > 0
       ? [
           ...similar.map((a) => `Did you mean ${describeAccount(a)}?`),
-          "Run 'sentry auth list' to see stored accounts",
+          `Run '${sentry`auth list`}' to see stored accounts`,
         ]
-      : ["Run 'sentry auth list' to see stored accounts"],
+      : [`Run '${sentry`auth list`}' to see stored accounts`],
   );
 }
 
@@ -112,14 +112,13 @@ export async function promptForAccount(
   message: string,
   command: string,
 ): Promise<AccountSummary | undefined> {
-  if (!(interactivePromptsAllowed() && isatty(0) && isatty(1))) {
+  if (!canShowSelectPrompt()) {
     throw new ContextError(
       "Account",
       `${command} <email|username|account-id>`,
       accounts.map(describeAccount),
     );
   }
-  const { selectWithFilter } = await import("./init/ui/ink-ui.js");
   const selected = await selectWithFilter({
     message,
     options: accounts.map((a) => ({

@@ -12,7 +12,8 @@ const GLOB_CHARS_RE = /[*?[\]{}]/;
 
 /**
  * Whether `filter` is a glob (`acme-*`) rather than plain text. The target
- * grammar uses it to tell a name filter from a project (`parseListTarget`).
+ * grammar uses it to tell a name filter from a project
+ * (`parseListTargetInput`).
  */
 export function isGlobFilter(filter: string): boolean {
   return GLOB_CHARS_RE.test(filter);

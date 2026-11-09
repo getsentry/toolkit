@@ -225,7 +225,9 @@ describe("401 retry behavior", () => {
     expect(oauthRequests).toHaveLength(1);
   });
 
-  test("preserves a final-attempt 401 without refreshing the token", async () => {
+  test("refreshes a 401 that arrives after the retries are spent", async () => {
+    // The refresh replay is outside the retry budget, so a 401 on the last
+    // retry still refreshes once.
     const requests: RequestLog[] = [];
     const body = { detail: "Unauthorized" };
     globalThis.fetch = createMockFetch(requests, (_req, requestCount) =>
@@ -236,8 +238,17 @@ describe("401 retry behavior", () => {
 
     expect(result.status).toBe(401);
     expect(result.body).toEqual(body);
-    expect(requests).toHaveLength(3);
-    expect(requests.filter((r) => r.url.includes("/oauth/token/"))).toEqual([]);
+    const apiRequests = requests.filter((r) =>
+      r.url.includes("/test-endpoint"),
+    );
+    expect(apiRequests).toHaveLength(4);
+    expect(apiRequests[3]).toMatchObject({
+      authorization: "Bearer refreshed-token",
+      isRetry: true,
+    });
+    expect(
+      requests.filter((r) => r.url.includes("/oauth/token/")),
+    ).toHaveLength(1);
   });
 
   test("does not retry for manual API tokens (no refresh token)", async () => {
@@ -1884,16 +1895,15 @@ describe("getLogs", () => {
 
     const result = await getLogs("my-org", "my-project", ids);
 
-    // Should have made 2 separate requests
-    expect(capturedUrls).toHaveLength(2);
-
-    // First batch: 100 IDs
-    const url1 = new URL(capturedUrls[0]);
-    expect(url1.searchParams.get("per_page")).toBe(String(API_MAX_PER_PAGE));
-
-    // Second batch: 50 IDs
-    const url2 = new URL(capturedUrls[1]);
-    expect(url2.searchParams.get("per_page")).toBe("50");
+    // One request of 100 IDs and one of 50. The batches run in parallel, so
+    // they can reach fetch in either order.
+    const perPage = capturedUrls.map((url) =>
+      new URL(url).searchParams.get("per_page"),
+    );
+    expect(perPage).toHaveLength(2);
+    expect(perPage).toEqual(
+      expect.arrayContaining([String(API_MAX_PER_PAGE), "50"]),
+    );
 
     // Results from both batches should be flattened
     expect(result).toHaveLength(2);

@@ -1,7 +1,7 @@
 /**
  * Tests for the debug information file upload API.
  *
- * Mocks the chunk-upload primitives and the region request layer so the
+ * Mocks the chunk-upload primitives and the assemble request so the
  * assemble body shape, missing-chunk upload, and the no-wait/wait completion
  * modes can be exercised without a network. `hashBuffer` and `pickUploadEncoding`
  * remain real (they are pure).
@@ -10,24 +10,19 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getChunkUploadOptions } from "../../../src/lib/api/chunk-upload.js";
 import {
+  ASSEMBLE_BATCH_SIZE,
   type DebugFileUpload,
   uploadDebugFiles,
 } from "../../../src/lib/api/debug-files.js";
 import { ApiError } from "../../../src/lib/errors.js";
 
-const { apiRequestToRegionMock, uploadMissingBufferChunksMock } = vi.hoisted(
-  () => ({
-    apiRequestToRegionMock: vi.fn(),
-    uploadMissingBufferChunksMock: vi.fn(() => Promise.resolve()),
-  }),
-);
+const { assembleMock, uploadChunkPayloadsMock } = vi.hoisted(() => ({
+  assembleMock: vi.fn(),
+  uploadChunkPayloadsMock: vi.fn(() => Promise.resolve()),
+}));
 
 vi.mock("../../../src/lib/region.js", () => ({
   resolveOrgRegion: vi.fn(async () => "https://us.sentry.io"),
-}));
-
-vi.mock("../../../src/lib/api/infrastructure.js", () => ({
-  apiRequestToRegion: apiRequestToRegionMock,
 }));
 
 vi.mock("../../../src/lib/api/chunk-upload.js", async (importOriginal) => {
@@ -46,7 +41,8 @@ vi.mock("../../../src/lib/api/chunk-upload.js", async (importOriginal) => {
       concurrency: 8,
       compression: ["gzip"],
     })),
-    uploadMissingBufferChunks: uploadMissingBufferChunksMock,
+    uploadChunkPayloads: uploadChunkPayloadsMock,
+    assembleDebugFiles: assembleMock,
   };
 });
 
@@ -64,9 +60,9 @@ function lastAssembleBody(): Record<
   string,
   { name: string; debug_id?: string; chunks: string[] }
 > {
-  const calls = apiRequestToRegionMock.mock.calls;
+  const calls = assembleMock.mock.calls;
   const lastCall = calls.at(-1);
-  return lastCall?.[2].body;
+  return lastCall?.[2];
 }
 
 const SOLE = {
@@ -94,8 +90,8 @@ function setServerOptions(overrides: Record<string, unknown>): void {
 }
 
 beforeEach(() => {
-  apiRequestToRegionMock.mockReset();
-  uploadMissingBufferChunksMock.mockClear();
+  assembleMock.mockReset();
+  uploadChunkPayloadsMock.mockClear();
   vi.mocked(getChunkUploadOptions).mockResolvedValue(
     BASE_SERVER_OPTIONS as Awaited<ReturnType<typeof getChunkUploadOptions>>,
   );
@@ -114,7 +110,7 @@ describe("uploadDebugFiles", () => {
       maxWaitMs: 1000,
     });
     expect(results).toEqual([]);
-    expect(apiRequestToRegionMock).not.toHaveBeenCalled();
+    expect(assembleMock).not.toHaveBeenCalled();
   });
 
   test("assemble body keys by checksum and includes name + debug_id + chunks", async () => {
@@ -122,14 +118,14 @@ describe("uploadDebugFiles", () => {
     // The checksum is content-derived, so we capture the request body and
     // echo its keys back as "ok" — server already holds the file, so no-wait
     // completes on the first assemble.
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const body = init.body as Record<string, unknown>;
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const body = assembleBody as Record<string, unknown>;
         const data: Record<string, { state: string }> = {};
         for (const key of Object.keys(body)) {
           data[key] = { state: "ok" };
         }
-        return { data };
+        return data;
       },
     );
 
@@ -156,14 +152,14 @@ describe("uploadDebugFiles", () => {
   });
 
   test("omits debug_id from the body when not provided", async () => {
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const body = init.body as Record<string, unknown>;
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const body = assembleBody as Record<string, unknown>;
         const data: Record<string, { state: string }> = {};
         for (const key of Object.keys(body)) {
           data[key] = { state: "ok" };
         }
-        return { data };
+        return data;
       },
     );
 
@@ -184,21 +180,19 @@ describe("uploadDebugFiles", () => {
     const dif = makeDif("libbar.so", "more debug bytes", "id-1");
 
     // First assemble: server is missing the chunk. Second: held (created).
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const body = init.body as Record<string, { chunks: string[] }>;
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const body = assembleBody as Record<string, { chunks: string[] }>;
         const key = Object.keys(body)[0] as string;
         return {
-          data: {
-            [key]: { state: "not_found", missingChunks: body[key]?.chunks },
-          },
+          [key]: { state: "not_found", missingChunks: body[key]?.chunks },
         };
       },
     );
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const key = Object.keys(init.body as object)[0] as string;
-        return { data: { [key]: { state: "created" } } };
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const key = Object.keys(assembleBody as object)[0] as string;
+        return { [key]: { state: "created" } };
       },
     );
 
@@ -211,8 +205,8 @@ describe("uploadDebugFiles", () => {
     await vi.runAllTimersAsync();
     const results = await promise;
 
-    expect(uploadMissingBufferChunksMock).toHaveBeenCalled();
-    expect(apiRequestToRegionMock).toHaveBeenCalledTimes(2);
+    expect(uploadChunkPayloadsMock).toHaveBeenCalled();
+    expect(assembleMock).toHaveBeenCalledTimes(2);
     expect(results[0]?.state).toBe("created");
   });
 
@@ -220,16 +214,16 @@ describe("uploadDebugFiles", () => {
     vi.useFakeTimers();
     const dif = makeDif("libbaz.so", "debug bytes", "id-2");
 
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const key = Object.keys(init.body as object)[0] as string;
-        return { data: { [key]: { state: "assembling" } } };
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const key = Object.keys(assembleBody as object)[0] as string;
+        return { [key]: { state: "assembling" } };
       },
     );
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const key = Object.keys(init.body as object)[0] as string;
-        return { data: { [key]: { state: "ok" } } };
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const key = Object.keys(assembleBody as object)[0] as string;
+        return { [key]: { state: "ok" } };
       },
     );
 
@@ -242,18 +236,16 @@ describe("uploadDebugFiles", () => {
     await vi.runAllTimersAsync();
     const results = await promise;
 
-    expect(apiRequestToRegionMock).toHaveBeenCalledTimes(2);
+    expect(assembleMock).toHaveBeenCalledTimes(2);
     expect(results[0]?.state).toBe("ok");
   });
 
   test("wait mode collects an 'error' state without throwing", async () => {
     const dif = makeDif("broken.so", "debug bytes", "id-3");
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const key = Object.keys(init.body as object)[0] as string;
-        return {
-          data: { [key]: { state: "error", detail: "corrupt object" } },
-        };
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const key = Object.keys(assembleBody as object)[0] as string;
+        return { [key]: { state: "error", detail: "corrupt object" } };
       },
     );
 
@@ -271,10 +263,10 @@ describe("uploadDebugFiles", () => {
   test("wait mode throws ApiError when assembly does not finish in time", async () => {
     const dif = makeDif("slow.so", "debug bytes", "id-4");
     // Always "assembling" → never terminal. maxWaitMs=0 trips the deadline.
-    apiRequestToRegionMock.mockImplementation(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const key = Object.keys(init.body as object)[0] as string;
-        return { data: { [key]: { state: "assembling" } } };
+    assembleMock.mockImplementation(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const key = Object.keys(assembleBody as object)[0] as string;
+        return { [key]: { state: "assembling" } };
       },
     );
 
@@ -289,14 +281,14 @@ describe("uploadDebugFiles", () => {
   });
 
   test("batches multiple files into one assemble request", async () => {
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const body = init.body as Record<string, unknown>;
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const body = assembleBody as Record<string, unknown>;
         const data: Record<string, { state: string }> = {};
         for (const key of Object.keys(body)) {
           data[key] = { state: "ok" };
         }
-        return { data };
+        return data;
       },
     );
 
@@ -307,24 +299,104 @@ describe("uploadDebugFiles", () => {
       maxWaitMs: 1000,
     });
 
-    expect(apiRequestToRegionMock).toHaveBeenCalledTimes(1);
+    expect(assembleMock).toHaveBeenCalledTimes(1);
     expect(Object.keys(lastAssembleBody())).toHaveLength(2);
     expect(results).toHaveLength(2);
+  });
+
+  test("includes code_id and shader_group only when provided", async () => {
+    assembleMock.mockImplementation(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const body = assembleBody as Record<string, unknown>;
+        const data: Record<string, { state: string }> = {};
+        for (const key of Object.keys(body)) {
+          data[key] = { state: "ok" };
+        }
+        return data;
+      },
+    );
+
+    await uploadDebugFiles({
+      ...SOLE,
+      difs: [
+        {
+          ...makeDif(
+            "shader.dxil",
+            "DXBC shader",
+            "a223507a-29b5-0f71-32d4-4901c2228311",
+          ),
+          codeId: "d9a5d2fa49f0cf6c",
+          shaderGroup: "Global/FSentryTestCS/0",
+        },
+      ],
+      wait: false,
+      maxWaitMs: 1000,
+    });
+    const [entry] = Object.values(lastAssembleBody()) as Record<
+      string,
+      unknown
+    >[];
+    expect(entry?.code_id).toBe("d9a5d2fa49f0cf6c");
+    expect(entry?.shader_group).toBe("Global/FSentryTestCS/0");
+
+    await uploadDebugFiles({
+      ...SOLE,
+      difs: [makeDif("libfoo.so", "ELF debug bytes", "abc123-def")],
+      wait: false,
+      maxWaitMs: 1000,
+    });
+    const [plain] = Object.values(lastAssembleBody()) as Record<
+      string,
+      unknown
+    >[];
+    expect(plain).not.toHaveProperty("code_id");
+    expect(plain).not.toHaveProperty("shader_group");
+  });
+
+  test("splits the assemble request into batches and merges the responses", async () => {
+    assembleMock.mockImplementation(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const body = assembleBody as Record<string, unknown>;
+        const data: Record<string, { state: string }> = {};
+        for (const key of Object.keys(body)) {
+          data[key] = { state: "ok" };
+        }
+        return data;
+      },
+    );
+    const difs = Array.from({ length: ASSEMBLE_BATCH_SIZE + 1 }, (_, i) =>
+      makeDif(`f${i}.so`, `bytes ${i}`, `id-${i}`),
+    );
+
+    const results = await uploadDebugFiles({
+      ...SOLE,
+      difs,
+      wait: false,
+      maxWaitMs: 1000,
+    });
+
+    expect(assembleMock).toHaveBeenCalledTimes(2);
+    const sizes = assembleMock.mock.calls.map(
+      (call) => Object.keys(call[2] as object).length,
+    );
+    expect(sizes).toEqual([ASSEMBLE_BATCH_SIZE, 1]);
+    expect(results).toHaveLength(ASSEMBLE_BATCH_SIZE + 1);
+    expect(results.every((r) => r.state === "ok")).toBe(true);
   });
 
   test("re-sends every chunk when server response omits a file's entry", async () => {
     // First call: server has no record of either file (entries missing).
     // Second call: server holds both files. No-wait completes on the second
     // call after the chunks are re-uploaded.
-    apiRequestToRegionMock.mockImplementationOnce(async () => ({ data: {} }));
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const body = init.body as Record<string, unknown>;
+    assembleMock.mockImplementationOnce(async () => ({}));
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const body = assembleBody as Record<string, unknown>;
         const data: Record<string, { state: string }> = {};
         for (const key of Object.keys(body)) {
           data[key] = { state: "ok" };
         }
-        return { data };
+        return data;
       },
     );
 
@@ -337,26 +409,26 @@ describe("uploadDebugFiles", () => {
 
     // First call has the file's entry missing from response, so all its
     // chunks must have been queued for re-upload.
-    expect(uploadMissingBufferChunksMock).toHaveBeenCalled();
-    const firstCall = uploadMissingBufferChunksMock.mock.calls[0]?.[0];
-    const passedMissing = firstCall?.missingChecksums as Set<string>;
-    expect(passedMissing.size).toBeGreaterThan(0);
+    expect(uploadChunkPayloadsMock).toHaveBeenCalled();
+    const firstCall = uploadChunkPayloadsMock.mock.calls[0]?.[0];
+    const passedChunks = firstCall?.chunks as unknown[];
+    expect(passedChunks.length).toBeGreaterThan(0);
   });
 
   test("re-sends every chunk when entry state is not_found without missingChunks", async () => {
     // Server returns `not_found` but omits the `missingChunks` field — the
     // client must still upload all chunks for that file, otherwise the loop
     // would poll forever without sending anything.
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const key = Object.keys(init.body as object)[0] as string;
-        return { data: { [key]: { state: "not_found" } } };
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const key = Object.keys(assembleBody as object)[0] as string;
+        return { [key]: { state: "not_found" } };
       },
     );
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const key = Object.keys(init.body as object)[0] as string;
-        return { data: { [key]: { state: "ok" } } };
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const key = Object.keys(assembleBody as object)[0] as string;
+        return { [key]: { state: "ok" } };
       },
     );
 
@@ -367,22 +439,22 @@ describe("uploadDebugFiles", () => {
       maxWaitMs: 60_000,
     });
 
-    const firstCall = uploadMissingBufferChunksMock.mock.calls[0]?.[0];
-    const passedMissing = firstCall?.missingChecksums as Set<string>;
+    const firstCall = uploadChunkPayloadsMock.mock.calls[0]?.[0];
+    const passedChunks = firstCall?.chunks as unknown[];
     // Must contain the file's chunk checksums, not be empty.
-    expect(passedMissing.size).toBeGreaterThan(0);
+    expect(passedChunks.length).toBeGreaterThan(0);
   });
 
   test("does not assemble oversized files but reports them as failures", async () => {
     setServerOptions({ maxFileSize: 5 });
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const body = init.body as Record<string, unknown>;
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const body = assembleBody as Record<string, unknown>;
         const data: Record<string, { state: string }> = {};
         for (const key of Object.keys(body)) {
           data[key] = { state: "ok" };
         }
-        return { data };
+        return data;
       },
     );
 
@@ -423,7 +495,7 @@ describe("uploadDebugFiles", () => {
         maxWaitMs: 1000,
       }),
     ).rejects.toThrow(/exceed the maximum file size/);
-    expect(apiRequestToRegionMock).not.toHaveBeenCalled();
+    expect(assembleMock).not.toHaveBeenCalled();
   });
 
   test("clamps the wait to the server maxWait (reflected in the timeout)", async () => {
@@ -431,10 +503,10 @@ describe("uploadDebugFiles", () => {
     vi.useFakeTimers();
     // Always "assembling" → never terminal. The clamped 1s deadline trips
     // well before the requested 60s.
-    apiRequestToRegionMock.mockImplementation(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const key = Object.keys(init.body as object)[0] as string;
-        return { data: { [key]: { state: "assembling" } } };
+    assembleMock.mockImplementation(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const key = Object.keys(assembleBody as object)[0] as string;
+        return { [key]: { state: "assembling" } };
       },
     );
 
@@ -454,10 +526,10 @@ describe("uploadDebugFiles", () => {
   test("does not clamp when the server advertises no maxWait (0)", async () => {
     setServerOptions({ maxWait: 0 });
     const dif = makeDif("ok.so", "debug bytes", "id-ok");
-    apiRequestToRegionMock.mockImplementationOnce(
-      async (_url: string, _endpoint: string, init: { body: object }) => {
-        const key = Object.keys(init.body as object)[0] as string;
-        return { data: { [key]: { state: "ok" } } };
+    assembleMock.mockImplementationOnce(
+      async (_org: string, _project: string, assembleBody: object) => {
+        const key = Object.keys(assembleBody as object)[0] as string;
+        return { [key]: { state: "ok" } };
       },
     );
 

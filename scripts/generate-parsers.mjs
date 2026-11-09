@@ -10,14 +10,8 @@
  * with the TypeScript parser, are rebased so they resolve to the same
  * modules from there; nothing else in the file changes.
  *
- * toolkit-core has no build step, so its parser is committed and
- * `pnpm run check:generated` fails when it is out of date. The CLI generates
- * its parser at build time (`pnpm run generate:grammar` in packages/cli).
- *
- * `packages/toolkit-core/grammar/search-syntax.pegjs` is a byte-for-byte copy
- * of the Sentry frontend grammar at
- *   https://github.com/getsentry/sentry/blob/master/static/app/components/searchSyntax/grammar.pegjs
- * so the two can converge on one source.
+ * The CLI generates its parsers at build time (`pnpm run generate:grammar`
+ * in packages/cli).
  *
  * Usage:
  *   node scripts/generate-parsers.mjs <package-dir>

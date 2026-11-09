@@ -16,17 +16,33 @@ import type { SentryContext } from "../context.js";
 import {
   isReplaySortValue,
   listReplays,
+  REPLAY_SORT_FIELDS,
   queryEvents,
   queryEventsTimeSeries,
   queryMetricsMeta,
 } from "../lib/api-client.js";
+import { sentry } from "../lib/app-identity.js";
 import { validateLimit } from "../lib/arg-parsing.js";
+import {
+  choiceParser,
+  DATASET_FIELDS,
+  type DatasetCompletion,
+  fieldOrAggregateParser,
+  parseEnvironmentList,
+  parseText,
+  textParser,
+} from "../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
   hasPreviousPage,
   resolveCursor,
 } from "../lib/db/pagination.js";
+import {
+  buildDatasetParser,
+  datasetDisplayName,
+  isEventsDataset,
+} from "../lib/datasets.js";
 import { toSearchQueryError, ValidationError } from "../lib/errors.js";
 import { toExploreFieldError } from "../lib/explore-errors.js";
 import {
@@ -53,7 +69,7 @@ import {
   targetPatternExplanation,
 } from "../lib/list-command.js";
 import { logger } from "../lib/logger.js";
-import { resolveMetricField } from "../lib/metrics-transform.js";
+import { resolveMetricField, VALID_AGGS } from "../lib/metrics-transform.js";
 import { withProgress } from "../lib/polling.js";
 import {
   DEFAULT_REPLAY_EXPLORE_FIELDS,
@@ -63,6 +79,7 @@ import {
   listSupportedReplayFields,
   parseReplayEnvironmentFilter,
 } from "../lib/replay-search.js";
+import { resolveLogProjectId } from "../lib/resolve-target.js";
 import { sanitizeQuery } from "../lib/search-query.js";
 import { shellQuote } from "../lib/utils.js";
 import {
@@ -77,6 +94,7 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../lib/time-range.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("explore");
 
@@ -100,44 +118,38 @@ const DEFAULT_PERIOD = "24h";
 /** Command key for pagination cursor storage */
 const PAGINATION_KEY = "explore";
 
+const DATASETS = buildDatasetParser(
+  ["errors", "spans", "tracemetrics", "logs", "replays"],
+  [...LEGACY_TRANSACTION_DATASETS],
+);
+
 /**
- * Dataset aliases: user-facing name → API-level dataset name.
- *
- * All entries are accepted as `--dataset` values. `VALID_DATASETS` controls
- * which appear in `--help` and validation error messages.
+ * What `--field` completes on each dataset: attribute or tag keys and
+ * aggregates, or the replay fields the CLI renders. `transaction(s)`
+ * queries spans.
  */
-const DATASET_ALIASES: Record<string, string> = {
-  errors: "errors",
-  error: "errors",
-  spans: "spans",
-  span: "spans",
-  metrics: "tracemetrics",
-  logs: "logs",
-  log: "logs",
-  replays: "replays",
-  replay: "replays",
+const FIELD_COMPLETION: DatasetCompletion = {
+  datasets: {
+    ...DATASET_FIELDS,
+    replays: { fields: listSupportedReplayFields() },
+  },
+  aliases: {
+    ...DATASETS.aliases,
+    ...Object.fromEntries(
+      [...LEGACY_TRANSACTION_DATASETS].map((name) => [name, "spans"]),
+    ),
+  },
+  default: DEFAULT_DATASET,
 };
 
-/**
- * User-facing dataset names shown in `--help` and validation errors.
- *
- * Set preserves insertion order for the join-based help/error rendering.
- */
-const VALID_DATASETS = new Set([
-  "errors",
-  "spans",
-  "metrics",
-  "logs",
-  "replays",
-]);
-
-/**
- * Reverse map from API-level dataset name → canonical user-facing name.
- * Used by pagination hints so they emit `--dataset metrics` not `--dataset tracemetrics`.
- */
-const API_TO_USER_DATASET = new Map(
-  Array.from(VALID_DATASETS, (name) => [DATASET_ALIASES[name] ?? name, name]),
-);
+/** What `--sort` completes: `--field`'s, but replays sort by their own fields. */
+const SORT_COMPLETION: DatasetCompletion = {
+  ...FIELD_COMPLETION,
+  datasets: {
+    ...FIELD_COMPLETION.datasets,
+    replays: { fields: REPLAY_SORT_FIELDS },
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -182,22 +194,6 @@ type ExploreData = {
 // ---------------------------------------------------------------------------
 // Flag parsing
 // ---------------------------------------------------------------------------
-
-/**
- * Parse and validate dataset flag value.
- * Accepts canonical names and common aliases.
- */
-function parseDataset(value: string): string {
-  const lower = value.toLowerCase();
-  const resolved = DATASET_ALIASES[lower];
-  if (resolved || LEGACY_TRANSACTION_DATASETS.has(lower)) {
-    return resolved ?? lower;
-  }
-  throw new ValidationError(
-    `Invalid dataset "${value}". Must be one of: ${Array.from(VALID_DATASETS).join(", ")}`,
-    "dataset",
-  );
-}
 
 /**
  * Parse --limit flag. Capped at {@link LIST_MAX_LIMIT} (1000).
@@ -277,7 +273,7 @@ function orderFieldNames(
 
 /** Format explore results for human-readable terminal output */
 function formatExploreHuman(data: ExploreData | ExploreTimeSeriesData): string {
-  const displayDataset = API_TO_USER_DATASET.get(data.dataset) ?? data.dataset;
+  const displayDataset = datasetDisplayName(data.dataset);
   if ("timeSeries" in data) {
     return formatExploreTimeSeriesHuman({ ...data, dataset: displayDataset });
   }
@@ -401,9 +397,7 @@ function appendFlagHints(
     flags.dataset === "replays" ? DEFAULT_REPLAY_SORT : undefined;
   if (flags.dataset !== DEFAULT_DATASET) {
     // Emit user-facing name, not API-level name (e.g. "metrics" not "tracemetrics")
-    const displayDataset =
-      API_TO_USER_DATASET.get(flags.dataset) ?? flags.dataset;
-    parts.push(`--dataset ${displayDataset}`);
+    parts.push(`--dataset ${datasetDisplayName(flags.dataset)}`);
   }
   appendMetricHints(parts, flags.metric, flags.agg);
   appendSortHint(parts, flags.sort, defaultSort);
@@ -443,8 +437,8 @@ function validateMetricsFields(fieldList: string[]): void {
     `Invalid metrics aggregate${badAggs.length > 1 ? "s" : ""}: ${badAggs.join(", ")}\n\n` +
       "The metrics dataset requires the format: aggregation(value,metric_name,metric_type,unit)\n\n" +
       "Examples:\n" +
-      '  sentry explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics\n' +
-      '  sentry explore my-org/ -F gen_ai.request.model -F "avg(value,cache.hit_rate,distribution,none)" --dataset metrics\n\n' +
+      `  ${sentry`explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics`}\n` +
+      `  ${sentry`explore my-org/ -F gen_ai.request.model -F "avg(value,cache.hit_rate,distribution,none)" --dataset metrics`}\n\n` +
       "Parameters:\n" +
       '  - value: literal string "value"\n' +
       "  - metric_name: the metric name emitted by the SDK (e.g., llm.token_usage)\n" +
@@ -497,17 +491,24 @@ function buildEnvironmentQuery(
   return `environment:[${environment.join(",")}]`;
 }
 
-/** Resolve the shared dataset and filters for tabular and temporal queries. */
+/**
+ * Resolve the shared dataset and filters for tabular and temporal queries.
+ *
+ * A resolved `projectId` scopes the request through the `project` param;
+ * `project:<slug>` is only the fallback because it matches just the projects
+ * the requester is a member of (#1317).
+ */
 function resolveEventsQuery(
   dataset: string,
   query: string | undefined,
   project: string | undefined,
   environment: string[] | undefined,
+  projectId: number | undefined,
 ) {
   const userQuery = sanitizeQuery(query, { allowBoolean: true });
   const legacyTransactions = LEGACY_TRANSACTION_DATASETS.has(dataset);
   const scope = [
-    project ? `project:${project}` : undefined,
+    project && projectId === undefined ? `project:${project}` : undefined,
     buildEnvironmentQuery(environment),
     legacyTransactions ? IS_TRANSACTION_FILTER : undefined,
   ]
@@ -518,8 +519,15 @@ function resolveEventsQuery(
     legacyTransactions && userQuery === IS_TRANSACTION_FILTER
       ? undefined
       : userQuery;
+  const apiDataset = legacyTransactions ? "spans" : dataset;
+  if (!isEventsDataset(apiDataset)) {
+    throw new ValidationError(
+      `The ${datasetDisplayName(apiDataset)} dataset can't be queried through the Events API.`,
+      "dataset",
+    );
+  }
   return {
-    dataset: legacyTransactions ? "spans" : dataset,
+    dataset: apiDataset,
     query:
       scope && scopedQuery ? `${scope} (${scopedQuery})` : scope || scopedQuery,
   };
@@ -562,8 +570,8 @@ function validateTimeSeriesFlags(flags: ExploreFlags): void {
  * sort, and returns a fetch function that calls `listReplays`. For all other
  * datasets it translates `--environment` values into `environment:...` query
  * filter terms, resolves the sort with {@link resolveEventsSort} (which also
- * selects the sort column), prepends `project:<slug>` to the query, and
- * returns a `queryEvents` fetch.
+ * selects the sort column), scopes the project by ID (falling back to a
+ * `project:<slug>` query term), and returns a `queryEvents` fetch.
  */
 function resolveDatasetConfig(params: {
   dataset: string;
@@ -571,9 +579,11 @@ function resolveDatasetConfig(params: {
   flags: ExploreFlags;
   org: string;
   project: string | undefined;
+  projectId: number | undefined;
   environment: string[] | undefined;
 }): DatasetConfig {
-  const { dataset, fieldList, flags, org, project, environment } = params;
+  const { dataset, fieldList, flags, org, project, projectId, environment } =
+    params;
   if (dataset === "replays") {
     const userQuery = sanitizeQuery(flags.query);
     const unsupportedField = fieldList.find(
@@ -623,6 +633,7 @@ function resolveDatasetConfig(params: {
     flags.query,
     project,
     environment,
+    projectId,
   );
 
   // Every Events dataset honors sort as long as the sort column is selected.
@@ -642,14 +653,14 @@ function resolveDatasetConfig(params: {
         fields,
         dataset: resolved.dataset,
         query,
+        projectId,
         sort,
         limit,
         cursor,
         ...timeRangeToApiParams(timeRange),
       }).catch((error: unknown): never => {
         throw toExploreFieldError(error, {
-          dataset:
-            API_TO_USER_DATASET.get(resolved.dataset) ?? resolved.dataset,
+          dataset: datasetDisplayName(resolved.dataset),
           fields,
           userFields: (flags.field ?? []).filter(
             (field) => !flags.metric || !isAggregateFieldOrEquation(field),
@@ -679,14 +690,15 @@ function buildResultHint(rowCount: number, nav: string): string | undefined {
 
 export const exploreCommand = buildListCommand("explore", {
   docs: {
-    brief: "Query aggregate event data (Explore)",
+    brief: topLevelBrief("explore"),
     fullDescription:
       "Query the Sentry Explore API for aggregate event data.\n\n" +
       "Supports arbitrary fields including columns (title, project),\n" +
       "aggregates (count(), count_unique(user), p50(span.duration)),\n" +
-      "and equations. Results are returned as a table.\n\n" +
+      "and equations. Results default to a table.\n\n" +
       "Use --time-series to calculate aggregates in time buckets with an automatic interval, " +
       "or pass a bucket duration such as --time-series 15m (-b 15m). " +
+      "Time series use one chart per aggregate on graphics-capable terminals, with table fallback. " +
       "This is a single historical query, not a live stream. " +
       "Grouping, --sort, --limit, and --cursor are table-only.\n\n" +
       "Datasets:\n" +
@@ -697,105 +709,90 @@ export const exploreCommand = buildListCommand("explore", {
       "  replays  Session replay search\n\n" +
       "Events queries support AND, OR, and parentheses. Project, environment, " +
       "and transaction scope apply to the entire query.\n\n" +
-      "A <org>/<project> target adds project:<slug> to the query. " +
+      "A <org>/<project> target scopes the query to that project. " +
       targetPatternExplanation(),
     examples: [
       {
         description: "Top errors in the last 24 hours, scoped to a project",
-        command: "sentry explore my-org/cli",
+        run: "explore my-org/cli",
       },
       {
         description: "All projects in an organization",
-        command: "sentry explore my-org/",
+        run: "explore my-org/",
       },
       {
         description: "Bare project slug (searches across organizations)",
-        command: "sentry explore cli",
+        run: "explore cli",
       },
       {
         description: "Auto-detect the project from DSN/config",
-        command: "sentry explore",
+        run: "explore",
       },
       {
         description: "Errors with user impact for a specific UTC window",
-        command:
-          'sentry explore my-org/cli -F title -F "count()" -F "count_unique(user)" --period "2024-01-15T00:00:00Z..2024-01-16T00:00:00Z"',
+        run: 'explore my-org/cli -F title -F "count()" -F "count_unique(user)" --period "2024-01-15T00:00:00Z..2024-01-16T00:00:00Z"',
       },
       {
         description: "Filter by error type (combined with the project filter)",
-        command:
-          'sentry explore my-org/cli -F title -F "count()" -q "error.type:TypeError" --period 1h',
+        run: 'explore my-org/cli -F title -F "count()" -q "error.type:TypeError" --period 1h',
       },
       {
         description: "Combine span filters while keeping the project scope",
-        command:
-          'sentry explore my-org/cli --dataset spans -F "count()" -q "span.op:http.client OR span.status:internal_error"',
+        run: 'explore my-org/cli --dataset spans -F "count()" -q "span.op:http.client OR span.status:internal_error"',
       },
       {
         description: "Count a metric only for a matching release",
-        command:
-          "sentry explore my-org/ --dataset metrics -F 'count_if(`release:example`,value,request_duration,distribution,none)'",
+        run: "explore my-org/ --dataset metrics -F 'count_if(`release:example`,value,request_duration,distribution,none)'",
       },
       {
         description: "Span operation latency",
-        command:
-          'sentry explore my-org/cli -F span.op -F "p50(span.duration)" -F "p95(span.duration)" --dataset spans --period 1h',
+        run: 'explore my-org/cli -F span.op -F "p50(span.duration)" -F "p95(span.duration)" --dataset spans --period 1h',
       },
       {
         description: "Top spans by count",
-        command:
-          'sentry explore my-org/cli -F span.op -F "count()" --dataset spans --sort "-count()"',
+        run: 'explore my-org/cli -F span.op -F "count()" --dataset spans --sort "-count()"',
       },
       {
         description: "Error counts in 15-minute buckets over the last hour",
-        command: "sentry explore my-org/cli --time-series 15m --period 1h",
+        run: "explore my-org/cli --time-series 15m --period 1h",
       },
       {
         description:
           "Latency over time with automatic bucket duration, as JSON",
-        command:
-          'sentry explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series --period 24h --json',
+        run: 'explore my-org/cli --dataset spans -F "p95(span.duration)" --time-series --period 24h --json',
       },
       {
         description: "A metric over time using its discovered type and unit",
-        command:
-          "sentry explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg -b -t 1h",
+        run: "explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg -b -t 1h",
       },
       {
         description:
           "Sum a custom metric (e.g., LLM token usage) across an organization",
-        command:
-          "sentry explore my-org/ -m llm.token_usage --dataset metrics --period 7d",
+        run: "explore my-org/ -m llm.token_usage --dataset metrics --period 7d",
       },
       {
         description: "Break a metric down by a tag column",
-        command:
-          "sentry explore my-org/seer -F gen_ai.request.model -m llm.token_usage --dataset metrics --period 7d",
+        run: "explore my-org/seer -F gen_ai.request.model -m llm.token_usage --dataset metrics --period 7d",
       },
       {
         description: "Use a different metric aggregation (default is sum)",
-        command:
-          "sentry explore my-org/ -m cache.hit_rate --agg avg --dataset metrics",
+        run: "explore my-org/ -m cache.hit_rate --agg avg --dataset metrics",
       },
       {
         description: "Use the raw tracemetrics format",
-        command:
-          'sentry explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics --period 7d',
+        run: 'explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics --period 7d',
       },
       {
         description: "Filter replays by activity level",
-        command:
-          "sentry explore my-org/cli --dataset replays -F activity -F duration -F count_errors --period 7d",
+        run: "explore my-org/cli --dataset replays -F activity -F duration -F count_errors --period 7d",
       },
       {
         description: "Log severity counts in the last hour",
-        command:
-          'sentry explore my-org/cli -F severity -F "count()" --dataset logs --period 1h',
+        run: 'explore my-org/cli -F severity -F "count()" --dataset logs --period 1h',
       },
       {
         description: "Pipe JSON to jq",
-        command:
-          "sentry explore my-org/cli -F title -F \"count()\" --json | jq '.data[:5]'",
+        run: "explore my-org/cli -F title -F \"count()\" --json | jq '.data[:5]'",
       },
     ],
   },
@@ -818,7 +815,7 @@ export const exploreCommand = buildListCommand("explore", {
     flags: {
       field: {
         kind: "parsed",
-        parse: String,
+        parse: fieldOrAggregateParser(FIELD_COMPLETION),
         brief:
           'API field or aggregate (repeatable). E.g., title, "count()", "p50(span.duration)"',
         variadic: true,
@@ -826,55 +823,56 @@ export const exploreCommand = buildListCommand("explore", {
       },
       metric: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Metric name for --dataset metrics. Auto-resolves type/unit via API.",
         optional: true,
       },
       agg: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser([...VALID_AGGS]),
         brief: "Aggregation for --metric (sum, avg, count, p50, p95, etc.)",
         default: "sum",
       },
       dataset: {
         kind: "parsed",
-        parse: parseDataset,
-        brief: `Dataset to query (${[...VALID_DATASETS].join(", ")}; transaction(s) routes to spans)`,
+        parse: choiceParser(DATASETS.names, DATASETS.parse),
+        brief: `Dataset to query (${DATASETS.names.join(", ")}; transaction(s) routes to spans)`,
         default: DEFAULT_DATASET,
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Search query (Sentry search syntax)",
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: String,
+        parse: fieldOrAggregateParser(SORT_COMPLETION),
         brief: 'Sort field (prefix with - for desc, e.g., "-count()")',
         optional: true,
       },
       environment: {
         kind: "parsed",
-        parse: String,
+        parse: parseEnvironmentList,
         brief: "Environment filter (repeatable, comma-separated)",
         variadic: true,
         optional: true,
       },
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         placeholder: "number",
         brief: `Number of table rows (1-${LIST_MAX_LIMIT}, default: ${DEFAULT_LIMIT})`,
         optional: true,
       },
       "time-series": {
         kind: "parsed",
-        parse: (value: string) =>
+        parse: textParser((value: string) =>
           value === "" || value === "auto"
             ? "auto"
             : parseTimeSeriesInterval(value),
+        ),
         placeholder: "auto|interval",
         brief:
           "Query time series (default: auto; optional bucket duration, e.g., 15m)",
@@ -923,6 +921,11 @@ export const exploreCommand = buildListCommand("explore", {
         ? parsePeriod(flags.period)
         : flags.period;
     const environment = parseReplayEnvironmentFilter(flags.environment);
+    // Events queries scope by numeric ID; replays take the slug directly.
+    const projectId =
+      project && (flags.metric || dataset !== "replays")
+        ? await resolveLogProjectId(org, project)
+        : undefined;
 
     // --metric auto mode: resolve metric name → tracemetrics aggregate
     if (flags.metric) {
@@ -942,6 +945,7 @@ export const exploreCommand = buildListCommand("explore", {
           queryMetricsMeta(org, {
             ...metaParams,
             project,
+            projectId,
           }),
       );
 
@@ -956,10 +960,10 @@ export const exploreCommand = buildListCommand("explore", {
         throw new ValidationError(
           "The metrics dataset requires --metric or explicit --field flags.\n\n" +
             "Auto mode (recommended):\n" +
-            "  sentry explore my-org/ -m llm.token_usage --dataset metrics\n" +
-            "  sentry explore my-org/ -m llm.token_usage --agg avg --dataset metrics\n\n" +
+            `  ${sentry`explore my-org/ -m llm.token_usage --dataset metrics`}\n` +
+            `  ${sentry`explore my-org/ -m llm.token_usage --agg avg --dataset metrics`}\n\n` +
             "Manual mode (tracemetrics format):\n" +
-            '  sentry explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics',
+            `  ${sentry`explore my-org/ -F "sum(value,llm.token_usage,distribution,none)" --dataset metrics`}`,
           "field",
         );
       }
@@ -972,6 +976,7 @@ export const exploreCommand = buildListCommand("explore", {
         flags.query,
         project,
         environment,
+        projectId,
       );
       const timeParams = timeRangeToApiParams(timeRange);
       const interval = resolveTimeSeriesInterval(
@@ -988,12 +993,12 @@ export const exploreCommand = buildListCommand("explore", {
             fields: fieldList,
             dataset: resolved.dataset,
             query: resolved.query,
+            projectId,
             interval,
             ...timeParams,
           }).catch((error: unknown): never => {
             const fieldError = toExploreFieldError(error, {
-              dataset:
-                API_TO_USER_DATASET.get(resolved.dataset) ?? resolved.dataset,
+              dataset: datasetDisplayName(resolved.dataset),
               fields: fieldList,
               userFields: (flags.field ?? []).filter(
                 (field) => !flags.metric || !isAggregateFieldOrEquation(field),
@@ -1019,6 +1024,7 @@ export const exploreCommand = buildListCommand("explore", {
       flags,
       org,
       project,
+      projectId,
       environment,
     });
 
@@ -1064,11 +1070,11 @@ export const exploreCommand = buildListCommand("explore", {
       hasPrev,
       hasMore,
       prevHint: appendFlagHints(
-        `sentry explore ${baseTarget} -c prev`,
+        sentry`explore ${baseTarget} -c prev`,
         hintFlags,
       ),
       nextHint: appendFlagHints(
-        `sentry explore ${baseTarget} -c next`,
+        sentry`explore ${baseTarget} -c next`,
         hintFlags,
       ),
     });

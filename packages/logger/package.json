@@ -1,0 +1,72 @@
+{
+  "name": "@sentry/logger",
+  "version": "1.0.0-dev.0",
+  "description": "A small, dependency-free structured logger with consola-style, JSON, logfmt, and Sentry reporters",
+  "type": "module",
+  "license": "MIT",
+  "author": "Sentry",
+  "homepage": "https://github.com/getsentry/toolkit/tree/main/packages/logger#readme",
+  "keywords": [
+    "sentry",
+    "logger",
+    "logging",
+    "structured-logging",
+    "logfmt",
+    "consola"
+  ],
+  "bugs": {
+    "url": "https://github.com/getsentry/toolkit/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/toolkit.git",
+    "directory": "packages/logger"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "sentryCi": {
+    "e2e": "test:package"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        },
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "bench": "tsdown && node bench/run.mjs",
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
+    "test:package": "bash test/package/check.sh",
+    "tsc": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

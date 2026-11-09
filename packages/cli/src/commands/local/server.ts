@@ -1,3 +1,10 @@
+import { sentry } from "../../lib/app-identity.js";
+import {
+  choiceParser,
+  parseBindHost,
+  parseText,
+  textParser,
+} from "../../lib/completion-target.js";
 import { isHostedUiOrigin, LOCAL_SESSION_EVENT } from "./viewer-protocol.js";
 export { isHostedUiOrigin } from "./viewer-protocol.js";
 import { isLoopbackHost } from "./loopback.js";
@@ -515,6 +522,7 @@ function waitForShutdown(server: Server): Promise<void> {
 
     function shutdown(signal: NodeJS.Signals) {
       if (shuttingDown) {
+        // oxlint-disable-next-line sentry-cli/no-process-exit -- a second SIGINT/SIGTERM during shutdown.
         process.exit(0);
       }
       shuttingDown = true;
@@ -1017,33 +1025,33 @@ export const serverCommand = buildCommand({
     examples: [
       {
         description: "Start the server and tail events",
-        command: "sentry local",
+        run: "local",
       },
-      { description: "Use a custom port", command: "sentry local --port 9000" },
+      { description: "Use a custom port", run: "local --port 9000" },
       {
         description:
           "Receive into a daemon session that outlives this terminal",
-        command: "sentry local serve --session worker",
+        run: "local serve --session worker",
       },
       {
         description: "Only show errors and logs (filter out transactions)",
-        command: "sentry local -f error -f log",
+        run: "local -f error -f log",
       },
       {
         description: "Only show AI/agent spans",
-        command: "sentry local -f ai",
+        run: "local -f ai",
       },
       {
         description: "Suppress per-envelope tail output",
-        command: "sentry local --quiet",
+        run: "local --quiet",
       },
       {
         description: "Stream NDJSON for scripts and agents",
-        command: "sentry local --format json",
+        run: "local --format json",
       },
       {
         description: "Start the server and open the Sentry Local UI",
-        command: "sentry local --open",
+        run: "local --open",
       },
     ],
   },
@@ -1051,13 +1059,13 @@ export const serverCommand = buildCommand({
     flags: {
       port: {
         kind: "parsed",
-        parse: parsePort,
+        parse: textParser(parsePort),
         brief: "Port to listen on",
         default: String(DEFAULT_PORT),
       },
       host: {
         kind: "parsed",
-        parse: String,
+        parse: parseBindHost,
         brief: "Hostname to bind to",
         default: "localhost",
       },
@@ -1068,7 +1076,7 @@ export const serverCommand = buildCommand({
       },
       filter: {
         kind: "parsed",
-        parse: parseFilter,
+        parse: choiceParser(FILTER_VALUES, parseFilter),
         brief:
           "Only show items of this type (repeatable: error, transaction, log, ai)",
         variadic: true,
@@ -1076,7 +1084,7 @@ export const serverCommand = buildCommand({
       },
       format: {
         kind: "parsed",
-        parse: parseFormat,
+        parse: choiceParser(FORMAT_VALUES, parseFormat),
         brief: "Output format: human (default) or json (NDJSON on stdout)",
         default: "human",
       },
@@ -1094,7 +1102,7 @@ export const serverCommand = buildCommand({
       "max-envelopes": OPTIONAL_MAX_ENVELOPES_FLAG,
       session: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Create a daemon-owned telemetry session with this label",
         optional: true,
       },
@@ -1129,7 +1137,7 @@ export const serverCommand = buildCommand({
       printLocalViewerHint(session.streamUrl, flags.format === "json");
       logger.info(`  Session: ${bold(session.id)} (${session.label})`);
       logger.info(
-        `  Capabilities: sentry local session view ${session.id} --json`,
+        `  Capabilities: ${sentry`local session view ${session.id} --json`}`,
       );
       logger.info("Press Ctrl-C to stop.");
       await openLocalUiIfRequested(
@@ -1240,7 +1248,7 @@ export const serverCommand = buildCommand({
       `  Set ${bold("SENTRY_SPOTLIGHT")}=${listenUrl}/stream in your app`,
     );
     logger.info(
-      `  Or run: ${bold(`sentry local run -p ${boundPort} -- <your-command>`)}`,
+      `  Or run: ${bold(sentry`local run -p ${boundPort} -- <your-command>`)}`,
     );
     if (activeFilters.size > 0) {
       logger.info(`  Filtering: ${[...activeFilters].join(", ")}`);

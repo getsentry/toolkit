@@ -9,7 +9,7 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { ArgumentParseError, FlagNotFoundError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
@@ -34,7 +34,6 @@ import {
   ResolutionError,
   SeerError,
   ValidationError,
-  WizardError,
 } from "../../src/lib/errors.js";
 
 // ---------------------------------------------------------------------------
@@ -263,6 +262,18 @@ describe("classifySilenced", () => {
       cause: new Error("read ETIMEDOUT"),
     });
     expect(classifySilenced(err)).toBe("network_error");
+  });
+
+  test("silences a fetch failure wrapped as ApiError(0) (CLI-29S)", () => {
+    const wrapped = new ApiError("Failed to create release: Network error", 0);
+    wrapped.cause = new TypeError("fetch failed");
+    expect(classifySilenced(wrapped)).toBe("network_error");
+  });
+
+  test("does NOT silence ApiError(0) wrapping a non-network error", () => {
+    const wrapped = new ApiError("Failed to create release: Network error", 0);
+    wrapped.cause = new Error("unable to open database file");
+    expect(classifySilenced(wrapped)).toBeNull();
   });
 
   test("does NOT silence a TLS cert error wrapped as ApiError(0)", () => {
@@ -685,7 +696,7 @@ describe("reportCliError integration", () => {
     expect(error).toBeInstanceOf(MalformedAuthTokenError);
 
     const { tags, contexts } = capturedScopeTags(error);
-    expect(captureSpy).toHaveBeenCalledExactlyOnceWith(error);
+    expect(captureSpy).toHaveBeenCalledExactlyOnceWith(error, undefined);
     expect(metricSpy).not.toHaveBeenCalled();
     expect(tags).toMatchObject({
       "cli_error.class": "MalformedAuthTokenError",
@@ -701,6 +712,31 @@ describe("reportCliError integration", () => {
     });
     expect(diagnostics).not.toContain(firstPart);
     expect(diagnostics).not.toContain(secondPart);
+  });
+
+  test("passes the caller's tags and extras to the captured event", () => {
+    const error = new Error("disk failed");
+    const context = {
+      level: "warning" as const,
+      tags: { "setup.step": "agent-skills" },
+      extra: { path: "/tmp/skill" },
+    };
+    reportCliError(error, context);
+    expect(captureSpy).toHaveBeenCalledExactlyOnceWith(error, context);
+  });
+
+  test("silences a 4xx ApiError even when the caller passes context", () => {
+    reportCliError(new ApiError("forbidden", 403), {
+      tags: { "setup.step": "agent-skills" },
+    });
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({ reason: "api_user_error" }),
+      }),
+    );
   });
 
   test("captures ApiError(400) with normalized endpoint tag", () => {
@@ -734,14 +770,6 @@ describe("reportCliError integration", () => {
     );
     expect(tags["cli_error.class"]).toBe("HostScopeError");
     expect(tags["cli_error.kind"]).toBe("host_scope");
-  });
-
-  test("WizardError gets kind=wizard", () => {
-    const { tags } = capturedScopeTags(
-      new WizardError("Workflow returned an error"),
-    );
-    expect(tags["cli_error.class"]).toBe("WizardError");
-    expect(tags["cli_error.kind"]).toBe("wizard");
   });
 
   test("bare CliError gets kind from message prefix", () => {
@@ -834,7 +862,7 @@ describe("reportArgumentError", () => {
   let messageSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    messageSpy = vi.spyOn(Sentry, "captureMessage");
+    messageSpy = vi.spyOn(Sentry, "captureEvent");
   });
 
   afterEach(() => {
@@ -848,7 +876,8 @@ describe("reportArgumentError", () => {
       new ValidationError("Invalid period 'bogus'", "period"),
     );
     reportArgumentError(error, 'Failed to parse "bogus" for period');
-    expect(messageSpy).toHaveBeenCalledWith("invalid_argument", {
+    expect(messageSpy).toHaveBeenCalledWith({
+      message: "invalid_argument",
       level: "info",
       tags: { "argument_error.class": "ArgumentParseError" },
       contexts: {
@@ -867,8 +896,8 @@ describe("reportArgumentError", () => {
       "No flag registered for --nope",
     );
     expect(messageSpy).toHaveBeenCalledWith(
-      "invalid_argument",
       expect.objectContaining({
+        message: "invalid_argument",
         contexts: {
           invalid_argument: expect.objectContaining({
             error_class: "FlagNotFoundError",

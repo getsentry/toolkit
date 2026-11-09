@@ -44,6 +44,7 @@
 
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { logger } from "../src/lib/logger.js";
 
 /**
  * Read `patchedDependencies` from the workspace configuration.
@@ -81,6 +82,8 @@ function parsePatchedDependencies(source: string): Record<string, string> {
   return patches;
 }
 
+const require_ = createRequire(import.meta.url);
+
 /**
  * Resolve an installed package file to the copy THIS package actually uses.
  *
@@ -105,14 +108,7 @@ function parsePatchedDependencies(source: string): Record<string, string> {
  * @param subpath - Package subpath, e.g. `@sentry/core/build/cjs/index.js`.
  * @returns Absolute path to the resolved file, or null if unresolvable.
  */
-const require_ = createRequire(import.meta.url);
-const mastraRequire = createRequire(require_.resolve("@mastra/client-js"));
-const uiUtilsRequire = createRequire(mastraRequire.resolve("@ai-sdk/ui-utils"));
-
-function resolvePackageFile(
-  subpath: string,
-  resolver: NodeJS.Require = require_,
-): string | null {
+function resolvePackageFile(subpath: string): string | null {
   const parts = subpath.split("/");
   const pkgName = subpath.startsWith("@")
     ? `${parts[0]}/${parts[1]}`
@@ -120,7 +116,7 @@ function resolvePackageFile(
   const inner = subpath.slice(pkgName.length + 1);
   try {
     // Resolve the package's main entry to locate the exact installed copy.
-    const mainEntry = resolver.resolve(pkgName);
+    const mainEntry = require_.resolve(pkgName);
     // The install dir is "<...>/node_modules/<pkgName>". Anchor on the last
     // "node_modules/" boundary, then take the first "<pkgName>/" after it so a
     // self-vendored nested copy can't shift the truncation point.
@@ -180,9 +176,7 @@ for (const [key, patchPath] of Object.entries(patches)) {
   const patchVersion = versionMatch[1];
 
   // Resolve installed version
-  const resolver =
-    key === "@ai-sdk/provider-utils@2.2.8" ? uiUtilsRequire : require_;
-  const pkgJsonPath = resolvePackageFile(`${name}/package.json`, resolver);
+  const pkgJsonPath = resolvePackageFile(`${name}/package.json`);
   try {
     if (!pkgJsonPath) {
       throw new Error("unresolved");
@@ -225,15 +219,6 @@ for (const [key, patchPath] of Object.entries(patches)) {
  * `-v`=version alias in `runApplication` so `-v` stays the Sentry CLI's
  * `--verbose` alias at every position; `--version` remains the version flag.
  * The stale marker is the original `inputs[0] === "-v"` version check.
- *
- * @sentry/core and @sentry/node-core: these are tree-shaking patches that strip
- * unused re-exports (AI/integration modules) from the build barrels so esbuild
- * excludes them from the bundle. They edit bundler-generated barrels and are
- * therefore especially prone to silent context drift on a version bump. Each
- * marker is a re-export the patch removes (present in the pristine package,
- * absent once patched); its presence means the strip did NOT apply and the
- * bundle will re-bloat with the AI integrations — re-introducing the dangling
- * re-export class the patch guards against.
  */
 const CONTENT_ASSERTIONS: ReadonlyArray<{
   /** Installed file to inspect, relative to the resolved node_modules dir. */
@@ -308,30 +293,6 @@ const CONTENT_ASSERTIONS: ReadonlyArray<{
     description:
       "@stricli/core CJS: pluggable `renderHelp` hook missing (`sentry --help --json` will fall back to text help instead of structured JSON)",
   },
-  {
-    file: "@sentry/core/build/cjs/index.js",
-    staleMarker: "exports.instrumentOpenAiClient",
-    description:
-      "@sentry/core CJS: tree-shaking strip not applied (AI integrations re-bundled)",
-  },
-  {
-    file: "@sentry/core/build/esm/index.js",
-    staleMarker: "from './tracing/openai/index.js'",
-    description:
-      "@sentry/core ESM: tree-shaking strip not applied (AI integrations re-bundled)",
-  },
-  {
-    file: "@sentry/node-core/build/cjs/light/index.js",
-    staleMarker: "exports.dedupeIntegration",
-    description:
-      "@sentry/node-core CJS light: integration re-export strip not applied",
-  },
-  {
-    file: "@sentry/node-core/build/esm/light/index.js",
-    staleMarker: "dedupeIntegration",
-    description:
-      "@sentry/node-core ESM light: integration re-export strip not applied",
-  },
 ];
 
 for (const assertion of CONTENT_ASSERTIONS) {
@@ -361,84 +322,36 @@ for (const assertion of CONTENT_ASSERTIONS) {
   }
 }
 
-try {
-  const { createStatusCodeErrorResponseHandler } = uiUtilsRequire(
-    "@ai-sdk/provider-utils",
-  ) as {
-    createStatusCodeErrorResponseHandler: () => (options: {
-      response: Response;
-      url: string;
-      requestBodyValues: unknown;
-    }) => Promise<unknown>;
-  };
-  let cancelled = false;
-  const response = new Response(
-    new ReadableStream<Uint8Array>({
-      cancel() {
-        cancelled = true;
-      },
-    }),
-    {
-      status: 500,
-      headers: { "content-length": String(2 * 1024 * 1024 * 1024 + 1) },
-    },
-  );
-
-  await createStatusCodeErrorResponseHandler()({
-    response,
-    url: "https://example.invalid/oversized-response",
-    requestBodyValues: {},
-  }).then(
-    () => {
-      errors.push(
-        "  @ai-sdk/provider-utils: oversized response was accepted (resource-limit patch not applied)",
-      );
-    },
-    () => {
-      if (!cancelled) {
-        errors.push(
-          "  @ai-sdk/provider-utils: oversized response body was not cancelled",
-        );
-      }
-    },
-  );
-} catch (error) {
-  errors.push(
-    `  @ai-sdk/provider-utils: could not verify response-size limit (${String(error)})`,
-  );
-}
-
 // Emit GitHub Actions annotations for CI visibility
 const isCI = !!process.env.CI;
 for (const w of warnings) {
   if (isCI) {
+    // oxlint-disable-next-line no-console -- GitHub Actions reads workflow commands from stdout; the logger writes to stderr.
     console.log(`::warning::Patch version mismatch:${w.trim()}`);
   } else {
-    console.warn(`⚠ ${w}`);
+    logger.warn(w.trim());
   }
 }
 
 if (errors.length > 0) {
-  console.error("✗ Patch problems detected:");
-  console.error("");
-  for (const e of errors) {
-    console.error(e);
-  }
-  console.error("");
-  console.error(
-    "A missing package is fixed by `pnpm install`. A content-assertion failure",
+  logger.error(
+    [
+      "Patch problems detected:",
+      "",
+      ...errors,
+      "",
+      "A missing package is fixed by `pnpm install`. A content-assertion failure",
+      "means the patch no longer applies (likely a dependency bump) — regenerate",
+      "it with `pnpm patch <name>` and re-commit.",
+    ].join("\n"),
   );
-  console.error(
-    "means the patch no longer applies (likely a dependency bump) — regenerate",
-  );
-  console.error("it with `pnpm patch <name>` and re-commit.");
   process.exit(1);
 }
 
 if (warnings.length === 0) {
-  console.log("✓ All patched dependency versions match installed versions");
+  logger.success("All patched dependency versions match installed versions");
 } else {
-  console.log(
-    `✓ Patches applied (${warnings.length} version mismatch warning(s) — consider regenerating)`,
+  logger.success(
+    `Patches applied (${warnings.length} version mismatch warning(s) — consider regenerating)`,
   );
 }

@@ -1,4 +1,5 @@
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import {
   daemonRoute,
   envelopeRoute,
@@ -19,7 +20,7 @@ export const localRoute = buildRouteMap({
   },
   defaultCommand: "serve",
   docs: {
-    brief: "Sentry for local development",
+    brief: topLevelBrief("local"),
     fullDescription:
       "Run a local development server to capture Sentry SDK events\n" +
       "from your dev stack.\n\n" +

@@ -12,12 +12,11 @@ import chalk from "chalk";
 import stringWidth from "string-width";
 import wrapAnsi from "wrap-ansi";
 
+import type { InferOutput } from "valibot";
 import type {
-  DashboardWidgetQuery,
   ScalarResult,
   TableResult,
   TimeseriesResult,
-  WidgetDataResult,
 } from "../../types/dashboard.js";
 import { stringifyUnknown } from "../errors.js";
 import { encodeImageToKitty } from "../kitty-image.js";
@@ -29,6 +28,7 @@ import {
   graphicsCellSize,
   selectGraphicsFormat,
   terminalPixelWidth,
+  tmuxKittyPlacement,
 } from "../sixel.js";
 import { SERIES_PALETTE } from "./chart-core.js";
 import { COLORS, muted, terminalLink } from "./colors.js";
@@ -42,33 +42,22 @@ import { downsample, sparkline } from "./sparkline.js";
 // Data type yielded by dashboard view command
 // ---------------------------------------------------------------------------
 
-/** Full dashboard state with resolved widget data, yielded as CommandOutput. */
-export type DashboardViewData = {
-  id: string;
-  title: string;
-  period: string;
-  fetchedAt: string;
-  url: string;
-  dateCreated?: string;
-  environment?: string[];
+/**
+ * Full dashboard state with resolved widget data, yielded as CommandOutput:
+ * the JSON output ({@link DashboardViewOutputSchema}) plus the human-only
+ * rendering options the command strips from it (`jsonExclude`).
+ */
+export type DashboardViewData = InferOutput<
+  typeof DashboardViewOutputSchema
+> & {
   /** Renderer selected by --renderer; omitted for API/JSON output. */
   rendererPreference?: GraphicsRendererPreference;
   /** Whether the default high-DPI graphics width cap should apply. */
   graphicsCap?: boolean;
-  widgets: DashboardViewWidget[];
 };
 
 /** A widget with its resolved data result */
-export type DashboardViewWidget = {
-  title: string;
-  displayType: string;
-  widgetType?: string;
-  /** Markdown content for text widgets (from API passthrough field) */
-  description?: string;
-  layout?: { x: number; y: number; w: number; h: number };
-  queries?: DashboardWidgetQuery[];
-  data: WidgetDataResult;
-};
+export type DashboardViewWidget = DashboardViewData["widgets"][number];
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -364,6 +353,7 @@ import {
   formatCompactWithUnit,
   formatWithUnit,
 } from "./numbers.js";
+import type { DashboardViewOutputSchema } from "../../output-schemas/dashboard.js";
 
 /**
  * Format a value as a short Y-axis tick label (max ~4 chars).
@@ -1537,9 +1527,18 @@ function renderTextContent(content: string, innerWidth: number): string[] {
   return wrapped.split("\n");
 }
 
-/** Render placeholder content for unsupported/error widgets (no title/border). */
-function renderPlaceholderContent(message: string): string[] {
-  return [isPlainOutput() ? `(${message})` : muted(`(${message})`)];
+/**
+ * Render placeholder content for unsupported/error widgets (no title/border).
+ * Wraps to the widget width so long API details stay readable.
+ */
+function renderPlaceholderContent(
+  message: string,
+  innerWidth: number,
+): string[] {
+  const lines = wrapAnsi(`(${message})`, innerWidth, { hard: true }).split(
+    "\n",
+  );
+  return isPlainOutput() ? lines : lines.map((line) => muted(line));
 }
 
 // ---------------------------------------------------------------------------
@@ -1716,13 +1715,16 @@ function renderContentLines(opts: {
       return renderTextContent(data.content, innerWidth);
 
     case "unsupported":
-      return renderPlaceholderContent(data.reason);
+      return renderPlaceholderContent(data.reason, innerWidth);
 
     case "error":
-      return renderPlaceholderContent(`query failed: ${data.message}`);
+      return renderPlaceholderContent(
+        `query failed: ${data.message}`,
+        innerWidth,
+      );
 
     default:
-      return renderPlaceholderContent("unknown widget data type");
+      return renderPlaceholderContent("unknown widget data type", innerWidth);
   }
 }
 
@@ -2157,7 +2159,13 @@ function renderCompleteDashboardAsGraphics(
     },
     encodeImage:
       format === "kitty"
-        ? (image) => encodeImageToKitty(image, image.width, true)
+        ? (image) =>
+            encodeImageToKitty(
+              image,
+              image.width,
+              true,
+              tmuxKittyPlacement(graphicsColumns),
+            )
         : undefined,
   });
   if (!("output" in graphics)) {

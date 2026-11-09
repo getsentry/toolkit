@@ -17,11 +17,11 @@ import {
 
 import pLimit from "p-limit";
 
-import type {
-  ProjectKey,
-  Region,
-  SentryOrganization,
-  SentryProject,
+import {
+  DsnLookupResponseSchema,
+  type ProjectKey,
+  type SentryOrganization,
+  type SentryProject,
 } from "../../types/index.js";
 
 import {
@@ -30,9 +30,11 @@ import {
 } from "../db/project-cache.js";
 import { getCachedOrganizations } from "../db/regions.js";
 import { reportCliError } from "../error-reporting.js";
-import { type AuthGuardSuccess, withAuthGuard } from "../errors.js";
+import { ApiError, type AuthGuardSuccess, withAuthGuard } from "../errors.js";
 import { logger } from "../logger.js";
+import { resolveOrgRegion } from "../region.js";
 import { getApiBaseUrl } from "../sentry-client.js";
+import { isSentrySaasUrl } from "../sentry-urls.js";
 import { buildProjectUrl } from "../sentry-web-urls.js";
 import { isAllDigits } from "../utils.js";
 
@@ -48,7 +50,7 @@ import {
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
-import { getUserRegions, listOrganizations } from "./organizations.js";
+import { listOrganizations } from "./organizations.js";
 
 const log = logger.withTag("api.projects");
 
@@ -73,7 +75,7 @@ function reportBestEffortFailure(message: string, error: unknown): void {
  * @returns All projects in the organization
  */
 export async function listProjects(orgSlug: string): Promise<SentryProject[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const { data: allResults } = await autoPaginate(async (cursor) => {
     const result = await listOrganizationProjects({
@@ -123,7 +125,7 @@ export async function listProjectsPaginated(
   orgSlug: string,
   options: { cursor?: string; perPage?: number; query?: string } = {},
 ): Promise<PaginatedResponse<SentryProject[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const perPage = Math.min(
     options.perPage ?? API_MAX_PER_PAGE,
     API_MAX_PER_PAGE,
@@ -218,7 +220,7 @@ export async function createProject(
   teamSlug: string,
   body: CreateProjectBody,
 ): Promise<SentryProject> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await createTeamProject({
     ...config,
     path: {
@@ -299,8 +301,8 @@ function extractPublicKeyFromDsn(dsn: string): string | null {
 /**
  * Create a project, fetch its DSN, and build its dashboard URL.
  *
- * Shared core used by both `sentry project create` and `sentry init`.
- * Callers handle their own error wrapping and team resolution.
+ * Used by `sentry project create`, which handles error wrapping and team
+ * resolution.
  *
  * After creation, seeds the project cache and DSN-based project cache
  * so subsequent commands skip redundant API lookups.
@@ -376,7 +378,7 @@ export async function createProjectWithAutoTeam(
   orgSlug: string,
   body: CreateProjectBody,
 ): Promise<CreatedAutoTeamProjectDetails> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await createOrganizationProject({
     ...config,
     path: { organization_id_or_slug: orgSlug },
@@ -407,7 +409,7 @@ export async function deleteProject(
   orgSlug: string,
   projectSlug: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await sdkDeleteProject({
     ...config,
     path: {
@@ -552,66 +554,114 @@ export async function findProjectsByPattern(
 }
 
 /**
- * Find a project by DSN public key.
- *
- * Uses the /api/0/projects/ endpoint with query=dsn:<key> to search
- * across all accessible projects in all regions. This works for both
- * SaaS and self-hosted DSNs, even when the org ID is not embedded in the DSN.
- *
- * @param publicKey - The DSN public key (username portion of DSN URL)
- * @returns The matching project, or null if not found
+ * Bodies `dsn-lookup` sends with a 404 when the org has no project with the
+ * key. Any other 404 (an empty or `info` body from the catch-all route, or
+ * an empty body from the feature-flagged endpoint) means the server can't
+ * look up DSNs.
  */
-export async function findProjectByDsnKey(
+const DSN_LOOKUP_MISSES = new Set(["DSN not found", "Invalid DSN"]);
+
+/** Outcome of looking a DSN up in one organization. */
+type DsnLookupOutcome =
+  | { kind: "found"; project: SentryProject }
+  | { kind: "miss" }
+  | { kind: "unsupported" };
+
+/**
+ * Look a DSN up in one organization with `GET /organizations/{org}/dsn-lookup/`.
+ *
+ * The endpoint isn't in `@sentry/api` yet (it's still private), so this is
+ * a helper call until the publish lands.
+ */
+async function lookUpDsnInOrg(
+  org: SentryOrganization,
+  dsn: string,
+): Promise<DsnLookupOutcome> {
+  try {
+    const { data } = await apiRequestToRegion(
+      await resolveOrgRegion(org.slug),
+      `/organizations/${encodeURIComponent(org.slug)}/dsn-lookup/`,
+      { params: { dsn }, schema: DsnLookupResponseSchema },
+    );
+    return {
+      kind: "found",
+      project: {
+        id: data.projectId,
+        slug: data.projectSlug,
+        name: data.projectName,
+        organization: { id: org.id, slug: org.slug, name: org.name },
+      },
+    };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return DSN_LOOKUP_MISSES.has(error.detail ?? "")
+        ? { kind: "miss" }
+        : { kind: "unsupported" };
+    }
+    reportBestEffortFailure(
+      `DSN lookup failed in organization '${org.slug}'`,
+      error,
+    );
+    return { kind: "miss" };
+  }
+}
+
+/**
+ * Find a project with the deprecated `GET /projects/?query=dsn:<key>`, for
+ * self-hosted servers whose `dsn-lookup` is missing (added 2026-02) or
+ * still behind its feature flag (removed 2026-04). Sentry doesn't brown out
+ * deprecated endpoints on self-hosted.
+ */
+async function findProjectByDsnKeyOnOldServer(
   publicKey: string,
 ): Promise<SentryProject | null> {
-  const regionsResult = await withAuthGuard(() => getUserRegions());
-  const regions = regionsResult.ok ? regionsResult.value : ([] as Region[]);
+  const { data: projects } = await apiRequestToRegion<SentryProject[]>(
+    getApiBaseUrl(),
+    "/projects/",
+    { params: { query: `dsn:${publicKey}` } },
+  );
+  return projects[0] ?? null;
+}
 
-  if (regions.length === 0) {
-    // Escape hatch (intentionally raw, not an SDK call): the `?query=dsn:` filter
-    // on `/projects/` is an internal search param absent from the OpenAPI spec,
-    // so the SDK provides no typed operation for it. Kept as a documented raw
-    // call until the param is promoted (backend `@extend_schema` candidate).
-    // Fall back to the default region for self-hosted.
-    const { data: projects } = await apiRequestToRegion<SentryProject[]>(
-      getApiBaseUrl(),
-      "/projects/",
-      { params: { query: `dsn:${publicKey}` } },
-    );
-    return projects[0] ?? null;
-  }
-
+/**
+ * Find the project a DSN belongs to, for DSNs that don't name their org.
+ *
+ * Asks each of the user's organizations with `dsn-lookup`, concurrently;
+ * no new request starts once one finds the project. On self-hosted servers
+ * without `dsn-lookup`, falls back to `/projects/?query=dsn:`. On SaaS it
+ * never does: that endpoint is deprecated there and browns out with 410s.
+ *
+ * @param dsn - The full DSN
+ * @param publicKey - The DSN public key (username portion of DSN URL)
+ * @returns The matching project with its organization, or null if not found
+ */
+export async function findProjectByDsn(
+  dsn: string,
+  publicKey: string,
+): Promise<SentryProject | null> {
+  const orgs = await listOrganizations();
   const limit = pLimit(ORG_FANOUT_CONCURRENCY);
-  const results = await Promise.all(
-    regions.map((region) =>
+  let project: SentryProject | null = null;
+  let unsupported = false;
+  await Promise.all(
+    orgs.map((org) =>
       limit(async () => {
-        try {
-          // Same `?query=dsn:` escape hatch as above (see the region-fallback
-          // branch) — internal search param, no typed SDK operation yet.
-          const { data } = await apiRequestToRegion<SentryProject[]>(
-            region.url,
-            "/projects/",
-            { params: { query: `dsn:${publicKey}` } },
-          );
-          return data;
-        } catch (error) {
-          reportBestEffortFailure(
-            `DSN key lookup failed in region '${region.url}'`,
-            error,
-          );
-          return [];
+        if (project) {
+          return;
+        }
+        const outcome = await lookUpDsnInOrg(org, dsn);
+        if (outcome.kind === "found") {
+          project ??= outcome.project;
+        } else if (outcome.kind === "unsupported") {
+          unsupported = true;
         }
       }),
     ),
   );
-
-  for (const projects of results) {
-    if (projects.length > 0) {
-      return projects[0] ?? null;
-    }
+  if (!project && unsupported && !isSentrySaasUrl(getApiBaseUrl())) {
+    return await findProjectByDsnKeyOnOldServer(publicKey);
   }
-
-  return null;
+  return project;
 }
 
 /**
@@ -632,7 +682,7 @@ export async function getProject(
   orgSlug: string,
   projectSlug: string,
 ): Promise<SentryProject> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   // `collapse=organization` is server-supported but absent from the OpenAPI
   // spec, so the SDK types `query` as `never` on `GetProjectData`. Cast just
@@ -713,7 +763,7 @@ export async function listProjectDsns(
   projectSlug: string,
   options: { limit?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<ProjectDsn[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   return await paginate(options, async (perPage, cursor) => {
     // The SDK omits the shared per_page parameter supported by this endpoint.
@@ -747,7 +797,7 @@ export async function listOrganizationDsns(
   orgSlug: string,
   options: { limit?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<(ProjectDsn & { project: string })[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const projectLookups = new Map<number, Promise<string>>();
   const limitProjectLookups = pLimit(ORG_FANOUT_CONCURRENCY);
 
@@ -796,7 +846,7 @@ export async function getProjectKeys(
   projectSlug: string,
   options: { status?: "active" | "inactive" } = {},
 ): Promise<ProjectKey[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listProjectKeys({
     ...config,

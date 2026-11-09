@@ -40,7 +40,6 @@ import { AuthError, ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
 import { parseBoolValue } from "../parse-bool.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
-import { withDbSpan } from "../telemetry.js";
 import {
   type AccountRow,
   accountIdentity,
@@ -64,9 +63,11 @@ import {
 } from "./accounts.js";
 import { getAccountScope, resetAccountScopes } from "./account-scope.js";
 import { hashIdentity } from "./identity-hash.js";
-import { getDatabase } from "./index.js";
+import { getDatabase, withDbSpan } from "./index.js";
+import { clearCompletionCache } from "./completion-cache.js";
 import { clearAllIssueOrgCache } from "./issue-org-cache.js";
 import { clearTrustedHostState } from "./regions.js";
+import { getLoginCommand } from "../app-identity.js";
 
 /** Refresh when less than 10% of token lifetime remains */
 export const REFRESH_THRESHOLD = 0.1;
@@ -527,12 +528,20 @@ export function getUsableStoredTokenHost(): string | undefined {
   }
 }
 
+// Every memo is per invocation env as well as per selection: the selection
+// key doesn't name the config dir, so SDK calls with different config dirs
+// would otherwise read each other's stored login.
 const authCacheState = {
   tokens: new WeakMap<
     NodeJS.ProcessEnv,
     Map<string, { value: string | undefined }>
   >(),
   fingerprints: new WeakMap<NodeJS.ProcessEnv, Map<string, string>>(),
+  authRows: new WeakMap<
+    NodeJS.ProcessEnv,
+    Map<string, { value: AuthRow | undefined }>
+  >(),
+  hasStoredCreds: new WeakMap<NodeJS.ProcessEnv, Map<string, boolean>>(),
 };
 
 /** The per-env, per-selection memo map in `store`, created on first use. */
@@ -604,31 +613,27 @@ export function resetAuthTokenCache(): void {
   authCacheState.tokens = new WeakMap();
 }
 
-/** Memoized results for {@link hasStoredAuthCredentials}, by selection. */
-const cachedHasStoredCreds = new Map<string, boolean>();
-
-/** Memoized effective auth rows for {@link refreshToken}, by selection. */
-const cachedAuthRows = new Map<string, { value: AuthRow | undefined }>();
-
+/** The effective auth row for {@link refreshToken}, memoized per selection. */
 function getCachedAuthRow(): AuthRow | undefined {
+  const memo = memoFor(authCacheState.authRows);
   const key = selectionKey();
-  const cached = cachedAuthRows.get(key);
+  const cached = memo.get(key);
   if (cached !== undefined) {
     return cached.value;
   }
   const row = getAuthRow();
-  cachedAuthRows.set(key, { value: row });
+  memo.set(key, { value: row });
   return row;
 }
 
 /** Reset the memoized auth row. Tests only — call between auth-state mutations. */
 export function resetAuthRowCache(): void {
-  cachedAuthRows.clear();
+  authCacheState.authRows = new WeakMap();
 }
 
 /** Reset the memoized stored-credentials flag. Tests only — call between auth-state mutations. */
 export function resetHasStoredCredsCache(): void {
-  cachedHasStoredCreds.clear();
+  authCacheState.hasStoredCreds = new WeakMap();
 }
 
 /**
@@ -843,13 +848,14 @@ export function getAccountIdToReplace(host: string): string | undefined {
 
 /**
  * Clear caches whose entries are scoped to one identity's permissions but
- * not keyed by it (pagination cursors, issue-id → org mappings), plus the
- * in-process trust extension.
+ * not keyed by it (pagination cursors, issue-id → org mappings, completion
+ * entities), plus the in-process trust extension.
  */
 function clearUnscopedIdentityCaches(): void {
   const db = getDatabase();
   db.query("DELETE FROM pagination_cursors").run();
   clearAllIssueOrgCache();
+  clearCompletionCache();
   clearTrustedHostState();
 }
 
@@ -994,8 +1000,16 @@ function followDefaultAccountHost(host: string): void {
  *
  * An env token that knows the org wins over every stored account, the
  * active one included (see {@link getEnvAccount}).
+ *
+ * `server` limits candidates (the env token included) to that server, for a
+ * request whose URL is already built: switching servers would send it to
+ * the wrong one.
  */
-export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
+export function selectAccountForOrg(
+  orgSlug: string,
+  orgId?: string,
+  options: { server?: string } = {},
+): void {
   if (isEnvTokenForced()) {
     return;
   }
@@ -1004,37 +1018,15 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
     return;
   }
   try {
-    if (selectEnvAccountForOrg(orgSlug, orgId)) {
-      return;
-    }
-    // Usable accounts that know the org, most recently used first.
-    const owners = listUsableAccountRowsForOrg(orgSlug, orgId);
-    if (owners.length === 0) {
+    if (selectEnvAccountForOrg(orgSlug, orgId, options.server)) {
       return;
     }
     const current = getAuthRow();
-    // Respect the active account unless its fresh cached org list shows it
-    // is not a member: after `sentry auth switch`, an account that simply
-    // hasn't used the org yet must not be overridden by one that has. That
-    // deference is for the user's choice only: an account the configured
-    // server picked by recency yields to one on it that knows the org. An
-    // account that can no longer authenticate (credentials invalidated or
-    // expired) is never kept over an owner that can.
-    if (
-      current &&
-      (owners.some((o) => o.account_id === current.account_id) ||
-        (current.is_active === 1 &&
-          isAccountRowUsable(current) &&
-          !hasCachedOrgList(current.account_id)))
-    ) {
-      return;
-    }
-    const explicitHost = getExplicitServerUrl();
-    const candidates = explicitHost
-      ? owners.filter((o) => isAccountOnServer(o, explicitHost))
-      : owners;
-    const pick = candidates[0];
-    if (!pick?.host) {
+    const pick = findAccountForOrg(orgSlug, orgId, {
+      current,
+      host: getExplicitServerUrl() ?? options.server,
+    });
+    if (!pick?.host || pick.account_id === current?.account_id) {
       return;
     }
     scope.accountId = pick.account_id;
@@ -1049,18 +1041,71 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
 }
 
 /**
+ * The stored account that should serve an organization: `current` when it
+ * should keep serving it, another usable account that knows the org, or
+ * `undefined` when no usable account is known to reach it. Shared by
+ * {@link selectAccountForOrg} and the MCP server's per-call routing.
+ *
+ * `current` is kept when it knows the org, or when it is the active
+ * account and has no fresh cached org list to rule it out: after `sentry
+ * auth switch`, an account that simply hasn't used the org yet must not be
+ * overridden by one that has. That deference is for the user's choice
+ * only: an account picked by recency yields to one that knows the org. An
+ * account that can no longer authenticate (credentials invalidated or
+ * expired) is never kept over an owner that can. `host` limits the other
+ * candidates to that server; when several qualify, the most recently used
+ * wins.
+ *
+ * With `keepUnlistedActive: false`, `current` is kept only when it knows
+ * the org: for a caller that has already tried to list its orgs, so a
+ * missing list cannot mean it simply hasn't used the org yet.
+ */
+export function findAccountForOrg(
+  orgSlug: string,
+  orgId: string | undefined,
+  options: {
+    current: AccountRow | undefined;
+    host: string | undefined;
+    keepUnlistedActive?: boolean;
+  },
+): AccountRow | undefined {
+  const { current, host, keepUnlistedActive = true } = options;
+  // Usable accounts that know the org, most recently used first.
+  const owners = listUsableAccountRowsForOrg(orgSlug, orgId);
+  if (owners.length === 0) {
+    return;
+  }
+  if (
+    current &&
+    (owners.some((o) => o.account_id === current.account_id) ||
+      (keepUnlistedActive &&
+        current.is_active === 1 &&
+        isAccountRowUsable(current) &&
+        !hasCachedOrgList(current.account_id)))
+  ) {
+    return current;
+  }
+  return host ? owners.find((o) => isAccountOnServer(o, host)) : owners[0];
+}
+
+/**
  * Use the env token for the rest of this invocation when its org cache
  * shows it knows the org on its current server, and that server is the
- * explicit one, if any. The
- * env token wins over stored accounts that know the org too.
+ * explicit one and `server`, when set. The env token wins over stored
+ * accounts that know the org too.
  *
  * @returns whether the env token was chosen
  */
-function selectEnvAccountForOrg(orgSlug: string, orgId?: string): boolean {
+function selectEnvAccountForOrg(
+  orgSlug: string,
+  orgId: string | undefined,
+  server: string | undefined,
+): boolean {
   const envAccount = getEnvAccountInScope();
   if (
     !(
       envAccount &&
+      (!server || isSameServer(envAccount.host, server)) &&
       hasCachedOrgForIdentity(
         envAccount.identity,
         envAccount.host,
@@ -1386,7 +1431,7 @@ export function getActiveAuthHost(): string | undefined {
  * - A non-expired token, or
  * - An expired token with a refresh token (will be refreshed on next use)
  *
- * Memoized within the process. Reset on {@link setAuthToken} and
+ * Memoized per invocation env. Reset on {@link setAuthToken} and
  * {@link clearAuth} mutations. Tests call {@link resetHasStoredCredsCache}
  * between cases.
  *
@@ -1394,8 +1439,9 @@ export function getActiveAuthHost(): string | undefined {
  * when an env token is present.
  */
 export function hasStoredAuthCredentials(): boolean {
+  const memo = memoFor(authCacheState.hasStoredCreds);
   const key = selectionKey();
-  const cached = cachedHasStoredCreds.get(key);
+  const cached = memo.get(key);
   if (cached !== undefined) {
     return cached;
   }
@@ -1410,7 +1456,7 @@ export function hasStoredAuthCredentials(): boolean {
       result = !!row.refresh_token;
     }
   }
-  cachedHasStoredCreds.set(key, result);
+  memo.set(key, result);
   return result;
 }
 
@@ -1726,7 +1772,7 @@ export async function refreshToken(
     }
     throw new AuthError(
       "expired",
-      "Session expired and no refresh token available. Run 'sentry auth login'.",
+      `Session expired and no refresh token available. Run '${getLoginCommand()}'.`,
     );
   }
 

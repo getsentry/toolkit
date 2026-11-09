@@ -6,10 +6,10 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  findProjectByDsnKey,
+  findProjectByDsn,
   getUserRegions,
   listOrganizations,
   listOrganizationsPage,
@@ -464,189 +464,140 @@ describe("listOrganizations (control silo)", () => {
   });
 });
 
-describe("findProjectByDsnKey (multi-region)", () => {
-  test("searches all regions for project with DSN key", async () => {
+// Legacy DSN host with no `o<id>`: the org has to be looked up.
+const TEST_DSN = "https://abc123@sentry.io/42";
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/** Orgs from the control silo, each linked to its own region. */
+function orgsInRegions(): Response {
+  return jsonResponse([
+    {
+      id: "100",
+      slug: "us-org",
+      name: "US Organization",
+      links: {
+        organizationUrl: "https://us.sentry.io/organizations/us-org/",
+        regionUrl: "https://us.sentry.io",
+      },
+    },
+    {
+      id: "200",
+      slug: "eu-org",
+      name: "EU Organization",
+      links: {
+        organizationUrl: "https://de.sentry.io/organizations/eu-org/",
+        regionUrl: "https://de.sentry.io",
+      },
+    },
+  ]);
+}
+
+const DSN_NOT_FOUND = { detail: "DSN not found" };
+
+const EU_LOOKUP = {
+  organizationSlug: "eu-org",
+  projectSlug: "eu-project",
+  projectId: "300",
+  projectName: "EU Project",
+  projectPlatform: "python",
+  keyLabel: "Default",
+  keyId: 7,
+};
+
+describe("findProjectByDsn (multi-region)", () => {
+  test("asks each org's region with dsn-lookup and returns the match", async () => {
     const requestedUrls: string[] = [];
 
     globalThis.fetch = createMultiRegionMockFetch({
       controlSilo: (req) => {
         requestedUrls.push(req.url);
-        if (req.url.includes("/users/me/regions/")) {
-          return new Response(
-            JSON.stringify({
-              regions: [
-                { name: "us", url: "https://us.sentry.io" },
-                { name: "de", url: "https://de.sentry.io" },
-              ],
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        return new Response(JSON.stringify([]), { status: 200 });
+        return orgsInRegions();
       },
       usRegion: (req) => {
         requestedUrls.push(req.url);
-        // US region doesn't have the project
-        return new Response(JSON.stringify([]), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse(DSN_NOT_FOUND, 404);
       },
       euRegion: (req) => {
         requestedUrls.push(req.url);
-        // EU region has the project
-        // Check for URL-encoded query parameter (dsn%3Aabc123)
-        if (req.url.includes("/projects/") && req.url.includes("abc123")) {
-          return new Response(
-            JSON.stringify([
-              {
-                id: "300",
-                slug: "eu-project",
-                name: "EU Project",
-                organization: { id: "200", slug: "eu-org", name: "EU Org" },
-              },
-            ]),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        return new Response(JSON.stringify([]), { status: 200 });
+        return jsonResponse(EU_LOOKUP);
       },
     });
 
-    const project = await findProjectByDsnKey("abc123");
+    const project = await findProjectByDsn(TEST_DSN, "abc123");
 
-    // Match the origin, not a hostname substring that could occur in another URL.
-    const searchedRegion = (region: string): boolean =>
-      requestedUrls.some((requestedUrl) => {
-        const url = new URL(requestedUrl);
-        return (
-          url.origin === `https://${region}.sentry.io` &&
-          url.pathname.includes("/projects/")
-        );
-      });
-    expect(searchedRegion("us")).toBe(true);
-    expect(searchedRegion("de")).toBe(true);
-
-    // Should find the project from EU region
-    expect(project).not.toBeNull();
-    expect(project?.slug).toBe("eu-project");
-  });
-
-  test("returns null when project not found in any region", async () => {
-    globalThis.fetch = createMultiRegionMockFetch({
-      controlSilo: (req) => {
-        if (req.url.includes("/users/me/regions/")) {
-          return new Response(
-            JSON.stringify({
-              regions: [{ name: "us", url: "https://us.sentry.io" }],
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        return new Response(JSON.stringify([]), { status: 200 });
-      },
-      usRegion: () =>
-        new Response(JSON.stringify([]), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
+    const lookups = requestedUrls
+      .map((u) => new URL(u))
+      .filter((u) => u.pathname.endsWith("/dsn-lookup/"));
+    expect(lookups.map((u) => `${u.origin}${u.pathname}`).sort()).toEqual([
+      "https://de.sentry.io/api/0/organizations/eu-org/dsn-lookup/",
+      "https://us.sentry.io/api/0/organizations/us-org/dsn-lookup/",
+    ]);
+    expect(lookups.every((u) => u.searchParams.get("dsn") === TEST_DSN)).toBe(
+      true,
+    );
+    expect(requestedUrls.some((u) => u.includes("/users/me/regions/"))).toBe(
+      false,
+    );
+    expect(project).toEqual({
+      id: "300",
+      slug: "eu-project",
+      name: "EU Project",
+      organization: { id: "200", slug: "eu-org", name: "EU Organization" },
     });
-
-    const project = await findProjectByDsnKey("nonexistent-key");
-
-    expect(project).toBeNull();
   });
 
-  test("falls back to default region for self-hosted (no regions)", async () => {
-    let capturedUrl: string | undefined;
-
+  test("returns null without falling back when no org has the DSN", async () => {
+    const requestedUrls: string[] = [];
     globalThis.fetch = createMultiRegionMockFetch({
       controlSilo: (req) => {
-        capturedUrl = req.url;
-        if (req.url.includes("/users/me/regions/")) {
-          return new Response(
-            JSON.stringify({
-              regions: [],
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        if (req.url.includes("/projects/")) {
-          return new Response(
-            JSON.stringify([
-              {
-                id: "400",
-                slug: "self-hosted-project",
-                name: "Self Hosted Project",
-              },
-            ]),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        return new Response(JSON.stringify([]), { status: 200 });
+        requestedUrls.push(req.url);
+        return orgsInRegions();
+      },
+      default: (req) => {
+        requestedUrls.push(req.url);
+        return jsonResponse(DSN_NOT_FOUND, 404);
       },
     });
 
-    const project = await findProjectByDsnKey("self-hosted-key");
-
-    // Should query control silo directly when no regions
-    expect(capturedUrl).toContain("/projects/");
-    // URL encodes the colon as %3A
-    expect(capturedUrl).toContain("self-hosted-key");
-    expect(project?.slug).toBe("self-hosted-project");
+    expect(await findProjectByDsn(TEST_DSN, "abc123")).toBeNull();
+    expect(
+      requestedUrls.some((u) => new URL(u).pathname === "/api/0/projects/"),
+    ).toBe(false);
   });
 
-  test("continues searching when one region fails", async () => {
+  test("never falls back to the deprecated /projects/ lookup on SaaS", async () => {
+    const requestedUrls: string[] = [];
     globalThis.fetch = createMultiRegionMockFetch({
       controlSilo: (req) => {
-        if (req.url.includes("/users/me/regions/")) {
-          return new Response(
-            JSON.stringify({
-              regions: [
-                { name: "us", url: "https://us.sentry.io" },
-                { name: "de", url: "https://de.sentry.io" },
-              ],
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-        }
-        return new Response(JSON.stringify([]), { status: 200 });
+        requestedUrls.push(req.url);
+        return orgsInRegions();
       },
+      default: (req) => {
+        requestedUrls.push(req.url);
+        // Catch-all 404: the endpoint doesn't exist on this server.
+        return new Response("", { status: 404 });
+      },
+    });
+
+    expect(await findProjectByDsn(TEST_DSN, "abc123")).toBeNull();
+    expect(
+      requestedUrls.some((u) => new URL(u).pathname === "/api/0/projects/"),
+    ).toBe(false);
+  });
+
+  test("reports one org's failure and keeps looking in the others", async () => {
+    globalThis.fetch = createMultiRegionMockFetch({
+      controlSilo: () => orgsInRegions(),
       usRegion: () => {
         throw new Error("Network error");
       },
-      euRegion: () =>
-        new Response(
-          JSON.stringify([
-            {
-              id: "500",
-              slug: "found-project",
-              name: "Found Project",
-            },
-          ]),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
+      euRegion: () => jsonResponse(EU_LOOKUP),
     });
 
     const captureSpy = vi.spyOn(Sentry, "captureException");
@@ -665,10 +616,9 @@ describe("findProjectByDsnKey (multi-region)", () => {
       });
     });
     try {
-      const project = await findProjectByDsnKey("abc123");
+      const project = await findProjectByDsn(TEST_DSN, "abc123");
 
-      // Should find project despite US region failing
-      expect(project?.slug).toBe("found-project");
+      expect(project?.slug).toBe("eu-project");
       expect(captureSpy).toHaveBeenCalledTimes(1);
       expect(captureSpy.mock.calls[0]?.[0]).toMatchObject({
         message: "Network error",
@@ -677,6 +627,112 @@ describe("findProjectByDsnKey (multi-region)", () => {
       captureSpy.mockRestore();
       withScopeSpy.mockRestore();
     }
+  });
+
+  describe("self-hosted", () => {
+    const SELF_HOSTED_DSN = "http://shkey@localhost:9000/3";
+    let savedUrl: string | undefined;
+
+    beforeEach(() => {
+      savedUrl = process.env.SENTRY_URL;
+      process.env.SENTRY_URL = "http://localhost:9000";
+      setAuthToken("self-hosted-token", undefined, undefined, {
+        host: "http://localhost:9000",
+      });
+    });
+
+    afterEach(() => {
+      if (savedUrl === undefined) {
+        delete process.env.SENTRY_URL;
+      } else {
+        process.env.SENTRY_URL = savedUrl;
+      }
+    });
+
+    /** A self-hosted server: one org, no region links. */
+    function selfHostedServer(
+      dsnLookup: () => Response,
+      requestedUrls: string[],
+    ): typeof globalThis.fetch {
+      return createMultiRegionMockFetch({
+        controlSilo: (req) => {
+          requestedUrls.push(req.url);
+          const { pathname } = new URL(req.url);
+          if (pathname === "/api/0/organizations/") {
+            return jsonResponse([{ id: "1", slug: "sentry", name: "Sentry" }]);
+          }
+          if (pathname.endsWith("/dsn-lookup/")) {
+            return dsnLookup();
+          }
+          if (pathname === "/api/0/projects/") {
+            return jsonResponse([
+              {
+                id: "400",
+                slug: "self-hosted-project",
+                name: "Self Hosted Project",
+                organization: { id: "1", slug: "sentry", name: "Sentry" },
+              },
+            ]);
+          }
+          return jsonResponse({ detail: "Not found" }, 404);
+        },
+      });
+    }
+
+    test("falls back to /projects/?query=dsn: when the server has no dsn-lookup", async () => {
+      const requestedUrls: string[] = [];
+      globalThis.fetch = selfHostedServer(
+        () => new Response("", { status: 404 }),
+        requestedUrls,
+      );
+
+      const project = await findProjectByDsn(SELF_HOSTED_DSN, "shkey");
+
+      expect(project?.slug).toBe("self-hosted-project");
+      const fallback = requestedUrls
+        .map((u) => new URL(u))
+        .find((u) => u.pathname === "/api/0/projects/");
+      expect(fallback?.searchParams.get("query")).toBe("dsn:shkey");
+    });
+
+    test("uses dsn-lookup when the server has it", async () => {
+      const requestedUrls: string[] = [];
+      globalThis.fetch = selfHostedServer(
+        () =>
+          jsonResponse({
+            organizationSlug: "sentry",
+            projectSlug: "internal",
+            projectId: "3",
+            projectName: "Internal",
+          }),
+        requestedUrls,
+      );
+
+      const project = await findProjectByDsn(SELF_HOSTED_DSN, "shkey");
+
+      expect(project).toEqual({
+        id: "3",
+        slug: "internal",
+        name: "Internal",
+        organization: { id: "1", slug: "sentry", name: "Sentry" },
+      });
+      expect(
+        requestedUrls.some((u) => new URL(u).pathname === "/api/0/projects/"),
+      ).toBe(false);
+    });
+
+    test("doesn't fall back when dsn-lookup says the DSN isn't there", async () => {
+      const requestedUrls: string[] = [];
+      globalThis.fetch = selfHostedServer(
+        () => jsonResponse(DSN_NOT_FOUND, 404),
+        requestedUrls,
+      );
+
+      expect(await findProjectByDsn(SELF_HOSTED_DSN, "shkey")).toBeNull();
+      expect(
+        requestedUrls.some((u) => new URL(u).pathname === "/api/0/projects/"),
+      ).toBe(false);
+    });
   });
 });
 
