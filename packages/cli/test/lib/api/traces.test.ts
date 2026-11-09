@@ -1,5 +1,6 @@
 /**
- * Tests for the traces API helpers (getDetailedTrace, listTransactions, listSpans).
+ * Tests for the traces API helpers (getDetailedTrace, getTraceMeta,
+ * listTransactions, listSpans).
  *
  * Verifies URL construction, query parameter encoding, schema validation,
  * pagination cursor extraction, auto-pagination, and the 14d→90d empty-trace retry.
@@ -10,6 +11,7 @@ import {
   fetchMultiSpanDetails,
   getDetailedTrace,
   getSpanDetails,
+  getTraceMeta,
   listSpans,
   listTransactions,
 } from "../../../src/lib/api/traces.js";
@@ -873,5 +875,52 @@ describe("getDetailedTrace", () => {
         "gen_ai.request.model",
       ]);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getTraceMeta
+// ---------------------------------------------------------------------------
+
+describe("getTraceMeta", () => {
+  useTestConfigDir("traces-meta-test-");
+
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("accepts spans counted under a null transaction.event_id", async () => {
+    const transactionChildCountMap = [
+      {
+        "transaction.event_id": "0daf40dc453a429c8c57e4c215c4e82c",
+        "count()": 10,
+      },
+      { "transaction.event_id": null, "count()": 15 },
+    ];
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            errorsCount: 2,
+            logsCount: 3,
+            metricsCount: 0,
+            performanceIssuesCount: 1,
+            spansCount: 25,
+            transactionChildCountMap,
+            spansCountMap: { "http.client": 25 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+
+    const meta = await getTraceMeta("my-org", "abc123def456");
+
+    expect(meta.transactionChildCountMap).toEqual(transactionChildCountMap);
   });
 });
