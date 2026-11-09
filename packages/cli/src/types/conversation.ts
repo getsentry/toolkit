@@ -11,6 +11,7 @@ import {
   type InferOutput,
   looseObject,
   nullable,
+  nullish,
   number,
   object,
   optional,
@@ -120,8 +121,11 @@ export const AgentConversationDetailsSchema = looseObject({
   conversationId: string(),
   title: nullable(string()),
   spans: array(AgentConversationSpanSchema),
-  /** Added after the original envelope; optional for older self-hosted servers. */
-  stats: optional(ConversationStatsSchema),
+  /**
+   * Added after the original envelope; missing on older self-hosted servers.
+   * The server sends `null` on every page after the first.
+   */
+  stats: nullish(ConversationStatsSchema),
 });
 
 export type AgentConversationDetails = InferOutput<
