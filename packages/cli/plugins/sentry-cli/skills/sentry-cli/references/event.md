@@ -45,11 +45,11 @@ View details of one or more events
 | `packages` | object | Modules loaded when the event occurred, keyed by module name with their versions |
 | `type` | string | Event type, such as error, default or transaction |
 | `metadata` | object | Event metadata |
-| `occurrence` | object \| null |  |
+| `occurrence` | object \| unknown \| null |  |
 | `_meta` | object | Metadata about changes Sentry made to the event's fields, such as data scrubbing or trimming |
 | `user` | object \| null | User context of the event |
 | `tags` | array | Tags attached to the event |
-| `contexts` | object \| null | Contexts of the event, such as device, os, browser and runtime |
+| `contexts` | object \| null | Contexts of the event, such as device, os, browser and runtime, keyed by alias |
 | `sdk` | object \| null | SDK that sent the event |
 | `context` | object \| null | Additional data sent with the event in its extra field |
 | `errors` | array | Errors Sentry found while processing the event |

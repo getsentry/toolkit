@@ -402,7 +402,7 @@ Edit a metric alert rule
 | `dateUpdated` | string | When the monitor was last updated (ISO 8601) |
 | `dataSources` | array \| null | Data sources the monitor evaluates, such as a query subscription |
 | `conditionGroup` | object \| null | Conditions that decide the monitor's status |
-| `config` | object | Configuration of the monitor, which depends on its type |
+| `config` | object |  |
 | `enabled` | boolean | Whether the monitor is enabled |
 | `org` | string | Organization slug |
 | `status` | string | Rule status (active, disabled) |
