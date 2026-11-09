@@ -454,15 +454,8 @@ export async function renderApprovalDialog(
   request: Request,
   options: ApprovalDialogOptions,
 ): Promise<Response> {
-  const {
-    client,
-    server,
-    scope,
-    redirectUri,
-    state,
-    cookieSecret,
-    defaultSkills,
-  } = options;
+  const { client, scope, redirectUri, state, cookieSecret, defaultSkills } =
+    options;
   const defaultSkillIds =
     defaultSkills === undefined
       ? new Set(APPROVABLE_SKILLS.map((skill) => skill.id))

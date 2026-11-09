@@ -21,7 +21,7 @@
  *   docs/public/.well-known/skills/index.json
  */
 
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import { routes } from "../src/app.js";
 import {

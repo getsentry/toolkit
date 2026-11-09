@@ -418,13 +418,7 @@ function formatExceptionInterfaceOutput(
     // Add language-specific chain indicator for multiple exceptions
     if (isChained && index > 0) {
       parts.push("");
-      parts.push(
-        getExceptionChainMessage(
-          event.platform || null,
-          index,
-          exceptions.length,
-        ),
-      );
+      parts.push(getExceptionChainMessage(event.platform || null, index));
       parts.push("");
     }
 
@@ -494,7 +488,6 @@ function formatExceptionInterfaceOutput(
 function getExceptionChainMessage(
   platform: string | null,
   index: number,
-  totalExceptions: number,
 ): string {
   // Default message for unknown platforms
   const defaultMessage =
@@ -1553,10 +1546,7 @@ function formatN1QueryEvidence(
  * This is lower priority as the generic evidenceDisplay fields usually
  * provide sufficient information for slow query issues.
  */
-function formatSlowDbQueryEvidence(
-  evidenceData: SlowDbEvidenceData,
-  spansData: unknown,
-): string {
+function formatSlowDbQueryEvidence(evidenceData: SlowDbEvidenceData): string {
   const parts: string[] = [];
 
   // Show parent span if available (generic field that applies to slow queries)
@@ -1632,7 +1622,7 @@ function formatPerformanceIssueOutput(
       }
 
       case KNOWN_PERFORMANCE_ISSUE_TYPES.SLOW_DB_QUERY: {
-        const result = formatSlowDbQueryEvidence(evidenceData, spansData);
+        const result = formatSlowDbQueryEvidence(evidenceData);
         if (result) parts.push(result);
         break;
       }

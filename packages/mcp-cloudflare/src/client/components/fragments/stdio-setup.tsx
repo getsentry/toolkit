@@ -5,7 +5,6 @@ import CodeSnippet from "../ui/code-snippet";
 import { Prose } from "../ui/prose";
 import InstallTabs, { Tab } from "./install-tabs";
 
-const mcpServerName = import.meta.env.DEV ? "sentry-dev" : "sentry";
 const orderedSkills = [...skillDefinitions]
   .filter((skill) => !skill.deprecated)
   .sort((a, b) => a.order - b.order);

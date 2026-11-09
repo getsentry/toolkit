@@ -1,4 +1,3 @@
-import type { TraceItemType } from "../../../api-client";
 import { apiServiceFromContext } from "../../../internal/tool-helpers/api";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import type { ServerContext } from "../../../types";

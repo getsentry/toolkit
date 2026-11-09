@@ -55,7 +55,6 @@ import {
   number,
   object,
   optional,
-  partial,
   pipe,
   record,
   string,

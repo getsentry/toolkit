@@ -65,11 +65,6 @@ const OtelYamlFileSchema = z.object({
   groups: z.array(OtelGroupSchema),
 });
 
-// TypeScript types inferred from Zod schemas
-type OtelAttribute = z.infer<typeof OtelAttributeSchema>;
-type OtelGroup = z.infer<typeof OtelGroupSchema>;
-type OtelYamlFile = z.infer<typeof OtelYamlFileSchema>;
-
 interface JsonAttribute {
   description: string;
   type: string;

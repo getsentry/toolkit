@@ -31,7 +31,6 @@ import { resolveOrgRegion } from "../region.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
 
 import {
-  API_MAX_PER_PAGE,
   getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
