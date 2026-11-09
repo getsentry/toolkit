@@ -1,5 +1,6 @@
 import {
   ApiClientError,
+  ApiServerError,
   ErrorEntrySchema,
   type SentryApiService,
   ThreadsEntrySchema,
@@ -11,7 +12,7 @@ import {
   type Frame,
   findMostRelevantInAppFrame,
 } from "../../internal/code-location";
-import { logIssue } from "../../telem/logging";
+import { logIssue, logWarn } from "../../telem/logging";
 
 const CODE_LOCATION_TIMEOUT_MS = 3000;
 
@@ -89,6 +90,21 @@ export async function resolveCodeLocation({
       url: sourceUrl,
     };
   } catch (error) {
+    if (!controller.signal.aborted && error instanceof ApiServerError) {
+      // Upstream 5xx from the stacktrace-link endpoint only removes optional
+      // enrichment; keep it visible as a warning instead of a Sentry issue.
+      logWarn("Stacktrace link lookup failed; omitting code location", {
+        loggerScope: ["tools", "get-issue-details", "code-location"],
+        extra: {
+          organizationSlug,
+          projectSlug,
+          groupId: event.groupID,
+          status: error.status,
+          message: error.message,
+        },
+      });
+      return undefined;
+    }
     if (
       !controller.signal.aborted &&
       !(error instanceof ApiClientError) &&

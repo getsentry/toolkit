@@ -1,7 +1,22 @@
 import { createDefaultEvent } from "@sentry/mcp-server-mocks";
 import { describe, expect, it, vi } from "vitest";
-import { ApiPermissionError, type SentryApiService } from "../../api-client";
+import {
+  ApiPermissionError,
+  ApiServerError,
+  type SentryApiService,
+} from "../../api-client";
 import type { Event } from "../../api-client/types";
+
+const logging = vi.hoisted(() => ({
+  logIssue: vi.fn(),
+  logWarn: vi.fn(),
+}));
+
+vi.mock("../../telem/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../telem/logging")>()),
+  logIssue: logging.logIssue,
+  logWarn: logging.logWarn,
+}));
 import { resolveCodeLocation } from "./code-location";
 
 function mockStacktraceLink() {
@@ -212,6 +227,89 @@ describe("resolveCodeLocation", () => {
     );
 
     await expect(resolve(event, getStacktraceLink)).resolves.toBeUndefined();
+  });
+
+  it("logs a warning instead of an issue when the API returns a 5xx", async () => {
+    const { logIssue, logWarn } = logging;
+    logIssue.mockClear();
+    logWarn.mockClear();
+    try {
+      const event = createDefaultEvent({
+        entries: [
+          {
+            type: "exception",
+            data: {
+              values: [
+                {
+                  type: "Error",
+                  stacktrace: {
+                    frames: [
+                      { filename: "src/main.ts", lineNo: 10, inApp: true },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }) as Event;
+      const getStacktraceLink = mockStacktraceLink().mockRejectedValue(
+        new ApiServerError("Internal Error", 500),
+      );
+
+      await expect(resolve(event, getStacktraceLink)).resolves.toBeUndefined();
+      expect(getStacktraceLink).toHaveBeenCalledOnce();
+      expect(logIssue).not.toHaveBeenCalled();
+      expect(logWarn).toHaveBeenCalledWith(
+        "Stacktrace link lookup failed; omitting code location",
+        expect.objectContaining({
+          extra: expect.objectContaining({
+            organizationSlug: "acme",
+            projectSlug: "backend",
+            status: 500,
+          }),
+        }),
+      );
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("reports unexpected errors as issues", async () => {
+    const { logIssue, logWarn } = logging;
+    logIssue.mockClear();
+    logWarn.mockClear();
+    try {
+      const event = createDefaultEvent({
+        entries: [
+          {
+            type: "exception",
+            data: {
+              values: [
+                {
+                  type: "Error",
+                  stacktrace: {
+                    frames: [
+                      { filename: "src/main.ts", lineNo: 10, inApp: true },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }) as Event;
+      const getStacktraceLink = mockStacktraceLink().mockRejectedValue(
+        new Error("boom"),
+      );
+
+      await expect(resolve(event, getStacktraceLink)).resolves.toBeUndefined();
+      expect(getStacktraceLink).toHaveBeenCalledOnce();
+      expect(logIssue).toHaveBeenCalledOnce();
+      expect(logWarn).not.toHaveBeenCalled();
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it("omits a mapped path when SCM source verification fails", async () => {
