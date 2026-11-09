@@ -169,3 +169,51 @@ test.each([
         : expected.widgets,
   });
 });
+
+test("describes saved transformations after an edit", async () => {
+  const result = await ctx.run([
+    "dashboard",
+    "widget",
+    "edit",
+    "test-org/123",
+    "--index",
+    "0",
+    "--new-title",
+    "Renamed",
+  ]);
+  expect(result.exitCode, result.stderr).toBe(0);
+
+  const lines = result.stdout
+    .split("\n")
+    .filter((line) => line.includes("Query"))
+    .map((line) => line.trim());
+  expect(lines).toEqual([
+    "• Query 1 · count() (aggregate 1): fill( linear ) → smooth( ema , 7 , 0.25 )",
+    "• Query 1 · count() (aggregate 2): smooth(asap,7) → fill(zero)",
+    "• Query 2 · count() (aggregate 1): fill( linear )",
+  ]);
+});
+
+test("reports the saved widget transformations in edit JSON", async () => {
+  const result = await ctx.run([
+    "dashboard",
+    "widget",
+    "edit",
+    "test-org/123",
+    "--index",
+    "0",
+    "--new-title",
+    "Renamed",
+    "--json",
+  ]);
+  expect(result.exitCode, result.stderr).toBe(0);
+
+  const { widget } = JSON.parse(result.stdout);
+  expect(
+    widget.queries.map(
+      (query: { transformations?: unknown }) => query.transformations,
+    ),
+  ).toEqual(
+    savedDashboard.widgets![0]!.queries!.map((query) => query.transformations),
+  );
+});

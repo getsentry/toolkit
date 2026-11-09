@@ -47,6 +47,7 @@ import {
   mdTableHeader,
   renderMarkdown,
 } from "./markdown.js";
+import { formatSavedTransformationLines } from "./saved-transformations.js";
 import { sparkline } from "./sparkline.js";
 import { colorizeSql, isDbSpanOp } from "./sql.js";
 import { type Column, writeTable } from "./table.js";
@@ -2509,6 +2510,12 @@ function formatWidgetLayoutLine(widget: DashboardWidget): string {
   return `Layout: position (${x},${y}), size ${w}×${h}`;
 }
 
+/** Saved transformations section for a widget, or nothing when none are saved. */
+function formatWidgetTransformationLines(widget: DashboardWidget): string[] {
+  const lines = formatSavedTransformationLines(widget.queries);
+  return lines.length > 0 ? ["", "Saved transformations:", ...lines] : [];
+}
+
 /**
  * Format a widget edit result for human-readable output.
  */
@@ -2522,6 +2529,7 @@ export function formatWidgetEdited(
   if (layoutLine) {
     lines.push("", layoutLine);
   }
+  lines.push(...formatWidgetTransformationLines(result.widget));
   lines.push("", `URL: ${result.url}`);
   return renderMarkdown(lines.join("\n"));
 }

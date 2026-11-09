@@ -1487,6 +1487,68 @@ describe("formatDashboardWithData", () => {
       expect(output).toContain("Period: 24h");
     });
   });
+
+  describe("saved transformations", () => {
+    test("describes each aggregate position, keeping duplicates apart", () => {
+      const output = formatDashboardWithData(
+        makeDashboardData({
+          widgets: [
+            makeWidget({
+              title: "Transformed spans",
+              queries: [
+                {
+                  aggregates: ["count()", "count()", "p95(span.duration)"],
+                  transformations: {
+                    "1": ["smooth(asap,7)", "fill(zero)"],
+                    "0": ["fill( linear )", "smooth( ema , 7 , 0.25 )"],
+                    "2": [],
+                  },
+                },
+                {
+                  aggregates: ["count()"],
+                  transformations: { "0": ["fill(linear)"] },
+                },
+              ],
+            }),
+            makeWidget({ title: "Plain widget", queries: [{}] }),
+          ],
+        }),
+      );
+      const section = output.slice(output.indexOf("Saved transformations"));
+      expect(section).toContain("Transformed spans");
+      expect(section).not.toContain("Plain widget");
+      expect(section).not.toContain("aggregate 3");
+      const lines = section
+        .split("\n")
+        .filter((line) => line.includes("Query"))
+        .map((line) => line.trim());
+      expect(lines).toEqual([
+        "• Query 1 · count() (aggregate 1): fill( linear ) → smooth( ema , 7 , 0.25 )",
+        "• Query 1 · count() (aggregate 2): smooth(asap,7) → fill(zero)",
+        "• Query 2 · count() (aggregate 1): fill(linear)",
+      ]);
+    });
+
+    test("leaves output unchanged when no transformations are saved", () => {
+      const queries = [{ aggregates: ["count()"] }];
+      const withoutSettings = formatDashboardWithData(
+        makeDashboardData({ widgets: [makeWidget({ queries })] }),
+      );
+      const withEmptySettings = formatDashboardWithData(
+        makeDashboardData({
+          widgets: [
+            makeWidget({
+              queries: [
+                { aggregates: ["count()"], transformations: { "0": [] } },
+              ],
+            }),
+          ],
+        }),
+      );
+      expect(withoutSettings).not.toContain("Saved transformations");
+      expect(withEmptySettings).toBe(withoutSettings);
+    });
+  });
 });
 
 // ===========================================================================

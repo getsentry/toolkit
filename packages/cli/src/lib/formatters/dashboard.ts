@@ -35,6 +35,7 @@ import { COLORS, muted, terminalLink } from "./colors.js";
 import { renderMarkdown } from "./markdown.js";
 import type { HumanRenderer } from "./output.js";
 import { isPlainOutput } from "./plain-detect.js";
+import { formatDashboardSavedTransformations } from "./saved-transformations.js";
 import { renderDashboardAsSixel } from "./sixel-dashboard.js";
 import { downsample, sparkline } from "./sparkline.js";
 
@@ -2016,6 +2017,11 @@ export function formatDashboardWithData(data: DashboardViewData): string {
     lines.push(graphics.output);
   } else {
     lines.push(...renderGrid(data.widgets, termWidth));
+  }
+
+  const transformations = formatDashboardSavedTransformations(data.widgets);
+  if (transformations) {
+    lines.push("", renderMarkdown(transformations));
   }
 
   lines.push("");

@@ -20,6 +20,11 @@ untouched widgets. Title, layout, and filter edits preserve pipeline stage order
 and aggregate positions, including separate pipelines for duplicate aggregates.
 Query flags edit the first query and retain the remaining queries.
 
+`dashboard view` and `dashboard widget edit` list each query's saved
+transformations by aggregate position, in the order Sentry applies them. JSON
+output keeps the saved `transformations` map, keyed by zero-based aggregate
+position. Widgets without saved transformations show no extra output.
+
 ## Query Shorthand
 
 The `--query` flag supports shorthand for aggregate functions:
