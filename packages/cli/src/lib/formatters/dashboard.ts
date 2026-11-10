@@ -32,6 +32,7 @@ import {
 } from "../sixel.js";
 import { SERIES_PALETTE } from "./chart-core.js";
 import { COLORS, muted, terminalLink } from "./colors.js";
+import { formatDashboardTransformations } from "./dashboard-transformations.js";
 import { renderMarkdown } from "./markdown.js";
 import type { HumanRenderer } from "./output.js";
 import { isPlainOutput } from "./plain-detect.js";
@@ -1691,6 +1692,8 @@ function renderContentLines(opts: {
   const { data } = widget;
 
   switch (data.type) {
+    case "transformed_timeseries":
+      return ["Full transformed data follows below."];
     case "timeseries": {
       if (widget.displayType === "heatmap") {
         return renderHeatmapContent(data, { innerWidth, contentHeight });
@@ -2016,6 +2019,12 @@ export function formatDashboardWithData(data: DashboardViewData): string {
     lines.push(graphics.output);
   } else {
     lines.push(...renderGrid(data.widgets, termWidth));
+  }
+
+  for (const widget of data.widgets) {
+    if (widget.data.type === "transformed_timeseries") {
+      lines.push("", formatDashboardTransformations(widget.title, widget.data));
+    }
   }
 
   lines.push("");

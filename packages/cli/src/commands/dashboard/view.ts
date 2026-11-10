@@ -9,6 +9,7 @@ import type { SentryContext } from "../../context.js";
 import { getDashboard, queryAllWidgets } from "../../lib/api-client.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseTimeSeriesInterval } from "../../lib/explore-timeseries.js";
 import { textParser } from "../../lib/completion-target.js";
 import type { DashboardViewData } from "../../lib/formatters/dashboard.js";
 import { createDashboardViewRenderer } from "../../lib/formatters/dashboard.js";
@@ -50,6 +51,7 @@ type ViewFlags = {
   readonly web: boolean;
   readonly fresh: boolean;
   readonly refresh?: number;
+  readonly interval?: string;
   readonly period?: TimeRange;
   readonly renderer: GraphicsRendererPreference;
   readonly "no-graphics-cap": boolean;
@@ -240,6 +242,12 @@ export const viewCommand = buildCommand({
         brief: PERIOD_BRIEF,
         optional: true,
       },
+      interval: {
+        kind: "parsed",
+        parse: textParser(parseTimeSeriesInterval),
+        brief: "Bucket interval, overriding saved widget intervals (e.g., 5m)",
+        optional: true,
+      },
       renderer: {
         kind: "enum",
         values: ["auto", "kitty", "sixel"],
@@ -326,7 +334,7 @@ export const viewCommand = buildCommand({
             regionUrl,
             orgSlug,
             dashboard,
-            { ...widgetTimeOpts, periodSeconds },
+            { ...widgetTimeOpts, periodSeconds, interval: flags.interval },
           );
 
           // Build output data before clearing so clear→render is instantaneous
@@ -359,6 +367,7 @@ export const viewCommand = buildCommand({
         queryAllWidgets(regionUrl, orgSlug, dashboard, {
           ...widgetTimeOpts,
           periodSeconds,
+          interval: flags.interval,
         }),
     );
 
