@@ -85,6 +85,7 @@
     "bench:save": "pnpm tsx script/bench.ts --save-baseline",
     "bench:compare": "pnpm tsx script/bench.ts --compare",
     "bench:sweep": "pnpm tsx script/bench-sweep.ts",
+    "bench:docs": "pnpm tsx script/docs-benchmark.ts",
     "check:fragments": "pnpm tsx script/check-fragments.ts --strict",
     "check:deps": "pnpm tsx script/check-no-deps.ts",
     "check:errors": "pnpm tsx script/check-error-patterns.ts",
