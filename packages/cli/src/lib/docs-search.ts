@@ -1024,7 +1024,9 @@ export function searchDocs(
   // Copies across platforms collapse only when no word points to a platform.
   const acrossPlatforms = !hints.some(Boolean);
   const results: DocsSearchResult[] = [];
-  const seen = new Map<string, number>();
+  // Keys of the copies that made it into `results`.
+  const listed = new Set<string>();
+  const seen = new Set<string>();
   let collapsedTitle: string | undefined;
   for (const { page } of ranked) {
     const key =
@@ -1036,17 +1038,20 @@ export function searchDocs(
             acrossPlatforms,
           );
     if (key !== undefined) {
-      const copies = seen.get(key) ?? 0;
-      seen.set(key, copies + 1);
-      if (copies > 0) {
-        if (acrossPlatforms && seen.size <= options.limit) {
+      if (seen.has(key)) {
+        // Only say a page is listed once when its first copy is listed.
+        if (acrossPlatforms && listed.has(key)) {
           collapsedTitle ??= index.pages[page]?.title;
         }
         continue;
       }
+      seen.add(key);
     }
     if (results.length < options.limit) {
       results.push(toResult(index, page));
+      if (key !== undefined) {
+        listed.add(key);
+      }
     } else if (!acrossPlatforms || collapsedTitle) {
       break;
     }

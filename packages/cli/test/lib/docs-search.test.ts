@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { searchDocs } from "../../src/lib/docs-search.js";
+import { buildPostings, searchDocs } from "../../src/lib/docs-search.js";
 import { fixtureDocsIndex } from "../fixtures/docs/index.js";
 
 const index = fixtureDocsIndex();
@@ -73,6 +73,29 @@ describe("searchDocs", () => {
     expect(urls("vite source maps nextjs")[0]).toBe(
       "/platforms/javascript/guides/nextjs/sourcemaps/uploading/vite.md",
     );
+  });
+
+  test("only says a page is listed once when it is listed", () => {
+    const pages = [
+      ["/product/webhooks", "Webhooks"],
+      ["/platforms/python/webhooks", "Webhooks"],
+      ["/platforms/ruby/webhooks", "Webhooks"],
+    ].map(([path = "", title = ""]) => ({
+      path,
+      title,
+      description: "",
+      parent: -1,
+    }));
+    const small = { pages, postings: buildPostings(pages) };
+
+    const outcome = searchDocs(small, { query: "webhooks", limit: 1 });
+
+    expect(outcome.results.map((result) => result.title)).toEqual(["Webhooks"]);
+    expect(outcome.results[0]?.url).toBe(`${ORIGIN}/product/webhooks.md`);
+    expect(outcome.warnings).toEqual([]);
+    expect(
+      searchDocs(small, { query: "webhooks", limit: 2 }).warnings[0],
+    ).toContain("listed once");
   });
 
   test("skips hidden and old versioned pages", () => {
