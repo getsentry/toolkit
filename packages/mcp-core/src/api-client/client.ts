@@ -227,6 +227,7 @@ import type {
   IssueCommentList,
   IssueIntegrationList,
   IssueList,
+  IssueResolutionDetails,
   IssueTagKeyList,
   IssueTagValues,
   MetricAlertRule,
@@ -4116,6 +4117,7 @@ export class SentryApiService {
       ignoreWindow,
       ignoreUserCount,
       ignoreUserWindow,
+      statusDetails,
     }: {
       organizationSlug: string;
       issueId: string;
@@ -4127,6 +4129,7 @@ export class SentryApiService {
       ignoreWindow?: number;
       ignoreUserCount?: number;
       ignoreUserWindow?: number;
+      statusDetails?: IssueResolutionDetails;
     },
     opts?: RequestOptions,
   ): Promise<Issue> {
@@ -4139,8 +4142,10 @@ export class SentryApiService {
       ignoreWindow?: number;
       ignoreUserCount?: number;
       ignoreUserWindow?: number;
+      statusDetails?: IssueResolutionDetails;
     } = {};
     if (status !== undefined) updateData.status = status;
+    if (statusDetails !== undefined) updateData.statusDetails = statusDetails;
     if (assignedTo !== undefined) updateData.assignedTo = assignedTo ?? "";
     if (substatus !== undefined) updateData.substatus = substatus;
     if (ignoreDuration !== undefined)
