@@ -61,7 +61,7 @@ for (const flag of ["--version", "-v"]) {
   });
 }
 
-test("--help lists only mcp, auth, and help", () => {
+test("--help lists only mcp, auth, cli, and help", () => {
   const result = run(["--help"]);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /^USAGE\n {2}sentry-mcp mcp /);
@@ -71,7 +71,7 @@ test("--help lists only mcp, auth, and help", () => {
       .trim()
       .split("\n")
       .map((line) => line.trim().split(/\s+/)[0]),
-    ["mcp", "auth", "help"],
+    ["mcp", "auth", "cli", "help"],
   );
 });
 
@@ -114,6 +114,19 @@ test("runs the CLI's auth commands", () => {
   assert.match(
     result.stderr,
     /Not authenticated\. Run 'sentry-mcp auth login'/,
+  );
+});
+
+test("runs only the CLI's defaults and fix under cli", () => {
+  const result = run(["cli", "--help"]);
+  assert.equal(result.status, 0, result.stderr);
+  const commands = result.stdout.split("COMMANDS\n")[1] ?? "";
+  assert.deepEqual(
+    commands
+      .trim()
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/)[0]),
+    ["defaults", "fix"],
   );
 });
 

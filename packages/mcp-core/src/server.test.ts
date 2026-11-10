@@ -636,7 +636,7 @@ describe("buildServer", () => {
       );
 
       const text = getTextContent(result);
-      expect(text).toContain(`"message": "${replacedText}..."`);
+      expect(text).toContain(`"message":"${replacedText}..."`);
       expect(text.isWellFormed()).toBe(true);
     });
 
@@ -719,9 +719,11 @@ describe("buildServer", () => {
           "status": "ok",
         }
       `);
-      expect(getTextContent(result)).toBe(
-        getGeneratedTextFromStructuredContent(result),
-      );
+      const text = getTextContent(result);
+      // Compact JSON: indentation costs tokens for clients that send the
+      // text to a model.
+      expect(text).toBe('{"status":"ok","count":2}');
+      expect(JSON.parse(text)).toEqual(payload);
     });
 
     it("sets user ID and IP address together for tool calls", async () => {
@@ -2090,7 +2092,7 @@ describe("buildServer", () => {
             },
           ],
         });
-        expect(getTextContent(result)).toBe(JSON.stringify(payload, null, 2));
+        expect(JSON.parse(getTextContent(result))).toEqual(payload);
         expect(result.isError).not.toBe(true);
         expect(getTextContent(result)).not.toContain("unrelated");
       },
@@ -2371,10 +2373,9 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Updated DSN in **sentry-mcp-evals/cloudflare-mcp**",
-      );
-      expect(getTextContent(result)).toContain("**Rate Limit**: Disabled");
+      expect(getStructuredContent(result)).toMatchObject({
+        dsn: { id: "d20df0a1ab5031c7f3c7edca9c02814d", rateLimit: null },
+      });
     });
 
     it.each([

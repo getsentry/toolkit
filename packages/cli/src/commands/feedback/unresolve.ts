@@ -22,24 +22,23 @@ export const unresolveCommand = buildCommand({
       {
         description:
           "Reopen a Feedback item, or return it from spam to the inbox",
-        command: "sentry feedback unresolve FRONTEND-2SDJ",
+        run: "feedback unresolve FRONTEND-2SDJ",
       },
       {
         description: "Reopen by numeric ID",
-        command: "sentry feedback unresolve 5146636313",
+        run: "feedback unresolve 5146636313",
       },
       {
         description: "`reopen` is an alias for `unresolve`",
-        command: "sentry feedback reopen FRONTEND-2SDJ",
+        run: "feedback reopen FRONTEND-2SDJ",
       },
       {
         description: "Specify an organization explicitly",
-        command: "sentry feedback unresolve my-org/FRONTEND-2SDJ",
+        run: "feedback unresolve my-org/FRONTEND-2SDJ",
       },
       {
         description: "Return selected fields from the updated Feedback",
-        command:
-          "sentry feedback unresolve FRONTEND-2SDJ --json --fields id,shortId,status",
+        run: "feedback unresolve FRONTEND-2SDJ --json --fields id,shortId,status",
       },
     ],
   },

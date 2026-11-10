@@ -31,6 +31,7 @@ import type {
   Writer,
 } from "../../types/index.js";
 import { resolveOrgDisplayName } from "../api-client.js";
+import { sentry } from "../app-identity.js";
 import { stringifyUnknown } from "../errors.js";
 import { getReplayIdFromEvent } from "../replay-search.js";
 import { withSerializeSpan } from "../telemetry.js";
@@ -797,6 +798,19 @@ function formatPriorityLabel(priority?: string | null): string {
 }
 
 /**
+ * Display version of an issue's first or last release. Sentry returns only
+ * `version` for a release it can't load, so fall back to it.
+ */
+function releaseVersion(
+  release: SentryIssue["firstRelease"],
+): string | undefined {
+  if (!release) {
+    return;
+  }
+  return "shortVersion" in release ? release.shortVersion : release.version;
+}
+
+/**
  * Format detailed issue information as rendered markdown.
  *
  * @param issue - The Sentry issue to format
@@ -849,8 +863,8 @@ export function formatIssueDetails(issue: SentryIssue): string {
     ]);
   }
 
-  const firstReleaseVersion = issue.firstRelease?.shortVersion;
-  const lastReleaseVersion = issue.lastRelease?.shortVersion;
+  const firstReleaseVersion = releaseVersion(issue.firstRelease);
+  const lastReleaseVersion = releaseVersion(issue.lastRelease);
   if (firstReleaseVersion || lastReleaseVersion) {
     const first = text(stringifyUnknown(firstReleaseVersion ?? ""));
     const last = text(stringifyUnknown(lastReleaseVersion ?? ""));
@@ -1827,7 +1841,7 @@ function buildAuthDetailRows(data: AuthStatusData): [string, string][] {
   if (data.accounts !== undefined && data.accounts > 1) {
     rows.push([
       "Accounts",
-      `${data.accounts} stored (${inlineCode("sentry auth list")})`,
+      `${data.accounts} stored (${inlineCode(sentry`auth list`)})`,
     ]);
   }
   if (data.token) {
@@ -2045,8 +2059,8 @@ export function formatProjectCreated(result: ProjectCreatedResult): string {
   } else if (result.teamSource === "auto-selected") {
     lines.push(
       dry
-        ? `> **Note:** Would use team '${text(result.teamSlug)}'. See all teams: \`sentry team list\``
-        : `> **Note:** Using team '${text(result.teamSlug)}'. See all teams: \`sentry team list\``,
+        ? `> **Note:** Would use team '${text(result.teamSlug)}'. See all teams: \`${sentry`team list`}\``
+        : `> **Note:** Using team '${text(result.teamSlug)}'. See all teams: \`${sentry`team list`}\``,
     );
     lines.push("");
   }
@@ -2071,7 +2085,7 @@ export function formatProjectCreated(result: ProjectCreatedResult): string {
   if (!dry && !tipsSuppressed()) {
     lines.push("");
     lines.push(
-      `*Tip: Use \`sentry project view ${result.orgSlug}/${result.project.slug}\` for details*`,
+      `*Tip: Use \`${sentry`project view ${result.orgSlug}/${result.project.slug}`}\` for details*`,
     );
   }
 
@@ -2239,7 +2253,7 @@ export function formatFixResult(data: FixResult): string {
       `${colorTag("green", "✓")} No issues found. Database schema and permissions are correct.`,
     );
   } else if (data.dryRun && data.issues.length > 0 && !data.repairFailed) {
-    lines.push("Run `sentry cli fix` to apply fixes.");
+    lines.push(`Run \`${sentry`cli fix`}\` to apply fixes.`);
   } else if (!data.repairFailed) {
     lines.push(`${colorTag("green", "✓")} All issues repaired successfully.`);
   }

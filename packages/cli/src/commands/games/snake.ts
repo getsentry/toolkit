@@ -18,7 +18,7 @@ export const snakeCommand = buildCommand({
       "pause with `p`, retry with `r`, and quit with `esc` or `q`.\n\n" +
       "Needs an interactive terminal and is not available when an AI agent " +
       "runs the CLI.",
-    examples: [{ description: "Play Snake", command: "sentry games snake" }],
+    examples: [{ description: "Play Snake", run: "games snake" }],
   },
   auth: false,
   parameters: {},

@@ -42,9 +42,10 @@ import type { AlertRuleArgument } from "../arguments.js";
 import { issueRuleParameter, resolveIssueAlertRule } from "./rule-resolve.js";
 import type { IssueAlertEditOutput } from "../../../output-schemas/alert.js";
 import { IssueAlertEditOutputSchema } from "../../../generated/output-schemas/alert.js";
+import { sentry } from "../../../lib/app-identity.js";
 
-const USAGE_HINT =
-  "sentry alert issues edit <org>/<project>/<rule-id-or-name> --name <name> | --status active|disabled";
+const usageHint = () =>
+  sentry`alert issues edit <org>/<project>/<rule-id-or-name> --name <name> | --status active|disabled`;
 
 type EditFlags = {
   readonly name?: string;
@@ -201,24 +202,20 @@ export const editCommand = buildCommand({
     examples: [
       {
         description: "Rename an issue alert rule",
-        command:
-          "sentry alert issues edit my-org/my-project/12345 --name 'Prod errors'",
+        run: "alert issues edit my-org/my-project/12345 --name 'Prod errors'",
       },
       {
         description: "Disable a rule selected by name",
-        command:
-          "sentry alert issues edit my-org/my-project/'Old name' --status disabled",
+        run: "alert issues edit my-org/my-project/'Old name' --status disabled",
       },
       {
         description:
           "Rename and enable a rule (organization and project auto-detected)",
-        command:
-          "sentry alert issues edit 12345 --name 'Renamed' --status active",
+        run: "alert issues edit 12345 --name 'Renamed' --status active",
       },
       {
         description: "Replace the rule's conditions",
-        command:
-          'sentry alert issues edit my-org/my-project/12345 --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\'',
+        run: 'alert issues edit my-org/my-project/12345 --condition \'{"type":"first_seen_event","comparison":true,"conditionResult":true}\'',
       },
     ],
   },
@@ -230,7 +227,7 @@ export const editCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        issueRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
+        issueRuleParameter(usageHint, "Rule id or name (same as view)"),
       ],
     },
     flags: {
@@ -312,16 +309,16 @@ export const editCommand = buildCommand({
     const { ref, target: parsed } = await ruleArg.resolved;
     const { targets } = await resolveProjectBoundTargets(parsed, {
       cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (targets.length === 0) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
 
     const { target, rule } = await resolveIssueAlertRule(
       targets,
       ref,
-      USAGE_HINT,
+      usageHint(),
     );
 
     const body = {

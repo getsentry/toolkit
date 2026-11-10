@@ -107,7 +107,7 @@ export {
 export { getIssueTag } from "./api/issue-tags.js";
 export {
   buildIssueListCollapse,
-  getIssue,
+  findIssueInOrgs,
   getIssueByShortId,
   getIssueInOrg,
   getSharedIssue,
@@ -139,8 +139,8 @@ export {
 } from "./api/logs.js";
 export { listMonitors, listMonitorsPaginated } from "./api/monitors.js";
 export {
+  checkTokenAccess,
   getOrganization,
-  getUserRegions,
   listOrganizations,
   listOrganizationsPage,
   listOrganizationsUncached,
@@ -151,7 +151,7 @@ export {
   createProjectWithAutoTeam,
   createProjectWithDsn,
   deleteProject,
-  findProjectByDsnKey,
+  findProjectByDsn,
   findProjectsByPattern,
   findProjectsBySlug,
   getProject,

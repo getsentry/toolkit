@@ -26,23 +26,18 @@
       "environmentVariables": [
         {
           "description": "Sentry auth token. Optional after `npx -y @sentry/mcp-server auth login`.",
-          "isRequired": false,
           "format": "string",
           "isSecret": true,
           "name": "SENTRY_AUTH_TOKEN"
         },
         {
           "description": "Self-hosted Sentry hostname or URL. Takes precedence over SENTRY_URL. Defaults to sentry.io.",
-          "isRequired": false,
           "format": "string",
-          "isSecret": false,
           "name": "SENTRY_HOST"
         },
         {
           "description": "Self-hosted Sentry URL, such as https://sentry.example.com. Defaults to sentry.io.",
-          "isRequired": false,
           "format": "string",
-          "isSecret": false,
           "name": "SENTRY_URL"
         }
       ]

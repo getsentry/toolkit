@@ -42,6 +42,8 @@ export type McpServerConfig = {
   experimental: boolean;
   /** Skills granted for this session. */
   finalSkills: Set<Skill>;
+  /** Skills removed with `--disable-skills` or `MCP_DISABLE_SKILLS`. */
+  disabledSkills: Skill[];
   organizationSlug?: string;
   projectSlug?: string;
 };
@@ -97,7 +99,10 @@ export function resolveHost(url?: string, host?: string): string {
  * autofix endpoints answer 500 without it, so it is left out of the implicit
  * default there; `--skills=seer` or `--all-skills` opt back in.
  */
-function resolveSkills(input: McpMergedArgs, sentryHost: string): Set<Skill> {
+function resolveSkills(
+  input: McpMergedArgs,
+  sentryHost: string,
+): { finalSkills: Set<Skill>; disabledSkills: Skill[] } {
   if (input.skills && input.allSkills) {
     throw new ValidationError("--all-skills cannot be combined with --skills.");
   }
@@ -123,6 +128,7 @@ function resolveSkills(input: McpMergedArgs, sentryHost: string): Set<Skill> {
     }
   }
 
+  const disabledSkills: Skill[] = [];
   if (input.disableSkills) {
     const { valid: skillsToDisable, invalid } = parseSkills(
       input.disableSkills,
@@ -134,6 +140,7 @@ function resolveSkills(input: McpMergedArgs, sentryHost: string): Set<Skill> {
     }
     for (const skill of skillsToDisable) {
       finalSkills.delete(skill);
+      disabledSkills.push(skill);
     }
     if (finalSkills.size === 0) {
       throw new ValidationError(
@@ -142,7 +149,7 @@ function resolveSkills(input: McpMergedArgs, sentryHost: string): Set<Skill> {
     }
   }
 
-  return finalSkills;
+  return { finalSkills, disabledSkills };
 }
 
 function resolveAgentProvider(value?: string): McpAgentProvider | undefined {
@@ -172,7 +179,7 @@ export function finalizeMcpConfig(input: McpMergedArgs): McpServerConfig {
       "Plain HTTP is only supported for self-hosted Sentry hosts.",
     );
   }
-  const finalSkills = resolveSkills(input, sentryHost);
+  const { finalSkills, disabledSkills } = resolveSkills(input, sentryHost);
 
   return {
     sentryHost,
@@ -193,6 +200,7 @@ export function finalizeMcpConfig(input: McpMergedArgs): McpServerConfig {
     agentProviderFromFlag: input.agentProviderFromFlag,
     experimental: input.experimental,
     finalSkills,
+    disabledSkills,
     organizationSlug: input.organizationSlug,
     projectSlug: input.projectSlug,
   };

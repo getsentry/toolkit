@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-docs
-version: 0.49.0-dev.0
+version: 0.50.0-dev.0
 description: Search the Sentry documentation
 requires:
   bins: ["sentry"]

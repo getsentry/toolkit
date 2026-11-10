@@ -100,14 +100,14 @@ const summary = {
 };
 
 if (values.json) {
-  console.log(JSON.stringify({ summary, rows }, null, 2));
+  process.stdout.write(`${JSON.stringify({ summary, rows }, null, 2)}\n`);
 } else {
   for (const row of rows) {
     const rank = row.rank === undefined ? "  -" : `#${row.rank}`.padStart(3);
     const top = row.rank === 1 ? "" : `  (top: ${row.top ?? "none"})`;
-    console.log(`${rank}  ${row.query}${top}`);
+    process.stdout.write(`${rank}  ${row.query}${top}\n`);
   }
-  console.log(
-    `\nhit@1 ${summary.hitAt1}/${summary.tasks}  hit@3 ${summary.hitAt3}/${summary.tasks}  hit@${LIMIT} ${summary.hitAt8}/${summary.tasks}  MRR ${summary.mrr}`,
+  process.stdout.write(
+    `\nhit@1 ${summary.hitAt1}/${summary.tasks}  hit@3 ${summary.hitAt3}/${summary.tasks}  hit@${LIMIT} ${summary.hitAt8}/${summary.tasks}  MRR ${summary.mrr}\n`,
   );
 }

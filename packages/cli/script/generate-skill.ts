@@ -42,6 +42,7 @@ import {
   markdownSection,
 } from "./markdown.js";
 import { DOCS_CONTENT, DOCS_PUBLIC } from "./paths.js";
+import { logger } from "../src/lib/logger.js";
 
 const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
 const SKILL_DIR = "plugins/sentry-cli/skills/sentry-cli";
@@ -732,7 +733,7 @@ ${skillEntries}
   const refCount = [...files.keys()].filter((k) =>
     k.startsWith("references/"),
   ).length;
-  console.log(
+  logger.success(
     `Generated ${OUTPUT_PATH} + ${refCount} reference files + ${INDEX_JSON_PATH} + ${SKILL_CONTENT_PATH}`,
   );
 }

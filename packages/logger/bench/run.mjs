@@ -205,6 +205,8 @@ if (caseName) {
     overhead: `${loaded >= empty ? "+" : ""}${(loaded - empty).toFixed(1)} ms`,
   });
 
+  // oxlint-disable-next-line no-console -- the benchmark measures the logger, so its report bypasses it.
   console.log(`Node ${process.version}, ${process.platform}-${process.arch}`);
+  // oxlint-disable-next-line no-console -- see above.
   console.table(rows);
 }

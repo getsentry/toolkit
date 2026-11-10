@@ -10,6 +10,9 @@ export default defineConfig({
       reporter: ["text", "json", "html"],
       include: ["**/*.ts"],
     },
-    setupFiles: ["./src/setup-env.ts"],
+    // Roach records model calls and replays them on later runs. See roach.json.
+    // Its setup file loads before setup-env.ts starts MSW.
+    globalSetup: ["@sentry/roach/vitest"],
+    setupFiles: ["@sentry/roach/vitest/setup", "./src/setup-env.ts"],
   },
 });

@@ -210,7 +210,7 @@ describe.each(["node", "wasm"] as const)(
       expect(storedCount()).toBe(0);
     });
 
-    test("never throws when the database is unavailable", async () => {
+    test("keeps working in memory when cli.db can't be opened", async () => {
       const { store } = storeAt();
       const blocker = join(process.env[CONFIG_DIR_ENV_VAR] as string, "file");
       writeFileSync(blocker, "");
@@ -218,7 +218,7 @@ describe.each(["node", "wasm"] as const)(
       process.env[CONFIG_DIR_ENV_VAR] = join(blocker, "nested");
 
       await expect(store.push(eventEnvelope("a"))).resolves.toBeUndefined();
-      expect(store.claim(10)).toEqual([]);
+      expect(eventIds(store.claim(10))).toEqual(["a"]);
       expect(() => clearStoredEnvelopes()).not.toThrow();
     });
   },

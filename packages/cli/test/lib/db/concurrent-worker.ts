@@ -13,6 +13,7 @@
  */
 
 import { mkdirSync } from "node:fs";
+import { logger } from "../../../src/lib/logger.js";
 
 // Set config dir from CLI arg before importing db modules
 const configDir = process.argv[2];
@@ -20,7 +21,7 @@ const workerId = process.argv[3];
 const operation = process.argv[4];
 
 if (!(configDir && workerId && operation)) {
-  console.error(
+  logger.error(
     "Usage: tsx concurrent-worker.ts <config-dir> <worker-id> <operation>",
   );
   process.exit(1);
@@ -203,6 +204,7 @@ async function main(): Promise<void> {
   }
 
   // Output result as JSON for parent process to parse
+  // oxlint-disable-next-line no-console -- the parent test reads the result from stdout.
   console.log(JSON.stringify(result));
 }
 

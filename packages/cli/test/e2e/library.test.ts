@@ -239,6 +239,7 @@ describe("library mode (bundled)", () => {
         token: 'test-sdk-token',
         url: 'http://localhost:9000',
         cwd: ${JSON.stringify(getConfigDir())},
+        persist: true,
       });
       const endpoint = 'organizations/';
       sdk.api({ endpoint, cursor: 'page-token+/=:1' }).then(async response => {

@@ -18,6 +18,7 @@ import {
 import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
 import type { SentryIntegration } from "../../types/index.js";
 import { IntegrationListItemSchema } from "../../generated/output-schemas/integration.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "integration-list";
@@ -43,7 +44,7 @@ const integrationListConfig: OrgListConfig<
 > = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "integrations",
-  commandPrefix: "sentry integration list",
+  commandPrefix: () => sentry`integration list`,
   listForOrg: (org) => listIntegrations(org),
   listPaginated: (org, opts) => listIntegrationsPaginated(org, opts),
   withOrg: (integration, orgSlug) => ({ ...integration, orgSlug }),
@@ -65,28 +66,28 @@ const docs: OrgListCommandDocs = {
   examples: [
     {
       description: "List installed integrations (auto-detect org)",
-      command: "sentry integration list",
+      run: "integration list",
     },
     {
       description: "List integrations in a specific org",
-      command: "sentry integration list my-org/",
+      run: "integration list my-org/",
     },
     {
       description: "Fetch the next page",
-      command: "sentry integration list my-org/ -c next",
+      run: "integration list my-org/ -c next",
     },
     {
       description: "Only integrations whose name or provider matches a glob",
-      command: "sentry integration list 'my-org/git*'",
+      run: "integration list 'my-org/git*'",
     },
     {
       description:
         "Integrations named like 'GitHub' (fuzzy when nothing matches exactly)",
-      command: "sentry integration list my-org/githb",
+      run: "integration list my-org/githb",
     },
     {
       description: "Output as JSON",
-      command: "sentry integration list --json",
+      run: "integration list --json",
     },
   ],
 };

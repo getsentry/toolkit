@@ -21,13 +21,18 @@ import type { PublicEventsDataset } from "../../../utils/events-datasets";
 import {
   DASHBOARD_LINK_HINT,
   ERROR_RESULT_HINTS,
+  getProfileDetailUrl,
   type ExecutedSearch,
+  PROFILE_RESULT_HINTS,
+  METRIC_RESULT_HINTS,
+  SPAN_RESULT_HINTS,
+  LOG_RESULT_HINTS,
   type SearchResultHints,
   summarizeTimeSeries,
 } from "./formatters";
 import { type FlexibleEventData, isAggregateQuery } from "./utils";
 
-const timeRangeSchema = z.object({
+export const timeRangeSchema = z.object({
   statsPeriod: z.string().nullable(),
   start: z.string().nullable(),
   end: z.string().nullable(),
@@ -87,21 +92,18 @@ const timeSeriesSchema = z.object({
 
 const SEARCH_RESULT_TYPES = ["samples", "aggregates", "timeSeries"] as const;
 
-type SearchResultType = (typeof SEARCH_RESULT_TYPES)[number];
-type RowLinks = Record<string, string | null>;
-
-export interface SearchEventsStructuredContent extends Record<string, unknown> {
-  query: string;
-  explanation: string | null;
-  executedSearch: z.infer<typeof executedSearchSchema>;
-  url: string;
-  presentationHint: string;
-  notes: string[];
-  resultType: SearchResultType;
-  results: Array<{ values: Record<string, unknown>; links: RowLinks }>;
-  timeSeries: z.infer<typeof timeSeriesSchema> | null;
-  suggestedActions: SuggestedToolAction[];
-}
+/**
+ * The search payload every dataset shares, with row links loosened to a
+ * record. Derived from the output schema so the builders cannot drift from
+ * it; `DatasetSearchStructuredContent` narrows the links for one dataset.
+ */
+export type SearchEventsStructuredContent = z.output<
+  ReturnType<
+    typeof searchEventsOutputSchema<
+      z.ZodRecord<z.ZodString, z.ZodNullable<z.ZodString>>
+    >
+  >
+>;
 
 interface StructuredSearchSession {
   apiService: SentryApiService;
@@ -115,6 +117,8 @@ type RowLinkShape = Record<string, z.ZodType<string | null>>;
 
 interface StructuredDatasetConfig<TLinks extends RowLinkShape = RowLinkShape> {
   hints: SearchResultHints;
+  /** Units the raw values use, keyed by the field they describe. */
+  fieldUnitNotes?: Record<string, string>;
   /** The Sentry URLs derived for each result row; the output schema uses it. */
   links: TLinks;
   rowLinks(
@@ -132,6 +136,48 @@ function defineDatasetConfig<TLinks extends RowLinkShape>(
   config: StructuredDatasetConfig<TLinks>,
 ): StructuredDatasetConfig<TLinks> {
   return config;
+}
+
+function getStringField(
+  event: FlexibleEventData,
+  field: string,
+): string | null {
+  const value = event[field];
+  return typeof value === "string" && value ? value : null;
+}
+
+function traceUrlFor(
+  event: FlexibleEventData,
+  { apiService, organizationSlug }: StructuredSearchSession,
+): string | null {
+  const traceId = getStringField(event, "trace");
+  return traceId ? apiService.getTraceUrl(organizationSlug, traceId) : null;
+}
+
+/** Suggests opening the trace of the first row that has one. */
+function firstTraceAction(
+  results: SearchEventsStructuredContent["results"],
+  session: StructuredSearchSession,
+  reason: string,
+): SuggestedToolAction[] {
+  const traceId = results
+    .map((row) => row.values.trace)
+    .find((trace): trace is string => typeof trace === "string" && !!trace);
+  const action = traceId
+    ? buildSuggestedToolAction({
+        toolName: "get_sentry_resource",
+        arguments: {
+          organizationSlug: session.organizationSlug,
+          resourceType: "trace",
+          resourceId: traceId,
+        },
+        reason,
+        experimentalMode: session.experimentalMode,
+        availableToolNames: session.availableToolNames,
+        directToolNames: session.directToolNames,
+      })
+    : null;
+  return action ? [action] : [];
 }
 
 const STRUCTURED_DATASETS = {
@@ -165,14 +211,107 @@ const STRUCTURED_DATASETS = {
       return action ? [action] : [];
     },
   }),
+  logs: defineDatasetConfig({
+    hints: LOG_RESULT_HINTS,
+    links: {
+      logUrl: z.string().nullable(),
+      traceUrl: z.string().nullable(),
+    },
+    rowLinks: (event, session) => {
+      const logId = getStringField(event, "id");
+      return {
+        logUrl: logId
+          ? session.apiService.getLogUrl(session.organizationSlug, logId)
+          : null,
+        traceUrl: traceUrlFor(event, session),
+      };
+    },
+    suggestedActions: (results, session) =>
+      firstTraceAction(
+        results,
+        session,
+        "Inspect the trace for the first matching log.",
+      ),
+  }),
+  spans: defineDatasetConfig({
+    hints: SPAN_RESULT_HINTS,
+    fieldUnitNotes: {
+      "span.duration": "span.duration values are in milliseconds.",
+    },
+    links: { traceUrl: z.string().nullable() },
+    rowLinks: (event, session) => ({ traceUrl: traceUrlFor(event, session) }),
+    suggestedActions: (results, session) =>
+      firstTraceAction(
+        results,
+        session,
+        "Inspect the trace for the first matching span.",
+      ),
+  }),
+  metrics: defineDatasetConfig({
+    hints: METRIC_RESULT_HINTS,
+    links: { traceUrl: z.string().nullable() },
+    rowLinks: (event, session) => ({ traceUrl: traceUrlFor(event, session) }),
+    suggestedActions: (results, session) =>
+      firstTraceAction(
+        results,
+        session,
+        "Inspect the trace for the first matching metric sample.",
+      ),
+  }),
+  profiles: defineDatasetConfig({
+    hints: PROFILE_RESULT_HINTS,
+    fieldUnitNotes: {
+      "transaction.duration": "transaction.duration values are in nanoseconds.",
+      "profile.duration": "profile.duration values are in nanoseconds.",
+    },
+    links: {
+      profileUrl: z.string().nullable(),
+      traceUrl: z.string().nullable(),
+    },
+    rowLinks: (event, session) => ({
+      profileUrl: getProfileDetailUrl(
+        session.apiService,
+        session.organizationSlug,
+        event,
+      ),
+      traceUrl: traceUrlFor(event, session),
+    }),
+    suggestedActions(results, session) {
+      const profileUrl = results.find((row) => row.links.profileUrl)?.links
+        .profileUrl;
+      const reason = "Analyze the flamegraph for the first matching profile.";
+      // Experimental sessions route profile URLs through get_sentry_resource.
+      const profileAction = profileUrl
+        ? buildSuggestedToolAction({
+            ...(session.experimentalMode
+              ? {
+                  toolName: "get_sentry_resource",
+                  arguments: { url: profileUrl },
+                }
+              : { toolName: "get_profile_details", arguments: { profileUrl } }),
+            reason,
+            experimentalMode: session.experimentalMode,
+            availableToolNames: session.availableToolNames,
+            directToolNames: session.directToolNames,
+          })
+        : null;
+      return [
+        ...(profileAction ? [profileAction] : []),
+        ...firstTraceAction(
+          results,
+          session,
+          "Inspect the trace for the first profiled request.",
+        ),
+      ];
+    },
+  }),
 } satisfies Partial<Record<PublicEventsDataset, StructuredDatasetConfig>>;
 
 export type StructuredSearchDataset = keyof typeof STRUCTURED_DATASETS;
 
-/** Output schema for the dataset search tool that searches `dataset`. */
-export function buildSearchEventsOutputSchema(
-  dataset: StructuredSearchDataset,
-) {
+function searchEventsOutputSchema<
+  TLinks extends z.ZodType<Record<string, string | null>>,
+>(links: TLinks) {
   return z.object({
     query: z.string(),
     explanation: z.string().nullable(),
@@ -186,13 +325,25 @@ export function buildSearchEventsOutputSchema(
         values: z
           .record(z.string(), z.unknown())
           .describe("The requested fields, keyed by field name."),
-        links: z.object(STRUCTURED_DATASETS[dataset].links),
+        links,
       }),
     ),
     timeSeries: timeSeriesSchema.nullable(),
     suggestedActions: z.array(suggestedToolActionSchema),
   });
 }
+
+/** Output schema for the dataset search tool that searches `dataset`. */
+export function buildSearchEventsOutputSchema<
+  TDataset extends StructuredSearchDataset,
+>(dataset: TDataset) {
+  return searchEventsOutputSchema(z.object(STRUCTURED_DATASETS[dataset].links));
+}
+
+/** The payload of the dataset search tool that searches `TDataset`. */
+export type DatasetSearchStructuredContent<
+  TDataset extends StructuredSearchDataset,
+> = z.output<ReturnType<typeof buildSearchEventsOutputSchema<TDataset>>>;
 
 function getDatasetConfig(dataset: string): StructuredDatasetConfig {
   if (!Object.hasOwn(STRUCTURED_DATASETS, dataset)) {
@@ -277,7 +428,12 @@ export function buildStructuredEventsResult(params: {
     notes:
       results.length === 0
         ? [...params.notes, `No results found. ${config.hints.empty}`]
-        : params.notes,
+        : [
+            ...params.notes,
+            ...params.requestFields.flatMap(
+              (field) => config.fieldUnitNotes?.[field] ?? [],
+            ),
+          ],
     resultType: isAggregate ? "aggregates" : "samples",
     results,
     timeSeries: null,

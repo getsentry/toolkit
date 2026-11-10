@@ -79,24 +79,23 @@ export const docsCommand = buildCommand({
     examples: [
       {
         description: "Find pages by keywords",
-        command: "sentry docs nextjs tracing",
+        run: "docs nextjs tracing",
       },
       {
         description: "Combine several topics",
-        command: "sentry docs tracing cloudflare tanstack start",
+        run: "docs tracing cloudflare tanstack start",
       },
       {
         description: "Match URL paths with a regular expression",
-        command:
-          "sentry docs -e 'guides/(nextjs|remix|sveltekit)/manual-setup$'",
+        run: "docs -e 'guides/(nextjs|remix|sveltekit)/manual-setup$'",
       },
       {
         description: "Combine a pattern and words",
-        command: "sentry docs -e '/python/integrations/' celery",
+        run: "docs -e '/python/integrations/' celery",
       },
       {
         description: "Output as JSON",
-        command: "sentry docs source maps vite --json",
+        run: "docs source maps vite --json",
       },
     ],
   },

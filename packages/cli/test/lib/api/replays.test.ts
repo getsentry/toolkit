@@ -531,7 +531,7 @@ describe("listReplayIdsForIssue", () => {
     );
     expect(url.searchParams.get("returnIds")).toBe("true");
     expect(url.searchParams.get("query")).toBe("issue.id:[12345]");
-    expect(url.searchParams.get("data_source")).toBe("events");
+    expect(url.searchParams.get("data_source")).toBe("errors");
     expect(url.searchParams.get("statsPeriod")).toBe("90d");
     expect(url.searchParams.getAll("project")).toEqual(["-1"]);
     expect(replayIds).toEqual([

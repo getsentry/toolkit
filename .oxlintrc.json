@@ -103,6 +103,7 @@
         "sentry-cli/no-regex-markdown-parsing": "error",
         "sentry-cli/json-transform-uses-fields": "error",
         "sentry-cli/no-runtime-output-schema-imports": "error",
+        "sentry-cli/no-hardcoded-sentry-command": "error",
         "no-restricted-imports": [
           "error",
           {
@@ -118,6 +119,15 @@
         "no-bitwise": "error",
         "max-params": ["error", 5],
         "sentry-cli/no-skipped-tests": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/cli/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/logger/**/*.{ts,tsx,js,mjs,cjs}"
+      ],
+      "rules": {
+        "no-console": "error"
       }
     },
     {

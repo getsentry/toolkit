@@ -1,3 +1,4 @@
+import { sentry } from "../../lib/app-identity.js";
 import { isLoopbackHost, normalizeLocalHostname } from "./loopback.js";
 import { openBrowser } from "../../lib/browser.js";
 import { getCliEnvironment } from "../../lib/constants.js";
@@ -117,7 +118,7 @@ export async function openLocalUi(
   const streamUrl = new URL(receiverUrl);
   if (streamUrl.searchParams.has("cap") || directoryUrl) {
     logger.warn(
-      "Could not open browser. Use sentry local session view <session> --json to retrieve its stream URL.",
+      `Could not open browser. Use ${sentry`local session view <session> --json`} to retrieve its stream URL.`,
     );
     return;
   }

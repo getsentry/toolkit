@@ -43,8 +43,8 @@ catalogs:
       specifier: ^1.2.3
       version: 1.2.3
     '@sentry/api':
-      specifier: 1.26.0
-      version: 1.26.0
+      specifier: 1.59.0
+      version: 1.59.0
     '@sentry/cloudflare':
       specifier: 11.6.0
       version: 11.6.0
@@ -57,6 +57,9 @@ catalogs:
     '@sentry/react':
       specifier: 11.6.0
       version: 11.6.0
+    '@sentry/roach':
+      specifier: 0.3.0
+      version: 0.3.0
     '@sentry/search-syntax':
       specifier: ^1.0.0
       version: 1.0.0
@@ -510,7 +513,7 @@ importers:
         version: 2.1.5(hono@4.13.13)
       '@sentry/api':
         specifier: 'catalog:'
-        version: 1.26.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 1.59.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.6.0
@@ -862,7 +865,7 @@ importers:
         version: 2.4.0
       '@sentry/api':
         specifier: 'catalog:'
-        version: 1.26.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 1.59.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.6.0
@@ -960,6 +963,10 @@ importers:
       zod:
         specifier: ^4.6.6
         version: 4.6.7
+    devDependencies:
+      '@sentry/roach':
+        specifier: 'catalog:'
+        version: 0.3.0(vitest@5.0.5)
 
   packages/mcp-server-mocks:
     dependencies:
@@ -1041,7 +1048,7 @@ importers:
     dependencies:
       '@sentry/api':
         specifier: 'catalog:'
-        version: 1.26.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 1.59.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/search-syntax':
         specifier: 'catalog:'
         version: 1.0.0
@@ -4268,8 +4275,8 @@ packages:
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
 
-  '@sentry/api@1.26.0':
-    resolution: {integrity: sha512-LkzMT2mn2Qrbnf2s+2t/mrXpN1/2o0GO2fodhds2Ntp8kRt/NkilWIETAGUU6vB7XKlLhPZloZT4Yv/HEzCmFA==}
+  '@sentry/api@1.59.0':
+    resolution: {integrity: sha512-VN1UIKZVkXip0wwVobbVQJgi0sb5Nhi/fBqkoiIBH32Vf8rUtOuRQEEUDSrJ5Ug8XyTd9UcW2mNxwoDLdSVMJg==}
     engines: {node: '>=22'}
     peerDependencies:
       typescript: '*'
@@ -4643,6 +4650,15 @@ packages:
   '@sentry/replay@11.6.0':
     resolution: {integrity: sha512-cJyPYnF6QJA8ADRfAW06YoU7EVIebtWezBOCU9Vag5+W1VLBkXEvH7C4LbeMUiDmrqw92sumq06NgqipIxA7BA==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
+  '@sentry/roach@0.3.0':
+    resolution: {integrity: sha512-vgYiE3t/Cd5Ruff0KdCNktRNFYoXJTj10RUlcgqqhuMYTBbGlY+e/pU48M02WuueoQWx6zRZMm76jQRJQwp7KA==}
+    engines: {node: '>=24'}
+    peerDependencies:
+      vitest: '>=3'
+    peerDependenciesMeta:
+      vitest:
+        optional: true
 
   '@sentry/search-syntax@1.0.0':
     resolution: {integrity: sha512-R+raAe4PixC+e7Zn6uPH7NSK7nzfHy2MA1kRWDn7dFH8zaU10edFBVPj8qO3TlSb58yts0tejPdy+s1acq80wQ==}
@@ -7673,6 +7689,10 @@ packages:
 
   p-limit@7.3.2:
     resolution: {integrity: sha512-Ll0w3fU24vYpXoZmjjZIee6bJQDgG0oAyo1PdmFYI8UDwJJddaHAypxIH9avUu+t+lSsAwKVsb1jDCMIIChliw==}
+    engines: {node: '>=20'}
+
+  p-limit@7.3.3:
+    resolution: {integrity: sha512-SKgVvDU5TNIxQ4r30U75BNLC6a+6GOEjngrk/ysM5+Zu3oJuk1SC5ApzIzY/7PjCEjoVPMWJ0zho/4QUiEB7TQ==}
     engines: {node: '>=20'}
 
   p-locate@5.0.0:
@@ -12092,9 +12112,10 @@ snapshots:
 
   '@sec-ant/readable-stream@0.4.1': {}
 
-  '@sentry/api@1.26.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)':
+  '@sentry/api@1.59.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)':
     dependencies:
       http-cache-semantics: 4.2.0
+      p-limit: 7.3.3
     optionalDependencies:
       typescript: 5.9.3
       valibot: 1.4.2(typescript@5.9.3)
@@ -12490,6 +12511,10 @@ snapshots:
     dependencies:
       '@sentry/browser-utils': 11.6.0
       '@sentry/core': 11.6.0
+
+  '@sentry/roach@0.3.0(vitest@5.0.5)':
+    optionalDependencies:
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(@vitest/coverage-v8@5.0.5)(jsdom@28.1.0)(msw@2.10.2(@types/node@24.13.5)(typescript@5.9.3))(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
 
   '@sentry/search-syntax@1.0.0': {}
 
@@ -16126,6 +16151,10 @@ snapshots:
       yocto-queue: 1.2.2
 
   p-limit@7.3.2:
+    dependencies:
+      yocto-queue: 1.2.2
+
+  p-limit@7.3.3:
     dependencies:
       yocto-queue: 1.2.2
 

@@ -35,6 +35,7 @@ import {
   variant,
 } from "valibot";
 
+import type { EventsDataset } from "../lib/datasets.js";
 import { ValidationError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import type {
@@ -1070,7 +1071,7 @@ export type WidgetDataResult = InferOutput<typeof WidgetDataResultSchema>;
  * Widget types that don't map to a dataset (issue, preprod-app-size, etc.)
  * return null and are rendered as "unsupported".
  */
-const WIDGET_TYPE_TO_DATASET: Record<string, string> = {
+const WIDGET_TYPE_TO_DATASET: Partial<Record<string, EventsDataset>> = {
   spans: "spans",
   "error-events": "errors",
   logs: "logs",
@@ -1085,7 +1086,7 @@ const WIDGET_TYPE_TO_DATASET: Record<string, string> = {
  */
 export function mapWidgetTypeToDataset(
   widgetType: string | undefined,
-): string | null {
+): EventsDataset | null {
   if (!widgetType) {
     return null;
   }

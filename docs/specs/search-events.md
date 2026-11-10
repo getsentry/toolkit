@@ -98,13 +98,18 @@ search_metrics({
    - Prominent rendering directives for AI agents
    - Shareable Sentry Explorer URL
 
-Dataset tools that declare an `outputSchema` (`search_errors` today) return
+Dataset tools that declare an `outputSchema` (`search_errors`, `search_logs`, `search_traces`, `search_metrics`, and `search_profiles` today) return
 `structuredContent` instead of the markdown above; legacy `search_events` keeps
 markdown. In that payload, `resultType` (`samples`, `aggregates`, or
 `timeSeries`) replaces the dataset-specific rendering, each row holds only the
 requested fields in `values` plus derived URLs in `links`, and rendering
 guidance is in `presentationHint`. Warnings and empty-result guidance are
 entries in `notes[]`, and a concrete follow-up is in `suggestedActions`.
+
+`search_replays` also declares an `outputSchema`, but replays have no fields
+or aggregates, so its payload lists `replays[]` with explicitly mapped
+replay fields (IDs, URLs, user, counts, browser, environment, and previews of
+visited pages and trace IDs with their full counts) in place of `results`.
 
 ## Key Implementation Details
 
@@ -155,6 +160,7 @@ Requests for a metric over time ("per hour", "per day", "trend", "over time") re
 - **Logs timestamp handling**: Logs don't support query-based timestamp filters like `timestamp:-1h`. Instead, use `statsPeriod=24h` parameter
 - **Project ID mapping**: API requires numeric project IDs, not slugs. Tool automatically converts project slugs to IDs
 - **Seer translation**: Seer translates natural-language queries when the organization has the `mcp-search-events-seer-translate` rollout flag and has not hidden AI features. If Seer is unavailable or cannot translate the query, the tool falls back to the configured embedded agent.
+- **Untranslated queries**: With no Seer translation and no embedded agent, the query runs as literal text. When a multi-word query without Sentry filters or quotes then finds nothing, the response adds a note that the query was not translated and that the caller should retry with Sentry search syntax. `search_issues` adds the same note in direct mode. Queries in Sentry syntax and searches that return results are unchanged.
 - **Seer cross-event filters**: Time series results do not apply cross-event filters. When Seer returns those filters for a time series, the response always begins with a warning identifying the omitted filters and the broader results, even when `includeExplanation` is false. Structured dataset tools put that warning first in `notes[]`.
 - **Seer project scope**: For a successful Seer translation without `projectSlug`, search and Explorer links use `project=-1` to match the all-accessible-project scope sent to Seer. Other unscoped searches retain their existing default scope.
 - **Parallel attribute fetching**: For spans/logs/metrics, fetches both string and number attribute types in parallel for better performance

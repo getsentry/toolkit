@@ -110,6 +110,37 @@ export const ERROR_RESULT_HINTS: SearchResultHints = {
   empty: EMPTY_RESULTS_HINT,
 };
 
+export const SPAN_RESULT_HINTS: SearchResultHints = {
+  samples:
+    "A timeline works well for these traces, with durations and parent-child span relationships visible.",
+  aggregates: AGGREGATE_RESULTS_HINT,
+  empty: EMPTY_RESULTS_HINT,
+};
+
+export const METRIC_RESULT_HINTS: SearchResultHints = {
+  samples:
+    "Concise summaries work well for these metric samples, highlighting metric name, type, value, and trace context.",
+  aggregates:
+    "A compact table with grouping labels and units works well for these metric aggregates.",
+  empty: "Try being more specific about the metric name, type, or filters.",
+};
+
+export const PROFILE_RESULT_HINTS: SearchResultHints = {
+  samples:
+    "Concise summaries work well for these profiles, highlighting profile ID, transaction, duration, release, and trace context.",
+  aggregates:
+    "A compact table with readable duration units works well for these profile aggregates.",
+  empty:
+    "Try narrowing the transaction, release, platform, or profile filters.",
+};
+
+export const LOG_RESULT_HINTS: SearchResultHints = {
+  samples:
+    "Console-style formatting works well for these logs, with timestamps preserved.",
+  aggregates: AGGREGATE_RESULTS_HINT,
+  empty: EMPTY_RESULTS_HINT,
+};
+
 /**
  * Common parameters for event formatters
  */
@@ -302,16 +333,11 @@ export function formatLogResults(params: FormatEventResultsParams): string {
 
   let output = `# Search Results for "${inputQuery}"\n\n`;
 
-  // Check if this is an aggregate query and adjust display instructions
-  if (isAggregateQuery(fields)) {
-    output += formatSearchPresentationHint(
-      "A compact table works well for these aggregate results.",
-    );
-  } else {
-    output += formatSearchPresentationHint(
-      "Console-style formatting works well for these logs, with timestamps preserved.",
-    );
-  }
+  output += formatSearchPresentationHint(
+    isAggregateQuery(fields)
+      ? LOG_RESULT_HINTS.aggregates
+      : LOG_RESULT_HINTS.samples,
+  );
 
   if (includeExplanation && explanation) {
     output += formatExplanation(explanation);
@@ -332,7 +358,7 @@ export function formatLogResults(params: FormatEventResultsParams): string {
       },
     });
     output += `No results found.\n\n`;
-    output += `Try being more specific or using different terms in your search.\n`;
+    output += `${LOG_RESULT_HINTS.empty}\n`;
     return output;
   }
 
@@ -467,16 +493,11 @@ export function formatSpanResults(params: FormatEventResultsParams): string {
 
   let output = `# Search Results for "${inputQuery}"\n\n`;
 
-  // Check if this is an aggregate query and adjust display instructions
-  if (isAggregateQuery(fields)) {
-    output += formatSearchPresentationHint(
-      "A compact table works well for these aggregate results.",
-    );
-  } else {
-    output += formatSearchPresentationHint(
-      "A timeline works well for these traces, with durations and parent-child span relationships visible.",
-    );
-  }
+  output += formatSearchPresentationHint(
+    isAggregateQuery(fields)
+      ? SPAN_RESULT_HINTS.aggregates
+      : SPAN_RESULT_HINTS.samples,
+  );
 
   if (includeExplanation && explanation) {
     output += formatExplanation(explanation);
@@ -497,7 +518,7 @@ export function formatSpanResults(params: FormatEventResultsParams): string {
       },
     });
     output += `No results found.\n\n`;
-    output += `Try being more specific or using different terms in your search.\n`;
+    output += `${SPAN_RESULT_HINTS.empty}\n`;
     return output;
   }
 
@@ -615,7 +636,8 @@ function getProfileTimestampValue(value: unknown): string | null {
   return null;
 }
 
-function getProfileDetailUrl(
+/** Flamegraph URL for a transaction profile or continuous profile row. */
+export function getProfileDetailUrl(
   apiService: SentryApiService,
   organizationSlug: string,
   event: FlexibleEventData,
@@ -659,15 +681,11 @@ export function formatProfileResults(params: FormatEventResultsParams): string {
 
   let output = `# Search Results for "${inputQuery}"\n\n`;
 
-  if (isAggregateQuery(fields)) {
-    output += formatSearchPresentationHint(
-      "A compact table with readable duration units works well for these profile aggregates.",
-    );
-  } else {
-    output += formatSearchPresentationHint(
-      "Concise summaries work well for these profiles, highlighting profile ID, transaction, duration, release, and trace context.",
-    );
-  }
+  output += formatSearchPresentationHint(
+    isAggregateQuery(fields)
+      ? PROFILE_RESULT_HINTS.aggregates
+      : PROFILE_RESULT_HINTS.samples,
+  );
 
   if (includeExplanation && explanation) {
     output += formatExplanation(explanation);
@@ -688,8 +706,7 @@ export function formatProfileResults(params: FormatEventResultsParams): string {
       },
     });
     output += "No results found.\n\n";
-    output +=
-      "Try narrowing the transaction, release, platform, or profile filters.\n";
+    output += `${PROFILE_RESULT_HINTS.empty}\n`;
     return output;
   }
 
@@ -826,15 +843,11 @@ export function formatTraceMetricsResults(
 
   let output = `# Search Results for "${inputQuery}"\n\n`;
 
-  if (isAggregateQuery(fields)) {
-    output += formatSearchPresentationHint(
-      "A compact table with grouping labels and units works well for these metric aggregates.",
-    );
-  } else {
-    output += formatSearchPresentationHint(
-      "Concise summaries work well for these metric samples, highlighting metric name, type, value, and trace context.",
-    );
-  }
+  output += formatSearchPresentationHint(
+    isAggregateQuery(fields)
+      ? METRIC_RESULT_HINTS.aggregates
+      : METRIC_RESULT_HINTS.samples,
+  );
 
   if (includeExplanation && explanation) {
     output += formatExplanation(explanation);
@@ -855,8 +868,7 @@ export function formatTraceMetricsResults(
       },
     });
     output += "No results found.\n\n";
-    output +=
-      "Try being more specific about the metric name, type, or filters.\n";
+    output += `${METRIC_RESULT_HINTS.empty}\n`;
     return output;
   }
 

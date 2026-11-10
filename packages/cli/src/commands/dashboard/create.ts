@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { createDashboard, getProject } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   type ParsedOrgProject,
   parseOrgProjectInput,
@@ -124,7 +125,7 @@ async function resolveDashboardTarget(
     case "project-search": {
       const found = await resolveProjectBoundSlug(
         parsed.projectSlug,
-        "sentry dashboard create <org>/<project> <title>",
+        sentry`dashboard create <org>/<project> <title>`,
         undefined,
         parsed.originalSlug,
       );
@@ -141,7 +142,7 @@ async function resolveDashboardTarget(
         if (!resolved) {
           throw new ContextError(
             "Organization",
-            "sentry dashboard create <org>/ <title>",
+            sentry`dashboard create <org>/ <title>`,
           );
         }
         return { orgSlug: resolved.org, projectIds: [] };
@@ -168,15 +169,15 @@ export const createCommand = buildCommand({
     examples: [
       {
         description: "Create a dashboard (organization auto-detected)",
-        command: "sentry dashboard create 'Frontend Performance'",
+        run: "dashboard create 'Frontend Performance'",
       },
       {
         description: "Create a dashboard in an explicit organization",
-        command: "sentry dashboard create my-org/ 'My Dashboard'",
+        run: "dashboard create my-org/ 'My Dashboard'",
       },
       {
         description: "Use the organization of an explicit project",
-        command: "sentry dashboard create my-org/my-project 'My Dashboard'",
+        run: "dashboard create my-org/my-project 'My Dashboard'",
       },
     ],
   },

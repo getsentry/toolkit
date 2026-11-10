@@ -358,6 +358,113 @@ function untaggedParser(value) {
   return undefined;
 }
 
+/**
+ * Top-level routes of the CLI, read from `src/command-manifest.ts` (one
+ * `name: route(…)` or `name: hidden(…)` entry each). Only `sentry <route>`
+ * is a command; `sentry binary` or `sentry v1.2` is prose.
+ */
+const ROUTE_NAMES = new Set(
+  [
+    ...readFileSync(
+      new URL("../src/command-manifest.ts", import.meta.url),
+      "utf-8",
+    ).matchAll(/^ {2}"?([a-z][a-z0-9-]*)"?: (?:route|hidden)\(/gm),
+  ].map(([, routeName]) => routeName),
+);
+
+/** Stands in for an interpolation, which may be any word. */
+const INTERPOLATION = "\uFFFC";
+
+/**
+ * `sentry` and the word after it: a route, a flag, a `<placeholder>`, or an
+ * interpolation.
+ */
+const SENTRY_WORD_RE =
+  /(?:^|[\s`'"(])sentry (\uFFFC|<|--?[a-z]|[a-z][a-z0-9-]*)/g;
+
+/** Whether `text` names a `sentry <command>`. */
+function namesSentryCommand(text) {
+  for (const [, word] of text.matchAll(SENTRY_WORD_RE)) {
+    if (
+      word === INTERPOLATION ||
+      word === "<" ||
+      word.startsWith("-") ||
+      ROUTE_NAMES.has(word)
+    )
+      return true;
+  }
+  return false;
+}
+
+/** The tag that builds a command hint: `` sentry`issue list` ``. */
+function isSentryTag(node) {
+  return (
+    node.type === "TaggedTemplateExpression" &&
+    node.tag.type === "Identifier" &&
+    node.tag.name === "sentry"
+  );
+}
+
+/** Text of a template literal, each interpolation as one word. */
+function templateText(node) {
+  return node.quasis
+    .map((quasi) => quasi.value.cooked ?? "")
+    .join(INTERPOLATION);
+}
+
+/** Properties whose text is command help, written for the `sentry` binary. */
+const HELP_TEXT_KEYS = new Set([
+  "docs",
+  "fullDescription",
+  "brief",
+  "examples",
+]);
+
+/** Key of a property node, as written. */
+function propertyKey(node) {
+  return node.key?.name ?? node.key?.value;
+}
+
+/**
+ * Whether `node` is a step of a `docs.examples` entry: the `run` value, an
+ * element of a `run` array, or the `args` of a `{ prefix, args }` step.
+ */
+function isExampleStep(node) {
+  let current = node.parent;
+  if (current?.type === "Property" && propertyKey(current) === "args") {
+    current = current.parent?.parent;
+  }
+  if (current?.type === "ArrayExpression") current = current.parent;
+  return current?.type === "Property" && propertyKey(current) === "run";
+}
+
+/** Whether `node` sits inside a function body. */
+function hasFunctionAncestor(node) {
+  for (let current = node.parent; current; current = current.parent) {
+    if (FUNCTION_TYPES.has(current.type)) return true;
+  }
+  return false;
+}
+
+/** Whether `node` sits in a command hint helper or in command help text. */
+function isInvocationSafe(node) {
+  for (let current = node.parent; current; current = current.parent) {
+    if (FUNCTION_TYPES.has(current.type)) return false;
+    if (isSentryTag(current)) return true;
+    if (
+      current.type === "Property" &&
+      HELP_TEXT_KEYS.has(current.key?.name ?? current.key?.value)
+    )
+      return true;
+    if (
+      current.type === "VariableDeclarator" &&
+      HELP_TEXT_KEYS.has(current.id?.name)
+    )
+      return true;
+  }
+  return false;
+}
+
 const rules = {
   "no-silent-catch": rule(
     "Handle or report caught errors instead of discarding them.",
@@ -798,6 +905,51 @@ const rules = {
         },
         ImportExpression(node) {
           if (buildOnly(node.source.value)) report(node);
+        },
+      };
+    },
+  ),
+  "no-hardcoded-sentry-command": rule(
+    "Hints must name the program that is running (`npx sentry`, `sentry-mcp`, ...): write the command with the sentry`…` tag from lib/app-identity.js, as sentry`issue list`.",
+    (_context, file, report) => {
+      if (!file.includes("/src/")) return {};
+      const check = (node, text) => {
+        if (!namesSentryCommand(text) || isInvocationSafe(node)) return;
+        report(node);
+      };
+      // The running program is known only once an entry point has started,
+      // so a hint built at module load would still name `sentry`.
+      const checkModuleLevel = (node) => {
+        if (!hasFunctionAncestor(node))
+          report(
+            node,
+            "Build the hint when it is shown, not at module load: the running program is not known yet. Keep a command in a constant or table as `() => sentry`…``.",
+          );
+      };
+      return {
+        TaggedTemplateExpression(node) {
+          if (!isSentryTag(node)) return;
+          checkModuleLevel(node);
+          if (templateText(node.quasi).startsWith("sentry "))
+            report(
+              node,
+              "The sentry`…` tag adds the program name; leave `sentry` out of the text.",
+            );
+        },
+        Literal(node) {
+          if (typeof node.value !== "string") return;
+          if (isExampleStep(node)) {
+            if (node.value.startsWith("sentry "))
+              report(
+                node,
+                "Write example steps without the program name, as `issue list`: help, docs and skills each add it.",
+              );
+            return;
+          }
+          check(node, node.value);
+        },
+        TemplateLiteral(node) {
+          if (!isSentryTag(node.parent)) check(node, templateText(node));
         },
       };
     },
