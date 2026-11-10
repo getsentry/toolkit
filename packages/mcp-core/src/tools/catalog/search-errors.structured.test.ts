@@ -357,4 +357,57 @@ describe("search_errors structured output", () => {
       }
     `);
   });
+
+  it("notes when a long time series is cut to the most recent buckets", async () => {
+    vi.mocked(translateWithSeer).mockResolvedValue({
+      query: "level:error",
+      fields: [],
+      sort: "-count()",
+      timeParams: { statsPeriod: "9d" },
+      timeSeries: { yAxis: "count()", interval: "5m" },
+      crossEventQueries: undefined,
+      suggestedProjectIds: [],
+      explanation: "",
+      runId: "run-1",
+      mode: "time_series",
+      organizationFeatures: [],
+    } as unknown as Awaited<ReturnType<typeof translateWithSeer>>);
+    const start = 1757545200000;
+    const fiveMinutes = 300_000;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events-timeseries/",
+        () =>
+          HttpResponse.json({
+            timeSeries: [
+              {
+                yAxis: "count()",
+                values: Array.from({ length: 60 }, (_, i) => ({
+                  timestamp: start + i * fiveMinutes,
+                  value: i,
+                  incomplete: false,
+                })),
+                meta: {
+                  interval: fiveMinutes,
+                  valueType: "integer",
+                  valueUnit: null,
+                },
+              },
+            ],
+          }),
+      ),
+    );
+
+    const structuredContent = await runSearch({
+      query: "errors per 5 minutes",
+      period: "9d",
+    });
+
+    expect(structuredContent.timeSeries?.bucketCount).toBe(60);
+    expect(structuredContent.timeSeries?.buckets).toHaveLength(48);
+    expect(structuredContent.timeSeries?.buckets[0]?.value).toBe(12);
+    expect(structuredContent.notes).toEqual([
+      "**Note:** Only the most recent 48 of 60 buckets are returned; older buckets in the time range are left out. Use a coarser interval to cover more of the range.",
+    ]);
+  });
 });
