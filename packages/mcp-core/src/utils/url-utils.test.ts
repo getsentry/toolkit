@@ -556,6 +556,121 @@ describe("url-utils", () => {
   });
 
   describe("getTraceMetricsExploreUrl", () => {
+    it("resolves exact metric filters inside nested parentheses", () => {
+      const query =
+        "(metric.name:tokens AND (metric.type:counter)) environment:production";
+      const url = new URL(
+        getTraceMetricsExploreUrl("sentry.io", "myorg", {
+          query,
+          timeSeries: { axes: [{ yAxis: "sum(value)" }], interval: "1h" },
+        }),
+      );
+      expect(JSON.parse(url.searchParams.get("metric")!)).toMatchObject({
+        metric: { name: "tokens", type: "counter" },
+        query,
+        aggregateFields: [{ yAxes: ["sum(value,tokens,counter,none)"] }],
+      });
+    });
+
+    it("preserves axis order across metric identities and qualifies bare value aggregates", () => {
+      const url = new URL(
+        getTraceMetricsExploreUrl("sentry.io", "myorg", {
+          query:
+            "metric.name:http.duration metric.type:distribution metric.unit:millisecond environment:production",
+          projectId: "123",
+          statsPeriod: "24h",
+          timeSeries: {
+            axes: [
+              {
+                yAxis: "p95(value)",
+                transformations: ["fill(linear)", "smooth(ema,3)"],
+              },
+              {
+                yAxis: "sum(value,requests,counter,none)",
+                transformations: ["smooth(asap)"],
+              },
+              { yAxis: "p95(value)", transformations: [] },
+            ],
+            interval: "1m",
+          },
+        }),
+      );
+      expect(
+        url.searchParams.getAll("metric").map((state) => JSON.parse(state)),
+      ).toEqual([
+        {
+          metric: {
+            name: "http.duration",
+            type: "distribution",
+            unit: "millisecond",
+          },
+          query:
+            "metric.name:http.duration metric.type:distribution metric.unit:millisecond environment:production",
+          aggregateFields: [
+            {
+              yAxes: ["p95(value,http.duration,distribution,millisecond)"],
+              transformations: ["fill(linear)", "smooth(ema,3)"],
+            },
+          ],
+          aggregateSortBys: [],
+          mode: "aggregate",
+        },
+        {
+          metric: { name: "requests", type: "counter", unit: "none" },
+          query:
+            "metric.name:http.duration metric.type:distribution metric.unit:millisecond environment:production",
+          aggregateFields: [
+            {
+              yAxes: ["sum(value,requests,counter,none)"],
+              transformations: ["smooth(asap)"],
+            },
+          ],
+          aggregateSortBys: [],
+          mode: "aggregate",
+        },
+        {
+          metric: {
+            name: "http.duration",
+            type: "distribution",
+            unit: "millisecond",
+          },
+          query:
+            "metric.name:http.duration metric.type:distribution metric.unit:millisecond environment:production",
+          aggregateFields: [
+            {
+              yAxes: ["p95(value,http.duration,distribution,millisecond)"],
+              transformations: [],
+            },
+          ],
+          aggregateSortBys: [],
+          mode: "aggregate",
+        },
+      ]);
+      expect(url.searchParams.get("interval")).toBe("1m");
+      expect(url.searchParams.get("statsPeriod")).toBe("24h");
+      expect(url.searchParams.get("project")).toBe("123");
+    });
+
+    it.each([
+      "environment:production",
+      "metric.name:http.* metric.type:distribution",
+      "metric.name:[a,b] metric.type:distribution",
+      "metric.name:a metric.name:b metric.type:distribution",
+      "metric.name:a metric.type:distribution OR environment:production",
+      "(metric.name:a OR metric.name:b) metric.type:distribution",
+      "NOT (metric.name:a metric.type:distribution)",
+      "!(metric.name:a metric.type:distribution)",
+    ])("rejects an ambiguous metric identity in %s", (query) => {
+      expect(() =>
+        getTraceMetricsExploreUrl("sentry.io", "myorg", {
+          query,
+          timeSeries: {
+            axes: [{ yAxis: "p95(value)", transformations: ["smooth(asap)"] }],
+          },
+        }),
+      ).toThrow("exact metric identity");
+    });
+
     it("should build sample metric URLs with concrete metric state", () => {
       const result = getTraceMetricsExploreUrl("sentry.io", "myorg", {
         query: "",
