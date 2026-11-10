@@ -352,6 +352,7 @@ function preservesSearchTokens(originalQuery: string, repairedQuery: string) {
 }
 
 const TIME_BOUND_FILTER_PATTERN = /^timestamp:\S/;
+const QUOTED_VALUE_PATTERN = /(["'])(?:\\.|(?!\1).)*\1/g;
 
 /**
  * Put back explicit `timestamp:` bounds that the agent dropped from a
@@ -370,7 +371,12 @@ function restoreDroppedTimeBounds(
   const originalTokens = tokenizeSearchQuery(originalQuery);
   if (
     originalTokens.some(
-      (token) => token === "OR" || token === "AND" || /[()]/.test(token),
+      (token) =>
+        token === "OR" ||
+        token === "AND" ||
+        // Parentheses inside a quoted value, e.g. message:"err (timeout)",
+        // are not grouping.
+        /[()]/.test(token.replace(QUOTED_VALUE_PATTERN, "")),
     )
   ) {
     return repairedQuery;
