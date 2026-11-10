@@ -57,7 +57,7 @@ type Org = { id: string; slug: string; name: string; regionUrl: string };
 
 /** Orgs each token can see; a token missing here gets a 401. */
 let orgsByToken: Record<string, Org[]>;
-/** The `/auth/` user of each token; a token missing here gets a 401. */
+/** The `/users/me/` user of each token; a token missing here gets a 401. */
 let usersByToken: Record<string, { id: string; email: string; name: string }>;
 /** `<origin> <token>` for every org-list request, to check token routing. */
 let requests: string[];
@@ -78,8 +78,8 @@ beforeEach(async () => {
     const req = new Request(input, init);
     const url = new URL(req.url);
     const token = req.headers.get("Authorization")?.replace(/^Bearer /, "");
-    if (url.pathname === "/api/0/auth/") {
-      requests.push(`${url.origin} ${token} /auth/`);
+    if (url.pathname === "/api/0/users/me/") {
+      requests.push(`${url.origin} ${token} /users/me/`);
       const user = token ? usersByToken[token] : undefined;
       return user
         ? Response.json(user)
@@ -554,7 +554,7 @@ describe("org list with an env token", () => {
     // Never sent to a stored account's server, nor stored tokens to SaaS
     // on its behalf.
     expect(requests.filter((r) => r.includes("env-token")).sort()).toEqual(
-      [`${SAAS} env-token`, `${SAAS} env-token /auth/`].sort(),
+      [`${SAAS} env-token`, `${SAAS} env-token /users/me/`].sort(),
     );
     expect(requests).toContain(`${ACME} acme-token`);
   });

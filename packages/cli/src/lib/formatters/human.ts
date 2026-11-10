@@ -799,6 +799,19 @@ function formatPriorityLabel(priority?: string | null): string {
 }
 
 /**
+ * Display version of an issue's first or last release. Sentry returns only
+ * `version` for a release it can't load, so fall back to it.
+ */
+function releaseVersion(
+  release: SentryIssue["firstRelease"],
+): string | undefined {
+  if (!release) {
+    return;
+  }
+  return "shortVersion" in release ? release.shortVersion : release.version;
+}
+
+/**
  * Format detailed issue information as rendered markdown.
  *
  * @param issue - The Sentry issue to format
@@ -851,8 +864,8 @@ export function formatIssueDetails(issue: SentryIssue): string {
     ]);
   }
 
-  const firstReleaseVersion = issue.firstRelease?.shortVersion;
-  const lastReleaseVersion = issue.lastRelease?.shortVersion;
+  const firstReleaseVersion = releaseVersion(issue.firstRelease);
+  const lastReleaseVersion = releaseVersion(issue.lastRelease);
   if (firstReleaseVersion || lastReleaseVersion) {
     const first = text(stringifyUnknown(firstReleaseVersion ?? ""));
     const last = text(stringifyUnknown(lastReleaseVersion ?? ""));

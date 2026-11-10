@@ -159,7 +159,7 @@ export async function getConversationSpans(
     );
 
     if (page === 0) {
-      stats = data.stats;
+      stats = data.stats ?? undefined;
       title = data.title;
     }
     spans.push(...data.spans);
