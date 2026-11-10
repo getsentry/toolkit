@@ -479,6 +479,15 @@ export function buildStructuredTimeSeriesResult(params: {
     directToolNames: session.directToolNames,
   });
 
+  // Only the newest buckets are returned, so say when older ones were cut.
+  const notes =
+    bucketCount > shown.length
+      ? [
+          ...params.notes,
+          `**Note:** Only the most recent ${shown.length} of ${bucketCount} buckets are returned; older buckets in the time range are left out. Use a coarser interval to cover more of the range.`,
+        ]
+      : params.notes;
+
   return structuredResult({
     query: params.inputQuery,
     explanation:
@@ -493,7 +502,7 @@ export function buildStructuredTimeSeriesResult(params: {
     }),
     url: params.url,
     presentationHint: DASHBOARD_LINK_HINT,
-    notes: params.notes,
+    notes,
     resultType: "timeSeries",
     results: [],
     timeSeries: {
