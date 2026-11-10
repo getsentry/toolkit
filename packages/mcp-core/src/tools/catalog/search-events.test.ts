@@ -3419,6 +3419,98 @@ describe("search_events", () => {
     expect(validatedQueries.at(-1)).not.toContain("message:");
   });
 
+  describe("explicit period with an absolute range from the agent", () => {
+    const HOUR_MS = 3_600_000;
+
+    const runWithAgentRange = async (range: { start: string; end: string }) => {
+      // The query names a fixed window in prose next to structured filters,
+      // and the caller also sends `period` as an outer guard.
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse(
+          "errors",
+          "environment:production is:unresolved",
+          ["count()", "count_unique(user.id)"],
+          undefined,
+          "-count()",
+          range,
+        ),
+      );
+      const requests: URLSearchParams[] = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            requests.push(new URL(request.url).searchParams);
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+
+      await runSearchEvents(
+        {
+          organizationSlug: "test-org",
+          regionUrl: null,
+          projectSlug: null,
+          dataset: "errors",
+          query: `Between ${range.start} and ${range.end}, environment:production is:unresolved, count() and count_unique(user.id)`,
+          period: "3d",
+          limit: 10,
+          includeExplanation: false,
+        },
+        {
+          constraints: {
+            organizationSlug: null,
+            regionUrl: null,
+            projectSlug: null,
+          },
+          accessToken: "test-token",
+          userId: "1",
+        },
+        { lockDataset: true },
+      );
+
+      expect(requests).toHaveLength(1);
+      return requests[0]!;
+    };
+
+    it("searches the agent's absolute window inside the period", async () => {
+      const start = new Date(Date.now() - 30 * HOUR_MS).toISOString();
+      const end = new Date(Date.now() - 2 * HOUR_MS).toISOString();
+
+      const request = await runWithAgentRange({ start, end });
+
+      expect(request.get("query")).toBe("environment:production is:unresolved");
+      expect(request.has("statsPeriod")).toBe(false);
+      expect(request.get("start")).toBe(start);
+      expect(request.get("end")).toBe(end);
+    });
+
+    it("clips an absolute window that starts before the period", async () => {
+      const before = Date.now();
+      const start = new Date(before - 5 * 24 * HOUR_MS).toISOString();
+      const end = new Date(before - 2 * HOUR_MS).toISOString();
+
+      const request = await runWithAgentRange({ start, end });
+
+      expect(request.has("statsPeriod")).toBe(false);
+      const clippedStart = Date.parse(request.get("start")!);
+      expect(clippedStart).toBeGreaterThanOrEqual(before - 3 * 24 * HOUR_MS);
+      expect(clippedStart).toBeLessThanOrEqual(Date.now() - 3 * 24 * HOUR_MS);
+      expect(request.get("end")).toBe(end);
+    });
+
+    it("keeps the period when the absolute window is outside it", async () => {
+      const request = await runWithAgentRange({
+        start: "2020-01-01T00:00:00Z",
+        end: "2020-01-02T00:00:00Z",
+      });
+
+      expect(request.get("statsPeriod")).toBe("3d");
+      expect(request.has("start")).toBe(false);
+      expect(request.has("end")).toBe(false);
+    });
+  });
+
   it("rejects partial full-text downgrades when a duplicate structured key remains", async () => {
     // Set-based key comparison would miss this: custom remains present after
     // custom:foo is dropped into message full-text.

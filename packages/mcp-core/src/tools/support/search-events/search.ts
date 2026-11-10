@@ -144,6 +144,58 @@ function parseAgentTimeRange(
   return undefined;
 }
 
+const PERIOD_UNIT_MS = {
+  m: 60_000,
+  h: 3_600_000,
+  d: 86_400_000,
+  w: 604_800_000,
+} as const;
+
+/**
+ * Narrow an explicit relative `period` to the agent's absolute range.
+ *
+ * The agent returns `start`/`end` when the query names a fixed window, often
+ * with `period` sent as an outer guard. Keeping only `period` would silently
+ * search the whole period. The overlap of the two can only narrow `period`, so
+ * it is always safe; without an overlap, `period` is kept.
+ */
+function narrowPeriodToAgentRange(
+  period: string,
+  agentRange:
+    | { statsPeriod?: string; start?: string; end?: string }
+    | undefined,
+): { statsPeriod?: string; start?: string; end?: string } {
+  const periodMatch = /^(\d+)([mhdw])$/.exec(period);
+  if (!agentRange?.start || !agentRange.end || !periodMatch) {
+    return { statsPeriod: period };
+  }
+  const start = Date.parse(agentRange.start);
+  const end = Date.parse(agentRange.end);
+  const now = Date.now();
+  const periodStart =
+    now -
+    Number(periodMatch[1]) *
+      PERIOD_UNIT_MS[periodMatch[2] as keyof typeof PERIOD_UNIT_MS];
+  const narrowedStart = Math.max(start, periodStart);
+  const narrowedEnd = Math.min(end, now);
+  if (
+    Number.isNaN(narrowedStart + narrowedEnd) ||
+    narrowedStart >= narrowedEnd
+  ) {
+    return { statsPeriod: period };
+  }
+  return {
+    start:
+      narrowedStart === start
+        ? agentRange.start
+        : new Date(narrowedStart).toISOString(),
+    end:
+      narrowedEnd === end
+        ? agentRange.end
+        : new Date(narrowedEnd).toISOString(),
+  };
+}
+
 function buildRequestFields(
   dataset: PublicEventsDataset | "replays",
   fields: string[],
@@ -932,10 +984,11 @@ async function executeSearchEvents(
     explanation = parsed.explanation;
     environment = params.environment ?? parsed.environment;
 
+    const agentTimeRange = parseAgentTimeRange(parsed.timeRange);
     timeParams =
-      shouldTrustExplicitSearchParams && hasExplicitPeriod
-        ? { statsPeriod: params.period }
-        : (parseAgentTimeRange(parsed.timeRange) ?? { statsPeriod: "14d" });
+      shouldTrustExplicitSearchParams && params.period !== undefined
+        ? narrowPeriodToAgentRange(params.period, agentTimeRange)
+        : (agentTimeRange ?? { statsPeriod: "14d" });
 
     if (dataset === "replays") {
       fields = [];
