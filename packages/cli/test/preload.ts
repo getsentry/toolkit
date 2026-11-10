@@ -126,7 +126,9 @@ function getUrlFromInput(input: RequestInfo | URL): string {
 
 const mockFetch = async (input: RequestInfo | URL, _init?: RequestInit) => {
   const url = getUrlFromInput(input);
+  // oxlint-disable-next-line no-console -- tests mock and spy on the logger, so harness diagnostics bypass it.
   console.error(`[TEST] Unexpected fetch call to: ${url}`);
+  // oxlint-disable-next-line no-console -- see above.
   console.error(
     "[TEST] Tests should mock fetch or use SENTRY_TEST_* credentials for real API calls",
   );

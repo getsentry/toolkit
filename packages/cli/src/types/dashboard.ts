@@ -35,6 +35,7 @@ import {
   variant,
 } from "valibot";
 
+import type { EventsDataset } from "../lib/datasets.js";
 import { ValidationError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import type {
@@ -105,7 +106,14 @@ export const DashboardWidgetQuerySchema = looseObject({
   conditions: optional(string()),
   columns: optional(array(string())),
   aggregates: optional(array(string())),
-  transformations: optional(record(string(), array(string()))),
+  transformations: optional(
+    pipe(
+      record(string(), array(string())),
+      description(
+        "Saved transformations in application order, keyed by zero-based aggregate position",
+      ),
+    ),
+  ),
   fieldAliases: optional(array(string())),
   orderby: optional(string()),
   fields: optional(array(string())),
@@ -1070,7 +1078,7 @@ export type WidgetDataResult = InferOutput<typeof WidgetDataResultSchema>;
  * Widget types that don't map to a dataset (issue, preprod-app-size, etc.)
  * return null and are rendered as "unsupported".
  */
-const WIDGET_TYPE_TO_DATASET: Record<string, string> = {
+const WIDGET_TYPE_TO_DATASET: Partial<Record<string, EventsDataset>> = {
   spans: "spans",
   "error-events": "errors",
   logs: "logs",
@@ -1085,7 +1093,7 @@ const WIDGET_TYPE_TO_DATASET: Record<string, string> = {
  */
 export function mapWidgetTypeToDataset(
   widgetType: string | undefined,
-): string | null {
+): EventsDataset | null {
   if (!widgetType) {
     return null;
   }

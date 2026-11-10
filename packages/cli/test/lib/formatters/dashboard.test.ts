@@ -1487,6 +1487,112 @@ describe("formatDashboardWithData", () => {
       expect(output).toContain("Period: 24h");
     });
   });
+
+  describe("saved transformations", () => {
+    test("describes each aggregate position, keeping duplicates apart", () => {
+      const output = formatDashboardWithData(
+        makeDashboardData({
+          widgets: [
+            makeWidget({
+              title: "Transformed spans",
+              queries: [
+                {
+                  aggregates: ["count()", "count()", "p95(span.duration)"],
+                  transformations: {
+                    "1": ["smooth(asap,7)", "fill(zero)"],
+                    "0": ["fill( linear )", "smooth( ema , 7 , 0.25 )"],
+                    "2": [],
+                  },
+                },
+                {
+                  aggregates: ["count()"],
+                  transformations: { "0": ["fill(linear)"] },
+                },
+              ],
+            }),
+            makeWidget({
+              title: "Plain widget",
+              queries: [{ transformations: {} }],
+            }),
+          ],
+        }),
+      );
+      const section = output.slice(output.indexOf("Saved transformations"));
+      expect(section).toContain("Transformed spans");
+      expect(section).not.toContain("Plain widget");
+      const lines = section
+        .split("\n")
+        .filter((line) => line.includes("Query"))
+        .map((line) => line.trim());
+      expect(lines).toEqual([
+        "• Query 1 · count() (aggregate 1): fill( linear ) → smooth( ema , 7 , 0.25 )",
+        "• Query 1 · count() (aggregate 2): smooth(asap,7) → fill(zero)",
+        "• Query 1 · p95(span.duration) (aggregate 3): none",
+        "• Query 2 · count() (aggregate 1): fill(linear)",
+      ]);
+    });
+
+    test("leaves output unchanged when no transformations are saved", () => {
+      const withoutSettings = formatDashboardWithData(
+        makeDashboardData({ widgets: [makeWidget()] }),
+      );
+      const withEmptySettings = formatDashboardWithData(
+        makeDashboardData({
+          widgets: [
+            makeWidget({
+              queries: [{ aggregates: ["count()"], transformations: {} }],
+            }),
+          ],
+        }),
+      );
+      expect(withoutSettings).not.toContain("Saved transformations");
+      expect(withEmptySettings).toBe(withoutSettings);
+    });
+
+    test("reports unavailable settings separately from saved transformations", () => {
+      const output = formatDashboardWithData(
+        makeDashboardData({
+          widgets: [
+            makeWidget({
+              queries: [
+                { aggregates: ["count()"] },
+                {
+                  aggregates: ["count()"],
+                  transformations: { "0": ["fill(linear)"] },
+                },
+                { aggregates: ["count()"], transformations: {} },
+              ],
+            }),
+          ],
+        }),
+      );
+      expect(
+        output
+          .split("\n")
+          .filter((line) => line.includes("Query"))
+          .map((line) => line.trim()),
+      ).toEqual([
+        "• Query 1 · unavailable (this Sentry server does not report transformations)",
+        "• Query 2 · count() (aggregate 1): fill(linear)",
+      ]);
+    });
+
+    test("shows a saved empty transformation list when no other transformations exist", () => {
+      const output = formatDashboardWithData(
+        makeDashboardData({
+          widgets: [
+            makeWidget({
+              queries: [
+                { aggregates: ["count()"], transformations: { "0": [] } },
+              ],
+            }),
+          ],
+        }),
+      );
+      expect(output).toContain("Saved transformations");
+      expect(output).toContain("Query 1 · count() (aggregate 1): none");
+    });
+  });
 });
 
 // ===========================================================================

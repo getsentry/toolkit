@@ -17,6 +17,7 @@ import {
   getProductTrials,
   startProductTrial,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { detectSwappedTrialArgs } from "../../lib/arg-parsing.js";
 import { openBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
@@ -62,7 +63,7 @@ function isValidTrialArg(name: string): boolean {
 }
 
 const USAGE = "<name> [<org>]";
-const USAGE_HINT = `sentry trial start ${USAGE}`;
+const usageHint = () => sentry`trial start ${USAGE}`;
 
 /** Parsed `trial start` arguments. */
 export type TrialStartInput = {
@@ -117,13 +118,13 @@ export function parseTrialStartArguments(
 ): TrialStartInput {
   const [first, second, ...extra] = args;
   if (first === undefined) {
-    throw new ContextError("Trial name", USAGE_HINT, [
+    throw new ContextError("Trial name", usageHint(), [
       `Valid trial names: ${NAMES_LIST}`,
     ]);
   }
   if (extra.length > 0) {
     throw new ValidationError(
-      `Too many arguments: ${extra.join(" ")}. Expected: ${USAGE_HINT}`,
+      `Too many arguments: ${extra.join(" ")}. Expected: ${usageHint()}`,
       "positional",
     );
   }
@@ -146,7 +147,7 @@ export function parseTrialStartArguments(
 
   return {
     name,
-    org: parseOrgInput(org, USAGE_HINT),
+    org: parseOrgInput(org, usageHint()),
     ...(swapped && { warning: swapped.warning }),
   };
 }
@@ -161,18 +162,18 @@ export const startCommand = buildCommand({
       `Valid trial names: ${NAMES_LIST}\n\n` +
       "Use 'plan' to start a Business plan trial (opens billing page).",
     examples: [
-      { description: "Start a Seer trial", command: "sentry trial start seer" },
+      { description: "Start a Seer trial", run: "trial start seer" },
       {
         description: "Start a trial for a specific organization",
-        command: "sentry trial start replays my-org",
+        run: "trial start replays my-org",
       },
       {
         description: "Start a Business plan trial (opens the browser)",
-        command: "sentry trial start plan",
+        run: "trial start plan",
       },
       {
         description: "Output the result as JSON",
-        command: "sentry trial start --json seer",
+        run: "trial start --json seer",
       },
     ],
   },
@@ -193,7 +194,7 @@ export const startCommand = buildCommand({
         const { org } = await resolveOrgInput(
           input.org,
           context.cwd,
-          "sentry trial start <name> <org>",
+          sentry`trial start <name> <org>`,
         );
         return { name: input.name, org };
       },

@@ -18,7 +18,7 @@ import { homedir } from "node:os";
 import type { Span } from "@sentry/core";
 import type { Writer } from "../types/index.js";
 import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
-import { withEnv } from "./env.js";
+import { NO_PERSISTENCE_ENV_VAR, withInvocation } from "./env.js";
 import { stringifyUnknown } from "./errors.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
 
@@ -31,14 +31,18 @@ function hasStreamingFlag(args: string[]): boolean {
 }
 
 /**
- * Build an isolated env from options, inheriting the consumer's process.env.
- * Sets auth token, host URL, default org/project, and output format.
+ * Build an isolated env from options, starting from `options.env` or the
+ * consumer's process.env. Sets auth token, host URL, default org/project,
+ * output format, and the no-persistence flag.
  */
 function buildIsolatedEnv(
   options?: SentryOptions,
   jsonByDefault = true,
 ): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  const env: NodeJS.ProcessEnv = { ...(options?.env ?? process.env) };
+  if (options?.persist !== true) {
+    env[NO_PERSISTENCE_ENV_VAR] = "1";
+  }
   if (options?.token) {
     env.SENTRY_AUTH_TOKEN = options.token;
     env.SENTRY_FORCE_ENV_TOKEN = "1";
@@ -410,7 +414,7 @@ async function executeWithCapture<T>(
 ): Promise<T> {
   const env = buildIsolatedEnv(options);
   const cwd = options?.cwd ?? process.cwd();
-  return await withEnv(env, async () => {
+  return await withInvocation(env, async () => {
     const { withCustomHeadersOverride } = await import("./custom-headers.js");
     return await withCustomHeadersOverride(options?.headers, async () => {
       const captureCtx = await buildCaptureContext(env, cwd);
@@ -488,7 +492,7 @@ function executeWithStream<T>(
 
   // Fire-and-forget — command runs in background
   const env = buildIsolatedEnv(options);
-  const invocation = withEnv(env, async () => {
+  const invocation = withInvocation(env, async () => {
     const cwd = options?.cwd ?? process.cwd();
 
     let captureCtx: CaptureContext | undefined;

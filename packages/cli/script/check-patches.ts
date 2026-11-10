@@ -44,6 +44,7 @@
 
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { logger } from "../src/lib/logger.js";
 
 /**
  * Read `patchedDependencies` from the workspace configuration.
@@ -325,33 +326,32 @@ for (const assertion of CONTENT_ASSERTIONS) {
 const isCI = !!process.env.CI;
 for (const w of warnings) {
   if (isCI) {
+    // oxlint-disable-next-line no-console -- GitHub Actions reads workflow commands from stdout; the logger writes to stderr.
     console.log(`::warning::Patch version mismatch:${w.trim()}`);
   } else {
-    console.warn(`⚠ ${w}`);
+    logger.warn(w.trim());
   }
 }
 
 if (errors.length > 0) {
-  console.error("✗ Patch problems detected:");
-  console.error("");
-  for (const e of errors) {
-    console.error(e);
-  }
-  console.error("");
-  console.error(
-    "A missing package is fixed by `pnpm install`. A content-assertion failure",
+  logger.error(
+    [
+      "Patch problems detected:",
+      "",
+      ...errors,
+      "",
+      "A missing package is fixed by `pnpm install`. A content-assertion failure",
+      "means the patch no longer applies (likely a dependency bump) — regenerate",
+      "it with `pnpm patch <name>` and re-commit.",
+    ].join("\n"),
   );
-  console.error(
-    "means the patch no longer applies (likely a dependency bump) — regenerate",
-  );
-  console.error("it with `pnpm patch <name>` and re-commit.");
   process.exit(1);
 }
 
 if (warnings.length === 0) {
-  console.log("✓ All patched dependency versions match installed versions");
+  logger.success("All patched dependency versions match installed versions");
 } else {
-  console.log(
-    `✓ Patches applied (${warnings.length} version mismatch warning(s) — consider regenerating)`,
+  logger.success(
+    `Patches applied (${warnings.length} version mismatch warning(s) — consider regenerating)`,
   );
 }

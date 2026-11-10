@@ -7,7 +7,7 @@ import { createMockServer } from "../../../mocks/server.js";
 
 const savedDashboard: DashboardDetail = {
   id: "123",
-  title: "Saved pipelines",
+  title: "Saved transformations",
   projects: [1],
   environment: ["production"],
   period: "24h",
@@ -133,7 +133,7 @@ test.each([
   ["rename", ["edit", "--index", "0", "--new-title", "Renamed"]],
   ["move", ["edit", "--index", "0", "--row", "4"]],
   ["filter", ["edit", "--index", "0", "--where", "span.op:queue"]],
-])("preserves saved pipelines after %s and reload", async (name, args) => {
+])("preserves transformations after %s and reload", async (name, args) => {
   const result = await ctx.run([
     "dashboard",
     "widget",
@@ -168,4 +168,80 @@ test.each([
           ]
         : expected.widgets,
   });
+});
+
+test("describes saved transformations after an edit", async () => {
+  const result = await ctx.run([
+    "dashboard",
+    "widget",
+    "edit",
+    "test-org/123",
+    "--index",
+    "0",
+    "--new-title",
+    "Renamed",
+  ]);
+  expect(result.exitCode, result.stderr).toBe(0);
+
+  const lines = result.stdout
+    .split("\n")
+    .filter((line) => line.includes("Query"))
+    .map((line) => line.trim());
+  expect(lines).toEqual([
+    "• Query 1 · count() (aggregate 1): fill( linear ) → smooth( ema , 7 , 0.25 )",
+    "• Query 1 · count() (aggregate 2): smooth(asap,7) → fill(zero)",
+    "• Query 1 · p95(span.duration) (aggregate 3): none",
+    "• Query 2 · count() (aggregate 1): fill( linear )",
+  ]);
+});
+
+test("reports unavailable transformation settings after an edit", async () => {
+  for (const query of stored.widgets![0]!.queries!) {
+    delete query.transformations;
+  }
+
+  const result = await ctx.run([
+    "dashboard",
+    "widget",
+    "edit",
+    "test-org/123",
+    "--index",
+    "0",
+    "--new-title",
+    "Renamed",
+  ]);
+  expect(result.exitCode, result.stderr).toBe(0);
+  expect(
+    result.stdout
+      .split("\n")
+      .filter((line) => line.includes("Query"))
+      .map((line) => line.trim()),
+  ).toEqual([
+    "• Query 1 · unavailable (this Sentry server does not report transformations)",
+    "• Query 2 · unavailable (this Sentry server does not report transformations)",
+  ]);
+});
+
+test("reports the saved widget transformations in edit JSON", async () => {
+  const result = await ctx.run([
+    "dashboard",
+    "widget",
+    "edit",
+    "test-org/123",
+    "--index",
+    "0",
+    "--new-title",
+    "Renamed",
+    "--json",
+  ]);
+  expect(result.exitCode, result.stderr).toBe(0);
+
+  const { widget } = JSON.parse(result.stdout);
+  expect(
+    widget.queries.map(
+      (query: { transformations?: unknown }) => query.transformations,
+    ),
+  ).toEqual(
+    savedDashboard.widgets![0]!.queries!.map((query) => query.transformations),
+  );
 });

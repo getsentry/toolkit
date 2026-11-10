@@ -78,7 +78,9 @@ describe("listIssueAlertsPaginated", () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const url = new URL(new Request(input!, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/workflows/");
-      expect(url.searchParams.get("projectSlug")).toBe("test-project");
+      expect(url.searchParams.getAll("project")).toEqual(["test-project"]);
+      expect(url.searchParams.has("projectSlug")).toBe(false);
+      expect(url.searchParams.get("sortBy")).toBe("-id");
       return Response.json([
         workflowRule({ id: "1", name: "Attached", detectorIds: [7] }),
         workflowRule({ id: "2", name: "Unattached", detectorIds: [] }),
@@ -96,8 +98,9 @@ describe("getIssueAlertRule", () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const url = new URL(new Request(input!, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/workflows/");
-      expect(url.searchParams.get("projectSlug")).toBe("test-project");
-      expect(url.searchParams.get("id")).toBe("42");
+      expect(url.searchParams.getAll("project")).toEqual(["test-project"]);
+      expect(url.searchParams.has("projectSlug")).toBe(false);
+      expect(url.searchParams.getAll("id")).toEqual(["42"]);
       return Response.json([workflowRule({ id: "42", name: "My Rule" })]);
     });
 

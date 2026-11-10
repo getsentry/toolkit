@@ -164,6 +164,8 @@ export const DashboardWidgetQuerySchema = z
     name: z.string(),
     fields: z.array(z.string()),
     aggregates: z.array(z.string()),
+    // Keyed by aggregate position; omitted by servers that predate the field.
+    transformations: z.record(z.string(), z.array(z.string())).optional(),
     columns: z.array(z.string()),
     fieldAliases: z.array(z.string()),
     conditions: z.string(),

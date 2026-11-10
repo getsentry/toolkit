@@ -4,11 +4,24 @@
  * Functions for listing, retrieving, and updating Sentry issues.
  */
 
-import type { ListOrganizationIssuesData } from "@sentry/api";
-import { listOrganizationIssues } from "@sentry/api";
+import type {
+  GetOrganizationIssueData,
+  ListOrganizationIssuesData,
+  UpdateOrganizationIssueData,
+} from "@sentry/api";
+import {
+  getOrganizationIssue,
+  getOrganizationSharedIssue,
+  listOrganizationIssues,
+  resolveOrganizationShortId,
+  updateOrganizationIssue,
+  updateOrganizationIssues,
+} from "@sentry/api";
+import pLimit from "p-limit";
 
 import type { SentryIssue } from "../../types/index.js";
 import type { IssueSubstatus } from "../../types/sentry.js";
+import { sentry } from "../app-identity.js";
 import {
   buildTlsErrorDetail,
   customFetch,
@@ -17,18 +30,15 @@ import {
 } from "../custom-ca.js";
 import { applyCustomHeaders } from "../custom-headers.js";
 import { ApiError, ValidationError } from "../errors.js";
-import { resolveOrgRegion } from "../region.js";
-import { invalidateCachedResponsesMatching } from "../response-cache.js";
-import { getApiBaseUrl } from "../sentry-client.js";
 
 import {
   API_MAX_PER_PAGE,
-  apiRequest,
-  apiRequestToRegion,
   getOrgSdkConfig,
+  ORG_FANOUT_CONCURRENCY,
   type PaginatedResponse,
   paginate,
   unwrapPaginatedResult,
+  unwrapResult,
 } from "./infrastructure.js";
 
 const TRAILING_SLASH_RE = /\/$/;
@@ -106,6 +116,34 @@ export function buildIssueListCollapse(options: {
   return collapse;
 }
 
+/** Collapse values the issue details endpoint acts on. */
+type IssueDetailsCollapseField = NonNullable<
+  NonNullable<GetOrganizationIssueData["query"]>["collapse"]
+>[number];
+
+const ISSUE_DETAILS_COLLAPSE_FIELDS: ReadonlySet<string> =
+  new Set<IssueDetailsCollapseField>(["release", "stats", "tags"]);
+
+function isIssueDetailsCollapseField(
+  field: string,
+): field is IssueDetailsCollapseField {
+  return ISSUE_DETAILS_COLLAPSE_FIELDS.has(field);
+}
+
+/**
+ * Keep the collapse values the issue details endpoint reads. It ignores
+ * `lifetime`, `filtered` and `unhandled`, which only the list and short-ID
+ * endpoints act on.
+ */
+function toIssueDetailsCollapse(
+  collapse: IssueCollapseField[] | undefined,
+): IssueDetailsCollapseField[] | undefined {
+  const fields = collapse?.flatMap((field) =>
+    isIssueDetailsCollapseField(field) ? [field] : [],
+  );
+  return fields?.length ? fields : undefined;
+}
+
 /**
  * Collapse fields for single-issue detail endpoints.
  *
@@ -117,7 +155,8 @@ export function buildIssueListCollapse(options: {
  * Note: On the **list** endpoint, `collapse=lifetime` strips top-level
  * `count`, `userCount`, `firstSeen`, `lastSeen` (see #969). The detail
  * endpoint preserves these fields regardless of collapse — safe to include
- * `lifetime` here.
+ * `lifetime` here. The short-ID endpoint acts on all four values; the issue
+ * details endpoint acts only on `stats`, so {@link getIssueInOrg} drops the rest.
  */
 export const ISSUE_DETAIL_COLLAPSE: IssueCollapseField[] = [
   "stats",
@@ -172,7 +211,7 @@ export async function listIssuesPaginated(
     projects === undefined && projectSlug ? `project:${projectSlug}` : "";
   const fullQuery = [projectFilter, options.query].filter(Boolean).join(" ");
 
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationIssues({
     ...config,
@@ -276,32 +315,10 @@ export async function listIssuesAllPages(
 }
 
 /**
- * Get a specific issue by numeric ID.
- *
- * Uses the legacy unscoped endpoint — no org context or region routing.
- * Prefer {@link getIssueInOrg} when the org slug is known.
- *
- * @param issueId - Numeric issue ID
- * @param options - Optional collapse fields to skip expensive backend queries
- */
-export function getIssue(
-  issueId: string,
-  options?: { collapse?: IssueCollapseField[] },
-): Promise<SentryIssue> {
-  return apiRequest<SentryIssue>(`/issues/${issueId}/`, {
-    params: options?.collapse ? { collapse: options.collapse } : undefined,
-  });
-}
-
-/**
  * Get a specific issue by numeric ID, scoped to an organization.
  *
- * Uses the org-scoped endpoint with region-aware routing.
- * Preferred over {@link getIssue} when the org slug is available.
- *
- * Uses raw `apiRequestToRegion` instead of the SDK's `retrieveAnIssue`
- * because the SDK types declare `query?: never`, blocking `collapse`
- * and other query parameters. See: https://github.com/getsentry/sentry-api-schema/issues/63
+ * Uses the org-scoped endpoint with region-aware routing. Without a known
+ * org, use {@link findIssueInOrgs}.
  *
  * @param orgSlug - Organization slug (used for region routing)
  * @param issueId - Numeric issue ID
@@ -312,25 +329,69 @@ export async function getIssueInOrg(
   issueId: string,
   options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion<SentryIssue>(
-    regionUrl,
-    `/organizations/${orgSlug}/issues/${issueId}/`,
-    {
-      params: options?.collapse ? { collapse: options.collapse } : undefined,
-    },
+  const collapse = toIssueDetailsCollapse(options?.collapse);
+  const result = await getOrganizationIssue({
+    ...getOrgSdkConfig(),
+    path: { organization_id_or_slug: orgSlug, issue_id: issueId },
+    query: collapse ? { collapse } : undefined,
+  });
+  return unwrapResult<SentryIssue>(result, "Failed to get issue");
+}
+
+/**
+ * Find a numeric issue in whichever of the given organizations owns it.
+ *
+ * Asks each org's region rather than the unscoped `GET /issues/{id}/`,
+ * which Sentry deprecated for cell routing and browns out with 410s.
+ * Org-scoped issue routes exist on every Sentry since 24.1. Orgs are tried
+ * concurrently; no new request starts once one returns the issue.
+ *
+ * @param orgSlugs - Organizations to search, in preference order
+ * @param issueId - Numeric issue ID
+ * @param options - Optional collapse fields to skip expensive backend queries
+ * @returns The owning org and the issue, or null when no org returns it
+ * @throws {ApiError} When no org has it and one failed with something other
+ *   than a 404 or 403, since the issue may live in that org
+ */
+export async function findIssueInOrgs(
+  orgSlugs: readonly string[],
+  issueId: string,
+  options?: { collapse?: IssueCollapseField[] },
+): Promise<{ org: string; issue: SentryIssue } | null> {
+  const limit = pLimit(ORG_FANOUT_CONCURRENCY);
+  let found: { org: string; issue: SentryIssue } | null = null;
+  let failure: unknown;
+  await Promise.all(
+    orgSlugs.map((org) =>
+      limit(async () => {
+        if (found) {
+          return;
+        }
+        try {
+          const issue = await getIssueInOrg(org, issueId, options);
+          found ??= { org, issue };
+        } catch (error) {
+          if (
+            error instanceof ApiError &&
+            (error.status === 404 || error.status === 403)
+          ) {
+            return;
+          }
+          failure ??= error;
+        }
+      }),
+    ),
   );
-  return data;
+  if (!found && failure) {
+    throw failure;
+  }
+  return found;
 }
 
 /**
  * Get an issue by short ID (e.g., SPOTLIGHT-ELECTRON-4D).
  * Requires organization context to resolve the short ID.
  * Uses region-aware routing for multi-region support.
- *
- * Uses raw `apiRequestToRegion` instead of the SDK's `resolveAShortId`
- * because the SDK types declare `query?: never`, blocking `collapse`
- * and other query parameters. See: https://github.com/getsentry/sentry-api-schema/
  *
  * @param orgSlug - Organization slug
  * @param shortId - Short ID (e.g., "CLI-G5", "SPOTLIGHT-ELECTRON-4D")
@@ -342,18 +403,19 @@ export async function getIssueByShortId(
   options?: { collapse?: IssueCollapseField[] },
 ): Promise<SentryIssue> {
   const normalizedShortId = shortId.toUpperCase();
-  const regionUrl = await resolveOrgRegion(orgSlug);
+  const config = getOrgSdkConfig();
 
   let data: { group?: SentryIssue };
   try {
-    const result = await apiRequestToRegion<{ group?: SentryIssue }>(
-      regionUrl,
-      `/organizations/${orgSlug}/shortids/${normalizedShortId}/`,
-      {
-        params: options?.collapse ? { collapse: options.collapse } : undefined,
-      },
+    const result = await resolveOrganizationShortId({
+      ...config,
+      path: { organization_id_or_slug: orgSlug, issue_id: normalizedShortId },
+      query: options?.collapse ? { collapse: options.collapse } : undefined,
+    });
+    data = unwrapResult<{ group?: SentryIssue }>(
+      result,
+      "Failed to resolve short ID",
     );
-    data = result.data;
   } catch (error) {
     // Enrich 404 errors with actionable context. The generic
     // "Failed to resolve short ID: 404 Not Found" is the most common
@@ -365,8 +427,8 @@ export async function getIssueByShortId(
         404,
         [
           "The issue may have been deleted or merged",
-          `Verify the short ID and org: sentry issue view ${orgSlug}/${normalizedShortId}`,
-          `List issues in this org: sentry issue list ${orgSlug}/`,
+          `Verify the short ID and org: ${sentry`issue view ${orgSlug}/${normalizedShortId}`}`,
+          `List issues in this org: ${sentry`issue list ${orgSlug}/`}`,
         ].join("\n  "),
       );
     }
@@ -409,6 +471,10 @@ export async function tryGetIssueByShortId(
   }
 }
 
+type IssueUpdateStatusDetails = NonNullable<
+  NonNullable<UpdateOrganizationIssueData["body"]>["statusDetails"]
+>;
+
 /**
  * Resolution-release tracking for {@link updateIssueStatus}. Maps to the
  * `statusDetails` shape expected by Sentry's bulk mutate endpoint:
@@ -421,11 +487,14 @@ export async function tryGetIssueByShortId(
  *   Sentry resolves when a release containing the commit is created. Both
  *   `commit` (SHA) and `repository` (Sentry-registered repo name) are
  *   required by the API's InCommitValidator.
+ *
+ * Narrowed from the `@sentry/api` issue update body so each variant is
+ * exclusive.
  */
 export type ResolveStatusDetails =
-  | { inRelease: string }
+  | Required<Pick<IssueUpdateStatusDetails, "inRelease">>
   | { inNextRelease: true }
-  | { inCommit: { commit: string; repository: string } };
+  | Required<Pick<IssueUpdateStatusDetails, "inCommit">>;
 
 /**
  * Sentinel string meaning "resolve in the next release (tied to HEAD)".
@@ -569,47 +638,30 @@ export type IgnoreStatusDetails = {
  *   optional `statusDetails` sets conditions (see {@link IgnoreStatusDetails}).
  * - `"unresolved"` — reopens the issue; no additional options needed.
  *
- * When `options.orgSlug` is provided, the request is routed to that org's
- * region via the org-scoped endpoint. Without it, falls back to the legacy
- * global `/issues/{id}/` endpoint (works but not region-aware).
+ * The request goes to `options.orgSlug`'s region through the org-scoped
+ * endpoint.
  */
 export async function updateIssueStatus(
   issueId: string,
   status: "resolved" | "unresolved" | "ignored",
-  options?: {
+  options: {
     statusDetails?: ResolveStatusDetails | IgnoreStatusDetails;
     /** Substatus for archive granularity. */
     substatus?: IssueSubstatus;
-    orgSlug?: string;
+    orgSlug: string;
   },
 ): Promise<SentryIssue> {
-  const body: Record<string, unknown> = { status };
-  if (options?.statusDetails) {
-    body.statusDetails = options.statusDetails;
-  }
-  if (options?.substatus) {
-    body.substatus = options.substatus;
-  }
-
-  if (options?.orgSlug) {
-    // Region-aware org-scoped endpoint — preferred when org is known.
-    const regionUrl = await resolveOrgRegion(options.orgSlug);
-    const { data } = await apiRequestToRegion<SentryIssue>(
-      regionUrl,
-      `/organizations/${encodeURIComponent(options.orgSlug)}/issues/${encodeURIComponent(issueId)}/`,
-      { method: "PUT", body },
-    );
-    return data;
-  }
-
-  // Legacy global endpoint — works without org but not region-aware.
-  return await apiRequest<SentryIssue>(
-    `/issues/${encodeURIComponent(issueId)}/`,
-    {
-      method: "PUT",
-      body,
-    },
-  );
+  const body = {
+    status,
+    ...(options.statusDetails && { statusDetails: options.statusDetails }),
+    ...(options.substatus && { substatus: options.substatus }),
+  };
+  const result = await updateOrganizationIssue({
+    ...getOrgSdkConfig(),
+    path: { organization_id_or_slug: options.orgSlug, issue_id: issueId },
+    body,
+  });
+  return unwrapResult<SentryIssue>(result, "Failed to update issue");
 }
 
 /** Result of a successful issue-merge operation. */
@@ -641,49 +693,28 @@ export async function mergeIssues(
       `Need at least 2 issues to merge (got ${groupIds.length}).`,
     );
   }
-  // The bulk mutate endpoint accepts repeated `?id=X` query params plus a
-  // `{merge: 1}` body. The SDK wraps this but its typed `query` shape
-  // doesn't expose the array semantics cleanly, so use raw request.
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const query = groupIds.map((id) => `id=${encodeURIComponent(id)}`).join("&");
-  const path = `/organizations/${encodeURIComponent(orgSlug)}/issues/?${query}`;
-  type MergeResponse = { merge: MergeIssuesResult };
-  try {
-    const { data } = await apiRequestToRegion<MergeResponse>(regionUrl, path, {
-      method: "PUT",
-      body: { merge: 1 },
-    });
-    // HTTP-layer invalidation covers the region-scoped caches via the
-    // prefix sweep on `/organizations/{org}/issues/`, but it can't see
-    // the affected IDs (they're in query params, stripped from the
-    // URL the hook sees). Manually clear each affected issue's legacy
-    // cross-origin cache so subsequent `getIssue(id)` doesn't serve
-    // stale data.
-    const apiBase = getApiBaseUrl().replace(TRAILING_SLASH_RE, "");
-    const affectedIds = data.merge.children.toSpliced(0, 0, data.merge.parent);
-    await Promise.all(
-      affectedIds.map((id) =>
-        invalidateCachedResponsesMatching(
-          `${apiBase}/api/0/issues/${encodeURIComponent(id)}/`,
-        ),
-      ),
+  const result = await updateOrganizationIssues({
+    ...getOrgSdkConfig(),
+    path: { organization_id_or_slug: orgSlug },
+    query: { id: groupIds.map(Number) },
+    body: { merge: true },
+  });
+  const merge = unwrapResult<{ merge?: MergeIssuesResult } | null>(
+    result,
+    "Failed to merge issues",
+  )?.merge;
+  // The bulk-mutate endpoint returns 204 when no matching issues are
+  // found — e.g. IDs out of scope, or issues deleted between resolution
+  // and the merge call.
+  if (!merge) {
+    throw new ApiError(
+      `No matching issues found for merge in '${orgSlug}'.`,
+      204,
+      "All provided issue IDs are out of scope or no longer exist.",
+      `/organizations/${encodeURIComponent(orgSlug)}/issues/?${groupIds.map((id) => `id=${encodeURIComponent(id)}`).join("&")}`,
     );
-    return data.merge;
-  } catch (error) {
-    // The bulk-mutate endpoint returns 204 when no matching issues are
-    // found — e.g. IDs out of scope, or issues deleted between resolution
-    // and the merge call. Catch the generic "no body" ApiError and re-throw
-    // with a friendlier user-facing message.
-    if (error instanceof ApiError && error.status === 204) {
-      throw new ApiError(
-        `No matching issues found for merge in '${orgSlug}'.`,
-        204,
-        "All provided issue IDs are out of scope or no longer exist.",
-        path,
-      );
-    }
-    throw error;
   }
+  return merge;
 }
 
 /**
@@ -705,30 +736,62 @@ export async function getSharedIssue(
   shareId: string,
 ): Promise<{ id: string }> {
   const path = `organizations/${encodeURIComponent(orgSlug)}/shared/issues/${encodeURIComponent(shareId)}/`;
-  const url = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/api/0/${path}`;
+  const normalizedBase = baseUrl.replace(TRAILING_SLASH_RE, "");
+  const url = `${normalizedBase}/api/0/${path}`;
   const headers = new Headers({ "Content-Type": "application/json" });
   // URL-scoped: headers only attach when `url`'s origin matches the trusted
   // host, so IAP tokens etc. can't leak to an attacker-controlled share URL.
   applyCustomHeaders(headers, url);
   warnIfSaasWithEnvCa(url);
 
-  let response: Response;
+  // The share URL's host may not be the logged-in one, so this goes out
+  // without the authenticated transport and its bearer token.
+  let response: Response | undefined;
+  const fetchUnauthenticated = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    response = await customFetch(input, init);
+    return response;
+  };
+
+  let result: Awaited<ReturnType<typeof getOrganizationSharedIssue>>;
   try {
-    response = await customFetch(url, { headers });
+    result = await getOrganizationSharedIssue({
+      baseUrl: normalizedBase,
+      fetch: fetchUnauthenticated as unknown as typeof fetch,
+      headers,
+      parseAs: "json",
+      path: { organization_id_or_slug: orgSlug, share_id: shareId },
+      throwOnError: false,
+    });
   } catch (error) {
-    if (error instanceof Error && isTlsCertError(error)) {
-      throw new ApiError(
-        "TLS certificate error",
-        0,
-        buildTlsErrorDetail(error),
-        path,
-      );
+    if (!(error instanceof SyntaxError)) {
+      throw error;
     }
-    throw error;
+    throw new ApiError(
+      "Share link returned invalid JSON",
+      response?.status ?? 0,
+      undefined,
+      path,
+    );
   }
 
-  if (!response.ok) {
-    if (response.status === 404) {
+  if ("error" in result) {
+    const status = result.response?.status;
+    if (status === undefined) {
+      const { error } = result;
+      if (error instanceof Error && isTlsCertError(error)) {
+        throw new ApiError(
+          "TLS certificate error",
+          0,
+          buildTlsErrorDetail(error),
+          path,
+        );
+      }
+      throw error;
+    }
+    if (status === 404) {
       throw new ApiError(
         "Share link not found or expired",
         404,
@@ -737,29 +800,10 @@ export async function getSharedIssue(
         path,
       );
     }
-    throw new ApiError(
-      "Failed to resolve share link",
-      response.status,
-      undefined,
-      path,
-    );
+    throw new ApiError("Failed to resolve share link", status, undefined, path);
   }
 
-  let data: unknown;
-  try {
-    data = await response.json();
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) {
-      throw error;
-    }
-    throw new ApiError(
-      "Share link returned invalid JSON",
-      response.status,
-      undefined,
-      path,
-    );
-  }
-
+  const data: unknown = result.data;
   if (
     typeof data !== "object" ||
     data === null ||
@@ -769,7 +813,7 @@ export async function getSharedIssue(
   ) {
     throw new ApiError(
       "Share link response missing a valid issue ID",
-      response.status,
+      result.response?.status ?? 0,
       undefined,
       path,
     );

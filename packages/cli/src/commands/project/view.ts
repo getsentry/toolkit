@@ -11,6 +11,7 @@ import {
   resolveOrgDisplayName,
   tryGetPrimaryDsn,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   type ParsedOrgProject,
   ProjectSpecificationType,
@@ -51,7 +52,7 @@ type ViewFlags = {
 };
 
 /** Usage hint for ContextError messages */
-const USAGE_HINT = "sentry project view <org>/<project>";
+const usageHint = () => sentry`project view <org>/<project>`;
 
 /**
  * Build an error message for missing context, with optional DSN resolution hint.
@@ -60,13 +61,13 @@ function buildContextError(skippedSelfHosted?: number): ContextError {
   if (skippedSelfHosted) {
     return new ContextError(
       "Organization and project",
-      USAGE_HINT,
+      usageHint(),
       undefined,
       `Found ${skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`,
     );
   }
 
-  return new ContextError("Organization and project", USAGE_HINT);
+  return new ContextError("Organization and project", usageHint());
 }
 
 /**
@@ -75,7 +76,7 @@ function buildContextError(skippedSelfHosted?: number): ContextError {
  */
 async function handleWebView(resolvedTargets: ResolvedTarget[]): Promise<void> {
   if (resolvedTargets.length > 1) {
-    throw new ContextError("Single project", `${USAGE_HINT} -w`, [
+    throw new ContextError("Single project", `${usageHint()} -w`, [
       `Found ${resolvedTargets.length} projects — specify which project to open in browser`,
     ]);
   }
@@ -291,8 +292,8 @@ async function resolveViewTargets(
       // Search for project across all orgs - single target
       const resolved = await resolveProjectBoundSlug(
         parsed.projectSlug,
-        USAGE_HINT,
-        `sentry project view <org>/${parsed.projectSlug}`,
+        usageHint(),
+        sentry`project view <org>/${parsed.projectSlug}`,
         parsed.originalSlug,
       );
       return {
@@ -311,7 +312,7 @@ async function resolveViewTargets(
     case ProjectSpecificationType.OrgAll:
       throw new ContextError(
         "Specific project",
-        `sentry project view ${parsed.org}/<project>`,
+        sentry`project view ${parsed.org}/<project>`,
         ["Specify the full org/project target, not just the organization"],
       );
 
@@ -327,7 +328,7 @@ async function resolveViewTargets(
     }
 
     default:
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
   }
 }
 
@@ -341,19 +342,19 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View the auto-detected project",
-        command: "sentry project view",
+        run: "project view",
       },
       {
         description: "View project details",
-        command: "sentry project view my-org/frontend",
+        run: "project view my-org/frontend",
       },
       {
         description: "Open the project in the browser",
-        command: "sentry project view my-org/frontend -w",
+        run: "project view my-org/frontend -w",
       },
       {
         description: "Find a project across organizations",
-        command: "sentry project view frontend",
+        run: "project view frontend",
       },
     ],
   },

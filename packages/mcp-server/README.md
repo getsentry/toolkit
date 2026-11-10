@@ -35,6 +35,9 @@ Requires Node.js 22.15 or later.
 - Each server process uses one account. The package runs the CLI's own
   `auth` commands, so `npx -y @sentry/mcp-server auth status|list|switch|logout`
   manages the same login.
+- `npx -y @sentry/mcp-server cli defaults` and `cli fix` are the CLI's own
+  commands too: they set the defaults (such as `ca-cert` for a corporate TLS
+  proxy) and repair the local database the server shares with the CLI.
 
 ## Options
 
@@ -48,7 +51,7 @@ variables. For self-hosted Sentry, set `SENTRY_HOST` / `SENTRY_URL` (with
 ## Development
 
 The source lives in `packages/cli`: `packages/cli/src/mcp-server.ts` runs the
-CLI's runner with an application of three commands, `mcp`, `auth`, and
-`help` (`packages/cli/src/mcp-server-app.ts`). `pnpm run bundle` builds
-`dist/sentry-mcp.cjs` from it, and `pnpm run test:bundle` smoke-tests the
-result.
+CLI's runner with an application of four commands, `mcp`, `auth`, `cli`
+(`defaults` and `fix` only), and `help` (`packages/cli/src/mcp-server-app.ts`).
+`pnpm run bundle` builds `dist/sentry-mcp.cjs` from it, and
+`pnpm run test:bundle` smoke-tests the result.

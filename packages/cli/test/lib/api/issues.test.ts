@@ -13,13 +13,8 @@ import {
   RESOLVE_COMMIT_SENTINEL,
   RESOLVE_NEXT_RELEASE_SENTINEL,
 } from "../../../src/lib/api-client.js";
-import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
-import {
-  getCachedResponse,
-  storeCachedResponse,
-} from "../../../src/lib/response-cache.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import { mockFetch } from "../../helpers.js";
 
 describe("parseResolveSpec", () => {
   test("returns null for undefined", () => {
@@ -203,7 +198,7 @@ describe("mergeIssues", () => {
     expect(capturedUrl).toContain("id=100");
     expect(capturedUrl).toContain("id=200");
     expect(capturedUrl).toContain("id=300");
-    expect(capturedBody).toEqual({ merge: 1 });
+    expect(capturedBody).toEqual({ merge: true });
     expect(result).toEqual({ parent: "100", children: ["200", "300"] });
   });
 
@@ -238,59 +233,5 @@ describe("mergeIssues", () => {
     await expect(mergeIssues("test-org", ["100", "200"])).rejects.toThrow(
       /no matching issues|out of scope/i,
     );
-  });
-});
-
-describe("mergeIssues: cross-origin legacy cache", () => {
-  useTestConfigDir("merge-legacy-cache-");
-
-  let originalFetch: typeof globalThis.fetch;
-
-  beforeEach(() => {
-    originalFetch = globalThis.fetch;
-    setAuthToken("test-token", 3600, "test-refresh");
-  });
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-  });
-
-  test("clears legacy /issues/{id}/ cache for every affected ID", async () => {
-    // Regression: the HTTP-layer invalidation hook only sees
-    // `organizations/{org}/issues/?id=...`, so it can't clear the
-    // per-ID legacy caches under the control-silo origin
-    // (`sentry.io/api/0/issues/{id}/`) that `getIssue()` reads.
-    // mergeIssues must do it manually after the merge response
-    // identifies the affected IDs.
-    const legacyUrl = (id: string) => `https://sentry.io/api/0/issues/${id}/`;
-
-    for (const id of ["100", "200", "300"]) {
-      await storeCachedResponse(
-        "GET",
-        legacyUrl(id),
-        {},
-        new Response(JSON.stringify({ id }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-      );
-      expect(await getCachedResponse("GET", legacyUrl(id), {})).toBeDefined();
-    }
-
-    globalThis.fetch = mockFetch(
-      async () =>
-        new Response(
-          JSON.stringify({
-            merge: { parent: "100", children: ["200", "300"] },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-    );
-
-    await mergeIssues("test-org", ["100", "200", "300"]);
-
-    for (const id of ["100", "200", "300"]) {
-      expect(await getCachedResponse("GET", legacyUrl(id), {})).toBeUndefined();
-    }
   });
 });

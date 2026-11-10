@@ -25,6 +25,7 @@ import {
   getOrganization,
   getProject,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { getCachedOrgRole } from "../../lib/db/regions.js";
 import { ApiError } from "../../lib/errors.js";
 import {
@@ -101,7 +102,7 @@ async function buildPermissionError(
   return new ApiError(
     `Permission denied: cannot delete ${label}.\n\n` +
       `This requires a ${rolesWithAccess} role, or a token with the 'project:admin' scope.\n` +
-      `  Check your role:  sentry org view ${orgSlug}`,
+      `  Check your role:  ${sentry`org view ${orgSlug}`}`,
     403,
   );
 }
@@ -138,15 +139,15 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Delete a project (prompts for confirmation)",
-        command: "sentry project delete my-org/old-project",
+        run: "project delete my-org/old-project",
       },
       {
         description: "Delete without confirmation",
-        command: "sentry project delete my-org/old-project --yes",
+        run: "project delete my-org/old-project --yes",
       },
       {
         description: "Preview the deletion",
-        command: "sentry project delete my-org/old-project --dry-run",
+        run: "project delete my-org/old-project --dry-run",
       },
     ],
   },

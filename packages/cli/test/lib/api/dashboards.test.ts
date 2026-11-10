@@ -5,10 +5,10 @@
  * from src/lib/api/dashboards.ts.
  */
 
-import { safeParse } from "valibot";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   computeOptimalInterval,
+  listDashboardRevisionsPaginated,
   periodToSeconds,
   queryAllWidgets,
   restoreDashboardRevision,
@@ -19,54 +19,131 @@ import type {
   DashboardWidget,
 } from "../../../src/types/dashboard.js";
 
-const { apiRequestToRegionMock, reportCliErrorMock, resolveOrgRegionMock } =
-  vi.hoisted(() => ({
-    apiRequestToRegionMock: vi.fn(),
-    reportCliErrorMock: vi.fn(),
-    resolveOrgRegionMock: vi.fn(),
-  }));
+const {
+  listOrganizationDashboardRevisionsMock,
+  listOrganizationEventsMock,
+  listOrganizationEventsTimeseriesMock,
+  reportCliErrorMock,
+  restoreOrganizationDashboardRevisionMock,
+} = vi.hoisted(() => ({
+  listOrganizationDashboardRevisionsMock: vi.fn(),
+  listOrganizationEventsMock: vi.fn(),
+  listOrganizationEventsTimeseriesMock: vi.fn(),
+  reportCliErrorMock: vi.fn(),
+  restoreOrganizationDashboardRevisionMock: vi.fn(),
+}));
+
+vi.mock("@sentry/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@sentry/api")>();
+  return {
+    ...actual,
+    listOrganizationDashboardRevisions: listOrganizationDashboardRevisionsMock,
+    listOrganizationEvents: listOrganizationEventsMock,
+    listOrganizationEventsTimeseries: listOrganizationEventsTimeseriesMock,
+    restoreOrganizationDashboardRevision:
+      restoreOrganizationDashboardRevisionMock,
+  };
+});
 
 vi.mock("../../../src/lib/error-reporting.js", () => ({
   reportCliError: reportCliErrorMock,
 }));
-
-vi.mock("../../../src/lib/region.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../../src/lib/region.js")>();
-  return { ...actual, resolveOrgRegion: resolveOrgRegionMock };
-});
-
-vi.mock("../../../src/lib/api/infrastructure.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../../../src/lib/api/infrastructure.js")
-    >();
-  return { ...actual, apiRequestToRegion: apiRequestToRegionMock };
-});
 
 // ---------------------------------------------------------------------------
 // restoreDashboardRevision
 // ---------------------------------------------------------------------------
 
 describe("restoreDashboardRevision", () => {
-  test("posts to the revision restore endpoint", async () => {
+  test("restores the revision through the generated operation", async () => {
     const dashboard = {
       id: "123",
       title: "Restored Dashboard",
       widgets: [],
     } as DashboardDetail;
-    resolveOrgRegionMock.mockResolvedValue("https://us.sentry.io");
-    apiRequestToRegionMock.mockResolvedValue({ data: dashboard });
+    restoreOrganizationDashboardRevisionMock.mockResolvedValue({
+      data: dashboard,
+      response: new Response(),
+    });
 
     await expect(
       restoreDashboardRevision("test-org", "123", "42"),
-    ).resolves.toBe(dashboard);
+    ).resolves.toEqual(dashboard);
 
-    expect(apiRequestToRegionMock).toHaveBeenCalledWith(
-      "https://us.sentry.io",
-      "/organizations/test-org/dashboards/123/revisions/42/restore/",
-      expect.objectContaining({ method: "POST" }),
+    expect(restoreOrganizationDashboardRevisionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: {
+          organization_id_or_slug: "test-org",
+          dashboard_id: "123",
+          revision_id: "42",
+        },
+      }),
     );
+  });
+
+  test("names the revision when the API rejects the restore", async () => {
+    restoreOrganizationDashboardRevisionMock.mockResolvedValue({
+      error: { detail: "Revision not found" },
+      response: new Response(null, { status: 404, statusText: "Not Found" }),
+    });
+
+    const error = await restoreDashboardRevision("test-org", "123", "42").catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 404 });
+    expect((error as ApiError).message).toContain("revision '42'");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listDashboardRevisionsPaginated
+// ---------------------------------------------------------------------------
+
+describe("listDashboardRevisionsPaginated", () => {
+  const revision = {
+    id: "7",
+    title: "Before edit",
+    dateCreated: "2026-11-01T00:00:00Z",
+    createdBy: null,
+    source: "edit",
+  };
+
+  test("returns validated revisions and the Link cursors", async () => {
+    listOrganizationDashboardRevisionsMock.mockResolvedValue({
+      data: [revision],
+      response: new Response(null, {
+        headers: {
+          link:
+            '<https://us.sentry.io/x/?cursor=0:0:1>; rel="previous"; results="false"; cursor="0:0:1", ' +
+            '<https://us.sentry.io/x/?cursor=0:25:0>; rel="next"; results="true"; cursor="0:25:0"',
+        },
+      }),
+    });
+
+    const page = await listDashboardRevisionsPaginated("test-org", "123", {
+      perPage: 25,
+      cursor: "0:0:0",
+    });
+
+    expect(page.data).toEqual([revision]);
+    expect(page.nextCursor).toBe("0:25:0");
+    expect(listOrganizationDashboardRevisionsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { organization_id_or_slug: "test-org", dashboard_id: "123" },
+        query: { per_page: 25, cursor: "0:0:0" },
+      }),
+    );
+  });
+
+  test("rejects a response that does not match the revision schema", async () => {
+    listOrganizationDashboardRevisionsMock.mockResolvedValue({
+      data: [{ id: 7 }],
+      response: new Response(),
+    });
+
+    await expect(
+      listDashboardRevisionsPaginated("test-org", "123"),
+    ).rejects.toThrow("Unexpected response format");
   });
 });
 
@@ -284,8 +361,11 @@ describe("widget sort resolution", () => {
   const REGION = "https://us.sentry.io";
 
   test("sorts error table widgets by their first aggregate", async () => {
-    apiRequestToRegionMock.mockReset();
-    apiRequestToRegionMock.mockResolvedValue({ data: { data: [], meta: {} } });
+    listOrganizationEventsMock.mockReset();
+    listOrganizationEventsMock.mockResolvedValue({
+      data: { data: [], meta: {} },
+      response: new Response(),
+    });
     const dashboard = makeDashboard([
       {
         title: "Top failures",
@@ -305,11 +385,11 @@ describe("widget sort resolution", () => {
 
     await queryAllWidgets(REGION, "test-org", dashboard);
 
-    expect(apiRequestToRegionMock).toHaveBeenCalledWith(
-      REGION,
-      "/organizations/test-org/events/",
+    expect(listOrganizationEventsMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        params: expect.objectContaining({
+        baseUrl: REGION,
+        path: { organization_id_or_slug: "test-org" },
+        query: expect.objectContaining({
           dataset: "errors",
           field: ["failure.node", "count()"],
           sort: "-count()",
@@ -319,8 +399,11 @@ describe("widget sort resolution", () => {
   });
 
   test("selects the aggregate for grouped error timeseries so the sort is accepted", async () => {
-    apiRequestToRegionMock.mockReset();
-    apiRequestToRegionMock.mockResolvedValue({ data: { timeSeries: [] } });
+    listOrganizationEventsTimeseriesMock.mockReset();
+    listOrganizationEventsTimeseriesMock.mockResolvedValue({
+      data: { timeSeries: [] },
+      response: new Response(),
+    });
     const dashboard = makeDashboard([
       {
         title: "Errors by node",
@@ -341,11 +424,11 @@ describe("widget sort resolution", () => {
 
     await queryAllWidgets(REGION, "test-org", dashboard);
 
-    expect(apiRequestToRegionMock).toHaveBeenCalledWith(
-      REGION,
-      "/organizations/test-org/events-timeseries/",
+    expect(listOrganizationEventsTimeseriesMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        params: expect.objectContaining({
+        baseUrl: REGION,
+        path: { organization_id_or_slug: "test-org" },
+        query: expect.objectContaining({
           dataset: "errors",
           query: "has:failure.node",
           groupBy: ["failure.node", "count()"],
@@ -355,8 +438,9 @@ describe("widget sort resolution", () => {
       }),
     );
     // Single axis, single query: the "Other" series is requested.
-    const params = apiRequestToRegionMock.mock.calls[0]?.[2]?.params;
-    expect(params).not.toHaveProperty("excludeOther");
+    const query =
+      listOrganizationEventsTimeseriesMock.mock.calls[0]?.[0]?.query;
+    expect(query).not.toHaveProperty("excludeOther");
   });
 });
 
@@ -379,38 +463,48 @@ describe("widget query failures", () => {
     },
   ]);
 
+  /** Resolve the events request with an SDK error result. */
+  function mockErrorResult(
+    status: number,
+    statusText: string,
+    detail: string,
+  ): void {
+    listOrganizationEventsMock.mockReset();
+    listOrganizationEventsMock.mockResolvedValue({
+      error: { detail },
+      response: new Response(null, { status, statusText }),
+    });
+  }
+
   test("reports through the shared policy and keeps the API detail", async () => {
-    const error = new ApiError(
-      "API request failed: 400 Bad Request",
+    mockErrorResult(
       400,
+      "Bad Request",
       "tags[view_ms,number] is invalid for parameter 1 in p50.\nIts a string type field.",
-      "/organizations/test-org/events/",
     );
-    apiRequestToRegionMock.mockReset();
-    apiRequestToRegionMock.mockRejectedValue(error);
     reportCliErrorMock.mockReset();
 
     const results = await queryAllWidgets(REGION, "test-org", dashboard);
 
-    expect(reportCliErrorMock).toHaveBeenCalledWith(error);
+    expect(reportCliErrorMock).toHaveBeenCalledWith(expect.any(ApiError));
+    expect(reportCliErrorMock.mock.calls[0]?.[0]).toMatchObject({
+      status: 400,
+    });
     expect(results.get(0)).toEqual({
       type: "error",
       message:
-        "API request failed: 400 Bad Request: tags[view_ms,number] is invalid for parameter 1 in p50. Its a string type field.",
+        "Failed to query widget data: 400 Bad Request: tags[view_ms,number] is invalid for parameter 1 in p50. Its a string type field.",
     });
   });
 
   test("does not repeat a status-text detail", async () => {
-    apiRequestToRegionMock.mockReset();
-    apiRequestToRegionMock.mockRejectedValue(
-      new ApiError("API request failed: 404 Not Found", 404, "Not Found"),
-    );
+    mockErrorResult(404, "Not Found", "Not Found");
 
     const results = await queryAllWidgets(REGION, "test-org", dashboard);
 
     expect(results.get(0)).toEqual({
       type: "error",
-      message: "API request failed: 404 Not Found",
+      message: "Failed to query widget data: 404 Not Found",
     });
   });
 });
@@ -424,34 +518,15 @@ describe("queryAllWidgets timeseries", () => {
   const ORG = "my-org";
 
   beforeEach(() => {
-    apiRequestToRegionMock.mockReset();
+    listOrganizationEventsTimeseriesMock.mockReset();
   });
 
-  /**
-   * Resolve the request with `data`, validating it against the `schema`
-   * option the way the real `apiRequestToRegion` does.
-   */
+  /** Resolve the request with `data`; the CLI validates it against its schema. */
   function mockResponse(data: unknown): void {
-    apiRequestToRegionMock.mockImplementation(
-      async (
-        _region: string,
-        endpoint: string,
-        options: { schema?: Parameters<typeof safeParse>[0] } = {},
-      ) => {
-        if (!options.schema) {
-          return { data };
-        }
-        const result = safeParse(options.schema, data);
-        if (!result.success) {
-          throw new ApiError(
-            `${endpoint}: unexpected response format`,
-            0,
-            result.issues.map((issue) => issue.message).join(", "),
-          );
-        }
-        return { data: result.output };
-      },
-    );
+    listOrganizationEventsTimeseriesMock.mockResolvedValue({
+      data,
+      response: new Response(),
+    });
   }
 
   /** Series meta the API always sends. */
@@ -469,17 +544,15 @@ describe("queryAllWidgets timeseries", () => {
     return { timestamp, value, incomplete: false };
   }
 
-  /** Extract the single call's endpoint and params. */
+  /** Extract the single call's path and query params. */
   function lastRequest(): {
-    endpoint: string;
+    path: Record<string, unknown>;
     params: Record<string, unknown>;
   } {
-    const call = apiRequestToRegionMock.mock.calls[0] as [
-      string,
-      string,
-      { params: Record<string, unknown> },
+    const [options] = listOrganizationEventsTimeseriesMock.mock.calls[0] as [
+      { path: Record<string, unknown>; query: Record<string, unknown> },
     ];
-    return { endpoint: call[1], params: call[2].params };
+    return { path: options.path, params: options.query };
   }
 
   test("queries events-timeseries and normalizes an ungrouped series", async () => {
@@ -517,9 +590,8 @@ describe("queryAllWidgets timeseries", () => {
       period: "24h",
     });
 
-    const { endpoint, params } = lastRequest();
-    expect(endpoint).toBe(`/organizations/${ORG}/events-timeseries/`);
-    expect(apiRequestToRegionMock.mock.calls[0]?.[2]).toHaveProperty("schema");
+    const { path, params } = lastRequest();
+    expect(path).toEqual({ organization_id_or_slug: ORG });
     expect(params.dataset).toBe("errors");
     expect(params.yAxis).toEqual(["count()"]);
     expect(params.statsPeriod).toBe("24h");

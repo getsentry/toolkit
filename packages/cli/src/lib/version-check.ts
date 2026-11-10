@@ -10,6 +10,7 @@
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { compare as semverCompare } from "semver";
+import { sentry } from "./app-identity.js";
 import type { UpgradeSource } from "./binary.js";
 import { CLI_VERSION } from "./constants.js";
 import { getReleaseChannel } from "./db/release-channel.js";
@@ -22,7 +23,7 @@ import {
   prefetchNightlyPatches,
   prefetchStablePatches,
 } from "./delta-upgrade.js";
-import { getEnv } from "./env.js";
+import { getEnv, isPersistenceDisabled } from "./env.js";
 import { isUserError } from "./errors.js";
 import { cyan, muted } from "./formatters/colors.js";
 import { GLOBAL_FLAGS } from "./global-flags.js";
@@ -427,14 +428,14 @@ function formatStandardUpdateNotification(latestVersion: string): string {
   const label =
     channel === "nightly" ? "New nightly available:" : "Update available:";
 
-  return `\n${muted(label)} ${cyan(CLI_VERSION)} -> ${cyan(latestVersion)}  Run ${cyan('"sentry cli upgrade"')} to update.\n`;
+  return `\n${muted(label)} ${cyan(CLI_VERSION)} -> ${cyan(latestVersion)}  Run ${cyan(`"${sentry`cli upgrade`}"`)} to update.\n`;
 }
 
 function formatContextualUpdateNotification(latestVersion: string): string {
   return (
     `\n${muted("A new version of sentry-cli is available")} (${cyan(latestVersion)})${muted(".")} ` +
     `${muted("Upgrading may resolve this — we fix a lot of bugs in every release.")} ` +
-    `${muted("Run")} ${cyan('"sentry cli upgrade"')} ${muted("to update.")}\n`
+    `${muted("Run")} ${cyan(`"${sentry`cli upgrade`}"`)} ${muted("to update.")}\n`
   );
 }
 
@@ -452,11 +453,12 @@ export function resetUpdateNotificationState(): void {
 }
 
 /**
- * Check if update checking is disabled via environment variable.
+ * Check if update checking is disabled via environment variable, or because
+ * persistence is off for this invocation.
  * Checked at runtime to support test isolation.
  */
 function isUpdateCheckDisabled(): boolean {
-  return getEnv().SENTRY_CLI_NO_UPDATE_CHECK === "1";
+  return getEnv().SENTRY_CLI_NO_UPDATE_CHECK === "1" || isPersistenceDisabled();
 }
 
 /**

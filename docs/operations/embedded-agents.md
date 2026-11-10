@@ -12,6 +12,8 @@ Sentry MCP uses embedded AI agents for the following tools:
 
 These tools require an LLM provider (OpenAI, Azure OpenAI, Anthropic, or OpenRouter) to be configured.
 
+`search_errors`, `search_logs`, `search_traces`, `search_metrics`, and `search_issues` first try Seer's search agent when the organization has the `mcp-search-events-seer-translate` rollout flag and has not hidden AI features. `search_issues` also needs `gen-ai-issues-search`, which Sentry requires for the `Issues` strategy. When Seer is unavailable or cannot translate the query, they fall back to the embedded agent.
+
 ## Provider Selection
 
 ### Explicit Configuration (Recommended)
@@ -239,19 +241,19 @@ npx @sentry/mcp-server@latest 2>&1 | grep "Using"
 Expected output:
 
 ```
-Using openai responses API for AI-powered search tools (from EMBEDDED_AGENT_PROVIDER).
+ℹ Using openai responses API for AI-powered search tools (from EMBEDDED_AGENT_PROVIDER).
 ```
 
 Or:
 
 ```
-Using anthropic for AI-powered search tools (auto-detected).
+ℹ Using anthropic for AI-powered search tools (auto-detected).
 ```
 
 Or:
 
 ```
-Using openrouter for AI-powered search tools (auto-detected).
+ℹ Using openrouter for AI-powered search tools (auto-detected).
 ```
 
 ## Troubleshooting
@@ -296,7 +298,7 @@ npx @sentry/mcp-server@latest
 Should output:
 
 ```
-Using openai responses API for AI-powered search tools (from EMBEDDED_AGENT_PROVIDER).
+ℹ Using openai responses API for AI-powered search tools (from EMBEDDED_AGENT_PROVIDER).
 ```
 
 ## Related Documentation

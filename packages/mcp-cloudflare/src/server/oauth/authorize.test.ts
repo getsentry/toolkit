@@ -128,6 +128,61 @@ describe("oauth authorize routes", () => {
       expect(html).toContain('name="state"');
     });
 
+    it.each([
+      [undefined, null],
+      ["none", null],
+      ["select_account", "1"],
+      ["consent", "1"],
+      ["login", "1"],
+      ["login consent", "1"],
+    ])(
+      "maps prompt=%s to Sentry force_prompt=%s",
+      async (prompt, forcePrompt) => {
+        mockOAuthProvider.parseAuthRequest.mockResolvedValueOnce({
+          clientId: "test-client",
+          redirectUri: "https://example.com/callback",
+          scope: ["read"],
+          state: "orig",
+        });
+        mockOAuthProvider.lookupClient.mockResolvedValue({
+          clientId: "test-client",
+          clientName: "Test Client",
+          redirectUris: ["https://example.com/callback"],
+          tokenEndpointAuthMethod: "client_secret_basic",
+        });
+
+        const url = new URL("http://localhost/oauth/authorize");
+        if (prompt) url.searchParams.set("prompt", prompt);
+        const page = await app.fetch(new Request(url), testEnv as Env);
+        expect(page.status).toBe(200);
+        const html = await page.text();
+        expect(html).not.toContain("switch_account");
+        const encodedState = html.match(/name="state" value="([^"]+)"/)?.[1];
+        expect(encodedState).toBeTruthy();
+
+        const formData = new FormData();
+        formData.append("state", encodedState!);
+        formData.append("skill", "triage");
+        const response = await app.fetch(
+          new Request("http://localhost/oauth/authorize", {
+            method: "POST",
+            body: formData,
+          }),
+          testEnv as Env,
+        );
+
+        expect(response.status).toBe(302);
+        const redirectUrl = new URL(response.headers.get("location")!);
+        expect(redirectUrl.hostname).toBe("sentry.io");
+        expect(redirectUrl.searchParams.get("force_prompt")).toBe(forcePrompt);
+        const upstreamState = await verifyAndParseState(
+          redirectUrl.searchParams.get("state")!,
+          testEnv.COOKIE_SECRET!,
+        );
+        expect(upstreamState.req).not.toHaveProperty("forcePrompt");
+      },
+    );
+
     it("renders only the requested redirect URI when the client has multiple registered URIs", async () => {
       mockOAuthProvider.parseAuthRequest.mockResolvedValueOnce({
         clientId: "test-client",

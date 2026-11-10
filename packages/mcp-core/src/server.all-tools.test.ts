@@ -35,8 +35,9 @@ function getContext(overrides: Partial<ServerContext> = {}): ServerContext {
 async function withClient<T>(
   context: ServerContext,
   run: (client: Client) => Promise<T>,
+  experimentalMode = false,
 ): Promise<T> {
-  const server = buildServer({ context });
+  const server = buildServer({ context, experimentalMode });
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "all-tools-test", version: "1.0.0" });
@@ -54,6 +55,43 @@ async function listToolNames(context: ServerContext): Promise<string[]> {
   return await withClient(context, async (client) =>
     (await client.listTools()).tools.map((tool) => tool.name).sort(),
   );
+}
+
+/**
+ * Paths of `type: "array"` nodes whose `items` is not a schema object.
+ *
+ * VS Code Copilot rejects a tool at registration when any array lacks a
+ * truthy `items`, and GPT models need an item type. `z.tuple` emits
+ * `prefixItems` with `items: false`, which trips this.
+ */
+function findArraysWithoutItemSchema(
+  schema: unknown,
+  path: string[] = [],
+): string[] {
+  if (!schema || typeof schema !== "object") {
+    return [];
+  }
+  if (Array.isArray(schema)) {
+    return schema.flatMap((item, index) =>
+      findArraysWithoutItemSchema(item, [...path, String(index)]),
+    );
+  }
+
+  const record = schema as Record<string, unknown>;
+  const types = Array.isArray(record.type) ? record.type : [record.type];
+  const items = record.items;
+  const violations =
+    types.includes("array") &&
+    (!items || typeof items !== "object" || Array.isArray(items))
+      ? [path.join(".") || "(root)"]
+      : [];
+
+  return [
+    ...violations,
+    ...Object.entries(record).flatMap(([key, value]) =>
+      findArraysWithoutItemSchema(value, [...path, key]),
+    ),
+  ];
 }
 
 // server.test.ts covers the gateway surface used when the flag is off.
@@ -96,6 +134,25 @@ describe.skipIf(!EXPOSE_ALL_TOOLS)("buildServer with EXPOSE_ALL_TOOLS", () => {
       expect(tool.title?.trim(), tool.name).toBeTruthy();
     }
   });
+
+  it.each([false, true])(
+    "gives every array in tools/list an item schema (experimentalMode=%s)",
+    async (experimentalMode) => {
+      const listed = await withClient(
+        getContext(),
+        async (client) => (await client.listTools()).tools,
+        experimentalMode,
+      );
+
+      expect(listed.length).toBeGreaterThan(0);
+      const violations = listed.flatMap((tool) =>
+        findArraysWithoutItemSchema(tool.inputSchema).map(
+          (path) => `${tool.name}: ${path}`,
+        ),
+      );
+      expect(violations).toEqual([]);
+    },
+  );
 
   it("lists the replacements of deprecated tools instead of the tools", async () => {
     const toolNames = await listToolNames(getContext());

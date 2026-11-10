@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-issue
-version: 0.49.0-dev.0
+version: 0.50.0-dev.0
 description: Manage Sentry issues
 requires:
   bins: ["sentry"]
@@ -173,11 +173,11 @@ Show the top values of an issue tag
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `uniqueValues` | number \| null |  |
+| `uniqueValues` | number \| null | Number of distinct values seen for the tag key |
 | `totalValues` | number \| null | Total retained events, including missing tag values; not a lifetime count |
 | `topValues` | array \| null | Up to 9 values ordered by count, with nullable counts and first/last seen timestamps |
-| `key` | string |  |
-| `name` | string |  |
+| `key` | string | Tag key, with the `sentry:` prefix removed from built-in keys |
+| `name` | string | Display label of the tag key |
 
 **Examples:**
 

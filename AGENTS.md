@@ -13,6 +13,7 @@ Toolkit contains the Sentry CLI, the Sentry MCP server, and shared code. Product
 - **MCP tool count**: `EXPOSE_ALL_TOOLS` lists every tool and relies on harness tool search. The gateway surface it falls back to (`TOP_LEVEL_TOOL_NAMES`) targets ≤20, hard limit 25.
 - **Quality gate**: `pnpm run tsc && pnpm run lint && pnpm run test` must pass before committing.
 - **Dependency direction**: `sentry` (cli) → `@sentry/mcp-core` → `@sentry/toolkit-core`, and `@sentry/mcp-cloudflare` → `@sentry/mcp-core`; never the reverse. mcp-core and toolkit-core never import the CLI. Inject CLI-only capabilities (SQLite cache, local-file DSN detection, file uploads) through interfaces defined in mcp-core or toolkit-core. `pnpm run lint` enforces this; see docs/architecture/overview.md#package-dependency-direction.
+- **Lint rules**: Write new lint rules for Oxlint: a built-in rule in `.oxlintrc.json`, or a custom rule in `packages/cli/lint-rules/cli-oxlint-plugin.js`. Do not add ast-grep rules. See docs/contributing/coding-guidelines.md#formatting-and-linting.
 - **Package CI**: Put checks for one workspace package in its `package.json` scripts and `sentryCi`, which `test.yml` runs per project. Do not add a workflow for them. See docs/operations/github-actions.md#package-ci-checks.
 
 ## Repository Structure

@@ -8,6 +8,7 @@
 
 import type { SentryContext } from "../context.js";
 import { getCurrentUser } from "../lib/api/users.js";
+import { sentry } from "../lib/app-identity.js";
 import { buildCommand } from "../lib/command.js";
 import { DEFAULT_SENTRY_URL } from "../lib/constants.js";
 import { isAuthenticated } from "../lib/db/auth.js";
@@ -122,17 +123,17 @@ export const infoCommand = buildCommand({
     examples: [
       {
         description: "Print the resolved config and verify authentication",
-        command: "sentry info",
+        run: "info",
       },
       {
         description:
           "Verify only authentication (don't require a default org/project)",
-        command: "sentry info --no-defaults",
+        run: "info --no-defaults",
       },
       {
         description:
           "Machine-readable status for external tooling (always exits 0)",
-        command: "sentry info --config-status-json",
+        run: "info --config-status-json",
       },
     ],
   },
@@ -179,8 +180,8 @@ export const infoCommand = buildCommand({
       this.process.exitCode = 1;
       return {
         hint: failed
-          ? "Not authenticated. Run `sentry auth login`."
-          : "No default organization/project. Set them with `sentry cli defaults org <org>` and `sentry cli defaults project <project>`.",
+          ? `Not authenticated. Run \`${sentry`auth login`}\`.`
+          : `No default organization/project. Set them with \`${sentry`cli defaults org <org>`}\` and \`${sentry`cli defaults project <project>`}\`.`,
       };
     }
     return { hint: "Configuration verified." };

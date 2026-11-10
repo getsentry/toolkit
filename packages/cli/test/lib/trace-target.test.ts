@@ -30,6 +30,7 @@ vi.mock("../../src/lib/region.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../src/lib/api-client.js";
+import { getAppIdentity, setAppIdentity } from "../../src/lib/app-identity.js";
 import {
   ContextError,
   ResolutionError,
@@ -49,6 +50,7 @@ import {
 } from "../../src/lib/trace-target.js";
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
+const defaultIdentity = getAppIdentity();
 
 /** The target {@link parseTraceTargetInput} parses `args` into. */
 function parsedTraceTarget(
@@ -216,6 +218,7 @@ describe("trace target resolution", () => {
     const resolved = await resolveTraceOrg(
       parsed,
       "/tmp",
+      "trace logs",
       "sentry trace logs [<org>/[<project>/]]<trace-id>",
     );
 
@@ -231,7 +234,7 @@ describe("trace target resolution", () => {
     const usageHint = "sentry span view [<org>/<project>/]<span-id>";
 
     try {
-      await resolveTraceOrgProject(parsed, "/tmp", usageHint);
+      await resolveTraceOrgProject(parsed, "/tmp", "span view", usageHint);
       expect.unreachable("should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ResolutionError);
@@ -248,12 +251,63 @@ describe("trace target resolution", () => {
     const usageHint = "sentry trace view [<org>/<project>/]<trace-id>";
 
     try {
-      await resolveTraceOrgOptionalProject(parsed, "/tmp", usageHint);
+      await resolveTraceOrgOptionalProject(
+        parsed,
+        "/tmp",
+        "trace view",
+        usageHint,
+      );
       expect.unreachable("should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(ResolutionError);
       expect((error as ResolutionError).hint).toBe(usageHint);
     }
+  });
+
+  describe("under another program name", () => {
+    beforeEach(() => {
+      setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
+      findProjectsBySlugSpy.mockResolvedValue({
+        projects: [
+          { id: "1", slug: "frontend", name: "Frontend", orgSlug: "org-a" },
+          { id: "2", slug: "frontend", name: "Frontend", orgSlug: "org-b" },
+        ],
+        orgs: [
+          { slug: "org-a", name: "Org A" },
+          { slug: "org-b", name: "Org B" },
+        ],
+      });
+    });
+
+    afterEach(() => {
+      setAppIdentity(defaultIdentity);
+    });
+
+    test.each([
+      ["log list", resolveTraceOrg],
+      ["span list", resolveTraceOrgProject],
+      ["trace view", resolveTraceOrgOptionalProject],
+    ])(
+      "an ambiguous project names the program once in %s suggestions",
+      async (commandName, resolve) => {
+        const parsed = parsedTraceTarget(
+          ["frontend", VALID_TRACE_ID],
+          "sentry trace view <target> <trace-id>",
+        );
+
+        const error = await resolve(
+          parsed,
+          "/tmp",
+          commandName,
+          `sentry-mcp ${commandName} [<org>/<project>/]<trace-id>`,
+        ).catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(ResolutionError);
+        const message = (error as ResolutionError).message;
+        expect(message).toContain(`sentry-mcp ${commandName} org-a/frontend`);
+        expect(message).not.toContain("sentry-mcp sentry-mcp");
+      },
+    );
   });
 });
 
