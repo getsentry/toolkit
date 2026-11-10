@@ -95,12 +95,34 @@ const DOCS_REMARK: Record<Arm, string> = {
 const SHARED_PROMPT =
   "You are working in a small repository. Package managers and builds are not available here, so add dependencies to the manifest files by hand. Assume the Sentry DSN comes from an environment variable.";
 
-/** The same tools for both arms; only `sentry docs` differs. */
+/**
+ * The same tools and permissions for both arms, including a shell, as in a
+ * normal coding session; only the `cli` arm has `sentry` on its PATH.
+ * Installs are denied so both arms edit manifests by hand.
+ */
 const TOOLS = "Read,Edit,Write,Glob,Grep,WebSearch,WebFetch,Bash";
-const ALLOWED: Record<Arm, string> = {
-  web: "Read,Edit,Write,Glob,Grep,WebSearch,WebFetch",
-  cli: "Read,Edit,Write,Glob,Grep,WebSearch,WebFetch,Bash(sentry docs:*)",
-};
+const DENIED = [
+  "npm",
+  "npx",
+  "pnpm",
+  "yarn",
+  "bun",
+  "pip",
+  "pip3",
+  "uv",
+  "composer",
+  "bundle",
+  "gem",
+  "mix",
+  "go",
+  "cargo",
+  "dotnet",
+  "gradle",
+  "flutter",
+  "dart",
+]
+  .map((command) => `Bash(${command}:*)`)
+  .join(",");
 
 const { values } = parseArgs({
   // pnpm passes the `--` of `pnpm run bench:docs-agent -- --runs 3` through.
@@ -241,6 +263,9 @@ function docsStep(
   if (name === "Bash" && command.includes("sentry docs")) {
     return { tool: "sentry docs", target: command };
   }
+  if (name === "Bash" && command.includes("docs.sentry.io")) {
+    return { tool: "Bash fetch", target: command };
+  }
   return;
 }
 
@@ -288,7 +313,9 @@ function runClaude(
     "--tools",
     TOOLS,
     "--allowedTools",
-    ALLOWED[arm],
+    TOOLS,
+    "--disallowedTools",
+    DENIED,
     "--append-system-prompt",
     `${SHARED_PROMPT} ${DOCS_REMARK[arm]}`,
   ];
