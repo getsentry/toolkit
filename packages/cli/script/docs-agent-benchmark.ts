@@ -97,7 +97,8 @@ const SHARED_PROMPT =
 
 /**
  * The same tools and permissions for both arms, including a shell, as in a
- * normal coding session; only the `cli` arm has `sentry` on its PATH.
+ * normal coding session; only the `cli` arm has `sentry` on its PATH, and
+ * the `web` arm is also denied any `sentry` already installed on the machine.
  * Installs are denied so both arms edit manifests by hand.
  */
 const TOOLS = "Read,Edit,Write,Glob,Grep,WebSearch,WebFetch,Bash";
@@ -123,6 +124,13 @@ const DENIED = [
 ]
   .map((command) => `Bash(${command}:*)`)
   .join(",");
+const DENIED_BY_ARM: Record<Arm, string> = {
+  web: `${DENIED},Bash(sentry:*)`,
+  cli: DENIED,
+};
+
+/** A docs.sentry.io URL in a shell command, such as `curl https://docs.sentry.io/…`. */
+const DOCS_URL_RE = /\bhttps?:\/\/docs\.sentry\.io(?=[/\s"'`]|$)/;
 
 const { values } = parseArgs({
   // pnpm passes the `--` of `pnpm run bench:docs-agent -- --runs 3` through.
@@ -263,7 +271,7 @@ function docsStep(
   if (name === "Bash" && command.includes("sentry docs")) {
     return { tool: "sentry docs", target: command };
   }
-  if (name === "Bash" && command.includes("docs.sentry.io")) {
+  if (name === "Bash" && DOCS_URL_RE.test(command)) {
     return { tool: "Bash fetch", target: command };
   }
   return;
@@ -315,7 +323,7 @@ function runClaude(
     "--allowedTools",
     TOOLS,
     "--disallowedTools",
-    DENIED,
+    DENIED_BY_ARM[arm],
     "--append-system-prompt",
     `${SHARED_PROMPT} ${DOCS_REMARK[arm]}`,
   ];
