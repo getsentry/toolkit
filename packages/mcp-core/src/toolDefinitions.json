@@ -5505,7 +5505,7 @@
   {
     "name": "get_dashboard_details",
     "title": "Get Dashboard Details",
-    "description": "Get detailed information about a specific Sentry dashboard.\n\nUse this tool when you need to:\n- Inspect a dashboard's widgets and saved query definitions\n- View dashboard projects, environments, filters, layout, and widget IDs\n- Resolve a dashboard by exact title or numeric ID\n\n<examples>\nget_dashboard_details(organizationSlug='my-organization', dashboardIdOrTitle='12345')\nget_dashboard_details(organizationSlug='my-organization', dashboardIdOrTitle='Errors Overview')\n</examples>\n\n<hints>\n- Numeric dashboard IDs are resolved directly.\n- Title lookups require one exact case-insensitive match. Use `find_dashboards` first if uncertain.\n- This returns saved widget query definitions, not live widget data.\n</hints>",
+    "description": "Get detailed information about a specific Sentry dashboard.\n\nUse this tool when you need to:\n- Inspect a dashboard's widgets and saved query definitions\n- View dashboard projects, environments, filters, layout, and widget IDs\n- Resolve a dashboard by exact title or numeric ID\n\n<examples>\nget_dashboard_details(organizationSlug='my-organization', dashboardIdOrTitle='12345')\nget_dashboard_details(organizationSlug='my-organization', dashboardIdOrTitle='Errors Overview')\n</examples>\n\n<hints>\n- Numeric dashboard IDs are resolved directly.\n- Title lookups require one exact case-insensitive match. Use `find_dashboards` first if uncertain.\n- This returns saved widget query definitions, not live widget data.\n- Saved transformations are listed per aggregate position, in application order.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5718,6 +5718,49 @@
                         },
                         "orderby": {
                           "type": ["string", "null"]
+                        },
+                        "transformations": {
+                          "description": "Saved ordered transformations per aggregate position. Duplicate aggregates are separate entries. Omitted when none are saved; null when this Sentry server does not report transformations.",
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "aggregateIndex": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991,
+                                    "description": "Zero-based position in `aggregates`."
+                                  },
+                                  "aggregate": {
+                                    "description": "Aggregate at that position; null when the query has none there.",
+                                    "type": ["string", "null"]
+                                  },
+                                  "transformations": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "description": "Saved transformations in application order."
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "aggregateIndex",
+                                  "aggregate",
+                                  "transformations",
+                                  "description"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -10150,6 +10193,40 @@
                 },
                 "stage": {
                   "type": "string",
+                  "enum": ["connect_agent", "connect_mcp"],
+                  "description": "Report progress while connecting to the user's Sentry account. connect_mcp is accepted as an older name."
+                }
+              },
+              "required": ["status", "stage"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "waiting",
+                    "completed",
+                    "skipped",
+                    "failed"
+                  ],
+                  "description": "The stage's current status."
+                },
+                "runStatus": {
+                  "description": "Set only when the entire onboarding run has completed or failed.",
+                  "type": "string",
+                  "enum": ["completed", "failed"]
+                },
+                "eventNote": {
+                  "description": "Short context to display with this progress event. Required when status is failed.",
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "stage": {
+                  "type": "string",
                   "const": "create_project",
                   "description": "Report progress while creating or selecting Sentry projects."
                 },
@@ -10255,7 +10332,6 @@
                 "stage": {
                   "type": "string",
                   "enum": [
-                    "connect_mcp",
                     "analyze_project",
                     "instrument_app",
                     "plan_test_error",
@@ -14405,7 +14481,7 @@
   {
     "name": "update_issue",
     "title": "Update Issue",
-    "description": "Update a Sentry issue's status or assignment.\n\nUse this to resolve, reopen, assign, unassign, or ignore an issue.\n\n<examples>\n```\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='resolved')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo='user:123456')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo=null)\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='forever')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='untilOccurrenceCount', ignoreCount=100, ignoreWindowMinutes=60)\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', reason='Ignoring because this is expected noise from the staging deploy')\n```\n</examples>\n\n<hints>\n- Provide `issueUrl` or `organizationSlug` + `issueId`.\n- At least one of `status` or `assignedTo` is required.\n- Omit `assignedTo` to leave assignment unchanged. Pass `null` to unassign; otherwise use `user:ID` or `team:ID_OR_SLUG`.\n- Use the `whoami` tool to find your user ID for self-assignment.\n- Status values: `resolved`, `resolvedInNextRelease`, `unresolved`, `ignored`.\n- `status='ignored'` defaults to `ignoreMode='untilEscalating'`.\n- Ignore modes: `untilEscalating`, `forever`, `forDuration`, `untilOccurrenceCount`, `untilUserCount`.\n- Matching ignore inputs are `ignoreDurationMinutes`, `ignoreCount` + optional `ignoreWindowMinutes`, or `ignoreUserCount` + optional `ignoreUserWindowMinutes`.\n- To switch an already ignored issue between `untilEscalating`, `forever`, and condition-based ignore modes, first set `status='unresolved'`, then ignore it again with the new rule.\n- `reason` is optional. When provided, it will be posted as a comment on the issue's activity feed explaining why the action was taken.\n</hints>",
+    "description": "Update a Sentry issue's status or assignment.\n\nUse this to resolve, reopen, assign, unassign, or ignore an issue.\n\n<examples>\n```\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='resolved')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo='user:123456')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo=null)\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='forever')\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='untilOccurrenceCount', ignoreCount=100, ignoreWindowMinutes=60)\nupdate_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', reason='Ignoring because this is expected noise from the staging deploy')\n```\n</examples>\n\n<hints>\n- Provide `issueUrl` or `organizationSlug` + `issueId`.\n- At least one of `status` or `assignedTo` is required.\n- Omit `assignedTo` to leave assignment unchanged. Pass `null` to unassign; otherwise use `user:ID` or `team:ID_OR_SLUG`.\n- Use the `whoami` tool to find your user ID for self-assignment.\n- Status values: `resolved`, `resolvedInNextRelease`, `unresolved`, `ignored`.\n- `status='resolved'` takes optional `inRelease`, or `inCommit` + `inCommitRepository`.\n- `status='ignored'` defaults to `ignoreMode='untilEscalating'`.\n- Ignore modes: `untilEscalating`, `forever`, `forDuration`, `untilOccurrenceCount`, `untilUserCount`.\n- Matching ignore inputs are `ignoreDurationMinutes`, `ignoreCount` + optional `ignoreWindowMinutes`, or `ignoreUserCount` + optional `ignoreUserWindowMinutes`.\n- To switch an already ignored issue between `untilEscalating`, `forever`, and condition-based ignore modes, first set `status='unresolved'`, then ignore it again with the new rule.\n- `reason` is optional. When provided, it will be posted as a comment on the issue's activity feed explaining why the action was taken.\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -14496,6 +14572,21 @@
           "exclusiveMinimum": 0,
           "maximum": 10080,
           "description": "Optional time window in minutes for ignoreUserCount. If omitted, Sentry counts all future affected users."
+        },
+        "inRelease": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Release version to resolve the issue in, such as a version returned by find_releases. Requires status='resolved'. Events from newer releases reopen the issue as a regression; events from older releases do not."
+        },
+        "inCommit": {
+          "type": "string",
+          "minLength": 1,
+          "description": "SHA of the commit that fixes the issue. Requires status='resolved' and inCommitRepository. The commit must already be known to Sentry."
+        },
+        "inCommitRepository": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the repository that contains inCommit, as it appears in Sentry (for example 'getsentry/sentry')."
         },
         "reason": {
           "type": "string",

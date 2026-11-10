@@ -9,6 +9,7 @@
  * actually available.
  */
 
+import { isEnabled as isSentryEnabled } from "@sentry/node";
 import {
   type Application,
   type ApplicationText,
@@ -19,13 +20,14 @@ import {
   UnsatisfiedPositionalError,
 } from "@stricli/core";
 import type { SentryContext } from "../context.js";
-import { getAppIdentity } from "./app-identity.js";
+import { getAppIdentity, sentry } from "./app-identity.js";
 import {
   getCommandSuggestion,
   getSynonymSuggestionFromArgv,
 } from "./command-suggestions.js";
 import { CLI_VERSION } from "./constants.js";
 import { redactCredentialText } from "./credential-redaction.js";
+import { detectAgent } from "./detect-agent.js";
 import { reportArgumentError, reportCliError } from "./error-reporting.js";
 import {
   ApiError,
@@ -149,6 +151,26 @@ function formatSynonymError(
   return `${prefix} ${exc.format()}\n${tip}`;
 }
 
+/**
+ * A line that asks an AI agent to tell us when the CLI was hard to use, or an
+ * empty string. A failed command is where an agent learns that a flag, an
+ * argument, or the help misled it, often after several tries, so every error
+ * an agent sees carries it. People don't get it. It also needs feedback to be
+ * deliverable: the `sentry` CLI has the command (the `sentry-mcp` bundle does
+ * not), and `cli feedback` refuses to send while telemetry is off.
+ */
+function formatAgentFeedbackHint(ansiColor: boolean): string {
+  if (
+    getAppIdentity().name !== "sentry" ||
+    !detectAgent() ||
+    !isSentryEnabled()
+  ) {
+    return "";
+  }
+  const hint = `\nIf this took several tries or was hard to figure out, tell the Sentry CLI team why once you're done: ${sentry`cli feedback "<what you tried and what got in the way>"`}`;
+  return ansiColor ? warning(hint) : hint;
+}
+
 function escapesToOuterMiddleware(exc: unknown): boolean {
   if (exc instanceof OutputError) {
     return true;
@@ -221,7 +243,7 @@ function buildApplicationText(options: ArgumentHintOptions): ApplicationText {
       );
       // Exit 252 never reaches reportCliError; record it for UX research
       reportArgumentError(exc, stripAnsi(message));
-      return message;
+      return `${message}${formatAgentFeedbackHint(ansiColor)}`;
     },
     noCommandRegisteredForInput: ({
       input,
@@ -234,6 +256,12 @@ function buildApplicationText(options: ArgumentHintOptions): ApplicationText {
         corrections,
         ansiColor,
       });
+
+      // Stricli wraps our return value in bold-red ANSI codes. Reset before
+      // the hint's warning() color, as for the tip below.
+      const agentHint = formatAgentFeedbackHint(ansiColor);
+      const feedbackHint =
+        ansiColor && agentHint ? `\x1B[39m\x1B[22m${agentHint}` : agentHint;
 
       // Check for known synonym suggestions on routes without defaultCommand
       // (e.g., `sentry cli info` → suggest `sentry auth status`).
@@ -252,10 +280,10 @@ function buildApplicationText(options: ArgumentHintOptions): ApplicationText {
         const formatted = ansiColor
           ? `\n\x1B[39m\x1B[22m${warning(`Tip: ${hint}`)}`
           : `\nTip: ${hint}`;
-        return `${base}${formatted}`;
+        return `${base}${formatted}${feedbackHint}`;
       }
 
-      return base;
+      return `${base}${feedbackHint}`;
     },
     exceptionWhileRunningCommand: (
       exc: unknown,
@@ -278,9 +306,10 @@ function buildApplicationText(options: ArgumentHintOptions): ApplicationText {
       // domain level (e.g., ResolutionError). Check argv for a known synonym
       // and show the suggestion — skip Sentry capture since these are known
       // user mistakes, not real errors.
+      const feedbackHint = formatAgentFeedbackHint(ansiColor);
       const synonymResult = formatSynonymError(exc, ansiColor);
       if (synonymResult) {
-        return redactCredentialText(synonymResult);
+        return `${redactCredentialText(synonymResult)}${feedbackHint}`;
       }
 
       // Report command errors to Sentry with stable fingerprinting. Stricli
@@ -292,12 +321,12 @@ function buildApplicationText(options: ArgumentHintOptions): ApplicationText {
 
       if (exc instanceof CliError) {
         const prefix = ansiColor ? errorColor("Error:") : "Error:";
-        return `${prefix} ${formatError(exc)}`;
+        return `${prefix} ${formatError(exc)}${feedbackHint}`;
       }
       if (exc instanceof Error) {
-        return `Unexpected error: ${redactCredentialText(exc.stack ?? exc.message)}`;
+        return `Unexpected error: ${redactCredentialText(exc.stack ?? exc.message)}${feedbackHint}`;
       }
-      return `Unexpected error: ${formatError(exc)}`;
+      return `Unexpected error: ${formatError(exc)}${feedbackHint}`;
     },
   };
   return customText;

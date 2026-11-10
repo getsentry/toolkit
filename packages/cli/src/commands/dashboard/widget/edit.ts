@@ -423,9 +423,16 @@ export const editCommand = buildCommand({
     );
     const url = buildDashboardUrl(orgSlug, dashboardId);
 
+    // The request omits saved transformations so Sentry keeps them; report
+    // the saved widget so its output includes them.
+    const saved =
+      replacement.id === undefined
+        ? undefined
+        : updated.widgets?.find((widget) => widget.id === replacement.id);
+
     yield new CommandOutput({
       dashboard: updated,
-      widget: replacement,
+      widget: saved ?? replacement,
       url,
     } satisfies DashboardWidgetChangeOutput);
     return { hint: `Dashboard: ${url}` };

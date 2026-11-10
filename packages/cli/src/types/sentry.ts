@@ -8,7 +8,7 @@
  * This keeps all SDK-documented fields available with correct types while making
  * non-core fields optional for flexibility (test mocks, partial API responses).
  *
- * Internal types not covered by the SDK (Region, User, logs) use Valibot schemas
+ * Internal types not covered by the SDK (User, logs) use Valibot schemas
  * for runtime validation. Event entry types (exceptions, breadcrumbs, etc.)
  * are plain TypeScript interfaces since they are only used for type annotations.
  */
@@ -62,7 +62,6 @@ import {
   transform,
   union,
   unknown,
-  url,
   variant,
 } from "valibot";
 
@@ -295,27 +294,7 @@ export type ProjectKey = Partial<SdkProjectKey> & {
 
 // Internal types with Valibot schemas (runtime-validated, not in @sentry/api)
 
-// Region
-
-/** A Sentry region (e.g., US, EU) */
-export const RegionSchema = object({
-  name: string(),
-  url: pipe(string(), url()),
-});
-
-export type Region = InferOutput<typeof RegionSchema>;
-
-/** Response from /api/0/users/me/regions/ endpoint */
-export const UserRegionsResponseSchema = object({
-  regions: array(RegionSchema),
-});
-
-export type UserRegionsResponse = InferOutput<typeof UserRegionsResponseSchema>;
-
-/**
- * Response from `/api/0/organizations/{org}/dsn-lookup/`. The endpoint is
- * private, so `@sentry/api` has no type for it.
- */
+/** The fields the CLI reads from `/api/0/organizations/{org}/dsn-lookup/`. */
 export const DsnLookupResponseSchema = looseObject({
   organizationSlug: string(),
   projectSlug: string(),
@@ -326,12 +305,11 @@ export const DsnLookupResponseSchema = looseObject({
 // User
 
 /**
- * Minimal user schema for the `/auth/` endpoint response.
+ * The user fields the CLI reads from `/users/me/` and its `/auth/` fallback,
+ * which return the same body.
  *
  * All optional fields use `.nullish()` (accepts both `null` and `undefined`)
  * because the Sentry API can return `null` for any of these.
- * Note: `@sentry/api` doesn't export types for the `/auth/` endpoint —
- * it's undocumented, so we define this schema manually.
  */
 export const SentryUserSchema = looseObject({
   id: string(),
@@ -388,8 +366,27 @@ export type ReplayContext = {
   [key: string]: unknown;
 };
 
-/** High-level metadata returned by the organization trace-meta endpoint. */
-export const TraceMetaSchema = vOrganizationTraceMetaResponse;
+const sdkTraceMeta = vOrganizationTraceMetaResponse.entries;
+const sdkTransactionChildCount =
+  sdkTraceMeta.transactionChildCountMap.item.entries;
+
+/**
+ * High-level metadata returned by the organization trace-meta endpoint.
+ *
+ * Built from the `@sentry/api` schema. The spec says `transaction.event_id` is
+ * a string, but spans that belong to no transaction are counted under null.
+ */
+export const TraceMetaSchema = object({
+  ...sdkTraceMeta,
+  transactionChildCountMap: array(
+    object({
+      ...sdkTransactionChildCount,
+      "transaction.event_id": nullable(
+        sdkTransactionChildCount["transaction.event_id"],
+      ),
+    }),
+  ),
+});
 
 export type TraceMeta = InferOutput<typeof TraceMetaSchema>;
 
