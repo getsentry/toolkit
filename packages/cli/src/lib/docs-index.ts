@@ -42,9 +42,13 @@ const CACHE_FILE = `index-v${CACHE_VERSION}.json`;
 
 /** How long a cached index is used without asking the docs site. */
 export const FRESH_FOR_MS = 6 * 60 * 60 * 1000;
-/** Timeout for the first download, when there is nothing to fall back to. */
+/** Timeout for downloading and parsing the whole doctree. */
 const DOWNLOAD_TIMEOUT_MS = 30_000;
-/** Timeout for a revalidation, when a stale copy can answer instead. */
+/**
+ * Timeout for the docs site to answer a revalidation, when a stale copy can
+ * answer instead. It covers the response headers only: once the site says
+ * the index changed, the new copy gets the full download timeout.
+ */
 const REVALIDATE_TIMEOUT_MS = 3000;
 
 /** A node of docs.sentry.io's `doctree.json`. */
@@ -209,28 +213,46 @@ type FetchResult =
 
 async function fetchDoctree(
   etag: string | undefined,
-  timeoutMs: number,
+  answerTimeoutMs: number,
 ): Promise<FetchResult> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (etag) {
     headers["If-None-Match"] = etag;
   }
-  const response = await customFetch(DOCTREE_URL, {
-    headers,
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (response.status === 304) {
-    return { kind: "not-modified" };
+  const controller = new AbortController();
+  const abortAfter = (ms: number) =>
+    setTimeout(
+      () =>
+        controller.abort(
+          new DOMException(`Timed out after ${ms / 1000}s`, "TimeoutError"),
+        ),
+      ms,
+    );
+  let timer = abortAfter(answerTimeoutMs);
+  try {
+    const response = await customFetch(DOCTREE_URL, {
+      headers,
+      signal: controller.signal,
+    });
+    if (response.status === 304) {
+      return { kind: "not-modified" };
+    }
+    if (!response.ok) {
+      throw new Error(`${DOCTREE_URL} returned HTTP ${response.status}`);
+    }
+    // A changed index is a full download, so a short revalidation timeout
+    // would keep a slow network on the old copy forever.
+    clearTimeout(timer);
+    timer = abortAfter(DOWNLOAD_TIMEOUT_MS);
+    const tree = (await response.json()) as DocTreeNode;
+    return {
+      kind: "updated",
+      etag: response.headers.get("etag") ?? undefined,
+      pages: buildPagesFromDoctree(tree),
+    };
+  } finally {
+    clearTimeout(timer);
   }
-  if (!response.ok) {
-    throw new Error(`${DOCTREE_URL} returned HTTP ${response.status}`);
-  }
-  const tree = (await response.json()) as DocTreeNode;
-  return {
-    kind: "updated",
-    etag: response.headers.get("etag") ?? undefined,
-    pages: buildPagesFromDoctree(tree),
-  };
 }
 
 function describeAge(ms: number): string {

@@ -85,6 +85,78 @@ describe("loadDocsIndex", () => {
     expect(customFetch).toHaveBeenCalledTimes(2);
   });
 
+  test("gives a changed index the full download time on a refresh", async () => {
+    customFetch.mockResolvedValueOnce(okResponse());
+    await loadDocsIndex({ now: T0 });
+
+    // The site answers at once but the new doctree takes 10s to arrive,
+    // longer than the revalidation timeout.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      customFetch.mockImplementationOnce(
+        async (_url: string, init: RequestInit) => {
+          const body = new ReadableStream<Uint8Array>({
+            start(stream) {
+              setTimeout(() => {
+                if (!init.signal?.aborted) {
+                  stream.enqueue(new TextEncoder().encode(doctree));
+                  stream.close();
+                }
+              }, 10_000);
+              init.signal?.addEventListener("abort", () =>
+                stream.error(init.signal?.reason),
+              );
+            },
+          });
+          return new Response(body, { status: 200, headers: { etag: "new" } });
+        },
+      );
+      const loading = loadDocsIndex({
+        now: T0 + FRESH_FOR_MS + 1,
+        fresh: true,
+      });
+      // Reading the cache is real file I/O; wait for the request first.
+      while (customFetch.mock.calls.length < 2) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      await vi.advanceTimersByTimeAsync(10_000);
+      const loaded = await loading;
+      expect(loaded.warning).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // The new copy was saved, so the next search does not fetch again.
+    await loadDocsIndex({ now: T0 + FRESH_FOR_MS + 2 });
+    expect(customFetch).toHaveBeenCalledTimes(2);
+  });
+
+  test("falls back quickly when the site does not answer a refresh", async () => {
+    customFetch.mockResolvedValueOnce(okResponse());
+    await loadDocsIndex({ now: T0 });
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      customFetch.mockImplementationOnce(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) =>
+            init.signal?.addEventListener("abort", () =>
+              reject(init.signal?.reason),
+            ),
+          ),
+      );
+      const loading = loadDocsIndex({ now: T0 + FRESH_FOR_MS + 1 });
+      while (customFetch.mock.calls.length < 2) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      await vi.advanceTimersByTimeAsync(3000);
+      const loaded = await loading;
+      expect(loaded.warning).toContain("Could not refresh the docs index");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("serves the stale copy with a warning when the refresh fails", async () => {
     customFetch.mockResolvedValueOnce(okResponse());
     await loadDocsIndex({ now: T0 });
