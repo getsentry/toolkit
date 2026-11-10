@@ -56,6 +56,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 type Check = { readonly file: string; readonly pattern: string };
@@ -230,11 +231,15 @@ function pathFor(arm: Arm, bins: Record<Arm, string>): string {
   return [bins[arm], process.env.PATH].filter((dir) => dir).join(delimiter);
 }
 
-/** A directory with a `sentry` that runs this checkout's CLI. */
+/**
+ * A directory with a `sentry` that runs this checkout's CLI. Its config
+ * directory is pinned inside that directory, so every run shares the docs
+ * index downloaded below even when an agent gets its own HOME.
+ */
 function sentryBinDir(): string {
   const cli = process.env.SENTRY_CLI_BINARY
     ? resolve(process.env.SENTRY_CLI_BINARY)
-    : resolve(dirname(new URL(import.meta.url).pathname), "../dist/bin.cjs");
+    : resolve(dirname(fileURLToPath(import.meta.url)), "../dist/bin.cjs");
   if (!existsSync(cli)) {
     throw new Error(
       `${cli} does not exist; run \`pnpm run bundle\` or set SENTRY_CLI_BINARY.`,
@@ -244,7 +249,7 @@ function sentryBinDir(): string {
   const runner = cli.endsWith(".cjs") || cli.endsWith(".js") ? "node " : "";
   writeFileSync(
     join(dir, "sentry"),
-    `#!/bin/sh\nexec ${runner}"${cli}" "$@"\n`,
+    `#!/bin/sh\nSENTRY_CONFIG_DIR="${join(dir, "config")}" exec ${runner}"${cli}" "$@"\n`,
   );
   chmodSync(join(dir, "sentry"), 0o755);
   return dir;
