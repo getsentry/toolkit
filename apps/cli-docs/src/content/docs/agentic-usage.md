@@ -82,6 +82,22 @@ The skill uses your existing CLI authentication, so you'll need to run `sentry a
 
 When the CLI detects an agent, its error messages also ask the agent to tell the Sentry CLI team, with `sentry cli feedback`, when a task took several tries or was hard to figure out. People don't see this line, and it's left out while telemetry is off.
 
+## MCP Server
+
+Agents that speak the Model Context Protocol can use Sentry through the CLI's
+MCP server instead of, or alongside, the skill. Register
+[`sentry mcp`](../commands/mcp/) as a stdio MCP server. It uses your CLI login,
+so the MCP config needs no token:
+
+```bash
+claude mcp add sentry -- sentry mcp
+```
+
+Other clients take `{"command": "sentry", "args": ["mcp"]}`. Pass `<org>/` or
+`<org>/<project>` after `mcp` to limit the server to one organization or
+project. See [mcp.sentry.dev](https://mcp.sentry.dev/?transport=cli) for setup
+steps for each client.
+
 ## Requirements
 
 - An authenticated Sentry CLI installation (`sentry auth login`)

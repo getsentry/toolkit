@@ -3,6 +3,21 @@
 The Sentry MCP server for stdio clients, as a single file with no runtime
 dependencies. Works with sentry.io and self-hosted Sentry.
 
+> **Prefer `sentry mcp`.** The [Sentry CLI](https://cli.sentry.dev) runs the
+> same server as `sentry mcp`, using your CLI login, so the MCP config needs
+> no token:
+>
+> ```shell
+> curl https://cli.sentry.dev/install -fsS | bash
+> sentry auth login
+> claude mcp add sentry -- sentry mcp
+> ```
+>
+> Other clients take `{"command": "sentry", "args": ["mcp"]}`. See the
+> [`sentry mcp` docs](https://cli.sentry.dev/commands/mcp/) and
+> <https://mcp.sentry.dev/?transport=cli>. This package remains for clients
+> that launch the server through npx.
+
 ```json
 {
   "command": "npx",

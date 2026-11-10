@@ -1,11 +1,12 @@
 # Stdio Authentication
 
-How the stdio MCP server (`@sentry/mcp-server`) authenticates with Sentry.
+How the stdio MCP server (`sentry mcp`, also published as
+`@sentry/mcp-server`) authenticates with Sentry.
 
-Sign in once with `npx -y @sentry/mcp-server auth login`. The package runs
-the Sentry CLI's own `auth` commands and stores the session in the CLI's
-credential store, so the package and the CLI (which runs the same server as
-`sentry mcp`) share one login.
+Sign in once with `sentry auth login`, then run `sentry mcp`. The legacy
+`@sentry/mcp-server` package runs the CLI's own `auth` commands and stores the
+session in the CLI's credential store, so `npx -y @sentry/mcp-server auth
+login` and `sentry auth login` share one login.
 
 ## Credential Sources
 
@@ -34,8 +35,8 @@ with environment variables:
 
 ```json
 {
-  "command": "npx",
-  "args": ["-y", "@sentry/mcp-server@latest"],
+  "command": "sentry",
+  "args": ["mcp"],
   "env": {
     "SENTRY_AUTH_TOKEN": "sntryu_..."
   }
@@ -107,7 +108,7 @@ server matches the target and refused when it does not.
 
 The credential store can hold several accounts. The server starts with one:
 with `SENTRY_HOST`/`SENTRY_URL` set, a stored account on that server;
-otherwise the active account (`npx -y @sentry/mcp-server auth switch`). Calls
+otherwise the active account (`sentry auth switch`). Calls
 that target no organization use that startup account, and another process
 switching accounts does not change it.
 
@@ -148,8 +149,8 @@ the server as before.
 
 Older releases had their own device code flow, bundled client ID, and token
 cache (`~/.sentry/mcp.json`, `SENTRY_MCP_AUTH_CACHE`). Current releases do not
-read that cache. Run `npx -y @sentry/mcp-server auth login` once, or set
-`SENTRY_AUTH_TOKEN`. `--access-token` / `SENTRY_ACCESS_TOKEN` keep working but are
+read that cache. Run `sentry auth login` (or `npx -y @sentry/mcp-server auth
+login`) once, or set `SENTRY_AUTH_TOKEN`. `--access-token` / `SENTRY_ACCESS_TOKEN` keep working but are
 deprecated (see above). `auth status`, `auth list`,
 `auth switch`, and `auth logout` work in the package as in the CLI.
 
