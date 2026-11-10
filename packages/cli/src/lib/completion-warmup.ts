@@ -158,8 +158,7 @@ export async function warmAttributeCompletions(
  * Warm the caches the next commands read, after a successful login.
  *
  * First the org + region cache, so the first real command doesn't pay the
- * cold-start cost of `getUserRegions()` + fan-out to each region's org list
- * endpoint (~800ms on a typical SaaS account). Then, with the account's orgs
+ * cold-start cost of the org list fetch. Then, with the account's orgs
  * known, the attribute keys that field completion offers (see
  * {@link warmAttributeCompletions}).
  *

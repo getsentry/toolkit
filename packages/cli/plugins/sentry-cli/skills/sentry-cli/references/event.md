@@ -45,7 +45,7 @@ View details of one or more events
 | `packages` | object | Modules loaded when the event occurred, keyed by module name with their versions |
 | `type` | string | Event type, such as error, default or transaction |
 | `metadata` | object | Event metadata |
-| `occurrence` | object \| unknown \| null |  |
+| `occurrence` | object \| unknown \| null | Issue occurrence data for events in non-error issues, such as performance issues. Null otherwise |
 | `_meta` | object | Metadata about changes Sentry made to the event's fields, such as data scrubbing or trimming |
 | `user` | object \| null | User context of the event |
 | `tags` | array | Tags attached to the event |

@@ -102,7 +102,7 @@ export type AuthStatusData = {
      * organization it can access use it even when stored OAuth is in effect.
      */
     host?: string;
-    /** The token's user, from `/auth/` (not for organization auth tokens) */
+    /** The token's user, from `/users/me/` (not for organization auth tokens) */
     user?: { name?: string; email?: string; username?: string };
   };
 };
