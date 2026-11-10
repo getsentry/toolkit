@@ -1055,11 +1055,13 @@ function renderTimeseriesBarsContent(
   const sampledTs = downsampleTimestamps(timestamps, maxBars);
 
   if (isMulti) {
-    // Stacked multi-color bars: downsample each series independently
+    // Stacked multi-color bars: downsample each series independently. An
+    // unmeasured bucket adds nothing to the stack; averaging only measured
+    // buckets could push a column past the summed maxVal.
     const stackedSeries = data.series.map((s) => ({
       label: s.label,
       values: downsample(
-        s.values.map((v) => v.value),
+        s.values.map((v) => v.value ?? 0),
         maxBars,
       ),
     }));
@@ -1281,7 +1283,7 @@ function seriesFill(label: string, index: number): string {
  * Each series gets a distinct color from SERIES_PALETTE.
  */
 function renderStackedTimeBarRows(
-  stackedSeries: { label: string; values: (number | null)[] }[],
+  stackedSeries: { label: string; values: number[] }[],
   opts: {
     maxVal: number;
     barHeight: number;

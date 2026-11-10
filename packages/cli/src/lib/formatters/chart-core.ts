@@ -267,9 +267,11 @@ export function rasterizeChart(
 /**
  * Downsample a model's series so the bucket count fits the canvas: with a 1px
  * bar and 1px gap each column needs ~2px, so cap buckets at `width / 2`.
- * Returns the model unchanged when it already fits. Each column averages only
- * its measured buckets; a column with none stays a gap, so later buckets keep
- * their position.
+ * Returns the model unchanged when it already fits. A single-series column
+ * averages only its measured buckets; a column with none stays a gap, so later
+ * buckets keep their position. A stacked column averages each series over the
+ * whole window, counting an unmeasured bucket as nothing, so the stack never
+ * grows past `maxVal`; a column with nothing measured draws no segments.
  */
 function fitModelToWidth(model: ChartModel, width: number): ChartModel {
   const maxBuckets = Math.max(1, Math.floor(width / 2));
@@ -278,7 +280,10 @@ function fitModelToWidth(model: ChartModel, width: number): ChartModel {
   }
   const series: ChartSeries[] = model.series.map((s) => ({
     label: s.label,
-    values: downsample(s.values, maxBuckets),
+    values: downsample(
+      model.stacked ? s.values.map((v) => v ?? 0) : s.values,
+      maxBuckets,
+    ),
   }));
   const buckets = Math.max(...series.map((s) => s.values.length));
   return { ...model, series, buckets };
