@@ -853,6 +853,15 @@ export const IssueSchema = z
     lastSeen: z.string().datetime().nullable(),
     count: z.union([z.string(), z.number()]),
     userCount: z.union([z.string(), z.number()]),
+    // Counts for the events that match the query's event filters, such as
+    // `environment:` in the query string. Null when the query has none.
+    filtered: z
+      .object({
+        count: z.union([z.string(), z.number()]),
+        userCount: z.union([z.string(), z.number()]),
+      })
+      .nullable()
+      .optional(),
     permalink: z.string().url(),
     project: ProjectSchema,
     platform: z.string().nullable().optional(),

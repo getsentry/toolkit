@@ -167,6 +167,51 @@ describe("buildIssueResults", () => {
     `);
   });
 
+  it("reports the counts that match the query's event filters", () => {
+    // Sentry's top-level count ignores event filters in the query string,
+    // such as `environment:`; `filtered` applies them.
+    const structuredContent = build({
+      inputQuery: "is:unresolved environment:production",
+      query: "is:unresolved environment:production",
+      issues: [
+        IssueSchema.parse(
+          createPerformanceIssue({
+            shortId: "TEST-FILTERED",
+            count: "300",
+            userCount: 9,
+            filtered: {
+              count: "120",
+              userCount: 5,
+              firstSeen: "2025-01-01T00:00:00Z",
+              lastSeen: "2025-01-02T00:00:00Z",
+            },
+          } as Parameters<typeof createPerformanceIssue>[0]),
+        ),
+        IssueSchema.parse(
+          createPerformanceIssue({
+            shortId: "TEST-UNFILTERED",
+            count: "100",
+            userCount: 10,
+            filtered: null,
+          } as Parameters<typeof createPerformanceIssue>[0]),
+        ),
+      ],
+    });
+
+    expect(
+      structuredContent.issues.map(
+        ({ shortId, occurrences, usersImpacted }) => ({
+          shortId,
+          occurrences,
+          usersImpacted,
+        }),
+      ),
+    ).toEqual([
+      { shortId: "TEST-FILTERED", occurrences: 120, usersImpacted: 5 },
+      { shortId: "TEST-UNFILTERED", occurrences: 100, usersImpacted: 10 },
+    ]);
+  });
+
   it("only reads the reporter from feedback issues", () => {
     const structuredContent = build({
       issues: [

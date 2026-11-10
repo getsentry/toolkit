@@ -145,8 +145,10 @@ export function buildIssueResults(
     status: issue.status,
     substatus: issue.substatus ?? null,
     issueCategory: issue.issueCategory ?? null,
-    occurrences: Number(issue.count) || 0,
-    usersImpacted: Number(issue.userCount) || 0,
+    // `count` ignores event filters in the query, such as `environment:`;
+    // `filtered` applies them.
+    occurrences: Number(issue.filtered?.count ?? issue.count) || 0,
+    usersImpacted: Number(issue.filtered?.userCount ?? issue.userCount) || 0,
     assignedTo: formatAssignee(issue.assignedTo),
     assigneeEmail: formatAssigneeEmail(issue.assignedTo),
     reporter: formatReporter(issue),
