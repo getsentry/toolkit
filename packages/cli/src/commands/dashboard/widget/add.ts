@@ -133,7 +133,7 @@ export const addCommand = buildCommand({
     examples: [
       {
         description:
-          "Set independent ordered pipelines for duplicate aggregates",
+          "Set independent ordered transformations for duplicate aggregates",
         run: 'dashboard widget add my-org/12345 "Transformed counts" --display line --query count --query count --transformations \'{"0":["fill(linear)","smooth(ema,7)"],"1":["smooth(asap)"]}\'',
       },
       {

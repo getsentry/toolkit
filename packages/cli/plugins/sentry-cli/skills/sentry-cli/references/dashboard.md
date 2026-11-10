@@ -181,7 +181,7 @@ Add a widget to a dashboard
 | `<org/project/dashboard/title...>` | [&lt;org/project&gt;] &lt;dashboard&gt; &lt;title&gt; |
 
 **Flags:**
-- `--transformations <value> - JSON axis patch, e.g. '{"0":["fill(linear)","smooth(ema,7)"],"1":[]}'. Omitted axes preserve saved pipelines; [] clears an axis`
+- `--transformations <value> - JSON axis patch, e.g. '{"0":["fill(linear)","smooth(ema,7)"],"1":[]}'. Omitted axes preserve saved transformations; [] clears an axis`
 - `-d, --display <value> - Display type (big_number, line, area, bar, table, stacked_area, top_n, text, categorical_bar, details, wheel, rage_and_dead_clicks, server_tree, agents_traces_table)`
 - `--dataset <value> - Widget dataset (default: spans). Accepts canonical names and API synonyms: spans, error-events/errors, tracemetrics/metrics, logs, issue`
 - `-q, --query <value>... - Aggregate expression (e.g. count, p95:span.duration)`
@@ -206,7 +206,7 @@ Add a widget to a dashboard
 **Examples:**
 
 ```bash
-# Set independent ordered pipelines for duplicate aggregates
+# Set independent ordered transformations for duplicate aggregates
 sentry dashboard widget add my-org/12345 "Transformed counts" --display line --query count --query count --transformations '{"0":["fill(linear)","smooth(ema,7)"],"1":["smooth(asap)"]}'
 
 # Add a counter widget
@@ -245,7 +245,7 @@ Edit a widget in a dashboard
 | `<org/project/dashboard...>` | [&lt;org/project&gt;] &lt;dashboard-id-or-title&gt; |
 
 **Flags:**
-- `--transformations <value> - JSON axis patch, e.g. '{"0":["fill(linear)","smooth(ema,7)"],"1":[]}'. Omitted axes preserve saved pipelines; [] clears an axis`
+- `--transformations <value> - JSON axis patch, e.g. '{"0":["fill(linear)","smooth(ema,7)"],"1":[]}'. Omitted axes preserve saved transformations; [] clears an axis`
 - `-i, --index <value> - Widget index (0-based)`
 - `-t, --title <value> - Widget title to match`
 - `--new-title <value> - New widget title`
@@ -272,7 +272,7 @@ Edit a widget in a dashboard
 **Examples:**
 
 ```bash
-# Replace one pipeline and clear another, preserving omitted axes
+# Replace transformations on one axis and clear another, preserving omitted axes
 sentry dashboard widget edit my-org/12345 --index 0 --transformations '{"0":["fill(linear)","smooth(ema,7)"],"1":[]}'
 
 # Change a widget's display type

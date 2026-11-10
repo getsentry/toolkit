@@ -143,7 +143,7 @@ async function edit(args: string[]) {
   ]);
 }
 
-test("SDK add and edit accept JSON pipelines and preserve them after reload", async () => {
+test("SDK add and edit accept JSON transformations and preserve them after reload", async () => {
   const originalFetch = (globalThis as { __originalFetch: typeof fetch })
     .__originalFetch;
   const fetchSpy = vi
@@ -192,7 +192,7 @@ test.each([
   ["logs", "area", "count"],
   ["metrics", "bar", "p50(value,latency,distribution,none)"],
 ])(
-  "authors ordered independent duplicate pipelines for %s and reloads",
+  "authors independent transformations for duplicate aggregates in %s and reloads",
   async (dataset, display, aggregate) => {
     const result = await ctx.run([
       "dashboard",
@@ -231,7 +231,7 @@ test.each([
   },
 );
 
-test("replaces and clears individual pipelines, preserving omitted axes and queries after reload", async () => {
+test("replaces and clears transformations by axis, preserving omitted axes and queries after reload", async () => {
   const changed = await edit([
     "--transformations",
     '{"1":["smooth(sma,3)","fill(locf)"]}',
@@ -259,7 +259,7 @@ test("replaces and clears individual pipelines, preserving omitted axes and quer
   ).toBeUndefined();
 });
 
-test("omission and an empty patch preserve pipelines when the feature is disabled", async () => {
+test("omission and an empty patch preserve transformations when the feature is disabled", async () => {
   enabled = false;
   for (const args of [
     ["--new-title", "Renamed"],
@@ -279,7 +279,7 @@ test("omission and an empty patch preserve pipelines when the feature is disable
   }
 });
 
-test("clears the final pipeline map even when the feature is disabled", async () => {
+test("clears all transformations even when the feature is disabled", async () => {
   enabled = false;
   const result = await edit(["--transformations", '{"0":[],"1":[]}']);
   expect(result.exitCode, result.stderr).toBe(0);
@@ -315,13 +315,13 @@ test.each([
   async (...args) => {
     const result = await edit(args);
     expect(result.exitCode).toBe(21);
-    expect(result.stderr).toContain("requires an explicit pipeline or []");
+    expect(result.stderr).toContain("requires explicit transformations or []");
     expect(stored).toEqual(savedDashboard);
     expect(lastUpdate).toBeUndefined();
   },
 );
 
-test("reorders aggregates with explicit pipelines and acknowledges removed empty positions", async () => {
+test("reorders aggregates with explicit transformations and acknowledges removed empty positions", async () => {
   const result = await edit([
     "--query",
     "p95:span.duration",
@@ -339,7 +339,7 @@ test("reorders aggregates with explicit pipelines and acknowledges removed empty
   });
 });
 
-test("retains positional pipelines when the aggregate list is unchanged", async () => {
+test("retains positional transformations when the aggregate list is unchanged", async () => {
   const result = await edit([
     "--query",
     "count",
@@ -398,7 +398,7 @@ test("considers saved transformations in later queries before changing display",
   expect(stored).toEqual(savedDashboard);
 });
 
-test("allows clearing pipelines while switching to an unsupported display", async () => {
+test("allows clearing transformations while switching to an unsupported display", async () => {
   stored.widgets![0]!.queries!.splice(1);
   const result = await edit([
     "--display",

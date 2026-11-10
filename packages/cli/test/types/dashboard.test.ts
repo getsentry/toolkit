@@ -884,7 +884,7 @@ describe("stripWidgetServerFields", () => {
   test.each([
     { scenario: "a new query", widgetId: "100", queryId: undefined },
     { scenario: "a recreated widget", widgetId: undefined, queryId: "200" },
-  ])("keeps pipelines for $scenario", ({ widgetId, queryId }) => {
+  ])("keeps transformations for $scenario", ({ widgetId, queryId }) => {
     const widget = parseWidgetInput({
       id: widgetId,
       title: "Test",

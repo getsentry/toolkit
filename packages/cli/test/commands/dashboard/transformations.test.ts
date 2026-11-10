@@ -13,9 +13,11 @@ test.each([
   "smooth(asap)",
   "smooth(asap,7)",
   "smooth( ema , 7 , 0.25 )",
-])("preserves the accepted stage %s verbatim", (stage) => {
-  expect(parseTransformations(JSON.stringify({ "0": [stage] }))).toEqual({
-    "0": [stage],
+])("preserves the accepted transformation %s verbatim", (transformation) => {
+  expect(
+    parseTransformations(JSON.stringify({ "0": [transformation] })),
+  ).toEqual({
+    "0": [transformation],
   });
 });
 
@@ -39,10 +41,10 @@ test.each([
   "smooth(unknown,7)",
   "fill(zero\n)",
   "fill(zero)\n",
-])("rejects the invalid stage %s", (stage) => {
-  expect(() => parseTransformations(JSON.stringify({ "0": [stage] }))).toThrow(
-    "Invalid transformation",
-  );
+])("rejects the invalid transformation %s", (transformation) => {
+  expect(() =>
+    parseTransformations(JSON.stringify({ "0": [transformation] })),
+  ).toThrow("Invalid transformation");
 });
 
 test.each([
@@ -59,7 +61,7 @@ test.each([
   );
 });
 
-test("preserves pipeline ordering, independent axes, and explicit clearing", () => {
+test("preserves transformation order, independent axes, and explicit clearing", () => {
   expect(
     parseTransformations(
       '{"0":["smooth(asap)","fill(zero)"],"1":["fill(linear)","smooth(ema,7)"],"2":[]}',

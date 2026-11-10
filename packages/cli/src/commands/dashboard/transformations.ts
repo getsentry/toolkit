@@ -25,12 +25,12 @@ import { ValidationError } from "../../lib/errors.js";
 import type { DashboardWidget } from "../../types/dashboard.js";
 import type { WidgetQueryFlags } from "./resolve.js";
 
-/** Sparse replacements of ordered pipelines by zero-based aggregate position. */
+/** Ordered transformation replacements by zero-based aggregate position. */
 export type WidgetTransformationFlags = {
   readonly transformations?: string | Record<string, string[]>;
 };
 
-const transformationSchema = record(string(), array(string()));
+const transformationsSchema = record(string(), array(string()));
 const integerStringSchema = pipe(
   string(),
   digits(),
@@ -47,7 +47,7 @@ const alphaSchema = pipe(
   gtValue(0),
   maxValue(1),
 );
-const stageSchema = variant("name", [
+const transformationSchema = variant("name", [
   object({
     name: literal("fill"),
     arguments: strictTuple([picklist(["zero", "linear", "locf"])]),
@@ -66,9 +66,9 @@ function invalidTransformations(message: string): never {
   throw new ValidationError(message, "transformations");
 }
 
-function validateStage(expression: string): string {
+function validateTransformation(expression: string): string {
   const match = /^(\w+)\(([^()\r\n]*)\)$/.exec(expression);
-  const parsed = safeParse(stageSchema, {
+  const parsed = safeParse(transformationSchema, {
     name: match?.[0] === expression ? match[1] : undefined,
     arguments: match?.[2]?.split(",").map((arg) => arg.trim()) ?? [],
   });
@@ -100,15 +100,18 @@ export function parseTransformations(value: string): Record<string, string[]> {
       }
     }
   }
-  const parsed = safeParse(transformationSchema, input);
+  const parsed = safeParse(transformationsSchema, input);
   if (!parsed.success) {
     return invalidTransformations(
       'Expected a JSON object mapping aggregate positions to arrays of transformation strings, for example \'{"0":["fill(linear)"],"1":[]}\'.',
     );
   }
-  for (const [index, stages] of Object.entries(parsed.output)) {
-    const kinds = stages.map(validateStage);
-    if (stages.length > 2 || new Set(kinds).size !== stages.length) {
+  for (const [index, axisTransformations] of Object.entries(parsed.output)) {
+    const kinds = axisTransformations.map(validateTransformation);
+    if (
+      axisTransformations.length > 2 ||
+      new Set(kinds).size !== axisTransformations.length
+    ) {
       invalidTransformations(
         `Aggregate position ${index} accepts at most one fill and one smooth transformation, in either order.`,
       );
@@ -122,14 +125,15 @@ export const WIDGET_TRANSFORMATION_FLAGS = {
     kind: "parsed",
     parse: textParser(parseTransformations),
     brief:
-      'JSON axis patch, e.g. \'{"0":["fill(linear)","smooth(ema,7)"],"1":[]}\'. Omitted axes preserve saved pipelines; [] clears an axis',
+      'JSON axis patch, e.g. \'{"0":["fill(linear)","smooth(ema,7)"],"1":[]}\'. Omitted axes preserve saved transformations; [] clears an axis',
     optional: true,
   },
 } as const;
 
 export const WIDGET_TRANSFORMATION_HELP =
   "Transformations (--transformations) target zero-based aggregate positions in the first query.\n" +
-  "Pass a JSON object of ordered stage arrays. Each array replaces that axis's pipeline.\n" +
+  "Pass a JSON object mapping positions to arrays of ordered transformations.\n" +
+  "Each array replaces that axis's transformations.\n" +
   "Omitted axes preserve saved values; [] clears an axis; {} changes nothing.\n" +
   "Supported datasets are spans, logs, and tracemetrics with line, area, or bar displays.\n" +
   "When changing --query, explicitly set or clear every saved transformed position.\n" +
@@ -158,13 +162,14 @@ export function updateWidgetTransformations(
       ));
 
   if (aggregatesChanged) {
-    for (const [index, stages] of Object.entries(saved)) {
+    for (const [index, axisTransformations] of Object.entries(saved)) {
       if (
-        (stages.length > 0 || Number(index) >= aggregates.length) &&
+        (axisTransformations.length > 0 ||
+          Number(index) >= aggregates.length) &&
         !Object.hasOwn(patch ?? {}, index)
       ) {
         invalidTransformations(
-          `Changing --query requires an explicit pipeline or [] for saved aggregate position ${index}. Pass --transformations to correct its association, including removed positions.`,
+          `Changing --query requires explicit transformations or [] for saved aggregate position ${index}. Pass --transformations to correct its association, including removed positions.`,
         );
       }
     }
@@ -174,34 +179,38 @@ export function updateWidgetTransformations(
   let transformations = saved;
   if (edited) {
     transformations = Object.fromEntries(
-      Object.entries(saved).filter(([, stages]) => stages.length > 0),
+      Object.entries(saved).filter(
+        ([, axisTransformations]) => axisTransformations.length > 0,
+      ),
     );
-    for (const [index, stages] of Object.entries(patch)) {
+    for (const [index, axisTransformations] of Object.entries(patch)) {
       const axis = Number(index);
       if (
         axis >= aggregates.length &&
-        !(stages.length === 0 && axis < savedAggregates.length)
+        !(axisTransformations.length === 0 && axis < savedAggregates.length)
       ) {
         invalidTransformations(
           `Aggregate position ${index} is out of range for ${aggregates.length} aggregate(s). Use a position from --query; [] may also clear a removed saved position.`,
         );
       }
-      if (stages.length === 0) {
+      if (axisTransformations.length === 0) {
         delete transformations[index];
       } else {
-        transformations[index] = stages;
+        transformations[index] = axisTransformations;
       }
     }
   }
 
   if (edited || flags.dataset !== undefined || flags.display !== undefined) {
     const hasTransformations =
-      Object.values(transformations).some((stages) => stages.length > 0) ||
+      Object.values(transformations).some(
+        (axisTransformations) => axisTransformations.length > 0,
+      ) ||
       (original?.queries
         ?.slice(1)
         .some((remaining) =>
           Object.values(remaining.transformations ?? {}).some(
-            (stages) => stages.length > 0,
+            (axisTransformations) => axisTransformations.length > 0,
           ),
         ) ??
         false);
@@ -213,7 +222,7 @@ export function updateWidgetTransformations(
       )
     ) {
       invalidTransformations(
-        "Transformations require dataset spans, logs, or tracemetrics and display line, area, or bar. Choose a supported combination or clear the saved pipelines before changing dataset or display. Transformation flags edit only the first query.",
+        "Transformations require dataset spans, logs, or tracemetrics and display line, area, or bar. Choose a supported combination or clear the saved transformations before changing dataset or display. Transformation flags edit only the first query.",
       );
     }
   }

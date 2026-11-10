@@ -226,7 +226,7 @@ export const editCommand = buildCommand({
     examples: [
       {
         description:
-          "Replace one pipeline and clear another, preserving omitted axes",
+          "Replace transformations on one axis and clear another, preserving omitted axes",
         run: 'dashboard widget edit my-org/12345 --index 0 --transformations \'{"0":["fill(linear)","smooth(ema,7)"],"1":[]}\'',
       },
       {

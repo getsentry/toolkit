@@ -29,32 +29,34 @@ Servers that omit transformation settings show an unavailable notice for each
 query. Widgets whose queries report no saved transformations show no extra output.
 
 Widget add and edit accept `--transformations` as a JSON object. Keys are
-zero-based aggregate positions in the first query. Arrays contain stages in
-execution order. Each supplied array replaces that position's pipeline.
+zero-based aggregate positions in the first query. Arrays contain transformations
+in execution order. Each supplied array replaces that position's transformations.
 Omitted positions preserve saved values. An empty array clears a position.
 An empty object changes nothing.
 
 For example, `--transformations '{"0":["fill(linear)","smooth(ema,7)"],"1":[]}'`
-sets an ordered pipeline on position 0 and clears position 1.
+sets ordered transformations on position 0 and clears position 1.
 
 Transformations support `spans`, `logs`, and `tracemetrics` datasets with `line`,
-`area`, or `bar` displays. Each pipeline accepts one `fill` stage and one
-`smooth` stage, in either order. Supported stages are `fill(zero)`, `fill(linear)`,
-`fill(locf)`, `smooth(sma,N)`, `smooth(ema,N)`, `smooth(ema,N,A)`, `smooth(asap)`,
-and `smooth(asap,N)`. `N` is a positive integer window size. EMA's optional `A`
-is a factor greater than 0 and at most 1. ASAP selects its window automatically
-when `N` is omitted.
+`area`, or `bar` displays. Each axis accepts one `fill` transformation and one
+`smooth` transformation, in either order. Supported transformations are
+`fill(zero)`, `fill(linear)`, `fill(locf)`, `smooth(sma,N)`, `smooth(ema,N)`,
+`smooth(ema,N,A)`, `smooth(asap)`, and `smooth(asap,N)`. `N` is a positive integer
+window size. EMA's optional `A` is a factor greater than 0 and at most 1. ASAP
+selects its window automatically when `N` is omitted.
 
-Changing the ordered aggregate list with `--query` requires an explicit pipeline
-or `[]` for every saved transformed position. This prevents a pipeline from
-silently moving to another aggregate, including a duplicate. Use `[]` to
-acknowledge a removed position. Positions without saved transformations need no
-correction, except removed positions with saved empty arrays.
+Changing the ordered aggregate list with `--query` requires explicit
+transformations or `[]` for every saved transformed position. This prevents
+transformations from silently moving to another aggregate, including a duplicate.
+Use `[]` to acknowledge a removed position. Positions without saved
+transformations need no correction, except removed positions with saved empty
+arrays.
 
-The organization must enable transformations to save nonempty pipelines.
-Unrelated edits preserve existing pipelines without that feature. Clearing the
-last pipeline sends an empty map. Changing to an unsupported display or dataset
-requires clearing all pipelines, including those in later queries.
+Saving nonempty transformation lists requires the organization feature.
+Unrelated edits preserve saved transformations when the feature is disabled.
+Explicit clears remove the selected axes from the saved map. Clearing every
+transformed axis sends an empty map. Changing to an unsupported display or dataset
+requires clearing transformations from every query.
 
 ## Query Shorthand
 
