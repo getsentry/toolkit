@@ -494,6 +494,16 @@ function noDataLine(): string {
   return isPlainOutput() ? "(no data)" : muted("(no data)");
 }
 
+/** The last measured value of a series, or null when nothing was measured. */
+function latestMeasured(values: (number | null)[]): number | null {
+  return values.findLast((v) => v !== null) ?? null;
+}
+
+/** Format a value with its unit, or a dash when nothing was measured. */
+function formatMeasured(value: number | null, unit?: string | null): string {
+  return value === null ? "—" : formatWithUnit(value, unit);
+}
+
 /**
  * Render timeseries content as sparklines (no title/border).
  * Labels and sparklines are constrained to fit within the inner width.
@@ -514,8 +524,7 @@ function renderTimeseriesContent(
   for (const s of data.series) {
     const values = s.values.map((v) => v.value);
     const graph = sparkline(values, sparkWidth);
-    const latest = values.length > 0 ? (values.at(-1) ?? 0) : 0;
-    const formatted = formatWithUnit(latest, s.unit);
+    const formatted = formatMeasured(latestMeasured(values), s.unit);
     const label =
       s.label.length > maxLabelLen
         ? `${s.label.slice(0, maxLabelLen - 1)}…`
@@ -626,7 +635,7 @@ function renderVerticalBarsContent(
 
   let items: BarItem[] = data.series.map((s) => ({
     label: s.label,
-    total: s.values.reduce((sum, v) => sum + v.value, 0),
+    total: s.values.reduce((sum, v) => sum + (v.value ?? 0), 0),
     unit: s.unit,
   }));
   items = sortBarItems(items);
@@ -953,6 +962,9 @@ function renderBigNumberContent(
   opts: { innerWidth: number; contentHeight: number },
 ): string[] {
   const { innerWidth, contentHeight } = opts;
+  if (data.value === null) {
+    return centerVertically([noDataLine()], contentHeight);
+  }
   const formatted = formatBigNumberValue(data.value);
 
   if (!isPlainOutput()) {
@@ -1025,7 +1037,7 @@ function renderTimeseriesBarsContent(
 
   // Header: series label + latest value
   const headerLabel = label.length > 20 ? `${label.slice(0, 18)}…` : label;
-  const valStr = formatWithUnit(latest, unit);
+  const valStr = formatMeasured(latest, unit);
   const headerLine = isPlainOutput()
     ? `${headerLabel}  ${valStr}`
     : `${chalk.hex(COLORS.cyan)(headerLabel)}  ${chalk.bold(valStr)}`;
@@ -1043,11 +1055,13 @@ function renderTimeseriesBarsContent(
   const sampledTs = downsampleTimestamps(timestamps, maxBars);
 
   if (isMulti) {
-    // Stacked multi-color bars: downsample each series independently
+    // Stacked multi-color bars: downsample each series independently. An
+    // unmeasured bucket adds nothing to the stack; averaging only measured
+    // buckets could push a column past the summed maxVal.
     const stackedSeries = data.series.map((s) => ({
       label: s.label,
       values: downsample(
-        s.values.map((v) => v.value),
+        s.values.map((v) => v.value ?? 0),
         maxBars,
       ),
     }));
@@ -1098,11 +1112,13 @@ function renderTimeseriesBarsContent(
  */
 /** Aggregated timeseries result with timestamps preserved. */
 type AggregatedTimeseries = {
-  values: number[];
+  /** Per-bucket values; null where nothing was measured. */
+  values: (number | null)[];
   timestamps: number[];
   label: string;
   unit?: string | null;
-  latest: number;
+  /** Last measured value, or null when nothing was measured. */
+  latest: number | null;
   maxVal: number;
 };
 
@@ -1111,7 +1127,7 @@ function aggregateTimeseriesValues(
 ): AggregatedTimeseries {
   const first = data.series[0];
   if (!first || first.values.length === 0) {
-    return { values: [], timestamps: [], label: "", latest: 0, maxVal: 1 };
+    return { values: [], timestamps: [], label: "", latest: null, maxVal: 1 };
   }
 
   const timestamps = first.values.map((v) => v.timestamp);
@@ -1124,20 +1140,21 @@ function aggregateTimeseriesValues(
       timestamps,
       label: first.label,
       unit: first.unit,
-      latest: values.at(-1) ?? 0,
-      maxVal: Math.max(...values, 1),
+      latest: latestMeasured(values),
+      maxVal: Math.max(...values.filter((v) => v !== null), 1),
     };
   }
 
-  // Multiple series — sum per time bucket
+  // Multiple series — sum per time bucket. A bucket stays null when no
+  // series measured anything in it.
   const bucketCount = first.values.length;
   // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
-  const summed = new Array<number>(bucketCount).fill(0);
+  const summed = new Array<number | null>(bucketCount).fill(null);
   for (const s of data.series) {
     for (let i = 0; i < s.values.length; i += 1) {
-      const point = s.values[i];
-      if (point) {
-        summed[i] = (summed[i] ?? 0) + point.value;
+      const value = s.values[i]?.value;
+      if (value !== null && value !== undefined) {
+        summed[i] = (summed[i] ?? 0) + value;
       }
     }
   }
@@ -1147,8 +1164,8 @@ function aggregateTimeseriesValues(
     timestamps,
     label,
     unit: first.unit,
-    latest: summed.at(-1) ?? 0,
-    maxVal: Math.max(...summed, 1),
+    latest: latestMeasured(summed),
+    maxVal: Math.max(...summed.filter((v) => v !== null), 1),
   };
 }
 
@@ -1183,7 +1200,7 @@ function buildTimeseriesBarColumn(
 
 /** Render time-series bar rows with smooth fractional block tops and Y-axis. */
 function renderTimeBarRows(
-  sampled: number[],
+  sampled: (number | null)[],
   opts: {
     maxVal: number;
     barHeight: number;
@@ -1207,8 +1224,9 @@ function renderTimeBarRows(
   );
   const barRemainder = chartWidth - barWidth * sampled.length;
 
-  // Pre-compute fractional heights for each column
-  const heights = sampled.map((v) => (v / maxVal) * barHeight);
+  // Pre-compute fractional heights for each column; unmeasured buckets
+  // draw no bar.
+  const heights = sampled.map((v) => ((v ?? 0) / maxVal) * barHeight);
 
   for (let row = barHeight; row >= 1; row -= 1) {
     const yAxis = buildYAxisSegment({
@@ -1618,10 +1636,11 @@ function renderHeatmapContent(
   // Downsample every series to that bucket count; pad shorter series so every
   // row has exactly `bucketCount` cells (downsample returns early for short input).
   const rows = series.map((s) => {
+    // Unmeasured cells take the lowest intensity, which renders blank.
     const ds = downsample(
       s.values.map((v) => v.value),
       bucketCount,
-    );
+    ).map((v) => v ?? 0);
     return ds.length < bucketCount
       ? // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
         [...ds, ...new Array(bucketCount - ds.length).fill(0)]

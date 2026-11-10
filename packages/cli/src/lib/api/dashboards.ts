@@ -401,20 +401,22 @@ function timeseriesLabel(
 }
 
 /**
- * Coerce a bucket value to a number for the renderers.
+ * Read an aggregate value as a number, or null when nothing was measured.
  *
- * Empty buckets arrive as null, and string-typed aggregates on the errors
- * dataset arrive as strings (empty when no event carries the field).
+ * Empty buckets and aggregates over no data arrive as null, and string-typed
+ * aggregates on the errors dataset arrive as strings (empty when no event
+ * carries the field). Null, missing, empty, and non-numeric values all become
+ * null so they stay distinct from a measured zero.
  */
-function bucketValue(value: number | string | null): number {
+function measuredValue(value: unknown): number | null {
   if (typeof value === "number") {
-    return value;
+    return Number.isFinite(value) ? value : null;
   }
-  if (value === null || value === "") {
-    return 0;
+  if (typeof value !== "string" || value.trim() === "") {
+    return null;
   }
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /** Sort key for a series: explicit order first, "Other" after everything. */
@@ -430,8 +432,8 @@ function seriesSortKey(series: EventsTimeseriesSeries): number {
  *
  * The response is `{ timeSeries: [...] }` with one entry per y-axis (and per
  * group when `topEvents` is set). Timestamps are converted from epoch
- * milliseconds to seconds and null or string buckets become numbers so the
- * renderers see the same shape they always have.
+ * milliseconds to seconds, string buckets become numbers, and buckets without
+ * a measurement stay null.
  *
  * @param response - Validated events-timeseries response
  * @param yAxis - The aggregate function name(s) that were requested
@@ -452,7 +454,7 @@ function parseEventsTimeseriesResponse(
       label: timeseriesLabel(s, multipleAxes),
       values: s.values.map(({ timestamp, value }) => ({
         timestamp: Math.floor(timestamp / 1000),
-        value: bucketValue(value),
+        value: measuredValue(value),
       })),
       unit: s.meta.valueUnit ?? null,
     })),
@@ -698,10 +700,9 @@ async function queryWidgetData(
       });
       const row = tableResult.rows[0];
       const firstColumn = tableResult.columns[0];
-      const value = row && firstColumn ? Number(row[firstColumn.name] ?? 0) : 0;
       return {
         type: "scalar",
-        value: Number.isFinite(value) ? value : 0,
+        value: firstColumn ? measuredValue(row?.[firstColumn.name]) : null,
         unit: firstColumn?.unit,
       } satisfies ScalarResult;
     }

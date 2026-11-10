@@ -985,7 +985,15 @@ export const TimeseriesResultSchema = object({
     array(
       object({
         label: pipe(string(), description("Series label")),
-        values: array(object({ timestamp: number(), value: number() })),
+        values: array(
+          object({
+            timestamp: number(),
+            value: pipe(
+              nullable(number()),
+              description("Bucket value, or null when nothing was measured"),
+            ),
+          }),
+        ),
         unit: resultUnit,
       }),
     ),
@@ -1012,7 +1020,10 @@ export const TableResultSchema = object({
 /** Single scalar value for big_number widgets */
 export const ScalarResultSchema = object({
   type: resultKind("scalar"),
-  value: pipe(number(), description("Current value")),
+  value: pipe(
+    nullable(number()),
+    description("Current value, or null when nothing was measured"),
+  ),
   previousValue: optional(
     pipe(number(), description("Value of the previous period")),
   ),
