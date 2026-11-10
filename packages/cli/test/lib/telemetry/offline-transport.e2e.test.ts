@@ -52,8 +52,7 @@ function storedEventIds(): string[] {
 /** Event IDs in the bodies a mock ingest received (bodies are small, so uncompressed). */
 function deliveredEventIds(captures: { body: Buffer }[]): string[] {
   return captures.map(
-    (capture) =>
-      JSON.parse(capture.body.toString().split("\n")[0] as string).event_id,
+    (capture) => JSON.parse(capture.body.toString().split("\n")[0]).event_id,
   );
 }
 
@@ -120,7 +119,7 @@ describe("makeStoringTransport (e2e)", () => {
     expect(deliveredEventIds(ingest.captures).sort()).toEqual(["a", "b"]);
     expect(storedEventIds()).toEqual([]);
     const header = JSON.parse(
-      ingest.captures[0]?.body.toString().split("\n")[0] as string,
+      ingest.captures[0]?.body.toString().split("\n")[0],
     );
     expect(Date.parse(header.sent_at)).toBeGreaterThan(Date.now() - 60_000);
   });

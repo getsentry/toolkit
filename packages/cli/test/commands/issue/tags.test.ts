@@ -210,7 +210,7 @@ describe("sentry issue tags", () => {
     tagResponse = {
       ...TAG,
       key: "\u001b[2Jrelease\u202e",
-      topValues: [{ ...TAG.topValues![0]!, value }],
+      topValues: [{ ...TAG.topValues![0], value }],
     };
     const args = ["issue", "tags", "test-org/12345", "release"];
     const human = await runCli(args);

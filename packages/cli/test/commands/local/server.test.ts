@@ -295,7 +295,7 @@ describe("sentry local serve --open", () => {
       signal.trigger();
       await command;
       expectViewerHint();
-      const url = new URL(opener.mock.calls[0]![0]);
+      const url = new URL(opener.mock.calls[0][0]);
       expect(new URLSearchParams(url.hash.slice(1)).get("directory")).toBe(
         directoryUrl,
       );

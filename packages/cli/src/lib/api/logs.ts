@@ -218,7 +218,7 @@ export async function listLogs(
           start: options.start,
           end: options.end,
           sort: toApiSort(options.sort),
-        } as Parameters<typeof listOrganizationEvents>[0]["query"],
+        },
       });
 
       const { data: raw, nextCursor } = unwrapPaginatedResult<unknown>(

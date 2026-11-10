@@ -71,7 +71,7 @@ async function runTargeting(org: string): Promise<string | undefined> {
   await run(app, ["cmd"], {
     process: { stdout, stderr: { write } },
     stdout,
-  } as unknown as TestContext);
+  });
   return seen.length > 0 ? (seen[0] ?? "<none>") : undefined;
 }
 

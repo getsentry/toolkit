@@ -278,7 +278,7 @@ export async function listIssueEvents(
         // `per_page` is accepted at runtime but absent from the generated query
         // type, so widen via cast.
         per_page: perPage,
-      } as Parameters<typeof listOrganizationIssueEvents>[0]["query"],
+      },
     });
     return unwrapPaginatedResult<IssueEvent[]>(
       result,

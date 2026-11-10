@@ -509,10 +509,10 @@ function getAuthenticatedFetch(
     options.idempotent ||
     options.timeoutMs !== undefined
   ) {
-    return createAuthenticatedFetch(options) as unknown as typeof fetch;
+    return createAuthenticatedFetch(options);
   }
   if (!cachedFetch) {
-    cachedFetch = createAuthenticatedFetch(options) as unknown as typeof fetch;
+    cachedFetch = createAuthenticatedFetch(options);
   }
   return cachedFetch;
 }

@@ -19,7 +19,7 @@ function makeEnv(overrides: Record<string, unknown> = {}): Env {
   return {
     SENTRY_GAMES_READ_TOKEN: TOKEN,
     ...overrides,
-  } as unknown as Env;
+  };
 }
 
 function upstreamBody(rows: Array<[unknown, unknown]>) {

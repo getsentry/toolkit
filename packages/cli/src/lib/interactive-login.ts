@@ -47,7 +47,7 @@ export function toLoginUser(user: {
 }): NonNullable<LoginResult["user"]> {
   return Object.fromEntries(
     Object.entries(user).filter(([k, v]) => k === "id" || Boolean(v)),
-  ) as NonNullable<LoginResult["user"]>;
+  );
 }
 
 /** Options for the interactive login flow */
@@ -255,7 +255,7 @@ export async function runInteractiveLogin(
           // Setup keyboard listener for 'c' to copy URL
           if (process.stdin.isTTY) {
             keyListener.cleanup = setupCopyKeyListener(
-              process.stdin as NodeJS.ReadStream & { fd: 0 },
+              process.stdin,
               () => urlToCopy,
             );
           }

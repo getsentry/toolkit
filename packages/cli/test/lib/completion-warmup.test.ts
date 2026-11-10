@@ -69,7 +69,7 @@ function mockAttributes(
   respond: (request: Captured, init?: RequestInit) => Promise<Response>,
 ): void {
   globalThis.fetch = mockFetch(async (input, init) => {
-    const request = new Request(input!, init);
+    const request = new Request(input, init);
     const url = new URL(request.url);
     const captured = {
       org: url.pathname.split("/")[4] ?? "",

@@ -147,13 +147,13 @@ test.each([
   const reload = await ctx.run(["api", endpoint]);
   expect(reload.exitCode, reload.stderr).toBe(0);
   const expected = structuredClone(savedDashboard);
-  const transformed = expected.widgets![0]!;
+  const transformed = expected.widgets![0];
   if (name === "rename") {
     transformed.title = "Renamed";
   } else if (name === "move") {
     transformed.layout!.y = 4;
   } else if (name === "filter") {
-    transformed.queries![0]!.conditions = "span.op:queue";
+    transformed.queries![0].conditions = "span.op:queue";
   } else if (name === "delete another widget") {
     expected.widgets!.splice(1, 1);
   }
@@ -196,7 +196,7 @@ test("describes saved transformations after an edit", async () => {
 });
 
 test("reports unavailable transformation settings after an edit", async () => {
-  for (const query of stored.widgets![0]!.queries!) {
+  for (const query of stored.widgets![0].queries!) {
     delete query.transformations;
   }
 
@@ -242,6 +242,6 @@ test("reports the saved widget transformations in edit JSON", async () => {
       (query: { transformations?: unknown }) => query.transformations,
     ),
   ).toEqual(
-    savedDashboard.widgets![0]!.queries!.map((query) => query.transformations),
+    savedDashboard.widgets![0].queries!.map((query) => query.transformations),
   );
 });

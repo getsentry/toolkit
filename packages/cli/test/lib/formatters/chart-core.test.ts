@@ -134,7 +134,7 @@ describe("buildCategoricalChartModel", () => {
 describe("rasterizeChart", () => {
   test("downsamples dense nullable buckets and keeps unmeasured columns empty", () => {
     const model = buildChartModel(makeTimeseries())!;
-    model.series[0]!.values = [10, null, 20, 30, 40, 50, 60, 70, 80];
+    model.series[0].values = [10, null, 20, 30, 40, 50, 60, 70, 80];
     model.buckets = 9;
 
     // 16px fits 8 one-pixel columns two pixels apart. Column 1 covers only

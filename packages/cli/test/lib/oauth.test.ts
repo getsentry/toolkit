@@ -231,7 +231,7 @@ describe("setup-code exchange", () => {
       await exchangeSetupCode("private-code", "https://sentry.example.com"),
     ).toEqual(token);
     expect(fetch).toHaveBeenCalledTimes(1);
-    const [url, init] = fetch.mock.calls[0]!;
+    const [url, init] = fetch.mock.calls[0];
     expect(url).toBe("https://sentry.example.com/oauth/token/");
     expect(init.redirect).toBe("error");
     expect(init.body.get("grant_type")).toBe(

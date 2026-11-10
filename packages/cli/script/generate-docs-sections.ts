@@ -345,7 +345,7 @@ function extractNodeVersion(): string {
  */
 function extractDevNodeVersion(): string {
   const constraint: string | undefined =
-    (pkg as any).devEngines?.runtime?.version ?? pkg.engines?.node;
+    pkg.devEngines?.runtime?.version ?? pkg.engines?.node;
   if (!constraint) {
     throw new Error("Missing devEngines.runtime.version and engines.node");
   }

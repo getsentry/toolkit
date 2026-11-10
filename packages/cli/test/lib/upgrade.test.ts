@@ -156,7 +156,7 @@ let originalFetch: typeof globalThis.fetch;
 function mockFetch(
   fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
-  globalThis.fetch = fn as typeof globalThis.fetch;
+  globalThis.fetch = fn;
 }
 
 beforeEach(() => {
@@ -2752,7 +2752,7 @@ describe("executeUpgrade (package managers)", () => {
 describe("executeUpgrade (unknown method)", () => {
   test("throws UpgradeError with unknown_method reason", async () => {
     try {
-      await executeUpgrade("unknown" as never, "1.0.0");
+      await executeUpgrade("unknown", "1.0.0");
       expect.unreachable("should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(UpgradeError);

@@ -41,11 +41,11 @@ describe("agent feedback hint", () => {
     env: NodeJS.ProcessEnv,
     status = 400,
   ): Promise<string> {
-    globalThis.fetch = (async () =>
+    globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: "Failed" }), {
         status,
         headers: { "content-type": "application/json" },
-      })) as typeof fetch;
+      });
     let stderr = "";
     // Stricli writes the error text to `process.stderr` of the context
     vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {

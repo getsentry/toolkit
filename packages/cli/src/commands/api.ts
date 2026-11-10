@@ -1354,7 +1354,7 @@ export function buildFromFields(
     // Merge field-built key=value entries into the auto-detected JSON object body
     body =
       body && typeof body === "object"
-        ? { ...(body as Record<string, unknown>), ...options.body }
+        ? { ...body, ...options.body }
         : options.body;
   }
 

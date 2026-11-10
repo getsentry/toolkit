@@ -969,7 +969,7 @@ export default defineTool({
     // Get current issue details first
     const currentIssue = await apiService.getIssue({
       organizationSlug: orgSlug,
-      issueId: parsedIssueId!,
+      issueId: parsedIssueId,
     });
     assertIssueWithinProjectConstraint({
       issue: currentIssue,
@@ -1005,7 +1005,7 @@ export default defineTool({
       statusAlreadySet = await isLatestResolutionCommit(
         apiService,
         orgSlug,
-        parsedIssueId!,
+        parsedIssueId,
         resolution.inCommit.commit,
       );
     }
@@ -1055,7 +1055,7 @@ export default defineTool({
       const commentResult = await tryPostReasonComment(
         apiService,
         orgSlug,
-        parsedIssueId!,
+        parsedIssueId,
         params.reason,
       );
 
@@ -1075,7 +1075,7 @@ export default defineTool({
     // Update the issue
     const updatedIssue = await apiService.updateIssue({
       organizationSlug: orgSlug,
-      issueId: parsedIssueId!,
+      issueId: parsedIssueId,
       status: updateStatus,
       statusDetails: updateStatus === undefined ? undefined : resolution,
       assignedTo: updateAssignedTo,
@@ -1090,7 +1090,7 @@ export default defineTool({
     const commentResult = await tryPostReasonComment(
       apiService,
       orgSlug,
-      parsedIssueId!,
+      parsedIssueId,
       params.reason,
     );
 

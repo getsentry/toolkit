@@ -546,7 +546,7 @@ export function buildListCommand<
   const originalFunc = builderArgs.func;
 
   // Auto-inject common flags and aliases into parameters
-  const params = (builderArgs.parameters ?? {}) as Record<string, unknown>;
+  const params = builderArgs.parameters ?? {};
   const existingFlags = (params.flags ?? {}) as Record<string, unknown>;
   const existingAliases = (params.aliases ?? {}) as Record<string, string>;
 

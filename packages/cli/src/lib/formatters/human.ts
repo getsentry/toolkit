@@ -583,9 +583,7 @@ function formatIssueCell(issue: SentryIssue, compact = false): string {
  * @returns Cell string
  */
 function formatTrendCell(issue: SentryIssue, compact = false): string {
-  const points = extractStatsPoints(
-    issue.stats as Record<string, unknown> | undefined,
-  );
+  const points = extractStatsPoints(issue.stats);
   const graph = points.length > 0 ? colorTag("muted", sparkline(points)) : "";
   const status = substatusLabel(issue.substatus);
   const parts = [graph, status].filter(Boolean);
@@ -1026,7 +1024,7 @@ function buildBreadcrumbsMarkdown(breadcrumbsEntry: BreadcrumbsEntry): string {
 
     let message = breadcrumb.message ?? "";
     if (!message && breadcrumb.data) {
-      const data = breadcrumb.data as Record<string, unknown>;
+      const data = breadcrumb.data;
       if (data.url && data.method) {
         const status = data.status_code
           ? ` → ${stringifyUnknown(data.status_code)}`

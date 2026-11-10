@@ -367,7 +367,7 @@ export function throwApiError(
   const status = response.status;
   const rawDetail =
     error && typeof error === "object" && "detail" in error
-      ? (error as { detail: unknown }).detail
+      ? error.detail
       : undefined;
   const hasUsableDetail = rawDetail !== null && rawDetail !== undefined;
   // Enrichment functions (enrich403Detail, enrich401Detail) render better

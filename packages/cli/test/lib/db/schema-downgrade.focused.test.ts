@@ -253,7 +253,7 @@ describe("prepareDatabaseForDowngrade", () => {
     const db = getRawDatabase();
     prepareDatabaseForDowngrade(db);
     // An older CLI between schema 16 and this one migrates forward on setup.
-    db.exec(EXPECTED_TABLES.org_regions as string);
+    db.exec(EXPECTED_TABLES.org_regions);
     db.query("UPDATE schema_version SET version = ?").run(
       CURRENT_SCHEMA_VERSION - 1,
     );
