@@ -587,6 +587,80 @@ describe("update_issue", () => {
     );
   });
 
+  it.each([
+    {
+      name: "skips a commit resolution that Sentry reports as its release",
+      activityCommit: "A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2",
+      rejects: false,
+    },
+    {
+      name: "rejects a different commit on an issue resolved in a release",
+      activityCommit: "ffffffffffffffffffffffffffffffffffffffff",
+      rejects: true,
+    },
+  ])("$name", async ({ activityCommit, rejects }) => {
+    let putCalled = false;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () =>
+          HttpResponse.json(
+            createIssue({
+              status: "resolved",
+              statusDetails: { inRelease: "backend@1.4.2" },
+            }),
+          ),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/activities/",
+        () =>
+          HttpResponse.json({
+            activity: [
+              { id: "3", type: "note", data: { text: "shipped" } },
+              {
+                id: "2",
+                type: "set_resolved_in_commit",
+                data: { commit: { id: activityCommit } },
+              },
+              { id: "1", type: "set_resolved", data: {} },
+            ],
+          }),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => {
+          putCalled = true;
+          return HttpResponse.json(createIssue());
+        },
+      ),
+    );
+
+    const run = updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        inCommit: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+        inCommitRepository: "my-org/backend",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    if (rejects) {
+      await expect(run).rejects.toThrow(
+        "The issue is already resolved (`resolvedInRelease`)",
+      );
+    } else {
+      const output = structured(await run);
+      expect(output.updated).toBe(false);
+      expect(output.current.status).toBe("resolvedInRelease");
+    }
+    expect(putCalled).toBe(false);
+  });
+
   it("skips updates when the issue is already resolved in the requested release", async () => {
     let putCalled = false;
     mswServer.use(

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type {
   AssignedTo,
   Issue,
+  IssueActivityList,
   IssueResolutionDetails,
 } from "../../api-client/types";
 import { UserInputError } from "../../errors";
@@ -170,8 +171,9 @@ function getStatusDetailString(
 /** SHA of the commit an issue is resolved in, from the serialized commit. */
 function getResolvedCommitId(
   statusDetails: Record<string, unknown>,
+  key: "inCommit" | "commit" = "inCommit",
 ): string | undefined {
-  const commit = statusDetails.inCommit;
+  const commit = statusDetails[key];
   if (commit && typeof commit === "object" && !Array.isArray(commit)) {
     const id = (commit as Record<string, unknown>).id;
     if (typeof id === "string" && id.length > 0) {
@@ -275,6 +277,39 @@ function isResolutionAlreadySet(
   return (
     getResolvedCommitId(statusDetails)?.toLowerCase() ===
     resolution.inCommit.commit.toLowerCase()
+  );
+}
+
+/**
+ * Sentry reports a commit resolution as `inRelease` once a release contains
+ * the commit, so the issue details no longer name the commit. The newest
+ * resolve activity still does.
+ */
+async function isLatestResolutionCommit(
+  apiService: {
+    getIssueActivity: (params: {
+      organizationSlug: string;
+      issueId: string;
+    }) => Promise<IssueActivityList>;
+  },
+  organizationSlug: string,
+  issueId: string,
+  commit: string,
+): Promise<boolean> {
+  const activity = await apiService.getIssueActivity({
+    organizationSlug,
+    issueId,
+  });
+  const latestResolution = activity.find((item) =>
+    item.type?.startsWith("set_resolved"),
+  );
+
+  return (
+    latestResolution?.type === "set_resolved_in_commit" &&
+    getResolvedCommitId(
+      latestResolution.data ?? {},
+      "commit",
+    )?.toLowerCase() === commit.toLowerCase()
   );
 }
 
@@ -956,11 +991,24 @@ export default defineTool({
       currentIgnoreState,
       ignoreUpdate,
     );
-    const statusAlreadySet = isStatusAlreadySet(
+    let statusAlreadySet = isStatusAlreadySet(
       currentIssue,
       params.status,
       resolution,
     );
+    if (
+      !statusAlreadySet &&
+      resolution &&
+      "inCommit" in resolution &&
+      getIssueStatusDisplay(currentIssue) === "resolvedInRelease"
+    ) {
+      statusAlreadySet = await isLatestResolutionCommit(
+        apiService,
+        orgSlug,
+        parsedIssueId!,
+        resolution.inCommit.commit,
+      );
+    }
 
     // Sentry leaves an already resolved issue as it is, so a different release
     // or commit resolution would silently do nothing.
