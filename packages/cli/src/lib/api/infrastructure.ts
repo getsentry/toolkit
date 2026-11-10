@@ -400,6 +400,7 @@ export function throwApiError(
  * @param context - Human-readable context for error messages
  * @returns The data from the successful response
  */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- callers name the app type for SDK data, which often differs from @sentry/api's generated types
 export function unwrapResult<T>(
   result: Pick<SdkResult, "data" | "error" | "response">,
   context: string,

@@ -143,13 +143,17 @@ function buildHandlers(
 }
 
 function withTraceItemAttributeMetadata(
-  attributes: readonly { key: string; name: string }[],
+  attributes: readonly {
+    key: string;
+    name: string;
+    attributeSource?: { source_type: string };
+  }[],
   attributeType: "string" | "number" | "boolean",
 ) {
   return attributes.map((attribute) => ({
+    attributeSource: { source_type: "sentry" as const },
     ...attribute,
     attributeType,
-    attributeSource: { source_type: "sentry" as const },
   }));
 }
 
@@ -362,7 +366,7 @@ export const restHandlers = buildHandlers([
             stage: "connect_mcp",
             status: "completed",
             eventNote: null,
-            extra: null,
+            extra: { method: "mcp" },
           },
         ],
       });

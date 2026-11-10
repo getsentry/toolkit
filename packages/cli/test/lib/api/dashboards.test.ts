@@ -444,6 +444,65 @@ describe("widget sort resolution", () => {
   });
 });
 
+describe("big_number widgets", () => {
+  const REGION = "https://us.sentry.io";
+  const AGGREGATE = "p95(span.duration)";
+
+  beforeEach(() => {
+    listOrganizationEventsMock.mockReset();
+  });
+
+  /** Query one big_number widget whose events response has `rows`. */
+  async function queryBigNumber(rows: Record<string, unknown>[]) {
+    listOrganizationEventsMock.mockResolvedValue({
+      data: {
+        data: rows,
+        meta: {
+          fields: { [AGGREGATE]: "duration" },
+          units: { [AGGREGATE]: "millisecond" },
+        },
+      },
+      response: new Response(),
+    });
+    const dashboard = makeDashboard([
+      {
+        title: "Latency",
+        displayType: "big_number",
+        widgetType: "spans",
+        queries: [{ aggregates: [AGGREGATE], columns: [], conditions: "" }],
+      },
+    ]);
+    const results = await queryAllWidgets(REGION, "test-org", dashboard);
+    return results.get(0);
+  }
+
+  test.each([
+    ["a null aggregate", [{ [AGGREGATE]: null }]],
+    ["no rows", []],
+    ["a missing aggregate field", [{}]],
+    ["an empty string", [{ [AGGREGATE]: "" }]],
+    ["a non-numeric value", [{ [AGGREGATE]: "not-a-number" }]],
+  ])("returns a null value for %s", async (_case, rows) => {
+    expect(await queryBigNumber(rows)).toEqual({
+      type: "scalar",
+      value: null,
+      unit: "millisecond",
+    });
+  });
+
+  test.each([
+    ["a measured zero", 0, 0],
+    ["a nonzero value", 412.5, 412.5],
+    ["a numeric string", "412.5", 412.5],
+  ])("returns the number for %s", async (_case, raw, expected) => {
+    expect(await queryBigNumber([{ [AGGREGATE]: raw }])).toEqual({
+      type: "scalar",
+      value: expected,
+      unit: "millisecond",
+    });
+  });
+});
+
 describe("widget query failures", () => {
   const REGION = "https://us.sentry.io";
   const dashboard = makeDashboard([
@@ -605,7 +664,7 @@ describe("queryAllWidgets timeseries", () => {
           unit: null,
           values: [
             { timestamp: 1_700_000_000, value: 10 },
-            { timestamp: 1_700_003_600, value: 0 },
+            { timestamp: 1_700_003_600, value: null },
           ],
         },
       ],
@@ -704,7 +763,7 @@ describe("queryAllWidgets timeseries", () => {
     ]);
   });
 
-  test("coerces string bucket values and accepts a null groupBy", async () => {
+  test("parses string bucket values and accepts a null groupBy", async () => {
     mockResponse({
       timeSeries: [
         {
@@ -745,9 +804,58 @@ describe("queryAllWidgets timeseries", () => {
           label: "Other",
           unit: null,
           values: [
-            { timestamp: 1_700_000_000, value: 0 },
+            { timestamp: 1_700_000_000, value: null },
             { timestamp: 1_700_003_600, value: 2.5 },
-            { timestamp: 1_700_007_200, value: 0 },
+            { timestamp: 1_700_007_200, value: null },
+          ],
+        },
+      ],
+    });
+  });
+
+  test("keeps unmeasured latency buckets distinct from a measured zero", async () => {
+    mockResponse({
+      timeSeries: [
+        {
+          yAxis: "p95(span.duration)",
+          values: [
+            bucket(null, 1_700_000_000_000),
+            bucket(0, 1_700_003_600_000),
+            bucket(250, 1_700_007_200_000),
+          ],
+          meta: {
+            valueType: "duration",
+            valueUnit: "millisecond",
+            interval: 3_600_000,
+          },
+        },
+      ],
+    });
+    const dashboard = makeDashboard([
+      {
+        title: "Latency",
+        displayType: "line",
+        widgetType: "spans",
+        queries: [
+          { aggregates: ["p95(span.duration)"], columns: [], conditions: "" },
+        ],
+      },
+    ]);
+
+    const results = await queryAllWidgets(REGION, ORG, dashboard, {
+      period: "24h",
+    });
+
+    expect(results.get(0)).toEqual({
+      type: "timeseries",
+      series: [
+        {
+          label: "p95(span.duration)",
+          unit: "millisecond",
+          values: [
+            { timestamp: 1_700_000_000, value: null },
+            { timestamp: 1_700_003_600, value: 0 },
+            { timestamp: 1_700_007_200, value: 250 },
           ],
         },
       ],
