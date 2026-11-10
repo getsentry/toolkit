@@ -36,6 +36,7 @@ import {
   type AuthGuardFailure,
   ContextError,
   ResolutionError,
+  SeerError,
   withAuthGuard,
 } from "../../lib/errors.js";
 import { getProgressMessage } from "../../lib/formatters/seer.js";
@@ -1086,6 +1087,7 @@ type EnsureRootCauseOptions = {
  *
  * @param options - Configuration options
  * @returns The completed autofix state with root causes
+ * @throws {SeerError} When the run stopped because the org ran out of Seer credits
  */
 export async function ensureRootCauseAnalysis(
   options: EnsureRootCauseOptions,
@@ -1124,6 +1126,10 @@ export async function ensureRootCauseAnalysis(
       json,
       stopOnWaitingForUser: true,
     });
+  }
+
+  if (state.status === "ERROR" && state.failure_reason === "out_of_credits") {
+    throw new SeerError("out_of_credits", org);
   }
 
   return state;

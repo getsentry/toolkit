@@ -385,6 +385,16 @@ describe("createSeerError", () => {
     expect(error?.orgSlug).toBe("my-org");
   });
 
+  test("returns out_of_credits for a 402 with the out-of-credits code", () => {
+    const error = createSeerError(
+      402,
+      undefined,
+      "my-org",
+      "seer_out_of_credits",
+    );
+    expect(error?.reason).toBe("out_of_credits");
+  });
+
   test("returns SeerError for 403 with 'not enabled' detail", () => {
     const error = createSeerError(403, "Seer is not enabled", "my-org");
     expect(error).toBeInstanceOf(SeerError);

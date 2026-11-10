@@ -1584,6 +1584,36 @@ describe("ensureRootCauseAnalysis", () => {
     expect(triggerCalled).toBe(true); // Should have retried
   });
 
+  test("throws out_of_credits when the run stopped for credits", async () => {
+    // @ts-expect-error - partial mock
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      const body =
+        req.method === "POST"
+          ? { run_id: 12_346 }
+          : {
+              autofix: {
+                run_id: 12_346,
+                status: "ERROR",
+                failure_reason: "out_of_credits",
+                steps: [],
+              },
+            };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+
+    await expect(
+      ensureRootCauseAnalysis({
+        org: "test-org",
+        issueId: "123456789",
+        json: true,
+      }),
+    ).rejects.toMatchObject({ reason: "out_of_credits", orgSlug: "test-org" });
+  });
+
   test("polls until complete when state is PROCESSING", async () => {
     let fetchCount = 0;
 

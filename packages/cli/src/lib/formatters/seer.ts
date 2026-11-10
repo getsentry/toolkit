@@ -261,20 +261,32 @@ export function jsonTransformIssueExplain(
 // Error Messages
 
 /**
+ * `code` Sentry sends with a 402 when the organization is out of Seer credits.
+ * Any other 402 means no budget, including one with no code from a Sentry
+ * version that predates the codes.
+ */
+const OUT_OF_CREDITS_CODE = "seer_out_of_credits";
+
+/**
  * Create a SeerError from an API error status code and detail.
  *
  * @param status - HTTP status code
  * @param detail - Error detail from API
  * @param orgSlug - Organization slug for constructing settings URLs
+ * @param code - Machine-readable `code` from the error body
  * @returns SeerError if the status code indicates a Seer-specific error, null otherwise
  */
 export function createSeerError(
   status: number,
   detail?: string,
   orgSlug?: string,
+  code?: string,
 ): SeerError | null {
   if (status === 402) {
-    return new SeerError("no_budget", orgSlug);
+    return new SeerError(
+      code === OUT_OF_CREDITS_CODE ? "out_of_credits" : "no_budget",
+      orgSlug,
+    );
   }
   if (status === 403) {
     if (detail?.includes("not enabled")) {
@@ -301,14 +313,16 @@ export function createSeerError(
  * @param status - HTTP status code
  * @param detail - Error detail from API
  * @param orgSlug - Organization slug for constructing settings URLs
+ * @param code - Machine-readable `code` from the error body
  * @returns SeerError for Seer-specific errors, or ApiError for other API errors
  */
 export function handleSeerApiError(
   status: number,
   detail?: string,
   orgSlug?: string,
+  code?: string,
 ): Error {
-  const seerError = createSeerError(status, detail, orgSlug);
+  const seerError = createSeerError(status, detail, orgSlug, code);
   if (seerError) {
     return seerError;
   }

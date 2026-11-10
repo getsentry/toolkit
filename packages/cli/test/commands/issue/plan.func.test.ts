@@ -191,6 +191,20 @@ describe("issue plan after solution planning", () => {
     );
   });
 
+  test("throws out_of_credits when planning stopped for credits", async () => {
+    pollSpy.mockResolvedValue({
+      status: "ERROR",
+      failure_reason: "out_of_credits",
+      run_id: 42,
+      steps: [],
+    });
+
+    await expect(runPlan(createMockContext())).rejects.toMatchObject({
+      reason: "out_of_credits",
+      orgSlug: "test-org",
+    });
+  });
+
   test("throws when planning ends in CANCELLED", async () => {
     pollSpy.mockResolvedValue({ status: "CANCELLED", run_id: 42, steps: [] });
 

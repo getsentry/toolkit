@@ -83,6 +83,8 @@ export const EXIT = {
   SEER_NO_BUDGET: 41,
   /** AI features disabled by org admin */
   SEER_AI_DISABLED: 42,
+  /** Organization is out of Seer credits */
+  SEER_OUT_OF_CREDITS: 43,
 
   // 50–59: Operations
   /** CLI upgrade failed */
@@ -700,7 +702,11 @@ export class UpgradeTransportError extends UpgradeError {
 
 // Seer Errors
 
-export type SeerErrorReason = "not_enabled" | "no_budget" | "ai_disabled";
+export type SeerErrorReason =
+  | "not_enabled"
+  | "no_budget"
+  | "ai_disabled"
+  | "out_of_credits";
 
 /**
  * Seer-specific errors with actionable suggestions.
@@ -717,11 +723,13 @@ export class SeerError extends CliError {
       not_enabled: "Seer is not enabled for this organization.",
       no_budget: "Seer requires a paid plan.",
       ai_disabled: "AI features are disabled for this organization.",
+      out_of_credits: "Your organization is out of Seer credits.",
     };
     const exitCodes: Record<SeerErrorReason, number> = {
       not_enabled: EXIT.SEER_NOT_ENABLED,
       no_budget: EXIT.SEER_NO_BUDGET,
       ai_disabled: EXIT.SEER_AI_DISABLED,
+      out_of_credits: EXIT.SEER_OUT_OF_CREDITS,
     };
     super(messages[reason], exitCodes[reason]);
     this.name = "SeerError";
@@ -746,6 +754,8 @@ export class SeerError extends CliError {
         no_budget: `To use Seer features, upgrade your plan:\n  ${buildBillingUrl(this.orgSlug, "seer")}${trialHint}`,
         // ai_disabled is an admin decision — don't suggest trial
         ai_disabled: `To enable AI features:\n  ${buildOrgSettingsUrl(this.orgSlug, "hideAiFeatures")}`,
+        // out_of_credits orgs already have Seer, so a trial is not the fix
+        out_of_credits: `Someone with billing access can turn on auto-reload in Sentry:\n  ${buildBillingUrl(this.orgSlug, "seer")}`,
       };
       return `${this.message}\n\n${suggestions[this.reason]}`;
     }
@@ -757,6 +767,9 @@ export class SeerError extends CliError {
       // ai_disabled is an admin decision — don't suggest trial
       ai_disabled:
         "To enable AI features, check the 'Hide AI Features' setting in your organization settings.",
+      // out_of_credits orgs already have Seer, so a trial is not the fix
+      out_of_credits:
+        "Someone with billing access can turn on auto-reload in your organization's billing settings.",
     };
     return `${this.message}\n\n${fallbackSuggestions[this.reason]}`;
   }
