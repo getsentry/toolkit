@@ -94,6 +94,20 @@ describe("searchDocs", () => {
     expect(urls(`${ORIGIN}/index.md`)).toEqual(["/index.md"]);
   });
 
+  test.each(["docs.sentry.io", "https://docs.sentry.io/"])(
+    "reads an -e of only the origin %s as the home page",
+    (pattern) => {
+      const outcome = searchDocs(index, {
+        query: "",
+        patterns: [pattern],
+        limit: 8,
+      });
+      expect(outcome.results.map((result) => result.url)).toEqual([
+        `${ORIGIN}/index.md`,
+      ]);
+    },
+  );
+
   test("returns nothing for a query with only filler words", () => {
     const outcome = searchDocs(index, { query: "how do I", limit: 8 });
     expect(outcome.results).toEqual([]);
@@ -266,6 +280,7 @@ describe("searchDocs patterns", () => {
     "(.*a){20}",
     "(.|\\s)*X",
     "/(\\w+)*$/i",
+    "([^]+)+X",
   ])(
     "refuses %s, which can take exponential time, instead of hanging",
     (pattern) => {

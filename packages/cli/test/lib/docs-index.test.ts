@@ -32,13 +32,21 @@ function requestHeaders(call: number): Record<string, string> {
 const getConfigDir = useTestConfigDir("docs-index-");
 
 let savedNoCache: string | undefined;
+let savedNoPersistence: string | undefined;
 beforeEach(() => {
   customFetch.mockReset();
   savedNoCache = process.env.SENTRY_NO_CACHE;
+  savedNoPersistence = process.env.SENTRY_CLI_NO_PERSISTENCE;
   process.env.SENTRY_NO_CACHE = "0";
+  delete process.env.SENTRY_CLI_NO_PERSISTENCE;
 });
 afterEach(() => {
   process.env.SENTRY_NO_CACHE = savedNoCache;
+  if (savedNoPersistence === undefined) {
+    delete process.env.SENTRY_CLI_NO_PERSISTENCE;
+  } else {
+    process.env.SENTRY_CLI_NO_PERSISTENCE = savedNoPersistence;
+  }
 });
 
 describe("loadDocsIndex", () => {
@@ -188,6 +196,18 @@ describe("loadDocsIndex", () => {
 
     expect(customFetch).toHaveBeenCalledTimes(2);
     expect(requestHeaders(1)["If-None-Match"]).toBeUndefined();
+    await expect(
+      readdir(join(getConfigDir(), "cache", "docs")),
+    ).rejects.toThrow();
+  });
+
+  test("writes nothing with persistence off, as in the SDK", async () => {
+    process.env.SENTRY_CLI_NO_PERSISTENCE = "1";
+    customFetch.mockImplementation(async () => okResponse());
+
+    const loaded = await loadDocsIndex({ now: T0 });
+
+    expect(loaded.index.pages.length).toBeGreaterThan(0);
     await expect(
       readdir(join(getConfigDir(), "cache", "docs")),
     ).rejects.toThrow();

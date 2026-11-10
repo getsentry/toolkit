@@ -13,6 +13,8 @@
  * - The request fails: the stale copy is used, with a warning.
  *
  * `--fresh` skips the age check, and `SENTRY_NO_CACHE=1` skips the copy.
+ * With persistence off, as in the SDK by default, a copy is read but never
+ * written.
  *
  * @module
  */
@@ -28,7 +30,7 @@ import {
   type DocsIndexPage,
   type DocsPostings,
 } from "./docs-search.js";
-import { getEnv } from "./env.js";
+import { getEnv, isPersistenceDisabled } from "./env.js";
 import { CliError, EXIT } from "./errors.js";
 import { logger } from "./logger.js";
 
@@ -275,6 +277,9 @@ export async function loadDocsIndex(
   const now = options.now ?? Date.now();
   const cacheDisabled = getEnv().SENTRY_NO_CACHE === "1";
   const cached = cacheDisabled ? undefined : await readCache();
+  // With persistence off (the SDK default) an existing copy is still read,
+  // but nothing is written.
+  const canWrite = !(cacheDisabled || isPersistenceDisabled());
 
   if (cached && !options.fresh && now - cached.fetchedAt < FRESH_FOR_MS) {
     return { index: toIndex(cached) };
@@ -302,7 +307,7 @@ export async function loadDocsIndex(
   }
 
   if (result.kind === "not-modified" && cached) {
-    if (!cacheDisabled) {
+    if (canWrite) {
       await writeCache({ ...cached, fetchedAt: now });
     }
     return { index: toIndex(cached) };
@@ -322,7 +327,7 @@ export async function loadDocsIndex(
     pages: result.pages,
     postings: buildPostings(toPages(result.pages)),
   };
-  if (!cacheDisabled) {
+  if (canWrite) {
     await writeCache(fresh);
   }
   return { index: toIndex(fresh) };

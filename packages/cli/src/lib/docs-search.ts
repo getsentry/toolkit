@@ -694,10 +694,8 @@ function endOfClass(source: string, i: number): number {
   if (source[j] === "^") {
     j += 1;
   }
-  // A `]` right after `[` or `[^` is a literal.
-  if (source[j] === "]") {
-    j += 1;
-  }
+  // Unlike POSIX, a `]` right after `[` or `[^` closes the class in
+  // JavaScript: `[]` matches nothing and `[^]` matches any character.
   while (j < source.length && source[j] !== "]") {
     j += source[j] === "\\" ? 2 : 1;
   }
@@ -778,7 +776,12 @@ function compilePattern(raw: string): RegExp | SyntaxError {
   if (delimited?.[1]) {
     source = delimited[1];
   }
-  source = source.replace(DOCS_URL_PREFIX_RE, "");
+  const withoutOrigin = source.replace(DOCS_URL_PREFIX_RE, "");
+  // A bare docs origin names the home page, as it does in the query.
+  source =
+    withoutOrigin === source || withoutOrigin.replace(/\/+$/, "") !== ""
+      ? withoutOrigin
+      : "^/$";
   if (source.length > 1) {
     source = source.replace(TRAILING_MD_RE, "") || source;
   }
