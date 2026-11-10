@@ -445,11 +445,17 @@ describe("analyze_issue_with_seer", () => {
       {
         detail:
           "Your organization does not have enough credits to start an Autofix run.",
+        code: "seer_out_of_credits",
       },
       "Your organization does not have enough credits to start an Autofix run. Someone with billing access can turn on auto-reload in Sentry.",
     ],
     [
       "out of quota",
+      { detail: "No budget for Seer Autofix.", code: "seer_out_of_quota" },
+      "Your organization does not have enough Seer quota to start an Autofix run.",
+    ],
+    [
+      "out of quota, older Sentry without a code",
       "No budget for Seer Autofix.",
       "Your organization does not have enough Seer quota to start an Autofix run.",
     ],

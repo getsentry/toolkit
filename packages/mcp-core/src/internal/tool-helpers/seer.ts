@@ -96,12 +96,15 @@ const SEER_NO_QUOTA_MESSAGE =
   "Your organization does not have enough Seer quota to start an Autofix run.";
 
 /**
- * Explain a 402 from starting a run. Sentry sends the out-of-credits 402 as
- * `{ detail }` and the out-of-quota 402 as a bare string, which the API client
- * can't parse.
+ * Explain a 402 from starting a run. Sentry tags the 402 with a `code`. Older
+ * Sentry versions send the out-of-quota 402 as a bare string with no code, so
+ * anything that isn't out of credits is treated as out of quota.
  */
 export function getSeerPaymentRequiredMessage(responseBody: unknown): string {
-  if (isPlainObject(responseBody) && typeof responseBody.detail === "string") {
+  if (
+    isPlainObject(responseBody) &&
+    responseBody.code === "seer_out_of_credits"
+  ) {
     return SEER_START_OUT_OF_CREDITS_MESSAGE;
   }
   return SEER_NO_QUOTA_MESSAGE;
