@@ -1,5 +1,10 @@
 import { z } from "zod";
-import type { AssignedTo, Issue } from "../../api-client/types";
+import type {
+  AssignedTo,
+  Issue,
+  IssueActivityList,
+  IssueResolutionDetails,
+} from "../../api-client/types";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -16,6 +21,9 @@ import {
   ParamIgnoreUserCount,
   ParamIgnoreUserWindowMinutes,
   ParamIgnoreWindowMinutes,
+  ParamInCommit,
+  ParamInCommitRepository,
+  ParamInRelease,
   ParamIssueIgnoreMode,
   ParamIssueShortId,
   ParamIssueStatus,
@@ -63,6 +71,8 @@ type IgnoreState = {
 type IssueStatusDisplay =
   | "resolved"
   | "resolvedInNextRelease"
+  | "resolvedInRelease"
+  | "resolvedInCommit"
   | "unresolved"
   | "ignored"
   | (string & {});
@@ -158,6 +168,22 @@ function getStatusDetailString(
   return undefined;
 }
 
+/** SHA of the commit an issue is resolved in, from the serialized commit. */
+function getResolvedCommitId(
+  statusDetails: Record<string, unknown>,
+  key: "inCommit" | "commit" = "inCommit",
+): string | undefined {
+  const commit = statusDetails[key];
+  if (commit && typeof commit === "object" && !Array.isArray(commit)) {
+    const id = (commit as Record<string, unknown>).id;
+    if (typeof id === "string" && id.length > 0) {
+      return id;
+    }
+  }
+
+  return undefined;
+}
+
 function formatIgnoreUntil(ignoreUntil: string): string {
   const date = new Date(ignoreUntil);
   if (Number.isNaN(date.getTime())) {
@@ -170,11 +196,169 @@ function formatIgnoreUntil(ignoreUntil: string): string {
 function getIssueStatusDisplay(issue: Issue): IssueStatusDisplay {
   const statusDetails = getIssueStatusDetails(issue);
 
-  if (issue.status === "resolved" && statusDetails.inNextRelease === true) {
-    return "resolvedInNextRelease";
+  if (issue.status === "resolved") {
+    if (statusDetails.inNextRelease === true) {
+      return "resolvedInNextRelease";
+    }
+    if (getStatusDetailString(statusDetails, "inRelease")) {
+      return "resolvedInRelease";
+    }
+    if (getResolvedCommitId(statusDetails)) {
+      return "resolvedInCommit";
+    }
   }
 
   return issue.status;
+}
+
+type ResolutionParams = {
+  status?: string;
+  inRelease?: string;
+  inCommit?: string;
+  inCommitRepository?: string;
+};
+
+function buildResolution(
+  params: ResolutionParams,
+): IssueResolutionDetails | undefined {
+  if (
+    params.inCommitRepository !== undefined &&
+    params.inCommit === undefined
+  ) {
+    throw new UserInputError("`inCommitRepository` requires `inCommit`");
+  }
+
+  if (params.inRelease === undefined && params.inCommit === undefined) {
+    return undefined;
+  }
+
+  if (params.status !== "resolved") {
+    throw new UserInputError(
+      "`inRelease` and `inCommit` can only be used when `status` is `resolved`",
+    );
+  }
+
+  if (params.inRelease !== undefined && params.inCommit !== undefined) {
+    throw new UserInputError("Choose only one of `inRelease` or `inCommit`");
+  }
+
+  if (params.inRelease !== undefined) {
+    return { inRelease: params.inRelease };
+  }
+
+  if (params.inCommitRepository === undefined) {
+    throw new UserInputError("`inCommit` requires `inCommitRepository`");
+  }
+
+  return {
+    inCommit: {
+      commit: params.inCommit!,
+      repository: params.inCommitRepository,
+    },
+  };
+}
+
+function isResolutionAlreadySet(
+  issue: Issue,
+  resolution: IssueResolutionDetails,
+): boolean {
+  if (issue.status !== "resolved") {
+    return false;
+  }
+
+  const statusDetails = getIssueStatusDetails(issue);
+
+  if ("inRelease" in resolution) {
+    return (
+      getStatusDetailString(statusDetails, "inRelease") === resolution.inRelease
+    );
+  }
+
+  return (
+    getResolvedCommitId(statusDetails)?.toLowerCase() ===
+    resolution.inCommit.commit.toLowerCase()
+  );
+}
+
+/**
+ * Sentry reports a commit resolution as `inRelease` once a release contains
+ * the commit, so the issue details no longer name the commit. The newest
+ * resolve activity still does.
+ */
+async function isLatestResolutionCommit(
+  apiService: {
+    getIssueActivity: (params: {
+      organizationSlug: string;
+      issueId: string;
+    }) => Promise<IssueActivityList>;
+  },
+  organizationSlug: string,
+  issueId: string,
+  commit: string,
+): Promise<boolean> {
+  const activity = await apiService.getIssueActivity({
+    organizationSlug,
+    issueId,
+  });
+  const latestResolution = activity.find((item) =>
+    item.type?.startsWith("set_resolved"),
+  );
+
+  return (
+    latestResolution?.type === "set_resolved_in_commit" &&
+    getResolvedCommitId(
+      latestResolution.data ?? {},
+      "commit",
+    )?.toLowerCase() === commit.toLowerCase()
+  );
+}
+
+function isStatusAlreadySet(
+  issue: Issue,
+  status: string | undefined,
+  resolution: IssueResolutionDetails | undefined,
+): boolean {
+  if (status === undefined || status === "ignored") {
+    return false;
+  }
+
+  if (resolution) {
+    return isResolutionAlreadySet(issue, resolution);
+  }
+
+  const currentStatus = getIssueStatusDisplay(issue);
+
+  // A plain resolve is satisfied by any resolution except next release,
+  // which stays pending until a new release exists.
+  if (status === "resolved") {
+    return (
+      currentStatus === "resolved" ||
+      currentStatus === "resolvedInRelease" ||
+      currentStatus === "resolvedInCommit"
+    );
+  }
+
+  return currentStatus === status;
+}
+
+function getResolvedEffect(
+  issue: Issue,
+  statusDisplay: IssueStatusDisplay,
+): string | null {
+  const statusDetails = getIssueStatusDetails(issue);
+
+  switch (statusDisplay) {
+    case "resolved":
+      return "The issue is now marked as resolved and will no longer generate alerts";
+    case "resolvedInNextRelease":
+      return "The issue is now marked as resolved in the upcoming release";
+    case "resolvedInRelease":
+      return `The issue is now marked as resolved in release ${getStatusDetailString(statusDetails, "inRelease")}. Events from newer releases will reopen it as a regression`;
+    case "resolvedInCommit":
+      return `The issue is now marked as resolved in commit ${getResolvedCommitId(statusDetails)}. It will be resolved in the first release that contains this commit`;
+    default:
+      return null;
+  }
 }
 
 function getIgnoreStateFromUpdate(
@@ -713,6 +897,7 @@ export default defineTool({
     "- Omit `assignedTo` to leave assignment unchanged. Pass `null` to unassign; otherwise use `user:ID` or `team:ID_OR_SLUG`.",
     "- Use the `whoami` tool to find your user ID for self-assignment.",
     "- Status values: `resolved`, `resolvedInNextRelease`, `unresolved`, `ignored`.",
+    "- `status='resolved'` takes optional `inRelease`, or `inCommit` + `inCommitRepository`.",
     "- `status='ignored'` defaults to `ignoreMode='untilEscalating'`.",
     "- Ignore modes: `untilEscalating`, `forever`, `forDuration`, `untilOccurrenceCount`, `untilUserCount`.",
     "- Matching ignore inputs are `ignoreDurationMinutes`, `ignoreCount` + optional `ignoreWindowMinutes`, or `ignoreUserCount` + optional `ignoreUserWindowMinutes`.",
@@ -733,6 +918,9 @@ export default defineTool({
     ignoreWindowMinutes: ParamIgnoreWindowMinutes.optional(),
     ignoreUserCount: ParamIgnoreUserCount.optional(),
     ignoreUserWindowMinutes: ParamIgnoreUserWindowMinutes.optional(),
+    inRelease: ParamInRelease.optional(),
+    inCommit: ParamInCommit.optional(),
+    inCommitRepository: ParamInCommitRepository.optional(),
     reason: ParamReason.optional(),
   },
   annotations: {
@@ -766,6 +954,8 @@ export default defineTool({
         "At least one of `status` or `assignedTo` must be provided to update the issue",
       );
     }
+
+    const resolution = buildResolution(params);
 
     const { organizationSlug: orgSlug, issueId: parsedIssueId } =
       parseIssueParams({
@@ -801,10 +991,32 @@ export default defineTool({
       currentIgnoreState,
       ignoreUpdate,
     );
-    const statusAlreadySet =
-      params.status !== undefined &&
-      params.status !== "ignored" &&
-      getIssueStatusDisplay(currentIssue) === params.status;
+    let statusAlreadySet = isStatusAlreadySet(
+      currentIssue,
+      params.status,
+      resolution,
+    );
+    if (
+      !statusAlreadySet &&
+      resolution &&
+      "inCommit" in resolution &&
+      getIssueStatusDisplay(currentIssue) === "resolvedInRelease"
+    ) {
+      statusAlreadySet = await isLatestResolutionCommit(
+        apiService,
+        orgSlug,
+        parsedIssueId!,
+        resolution.inCommit.commit,
+      );
+    }
+
+    // Sentry leaves an already resolved issue as it is, so a different release
+    // or commit resolution would silently do nothing.
+    if (resolution && !statusAlreadySet && currentIssue.status === "resolved") {
+      throw new UserInputError(
+        `The issue is already resolved (\`${getIssueStatusDisplay(currentIssue)}\`). To resolve it in a different release or commit, first set \`status\` to \`unresolved\`, then resolve it again.`,
+      );
+    }
 
     let updateStatus = statusAlreadySet ? undefined : params.status;
     const updateAssignedTo = assignmentAlreadySet
@@ -865,6 +1077,7 @@ export default defineTool({
       organizationSlug: orgSlug,
       issueId: parsedIssueId!,
       status: updateStatus,
+      statusDetails: updateStatus === undefined ? undefined : resolution,
       assignedTo: updateAssignedTo,
       substatus: updateIgnore?.substatus,
       ignoreDuration: updateIgnore?.ignoreDuration,
@@ -896,16 +1109,11 @@ export default defineTool({
       (statusChanged || ignoreBehaviorChanged) &&
       (ignoreBehaviorChanged || params.status === "ignored");
 
-    let effect: string | null = null;
-    if (statusChanged && updatedStatusDisplay === "resolved") {
-      effect =
-        "The issue is now marked as resolved and will no longer generate alerts";
-    } else if (
-      statusChanged &&
-      updatedStatusDisplay === "resolvedInNextRelease"
-    ) {
-      effect = "The issue is now marked as resolved in the upcoming release";
-    } else if (
+    let effect = statusChanged
+      ? getResolvedEffect(updatedIssue, updatedStatusDisplay)
+      : null;
+    if (
+      effect === null &&
       updatedIgnoreState &&
       params.status === "ignored" &&
       (statusChanged || ignoreBehaviorChanged)

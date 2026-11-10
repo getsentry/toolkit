@@ -731,7 +731,7 @@ export async function fetchAllPages<T>(
  * Used for internal endpoints not covered by @sentry/api SDK functions.
  *
  * @param regionUrl - The region's base URL (e.g., https://us.sentry.io)
- * @param endpoint - API endpoint path (e.g., "/users/me/regions/")
+ * @param endpoint - API endpoint path (e.g., "/organizations/")
  * @param options - Request options
  * @returns Parsed data and response headers
  */

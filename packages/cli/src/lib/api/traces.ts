@@ -13,6 +13,7 @@ import {
   type ListOrganizationTraceItemAttributesResponse,
   listOrganizationEvents,
   listOrganizationTraceItemAttributes,
+  retrieveProjectTraceItem,
 } from "@sentry/api";
 import pLimit from "p-limit";
 
@@ -40,7 +41,6 @@ import { isAllDigits } from "../utils.js";
 
 import {
   API_MAX_PER_PAGE,
-  apiRequestToRegion,
   getOrgSdkConfig,
   type PaginatedResponse,
   paginate,
@@ -204,11 +204,9 @@ type GetTraceItemDetailOptions = {
 };
 
 /**
- * Fetch full attribute details for a single trace item via the experimental
- * /projects/{org}/{project}/trace-items/{itemId}/ endpoint.
- *
- * This endpoint is not yet in @sentry/api (getsentry/sentry-api-schema) because
- * it is marked EXPERIMENTAL in Sentry. Both span and log detail views use it.
+ * Fetch full attribute details for a single trace item via
+ * `GET /projects/{org}/{project}/trace-items/{itemId}/`, which Sentry
+ * publishes as experimental. Both span and log detail views use it.
  *
  * @param orgSlug - Organization slug
  * @param projectSlug - Project slug
@@ -221,16 +219,21 @@ export async function getTraceItemDetail(
   itemId: string,
   { traceId, itemType }: GetTraceItemDetailOptions,
 ): Promise<TraceItemDetail> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion<TraceItemDetail>(
-    regionUrl,
-    `/projects/${orgSlug}/${projectSlug}/trace-items/${itemId}/`,
-    {
-      params: { trace_id: traceId, item_type: itemType },
-      schema: TraceItemDetailSchema,
+  const result = await retrieveProjectTraceItem({
+    ...getOrgSdkConfig(),
+    path: {
+      organization_id_or_slug: orgSlug,
+      project_id_or_slug: projectSlug,
+      item_id: itemId,
     },
+    query: { trace_id: traceId, item_type: itemType },
+  });
+  return unwrapValidatedResult(
+    result,
+    "Failed to get trace item details",
+    TraceItemDetailSchema,
+    `/projects/${orgSlug}/${projectSlug}/trace-items/${itemId}/`,
   );
-  return data;
 }
 
 /**
