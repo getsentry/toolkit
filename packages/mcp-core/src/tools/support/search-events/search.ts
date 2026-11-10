@@ -351,6 +351,40 @@ function preservesSearchTokens(originalQuery: string, repairedQuery: string) {
   );
 }
 
+const TIME_BOUND_FILTER_PATTERN = /^timestamp:\S/;
+
+/**
+ * Put back explicit `timestamp:` bounds that the agent dropped from a
+ * structured query.
+ *
+ * The agent often moves them into an absolute `timeRange`, but an explicit
+ * `period` wins over that range, so dropping them silently widens the search to
+ * the whole period. Kept bounds only narrow the period, so they are always
+ * safe to send. Grouped or boolean queries are left as they are, because a
+ * bound appended outside its group would change what it means.
+ */
+function restoreDroppedTimeBounds(
+  originalQuery: string,
+  repairedQuery: string,
+): string {
+  const originalTokens = tokenizeSearchQuery(originalQuery);
+  if (
+    originalTokens.some(
+      (token) => token === "OR" || token === "AND" || /[()]/.test(token),
+    )
+  ) {
+    return repairedQuery;
+  }
+
+  return originalTokens
+    .filter(
+      (token) =>
+        TIME_BOUND_FILTER_PATTERN.test(token) &&
+        !containsSearchToken(repairedQuery, token),
+    )
+    .reduce((query, token) => appendSearchFilter(query, token), repairedQuery);
+}
+
 function choosePreservingRepairedQuery(params: {
   originalQuery: string;
   repairedQuery?: string | null;
@@ -917,13 +951,14 @@ async function executeSearchEvents(
           filter: environmentFilter,
           dataset,
         })
-      : looksLikeSentrySearchSyntax(params.query, dataset) &&
-          isSemanticFilterDowngrade(
+      : looksLikeSentrySearchSyntax(params.query, dataset)
+        ? isSemanticFilterDowngrade(
             params.query ?? "",
             parsed.query || "",
             dataset,
           )
-        ? (params.query ?? "")
+          ? (params.query ?? "")
+          : restoreDroppedTimeBounds(params.query ?? "", parsed.query || "")
         : parsed.query || "";
     sortParam =
       shouldTrustExplicitSearchParams && explicitSort
