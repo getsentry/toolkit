@@ -347,7 +347,10 @@ function selectAccountForRequest({ url, scope }: CredentialRequest): void {
  * response cache, and the CLI's error classes. Retries, timeouts, the 401
  * refresh, and redirect validation are in `@sentry/api/client`.
  */
-function createCliTransport(credential: CredentialContext | undefined) {
+function createCliTransport(
+  credential: CredentialContext | undefined,
+  timeoutMs: number | undefined,
+) {
   return createApiTransport<CredentialContext>({
     credentials: {
       current: async (request) => {
@@ -368,7 +371,7 @@ function createCliTransport(credential: CredentialContext | undefined) {
       authorization: (current) => formatAuthHeader(current.token),
     },
     retry: RETRY_POLICY,
-    timeoutMs: resolveTimeoutMs,
+    timeoutMs: timeoutMs ?? resolveTimeoutMs,
     fetch: fetchWithCustomTls,
     userAgent: getUserAgent(),
     prepareHeaders,
@@ -438,12 +441,18 @@ type AuthenticatedFetchOptions = {
    * cannot match, such as chunk uploads to the server-provided URL.
    */
   idempotent?: boolean;
+  /**
+   * Per-attempt timeout for every request through this fetch, replacing
+   * {@link resolveTimeoutMs}. For callers whose URL comes from the server,
+   * such as chunk uploads, so no path override can match it.
+   */
+  timeoutMs?: number;
 };
 
 function createAuthenticatedFetch(
   options: AuthenticatedFetchOptions = {},
 ): (input: Request | string | URL, init?: RequestInit) => Promise<Response> {
-  const transport = createCliTransport(options.credential);
+  const transport = createCliTransport(options.credential, options.timeoutMs);
   const authenticatedFetch = async (
     input: Request | string | URL,
     init?: RequestInit,
@@ -497,7 +506,8 @@ function getAuthenticatedFetch(
     options.credential ||
     options.validatedRedirects ||
     options.bufferResponseBody ||
-    options.idempotent
+    options.idempotent ||
+    options.timeoutMs !== undefined
   ) {
     return createAuthenticatedFetch(options) as unknown as typeof fetch;
   }
