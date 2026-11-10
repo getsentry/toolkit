@@ -68,6 +68,18 @@ sentry explore my-org/cli -F span.op -F "p50(span.duration)" -F "p95(span.durati
 # Top spans by count
 sentry explore my-org/cli -F span.op -F "count()" --dataset spans --sort "-count()"
 
+# Most used agent tools, with their failure rates
+sentry explore my-org/my-agent --dataset spans -F gen_ai.tool.name -F "count()" -F "failure_rate()" -q "gen_ai.operation.type:tool" --sort "-count()" --period 7d
+
+# Least used agent tools
+sentry explore my-org/my-agent --dataset spans -F gen_ai.tool.name -F "count()" -q "gen_ai.operation.type:tool" --sort "count()" --period 7d
+
+# Agent tools ranked by failed calls, not failure rate
+sentry explore my-org/my-agent --dataset spans -F gen_ai.tool.name -F "count()" -F "failure_rate()" -F "equation|failure_rate() * count()" -q "gen_ai.operation.type:tool" --sort "-equation|failure_rate() * count()" --period 7d
+
+# Daily calls to one agent tool
+sentry explore my-org/my-agent --dataset spans -F "count()" -q "gen_ai.operation.type:tool gen_ai.tool.name:search_issues" --time-series 1d --period 7d
+
 # Error counts in 15-minute buckets over the last hour
 sentry explore my-org/cli --time-series 15m --period 1h
 
