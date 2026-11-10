@@ -166,8 +166,9 @@ describe("rasterizeChart", () => {
 
     // 16px fits 8 columns, so each column averages about two buckets.
     const image = rasterizeChart(model, { width: 16, height: 8 });
-    const pixel = (y: number) =>
-      [...image?.data.slice(y * 16 * 4, y * 16 * 4 + 4) ?? []];
+    const pixel = (y: number) => [
+      ...(image?.data.slice(y * 16 * 4, y * 16 * 4 + 4) ?? []),
+    ];
 
     // Both series stay visible: alpha at the bottom, beta stacked on top.
     expect(pixel(7)[3]).toBe(255);
