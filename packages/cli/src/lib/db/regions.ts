@@ -38,7 +38,7 @@ function getActiveSourceOrigin(): string {
 
 /**
  * Process-local trust extension: origins that were vouched for by the
- * active token's issuing host (via `/users/me/regions/` responses or
+ * active token's issuing host (via org `links.regionUrl` responses or
  * `org_regions` table entries from prior invocations). Used by the
  * fetch-layer trust check in `token-host.ts` to admit requests to
  * regional silos that share the token's trust class.

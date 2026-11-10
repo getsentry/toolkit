@@ -1,3 +1,4 @@
+import { listSavedAggregateTransformations } from "@sentry/toolkit-core/dashboard-transformations";
 import { z } from "zod";
 import type {
   Dashboard,
@@ -116,6 +117,27 @@ const dashboardWidgetSchema = z.object({
       aggregates: z.array(z.string()),
       columns: z.array(z.string()),
       orderby: nullableString,
+      transformations: z
+        .array(
+          z.object({
+            aggregateIndex: z
+              .number()
+              .int()
+              .describe("Zero-based position in `aggregates`."),
+            aggregate: nullableString.describe(
+              "Aggregate at that position; null when the query has none there.",
+            ),
+            transformations: z
+              .array(z.string())
+              .describe("Saved transformations in application order."),
+            description: z.string(),
+          }),
+        )
+        .nullable()
+        .optional()
+        .describe(
+          "Saved ordered transformations per aggregate position. Duplicate aggregates are separate entries. Omitted when none are saved; null when this Sentry server does not report transformations.",
+        ),
     }),
   ),
 });
@@ -172,6 +194,19 @@ function readStringArray(value: unknown): string[] {
     : [];
 }
 
+function withTransformations(
+  query: DashboardWidget["queries"][number],
+): Pick<
+  DashboardDetails["widgets"][number]["queries"][number],
+  "transformations"
+> {
+  const transformations = listSavedAggregateTransformations(
+    query.aggregates,
+    query.transformations,
+  );
+  return transformations === undefined ? {} : { transformations };
+}
+
 function toWidget(
   widget: DashboardWidget,
 ): DashboardDetails["widgets"][number] {
@@ -200,6 +235,7 @@ function toWidget(
       aggregates: query.aggregates,
       columns: query.columns,
       orderby: query.orderby || null,
+      ...withTransformations(query),
     })),
   };
 }

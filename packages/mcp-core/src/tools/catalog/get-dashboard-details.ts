@@ -39,6 +39,7 @@ export default defineTool({
     "- Numeric dashboard IDs are resolved directly.",
     "- Title lookups require one exact case-insensitive match. Use `find_dashboards` first if uncertain.",
     "- This returns saved widget query definitions, not live widget data.",
+    "- Saved transformations are listed per aggregate position, in application order.",
     "</hints>",
   ].join("\n"),
   inputSchema: {

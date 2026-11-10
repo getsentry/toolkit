@@ -135,7 +135,7 @@ describe("auth list", () => {
 
   describe("with an env token", () => {
     let originalFetch: typeof globalThis.fetch;
-    /** `<origin> <token>` of every `/auth/` request. */
+    /** `<origin> <token>` of every `/users/me/` request. */
     let requests: string[];
 
     beforeEach(async () => {
@@ -150,7 +150,7 @@ describe("auth list", () => {
         const url = new URL(req.url);
         const token = req.headers.get("Authorization")?.replace(/^Bearer /, "");
         requests.push(`${url.origin} ${token}`);
-        if (url.pathname === "/api/0/auth/" && token === "env-token") {
+        if (url.pathname === "/api/0/users/me/" && token === "env-token") {
           return Response.json({
             id: "7",
             email: "ci@example.com",

@@ -998,27 +998,58 @@ describe("projects.ts", () => {
 
 describe("users.ts", () => {
   describe("getCurrentUser", () => {
-    test("fetches authenticated user from /auth/ endpoint", async () => {
-      const user = {
-        id: "123",
-        name: "Test User",
-        email: "test@example.com",
-        username: "testuser",
-      };
+    const user = {
+      id: "123",
+      name: "Test User",
+      email: "test@example.com",
+      username: "testuser",
+    };
 
+    test("fetches authenticated user from /users/me/", async () => {
+      const paths: string[] = [];
       globalThis.fetch = mockFetch(async (input, init) => {
         const req = new Request(input, init);
-        expect(req.url).toContain("/api/0/auth/");
-        return new Response(JSON.stringify(user), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        paths.push(new URL(req.url).pathname);
+        return Response.json(user);
       });
 
       const result = await getCurrentUser();
       expect(result.id).toBe("123");
       expect(result.name).toBe("Test User");
       expect(result.email).toBe("test@example.com");
+      expect(paths).toEqual(["/api/0/users/me/"]);
+    });
+
+    test("falls back to /auth/ when /users/me/ returns 403", async () => {
+      const paths: string[] = [];
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const req = new Request(input, init);
+        const path = new URL(req.url).pathname;
+        paths.push(path);
+        if (path === "/api/0/users/me/") {
+          return Response.json(
+            { detail: "You do not have permission to perform this action." },
+            { status: 403 },
+          );
+        }
+        return Response.json(user);
+      });
+
+      const result = await getCurrentUser();
+      expect(result.id).toBe("123");
+      expect(paths).toEqual(["/api/0/users/me/", "/api/0/auth/"]);
+    });
+
+    test("doesn't fall back to /auth/ on other errors", async () => {
+      const paths: string[] = [];
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const req = new Request(input, init);
+        paths.push(new URL(req.url).pathname);
+        return Response.json({ detail: "Invalid token" }, { status: 401 });
+      });
+
+      await expect(getCurrentUser()).rejects.toMatchObject({ status: 401 });
+      expect(paths).toEqual(["/api/0/users/me/"]);
     });
 
     test("validates against SentryUserSchema (rejects invalid)", async () => {

@@ -10,6 +10,7 @@ import {
   listOrganizationProjectKeys,
   listOrganizationProjects,
   listProjectKeys,
+  resolveOrganizationDsn,
   type ProjectKey as SdkProjectKey,
   deleteProject as sdkDeleteProject,
   getProject as sdkGetProject,
@@ -32,7 +33,6 @@ import { getCachedOrganizations } from "../db/regions.js";
 import { reportCliError } from "../error-reporting.js";
 import { ApiError, type AuthGuardSuccess, withAuthGuard } from "../errors.js";
 import { logger } from "../logger.js";
-import { resolveOrgRegion } from "../region.js";
 import { getApiBaseUrl } from "../sentry-client.js";
 import { isSentrySaasUrl } from "../sentry-urls.js";
 import { buildProjectUrl } from "../sentry-web-urls.js";
@@ -49,6 +49,7 @@ import {
   paginate,
   unwrapPaginatedResult,
   unwrapResult,
+  unwrapValidatedResult,
 } from "./infrastructure.js";
 import { listOrganizations } from "./organizations.js";
 
@@ -564,21 +565,22 @@ type DsnLookupOutcome =
   | { kind: "miss" }
   | { kind: "unsupported" };
 
-/**
- * Look a DSN up in one organization with `GET /organizations/{org}/dsn-lookup/`.
- *
- * The endpoint isn't in `@sentry/api` yet (it's still private), so this is
- * a helper call until the publish lands.
- */
+/** Look a DSN up in one organization with `GET /organizations/{org}/dsn-lookup/`. */
 async function lookUpDsnInOrg(
   org: SentryOrganization,
   dsn: string,
 ): Promise<DsnLookupOutcome> {
   try {
-    const { data } = await apiRequestToRegion(
-      await resolveOrgRegion(org.slug),
+    const result = await resolveOrganizationDsn({
+      ...getOrgSdkConfig(),
+      path: { organization_id_or_slug: org.slug },
+      query: { dsn },
+    });
+    const data = unwrapValidatedResult(
+      result,
+      "Failed to look up DSN",
+      DsnLookupResponseSchema,
       `/organizations/${encodeURIComponent(org.slug)}/dsn-lookup/`,
-      { params: { dsn }, schema: DsnLookupResponseSchema },
     );
     return {
       kind: "found",

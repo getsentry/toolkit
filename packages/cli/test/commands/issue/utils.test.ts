@@ -498,14 +498,6 @@ describe("resolveOrgAndIssueId", () => {
       const req = new Request(input, init);
       const url = req.url;
 
-      // getUserRegions - return empty regions to use fallback path
-      if (url.includes("/users/me/regions/")) {
-        return new Response(JSON.stringify({ regions: [] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
       // listOrganizations call
       if (
         url.includes("/organizations/") &&
@@ -587,14 +579,6 @@ describe("resolveOrgAndIssueId", () => {
       const req = new Request(input, init);
       const url = req.url;
 
-      // getUserRegions - return empty regions to use fallback path
-      if (url.includes("/users/me/regions/")) {
-        return new Response(JSON.stringify({ regions: [] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
       // listOrganizations call
       if (
         url.includes("/organizations/") &&
@@ -663,14 +647,6 @@ describe("resolveOrgAndIssueId", () => {
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
-
-      // getUserRegions - return empty regions to use fallback path
-      if (url.includes("/users/me/regions/")) {
-        return new Response(JSON.stringify({ regions: [] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
 
       // listOrganizations call
       if (
@@ -816,13 +792,6 @@ describe("resolveOrgAndIssueId", () => {
       const req = new Request(input, init);
       const url = req.url;
 
-      if (url.includes("/users/me/regions/")) {
-        return new Response(JSON.stringify({ regions: [] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
       if (
         url.includes("/organizations/") &&
         !url.includes("/projects/") &&
@@ -873,13 +842,6 @@ describe("resolveOrgAndIssueId", () => {
       const req = new Request(input, init);
       const url = req.url;
 
-      if (url.includes("/users/me/regions/")) {
-        return new Response(JSON.stringify({ regions: [] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
       if (
         url.includes("/organizations/") &&
         !url.includes("/projects/") &&
@@ -927,13 +889,6 @@ describe("resolveOrgAndIssueId", () => {
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
-
-      if (url.includes("/users/me/regions/")) {
-        return new Response(JSON.stringify({ regions: [] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
 
       if (
         url.includes("/organizations/") &&
