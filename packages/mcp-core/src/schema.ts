@@ -218,7 +218,7 @@ export const ParamIssueStatus = z
 export const ParamIssuePriority = z
   .enum(["low", "medium", "high"])
   .describe(
-    "The new priority for the issue. Valid values are 'low', 'medium', and 'high'. Setting priority manually stops Sentry from changing it automatically.",
+    "The new priority for the issue. Setting it manually stops Sentry from changing it automatically.",
   );
 
 export const ParamIssueIgnoreMode = z
