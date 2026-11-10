@@ -301,7 +301,12 @@ function runClaude(
   };
   const started = performance.now();
   return new Promise((done) => {
-    const child = spawn(claudeBin, args, { cwd: dir, env });
+    // Claude Code in print mode waits for stdin to close, so give it none.
+    const child = spawn(claudeBin, args, {
+      cwd: dir,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk: Buffer) => {
@@ -311,7 +316,12 @@ function runClaude(
       stderr += chunk.toString();
     });
     const timer = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
-    child.on("close", (code) => {
+    let finished = false;
+    const finish = (error: string | undefined) => {
+      if (finished) {
+        return;
+      }
+      finished = true;
       clearTimeout(timer);
       rmSync(configDir, { recursive: true, force: true });
       const events: StreamEvent[] = [];
@@ -325,9 +335,16 @@ function runClaude(
       done({
         events,
         seconds: (performance.now() - started) / 1000,
-        error: code === 0 ? undefined : `exit ${code}: ${stderr.slice(-300)}`,
+        error,
       });
-    });
+    };
+    // A missing or unstartable `claude` fails this run, not the benchmark.
+    child.on("error", (error) =>
+      finish(`could not start ${claudeBin}: ${error.message}`),
+    );
+    child.on("close", (code) =>
+      finish(code === 0 ? undefined : `exit ${code}: ${stderr.slice(-300)}`),
+    );
   });
 }
 
