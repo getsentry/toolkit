@@ -19,7 +19,8 @@ vi.mock("@sentry/node", async (importOriginal) => ({
   isEnabled: () => sentryState.enabled,
 }));
 
-const HINT = "If this looks like a CLI bug, report it:";
+const HINT =
+  "If this took several tries or was hard to figure out, tell the Sentry CLI team why once you're done:";
 const originalFetch = globalThis.fetch;
 const originalExitCode = process.exitCode;
 
@@ -34,10 +35,11 @@ describe("agent feedback hint", () => {
     setAppIdentity({ name: "sentry", packageName: "sentry" });
   });
 
-  /** Run `org list` against an API that answers `status`, and return stderr. */
-  async function runOrgList(
-    status: number,
+  /** Run the CLI against an API that answers `status`, and return stderr. */
+  async function runCli(
+    args: string[],
     env: NodeJS.ProcessEnv,
+    status = 400,
   ): Promise<string> {
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ detail: "Failed" }), {
@@ -51,7 +53,7 @@ describe("agent feedback hint", () => {
       return true;
     });
     await withEnv(env, () =>
-      run(app, ["org", "list", "--fresh"], {
+      run(app, args, {
         process,
         env,
         cwd: getConfigDir(),
@@ -69,37 +71,49 @@ describe("agent feedback hint", () => {
     return { ...envWithoutAgent(), AI_AGENT: "claude" };
   }
 
-  test("asks an agent to report a CLI bug", async () => {
-    const output = await runOrgList(400, agentEnv());
+  test("asks an agent about a failed command", async () => {
+    const output = await runCli(["org", "list", "--fresh"], agentEnv());
     expect(output).toContain("Error:");
     expect(output).toContain(HINT);
     expect(output).toContain(
-      'cli feedback "<what you ran and what went wrong>"',
+      'cli feedback "<what you tried and what got in the way>"',
     );
   });
 
-  test("does not show for a person", async () => {
-    const output = await runOrgList(400, envWithoutAgent());
+  test("asks an agent about a user error", async () => {
+    const output = await runCli(["org", "list", "--fresh"], agentEnv(), 404);
     expect(output).toContain("Error:");
-    expect(output).not.toContain(HINT);
+    expect(output).toContain(HINT);
   });
 
-  test("does not show for a user error", async () => {
-    const output = await runOrgList(404, agentEnv());
+  test("asks an agent about an argument that does not parse", async () => {
+    const output = await runCli(["org", "list", "--no-such-flag"], agentEnv());
+    expect(output).toContain("no-such-flag");
+    expect(output).toContain(HINT);
+  });
+
+  test("asks an agent about an unknown command", async () => {
+    const output = await runCli(["cli", "no-such-command"], agentEnv());
+    expect(output).toContain("no-such-command");
+    expect(output).toContain(HINT);
+  });
+
+  test("does not show for a person", async () => {
+    const output = await runCli(["org", "list", "--fresh"], envWithoutAgent());
     expect(output).toContain("Error:");
     expect(output).not.toContain(HINT);
   });
 
   test("does not show while telemetry is off", async () => {
     sentryState.enabled = false;
-    const output = await runOrgList(400, agentEnv());
+    const output = await runCli(["org", "list", "--fresh"], agentEnv());
     expect(output).toContain("Error:");
     expect(output).not.toContain(HINT);
   });
 
   test("does not show in the sentry-mcp bundle", async () => {
     setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
-    const output = await runOrgList(400, agentEnv());
+    const output = await runCli(["org", "list", "--fresh"], agentEnv());
     expect(output).toContain("Error:");
     expect(output).not.toContain(HINT);
   });
