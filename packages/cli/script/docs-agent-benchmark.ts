@@ -45,9 +45,7 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import {
-  accessSync,
   chmodSync,
-  constants,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -212,24 +210,24 @@ const model =
   values.model ??
   (agent === "claude" ? "sonnet" : viaGateway ? "openai/gpt-5.5" : "gpt-5.5");
 
-function isExecutable(path: string): boolean {
-  try {
-    accessSync(path, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
+/**
+ * A directory whose `sentry` acts as if none is installed. Put first on the
+ * `web` arm's PATH, it hides only that name, not the rest of a shared bin
+ * directory such as `node` or `git`.
+ */
+function hiddenSentryDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "sentry-hidden-"));
+  writeFileSync(
+    join(dir, "sentry"),
+    '#!/bin/sh\necho "sentry: command not found" >&2\nexit 127\n',
+  );
+  chmodSync(join(dir, "sentry"), 0o755);
+  return dir;
 }
 
-/**
- * The PATH for an arm: without any directory that has a `sentry`, and with
- * this checkout's `sentry` first for the `cli` arm.
- */
-function pathFor(arm: Arm, binDir: string): string {
-  const kept = (process.env.PATH ?? "")
-    .split(delimiter)
-    .filter((dir) => dir && !isExecutable(join(dir, "sentry")));
-  return (arm === "cli" ? [binDir, ...kept] : kept).join(delimiter);
+/** The PATH for an arm: this checkout's `sentry` for `cli`, none for `web`. */
+function pathFor(arm: Arm, bins: Record<Arm, string>): string {
+  return [bins[arm], process.env.PATH].filter((dir) => dir).join(delimiter);
 }
 
 /** A directory with a `sentry` that runs this checkout's CLI. */
@@ -411,7 +409,7 @@ async function runClaude(
   arm: Arm,
   task: AgentTask,
   dir: string,
-  binDir: string,
+  bins: Record<Arm, string>,
 ): Promise<AgentReport> {
   const args = [
     "-p",
@@ -448,7 +446,7 @@ async function runClaude(
       ...process.env,
       CLAUDE_CONFIG_DIR: configDir,
       SENTRY_CLI_NO_TELEMETRY: "1",
-      PATH: pathFor(arm, binDir),
+      PATH: pathFor(arm, bins),
     },
   );
   rmSync(configDir, { recursive: true, force: true });
@@ -539,7 +537,7 @@ async function runCodex(
   arm: Arm,
   task: AgentTask,
   dir: string,
-  binDir: string,
+  bins: Record<Arm, string>,
   pricing: Pricing | undefined,
 ): Promise<AgentReport> {
   const home = writeCodexHome(arm);
@@ -563,7 +561,7 @@ async function runCodex(
       // Keep skills and settings under the real home out of the run.
       HOME: home,
       SENTRY_CLI_NO_TELEMETRY: "1",
-      PATH: pathFor(arm, binDir),
+      PATH: pathFor(arm, bins),
     },
   );
   rmSync(home, { recursive: true, force: true });
@@ -621,15 +619,15 @@ async function runOne(
   task: AgentTask,
   arm: Arm,
   run: number,
-  binDir: string,
+  bins: Record<Arm, string>,
   pricing: Pricing | undefined,
 ): Promise<RunResult> {
   const dir = writeRepo(task);
   try {
     const report =
       agent === "claude"
-        ? await runClaude(arm, task, dir, binDir)
-        : await runCodex(arm, task, dir, binDir, pricing);
+        ? await runClaude(arm, task, dir, bins)
+        : await runCodex(arm, task, dir, bins, pricing);
     const failed = failedChecks(task, dir);
     return {
       ...report,
@@ -737,6 +735,7 @@ function summarize(results: readonly RunResult[]): string {
 }
 
 const binDir = arms.includes("cli") ? sentryBinDir() : "";
+const bins: Record<Arm, string> = { cli: binDir, web: hiddenSentryDir() };
 const pricing = agent === "codex" ? await codexPricing() : undefined;
 if (binDir) {
   // Download the docs index once, so the first run does not pay for it.
@@ -749,7 +748,7 @@ if (binDir) {
 const jobs = tasks.flatMap((task) =>
   arms.flatMap((arm) =>
     Array.from({ length: runs }, (_, run) => async () => {
-      const result = await runOne(task, arm, run + 1, binDir, pricing);
+      const result = await runOne(task, arm, run + 1, bins, pricing);
       process.stderr.write(
         `${result.passed ? "pass" : "FAIL"} ${task.id} ${arm}#${run + 1} ${result.seconds.toFixed(0)}s ${kTokens(result.inputTokens)} in\n`,
       );
@@ -758,6 +757,7 @@ const jobs = tasks.flatMap((task) =>
   ),
 );
 const results = await pool(jobs, concurrency);
+rmSync(bins.web, { recursive: true, force: true });
 if (binDir) {
   rmSync(binDir, { recursive: true, force: true });
 }
