@@ -489,9 +489,10 @@ function recordTokenExchangeOutcome(
   });
 }
 
-function buildSuccessfulTokenExchangeResult<
-  TProps extends Record<string, unknown>,
->(props: TProps, accessTokenTTL: number): TokenExchangeCallbackResult {
+function buildSuccessfulTokenExchangeResult(
+  props: Record<string, unknown>,
+  accessTokenTTL: number,
+): TokenExchangeCallbackResult {
   return {
     newProps: props,
     accessTokenTTL,

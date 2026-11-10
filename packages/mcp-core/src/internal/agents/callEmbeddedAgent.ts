@@ -108,10 +108,7 @@ interface EmbeddedAgentResult<T> {
  * - Errors are re-thrown for the calling agent to handle
  * - Each agent can implement its own error handling strategy
  */
-export async function callEmbeddedAgent<
-  TOutput,
-  TSchema extends z.ZodType<TOutput, unknown>,
->({
+export async function callEmbeddedAgent<TOutput>({
   system,
   prompt,
   tools,
@@ -121,7 +118,7 @@ export async function callEmbeddedAgent<
   system: string;
   prompt: string;
   tools: Record<string, Tool>;
-  schema: TSchema;
+  schema: z.ZodType<TOutput>;
   /** Whether this step produced a result that permits a final response. */
   isReadyToFinalize?: (step: StepResult<Record<string, Tool>>) => boolean;
 }): Promise<EmbeddedAgentResult<TOutput>> {
