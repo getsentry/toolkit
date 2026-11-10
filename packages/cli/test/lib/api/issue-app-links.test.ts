@@ -156,7 +156,7 @@ describe("app issue-link action", () => {
       });
       expect(writes()).toHaveLength(1);
       expect(
-        new globalThis.URL(writes()[0]!.url).searchParams.get(
+        new globalThis.URL(writes()[0].url).searchParams.get(
           "expectedExternalIssueUrl",
         ),
       ).toBe(URL);
@@ -210,10 +210,10 @@ describe("app issue-link action", () => {
         link: links[0],
       });
       expect(
-        new globalThis.URL(writes()[0]!.url).searchParams.get(
+        new globalThis.URL(writes()[0].url).searchParams.get(
           "expectedExternalIssueUrl",
         ),
-      ).toBe(links[0]!.webUrl);
+      ).toBe(links[0].webUrl);
       expect(await writes()[0]?.json()).toMatchObject({
         uri: FORM.uri,
         issueId: "linear-uuid",
@@ -284,7 +284,7 @@ describe("app issue-link action", () => {
     });
     expect(await writes()[0]?.json()).toMatchObject({ task_id: "123" });
     expect(
-      new globalThis.URL(writes()[0]!.url).searchParams.get(
+      new globalThis.URL(writes()[0].url).searchParams.get(
         "expectedExternalIssueUrl",
       ),
     ).toBe(url);
@@ -349,9 +349,9 @@ describe("app issue-link action", () => {
         fields,
       });
       await linkAppIssue(prepared);
-      expect(await writes()[0]!.json()).toMatchObject({ url });
+      expect(await writes()[0].json()).toMatchObject({ url });
       expect(
-        new globalThis.URL(writes()[0]!.url).searchParams.get(
+        new globalThis.URL(writes()[0].url).searchParams.get(
           "expectedExternalIssueUrl",
         ),
       ).toBe(url);
@@ -506,7 +506,7 @@ describe("app issue-link action", () => {
     });
     await linkAppIssue(prepared);
     expect(
-      new globalThis.URL(writes()[0]!.url).searchParams.get(
+      new globalThis.URL(writes()[0].url).searchParams.get(
         "expectedExternalIssueUrl",
       ),
     ).toBe(URL);

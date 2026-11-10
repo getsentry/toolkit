@@ -827,7 +827,7 @@ describe("assignDefaultLayout", () => {
 
   test("unknown displayType uses fallback size 3x2", () => {
     const result = assignDefaultLayout(
-      { title: "Custom", displayType: "some_future_type" } as DashboardWidget,
+      { title: "Custom", displayType: "some_future_type" },
       [],
     );
     expect(result.layout).toMatchObject({ x: 0, y: 0, w: 3, h: 2 });
@@ -874,7 +874,7 @@ describe("stripWidgetServerFields", () => {
       ],
     };
     const result = stripWidgetServerFields(widget);
-    const query = result.queries![0]!;
+    const query = result.queries![0];
     expect(query.id).toBe("q1");
     expect(query).not.toHaveProperty("widgetId");
     expect(query).not.toHaveProperty("dateCreated");

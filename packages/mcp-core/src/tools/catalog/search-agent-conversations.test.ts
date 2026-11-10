@@ -199,7 +199,7 @@ describe("search_agent_conversations", () => {
         sampleTraceIds: string[];
       }>;
     }>(result);
-    const conversation = structuredContent.conversations[0]!;
+    const conversation = structuredContent.conversations[0];
 
     expect(conversation.firstInputPreview).toHaveLength(240);
     expect(conversation.firstInputPreview?.endsWith("...")).toBe(true);
@@ -315,7 +315,7 @@ describe("search_agent_conversations", () => {
       getServerContext(),
     );
 
-    const params = new URL(requestUrls[0]!).searchParams;
+    const params = new URL(requestUrls[0]).searchParams;
     expect(params.get("query")).toBe("failed");
     expect(params.get("sort")).toBe(null);
     expect(params.getAll("project")).toEqual(["4509109107622913"]);

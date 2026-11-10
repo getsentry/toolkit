@@ -8,6 +8,7 @@ export function getTextContent(result: unknown): string {
 }
 
 /** Returns structuredContent after checking the result has an object payload. */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- lets tests name the expected payload type
 export function getStructuredContent<T extends Record<string, unknown>>(
   result: unknown,
 ): T {

@@ -680,7 +680,7 @@ describe("entry format", () => {
     );
 
     const [file] = await readdir(cacheDir());
-    const raw = await readFile(join(cacheDir(), file!), "utf-8");
+    const raw = await readFile(join(cacheDir(), file), "utf-8");
     const stored = JSON.parse(raw) as { body: { encoding: string } };
     expect(["zstd", "br"]).toContain(stored.body.encoding);
     expect(raw.length).toBeLessThan(text.length);

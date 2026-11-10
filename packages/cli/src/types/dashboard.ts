@@ -106,7 +106,14 @@ export const DashboardWidgetQuerySchema = looseObject({
   conditions: optional(string()),
   columns: optional(array(string())),
   aggregates: optional(array(string())),
-  transformations: optional(record(string(), array(string()))),
+  transformations: optional(
+    pipe(
+      record(string(), array(string())),
+      description(
+        "Saved transformations in application order, keyed by zero-based aggregate position",
+      ),
+    ),
+  ),
   fieldAliases: optional(array(string())),
   orderby: optional(string()),
   fields: optional(array(string())),
@@ -978,7 +985,15 @@ export const TimeseriesResultSchema = object({
     array(
       object({
         label: pipe(string(), description("Series label")),
-        values: array(object({ timestamp: number(), value: number() })),
+        values: array(
+          object({
+            timestamp: number(),
+            value: pipe(
+              nullable(number()),
+              description("Bucket value, or null when nothing was measured"),
+            ),
+          }),
+        ),
         unit: resultUnit,
       }),
     ),
@@ -1005,7 +1020,10 @@ export const TableResultSchema = object({
 /** Single scalar value for big_number widgets */
 export const ScalarResultSchema = object({
   type: resultKind("scalar"),
-  value: pipe(number(), description("Current value")),
+  value: pipe(
+    nullable(number()),
+    description("Current value, or null when nothing was measured"),
+  ),
   previousValue: optional(
     pipe(number(), description("Value of the previous period")),
   ),

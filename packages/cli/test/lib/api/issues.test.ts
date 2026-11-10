@@ -175,7 +175,7 @@ describe("mergeIssues", () => {
     let capturedBody: unknown;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       capturedMethod = req.method;
       capturedBody = await req.json();

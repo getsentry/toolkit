@@ -75,7 +75,7 @@ function parseArgs(argv: readonly string[]): SweepArgs {
   const kneeThresholdPct = 0.03; // 3%
 
   for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i] as string;
+    const arg = argv[i];
     const next = argv[i + 1];
     switch (arg) {
       case "--size": {

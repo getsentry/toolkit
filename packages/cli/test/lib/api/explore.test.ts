@@ -32,7 +32,7 @@ describe("queryEvents", () => {
 
   function mockOk(body: unknown, headers: Record<string, string> = {}) {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       capturedMethod = req.method;
       return new Response(JSON.stringify(body), {
@@ -249,10 +249,10 @@ describe("queryEvents", () => {
     let callIndex = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
 
-      const resp = responses[callIndex]!;
+      const resp = responses[callIndex];
       callIndex += 1;
 
       return new Response(JSON.stringify(resp.body), {
@@ -380,7 +380,7 @@ describe("queryEventsTimeSeries", () => {
 
   function mockResponse(body: unknown, status = 200) {
     globalThis.fetch = mockFetch(async (input, init) => {
-      requests.push(new Request(input!, init));
+      requests.push(new Request(input, init));
       return new Response(JSON.stringify(body), {
         status,
         headers: { "Content-Type": "application/json" },
@@ -445,7 +445,7 @@ describe("queryEventsTimeSeries", () => {
 
     expect(result).toEqual(response);
     expect(requests).toHaveLength(1);
-    const request = requests[0]!;
+    const request = requests[0];
     const url = new URL(request.url);
     expect(request.method).toBe("GET");
     expect(url.origin).toBe("https://de.sentry.io");
@@ -509,7 +509,7 @@ describe("queryEventsTimeSeries", () => {
     });
 
     expect(result).toEqual(response);
-    const params = new URL(requests[0]!.url).searchParams;
+    const params = new URL(requests[0].url).searchParams;
     expect(params.getAll("yAxis")).toEqual([
       "max(timestamp)",
       "latest_event()",
@@ -532,7 +532,7 @@ describe("queryEventsTimeSeries", () => {
     });
 
     expect(result).toEqual({ timeSeries: [] });
-    const params = new URL(requests[0]!.url).searchParams;
+    const params = new URL(requests[0].url).searchParams;
     expect(params.get("dataset")).toBe("tracemetrics");
     expect(params.get("start")).toBe("2024-10-20T12:00:00Z");
     expect(params.get("end")).toBe("2024-10-20T13:00:00Z");
