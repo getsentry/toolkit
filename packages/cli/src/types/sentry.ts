@@ -612,7 +612,8 @@ export type RequestEntry = {
     fragment?: string | null;
     query?: [string, string][] | string | Record<string, string> | null;
     data?: unknown;
-    headers?: [string, string][] | Record<string, string> | null;
+    /** Stored events can contain null header rows. */
+    headers?: ([string, string] | null)[] | Record<string, string> | null;
     cookies?: [string, string][] | Record<string, string> | null;
     env?: Record<string, string> | null;
     inferredContentType?: string | null;

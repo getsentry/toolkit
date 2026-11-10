@@ -681,6 +681,58 @@ describe("formatEventDetails", () => {
     expect(result).toContain("Mozilla/5.0");
   });
 
+  test.each([
+    {
+      name: "array headers with malformed rows",
+      headers: [
+        null,
+        { name: "User-Agent", value: "invalid" },
+        [null, "invalid"],
+        ["User-Agent", null],
+        ["uSeR-aGeNt", "Mozilla/5.0"],
+      ],
+      userAgent: "Mozilla/5.0",
+    },
+    {
+      name: "object headers",
+      headers: { "User-Agent": "Mozilla/5.0" },
+      userAgent: "Mozilla/5.0",
+    },
+    {
+      name: "object headers with a null user agent",
+      headers: { "User-Agent": null },
+      userAgent: null,
+    },
+  ])("formats request details with $name", ({ headers, userAgent }) => {
+    const result = stripAnsi(
+      formatEventDetails(
+        createMockEvent({
+          entries: [
+            {
+              type: "request",
+              data: {
+                url: "https://api.example.com/users",
+                method: "POST",
+                headers,
+              },
+            },
+          ],
+          tags: [{ key: "environment", value: "production" }],
+        }),
+      ),
+    );
+
+    expect(result).toContain("POST https://api.example.com/users");
+    expect(result).toContain("environment");
+    expect(result).toContain("production");
+    if (userAgent) {
+      expect(result).toContain("User-Agent");
+      expect(result).toContain(userAgent);
+    } else {
+      expect(result).not.toContain("User-Agent");
+    }
+  });
+
   test("includes stack trace when present", () => {
     const result = stripAnsi(
       formatEventDetails(
