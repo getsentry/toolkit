@@ -132,12 +132,20 @@ describe("buildCategoricalChartModel", () => {
 });
 
 describe("rasterizeChart", () => {
-  test("declines dense nullable buckets instead of averaging across gaps", () => {
+  test("downsamples dense nullable buckets and keeps unmeasured columns empty", () => {
     const model = buildChartModel(makeTimeseries())!;
     model.series[0]!.values = [10, null, 20, 30, 40, 50, 60, 70, 80];
     model.buckets = 9;
 
-    expect(rasterizeChart(model, { width: 16, height: 8 })).toBeUndefined();
+    // 16px fits 8 one-pixel columns two pixels apart. Column 1 covers only
+    // the null bucket, so it stays empty and column 2 keeps bucket 2.
+    const image = rasterizeChart(model, { width: 16, height: 8 });
+    const bottomAlpha = (x: number) => image?.data[(7 * 16 + x) * 4 + 3] ?? 0;
+
+    expect(image).toBeDefined();
+    expect(bottomAlpha(0)).toBe(255);
+    expect(bottomAlpha(2)).toBe(0);
+    expect(bottomAlpha(4)).toBe(255);
   });
 
   test("returns a canvas at the requested resolution", () => {
