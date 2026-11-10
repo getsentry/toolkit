@@ -124,7 +124,7 @@ export function buildChartModel(
 
   const maxVal = stacked
     ? Math.max(...bucketTotals(series, buckets), 1)
-    : Math.max(...(series[0]?.values ?? []), 1);
+    : Math.max(...(series[0]?.values ?? []).filter((v) => v !== null), 1);
 
   return { kind: "timeseries", series, buckets, maxVal, stacked };
 }
@@ -136,7 +136,9 @@ export function buildCategoricalChartModel(
   const series = data.series
     .map((item) => ({
       label: item.label,
-      values: [item.values.reduce((total, value) => total + value.value, 0)],
+      values: [
+        item.values.reduce((total, value) => total + (value.value ?? 0), 0),
+      ],
     }))
     .sort((a, b) => {
       if (a.label === "Other") {
@@ -178,7 +180,8 @@ export function buildHeatmapModel(
     return;
   }
   const rows = data.series.map((s) => {
-    const vals = s.values.map((v) => v.value);
+    // Unmeasured cells take the lowest intensity, which renders blank.
+    const vals = s.values.map((v) => v.value ?? 0);
     // pad shorter rows so every row has exactly `buckets` columns
     return vals.length < buckets
       ? // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
