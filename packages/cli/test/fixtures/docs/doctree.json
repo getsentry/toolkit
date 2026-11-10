@@ -13,6 +13,61 @@
       },
       "children": [
         {
+          "path": "platforms/android",
+          "slug": "android",
+          "frontmatter": {
+            "title": "Android",
+            "description": "Learn how to set up Sentry for Android."
+          },
+          "children": [
+            {
+              "path": "platforms/android/data-management",
+              "slug": "data-management",
+              "frontmatter": {
+                "title": "Data Management"
+              },
+              "children": [
+                {
+                  "path": "platforms/android/data-management/sensitive-data",
+                  "slug": "sensitive-data",
+                  "frontmatter": {
+                    "title": "Scrubbing Sensitive Data",
+                    "description": "Learn about filtering or scrubbing sensitive data."
+                  },
+                  "children": []
+                }
+              ]
+            },
+            {
+              "path": "platforms/android/enriching-events",
+              "slug": "enriching-events",
+              "frontmatter": {
+                "title": "Enriching Events"
+              },
+              "children": [
+                {
+                  "path": "platforms/android/enriching-events/identify-user",
+                  "slug": "identify-user",
+                  "frontmatter": {
+                    "title": "Users",
+                    "description": "Learn how to configure the SDK to capture the user and gain critical pieces of information."
+                  },
+                  "children": []
+                }
+              ]
+            },
+            {
+              "path": "platforms/android/profiling",
+              "slug": "profiling",
+              "frontmatter": {
+                "title": "Set Up Android Profiling",
+                "description": "Learn how to enable profiling in your app."
+              },
+              "children": []
+            }
+          ]
+        },
+        {
           "path": "platforms/javascript",
           "slug": "javascript",
           "frontmatter": {
@@ -99,6 +154,15 @@
                     "description": "Learn how to set up Sentry in your Next.js application using the installation wizard and capture your first events."
                   },
                   "children": [
+                    {
+                      "path": "platforms/javascript/guides/nextjs/agent-tracing",
+                      "slug": "agent-tracing",
+                      "frontmatter": {
+                        "title": "Set Up Agent Tracing",
+                        "description": "Learn how to monitor AI agents in your Next.js app."
+                      },
+                      "children": []
+                    },
                     {
                       "path": "platforms/javascript/guides/nextjs/manual-setup",
                       "slug": "manual-setup",
@@ -229,6 +293,42 @@
           },
           "children": [
             {
+              "path": "platforms/python/tracing",
+              "slug": "tracing",
+              "frontmatter": {
+                "title": "Set Up Tracing",
+                "description": "Learn how to enable tracing in your app."
+              },
+              "children": []
+            },
+            {
+              "path": "platforms/python/profiling",
+              "slug": "profiling",
+              "frontmatter": {
+                "title": "Set Up Python Profiling",
+                "description": "Learn how to enable profiling in your app."
+              },
+              "children": []
+            },
+            {
+              "path": "platforms/python/data-management",
+              "slug": "data-management",
+              "frontmatter": {
+                "title": "Data Management"
+              },
+              "children": [
+                {
+                  "path": "platforms/python/data-management/sensitive-data",
+                  "slug": "sensitive-data",
+                  "frontmatter": {
+                    "title": "Scrubbing Sensitive Data",
+                    "description": "Learn about filtering or scrubbing sensitive data."
+                  },
+                  "children": []
+                }
+              ]
+            },
+            {
               "path": "platforms/python/integrations",
               "slug": "integrations",
               "frontmatter": {
@@ -294,6 +394,68 @@
                 "title": "Set Up Tracing",
                 "description": "Learn how to enable tracing in your app using the Sentry React Native SDK and discover valuable performance insights of your application."
               }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "api",
+      "slug": "api",
+      "frontmatter": {
+        "title": "API Reference"
+      },
+      "children": [
+        {
+          "path": "api/monitors",
+          "slug": "monitors",
+          "frontmatter": {
+            "title": "Monitors"
+          },
+          "children": [
+            {
+              "path": "api/monitors/create-an-alert-for-an-organization",
+              "slug": "create-an-alert-for-an-organization",
+              "frontmatter": {
+                "title": "Create an Alert for an Organization"
+              },
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "product",
+      "slug": "product",
+      "frontmatter": {
+        "title": "Product Walkthroughs"
+      },
+      "children": [
+        {
+          "path": "product/monitors-and-alerts",
+          "slug": "monitors-and-alerts",
+          "frontmatter": {
+            "title": "Monitors and Alerts"
+          },
+          "children": [
+            {
+              "path": "product/monitors-and-alerts/alerts",
+              "slug": "alerts",
+              "frontmatter": {
+                "title": "Alerts"
+              },
+              "children": [
+                {
+                  "path": "product/monitors-and-alerts/alerts/create-alerts",
+                  "slug": "create-alerts",
+                  "frontmatter": {
+                    "title": "Creating an Alert",
+                    "description": "Learn how to create alerts."
+                  },
+                  "children": []
+                }
+              ]
             }
           ]
         }

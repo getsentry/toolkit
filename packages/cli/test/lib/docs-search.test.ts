@@ -118,6 +118,66 @@ describe("searchDocs", () => {
     ).toBe("Celery");
   });
 
+  test("prefers the page whose title is just the topic", () => {
+    // "Set Up Agent Tracing" also matches "tracing"; "Set Up Tracing" is it.
+    expect(urls("nextjs tracing")[0]).toBe(
+      "/platforms/javascript/guides/nextjs/tracing.md",
+    );
+  });
+
+  test("matches other forms of a word", () => {
+    expect(urls("scrubbing python")[0]).toBe(
+      "/platforms/python/data-management/sensitive-data.md",
+    );
+    expect(urls("creating alerts")[0]).toBe(
+      "/product/monitors-and-alerts/alerts/create-alerts.md",
+    );
+  });
+
+  test("ranks API reference pages below product pages unless asked", () => {
+    expect(urls("create alert")[0]).toBe(
+      "/product/monitors-and-alerts/alerts/create-alerts.md",
+    );
+    expect(urls("api create alert")[0]).toBe(
+      "/api/monitors/create-an-alert-for-an-organization.md",
+    );
+  });
+
+  test("reads a framework word as its platform", () => {
+    // FastAPI's pages are all under Python, so this is Python profiling.
+    expect(urls("fastapi profiling")[0]).toBe("/platforms/python/profiling.md");
+  });
+
+  test("ranks pages of other platforms last when the query names one", () => {
+    const android = "/platforms/android/enriching-events/identify-user.md";
+    expect(urls("identify user")[0]).toBe(android);
+    expect(urls("identify user javascript")[0]).toBe(
+      "/platforms/javascript/guides/react/user-feedback.md",
+    );
+  });
+
+  test("lists a page that repeats across platforms once and says so", () => {
+    const outcome = searchDocs(index, {
+      query: "scrub sensitive data",
+      limit: 8,
+    });
+    const titles = outcome.results.map((result) => result.title);
+    expect(
+      titles.filter((title) => title === "Scrubbing Sensitive Data"),
+    ).toHaveLength(1);
+    expect(outcome.warnings[0]).toContain("exist for many platforms");
+    expect(
+      searchDocs(index, { query: "python scrub sensitive data", limit: 8 })
+        .warnings,
+    ).toEqual([]);
+  });
+
+  test("uses setup words to break ties", () => {
+    expect(urls("nextjs setup")[0]).toBe(
+      "/platforms/javascript/guides/nextjs/manual-setup.md",
+    );
+  });
+
   test("respects the limit", () => {
     expect(urls("tracing", undefined, 2)).toHaveLength(2);
   });
@@ -181,6 +241,42 @@ describe("searchDocs patterns", () => {
     expect(outcome.results[0]?.url).toBe(
       `${ORIGIN}/platforms/javascript/guides/nextjs/manual-setup.md`,
     );
-    expect(outcome.warnings[0]).toContain("is not a valid regular expression");
+    expect(outcome.warnings[0]).toContain("is not a usable regular expression");
+  });
+
+  test.each([
+    "^(.+)+X$",
+    "^([a-z/.-]+)+!$",
+    "(.*a){20}",
+    "(.|\\s)*X",
+    "/(\\w+)*$/i",
+  ])(
+    "refuses %s, which can take exponential time, instead of hanging",
+    (pattern) => {
+      const started = Date.now();
+      const outcome = searchDocs(index, {
+        query: "tracing",
+        patterns: [pattern],
+        limit: 3,
+      });
+      expect(Date.now() - started).toBeLessThan(1000);
+      expect(outcome.warnings[0]).toContain("several ways");
+      expect(outcome.results.length).toBeGreaterThan(0);
+    },
+  );
+
+  test.each([
+    "guides/(nextjs|react)/tracing$",
+    "guides/[^/]+/tracing$",
+    "(?:guides/)?nextjs",
+    "(\\d{2})+",
+    "(nextjs)+",
+  ])("keeps %s, which repeats nothing ambiguous", (pattern) => {
+    const outcome = searchDocs(index, {
+      query: "",
+      patterns: [pattern],
+      limit: 3,
+    });
+    expect(outcome.warnings).toEqual([]);
   });
 });

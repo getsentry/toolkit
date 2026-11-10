@@ -147,6 +147,13 @@ const GENERIC_WORDS = new Set([
 ]);
 
 /**
+ * Generic words that still say something next to specific words: "nextjs
+ * setup" means the setup page. They break ties between pages that match the
+ * same specific words.
+ */
+const SETUP_WORDS = new Set(["install", "set", "setup", "started", "up"]);
+
+/**
  * Leading words that the removed `docs list` / `docs query` / `docs search`
  * subcommands used, so old invocations keep working.
  */
@@ -163,8 +170,49 @@ const FIELD_WEIGHT = {
   path: 1.5,
   description: 1,
   breadcrumb: 1,
+  /** A page of the platform that a word such as `django` points to. */
+  platform: 0.75,
   prefix: 0.5,
 } as const;
+
+/**
+ * Breaks ties between pages that match the same words by how much of the
+ * title they cover: "Set Up Tracing" over "Set Up Agent Tracing".
+ */
+const TITLE_COVERAGE_WEIGHT = 1;
+
+/** Endings that make one word another form of it: `filter` → `filtering`. */
+const INFLECTIONS = ["s", "es", "ing", "ed", "er", "ers"];
+/** How much another form of a word counts, compared with the word itself. */
+const FORM_FACTOR = 0.9;
+/** How much a generic word such as `setup` counts next to specific words. */
+const WEAK_FACTOR = 0.3;
+
+/**
+ * Sections that only answer a query that asks for them: API reference pages
+ * repeat product topics ("Create an Alert for an Organization"), and SDK
+ * migration guides repeat feature names ("New Tracing APIs").
+ */
+const NICHE_SECTIONS = [
+  {
+    matches: (path: string) => path === "/api" || path.startsWith("/api/"),
+    words: new Set(["api", "apis", "endpoint", "endpoints", "rest"]),
+  },
+  {
+    matches: (path: string) => path.includes("/migration"),
+    words: new Set([
+      "migrate",
+      "migrating",
+      "migration",
+      "upgrade",
+      "upgrading",
+    ]),
+  },
+];
+const NICHE_SECTION_FACTOR = 0.6;
+
+/** The share of a word's path segments in one platform that points to it. */
+const PLATFORM_SHARE = 0.8;
 
 /** Lowercase, drop quote characters, and join `x.js` into one word. */
 function normalizeText(text: string): string {
@@ -272,6 +320,8 @@ function isOneEditAway(a: string, b: string): boolean {
 type Term = {
   readonly word: string;
   readonly alternatives: readonly string[];
+  /** The alternatives that are other forms of the word: `event` for `events`. */
+  readonly forms: ReadonlySet<string>;
 };
 
 /** A search's view of the index: the vocabulary, computed once. */
@@ -319,7 +369,56 @@ function correctTypo(context: SearchContext, word: string): string | undefined {
   return best?.token;
 }
 
-/** Turn query words into terms: joined pairs, typo corrections. */
+/**
+ * Whether `longer` is `word` with an inflection: `filter` → `filtering`,
+ * `scrub` → `scrubbing`, `create` → `creating`.
+ */
+function isInflection(word: string, longer: string): boolean {
+  const stems = word.endsWith("e") ? [word, word.slice(0, -1)] : [word];
+  return stems.some((stem) => {
+    if (longer.length <= stem.length || !longer.startsWith(stem)) {
+      return false;
+    }
+    const suffix = longer.slice(stem.length);
+    // A doubled final consonant: `scrub` → `scrubbing`.
+    const undoubled = suffix[0] === stem.at(-1) ? suffix.slice(1) : "";
+    return INFLECTIONS.includes(suffix) || INFLECTIONS.includes(undoubled);
+  });
+}
+
+/** Possible base forms of a word: `events` → `event`, `creating` → `create`. */
+function baseForms(word: string): string[] {
+  const forms: string[] = [];
+  for (const suffix of INFLECTIONS) {
+    if (word.endsWith(suffix) && word.length - suffix.length >= 3) {
+      const stem = word.slice(0, -suffix.length);
+      forms.push(stem, `${stem}e`);
+      if (stem.at(-1) === stem.at(-2)) {
+        forms.push(stem.slice(0, -1));
+      }
+    }
+  }
+  return forms;
+}
+
+/** Other forms of a word that the index contains. */
+function formsOf(context: SearchContext, word: string): string[] {
+  const bases = baseForms(word).filter(
+    (base) => frequency(context.index, base) > 0,
+  );
+  const forms = new Set(bases);
+  for (const base of [word, ...bases]) {
+    for (const token of context.vocabulary) {
+      if (isInflection(base, token)) {
+        forms.add(token);
+      }
+    }
+  }
+  forms.delete(word);
+  return [...forms];
+}
+
+/** Turn query words into terms: joined pairs, other forms, typo fixes. */
 function buildTerms(
   context: SearchContext,
   words: readonly string[],
@@ -335,6 +434,12 @@ function buildTerms(
   }
   return words.map((word, i) => {
     const alts = alternatives[i] ?? new Set([word]);
+    const forms = new Set(
+      formsOf(context, word).filter((form) => !alts.has(form)),
+    );
+    for (const form of forms) {
+      alts.add(form);
+    }
     const known =
       [...alts].some((alt) => frequency(context.index, alt) > 0) ||
       wordsStartingWith(context, word).length > 0;
@@ -345,7 +450,7 @@ function buildTerms(
         warnings.push(`Searched "${corrected}" for "${word}".`);
       }
     }
-    return { word, alternatives: [...alts] };
+    return { word, alternatives: [...alts], forms };
   });
 }
 
@@ -375,8 +480,14 @@ function fieldWeight(flags: number): number {
 /** The best score of one term on each page it matches. */
 function scoreTerm(context: SearchContext, term: Term): Map<number, number> {
   const scores = new Map<number, number>();
+  // Another form of the word counts as rare as the word itself, and a bit
+  // less than it: "sessions" must not beat "session" for being rarer.
+  const wordKnown = frequency(context.index, term.word) > 0;
   const add = (token: string, weightOf: (bits: number) => number): void => {
-    const tokenIdf = idf(context.index, token);
+    const tokenIdf =
+      term.forms.has(token) && wordKnown
+        ? idf(context.index, term.word) * FORM_FACTOR
+        : idf(context.index, token);
     for (const posting of postingsOf(context.index, token)) {
       const page = Math.floor(posting / FIELD_COUNT_SPAN);
       const score = weightOf(posting % FIELD_COUNT_SPAN) * tokenIdf;
@@ -385,16 +496,263 @@ function scoreTerm(context: SearchContext, term: Term): Map<number, number> {
       }
     }
   };
-  for (const alt of term.alternatives) {
+  const alternatives = new Set(term.alternatives);
+  for (const alt of alternatives) {
     add(alt, fieldWeight);
     for (const longer of wordsStartingWith(context, alt)) {
-      add(longer, () => FIELD_WEIGHT.prefix);
+      if (!alternatives.has(longer)) {
+        add(longer, () => FIELD_WEIGHT.prefix);
+      }
     }
   }
   return scores;
 }
 
-/** Normalize and compile one `-e` pattern, or return why it is invalid. */
+/** What a query word says about the platform. */
+type PlatformHint = {
+  readonly platform: string;
+  /** The word is the platform or one of its guides, so paths contain it. */
+  readonly inPath: boolean;
+  /** Some of the word's pages are under a guide, such as a JavaScript framework. */
+  readonly inGuide: boolean;
+};
+
+/**
+ * The platform a term points to: `python`, `nextjs` (a JavaScript guide),
+ * or `django`, whose pages are all under `/platforms/python/`.
+ */
+function platformHint(
+  context: SearchContext,
+  term: Term,
+): PlatformHint | undefined {
+  const counts = new Map<string, number>();
+  const guidePlatforms = new Set<string>();
+  let total = 0;
+  let inGuide = false;
+  // The word is a platform: `android`, whose name also appears in other
+  // platforms' paths (`/platforms/dotnet/guides/android`).
+  let named: string | undefined;
+  for (const alt of term.alternatives) {
+    for (const posting of postingsOf(context.index, alt)) {
+      if (!hasField(posting % FIELD_COUNT_SPAN, FIELD.segment)) {
+        continue;
+      }
+      total += 1;
+      const page = context.index.pages[Math.floor(posting / FIELD_COUNT_SPAN)];
+      const match = PLATFORM_GUIDE_RE.exec(page?.path ?? "");
+      if (!match?.[1]) {
+        continue;
+      }
+      const [prefix, platform, guide] = match;
+      counts.set(platform, (counts.get(platform) ?? 0) + 1);
+      inGuide ||= guide !== undefined;
+      if (platform.replace(SEGMENT_JOIN_RE, "") === alt) {
+        if (page?.path === prefix) {
+          named = platform;
+        }
+      } else if (guide?.replace(SEGMENT_JOIN_RE, "") === alt) {
+        guidePlatforms.add(platform);
+      }
+    }
+  }
+  if (named) {
+    return { platform: named, inPath: true, inGuide };
+  }
+  let best: [string, number] | undefined;
+  for (const entry of counts) {
+    if (!best || entry[1] > best[1]) {
+      best = entry;
+    }
+  }
+  // A guide name that is also a topic everywhere (Rust has a `tracing`
+  // guide) does not point to a platform; one such as `nextjs` does.
+  if (!best || best[1] < total * PLATFORM_SHARE) {
+    return;
+  }
+  return {
+    platform: best[0],
+    inPath: guidePlatforms.has(best[0]),
+    inGuide,
+  };
+}
+
+/**
+ * A word such as `django` or `fastapi`, an integration page of one platform,
+ * also matches that platform's other pages at a low weight, so "fastapi
+ * profiling" finds Python profiling rather than every platform's. Words
+ * that are a platform or guide (`python`, `nextjs`) are already in the
+ * paths, and so is a platform that another query word names.
+ */
+function scorePlatformPages(
+  context: SearchContext,
+  term: Term,
+  hint: PlatformHint,
+  hints: readonly (PlatformHint | undefined)[],
+  scores: Map<number, number>,
+): void {
+  if (
+    hint.inPath ||
+    hint.inGuide ||
+    hints.some((other) => other?.inPath && other.platform === hint.platform)
+  ) {
+    return;
+  }
+  const prefix = `/platforms/${hint.platform}/`;
+  const score = FIELD_WEIGHT.platform * idf(context.index, term.word);
+  context.index.pages.forEach((page, i) => {
+    if (!scores.has(i) && page.path.startsWith(prefix)) {
+      scores.set(i, score);
+    }
+  });
+}
+
+/** How much of a page's title the query covers, from 0 to 1. */
+function titleCoverage(title: string, askedWords: ReadonlySet<string>): number {
+  const words = tokenize(title).filter(
+    (word) => !FILLER_WORDS.has(word) && !GENERIC_WORDS.has(word),
+  );
+  if (words.length === 0) {
+    return 0;
+  }
+  return words.filter((word) => askedWords.has(word)).length / words.length;
+}
+
+/** Lower the score of a section page the query does not ask for. */
+function sectionFactor(path: string, askedWords: ReadonlySet<string>): number {
+  for (const section of NICHE_SECTIONS) {
+    if (
+      section.matches(path) &&
+      ![...section.words].some((word) => askedWords.has(word))
+    ) {
+      return NICHE_SECTION_FACTOR;
+    }
+  }
+  return 1;
+}
+
+/**
+ * The quantifier at `i`: where it ends, whether it can match its atom more
+ * than once, and whether the number of matches varies.
+ */
+function quantifierAt(
+  source: string,
+  i: number,
+): { end: number; repeats: boolean; varies: boolean } {
+  const char = source[i];
+  let end = i;
+  let repeats = false;
+  let varies = false;
+  if (char === "*" || char === "+") {
+    end = i + 1;
+    repeats = true;
+    varies = true;
+  } else if (char === "?") {
+    end = i + 1;
+    varies = true;
+  } else if (char === "{") {
+    const braces = /^\{(\d+)(,(\d*))?\}/.exec(source.slice(i));
+    if (braces) {
+      end = i + braces[0].length;
+      const [, min, comma, max] = braces;
+      const most = comma
+        ? max
+          ? Number(max)
+          : Number.POSITIVE_INFINITY
+        : Number(min);
+      repeats = most > 1;
+      varies = most !== Number(min);
+    }
+  }
+  // A lazy `?` after a quantifier.
+  if (end > i && source[end] === "?") {
+    end += 1;
+  }
+  return { end, repeats, varies };
+}
+
+/** The index after a `[...]` character class that starts at `i`. */
+function endOfClass(source: string, i: number): number {
+  let j = i + 1;
+  if (source[j] === "^") {
+    j += 1;
+  }
+  // A `]` right after `[` or `[^` is a literal.
+  if (source[j] === "]") {
+    j += 1;
+  }
+  while (j < source.length && source[j] !== "]") {
+    j += source[j] === "\\" ? 2 : 1;
+  }
+  return j + 1;
+}
+
+/** The index after the `?:`, `?=`, `?<name>`, … prefix of a group at `i`. */
+function afterGroupPrefix(source: string, i: number): number {
+  if (source[i + 1] !== "?") {
+    return i + 1;
+  }
+  if (source[i + 2] === "<" && source[i + 3] !== "=" && source[i + 3] !== "!") {
+    const close = source.indexOf(">", i + 3);
+    return close >= 0 ? close + 1 : i + 3;
+  }
+  return source[i + 2] === "<" ? i + 4 : i + 3;
+}
+
+/**
+ * Whether a pattern repeats a group that can match the same text in several
+ * ways, such as `(a+)+`, `(.*a){20}`, or `(.|\s)*`. On a page that does not
+ * match, the regex engine tries every way, which takes exponential time, so
+ * one such `-e` would hang the command. A group is ambiguous when it holds a
+ * variable repeat, an alternation, or a backreference.
+ */
+function repeatsAmbiguousGroup(source: string): boolean {
+  const stack: { ambiguous: boolean }[] = [{ ambiguous: false }];
+  let i = 0;
+  while (i < source.length) {
+    const top = stack.at(-1) as { ambiguous: boolean };
+    const char = source[i];
+    if (char === "(") {
+      stack.push({ ambiguous: false });
+      i = afterGroupPrefix(source, i);
+      continue;
+    }
+    if (char === ")") {
+      const group = stack.length > 1 ? (stack.pop() as typeof top) : top;
+      const quantifier = quantifierAt(source, i + 1);
+      if (quantifier.repeats && group.ambiguous) {
+        return true;
+      }
+      const parent = stack.at(-1) as typeof top;
+      parent.ambiguous ||= group.ambiguous || quantifier.varies;
+      i = Math.max(quantifier.end, i + 1);
+      continue;
+    }
+    if (char === "|") {
+      top.ambiguous = true;
+      i += 1;
+      continue;
+    }
+    let atomEnd = i + 1;
+    if (char === "[") {
+      atomEnd = endOfClass(source, i);
+    } else if (char === "\\") {
+      const next = source[i + 1] ?? "";
+      if (/[1-9k]/.test(next)) {
+        top.ambiguous = true;
+      }
+      atomEnd = i + 2;
+      if ("pPu".includes(next) && source[atomEnd] === "{") {
+        atomEnd = source.indexOf("}", atomEnd) + 1 || source.length;
+      }
+    }
+    const quantifier = quantifierAt(source, atomEnd);
+    top.ambiguous ||= quantifier.varies;
+    i = Math.max(quantifier.end, atomEnd);
+  }
+  return false;
+}
+
+/** Normalize and compile one `-e` pattern, or return why it is unusable. */
 function compilePattern(raw: string): RegExp | SyntaxError {
   // Quotes that survived the shell around the whole pattern.
   let source = raw.trim().replace(WRAPPING_QUOTES_RE, "").trim();
@@ -407,7 +765,13 @@ function compilePattern(raw: string): RegExp | SyntaxError {
     source = source.replace(TRAILING_MD_RE, "") || source;
   }
   try {
-    return new RegExp(source, "i");
+    const regex = new RegExp(source, "i");
+    if (repeatsAmbiguousGroup(source)) {
+      return new SyntaxError(
+        "it repeats a group that can match the same text in several ways, such as (a+)+, which can take minutes to run; use a single repeat such as [^/]+ or .*",
+      );
+    }
+    return regex;
   } catch (error) {
     return error instanceof SyntaxError
       ? error
@@ -455,11 +819,14 @@ function toResult(index: DocsIndex, i: number): DocsSearchResult {
 /**
  * Pages that repeat across guides (the Vite source-map page exists under
  * every JavaScript guide) collapse to one result unless the query names the
- * guide. Returns `undefined` when the page should never collapse.
+ * guide. When the query names no platform, pages that repeat across
+ * platforms ("Scrubbing Sensitive Data") collapse too. Returns `undefined`
+ * when the page should never collapse.
  */
 function duplicateKey(
   page: DocsIndexPage,
   askedWords: ReadonlySet<string>,
+  acrossPlatforms: boolean,
 ): string | undefined {
   const match = PLATFORM_GUIDE_RE.exec(page.path);
   if (!match) {
@@ -473,18 +840,31 @@ function duplicateKey(
       return;
     }
   }
-  return `${platform}\u0000${page.title}\u0000${page.path.slice(prefix.length)}`;
+  const suffix = page.path.slice(prefix.length);
+  return acrossPlatforms
+    ? `${page.title}\u0000${suffix}`
+    : `${platform}\u0000${page.title}\u0000${suffix}`;
 }
 
-/** Split the query into words, dropping legacy subcommands and filler. */
-function queryWords(query: string): string[] {
+/**
+ * Split the query into words, dropping legacy subcommands and filler. When
+ * the query has specific words, its generic words are dropped, and the
+ * setup words among them only break ties.
+ */
+function queryWords(query: string): { words: string[]; weak: string[] } {
   const words = tokenize(query);
   if (words.length > 1 && LEGACY_SUBCOMMANDS.has(words[0] ?? "")) {
     words.shift();
   }
   const kept = words.filter((word) => !FILLER_WORDS.has(word));
   const specific = kept.filter((word) => !GENERIC_WORDS.has(word));
-  return [...new Set(specific.length > 0 ? specific : kept)];
+  if (specific.length === 0) {
+    return { words: [...new Set(kept)], weak: [] };
+  }
+  return {
+    words: [...new Set(specific)],
+    weak: [...new Set(kept.filter((word) => SETUP_WORDS.has(word)))],
+  };
 }
 
 /** Search the index. */
@@ -511,7 +891,7 @@ export function searchDocs(
       regexes.push(compiled);
     } else {
       warnings.push(
-        `"${pattern}" is not a valid regular expression (${compiled.message}); searched its words instead.`,
+        `"${pattern}" is not a usable regular expression (${compiled.message}); searched its words instead.`,
       );
       query = `${query} ${pattern}`;
     }
@@ -529,7 +909,7 @@ export function searchDocs(
     index,
     vocabulary: Object.keys(index.postings),
   };
-  const words = queryWords(query);
+  const { words, weak } = queryWords(query);
   if (words.length === 0 && regexes.length === 0) {
     warnings.push(
       'The query has no topic words; add one, such as "nextjs tracing".',
@@ -538,6 +918,27 @@ export function searchDocs(
   }
   const terms = buildTerms(context, words, warnings);
 
+  const hints = terms.map((term) => platformHint(context, term));
+  // Platforms the query names outright (`python`, `nextjs`); a word that
+  // only happens to appear under one platform does not name it.
+  const namedPlatforms = new Set(
+    hints.flatMap((hint) =>
+      hint?.inPath ? [`/platforms/${hint.platform}`] : [],
+    ),
+  );
+  /** A platform page that is not of a platform the query names. */
+  const otherPlatform = (path: string): boolean =>
+    namedPlatforms.size > 0 &&
+    path.startsWith("/platforms/") &&
+    ![...namedPlatforms].some(
+      (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+    );
+  const weakScores = new Map<number, number>();
+  for (const term of buildTerms(context, weak, [])) {
+    for (const [page, score] of scoreTerm(context, term)) {
+      weakScores.set(page, (weakScores.get(page) ?? 0) + score * WEAK_FACTOR);
+    }
+  }
   const totals = new Map<number, { matched: number; score: number }>();
   if (terms.length === 0) {
     allowed?.forEach((ok, page) => {
@@ -546,8 +947,18 @@ export function searchDocs(
       }
     });
   }
-  for (const term of terms) {
-    for (const [page, score] of scoreTerm(context, term)) {
+  // Pages that match a query word itself; a platform match alone is not one.
+  const wordMatches = new Set<number>();
+  terms.forEach((term, t) => {
+    const scores = scoreTerm(context, term);
+    for (const page of scores.keys()) {
+      wordMatches.add(page);
+    }
+    const hint = hints[t];
+    if (hint) {
+      scorePlatformPages(context, term, hint, hints, scores);
+    }
+    for (const [page, score] of scores) {
       if (allowed && !allowed[page]) {
         continue;
       }
@@ -556,17 +967,32 @@ export function searchDocs(
       total.score += score;
       totals.set(page, total);
     }
-  }
+  });
 
-  // Shallower pages (overviews, setup) win ties over deep sub-pages.
-  const ranked = [...totals].map(([page, total]) => ({
-    page,
-    matched: total.matched,
-    score:
-      total.score - (index.pages[page]?.path.split("/").length ?? 0) * 0.05,
-  }));
+  const askedWords = new Set(terms.flatMap((term) => term.alternatives));
+  const matching = [...totals].filter(
+    ([page]) => terms.length === 0 || wordMatches.has(page),
+  );
+  const ranked = matching.map(([page, total]) => {
+    const { path, title } = index.pages[page] as DocsIndexPage;
+    return {
+      page,
+      other: otherPlatform(path),
+      matched: total.matched,
+      score:
+        (total.score +
+          (weakScores.get(page) ?? 0) +
+          TITLE_COVERAGE_WEIGHT * titleCoverage(title, askedWords)) *
+          sectionFactor(path, askedWords) -
+        // Shallower pages (overviews, setup) win ties over deep sub-pages.
+        path.split("/").length * 0.05,
+    };
+  });
+  // Pages of a platform the query does not name come last: "identify user
+  // javascript" must not answer with Android's page.
   ranked.sort(
     (a, b) =>
+      Number(a.other) - Number(b.other) ||
       b.matched - a.matched ||
       b.score - a.score ||
       (index.pages[a.page]?.path ?? "").localeCompare(
@@ -574,24 +1000,40 @@ export function searchDocs(
       ),
   );
 
-  const askedWords = new Set(terms.flatMap((term) => term.alternatives));
+  // Copies across platforms collapse only when no word points to a platform.
+  const acrossPlatforms = !hints.some(Boolean);
   const results: DocsSearchResult[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
+  let collapsedTitle: string | undefined;
   for (const { page } of ranked) {
-    if (results.length >= options.limit) {
-      break;
-    }
     const key =
       regexes.length > 0
         ? undefined
-        : duplicateKey(index.pages[page] as DocsIndexPage, askedWords);
+        : duplicateKey(
+            index.pages[page] as DocsIndexPage,
+            askedWords,
+            acrossPlatforms,
+          );
     if (key !== undefined) {
-      if (seen.has(key)) {
+      const copies = seen.get(key) ?? 0;
+      seen.set(key, copies + 1);
+      if (copies > 0) {
+        if (acrossPlatforms && seen.size <= options.limit) {
+          collapsedTitle ??= index.pages[page]?.title;
+        }
         continue;
       }
-      seen.add(key);
     }
-    results.push(toResult(index, page));
+    if (results.length < options.limit) {
+      results.push(toResult(index, page));
+    } else if (!acrossPlatforms || collapsedTitle) {
+      break;
+    }
+  }
+  if (collapsedTitle) {
+    warnings.push(
+      `Pages such as "${collapsedTitle}" exist for many platforms and are listed once; add a platform or framework, such as "python" or "nextjs", for its page.`,
+    );
   }
   return { results, warnings };
 }
