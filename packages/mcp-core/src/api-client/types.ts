@@ -38,6 +38,7 @@
  * }
  * ```
  */
+import type { UpdateOrganizationIssueData } from "@sentry/api";
 import type { z } from "zod";
 import type {
   AgenticOnboardingRunSchema,
@@ -215,13 +216,18 @@ export type Issue = z.infer<typeof IssueSchema>;
 export type IssueActivity = z.infer<typeof IssueActivitySchema>;
 export type IssueComment = z.infer<typeof IssueCommentSchema>;
 
+type IssueUpdateStatusDetails = NonNullable<
+  NonNullable<UpdateOrganizationIssueData["body"]>["statusDetails"]
+>;
+
 /**
- * `statusDetails` that resolve an issue in a specific release or commit.
- * Sentry validates both against its own release and commit records.
+ * `statusDetails` that resolve an issue in a specific release or commit,
+ * narrowed from the `@sentry/api` issue update body. Sentry validates both
+ * against its own release and commit records.
  */
 export type IssueResolutionDetails =
-  | { inRelease: string }
-  | { inCommit: { commit: string; repository: string } };
+  | Required<Pick<IssueUpdateStatusDetails, "inRelease">>
+  | Required<Pick<IssueUpdateStatusDetails, "inCommit">>;
 export type Monitor = z.infer<typeof MonitorSchema>;
 export type MonitorCheckIn = z.infer<typeof MonitorCheckInSchema>;
 export type MonitorStat = z.infer<typeof MonitorStatSchema>;

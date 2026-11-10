@@ -256,6 +256,28 @@ function buildResolution(
   };
 }
 
+function isResolutionAlreadySet(
+  issue: Issue,
+  resolution: IssueResolutionDetails,
+): boolean {
+  if (issue.status !== "resolved") {
+    return false;
+  }
+
+  const statusDetails = getIssueStatusDetails(issue);
+
+  if ("inRelease" in resolution) {
+    return (
+      getStatusDetailString(statusDetails, "inRelease") === resolution.inRelease
+    );
+  }
+
+  return (
+    getResolvedCommitId(statusDetails)?.toLowerCase() ===
+    resolution.inCommit.commit.toLowerCase()
+  );
+}
+
 function isStatusAlreadySet(
   issue: Issue,
   status: string | undefined,
@@ -265,10 +287,8 @@ function isStatusAlreadySet(
     return false;
   }
 
-  // Sentry leaves an already resolved issue as it is, so resolving it again
-  // in a release or commit is a no-op that reports the current resolution.
   if (resolution) {
-    return issue.status === "resolved";
+    return isResolutionAlreadySet(issue, resolution);
   }
 
   const currentStatus = getIssueStatusDisplay(issue);
@@ -941,6 +961,14 @@ export default defineTool({
       params.status,
       resolution,
     );
+
+    // Sentry leaves an already resolved issue as it is, so a different release
+    // or commit resolution would silently do nothing.
+    if (resolution && !statusAlreadySet && currentIssue.status === "resolved") {
+      throw new UserInputError(
+        `The issue is already resolved (\`${getIssueStatusDisplay(currentIssue)}\`). To resolve it in a different release or commit, first set \`status\` to \`unresolved\`, then resolve it again.`,
+      );
+    }
 
     let updateStatus = statusAlreadySet ? undefined : params.status;
     const updateAssignedTo = assignmentAlreadySet
