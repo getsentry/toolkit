@@ -156,6 +156,22 @@ describe("searchDocs", () => {
     );
   });
 
+  test("keeps every platform the query names", () => {
+    // `django` names a Python page, so Python is not ranked as "other".
+    const results = urls("nextjs django");
+    expect(results).toContain("/platforms/python/integrations/django.md");
+    expect(
+      results.indexOf("/platforms/python/integrations/django.md"),
+    ).toBeLessThan(3);
+  });
+
+  test("does not read a different word as another form", () => {
+    // `user` is not a form of `use`, so Android's "Users" page is no match.
+    expect(urls("use")).not.toContain(
+      "/platforms/android/enriching-events/identify-user.md",
+    );
+  });
+
   test("lists a page that repeats across platforms once and says so", () => {
     const outcome = searchDocs(index, {
       query: "scrub sensitive data",

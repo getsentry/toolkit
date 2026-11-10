@@ -181,8 +181,11 @@ const FIELD_WEIGHT = {
  */
 const TITLE_COVERAGE_WEIGHT = 1;
 
-/** Endings that make one word another form of it: `filter` → `filtering`. */
-const INFLECTIONS = ["s", "es", "ing", "ed", "er", "ers"];
+/**
+ * Endings that make one word another form of it: `filter` → `filtering`.
+ * Not `er`, which makes a different word: `use` → `user`, `log` → `logger`.
+ */
+const INFLECTIONS = ["s", "es", "ing", "ed"];
 /** How much another form of a word counts, compared with the word itself. */
 const FORM_FACTOR = 0.9;
 /** How much a generic word such as `setup` counts next to specific words. */
@@ -515,6 +518,12 @@ type PlatformHint = {
   readonly inPath: boolean;
   /** Some of the word's pages are under a guide, such as a JavaScript framework. */
   readonly inGuide: boolean;
+  /**
+   * The word names the platform or one of its pages, such as `django` for
+   * `/platforms/python/integrations/django`, rather than only appearing in
+   * its paths (`identify` in `identify-user`).
+   */
+  readonly names: boolean;
 };
 
 /**
@@ -527,6 +536,8 @@ function platformHint(
 ): PlatformHint | undefined {
   const counts = new Map<string, number>();
   const guidePlatforms = new Set<string>();
+  // Platforms with a page whose last path segment is the word.
+  const pagePlatforms = new Set<string>();
   let total = 0;
   let inGuide = false;
   // The word is a platform: `android`, whose name also appears in other
@@ -546,6 +557,11 @@ function platformHint(
       const [prefix, platform, guide] = match;
       counts.set(platform, (counts.get(platform) ?? 0) + 1);
       inGuide ||= guide !== undefined;
+      // The word itself, not a compound such as `identifyuser`.
+      const slug = page?.path.split("/").at(-1)?.replace(SEGMENT_JOIN_RE, "");
+      if (alt === term.alternatives[0] && slug === alt) {
+        pagePlatforms.add(platform);
+      }
       if (platform.replace(SEGMENT_JOIN_RE, "") === alt) {
         if (page?.path === prefix) {
           named = platform;
@@ -556,7 +572,7 @@ function platformHint(
     }
   }
   if (named) {
-    return { platform: named, inPath: true, inGuide };
+    return { platform: named, inPath: true, inGuide, names: true };
   }
   let best: [string, number] | undefined;
   for (const entry of counts) {
@@ -569,10 +585,12 @@ function platformHint(
   if (!best || best[1] < total * PLATFORM_SHARE) {
     return;
   }
+  const inPath = guidePlatforms.has(best[0]);
   return {
     platform: best[0],
-    inPath: guidePlatforms.has(best[0]),
+    inPath,
     inGuide,
+    names: inPath || pagePlatforms.has(best[0]),
   };
 }
 
@@ -919,11 +937,11 @@ export function searchDocs(
   const terms = buildTerms(context, words, warnings);
 
   const hints = terms.map((term) => platformHint(context, term));
-  // Platforms the query names outright (`python`, `nextjs`); a word that
+  // Platforms the query names (`python`, `nextjs`, `django`); a word that
   // only happens to appear under one platform does not name it.
   const namedPlatforms = new Set(
     hints.flatMap((hint) =>
-      hint?.inPath ? [`/platforms/${hint.platform}`] : [],
+      hint?.names ? [`/platforms/${hint.platform}`] : [],
     ),
   );
   /** A platform page that is not of a platform the query names. */
