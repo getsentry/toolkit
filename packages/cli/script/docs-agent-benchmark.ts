@@ -22,9 +22,11 @@
  * MCP servers, and no skills, so nothing such as a Sentry docs MCP server
  * or the sentry-cli skill leaks into either arm.
  *
- * Requirements: Claude Code (`claude`, or CLAUDE_BIN) and ANTHROPIC_API_KEY.
- * The `cli` arm needs the bundled CLI (`pnpm run bundle`) or
- * SENTRY_CLI_BINARY.
+ * Requirements: Claude Code (`claude`, or CLAUDE_BIN) and ANTHROPIC_API_KEY,
+ * or an Anthropic-compatible gateway through ANTHROPIC_BASE_URL and
+ * ANTHROPIC_AUTH_TOKEN (for OpenRouter, `https://openrouter.ai/api` and an
+ * OpenRouter key). The `cli` arm needs the bundled CLI (`pnpm run bundle`)
+ * or SENTRY_CLI_BINARY.
  *
  * Usage:
  *   pnpm run bench:docs-agent                          # every task, both arms
@@ -139,9 +141,9 @@ const claudeBin = process.env.CLAUDE_BIN ?? "claude";
 if (tasks.length === 0 || arms.length === 0) {
   throw new Error("No tasks or arms selected.");
 }
-if (!process.env.ANTHROPIC_API_KEY) {
+if (!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)) {
   throw new Error(
-    "Set ANTHROPIC_API_KEY: each run uses a fresh Claude Code config directory, so a login does not carry over.",
+    "Set ANTHROPIC_API_KEY, or ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN: each run uses a fresh Claude Code config directory, so a login does not carry over.",
   );
 }
 
