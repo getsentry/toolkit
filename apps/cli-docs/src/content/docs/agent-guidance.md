@@ -208,20 +208,37 @@ sentry release deploy my-org/1.0.0 production
 - `--auto` requires a Sentry repository integration (GitHub/GitLab/Bitbucket) **and** a local git checkout. It matches your `origin` remote against Sentry's repo list. Without a checkout, use `--local`.
 - With no flag, `set-commits` tries `--auto` first and falls back to `--local` on failure.
 
-### View Agent Conversations
+### Investigate AI Agents
+
+Start with aggregates to find what stands out, then read the conversations behind it.
+Agent spans carry `gen_ai.operation.type`: `ai_client` for model calls, `tool` for
+tool calls, and `agent` for agent runs. Filter on one type, group by the attribute you
+care about, and pick an aggregate:
+
+- Group by `gen_ai.tool.name`, `gen_ai.request.model`, or `gen_ai.agent.name`.
+- Usage is `count()`, failures are `failure_rate()`, latency is `p95(span.duration)`,
+  tokens are `sum(gen_ai.usage.total_tokens)`, cost in USD is
+  `sum(gen_ai.cost.total_tokens)`, and conversations are
+  `count_unique(gen_ai.conversation.id)`.
+- To rank by number of failures, sort by `equation|failure_rate() * count()`.
+  `failure_rate()` alone puts rarely used items first.
+- `--time-series` cannot group, so chart one item at a time by adding it to `--query`.
 
 ```bash
-# List recent agent conversations (org auto-detected)
-sentry agent-conversation list
+# 1. Which tools are used most, and how often do they fail?
+sentry explore my-org/my-agent --dataset spans -F gen_ai.tool.name -F "count()" \
+  -F "failure_rate()" -q "gen_ai.operation.type:tool" --sort "-count()" --period 7d
 
-# Explicit org, last 24 hours
-sentry agent-conversation list my-org/ --period 24h
+# 2. Which models cost the most?
+sentry explore my-org/my-agent --dataset spans -F gen_ai.request.model -F "count()" \
+  -F "sum(gen_ai.usage.total_tokens)" -F "sum(gen_ai.cost.total_tokens)" \
+  -q "gen_ai.operation.type:ai_client" --sort "-sum(gen_ai.cost.total_tokens)" --period 7d
 
-# View a conversation transcript
-sentry agent-conversation view my-org/conv-123
+# 3. Find conversations behind a result, such as ones that used a tool
+sentry agent-conversation list my-org/my-agent -q "gen_ai.tool.name:search_issues" --period 7d
 
-# JSON output for programmatic access
-sentry agent-conversation view conv-123 --json
+# 4. Read one conversation's transcript
+sentry agent-conversation view my-org/conv-123 --json
 ```
 
 ### Process WebAssembly Modules
