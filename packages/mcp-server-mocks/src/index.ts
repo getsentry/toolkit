@@ -366,7 +366,7 @@ export const restHandlers = buildHandlers([
             stage: "connect_mcp",
             status: "completed",
             eventNote: null,
-            extra: null,
+            extra: { method: "mcp" },
           },
         ],
       });

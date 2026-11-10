@@ -10193,6 +10193,40 @@
                 },
                 "stage": {
                   "type": "string",
+                  "enum": ["connect_agent", "connect_mcp"],
+                  "description": "Report progress while connecting to the user's Sentry account. connect_mcp is accepted as an older name."
+                }
+              },
+              "required": ["status", "stage"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "waiting",
+                    "completed",
+                    "skipped",
+                    "failed"
+                  ],
+                  "description": "The stage's current status."
+                },
+                "runStatus": {
+                  "description": "Set only when the entire onboarding run has completed or failed.",
+                  "type": "string",
+                  "enum": ["completed", "failed"]
+                },
+                "eventNote": {
+                  "description": "Short context to display with this progress event. Required when status is failed.",
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "stage": {
+                  "type": "string",
                   "const": "create_project",
                   "description": "Report progress while creating or selecting Sentry projects."
                 },
@@ -10298,7 +10332,6 @@
                 "stage": {
                   "type": "string",
                   "enum": [
-                    "connect_mcp",
                     "analyze_project",
                     "instrument_app",
                     "plan_test_error",
