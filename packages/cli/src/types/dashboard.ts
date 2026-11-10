@@ -106,7 +106,14 @@ export const DashboardWidgetQuerySchema = looseObject({
   conditions: optional(string()),
   columns: optional(array(string())),
   aggregates: optional(array(string())),
-  transformations: optional(record(string(), array(string()))),
+  transformations: optional(
+    pipe(
+      record(string(), array(string())),
+      description(
+        "Saved transformations in application order, keyed by zero-based aggregate position",
+      ),
+    ),
+  ),
   fieldAliases: optional(array(string())),
   orderby: optional(string()),
   fields: optional(array(string())),
