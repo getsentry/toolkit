@@ -317,7 +317,11 @@ export async function linkAppIssue(
     (installation) =>
       installation.app.slug === appSlug && installation.status === "installed",
   );
-  if (installed.length !== 1)
+  if (installed.length === 0)
+    throw new UserInputError(
+      `The '${appSlug}' Sentry App is not installed in organization '${params.organizationSlug}', so Sentry cannot link this issue to it. Someone who can manage integrations must install it under Settings > Integrations in Sentry, then retry.`,
+    );
+  if (installed.length > 1)
     throw new UserInputError(`Expected one installed Sentry App '${appSlug}'.`);
   const installation = installed[0]!;
   const matchingComponents = components.filter(
