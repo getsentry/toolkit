@@ -4,40 +4,50 @@
  *
  * Each task in `docs-agent-benchmark.json` is a small repository and a
  * request phrased the way a person asks a coding agent ("Report errors from
- * this Phoenix app to Sentry"). Claude Code runs every task twice, in a fresh
- * copy of the repository, with the same tools. The only difference is one
- * line about where Sentry documentation comes from:
+ * this Phoenix app to Sentry"). A coding agent, Claude Code or Codex
+ * (`--agent`), runs every task twice, in a fresh copy of the repository,
+ * with the same tools. The only difference is one line about where Sentry
+ * documentation comes from:
  *
  * - `web`: "For Sentry documentation, fetch docs from the web."
  * - `cli`: "For Sentry documentation, use the `sentry docs` command."
  *
  * The agent decides when it knows enough. Afterwards the repository is graded
  * with the task's checks (the right package, init call, or config), and the
- * run's wall time, tokens, and cost come from Claude Code's own report.
+ * run's wall time and tokens come from the agent's own report. Claude Code
+ * reports its cost; for Codex the cost is priced from the AI Gateway's
+ * public model list.
  * Tokens include every page the agent read along the way, so a detour
  * through the wrong pages shows up as cost even when the result is right.
  *
- * Runs are isolated from the machine's Claude Code setup: a fresh config
- * directory per run (no CLAUDE.md, memory, or login), no settings files, no
+ * Runs are isolated from the machine's agent setup: a fresh config directory
+ * per run (no CLAUDE.md, AGENTS.md, memory, or login), no settings files, no
  * MCP servers, and no skills, so nothing such as a Sentry docs MCP server
- * or the sentry-cli skill leaks into either arm.
+ * or the sentry-cli skill leaks into either arm. The `web` arm also runs
+ * without any `sentry` that is already on the PATH.
  *
- * Requirements: Claude Code (`claude`, or CLAUDE_BIN) and ANTHROPIC_API_KEY,
- * or an Anthropic-compatible gateway through ANTHROPIC_BASE_URL and
- * ANTHROPIC_AUTH_TOKEN (for OpenRouter, `https://openrouter.ai/api` and an
- * OpenRouter key). The `cli` arm needs the bundled CLI (`pnpm run bundle`)
- * or SENTRY_CLI_BINARY.
+ * Requirements:
+ * - Claude Code (`claude`, or CLAUDE_BIN) with ANTHROPIC_API_KEY, or an
+ *   Anthropic-compatible gateway through ANTHROPIC_BASE_URL and
+ *   ANTHROPIC_AUTH_TOKEN (for example `https://ai-gateway.vercel.sh`).
+ * - Codex (`codex`, or CODEX_BIN) with OPENAI_API_KEY, or AI_GATEWAY_API_KEY
+ *   to go through the Vercel AI Gateway.
+ * - For the `cli` arm, the bundled CLI (`pnpm run bundle`) or
+ *   SENTRY_CLI_BINARY.
  *
  * Usage:
  *   pnpm run bench:docs-agent                          # every task, both arms
  *   pnpm run bench:docs-agent -- --runs 3              # repeat to average out noise
+ *   pnpm run bench:docs-agent -- --agent codex         # Codex instead of Claude Code
  *   pnpm run bench:docs-agent -- --tasks hono-cloudflare,php-plain
  *   pnpm run bench:docs-agent -- --json results.json   # save every run
  */
 
 import { execFileSync, spawn } from "node:child_process";
 import {
+  accessSync,
   chmodSync,
+  constants,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -47,7 +57,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 type Check = { readonly file: string; readonly pattern: string };
@@ -63,15 +73,12 @@ type AgentTask = {
 
 type Arm = "web" | "cli";
 
+type Agent = "claude" | "codex";
+
 type DocsStep = { readonly tool: string; readonly target: string };
 
-type RunResult = {
-  readonly task: string;
-  readonly tier: AgentTask["tier"];
-  readonly arm: Arm;
-  readonly run: number;
-  readonly passed: boolean;
-  readonly failedChecks: readonly string[];
+/** What one agent run reports, before grading. */
+type AgentReport = {
   readonly seconds: number;
   readonly inputTokens: number;
   readonly outputTokens: number;
@@ -79,6 +86,16 @@ type RunResult = {
   readonly turns: number;
   readonly docsSteps: readonly DocsStep[];
   readonly error?: string;
+};
+
+type RunResult = AgentReport & {
+  readonly agent: Agent;
+  readonly task: string;
+  readonly tier: AgentTask["tier"];
+  readonly arm: Arm;
+  readonly run: number;
+  readonly passed: boolean;
+  readonly failedChecks: readonly string[];
 };
 
 const ARMS: readonly Arm[] = ["web", "cli"];
@@ -96,10 +113,11 @@ const SHARED_PROMPT =
   "You are working in a small repository. Package managers and builds are not available here, so add dependencies to the manifest files by hand. Assume the Sentry DSN comes from an environment variable.";
 
 /**
- * The same tools and permissions for both arms, including a shell, as in a
- * normal coding session; only the `cli` arm has `sentry` on its PATH, and
- * the `web` arm is also denied any `sentry` already installed on the machine.
- * Installs are denied so both arms edit manifests by hand.
+ * Claude Code gets the same tools and permissions in both arms, including a
+ * shell, as in a normal coding session; only the `cli` arm has `sentry` on
+ * its PATH, and the `web` arm is also denied any `sentry` already installed.
+ * Installs are denied so both arms edit manifests by hand. Codex has no
+ * command deny list, so it relies on the shared prompt for installs.
  */
 const TOOLS = "Read,Edit,Write,Glob,Grep,WebSearch,WebFetch,Bash";
 const DENIED = [
@@ -139,7 +157,8 @@ const { values } = parseArgs({
     tasks: { type: "string" },
     arms: { type: "string", default: ARMS.join(",") },
     runs: { type: "string", default: "1" },
-    model: { type: "string", default: "sonnet" },
+    agent: { type: "string", default: "claude" },
+    model: { type: "string" },
     concurrency: { type: "string", default: "4" },
     "budget-usd": { type: "string", default: "2" },
     "timeout-s": { type: "string", default: "900" },
@@ -166,15 +185,51 @@ const arms = (values.arms ?? "")
 const runs = Number(values.runs);
 const concurrency = Number(values.concurrency);
 const timeoutMs = Number(values["timeout-s"]) * 1000;
-const claudeBin = process.env.CLAUDE_BIN ?? "claude";
+const agent = values.agent as Agent;
+const viaGateway = Boolean(process.env.AI_GATEWAY_API_KEY);
+const GATEWAY_URL = "https://ai-gateway.vercel.sh/v1";
 
 if (tasks.length === 0 || arms.length === 0) {
   throw new Error("No tasks or arms selected.");
 }
-if (!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)) {
+if (agent !== "claude" && agent !== "codex") {
+  throw new Error(`--agent must be claude or codex, not ${values.agent}.`);
+}
+if (
+  agent === "claude" &&
+  !(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
+) {
   throw new Error(
     "Set ANTHROPIC_API_KEY, or ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN: each run uses a fresh Claude Code config directory, so a login does not carry over.",
   );
+}
+if (agent === "codex" && !(viaGateway || process.env.OPENAI_API_KEY)) {
+  throw new Error(
+    "Set OPENAI_API_KEY, or AI_GATEWAY_API_KEY for the Vercel AI Gateway: each run uses a fresh Codex home, so a login does not carry over.",
+  );
+}
+const model =
+  values.model ??
+  (agent === "claude" ? "sonnet" : viaGateway ? "openai/gpt-5.5" : "gpt-5.5");
+
+function isExecutable(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The PATH for an arm: without any directory that has a `sentry`, and with
+ * this checkout's `sentry` first for the `cli` arm.
+ */
+function pathFor(arm: Arm, binDir: string): string {
+  const kept = (process.env.PATH ?? "")
+    .split(delimiter)
+    .filter((dir) => dir && !isExecutable(join(dir, "sentry")));
+  return (arm === "cli" ? [binDir, ...kept] : kept).join(delimiter);
 }
 
 /** A directory with a `sentry` that runs this checkout's CLI. */
@@ -295,50 +350,20 @@ function tokens(result: StreamEvent): { input: number; output: number } {
   return { input, output };
 }
 
-function runClaude(
-  task: AgentTask,
-  arm: Arm,
-  dir: string,
-  binDir: string | undefined,
-): Promise<{ events: StreamEvent[]; seconds: number; error?: string }> {
-  const args = [
-    "-p",
-    task.request,
-    "--setting-sources",
-    "",
-    "--disable-slash-commands",
-    "--output-format",
-    "stream-json",
-    "--verbose",
-    "--no-session-persistence",
-    "--strict-mcp-config",
-    "--model",
-    values.model ?? "sonnet",
-    "--max-budget-usd",
-    values["budget-usd"] ?? "2",
-    "--permission-mode",
-    "acceptEdits",
-    "--tools",
-    TOOLS,
-    "--allowedTools",
-    TOOLS,
-    "--disallowedTools",
-    DENIED_BY_ARM[arm],
-    "--append-system-prompt",
-    `${SHARED_PROMPT} ${DOCS_REMARK[arm]}`,
-  ];
-  const configDir = mkdtempSync(join(tmpdir(), "docs-bench-claude-"));
-  const env = {
-    ...process.env,
-    CLAUDE_CONFIG_DIR: configDir,
-    SENTRY_CLI_NO_TELEMETRY: "1",
-    PATH: binDir ? `${binDir}:${process.env.PATH}` : process.env.PATH,
-  };
+type Spawned = { stdout: string; seconds: number; error?: string };
+
+/** Run an agent CLI to completion, or until the timeout. */
+function spawnAgent(
+  bin: string,
+  args: readonly string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+): Promise<Spawned> {
   const started = performance.now();
   return new Promise((done) => {
-    // Claude Code in print mode waits for stdin to close, so give it none.
-    const child = spawn(claudeBin, args, {
-      cwd: dir,
+    // Agents in print mode wait for stdin to close, so give them none.
+    const child = spawn(bin, args, {
+      cwd,
       env,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -358,24 +383,11 @@ function runClaude(
       }
       finished = true;
       clearTimeout(timer);
-      rmSync(configDir, { recursive: true, force: true });
-      const events: StreamEvent[] = [];
-      for (const line of stdout.split("\n")) {
-        try {
-          events.push(JSON.parse(line) as StreamEvent);
-        } catch {
-          // Not an event line.
-        }
-      }
-      done({
-        events,
-        seconds: (performance.now() - started) / 1000,
-        error,
-      });
+      done({ stdout, seconds: (performance.now() - started) / 1000, error });
     };
-    // A missing or unstartable `claude` fails this run, not the benchmark.
+    // A missing or unstartable agent fails this run, not the benchmark.
     child.on("error", (error) =>
-      finish(`could not start ${claudeBin}: ${error.message}`),
+      finish(`could not start ${bin}: ${error.message}`),
     );
     child.on("close", (code) =>
       finish(code === 0 ? undefined : `exit ${code}: ${stderr.slice(-300)}`),
@@ -383,42 +395,251 @@ function runClaude(
   });
 }
 
+function jsonLines<T>(stdout: string): T[] {
+  const events: T[] = [];
+  for (const line of stdout.split("\n")) {
+    try {
+      events.push(JSON.parse(line) as T);
+    } catch {
+      // Not an event line.
+    }
+  }
+  return events;
+}
+
+async function runClaude(
+  arm: Arm,
+  task: AgentTask,
+  dir: string,
+  binDir: string,
+): Promise<AgentReport> {
+  const args = [
+    "-p",
+    task.request,
+    "--setting-sources",
+    "",
+    "--disable-slash-commands",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--no-session-persistence",
+    "--strict-mcp-config",
+    "--model",
+    model,
+    "--max-budget-usd",
+    values["budget-usd"] ?? "2",
+    "--permission-mode",
+    "acceptEdits",
+    "--tools",
+    TOOLS,
+    "--allowedTools",
+    TOOLS,
+    "--disallowedTools",
+    DENIED_BY_ARM[arm],
+    "--append-system-prompt",
+    `${SHARED_PROMPT} ${DOCS_REMARK[arm]}`,
+  ];
+  const configDir = mkdtempSync(join(tmpdir(), "docs-bench-claude-"));
+  const { stdout, seconds, error } = await spawnAgent(
+    process.env.CLAUDE_BIN ?? "claude",
+    args,
+    dir,
+    {
+      ...process.env,
+      CLAUDE_CONFIG_DIR: configDir,
+      SENTRY_CLI_NO_TELEMETRY: "1",
+      PATH: pathFor(arm, binDir),
+    },
+  );
+  rmSync(configDir, { recursive: true, force: true });
+  const events = jsonLines<StreamEvent>(stdout);
+  const docsSteps = events
+    .filter((event) => event.type === "assistant")
+    .flatMap((event) => event.message?.content ?? [])
+    .filter((block) => block.type === "tool_use" && block.name)
+    .flatMap((block) => docsStep(block.name ?? "", block.input) ?? []);
+  const result = events.find((event) => event.type === "result") ?? {};
+  const { input, output } = tokens(result);
+  return {
+    seconds: result.duration_ms ? result.duration_ms / 1000 : seconds,
+    inputTokens: input,
+    outputTokens: output,
+    costUsd: result.total_cost_usd ?? 0,
+    turns: result.num_turns ?? 0,
+    docsSteps,
+    error: error ?? (result.is_error ? result.result : undefined),
+  };
+}
+
+type CodexEvent = {
+  type?: string;
+  item?: { type?: string; command?: string; query?: string };
+  usage?: {
+    input_tokens?: number;
+    cached_input_tokens?: number;
+    output_tokens?: number;
+  };
+  error?: { message?: string };
+  message?: string;
+};
+
+/** USD per token from the AI Gateway's public model list. */
+type Pricing = { input: number; cachedInput: number; output: number };
+
+async function codexPricing(): Promise<Pricing | undefined> {
+  const id = model.includes("/") ? model : `openai/${model}`;
+  try {
+    const response = await fetch(`${GATEWAY_URL}/models`);
+    const { data } = (await response.json()) as {
+      data: { id: string; pricing?: Record<string, unknown> }[];
+    };
+    const pricing = data.find((entry) => entry.id === id)?.pricing;
+    if (!pricing) {
+      return;
+    }
+    return {
+      input: Number(pricing.input),
+      cachedInput: Number(pricing.input_cache_read ?? pricing.input),
+      output: Number(pricing.output),
+    };
+  } catch {
+    return;
+  }
+}
+
+/** Codex settings for one run: the model provider and the docs remark. */
+function writeCodexHome(arm: Arm): string {
+  const home = mkdtempSync(join(tmpdir(), "docs-bench-codex-"));
+  const provider = viaGateway
+    ? { url: GATEWAY_URL, key: "AI_GATEWAY_API_KEY" }
+    : { url: "https://api.openai.com/v1", key: "OPENAI_API_KEY" };
+  writeFileSync(
+    join(home, "config.toml"),
+    [
+      `model = "${model}"`,
+      'model_provider = "bench"',
+      "",
+      "[model_providers.bench]",
+      'name = "bench"',
+      `base_url = "${provider.url}"`,
+      `env_key = "${provider.key}"`,
+      'wire_api = "responses"',
+      "",
+    ].join("\n"),
+  );
+  // Codex reads user instructions from $CODEX_HOME/AGENTS.md.
+  writeFileSync(
+    join(home, "AGENTS.md"),
+    `${SHARED_PROMPT} ${DOCS_REMARK[arm]}\n`,
+  );
+  return home;
+}
+
+async function runCodex(
+  arm: Arm,
+  task: AgentTask,
+  dir: string,
+  binDir: string,
+  pricing: Pricing | undefined,
+): Promise<AgentReport> {
+  const home = writeCodexHome(arm);
+  const { stdout, seconds, error } = await spawnAgent(
+    process.env.CODEX_BIN ?? "codex",
+    [
+      // Live web search, as Claude Code's WebSearch; a top-level flag.
+      "--search",
+      "exec",
+      "--json",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      // Each run already gets a throwaway copy of the repository.
+      "--dangerously-bypass-approvals-and-sandbox",
+      task.request,
+    ],
+    dir,
+    {
+      ...process.env,
+      CODEX_HOME: home,
+      // Keep skills and settings under the real home out of the run.
+      HOME: home,
+      SENTRY_CLI_NO_TELEMETRY: "1",
+      PATH: pathFor(arm, binDir),
+    },
+  );
+  rmSync(home, { recursive: true, force: true });
+  const events = jsonLines<CodexEvent>(stdout);
+  const items = events
+    .filter((event) => event.type === "item.completed" && event.item)
+    .map((event) => event.item ?? {});
+  const docsSteps = items.flatMap((item): DocsStep[] => {
+    if (item.type === "web_search") {
+      return [{ tool: "web_search", target: item.query ?? "" }];
+    }
+    const step =
+      item.type === "command_execution"
+        ? docsStep("Bash", { command: item.command })
+        : undefined;
+    return step ? [step] : [];
+  });
+  let input = 0;
+  let cached = 0;
+  let output = 0;
+  for (const event of events) {
+    if (event.type === "turn.completed") {
+      input += event.usage?.input_tokens ?? 0;
+      cached += event.usage?.cached_input_tokens ?? 0;
+      output += event.usage?.output_tokens ?? 0;
+    }
+  }
+  const failure = events.find(
+    (event) => event.type === "turn.failed" || event.type === "error",
+  );
+  return {
+    seconds,
+    inputTokens: input,
+    outputTokens: output,
+    costUsd: pricing
+      ? (input - cached) * pricing.input +
+        cached * pricing.cachedInput +
+        output * pricing.output
+      : 0,
+    // Codex does not count model turns; count its tool calls instead.
+    turns: items.filter(
+      (item) =>
+        item.type === "command_execution" || item.type === "file_change",
+    ).length,
+    docsSteps,
+    error:
+      error ??
+      (failure
+        ? (failure.error?.message ?? failure.message ?? "turn failed")
+        : undefined),
+  };
+}
+
 async function runOne(
   task: AgentTask,
   arm: Arm,
   run: number,
   binDir: string,
+  pricing: Pricing | undefined,
 ): Promise<RunResult> {
   const dir = writeRepo(task);
   try {
-    const { events, seconds, error } = await runClaude(
-      task,
-      arm,
-      dir,
-      arm === "cli" ? binDir : undefined,
-    );
-    const docsSteps = events
-      .filter((event) => event.type === "assistant")
-      .flatMap((event) => event.message?.content ?? [])
-      .filter((block) => block.type === "tool_use" && block.name)
-      .flatMap((block) => docsStep(block.name ?? "", block.input) ?? []);
-    const result = events.find((event) => event.type === "result") ?? {};
-    const { input, output } = tokens(result);
+    const report =
+      agent === "claude"
+        ? await runClaude(arm, task, dir, binDir)
+        : await runCodex(arm, task, dir, binDir, pricing);
     const failed = failedChecks(task, dir);
     return {
+      ...report,
+      agent,
       task: task.id,
       tier: task.tier,
       arm,
       run,
-      passed: failed.length === 0 && !error,
+      passed: failed.length === 0 && !report.error,
       failedChecks: failed,
-      seconds: result.duration_ms ? result.duration_ms / 1000 : seconds,
-      inputTokens: input,
-      outputTokens: output,
-      costUsd: result.total_cost_usd ?? 0,
-      turns: result.num_turns ?? 0,
-      docsSteps,
-      error: error ?? (result.is_error ? result.result : undefined),
     };
   } finally {
     if (!values.keep) {
@@ -516,6 +737,7 @@ function summarize(results: readonly RunResult[]): string {
 }
 
 const binDir = arms.includes("cli") ? sentryBinDir() : "";
+const pricing = agent === "codex" ? await codexPricing() : undefined;
 if (binDir) {
   // Download the docs index once, so the first run does not pay for it.
   execFileSync(join(binDir, "sentry"), ["docs", "sentry", "-n", "1"], {
@@ -527,7 +749,7 @@ if (binDir) {
 const jobs = tasks.flatMap((task) =>
   arms.flatMap((arm) =>
     Array.from({ length: runs }, (_, run) => async () => {
-      const result = await runOne(task, arm, run + 1, binDir);
+      const result = await runOne(task, arm, run + 1, binDir, pricing);
       process.stderr.write(
         `${result.passed ? "pass" : "FAIL"} ${task.id} ${arm}#${run + 1} ${result.seconds.toFixed(0)}s ${kTokens(result.inputTokens)} in\n`,
       );
@@ -541,7 +763,7 @@ if (binDir) {
 }
 
 process.stdout.write(
-  `Model ${values.model}, ${tasks.length} tasks x ${arms.length} arms x ${runs} runs\n${summarize(results)}`,
+  `${agent} with ${model}, ${tasks.length} tasks x ${arms.length} arms x ${runs} runs\n${summarize(results)}`,
 );
 if (values.json) {
   writeFileSync(values.json, `${JSON.stringify({ results }, null, 2)}\n`);
