@@ -9,6 +9,7 @@
  * actually available.
  */
 
+import { isEnabled as isSentryEnabled } from "@sentry/node";
 import {
   type Application,
   type ApplicationText,
@@ -19,13 +20,14 @@ import {
   UnsatisfiedPositionalError,
 } from "@stricli/core";
 import type { SentryContext } from "../context.js";
-import { getAppIdentity } from "./app-identity.js";
+import { getAppIdentity, sentry } from "./app-identity.js";
 import {
   getCommandSuggestion,
   getSynonymSuggestionFromArgv,
 } from "./command-suggestions.js";
 import { CLI_VERSION } from "./constants.js";
 import { redactCredentialText } from "./credential-redaction.js";
+import { detectAgent } from "./detect-agent.js";
 import { reportArgumentError, reportCliError } from "./error-reporting.js";
 import {
   ApiError,
@@ -33,6 +35,7 @@ import {
   CliError,
   formatError,
   getExitCode,
+  isUserError,
   OutputError,
 } from "./errors.js";
 import { error as errorColor, warning } from "./formatters/colors.js";
@@ -147,6 +150,26 @@ function formatSynonymError(
     ? warning(`Tip: ${synonymHint}`)
     : `Tip: ${synonymHint}`;
   return `${prefix} ${exc.format()}\n${tip}`;
+}
+
+/**
+ * A line that asks an AI agent to report a CLI bug with `sentry cli feedback`,
+ * or an empty string. People don't get it, and neither do user errors: those
+ * already say what to fix. It also needs feedback to be deliverable: the
+ * `sentry` CLI has the command (the `sentry-mcp` bundle does not), and
+ * `cli feedback` refuses to send while telemetry is off.
+ */
+function formatAgentFeedbackHint(exc: unknown, ansiColor: boolean): string {
+  if (
+    getAppIdentity().name !== "sentry" ||
+    isUserError(exc) ||
+    !detectAgent() ||
+    !isSentryEnabled()
+  ) {
+    return "";
+  }
+  const hint = `\nIf this looks like a CLI bug, report it: ${sentry`cli feedback "<what you ran and what went wrong>"`}`;
+  return ansiColor ? warning(hint) : hint;
 }
 
 function escapesToOuterMiddleware(exc: unknown): boolean {
@@ -290,14 +313,15 @@ function buildApplicationText(options: ArgumentHintOptions): ApplicationText {
       // are enforced inside reportCliError. 400 Bad Request = CLI bug.
       reportCliError(exc);
 
+      const feedbackHint = formatAgentFeedbackHint(exc, ansiColor);
       if (exc instanceof CliError) {
         const prefix = ansiColor ? errorColor("Error:") : "Error:";
-        return `${prefix} ${formatError(exc)}`;
+        return `${prefix} ${formatError(exc)}${feedbackHint}`;
       }
       if (exc instanceof Error) {
-        return `Unexpected error: ${redactCredentialText(exc.stack ?? exc.message)}`;
+        return `Unexpected error: ${redactCredentialText(exc.stack ?? exc.message)}${feedbackHint}`;
       }
-      return `Unexpected error: ${formatError(exc)}`;
+      return `Unexpected error: ${formatError(exc)}${feedbackHint}`;
     },
   };
   return customText;

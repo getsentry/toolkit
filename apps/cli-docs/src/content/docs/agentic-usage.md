@@ -80,6 +80,8 @@ The CLI has dedicated commands for most Sentry tasks, so agents should prefer `s
 
 The skill uses your existing CLI authentication, so you'll need to run `sentry auth login` first if you haven't already.
 
+When the CLI detects an agent and a command fails in a way that looks like a CLI bug, the error also asks the agent to report it with `sentry cli feedback`. Errors in your input, login, or account settings don't include this line, and it's left out while telemetry is off.
+
 ## Requirements
 
 - An authenticated Sentry CLI installation (`sentry auth login`)
