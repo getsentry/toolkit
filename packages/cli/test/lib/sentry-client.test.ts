@@ -626,6 +626,34 @@ describe("fetchWithTimeout internal timeout classification", () => {
     }
   });
 
+  test("a caller's timeoutMs applies to every request and still retries", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async (_input, init) => {
+      calls += 1;
+      return await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    });
+
+    // A path no override matches, as with the server-provided chunk URL.
+    const authFetch = getSdkConfig(REGION_URL, {
+      idempotent: true,
+      timeoutMs: 50,
+    }).fetch as typeof fetch;
+    const error = await authFetch(`${REGION_URL}/api/0/chunk-upload/`, {
+      method: "POST",
+      body: "{}",
+    }).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(TimeoutError);
+    // RETRY_POLICY.maxRetries = 2 → attempts 0, 1, 2.
+    expect(calls).toBe(3);
+  });
+
   describe("on a self-hosted server", () => {
     useEnvSandbox(["SENTRY_URL", "SENTRY_HOST"]);
 

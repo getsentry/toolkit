@@ -8,13 +8,17 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 const fetchMock = vi.hoisted(() =>
   vi.fn(async () => new Response(null, { status: 200 })),
 );
+const getSdkConfigMock = vi.hoisted(() =>
+  vi.fn((_regionUrl: string, _options?: unknown) => ({ fetch: fetchMock })),
+);
 
 vi.mock("../../../src/lib/sentry-client.js", () => ({
-  getSdkConfig: () => ({ fetch: fetchMock }),
+  getSdkConfig: getSdkConfigMock,
 }));
 
 import {
   batchChunkPayloads,
+  CHUNK_UPLOAD_TIMEOUT_MS,
   type ChunkPayload,
   uploadChunkPayloads,
 } from "../../../src/lib/api/chunk-upload.js";
@@ -35,6 +39,7 @@ function payload(sha1: string, size: number): ChunkPayload {
 
 afterEach(() => {
   fetchMock.mockClear();
+  getSdkConfigMock.mockClear();
 });
 
 describe("batchChunkPayloads", () => {
@@ -94,6 +99,20 @@ describe("uploadChunkPayloads", () => {
       f.getAll("file").map((entry) => (entry as File).name),
     );
     expect(names.sort()).toEqual(["a", "b", "c", "d"]);
+  });
+
+  test("uploads through a retrying fetch with the chunk-upload timeout", async () => {
+    await uploadChunkPayloads({
+      chunks: [payload("a", 10)],
+      serverOptions: SERVER_OPTIONS,
+      encoding: undefined,
+      regionUrl: "https://us.sentry.io",
+    });
+
+    expect(getSdkConfigMock).toHaveBeenCalledWith("https://us.sentry.io", {
+      idempotent: true,
+      timeoutMs: CHUNK_UPLOAD_TIMEOUT_MS,
+    });
   });
 
   test("makes no request for no chunks", async () => {
