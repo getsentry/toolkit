@@ -98,6 +98,17 @@ Other clients take the same command:
   }
 }
 \`\`\`
+
+The CLI also installs with \`brew install getsentry/tools/sentry\`, \`npm install -g sentry\`, or \`irm https://cli.sentry.dev/install.ps1 | iex\` on Windows. See https://cli.sentry.dev/getting-started/.
+
+Pass a target after the command to limit it:
+
+- \`${CLI_MCP_SNIPPET} my-org/\` — Limit to one organization
+- \`${CLI_MCP_SNIPPET} my-org/my-project\` — Limit to a specific project
+
+For self-hosted Sentry, log in with \`sentry auth login --url https://sentry.example.com\`, then set \`SENTRY_HOST\` in the MCP server's environment. See https://cli.sentry.dev/self-hosted/.
+
+Run \`${CLI_MCP_SNIPPET} --help\` for every flag and environment variable. To run the server without installing the CLI, use the legacy \`npx @sentry/mcp-server\` package.
 `;
 }
 
