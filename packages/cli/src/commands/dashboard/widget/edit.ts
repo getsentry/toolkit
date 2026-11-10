@@ -48,8 +48,15 @@ import {
   type WidgetQueryFlags,
 } from "../resolve.js";
 import { DashboardWidgetChangeOutputSchema } from "../../../generated/output-schemas/dashboard.js";
+import {
+  updateWidgetTransformations,
+  WIDGET_TRANSFORMATION_FLAGS,
+  WIDGET_TRANSFORMATION_HELP,
+  type WidgetTransformationFlags,
+} from "../transformations.js";
 
 type EditFlags = WidgetQueryFlags &
+  WidgetTransformationFlags &
   WidgetLayoutFlags & {
     readonly index?: number;
     readonly title?: string;
@@ -214,8 +221,14 @@ export const editCommand = buildCommand({
       "Identify the widget by --index (0-based) or --title.\n" +
       "Only provided flags are changed — omitted values are preserved.\n\n" +
       "Layout flags (--col/-x, --row/-y, --width, --height) control widget position\n" +
-      "and size in the 6-column dashboard grid.",
+      "and size in the 6-column dashboard grid.\n\n" +
+      WIDGET_TRANSFORMATION_HELP,
     examples: [
+      {
+        description:
+          "Replace one pipeline and clear another, preserving omitted axes",
+        run: 'dashboard widget edit my-org/12345 --index 0 --transformations \'{"0":["fill(linear)","smooth(ema,7)"],"1":[]}\'',
+      },
       {
         description: "Change a widget's display type",
         run: "dashboard widget edit 12345 --title 'Error Rate' --display bar",
@@ -245,6 +258,7 @@ export const editCommand = buildCommand({
         sentry`dashboard widget edit <org>/ <dashboard> --title <name> --display <type>`,
     }),
     flags: {
+      ...WIDGET_TRANSFORMATION_FLAGS,
       index: {
         kind: "parsed",
         parse: numberParser,
@@ -399,7 +413,11 @@ export const editCommand = buildCommand({
     // Validate individual layout flag ranges early (catches --col -1, --width 7, etc.)
     validateWidgetLayout(normalizedFlags, existing.layout);
 
-    const replacement = buildReplacement(normalizedFlags, existing);
+    const replacement = updateWidgetTransformations(
+      buildReplacement(normalizedFlags, existing),
+      normalizedFlags,
+      widgets[widgetIndex],
+    );
 
     // Re-validate the final merged layout when the existing widget had no layout
     // and FALLBACK_LAYOUT was used — the early check couldn't cross-validate

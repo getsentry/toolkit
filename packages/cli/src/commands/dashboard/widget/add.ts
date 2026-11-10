@@ -54,6 +54,12 @@ import {
   type WidgetQueryFlags,
 } from "../resolve.js";
 import { DashboardWidgetChangeOutputSchema } from "../../../generated/output-schemas/dashboard.js";
+import {
+  updateWidgetTransformations,
+  WIDGET_TRANSFORMATION_FLAGS,
+  WIDGET_TRANSFORMATION_HELP,
+  type WidgetTransformationFlags,
+} from "../transformations.js";
 
 /** What `--query`, `--sort`, and `--group-by` complete: a spans widget's by default. */
 const FIELD_COMPLETION: DatasetCompletion = {
@@ -62,6 +68,7 @@ const FIELD_COMPLETION: DatasetCompletion = {
 };
 
 type AddFlags = WidgetQueryFlags &
+  WidgetTransformationFlags &
   WidgetLayoutFlags & {
     readonly display: string;
     readonly layout: string;
@@ -121,8 +128,14 @@ export const addCommand = buildCommand({
       "  count          → count()         (ascending)\n" +
       "  -count         → -count()        (descending)\n\n" +
       "Layout flags (--col/-x, --row/-y, --width, --height) control widget position\n" +
-      "and size in the 6-column dashboard grid. Omitted values use auto-layout.",
+      "and size in the 6-column dashboard grid. Omitted values use auto-layout.\n\n" +
+      WIDGET_TRANSFORMATION_HELP,
     examples: [
+      {
+        description:
+          "Set independent ordered pipelines for duplicate aggregates",
+        run: 'dashboard widget add my-org/12345 "Transformed counts" --display line --query count --query count --transformations \'{"0":["fill(linear)","smooth(ema,7)"],"1":["smooth(asap)"]}\'',
+      },
       {
         description: "Add a counter widget",
         run: "dashboard widget add 'My Dashboard' \"Error Count\" --display big_number --query count",
@@ -174,6 +187,7 @@ export const addCommand = buildCommand({
         resolveDashboardInput(input, context.cwd, usageHint()),
     }),
     flags: {
+      ...WIDGET_TRANSFORMATION_FLAGS,
       display: {
         kind: "parsed",
         parse: choiceParser(DISPLAY_TYPES),
@@ -290,6 +304,7 @@ export const addCommand = buildCommand({
       sort: flags.sort,
       limit: flags.limit,
     });
+    newWidget = updateWidgetTransformations(newWidget, flags);
 
     // Validate layout mode before any network calls
     if (
