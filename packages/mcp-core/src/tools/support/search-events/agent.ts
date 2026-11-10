@@ -8,6 +8,12 @@ import { createDatasetFieldsTool } from "../../../internal/agents/tools/dataset-
 import { createOtelLookupTool } from "../../../internal/agents/tools/otel-semantics";
 import { createWhoamiTool } from "../../../internal/agents/tools/whoami";
 import { PUBLIC_EVENTS_DATASETS } from "../../../utils/events-datasets";
+import {
+  normalizeTimeSeriesConfig,
+  TimeSeriesConfigSchema,
+  TransformationsSchema,
+  type TimeSeriesConfig,
+} from "../../../utils/time-series";
 import { systemPrompt } from "./config";
 import {
   createDatasetAttributesTool,
@@ -30,6 +36,22 @@ export function hasSuccessfulSearchValidation(
   );
 }
 
+// Models may emit null for optional transformations; public input stays strict.
+const agentTransformationsSchema = TransformationsSchema.nullish().transform(
+  (transformations) => transformations ?? undefined,
+);
+// Prefer ordered axes when a model also emits legacy top-level fields.
+const agentTimeSeriesConfigSchema = z.object({
+  ...TimeSeriesConfigSchema.shape,
+  axes: z
+    .array(
+      TimeSeriesConfigSchema.shape.axes.element.extend({
+        transformations: agentTransformationsSchema,
+      }),
+    )
+    .min(1),
+});
+
 // .default("") on explanation is safe because structuredOutputs: false is set via providerOptions.
 // If structuredOutputs is re-enabled, remove .default() calls (OpenAI requires all fields in 'required').
 // Tracking: https://github.com/getsentry/sentry-mcp/issues/623
@@ -51,20 +73,26 @@ export const searchEventsAgentOutputSchema = z
         "Environment filter for replays only, when requested. Otherwise null; non-replay filters belong in query.",
       ),
     timeSeries: z
-      .object({
-        yAxis: z
-          .string()
-          .describe(
-            "The aggregate to plot over time, e.g. 'count()', 'count_unique(user)', 'sum(span.duration)'.",
-          ),
-        interval: z
-          .string()
-          .nullable()
-          .default(null)
-          .describe(
-            "Bucket size like '1h' or '1d'. Set ONLY when the user names a granularity (e.g. 'per hour' -> '1h'); otherwise null so Sentry picks a sensible bucket for the time range.",
-          ),
-      })
+      .union([
+        agentTimeSeriesConfigSchema,
+        z.object({
+          // Never downgrade malformed ordered output to a legacy series.
+          axes: z.never().optional(),
+          yAxis: z
+            .string()
+            .describe(
+              "The aggregate to plot over time, e.g. 'count()', 'count_unique(user)', 'sum(span.duration)'.",
+            ),
+          interval: z
+            .string()
+            .nullable()
+            .default(null)
+            .describe(
+              "Bucket size like '1h' or '1d'. Set ONLY when the user names a granularity (e.g. 'per hour' -> '1h'); otherwise null so Sentry picks a sensible bucket for the time range.",
+            ),
+          transformations: agentTransformationsSchema,
+        }),
+      ])
       .nullable()
       .default(null)
       .describe(
@@ -193,7 +221,9 @@ export async function fetchEnvironmentNames(options: {
 export async function searchEventsAgent(
   options: SearchEventsAgentOptions,
 ): Promise<{
-  result: z.output<typeof searchEventsAgentOutputSchema>;
+  result: Omit<z.output<typeof searchEventsAgentOutputSchema>, "timeSeries"> & {
+    timeSeries: TimeSeriesConfig | null;
+  };
   toolCalls: ToolCall[];
 }> {
   // Provider check happens in callEmbeddedAgent via getAgentProvider()
@@ -228,7 +258,7 @@ export async function searchEventsAgent(
     options.environmentNames ?? (await fetchEnvironmentNames(options));
 
   // Use callEmbeddedAgent to translate the query with tool call capture
-  return await callEmbeddedAgent<
+  const response = await callEmbeddedAgent<
     z.output<typeof searchEventsAgentOutputSchema>,
     typeof searchEventsAgentOutputSchema
   >({
@@ -245,4 +275,13 @@ export async function searchEventsAgent(
     isReadyToFinalize: ({ toolResults }) =>
       hasSuccessfulSearchValidation(toolResults),
   });
+  return {
+    ...response,
+    result: {
+      ...response.result,
+      timeSeries: response.result.timeSeries
+        ? normalizeTimeSeriesConfig(response.result.timeSeries)
+        : null,
+    },
+  };
 }
