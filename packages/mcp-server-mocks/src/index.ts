@@ -164,6 +164,7 @@ type IssueUpdateBody = {
   ignoreUserCount?: number;
   ignoreUserWindow?: number;
   ignoreWindow?: number;
+  priority?: string;
   status?: string;
   statusDetails?: {
     inRelease?: string;
@@ -262,6 +263,7 @@ function buildUpdatedIssueResponse(
     substatus,
     statusDetails,
     assignedTo: body.assignedTo ?? baseIssue.assignedTo,
+    priority: body.priority ?? baseIssue.priority,
   };
 }
 

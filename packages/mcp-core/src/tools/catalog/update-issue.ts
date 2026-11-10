@@ -25,6 +25,7 @@ import {
   ParamInCommitRepository,
   ParamInRelease,
   ParamIssueIgnoreMode,
+  ParamIssuePriority,
   ParamIssueShortId,
   ParamIssueStatus,
   ParamIssueUrl,
@@ -516,11 +517,13 @@ export const updateIssueOutputSchema = z.object({
       .object({ from: z.string().nullable(), to: z.string() })
       .nullable(),
     assignedTo: valueChangeSchema.nullable(),
+    priority: valueChangeSchema.nullable(),
   }),
   current: z.object({
     status: z.string(),
     ignoreBehavior: z.string().nullable(),
     assignedTo: z.string(),
+    priority: z.string().nullable(),
   }),
   effect: z
     .string()
@@ -546,6 +549,7 @@ function getCurrentState(
     status: getIssueStatusDisplay(issue),
     ignoreBehavior: ignoreState?.behavior ?? null,
     assignedTo: formatAssignedTo(issue.assignedTo ?? null),
+    priority: issue.priority ?? null,
   };
 }
 
@@ -875,15 +879,15 @@ export default defineTool({
   skills: ["triage"], // Only available in triage skill
   requiredScopes: ["event:write"],
   description: [
-    "Update a Sentry issue's status or assignment.",
+    "Update a Sentry issue's status, assignment, or priority.",
     "",
-    "Use this to resolve, reopen, assign, unassign, or ignore an issue.",
+    "Use this to resolve, reopen, assign, unassign, ignore, or reprioritize an issue.",
     "",
     "<examples>",
     "```",
     "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='resolved')",
     "update_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo='user:123456')",
-    "update_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo=null)",
+    "update_issue(organizationSlug='my-org', issueId='PROJECT-123', priority='low')",
     "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored')",
     "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='forever')",
     "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='untilOccurrenceCount', ignoreCount=100, ignoreWindowMinutes=60)",
@@ -893,9 +897,8 @@ export default defineTool({
     "",
     "<hints>",
     "- Provide `issueUrl` or `organizationSlug` + `issueId`.",
-    "- At least one of `status` or `assignedTo` is required.",
+    "- At least one of `status`, `assignedTo`, or `priority` is required.",
     "- Omit `assignedTo` to leave assignment unchanged. Pass `null` to unassign; otherwise use `user:ID` or `team:ID_OR_SLUG`.",
-    "- Use the `whoami` tool to find your user ID for self-assignment.",
     "- Status values: `resolved`, `resolvedInNextRelease`, `unresolved`, `ignored`.",
     "- `status='resolved'` takes optional `inRelease`, or `inCommit` + `inCommitRepository`.",
     "- `status='ignored'` defaults to `ignoreMode='untilEscalating'`.",
@@ -912,6 +915,7 @@ export default defineTool({
     issueUrl: ParamIssueUrl.optional(),
     status: ParamIssueStatus.optional(),
     assignedTo: ParamAssignedTo.optional(),
+    priority: ParamIssuePriority.optional(),
     ignoreMode: ParamIssueIgnoreMode.optional(),
     ignoreDurationMinutes: ParamIgnoreDurationMinutes.optional(),
     ignoreCount: ParamIgnoreCount.optional(),
@@ -949,9 +953,13 @@ export default defineTool({
     }
 
     // Validate that at least one update parameter is provided
-    if (params.status === undefined && params.assignedTo === undefined) {
+    if (
+      params.status === undefined &&
+      params.assignedTo === undefined &&
+      params.priority === undefined
+    ) {
       throw new UserInputError(
-        "At least one of `status` or `assignedTo` must be provided to update the issue",
+        "At least one of `status`, `assignedTo`, or `priority` must be provided to update the issue",
       );
     }
 
@@ -1022,6 +1030,8 @@ export default defineTool({
     const updateAssignedTo = assignmentAlreadySet
       ? undefined
       : params.assignedTo;
+    const updatePriority =
+      params.priority === currentIssue.priority ? undefined : params.priority;
     let updateIgnore = ignoreUpdate;
 
     if (currentIssue.status === "ignored" && params.status === "ignored") {
@@ -1050,6 +1060,7 @@ export default defineTool({
     if (
       updateStatus === undefined &&
       updateAssignedTo === undefined &&
+      updatePriority === undefined &&
       updateIgnore === undefined
     ) {
       const commentResult = await tryPostReasonComment(
@@ -1065,7 +1076,12 @@ export default defineTool({
         title: currentIssue.title,
         issueUrl: requestedIssueUrl,
         updated: false,
-        changes: { status: null, ignoreBehavior: null, assignedTo: null },
+        changes: {
+          status: null,
+          ignoreBehavior: null,
+          assignedTo: null,
+          priority: null,
+        },
         current: getCurrentState(currentIssue, currentIgnoreState),
         effect: null,
         reasonComment: getReasonComment(params.reason, commentResult),
@@ -1079,6 +1095,7 @@ export default defineTool({
       status: updateStatus,
       statusDetails: updateStatus === undefined ? undefined : resolution,
       assignedTo: updateAssignedTo,
+      priority: updatePriority,
       substatus: updateIgnore?.substatus,
       ignoreDuration: updateIgnore?.ignoreDuration,
       ignoreCount: updateIgnore?.ignoreCount,
@@ -1143,6 +1160,14 @@ export default defineTool({
                 params.assignedTo === "me"
                   ? "You"
                   : formatAssignedTo(updatedIssue.assignedTo ?? null),
+            }
+          : null,
+      priority:
+        updatePriority !== undefined &&
+        currentIssue.priority !== updatedIssue.priority
+          ? {
+              from: currentIssue.priority ?? "none",
+              to: updatedIssue.priority ?? "none",
             }
           : null,
     };

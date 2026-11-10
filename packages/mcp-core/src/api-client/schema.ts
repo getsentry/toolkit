@@ -860,6 +860,7 @@ export const IssueSchema = z
     platform: z.string().nullable().optional(),
     status: z.string(),
     substatus: z.string().nullable().optional(),
+    priority: z.string().nullable().optional(),
     culprit: z.string().nullable(),
     type: z
       .union([
