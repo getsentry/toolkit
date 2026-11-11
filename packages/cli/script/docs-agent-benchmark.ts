@@ -54,10 +54,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { resolveConfigDir } from "../src/lib/config-dir.js";
 
 type Check = { readonly file: string; readonly pattern: string };
 
@@ -232,9 +233,9 @@ function pathFor(arm: Arm, bins: Record<Arm, string>): string {
 }
 
 /**
- * A directory with a `sentry` that runs this checkout's CLI. Its config
- * directory is pinned inside that directory, so every run shares the docs
- * index downloaded below even when an agent gets its own HOME.
+ * A directory with a `sentry` that runs this checkout's CLI. It is pinned to
+ * your real config directory, so every run shares the docs index downloaded
+ * below and your `sentry auth login`, even when an agent gets its own HOME.
  */
 function sentryBinDir(): string {
   const cli = process.env.SENTRY_CLI_BINARY
@@ -249,7 +250,7 @@ function sentryBinDir(): string {
   const runner = cli.endsWith(".cjs") || cli.endsWith(".js") ? "node " : "";
   writeFileSync(
     join(dir, "sentry"),
-    `#!/bin/sh\nSENTRY_CONFIG_DIR="${join(dir, "config")}" exec ${runner}"${cli}" "$@"\n`,
+    `#!/bin/sh\nSENTRY_CONFIG_DIR="${resolveConfigDir(process.env, homedir())}" exec ${runner}"${cli}" "$@"\n`,
   );
   chmodSync(join(dir, "sentry"), 0o755);
   return dir;
