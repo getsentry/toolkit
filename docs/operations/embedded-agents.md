@@ -61,7 +61,7 @@ Or:
 ```bash
 export EMBEDDED_AGENT_PROVIDER=azure-openai
 export OPENAI_API_KEY=sk-...
-npx @sentry/mcp-server@latest --openai-base-url=https://example.openai.azure.com/openai/v1/
+sentry mcp --openai-base-url=https://example.openai.azure.com/openai/v1/
 ```
 
 Or:
@@ -85,7 +85,7 @@ export EMBEDDED_AGENT_PROVIDER=openrouter
 #### Method 2: CLI Flag
 
 ```bash
-npx @sentry/mcp-server@latest --agent-provider=openai
+sentry mcp --agent-provider=openai
 ```
 
 #### Method 3: MCP Configuration File
@@ -96,10 +96,9 @@ In your MCP settings (e.g., Claude Desktop config):
 {
   "mcpServers": {
     "sentry": {
-      "command": "npx",
-      "args": ["@sentry/mcp-server@latest"],
+      "command": "sentry",
+      "args": ["mcp"],
       "env": {
-        "SENTRY_AUTH_TOKEN": "your-token",
         "EMBEDDED_AGENT_PROVIDER": "openai",
         "OPENAI_API_KEY": "sk-..."
       }
@@ -138,10 +137,9 @@ Always set `EMBEDDED_AGENT_PROVIDER` when multiple API keys might be present:
 {
   "mcpServers": {
     "sentry": {
-      "command": "npx",
-      "args": ["@sentry/mcp-server@latest"],
+      "command": "sentry",
+      "args": ["mcp"],
       "env": {
-        "SENTRY_AUTH_TOKEN": "your-token",
         "EMBEDDED_AGENT_PROVIDER": "openai",
         "OPENAI_API_KEY": "sk-..."
       }
@@ -196,7 +194,7 @@ For custom OpenAI-compatible endpoints or Anthropic proxies:
 ```bash
 export EMBEDDED_AGENT_PROVIDER=openai
 export OPENAI_API_KEY=sk-...
-npx @sentry/mcp-server@latest --openai-base-url=https://custom.openai.example.com
+sentry mcp --openai-base-url=https://custom.openai.example.com
 ```
 
 For Azure OpenAI or Azure-compatible deployment proxies, use the dedicated
@@ -208,10 +206,10 @@ export OPENAI_API_KEY=sk-...
 export OPENAI_API_VERSION=2024-02-15-preview
 
 # Azure v1 endpoint -> Responses API
-npx @sentry/mcp-server@latest --openai-base-url=https://example.openai.azure.com/openai/v1/
+sentry mcp --openai-base-url=https://example.openai.azure.com/openai/v1/
 
 # Deployment endpoint -> chat completions
-npx @sentry/mcp-server@latest --openai-base-url=https://example.openai.azure.com/openai/deployments/my-assistant
+sentry mcp --openai-base-url=https://example.openai.azure.com/openai/deployments/my-assistant
 ```
 
 ### Model Selection
@@ -235,7 +233,7 @@ export OPENROUTER_REASONING_EFFORT=high
 Check which provider is being used:
 
 ```bash
-npx @sentry/mcp-server@latest 2>&1 | grep "Using"
+sentry mcp 2>&1 | grep "Using"
 ```
 
 Expected output:
@@ -292,7 +290,7 @@ export ANTHROPIC_API_KEY=sk-ant-test
 export OPENAI_API_KEY=sk-test
 export EMBEDDED_AGENT_PROVIDER=openai
 
-npx @sentry/mcp-server@latest
+sentry mcp
 ```
 
 Should output:

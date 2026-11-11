@@ -306,9 +306,7 @@ export async function updateRelease(
       organization_id_or_slug: orgSlug,
       version,
     },
-    body: body as unknown as Parameters<
-      typeof updateOrganizationRelease
-    >[0]["body"],
+    body: body,
   });
 
   return unwrapResult<SentryRelease>(
@@ -394,9 +392,7 @@ export async function createReleaseDeploy(
       organization_id_or_slug: orgSlug,
       version,
     },
-    body: body as unknown as Parameters<
-      typeof createOrganizationReleaseDeploy
-    >[0]["body"],
+    body: body,
   });
 
   return unwrapResult<SentryDeploy>(result, "Failed to create deploy");

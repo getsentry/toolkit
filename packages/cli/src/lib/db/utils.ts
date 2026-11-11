@@ -63,7 +63,7 @@ export function upsert<T extends Record<string, SqlValue>>(
   options: UpsertOptions<T> = {},
 ): SqlQuery {
   const columns = Object.keys(data);
-  const values = Object.values(data) as SqlValue[];
+  const values = Object.values(data);
 
   if (columns.length === 0) {
     throw new Error("upsert: data object must have at least one column");

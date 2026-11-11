@@ -124,7 +124,7 @@ export function buildChartModel(
 
   const maxVal = stacked
     ? Math.max(...bucketTotals(series, buckets), 1)
-    : Math.max(...(series[0]?.values ?? []), 1);
+    : Math.max(...(series[0]?.values ?? []).filter((v) => v !== null), 1);
 
   return { kind: "timeseries", series, buckets, maxVal, stacked };
 }
@@ -136,7 +136,9 @@ export function buildCategoricalChartModel(
   const series = data.series
     .map((item) => ({
       label: item.label,
-      values: [item.values.reduce((total, value) => total + value.value, 0)],
+      values: [
+        item.values.reduce((total, value) => total + (value.value ?? 0), 0),
+      ],
     }))
     .sort((a, b) => {
       if (a.label === "Other") {
@@ -178,7 +180,8 @@ export function buildHeatmapModel(
     return;
   }
   const rows = data.series.map((s) => {
-    const vals = s.values.map((v) => v.value);
+    // Unmeasured cells take the lowest intensity, which renders blank.
+    const vals = s.values.map((v) => v.value ?? 0);
     // pad shorter rows so every row has exactly `buckets` columns
     return vals.length < buckets
       ? // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
@@ -225,7 +228,7 @@ export type RasterizeOpts = {
  *
  * This is the pixel core: the resolution is chosen by the caller for its
  * output target (sixel cell pixels, or an ASCII cell-grid multiple). Returns
- * `undefined` when there are no buckets or fitting would average across gaps.
+ * `undefined` when there are no buckets.
  */
 export function rasterizeChart(
   model: ChartModel,
@@ -241,9 +244,6 @@ export function rasterizeChart(
   // ~half the canvas width would push later columns off-canvas and clip them.
   // Downsample to fit, mirroring what the ASCII sparkline path already does.
   const fitted = fitModelToWidth(model, width);
-  if (!fitted) {
-    return;
-  }
 
   const transparent = opts.backgroundTransparent ?? true;
   const img = createPixelCanvas({
@@ -267,30 +267,24 @@ export function rasterizeChart(
 /**
  * Downsample a model's series so the bucket count fits the canvas: with a 1px
  * bar and 1px gap each column needs ~2px, so cap buckets at `width / 2`.
- * Returns the model unchanged when it already fits; declines to average gaps.
+ * Returns the model unchanged when it already fits. A single-series column
+ * averages only its measured buckets; a column with none stays a gap, so later
+ * buckets keep their position. A stacked column averages each series over the
+ * whole window, counting an unmeasured bucket as nothing, so the stack never
+ * grows past `maxVal`; a column with nothing measured draws no segments.
  */
-function fitModelToWidth(
-  model: ChartModel,
-  width: number,
-): ChartModel | undefined {
+function fitModelToWidth(model: ChartModel, width: number): ChartModel {
   const maxBuckets = Math.max(1, Math.floor(width / 2));
   if (model.buckets <= maxBuckets || model.kind === "categorical") {
     return model;
   }
-  const series: ChartSeries[] = [];
-  for (const s of model.series) {
-    // Averaging across a gap would invent data. Let the caller use its fallback.
-    if (s.values.some((value) => value === null)) {
-      return;
-    }
-    series.push({
-      label: s.label,
-      values: downsample(
-        s.values.filter((value) => value !== null),
-        maxBuckets,
-      ),
-    });
-  }
+  const series: ChartSeries[] = model.series.map((s) => ({
+    label: s.label,
+    values: downsample(
+      model.stacked ? s.values.map((v) => v ?? 0) : s.values,
+      maxBuckets,
+    ),
+  }));
   const buckets = Math.max(...series.map((s) => s.values.length));
   return { ...model, series, buckets };
 }

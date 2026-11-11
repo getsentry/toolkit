@@ -204,7 +204,7 @@ export function extractSchemaFieldPaths(schema: GenericSchema): string[] {
       }
     }
   };
-  visit(schema as unknown as ValibotSchemaNode, "");
+  visit(schema, "");
   return [...paths];
 }
 

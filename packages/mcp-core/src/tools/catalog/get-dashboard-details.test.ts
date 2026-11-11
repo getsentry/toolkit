@@ -360,6 +360,121 @@ describe("get_dashboard_details", () => {
     expect(getDashboard(result).widgets).toEqual([]);
   });
 
+  function mockQuery(query: Record<string, unknown>) {
+    const [widget] = dashboardDetailsFixture.widgets;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/101/",
+        () =>
+          HttpResponse.json({
+            ...dashboardDetailsFixture,
+            widgets: [
+              {
+                ...widget,
+                widgetType: "spans",
+                queries: [{ ...widget.queries[0], ...query }],
+              },
+            ],
+          }),
+      ),
+    );
+  }
+
+  async function getFirstQuery() {
+    const dashboard = getDashboard(
+      await getDashboardDetails.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          dashboardIdOrTitle: "101",
+        },
+        context,
+      ),
+    );
+    return dashboard.widgets[0].queries[0];
+  }
+
+  it("describes saved transformations by aggregate position", async () => {
+    mockQuery({
+      fields: ["count()", "count()", "p95(span.duration)"],
+      aggregates: ["count()", "count()", "p95(span.duration)"],
+      transformations: {
+        "2": [],
+        "1": ["smooth(asap,7)", "fill(zero)"],
+        "0": ["fill( linear )", "smooth( ema , 7 , 0.25 )"],
+      },
+    });
+
+    expect((await getFirstQuery()).transformations).toMatchInlineSnapshot(`
+      [
+        {
+          "aggregate": "count()",
+          "aggregateIndex": 0,
+          "description": "count() (aggregate 1): fill( linear ) → smooth( ema , 7 , 0.25 )",
+          "transformations": [
+            "fill( linear )",
+            "smooth( ema , 7 , 0.25 )",
+          ],
+        },
+        {
+          "aggregate": "count()",
+          "aggregateIndex": 1,
+          "description": "count() (aggregate 2): smooth(asap,7) → fill(zero)",
+          "transformations": [
+            "smooth(asap,7)",
+            "fill(zero)",
+          ],
+        },
+        {
+          "aggregate": "p95(span.duration)",
+          "aggregateIndex": 2,
+          "description": "p95(span.duration) (aggregate 3): none",
+          "transformations": [],
+        },
+      ]
+    `);
+  });
+
+  it("keeps saved positions that no longer match an aggregate", async () => {
+    mockQuery({
+      aggregates: ["count()"],
+      transformations: { "3": ["fill(linear)"] },
+    });
+
+    expect((await getFirstQuery()).transformations).toEqual([
+      {
+        aggregateIndex: 3,
+        aggregate: null,
+        transformations: ["fill(linear)"],
+        description: "aggregate 4 (no aggregate): fill(linear)",
+      },
+    ]);
+  });
+
+  it("omits transformations when none are saved", async () => {
+    mockQuery({ transformations: {} });
+
+    expect(await getFirstQuery()).not.toHaveProperty("transformations");
+  });
+
+  it("returns null transformations when the server does not report them", async () => {
+    const { transformations: _, ...query } =
+      dashboardDetailsFixture.widgets[0]!.queries[0]!;
+    const [widget] = dashboardDetailsFixture.widgets;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/101/",
+        () =>
+          HttpResponse.json({
+            ...dashboardDetailsFixture,
+            widgets: [{ ...widget, queries: [query] }],
+          }),
+      ),
+    );
+
+    expect((await getFirstQuery()).transformations).toBeNull();
+  });
+
   it("accepts widgets whose display type is null", async () => {
     const [widget] = dashboardDetailsFixture.widgets;
     mswServer.use(

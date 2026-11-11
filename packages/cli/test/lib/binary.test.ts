@@ -429,8 +429,7 @@ describe("fetchWithUpgradeError", () => {
   });
 
   test("returns response on success", async () => {
-    globalThis.fetch = (async () =>
-      new Response("ok", { status: 200 })) as typeof globalThis.fetch;
+    globalThis.fetch = async () => new Response("ok", { status: 200 });
 
     const response = await fetchWithUpgradeError(
       "https://example.com",
@@ -441,11 +440,11 @@ describe("fetchWithUpgradeError", () => {
   });
 
   test("re-throws AbortError as-is", async () => {
-    globalThis.fetch = (async () => {
+    globalThis.fetch = async () => {
       const err = new Error("Aborted");
       err.name = "AbortError";
       throw err;
-    }) as typeof globalThis.fetch;
+    };
 
     try {
       await fetchWithUpgradeError("https://example.com", {}, "Test");
@@ -473,9 +472,9 @@ describe("fetchWithUpgradeError", () => {
   });
 
   test("wraps network errors as UpgradeError", async () => {
-    globalThis.fetch = (async () => {
+    globalThis.fetch = async () => {
       throw new Error("ECONNREFUSED");
-    }) as typeof globalThis.fetch;
+    };
 
     try {
       await fetchWithUpgradeError("https://example.com", {}, "GitHub");
@@ -488,10 +487,10 @@ describe("fetchWithUpgradeError", () => {
   });
 
   test("wraps non-Error thrown values as UpgradeError", async () => {
-    globalThis.fetch = (async () => {
+    globalThis.fetch = async () => {
       // intentionally testing non-Error throw
       throw { code: "ECONNRESET", reason: "connection reset" };
-    }) as typeof globalThis.fetch;
+    };
 
     try {
       await fetchWithUpgradeError("https://example.com", {}, "Service");

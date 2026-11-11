@@ -268,28 +268,28 @@ function concatChunksToBytes(chunks: Array<string | Uint8Array>): Uint8Array {
  * Parse captured output: prefer zero-copy object, then JSON, then raw string.
  * @internal Exported for testing
  */
-export function parseOutput<T>(
+export function parseOutput(
   capturedResult: unknown,
   stdoutChunks: Array<string | Uint8Array>,
-): T {
+): unknown {
   if (capturedResult !== undefined) {
-    return capturedResult as T;
+    return capturedResult;
   }
   // Binary output (e.g. `sentry api` attachment downloads) must be returned
   // byte-faithfully. If any chunk is a Uint8Array, joining as strings would
   // stringify it to comma-separated decimals — return raw bytes instead.
   if (stdoutChunks.some((c) => c instanceof Uint8Array)) {
-    return concatChunksToBytes(stdoutChunks) as T;
+    return concatChunksToBytes(stdoutChunks);
   }
   const stdoutStr = stdoutChunks.join("");
   if (!stdoutStr.trim()) {
-    return undefined as T;
+    return undefined;
   }
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    return JSON.parse(stdoutStr) as T;
+    return JSON.parse(stdoutStr);
   } catch {
-    return stdoutStr.trim() as T;
+    return stdoutStr.trim();
   }
 }
 
@@ -450,10 +450,10 @@ async function executeWithCapture<T>(
         );
       }
 
-      return parseOutput<T>(
+      return parseOutput(
         captureCtx.getCapturedResult(),
         captureCtx.stdoutChunks,
-      );
+      ) as T;
     });
   });
 }
@@ -526,7 +526,7 @@ function executeWithStream<T>(
           // dropped when the channel closes. No streaming-capable command emits
           // binary today, but this keeps the streaming path faithful to the
           // capture path (see parseOutput) if one ever does.
-          const trailing = parseOutput<T>(undefined, captureCtx.stdoutChunks);
+          const trailing = parseOutput(undefined, captureCtx.stdoutChunks) as T;
           if (trailing !== undefined) {
             channel.push(trailing);
           }

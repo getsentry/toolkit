@@ -12,7 +12,7 @@ import { getCommitLog } from "../../src/lib/git.js";
 function lastGitArgs(): string[] {
   const call = execFileSyncMock.mock.calls.at(-1);
   // execFileSync(file, args, options)
-  return (call?.[1] ?? []) as string[];
+  return call?.[1] ?? [];
 }
 
 describe("getCommitLog pathspec argv", () => {

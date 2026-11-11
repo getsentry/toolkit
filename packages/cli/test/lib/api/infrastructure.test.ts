@@ -870,7 +870,7 @@ describe("rawApiRequest binary handling", () => {
       host: "https://sentry.io",
     });
     const fetchSpy = vi.fn();
-    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    globalThis.fetch = fetchSpy;
 
     await expect(
       rawApiRequest("organizations/", {

@@ -143,13 +143,17 @@ function buildHandlers(
 }
 
 function withTraceItemAttributeMetadata(
-  attributes: readonly { key: string; name: string }[],
+  attributes: readonly {
+    key: string;
+    name: string;
+    attributeSource?: { source_type: string };
+  }[],
   attributeType: "string" | "number" | "boolean",
 ) {
   return attributes.map((attribute) => ({
+    attributeSource: { source_type: "sentry" as const },
     ...attribute,
     attributeType,
-    attributeSource: { source_type: "sentry" as const },
   }));
 }
 
@@ -160,7 +164,12 @@ type IssueUpdateBody = {
   ignoreUserCount?: number;
   ignoreUserWindow?: number;
   ignoreWindow?: number;
+  priority?: string;
   status?: string;
+  statusDetails?: {
+    inRelease?: string;
+    inCommit?: { commit: string; repository: string };
+  };
   substatus?: string;
 };
 
@@ -232,6 +241,16 @@ function buildUpdatedIssueResponse(
 
   if (requestedStatus === "resolvedInNextRelease") {
     statusDetails = { inNextRelease: true };
+  } else if (body.statusDetails?.inRelease !== undefined) {
+    statusDetails = { inRelease: body.statusDetails.inRelease };
+  } else if (body.statusDetails?.inCommit !== undefined) {
+    // Sentry returns the serialized commit, keyed by its SHA.
+    statusDetails = {
+      inCommit: {
+        id: body.statusDetails.inCommit.commit,
+        repository: { name: body.statusDetails.inCommit.repository },
+      },
+    };
   } else if (status === "ignored") {
     statusDetails = buildMockIgnoredStatusDetails(body, substatus);
   } else if (body.status !== undefined) {
@@ -244,6 +263,7 @@ function buildUpdatedIssueResponse(
     substatus,
     statusDetails,
     assignedTo: body.assignedTo ?? baseIssue.assignedTo,
+    priority: body.priority ?? baseIssue.priority,
   };
 }
 
@@ -348,7 +368,7 @@ export const restHandlers = buildHandlers([
             stage: "connect_mcp",
             status: "completed",
             eventNote: null,
-            extra: null,
+            extra: { method: "mcp" },
           },
         ],
       });

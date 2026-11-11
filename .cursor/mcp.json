@@ -1,7 +1,8 @@
 {
   "mcpServers": {
     "sentry": {
-      "url": "https://mcp.sentry.dev/mcp/sentry/mcp-server?experimental=1"
+      "command": "sentry",
+      "args": ["mcp", "sentry/mcp-server", "--experimental"]
     },
     "sentry-dev": {
       "url": "http://localhost:5173/mcp/sentry/mcp-server?experimental=1"

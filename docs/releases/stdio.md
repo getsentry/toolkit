@@ -102,7 +102,10 @@ not vendored; tests make no network requests.
 
 ## User Installation
 
-Users run the server through npx in their MCP client configuration:
+The primary way to run the stdio server is the Sentry CLI: `sentry auth login`,
+then register `sentry mcp` with the MCP client (see the
+[`sentry mcp` docs](https://cli.sentry.dev/commands/mcp/)). This package is the
+legacy option for clients that launch the server through npx:
 
 ```json
 {
