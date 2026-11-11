@@ -39,10 +39,7 @@ export async function searchIssuesAgent(
 }> {
   // Provider check happens in callEmbeddedAgent via getAgentProvider()
   // Create tools pre-bound with the provided API service and organization
-  return await callEmbeddedAgent<
-    z.output<typeof searchIssuesAgentOutputSchema>,
-    typeof searchIssuesAgentOutputSchema
-  >({
+  return await callEmbeddedAgent({
     system: systemPrompt,
     prompt: options.query,
     tools: {

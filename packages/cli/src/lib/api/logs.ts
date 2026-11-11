@@ -218,7 +218,7 @@ export async function listLogs(
           start: options.start,
           end: options.end,
           sort: toApiSort(options.sort),
-        } as Parameters<typeof listOrganizationEvents>[0]["query"],
+        },
       });
 
       const { data: raw, nextCursor } = unwrapPaginatedResult<unknown>(
@@ -528,10 +528,6 @@ export async function listTraceLogs(
  * @param projectSlug - Project slug
  * @param logId - The sentry.item_id of the log entry
  * @param traceId - The trace ID (required by the endpoint)
- *
- * Uses the experimental /projects/{org}/{project}/trace-items/ endpoint directly via
- * apiRequestToRegion — it is not yet available in @sentry/api (generated from
- * getsentry/sentry-api-schema) because the endpoint is marked EXPERIMENTAL in Sentry.
  */
 export function getLogItemDetail(
   orgSlug: string,

@@ -236,11 +236,7 @@ export function formatEventOutput(
   },
 ) {
   let output = "";
-  const eventUser = (
-    event as Event & {
-      user?: z.infer<typeof EventSchema>["user"];
-    }
-  ).user;
+  const eventUser = event.user;
   const eventWithReplayMetadataStripped = options?.replaySummary
     ? stripReplayMetadata(event)
     : event;
@@ -1464,7 +1460,7 @@ function formatN1QueryEvidence(
   // Format parent span info if available
   if (evidenceData.parentSpan) {
     parts.push("**Parent Operation:**");
-    parts.push(`${evidenceData.parentSpan}`);
+    parts.push(evidenceData.parentSpan);
     parts.push("");
   }
 
@@ -1527,7 +1523,7 @@ function formatN1QueryEvidence(
     } else if (isValidSpanArray(spansData)) {
       // Only show offender summaries if we have spans data but couldn't build a tree
       const offenderSummaries = buildOffenderSummaries(
-        spansData as RawSpan[],
+        spansData,
         offenderSpanIds,
       );
 
@@ -1562,7 +1558,7 @@ function formatSlowDbQueryEvidence(
   // Show parent span if available (generic field that applies to slow queries)
   if (evidenceData.parentSpan) {
     parts.push("**Parent Operation:**");
-    parts.push(`${evidenceData.parentSpan}`);
+    parts.push(evidenceData.parentSpan);
     parts.push("");
   }
 
@@ -1702,7 +1698,7 @@ type MetricIssueCondition = MetricIssueEvidenceData["conditions"][number];
 type Unverified<T> = { readonly [K in keyof T]?: unknown };
 
 function asUnverified<T>(value: unknown): Unverified<T> | undefined {
-  return isPlainObject(value) ? (value as Unverified<T>) : undefined;
+  return isPlainObject(value) ? value : undefined;
 }
 
 type MetricAlertQuery = {
@@ -2073,7 +2069,7 @@ function formatGenericEventOutput(event: Event): string {
     for (const display of occurrence.evidenceDisplay) {
       if (display.important) {
         parts.push(`**${display.name}:**`);
-        parts.push(`${display.value}`);
+        parts.push(display.value);
         parts.push("");
       }
     }
@@ -2808,9 +2804,7 @@ function formatIssueReplayOutput({
 }
 
 export function getReplayIdFromEvent(event: Event): string | null {
-  const replayContext = event.contexts?.replay as
-    | Record<string, unknown>
-    | undefined;
+  const replayContext = event.contexts?.replay;
   const replayContextId =
     typeof replayContext?.replay_id === "string"
       ? replayContext.replay_id

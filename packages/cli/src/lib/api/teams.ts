@@ -60,7 +60,7 @@ export async function listTeamsPaginated(
       cursor: options.cursor,
       per_page: options.perPage ?? 25,
       query: options.query,
-    } as { cursor?: string; per_page?: number; query?: string },
+    },
   });
 
   return unwrapPaginatedResult<SentryTeam[]>(result, "Failed to list teams");

@@ -473,7 +473,7 @@ describe("enrichEventWithGroupingTags", () => {
 
   test("sets cli_error.kind from exception value", () => {
     const event = makeEvent("TypeError");
-    event.exception!.values![0]!.value =
+    event.exception!.values![0].value =
       "Cannot read properties of undefined (reading 'replaceAll')";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("Cannot read properties of");
@@ -481,17 +481,17 @@ describe("enrichEventWithGroupingTags", () => {
 
   test("sets cli_error.kind for fetch failed TypeError", () => {
     const event = makeEvent("TypeError");
-    event.exception!.values![0]!.value = "fetch failed";
+    event.exception!.values![0].value = "fetch failed";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("fetch failed");
   });
 
   test("sets cli_error.kind for Error with variable project count", () => {
     const event1 = makeEvent("Error");
-    event1.exception!.values![0]!.value =
+    event1.exception!.values![0].value =
       "Failed to fetch issues from 3 project(s): Failed to list issues: 400 Bad Request";
     const event2 = makeEvent("Error");
-    event2.exception!.values![0]!.value =
+    event2.exception!.values![0].value =
       "Failed to fetch issues from 1 project(s): Failed to list issues: 400 Bad Request";
     const result1 = enrichEventWithGroupingTags(event1);
     const result2 = enrichEventWithGroupingTags(event2);
@@ -514,7 +514,7 @@ describe("enrichEventWithGroupingTags", () => {
       "cli_error.class": "ContextError",
       "cli_error.kind": "Organization",
     });
-    event.exception!.values![0]!.value = "some different message";
+    event.exception!.values![0].value = "some different message";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("Organization");
   });

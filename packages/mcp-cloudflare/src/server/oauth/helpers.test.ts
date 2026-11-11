@@ -61,7 +61,7 @@ function createRefreshOptions(
       accessToken: "old-access-token",
       refreshToken: "old-refresh-token",
       ...propsOverrides,
-    } as WorkerProps,
+    },
   };
 }
 

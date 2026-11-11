@@ -128,6 +128,16 @@ export const ASSEMBLE_POLL_INTERVAL_MS = 1000;
 export const ASSEMBLE_MAX_WAIT_MS = 300_000;
 
 /**
+ * Per-attempt timeout for chunk-upload POSTs, instead of the 30s default.
+ * Storing the chunks sometimes takes the server longer than 30s; the client
+ * then aborts a request the server finishes and uploads it again. The proxy
+ * in front of Sentry, on sentry.io and in self-hosted's nginx config, waits
+ * up to 90s for the endpoint to respond, so 120s covers that plus time to
+ * send the request body.
+ */
+export const CHUNK_UPLOAD_TIMEOUT_MS = 120_000;
+
+/**
  * Fallback per-file size cap (2 GiB) used when the server advertises no
  * `maxFileSize` (i.e. reports `0`). Matches the legacy `DEFAULT_MAX_DIF_SIZE`.
  */
@@ -376,6 +386,22 @@ export function hashBuffer(
 }
 
 /**
+ * Authenticated fetch for chunk-upload POSTs to the server-provided URL.
+ *
+ * Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
+ * explicitly: the server-provided URL need not match the catalog path, which
+ * is also why the timeout is set here rather than by URL.
+ */
+function getChunkUploadFetch(
+  regionUrl: string,
+): (url: string, init: RequestInit) => Promise<Response> {
+  return getSdkConfig(regionUrl, {
+    idempotent: true,
+    timeoutMs: CHUNK_UPLOAD_TIMEOUT_MS,
+  }).fetch;
+}
+
+/**
  * Upload chunks the server reports as missing, in parallel.
  *
  * Filters the full chunk list against the set of missing checksums,
@@ -412,9 +438,7 @@ export async function uploadMissingChunks(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  // Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
-  // explicitly: the server-provided URL need not match the catalog path.
-  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
+  const authFetch = getChunkUploadFetch(regionUrl);
 
   await Promise.all(
     missingChunks.map((chunk) =>
@@ -534,9 +558,7 @@ export async function uploadChunkPayloads(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  // Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
-  // explicitly: the server-provided URL need not match the catalog path.
-  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
+  const authFetch = getChunkUploadFetch(regionUrl);
 
   await Promise.all(
     batchChunkPayloads(chunks, serverOptions).map((batch) =>

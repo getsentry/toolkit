@@ -26,7 +26,6 @@
 
 import { addBreadcrumb } from "@sentry/node";
 
-import type { SpanListItem } from "../types/index.js";
 import { listLogs, listSpans, queryEvents } from "./api-client.js";
 import { type LazyCommand, sentry } from "./app-identity.js";
 import {
@@ -519,7 +518,7 @@ const traceAdapter: FuzzyLookupAdapter = async (ctx) => {
     statsPeriod: ctx.period ?? SCAN_PERIODS.trace,
     sort: "date",
   });
-  return (data as SpanListItem[]).map((s) => s.trace);
+  return data.map((s) => s.trace);
 };
 
 const logAdapter: FuzzyLookupAdapter = async (ctx) => {
@@ -544,7 +543,7 @@ const spanAdapter: FuzzyLookupAdapter = async (ctx) => {
     statsPeriod: ctx.period ?? SCAN_PERIODS.span,
     sort: "date",
   });
-  return (data as SpanListItem[]).map((s) => s.id);
+  return data.map((s) => s.id);
 };
 
 /** Registry of adapters by entity type. Mutable so tests can stub. */
@@ -571,7 +570,7 @@ async function findTraceBySpanId(
     query: `id:${spanId}`,
     statsPeriod: ctx.period ?? SCAN_PERIODS.span,
   });
-  return (data as SpanListItem[])[0]?.trace ?? null;
+  return data[0]?.trace ?? null;
 }
 
 // ---------------------------------------------------------------------------

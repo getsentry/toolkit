@@ -2,7 +2,7 @@
  * sentry auth whoami
  *
  * Display the currently authenticated identity. For user-scoped tokens (OAuth,
- * PAT), this fetches the user from `/auth/`. For org auth tokens (`sntrys_`),
+ * PAT), this fetches the user from `/users/me/`. For org auth tokens (`sntrys_`),
  * it extracts the organization from the token's embedded claim.
  */
 

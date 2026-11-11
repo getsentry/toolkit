@@ -129,7 +129,7 @@ afterEach(() => {
 describe("getRelease", () => {
   test("fetches a release by version", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.url).toContain("/releases/1.0.0/");
       return new Response(JSON.stringify(SAMPLE_RELEASE), {
         status: 200,
@@ -152,7 +152,7 @@ describe("getRelease", () => {
 describe("createRelease", () => {
   test("creates a release with version and projects", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("POST");
       const body = (await req.json()) as {
         version: string;
@@ -184,7 +184,7 @@ describe("updateRelease", () => {
   test("updates a release with dateReleased", async () => {
     const updated = { ...SAMPLE_RELEASE, dateReleased: "2025-06-15T00:00:00Z" };
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("PUT");
       expect(req.url).toContain("/releases/1.0.0/");
       const body = (await req.json()) as { dateReleased: string };
@@ -210,7 +210,7 @@ describe("updateRelease", () => {
 describe("deleteRelease", () => {
   test("deletes a release", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("DELETE");
       expect(req.url).toContain("/releases/1.0.0/");
       return new Response(null, { status: 204 });
@@ -228,7 +228,7 @@ describe("deleteRelease", () => {
 describe("listReleaseDeploys", () => {
   test("returns deploys for a release", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.url).toContain("/releases/1.0.0/deploys/");
       return new Response(JSON.stringify([SAMPLE_DEPLOY]), {
         status: 200,
@@ -251,7 +251,7 @@ describe("listReleaseDeploys", () => {
 describe("createReleaseDeploy", () => {
   test("creates a deploy for a release", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("POST");
       expect(req.url).toContain("/releases/1.0.0/deploys/");
       const body = (await req.json()) as { environment: string };
@@ -297,7 +297,7 @@ describe("setCommitsAuto", () => {
     const requests: { method: string; url: string }[] = [];
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       requests.push({ method: req.method, url: req.url });
 
       // List org repositories (SDK uses /repos/ endpoint)
@@ -361,7 +361,7 @@ describe("setCommitsAuto", () => {
     let reposResolved = false;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
 
       if (req.url.includes("/repos/")) {
         await reposGate;
@@ -451,7 +451,7 @@ describe("setCommitsAuto", () => {
     async ({ body, status }) => {
       const requests: { method: string; pathname: string }[] = [];
       globalThis.fetch = mockFetch(async (input, init) => {
-        const request = new Request(input!, init);
+        const request = new Request(input, init);
         requests.push({
           method: request.method,
           pathname: new URL(request.url).pathname,
@@ -495,7 +495,7 @@ describe("setCommitsAuto", () => {
     const repoQueries: (string | null)[] = [];
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       if (!url.pathname.endsWith("/repos/")) {
         // Concurrent previous-release lookup
         return new Response(JSON.stringify({}), {
@@ -550,7 +550,7 @@ describe("setCommitsAuto", () => {
     let repoRequestCount = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
 
       if (req.url.includes("/repos/")) {
         repoRequestCount += 1;
@@ -668,7 +668,7 @@ describe("setCommitsAuto", () => {
     let sentRefs: unknown;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       if (req.url.includes("/repos/")) {
         repoQueries.push(new URL(req.url).searchParams.get("query"));
         return new Response(JSON.stringify([SAMPLE_REPO]), {
@@ -732,7 +732,7 @@ describe("setCommitsAuto", () => {
       let sentRefs: unknown;
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         if (req.url.includes("/repos/")) {
           const query = new URL(req.url).searchParams.get("query");
           repoQueries.push(query);
@@ -777,7 +777,7 @@ describe("setCommitsAuto", () => {
       url: "https://github.com/getsentry/cli-legacy",
     };
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       if (!url.pathname.endsWith("/repos/")) {
         return new Response(JSON.stringify({}), {
           status: 200,
@@ -827,7 +827,7 @@ describe("setCommitsAuto", () => {
     let sentRefs: unknown;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       if (req.url.includes("/repos/")) {
         const query = new URL(req.url).searchParams.get("query") ?? "";
         repoQueries.push(query);
@@ -886,7 +886,7 @@ describe("setCommitsAuto", () => {
     let sentRefs: unknown;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       if (req.url.includes("/repos/")) {
         const query = new URL(req.url).searchParams.get("query") ?? "";
         const repos = hits
@@ -949,7 +949,7 @@ describe("setCommitsWithRefs", () => {
   test("keeps a slash in a release version within the org release endpoint", async () => {
     const requestPaths: string[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {
-      const request = new Request(input!, init);
+      const request = new Request(input, init);
       requestPaths.push(new URL(request.url).pathname);
       return new Response(JSON.stringify(SAMPLE_RELEASE), {
         status: 200,
@@ -1228,7 +1228,7 @@ describe("setCommitsLocal", () => {
   test("sends explicit commits to the API", async () => {
     const withCommits = { ...SAMPLE_RELEASE, commitCount: 2 };
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("PUT");
       const body = (await req.json()) as {
         commits: Array<{ id: string; message: string }>;
@@ -1262,7 +1262,7 @@ describe("setCommitsLocal", () => {
 describe("listReleasesPaginated", () => {
   test("returns a page of releases with cursor", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.url).toContain("/releases/");
       return new Response(JSON.stringify([SAMPLE_RELEASE]), {
         status: 200,
@@ -1300,7 +1300,7 @@ describe("listReleasesPaginated", () => {
 
   test("passes query and sort options", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       const url = new URL(req.url);
       expect(url.searchParams.get("query")).toBe("1.0");
       expect(url.searchParams.get("sort")).toBe("date");
@@ -1323,7 +1323,7 @@ describe("listReleasesPaginated", () => {
     async (sort) => {
       let flatten: string | null = null;
       globalThis.fetch = mockFetch(async (input, init) => {
-        const url = new URL(new Request(input!, init).url);
+        const url = new URL(new Request(input, init).url);
         flatten = url.searchParams.get("flatten");
         // Sentry rejects session sorts unless the results are flattened.
         if (flatten !== "1") {
@@ -1351,7 +1351,7 @@ describe("listReleasesPaginated", () => {
   test("does not flatten date-sorted results", async () => {
     let flatten: string | null = "unset";
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       flatten = url.searchParams.get("flatten");
       return new Response(JSON.stringify([]), {
         status: 200,

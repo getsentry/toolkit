@@ -109,7 +109,7 @@ describe("extractSections", () => {
       "### Performance\n\n- Optimize query execution\n- Reduce memory usage";
     const sections = extractSections(body);
     expect(sections).toHaveLength(1);
-    expect(sections[0]!.category).toBe("performance");
+    expect(sections[0].category).toBe("performance");
   });
 });
 
@@ -229,7 +229,7 @@ describe("parseCommitMessages", () => {
     ];
 
     const sections = parseCommitMessages(commits);
-    expect(sections[0]!.markdown).toContain("add pagination support");
+    expect(sections[0].markdown).toContain("add pagination support");
   });
 
   test("uses only first line of multi-line messages", () => {
@@ -243,8 +243,8 @@ describe("parseCommitMessages", () => {
     ];
 
     const sections = parseCommitMessages(commits);
-    expect(sections[0]!.markdown).toContain("short summary");
-    expect(sections[0]!.markdown).not.toContain("Long description");
+    expect(sections[0].markdown).toContain("short summary");
+    expect(sections[0].markdown).not.toContain("Long description");
   });
 
   test("filters #skip-changelog commits", () => {
@@ -302,8 +302,8 @@ describe("countListItems", () => {
 });
 
 describe("fetchChangelog source affinity", () => {
-  const toolkitSource = UPGRADE_SOURCES[0]!;
-  const legacySource = UPGRADE_SOURCES[1]!;
+  const toolkitSource = UPGRADE_SOURCES[0];
+  const legacySource = UPGRADE_SOURCES[1];
   let originalFetch: typeof globalThis.fetch;
 
   beforeEach(() => {

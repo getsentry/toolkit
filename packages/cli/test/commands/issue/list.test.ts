@@ -1007,7 +1007,7 @@ describe("issue list: org-all mode (cursor pagination)", () => {
       id: "1",
       slug: "test-project",
       name: "Test Project",
-    } as Awaited<ReturnType<typeof projectsApi.getProject>>);
+    });
 
     const { context } = createOrgAllContext();
 
@@ -1544,10 +1544,7 @@ describe("issue list: collapse parameter optimization", () => {
     const { context } = createOrgAllContext();
     await orgAllFunc.call(context, callFlags, "my-org/");
 
-    return (listIssuesAllPagesMock.mock.calls[0]?.[2] ?? {}) as Record<
-      string,
-      unknown
-    >;
+    return listIssuesAllPagesMock.mock.calls[0]?.[2] ?? {};
   }
 
   beforeEach(async () => {
@@ -1601,10 +1598,7 @@ describe("issue list: collapse parameter optimization", () => {
         { limit: 10, period: parsePeriod("90d"), json: true },
         "my-org/",
       );
-      return (listIssuesAllPagesMock.mock.calls[0]?.[2] ?? {}) as Record<
-        string,
-        unknown
-      >;
+      return listIssuesAllPagesMock.mock.calls[0]?.[2] ?? {};
     }
 
     test("uses recommended on Sentry SaaS", async () => {
@@ -2310,7 +2304,7 @@ describe("issue list: comma-separated project slugs", () => {
       if (slug === "api") {
         throw new ApiError("Forbidden", 403);
       }
-      return catalog[0] as (typeof catalog)[number];
+      return catalog[0];
     });
 
     const error = await func

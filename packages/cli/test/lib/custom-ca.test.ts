@@ -392,10 +392,10 @@ describe("customFetch", () => {
 
   test("calls fetch without tls option when no custom CA", async () => {
     let capturedInit: RequestInit | undefined;
-    globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    globalThis.fetch = (_input: unknown, init?: RequestInit) => {
       capturedInit = init;
       return Promise.resolve(new Response("ok"));
-    }) as typeof fetch;
+    };
 
     await customFetch("https://example.com", { headers: { "X-Test": "1" } });
     expect(capturedInit).toBeDefined();
@@ -409,10 +409,10 @@ describe("customFetch", () => {
     process.env.NODE_EXTRA_CA_CERTS = certPath;
 
     let capturedInit: Record<string, unknown> | undefined;
-    globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    globalThis.fetch = (_input: unknown, init?: RequestInit) => {
       capturedInit = init as Record<string, unknown>;
       return Promise.resolve(new Response("ok"));
-    }) as typeof fetch;
+    };
 
     await customFetch("https://example.com", { headers: { "X-Test": "1" } });
     expect(capturedInit).toBeDefined();
@@ -427,10 +427,10 @@ describe("customFetch", () => {
     process.env.NODE_EXTRA_CA_CERTS = certPath;
 
     let capturedInit: Record<string, unknown> | undefined;
-    globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    globalThis.fetch = (_input: unknown, init?: RequestInit) => {
       capturedInit = init as Record<string, unknown>;
       return Promise.resolve(new Response("ok"));
-    }) as typeof fetch;
+    };
 
     await customFetch("https://example.com", {
       method: "POST",

@@ -37,7 +37,7 @@ function mockOk(
   let capturedMethod = "";
 
   globalThis.fetch = mockFetch(async (input, init) => {
-    const req = new Request(input!, init);
+    const req = new Request(input, init);
     capturedUrl = req.url;
     capturedMethod = req.method;
     return new Response(JSON.stringify(body), {
@@ -63,10 +63,10 @@ function mockSequential(
   let callIndex = 0;
 
   globalThis.fetch = mockFetch(async (input, init) => {
-    const req = new Request(input!, init);
+    const req = new Request(input, init);
     capturedUrls.push(req.url);
 
-    const resp = responses[callIndex]!;
+    const resp = responses[callIndex];
     callIndex += 1;
 
     return new Response(JSON.stringify(resp.body), {

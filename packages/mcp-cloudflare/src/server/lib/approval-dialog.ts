@@ -19,9 +19,7 @@ const ONE_YEAR_IN_SECONDS = 31536000;
 const MAX_SKILL_PREFERENCE_CLIENTS = 10;
 // Hosted OAuth approvals only mint active skills. Deprecated skills may still
 // work for existing grants or explicit stdio use, but not through this form.
-const APPROVABLE_SKILLS = (skillDefinitions as SkillDefinition[]).filter(
-  (skill) => !skill.deprecated,
-);
+const APPROVABLE_SKILLS = skillDefinitions.filter((skill) => !skill.deprecated);
 const APPROVABLE_SKILL_IDS = new Set(
   APPROVABLE_SKILLS.map((skill) => skill.id),
 );
@@ -203,7 +201,7 @@ async function getApprovedClientsFromCookie(
       });
       return null;
     }
-    return approvedClients as string[];
+    return approvedClients;
   } catch (e) {
     logIssue(
       new Error(`Error parsing cookie payload: ${String(e)}`, { cause: e }),

@@ -903,12 +903,12 @@ export function formatHelpHuman(data: HelpJsonResult): string {
 
   // Route group
   if ("commands" in data && "name" in data) {
-    return formatGroupHuman(data as RouteInfo);
+    return formatGroupHuman(data);
   }
 
   // Single command
   if ("path" in data) {
-    return formatCommandHuman(data as CommandInfo);
+    return formatCommandHuman(data);
   }
 
   // Error (with optional fuzzy suggestions)

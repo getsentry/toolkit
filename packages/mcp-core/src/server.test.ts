@@ -148,14 +148,16 @@ describe("buildServer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     startedSpans = [];
-    vi.mocked(startSpan).mockImplementation((<T>(
-      _options: Parameters<typeof startSpan>[0],
-      callback: (span: Span) => T,
-    ) => {
-      const span = createMockSpan();
-      startedSpans.push(span);
-      return callback(span as unknown as Span);
-    }) as typeof startSpan);
+    vi.mocked(startSpan).mockImplementation(
+      <T>(
+        _options: Parameters<typeof startSpan>[0],
+        callback: (span: Span) => T,
+      ) => {
+        const span = createMockSpan();
+        startedSpans.push(span);
+        return callback(span as unknown as Span);
+      },
+    );
   });
 
   const baseContext: ServerContext = {
@@ -1095,12 +1097,12 @@ describe("buildServer", () => {
         }),
       );
       expect(
-        dynamicDescription.mock.calls[0]![0].availableToolNames?.has(
+        dynamicDescription.mock.calls[0][0].availableToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
       expect(
-        dynamicDescription.mock.calls[0]![0].directToolNames?.has(
+        dynamicDescription.mock.calls[0][0].directToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);

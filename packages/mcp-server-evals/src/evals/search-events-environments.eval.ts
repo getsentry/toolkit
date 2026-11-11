@@ -60,7 +60,7 @@ describeEval("search-events-environment-grounding", {
     );
     expect(validationCalls.length).toBeGreaterThan(0);
 
-    const queries = [agentResult.result.query];
+    const queries: string[] = [agentResult.result.query];
     for (const call of validationCalls) {
       expect(call.args).toBeTypeOf("object");
       expect(call.args).not.toBeNull();

@@ -136,7 +136,7 @@ const mockFetch = async (input: RequestInfo | URL, _init?: RequestInit) => {
 };
 
 // Cast via unknown to avoid Bun's extended fetch type (which includes preconnect)
-globalThis.fetch = mockFetch as unknown as typeof fetch;
+globalThis.fetch = mockFetch;
 
 // Export original fetch for tests that need to restore it
 (globalThis as { __originalFetch?: typeof fetch }).__originalFetch =

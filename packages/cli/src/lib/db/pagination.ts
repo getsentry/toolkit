@@ -518,7 +518,7 @@ export function buildMultiTargetContextKey(
     ? escapeContextKeyValue(filters.query)
     : undefined;
   return (
-    `${base}` +
+    base +
     (escapedSort ? `|sort:${escapedSort}` : "") +
     `|period:${escapedPeriod}` +
     (escapedQuery ? `|q:${escapedQuery}` : "") +

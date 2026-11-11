@@ -47,6 +47,7 @@ import {
   mdTableHeader,
   renderMarkdown,
 } from "./markdown.js";
+import { formatSavedTransformationLines } from "./saved-transformations.js";
 import { sparkline } from "./sparkline.js";
 import { colorizeSql, isDbSpanOp } from "./sql.js";
 import { type Column, writeTable } from "./table.js";
@@ -582,9 +583,7 @@ function formatIssueCell(issue: SentryIssue, compact = false): string {
  * @returns Cell string
  */
 function formatTrendCell(issue: SentryIssue, compact = false): string {
-  const points = extractStatsPoints(
-    issue.stats as Record<string, unknown> | undefined,
-  );
+  const points = extractStatsPoints(issue.stats);
   const graph = points.length > 0 ? colorTag("muted", sparkline(points)) : "";
   const status = substatusLabel(issue.substatus);
   const parts = [graph, status].filter(Boolean);
@@ -1025,7 +1024,7 @@ function buildBreadcrumbsMarkdown(breadcrumbsEntry: BreadcrumbsEntry): string {
 
     let message = breadcrumb.message ?? "";
     if (!message && breadcrumb.data) {
-      const data = breadcrumb.data as Record<string, unknown>;
+      const data = breadcrumb.data;
       if (data.url && data.method) {
         const status = data.status_code
           ? ` → ${stringifyUnknown(data.status_code)}`
@@ -2423,9 +2422,7 @@ export function formatUpgradeResult(data: UpgradeResult): string {
     default: {
       // Exhaustive check — all action types should be handled above
       const _: never = data.action;
-      lines.push(
-        `${ACTION_DESCRIPTIONS[_ as UpgradeResult["action"]] ?? "Done"}`,
-      );
+      lines.push(ACTION_DESCRIPTIONS[_ as UpgradeResult["action"]] ?? "Done");
     }
   }
 
@@ -2522,6 +2519,11 @@ function formatWidgetLayoutLine(widget: DashboardWidget): string {
   return `Layout: position (${x},${y}), size ${w}×${h}`;
 }
 
+function formatWidgetTransformationLines(widget: DashboardWidget): string[] {
+  const lines = formatSavedTransformationLines(widget.queries);
+  return lines.length > 0 ? ["", "Saved transformations:", ...lines] : [];
+}
+
 /**
  * Format a widget edit result for human-readable output.
  */
@@ -2535,6 +2537,7 @@ export function formatWidgetEdited(
   if (layoutLine) {
     lines.push("", layoutLine);
   }
+  lines.push(...formatWidgetTransformationLines(result.widget));
   lines.push("", `URL: ${result.url}`);
   return renderMarkdown(lines.join("\n"));
 }

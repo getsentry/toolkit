@@ -7,6 +7,13 @@
  * - HTML fallback inside the SPA shell for no-JS browsers and HTML scrapers
  */
 
+import {
+  CLI_INSTALL_COMMAND,
+  CLI_MCP_ARGS,
+  CLI_MCP_COMMAND,
+  CLI_MCP_SNIPPET,
+} from "./constants";
+
 /** Public production origin used when embedding static HTML (build-time). */
 export const PUBLIC_HOMEPAGE_BASE_URL = "https://mcp.sentry.dev";
 
@@ -68,6 +75,40 @@ ${baseUrl}/mcp/{organizationSlug}/{projectSlug}
 ### Other Clients
 
 Any MCP-compatible client can connect using the HTTP transport at the endpoint URL above.
+
+## Local Server via the Sentry CLI
+
+Install the Sentry CLI and log in, then register \`${CLI_MCP_SNIPPET}\` as a stdio MCP server. It uses the CLI login, so the MCP config needs no token.
+
+\`\`\`bash
+${CLI_INSTALL_COMMAND}
+sentry auth login
+claude mcp add sentry -- ${CLI_MCP_SNIPPET}
+\`\`\`
+
+Other clients take the same command:
+
+\`\`\`json
+{
+  "mcpServers": {
+    "sentry": {
+      "command": "${CLI_MCP_COMMAND}",
+      "args": ${JSON.stringify(CLI_MCP_ARGS)}
+    }
+  }
+}
+\`\`\`
+
+The CLI also installs with \`brew install getsentry/tools/sentry\`, \`npm install -g sentry\`, or \`irm https://cli.sentry.dev/install.ps1 | iex\` on Windows. See https://cli.sentry.dev/getting-started/.
+
+Pass a target after the command to limit it:
+
+- \`${CLI_MCP_SNIPPET} my-org/\` — Limit to one organization
+- \`${CLI_MCP_SNIPPET} my-org/my-project\` — Limit to a specific project
+
+For self-hosted Sentry, log in with \`sentry auth login --url https://sentry.example.com\`, then set \`SENTRY_HOST\` in the MCP server's environment. See https://cli.sentry.dev/self-hosted/.
+
+Run \`${CLI_MCP_SNIPPET} --help\` for every flag and environment variable. To run the server without installing the CLI, use the legacy \`npx @sentry/mcp-server\` package.
 `;
 }
 

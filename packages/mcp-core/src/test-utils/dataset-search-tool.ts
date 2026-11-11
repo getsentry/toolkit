@@ -25,6 +25,7 @@ const params = {
  * `SEARCH_REPLAYS_STUB` for search_replays) from `./search-events-stub`
  * instead of "ok"; search-errors.test.ts shows how.
  */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- accepts any tool's handler params type
 export async function inspectDatasetSearchTool<P>(tool: {
   inputSchema: object;
   handler(params: P, context: ServerContext): Promise<unknown>;

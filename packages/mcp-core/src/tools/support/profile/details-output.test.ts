@@ -56,7 +56,7 @@ function createMockProfileChunk(): ProfileChunk {
         "2": { name: "worker" },
       },
     },
-  } as ProfileChunk;
+  };
 }
 
 function createMockTransactionProfile(): TransactionProfile {

@@ -190,10 +190,7 @@ export async function downloadBuildArtifact(
   }
 
   // Stream to disk so large (hundreds-of-MB) artifacts never buffer in memory.
-  await pipeline(
-    Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
-    createWriteStream(destPath),
-  );
+  await pipeline(Readable.fromWeb(response.body), createWriteStream(destPath));
 }
 
 /** Optional metadata sent with a build assemble request. */

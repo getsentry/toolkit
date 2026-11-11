@@ -112,8 +112,8 @@ export function summarize(samples: readonly number[]): BenchStats {
   }
   const sorted = [...samples].sort((a, b) => a - b);
   const n = sorted.length;
-  const min = sorted[0] as number;
-  const max = sorted[n - 1] as number;
+  const min = sorted[0];
+  const max = sorted[n - 1];
   const mean = sorted.reduce((acc, x) => acc + x, 0) / n;
   // Population stddev — we're measuring the full sample, not inferring a population.
   const variance = sorted.reduce((acc, x) => acc + (x - mean) ** 2, 0) / n;
@@ -135,7 +135,7 @@ function percentile(sorted: readonly number[], p: number): number {
     sorted.length - 1,
     Math.max(0, Math.ceil(p * sorted.length) - 1),
   );
-  return sorted[idx] as number;
+  return sorted[idx];
 }
 
 /**
@@ -293,8 +293,8 @@ export function compareReports(
     const [fixture, operation] = key.split("||");
     if (!b) {
       rows.push({
-        fixture: fixture as string,
-        operation: operation as string,
+        fixture: fixture,
+        operation: operation,
         current: c?.stats,
         verdict: "missing-baseline",
       });
@@ -302,8 +302,8 @@ export function compareReports(
     }
     if (!c) {
       rows.push({
-        fixture: fixture as string,
-        operation: operation as string,
+        fixture: fixture,
+        operation: operation,
         baseline: b.stats,
         verdict: "missing-current",
       });
@@ -315,8 +315,8 @@ export function compareReports(
     if (deltaPct > thresholdPct) verdict = "regressed";
     else if (deltaPct < -thresholdPct) verdict = "improved";
     rows.push({
-      fixture: fixture as string,
-      operation: operation as string,
+      fixture: fixture,
+      operation: operation,
       baseline: b.stats,
       current: c.stats,
       deltaMs,

@@ -26,7 +26,7 @@ describe("uploadCodeMappings", () => {
   test("POSTs a snake_case body to the bulk endpoint", async () => {
     let body: unknown;
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("POST");
       expect(req.url).toBe(
         `${DEFAULT_SENTRY_URL}/api/0/organizations/test-org/code-mappings/bulk/`,
