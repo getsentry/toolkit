@@ -1460,7 +1460,7 @@ function formatN1QueryEvidence(
   // Format parent span info if available
   if (evidenceData.parentSpan) {
     parts.push("**Parent Operation:**");
-    parts.push(`${evidenceData.parentSpan}`);
+    parts.push(evidenceData.parentSpan);
     parts.push("");
   }
 
@@ -1558,7 +1558,7 @@ function formatSlowDbQueryEvidence(
   // Show parent span if available (generic field that applies to slow queries)
   if (evidenceData.parentSpan) {
     parts.push("**Parent Operation:**");
-    parts.push(`${evidenceData.parentSpan}`);
+    parts.push(evidenceData.parentSpan);
     parts.push("");
   }
 
@@ -2069,7 +2069,7 @@ function formatGenericEventOutput(event: Event): string {
     for (const display of occurrence.evidenceDisplay) {
       if (display.important) {
         parts.push(`**${display.name}:**`);
-        parts.push(`${display.value}`);
+        parts.push(display.value);
         parts.push("");
       }
     }

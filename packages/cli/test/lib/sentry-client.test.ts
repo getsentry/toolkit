@@ -643,7 +643,7 @@ describe("fetchWithTimeout internal timeout classification", () => {
     const authFetch = getSdkConfig(REGION_URL, {
       idempotent: true,
       timeoutMs: 50,
-    }).fetch as typeof fetch;
+    }).fetch;
     const error = await authFetch(`${REGION_URL}/api/0/chunk-upload/`, {
       method: "POST",
       body: "{}",

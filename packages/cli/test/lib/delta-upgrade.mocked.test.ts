@@ -227,7 +227,7 @@ describe("resolveNightlyDelta", () => {
                 mediaType: "application/octet-stream",
                 size: 1000,
                 annotations: {
-                  "org.opencontainers.image.title": `${BINARY_NAME}`,
+                  "org.opencontainers.image.title": BINARY_NAME,
                 },
               },
             ],
