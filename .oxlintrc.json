@@ -145,6 +145,12 @@
       }
     },
     {
+      "files": ["apps/docs-mcp/**/*.{ts,tsx,js,mjs,cjs}"],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
       "files": ["packages/cli/src/**/*.{ts,tsx}"],
       "rules": {
         "typescript/no-explicit-any": "error",
