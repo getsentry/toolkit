@@ -351,6 +351,24 @@ type IndexMapSection = {
 };
 
 /**
+ * Insert an empty line into VLQ `mappings` before line `line` (0-based); each
+ * `;` ends a generated line. Scans only up to the insertion point instead of
+ * splitting every line, since `line` is at most the 2 header lines and
+ * mappings for large bundles run to many megabytes.
+ */
+function insertMappingsLine(mappings: string, line: number): string {
+  let at = 0;
+  for (let i = 0; i < line; i++) {
+    const next = mappings.indexOf(";", at);
+    if (next === -1) {
+      return `${mappings};`;
+    }
+    at = next + 1;
+  }
+  return `${mappings.slice(0, at)};${mappings.slice(at)}`;
+}
+
+/**
  * Insert an unmapped generated line at `line` (0-based), so mappings at and
  * after it describe code one line lower.
  *
@@ -361,9 +379,7 @@ type IndexMapSection = {
  */
 function insertGeneratedLine(map: SourcemapJson, line: number): void {
   if (typeof map.mappings === "string") {
-    const lines = map.mappings.split(";");
-    lines.splice(line, 0, "");
-    map.mappings = lines.join(";");
+    map.mappings = insertMappingsLine(map.mappings, line);
     return;
   }
   if (!Array.isArray(map.sections)) {
