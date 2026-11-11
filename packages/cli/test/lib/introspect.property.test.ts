@@ -219,7 +219,7 @@ describe("property: resolveCommandPath", () => {
     fcAssert(
       property(routeMapArb, nameArb, (routeMap, name) => {
         const result = resolveCommandPath(routeMap, [name]);
-        if (result && result.kind === "command") {
+        if (result?.kind === "command") {
           expect(result.info.path.startsWith("sentry ")).toBe(true);
         }
       }),

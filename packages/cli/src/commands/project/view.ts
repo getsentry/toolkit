@@ -204,14 +204,15 @@ async function fetchAllProjectDetails(
  * JSON output shape stays stable across CLI versions.
  */
 function hydrateOrganizationName(entry: ProjectViewEntry): ProjectViewEntry {
-  if (!entry.organization || entry.organization.name) {
+  const { organization } = entry;
+  if (!organization || organization.name) {
     return entry;
   }
   return {
     ...entry,
     organization: {
-      ...entry.organization,
-      name: resolveOrgDisplayName(entry.organization.slug),
+      ...organization,
+      name: resolveOrgDisplayName(organization.slug),
     },
   };
 }

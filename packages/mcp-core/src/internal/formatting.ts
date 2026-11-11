@@ -2154,7 +2154,7 @@ function formatContexts(contexts: z.infer<typeof EventSchema>["contexts"]) {
  * @returns Formatted markdown string with Seer summary, or empty string if no analysis exists
  */
 function formatSeerSummary(autofixState: AutofixRunState | undefined): string {
-  if (!autofixState || !autofixState.autofix) {
+  if (!autofixState?.autofix) {
     return "";
   }
 
