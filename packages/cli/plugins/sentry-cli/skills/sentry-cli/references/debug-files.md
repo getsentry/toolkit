@@ -45,7 +45,7 @@ Locate debug files for given debug identifiers
 | `<id...>` | Debug identifier(s) to search for |
 
 **Flags:**
-- `-t, --type <value>... - Only consider debug files of the given type (repeatable). Default: all`
+- `-t, --type <value>... - Only consider debug files of the given type (repeatable): dsym, elf, pe, pdb, portablepdb, sourcebundle, breakpad, proguard, jvm, wasm. Default: all`
 - `--no-well-known - Do not look for debug files in well-known locations`
 - `--no-cwd - Do not look for debug files in the current directory`
 - `-p, --path <value>... - Add a directory to search recursively (repeatable)`
@@ -74,7 +74,7 @@ Upload debug information files to Sentry
 | `<path...>` | Files or directories to scan for debug information files |
 
 **Flags:**
-- `-t, --type <value>... - Only upload files of this type (repeatable): dsym, elf, pe, pdb, portablepdb, wasm, breakpad, sourcebundle, jvm, dxil`
+- `-t, --type <value>... - Only upload files of this type (repeatable): dsym, macho, elf, pe, pdb, portablepdb, wasm, breakpad, sourcebundle, jvm, dxil`
 - `--id <value>... - Only upload the object with this debug id (repeatable)`
 - `--require-all - Fail if any --id value was not found among scanned files`
 - `--no-debug - Do not upload files whose only feature is debug/symbol info`
