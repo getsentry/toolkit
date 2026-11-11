@@ -781,6 +781,36 @@ describe("fetchCustomAttributes", () => {
     mswServer.resetHandlers();
   });
 
+  it("lists tags, not feature flags, for the errors dataset", async () => {
+    const requests: URLSearchParams[] = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/tags/",
+        ({ request }) => {
+          const params = new URL(request.url).searchParams;
+          requests.push(params);
+          if (params.get("useFlagsBackend") === "1") {
+            return HttpResponse.json([]);
+          }
+          return HttpResponse.json([
+            { key: "sessionId", name: "sessionId", totalValues: 12 },
+          ]);
+        },
+      ),
+    );
+
+    const { attributes } = await fetchCustomAttributes(
+      apiService,
+      "test-org",
+      "errors",
+      "123",
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].has("useFlagsBackend")).toBe(false);
+    expect(Object.keys(attributes)).toEqual(["sessionId"]);
+  });
+
   describe("403 permission errors", () => {
     it("should throw 403 'no multi-project access' error as UserInputError", async () => {
       // Mock the API to return a 403 error like in the Sentry issue
