@@ -58,6 +58,7 @@ describe("update_issue", () => {
         "changes": {
           "assignedTo": null,
           "ignoreBehavior": null,
+          "priority": null,
           "status": {
             "from": "unresolved",
             "to": "resolved",
@@ -66,6 +67,7 @@ describe("update_issue", () => {
         "current": {
           "assignedTo": "Jane Developer",
           "ignoreBehavior": null,
+          "priority": "medium",
           "status": "resolved",
         },
         "effect": "The issue is now marked as resolved and will no longer generate alerts",
@@ -144,6 +146,7 @@ describe("update_issue", () => {
       status: null,
       ignoreBehavior: null,
       assignedTo: null,
+      priority: null,
     });
     expect(output.current.status).toBe("unresolved");
     expect(output.effect).toBeNull();
@@ -169,11 +172,13 @@ describe("update_issue", () => {
             "to": "john.doe",
           },
           "ignoreBehavior": null,
+          "priority": null,
           "status": null,
         },
         "current": {
           "assignedTo": "john.doe",
           "ignoreBehavior": null,
+          "priority": "medium",
           "status": "unresolved",
         },
         "effect": null,
@@ -338,7 +343,82 @@ describe("update_issue", () => {
       status: null,
       ignoreBehavior: null,
       assignedTo: null,
+      priority: null,
     });
+  });
+
+  it("updates issue priority without changing status or assignment", async () => {
+    let putBody: unknown;
+    mswServer.use(
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        async ({ request }) => {
+          putBody = await request.json();
+          return HttpResponse.json(createIssue({ priority: "low" }));
+        },
+        { once: true },
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        priority: "low",
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    expect(putBody).toEqual({ priority: "low" });
+    const output = structured(result);
+    expect(output.updated).toBe(true);
+    expect(output.changes).toEqual({
+      status: null,
+      ignoreBehavior: null,
+      assignedTo: null,
+      priority: { from: "medium", to: "low" },
+    });
+    expect(output.current.status).toBe("unresolved");
+    expect(output.current.priority).toBe("low");
+    expect(output.effect).toBeNull();
+  });
+
+  it("skips priority updates when the requested priority is already set", async () => {
+    let putCalled = false;
+    const currentIssue = createIssue({ priority: "high" });
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(currentIssue),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => {
+          putCalled = true;
+          return HttpResponse.json(currentIssue);
+        },
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        priority: "high",
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    expect(putCalled).toBe(false);
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.changes.priority).toBeNull();
+    expect(output.current.priority).toBe("high");
   });
 
   it("updates both status and assignment", async () => {
@@ -361,6 +441,7 @@ describe("update_issue", () => {
             "to": "You",
           },
           "ignoreBehavior": null,
+          "priority": null,
           "status": {
             "from": "unresolved",
             "to": "resolved",
@@ -369,6 +450,7 @@ describe("update_issue", () => {
         "current": {
           "assignedTo": "me",
           "ignoreBehavior": null,
+          "priority": "medium",
           "status": "resolved",
         },
         "effect": "The issue is now marked as resolved and will no longer generate alerts",
@@ -512,6 +594,7 @@ describe("update_issue", () => {
         "changes": {
           "assignedTo": null,
           "ignoreBehavior": null,
+          "priority": null,
           "status": {
             "from": "unresolved",
             "to": "resolvedInRelease",
@@ -520,6 +603,7 @@ describe("update_issue", () => {
         "current": {
           "assignedTo": "Jane Developer",
           "ignoreBehavior": null,
+          "priority": "medium",
           "status": "resolvedInRelease",
         },
         "effect": "The issue is now marked as resolved in release backend@1.4.2. Events from newer releases will reopen it as a regression",
@@ -872,6 +956,7 @@ describe("update_issue", () => {
             "from": null,
             "to": "Until escalating",
           },
+          "priority": null,
           "status": {
             "from": "unresolved",
             "to": "ignored",
@@ -880,6 +965,7 @@ describe("update_issue", () => {
         "current": {
           "assignedTo": "Jane Developer",
           "ignoreBehavior": "Until escalating",
+          "priority": "medium",
           "status": "ignored",
         },
         "effect": "The issue is now ignored until it escalates",
@@ -934,6 +1020,7 @@ describe("update_issue", () => {
             "from": null,
             "to": "Until it occurs 100 times in 60 minutes",
           },
+          "priority": null,
           "status": {
             "from": "unresolved",
             "to": "ignored",
@@ -942,6 +1029,7 @@ describe("update_issue", () => {
         "current": {
           "assignedTo": "Jane Developer",
           "ignoreBehavior": "Until it occurs 100 times in 60 minutes",
+          "priority": "medium",
           "status": "ignored",
         },
         "effect": "The issue is now ignored until it occurs 100 times in 60 minutes",
@@ -1313,7 +1401,7 @@ describe("update_issue", () => {
         serverContext,
       ),
     ).rejects.toThrow(
-      "At least one of `status` or `assignedTo` must be provided to update the issue",
+      "At least one of `status`, `assignedTo`, or `priority` must be provided to update the issue",
     );
   });
 

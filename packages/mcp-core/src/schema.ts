@@ -215,6 +215,12 @@ export const ParamIssueStatus = z
     "The new status for the issue. Valid values are 'resolved', 'resolvedInNextRelease', 'unresolved', and 'ignored'.",
   );
 
+export const ParamIssuePriority = z
+  .enum(["low", "medium", "high"])
+  .describe(
+    "The new priority for the issue. Setting it manually stops Sentry from changing it automatically.",
+  );
+
 export const ParamIssueIgnoreMode = z
   .enum([
     "untilEscalating",
