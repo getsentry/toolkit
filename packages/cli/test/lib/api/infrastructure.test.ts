@@ -9,10 +9,11 @@ import {
   paginate,
   rawApiRequest,
   throwApiError,
+  throwRawApiError,
   unwrapPaginatedResult,
   unwrapResult,
 } from "../../../src/lib/api/infrastructure.js";
-import { setAuthToken } from "../../../src/lib/db/auth.js";
+import { resetAuthTokenCache, setAuthToken } from "../../../src/lib/db/auth.js";
 import { ApiError, HostScopeError } from "../../../src/lib/errors.js";
 import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
@@ -815,6 +816,171 @@ describe("throwApiError", () => {
 // ---------------------------------------------------------------------------
 // isTextualContentType + rawApiRequest binary handling (getsentry/cli#1303)
 // ---------------------------------------------------------------------------
+
+describe("401/403 denial guidance", () => {
+  useTestConfigDir("api-denial-");
+  useEnvSandbox([
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN",
+  ]);
+
+  /** An org auth token whose claim names `org`, in Sentry's `sntrys_` format. */
+  function orgAuthToken(org: string): string {
+    const claim = Buffer.from(
+      JSON.stringify({ iat: 1, url: "https://sentry.io", org }),
+    ).toString("base64");
+    return `sntrys_${claim}_secret`;
+  }
+
+  function useToken(token: string): void {
+    process.env.SENTRY_AUTH_TOKEN = token;
+    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    resetAuthTokenCache();
+  }
+
+  /** The repos list's challenge, as Sentry sends it to an under-scoped token. */
+  const REPOS_CHALLENGE =
+    'Bearer error="insufficient_scope", scope="org:admin org:ci org:integrations org:read org:write"';
+
+  async function rawDenial(
+    status: number,
+    endpoint: string,
+    { detail, challenge }: { detail?: string; challenge?: string } = {},
+  ): Promise<ApiError> {
+    const response = Response.json(
+      {
+        detail: detail ?? "You do not have permission to perform this action.",
+      },
+      {
+        status,
+        statusText: status === 403 ? "Forbidden" : "Unauthorized",
+        headers: challenge ? { "WWW-Authenticate": challenge } : {},
+      },
+    );
+    try {
+      await throwRawApiError(response, endpoint);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        return error;
+      }
+      throw error;
+    }
+    throw new Error("expected throwRawApiError to throw");
+  }
+
+  test("names the scopes a personal token lacks for the repos list", async () => {
+    useToken("sntryu_example");
+    const error = await rawDenial(403, "organizations/acme/repos/", {
+      challenge: REPOS_CHALLENGE,
+    });
+
+    expect(error.denialReason).toBe("insufficient_scope");
+    expect(error.detail).toContain(
+      "Any one of these works: org:admin, org:ci, org:integrations, org:read, org:write.",
+    );
+    expect(error.detail).toContain("An org auth token has org:ci.");
+    expect(error.detail).not.toContain("may lack the required scope");
+  });
+
+  test("says org auth tokens only have org:ci when the endpoint needs more", async () => {
+    useToken(orgAuthToken("acme"));
+    const error = await rawDenial(403, "organizations/acme/", {
+      challenge:
+        'Bearer error="insufficient_scope", scope="org:admin org:billing org:read org:write"',
+    });
+
+    expect(error.denialReason).toBe("insufficient_scope");
+    expect(error.detail).toContain("Org auth tokens only have org:ci.");
+    expect(error.detail).not.toContain("An org auth token has org:ci.");
+  });
+
+  test("names both orgs when an org auth token targets another org (403)", async () => {
+    useToken(orgAuthToken("token-org"));
+    const error = await rawDenial(403, "organizations/target-org/releases/");
+
+    expect(error.denialReason).toBe("org_mismatch");
+    expect(error.detail).toContain(
+      "This org auth token belongs to organization 'token-org', but the request is for 'target-org'.",
+    );
+    expect(error.detail).toContain("Use an auth token created in 'target-org'");
+  });
+
+  test("names both orgs when an org auth token targets another org (401)", async () => {
+    useToken(orgAuthToken("token-org"));
+    const error = await rawDenial(
+      401,
+      "organizations/target-org/chunk-upload/",
+      {
+        detail: "Invalid org token",
+      },
+    );
+
+    expect(error.denialReason).toBe("org_mismatch");
+    expect(error.detail).toContain("Invalid org token");
+    expect(error.detail).toContain("belongs to organization 'token-org'");
+    expect(error.detail).not.toContain("has been revoked");
+  });
+
+  test("reads the target org from the SDK response URL", () => {
+    useToken(orgAuthToken("token-org"));
+    const response = Response.json(
+      { detail: "You do not have permission to perform this action." },
+      { status: 403, statusText: "Forbidden" },
+    );
+    Object.defineProperty(response, "url", {
+      value: "https://us.sentry.io/api/0/organizations/target-org/releases/",
+    });
+
+    expect(() =>
+      throwApiError(
+        { detail: "You do not have permission to perform this action." },
+        response,
+        "Failed to create release",
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        denialReason: "org_mismatch",
+        detail: expect.stringContaining("'target-org'"),
+      }),
+    );
+  });
+
+  test("does not compare a numeric org ID with the token's org", async () => {
+    useToken(orgAuthToken("token-org"));
+    const error = await rawDenial(403, "organizations/12345/releases/");
+
+    expect(error.denialReason).toBe("access_denied");
+    expect(error.detail).toContain("may lack the required scope");
+  });
+
+  test("points org auth tokens at the org's token settings on 401", async () => {
+    useToken(orgAuthToken("acme"));
+    const unknown = await rawDenial(401, "organizations/acme/releases/", {
+      detail: "Invalid org token",
+    });
+    expect(unknown.denialReason).toBe("unrecognized");
+    expect(unknown.detail).toContain(
+      "org auth token is not recognized or has been revoked",
+    );
+    expect(unknown.detail).toContain("Settings > Auth Tokens");
+    expect(unknown.detail).not.toContain("settings/account/api/auth-tokens");
+
+    const expired = await rawDenial(401, "organizations/acme/releases/", {
+      detail: "Token expired",
+    });
+    expect(expired.denialReason).toBe("expired");
+    expect(expired.detail).toContain("org auth token has expired");
+  });
+
+  test("keeps the generic hint for a 403 with no challenge", async () => {
+    useToken("sntryu_example");
+    const error = await rawDenial(403, "organizations/acme/releases/");
+
+    expect(error.denialReason).toBe("access_denied");
+    expect(error.detail).toContain("may lack the required scope");
+  });
+});
 
 describe("isTextualContentType", () => {
   test.each([

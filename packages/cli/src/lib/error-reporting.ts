@@ -203,6 +203,9 @@ function recordSilencedError(error: unknown, reason: SilenceReason): void {
   };
   if (error instanceof ApiError) {
     attributes.api_status = error.status;
+    if (error.denialReason) {
+      attributes.api_denial_reason = error.denialReason;
+    }
   }
   if (error instanceof AuthError) {
     attributes.auth_reason = error.reason;
@@ -222,14 +225,17 @@ function recordSilencedError(error: unknown, reason: SilenceReason): void {
   }
 
   // Structured log for user API errors — `detail` is often the most actionable
-  // field and is searchable in Sentry Logs.
+  // field and is searchable in Sentry Logs. A 401/403 logs its denial reason
+  // instead: its detail is the CLI's own guidance, which can name orgs.
   if (reason === "api_user_error" && error instanceof ApiError) {
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       Sentry.logger.info("cli.api_error_silenced", {
         status: error.status,
         endpoint: error.endpoint,
-        detail: error.detail,
+        ...(error.denialReason
+          ? { denial_reason: error.denialReason }
+          : { detail: error.detail }),
       });
     } catch {
       // Logger may not be initialized — ignore.

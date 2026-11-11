@@ -115,6 +115,38 @@ describe("uploadChunkPayloads", () => {
     });
   });
 
+  test("names the scopes a chunk upload needs on a scope 403", async () => {
+    fetchMock.mockResolvedValueOnce(
+      Response.json(
+        { detail: "You do not have permission to perform this action." },
+        {
+          status: 403,
+          statusText: "Forbidden",
+          headers: {
+            "WWW-Authenticate":
+              'Bearer error="insufficient_scope", scope="org:ci project:admin project:releases project:write"',
+          },
+        },
+      ),
+    );
+
+    await expect(
+      uploadChunkPayloads({
+        chunks: [payload("a", 10)],
+        serverOptions: SERVER_OPTIONS,
+        encoding: undefined,
+        regionUrl: "https://us.sentry.io",
+      }),
+    ).rejects.toMatchObject({
+      message: "Chunk upload failed: 403 Forbidden",
+      status: 403,
+      denialReason: "insufficient_scope",
+      detail: expect.stringContaining(
+        "Any one of these works: org:ci, project:admin, project:releases, project:write.",
+      ),
+    });
+  });
+
   test("makes no request for no chunks", async () => {
     await uploadChunkPayloads({
       chunks: [],

@@ -145,3 +145,34 @@ function extractFromText(text: string): string[] {
   }
   return [...new Set(matches.map((m) => m.toLowerCase()))];
 }
+
+const INSUFFICIENT_SCOPE_ERROR_RE = /\berror="insufficient_scope"/i;
+const CHALLENGE_SCOPE_RE = /\bscope="([^"]*)"/i;
+const SCOPE_NAME_RE = /^[a-z_]+:[a-z_]+$/i;
+
+/**
+ * Read the scopes from an RFC 6750 `insufficient_scope` challenge.
+ *
+ * Sentry answers a token that lacks every scope an endpoint accepts with a
+ * 403 and `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."`
+ * (getsentry/sentry#118612). The header lists each scope the endpoint
+ * accepts, and any one of them is enough. Other 403s, such as a token for
+ * another organization, come without it.
+ *
+ * @param header - The `WWW-Authenticate` response header
+ * @returns The accepted scopes in the server's order. Empty when the header
+ *   is missing or is not an `insufficient_scope` challenge.
+ */
+export function parseInsufficientScopeChallenge(
+  header: string | null | undefined,
+): string[] {
+  if (!(header && INSUFFICIENT_SCOPE_ERROR_RE.test(header))) {
+    return [];
+  }
+  const scopes = header.match(CHALLENGE_SCOPE_RE)?.[1] ?? "";
+  return [
+    ...new Set(
+      scopes.split(/\s+/).filter((scope) => SCOPE_NAME_RE.test(scope)),
+    ),
+  ];
+}
