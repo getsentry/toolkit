@@ -37,6 +37,7 @@ import {
 import { getConfiguredSentryUrl } from "../constants.js";
 import { getEnv } from "../env.js";
 import {
+  type ApiDenialReason,
   ApiError,
   CliError,
   type FunctionArgument,
@@ -53,6 +54,12 @@ import {
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import { isSentrySaasUrl } from "../sentry-urls.js";
 
+/** User-facing detail for a 401/403, and the reason to record for it. */
+type EnrichedDetail = {
+  detail: string;
+  denialReason: ApiDenialReason;
+};
+
 /**
  * Enrich a 403 Forbidden error detail with actionable guidance.
  *
@@ -66,15 +73,18 @@ import { isSentrySaasUrl } from "../sentry-urls.js";
  * - env-var tokens → suggest checking token scopes
  * - OAuth tokens → suggest re-authentication
  */
-function enrich403Detail(rawDetail: string | undefined): string {
+function enrich403Detail(rawDetail: string | undefined): EnrichedDetail {
   // Org-level policy — re-auth and token scope advice do not apply here.
   if (rawDetail?.includes("disabled this feature")) {
-    return [
-      rawDetail,
-      "",
-      "This is an org-level policy setting, not an auth issue.",
-      "You need org:admin/manager/owner role, or team:admin role on the team.",
-    ].join("\n  ");
+    return {
+      detail: [
+        rawDetail,
+        "",
+        "This is an org-level policy setting, not an auth issue.",
+        "You need org:admin/manager/owner role, or team:admin role on the team.",
+      ].join("\n  "),
+      denialReason: "member_policy",
+    };
   }
 
   const lines: string[] = [];
@@ -109,7 +119,10 @@ function enrich403Detail(rawDetail: string | undefined): string {
       `Re-authenticate with: ${sentry`auth login`}`,
     );
   }
-  return lines.join("\n  ");
+  return {
+    detail: lines.join("\n  "),
+    denialReason: scopes.length > 0 ? "insufficient_scope" : "access_denied",
+  };
 }
 
 /**
@@ -131,25 +144,28 @@ function enrich403Detail(rawDetail: string | undefined): string {
  *
  * @see https://github.com/getsentry/sentry/blob/934f1473f198a62f9268d7140b80cd9ca1e59bb9/src/sentry/api/authentication.py#L536-L539
  */
-function enrich401Detail(rawDetail: string | undefined): string {
+function enrich401Detail(rawDetail: string | undefined): EnrichedDetail {
   // Seat-limit lockout, not an auth failure. Sentry returns 401 with
   // `code: member-disabled-over-limit` when the org is over its member limit
   // and the caller's seat is disabled — re-authenticating cannot fix this.
   if (rawDetail?.includes("member-disabled-over-limit")) {
-    return [
-      "Your account is disabled in this organization because it is over its member limit.",
-      "This is a billing/seat-limit issue, not an auth problem — re-authenticating won't help.",
-      "Ask an org owner to upgrade the plan or free up a seat, then retry.",
-      `Or target a different org, e.g.:  ${sentry`issue list my-other-org/`}`,
-    ].join("\n  ");
+    return {
+      detail: [
+        "Your account is disabled in this organization because it is over its member limit.",
+        "This is a billing/seat-limit issue, not an auth problem — re-authenticating won't help.",
+        "Ask an org owner to upgrade the plan or free up a seat, then retry.",
+        `Or target a different org, e.g.:  ${sentry`issue list my-other-org/`}`,
+      ].join("\n  "),
+      denialReason: "seat_limit",
+    };
   }
 
   const lines: string[] = [];
   if (rawDetail) {
     lines.push(rawDetail, "");
   }
+  const expired = rawDetail?.toLowerCase().includes("expired") ?? false;
   if (isEnvTokenActive()) {
-    const expired = rawDetail?.toLowerCase().includes("expired");
     lines.push(
       `Your ${getActiveEnvVarName()} token ${expired ? "has expired" : "is not recognized or has been revoked"}.`,
       "Create a new token at: https://sentry.io/settings/account/api/auth-tokens/",
@@ -160,7 +176,10 @@ function enrich401Detail(rawDetail: string | undefined): string {
       `Re-authenticate with: ${sentry`auth login`}`,
     );
   }
-  return lines.join("\n  ");
+  return {
+    detail: lines.join("\n  "),
+    denialReason: expired ? "expired" : "unrecognized",
+  };
 }
 
 /**
@@ -168,7 +187,8 @@ function enrich401Detail(rawDetail: string | undefined): string {
  *
  * Extracted from {@link throwApiError} and {@link throwRawApiError} to keep
  * their cognitive complexity within the linter limit. 403 and 401 get
- * actionable guidance; all other statuses pass the raw detail through.
+ * actionable guidance and a {@link ApiDenialReason}; all other statuses pass
+ * the raw detail through.
  *
  * `hasUsableDetail` controls whether the raw detail string is forwarded to
  * the enrichment functions — passing `undefined` when false lets them render
@@ -178,14 +198,14 @@ function enrichDetail(
   status: number,
   detail: string | undefined,
   hasUsableDetail: boolean,
-): string | undefined {
+): { detail: string | undefined; denialReason?: ApiDenialReason } {
   if (status === 403) {
     return enrich403Detail(hasUsableDetail ? detail : undefined);
   }
   if (status === 401) {
     return enrich401Detail(hasUsableDetail ? detail : undefined);
   }
-  return detail;
+  return { detail };
 }
 
 /**
@@ -377,13 +397,17 @@ export function throwApiError(
     ? stringifyUnknown(rawDetail)
     : stringifyUnknown(error);
 
-  const is403 = status === 403;
+  const enriched = enrichDetail(status, detail, hasUsableDetail);
   throw new ApiError(
     `${context}: ${status} ${response.statusText ?? "Unknown"}`,
     status,
-    enrichDetail(status, detail, hasUsableDetail),
+    enriched.detail,
     undefined,
-    { enriched403: is403, ...readErrorFields(error) },
+    {
+      enriched403: status === 403,
+      denialReason: enriched.denialReason,
+      ...readErrorFields(error),
+    },
   );
 }
 
@@ -918,13 +942,17 @@ export async function throwRawApiError(
     "x-sentry-error": response.headers.get("x-sentry-error"),
     "www-authenticate": response.headers.get("www-authenticate"),
   });
-  const is403 = response.status === 403;
+  const enriched = enrichDetail(response.status, detail, detail !== undefined);
   throw new ApiError(
     `${context}: ${response.status} ${response.statusText}`,
     response.status,
-    enrichDetail(response.status, detail, detail !== undefined),
+    enriched.detail,
     endpoint,
-    { enriched403: is403, ...readErrorFields(body.json) },
+    {
+      enriched403: response.status === 403,
+      denialReason: enriched.denialReason,
+      ...readErrorFields(body.json),
+    },
   );
 }
 
