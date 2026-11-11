@@ -61,9 +61,9 @@ describe("getStreamUrlFromHash", () => {
       ]),
       "log-http",
     );
-    expect(log?.metadata?.method).toBeUndefined();
-    expect(log?.metadata?.route).toBeUndefined();
-    expect(log?.metadata?.statusCode).toBeUndefined();
+    expect(log.metadata?.method).toBeUndefined();
+    expect(log.metadata?.route).toBeUndefined();
+    expect(log.metadata?.statusCode).toBeUndefined();
   });
 
   test("accepts a loopback stream URL", () => {
@@ -191,7 +191,7 @@ describe("decodeEnvelope", () => {
       JSON.stringify([{}, [[{ type: "span" }, { version: 2, items: [span] }]]]),
       "streamed-http",
     );
-    expect(item?.metadata).toMatchObject({
+    expect(item.metadata).toMatchObject({
       title: "GET /orders/42",
       method: "GET",
       route: "/orders/42",
@@ -199,8 +199,8 @@ describe("decodeEnvelope", () => {
       operation: "http.server",
       durationMs: 1000,
     });
-    expect(item?.timestamp).toBe(1700000001);
-    expect(item?.payload).toEqual(span);
+    expect(item.timestamp).toBe(1700000001);
+    expect(item.payload).toEqual(span);
   });
 
   test("filters unsupported span containers and incomplete spans while preserving valid siblings and logs", () => {
@@ -268,10 +268,10 @@ describe("decodeEnvelope", () => {
       JSON.stringify([{}, [[{ type: "event" }, sdkException]]]),
       "sdk-error",
     );
-    expect(item?.metadata?.title).toBe(
+    expect(item.metadata?.title).toBe(
       "TypeError: Cannot read properties of undefined (reading 'total')",
     );
-    expect(item?.payload).toEqual(sdkException);
+    expect(item.payload).toEqual(sdkException);
   });
 
   test.each([
@@ -300,7 +300,7 @@ describe("decodeEnvelope", () => {
         ]),
         "partial-error",
       );
-      expect(item?.metadata?.title).toBe(title);
+      expect(item.metadata?.title).toBe(title);
     },
   );
 
@@ -321,7 +321,7 @@ describe("decodeEnvelope", () => {
       ]),
       "message-error",
     );
-    expect(item?.metadata?.title).toBe("Checkout rejected");
+    expect(item.metadata?.title).toBe("Checkout rejected");
   });
 
   test("unpacks batched span and log items from the Local receiver", () => {

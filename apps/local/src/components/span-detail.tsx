@@ -2,7 +2,7 @@ import { AiInspector } from "./ai-inspector.tsx";
 import { useCopyToClipboard } from "@uidotdev/usehooks";
 import { Check, Copy, ChevronLeft } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useId, useState } from "react";
-import type { LocalFeedItem } from "@/lib/spotlight.ts";
+import { stringifyJson, type LocalFeedItem } from "@/lib/spotlight.ts";
 import type { TraceGroup, TraceSpan } from "@/lib/trace-model.ts";
 import { isErrorEvent } from "@/lib/workspace.ts";
 import { JsonView } from "./json-view.tsx";
@@ -275,7 +275,7 @@ export function SpanDetail({
       </header>
       <InspectorTabs
         key={`${trace.id}:${span.id}`}
-        json={JSON.stringify(span.payload, null, 2) ?? "null"}
+        json={stringifyJson(span.payload, 2) ?? "null"}
         overview={
           <>
             <AiInspector payload={span.payload} steps={span.children} />

@@ -772,8 +772,9 @@ describe("local receiver to viewer integration", () => {
 
   test("replays bundled envelopes through the receiver into every investigation view", async () => {
     const { server, port } = await startReceiver();
-    const originalCreate = URL.createObjectURL?.bind(URL);
-    const originalRevoke = URL.revokeObjectURL?.bind(URL);
+    const urlStatics: Partial<typeof URL> = URL;
+    const originalCreate = urlStatics.createObjectURL?.bind(URL);
+    const originalRevoke = urlStatics.revokeObjectURL?.bind(URL);
     URL.createObjectURL = () => "blob:fixture";
     URL.revokeObjectURL = () => {};
     try {
@@ -843,8 +844,8 @@ describe("local receiver to viewer integration", () => {
       expect(await screen.findByText("sentry.javascript.node")).toBeDefined();
     } finally {
       cleanup();
-      URL.createObjectURL = originalCreate;
-      URL.revokeObjectURL = originalRevoke;
+      urlStatics.createObjectURL = originalCreate;
+      urlStatics.revokeObjectURL = originalRevoke;
       await stopReceiver(server);
     }
   }, 15_000);
@@ -1367,7 +1368,7 @@ describe("local receiver to viewer integration", () => {
 
     const source = ControllableEventSource.instances[0];
     expect(source).toBeDefined();
-    await act(async () => source?.onerror?.(new Event("error")));
+    await act(async () => source.onerror?.(new Event("error")));
     await screen.findByRole("alert", { name: "Receiver connection error" });
 
     fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
@@ -1378,7 +1379,7 @@ describe("local receiver to viewer integration", () => {
       "Enter a loopback stream or an HTTPS remote stream",
     );
 
-    await act(async () => source?.onerror?.(new Event("error")));
+    await act(async () => source.onerror?.(new Event("error")));
     expect(screen.getByRole("alert").textContent).toContain(
       "Enter a loopback stream or an HTTPS remote stream",
     );
@@ -1394,7 +1395,7 @@ describe("local receiver to viewer integration", () => {
 
       const initialSource = ControllableEventSource.instances[0];
       expect(initialSource).toBeDefined();
-      await act(async () => initialSource?.onerror?.(new Event("error")));
+      await act(async () => initialSource.onerror?.(new Event("error")));
       fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
         target: { value: "http://127.0.0.1:8970/stream" },
       });
@@ -1412,7 +1413,7 @@ describe("local receiver to viewer integration", () => {
         vi.advanceTimersByTime(10_000);
       });
 
-      expect(source?.closed).toBe(true);
+      expect(source.closed).toBe(true);
       expect(
         screen.getByRole("alert", { name: "Receiver connection error" })
           .textContent,
@@ -1434,12 +1435,12 @@ describe("local receiver to viewer integration", () => {
 
     const source = ControllableEventSource.instances[0];
     expect(source).toBeDefined();
-    await act(async () => source?.onopen?.(new Event("open")));
+    await act(async () => source.onopen?.(new Event("open")));
     await screen.findByText("Connected to local receiver");
     fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
 
     await act(async () => {
-      source?.dispatchEvent(
+      source.dispatchEvent(
         new MessageEvent(SENTRY_CONTENT_TYPE, {
           data: JSON.stringify([
             {},
@@ -1464,7 +1465,7 @@ describe("local receiver to viewer integration", () => {
 
     const source = ControllableEventSource.instances[0];
     expect(source).toBeDefined();
-    await act(async () => source?.onopen?.(new Event("open")));
+    await act(async () => source.onopen?.(new Event("open")));
     await screen.findByText("Connected to local receiver");
 
     fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
@@ -1486,7 +1487,7 @@ describe("local receiver to viewer integration", () => {
 
     const source = ControllableEventSource.instances[0];
     expect(source).toBeDefined();
-    await act(async () => source?.onopen?.(new Event("open")));
+    await act(async () => source.onopen?.(new Event("open")));
     await screen.findByText("Connected to local receiver");
     fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
     fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
@@ -1494,7 +1495,7 @@ describe("local receiver to viewer integration", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
-    expect(source?.closed).toBe(false);
+    expect(source.closed).toBe(false);
     expect(
       screen.getAllByText("Connected to local receiver", { exact: true })[0],
     ).not.toBeNull();
@@ -1699,11 +1700,11 @@ describe("local receiver to viewer integration", () => {
 
     const source = ControllableEventSource.instances[0];
     expect(source).toBeDefined();
-    await act(async () => source?.onopen?.(new Event("open")));
+    await act(async () => source.onopen?.(new Event("open")));
     await screen.findByText("Connected to local receiver");
 
     await act(async () => {
-      source?.dispatchEvent(
+      source.dispatchEvent(
         new MessageEvent(SENTRY_CONTENT_TYPE, {
           data: JSON.stringify([{}, []]),
           lastEventId: "raw-only-envelope",
@@ -1727,8 +1728,8 @@ describe("local receiver to viewer integration", () => {
     renderBareViewer();
     const source = ControllableEventSource.instances[0];
     await act(async () => {
-      source?.onopen?.(new Event("open"));
-      source?.dispatchEvent(
+      source.onopen?.(new Event("open"));
+      source.dispatchEvent(
         new MessageEvent(SENTRY_CONTENT_TYPE, {
           data: "undecodable",
           lastEventId: "raw-broken",
@@ -1847,15 +1848,15 @@ describe("local receiver to viewer integration", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderBareViewer();
     const source = ControllableEventSource.instances[0];
-    await act(async () => source?.onopen?.(new Event("open")));
+    await act(async () => source.onopen?.(new Event("open")));
     await act(async () => {
-      source?.dispatchEvent(
+      source.dispatchEvent(
         new MessageEvent("sentry.local.retention", {
           data: JSON.stringify({ maxEnvelopes: 500 }),
         }),
       );
       for (const id of ["one", "two"])
-        source?.dispatchEvent(
+        source.dispatchEvent(
           new MessageEvent(SENTRY_CONTENT_TYPE, {
             data: JSON.stringify([
               {},
@@ -1886,7 +1887,7 @@ describe("local receiver to viewer integration", () => {
     );
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await act(async () =>
-      source?.dispatchEvent(
+      source.dispatchEvent(
         new MessageEvent("sentry.local.retention", {
           data: JSON.stringify({ maxEnvelopes: 1000 }),
         }),
@@ -1910,7 +1911,7 @@ describe("local receiver to viewer integration", () => {
     expect(
       screen.getAllByRole("button", { name: "View event event" }),
     ).toHaveLength(2);
-    expect(source?.closed).toBe(false);
+    expect(source.closed).toBe(false);
     expect(ControllableEventSource.instances).toHaveLength(1);
   });
 
@@ -1920,13 +1921,13 @@ describe("local receiver to viewer integration", () => {
     renderBareViewer();
     const source = ControllableEventSource.instances[0];
     await act(async () => {
-      source?.onopen?.(new Event("open"));
-      source?.dispatchEvent(
+      source.onopen?.(new Event("open"));
+      source.dispatchEvent(
         new MessageEvent("sentry.local.retention", {
           data: '{"maxEnvelopes":1000}',
         }),
       );
-      source?.dispatchEvent(
+      source.dispatchEvent(
         new MessageEvent(SENTRY_CONTENT_TYPE, {
           data: JSON.stringify([
             {},
@@ -1935,7 +1936,7 @@ describe("local receiver to viewer integration", () => {
           lastEventId: "kept",
         }),
       );
-      source?.onerror?.(new Event("error"));
+      source.onerror?.(new Event("error"));
     });
     fireEvent.click(
       await screen.findByRole("button", { name: "Settings", exact: true }),
@@ -2014,8 +2015,8 @@ describe("local receiver to viewer integration", () => {
       renderBareViewer();
       let source = ControllableEventSource.instances[0];
       await act(async () => {
-        source?.onopen?.(new Event("open"));
-        source?.dispatchEvent(
+        source.onopen?.(new Event("open"));
+        source.dispatchEvent(
           new MessageEvent("sentry.local.retention", {
             data: '{"maxEnvelopes":500}',
           }),
@@ -2045,8 +2046,8 @@ describe("local receiver to viewer integration", () => {
         source = await openLatestReceiver();
       }
       await act(async () => {
-        source?.onopen?.(new Event("open"));
-        source?.dispatchEvent(
+        source.onopen?.(new Event("open"));
+        source.dispatchEvent(
           new MessageEvent("sentry.local.retention", {
             data: '{"maxEnvelopes":1000}',
           }),
@@ -2068,7 +2069,7 @@ describe("local receiver to viewer integration", () => {
       );
       await act(async () => {
         for (const id of ["one", "two"])
-          source?.dispatchEvent(
+          source.dispatchEvent(
             new MessageEvent(SENTRY_CONTENT_TYPE, {
               data: JSON.stringify([
                 {},
@@ -2223,7 +2224,7 @@ describe("local receiver to viewer integration", () => {
 
       const initialSource = ControllableEventSource.instances[0];
       expect(initialSource).toBeDefined();
-      await act(async () => initialSource?.onopen?.(new Event("open")));
+      await act(async () => initialSource.onopen?.(new Event("open")));
       fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
 
       const streamUrl =
@@ -2235,7 +2236,7 @@ describe("local receiver to viewer integration", () => {
 
       const scopedSource = await openLatestReceiver();
       await act(async () => {
-        scopedSource?.dispatchEvent(
+        scopedSource.dispatchEvent(
           new MessageEvent(SENTRY_CONTENT_TYPE, {
             data: JSON.stringify([{}, []]),
             lastEventId: "scoped-envelope",
@@ -2281,7 +2282,7 @@ describe("local receiver to viewer integration", () => {
           signal: expect.any(AbortSignal),
         }),
       );
-      await waitFor(() => expect(scopedSource?.closed).toBe(true));
+      await waitFor(() => expect(scopedSource.closed).toBe(true));
       await screen.findByText("Saved capture", { exact: true });
       expect(
         screen.queryByText(
@@ -2314,11 +2315,11 @@ describe("local receiver to viewer integration", () => {
 
     const source = ControllableEventSource.instances[0];
     expect(source).toBeDefined();
-    await act(async () => source?.onopen?.(new Event("open")));
+    await act(async () => source.onopen?.(new Event("open")));
     await screen.findByText("Connected to local receiver");
 
     await act(async () => {
-      source?.dispatchEvent(
+      source.dispatchEvent(
         new MessageEvent(SENTRY_CONTENT_TYPE, {
           data: JSON.stringify([{}, []]),
           lastEventId: "raw-envelope-before-failure",
@@ -2328,7 +2329,7 @@ describe("local receiver to viewer integration", () => {
     fireEvent.click(viewButton("Open envelopes view"));
     fireEvent.click(await screen.findByLabelText("View envelope event"));
 
-    await act(async () => source?.onerror?.(new Event("error")));
+    await act(async () => source.onerror?.(new Event("error")));
 
     expect(screen.getByLabelText("Workspace navigation")).not.toBeNull();
     expect(
@@ -2375,7 +2376,7 @@ describe("local receiver to viewer integration", () => {
       const source = await openLatestReceiver();
       await act(async () => {
         for (const transaction of ["GET /alpha", "GET /beta"]) {
-          source?.dispatchEvent(
+          source.dispatchEvent(
             new MessageEvent(SENTRY_CONTENT_TYPE, {
               data: JSON.stringify([
                 {},
@@ -2404,7 +2405,7 @@ describe("local receiver to viewer integration", () => {
       );
       if (state === "closed") {
         fireEvent.click(captureAction("Stop capture"));
-        await waitFor(() => expect(source?.closed).toBe(true));
+        await waitFor(() => expect(source.closed).toBe(true));
         await screen.findByText("Saved capture", { exact: true });
         expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
           1,
@@ -2427,7 +2428,7 @@ describe("local receiver to viewer integration", () => {
           1,
         );
       } else {
-        await act(async () => source?.onerror?.(new Event("error")));
+        await act(async () => source.onerror?.(new Event("error")));
       }
       fireEvent.change(
         screen.getByRole("searchbox", { name: "Filter Events" }),

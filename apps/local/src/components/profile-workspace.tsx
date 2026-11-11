@@ -423,7 +423,7 @@ export function ProfileWorkspace({
     item.text.toLowerCase().includes(query.toLowerCase()),
   );
   const selected =
-    profiles.find((item) => item.id === selectedId) ?? profiles[0];
+    profiles.find((item) => item.id === selectedId) ?? profiles.at(0);
   if (!selected)
     return (
       <p role="status" className="p-6 text-sm text-muted-foreground">

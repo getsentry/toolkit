@@ -44,6 +44,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// JSON.stringify returns undefined for undefined input, which its lib type omits.
+export function stringifyJson(
+  value: unknown,
+  space?: number,
+): string | undefined {
+  return JSON.stringify(value, null, space);
+}
+
 function getString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
@@ -341,7 +349,7 @@ export function decodeEnvelope(data: string, eventId: string): LocalFeedItem[] {
       envelopeHeader: isRecord(parsed[0]) ? parsed[0] : {},
       itemHeader: header,
       timestamp: getItemTimestamp(payload),
-      text: JSON.stringify(payload, null, 2) ?? String(payload),
+      text: stringifyJson(payload, 2) ?? String(payload),
       payload,
       metadata: {
         ...getEventMetadata(payload, type),

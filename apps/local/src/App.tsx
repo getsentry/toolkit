@@ -454,7 +454,7 @@ export default function App() {
   });
   const selectedItem =
     searchedItems.find((item) => item.id === workspaceQuery.eventId) ??
-    searchedItems[0];
+    searchedItems.at(0);
   const selectedEventTrace = selectedItem?.metadata?.traceId
     ? traces.find((trace) => trace.id === selectedItem.metadata?.traceId)
     : undefined;
@@ -1300,7 +1300,7 @@ export default function App() {
                     new URL(currentEndpoint.url).pathname === "/stream",
                   )}
                   sessionPicker={
-                    activeDirectoryUrl && !isDisconnected ? (
+                    activeDirectoryUrl ? (
                       <SessionSwitcher
                         key={activeDirectoryUrl}
                         refreshKey={closedSessionUrl}

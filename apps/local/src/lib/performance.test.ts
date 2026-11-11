@@ -34,7 +34,7 @@ test("query analysis groups embedded and standalone executions without counting 
     "queries",
   );
   expect(group).toMatchObject({ count: 1, averageMs: 100, totalMs: 100 });
-  expect(group?.executions[0]).toMatchObject({
+  expect(group.executions[0]).toMatchObject({
     traceId: "t",
     span: { id: "q1" },
   });
@@ -50,11 +50,11 @@ test("Web Vitals retain per-visit units and classify thresholds instead of inven
       },
     }),
   ]);
-  expect(page?.visits[0]?.metrics).toMatchObject({
+  expect(page.visits[0]?.metrics).toMatchObject({
     lcp: { value: 3200, rating: "Needs improvement" },
     cls: { value: 0.05, rating: "Good" },
   });
-  expect(page?.visits[0]?.metrics.inp).toBeUndefined();
+  expect(page.visits[0]?.metrics.inp).toBeUndefined();
 });
 test("profiles build root-first trees, inclusive/self samples, and interval times per thread", () => {
   const payload = {

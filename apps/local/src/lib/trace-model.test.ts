@@ -65,9 +65,9 @@ describe("buildTraceGroups", () => {
         itemCount: 3,
         roots: [{ id: "root", children: [{ id: "query", durationMs: 125 }] }],
       });
-      expect(trace?.spans).toHaveLength(2);
-      expect(trace?.roots).toHaveLength(1);
-      expect(trace?.roots[0]?.children).toHaveLength(1);
+      expect(trace.spans).toHaveLength(2);
+      expect(trace.roots).toHaveLength(1);
+      expect(trace.roots[0]?.children).toHaveLength(1);
     },
   );
 
@@ -209,9 +209,9 @@ describe("buildTraceGroups", () => {
       durationMs: 70000000,
       itemCount: 1,
     });
-    expect(trace?.spans).toHaveLength(70001);
-    expect(trace?.roots).toHaveLength(1);
-    expect(trace?.roots[0]?.children).toHaveLength(70000);
+    expect(trace.spans).toHaveLength(70001);
+    expect(trace.roots).toHaveLength(1);
+    expect(trace.roots[0]?.children).toHaveLength(70000);
   });
 
   test("uses a transaction ID as the trace fallback used by routing", () => {
@@ -438,7 +438,7 @@ test("child spans retain their own raw payload independently of the transaction"
       "payload",
     ),
   );
-  expect(trace?.spans.find((span) => span.id === "query")?.payload).toEqual(
+  expect(trace.spans.find((span) => span.id === "query")?.payload).toEqual(
     payload,
   );
 });
