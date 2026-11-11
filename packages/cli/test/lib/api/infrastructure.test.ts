@@ -654,8 +654,14 @@ describe("throwApiError", () => {
   });
 
   describe("401 enrichment", () => {
-    // Test preload sets SENTRY_AUTH_TOKEN, so isEnvTokenActive() returns true
-    // by default in these tests.
+    // An env personal token: the preload's `sntrys_` token would get org auth
+    // token advice instead.
+    useEnvSandbox(["SENTRY_AUTH_TOKEN"]);
+    beforeEach(() => {
+      process.env.SENTRY_AUTH_TOKEN = "sntryu_test-token-for-unit-tests";
+      resetAuthTokenCache();
+    });
+    afterEach(resetAuthTokenCache);
 
     test("uses 'not recognized or has been revoked' for invalid token", () => {
       const mockResponse = new Response("", {
@@ -875,6 +881,44 @@ describe("403 scope challenge guidance", () => {
 
   test("keeps the generic hint for a 403 with no challenge", () => {
     expect(detailFor("personal")).toContain("may lack the required scope");
+  });
+});
+
+describe("401 guidance", () => {
+  useTestConfigDir("api-401-");
+  useEnvSandbox([
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN",
+  ]);
+
+  function detailFor401(detail: string): string | undefined {
+    resetAuthTokenCache();
+    const body = { detail };
+    try {
+      throwApiError(body, Response.json(body, { status: 401 }), "Failed");
+    } catch (error) {
+      return (error as ApiError).detail;
+    }
+    throw new Error("expected throwApiError to throw");
+  }
+
+  test("points any sntrys_ token at the org's auth token settings", () => {
+    process.env.SENTRY_AUTH_TOKEN = "sntrys_malformed";
+    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    const detail = detailFor401("Invalid org token");
+    expect(detail).toContain(
+      "Your SENTRY_AUTH_TOKEN org auth token is not recognized or has been revoked.",
+    );
+    expect(detail).toContain("organization's Settings > Auth Tokens.");
+  });
+
+  test("advises the stored login it sent, not a leftover env token", () => {
+    process.env.SENTRY_AUTH_TOKEN = "sntryu_example";
+    setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
+    const detail = detailFor401("Invalid token");
+    expect(detail).toContain("Re-authenticate with:");
+    expect(detail).not.toContain("SENTRY_AUTH_TOKEN");
   });
 });
 
