@@ -189,7 +189,10 @@ export const AutofixStateSchema = looseObject({
   /** Null for legacy runs predating this field. */
   sentry_run_id: optional(nullable(string())),
   status: string(),
-  /** Why a failed run stopped, e.g. `out_of_credits`. Null when it didn't fail. */
+  /**
+   * Why a failed run stopped, e.g. `out_of_credits`. Null when the run didn't
+   * fail, and also when it failed for a reason Seer doesn't classify.
+   */
   failure_reason: optional(nullable(string())),
   updated_at: optional(string()),
   request: optional(

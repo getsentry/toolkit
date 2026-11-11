@@ -754,8 +754,10 @@ export class SeerError extends CliError {
         no_budget: `To use Seer features, upgrade your plan:\n  ${buildBillingUrl(this.orgSlug, "seer")}${trialHint}`,
         // ai_disabled is an admin decision — don't suggest trial
         ai_disabled: `To enable AI features:\n  ${buildOrgSettingsUrl(this.orgSlug, "hideAiFeatures")}`,
-        // out_of_credits orgs already have Seer, so a trial is not the fix
-        out_of_credits: `Someone with billing access can turn on auto-reload in Sentry:\n  ${buildBillingUrl(this.orgSlug, "seer")}`,
+        // out_of_credits orgs already have Seer, so a trial is not the fix.
+        // Sentry doesn't say whether auto-reload is off or has run through its
+        // top-ups, so the advice covers both.
+        out_of_credits: `Someone with billing access can adjust Seer spend and auto-reload in Sentry:\n  ${buildBillingUrl(this.orgSlug, "seer")}`,
       };
       return `${this.message}\n\n${suggestions[this.reason]}`;
     }
@@ -769,7 +771,7 @@ export class SeerError extends CliError {
         "To enable AI features, check the 'Hide AI Features' setting in your organization settings.",
       // out_of_credits orgs already have Seer, so a trial is not the fix
       out_of_credits:
-        "Someone with billing access can turn on auto-reload in your organization's billing settings.",
+        "Someone with billing access can adjust Seer spend and auto-reload in your organization's billing settings.",
     };
     return `${this.message}\n\n${fallbackSuggestions[this.reason]}`;
   }
