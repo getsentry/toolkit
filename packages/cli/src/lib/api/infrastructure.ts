@@ -151,13 +151,15 @@ function orgMismatchLines(mismatch: {
 function acceptedScopeLines(acceptedScopes: string[]): string[] {
   const scopeList = acceptedScopes.join(", ");
   if (!isEnvTokenActive()) {
-    // Prefer a scope the CLI's login asks for by default, in its order (so
-    // org:read before org:admin), over one it never requests.
-    const scope =
-      OAUTH_SCOPES.find((s) => acceptedScopes.includes(s)) ?? acceptedScopes[0];
+    // `auth refresh --scope` grants exactly the listed scopes, so never name
+    // one scope alone: that would take the rest of the login's access away.
+    // Same rule as the elevation in `scope-recovery.ts`.
+    const fix = acceptedScopes.some((s) => OAUTH_SCOPES.includes(s))
+      ? `Log in again with the CLI's default scopes: ${sentry`auth login --force`}`
+      : `Log in again with the default scopes plus ${acceptedScopes[0]}: ${sentry`auth refresh --scope ${[...OAUTH_SCOPES, acceptedScopes[0]].join(",")}`}`;
     return [
       `Your login lacks the scope this request needs. Any one of these works: ${scopeList}.`,
-      `Add one with: ${sentry`auth refresh --scope ${scope}`}`,
+      fix,
     ];
   }
   const lines = [

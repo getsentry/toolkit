@@ -15,6 +15,7 @@ import {
 } from "../../../src/lib/api/infrastructure.js";
 import { resetAuthTokenCache, setAuthToken } from "../../../src/lib/db/auth.js";
 import { ApiError, HostScopeError } from "../../../src/lib/errors.js";
+import { OAUTH_SCOPES } from "../../../src/lib/oauth.js";
 import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
 describe("SDK error compatibility", () => {
@@ -959,7 +960,7 @@ describe("401/403 denial guidance", () => {
     expect(error.detail).not.toContain("belongs to organization");
   });
 
-  test("points a stored login at auth refresh with a scope it can request", async () => {
+  test("re-authorizes a stored login with the defaults when one of them works", async () => {
     setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
     resetAuthTokenCache();
 
@@ -969,8 +970,21 @@ describe("401/403 denial guidance", () => {
 
     expect(error.denialReason).toBe("insufficient_scope");
     expect(error.detail).toContain("Any one of these works: org:admin,");
-    expect(error.detail).toContain("auth refresh --scope org:read");
-    expect(error.detail).not.toContain("auth login");
+    expect(error.detail).toContain("auth login --force");
+    expect(error.detail).not.toContain("auth refresh");
+  });
+
+  test("keeps the default scopes when a stored login needs an extra one", async () => {
+    setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
+    resetAuthTokenCache();
+
+    const error = await rawDenial(403, "organizations/acme/audit-logs/", {
+      challenge: 'Bearer error="insufficient_scope", scope="org:write"',
+    });
+
+    expect(error.detail).toContain(
+      `auth refresh --scope ${[...OAUTH_SCOPES, "org:write"].join(",")}`,
+    );
   });
 
   test("names both orgs for a stored org auth token", async () => {
