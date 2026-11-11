@@ -9,7 +9,9 @@ import {
   getOutputForAutofixRun,
   getAutofixArtifactSummaries,
 } from "./seer";
-import type { AutofixRun } from "../../api-client/types";
+import type { AutofixRunState } from "../../api-client/index";
+
+type AutofixRun = NonNullable<AutofixRunState["autofix"]>;
 
 const singleRun = {
   run_id: 1,
