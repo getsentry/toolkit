@@ -123,13 +123,12 @@ function findOrgMismatch(
  *
  * Reads the credential requests use ({@link getCredentialContext}), not
  * `getAuthToken()`: a stored OAuth login that can still refresh is what the
- * request sent, even when an env var also holds an org auth token.
+ * request sent, even when an env var also holds an org auth token. A stored
+ * `sntrys_` token (from `auth login --token`) counts too; an OAuth access
+ * token has no claim.
  */
 function readOrgAuthTokenClaim(): ReturnType<typeof parseSntrysClaim> {
-  const credential = getCredentialContext();
-  return credential?.source === "oauth"
-    ? undefined
-    : parseSntrysClaim(credential?.token);
+  return parseSntrysClaim(getCredentialContext()?.token);
 }
 
 /** Whether the request was sent with an org auth token with a readable claim. */

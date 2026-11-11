@@ -959,6 +959,16 @@ describe("401/403 denial guidance", () => {
     expect(error.detail).not.toContain("belongs to organization");
   });
 
+  test("names both orgs for a stored org auth token", async () => {
+    setAuthToken(orgAuthToken("token-org"));
+    resetAuthTokenCache();
+
+    const error = await rawDenial(403, "organizations/target-org/releases/");
+
+    expect(error.denialReason).toBe("org_mismatch");
+    expect(error.detail).toContain("belongs to organization 'token-org'");
+  });
+
   test("does not compare a numeric org ID with the token's org", async () => {
     useToken(orgAuthToken("token-org"));
     const error = await rawDenial(403, "organizations/12345/releases/");
