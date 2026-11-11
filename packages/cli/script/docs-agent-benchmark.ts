@@ -35,6 +35,11 @@
  * - For the `cli` arm, the bundled CLI (`pnpm run bundle`) or
  *   SENTRY_CLI_BINARY.
  *
+ * With both arms, the summary ends with a comparison paired by task: the
+ * change from `web` to `cli` in cost, time, tokens, and docs text read, with
+ * a 90% interval and a verdict. `docs-agent-benchmark-report.ts` prints the
+ * same comparison for several saved `--json` files at once.
+ *
  * Usage:
  *   pnpm run bench:docs-agent                          # every task, both arms
  *   pnpm run bench:docs-agent -- --runs 3              # repeat to average out noise
@@ -59,6 +64,7 @@ import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { resolveConfigDir } from "../src/lib/config-dir.js";
+import { comparisonSection } from "./lib/docs-agent-report.js";
 
 type Check = { readonly file: string; readonly pattern: string };
 
@@ -75,7 +81,12 @@ type Arm = "web" | "cli";
 
 type Agent = "claude" | "codex";
 
-type DocsStep = { readonly tool: string; readonly target: string };
+/** A docs lookup and the bytes of text it returned to the agent. */
+type DocsStep = {
+  readonly tool: string;
+  readonly target: string;
+  readonly bytes: number;
+};
 
 /** What one agent run reports, before grading. */
 type AgentReport = {
@@ -90,6 +101,9 @@ type AgentReport = {
 
 type RunResult = AgentReport & {
   readonly agent: Agent;
+  readonly model: string;
+  /** `sentry --version` in the `cli` arm. */
+  readonly cli?: string;
   readonly task: string;
   readonly tier: AgentTask["tier"];
   readonly arm: Arm;
@@ -304,8 +318,11 @@ type StreamEvent = {
   message?: {
     content?: {
       type?: string;
+      id?: string;
       name?: string;
       input?: Record<string, unknown>;
+      tool_use_id?: string;
+      content?: string | { type?: string; text?: string }[];
     }[];
   };
   is_error?: boolean;
@@ -317,11 +334,11 @@ type StreamEvent = {
   modelUsage?: Record<string, Record<string, number | undefined>>;
 };
 
-/** A docs step from a tool call, or nothing for other tools. */
-function docsStep(
+/** The docs tool and target of a tool call, or nothing for other tools. */
+function docsCall(
   name: string,
   input: Record<string, unknown> = {},
-): DocsStep | undefined {
+): Omit<DocsStep, "bytes"> | undefined {
   const text = (value: unknown) => (typeof value === "string" ? value : "");
   if (name === "WebFetch" || name === "WebSearch") {
     return { tool: name, target: text(input.url) || text(input.query) };
@@ -334,6 +351,16 @@ function docsStep(
     return { tool: "Bash fetch", target: command };
   }
   return;
+}
+
+/** The text of a Claude Code tool result. */
+function toolResultText(
+  content: string | { type?: string; text?: string }[] | undefined,
+): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  return (content ?? []).map((part) => part.text ?? "").join("");
 }
 
 /** Input and output tokens across every model the run used. */
@@ -457,11 +484,21 @@ async function runClaude(
   );
   rmSync(configDir, { recursive: true, force: true });
   const events = jsonLines<StreamEvent>(stdout);
-  const docsSteps = events
-    .filter((event) => event.type === "assistant")
-    .flatMap((event) => event.message?.content ?? [])
+  const blocks = events.flatMap((event) => event.message?.content ?? []);
+  const resultBytes = new Map(
+    blocks
+      .filter((block) => block.type === "tool_result" && block.tool_use_id)
+      .map((block) => [
+        block.tool_use_id,
+        Buffer.byteLength(toolResultText(block.content)),
+      ]),
+  );
+  const docsSteps = blocks
     .filter((block) => block.type === "tool_use" && block.name)
-    .flatMap((block) => docsStep(block.name ?? "", block.input) ?? []);
+    .flatMap((block) => {
+      const call = docsCall(block.name ?? "", block.input);
+      return call ? [{ ...call, bytes: resultBytes.get(block.id) ?? 0 }] : [];
+    });
   const result = events.find((event) => event.type === "result") ?? {};
   const { input, output } = tokens(result);
   return {
@@ -477,7 +514,12 @@ async function runClaude(
 
 type CodexEvent = {
   type?: string;
-  item?: { type?: string; command?: string; query?: string };
+  item?: {
+    type?: string;
+    command?: string;
+    query?: string;
+    aggregated_output?: string;
+  };
   usage?: {
     input_tokens?: number;
     cached_input_tokens?: number;
@@ -576,14 +618,17 @@ async function runCodex(
     .filter((event) => event.type === "item.completed" && event.item)
     .map((event) => event.item ?? {});
   const docsSteps = items.flatMap((item): DocsStep[] => {
+    // Web search results stay on OpenAI's side, so they have no bytes here.
     if (item.type === "web_search") {
-      return [{ tool: "web_search", target: item.query ?? "" }];
+      return [{ tool: "web_search", target: item.query ?? "", bytes: 0 }];
     }
-    const step =
+    const call =
       item.type === "command_execution"
-        ? docsStep("Bash", { command: item.command })
+        ? docsCall("Bash", { command: item.command })
         : undefined;
-    return step ? [step] : [];
+    return call
+      ? [{ ...call, bytes: Buffer.byteLength(item.aggregated_output ?? "") }]
+      : [];
   });
   let input = 0;
   let cached = 0;
@@ -638,6 +683,8 @@ async function runOne(
     return {
       ...report,
       agent,
+      model,
+      cli: arm === "cli" ? cliVersion : undefined,
       task: task.id,
       tier: task.tier,
       arm,
@@ -728,6 +775,12 @@ function summarize(results: readonly RunResult[]): string {
     });
     lines.push(`  ${task.id.padEnd(22)}${cells.join("")}`);
   }
+  if (arms.length > 1) {
+    lines.push(
+      "",
+      comparisonSection(`${agent} ${model}, paired by task`, results),
+    );
+  }
   const failures = results.filter((result) => !result.passed);
   if (failures.length > 0) {
     lines.push("\nFailed runs");
@@ -743,6 +796,12 @@ function summarize(results: readonly RunResult[]): string {
 const binDir = arms.includes("cli") ? sentryBinDir() : "";
 const bins: Record<Arm, string> = { cli: binDir, web: hiddenSentryDir() };
 const pricing = agent === "codex" ? await codexPricing() : undefined;
+const cliVersion = binDir
+  ? execFileSync(join(binDir, "sentry"), ["--version"], {
+      encoding: "utf8",
+      env: { ...process.env, SENTRY_CLI_NO_TELEMETRY: "1" },
+    }).trim()
+  : undefined;
 if (binDir) {
   // Download the docs index once, so the first run does not pay for it.
   // A SENTRY_CLI_BINARY without a local index, such as a released CLI that
