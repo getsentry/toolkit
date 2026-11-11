@@ -919,9 +919,12 @@ async function drainBodyToFd(
   body: ReadableStream<Uint8Array>,
   fd: number,
   onBytes: (n: number) => void,
-): Promise<{ streamError: unknown; writeError: Error | undefined }> {
+): Promise<{
+  streamError: Error | undefined;
+  writeError: Error | undefined;
+}> {
   let writeError: Error | undefined;
-  let streamError: unknown;
+  let streamError: Error | undefined;
   try {
     for await (const chunk of body.pipeThrough(
       new DecompressionStream("gzip"),
@@ -938,7 +941,7 @@ async function drainBodyToFd(
       }
     }
   } catch (err) {
-    streamError = err;
+    streamError = err instanceof Error ? err : new Error(String(err));
   }
   return { streamError, writeError };
 }

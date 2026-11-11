@@ -192,7 +192,7 @@ export async function mapCredentialContexts<T>(
     }),
   );
   const results: Array<{ entry: CredentialContext; value: T }> = [];
-  let firstError: unknown;
+  let firstError: ApiError | undefined;
   for (const [index, result] of settled.entries()) {
     const entry = entries[index];
     if (result.status === "fulfilled") {

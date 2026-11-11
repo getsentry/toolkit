@@ -333,7 +333,7 @@ function resolvePathLookup(
   if (matches.length > 1) {
     return { kind: "endpoints", endpoints: matches };
   }
-  throw pathNotFoundError(queryLabel(resource, operation), query);
+  pathNotFoundError(queryLabel(resource, operation), query);
 }
 
 /** Resolve one exact SDK function name or OpenAPI operation ID. */

@@ -923,7 +923,7 @@ async function handleOrganizationIssues(
         }),
     );
   } catch (error) {
-    throw enrichIssueListError(error, flags);
+    enrichIssueListError(error, flags);
   }
   const { issues, nextCursor } = issuesResult;
 

@@ -135,7 +135,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
   };
 
   let producerDone = false;
-  let producerError: unknown = null;
+  let producerError: Error | undefined;
   const tasks: Promise<void>[] = [];
 
   const producer = (async () => {
@@ -163,7 +163,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
       }
       await Promise.all(tasks);
     } catch (error) {
-      producerError = error;
+      producerError = error instanceof Error ? error : new Error(String(error));
     } finally {
       producerDone = true;
       wakeUp();

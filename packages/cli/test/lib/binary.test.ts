@@ -464,6 +464,7 @@ describe("fetchWithUpgradeError", () => {
       signal: controller.signal,
       fetch: async () => {
         controller.abort(reason);
+        // oxlint-disable-next-line typescript/only-throw-error -- fetch rejects with a non-Error abort reason as-is
         throw reason;
       },
     });
@@ -488,7 +489,7 @@ describe("fetchWithUpgradeError", () => {
 
   test("wraps non-Error thrown values as UpgradeError", async () => {
     globalThis.fetch = async () => {
-      // intentionally testing non-Error throw
+      // oxlint-disable-next-line typescript/only-throw-error -- exercises a non-Error throw
       throw { code: "ECONNRESET", reason: "connection reset" };
     };
 

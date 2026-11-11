@@ -289,6 +289,7 @@ describe("fetchLatestFromGitHub", () => {
         });
       }
       controller.abort(reason);
+      // oxlint-disable-next-line typescript/only-throw-error -- fetch rejects with a non-Error abort reason as-is
       throw reason;
     });
 
