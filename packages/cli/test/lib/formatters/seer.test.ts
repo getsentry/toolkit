@@ -395,6 +395,16 @@ describe("createSeerError", () => {
     expect(error?.reason).toBe("out_of_credits");
   });
 
+  test("returns no_budget for a 402 with the out-of-quota code", () => {
+    const error = createSeerError(
+      402,
+      undefined,
+      "my-org",
+      "seer_out_of_quota",
+    );
+    expect(error?.reason).toBe("no_budget");
+  });
+
   test("returns SeerError for 403 with 'not enabled' detail", () => {
     const error = createSeerError(403, "Seer is not enabled", "my-org");
     expect(error).toBeInstanceOf(SeerError);
