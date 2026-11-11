@@ -924,6 +924,28 @@ describe("401/403 denial guidance", () => {
     );
   });
 
+  test("adds the least privileged accepted scope that refresh accepts", () => {
+    useStoredLogin();
+    const error = denial(403, {
+      challenge:
+        'Bearer error="insufficient_scope", scope="org:admin org:billing org:write"',
+    });
+
+    expect(error.detail).toContain(
+      `auth refresh --scope ${[...OAUTH_SCOPES, "org:write"].join(",")}`,
+    );
+  });
+
+  test("skips the refresh hint when no accepted scope can be requested", () => {
+    useStoredLogin();
+    const error = denial(403, {
+      challenge: 'Bearer error="insufficient_scope", scope="org:billing"',
+    });
+
+    expect(error.detail).toContain("Any one of these works: org:billing.");
+    expect(error.detail).not.toContain("auth refresh");
+  });
+
   test("advises the login that sent the request over a leftover env token", () => {
     useEnvToken("sntryu_example");
     delete process.env.SENTRY_FORCE_ENV_TOKEN;

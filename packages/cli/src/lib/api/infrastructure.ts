@@ -30,6 +30,7 @@ import { type GenericSchema, safeParse } from "valibot";
 import {
   extractRequiredScopes,
   parseInsufficientScopeChallenge,
+  SENTRY_SCOPES,
 } from "../api-scope.js";
 import { getUrlLoginCommand, sentry } from "../app-identity.js";
 import {
@@ -86,13 +87,25 @@ function acceptedScopeLines(acceptedScopes: string[]): string[] {
     // `auth refresh --scope` grants exactly the listed scopes, so never name
     // one scope alone: that would take the rest of the login's access away.
     // Same rule as the elevation in `scope-recovery.ts`.
-    const fix = acceptedScopes.some((s) => OAUTH_SCOPES.includes(s))
-      ? `Log in again with the CLI's default scopes: ${sentry`auth login --force`}`
-      : `Log in again with the default scopes plus ${acceptedScopes[0]}: ${sentry`auth refresh --scope ${[...OAUTH_SCOPES, acceptedScopes[0]].join(",")}`}`;
-    return [
+    const lines = [
       `Your login lacks the scope this request needs. Any one of these works: ${scopeList}.`,
-      fix,
     ];
+    if (acceptedScopes.some((s) => OAUTH_SCOPES.includes(s))) {
+      lines.push(
+        `Log in again with the CLI's default scopes: ${sentry`auth login --force`}`,
+      );
+      return lines;
+    }
+    // Sentry lists accepted scopes alphabetically, so `admin` comes before
+    // `write`. SENTRY_SCOPES orders each namespace read, write, admin, so its
+    // first match is the least privileged scope `auth refresh` accepts.
+    const extra = SENTRY_SCOPES.find((s) => acceptedScopes.includes(s));
+    if (extra) {
+      lines.push(
+        `Log in again with the default scopes plus ${extra}: ${sentry`auth refresh --scope ${[...OAUTH_SCOPES, extra].join(",")}`}`,
+      );
+    }
+    return lines;
   }
   const lines = [
     `${tokenHolder(credential)} token lacks the scope this request needs. Any one of these works: ${scopeList}.`,
