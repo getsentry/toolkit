@@ -878,11 +878,16 @@ export function unwrapValidatedResult<T>(
  * headers to the Sentry scope, and throw an enriched {@link ApiError}.
  *
  * Extracted from `apiRequestToRegion` to keep the main function's
- * cognitive complexity under the lint threshold.
+ * cognitive complexity under the lint threshold. Raw `fetch` callers outside
+ * this module (chunk uploads) use it too, so their 401/403s get the same
+ * guidance.
+ *
+ * @param context - Start of the error message, before the status
  */
-async function throwRawApiError(
+export async function throwRawApiError(
   response: Response,
   endpoint: string,
+  context = "API request failed",
 ): Promise<never> {
   const body = await readErrorResponse(response);
   let detail: string | undefined;
@@ -915,7 +920,7 @@ async function throwRawApiError(
   });
   const is403 = response.status === 403;
   throw new ApiError(
-    `API request failed: ${response.status} ${response.statusText}`,
+    `${context}: ${response.status} ${response.statusText}`,
     response.status,
     enrichDetail(response.status, detail, detail !== undefined),
     endpoint,

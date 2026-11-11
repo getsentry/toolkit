@@ -115,6 +115,29 @@ describe("uploadChunkPayloads", () => {
     });
   });
 
+  test("gives a failed chunk upload the shared 403 guidance", async () => {
+    fetchMock.mockResolvedValueOnce(
+      Response.json(
+        { detail: "You do not have permission to perform this action." },
+        { status: 403, statusText: "Forbidden" },
+      ),
+    );
+
+    await expect(
+      uploadChunkPayloads({
+        chunks: [payload("a", 10)],
+        serverOptions: SERVER_OPTIONS,
+        encoding: undefined,
+        regionUrl: "https://us.sentry.io",
+      }),
+    ).rejects.toMatchObject({
+      message: "Chunk upload failed: 403 Forbidden",
+      status: 403,
+      enriched403: true,
+      detail: expect.stringContaining("may lack the required scope"),
+    });
+  });
+
   test("makes no request for no chunks", async () => {
     await uploadChunkPayloads({
       chunks: [],

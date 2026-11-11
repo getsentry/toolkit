@@ -46,7 +46,11 @@ import {
 import { ApiError } from "../errors.js";
 import { logger } from "../logger.js";
 import { getSdkConfig } from "../sentry-client.js";
-import { getOrgSdkConfig, unwrapValidatedResult } from "./infrastructure.js";
+import {
+  getOrgSdkConfig,
+  throwRawApiError,
+  unwrapValidatedResult,
+} from "./infrastructure.js";
 
 const gzipAsync = promisify(gzipCb);
 // zstdCompress exists only on Node.js 22.15+. On older runtimes (npm package
@@ -313,12 +317,7 @@ export async function uploadChunk(params: {
 
   const response = await authFetch(url, init);
   if (!response.ok) {
-    throw new ApiError(
-      `Chunk upload failed: ${response.status} ${response.statusText}`,
-      response.status,
-      await response.text().catch(() => ""),
-      url,
-    );
+    await throwRawApiError(response, url, "Chunk upload failed");
   }
 }
 
@@ -530,15 +529,7 @@ async function uploadChunkBatch(params: {
 
   const response = await authFetch(url, init);
   if (!response.ok) {
-    throw new ApiError(
-      `Chunk upload failed: ${response.status} ${response.statusText}`,
-      response.status,
-      await response.text().catch((err) => {
-        log.debug("Failed to read chunk upload error response body", err);
-        return "";
-      }),
-      url,
-    );
+    await throwRawApiError(response, url, "Chunk upload failed");
   }
 }
 
