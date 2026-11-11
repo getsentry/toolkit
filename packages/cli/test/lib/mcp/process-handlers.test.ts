@@ -91,22 +91,19 @@ describe("installProcessHandlers", () => {
     // The code each exit would end the process with: its argument, or
     // `process.exitCode` when it has none.
     const codes: unknown[] = [];
-    exit.mockImplementation(((code?: number) => {
+    exit.mockImplementation((code?: number) => {
       codes.push(code ?? process.exitCode ?? 0);
-    }) as typeof process.exit);
+    });
     let stderrError: Handler | undefined;
-    vi.spyOn(process.stderr, "on").mockImplementation(((
-      event: string,
-      handler: Handler,
-    ) => {
-      if (event === "error") {
-        stderrError = handler;
-      }
-      return process.stderr;
-    }) as typeof process.stderr.on);
-    vi.spyOn(process.stdout, "on").mockImplementation(
-      (() => process.stdout) as typeof process.stdout.on,
+    vi.spyOn(process.stderr, "on").mockImplementation(
+      (event: string, handler: Handler) => {
+        if (event === "error") {
+          stderrError = handler;
+        }
+        return process.stderr;
+      },
     );
+    vi.spyOn(process.stdout, "on").mockImplementation(() => process.stdout);
     installStreamErrorHandlers();
     const exitAfterError = installProcessHandlers();
     // The client closed its pipes: writing the report raises EPIPE.

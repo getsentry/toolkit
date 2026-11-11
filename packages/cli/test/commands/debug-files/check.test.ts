@@ -41,7 +41,7 @@ async function runCheck(
 ): Promise<{ output: string; exitCode: number | undefined }> {
   let output = "";
   const mockContext: SentryContext = {
-    process: { ...process, exitCode: undefined } as typeof process,
+    process: { ...process, exitCode: undefined },
     env: process.env,
     cwd: process.cwd(),
     homeDir: "/tmp",

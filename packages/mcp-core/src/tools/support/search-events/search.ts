@@ -1107,7 +1107,7 @@ async function executeSearchEvents(
         apiService,
         organizationSlug,
         projectId,
-        dataset: dataset as PublicEventsDataset,
+        dataset: dataset,
         interval: timeSeries.interval,
         timeParams,
         toolAvailable:

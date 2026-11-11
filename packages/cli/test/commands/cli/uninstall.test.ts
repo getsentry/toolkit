@@ -57,7 +57,7 @@ async function runUninstall(
     process: {
       ...process,
       exitCode: undefined,
-    } as typeof process,
+    },
     env: process.env,
     cwd: process.cwd(),
     homeDir: "/tmp",

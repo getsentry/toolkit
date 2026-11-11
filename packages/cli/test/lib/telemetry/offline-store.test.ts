@@ -191,7 +191,7 @@ describe.each(["node", "wasm"] as const)(
       await store.push(transactionEnvelope("a"));
       clock.now += 3 * DAY_MS;
       const [claimed] = store.claim(1);
-      await store.push(claimed as Envelope);
+      await store.push(claimed);
       clock.now += 2 * DAY_MS;
 
       expect(store.claim(10)).toEqual([]);

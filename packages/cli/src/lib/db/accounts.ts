@@ -49,7 +49,7 @@ export const ENV_ACCOUNT_ID_PREFIX = "env:";
 
 /**
  * Secret-free summary of an env token's virtual account on `host`, with the
- * token's user when known (from `/auth/`). Never active: `sentry auth
+ * token's user when known (from `/users/me/`). Never active: `sentry auth
  * switch` only selects stored accounts.
  */
 export function toEnvAccountSummary(

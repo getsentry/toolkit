@@ -367,7 +367,7 @@ export function throwApiError(
   const status = response.status;
   const rawDetail =
     error && typeof error === "object" && "detail" in error
-      ? (error as { detail: unknown }).detail
+      ? error.detail
       : undefined;
   const hasUsableDetail = rawDetail !== null && rawDetail !== undefined;
   // Enrichment functions (enrich403Detail, enrich401Detail) render better
@@ -400,6 +400,7 @@ export function throwApiError(
  * @param context - Human-readable context for error messages
  * @returns The data from the successful response
  */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- callers name the app type for SDK data, which often differs from @sentry/api's generated types
 export function unwrapResult<T>(
   result: Pick<SdkResult, "data" | "error" | "response">,
   context: string,
@@ -730,7 +731,7 @@ export async function fetchAllPages<T>(
  * Used for internal endpoints not covered by @sentry/api SDK functions.
  *
  * @param regionUrl - The region's base URL (e.g., https://us.sentry.io)
- * @param endpoint - API endpoint path (e.g., "/users/me/regions/")
+ * @param endpoint - API endpoint path (e.g., "/organizations/")
  * @param options - Request options
  * @returns Parsed data and response headers
  */
@@ -877,11 +878,16 @@ export function unwrapValidatedResult<T>(
  * headers to the Sentry scope, and throw an enriched {@link ApiError}.
  *
  * Extracted from `apiRequestToRegion` to keep the main function's
- * cognitive complexity under the lint threshold.
+ * cognitive complexity under the lint threshold. Raw `fetch` callers outside
+ * this module (chunk uploads) use it too, so their 401/403s get the same
+ * guidance.
+ *
+ * @param context - Start of the error message, before the status
  */
-async function throwRawApiError(
+export async function throwRawApiError(
   response: Response,
   endpoint: string,
+  context = "API request failed",
 ): Promise<never> {
   const body = await readErrorResponse(response);
   let detail: string | undefined;
@@ -914,7 +920,7 @@ async function throwRawApiError(
   });
   const is403 = response.status === 403;
   throw new ApiError(
-    `API request failed: ${response.status} ${response.statusText}`,
+    `${context}: ${response.status} ${response.statusText}`,
     response.status,
     enrichDetail(response.status, detail, detail !== undefined),
     endpoint,

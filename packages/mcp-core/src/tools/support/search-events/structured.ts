@@ -335,6 +335,7 @@ function searchEventsOutputSchema<
 
 /** Output schema for the dataset search tool that searches `dataset`. */
 export function buildSearchEventsOutputSchema<
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- the inferred return type depends on TDataset
   TDataset extends StructuredSearchDataset,
 >(dataset: TDataset) {
   return searchEventsOutputSchema(z.object(STRUCTURED_DATASETS[dataset].links));

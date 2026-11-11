@@ -175,7 +175,7 @@ describe("issue plan after solution planning", () => {
           solution: [{ title: "Fix it", code_snippet_and_analysis: "do x" }],
         },
       ],
-    } as AutofixState);
+    });
 
     await runPlan(createMockContext());
 
@@ -222,7 +222,7 @@ describe("issue plan after solution planning", () => {
           solution: [{ title: "Fix it", code_snippet_and_analysis: "do x" }],
         },
       ],
-    } as AutofixState);
+    });
 
     const context = createMockContext();
     await runPlan(context);

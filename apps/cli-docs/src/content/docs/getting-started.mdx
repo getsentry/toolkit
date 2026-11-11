@@ -226,6 +226,33 @@ To remove stored credentials:
 sentry auth logout
 ```
 
+## Connect an MCP Client
+
+Once you're logged in, the CLI can also run the Sentry MCP server for MCP
+clients such as Claude Code, Cursor, or VS Code. Register `sentry mcp` as a
+stdio MCP server; it uses your CLI login, so the MCP config needs no token:
+
+```bash
+claude mcp add sentry -- sentry mcp
+```
+
+Other clients take the same command:
+
+```json
+{
+  "mcpServers": {
+    "sentry": {
+      "command": "sentry",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+See the [`mcp` command](../commands/mcp/) to limit the server to an
+organization or project, and [mcp.sentry.dev](https://mcp.sentry.dev/?transport=cli)
+for setup steps for each client.
+
 ## Self-Hosted Sentry
 
 Using a self-hosted Sentry instance? Create a public OAuth application and pass
@@ -251,4 +278,5 @@ Once authenticated, you can start using the CLI:
 - [Issue commands](../commands/issue/) - Track and manage issues
 - [Event commands](../commands/event/) - Inspect events
 - [API commands](../commands/api/) - Direct API access
+- [MCP server](../commands/mcp/) - Run the Sentry MCP server for MCP clients
 - [Agentic Usage](../agentic-usage/) - Enable AI coding agents to use the CLI

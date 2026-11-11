@@ -1213,7 +1213,7 @@ describe("buildCommand return-based output", () => {
       auth: false,
       docs: { brief: "Test" },
       output: {
-        human: (d: { id: number; name: string; role: string }) => `${d.name}`,
+        human: (d: { id: number; name: string; role: string }) => d.name,
       },
       parameters: {},
       async *func(this: TestContext) {

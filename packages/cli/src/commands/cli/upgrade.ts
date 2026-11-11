@@ -1113,7 +1113,7 @@ function startChangelogFetch(options: {
     source,
   })
     .then((result) => result ?? undefined)
-    .catch(() => undefined as undefined);
+    .catch(() => undefined);
 }
 
 /**

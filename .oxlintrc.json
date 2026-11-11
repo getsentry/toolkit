@@ -38,6 +38,12 @@
       }
     ],
     "typescript/no-unnecessary-type-constraint": "error",
+    "typescript/no-unnecessary-type-arguments": "error",
+    "typescript/no-unnecessary-boolean-literal-compare": "error",
+    "typescript/no-unnecessary-template-expression": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unnecessary-type-parameters": "error",
+    "typescript/no-useless-default-assignment": "error",
     "jsx-a11y/interactive-supports-focus": "off",
     "unicorn/prefer-spread": "error"
   },
