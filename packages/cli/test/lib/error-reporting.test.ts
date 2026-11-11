@@ -432,6 +432,34 @@ describe("classifySilenced", () => {
       expect(classifySilenced(new SeerError("not_enabled"))).toBeNull();
     });
   });
+
+  const unexpectedResponse = () =>
+    new ApiError(
+      "Failed to list repositories: unexpected response format",
+      200,
+      "Expected the repositories endpoint to return an array.",
+      "/api/0/organizations/test-org/repos/",
+    );
+
+  test("silences a 2xx ApiError on self-hosted (CLI-3DE)", () => {
+    withSentryUrl("http://localhost:8000", () => {
+      expect(classifySilenced(unexpectedResponse())).toBe(
+        "unexpected_response_self_hosted",
+      );
+    });
+  });
+
+  test("does NOT silence a 2xx ApiError when SENTRY_URL points at SaaS", () => {
+    withSentryUrl("https://sentry.io", () => {
+      expect(classifySilenced(unexpectedResponse())).toBeNull();
+    });
+  });
+
+  test("does NOT silence a 5xx ApiError on self-hosted", () => {
+    withSentryUrl("http://localhost:8000", () => {
+      expect(classifySilenced(new ApiError("Server error", 500))).toBeNull();
+    });
+  });
 });
 
 /**
@@ -712,6 +740,29 @@ describe("reportCliError integration", () => {
           error_class: "SeerError",
           reason: "seer_unavailable_self_hosted",
           seer_reason: "not_enabled",
+        }),
+      }),
+    );
+  });
+
+  test("silences a 2xx ApiError on self-hosted and emits metric (CLI-3DE)", () => {
+    withSentryUrl("http://localhost:8000", () => {
+      reportCliError(
+        new ApiError(
+          "Failed to list repositories: unexpected response format",
+          200,
+        ),
+      );
+    });
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          error_class: "ApiError",
+          reason: "unexpected_response_self_hosted",
+          api_status: 200,
         }),
       }),
     );

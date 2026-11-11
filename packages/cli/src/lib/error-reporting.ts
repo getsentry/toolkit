@@ -73,7 +73,8 @@ type SilenceReason =
   | "process_exit"
   | "user_validation"
   | "user_input_error"
-  | "seer_unavailable_self_hosted";
+  | "seer_unavailable_self_hosted"
+  | "unexpected_response_self_hosted";
 
 /**
  * A raw network TypeError, or the ApiError(status 0) that SDK-backed calls
@@ -187,6 +188,20 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   // start a trial, so there it is pure feature-gate noise (CLI-1WP).
   if (error instanceof SeerError && !isSaaS()) {
     return "seer_unavailable_self_hosted";
+  }
+  // A 2xx ApiError means the server answered but the body is not what Sentry
+  // sends (a non-array list, a non-JSON body). Against a custom SENTRY_URL
+  // that is a mock server, proxy, or non-Sentry endpoint: the user's setup,
+  // not a CLI bug. Nearly all of CLI-3DE is CI runs against such a URL. On
+  // SaaS it stays captured, since there it means the CLI's view of the API is
+  // wrong. The metric keeps the self-hosted volume, split by `api_status`.
+  if (
+    error instanceof ApiError &&
+    error.status >= 200 &&
+    error.status < 300 &&
+    !isSaaS()
+  ) {
+    return "unexpected_response_self_hosted";
   }
   // A child process launched by `sentry local run` or `sentry monitor run`
   // that exits with a non-zero code throws `CliError("Process exited with
