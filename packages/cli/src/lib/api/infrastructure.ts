@@ -70,6 +70,62 @@ type EnrichedDetail = {
 /** The scope org auth tokens have, and that Sentry's CI endpoints accept. */
 const ORG_CI_SCOPE = "org:ci";
 
+/**
+ * Org slug of an org- or project-scoped API path. Anything that isn't a
+ * plain slug (escapes, IDs with other characters) yields no org to compare.
+ */
+const PATH_ORG_RE = /(?:^|\/)(?:organizations|projects)\/([\w-]+)\//;
+
+/** Numeric org IDs can't be compared with the slug in a token. */
+const NUMERIC_ORG_RE = /^\d+$/;
+
+/**
+ * Organization a failed request was for: from the raw request's endpoint,
+ * or from the response URL for SDK requests.
+ */
+function readTargetOrg(
+  response: Response,
+  endpoint: string | undefined,
+): string | undefined {
+  const path = endpoint ?? response.url;
+  return path ? PATH_ORG_RE.exec(path)?.[1] : undefined;
+}
+
+/**
+ * The org auth token's organization, when it differs from the one the
+ * request was for. An org auth token only works in its own organization:
+ * Sentry answers 403 when the target org is on the same server, and 401
+ * ("Invalid org token") when the token is unknown there.
+ *
+ * Reads the credential requests use ({@link getCredentialContext}), not
+ * `getAuthToken()`: a stored OAuth login that can still refresh is what the
+ * request sent, even when an env var also holds an org auth token. A stored
+ * `sntrys_` token (from `auth login --token`) counts too; an OAuth access
+ * token has no claim.
+ */
+function findOrgMismatch(
+  targetOrg: string | undefined,
+): { tokenOrg: string; targetOrg: string } | undefined {
+  if (!targetOrg || NUMERIC_ORG_RE.test(targetOrg)) {
+    return;
+  }
+  const tokenOrg = parseSntrysClaim(getCredentialContext()?.token)?.org;
+  if (!tokenOrg || tokenOrg.toLowerCase() === targetOrg.toLowerCase()) {
+    return;
+  }
+  return { tokenOrg, targetOrg };
+}
+
+function orgMismatchLines(mismatch: {
+  tokenOrg: string;
+  targetOrg: string;
+}): string[] {
+  return [
+    `This org auth token belongs to organization '${mismatch.tokenOrg}', but the request is for '${mismatch.targetOrg}'.`,
+    `Use an auth token created in '${mismatch.targetOrg}', or target '${mismatch.tokenOrg}' instead.`,
+  ];
+}
+
 /** How to name the token a request sent: its env var, or the stored one. */
 function tokenHolder(credential: CredentialContext | undefined): string {
   return credential?.source.startsWith("env:")
@@ -135,16 +191,19 @@ function acceptedScopeLines(acceptedScopes: string[]): string[] {
  * error would be actively wrong and has caused user confusion (CLI-SERVER-E).
  *
  * Then, in order:
+ * - an org auth token for another organization → name both organizations
  * - an `insufficient_scope` challenge → name the scopes the endpoint accepts
  * - env-var tokens → suggest checking token scopes
  * - OAuth tokens → suggest re-authentication
  *
  * @param acceptedScopes - Scopes from the response's `insufficient_scope`
  *   challenge; any one of them works
+ * @param targetOrg - Organization in the request path, when it names one
  */
 function enrich403Detail(
   rawDetail: string | undefined,
   acceptedScopes: string[],
+  targetOrg: string | undefined,
 ): EnrichedDetail {
   // Org-level policy — re-auth and token scope advice do not apply here.
   if (rawDetail?.includes("disabled this feature")) {
@@ -162,6 +221,12 @@ function enrich403Detail(
   const lines: string[] = [];
   if (rawDetail) {
     lines.push(rawDetail, "");
+  }
+
+  const mismatch = findOrgMismatch(targetOrg);
+  if (mismatch) {
+    lines.push(...orgMismatchLines(mismatch));
+    return { detail: lines.join("\n  "), denialReason: "org_mismatch" };
   }
 
   if (acceptedScopes.length > 0) {
@@ -208,7 +273,7 @@ function enrich403Detail(
  * 401 means the token is missing, invalid, or expired — the identity cannot
  * be determined at all. Distinct from 403 (identity known, lacks permission).
  * Scope hints do not apply; the fix is always to re-authenticate or regenerate
- * the token.
+ * the token, unless it is an org auth token for another organization.
  *
  * The Sentry API returns distinct `detail` strings we can branch on:
  * `"Token expired"` when the token is past its expiry date, `"Invalid token"`
@@ -221,7 +286,10 @@ function enrich403Detail(
  *
  * @see https://github.com/getsentry/sentry/blob/934f1473f198a62f9268d7140b80cd9ca1e59bb9/src/sentry/api/authentication.py#L536-L539
  */
-function enrich401Detail(rawDetail: string | undefined): EnrichedDetail {
+function enrich401Detail(
+  rawDetail: string | undefined,
+  targetOrg: string | undefined,
+): EnrichedDetail {
   // Seat-limit lockout, not an auth failure. Sentry returns 401 with
   // `code: member-disabled-over-limit` when the org is over its member limit
   // and the caller's seat is disabled — re-authenticating cannot fix this.
@@ -241,6 +309,12 @@ function enrich401Detail(rawDetail: string | undefined): EnrichedDetail {
   if (rawDetail) {
     lines.push(rawDetail, "");
   }
+  const mismatch = findOrgMismatch(targetOrg);
+  if (mismatch) {
+    lines.push(...orgMismatchLines(mismatch));
+    return { detail: lines.join("\n  "), denialReason: "org_mismatch" };
+  }
+
   const expired = rawDetail?.toLowerCase().includes("expired") ?? false;
   if (isEnvTokenActive()) {
     lines.push(
@@ -275,16 +349,21 @@ function enrichDetail(
   response: Response,
   detail: string | undefined,
   hasUsableDetail: boolean,
+  endpoint?: string,
 ): { detail: string | undefined; denialReason?: ApiDenialReason } {
   const { status } = response;
   if (status === 403) {
     return enrich403Detail(
       hasUsableDetail ? detail : undefined,
       parseInsufficientScopeChallenge(response.headers.get("www-authenticate")),
+      readTargetOrg(response, endpoint),
     );
   }
   if (status === 401) {
-    return enrich401Detail(hasUsableDetail ? detail : undefined);
+    return enrich401Detail(
+      hasUsableDetail ? detail : undefined,
+      readTargetOrg(response, endpoint),
+    );
   }
   return { detail };
 }
@@ -1023,7 +1102,12 @@ export async function throwRawApiError(
     "x-sentry-error": response.headers.get("x-sentry-error"),
     "www-authenticate": response.headers.get("www-authenticate"),
   });
-  const enriched = enrichDetail(response, detail, detail !== undefined);
+  const enriched = enrichDetail(
+    response,
+    detail,
+    detail !== undefined,
+    endpoint,
+  );
   throw new ApiError(
     `${context}: ${response.status} ${response.statusText}`,
     response.status,

@@ -440,9 +440,9 @@ export function isUserApiError(error: unknown): boolean {
  * `api_error.denial_reason` (401/403) or `api_error.detail` on the span. Must
  * be called before `span.end()`.
  *
- * A 401/403 detail is the CLI's own guidance rather than the server's, and
- * Sentry's data scrubbing replaces most of them with `[Filtered]`. The denial
- * reason is a fixed category that tells those failures apart instead.
+ * A 401/403 detail is the CLI's own guidance, which can name organizations,
+ * and Sentry's data scrubbing replaces most of them with `[Filtered]`. The
+ * denial reason is a fixed category that tells those failures apart instead.
  *
  * @internal Exported for testing
  */

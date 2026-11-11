@@ -817,6 +817,60 @@ describe("throwApiError", () => {
 // isTextualContentType + rawApiRequest binary handling (getsentry/cli#1303)
 // ---------------------------------------------------------------------------
 
+describe("org auth token org mismatch", () => {
+  useTestConfigDir("api-org-mismatch-");
+  useEnvSandbox([
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN",
+  ]);
+
+  /** The detail of a denial for `path`, sent with an org auth token for `tokenOrg`. */
+  function detailFor(
+    tokenOrg: string,
+    status: 401 | 403,
+    path: string,
+    detail = "Denied",
+  ): string | undefined {
+    const claim = Buffer.from(
+      JSON.stringify({ iat: 1, url: "https://sentry.io", org: tokenOrg }),
+    ).toString("base64");
+    process.env.SENTRY_AUTH_TOKEN = `sntrys_${claim}_secret`;
+    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    resetAuthTokenCache();
+    const body = { detail };
+    const response = Response.json(body, { status });
+    // SDK requests carry the request URL on the response.
+    Object.defineProperty(response, "url", {
+      value: `https://us.sentry.io/api/0/${path}`,
+    });
+    try {
+      throwApiError(body, response, "Failed");
+    } catch (error) {
+      return (error as ApiError).detail;
+    }
+    throw new Error("expected throwApiError to throw");
+  }
+
+  test.each([
+    [403, "organizations/target-org/releases/", "Denied"],
+    [401, "projects/target-org/web/releases/", "Invalid org token"],
+  ] as const)("names both orgs on a %i", (status, path, detail) => {
+    expect(detailFor("token-org", status, path, detail)).toContain(
+      "This org auth token belongs to organization 'token-org', but the request is for 'target-org'.",
+    );
+  });
+
+  test.each([
+    ["token-org", "organizations/12345/releases/"],
+    ["Token-Org", "organizations/token-org/releases/"],
+  ])("skips the hint for a %s token on %s", (tokenOrg, path) => {
+    expect(detailFor(tokenOrg, 403, path)).not.toContain(
+      "belongs to organization",
+    );
+  });
+});
+
 describe("403 scope challenge guidance", () => {
   useTestConfigDir("api-denial-");
   useEnvSandbox([

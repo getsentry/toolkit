@@ -238,7 +238,7 @@ function recordSilencedError(error: unknown, reason: SilenceReason): void {
 
   // Structured log for user API errors — `detail` is often the most actionable
   // field and is searchable in Sentry Logs. A 401/403 logs its denial reason
-  // instead: its detail is the CLI's own guidance, not the server's.
+  // instead: its detail is the CLI's own guidance, which can name orgs.
   if (reason === "api_user_error" && error instanceof ApiError) {
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
