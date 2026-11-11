@@ -40,6 +40,10 @@
     "typescript/no-unnecessary-type-constraint": "error",
     "typescript/no-unnecessary-type-arguments": "error",
     "typescript/no-unnecessary-boolean-literal-compare": "error",
+    "typescript/prefer-promise-reject-errors": [
+      "error",
+      { "allowThrowingAny": true, "allowThrowingUnknown": true }
+    ],
     "typescript/no-unnecessary-template-expression": "error",
     "typescript/no-unnecessary-type-assertion": "error",
     "typescript/no-unnecessary-type-parameters": "error",
