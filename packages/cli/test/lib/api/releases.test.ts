@@ -174,6 +174,56 @@ describe("createRelease", () => {
     expect(release.version).toBe("1.0.0");
     expect(release.projects).toHaveLength(1);
   });
+
+  test("retries a 502 and accepts the 208 for a release the first attempt created", async () => {
+    const statuses: number[] = [];
+    globalThis.fetch = mockFetch(async () => {
+      const status = statuses.length === 0 ? 502 : 208;
+      statuses.push(status);
+      return status === 502
+        ? new Response("<title>502</title>", { status })
+        : Response.json(SAMPLE_RELEASE, { status });
+    });
+
+    const release = await createRelease("test-org", { version: "1.0.0" });
+
+    expect(release.version).toBe("1.0.0");
+    expect(statuses).toEqual([502, 208]);
+  });
+
+  test("retries a 503", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("upstream connect error", { status: 503 })
+        : Response.json(SAMPLE_RELEASE, { status: 201 });
+    });
+
+    const release = await createRelease("test-org", { version: "1.0.0" });
+
+    expect(release.version).toBe("1.0.0");
+    expect(calls).toBe(2);
+  });
+
+  test("does not retry a 400", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return Response.json(
+        { version: ["Release with this Version already exists."] },
+        { status: 400 },
+      );
+    });
+
+    const error = await createRelease("test-org", { version: "1.0.0" }).catch(
+      (e: unknown) => e,
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(400);
+    expect(calls).toBe(1);
+  });
 });
 
 // =============================================================================
@@ -200,6 +250,55 @@ describe("updateRelease", () => {
     });
 
     expect(release.dateReleased).toBe("2025-06-15T00:00:00Z");
+  });
+
+  test("retries a 503 on a metadata update", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("busy", { status: 503 })
+        : Response.json(SAMPLE_RELEASE);
+    });
+
+    await updateRelease("test-org", "1.0.0", {
+      dateReleased: "2025-06-15T00:00:00Z",
+    });
+
+    expect(calls).toBe(2);
+  });
+
+  test("does not retry a 404", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return Response.json(
+        { detail: "The requested resource does not exist" },
+        { status: 404 },
+      );
+    });
+
+    const error = await updateRelease("test-org", "1.0.0", {
+      dateReleased: "2025-06-15T00:00:00Z",
+    }).catch((e: unknown) => e);
+
+    expect((error as ApiError).status).toBe(404);
+    expect(calls).toBe(1);
+  });
+
+  test("does not retry a 503 when setting commits", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return new Response("busy", { status: 503 });
+    });
+
+    const error = await setCommitsLocal("test-org", "1.0.0", [
+      { id: "abc123" },
+    ]).catch((e: unknown) => e);
+
+    expect((error as ApiError).status).toBe(503);
+    expect(calls).toBe(1);
   });
 });
 
@@ -268,6 +367,21 @@ describe("createReleaseDeploy", () => {
 
     expect(deploy.environment).toBe("production");
     expect(deploy.id).toBe("42");
+  });
+
+  test("does not retry a 503, since a resend would record a second deploy", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return new Response("busy", { status: 503 });
+    });
+
+    const error = await createReleaseDeploy("test-org", "1.0.0", {
+      environment: "production",
+    }).catch((e: unknown) => e);
+
+    expect((error as ApiError).status).toBe(503);
+    expect(calls).toBe(1);
   });
 });
 
