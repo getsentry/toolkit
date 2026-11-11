@@ -946,6 +946,19 @@ describe("401/403 denial guidance", () => {
     );
   });
 
+  test("ignores an env org auth token when a refreshable login sent the request", async () => {
+    useToken(orgAuthToken("token-org"));
+    delete process.env.SENTRY_FORCE_ENV_TOKEN;
+    // Expired but refreshable: requests still send it, getAuthToken() skips it.
+    setAuthToken("oauth-access-token", -60, "oauth-refresh-token");
+    resetAuthTokenCache();
+
+    const error = await rawDenial(403, "organizations/target-org/releases/");
+
+    expect(error.denialReason).toBe("access_denied");
+    expect(error.detail).not.toContain("belongs to organization");
+  });
+
   test("does not compare a numeric org ID with the token's org", async () => {
     useToken(orgAuthToken("token-org"));
     const error = await rawDenial(403, "organizations/12345/releases/");

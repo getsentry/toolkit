@@ -35,7 +35,7 @@ import { getUrlLoginCommand, sentry } from "../app-identity.js";
 import {
   type CredentialContext,
   getActiveEnvVarName,
-  getAuthToken,
+  getCredentialContext,
   isEnvTokenActive,
 } from "../db/auth.js";
 import { getConfiguredSentryUrl } from "../constants.js";
@@ -111,16 +111,30 @@ function findOrgMismatch(
   if (!targetOrg || NUMERIC_ORG_RE.test(targetOrg)) {
     return;
   }
-  const tokenOrg = parseSntrysClaim(getAuthToken())?.org;
+  const tokenOrg = readOrgAuthTokenClaim()?.org;
   if (!tokenOrg || tokenOrg.toLowerCase() === targetOrg.toLowerCase()) {
     return;
   }
   return { tokenOrg, targetOrg };
 }
 
-/** Whether the active credential is an org auth token with a readable claim. */
+/**
+ * Claim of the org auth token the request was sent with, if it was one.
+ *
+ * Reads the credential requests use ({@link getCredentialContext}), not
+ * `getAuthToken()`: a stored OAuth login that can still refresh is what the
+ * request sent, even when an env var also holds an org auth token.
+ */
+function readOrgAuthTokenClaim(): ReturnType<typeof parseSntrysClaim> {
+  const credential = getCredentialContext();
+  return credential?.source === "oauth"
+    ? undefined
+    : parseSntrysClaim(credential?.token);
+}
+
+/** Whether the request was sent with an org auth token with a readable claim. */
 function isOrgAuthTokenActive(): boolean {
-  return parseSntrysClaim(getAuthToken()) !== undefined;
+  return readOrgAuthTokenClaim() !== undefined;
 }
 
 function orgMismatchLines(mismatch: {
