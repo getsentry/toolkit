@@ -760,6 +760,63 @@ describe("formatEventDetails", () => {
     expect(result).toContain("throw new Error");
   });
 
+  test("renders native frames with numbered context, variables, and registers", () => {
+    const result = stripAnsi(
+      formatEventDetails(
+        createMockEvent({
+          platform: "native",
+          entries: [
+            {
+              type: "exception",
+              data: {
+                values: [
+                  {
+                    type: "EXC_BAD_ACCESS",
+                    value: "KERN_INVALID_ADDRESS / 0x0",
+                    stacktrace: {
+                      registers: { pc: "0x0000000100003e2c" },
+                      frames: [
+                        {
+                          function: "start",
+                          package: "/usr/lib/dyld",
+                          instructionAddr: "0x18e0d6b98",
+                        },
+                        {
+                          function: "crash",
+                          filename: "variables_crash.c",
+                          package: "/app/build/variables_crash",
+                          instructionAddr: "0x100003e2c",
+                          lineNo: 43,
+                          inApp: true,
+                          context: [
+                            [42, "    Player *null_player = NULL;"],
+                            [43, "    null_player->id = 999;"],
+                          ],
+                          vars: { null_player: "0x0", state: { tick: 3 } },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    expect(result).toContain(
+      "at crash (variables_crash.c:43) [in-app] variables_crash 0x100003e2c",
+    );
+    expect(result).toContain("    42 |     Player *null_player = NULL;");
+    expect(result).toContain("  > 43 |     null_player->id = 999;");
+    expect(result).toMatch(/null_player\s+│ 0x0/);
+    expect(result).toMatch(/state\s+│ \{"tick":3\}/);
+    // No file: fall back to the binary name instead of `<unknown>:?:?`.
+    expect(result).toContain("at start (dyld) 0x18e0d6b98");
+    expect(result).not.toContain("?:?");
+    expect(result).toMatch(/pc\s+│ 0x0000000100003e2c/);
+  });
+
   test("includes breadcrumbs when present", () => {
     const result = stripAnsi(
       formatEventDetails(
