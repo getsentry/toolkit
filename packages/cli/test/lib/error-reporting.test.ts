@@ -387,6 +387,15 @@ describe("classifySilenced", () => {
     },
   );
 
+  test.each(["release.version", "release.projects"])(
+    "silences release create ValidationError with field '%s' (CLI-2G3)",
+    (field) => {
+      expect(classifySilenced(new ValidationError("rejected", field))).toBe(
+        "user_validation",
+      );
+    },
+  );
+
   test("silences ResolutionError (user provided a value that wasn't found)", () => {
     expect(
       classifySilenced(
