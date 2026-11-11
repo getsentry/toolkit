@@ -49,7 +49,11 @@ export const helpCommand = buildCommand({
   },
   // Stricli requires empty object for commands with no flags
   // async generator required by Stricli buildCommand pattern
-  async *func(this: SentryContext, _flags: {}, ...commandPath: string[]) {
+  async *func(
+    this: SentryContext,
+    _flags: Record<string, never>,
+    ...commandPath: string[]
+  ) {
     if (commandPath.length === 0) {
       // Yield the full command tree. The branded banner + help is rendered by
       // formatHelpHuman (human output only), so `--json` never triggers the

@@ -16,4 +16,5 @@
  * It lives in its own module so tests can pin the gateway surface with
  * `vi.mock("./exposure", () => ({ EXPOSE_ALL_TOOLS: false }))`.
  */
+// oxlint-disable-next-line typescript/no-inferrable-types -- widened to boolean so checks of the flag aren't seen as constant
 export const EXPOSE_ALL_TOOLS: boolean = true;

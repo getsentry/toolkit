@@ -107,7 +107,7 @@ describe("telemetry credential boundaries", () => {
   test("scrubs logs after the SDK adds scope attributes and fmt parameters", async () => {
     const capture = captureTelemetry();
     const frozen = Object.freeze({ token });
-    // regression coverage for boxed log parameters
+    // oxlint-disable-next-line no-new-wrappers -- regression coverage for boxed log parameters
     const boxed = new String(token);
     withScope((scope) => {
       scope.setAttribute("scope.token", token);
