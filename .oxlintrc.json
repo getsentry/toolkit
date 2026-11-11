@@ -162,6 +162,24 @@
       }
     },
     {
+      "files": [
+        "packages/codemod-cli3to4/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/logger/**/*.{ts,tsx,js,mjs,cjs,cts}",
+        "packages/mcp-server/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/mcp-server-evals/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/mcp-server-mocks/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/smoke-tests/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/toolkit-core/**/*.{ts,tsx,js,mjs,cjs}",
+        "apps/games-api/**/*.{ts,tsx,js,mjs,cjs}",
+        "scripts/**/*.{ts,js,mjs,cjs}",
+        ".github/**/*.{ts,js,mjs,cjs}",
+        "vitest.workspace.ts"
+      ],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
       "files": ["packages/cli/src/commands/**/*.{ts,tsx}"],
       "rules": {
         "no-restricted-imports": [
