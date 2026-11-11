@@ -4,8 +4,13 @@
  * of the hardcoded "(org:read, project:read)" fallback.
  */
 
+import fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { extractRequiredScopes } from "../../src/lib/api-scope.js";
+import {
+  extractRequiredScopes,
+  parseInsufficientScopeChallenge,
+  SENTRY_SCOPES,
+} from "../../src/lib/api-scope.js";
 
 describe("extractRequiredScopes", () => {
   test("returns [] for undefined or null detail", () => {
@@ -160,5 +165,51 @@ describe("extractRequiredScopes", () => {
         "Not real: release:read release:write alerts:admin team:superuser",
       ),
     ).toEqual([]);
+  });
+});
+
+describe("parseInsufficientScopeChallenge", () => {
+  test("reads the scopes Sentry advertises on a token-scope 403", () => {
+    expect(
+      parseInsufficientScopeChallenge(
+        'Bearer error="insufficient_scope", scope="org:admin org:ci org:integrations org:read org:write"',
+      ),
+    ).toEqual([
+      "org:admin",
+      "org:ci",
+      "org:integrations",
+      "org:read",
+      "org:write",
+    ]);
+  });
+
+  test("returns [] without an insufficient_scope challenge", () => {
+    expect(parseInsufficientScopeChallenge(null)).toEqual([]);
+    expect(parseInsufficientScopeChallenge("")).toEqual([]);
+    expect(
+      parseInsufficientScopeChallenge(
+        'Bearer error="invalid_token", scope="org:read"',
+      ),
+    ).toEqual([]);
+  });
+
+  test("drops values that are not scope names", () => {
+    expect(
+      parseInsufficientScopeChallenge(
+        'Bearer error="insufficient_scope", scope="org:read <b>x</b> org:read"',
+      ),
+    ).toEqual(["org:read"]);
+  });
+
+  test("round-trips any set of scopes in server order", () => {
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(fc.constantFrom(...SENTRY_SCOPES), { minLength: 1 }),
+        (scopes) => {
+          const header = `Bearer error="insufficient_scope", scope="${scopes.join(" ")}"`;
+          expect(parseInsufficientScopeChallenge(header)).toEqual(scopes);
+        },
+      ),
+    );
   });
 });
