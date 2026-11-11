@@ -329,7 +329,7 @@ function searchBlocksForAgentRootCause(
       if (artifact.key === "root_cause" && artifact.data) {
         const agentData = artifact.data as AgentRootCauseData;
         const description =
-          agentData.one_line_description ?? agentData.headline;
+          agentData.one_line_description || agentData.headline;
         if (!description) {
           continue;
         }

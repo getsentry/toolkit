@@ -31,23 +31,6 @@ const singleRun = {
   repo_pr_states: {},
 } as unknown as AutofixRun;
 
-describe("single-run root cause", () => {
-  it("renders the headline and cause", () => {
-    const output = getOutputForAutofixRun(singleRun, {
-      includeProvenanceTags: false,
-    });
-    expect(output).toContain(
-      "## Root Cause Analysis\n\nRegex rejects ids\n\nThe regex is too strict.",
-    );
-  });
-
-  it("summarizes with the headline", () => {
-    expect(getAutofixArtifactSummaries(singleRun).rootCause).toBe(
-      "Regex rejects ids",
-    );
-  });
-});
-
 describe("seer-utils", () => {
   describe("isTerminalStatus", () => {
     it("returns true for terminal statuses", () => {
@@ -141,6 +124,23 @@ describe("seer-utils", () => {
       expect(message).toContain("MCP-SERVER-EQE");
       expect(message).toContain("search_metrics");
       expect(message).not.toContain("Starting new analysis");
+    });
+  });
+
+  describe("single-run root cause", () => {
+    it("renders the headline and cause", () => {
+      const output = getOutputForAutofixRun(singleRun, {
+        includeProvenanceTags: false,
+      });
+      expect(output).toContain(
+        "## Root Cause Analysis\n\nRegex rejects ids\n\nThe regex is too strict.",
+      );
+    });
+
+    it("summarizes with the headline", () => {
+      expect(getAutofixArtifactSummaries(singleRun).rootCause).toBe(
+        "Regex rejects ids",
+      );
     });
   });
 });

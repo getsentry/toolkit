@@ -206,7 +206,7 @@ function formatRootCauseArtifact(data: unknown): string | null {
   } = parsed.data;
 
   const sections: string[] = [];
-  const summary = one_line_description ?? headline;
+  const summary = one_line_description || headline;
   if (summary) {
     sections.push(summary);
   }
@@ -301,7 +301,7 @@ export function getAutofixArtifactSummaries(autofix: AutofixRun): {
   return {
     rootCause:
       (rootCause.success &&
-        (rootCause.data.one_line_description ?? rootCause.data.headline)) ||
+        (rootCause.data.one_line_description || rootCause.data.headline)) ||
       null,
     solution: (solution.success && solution.data.one_line_summary) || null,
   };
