@@ -654,8 +654,11 @@ describe("throwApiError", () => {
   });
 
   describe("401 enrichment", () => {
-    // Test preload sets SENTRY_AUTH_TOKEN, so isEnvTokenActive() returns true
-    // by default in these tests.
+    // A personal env token: the preload's `sntrys_` token gets org advice.
+    useEnvSandbox(["SENTRY_AUTH_TOKEN"]);
+    beforeEach(() => {
+      process.env.SENTRY_AUTH_TOKEN = "sntryu_test-token-for-unit-tests";
+    });
 
     test("uses 'not recognized or has been revoked' for invalid token", () => {
       const mockResponse = new Response("", {
@@ -876,6 +879,36 @@ describe("403 scope challenge guidance", () => {
   test("keeps the generic hint for a 403 with no challenge", () => {
     expect(detailFor("personal")).toContain("may lack the required scope");
   });
+});
+
+describe("401 guidance", () => {
+  useTestConfigDir("api-401-");
+  useEnvSandbox(["SENTRY_AUTH_TOKEN"]);
+
+  test.each([
+    [
+      "sntrys_malformed",
+      false,
+      "Invalid org token",
+      "organization's Settings > Auth Tokens.",
+    ],
+    ["sntryu_example", true, "Invalid token", "Re-authenticate with:"],
+  ])(
+    "%s, stored login %s: %s gets %j",
+    (envToken, storedLogin, detail, advice) => {
+      process.env.SENTRY_AUTH_TOKEN = envToken;
+      if (storedLogin) {
+        setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
+      }
+      resetAuthTokenCache();
+      const body = { detail };
+      expect(() =>
+        throwApiError(body, Response.json(body, { status: 401 }), "Failed"),
+      ).toThrow(
+        expect.objectContaining({ detail: expect.stringContaining(advice) }),
+      );
+    },
+  );
 });
 
 describe("isTextualContentType", () => {

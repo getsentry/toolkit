@@ -60,6 +60,7 @@ import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import { isSentrySaasUrl } from "../sentry-urls.js";
 import { OAUTH_SCOPES } from "../oauth.js";
 import { parseSntrysClaim } from "../token-claims.js";
+import { classifySentryToken } from "../token-type.js";
 
 /** User-facing detail for a 401/403, and the reason to record for it. */
 type EnrichedDetail = {
@@ -212,8 +213,8 @@ function enrich403Detail(
  *
  * The Sentry API returns distinct `detail` strings we can branch on:
  * `"Token expired"` when the token is past its expiry date, `"Invalid token"`
- * when it is not found or malformed. We use this to give a more precise message
- * for env-var token users.
+ * or `"Invalid org token"` when it is not found or malformed. We use this to
+ * give a more precise message for env-var and org auth token users.
  *
  * For OAuth users the token lifecycle is transparent — `sentry-client.ts`
  * intercepts 401s and refreshes automatically. A 401 that reaches this function
@@ -242,17 +243,31 @@ function enrich401Detail(rawDetail: string | undefined): EnrichedDetail {
     lines.push(rawDetail, "");
   }
   const expired = rawDetail?.toLowerCase().includes("expired") ?? false;
-  if (isEnvTokenActive()) {
+  // Advise on the credential the request sent, which can be a stored login
+  // even when an env var also holds a token.
+  const credential = getCredentialContext();
+  // By prefix, as the server classifies it: a malformed `sntrys_` token has
+  // no readable claim but is still an org auth token.
+  if (
+    credential &&
+    classifySentryToken(credential.token) === "org-auth-token"
+  ) {
     lines.push(
-      `Your ${getActiveEnvVarName()} token ${expired ? "has expired" : "is not recognized or has been revoked"}.`,
-      "Create a new token at: https://sentry.io/settings/account/api/auth-tokens/",
+      `${tokenHolder(credential)} org auth token ${expired ? "has expired" : "is not recognized or has been revoked"}.`,
+      "Create a new one in your organization's Settings > Auth Tokens.",
     );
-  } else {
+  } else if (!credential?.source.startsWith("env:")) {
     lines.push(
       "Not authenticated or your session has expired.",
       `Re-authenticate with: ${sentry`auth login`}`,
     );
+  } else {
+    lines.push(
+      `Your ${getActiveEnvVarName()} token ${expired ? "has expired" : "is not recognized or has been revoked"}.`,
+      "Create a new token at: https://sentry.io/settings/account/api/auth-tokens/",
+    );
   }
+
   return {
     detail: lines.join("\n  "),
     denialReason: expired ? "expired" : "unrecognized",
