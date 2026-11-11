@@ -39,6 +39,18 @@ For forward-looking tool variants and features:
 claude plugin install sentry-mcp@sentry-mcp-experimental
 ```
 
+### GitHub Copilot CLI Plugin
+
+Install as a GitHub Copilot CLI plugin for automatic subagent delegation:
+
+```shell
+copilot
+/plugin marketplace add getsentry/sentry-mcp
+/plugin install sentry-mcp@sentry-mcp
+```
+
+This provides a `sentry-mcp` subagent that Copilot CLI automatically delegates to when you ask about Sentry errors, issues, traces, or performance.
+
 ### Stdio vs Remote
 
 While this repository is focused on acting as an MCP service, we also support a `stdio` transport. It is the easiest way to run the MCP server against a self-hosted Sentry install.
