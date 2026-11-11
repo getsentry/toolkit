@@ -321,7 +321,7 @@ function enrich401Detail(
       `${tokenHolder(credential)} org auth token ${expired ? "has expired" : "is not recognized or has been revoked"}.`,
       "Create a new one in your organization's Settings > Auth Tokens.",
     );
-  } else if (!isEnvTokenActive()) {
+  } else if (!credential?.source.startsWith("env:")) {
     lines.push(
       "Not authenticated or your session has expired.",
       `Re-authenticate with: ${sentry`auth login`}`,

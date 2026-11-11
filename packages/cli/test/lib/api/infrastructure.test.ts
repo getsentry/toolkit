@@ -1015,6 +1015,20 @@ describe("401/403 denial guidance", () => {
     expect(error.detail).not.toContain("auth login");
   });
 
+  test("advises the login that sent a 401 over a leftover env token", async () => {
+    useToken("sntryu_example");
+    delete process.env.SENTRY_FORCE_ENV_TOKEN;
+    setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
+    resetAuthTokenCache();
+
+    const error = await rawDenial(401, "organizations/acme/releases/", {
+      detail: "Invalid token",
+    });
+
+    expect(error.detail).toContain("Re-authenticate with:");
+    expect(error.detail).not.toContain("SENTRY_AUTH_TOKEN");
+  });
+
   test("advises the login that sent the request over a leftover env token", async () => {
     useToken("sntryu_example");
     delete process.env.SENTRY_FORCE_ENV_TOKEN;
