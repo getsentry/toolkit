@@ -37,6 +37,7 @@
         "allow": ["URL", "URLSearchParams"]
       }
     ],
+    "typescript/no-unnecessary-boolean-literal-compare": "error",
     "typescript/no-unnecessary-template-expression": "error",
     "typescript/no-unnecessary-type-assertion": "error",
     "typescript/no-unnecessary-type-parameters": "error",
