@@ -447,7 +447,7 @@ describe("analyze_issue_with_seer", () => {
           "Your organization does not have enough credits to start an Autofix run.",
         code: "seer_out_of_credits",
       },
-      "Your organization does not have enough credits to start an Autofix run. Someone with billing access can turn on auto-reload in Sentry.",
+      "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
     ],
     [
       "out of quota",
@@ -532,7 +532,7 @@ describe("analyze_issue_with_seer", () => {
 
     expect(result).toContain("## Analysis Failed");
     expect(result).toContain(
-      "Your organization does not have enough credits to continue your Autofix run. Someone with billing access can turn on auto-reload in Sentry.",
+      "Your organization does not have enough credits to continue your Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
     );
   });
 
