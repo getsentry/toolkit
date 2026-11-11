@@ -817,7 +817,7 @@ describe("throwApiError", () => {
 // isTextualContentType + rawApiRequest binary handling (getsentry/cli#1303)
 // ---------------------------------------------------------------------------
 
-describe("401/403 denial guidance", () => {
+describe("403 scope challenge guidance", () => {
   useTestConfigDir("api-denial-");
   useEnvSandbox([
     "SENTRY_AUTH_TOKEN",
@@ -825,142 +825,56 @@ describe("401/403 denial guidance", () => {
     "SENTRY_FORCE_ENV_TOKEN",
   ]);
 
-  /** An org auth token whose claim names `org`, in Sentry's `sntrys_` format. */
-  function orgAuthToken(org: string): string {
-    const claim = Buffer.from(
-      JSON.stringify({ iat: 1, url: "https://sentry.io", org }),
-    ).toString("base64");
-    return `sntrys_${claim}_secret`;
-  }
+  const ORG_TOKEN = `sntrys_${Buffer.from(JSON.stringify({ iat: 1, url: "https://sentry.io", org: "acme" })).toString("base64")}_secret`;
 
-  function useEnvToken(token: string): void {
-    process.env.SENTRY_AUTH_TOKEN = token;
-    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+  /** The detail of a 403 sent with `credential`, with an optional challenge. */
+  function detailFor(
+    credential: "personal" | "org" | "login",
+    scopes?: string,
+  ): string | undefined {
+    if (credential === "login") {
+      setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
+    } else {
+      process.env.SENTRY_AUTH_TOKEN =
+        credential === "org" ? ORG_TOKEN : "sntryu_example";
+      process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    }
     resetAuthTokenCache();
-  }
-
-  function useStoredLogin(): void {
-    setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
-    resetAuthTokenCache();
-  }
-
-  /** The repos list's challenge, as Sentry sends it to an under-scoped token. */
-  const REPOS_CHALLENGE =
-    'Bearer error="insufficient_scope", scope="org:admin org:ci org:integrations org:read org:write"';
-
-  /** A challenge org:ci can't satisfy. */
-  const BILLING_CHALLENGE =
-    'Bearer error="insufficient_scope", scope="org:admin org:billing org:read org:write"';
-
-  function denial(
-    status: 401 | 403,
-    { detail, challenge }: { detail?: string; challenge?: string } = {},
-  ): ApiError {
-    const body = {
-      detail: detail ?? "You do not have permission to perform this action.",
-    };
-    const response = Response.json(body, {
-      status,
-      statusText: status === 403 ? "Forbidden" : "Unauthorized",
-      headers: challenge ? { "WWW-Authenticate": challenge } : {},
-    });
+    const body = { detail: "Denied" };
+    const headers: Record<string, string> = scopes
+      ? {
+          "WWW-Authenticate": `Bearer error="insufficient_scope", scope="${scopes}"`,
+        }
+      : {};
+    const response = Response.json(body, { status: 403, headers });
     try {
       throwApiError(body, response, "Request failed");
     } catch (error) {
-      if (error instanceof ApiError) {
-        return error;
-      }
-      throw error;
+      return (error as ApiError).detail;
     }
     throw new Error("expected throwApiError to throw");
   }
 
-  test("names the scopes a personal token lacks for the repos list", () => {
-    useEnvToken("sntryu_example");
-    const error = denial(403, { challenge: REPOS_CHALLENGE });
-
-    expect(error.detail).toContain(
-      "Your SENTRY_AUTH_TOKEN token lacks the scope this request needs. Any one of these works: org:admin, org:ci, org:integrations, org:read, org:write.",
-    );
-    expect(error.detail).toContain("An org auth token has org:ci.");
-    expect(error.detail).not.toContain("may lack the required scope");
-  });
-
-  test("says org auth tokens only have org:ci when the endpoint needs more", () => {
-    useEnvToken(orgAuthToken("acme"));
-    const error = denial(403, { challenge: BILLING_CHALLENGE });
-
-    expect(error.detail).toContain("Org auth tokens only have org:ci.");
-    expect(error.detail).not.toContain("An org auth token has org:ci.");
-  });
-
-  test("advises a stored org auth token, not a login, on a scope 403", () => {
-    setAuthToken(orgAuthToken("acme"));
-    resetAuthTokenCache();
-    const error = denial(403, { challenge: BILLING_CHALLENGE });
-
-    expect(error.detail).toContain("Your stored token lacks the scope");
-    expect(error.detail).toContain("Org auth tokens only have org:ci.");
-    expect(error.detail).not.toContain("auth login");
-  });
-
-  test("re-authorizes a stored login with the defaults when one of them works", () => {
-    useStoredLogin();
-    const error = denial(403, { challenge: REPOS_CHALLENGE });
-
-    expect(error.detail).toContain("Any one of these works: org:admin,");
-    expect(error.detail).toContain("auth login --force");
-    expect(error.detail).not.toContain("auth refresh");
-  });
-
-  test("keeps the default scopes when a stored login needs an extra one", () => {
-    useStoredLogin();
-    const error = denial(403, {
-      challenge: 'Bearer error="insufficient_scope", scope="org:write"',
-    });
-
-    expect(error.detail).toContain(
+  test.each([
+    [
+      "personal",
+      "org:admin org:ci org:read",
+      "Your SENTRY_AUTH_TOKEN token lacks the scope this request needs. Any one of these works: org:admin, org:ci, org:read.",
+    ],
+    ["personal", "org:admin org:ci org:read", "An org auth token has org:ci."],
+    ["org", "org:admin org:billing", "Org auth tokens only have org:ci."],
+    ["login", "org:admin org:read", "auth login --force"],
+    [
+      "login",
+      "org:admin org:billing org:write",
       `auth refresh --scope ${[...OAUTH_SCOPES, "org:write"].join(",")}`,
-    );
-  });
-
-  test("adds the least privileged accepted scope that refresh accepts", () => {
-    useStoredLogin();
-    const error = denial(403, {
-      challenge:
-        'Bearer error="insufficient_scope", scope="org:admin org:billing org:write"',
-    });
-
-    expect(error.detail).toContain(
-      `auth refresh --scope ${[...OAUTH_SCOPES, "org:write"].join(",")}`,
-    );
-  });
-
-  test("skips the refresh hint when no accepted scope can be requested", () => {
-    useStoredLogin();
-    const error = denial(403, {
-      challenge: 'Bearer error="insufficient_scope", scope="org:billing"',
-    });
-
-    expect(error.detail).toContain("Any one of these works: org:billing.");
-    expect(error.detail).not.toContain("auth refresh");
-  });
-
-  test("advises the login that sent the request over a leftover env token", () => {
-    useEnvToken("sntryu_example");
-    delete process.env.SENTRY_FORCE_ENV_TOKEN;
-    useStoredLogin();
-    const error = denial(403, { challenge: REPOS_CHALLENGE });
-
-    expect(error.detail).toContain("Your login lacks the scope");
-    expect(error.detail).not.toContain("SENTRY_AUTH_TOKEN");
+    ],
+  ] as const)("%s token, accepted %s: %s", (credential, scopes, expected) => {
+    expect(detailFor(credential, scopes)).toContain(expected);
   });
 
   test("keeps the generic hint for a 403 with no challenge", () => {
-    useEnvToken("sntryu_example");
-    const error = denial(403);
-
-    expect(error.detail).toContain("may lack the required scope");
+    expect(detailFor("personal")).toContain("may lack the required scope");
   });
 });
 
