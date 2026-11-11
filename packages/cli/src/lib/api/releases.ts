@@ -243,17 +243,12 @@ export async function createRelease(
     ref?: string;
     url?: string;
     dateReleased?: string;
-    commits?: Array<{
-      id: string;
-      repository?: string;
-      message?: string;
-      author_name?: string;
-      author_email?: string;
-      timestamp?: string;
-    }>;
   },
 ): Promise<SentryRelease> {
-  const config = getOrgSdkConfig();
+  // Sentry creates releases with get_or_create and answers a resend with 208,
+  // so a 5xx or network error is safe to retry. Commits stay out of the body:
+  // a resend while the first attempt still sets them returns 409.
+  const config = getOrgSdkConfig({ idempotent: true });
 
   // Cast body through unknown — the SDK's body type requires `projects: string[]`
   // as non-optional, but the API accepts it as optional at runtime.
@@ -360,7 +355,11 @@ export async function updateRelease(
     }>;
   },
 ): Promise<SentryRelease> {
-  const config = getOrgSdkConfig();
+  // Resending a metadata update leaves the same release: Sentry sets the
+  // fields again and records the release Activity only on the first
+  // dateReleased. A commits update can answer a resend with 409 while the
+  // first attempt still holds the commit lock, so it does not retry.
+  const config = getOrgSdkConfig({ idempotent: body.commits === undefined });
 
   const result = await updateOrganizationRelease({
     ...config,
@@ -446,6 +445,8 @@ export async function createReleaseDeploy(
     dateFinished?: string;
   },
 ): Promise<SentryDeploy> {
+  // No retry: every POST records a new deploy with its own Activity and
+  // notifications, so a resend after a lost response would duplicate them.
   const config = getOrgSdkConfig();
 
   const result = await createOrganizationReleaseDeploy({
