@@ -147,28 +147,33 @@ export type IssueExplainData = {
 /**
  * Build a markdown document for a single root cause.
  *
- * @param cause - Root cause to format
+ * @param rootCause - Root cause to format
  * @param index - Index for display (used as cause ID)
  * @returns Markdown string for this cause
  */
-function buildRootCauseMarkdown(cause: RootCause, index: number): string {
+function buildRootCauseMarkdown(rootCause: RootCause, index: number): string {
   const lines: string[] = [];
 
-  lines.push(`### Cause #${index}: ${text(cause.description ?? "")}`);
+  lines.push(`### Cause #${index}: ${text(rootCause.description ?? "")}`);
   lines.push("");
 
-  if (cause.relevant_repos && cause.relevant_repos.length > 0) {
-    lines.push(`**Repository:** ${cause.relevant_repos.join(", ")}`);
+  if (rootCause.cause) {
+    lines.push(text(rootCause.cause));
+    lines.push("");
+  }
+
+  if (rootCause.relevant_repos && rootCause.relevant_repos.length > 0) {
+    lines.push(`**Repository:** ${rootCause.relevant_repos.join(", ")}`);
     lines.push("");
   }
 
   if (
-    cause.root_cause_reproduction &&
-    cause.root_cause_reproduction.length > 0
+    rootCause.root_cause_reproduction &&
+    rootCause.root_cause_reproduction.length > 0
   ) {
     lines.push("**Reproduction steps:**");
     lines.push("");
-    for (const step of cause.root_cause_reproduction) {
+    for (const step of rootCause.root_cause_reproduction) {
       lines.push(`**${text(step.title)}**`);
       lines.push("");
       // code_snippet_and_analysis may itself contain markdown (code fences,
