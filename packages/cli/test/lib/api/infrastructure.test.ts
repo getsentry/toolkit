@@ -816,6 +816,48 @@ describe("throwApiError", () => {
 // isTextualContentType + rawApiRequest binary handling (getsentry/cli#1303)
 // ---------------------------------------------------------------------------
 
+describe("401/403 denial reason", () => {
+  test.each([
+    [
+      403,
+      "Your organization has disabled this feature for members.",
+      "member_policy",
+    ],
+    [
+      403,
+      "You are missing the required scope 'event:read'.",
+      "insufficient_scope",
+    ],
+    [
+      403,
+      "You do not have permission to perform this action.",
+      "access_denied",
+    ],
+    [401, "member-disabled-over-limit", "seat_limit"],
+    [401, "Token expired", "expired"],
+    [401, "Invalid token", "unrecognized"],
+  ] as const)("%i %s → %s", (status, detail, reason) => {
+    const response = new Response("", {
+      status,
+      statusText: status === 403 ? "Forbidden" : "Unauthorized",
+    });
+
+    expect(() => throwApiError({ detail }, response, "Failed")).toThrow(
+      expect.objectContaining({ status, denialReason: reason }),
+    );
+  });
+
+  test("sets no denial reason on other statuses", () => {
+    const response = new Response("", { status: 404, statusText: "Not Found" });
+
+    expect(() =>
+      throwApiError({ detail: "Not found" }, response, "Failed"),
+    ).toThrow(
+      expect.objectContaining({ status: 404, denialReason: undefined }),
+    );
+  });
+});
+
 describe("isTextualContentType", () => {
   test.each([
     [null, true],

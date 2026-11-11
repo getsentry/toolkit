@@ -848,6 +848,31 @@ describe("reportCliError integration", () => {
     },
   );
 
+  test("records the denial reason of a silenced 403", () => {
+    reportCliError(
+      new ApiError(
+        "Failed to create release: 403 Forbidden",
+        403,
+        "detail",
+        undefined,
+        {
+          denialReason: "access_denied",
+        },
+      ),
+    );
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          api_status: 403,
+          api_denial_reason: "access_denied",
+        }),
+      }),
+    );
+  });
+
   test("silences OutputError and emits metric", () => {
     reportCliError(new OutputError(null));
     expect(captureSpy).not.toHaveBeenCalled();
