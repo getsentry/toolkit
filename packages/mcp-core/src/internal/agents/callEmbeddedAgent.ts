@@ -392,7 +392,7 @@ function extractJsonCandidates(text: string): string[] {
  */
 function rescueFromText<TOutput>(
   text: string,
-  schema: z.ZodType<TOutput, unknown>,
+  schema: z.ZodType<TOutput>,
 ): TOutput | null {
   for (const candidate of extractJsonCandidates(text)) {
     try {

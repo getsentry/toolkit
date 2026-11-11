@@ -42,7 +42,7 @@ export async function parseMcpFlags(
 export async function parseMcpArgs(args: readonly string[]): Promise<McpArgs> {
   let parsed: McpArgs | undefined;
   let stderr = "";
-  const command = buildCommand<McpFlags, McpPositional, CommandContext>({
+  const command = buildCommand<McpFlags, McpPositional>({
     docs: { brief: "Parse sentry mcp flags" },
     parameters: (mcpCommand as unknown as { parameters: McpParameters })
       .parameters,
