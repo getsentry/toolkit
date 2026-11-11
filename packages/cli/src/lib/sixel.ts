@@ -21,6 +21,9 @@
  * the kitty query is only sent through DCS passthrough when `allow-passthrough`
  * is enabled, and sixel is only trusted when tmux says the attached terminal
  * supports it too (otherwise tmux replaces the image with a text placeholder).
+ *
+ * macOS Terminal.app doesn't ignore APC strings either: it prints the kitty
+ * query's body, so the query is skipped there too.
  */
 
 import { execFileSync, execSync } from "node:child_process";
@@ -233,15 +236,21 @@ function detectTmux(): TmuxInfo | undefined {
  * while passthrough queries round-trip to the outer terminal; a second,
  * passthrough DA1 after the kitty query is the sentinel for that round-trip.
  * Without passthrough the kitty query is not sent at all, because tmux would
- * otherwise set the pane title to the query text.
+ * otherwise set the pane title to the query text. It is also not sent to
+ * macOS Terminal.app (`TERM_PROGRAM=Apple_Terminal`), which has no kitty
+ * graphics and prints the query's body instead of ignoring it.
  * @internal Exported for tests.
  */
-export function probeQueries(tmux: TmuxInfo | undefined): {
+export function probeQueries(
+  tmux: TmuxInfo | undefined,
+  termProgram?: string,
+): {
   query: string;
   sentinels: number;
 } {
   if (!tmux) {
-    return { query: `\x1b[16t${KITTY_QUERY}\x1b[c`, sentinels: 1 };
+    const kitty = termProgram === "Apple_Terminal" ? "" : KITTY_QUERY;
+    return { query: `\x1b[16t${kitty}\x1b[c`, sentinels: 1 };
   }
   if (!tmux.passthrough) {
     return { query: "\x1b[16t\x1b[c", sentinels: 1 };
@@ -421,7 +430,7 @@ function probe(): SixelCaps {
     savedStty = execSync("stty -g < /dev/tty", { encoding: "utf8" }).trim();
     // min 0 time 3 => each read blocks up to ~300ms for (more) reply bytes.
     execSync("stty -echo -icanon min 0 time 3 < /dev/tty");
-    const { query, sentinels } = probeQueries(tmux);
+    const { query, sentinels } = probeQueries(tmux, getEnv().TERM_PROGRAM);
     writeSync(fd, query);
     const caps = parseSixelCaps(readReply(fd, sentinels));
     return tmux ? applyTmuxCaps(caps, tmux) : caps;

@@ -278,6 +278,18 @@ describe("probeQueries", () => {
     expect(sentinels).toBe(1);
   });
 
+  test("in Terminal.app, never sends the kitty query", () => {
+    // Terminal.app prints the APC body instead of ignoring it.
+    const { query, sentinels } = probeQueries(undefined, "Apple_Terminal");
+    expect(query).toBe(`${ESC}[16t${ESC}[c`);
+    expect(sentinels).toBe(1);
+  });
+
+  test("in other terminals, still sends the kitty query", () => {
+    const { query } = probeQueries(undefined, "ghostty");
+    expect(query).toContain(`${ESC}_G`);
+  });
+
   test("inside tmux without passthrough, never sends the kitty query", () => {
     // tmux would turn the bare APC into the pane title.
     const { query, sentinels } = probeQueries({
