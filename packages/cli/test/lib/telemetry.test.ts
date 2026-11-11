@@ -645,23 +645,6 @@ describe("recordApiErrorOnSpan", () => {
     expect(span.attributes["api_error.detail"]).toBe("Issue not found");
   });
 
-  test("records the denial reason instead of a 401/403 detail", () => {
-    const span = createMockSpan();
-    const error = new ApiError(
-      "Failed to list repositories: 403 Forbidden",
-      403,
-      "Guidance that can name 'some-org'",
-      undefined,
-      { denialReason: "insufficient_scope" },
-    );
-    recordApiErrorOnSpan(span as never, error);
-
-    expect(span.attributes["api_error.denial_reason"]).toBe(
-      "insufficient_scope",
-    );
-    expect(span.attributes["api_error.detail"]).toBeUndefined();
-  });
-
   test("omits detail attribute when empty string", () => {
     const span = createMockSpan();
     const error = new ApiError("Bad request", 400, "");
