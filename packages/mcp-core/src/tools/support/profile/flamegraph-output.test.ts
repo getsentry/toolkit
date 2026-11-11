@@ -137,7 +137,7 @@ describe("buildFlamegraphAnalysis", () => {
   it("maps placeholder file and line values to null", () => {
     const flamegraph = createMockFlamegraph();
     flamegraph.shared.frames[0] = {
-      ...flamegraph.shared.frames[0]!,
+      ...flamegraph.shared.frames[0],
       file: "",
       line: 0,
     };
@@ -223,7 +223,7 @@ describe("buildFlamegraphComparison", () => {
   it("detects major regressions", () => {
     const current = createMockFlamegraph();
     // Comparison uses sumDuration, not weight.
-    current.shared.frame_infos[0]!.sumDuration = 240_000_000;
+    current.shared.frame_infos[0].sumDuration = 240_000_000;
 
     const comparison = buildFlamegraphComparison(
       createMockFlamegraph(),
@@ -248,7 +248,7 @@ describe("buildFlamegraphComparison", () => {
     const withPlaceholders = () => {
       const flamegraph = createMockFlamegraph();
       flamegraph.shared.frames[0] = {
-        ...flamegraph.shared.frames[0]!,
+        ...flamegraph.shared.frames[0],
         file: "",
         line: 0,
       };
@@ -269,7 +269,7 @@ describe("buildFlamegraphComparison", () => {
   it("keeps improvements in changes when many frames are unchanged", () => {
     const withFrames = (improvedDurationNs: number) => {
       const flamegraph = createMockFlamegraph();
-      const template = flamegraph.shared.frame_infos[0]!;
+      const template = flamegraph.shared.frame_infos[0];
       flamegraph.shared.frames = Array.from({ length: 13 }, (_, index) => ({
         file: `module_${index}.py`,
         name: `fn_${index}`,
@@ -303,9 +303,9 @@ describe("buildFlamegraphComparison", () => {
 
   it("detects improvements", () => {
     const current = createMockFlamegraph();
-    current.shared.frame_infos[0]!.sumDuration = 128_000_000;
-    current.shared.frame_infos[1]!.sumDuration = 128_000_000;
-    current.shared.frame_infos[2]!.sumDuration = 80_000_000;
+    current.shared.frame_infos[0].sumDuration = 128_000_000;
+    current.shared.frame_infos[1].sumDuration = 128_000_000;
+    current.shared.frame_infos[2].sumDuration = 80_000_000;
 
     expect(
       buildFlamegraphComparison(createMockFlamegraph(), current, {

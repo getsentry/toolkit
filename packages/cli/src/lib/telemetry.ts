@@ -436,15 +436,22 @@ export function isUserApiError(error: unknown): boolean {
 /**
  * Record a client API error as span attributes for Discover queryability.
  *
- * Sets `api_error.status`, `api_error.message`, and optionally `api_error.detail`
- * on the span. Must be called before `span.end()`.
+ * Sets `api_error.status`, `api_error.message`, and either
+ * `api_error.denial_reason` (401/403) or `api_error.detail` on the span. Must
+ * be called before `span.end()`.
+ *
+ * A 401/403 detail is the CLI's own guidance rather than the server's, and
+ * Sentry's data scrubbing replaces most of them with `[Filtered]`. The denial
+ * reason is a fixed category that tells those failures apart instead.
  *
  * @internal Exported for testing
  */
 export function recordApiErrorOnSpan(span: Span, error: ApiError): void {
   span.setAttribute("api_error.status", error.status);
   span.setAttribute("api_error.message", error.message);
-  if (error.detail) {
+  if (error.denialReason) {
+    span.setAttribute("api_error.denial_reason", error.denialReason);
+  } else if (error.detail) {
     span.setAttribute("api_error.detail", error.detail);
   }
 }

@@ -391,7 +391,7 @@ describe("get_dashboard_details", () => {
         context,
       ),
     );
-    return dashboard.widgets[0]!.queries[0]!;
+    return dashboard.widgets[0].queries[0];
   }
 
   it("describes saved transformations by aggregate position", async () => {

@@ -99,7 +99,7 @@ export async function getSkillsArrayWithCounts(): Promise<SkillDefinition[]> {
     }
     if (Array.isArray(tool.skills)) {
       for (const skill of tool.skills) {
-        counts.set(skill as Skill, (counts.get(skill as Skill) || 0) + 1);
+        counts.set(skill, (counts.get(skill) || 0) + 1);
       }
     }
   }

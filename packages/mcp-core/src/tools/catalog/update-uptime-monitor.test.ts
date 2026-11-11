@@ -169,7 +169,7 @@ describe("update_uptime_monitor", () => {
     expect(requestBody).toEqual({ owner: null });
     assertStructuredOnlyResult(result);
     expect(
-      (getStructuredContent(result) as { monitor: { owner?: string } }).monitor
+      getStructuredContent<{ monitor: { owner?: string } }>(result).monitor
         .owner,
     ).toBeUndefined();
   });

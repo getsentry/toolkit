@@ -19,7 +19,6 @@ import {
   ReplayDetailsResponseSchema,
   ReplayIdsByResourceSchema,
   type ReplayListItem,
-  type ReplayListResponse,
   ReplayListResponseSchema,
   type ReplayStringProjectId,
 } from "../../types/index.js";
@@ -221,10 +220,7 @@ async function fetchReplayPage(
         start: options.start,
         end: options.end,
       },
-      schema: ReplayListResponseSchema as GenericSchema<
-        unknown,
-        ReplayListResponse
-      >,
+      schema: ReplayListResponseSchema,
     },
   );
 

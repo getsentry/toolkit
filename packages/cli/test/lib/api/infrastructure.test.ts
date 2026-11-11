@@ -12,8 +12,9 @@ import {
   unwrapPaginatedResult,
   unwrapResult,
 } from "../../../src/lib/api/infrastructure.js";
-import { setAuthToken } from "../../../src/lib/db/auth.js";
+import { resetAuthTokenCache, setAuthToken } from "../../../src/lib/db/auth.js";
 import { ApiError, HostScopeError } from "../../../src/lib/errors.js";
+import { OAUTH_SCOPES } from "../../../src/lib/oauth.js";
 import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
 describe("SDK error compatibility", () => {
@@ -816,6 +817,67 @@ describe("throwApiError", () => {
 // isTextualContentType + rawApiRequest binary handling (getsentry/cli#1303)
 // ---------------------------------------------------------------------------
 
+describe("403 scope challenge guidance", () => {
+  useTestConfigDir("api-denial-");
+  useEnvSandbox([
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN",
+  ]);
+
+  const ORG_TOKEN = `sntrys_${Buffer.from(JSON.stringify({ iat: 1, url: "https://sentry.io", org: "acme" })).toString("base64")}_secret`;
+
+  /** The detail of a 403 sent with `credential`, with an optional challenge. */
+  function detailFor(
+    credential: "personal" | "org" | "login",
+    scopes?: string,
+  ): string | undefined {
+    if (credential === "login") {
+      setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
+    } else {
+      process.env.SENTRY_AUTH_TOKEN =
+        credential === "org" ? ORG_TOKEN : "sntryu_example";
+      process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    }
+    resetAuthTokenCache();
+    const body = { detail: "Denied" };
+    const headers: Record<string, string> = scopes
+      ? {
+          "WWW-Authenticate": `Bearer error="insufficient_scope", scope="${scopes}"`,
+        }
+      : {};
+    const response = Response.json(body, { status: 403, headers });
+    try {
+      throwApiError(body, response, "Request failed");
+    } catch (error) {
+      return (error as ApiError).detail;
+    }
+    throw new Error("expected throwApiError to throw");
+  }
+
+  test.each([
+    [
+      "personal",
+      "org:admin org:ci org:read",
+      "Your SENTRY_AUTH_TOKEN token lacks the scope this request needs. Any one of these works: org:admin, org:ci, org:read.",
+    ],
+    ["personal", "org:admin org:ci org:read", "An org auth token has org:ci."],
+    ["org", "org:admin org:billing", "Org auth tokens only have org:ci."],
+    ["login", "org:admin org:read", "auth login --force"],
+    [
+      "login",
+      "org:admin org:billing org:write",
+      `auth refresh --scope ${[...OAUTH_SCOPES, "org:write"].join(",")}`,
+    ],
+  ] as const)("%s token, accepted %s: %s", (credential, scopes, expected) => {
+    expect(detailFor(credential, scopes)).toContain(expected);
+  });
+
+  test("keeps the generic hint for a 403 with no challenge", () => {
+    expect(detailFor("personal")).toContain("may lack the required scope");
+  });
+});
+
 describe("isTextualContentType", () => {
   test.each([
     [null, true],
@@ -870,7 +932,7 @@ describe("rawApiRequest binary handling", () => {
       host: "https://sentry.io",
     });
     const fetchSpy = vi.fn();
-    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    globalThis.fetch = fetchSpy;
 
     await expect(
       rawApiRequest("organizations/", {

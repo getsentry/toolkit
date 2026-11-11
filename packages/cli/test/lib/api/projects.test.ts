@@ -145,7 +145,7 @@ function mockCreateAndKeysFlow(options?: {
 }): typeof fetch {
   let callIndex = 0;
   return mockFetch(async (input, init) => {
-    const req = new Request(input!, init);
+    const req = new Request(input, init);
     callIndex += 1;
 
     // First call: POST to create the project
@@ -256,7 +256,7 @@ describe("createProjectWithDsn", () => {
         });
       }
 
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       if (callIndex === 2) {
         return new Response(JSON.stringify([SAMPLE_KEY]), {
           status: 200,

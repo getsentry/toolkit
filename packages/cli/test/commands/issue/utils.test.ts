@@ -1248,10 +1248,10 @@ describe("pollAutofixState", () => {
 
     // Spy on process.stdout.write to capture spinner output
     const origWrite = process.stdout.write.bind(process.stdout);
-    process.stdout.write = ((chunk: string | Uint8Array) => {
+    process.stdout.write = (chunk: string | Uint8Array) => {
       stdoutOutput += String(chunk);
       return true;
-    }) as typeof process.stdout.write;
+    };
 
     try {
       // Return PROCESSING first to allow animation interval to fire,
@@ -1704,10 +1704,10 @@ describe("ensureRootCauseAnalysis", () => {
 
     // Spy on process.stdout.write to capture spinner output
     const origWrite = process.stdout.write.bind(process.stdout);
-    process.stdout.write = ((chunk: string | Uint8Array) => {
+    process.stdout.write = (chunk: string | Uint8Array) => {
       stdoutOutput += String(chunk);
       return true;
-    }) as typeof process.stdout.write;
+    };
 
     try {
       // @ts-expect-error - partial mock

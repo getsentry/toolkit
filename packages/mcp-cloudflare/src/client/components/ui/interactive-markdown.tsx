@@ -65,7 +65,7 @@ export function InteractiveMarkdown({
             }
             // Regular code rendering
             return (
-              <code ref={ref as any} {...props}>
+              <code ref={ref} {...props}>
                 {children}
               </code>
             );

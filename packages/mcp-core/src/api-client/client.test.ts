@@ -2940,7 +2940,7 @@ describe("API query builders", () => {
         },
       ]);
       expect(urls).toHaveLength(1);
-      const params = new URL(urls[0]!).searchParams;
+      const params = new URL(urls[0]).searchParams;
       expect(params.get("itemType")).toBe("spans");
       expect(params.get("project")).toBe("123");
       expect(params.get("statsPeriod")).toBe("7d");
@@ -2978,7 +2978,7 @@ describe("API query builders", () => {
       });
 
       expect(urls).toHaveLength(1);
-      const params = new URL(urls[0]!).searchParams;
+      const params = new URL(urls[0]).searchParams;
       expect(params.get("itemType")).toBe("spans");
       expect(params.get("expand")).toBe("context");
     });
@@ -3614,7 +3614,7 @@ describe("API query builders", () => {
         }),
       );
       expect(result.created).toBe(1);
-      expect(result.mappings[0]!.status).toBe("created");
+      expect(result.mappings[0].status).toBe("created");
     });
 
     it("should handle updated mappings response", async () => {
@@ -3647,7 +3647,7 @@ describe("API query builders", () => {
       });
 
       expect(result.updated).toBe(1);
-      expect(result.mappings[0]!.status).toBe("updated");
+      expect(result.mappings[0].status).toBe("updated");
     });
   });
 

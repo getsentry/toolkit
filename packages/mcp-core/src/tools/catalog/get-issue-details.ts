@@ -521,7 +521,7 @@ export default defineTool({
     try {
       issue = await apiService.getIssue({
         organizationSlug: orgSlug,
-        issueId: parsedIssueId!,
+        issueId: parsedIssueId,
       });
     } catch (error) {
       if (error instanceof ApiNotFoundError) {

@@ -96,7 +96,7 @@ function createSentryLogsSink(): Sink {
     }
 
     // Extract attributes from properties
-    const attributes = record.properties as Record<string, unknown>;
+    const attributes = record.properties;
 
     // Map LogTape levels to sentryLogger methods
     // Note: sentryLogger methods are fire-and-forget and handle errors gracefully

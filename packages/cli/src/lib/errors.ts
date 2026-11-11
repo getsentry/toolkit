@@ -171,6 +171,30 @@ export type FunctionArgument = {
 };
 
 /**
+ * Why Sentry refused a request with a 401 or 403, as far as the CLI can tell.
+ *
+ * Recorded on spans and the `cli.error.silenced` metric, so each value is a
+ * fixed category: never a slug, token, URL, or text from the server. Avoid
+ * words such as "auth" and "token" in new values; Sentry's data scrubbing
+ * replaces values that contain them with `[Filtered]`.
+ *
+ * - `insufficient_scope`: the token lacks every scope the endpoint accepts
+ * - `member_policy`: an org setting blocks members from the action
+ * - `seat_limit`: the member is disabled because the org is over its limit
+ * - `access_denied`: a 403 that names no missing scope
+ * - `expired`: Sentry says the credential expired
+ * - `unrecognized`: Sentry does not know the credential (revoked, mistyped,
+ *   or created on another server)
+ */
+export type ApiDenialReason =
+  | "insufficient_scope"
+  | "member_policy"
+  | "seat_limit"
+  | "access_denied"
+  | "expired"
+  | "unrecognized";
+
+/**
  * API request errors from Sentry.
  *
  * @param message - Error summary
@@ -204,6 +228,9 @@ export class ApiError extends CliError {
    */
   readonly enriched403: boolean;
 
+  /** Set with the 401/403 enrichment in `infrastructure.ts`. */
+  readonly denialReason?: ApiDenialReason;
+
   constructor(
     message: string,
     status: number,
@@ -213,10 +240,12 @@ export class ApiError extends CliError {
       enriched403 = false,
       code,
       functionArgument,
+      denialReason,
     }: {
       enriched403?: boolean;
       code?: string;
       functionArgument?: FunctionArgument;
+      denialReason?: ApiDenialReason;
     } = {},
   ) {
     super(message, EXIT.API);
@@ -227,6 +256,7 @@ export class ApiError extends CliError {
     this.enriched403 = enriched403;
     this.code = code;
     this.functionArgument = functionArgument;
+    this.denialReason = denialReason;
   }
 
   override format(): string {
@@ -573,6 +603,33 @@ export class ResolutionError extends CliError {
   override format(): string {
     return this.message;
   }
+}
+
+/**
+ * {@link ResolutionError} for project slugs that Sentry rejected for an org
+ * without saying which one (release create, artifact bundle assemble).
+ *
+ * @param org - Organization slug
+ * @param projects - The project slugs that were sent
+ * @param extraSuggestions - More bullets shown under "Or:"
+ */
+export function projectsNotFoundError(
+  org: string,
+  projects: string[],
+  extraSuggestions: string[] = [],
+): ResolutionError {
+  const quoted = projects.map((p) => `'${p}'`).join(", ");
+  return new ResolutionError(
+    projects.length === 1
+      ? `Project ${quoted}`
+      : `One of the projects ${quoted}`,
+    `was not found in organization '${org}'`,
+    sentry`project list ${org}/`,
+    [
+      "Check the slug passed with --project (or the bundler plugin's `project` option)",
+      ...extraSuggestions,
+    ],
+  );
 }
 
 /**

@@ -449,11 +449,11 @@ describe("normalizeFields", () => {
   beforeEach(() => {
     stderrOutput = "";
     originalWrite = process.stderr.write;
-    process.stderr.write = ((chunk: string | Uint8Array) => {
+    process.stderr.write = (chunk: string | Uint8Array) => {
       stderrOutput +=
         typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
       return true;
-    }) as typeof process.stderr.write;
+    };
   });
 
   afterEach(() => {
@@ -1265,11 +1265,11 @@ describe("resolveBinaryTtyOutput", () => {
   beforeEach(() => {
     stderrOutput = "";
     originalWrite = process.stderr.write;
-    process.stderr.write = ((chunk: string | Uint8Array) => {
+    process.stderr.write = (chunk: string | Uint8Array) => {
       stderrOutput +=
         typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
       return true;
-    }) as typeof process.stderr.write;
+    };
   });
 
   afterEach(() => {
@@ -1423,11 +1423,11 @@ describe("extractJsonBody", () => {
   beforeEach(() => {
     stderrOutput = "";
     originalWrite = process.stderr.write;
-    process.stderr.write = ((chunk: string | Uint8Array) => {
+    process.stderr.write = (chunk: string | Uint8Array) => {
       stderrOutput +=
         typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
       return true;
-    }) as typeof process.stderr.write;
+    };
   });
 
   afterEach(() => {
@@ -1521,11 +1521,11 @@ describe("buildFromFields", () => {
   beforeEach(() => {
     stderrOutput = "";
     originalWrite = process.stderr.write;
-    process.stderr.write = ((chunk: string | Uint8Array) => {
+    process.stderr.write = (chunk: string | Uint8Array) => {
       stderrOutput +=
         typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
       return true;
-    }) as typeof process.stderr.write;
+    };
   });
 
   afterEach(() => {
@@ -1621,7 +1621,7 @@ describe("buildFromFields", () => {
 // This was extracted from the Stricli command handler (func) so that
 // --data, --input, and field flag mutual-exclusivity logic can be unit-tested.
 
-const MOCK_STDIN = process.stdin as unknown as NodeJS.ReadStream & { fd: 0 };
+const MOCK_STDIN = process.stdin;
 
 describe("resolveBody", () => {
   test("--data returns parsed JSON body", async () => {

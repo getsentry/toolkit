@@ -43,10 +43,14 @@ import {
   record,
   string,
 } from "valibot";
-import { ApiError } from "../errors.js";
+import { ApiError, projectsNotFoundError } from "../errors.js";
 import { logger } from "../logger.js";
 import { getSdkConfig } from "../sentry-client.js";
-import { getOrgSdkConfig, unwrapValidatedResult } from "./infrastructure.js";
+import {
+  getOrgSdkConfig,
+  throwRawApiError,
+  unwrapValidatedResult,
+} from "./infrastructure.js";
 
 const gzipAsync = promisify(gzipCb);
 // zstdCompress exists only on Node.js 22.15+. On older runtimes (npm package
@@ -126,6 +130,16 @@ export const ASSEMBLE_POLL_INTERVAL_MS = 1000;
 
 /** Maximum time to wait for assembly. */
 export const ASSEMBLE_MAX_WAIT_MS = 300_000;
+
+/**
+ * Per-attempt timeout for chunk-upload POSTs, instead of the 30s default.
+ * Storing the chunks sometimes takes the server longer than 30s; the client
+ * then aborts a request the server finishes and uploads it again. The proxy
+ * in front of Sentry, on sentry.io and in self-hosted's nginx config, waits
+ * up to 90s for the endpoint to respond, so 120s covers that plus time to
+ * send the request body.
+ */
+export const CHUNK_UPLOAD_TIMEOUT_MS = 120_000;
 
 /**
  * Fallback per-file size cap (2 GiB) used when the server advertises no
@@ -303,12 +317,7 @@ export async function uploadChunk(params: {
 
   const response = await authFetch(url, init);
   if (!response.ok) {
-    throw new ApiError(
-      `Chunk upload failed: ${response.status} ${response.statusText}`,
-      response.status,
-      await response.text().catch(() => ""),
-      url,
-    );
+    await throwRawApiError(response, url, "Chunk upload failed");
   }
 }
 
@@ -376,6 +385,22 @@ export function hashBuffer(
 }
 
 /**
+ * Authenticated fetch for chunk-upload POSTs to the server-provided URL.
+ *
+ * Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
+ * explicitly: the server-provided URL need not match the catalog path, which
+ * is also why the timeout is set here rather than by URL.
+ */
+function getChunkUploadFetch(
+  regionUrl: string,
+): (url: string, init: RequestInit) => Promise<Response> {
+  return getSdkConfig(regionUrl, {
+    idempotent: true,
+    timeoutMs: CHUNK_UPLOAD_TIMEOUT_MS,
+  }).fetch;
+}
+
+/**
  * Upload chunks the server reports as missing, in parallel.
  *
  * Filters the full chunk list against the set of missing checksums,
@@ -412,9 +437,7 @@ export async function uploadMissingChunks(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  // Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
-  // explicitly: the server-provided URL need not match the catalog path.
-  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
+  const authFetch = getChunkUploadFetch(regionUrl);
 
   await Promise.all(
     missingChunks.map((chunk) =>
@@ -506,15 +529,7 @@ async function uploadChunkBatch(params: {
 
   const response = await authFetch(url, init);
   if (!response.ok) {
-    throw new ApiError(
-      `Chunk upload failed: ${response.status} ${response.statusText}`,
-      response.status,
-      await response.text().catch((err) => {
-        log.debug("Failed to read chunk upload error response body", err);
-        return "";
-      }),
-      url,
-    );
+    await throwRawApiError(response, url, "Chunk upload failed");
   }
 }
 
@@ -534,9 +549,7 @@ export async function uploadChunkPayloads(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  // Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
-  // explicitly: the server-provided URL need not match the catalog path.
-  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
+  const authFetch = getChunkUploadFetch(regionUrl);
 
   await Promise.all(
     batchChunkPayloads(chunks, serverOptions).map((batch) =>
@@ -634,11 +647,32 @@ export async function assembleArtifactBundle(
     path: { organization_id_or_slug: org },
     body,
   });
-  return unwrapValidatedResult(
-    result,
-    "Failed to assemble artifact bundle",
-    AssembleResponseSchema,
-    `organizations/${org}/artifactbundle/assemble/`,
+  try {
+    return unwrapValidatedResult(
+      result,
+      "Failed to assemble artifact bundle",
+      AssembleResponseSchema,
+      `organizations/${org}/artifactbundle/assemble/`,
+    );
+  } catch (error) {
+    const projects = body.projects ?? [];
+    if (projects.length > 0 && isInvalidProjectsError(error)) {
+      throw projectsNotFoundError(org, projects);
+    }
+    throw error;
+  }
+}
+
+/**
+ * The assemble endpoint's 400 when a project slug or ID is not an active
+ * project of the org (`OrganizationArtifactBundleAssembleEndpoint` in Sentry,
+ * CLI-344).
+ */
+function isInvalidProjectsError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 400 &&
+    (error.detail?.includes("One or more projects are invalid") ?? false)
   );
 }
 

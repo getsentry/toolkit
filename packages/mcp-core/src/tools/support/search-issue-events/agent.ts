@@ -91,10 +91,7 @@ export async function searchIssueEventsAgent(
   });
 
   // Use callEmbeddedAgent to translate the query with tool call capture
-  return await callEmbeddedAgent<
-    z.output<typeof searchIssueEventsAgentOutputSchema>,
-    typeof searchIssueEventsAgentOutputSchema
-  >({
+  return await callEmbeddedAgent({
     system: systemPrompt,
     prompt: options.query,
     tools: {

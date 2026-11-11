@@ -218,7 +218,7 @@ describe("buildPalette", () => {
     const width = 30;
     const data = new Uint8Array(width * 4);
     for (let x = 0; x < width; x++) {
-      const [r, g, b] = colors[x % colors.length] as [number, number, number];
+      const [r, g, b] = colors[x % colors.length];
       data.set([r, g, b, 255], x * 4);
     }
     expect(buildPalette({ width, height: 1, data }, 16)).toEqual(colors);

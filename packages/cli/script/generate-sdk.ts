@@ -168,7 +168,7 @@ function extractSdkFlags(command: Command): SdkFlagInfo[] {
 
   const flags: SdkFlagInfo[] = [];
 
-  for (const [name, def] of Object.entries(flagDefs) as [string, FlagDef][]) {
+  for (const [name, def] of Object.entries(flagDefs)) {
     if (INTERNAL_FLAGS.has(name)) {
       continue;
     }

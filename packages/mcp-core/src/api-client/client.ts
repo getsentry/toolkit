@@ -4118,11 +4118,13 @@ export class SentryApiService {
       ignoreUserCount,
       ignoreUserWindow,
       statusDetails,
+      priority,
     }: {
       organizationSlug: string;
       issueId: string;
       status?: string;
       assignedTo?: string | null;
+      priority?: string;
       substatus?: string;
       ignoreDuration?: number;
       ignoreCount?: number;
@@ -4143,8 +4145,10 @@ export class SentryApiService {
       ignoreUserCount?: number;
       ignoreUserWindow?: number;
       statusDetails?: IssueResolutionDetails;
+      priority?: string;
     } = {};
     if (status !== undefined) updateData.status = status;
+    if (priority !== undefined) updateData.priority = priority;
     if (statusDetails !== undefined) updateData.statusDetails = statusDetails;
     if (assignedTo !== undefined) updateData.assignedTo = assignedTo ?? "";
     if (substatus !== undefined) updateData.substatus = substatus;

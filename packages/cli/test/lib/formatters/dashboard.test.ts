@@ -410,6 +410,57 @@ describe("formatDashboardWithData", () => {
       expect(output).toContain("42");
     });
 
+    test("renders the last measured value when the newest bucket is empty", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "line",
+            data: makeTimeseriesData({
+              series: [
+                {
+                  label: "p95(span.duration)",
+                  values: [
+                    { timestamp: 1_700_000_000, value: 412 },
+                    { timestamp: 1_700_000_060, value: null },
+                  ],
+                  unit: "millisecond",
+                },
+              ],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).toContain("412ms");
+      expect(output).not.toContain("0ms");
+    });
+
+    test("renders a dash when no bucket was measured", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "line",
+            data: makeTimeseriesData({
+              series: [
+                {
+                  label: "p95(span.duration)",
+                  values: [
+                    { timestamp: 1_700_000_000, value: null },
+                    { timestamp: 1_700_000_060, value: null },
+                  ],
+                  unit: "millisecond",
+                },
+              ],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).toContain("p95(span.duration)");
+      expect(output).toContain("—");
+      expect(output).not.toContain("0ms");
+    });
+
     test("renders sparkline characters", () => {
       const data = makeDashboardData({
         widgets: [
@@ -987,6 +1038,34 @@ describe("formatDashboardWithData", () => {
       });
       const output = formatDashboardWithData(data);
       expect(output).toContain("350ms");
+    });
+
+    test("renders no data when nothing was measured", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "big_number",
+            data: makeScalarData({ value: null, unit: "millisecond" }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).toContain("(no data)");
+      expect(output).not.toContain("0ms");
+    });
+
+    test("renders a measured zero", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "big_number",
+            data: makeScalarData({ value: 0, unit: "millisecond" }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).toContain("0ms");
+      expect(output).not.toContain("(no data)");
     });
 
     test("formats large numbers with compact notation", () => {

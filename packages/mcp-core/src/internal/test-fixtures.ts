@@ -273,7 +273,7 @@ export class EventBuilder {
   build(): Event {
     // Cast is safe here because we ensure MutableEvent has all fields needed
     // for either ErrorEvent or TransactionEvent based on the type field
-    return { ...this.event } as Event;
+    return { ...this.event };
   }
 }
 

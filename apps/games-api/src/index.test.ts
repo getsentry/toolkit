@@ -45,7 +45,7 @@ describe("worker Sentry reporting", () => {
             Cookie: "session=synthetic-secret",
           },
         },
-      ) as Parameters<typeof worker.fetch>[0],
+      ),
       env,
       ctx,
     );

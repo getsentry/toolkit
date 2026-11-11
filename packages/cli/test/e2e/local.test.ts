@@ -160,7 +160,7 @@ describe("Local daemon E2E", () => {
       }
       expect(text).toContain("event: sentry.local.directory");
       directoryUrl = (
-        JSON.parse(text.match(/data: (.+)/)![1]!) as { directoryUrl: string }
+        JSON.parse(text.match(/data: (.+)/)![1]) as { directoryUrl: string }
       ).directoryUrl;
     } finally {
       await bootstrapReader.cancel();
@@ -213,12 +213,12 @@ describe("Local daemon E2E", () => {
       const reader = stream.body!.getReader();
       try {
         let text = "";
-        while (!text.includes(expected!)) {
+        while (!text.includes(expected)) {
           const chunk = await reader.read();
           if (chunk.done) throw new Error("Stream closed");
           text += new TextDecoder().decode(chunk.value);
         }
-        expect(text).not.toContain(excluded!);
+        expect(text).not.toContain(excluded);
       } finally {
         await reader.cancel();
       }
@@ -662,7 +662,7 @@ describe("Local daemon E2E", () => {
       const event = await cli("event", "view", ...parts, eventId);
       expect(event.exitCode, event.stderr).toBe(0);
       expect(event.stdout).toContain("multi-word session event");
-      const raw = await cli("envelope", "view", ...parts, envelopeId!);
+      const raw = await cli("envelope", "view", ...parts, envelopeId);
       expect(raw.exitCode, raw.stderr).toBe(0);
       const envelope = JSON.parse(raw.stdout) as { data: string };
       expect(Buffer.from(envelope.data, "base64").toString()).toContain(

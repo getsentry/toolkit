@@ -224,10 +224,7 @@ export async function searchEventsAgent(
     options.environmentNames ?? (await fetchEnvironmentNames(options));
 
   // Use callEmbeddedAgent to translate the query with tool call capture
-  return await callEmbeddedAgent<
-    z.output<typeof searchEventsAgentOutputSchema>,
-    typeof searchEventsAgentOutputSchema
-  >({
+  return await callEmbeddedAgent({
     system: buildSystemPromptWithEnvironments(systemPrompt, environmentNames),
     prompt: options.query,
     tools: {
