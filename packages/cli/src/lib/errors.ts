@@ -576,6 +576,33 @@ export class ResolutionError extends CliError {
 }
 
 /**
+ * {@link ResolutionError} for project slugs that Sentry rejected for an org
+ * without saying which one (release create, artifact bundle assemble).
+ *
+ * @param org - Organization slug
+ * @param projects - The project slugs that were sent
+ * @param extraSuggestions - More bullets shown under "Or:"
+ */
+export function projectsNotFoundError(
+  org: string,
+  projects: string[],
+  extraSuggestions: string[] = [],
+): ResolutionError {
+  const quoted = projects.map((p) => `'${p}'`).join(", ");
+  return new ResolutionError(
+    projects.length === 1
+      ? `Project ${quoted}`
+      : `One of the projects ${quoted}`,
+    `was not found in organization '${org}'`,
+    sentry`project list ${org}/`,
+    [
+      "Check the slug passed with --project (or the bundler plugin's `project` option)",
+      ...extraSuggestions,
+    ],
+  );
+}
+
+/**
  * Build a {@link ValidationError} message with Try: examples and optional Note: section.
  *
  * Matches {@link buildResolutionMessage} / {@link buildContextMessage} formatting so

@@ -149,6 +149,17 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   ) {
     return "user_validation";
   }
+  // A ValidationError with field "release.version" or "release.projects"
+  // means Sentry rejected the version the user passed to `release create`
+  // (`latest`, a name with a `/`), or the release already exists for projects
+  // the auth token cannot access (CLI-2G3). The user sees which value to
+  // change; the metric keeps the volume, split by `validation_field`.
+  if (
+    error instanceof ValidationError &&
+    (error.field === "release.version" || error.field === "release.projects")
+  ) {
+    return "user_validation";
+  }
   // A ValidationError with field "input" means the --input file path the user
   // supplied does not exist on disk. Pure user-input noise, not a CLI bug —
   // the user sees a clear "File not found" message (CLI-1JY).
@@ -188,10 +199,11 @@ export function classifySilenced(error: unknown): SilenceReason | null {
     return "process_exit";
   }
   // A 400 (Bad Request) signals a malformed request the CLI built — a code
-  // defect — so it is always captured. A user's unparseable `--query` is NOT a
-  // 400 here: it is converted to a ValidationError at the command boundary
-  // (toSearchQueryError) so the user gets an actionable message and the bug
-  // signal for CLI-authored bad queries is preserved (CLI-FA).
+  // defect — so it is always captured. 400s caused by user input are
+  // converted to CLI errors where the request is made, so the user gets an
+  // actionable message and the bug signal for the rest is preserved: an
+  // unparseable `--query` (toSearchQueryError, CLI-FA), or a project slug or
+  // release version Sentry rejects (CLI-2G3, CLI-344).
   return null;
 }
 
