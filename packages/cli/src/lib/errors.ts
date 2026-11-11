@@ -180,6 +180,7 @@ export type FunctionArgument = {
  * words such as "auth" and "token" in new values; Sentry's data scrubbing
  * replaces values that contain them with `[Filtered]`.
  *
+ * - `org_mismatch`: an org auth token for another organization
  * - `insufficient_scope`: the token lacks every scope the endpoint accepts
  * - `member_policy`: an org setting blocks members from the action
  * - `seat_limit`: the member is disabled because the org is over its limit
@@ -189,6 +190,7 @@ export type FunctionArgument = {
  *   or created on another server)
  */
 export type ApiDenialReason =
+  | "org_mismatch"
   | "insufficient_scope"
   | "member_policy"
   | "seat_limit"
