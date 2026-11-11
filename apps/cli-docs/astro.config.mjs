@@ -37,14 +37,13 @@ export default defineConfig({
       project: "cli-website",
       org: "sentry",
       environment: process.env.PUBLIC_SENTRY_ENVIRONMENT ?? "development",
-      // Note: @sentry/astro v10 does not support the `release` build-time
-      // option (todo(v11) in the source). Release is set in Sentry.init()
-      // via PUBLIC_SENTRY_RELEASE / SENTRY_RELEASE env vars instead.
+      // Release is set in Sentry.init() via PUBLIC_SENTRY_RELEASE /
+      // SENTRY_RELEASE env vars.
       //
-      // Disable the plugin's sourcemap upload — it pulls in @sentry/cli
-      // (20+ MB binary download). We use our own CLI post-build instead
-      // (see CI workflow: `sentry sourcemap inject` + `sentry sourcemap upload`).
-      sourceMapsUploadOptions: { enabled: false },
+      // Disable the plugin's sourcemap upload. We use our own CLI post-build
+      // instead (see CI workflow: `sentry sourcemap inject` +
+      // `sentry sourcemap upload`).
+      sourcemaps: { disable: true },
     }),
     starlight({
       title: "Sentry CLI",

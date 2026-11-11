@@ -132,6 +132,6 @@ it("leaves registered tool spans alone", async () => {
   const span = await callToolSpan("find_projects");
 
   expect(span.status).toBe("ok");
-  expect(span.attributes?.["error.type"]).toBeUndefined();
+  expect(span.attributes["error.type"]).toBeUndefined();
   expect(span.attributes).toMatchObject({ "app.transport": "http" });
 });

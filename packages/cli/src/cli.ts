@@ -6,13 +6,15 @@
  * The runner does not know which commands exist: each binary passes a
  * {@link CliEntry} that loads its own application. `sentry` (`bin.ts`,
  * `index.ts`) runs every command; `@sentry/mcp-server` (`mcp-server.ts`) runs
- * `mcp`, `auth`, and `help`, so its bundle leaves the rest out.
+ * `mcp`, `auth`, `cli defaults`, `cli fix`, and `help`, so its bundle leaves
+ * the rest out.
  *
  * Extracted from `bin.ts` so the logic is testable and reusable without
  * top-level side effects. `bin.ts` remains a thin wrapper that registers
  * stream error handlers and calls `startCli()`.
  */
 
+import { sentry } from "./lib/app-identity.js";
 import type { CliApplication } from "./lib/application.js";
 import { redactCredentialText } from "./lib/credential-redaction.js";
 import { CliError, formatError } from "./lib/errors.js";
@@ -156,7 +158,7 @@ async function recoverUnknownCommandHelp(
     const { warning } = await import("./lib/formatters/colors.js");
     process.stderr.write(
       warning(
-        `Tip: use --help for help (e.g., sentry ${groupArgs.join(" ")} --help)\n`,
+        `Tip: use --help for help (e.g., ${sentry`${groupArgs.join(" ")} --help`})\n`,
       ),
     );
     await executor(["help", ...groupArgs]);
@@ -283,6 +285,13 @@ async function runMcpServer(
   const { getExitCode } = await import("./lib/errors.js");
   const { error } = await import("./lib/formatters/colors.js");
   const { splitInlineFlagValues } = await import("./lib/mcp/args.js");
+  const { getEnvLogLevel, setLogLevel } = await import("./lib/logger.js");
+  // The server's startup warnings go through the logger, so apply
+  // SENTRY_LOG_LEVEL here as runCli does; --log-level still wins.
+  const envLogLevel = getEnvLogLevel();
+  if (envLogLevel !== null) {
+    setLogLevel(envLogLevel);
+  }
   try {
     await run(
       app,
@@ -622,23 +631,26 @@ export async function runCli(
     const { resolveCommandPath } = await import("./lib/introspect.js");
     const { getDefaultOrganization } = await import("./lib/db/defaults.js");
 
+    // Redact first: a sensitive flag's value would otherwise survive as a
+    // path segment or the trailing argv token.
+    const safeArgv = redactArgv(argv);
+
     // Strip flags so resolveCommandPath only sees command path segments
-    const pathSegments = argv.filter((t) => !t.startsWith("-"));
+    const pathSegments = safeArgv.filter((t) => !t.startsWith("-"));
     const resolved = resolveCommandPath(
       routes as unknown as Parameters<typeof resolveCommandPath>[0],
       pathSegments,
     );
     const unknownToken =
-      resolved?.kind === "unresolved" ? resolved.input : (argv.at(-1) ?? "");
+      resolved?.kind === "unresolved"
+        ? resolved.input
+        : (safeArgv.at(-1) ?? "");
     const suggestions =
       resolved?.kind === "unresolved" ? resolved.suggestions : [];
 
     // Extract org/project from argv, fall back to default org from SQLite
-    const fromArgv = extractOrgProjectFromArgv(argv);
+    const fromArgv = extractOrgProjectFromArgv(safeArgv);
     const org = fromArgv.org ?? getDefaultOrganization() ?? undefined;
-
-    // Redact sensitive flags (e.g., --token) before sending to Sentry
-    const safeArgv = redactArgv(argv);
 
     Sentry.setTag("command", "unknown");
     if (org) {
@@ -651,7 +663,7 @@ export async function runCli(
       argv: safeArgv,
       unknown_token: unknownToken,
       suggestions,
-      arg_count: argv.length,
+      arg_count: safeArgv.length,
       org: org ?? null,
       project: fromArgv.project ?? null,
     });

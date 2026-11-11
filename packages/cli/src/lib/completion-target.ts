@@ -74,10 +74,6 @@ export const FILE_TARGET = "file" satisfies CompletionTarget;
 /** Directory paths only. */
 export const DIRECTORY_TARGET = "directory" satisfies CompletionTarget;
 
-/** `sentry init`'s `[<target>] [<directory>]`. */
-export const ORG_PROJECT_OR_DIRECTORY_TARGET =
-  "org-project-or-directory" satisfies CompletionTarget;
-
 /** A CLI command path, one route segment per word. */
 export const COMMAND_PATH_TARGET = "command-path" satisfies CompletionTarget;
 

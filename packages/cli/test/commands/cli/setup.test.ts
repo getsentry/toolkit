@@ -96,7 +96,7 @@ let originalFetch: typeof globalThis.fetch;
 function mockFetch(
   fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
-  globalThis.fetch = fn as typeof globalThis.fetch;
+  globalThis.fetch = fn;
 }
 
 /**
@@ -120,10 +120,10 @@ function createMockContext(
 } {
   const stderrChunks: string[] = [];
   const origWrite = process.stderr.write.bind(process.stderr);
-  process.stderr.write = ((chunk: string | Uint8Array) => {
+  process.stderr.write = (chunk: string | Uint8Array) => {
     stderrChunks.push(String(chunk));
     return true;
-  }) as typeof process.stderr.write;
+  };
 
   const env: Record<string, string | undefined> = {
     PATH: "/usr/bin:/bin",
@@ -824,6 +824,9 @@ describe("sentry cli setup", () => {
       // Should show welcome message, not "Setup complete!"
       expect(combined).toContain("Installed sentry v");
       expect(combined).toContain("Get started:");
+      expect(combined).toContain(
+        "  sentry mcp      Run the Sentry MCP server for your AI agent",
+      );
       expect(combined).toContain("sentry auth");
       expect(combined).toContain("sentry --help");
       expect(combined).toContain("cli.sentry.dev");
@@ -1231,7 +1234,6 @@ describe("sentry cli setup", () => {
     });
 
     test.each([
-      { env: { SENTRY_INIT: "1" } },
       { env: { SENTRY_AUTH_TOKEN: "existing-token" } },
       { env: { SENTRY_OUTPUT_FORMAT: "json" } },
       { flags: ["--quiet"] },

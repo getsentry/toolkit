@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SentryApiService } from "../api-client";
-import type { AutofixRunState, Event, Issue } from "../api-client/types";
+import type { Event, Issue } from "../api-client/types";
 import {
   formatEventOutput,
   formatFrameHeader,
@@ -291,7 +291,7 @@ describe("formatIssueOutput", () => {
             },
           ],
         },
-      } as AutofixRunState,
+      },
     });
 
     expect(output).toContain("**Summary:**");

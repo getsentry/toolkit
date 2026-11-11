@@ -103,7 +103,7 @@ export const searchEventsAgentOutputSchema = z
       }
 
       // Only validate if both sort and fields are present
-      if (!data.sort || !data.fields || data.fields.length === 0) {
+      if (!data.sort || data.fields.length === 0) {
         return true;
       }
 
@@ -228,10 +228,7 @@ export async function searchEventsAgent(
     options.environmentNames ?? (await fetchEnvironmentNames(options));
 
   // Use callEmbeddedAgent to translate the query with tool call capture
-  return await callEmbeddedAgent<
-    z.output<typeof searchEventsAgentOutputSchema>,
-    typeof searchEventsAgentOutputSchema
-  >({
+  return await callEmbeddedAgent({
     system: buildSystemPromptWithEnvironments(systemPrompt, environmentNames),
     prompt: options.query,
     tools: {

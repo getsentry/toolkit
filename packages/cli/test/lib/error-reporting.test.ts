@@ -34,7 +34,6 @@ import {
   ResolutionError,
   SeerError,
   ValidationError,
-  WizardError,
 } from "../../src/lib/errors.js";
 
 // ---------------------------------------------------------------------------
@@ -367,6 +366,36 @@ describe("classifySilenced", () => {
     ).toBe("user_input_error");
   });
 
+  test.each([
+    [
+      "repository",
+      "Could not determine the repository: there is no 'origin' git remote and no CI repository variables.",
+    ],
+    ["repository", "No Sentry repository matching 'owner/repo' (from CI)."],
+    [
+      "commit.repository",
+      "Sentry organization 'my-org' has no repository named 'owner/repo'.",
+    ],
+  ])(
+    "silences set-commits ValidationError with field '%s' (CLI-17R, CLI-4G3)",
+    (field, message) => {
+      // The org's setup has to change (no repository in the build, or the
+      // repository isn't added in Sentry); it is not a CLI bug.
+      expect(classifySilenced(new ValidationError(message, field))).toBe(
+        "user_validation",
+      );
+    },
+  );
+
+  test.each(["release.version", "release.projects"])(
+    "silences release create ValidationError with field '%s' (CLI-2G3)",
+    (field) => {
+      expect(classifySilenced(new ValidationError("rejected", field))).toBe(
+        "user_validation",
+      );
+    },
+  );
+
   test("silences ResolutionError (user provided a value that wasn't found)", () => {
     expect(
       classifySilenced(
@@ -474,7 +503,7 @@ describe("enrichEventWithGroupingTags", () => {
 
   test("sets cli_error.kind from exception value", () => {
     const event = makeEvent("TypeError");
-    event.exception!.values![0]!.value =
+    event.exception!.values![0].value =
       "Cannot read properties of undefined (reading 'replaceAll')";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("Cannot read properties of");
@@ -482,17 +511,17 @@ describe("enrichEventWithGroupingTags", () => {
 
   test("sets cli_error.kind for fetch failed TypeError", () => {
     const event = makeEvent("TypeError");
-    event.exception!.values![0]!.value = "fetch failed";
+    event.exception!.values![0].value = "fetch failed";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("fetch failed");
   });
 
   test("sets cli_error.kind for Error with variable project count", () => {
     const event1 = makeEvent("Error");
-    event1.exception!.values![0]!.value =
+    event1.exception!.values![0].value =
       "Failed to fetch issues from 3 project(s): Failed to list issues: 400 Bad Request";
     const event2 = makeEvent("Error");
-    event2.exception!.values![0]!.value =
+    event2.exception!.values![0].value =
       "Failed to fetch issues from 1 project(s): Failed to list issues: 400 Bad Request";
     const result1 = enrichEventWithGroupingTags(event1);
     const result2 = enrichEventWithGroupingTags(event2);
@@ -515,7 +544,7 @@ describe("enrichEventWithGroupingTags", () => {
       "cli_error.class": "ContextError",
       "cli_error.kind": "Organization",
     });
-    event.exception!.values![0]!.value = "some different message";
+    event.exception!.values![0].value = "some different message";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("Organization");
   });
@@ -646,6 +675,24 @@ describe("reportCliError integration", () => {
     );
   });
 
+  test("silences set-commits repository ValidationError and records the field", () => {
+    reportCliError(
+      new ValidationError("No Sentry repository matching 'a/b'.", "repository"),
+    );
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          error_class: "ValidationError",
+          reason: "user_validation",
+          validation_field: "repository",
+        }),
+      }),
+    );
+  });
+
   test("captures SeerError (marketing dashboard)", () => {
     reportCliError(new SeerError("not_enabled", "my-org"));
     expect(captureSpy).toHaveBeenCalled();
@@ -771,14 +818,6 @@ describe("reportCliError integration", () => {
     );
     expect(tags["cli_error.class"]).toBe("HostScopeError");
     expect(tags["cli_error.kind"]).toBe("host_scope");
-  });
-
-  test("WizardError gets kind=wizard", () => {
-    const { tags } = capturedScopeTags(
-      new WizardError("Workflow returned an error"),
-    );
-    expect(tags["cli_error.class"]).toBe("WizardError");
-    expect(tags["cli_error.kind"]).toBe("wizard");
   });
 
   test("bare CliError gets kind from message prefix", () => {

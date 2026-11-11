@@ -53,7 +53,7 @@ describe("triggerRootCauseAnalysis", () => {
     expect(capturedRequest?.url).toContain(
       "/organizations/test-org/issues/123456789/autofix/",
     );
-    expect(capturedRequest?.url).toContain("mode=explorer");
+    expect(capturedRequest?.url).not.toContain("mode=");
   });
 
   test("includes step and stopping_point in request body", async () => {
@@ -133,7 +133,7 @@ describe("getAutofixState", () => {
     expect(capturedRequest?.url).toContain(
       "/organizations/test-org/issues/123456789/autofix/",
     );
-    expect(capturedRequest?.url).toContain("mode=explorer");
+    expect(capturedRequest?.url).not.toContain("mode=");
   });
 
   test("still parses legacy run_id when sentry_run_id is absent", async () => {
@@ -300,13 +300,13 @@ describe("getAutofixState", () => {
 });
 
 describe("triggerSolutionPlanning", () => {
-  test("sends POST request to autofix endpoint with explorer mode", async () => {
+  test("sends POST request to autofix endpoint without a mode param", async () => {
     let capturedRequest: Request | undefined;
     let capturedBody: unknown;
 
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       capturedRequest = new Request(input, init);
-      capturedBody = await new Request(input, init).json();
+      capturedBody = await capturedRequest.clone().json();
 
       return new Response(JSON.stringify({ run_id: 12_345 }), {
         status: 202,
@@ -320,7 +320,7 @@ describe("triggerSolutionPlanning", () => {
     expect(capturedRequest?.url).toContain(
       "/organizations/test-org/issues/123456789/autofix/",
     );
-    expect(capturedRequest?.url).toContain("mode=explorer");
+    expect(capturedRequest?.url).not.toContain("mode=");
     expect(capturedBody).toEqual({
       step: "solution",
       run_id: 12_345,

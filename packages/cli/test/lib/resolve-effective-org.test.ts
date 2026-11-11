@@ -182,16 +182,6 @@ describe("resolveEffectiveOrg with API refresh", () => {
         const req = new Request(input, init);
         const url = req.url;
 
-        // /users/me/regions/ → return one region
-        if (url.includes("/users/me/regions/")) {
-          return new Response(
-            JSON.stringify({
-              regions: [{ name: "us", url: regionUrl }],
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } },
-          );
-        }
-
         // /organizations/ → return the org
         if (url.includes("/organizations/")) {
           return new Response(

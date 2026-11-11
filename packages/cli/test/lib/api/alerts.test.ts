@@ -39,7 +39,7 @@ afterEach(() => {
 describe("deleteIssueAlertRule", () => {
   test("treats empty-body 204 as success", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("DELETE");
       expect(req.url).toBe(
         `${DEFAULT_SENTRY_URL}/api/0/organizations/test-org/workflows/42/`,
@@ -76,9 +76,11 @@ function workflowRule(overrides: Record<string, unknown>) {
 describe("listIssueAlertsPaginated", () => {
   test("reads from org-scoped /workflows/ and drops unattached workflows", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/workflows/");
-      expect(url.searchParams.get("projectSlug")).toBe("test-project");
+      expect(url.searchParams.getAll("project")).toEqual(["test-project"]);
+      expect(url.searchParams.has("projectSlug")).toBe(false);
+      expect(url.searchParams.get("sortBy")).toBe("-id");
       return Response.json([
         workflowRule({ id: "1", name: "Attached", detectorIds: [7] }),
         workflowRule({ id: "2", name: "Unattached", detectorIds: [] }),
@@ -94,10 +96,11 @@ describe("listIssueAlertsPaginated", () => {
 describe("getIssueAlertRule", () => {
   test("reads from /workflows/ filtered by project and id", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/workflows/");
-      expect(url.searchParams.get("projectSlug")).toBe("test-project");
-      expect(url.searchParams.get("id")).toBe("42");
+      expect(url.searchParams.getAll("project")).toEqual(["test-project"]);
+      expect(url.searchParams.has("projectSlug")).toBe(false);
+      expect(url.searchParams.getAll("id")).toEqual(["42"]);
       return Response.json([workflowRule({ id: "42", name: "My Rule" })]);
     });
 
@@ -147,7 +150,7 @@ function metricDetector(overrides: Record<string, unknown>) {
 describe("listMetricAlertsPaginated", () => {
   test("reads from org-scoped /detectors/ filtered to metric_issue and flattens the payload", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/detectors/");
       expect(url.searchParams.get("query")).toBe("type:metric_issue");
       return Response.json([
@@ -178,7 +181,7 @@ describe("listMetricAlertsPaginated", () => {
 describe("getMetricAlertRule", () => {
   test("reads from /detectors/{id}/ and maps disabled detectors to status 1", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/detectors/9/");
       return Response.json(
         metricDetector({ id: "9", name: "Disabled rule", enabled: false }),
@@ -334,7 +337,7 @@ describe("getMetricAlertRule", () => {
 describe("createIssueAlertRule", () => {
   test("POSTs the body to the org-scoped /workflows/ endpoint", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("POST");
       expect(new URL(req.url).pathname).toBe(
         "/api/0/organizations/test-org/workflows/",
@@ -354,7 +357,7 @@ describe("createIssueAlertRule", () => {
 describe("updateIssueAlertRule", () => {
   test("PUTs the body to the /workflows/{id}/ endpoint", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("PUT");
       expect(new URL(req.url).pathname).toBe(
         "/api/0/organizations/test-org/workflows/42/",
@@ -373,7 +376,7 @@ describe("updateIssueAlertRule", () => {
 describe("getIssueAlertWorkflowDocument", () => {
   test("reads the single workflow detail endpoint", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/workflows/42/");
       return Response.json(workflowRule({ id: "42" }));
     });
@@ -386,7 +389,7 @@ describe("getIssueAlertWorkflowDocument", () => {
 describe("resolveErrorDetectorId", () => {
   test("returns the id of the project's error detector", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/detectors/");
       expect(url.searchParams.get("project")).toBe("test-project");
       expect(url.searchParams.get("query")).toBe("type:error");
@@ -410,7 +413,7 @@ describe("resolveErrorDetectorId", () => {
 describe("deleteMetricAlertRule", () => {
   test("deletes via the org-scoped /detectors/{id}/ endpoint", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("DELETE");
       expect(new URL(req.url).pathname).toBe(
         "/api/0/organizations/test-org/detectors/9/",
@@ -428,7 +431,7 @@ describe("deleteMetricAlertRule", () => {
 describe("createMetricAlertRule", () => {
   test("POSTs a nested detector body to the project-scoped /detectors/ endpoint", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("POST");
       expect(new URL(req.url).pathname).toBe(
         "/api/0/organizations/test-org/projects/backend/detectors/",
@@ -480,7 +483,7 @@ describe("createMetricAlertRule", () => {
   test("maps error-like datasets to queryType 0 and error eventTypes", async () => {
     let sentBody: Record<string, unknown> = {};
     globalThis.fetch = mockFetch(async (input, init) => {
-      sentBody = (await new Request(input!, init).json()) as Record<
+      sentBody = (await new Request(input, init).json()) as Record<
         string,
         unknown
       >;
@@ -507,7 +510,7 @@ describe("createMetricAlertRule", () => {
   test("maps logs to the EAP dataset with trace_item_log and connects workflows", async () => {
     let sentBody: Record<string, unknown> = {};
     globalThis.fetch = mockFetch(async (input, init) => {
-      sentBody = (await new Request(input!, init).json()) as Record<
+      sentBody = (await new Request(input, init).json()) as Record<
         string,
         unknown
       >;
@@ -548,7 +551,7 @@ describe("createMetricAlertRule", () => {
   test("maps sessions to the crash-rate metrics dataset", async () => {
     let sentBody: Record<string, unknown> = {};
     globalThis.fetch = mockFetch(async (input, init) => {
-      sentBody = (await new Request(input!, init).json()) as Record<
+      sentBody = (await new Request(input, init).json()) as Record<
         string,
         unknown
       >;
@@ -575,7 +578,7 @@ describe("createMetricAlertRule", () => {
   test("translates warning and below-threshold triggers", async () => {
     let sentBody: Record<string, unknown> = {};
     globalThis.fetch = mockFetch(async (input, init) => {
-      sentBody = (await new Request(input!, init).json()) as Record<
+      sentBody = (await new Request(input, init).json()) as Record<
         string,
         unknown
       >;
@@ -607,7 +610,7 @@ describe("createMetricAlertRule", () => {
   test("drops empty trigger actions from detector conditions", async () => {
     let sentBody: Record<string, unknown> = {};
     globalThis.fetch = mockFetch(async (input, init) => {
-      sentBody = (await new Request(input!, init).json()) as Record<
+      sentBody = (await new Request(input, init).json()) as Record<
         string,
         unknown
       >;
@@ -639,7 +642,7 @@ describe("createMetricAlertRule", () => {
   test("passes native detector conditions through unchanged", async () => {
     let sentBody: Record<string, unknown> = {};
     globalThis.fetch = mockFetch(async (input, init) => {
-      sentBody = (await new Request(input!, init).json()) as Record<
+      sentBody = (await new Request(input, init).json()) as Record<
         string,
         unknown
       >;
@@ -682,7 +685,7 @@ describe("createMetricAlertRule", () => {
 describe("getMetricAlertRuleDocument", () => {
   test("returns the flat rule baseline from the detector GET", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       expect(url.pathname).toBe("/api/0/organizations/test-org/detectors/9/");
       return Response.json(metricDetector({ id: "9", name: "Baseline" }));
     });
@@ -715,7 +718,7 @@ describe("metric alert edit round-trip", () => {
     };
     let putSource: Record<string, unknown> | undefined;
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       if (req.method === "PUT") {
         const body = (await req.json()) as Record<string, unknown>;
         putSource = (body.dataSources as Record<string, unknown>[])[0];
@@ -756,7 +759,7 @@ describe("metric alert edit round-trip without event types", () => {
       };
       let putSource: Record<string, unknown> | undefined;
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         if (req.method === "PUT") {
           const body = (await req.json()) as Record<string, unknown>;
           putSource = (body.dataSources as Record<string, unknown>[])[0];
@@ -782,7 +785,7 @@ describe("metric alert edit round-trip of detector config", () => {
     const storedConfig = { detectionType: "percent", comparisonDelta: 3600 };
     let putConfig: unknown;
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       if (req.method === "PUT") {
         const body = (await req.json()) as Record<string, unknown>;
         putConfig = body.config;
@@ -804,7 +807,7 @@ describe("metric alert edit round-trip of detector config", () => {
     async (_label, storedConfig) => {
       let putConfig: unknown;
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         if (req.method === "PUT") {
           const body = (await req.json()) as Record<string, unknown>;
           putConfig = body.config;
@@ -826,7 +829,7 @@ describe("metric alert edit round-trip of detector config", () => {
     const storedConfig = { detectionType: "percent", comparisonDelta: 3600 };
     let putConfig: unknown;
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       if (req.method === "PUT") {
         const body = (await req.json()) as Record<string, unknown>;
         putConfig = body.config;
@@ -849,7 +852,7 @@ describe("metric alert edit round-trip of detector config", () => {
   test("defaults to static detection without a stored config", async () => {
     let putConfig: unknown;
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       if (req.method === "PUT") {
         const body = (await req.json()) as Record<string, unknown>;
         putConfig = body.config;
@@ -866,7 +869,7 @@ describe("metric alert edit round-trip of detector config", () => {
 describe("putMetricAlertRule", () => {
   test("PUTs a nested detector body to the /detectors/{id}/ endpoint", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("PUT");
       expect(new URL(req.url).pathname).toBe(
         "/api/0/organizations/test-org/detectors/9/",

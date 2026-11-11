@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { UserInputError } from "../../errors";
 import getDoc from "./get-doc.js";
 
 describe("get_doc", () => {
@@ -201,6 +202,44 @@ describe("get_doc", () => {
       ),
     ).rejects.toThrow(
       "Invalid documentation path. Path must end with .md extension.",
+    );
+  });
+
+  it("rejects a missing page", async () => {
+    await expect(
+      getDoc.handler(
+        {
+          path: "/product/does-not-exist.md",
+        },
+        {
+          constraints: {
+            organizationSlug: null,
+          },
+          accessToken: "access-token",
+          userId: "1",
+        },
+      ),
+    ).rejects.toThrow(UserInputError);
+  });
+
+  it("rejects the docs site's soft 404 page", async () => {
+    await expect(
+      getDoc.handler(
+        {
+          path: "ai/mcp.md",
+        },
+        {
+          constraints: {
+            organizationSlug: null,
+          },
+          accessToken: "access-token",
+          userId: "1",
+        },
+      ),
+    ).rejects.toThrow(
+      new UserInputError(
+        "Documentation not found at this path. The page may have been moved or removed. Use `search_docs()` to find the current path, and pass the `path` from its results exactly.",
+      ),
     );
   });
 

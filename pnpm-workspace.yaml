@@ -3,7 +3,6 @@ packages:
   - packages/*
 
 patchedDependencies:
-  "@ai-sdk/provider-utils@2.2.8": patches/@ai-sdk__provider-utils@2.2.8.patch
   "@cloudflare/workers-oauth-provider@0.10.3": patches/@cloudflare__workers-oauth-provider@0.10.3.patch
   "@stricli/core@1.2.8": packages/cli/patches/@stricli%2Fcore@1.2.8.patch
 
@@ -52,11 +51,12 @@ catalog:
   "@modelcontextprotocol/server": 2.4.0
   "@radix-ui/react-accordion": ^1.2.20
   "@radix-ui/react-slot": ^1.2.3
-  "@sentry/api": 1.26.0
-  "@sentry/cloudflare": 11.6.0
-  "@sentry/core": 11.6.0
-  "@sentry/node": 11.6.0
-  "@sentry/react": 11.6.0
+  "@sentry/api": 1.59.0
+  "@sentry/cloudflare": 11.12.0
+  "@sentry/core": 11.12.0
+  "@sentry/node": 11.12.0
+  "@sentry/react": 11.12.0
+  "@sentry/roach": 0.3.0
   "@sentry/search-syntax": ^1.0.0
   "@sentry/vite-plugin": ^4.6.1
   "@tailwindcss/typography": ^0.5.16
@@ -113,20 +113,22 @@ minimumReleaseAgeExclude:
   - "@ai-sdk/react@3.0.232"
   - ai@6.0.230
   - agents@0.20.1
-  - "@sentry/browser-utils@11.6.0"
-  - "@sentry/browser@11.6.0"
-  - "@sentry/bundler-plugins@11.6.0"
-  - "@sentry/cloudflare@11.6.0"
-  - "@sentry/core@11.6.0"
-  - "@sentry/feedback@11.6.0"
-  - "@sentry/node@11.6.0"
-  - "@sentry/opentelemetry@11.6.0"
-  - "@sentry/react@11.6.0"
-  - "@sentry/replay-canvas@11.6.0"
-  - "@sentry/replay@11.6.0"
+  - "@sentry/astro@11.12.0"
+  - "@sentry/browser-utils@11.12.0"
+  - "@sentry/browser@11.12.0"
+  - "@sentry/bundler-plugins@11.12.0"
+  - "@sentry/cloudflare@11.12.0"
+  - "@sentry/core@11.12.0"
+  - "@sentry/feedback@11.12.0"
+  - "@sentry/node@11.12.0"
+  - "@sentry/opentelemetry@11.12.0"
+  - "@sentry/react@11.12.0"
+  - "@sentry/replay-canvas@11.12.0"
+  - "@sentry/replay@11.12.0"
+  - "@sentry/roach@0.3.0"
   - "@sentry/search-syntax@1.0.0"
-  - "@sentry/server-runtime-injection@11.6.0"
-  - "@sentry/server-utils@11.6.0"
+  - "@sentry/server-runtime-injection@11.12.0"
+  - "@sentry/server-utils@11.12.0"
   - "@oxfmt/binding-android-arm-eabi@0.72.0"
   - "@oxfmt/binding-android-arm64@0.72.0"
   - "@oxfmt/binding-darwin-arm64@0.72.0"
@@ -167,7 +169,7 @@ minimumReleaseAgeExclude:
   - "@oxlint/binding-win32-x64-msvc@1.87.0"
   - oxfmt@0.72.0
   - oxlint@1.87.0
-  - "@sentry/api@1.26.0"
+  - "@sentry/api@1.59.0"
   - miniflare@5.20261101.0-beta
   - wrangler@4.156.1
   - "@sentry/symbolic@14.0.0-alpha.5"

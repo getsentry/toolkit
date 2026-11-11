@@ -29,7 +29,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          # Roach (see packages/mcp-server-evals/roach.json) needs Node 24.14+.
+          node-version: "24"
 
       # pnpm/action-setup@v4
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda
@@ -62,6 +63,9 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           EMBEDDED_AGENT_PROVIDER: openrouter
+          # Lets Roach record model calls it has no recording for. Fork PRs
+          # get no secrets, so they only replay.
+          ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
 
       - name: Create eval status check
         uses: actions/github-script@v7

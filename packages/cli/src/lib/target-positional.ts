@@ -23,6 +23,7 @@
  * `func` runs.
  */
 
+import { sentry } from "./app-identity.js";
 import {
   firstNonBlankLine,
   type ListTarget,
@@ -111,7 +112,7 @@ export function orgProjectTarget<R>(
       requireExplicitTarget(
         parsed,
         "Project target",
-        `sentry ${commandNameOf(context)} <org>/<project>`,
+        sentry`${commandNameOf(context)} <org>/<project>`,
       ),
   );
 }
@@ -216,7 +217,7 @@ export const orgTarget = boundPositional(
     resolveOrgInput(
       input,
       context.cwd,
-      `sentry ${commandNameOf(context)} <org>`,
+      sentry`${commandNameOf(context)} <org>`,
     ),
 );
 

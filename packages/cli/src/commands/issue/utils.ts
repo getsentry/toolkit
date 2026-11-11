@@ -6,9 +6,9 @@
 
 import pLimit from "p-limit";
 import {
+  findIssueInOrgs,
   findProjectsBySlug,
   getAutofixState,
-  getIssue,
   getIssueByShortId,
   getIssueInOrg,
   getSharedIssue,
@@ -21,6 +21,7 @@ import {
   triggerRootCauseAnalysis,
   tryGetIssueByShortId,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import type { IssueSelector } from "../../lib/arg-parsing.js";
 import {
   clearCachedIssueOrg,
@@ -54,10 +55,7 @@ import {
   resolveOrgAndProject,
   resolveProjectIdsInOrg,
 } from "../../lib/resolve-target.js";
-import {
-  applySentryUrlContext,
-  parseSentryUrl,
-} from "../../lib/sentry-url-parser.js";
+import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { buildIssueUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { isAllDigits, shellQuote } from "../../lib/utils.js";
@@ -130,7 +128,7 @@ export async function mapIssueArgsConcurrently<T>(
 export function buildCommandHint(
   command: string,
   issueId: string,
-  base = "sentry issue",
+  base = sentry`issue`,
   trailingArgs: readonly string[] = [],
 ): string {
   return appendCommandArguments(
@@ -207,8 +205,8 @@ const DEFAULT_TIMEOUT_MS = 360_000;
  * Used by view command which needs the complete issue data.
  */
 export type ResolvedIssueResult = {
-  /** Resolved organization slug (may be undefined for numeric IDs without context) */
-  org: string | undefined;
+  /** Resolved organization slug */
+  org: string;
   /** Full issue object from API */
   issue: SentryIssue;
 };
@@ -625,7 +623,7 @@ export async function findSelectorIssue(
     throw new ResolutionError(
       `Selector '${selector}'`,
       "no unresolved issues found",
-      `sentry issue list ${org}/${project ?? ""} -q "is:resolved"`,
+      sentry`issue list ${org}/${project ?? ""} -q "is:resolved"`,
       [
         `The ${SELECTOR_LABELS[selector]} issue selector only matches unresolved issues.`,
       ],
@@ -670,7 +668,7 @@ async function resolveIssueSearch(
     return { org, issue };
   }
 
-  const listCommand = `sentry issue list ${org}/ --query ${shellQuote(query)}`;
+  const listCommand = sentry`issue list ${org}/ --query ${shellQuote(query)}`;
   if (!issue) {
     throw new ResolutionError(
       `Search ${shellQuote(query)}`,
@@ -743,42 +741,43 @@ export type ResolveIssueOptions = {
 };
 
 /**
- * Extract the organization slug from a Sentry issue permalink.
- *
- * Handles both path-based (`https://sentry.io/organizations/{org}/issues/...`)
- * and subdomain-style (`https://{org}.sentry.io/issues/...`) SaaS URLs.
- * Returns undefined if the permalink is missing or not a recognized format.
- *
- * @param permalink - Issue permalink URL from the Sentry API response
- */
-function extractOrgFromPermalink(
-  permalink: string | undefined,
-): string | undefined {
-  if (!permalink) {
-    return;
-  }
-  return parseSentryUrl(permalink)?.org;
-}
-
-/**
  * Result of {@link fetchIssueByNumericId}.
  *
- * `cacheEvicted` is true when the helper invalidated a stale `cachedOrg`
- * entry after a 404 and fell through to the legacy unscoped endpoint.
- * Callers MUST treat their local `cachedOrg` as stale when this flag is
- * set and re-derive the org from `issue.permalink` instead — otherwise
- * a stale slug leaks into downstream API calls (issue events, traces).
+ * `fromCache` is true when `org` came from a still-valid issue-id → org
+ * cache entry, so the caller doesn't rewrite it.
  */
 type FetchIssueByNumericIdResult = {
+  org: string;
   issue: SentryIssue;
-  cacheEvicted: boolean;
+  fromCache: boolean;
 };
 
 /**
- * Fetch an issue by numeric ID, preferring an org-scoped endpoint when
- * the caller has explicit or cached org context. Falls back to the legacy
- * unscoped `/api/0/issues/{id}/` endpoint when no org is known, and also
- * when a cached org yields a 404 (stale mapping).
+ * Search the user's organizations for a numeric issue, skipping `skipOrg`
+ * (an org already known not to have it).
+ *
+ * @throws {ApiError} 404 when no organization returns the issue
+ */
+async function searchOrgsForIssue(
+  id: string,
+  skipOrg?: string,
+): Promise<{ org: string; issue: SentryIssue }> {
+  const orgs = await listOrganizations();
+  const found = await findIssueInOrgs(
+    orgs.map((org) => org.slug).filter((slug) => slug !== skipOrg),
+    id,
+    { collapse: ISSUE_DETAIL_COLLAPSE },
+  );
+  if (!found) {
+    throw new ApiError(`Issue ${id} not found`, 404);
+  }
+  return found;
+}
+
+/**
+ * Fetch an issue by numeric ID through org-scoped endpoints. Uses the
+ * explicit or cached org when there is one; otherwise, or when the cached
+ * org 404s (stale mapping, which is evicted), searches the user's orgs.
  *
  * Extracted from {@link resolveNumericIssue} to keep its cognitive
  * complexity below the project's lint threshold.
@@ -792,77 +791,59 @@ async function fetchIssueByNumericId(
     const issue = await getIssueInOrg(explicitOrg, id, {
       collapse: ISSUE_DETAIL_COLLAPSE,
     });
-    return { issue, cacheEvicted: false };
+    return { org: explicitOrg, issue, fromCache: false };
   }
   if (cachedOrg) {
     try {
       const issue = await getIssueInOrg(cachedOrg, id, {
         collapse: ISSUE_DETAIL_COLLAPSE,
       });
-      return { issue, cacheEvicted: false };
+      return { org: cachedOrg, issue, fromCache: true };
     } catch (orgErr) {
       if (orgErr instanceof ApiError && orgErr.status === 404) {
-        // Stale mapping (issue moved / deleted / access revoked). Evict the
-        // cache entry and fall through to the legacy unscoped endpoint.
+        // Stale mapping (issue moved / deleted / access revoked).
         clearCachedIssueOrg(id);
-        const issue = await getIssue(id, { collapse: ISSUE_DETAIL_COLLAPSE });
-        return { issue, cacheEvicted: true };
+        return {
+          ...(await searchOrgsForIssue(id, cachedOrg)),
+          fromCache: false,
+        };
       }
       throw orgErr;
     }
   }
-  const issue = await getIssue(id, { collapse: ISSUE_DETAIL_COLLAPSE });
-  return { issue, cacheEvicted: false };
+  return { ...(await searchOrgsForIssue(id)), fromCache: false };
 }
 
 /**
  * Resolve a bare numeric issue ID.
  *
- * Attempts org-scoped resolution with region routing when org context can be
- * derived from the working directory (DSN / env vars / config defaults), or
- * from the issue-id → org cache populated on previous runs.
- * Falls back to the legacy unscoped endpoint otherwise.
- * Extracts the org slug from the response permalink so callers like
- * {@link resolveOrgAndIssueId} can proceed without explicit org context.
+ * Uses the org from the working directory (DSN / env vars / config
+ * defaults) or from the issue-id → org cache populated on previous runs;
+ * without either, searches the user's organizations. Every request is
+ * org-scoped: the unscoped `GET /issues/{id}/` is deprecated and browns out.
  *
- * Caching: after a successful permalink-based org extraction, records the
- * numeric-id → org mapping so future runs skip the unscoped fallback and
- * route directly via the regional API. This addresses the
- * `sentry.issue.view` "Consecutive HTTP" fan-out pattern for bare numeric
- * IDs (Pattern D in the Sentry issue triage).
+ * Caching: after a search finds the owning org, records the numeric-id →
+ * org mapping so future runs make a single org-scoped request. This
+ * addresses the `sentry.issue.view` "Consecutive HTTP" fan-out pattern for
+ * bare numeric IDs (Pattern D in the Sentry issue triage).
  */
 async function resolveNumericIssue(
   id: string,
   cwd: string,
   commandContext: IssueCommandContext,
-): Promise<ResolvedIssueResult> {
+): Promise<StrictResolvedIssue> {
   const { command, commandBase, trailingArgs } = commandContext;
   const resolvedOrg = await resolveOrg({ cwd });
   // Prefer explicit context over the cache — `resolveOrg()` already factors
   // in env vars and config defaults that may point at a different org.
   const cachedOrg = resolvedOrg ? null : getCachedIssueOrg(id);
   try {
-    const { issue, cacheEvicted } = await fetchIssueByNumericId(
+    const { org, issue, fromCache } = await fetchIssueByNumericId(
       id,
       resolvedOrg?.org,
       cachedOrg,
     );
-    // When `cacheEvicted` is true, the cached org slug was stale (404'd) and
-    // the helper fell through to the unscoped endpoint. Do NOT let the stale
-    // `cachedOrg` participate in the `??` chain — re-derive from permalink.
-    const effectiveCachedOrg = cacheEvicted ? null : cachedOrg;
-    // Extract org from the response permalink as a fallback so that callers
-    // like resolveOrgAndIssueId (used by explain/plan) get the org slug even
-    // when no org context was available before the fetch.
-    const org =
-      resolvedOrg?.org ??
-      effectiveCachedOrg ??
-      extractOrgFromPermalink(issue.permalink);
-    // Best-effort: remember the numeric-id → org mapping so the next run
-    // skips the unscoped fallback. Skipped when the org came from a still-
-    // valid cache hit (already stored). When the cache was evicted we SHOULD
-    // re-write the corrected mapping derived from the permalink.
-    if (org && !resolvedOrg && !effectiveCachedOrg) {
+    if (!(resolvedOrg || fromCache)) {
       // Best-effort — a broken/read-only DB must not fail a successful lookup.
       try {
         setCachedIssueOrg(id, org);
@@ -880,10 +861,9 @@ async function resolveNumericIssue(
       // group IDs with short-ID suffixes. When org context is available, use
       // the real org slug instead of <org> placeholder (CLI-BT, 18 users).
       //
-      // Skip `cachedOrg` here: if the unscoped legacy endpoint 404'd too,
-      // the helper has already evicted the (proven-stale) cache entry, so
-      // suggesting the old slug in the hint would mislead the user. Only
-      // explicit `resolvedOrg` is worth preserving.
+      // Skip `cachedOrg` here: it 404'd and was evicted, so suggesting the
+      // old slug in the hint would mislead the user. Only explicit
+      // `resolvedOrg` is worth preserving.
       const orgHint = resolvedOrg?.org ?? "<org>";
       const hint = appendCommandArguments(
         `${commandBase} ${command} ${orgHint}/${id}`,
@@ -925,7 +905,7 @@ export async function resolveIssue(
   options: ResolveIssueOptions,
 ): Promise<ResolvedIssueResult> {
   const { cwd, command, commandBase, trailingArgs = [] } = options;
-  const effectiveCommandBase = commandBase ?? "sentry issue";
+  const effectiveCommandBase = commandBase ?? sentry`issue`;
   const { text, parsed, baseUrl } = issueArgumentOf(options.issueArg);
   if (baseUrl) {
     applySentryUrlContext(baseUrl);
@@ -1051,25 +1031,14 @@ export async function resolveIssue(
 /**
  * Resolve both organization slug and numeric issue ID.
  * Required for autofix endpoints that need both org and issue ID.
- * This is a stricter wrapper around resolveIssue that throws if org is undefined.
  *
  * @param options - Resolution options
  * @returns Object with org slug, numeric issue ID, and the issue's project ID when known
- * @throws {ContextError} When organization cannot be resolved
  */
 export async function resolveOrgAndIssueId(
   options: ResolveIssueOptions,
 ): Promise<{ org: string; issueId: string; projectId?: string }> {
   const result = await resolveIssue(options);
-  if (!result.org) {
-    const commandHint = buildCommandHint(
-      options.command,
-      issueArgumentOf(options.issueArg).text,
-      options.commandBase,
-      options.trailingArgs,
-    );
-    throw new ContextError("Organization", commandHint);
-  }
   return {
     org: result.org,
     issueId: result.issue.id,
@@ -1216,7 +1185,7 @@ export async function pollAutofixState(
     timeoutHint ??
     "The analysis may still complete in the background.\n" +
       `  View in Sentry: ${issueUrl}\n` +
-      `  Or retry:       sentry issue explain ${issueId}`;
+      `  Or retry:       ${sentry`issue explain ${issueId}`}`;
 
   return await poll<AutofixState>({
     fetchState: () => getAutofixState(orgSlug, issueId),

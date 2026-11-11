@@ -6,9 +6,8 @@
  * other modules in `src/lib/api/` import from.
  */
 
-import { promisify } from "node:util";
-import { zstdCompress as zstdCompressCb } from "node:zlib";
 import {
+  type BaseUrlRequest,
   createSentryClient,
   parseSentryLinkHeader,
   type SdkResult,
@@ -28,16 +27,22 @@ import {
 import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
 
-import { extractRequiredScopes } from "../api-scope.js";
-import { getUrlLoginCommand } from "../app-identity.js";
+import {
+  extractRequiredScopes,
+  parseInsufficientScopeChallenge,
+  SENTRY_SCOPES,
+} from "../api-scope.js";
+import { getUrlLoginCommand, sentry } from "../app-identity.js";
 import {
   type CredentialContext,
   getActiveEnvVarName,
+  getCredentialContext,
   isEnvTokenActive,
 } from "../db/auth.js";
 import { getConfiguredSentryUrl } from "../constants.js";
 import { getEnv } from "../env.js";
 import {
+  type ApiDenialReason,
   ApiError,
   CliError,
   type FunctionArgument,
@@ -53,6 +58,72 @@ import {
 } from "../sentry-client.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import { isSentrySaasUrl } from "../sentry-urls.js";
+import { OAUTH_SCOPES } from "../oauth.js";
+import { parseSntrysClaim } from "../token-claims.js";
+
+/** User-facing detail for a 401/403, and the reason to record for it. */
+type EnrichedDetail = {
+  detail: string;
+  denialReason: ApiDenialReason;
+};
+
+/** The scope org auth tokens have, and that Sentry's CI endpoints accept. */
+const ORG_CI_SCOPE = "org:ci";
+
+/** How to name the token a request sent: its env var, or the stored one. */
+function tokenHolder(credential: CredentialContext | undefined): string {
+  return credential?.source.startsWith("env:")
+    ? `Your ${getActiveEnvVarName()}`
+    : "Your stored";
+}
+
+/** Guidance for a 403 whose challenge named the scopes the endpoint accepts. */
+function acceptedScopeLines(acceptedScopes: string[]): string[] {
+  const scopeList = acceptedScopes.join(", ");
+  // Advise on the credential the request sent, which can be a stored login
+  // even when an env var also holds a token.
+  const credential = getCredentialContext();
+  if (credential?.refreshable) {
+    // `auth refresh --scope` grants exactly the listed scopes, so never name
+    // one scope alone: that would take the rest of the login's access away.
+    // Same rule as the elevation in `scope-recovery.ts`.
+    const lines = [
+      `Your login lacks the scope this request needs. Any one of these works: ${scopeList}.`,
+    ];
+    if (acceptedScopes.some((s) => OAUTH_SCOPES.includes(s))) {
+      lines.push(
+        `Log in again with the CLI's default scopes: ${sentry`auth login --force`}`,
+      );
+      return lines;
+    }
+    // Sentry lists accepted scopes alphabetically, so `admin` comes before
+    // `write`. SENTRY_SCOPES orders each namespace read, write, admin, so its
+    // first match is the least privileged scope `auth refresh` accepts.
+    const extra = SENTRY_SCOPES.find((s) => acceptedScopes.includes(s));
+    if (extra) {
+      lines.push(
+        `Log in again with the default scopes plus ${extra}: ${sentry`auth refresh --scope ${[...OAUTH_SCOPES, extra].join(",")}`}`,
+      );
+    }
+    return lines;
+  }
+  const lines = [
+    `${tokenHolder(credential)} token lacks the scope this request needs. Any one of these works: ${scopeList}.`,
+  ];
+  if (parseSntrysClaim(credential?.token)) {
+    lines.push(
+      "Org auth tokens only have org:ci. Use a personal token with one of these scopes instead.",
+    );
+  } else if (acceptedScopes.includes(ORG_CI_SCOPE)) {
+    lines.push(
+      "An org auth token has org:ci. Create one in your organization's Settings > Auth Tokens.",
+    );
+  }
+  lines.push(
+    "Check token scopes at: https://sentry.io/settings/account/api/auth-tokens/",
+  );
+  return lines;
+}
 
 /**
  * Enrich a 403 Forbidden error detail with actionable guidance.
@@ -63,24 +134,39 @@ import { isSentrySaasUrl } from "../sentry-urls.js";
  * scope/re-auth enrichment entirely — suggesting re-authentication for this
  * error would be actively wrong and has caused user confusion (CLI-SERVER-E).
  *
- * All other 403s fall through to the existing logic:
+ * Then, in order:
+ * - an `insufficient_scope` challenge → name the scopes the endpoint accepts
  * - env-var tokens → suggest checking token scopes
  * - OAuth tokens → suggest re-authentication
+ *
+ * @param acceptedScopes - Scopes from the response's `insufficient_scope`
+ *   challenge; any one of them works
  */
-function enrich403Detail(rawDetail: string | undefined): string {
+function enrich403Detail(
+  rawDetail: string | undefined,
+  acceptedScopes: string[],
+): EnrichedDetail {
   // Org-level policy — re-auth and token scope advice do not apply here.
   if (rawDetail?.includes("disabled this feature")) {
-    return [
-      rawDetail,
-      "",
-      "This is an org-level policy setting, not an auth issue.",
-      "You need org:admin/manager/owner role, or team:admin role on the team.",
-    ].join("\n  ");
+    return {
+      detail: [
+        rawDetail,
+        "",
+        "This is an org-level policy setting, not an auth issue.",
+        "You need org:admin/manager/owner role, or team:admin role on the team.",
+      ].join("\n  "),
+      denialReason: "member_policy",
+    };
   }
 
   const lines: string[] = [];
   if (rawDetail) {
     lines.push(rawDetail, "");
+  }
+
+  if (acceptedScopes.length > 0) {
+    lines.push(...acceptedScopeLines(acceptedScopes));
+    return { detail: lines.join("\n  "), denialReason: "insufficient_scope" };
   }
 
   const scopes = extractRequiredScopes(rawDetail);
@@ -102,15 +188,18 @@ function enrich403Detail(rawDetail: string | undefined): string {
     const scopeArgs = scopes.map((s) => `--scope ${s}`).join(" ");
     lines.push(
       `Your token is missing the required scope(s) '${scopes.join("', '")}'.`,
-      `Re-authenticate with: sentry auth refresh ${scopeArgs}`,
+      `Re-authenticate with: ${sentry`auth refresh ${scopeArgs}`}`,
     );
   } else {
     lines.push(
       "You may not have access to this resource.",
-      "Re-authenticate with: sentry auth login",
+      `Re-authenticate with: ${sentry`auth login`}`,
     );
   }
-  return lines.join("\n  ");
+  return {
+    detail: lines.join("\n  "),
+    denialReason: scopes.length > 0 ? "insufficient_scope" : "access_denied",
+  };
 }
 
 /**
@@ -132,25 +221,28 @@ function enrich403Detail(rawDetail: string | undefined): string {
  *
  * @see https://github.com/getsentry/sentry/blob/934f1473f198a62f9268d7140b80cd9ca1e59bb9/src/sentry/api/authentication.py#L536-L539
  */
-export function enrich401Detail(rawDetail: string | undefined): string {
+function enrich401Detail(rawDetail: string | undefined): EnrichedDetail {
   // Seat-limit lockout, not an auth failure. Sentry returns 401 with
   // `code: member-disabled-over-limit` when the org is over its member limit
   // and the caller's seat is disabled — re-authenticating cannot fix this.
   if (rawDetail?.includes("member-disabled-over-limit")) {
-    return [
-      "Your account is disabled in this organization because it is over its member limit.",
-      "This is a billing/seat-limit issue, not an auth problem — re-authenticating won't help.",
-      "Ask an org owner to upgrade the plan or free up a seat, then retry.",
-      "Or target a different org, e.g.:  sentry init my-other-org/",
-    ].join("\n  ");
+    return {
+      detail: [
+        "Your account is disabled in this organization because it is over its member limit.",
+        "This is a billing/seat-limit issue, not an auth problem — re-authenticating won't help.",
+        "Ask an org owner to upgrade the plan or free up a seat, then retry.",
+        `Or target a different org, e.g.:  ${sentry`issue list my-other-org/`}`,
+      ].join("\n  "),
+      denialReason: "seat_limit",
+    };
   }
 
   const lines: string[] = [];
   if (rawDetail) {
     lines.push(rawDetail, "");
   }
+  const expired = rawDetail?.toLowerCase().includes("expired") ?? false;
   if (isEnvTokenActive()) {
-    const expired = rawDetail?.toLowerCase().includes("expired");
     lines.push(
       `Your ${getActiveEnvVarName()} token ${expired ? "has expired" : "is not recognized or has been revoked"}.`,
       "Create a new token at: https://sentry.io/settings/account/api/auth-tokens/",
@@ -158,10 +250,13 @@ export function enrich401Detail(rawDetail: string | undefined): string {
   } else {
     lines.push(
       "Not authenticated or your session has expired.",
-      "Re-authenticate with: sentry auth login",
+      `Re-authenticate with: ${sentry`auth login`}`,
     );
   }
-  return lines.join("\n  ");
+  return {
+    detail: lines.join("\n  "),
+    denialReason: expired ? "expired" : "unrecognized",
+  };
 }
 
 /**
@@ -169,24 +264,29 @@ export function enrich401Detail(rawDetail: string | undefined): string {
  *
  * Extracted from {@link throwApiError} and {@link throwRawApiError} to keep
  * their cognitive complexity within the linter limit. 403 and 401 get
- * actionable guidance; all other statuses pass the raw detail through.
+ * actionable guidance and a {@link ApiDenialReason}; all other statuses pass
+ * the raw detail through.
  *
  * `hasUsableDetail` controls whether the raw detail string is forwarded to
  * the enrichment functions — passing `undefined` when false lets them render
  * without a noisy `{"detail":null}` prefix.
  */
 function enrichDetail(
-  status: number,
+  response: Response,
   detail: string | undefined,
   hasUsableDetail: boolean,
-): string | undefined {
+): { detail: string | undefined; denialReason?: ApiDenialReason } {
+  const { status } = response;
   if (status === 403) {
-    return enrich403Detail(hasUsableDetail ? detail : undefined);
+    return enrich403Detail(
+      hasUsableDetail ? detail : undefined,
+      parseInsufficientScopeChallenge(response.headers.get("www-authenticate")),
+    );
   }
   if (status === 401) {
     return enrich401Detail(hasUsableDetail ? detail : undefined);
   }
-  return detail;
+  return { detail };
 }
 
 /**
@@ -202,20 +302,10 @@ function enrichDetail(
  */
 export const parseLinkHeader = parseSentryLinkHeader;
 
-/** zstd body compressor, or null when the runtime lacks zstd support. */
-const zstdCompressAsync =
-  typeof zstdCompressCb === "function" ? promisify(zstdCompressCb) : null;
-
 /** Options for raw API requests to Sentry endpoints. */
 export type ApiRequestOptions<T = unknown> = {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   body?: unknown;
-  /**
-   * Compress the JSON body with zstd and send `Content-Encoding: zstd`. Useful
-   * for large bodies (e.g. a snapshot manifest). Silently falls back to plain
-   * JSON when the runtime lacks zstd support.
-   */
-  bodyEncoding?: "zstd";
   /** Query parameters. String arrays create repeated keys (e.g., tags=1&tags=2) */
   params?: Record<string, string | number | boolean | string[] | undefined>;
   /** Optional valibot schema for runtime validation of response data */
@@ -338,7 +428,7 @@ function buildNetworkErrorDetail(error: unknown): string {
   const steps = [causeHint ?? "Check your network connection and try again."];
   steps.push(
     isSentrySaasUrl(baseUrl)
-      ? "Check Sentry's status with: sentry status"
+      ? `Check Sentry's status with: ${sentry`status`}`
       : describeUrlSource(),
   );
   return [`Unable to reach Sentry at ${baseUrl}: ${cause}`, "", ...steps].join(
@@ -378,7 +468,7 @@ export function throwApiError(
   const status = response.status;
   const rawDetail =
     error && typeof error === "object" && "detail" in error
-      ? (error as { detail: unknown }).detail
+      ? error.detail
       : undefined;
   const hasUsableDetail = rawDetail !== null && rawDetail !== undefined;
   // Enrichment functions (enrich403Detail, enrich401Detail) render better
@@ -388,13 +478,17 @@ export function throwApiError(
     ? stringifyUnknown(rawDetail)
     : stringifyUnknown(error);
 
-  const is403 = status === 403;
+  const enriched = enrichDetail(response, detail, hasUsableDetail);
   throw new ApiError(
     `${context}: ${status} ${response.statusText ?? "Unknown"}`,
     status,
-    enrichDetail(status, detail, hasUsableDetail),
+    enriched.detail,
     undefined,
-    { enriched403: is403, ...readErrorFields(error) },
+    {
+      enriched403: status === 403,
+      denialReason: enriched.denialReason,
+      ...readErrorFields(error),
+    },
   );
 }
 
@@ -411,6 +505,7 @@ export function throwApiError(
  * @param context - Human-readable context for error messages
  * @returns The data from the successful response
  */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- callers name the app type for SDK data, which often differs from @sentry/api's generated types
 export function unwrapResult<T>(
   result: Pick<SdkResult, "data" | "error" | "response">,
   context: string,
@@ -520,12 +615,29 @@ export function appendSearchParams(
 }
 
 /**
- * Get SDK config for an organization's region.
- * Resolves the org's region URL and returns the config.
+ * `resolveBaseUrl` for `@sentry/api` clients: a request whose path names an
+ * organization goes to that organization's region, on the server of the
+ * stored account that knows it ({@link resolveOrgRegion}). An explicit
+ * server still limits the accounts. Unscoped paths keep the base URL.
  */
-export async function getOrgSdkConfig(orgSlug: string) {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  return getSdkClientConfig(regionUrl);
+async function resolveOrgBaseUrl({
+  baseUrl,
+  scope,
+}: BaseUrlRequest): Promise<string> {
+  return scope ? await resolveOrgRegion(scope.organization) : baseUrl;
+}
+
+/**
+ * SDK config that sends each request to the region of the organization its
+ * path names ({@link resolveOrgBaseUrl}).
+ */
+export function getOrgSdkConfig(
+  options: Parameters<typeof getSdkClientConfig>[1] = {},
+) {
+  return {
+    ...getSdkClientConfig(getApiBaseUrl(), options),
+    resolveBaseUrl: resolveOrgBaseUrl,
+  };
 }
 
 /**
@@ -724,7 +836,7 @@ export async function fetchAllPages<T>(
  * Used for internal endpoints not covered by @sentry/api SDK functions.
  *
  * @param regionUrl - The region's base URL (e.g., https://us.sentry.io)
- * @param endpoint - API endpoint path (e.g., "/users/me/regions/")
+ * @param endpoint - API endpoint path (e.g., "/organizations/")
  * @param options - Request options
  * @returns Parsed data and response headers
  */
@@ -736,7 +848,6 @@ export async function apiRequestToRegion<T>(
   const {
     method = "GET",
     body,
-    bodyEncoding,
     params,
     schema,
     credential,
@@ -757,20 +868,10 @@ export async function apiRequestToRegion<T>(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  let requestBody: string | Uint8Array | undefined;
-  if (body !== undefined) {
-    const json = JSON.stringify(body);
-    if (bodyEncoding === "zstd" && zstdCompressAsync) {
-      requestBody = await zstdCompressAsync(Buffer.from(json));
-      headers["Content-Encoding"] = "zstd";
-    } else {
-      requestBody = json;
-    }
-  }
   const response = await fetchFn(url, {
     method,
     headers,
-    body: requestBody,
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -806,33 +907,75 @@ export async function apiRequestToRegion<T>(
   }
 
   if (schema) {
-    const result = safeParse(schema, data);
-    if (!result.success) {
-      // Attach structured validation issues to the Sentry event so we can
-      // diagnose exactly which field(s) failed validation — the ApiError.detail
-      // string alone may not be visible in the Sentry issue overview.
-      // Strip valibot issues to metadata only (path/type/message) before
-      // attaching — full issues embed the raw failing `input` value.
-      Sentry.setContext("schema_validation", {
-        endpoint,
-        status: response.status,
-        issues: result.issues.slice(0, 10).map((i) => ({
-          // Strip raw input from path items — only keep structural path keys.
-          path: i.path?.map((p) => ({ key: p.key, type: p.type })),
-          type: i.type,
-          message: i.message,
-        })),
-      });
-      throw new ApiError(
-        `Unexpected response format from ${endpoint}`,
-        response.status,
-        result.issues.map((issue) => issue.message).join(", "),
-      );
-    }
-    return { data: result.output, headers: response.headers };
+    return {
+      data: validateResponse(schema, data, endpoint, response.status),
+      headers: response.headers,
+    };
   }
 
   return { data: data as T, headers: response.headers };
+}
+
+/**
+ * Validate a response body against the CLI's schema for it.
+ *
+ * Used for raw requests and for `@sentry/api` results whose generated type is
+ * looser than what the CLI reads (e.g. untyped span records).
+ *
+ * @param schema - Valibot schema for the response body
+ * @param data - Parsed response body
+ * @param endpoint - API path, named in the error message
+ * @param status - HTTP status of the response
+ * @throws {ApiError} When the body does not match the schema
+ */
+export function validateResponse<T>(
+  schema: GenericSchema<unknown, T>,
+  data: unknown,
+  endpoint: string,
+  status: number,
+): T {
+  const result = safeParse(schema, data);
+  if (!result.success) {
+    // Attach structured validation issues to the Sentry event so we can
+    // diagnose exactly which field(s) failed validation — the ApiError.detail
+    // string alone may not be visible in the Sentry issue overview.
+    // Strip valibot issues to metadata only (path/type/message) before
+    // attaching — full issues embed the raw failing `input` value.
+    Sentry.setContext("schema_validation", {
+      endpoint,
+      status,
+      issues: result.issues.slice(0, 10).map((i) => ({
+        // Strip raw input from path items — only keep structural path keys.
+        path: i.path?.map((p) => ({ key: p.key, type: p.type })),
+        type: i.type,
+        message: i.message,
+      })),
+    });
+    throw new ApiError(
+      `Unexpected response format from ${endpoint}`,
+      status,
+      result.issues.map((issue) => issue.message).join(", "),
+    );
+  }
+  return result.output;
+}
+
+/**
+ * Unwrap an @sentry/api SDK result and validate its body with the CLI's schema.
+ *
+ * @param result - The result from an SDK function call
+ * @param context - Human-readable context for HTTP error messages
+ * @param schema - Valibot schema for the response body
+ * @param endpoint - API path, named in schema-mismatch errors
+ */
+export function unwrapValidatedResult<T>(
+  result: Pick<SdkResult, "data" | "error" | "response">,
+  context: string,
+  schema: GenericSchema<unknown, T>,
+  endpoint: string,
+): T {
+  const data = unwrapResult<unknown>(result, context);
+  return validateResponse(schema, data, endpoint, result.response?.status ?? 0);
 }
 
 /**
@@ -840,11 +983,16 @@ export async function apiRequestToRegion<T>(
  * headers to the Sentry scope, and throw an enriched {@link ApiError}.
  *
  * Extracted from `apiRequestToRegion` to keep the main function's
- * cognitive complexity under the lint threshold.
+ * cognitive complexity under the lint threshold. Raw `fetch` callers outside
+ * this module (chunk uploads) use it too, so their 401/403s get the same
+ * guidance.
+ *
+ * @param context - Start of the error message, before the status
  */
-async function throwRawApiError(
+export async function throwRawApiError(
   response: Response,
   endpoint: string,
+  context = "API request failed",
 ): Promise<never> {
   const body = await readErrorResponse(response);
   let detail: string | undefined;
@@ -875,13 +1023,17 @@ async function throwRawApiError(
     "x-sentry-error": response.headers.get("x-sentry-error"),
     "www-authenticate": response.headers.get("www-authenticate"),
   });
-  const is403 = response.status === 403;
+  const enriched = enrichDetail(response, detail, detail !== undefined);
   throw new ApiError(
-    `API request failed: ${response.status} ${response.statusText}`,
+    `${context}: ${response.status} ${response.statusText}`,
     response.status,
-    enrichDetail(response.status, detail, detail !== undefined),
+    enriched.detail,
     endpoint,
-    { enriched403: is403, ...readErrorFields(body.json) },
+    {
+      enriched403: response.status === 403,
+      denialReason: enriched.denialReason,
+      ...readErrorFields(body.json),
+    },
   );
 }
 
@@ -998,7 +1150,8 @@ export type PreparedRawApiRequest = {
 };
 
 /**
- * Prepare a raw request without fetching or refreshing credentials.
+ * Prepare a raw request without sending it or refreshing credentials; an
+ * org-scoped path may look up the organization's region first.
  * Existing params retain append semantics; query overrides use the SDK's
  * replacement semantics for decoded page cursors and page sizes.
  */
@@ -1008,9 +1161,14 @@ export async function prepareRawApiRequest(
   query?: Record<string, unknown>,
 ): Promise<PreparedRawApiRequest> {
   const { method = "GET", body, params, headers, baseUrl } = options;
+  // A full URL keeps the request on its server; otherwise the path's
+  // organization picks the account, server, and region.
   const config = baseUrl
     ? getSdkConfig(baseUrl, { bufferResponseBody: true })
-    : getDefaultSdkConfig({ bufferResponseBody: true, path: endpoint });
+    : {
+        ...getDefaultSdkConfig({ bufferResponseBody: true }),
+        resolveBaseUrl: resolveOrgBaseUrl,
+      };
   const isStringBody = typeof body === "string";
   const request = await createSentryClient(config).client.prepareRequest({
     method,

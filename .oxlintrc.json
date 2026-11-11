@@ -13,8 +13,7 @@
     "**/worker-configuration.d.ts",
     "**/tsconfig*.json",
     "packages/mcp-server-mocks/src/fixtures/**",
-    "packages/codemod-cli3to4/tests/**",
-    "packages/cli/test/init-eval/templates/sveltekit-app/**"
+    "packages/codemod-cli3to4/tests/**"
   ],
   "rules": {
     "no-unused-vars": "off",
@@ -38,6 +37,13 @@
         "allow": ["URL", "URLSearchParams"]
       }
     ],
+    "typescript/no-unnecessary-type-constraint": "error",
+    "typescript/no-unnecessary-type-arguments": "error",
+    "typescript/no-unnecessary-boolean-literal-compare": "error",
+    "typescript/no-unnecessary-template-expression": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unnecessary-type-parameters": "error",
+    "typescript/no-useless-default-assignment": "error",
     "jsx-a11y/interactive-supports-focus": "off",
     "unicorn/prefer-spread": "error"
   },
@@ -57,6 +63,7 @@
     {
       "files": ["packages/mcp-core/**/*.{ts,tsx,js,mjs,cjs}"],
       "rules": {
+        "typescript/no-unnecessary-condition": "error",
         "no-restricted-imports": [
           "error",
           {
@@ -104,6 +111,7 @@
         "sentry-cli/no-regex-markdown-parsing": "error",
         "sentry-cli/json-transform-uses-fields": "error",
         "sentry-cli/no-runtime-output-schema-imports": "error",
+        "sentry-cli/no-hardcoded-sentry-command": "error",
         "no-restricted-imports": [
           "error",
           {
@@ -119,6 +127,15 @@
         "no-bitwise": "error",
         "max-params": ["error", 5],
         "sentry-cli/no-skipped-tests": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/cli/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/logger/**/*.{ts,tsx,js,mjs,cjs}"
+      ],
+      "rules": {
+        "no-console": "error"
       }
     },
     {

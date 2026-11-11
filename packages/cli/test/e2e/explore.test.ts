@@ -101,7 +101,7 @@ test("combines -b buckets with -t period and preserves metadata when projecting 
 
     expect(result.exitCode, result.stderr + result.stdout).toBe(0);
     expect(requests).toHaveLength(1);
-    const params = requests[0]!.searchParams;
+    const params = requests[0].searchParams;
     expect(params.getAll("yAxis")).toEqual(["count()", "latest_event()"]);
     expect(Object.fromEntries(params)).toEqual({
       dataset: "spans",

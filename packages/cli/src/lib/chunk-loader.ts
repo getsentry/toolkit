@@ -124,7 +124,7 @@ function suppressLoaderWarning(): void {
     return;
   }
   loaderWarningSuppressed = true;
-  const originalEmit = process.emit.bind(process) as typeof process.emit;
+  const originalEmit = process.emit.bind(process);
   process.emit = ((event: string, ...args: unknown[]) => {
     const [warning] = args;
     if (

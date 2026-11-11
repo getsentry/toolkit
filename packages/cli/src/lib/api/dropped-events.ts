@@ -36,7 +36,7 @@ export async function getDroppedEvents(
   orgSlug: string,
   options: DroppedEventsOptions = {},
 ): Promise<ListOrganizationEventsDroppedResponse> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await listOrganizationEventsDropped({
     ...config,
     path: { organization_id_or_slug: orgSlug },

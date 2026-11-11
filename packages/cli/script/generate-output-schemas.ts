@@ -33,6 +33,7 @@ import {
   extractSchemaFieldPaths,
   extractSchemaFields,
 } from "./lib/output-schema-fields.js";
+import { logger } from "../src/lib/logger.js";
 
 const SOURCE_DIR = "src/output-schemas";
 const OUTPUT_DIR = "src/generated/output-schemas";
@@ -100,5 +101,5 @@ export async function emit(): Promise<void> {
     await writeFile(`${OUTPUT_DIR}/${name}.ts`, renderModule(name, schemas));
   }
 
-  console.log(`Generated ${OUTPUT_DIR}/ (${count} output schemas)`);
+  logger.success(`Generated ${OUTPUT_DIR}/ (${count} output schemas)`);
 }

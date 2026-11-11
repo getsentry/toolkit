@@ -45,7 +45,7 @@ function createMockKV(options?: {
     delete: vi.fn(),
     list: vi.fn(),
     getWithMetadata: vi.fn(),
-  } as unknown as KVNamespace;
+  };
 }
 
 /**
@@ -215,6 +215,58 @@ describe("verifyConstraintsAccess", () => {
         "Project 'nonexistent-project' not found in organization 'sentry-mcp-evals'",
       );
     }
+  });
+
+  describe("project host", () => {
+    /** Answer the org with `regionUrl`, recording each requested URL. */
+    function mockOrgRegion(regionUrl: string) {
+      const requested: string[] = [];
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        );
+        requested.push(`${url.host}${url.pathname}`);
+        if (url.pathname === "/api/0/organizations/acme/") {
+          return Response.json({
+            id: "1",
+            slug: "acme",
+            name: "Acme",
+            links: { regionUrl, organizationUrl: "https://acme.sentry.io" },
+          });
+        }
+        return Response.json({ id: "2", slug: "web", name: "web" });
+      });
+      return requested;
+    }
+
+    it("asks for the project on the region URL's host as given", async () => {
+      const requested = mockOrgRegion("https://region.example.com");
+      const result = await verifyConstraintsAccess(
+        { organizationSlug: "acme", projectSlug: "web" },
+        { accessToken: token, sentryHost: host },
+      );
+      expect(result.ok).toBe(true);
+      expect(requested).toEqual([
+        "sentry.io/api/0/organizations/acme/",
+        "region.example.com/api/0/projects/acme/web/",
+      ]);
+    });
+
+    // The organization schema rejects an invalid region URL, so it fails
+    // before the project lookup, as it did before the shared lookup.
+    it("fails with 502 when the region URL is invalid", async () => {
+      const requested = mockOrgRegion("not a url");
+      const result = await verifyConstraintsAccess(
+        { organizationSlug: "acme", projectSlug: "web" },
+        { accessToken: token, sentryHost: host },
+      );
+      expect(result).toMatchObject({
+        ok: false,
+        status: 502,
+        message: "Failed to verify organization",
+      });
+      expect(requested).toEqual(["sentry.io/api/0/organizations/acme/"]);
+    });
   });
 
   describe("caching", () => {

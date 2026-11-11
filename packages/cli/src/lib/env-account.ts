@@ -4,7 +4,7 @@
  * `SENTRY_AUTH_TOKEN`/`SENTRY_TOKEN` with a trusted server acts as one
  * more account next to stored logins (see `getEnvAccount` in `db/auth.ts`).
  * It is never stored, so nothing records whose token it is; commands that
- * list accounts ask the server (`/auth/`) when they show it.
+ * list accounts ask the server (`/users/me/`) when they show it.
  */
 
 import { getCurrentUser } from "./api-client.js";
@@ -17,7 +17,7 @@ import type { SentryUser } from "../types/index.js";
 const log = logger.withTag("auth.env-account");
 
 /**
- * The user behind the env token, from `/auth/` on its own server.
+ * The user behind the env token, from `/users/me/` on its own server.
  * `undefined` for organization auth tokens (`sntrys_`), which belong to no
  * user, and when the request fails: identifying the token is best-effort.
  */

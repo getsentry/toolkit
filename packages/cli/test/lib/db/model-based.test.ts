@@ -214,7 +214,7 @@ class GetAuthConfigCommand implements AsyncCommand<DbModel, RealDb> {
       expect(realConfig?.token).toBe(model.auth.token as string);
       expect(realConfig?.source).toBe("oauth");
       expect(realConfig?.refreshToken).toBe(
-        (model.auth.refreshToken ?? undefined) as string | undefined,
+        model.auth.refreshToken ?? undefined,
       );
       if (model.auth.expiresAt !== null) {
         expect(realConfig?.expiresAt).toBeDefined();

@@ -264,10 +264,10 @@ describe("npm bundle", () => {
     expect(readChunks.length).toBeLessThan(chunks.length / 2);
   }, 15_000);
 
-  test("Ink sidecar can be imported and exports mountApp", async () => {
+  test("Ink sidecar can be imported and exports mountSelectPrompt", async () => {
     // The Ink sidecar (dist/ink-app.js) is a pre-bundled self-contained ESM
     // module that ships with the npm package. Verify it exists, can be imported
-    // by Node, and exports mountApp as a function. This catches sidecar
+    // by Node, and exports mountSelectPrompt as a function. This catches sidecar
     // bundling/resolution bugs — the exact class of bug where `with { type: "file" }`
     // crashed in tsx dev mode.
     //
@@ -278,9 +278,9 @@ describe("npm bundle", () => {
     const { stdout, stderr, exitCode } = await spawnCollect("node", [
       "--input-type=module",
       "-e",
-      `import { mountApp } from ${JSON.stringify(pathToFileURL(INK_APP_PATH).href)};\n` +
-        'if (typeof mountApp !== "function") {\n' +
-        '  process.stderr.write("mountApp is " + typeof mountApp + ", expected function");\n' +
+      `import { mountSelectPrompt } from ${JSON.stringify(pathToFileURL(INK_APP_PATH).href)};\n` +
+        'if (typeof mountSelectPrompt !== "function") {\n' +
+        '  process.stderr.write("mountSelectPrompt is " + typeof mountSelectPrompt + ", expected function");\n' +
         "  process.exit(1);\n" +
         "}",
     ]);

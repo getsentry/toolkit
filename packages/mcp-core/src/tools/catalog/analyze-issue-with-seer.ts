@@ -108,7 +108,7 @@ export default defineTool({
 
     const issue = await apiService.getIssue({
       organizationSlug: orgSlug,
-      issueId: parsedIssueId!,
+      issueId: parsedIssueId,
     });
 
     assertIssueWithinProjectConstraint({
@@ -127,7 +127,7 @@ export default defineTool({
       () =>
         apiService.getAutofixState({
           organizationSlug: orgSlug,
-          issueId: parsedIssueId!,
+          issueId: parsedIssueId,
         }),
       {
         maxRetries: SEER_MAX_RETRIES,
@@ -170,7 +170,7 @@ export default defineTool({
         () =>
           apiService.getAutofixState({
             organizationSlug: orgSlug,
-            issueId: parsedIssueId!,
+            issueId: parsedIssueId,
           }),
         {
           maxRetries: SEER_MAX_RETRIES,
@@ -260,7 +260,7 @@ export default defineTool({
           () =>
             apiService.getAutofixState({
               organizationSlug: orgSlug,
-              issueId: parsedIssueId!,
+              issueId: parsedIssueId,
             }),
           {
             maxRetries: SEER_MAX_RETRIES,

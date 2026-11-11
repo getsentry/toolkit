@@ -3,6 +3,7 @@ import type { ClientKey, SentryApiService } from "../../api-client/index";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamOrganizationSlug,
   ParamPlatform,
@@ -13,6 +14,26 @@ import {
 import { logWarn } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
+
+export const createProjectOutputSchema = z.object({
+  project: z.object({
+    id: z.string(),
+    slug: z.string(),
+    name: z.string(),
+  }),
+  dsn: z
+    .string()
+    .nullable()
+    .describe(
+      "Public DSN (SENTRY_DSN) for SDK initialization, or null when key setup failed.",
+    ),
+  repository: z
+    .object({
+      name: z.string(),
+      linked: z.boolean(),
+    })
+    .nullable(),
+});
 
 type RepositoryMatch = {
   name: string;
@@ -121,7 +142,8 @@ export default defineTool({
     "- Create project AND need DSN in one step",
     "- Create project and link an existing repository",
     "",
-    "Returns the created project slug and a usable SENTRY_DSN when key setup succeeds.",
+    "Returns the project and its public `dsn` (SENTRY_DSN); tell the user both. Call create_dsn only if `dsn` is null.",
+    "A linked repository gets a root code mapping (`/` -> `/`). If `repository.linked` is false, the project exists but linking failed; ask the user to check permissions or link it in Sentry.",
     "",
     "Be careful when using this tool!",
     "",
@@ -163,6 +185,7 @@ export default defineTool({
         "Optional repository name to link to the project (e.g. 'getsentry/sentry'). The repo must already be connected to the organization via a VCS integration.",
       ),
   },
+  outputSchema: createProjectOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
@@ -196,7 +219,6 @@ export default defineTool({
     });
 
     let repositoryLinked = false;
-    let repositoryLinkFailed = false;
     if (repositoryMatch) {
       try {
         const repositoryMapping = await apiService.linkProjectRepository({
@@ -210,7 +232,6 @@ export default defineTool({
           repositoryMapping.mappings.some((mapping) =>
             ["created", "updated"].includes(mapping.status),
           );
-        repositoryLinkFailed = !repositoryLinked;
       } catch (err) {
         // Repository linking happens after project creation; preserve the
         // project + DSN response and report the link failure in the output.
@@ -218,7 +239,6 @@ export default defineTool({
           loggerScope: ["runtime", "project-management"],
           extra: { action: "link_project_repository" },
         });
-        repositoryLinkFailed = true;
       }
     }
 
@@ -227,34 +247,16 @@ export default defineTool({
       organizationSlug,
       projectSlug: project.slug,
     });
-    const sentryDsn = clientKey?.dsn.public ?? null;
-
-    let output = `# New Project in **${organizationSlug}**\n\n`;
-    output += `**ID**: ${project.id}\n`;
-    output += `**Slug**: ${project.slug}\n`;
-    output += `**Name**: ${project.name}\n`;
-    output += `**SENTRY_DSN**: ${sentryDsn ?? "unavailable"}\n\n`;
-    if (repositoryMatch && repositoryLinked) {
-      output += `**Repository**: ${repositoryMatch.name} (linked)\n`;
-      output += "**Code Mapping**: `/` -> `/`\n\n";
-    } else if (repositoryMatch && repositoryLinkFailed) {
-      output += `**Repository**: Found ${repositoryMatch.name} but failed to link it to the project. Check permissions and try linking manually.\n\n`;
-    }
-    output += "## Response Notes\n\n";
-    if (sentryDsn) {
-      output += `- Please tell the user the project slug and **SENTRY_DSN**.\n`;
-      output += `- No additional DSN creation step is needed.\n`;
-      output += `- The **SENTRY_DSN** value is used to initialize Sentry SDKs.\n`;
-    } else {
-      output += `- Please tell the user the project slug.\n`;
-      output += `- Project creation succeeded, but SENTRY_DSN could not be retrieved or created.\n`;
-      output += `- Use create_dsn for this project before initializing Sentry SDKs.\n`;
-    }
-    if (repositoryMatch && repositoryLinked) {
-      output += `- Repository linked to project with a root code mapping: ${repositoryMatch.name}\n`;
-    } else if (repositoryMatch && repositoryLinkFailed) {
-      output += `- Project creation succeeded, but repository linking did not. Ask the user to confirm permissions or link the repository manually in Sentry.\n`;
-    }
-    return output;
+    return structuredResult({
+      project: {
+        id: String(project.id),
+        slug: project.slug,
+        name: project.name,
+      },
+      dsn: clientKey?.dsn.public ?? null,
+      repository: repositoryMatch
+        ? { name: repositoryMatch.name, linked: repositoryLinked }
+        : null,
+    });
   },
 });

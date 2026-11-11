@@ -376,7 +376,9 @@ describe("truncate option", () => {
   });
 
   test("ellipsis inherits ANSI color from surrounding text", () => {
-    const colored = `${chalk.hex("#898294")("A very long colored text that will be truncated at the boundary")}`;
+    const colored = chalk.hex("#898294")(
+      "A very long colored text that will be truncated at the boundary",
+    );
     const out = renderTextTable(["VAL"], [[colored]], {
       maxWidth: 30,
       truncate: true,

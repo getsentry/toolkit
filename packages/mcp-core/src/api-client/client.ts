@@ -121,7 +121,7 @@ import {
   isPublicSentryHost,
   type TraceMetricIdentifier,
 } from "../utils/url-utils";
-import { USER_AGENT } from "../version";
+import { getUserAgent } from "../version";
 import {
   AgenticOnboardingRunSchema,
   AIConversationDetailsResponseSchema,
@@ -232,6 +232,7 @@ import type {
   IssueCommentList,
   IssueIntegrationList,
   IssueList,
+  IssueResolutionDetails,
   IssueTagKeyList,
   IssueTagValues,
   MetricAlertRule,
@@ -687,7 +688,7 @@ export class SentryApiService {
 
   /** Headers for every request after `Content-Type`. */
   private requestHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { "User-Agent": USER_AGENT };
+    const headers: Record<string, string> = { "User-Agent": getUserAgent() };
     if (this.accessToken !== null) {
       const authorization = sentryBearerHeader(this.accessToken);
       if (authorization === null) {
@@ -3261,7 +3262,7 @@ export class SentryApiService {
       query: {
         limit,
         sort: sortBy,
-        statsPeriod: statsPeriod ?? DEFAULT_SEARCH_ISSUES_PERIOD,
+        statsPeriod,
         // Always send `query`, even empty: Sentry applies `is:unresolved`
         // only when the parameter is missing.
         query: query ?? "",
@@ -4122,17 +4123,21 @@ export class SentryApiService {
       ignoreWindow,
       ignoreUserCount,
       ignoreUserWindow,
+      statusDetails,
+      priority,
     }: {
       organizationSlug: string;
       issueId: string;
       status?: string;
       assignedTo?: string | null;
+      priority?: string;
       substatus?: string;
       ignoreDuration?: number;
       ignoreCount?: number;
       ignoreWindow?: number;
       ignoreUserCount?: number;
       ignoreUserWindow?: number;
+      statusDetails?: IssueResolutionDetails;
     },
     opts?: RequestOptions,
   ): Promise<Issue> {
@@ -4145,8 +4150,12 @@ export class SentryApiService {
       ignoreWindow?: number;
       ignoreUserCount?: number;
       ignoreUserWindow?: number;
+      statusDetails?: IssueResolutionDetails;
+      priority?: string;
     } = {};
     if (status !== undefined) updateData.status = status;
+    if (priority !== undefined) updateData.priority = priority;
+    if (statusDetails !== undefined) updateData.statusDetails = statusDetails;
     if (assignedTo !== undefined) updateData.assignedTo = assignedTo ?? "";
     if (substatus !== undefined) updateData.substatus = substatus;
     if (ignoreDuration !== undefined)

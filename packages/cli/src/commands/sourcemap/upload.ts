@@ -39,6 +39,7 @@ import {
   type InjectResult,
   resolveUploadTarget,
 } from "../../lib/sourcemap/inject.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Result type for the upload command. */
 type UploadCommandResult = {
@@ -74,7 +75,7 @@ function formatUploadResult(data: UploadCommandResult): string {
   return renderMarkdown(mdKvTable(rows));
 }
 
-const USAGE_HINT = "sentry sourcemap upload <directory>";
+const usageHint = () => sentry`sourcemap upload <directory>`;
 
 /**
  * Compute the longest common directory prefix across a list of paths.
@@ -226,35 +227,35 @@ export const uploadCommand = buildCommand({
     examples: [
       {
         description: "Upload sourcemaps from dist/",
-        command: "sentry sourcemap upload ./dist",
+        run: "sourcemap upload ./dist",
       },
       {
         description: "Upload only the files a glob matches",
-        command: "sentry sourcemap upload '.next/static/**'",
+        run: "sourcemap upload '.next/static/**'",
       },
       {
         description: "Associate with a release",
-        command: "sentry sourcemap upload ./dist --release 1.0.0",
+        run: "sourcemap upload ./dist --release 1.0.0",
       },
       {
         description: "Set a custom URL prefix",
-        command: "sentry sourcemap upload ./dist --url-prefix '~/static/js/'",
+        run: "sourcemap upload ./dist --url-prefix '~/static/js/'",
       },
       {
         description: "Don't fail when no sourcemaps are found",
-        command: "sentry sourcemap upload ./dist --allow-empty",
+        run: "sourcemap upload ./dist --allow-empty",
       },
       {
         description: "Set a release and distribution",
-        command: "sentry sourcemap upload ./dist --release 1.0.0 --dist 12345",
+        run: "sourcemap upload ./dist --release 1.0.0 --dist 12345",
       },
       {
         description: "Upload without rewriting sourcemaps",
-        command: "sentry sourcemap upload ./dist --no-rewrite",
+        run: "sourcemap upload ./dist --no-rewrite",
       },
       {
         description: "Only upload some extensions",
-        command: "sentry sourcemap upload ./dist --ext .js,.mjs",
+        run: "sourcemap upload ./dist --ext .js,.mjs",
       },
     ],
   },
@@ -415,10 +416,10 @@ export const uploadCommand = buildCommand({
 
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 
