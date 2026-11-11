@@ -744,10 +744,16 @@ const bins: Record<Arm, string> = { cli: binDir, web: hiddenSentryDir() };
 const pricing = agent === "codex" ? await codexPricing() : undefined;
 if (binDir) {
   // Download the docs index once, so the first run does not pay for it.
-  execFileSync(join(binDir, "sentry"), ["docs", "sentry", "-n", "1"], {
-    env: { ...process.env, SENTRY_CLI_NO_TELEMETRY: "1" },
-    stdio: "ignore",
-  });
+  // A SENTRY_CLI_BINARY without a local index, such as a released CLI that
+  // asks the hosted docs service, rejects `-n`; it has nothing to warm.
+  try {
+    execFileSync(join(binDir, "sentry"), ["docs", "sentry", "-n", "1"], {
+      env: { ...process.env, SENTRY_CLI_NO_TELEMETRY: "1" },
+      stdio: "ignore",
+    });
+  } catch {
+    process.stderr.write("Could not warm the docs index; continuing.\n");
+  }
 }
 
 const jobs = tasks.flatMap((task) =>
