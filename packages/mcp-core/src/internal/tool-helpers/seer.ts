@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AutofixRunState } from "../../api-client/index";
 import type { Issue } from "../../api-client/types";
+import { isPlainObject } from "../type-guards";
 
 type AutofixRun = NonNullable<AutofixRunState["autofix"]>;
 
@@ -81,6 +82,42 @@ export function isHumanInterventionStatus(status: string): boolean {
 export function getHumanInterventionGuidance(status: string): string {
   if (status === "awaiting_user_input") {
     return "\nSeer is waiting for your response to proceed. Please review the analysis and provide feedback.\n";
+  }
+  return "";
+}
+
+export const SEER_START_OUT_OF_CREDITS_MESSAGE =
+  "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.";
+
+export const SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE =
+  "Your organization does not have enough credits to continue your Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.";
+
+const SEER_NO_QUOTA_MESSAGE =
+  "Your organization does not have enough Seer quota to start an Autofix run.";
+
+/**
+ * Explain a 402 from starting a run. Sentry tags the 402 with a `code`. Older
+ * Sentry versions send the out-of-quota 402 as a bare string with no code, so
+ * anything that isn't out of credits is treated as out of quota.
+ */
+export function getSeerPaymentRequiredMessage(responseBody: unknown): string {
+  if (
+    isPlainObject(responseBody) &&
+    responseBody.code === "seer_out_of_credits"
+  ) {
+    return SEER_START_OUT_OF_CREDITS_MESSAGE;
+  }
+  return SEER_NO_QUOTA_MESSAGE;
+}
+
+/**
+ * Explain why a failed run stopped, when Seer gives a reason we can explain.
+ */
+export function getFailureReasonGuidance(
+  failureReason: string | null | undefined,
+): string {
+  if (failureReason === "out_of_credits") {
+    return `\n${SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE}\n`;
   }
   return "";
 }

@@ -1359,6 +1359,7 @@ export const AutofixRunStateSchema = z.object({
       run_id: z.number(),
       updated_at: z.string().nullable().optional(),
       status: AutofixStatusSchema,
+      failure_reason: z.string().nullable().optional(),
       blocks: z.array(AutofixBlockSchema).default([]),
       pending_user_input: z.unknown().nullable().optional(),
       repo_pr_states: z
