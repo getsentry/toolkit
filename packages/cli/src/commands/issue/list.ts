@@ -1617,11 +1617,7 @@ function jsonTransformIssueList(
   const transformed = jsonTransformListResult(result, fields);
   // Only inject into empty paginated envelopes — helps agents discover
   // query syntax when their search returned nothing.
-  if (
-    transformed &&
-    typeof transformed === "object" &&
-    !Array.isArray(transformed)
-  ) {
+  if (!Array.isArray(transformed)) {
     const envelope = transformed as Record<string, unknown>;
     const data = envelope.data;
     if (Array.isArray(data) && data.length === 0) {
@@ -1805,7 +1801,7 @@ export const listCommand = buildListCommand("issue", {
       const displayRows: IssueTableRow[] = [
         {
           issue,
-          orgSlug: org ?? "",
+          orgSlug: org,
           formatOptions: {
             projectSlug: issue.project?.slug ?? "",
             isMultiProject: false,

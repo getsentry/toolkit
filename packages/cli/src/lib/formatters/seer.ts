@@ -428,7 +428,7 @@ export function formatSolution(solution: SolutionArtifact): string {
   lines.push("## Solution");
   lines.push("");
 
-  lines.push(`**Summary:** ${text(solution.data.one_line_summary ?? "")}`);
+  lines.push(`**Summary:** ${text(solution.data.one_line_summary)}`);
   lines.push("");
 
   if (solution.data.steps.length > 0) {

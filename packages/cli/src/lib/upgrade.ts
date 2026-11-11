@@ -486,7 +486,7 @@ export async function fetchLatestFromGitHubWithSource(
   let response = resolved.response;
   const visitedPages = new Set([getGitHubLatestReleaseUrl(resolved.source)]);
   const versions: string[] = [];
-  while (true) {
+  for (;;) {
     const data = await parseUpgradeJson(
       response,
       signal,

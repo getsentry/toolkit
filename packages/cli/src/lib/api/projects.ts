@@ -640,8 +640,8 @@ export async function findProjectByDsn(
 ): Promise<SentryProject | null> {
   const orgs = await listOrganizations();
   const limit = pLimit(ORG_FANOUT_CONCURRENCY);
-  let project: SentryProject | null = null;
-  let unsupported = false;
+  let project = null as SentryProject | null;
+  let unsupported = false as boolean;
   await Promise.all(
     orgs.map((org) =>
       limit(async () => {

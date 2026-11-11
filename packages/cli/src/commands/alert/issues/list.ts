@@ -329,9 +329,7 @@ async function handleResolvedTargets(
   );
   const filteredRows = flags.query
     ? allRows.filter((row) =>
-        (row.rule.name ?? "")
-          .toLowerCase()
-          .includes(flags.query?.toLowerCase() ?? ""),
+        row.rule.name.toLowerCase().includes(flags.query?.toLowerCase() ?? ""),
       )
     : allRows;
 
@@ -453,7 +451,7 @@ function formatIssueAlertListHuman(result: IssueAlertListResult): string {
 
   const tableRows: Row[] = rows.map(({ rule: r, target }) => ({
     id: r.id,
-    name: tableCell(r.name ?? "(untitled)"),
+    name: tableCell(r.name),
     ...(isMultiProject && {
       project: `${target.org}/${target.project}`,
     }),

@@ -463,7 +463,7 @@ async function* generateFollowLogs<T extends LogLike>(
     config.onInitialLogs?.(initialLogs);
 
     // Poll loop — exits when SIGINT fires
-    while (!controller.signal.aborted) {
+    for (;;) {
       await abortableSleep(pollIntervalMs, controller.signal);
       if (controller.signal.aborted) {
         break;
@@ -928,7 +928,7 @@ export const listCommand = buildListCommand(
             flags,
             onDiagnostic: (msg) => logger.warn(msg),
             abortSignal: (this.process as { abortSignal?: AbortSignal })
-              ?.abortSignal,
+              .abortSignal,
             fetch: (statsPeriod) =>
               listTraceLogs(org, traceId, {
                 query: traceQuery,
@@ -1001,7 +1001,7 @@ export const listCommand = buildListCommand(
             flags,
             onDiagnostic: (msg) => logger.warn(msg),
             abortSignal: (this.process as { abortSignal?: AbortSignal })
-              ?.abortSignal,
+              .abortSignal,
             fetch: (statsPeriod, afterTimestamp) =>
               listLogs(org, project, {
                 query: flags.query,

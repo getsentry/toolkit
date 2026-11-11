@@ -339,9 +339,7 @@ async function handleResolvedOrgs(
   );
   const filteredRows = flags.query
     ? allRows.filter((row) =>
-        (row.rule.name ?? "")
-          .toLowerCase()
-          .includes(flags.query?.toLowerCase() ?? ""),
+        row.rule.name.toLowerCase().includes(flags.query?.toLowerCase() ?? ""),
       )
     : allRows;
 
@@ -464,7 +462,7 @@ function formatMetricAlertListHuman(result: MetricAlertListResult): string {
 
   const tableRows: Row[] = rows.map(({ rule: r, orgSlug }) => ({
     id: r.id,
-    name: tableCell(r.name ?? "(untitled)"),
+    name: tableCell(r.name),
     ...(isMultiOrg && { org: orgSlug }),
     aggregate: r.aggregate,
     dataset: r.dataset,

@@ -76,6 +76,7 @@ export async function mapFilesConcurrent<TIn, TOut>(
             return;
           }
           const out = await fn(item);
+          // oxlint-disable-next-line typescript/no-unnecessary-condition -- another task can set earlyExit while fn is awaited
           if (state.earlyExit || out === null) {
             return;
           }
@@ -134,7 +135,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
     });
   };
 
-  let producerDone = false;
+  let producerDone = false as boolean;
   let producerError: unknown = null;
   const tasks: Promise<void>[] = [];
 
@@ -151,6 +152,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
               return;
             }
             const out = await fn(item);
+            // oxlint-disable-next-line typescript/no-unnecessary-condition -- another task can set earlyExit while fn is awaited
             if (state.earlyExit || out === null || out.length === 0) {
               return;
             }
@@ -171,7 +173,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
   })();
 
   try {
-    while (true) {
+    for (;;) {
       if (queue.length > 0) {
         // Drain everything already queued before we yield control,
         // so fast consumers don't spin one microtask per result.

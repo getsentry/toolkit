@@ -135,7 +135,7 @@ function normalizeHeading(text: string): string {
  * @returns Array of sections with category and markdown content
  */
 export function extractSections(body: string): ChangeSection[] {
-  if (!body?.trim()) {
+  if (!body.trim()) {
     return [];
   }
 

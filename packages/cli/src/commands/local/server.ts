@@ -923,6 +923,7 @@ async function consumeSSEWithWarning(
       onOversized: warnOversized,
     });
 
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- the signal can abort during the await; TS keeps the loop condition's narrowing
     if (signal.aborted || result === "retained") {
       return;
     }
@@ -1077,7 +1078,7 @@ async function consumeSSEOnce(
 
   const decoder = new TextDecoder();
   const state: SSEParserState = { eventType: "", dataLines: [], id: "" };
-  let retained = false;
+  let retained = false as boolean;
   const onEvent = (type: string, data: string, id: string) => {
     if (id) {
       onId(id);

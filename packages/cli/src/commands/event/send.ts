@@ -75,7 +75,7 @@ async function buildFilePayload(
     try {
       const firstLine = new TextDecoder().decode(bytes).split("\n")[0] ?? "{}";
       const header = JSON.parse(firstLine) as Record<string, unknown>;
-      eventId = (header.event_id as string) ?? "";
+      eventId = typeof header.event_id === "string" ? header.event_id : "";
     } catch (err) {
       log.debug("Could not extract event_id from envelope header", err);
     }

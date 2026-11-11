@@ -360,7 +360,7 @@ async function* grepViaWorkers(
   // fires before the consumer is waiting, so the consumer picks it
   // up on the next loop iteration instead of missing the wakeup.
   let pendingNotify: (() => void) | null = null;
-  let notifyPending = false;
+  let notifyPending = false as boolean;
   const wakeConsumer = () => {
     if (pendingNotify) {
       const fn = pendingNotify;
@@ -371,8 +371,8 @@ async function* grepViaWorkers(
     }
   };
 
-  let earlyExit = false;
-  let walkerDone = false;
+  let earlyExit = false as boolean;
+  let walkerDone = false as boolean;
   let inflightCount = 0;
 
   // Track dispatch outcomes so the consumer's `finally` can detect

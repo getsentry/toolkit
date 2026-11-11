@@ -326,7 +326,7 @@ export function printCustomHelp(options: CustomHelpOptions = {}): string {
 
   // Skip banner for non-TTY to avoid wasting tokens in agent loops
   if (process.stdout.isTTY) {
-    const cols = process.stdout.columns ?? 80;
+    const cols = process.stdout.columns || 80;
     // Prefer a real kitty/sixel image on capable terminals; otherwise fall back
     // to the block-art banner sized to the terminal width (returns "" only when
     // the terminal is too narrow for even the compact mark).

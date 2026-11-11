@@ -775,7 +775,7 @@ export type StreamedSpan = {
  * `Record<string, unknown>` compatible with the semantic display pipeline.
  */
 function flattenSpanAttributes(
-  attrs: Record<string, { type?: string; value?: unknown }> | undefined,
+  attrs: Record<string, { type?: string; value?: unknown } | null> | undefined,
 ): Record<string, unknown> {
   if (!attrs) {
     return {};
@@ -1301,7 +1301,7 @@ function formatLogJson(
                 )
                 .map(([k, v]) => [
                   stripBidi(k),
-                  typeof v.value === "string" ? stripBidi(v.value) : v.value,
+                  typeof v?.value === "string" ? stripBidi(v.value) : v?.value,
                 ]),
             )
           : undefined,

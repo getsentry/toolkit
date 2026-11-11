@@ -184,7 +184,7 @@ export async function resolveDashboardId(
  * @returns Resolved widget index
  */
 export function resolveWidgetIndex(
-  widgets: DashboardWidget[],
+  widgets: readonly { title?: string }[],
   index: number | undefined,
   title: string | undefined,
 ): number {

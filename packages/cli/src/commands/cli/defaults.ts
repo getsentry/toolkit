@@ -467,7 +467,7 @@ export const defaultsCommand = buildCommand({
     if (canonical === "telemetry") {
       const effective = computeTelemetryEffective();
       if (
-        effective?.source.startsWith("env:") &&
+        effective.source.startsWith("env:") &&
         effective.enabled !== (newValue === "on")
       ) {
         log.warn(

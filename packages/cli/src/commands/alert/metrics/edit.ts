@@ -324,7 +324,7 @@ export const editCommand = buildCommand({
     yield new CommandOutput({
       ...updated,
       org: orgSlug,
-      id: stringifyUnknown(updated.id ?? rule.id),
+      id: stringifyUnknown(updated.id),
       // The detectors endpoint returns `enabled` rather than `status`.
       status: !updated.enabled ? "disabled" : "active",
     } satisfies MetricAlertEditOutput);

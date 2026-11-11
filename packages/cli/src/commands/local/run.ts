@@ -856,6 +856,7 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
     }),
   ]);
   clearTimeout(graceTimer);
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- exitCode changes while awaiting; TS keeps the earlier narrowing
   if (!exited && child.exitCode === null) {
     try {
       child.kill("SIGKILL");
@@ -865,6 +866,7 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
     }
     // Only await close if the child hasn't exited yet — avoids hanging
     // if close fired between SIGKILL and listener attachment.
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- exitCode changes while awaiting; TS keeps the earlier narrowing
     if (child.exitCode === null) {
       await new Promise<void>((r) => child.on("close", () => r()));
     }

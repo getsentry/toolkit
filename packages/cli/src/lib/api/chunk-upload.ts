@@ -693,7 +693,7 @@ export async function assembleArtifactBundle(
       `organizations/${org}/artifactbundle/assemble/`,
     );
   } catch (error) {
-    const projects = body.projects ?? [];
+    const { projects } = body;
     if (projects.length > 0 && isInvalidProjectsError(error)) {
       throw projectsNotFoundError(org, projects);
     }
