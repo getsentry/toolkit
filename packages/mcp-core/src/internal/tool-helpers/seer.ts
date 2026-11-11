@@ -158,6 +158,8 @@ function wrapSeerAnalysisOutput({
 // everything is treated as optional.
 const RootCauseArtifactDataSchema = z.object({
   one_line_description: z.string().optional(),
+  headline: z.string().optional(),
+  cause: z.string().optional(),
   five_whys: z.array(z.string()).default([]),
   reproduction_steps: z.array(z.string()).default([]),
 });
@@ -195,11 +197,21 @@ function formatRootCauseArtifact(data: unknown): string | null {
   if (!parsed.success) {
     return null;
   }
-  const { one_line_description, five_whys, reproduction_steps } = parsed.data;
+  const {
+    one_line_description,
+    headline,
+    cause,
+    five_whys,
+    reproduction_steps,
+  } = parsed.data;
 
   const sections: string[] = [];
-  if (one_line_description) {
-    sections.push(one_line_description);
+  const summary = one_line_description ?? headline;
+  if (summary) {
+    sections.push(summary);
+  }
+  if (cause) {
+    sections.push(cause);
   }
   if (five_whys.length > 0) {
     sections.push(five_whys.map((why, i) => `${i + 1}. ${why}`).join("\n"));
@@ -288,7 +300,9 @@ export function getAutofixArtifactSummaries(autofix: AutofixRun): {
   const solution = SolutionArtifactDataSchema.safeParse(artifacts.solution);
   return {
     rootCause:
-      (rootCause.success && rootCause.data.one_line_description) || null,
+      (rootCause.success &&
+        (rootCause.data.one_line_description ?? rootCause.data.headline)) ||
+      null,
     solution: (solution.success && solution.data.one_line_summary) || null,
   };
 }

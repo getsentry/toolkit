@@ -157,6 +157,11 @@ function buildRootCauseMarkdown(cause: RootCause, index: number): string {
   lines.push(`### Cause #${index}: ${text(cause.description ?? "")}`);
   lines.push("");
 
+  if (cause.cause) {
+    lines.push(text(cause.cause));
+    lines.push("");
+  }
+
   if (cause.relevant_repos && cause.relevant_repos.length > 0) {
     lines.push(`**Repository:** ${cause.relevant_repos.join(", ")}`);
     lines.push("");

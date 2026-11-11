@@ -6,7 +6,47 @@ import {
   getHumanInterventionGuidance,
   isSeerSupportedIssue,
   getSeerUnsupportedIssueMessage,
+  getOutputForAutofixRun,
+  getAutofixArtifactSummaries,
 } from "./seer";
+import type { AutofixRun } from "../../api-client/types";
+
+const singleRun = {
+  run_id: 1,
+  status: "completed",
+  blocks: [
+    {
+      artifacts: [
+        {
+          key: "root_cause",
+          data: {
+            headline: "Regex rejects ids",
+            cause: "The regex is too strict.",
+          },
+          reason: "",
+        },
+      ],
+    },
+  ],
+  repo_pr_states: {},
+} as unknown as AutofixRun;
+
+describe("single-run root cause", () => {
+  it("renders the headline and cause", () => {
+    const output = getOutputForAutofixRun(singleRun, {
+      includeProvenanceTags: false,
+    });
+    expect(output).toContain(
+      "## Root Cause Analysis\n\nRegex rejects ids\n\nThe regex is too strict.",
+    );
+  });
+
+  it("summarizes with the headline", () => {
+    expect(getAutofixArtifactSummaries(singleRun).rootCause).toBe(
+      "Regex rejects ids",
+    );
+  });
+});
 
 describe("seer-utils", () => {
   describe("isTerminalStatus", () => {
