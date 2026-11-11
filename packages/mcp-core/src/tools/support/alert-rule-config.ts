@@ -40,7 +40,7 @@ export const ParamAlertActionFilters = z
     }),
   )
   .describe(
-    "The complete list of action groups, conditions, and notification actions. Preserve their IDs and all unchanged groups and actions; omitted entries are removed. Slack and Microsoft Teams resolve config.targetDisplay as a channel name within integrationId. Other providers use their native config.targetIdentifier and data fields.",
+    "The complete list of action groups, conditions, and notification actions. Preserve their IDs and all unchanged groups and actions; omitted entries are removed. Slack and Microsoft Teams resolve config.targetDisplay as a channel name within integrationId. Other providers use their native config.targetIdentifier and data fields; for Sentry Apps it is sentryApp.id from get_alert_options, not the installation ID.",
   );
 
 // Creation allocates new components; copied IDs must never reach the API.
