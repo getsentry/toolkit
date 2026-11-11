@@ -27,11 +27,16 @@ import {
 import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
 
-import { extractRequiredScopes } from "../api-scope.js";
+import {
+  extractRequiredScopes,
+  parseInsufficientScopeChallenge,
+  SENTRY_SCOPES,
+} from "../api-scope.js";
 import { getUrlLoginCommand, sentry } from "../app-identity.js";
 import {
   type CredentialContext,
   getActiveEnvVarName,
+  getCredentialContext,
   isEnvTokenActive,
 } from "../db/auth.js";
 import { getConfiguredSentryUrl } from "../constants.js";
@@ -53,12 +58,72 @@ import {
 } from "../sentry-client.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import { isSentrySaasUrl } from "../sentry-urls.js";
+import { OAUTH_SCOPES } from "../oauth.js";
+import { parseSntrysClaim } from "../token-claims.js";
 
 /** User-facing detail for a 401/403, and the reason to record for it. */
 type EnrichedDetail = {
   detail: string;
   denialReason: ApiDenialReason;
 };
+
+/** The scope org auth tokens have, and that Sentry's CI endpoints accept. */
+const ORG_CI_SCOPE = "org:ci";
+
+/** How to name the token a request sent: its env var, or the stored one. */
+function tokenHolder(credential: CredentialContext | undefined): string {
+  return credential?.source.startsWith("env:")
+    ? `Your ${getActiveEnvVarName()}`
+    : "Your stored";
+}
+
+/** Guidance for a 403 whose challenge named the scopes the endpoint accepts. */
+function acceptedScopeLines(acceptedScopes: string[]): string[] {
+  const scopeList = acceptedScopes.join(", ");
+  // Advise on the credential the request sent, which can be a stored login
+  // even when an env var also holds a token.
+  const credential = getCredentialContext();
+  if (credential?.refreshable) {
+    // `auth refresh --scope` grants exactly the listed scopes, so never name
+    // one scope alone: that would take the rest of the login's access away.
+    // Same rule as the elevation in `scope-recovery.ts`.
+    const lines = [
+      `Your login lacks the scope this request needs. Any one of these works: ${scopeList}.`,
+    ];
+    if (acceptedScopes.some((s) => OAUTH_SCOPES.includes(s))) {
+      lines.push(
+        `Log in again with the CLI's default scopes: ${sentry`auth login --force`}`,
+      );
+      return lines;
+    }
+    // Sentry lists accepted scopes alphabetically, so `admin` comes before
+    // `write`. SENTRY_SCOPES orders each namespace read, write, admin, so its
+    // first match is the least privileged scope `auth refresh` accepts.
+    const extra = SENTRY_SCOPES.find((s) => acceptedScopes.includes(s));
+    if (extra) {
+      lines.push(
+        `Log in again with the default scopes plus ${extra}: ${sentry`auth refresh --scope ${[...OAUTH_SCOPES, extra].join(",")}`}`,
+      );
+    }
+    return lines;
+  }
+  const lines = [
+    `${tokenHolder(credential)} token lacks the scope this request needs. Any one of these works: ${scopeList}.`,
+  ];
+  if (parseSntrysClaim(credential?.token)) {
+    lines.push(
+      "Org auth tokens only have org:ci. Use a personal token with one of these scopes instead.",
+    );
+  } else if (acceptedScopes.includes(ORG_CI_SCOPE)) {
+    lines.push(
+      "An org auth token has org:ci. Create one in your organization's Settings > Auth Tokens.",
+    );
+  }
+  lines.push(
+    "Check token scopes at: https://sentry.io/settings/account/api/auth-tokens/",
+  );
+  return lines;
+}
 
 /**
  * Enrich a 403 Forbidden error detail with actionable guidance.
@@ -69,11 +134,18 @@ type EnrichedDetail = {
  * scope/re-auth enrichment entirely — suggesting re-authentication for this
  * error would be actively wrong and has caused user confusion (CLI-SERVER-E).
  *
- * All other 403s fall through to the existing logic:
+ * Then, in order:
+ * - an `insufficient_scope` challenge → name the scopes the endpoint accepts
  * - env-var tokens → suggest checking token scopes
  * - OAuth tokens → suggest re-authentication
+ *
+ * @param acceptedScopes - Scopes from the response's `insufficient_scope`
+ *   challenge; any one of them works
  */
-function enrich403Detail(rawDetail: string | undefined): EnrichedDetail {
+function enrich403Detail(
+  rawDetail: string | undefined,
+  acceptedScopes: string[],
+): EnrichedDetail {
   // Org-level policy — re-auth and token scope advice do not apply here.
   if (rawDetail?.includes("disabled this feature")) {
     return {
@@ -90,6 +162,11 @@ function enrich403Detail(rawDetail: string | undefined): EnrichedDetail {
   const lines: string[] = [];
   if (rawDetail) {
     lines.push(rawDetail, "");
+  }
+
+  if (acceptedScopes.length > 0) {
+    lines.push(...acceptedScopeLines(acceptedScopes));
+    return { detail: lines.join("\n  "), denialReason: "insufficient_scope" };
   }
 
   const scopes = extractRequiredScopes(rawDetail);
@@ -195,12 +272,16 @@ function enrich401Detail(rawDetail: string | undefined): EnrichedDetail {
  * without a noisy `{"detail":null}` prefix.
  */
 function enrichDetail(
-  status: number,
+  response: Response,
   detail: string | undefined,
   hasUsableDetail: boolean,
 ): { detail: string | undefined; denialReason?: ApiDenialReason } {
+  const { status } = response;
   if (status === 403) {
-    return enrich403Detail(hasUsableDetail ? detail : undefined);
+    return enrich403Detail(
+      hasUsableDetail ? detail : undefined,
+      parseInsufficientScopeChallenge(response.headers.get("www-authenticate")),
+    );
   }
   if (status === 401) {
     return enrich401Detail(hasUsableDetail ? detail : undefined);
@@ -397,7 +478,7 @@ export function throwApiError(
     ? stringifyUnknown(rawDetail)
     : stringifyUnknown(error);
 
-  const enriched = enrichDetail(status, detail, hasUsableDetail);
+  const enriched = enrichDetail(response, detail, hasUsableDetail);
   throw new ApiError(
     `${context}: ${status} ${response.statusText ?? "Unknown"}`,
     status,
@@ -942,7 +1023,7 @@ export async function throwRawApiError(
     "x-sentry-error": response.headers.get("x-sentry-error"),
     "www-authenticate": response.headers.get("www-authenticate"),
   });
-  const enriched = enrichDetail(response.status, detail, detail !== undefined);
+  const enriched = enrichDetail(response, detail, detail !== undefined);
   throw new ApiError(
     `${context}: ${response.status} ${response.statusText}`,
     response.status,
