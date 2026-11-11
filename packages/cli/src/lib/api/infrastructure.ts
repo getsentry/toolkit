@@ -132,9 +132,11 @@ function readOrgAuthTokenClaim(): ReturnType<typeof parseSntrysClaim> {
   return parseSntrysClaim(getCredentialContext()?.token);
 }
 
-/** Whether the request was sent with an org auth token with a readable claim. */
-function isOrgAuthTokenActive(): boolean {
-  return readOrgAuthTokenClaim() !== undefined;
+/** How to name the token a request sent: its env var, or the stored one. */
+function tokenHolder(credential: CredentialContext | undefined): string {
+  return credential?.source.startsWith("env:")
+    ? `Your ${getActiveEnvVarName()}`
+    : "Your stored";
 }
 
 function orgMismatchLines(mismatch: {
@@ -150,7 +152,10 @@ function orgMismatchLines(mismatch: {
 /** Guidance for a 403 whose challenge named the scopes the endpoint accepts. */
 function acceptedScopeLines(acceptedScopes: string[]): string[] {
   const scopeList = acceptedScopes.join(", ");
-  if (!isEnvTokenActive()) {
+  // Advise on the credential the request sent, which can be a stored login
+  // even when an env var also holds a token (see readOrgAuthTokenClaim).
+  const credential = getCredentialContext();
+  if (credential?.refreshable) {
     // `auth refresh --scope` grants exactly the listed scopes, so never name
     // one scope alone: that would take the rest of the login's access away.
     // Same rule as the elevation in `scope-recovery.ts`.
@@ -163,9 +168,9 @@ function acceptedScopeLines(acceptedScopes: string[]): string[] {
     ];
   }
   const lines = [
-    `Your ${getActiveEnvVarName()} token lacks the scope this request needs. Any one of these works: ${scopeList}.`,
+    `${tokenHolder(credential)} token lacks the scope this request needs. Any one of these works: ${scopeList}.`,
   ];
-  if (isOrgAuthTokenActive()) {
+  if (parseSntrysClaim(credential?.token)) {
     lines.push(
       "Org auth tokens only have org:ci. Use a personal token with one of these scopes instead.",
     );
@@ -310,15 +315,16 @@ function enrich401Detail(
   }
 
   const expired = rawDetail?.toLowerCase().includes("expired") ?? false;
-  if (!isEnvTokenActive()) {
+  const credential = getCredentialContext();
+  if (parseSntrysClaim(credential?.token)) {
+    lines.push(
+      `${tokenHolder(credential)} org auth token ${expired ? "has expired" : "is not recognized or has been revoked"}.`,
+      "Create a new one in your organization's Settings > Auth Tokens.",
+    );
+  } else if (!isEnvTokenActive()) {
     lines.push(
       "Not authenticated or your session has expired.",
       `Re-authenticate with: ${sentry`auth login`}`,
-    );
-  } else if (isOrgAuthTokenActive()) {
-    lines.push(
-      `Your ${getActiveEnvVarName()} org auth token ${expired ? "has expired" : "is not recognized or has been revoked"}.`,
-      "Create a new one in your organization's Settings > Auth Tokens.",
     );
   } else {
     lines.push(

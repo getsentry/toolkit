@@ -987,6 +987,48 @@ describe("401/403 denial guidance", () => {
     );
   });
 
+  test("advises a stored org auth token, not a login, on a scope 403", async () => {
+    setAuthToken(orgAuthToken("acme"));
+    resetAuthTokenCache();
+
+    const error = await rawDenial(403, "organizations/acme/", {
+      challenge:
+        'Bearer error="insufficient_scope", scope="org:admin org:billing org:read org:write"',
+    });
+
+    expect(error.detail).toContain("Your stored token lacks the scope");
+    expect(error.detail).toContain("Org auth tokens only have org:ci.");
+    expect(error.detail).not.toContain("auth login");
+  });
+
+  test("points a stored org auth token at the org's token settings on 401", async () => {
+    setAuthToken(orgAuthToken("acme"));
+    resetAuthTokenCache();
+
+    const error = await rawDenial(401, "organizations/acme/releases/", {
+      detail: "Invalid org token",
+    });
+
+    expect(error.detail).toContain(
+      "Your stored org auth token is not recognized or has been revoked.",
+    );
+    expect(error.detail).not.toContain("auth login");
+  });
+
+  test("advises the login that sent the request over a leftover env token", async () => {
+    useToken("sntryu_example");
+    delete process.env.SENTRY_FORCE_ENV_TOKEN;
+    setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
+    resetAuthTokenCache();
+
+    const error = await rawDenial(403, "organizations/acme/repos/", {
+      challenge: REPOS_CHALLENGE,
+    });
+
+    expect(error.detail).toContain("Your login lacks the scope");
+    expect(error.detail).not.toContain("SENTRY_AUTH_TOKEN");
+  });
+
   test("names both orgs for a stored org auth token", async () => {
     setAuthToken(orgAuthToken("token-org"));
     resetAuthTokenCache();
