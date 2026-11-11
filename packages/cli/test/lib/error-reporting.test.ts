@@ -366,6 +366,27 @@ describe("classifySilenced", () => {
     ).toBe("user_input_error");
   });
 
+  test.each([
+    [
+      "repository",
+      "Could not determine the repository: there is no 'origin' git remote and no CI repository variables.",
+    ],
+    ["repository", "No Sentry repository matching 'owner/repo' (from CI)."],
+    [
+      "commit.repository",
+      "Sentry organization 'my-org' has no repository named 'owner/repo'.",
+    ],
+  ])(
+    "silences set-commits ValidationError with field '%s' (CLI-17R, CLI-4G3)",
+    (field, message) => {
+      // The org's setup has to change (no repository in the build, or the
+      // repository isn't added in Sentry); it is not a CLI bug.
+      expect(classifySilenced(new ValidationError(message, field))).toBe(
+        "user_validation",
+      );
+    },
+  );
+
   test("silences ResolutionError (user provided a value that wasn't found)", () => {
     expect(
       classifySilenced(
@@ -640,6 +661,24 @@ describe("reportCliError integration", () => {
         attributes: expect.objectContaining({
           error_class: "ResolutionError",
           reason: "user_input_error",
+        }),
+      }),
+    );
+  });
+
+  test("silences set-commits repository ValidationError and records the field", () => {
+    reportCliError(
+      new ValidationError("No Sentry repository matching 'a/b'.", "repository"),
+    );
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          error_class: "ValidationError",
+          reason: "user_validation",
+          validation_field: "repository",
         }),
       }),
     );

@@ -137,6 +137,18 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   ) {
     return "user_validation";
   }
+  // A ValidationError with field "repository" or "commit.repository" means
+  // `release set-commits` could not match a Sentry repository: the build has
+  // no git remote or CI repository variables (Vercel preview, Docker without
+  // .git), or the org has not added the repository (CLI-17R, CLI-4G3). The
+  // org's setup has to change, and the user sees how to fix it. The
+  // `cli.error.silenced` metric keeps the volume, split by `validation_field`.
+  if (
+    error instanceof ValidationError &&
+    (error.field === "repository" || error.field === "commit.repository")
+  ) {
+    return "user_validation";
+  }
   // A ValidationError with field "input" means the --input file path the user
   // supplied does not exist on disk. Pure user-input noise, not a CLI bug —
   // the user sees a clear "File not found" message (CLI-1JY).
@@ -197,6 +209,9 @@ function recordSilencedError(error: unknown, reason: SilenceReason): void {
   }
   if (error instanceof SeerError) {
     attributes.seer_reason = error.reason;
+  }
+  if (error instanceof ValidationError && error.field) {
+    attributes.validation_field = error.field;
   }
 
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
