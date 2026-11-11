@@ -57,6 +57,7 @@ import {
 } from "../sentry-client.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import { isSentrySaasUrl } from "../sentry-urls.js";
+import { OAUTH_SCOPES } from "../oauth.js";
 import { parseSntrysClaim } from "../token-claims.js";
 
 /** What a 401/403 response says beyond its body. */
@@ -150,9 +151,13 @@ function orgMismatchLines(mismatch: {
 function acceptedScopeLines(acceptedScopes: string[]): string[] {
   const scopeList = acceptedScopes.join(", ");
   if (!isEnvTokenActive()) {
+    // Prefer a scope the CLI's login asks for by default, in its order (so
+    // org:read before org:admin), over one it never requests.
+    const scope =
+      OAUTH_SCOPES.find((s) => acceptedScopes.includes(s)) ?? acceptedScopes[0];
     return [
       `Your login lacks the scope this request needs. Any one of these works: ${scopeList}.`,
-      `Re-authenticate with: ${sentry`auth login`}`,
+      `Add one with: ${sentry`auth refresh --scope ${scope}`}`,
     ];
   }
   const lines = [

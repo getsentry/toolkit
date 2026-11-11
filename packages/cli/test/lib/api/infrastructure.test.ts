@@ -959,6 +959,20 @@ describe("401/403 denial guidance", () => {
     expect(error.detail).not.toContain("belongs to organization");
   });
 
+  test("points a stored login at auth refresh with a scope it can request", async () => {
+    setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
+    resetAuthTokenCache();
+
+    const error = await rawDenial(403, "organizations/acme/repos/", {
+      challenge: REPOS_CHALLENGE,
+    });
+
+    expect(error.denialReason).toBe("insufficient_scope");
+    expect(error.detail).toContain("Any one of these works: org:admin,");
+    expect(error.detail).toContain("auth refresh --scope org:read");
+    expect(error.detail).not.toContain("auth login");
+  });
+
   test("names both orgs for a stored org auth token", async () => {
     setAuthToken(orgAuthToken("token-org"));
     resetAuthTokenCache();
