@@ -20,7 +20,7 @@ import {
 } from "../../../src/lib/api/chunk-upload.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
-import { ApiError } from "../../../src/lib/errors.js";
+import { ApiError, ResolutionError } from "../../../src/lib/errors.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
 useTestConfigDir("api-chunk-upload-");
@@ -153,6 +153,38 @@ describe("assemble requests", () => {
         body,
       },
     ]);
+  });
+
+  test("assembleArtifactBundle names the project when the org has no such project (CLI-344)", async () => {
+    respondWith({ error: "One or more projects are invalid" }, 400);
+
+    const error = await assembleArtifactBundle("my-org", {
+      checksum: "abc",
+      chunks: ["c1"],
+      projects: ["my-projct"],
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ResolutionError);
+    const { message } = error as ResolutionError;
+    expect(message).toContain(
+      "Project 'my-projct' was not found in organization 'my-org'.",
+    );
+    expect(message).toContain("sentry project list my-org/");
+  });
+
+  test("assembleArtifactBundle keeps other 400s as ApiError", async () => {
+    respondWith(
+      { error: "You need to specify a release together with a dist" },
+      400,
+    );
+
+    await expect(
+      assembleArtifactBundle("my-org", {
+        checksum: "abc",
+        chunks: ["c1"],
+        projects: ["my-project"],
+      }),
+    ).rejects.toBeInstanceOf(ApiError);
   });
 
   test("assembleArtifactBundle rejects an unknown assemble state", async () => {

@@ -60,7 +60,13 @@ import { CONFIG_DIR_ENV_VAR } from "../../../src/lib/db/index.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { withEnv } from "../../../src/lib/env.js";
 import { classifySilenced } from "../../../src/lib/error-reporting.js";
-import { ApiError, EXIT, isUserError } from "../../../src/lib/errors.js";
+import {
+  ApiError,
+  EXIT,
+  isUserError,
+  ResolutionError,
+  ValidationError,
+} from "../../../src/lib/errors.js";
 import type { SentryDeploy, SentryRelease } from "../../../src/types/index.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
@@ -211,7 +217,7 @@ describe("createRelease", () => {
     globalThis.fetch = mockFetch(async () => {
       calls += 1;
       return Response.json(
-        { version: ["Release with this Version already exists."] },
+        { projects: ["This field is required."] },
         { status: 400 },
       );
     });
@@ -220,9 +226,85 @@ describe("createRelease", () => {
       (e: unknown) => e,
     );
 
-    expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(400);
     expect(calls).toBe(1);
+  });
+
+  /** Answer the create request with a 400 and `body`. */
+  const reject400 = (body: unknown) => {
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(JSON.stringify(body), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+  };
+
+  test("names the projects Sentry rejected (CLI-2G3)", async () => {
+    reject400({ projects: ["Invalid project ids or slugs"] });
+
+    const error = await createRelease("test-org", {
+      version: "1.0.0",
+      projects: ["web", "api"],
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ResolutionError);
+    const { message } = error as ResolutionError;
+    expect(message).toContain(
+      "One of the projects 'web', 'api' was not found in organization 'test-org'.",
+    );
+    expect(message).toContain("sentry project list test-org/");
+    expect(classifySilenced(error)).toBe("user_input_error");
+  });
+
+  test("explains a release that exists for projects the token cannot access", async () => {
+    reject400({
+      projects: ["You do not have permission to one of the projects: web"],
+    });
+
+    const error = await createRelease("test-org", {
+      version: "1.0.0",
+      projects: ["api"],
+    }).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "release.projects",
+    });
+    expect((error as ValidationError).message).toContain(
+      "Release '1.0.0' already exists in organization 'test-org' for projects your auth token cannot access: web.",
+    );
+    expect(classifySilenced(error)).toBe("user_validation");
+  });
+
+  test("names a release version Sentry rejects", async () => {
+    reject400({ version: ["Release with name latest is not allowed"] });
+
+    const error = await createRelease("test-org", {
+      version: "latest",
+      projects: ["web"],
+    }).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "release.version",
+    });
+    expect((error as ValidationError).message).toContain(
+      "Sentry does not allow the release version 'latest'.",
+    );
+    expect(classifySilenced(error)).toBe("user_validation");
+  });
+
+  test("keeps other 400s as ApiError so they are captured", async () => {
+    reject400({ projects: ["This field is required."] });
+
+    const error = await createRelease("test-org", { version: "1.0.0" }).catch(
+      (e: unknown) => e,
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(classifySilenced(error)).toBeNull();
   });
 });
 

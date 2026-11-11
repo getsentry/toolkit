@@ -43,7 +43,7 @@ import {
   record,
   string,
 } from "valibot";
-import { ApiError } from "../errors.js";
+import { ApiError, projectsNotFoundError } from "../errors.js";
 import { logger } from "../logger.js";
 import { getSdkConfig } from "../sentry-client.js";
 import { getOrgSdkConfig, unwrapValidatedResult } from "./infrastructure.js";
@@ -656,11 +656,32 @@ export async function assembleArtifactBundle(
     path: { organization_id_or_slug: org },
     body,
   });
-  return unwrapValidatedResult(
-    result,
-    "Failed to assemble artifact bundle",
-    AssembleResponseSchema,
-    `organizations/${org}/artifactbundle/assemble/`,
+  try {
+    return unwrapValidatedResult(
+      result,
+      "Failed to assemble artifact bundle",
+      AssembleResponseSchema,
+      `organizations/${org}/artifactbundle/assemble/`,
+    );
+  } catch (error) {
+    const projects = body.projects ?? [];
+    if (projects.length > 0 && isInvalidProjectsError(error)) {
+      throw projectsNotFoundError(org, projects);
+    }
+    throw error;
+  }
+}
+
+/**
+ * The assemble endpoint's 400 when a project slug or ID is not an active
+ * project of the org (`OrganizationArtifactBundleAssembleEndpoint` in Sentry,
+ * CLI-344).
+ */
+function isInvalidProjectsError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 400 &&
+    (error.detail?.includes("One or more projects are invalid") ?? false)
   );
 }
 

@@ -28,6 +28,7 @@ import { getEnv } from "../env.js";
 import {
   ApiError,
   buildValidationMessage,
+  projectsNotFoundError,
   ValidationError,
   validationError,
 } from "../errors.js";
@@ -263,7 +264,68 @@ export async function createRelease(
   if (result.data) {
     return result.data as SentryRelease;
   }
-  return unwrapResult<SentryRelease>(result, "Failed to create release");
+  try {
+    return unwrapResult<SentryRelease>(result, "Failed to create release");
+  } catch (error) {
+    throw explainCreateReleaseError(orgSlug, body, error);
+  }
+}
+
+/**
+ * 400 details from `OrganizationReleasesEndpoint.post` in Sentry:
+ * `{"projects":["Invalid project ids or slugs"]}` when a project does not
+ * exist or the auth token cannot access it, and
+ * `{"projects":["You do not have permission to one of the projects: a, b"]}`
+ * when the release already exists for projects the token cannot access.
+ */
+const INVALID_RELEASE_PROJECTS = "Invalid project ids or slugs";
+const RELEASE_PROJECT_PERMISSION_RE =
+  /You do not have permission to one of the projects: ([^"\]]*)/;
+
+/**
+ * The release serializer's 400 for a version it rejects, such as `latest` or
+ * a name with a `/` (`Release.is_valid_version`) or one over 200 characters.
+ */
+const RELEASE_VERSION_ERROR_RE = /"version":\[/;
+
+/**
+ * Turn the server's 400s for a project or version the user passed to
+ * {@link createRelease} into errors that name the value and how to fix it
+ * (CLI-2G3). Any other error, including other 400s, is returned unchanged.
+ */
+function explainCreateReleaseError(
+  orgSlug: string,
+  body: { version: string; projects?: string[] },
+  error: unknown,
+): unknown {
+  if (!(error instanceof ApiError && error.status === 400 && error.detail)) {
+    return error;
+  }
+  const { detail } = error;
+  const projects = body.projects ?? [];
+  if (detail.includes(INVALID_RELEASE_PROJECTS) && projects.length > 0) {
+    return projectsNotFoundError(orgSlug, projects, [
+      "Check that your auth token can access the project",
+    ]);
+  }
+  const denied = detail.match(RELEASE_PROJECT_PERMISSION_RE)?.[1];
+  if (denied !== undefined) {
+    return validationError(
+      `Release '${body.version}' already exists in organization '${orgSlug}' for projects your auth token cannot access: ${denied}.`,
+      [],
+      "release.projects",
+      "Use an auth token that can access those projects, or a different release version.",
+    );
+  }
+  if (RELEASE_VERSION_ERROR_RE.test(detail)) {
+    return validationError(
+      `Sentry does not allow the release version '${body.version}'.`,
+      [sentry`release propose-version`],
+      "release.version",
+      "A release version cannot be 'latest', '.' or '..', contain a slash, backslash, tab or newline, or be longer than 200 characters.",
+    );
+  }
+  return error;
 }
 
 /**
