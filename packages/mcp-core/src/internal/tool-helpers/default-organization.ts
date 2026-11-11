@@ -161,7 +161,7 @@ function formatRetry(
 ): string {
   const { organizationSlug: _omitted, ...rest } = rawParams;
   const args = Object.fromEntries(
-    Object.entries({ organizationSlug, ...rest }).filter(
+    Object.entries<unknown>({ organizationSlug, ...rest }).filter(
       ([key, value]) =>
         value !== undefined && !isDefaultValue(tool, key, value),
     ),
@@ -260,7 +260,7 @@ export async function applyDefaultOrganization({
     );
   }
 
-  const [only] = reachable.organizations;
+  const only = reachable.organizations.at(0);
   // Default only from a complete list, so a login that failed to answer
   // cannot hide a second organization.
   if (

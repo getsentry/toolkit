@@ -89,7 +89,7 @@ export function analyzeHotPathsFromFlamegraph(
   flamegraph: Flamegraph,
   options: { focusOnUserCode: boolean; maxHotPaths: number },
 ): HotPath[] {
-  const profile = flamegraph.profiles[0]; // Main thread
+  const profile = flamegraph.profiles.at(0); // Main thread
   if (!profile) {
     return [];
   }

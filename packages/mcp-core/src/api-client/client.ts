@@ -3262,7 +3262,7 @@ export class SentryApiService {
       query: {
         limit,
         sort: sortBy,
-        statsPeriod: statsPeriod ?? DEFAULT_SEARCH_ISSUES_PERIOD,
+        statsPeriod,
         // Always send `query`, even empty: Sentry applies `is:unresolved`
         // only when the parameter is missing.
         query: query ?? "",

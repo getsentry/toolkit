@@ -362,7 +362,7 @@ describe("get_alert_rule", () => {
   });
 
   it("fetches issue alert details after resolving an exact name", async () => {
-    let listRequestUrl: string | null = null;
+    let listRequestUrl: string | undefined;
     mswServer.use(
       http.get(`${organizationApi}/workflows/`, ({ request }) => {
         listRequestUrl = request.url;
@@ -381,7 +381,7 @@ describe("get_alert_rule", () => {
       ruleIdOrName: "Notify backend team",
     });
 
-    expect(listRequestUrl).not.toBeNull();
+    expect(listRequestUrl).toBeDefined();
     const listParams = new URL(listRequestUrl ?? "").searchParams;
     expect(listParams.get("query")).toBe('name:"*Notify backend team*"');
     expect(listParams.get("projectSlug")).toBe("cloudflare-mcp");
@@ -391,7 +391,7 @@ describe("get_alert_rule", () => {
   });
 
   it("quotes issue alert name lookups for workflow query syntax", async () => {
-    let listRequestUrl: string | null = null;
+    let listRequestUrl: string | undefined;
     mswServer.use(
       http.get(`${organizationApi}/workflows/`, ({ request }) => {
         listRequestUrl = request.url;
@@ -406,7 +406,7 @@ describe("get_alert_rule", () => {
       ruleIdOrName: "Critical: backend",
     });
 
-    expect(listRequestUrl).not.toBeNull();
+    expect(listRequestUrl).toBeDefined();
     expect(new URL(listRequestUrl ?? "").searchParams.get("query")).toBe(
       'name:"*Critical: backend*"',
     );

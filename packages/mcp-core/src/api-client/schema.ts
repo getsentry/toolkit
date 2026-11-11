@@ -1073,7 +1073,7 @@ const BaseEventSchema = z.object({
     ]),
   ),
   contexts: z
-    .record(
+    .partialRecord(
       z.string(),
       z
         .object({

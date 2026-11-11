@@ -78,11 +78,6 @@ function resolveLowestLevel(): LogLevel {
  */
 function createSentryLogsSink(): Sink {
   return (record: LogRecord) => {
-    // Check if sentryLogger is available (may not be in all environments)
-    if (!sentryLogger) {
-      return;
-    }
-
     // Extract message from LogRecord
     let message = "";
     for (let i = 0; i < record.message.length; i++) {

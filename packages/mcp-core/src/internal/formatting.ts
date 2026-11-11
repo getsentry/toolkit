@@ -254,16 +254,6 @@ export function formatEventOutput(
     });
   }
 
-  // Check if entries exist (may be undefined for unsupported event types)
-  if (!eventToRender.entries || !Array.isArray(eventToRender.entries)) {
-    // For unsupported event types, just show tags and contexts
-    output += formatEventUser(eventUser);
-    output += formatTags(eventToRender.tags);
-    output += formatContext(eventToRender.context);
-    output += formatContexts(eventToRender.contexts);
-    return output;
-  }
-
   // Look for the primary error information
   const messageEntry = eventToRender.entries.find((e) => e.type === "message");
   const exceptionEntry = eventToRender.entries.find(
@@ -437,7 +427,7 @@ function formatExceptionInterfaceOutput(
       parts.push("");
     }
 
-    if (!exception.stacktrace || !exception.stacktrace.frames) {
+    if (!exception.stacktrace) {
       parts.push("**Stacktrace:**");
       parts.push("```");
       parts.push("No stacktrace available");
@@ -688,7 +678,7 @@ function formatThreadTable(
     "| Thread ID | Name | State | Flags | Frames |",
     "| --- | --- | --- | --- | ---: |",
     ...threads.map((thread) => {
-      const frameCount = thread.stacktrace?.frames?.length ?? 0;
+      const frameCount = thread.stacktrace?.frames.length ?? 0;
       return `| ${getThreadDisplayValue(thread.id)} | ${getThreadDisplayValue(thread.name)} | ${getThreadDisplayValue(thread.state)} | ${getThreadFlags(thread)} | ${frameCount} |`;
     }),
   ];
@@ -1081,7 +1071,7 @@ function buildTraceSpanTree(
     if (spanId && spanId.length > 0) {
       spanMap.set(spanId, span);
     }
-    for (const child of span.children ?? []) {
+    for (const child of span.children) {
       if (isTraceSpan(child)) {
         indexSpan(child);
       }
@@ -1172,7 +1162,7 @@ function convertTraceSpanToPerformanceSpan(
     level,
   };
 
-  for (const child of span.children ?? []) {
+  for (const child of span.children) {
     if (!isTraceSpan(child)) {
       continue;
     }
@@ -1271,8 +1261,8 @@ function renderPerformanceSpanTree(spans: PerformanceSpan[]): string[] {
   function renderSpan(span: PerformanceSpan, prefix = "", isLast = true): void {
     const connector = prefix === "" ? "" : isLast ? "└─ " : "├─ ";
 
-    const displayName = span.description?.trim() || span.op || "unnamed";
-    const spanId = span.span_id ?? "unknown";
+    const displayName = span.description.trim() || span.op || "unnamed";
+    const spanId = span.span_id;
     const durationDisplay =
       span.duration > 0 ? `${Math.round(span.duration)}ms` : "unknown";
 
@@ -2146,7 +2136,7 @@ function formatContexts(contexts: z.infer<typeof EventSchema>["contexts"]) {
   )
     .map(
       ([name, data]) =>
-        `**${name}**\n${Object.entries(data)
+        `**${name}**\n${Object.entries(data ?? {})
           .filter(([key, _]) => key !== "type")
           .map(([key, value]) => {
             return `${key}: ${JSON.stringify(value, undefined, 2)}`;
@@ -2581,7 +2571,7 @@ export function buildIssueResponseNotes({
     fallbackInstruction: "Issue event search is not available in this session",
   });
   notes.push(`Issue event search: ${issueEventSearchInstruction}`);
-  const hasMultipleThreads = event.entries?.some((entry) => {
+  const hasMultipleThreads = event.entries.some((entry) => {
     if (entry.type !== "threads") {
       return false;
     }

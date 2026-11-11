@@ -76,7 +76,7 @@ type ToolDefinition = {
  */
 function formatToolsForMCP(tools: Record<string, ToolDefinition>) {
   return Object.entries(tools).map(([_key, tool]) => {
-    const inputSchema = tool.inputSchema || {};
+    const inputSchema = tool.inputSchema;
     const zodObject =
       Object.keys(inputSchema).length > 0
         ? z.object(inputSchema)

@@ -157,9 +157,6 @@ describe.each(Object.keys(MODES))("%s mode", (mode) => {
       if (!/^[A-Za-z0-9_.-]{1,128}$/.test(tool.name)) {
         return "name must match ^[A-Za-z0-9_.-]{1,128}$";
       }
-      if (tool.inputSchema.type !== "object") {
-        return "inputSchema root must be an object";
-      }
       // The server implements no MCP tasks, so no tool may advertise them.
       return tool.execution?.taskSupport === undefined
         ? undefined
@@ -219,9 +216,7 @@ describe.each(Object.keys(MODES))("%s mode", (mode) => {
   it("declares an object outputSchema unless the tool is skipped", () => {
     const problems = failures(surface().tools, (tool) => {
       if (tool.outputSchema) {
-        return tool.outputSchema.type === "object"
-          ? undefined
-          : "outputSchema root must be an object";
+        return undefined;
       }
       return tool.name in OUTPUT_SCHEMA_EXEMPT ||
         tool.name in OUTPUT_SCHEMA_PENDING

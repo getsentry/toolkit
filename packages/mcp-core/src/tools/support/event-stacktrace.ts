@@ -71,7 +71,7 @@ export async function fetchAndFormatEventStacktrace({
 }
 
 function getThreads(event: Event): Thread[] {
-  const threadsEntry = event.entries?.find((entry) => entry.type === "threads");
+  const threadsEntry = event.entries.find((entry) => entry.type === "threads");
   const result = ThreadsEntrySchema.safeParse(threadsEntry?.data);
   return result.success ? (result.data.values ?? []) : [];
 }
@@ -138,7 +138,7 @@ function selectSentryDefaultThread(threads: Thread[]): Thread {
 }
 
 function hasFrames(thread: Thread): boolean {
-  return Boolean(thread.stacktrace?.frames?.length);
+  return Boolean(thread.stacktrace?.frames.length);
 }
 
 function selectUnique(

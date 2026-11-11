@@ -88,8 +88,8 @@ describe("applyDefaultOrganization", () => {
       requiredOrgTool,
       getServerContext(),
     );
-    expect(unscoped.organizationSlug?.safeParse(undefined).success).toBe(true);
-    expect(unscoped.organizationSlug?.safeParse("").success).toBe(false);
+    expect(unscoped.organizationSlug.safeParse(undefined).success).toBe(true);
+    expect(unscoped.organizationSlug.safeParse("").success).toBe(false);
 
     const scoped = getFilteredInputSchema(
       requiredOrgTool,

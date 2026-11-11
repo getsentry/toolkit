@@ -150,7 +150,7 @@ async function resolveFields(
   form: LinkForm,
   fields: Map<string, Field>,
 ): Promise<FormValues> {
-  const supplied = params.fields ?? {};
+  const supplied: Partial<FormValues> = params.fields ?? {};
   const candidates = [...fields.values()].filter((field) =>
     TARGET_FIELD.test(field.name),
   );
@@ -400,7 +400,7 @@ export async function unlinkAppIssue(
     throw new UserInputError(
       "Multiple App links match this URL. Provide appSlug to select one.",
     );
-  const match = matches[0];
+  const match = matches.at(0);
   if (!match)
     return {
       url: params.externalIssueUrl,

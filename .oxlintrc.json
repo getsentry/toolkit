@@ -63,6 +63,7 @@
     {
       "files": ["packages/mcp-core/**/*.{ts,tsx,js,mjs,cjs}"],
       "rules": {
+        "typescript/no-unnecessary-condition": "error",
         "no-restricted-imports": [
           "error",
           {

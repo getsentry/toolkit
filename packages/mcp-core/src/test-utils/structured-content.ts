@@ -4,7 +4,7 @@ export function getTextContent(result: unknown): string {
   if (!Array.isArray(content)) {
     return "";
   }
-  return content?.find((item) => typeof item.text === "string")?.text ?? "";
+  return content.find((item) => typeof item.text === "string")?.text ?? "";
 }
 
 /** Returns structuredContent after checking the result has an object payload. */

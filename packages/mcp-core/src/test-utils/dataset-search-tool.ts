@@ -33,7 +33,7 @@ export async function inspectDatasetSearchTool<P>(tool: {
   const run = vi.mocked(runSearchEvents);
   run.mockClear();
   await tool.handler(params as P, createTestContext());
-  const [handlerParams, , options] = run.mock.calls[0] ?? [];
+  const [handlerParams, , options] = run.mock.calls.at(0) ?? [];
   return {
     dataset: handlerParams?.dataset,
     options,

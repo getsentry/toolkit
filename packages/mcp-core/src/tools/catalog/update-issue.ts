@@ -845,7 +845,7 @@ function getReasonComment(
   reason: string | undefined,
   result: ReasonCommentResult,
 ): UpdateIssueOutput["reasonComment"] {
-  if (!reason || ("skipped" in result && result.skipped)) {
+  if (!reason || "skipped" in result) {
     return null;
   }
   if (result.posted) {
@@ -867,7 +867,7 @@ function getReasonComment(
  * still count as different assignees.
  */
 function getAssigneeKey(assignedTo: AssignedTo): string {
-  if (assignedTo && typeof assignedTo === "object" && assignedTo.id != null) {
+  if (assignedTo && typeof assignedTo === "object") {
     return `${assignedTo.type}:${assignedTo.id}`;
   }
   return `name:${formatAssignedTo(assignedTo)}`;
@@ -1130,16 +1130,15 @@ export default defineTool({
       status: statusChanged
         ? { from: currentStatusDisplay, to: updatedStatusDisplay }
         : null,
-      ignoreBehavior:
-        showIgnoreChange && updatedIgnoreState
-          ? {
-              from:
-                currentIgnoreState && ignoreBehaviorChanged
-                  ? currentIgnoreState.behavior
-                  : null,
-              to: updatedIgnoreState.behavior,
-            }
-          : null,
+      ignoreBehavior: showIgnoreChange
+        ? {
+            from:
+              currentIgnoreState && ignoreBehaviorChanged
+                ? currentIgnoreState.behavior
+                : null,
+            to: updatedIgnoreState.behavior,
+          }
+        : null,
       assignedTo:
         updateAssignedTo !== undefined && assignmentChanged
           ? {

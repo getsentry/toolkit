@@ -135,7 +135,9 @@ export function toMetricMonitorUpdate(
 ): MetricMonitorUpdate {
   const { status, query, config, conditionGroup, ...metadata } = params;
   const body: MetricMonitorUpdate = Object.fromEntries(
-    Object.entries(metadata).filter(([, value]) => value !== undefined),
+    Object.entries<unknown>(metadata).filter(
+      ([, value]) => value !== undefined,
+    ),
   );
   if (status !== undefined) body.enabled = status === "active";
   if (query !== undefined) {

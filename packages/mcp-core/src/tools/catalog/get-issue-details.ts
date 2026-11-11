@@ -251,8 +251,8 @@ function buildIssueDetailsPayload({
       culprit: issue.culprit,
       firstSeen: issue.firstSeen,
       lastSeen: issue.lastSeen,
-      occurrences: issue.count == null ? null : Number(issue.count),
-      usersImpacted: issue.userCount == null ? null : Number(issue.userCount),
+      occurrences: Number(issue.count),
+      usersImpacted: Number(issue.userCount),
       status: issue.status,
       substatus: issue.substatus,
       assignedTo:
@@ -266,7 +266,7 @@ function buildIssueDetailsPayload({
           ? null
           : getSeerActionabilityLabel(issue.seerFixabilityScore),
       platform: issue.platform,
-      project: issue.project?.name,
+      project: issue.project.name,
       url: apiService.getIssueUrl(organizationSlug, issue.shortId),
       // metadata.value is a query pattern only for a performance issue; on an error it is the
       // exception message, so reading it unconditionally would misname the error text
@@ -424,10 +424,11 @@ export default defineTool({
           issueId: params.issueId,
         });
       } else {
-        const [found] = await apiService.listIssues({
+        const issues = await apiService.listIssues({
           organizationSlug: orgSlug,
           query: eventId,
         });
+        const found = issues.at(0);
         if (!found) {
           throw new UserInputError(`No issue found for Event ID: ${eventId}`);
         }

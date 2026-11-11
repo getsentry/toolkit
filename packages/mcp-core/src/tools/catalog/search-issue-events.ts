@@ -222,7 +222,7 @@ export default defineTool({
       sortParam = parsed.sort;
       explanation = parsed.explanation;
 
-      const requestedFields = parsed.fields || [];
+      const requestedFields = parsed.fields;
       fields =
         requestedFields.length > 0 ? requestedFields : RECOMMENDED_FIELDS;
 
