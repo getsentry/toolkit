@@ -95,13 +95,13 @@ export const textImportPlugin: Plugin = {
     }));
 
     build.onResolve({ filter: ANY_FILTER }, async (args) => {
-      if (args.with?.type === "text") {
+      if (args.with.type === "text") {
         return {
           path: resolvePath(args.resolveDir, args.path),
           namespace: TEXT_IMPORT_NS,
         };
       }
-      if (args.with?.type === "file") {
+      if (args.with.type === "file") {
         const sourcePath = resolvePath(args.resolveDir, args.path);
         const outdir = resolveOutdir(build);
         mkdirSync(outdir, { recursive: true });

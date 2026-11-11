@@ -876,7 +876,7 @@ function parseUrlEncodedParams(
  * @internal Exported for testing
  */
 export function dataToQueryParams(
-  data: Record<string, unknown> | unknown[] | string,
+  data: unknown,
 ): Record<string, string | string[]> {
   if (typeof data === "string") {
     return parseUrlEncodedParams(data);

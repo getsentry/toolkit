@@ -51,7 +51,7 @@ type Installer = {
 };
 
 function matchAll(re: RegExp, text: string): Set<string> {
-  return new Set([...text.matchAll(re)].map((m) => m[1] ?? ""));
+  return new Set([...text.matchAll(re)].map((m) => m[1]));
 }
 
 async function loadBash(): Promise<Installer> {

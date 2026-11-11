@@ -65,7 +65,8 @@ const FIXABILITY_TAGS: Record<FixabilityTier, Parameters<typeof colorTag>[0]> =
 
 // Status Formatting
 
-const STATUS_ICONS: Record<IssueStatus, string> = {
+const STATUS_ICONS: Partial<Record<string, string>> &
+  Record<IssueStatus, string> = {
   resolved: colorTag("green", "✓"),
   resolvedInNextRelease: colorTag("green", "✓"),
   unresolved: colorTag("yellow", "●"),
@@ -73,7 +74,8 @@ const STATUS_ICONS: Record<IssueStatus, string> = {
   muted: colorTag("muted", "−"),
 };
 
-const STATUS_LABELS: Record<IssueStatus, string> = {
+const STATUS_LABELS: Partial<Record<string, string>> &
+  Record<IssueStatus, string> = {
   resolved: `${colorTag("green", "✓")} Resolved`,
   resolvedInNextRelease: `${colorTag("green", "✓")} Resolved in Next Release`,
   unresolved: `${colorTag("yellow", "●")} Unresolved`,
@@ -204,16 +206,14 @@ function formatFeaturesMarkdown(features: string[] | undefined): string {
  * Get status icon for an issue status
  */
 export function formatStatusIcon(status: string | undefined): string {
-  return STATUS_ICONS[status as IssueStatus] ?? colorTag("yellow", "●");
+  return STATUS_ICONS[status ?? ""] ?? colorTag("yellow", "●");
 }
 
 /**
  * Get full status label for an issue status
  */
 export function formatStatusLabel(status: string | undefined): string {
-  return (
-    STATUS_LABELS[status as IssueStatus] ?? `${colorTag("yellow", "●")} Unknown`
-  );
+  return STATUS_LABELS[status ?? ""] ?? `${colorTag("yellow", "●")} Unknown`;
 }
 
 // Issue Formatting
@@ -819,7 +819,7 @@ function releaseVersion(
 export function formatIssueDetails(issue: SentryIssue): string {
   const lines: string[] = [];
 
-  lines.push(`## ${issue.shortId}: ${text(issue.title ?? "")}`);
+  lines.push(`## ${issue.shortId}: ${text(issue.title)}`);
   lines.push("");
 
   // Key-value details as a table
@@ -858,7 +858,7 @@ export function formatIssueDetails(issue: SentryIssue): string {
   if (issue.project) {
     kvRows.push([
       "Project",
-      `${text(issue.project.name ?? "(unknown)")} (${inlineCode(issue.project.slug ?? "")})`,
+      `${text(issue.project.name)} (${inlineCode(issue.project.slug)})`,
     ]);
   }
 
@@ -1127,7 +1127,7 @@ function formatSpanSimple(span: TraceSpan, opts: FormatSpanOptions): void {
     line += `  ${plainSafeMuted(`(${prettyMs(durationMs)})`)}`;
   }
 
-  line += `  ${plainSafeMuted(span.span_id ?? "")}`;
+  line += `  ${plainSafeMuted(span.span_id)}`;
 
   lines.push(line);
 
@@ -2422,7 +2422,7 @@ export function formatUpgradeResult(data: UpgradeResult): string {
     default: {
       // Exhaustive check — all action types should be handled above
       const _: never = data.action;
-      lines.push(ACTION_DESCRIPTIONS[_ as UpgradeResult["action"]] ?? "Done");
+      lines.push("Done");
     }
   }
 

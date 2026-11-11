@@ -289,7 +289,7 @@ function formatFeedbackOverview(data: FeedbackViewResult): string {
   if (feedback.project) {
     rows.push([
       "Project",
-      `${escapeFeedbackInline(feedback.project.name ?? feedback.project.slug)} (${feedbackCodeSpan(feedback.project.slug)})`,
+      `${escapeFeedbackInline(feedback.project.name)} (${feedbackCodeSpan(feedback.project.slug)})`,
     ]);
   }
   if (feedback.assignedTo?.name) {

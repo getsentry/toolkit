@@ -313,7 +313,7 @@ export const viewCommand = buildCommand({
 
       // Library mode: honor external abort signal (e.g., consumer break)
       const externalSignal = (this.process as { abortSignal?: AbortSignal })
-        ?.abortSignal;
+        .abortSignal;
       if (externalSignal) {
         externalSignal.addEventListener("abort", stop, { once: true });
       }

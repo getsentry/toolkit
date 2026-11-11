@@ -204,8 +204,8 @@ export function playSnake(
   { input, output }: SnakeTerminal,
   { color, onGameOver }: SnakeOptions,
 ): Promise<void> {
-  const columns = () => output.columns ?? DEFAULT_COLUMNS;
-  const rows = () => output.rows ?? DEFAULT_ROWS;
+  const columns = () => output.columns || DEFAULT_COLUMNS;
+  const rows = () => output.rows || DEFAULT_ROWS;
   const boardSize = () => snakeBoardSize(columns(), rows());
   const fits = () => snakeFrameFits(state, columns(), rows());
   const start = boardSize();

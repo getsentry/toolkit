@@ -794,6 +794,7 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
       },
     });
 
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- the signal can abort during the await; TS keeps the loop condition's narrowing
     if (signal.aborted || result === "retained") {
       return;
     }
@@ -842,7 +843,7 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
 async function attemptSSEConnection(
   opts: ConsumeSSEOnceOptions,
 ): Promise<"no-connection" | "connected-then-lost" | "retained"> {
-  let wasConnected = false;
+  let wasConnected = false as boolean;
   const augmented = {
     ...opts,
     onConnected: () => {
@@ -923,7 +924,7 @@ async function consumeSSEOnce(
 
   const decoder = new TextDecoder();
   const state: SSEParserState = { eventType: "", dataLines: [], id: "" };
-  let retained = false;
+  let retained = false as boolean;
   const onEvent = (type: string, data: string, id: string) => {
     if (id) {
       onId(id);

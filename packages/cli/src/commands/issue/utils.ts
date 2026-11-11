@@ -88,7 +88,7 @@ export async function mapIssueArgsConcurrently<T>(
 
   const values: T[] = [];
   for (const result of settled) {
-    if (result?.status === "fulfilled") {
+    if (result.status === "fulfilled") {
       values.push(result.value);
     }
   }
@@ -307,8 +307,8 @@ async function resolveProjectSearchFallback(
   // due to a transient error (5xx, timeout); retrying here either succeeds
   // or propagates the real error to the user.
   const matchedProject = projects[0];
-  const matchedOrg = matchedProject?.orgSlug;
-  if (matchedOrg && matchedProject) {
+  if (matchedProject?.orgSlug) {
+    const matchedOrg = matchedProject.orgSlug;
     const retryShortId = expandToFullShortId(suffix, matchedProject.slug);
     const issue = await getIssueByShortId(matchedOrg, retryShortId, {
       collapse: ISSUE_DETAIL_COLLAPSE,
@@ -347,9 +347,7 @@ async function findIssuesByShortId(
   // Only throw when ALL results are errors — if some orgs returned clean
   // 404s ({ok: true, value: null}), fall through to the fallback for a
   // precise error message.
-  const realErrors = results.filter(
-    (r): r is AuthGuardFailure => r !== undefined && !r.ok,
-  );
+  const realErrors = results.filter((r): r is AuthGuardFailure => !r.ok);
   if (realErrors.length === results.length && realErrors.length > 0) {
     const firstError = realErrors[0]?.error;
     if (firstError instanceof Error) {

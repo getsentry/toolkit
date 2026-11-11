@@ -167,7 +167,9 @@ async function resolveOrgRegionUncached(
     const responseIdentity = rawResponse
       ? getResponseCredentialIdentity(rawResponse)
       : undefined;
-    const rawRegionUrl = response.data?.links?.regionUrl;
+    // Sentry before 22.9 sends no `links`.
+    const links = response.data?.links as { regionUrl?: string } | undefined;
+    const rawRegionUrl = links?.regionUrl;
     const regionUrl = getResolvedRegionUrl(
       rawRegionUrl,
       responseOrigin,

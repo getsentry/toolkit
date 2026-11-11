@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 // Mock node:child_process so getCommitLog never shells out to a real git.
-const execFileSyncMock = vi.fn(() => "");
+const execFileSyncMock = vi.fn(
+  (_file: string, _args: string[], _options?: unknown) => "",
+);
 vi.mock("node:child_process", () => ({
-  execFileSync: (...args: unknown[]) => execFileSyncMock(...args),
+  execFileSync: (file: string, args: string[], options?: unknown) =>
+    execFileSyncMock(file, args, options),
 }));
 
 import { getCommitLog } from "../../src/lib/git.js";

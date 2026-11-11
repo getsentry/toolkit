@@ -139,6 +139,12 @@
       }
     },
     {
+      "files": ["packages/cli/**/*.{ts,tsx,js,mjs,cjs}"],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
       "files": ["packages/cli/script/**/*.ts"],
       "rules": {
         "sentry-cli/no-regex-markdown-parsing": "error"

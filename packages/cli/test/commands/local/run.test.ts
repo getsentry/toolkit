@@ -44,10 +44,8 @@ vi.mock("node:child_process", async (importOriginal) => {
       options: Parameters<typeof actual.spawn>[2],
     ) => {
       spawnCapture.args = args;
-      spawnCapture.env = (options as { env?: NodeJS.ProcessEnv })?.env;
-      spawnCapture.stdio = (
-        options as { stdio?: typeof spawnCapture.stdio }
-      )?.stdio;
+      spawnCapture.env = options.env;
+      spawnCapture.stdio = options.stdio;
       return actual.spawn(cmd, args as string[], options);
     },
   };

@@ -18,7 +18,7 @@ function requireJsToTsPlugin(): Plugin {
       if (!(id.endsWith(".ts") && code.includes("require("))) {
         return;
       }
-      let changed = false;
+      let changed = false as boolean;
       const transformed = code.replace(
         /require\(["'](\.[\w/.]+)\.js["']\)/g,
         (match, relPath) => {

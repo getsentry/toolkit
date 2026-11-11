@@ -50,7 +50,7 @@ function sampleState(cause: RootCause): AutofixState {
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn((_chunk: string) => true);
   return {
     context: {
       stdout: { write: stdoutWrite },

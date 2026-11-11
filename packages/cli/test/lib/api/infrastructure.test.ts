@@ -755,13 +755,13 @@ describe("throwApiError", () => {
       }
 
       expect(captured).toBeDefined();
-      expect(captured?.status).toBe(401);
-      expect(captured?.detail).toContain("over its member limit");
-      expect(captured?.detail).toContain("billing/seat-limit");
+      expect(captured.status).toBe(401);
+      expect(captured.detail).toContain("over its member limit");
+      expect(captured.detail).toContain("billing/seat-limit");
       // The fix must NOT give the misleading re-auth advice for this case.
-      expect(captured?.detail).not.toContain("sentry auth login");
-      expect(captured?.detail).not.toContain("session has expired");
-      expect(captured?.detail).not.toContain("SENTRY_AUTH_TOKEN");
+      expect(captured.detail).not.toContain("sentry auth login");
+      expect(captured.detail).not.toContain("session has expired");
+      expect(captured.detail).not.toContain("SENTRY_AUTH_TOKEN");
     });
 
     describe("with OAuth token (no env var)", () => {

@@ -297,7 +297,7 @@ function searchContainersForRootCauses(
 
 /** Agent root cause artifact data from the explorer endpoint */
 type AgentRootCauseData = {
-  one_line_description: string;
+  one_line_description?: string;
   five_whys?: string[];
   reproduction_steps?: string[];
   relevant_repo?: string | null;
@@ -322,7 +322,7 @@ function searchBlocksForAgentRootCause(
         const agentData = artifact.data as AgentRootCauseData;
         const cause: RootCause = {
           id: 0,
-          description: agentData.one_line_description,
+          description: agentData.one_line_description ?? "",
           relevant_repos: agentData.relevant_repo
             ? [agentData.relevant_repo]
             : undefined,

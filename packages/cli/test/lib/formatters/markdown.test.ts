@@ -44,7 +44,7 @@ function withEnv(
   const savedEnv: Record<string, string | undefined> = {};
   const savedTTY = process.stdout.isTTY;
 
-  for (const [key, val] of Object.entries(vars)) {
+  for (const [key, val] of Object.entries<string | undefined>(vars)) {
     savedEnv[key] = process.env[key];
     if (val === undefined) {
       delete process.env[key];

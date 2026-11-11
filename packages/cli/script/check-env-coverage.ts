@@ -115,7 +115,7 @@ for (const file of files) {
   const content = await readFile(file, "utf-8");
   fileContents.set(file, content);
   for (const match of content.matchAll(ENV_CONST_RE)) {
-    const value = match[2] ?? match[3];
+    const value = match[2] || match[3];
     if (value && isUserFacing(value)) {
       constMap.set(match[1], value);
     }
@@ -140,7 +140,7 @@ for (const [file, content] of fileContents) {
   for (const match of content.matchAll(ENV_BRACKET_RE)) {
     const ident = match[3];
     const name =
-      match[1] ?? match[2] ?? (ident ? constMap.get(ident) : undefined);
+      match[1] || match[2] || (ident ? constMap.get(ident) : undefined);
     if (name) {
       record(name, file, content, match.index);
     }

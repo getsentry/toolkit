@@ -80,7 +80,7 @@ export function createLocalRetentionBuffer(
     delegate.put(item);
   };
   buffer.read = (filters = { timeWindow: 60 }) => {
-    if ("timeWindow" in filters && filters.timeWindow !== undefined) {
+    if ("timeWindow" in filters) {
       const { timeWindow, ...rest } = filters;
       return delegate
         .read({ ...rest, all: true })

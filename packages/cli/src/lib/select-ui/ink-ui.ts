@@ -147,7 +147,7 @@ export async function selectWithFilter(
   const app = await loadInkApp();
   const freshStdin = openFreshTtyForInk();
   const stdin = freshStdin ?? process.stdin;
-  const wasRaw = stdin.isRaw ?? false;
+  const wasRaw = stdin.isRaw;
   let instance: InkInstance | undefined;
   let resolveSelection!: (value: string | null) => void;
   const selection = new Promise<string | null>((resolve) => {
@@ -176,7 +176,7 @@ export async function selectWithFilter(
         await instance?.waitUntilExit();
       } finally {
         try {
-          stdin.setRawMode?.(wasRaw);
+          stdin.setRawMode(wasRaw);
         } finally {
           if (freshStdin) {
             try {

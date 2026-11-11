@@ -547,10 +547,7 @@ describe("dashboard list command", () => {
   test("handles dashboards with undefined title in human output", async () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
-      data: [
-        { id: "1", title: undefined as unknown as string, widgetDisplay: [] },
-        DASHBOARD_B,
-      ],
+      data: [{ id: "1", title: undefined, widgetDisplay: [] }, DASHBOARD_B],
       nextCursor: undefined,
     });
 
@@ -566,9 +563,7 @@ describe("dashboard list command", () => {
   test("handles dashboards with undefined title in JSON output", async () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
-      data: [
-        { id: "1", title: undefined as unknown as string, widgetDisplay: [] },
-      ],
+      data: [{ id: "1", title: undefined, widgetDisplay: [] }],
       nextCursor: undefined,
     });
 
@@ -584,10 +579,7 @@ describe("dashboard list command", () => {
   test("glob filter does not crash on dashboards with undefined title", async () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
-      data: [
-        { id: "1", title: undefined as unknown as string, widgetDisplay: [] },
-        DASHBOARD_B,
-      ],
+      data: [{ id: "1", title: undefined, widgetDisplay: [] }, DASHBOARD_B],
       nextCursor: undefined,
     });
 

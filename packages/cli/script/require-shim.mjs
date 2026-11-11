@@ -29,7 +29,11 @@ if (typeof globalThis.require === "undefined") {
 // registerHooks() is available from Node 22.15+ (our minimum).
 registerHooks({
   load(url, context, nextLoad) {
-    if (context.importAttributes?.type === "file") {
+    // require() loads pass no importAttributes, whatever the types say.
+    const importAttributes = /** @type {ImportAttributes | undefined} */ (
+      context.importAttributes
+    );
+    if (importAttributes?.type === "file") {
       return {
         format: "module",
         shortCircuit: true,

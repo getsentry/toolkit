@@ -1786,21 +1786,15 @@ describe("dataToQueryParams", () => {
   });
 
   test("throws on null", () => {
-    expect(() =>
-      dataToQueryParams(null as unknown as Record<string, unknown>),
-    ).toThrow(ValidationError);
+    expect(() => dataToQueryParams(null)).toThrow(ValidationError);
   });
 
   test("throws on boolean", () => {
-    expect(() =>
-      dataToQueryParams(true as unknown as Record<string, unknown>),
-    ).toThrow(ValidationError);
+    expect(() => dataToQueryParams(true)).toThrow(ValidationError);
   });
 
   test("throws on number", () => {
-    expect(() =>
-      dataToQueryParams(42 as unknown as Record<string, unknown>),
-    ).toThrow(ValidationError);
+    expect(() => dataToQueryParams(42)).toThrow(ValidationError);
   });
 });
 

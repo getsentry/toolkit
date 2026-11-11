@@ -110,10 +110,11 @@ const MIN_NODE_MAJOR = 22;
 export function canLoadChunks(
   versions: NodeJS.ProcessVersions = process.versions,
 ): boolean {
+  const vmConstants = constants as Partial<typeof constants> | undefined;
   return (
     versions.bun === undefined &&
     Number.parseInt(versions.node, 10) >= MIN_NODE_MAJOR &&
-    constants?.USE_MAIN_CONTEXT_DEFAULT_LOADER !== undefined
+    vmConstants?.USE_MAIN_CONTEXT_DEFAULT_LOADER !== undefined
   );
 }
 

@@ -62,7 +62,7 @@ function exampleTagBodies(comment: string): string[] {
     true,
     ts.ScriptKind.TS,
   );
-  const statement = source.statements[0];
+  const statement = source.statements[0] as ts.Statement | undefined;
   if (!statement) {
     return [];
   }

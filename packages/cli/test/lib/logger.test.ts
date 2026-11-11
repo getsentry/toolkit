@@ -207,7 +207,7 @@ describe("printJsonLine", () => {
       .mockImplementation(() => true);
     try {
       expect(loggerModule.printJsonLine).toBeTypeOf("function");
-      loggerModule.printJsonLine?.('{"schema_version":1,"type":"error"}');
+      loggerModule.printJsonLine('{"schema_version":1,"type":"error"}');
       expect(stdout).toHaveBeenCalledWith(
         '{"schema_version":1,"type":"error"}\n',
       );

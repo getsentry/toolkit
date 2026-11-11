@@ -1525,7 +1525,7 @@ describe("handleAutoDetect", () => {
     expect(result.items).toHaveLength(2);
     expect(result.hasMore).toBe(true);
     expect(result.jsonExtra).toBeDefined();
-    expect((result.jsonExtra as Record<string, unknown>)?.hint).toBeString();
+    expect((result.jsonExtra as Record<string, unknown>).hint).toBeString();
   });
 
   test("respects --platform flag", async () => {
@@ -1609,7 +1609,7 @@ describe("handleAutoDetect", () => {
     expect(result.hasMore).toBe(true);
     expect(result.items).toHaveLength(2);
     expect(result.jsonExtra).toBeDefined();
-    const jsonHint = (result.jsonExtra as Record<string, unknown>)?.hint;
+    const jsonHint = (result.jsonExtra as Record<string, unknown>).hint;
     expect(jsonHint).toContain("test-org/");
     expect(jsonHint).toContain("--json");
   });
@@ -1629,7 +1629,7 @@ describe("handleAutoDetect", () => {
     });
 
     expect(result.hasMore).toBe(true);
-    const jsonHint = (result.jsonExtra as Record<string, unknown>)?.hint;
+    const jsonHint = (result.jsonExtra as Record<string, unknown>).hint;
     expect(jsonHint).toBe("sentry project list 'test-org/web-*' --json");
   });
 

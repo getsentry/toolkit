@@ -862,7 +862,7 @@ async function findSimilarProjectsAcrossOrgs(
       });
       nameMatchedSlugs = matchedNames
         .map((n) => nameToSlug.get(n))
-        .filter((s): s is string => s !== null && s !== undefined);
+        .filter((s): s is string => s !== undefined);
     }
 
     // Merge slug matches and name matches, preferring slug matches.

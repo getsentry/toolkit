@@ -142,7 +142,7 @@ export function formatExploreTimeSeriesHuman(
 ): string {
   const scope = data.project ? `${data.org}/${data.project}` : data.org;
   const details = [`Querying ${text(data.dataset)} in ${text(scope)}`];
-  if (data.meta?.start !== undefined && data.meta.end !== undefined) {
+  if (data.meta) {
     details.push(
       `Range (UTC): ${formatUtcTimestamp(data.meta.start)} to ${formatUtcTimestamp(data.meta.end)}`,
     );

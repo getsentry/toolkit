@@ -33,11 +33,14 @@ import {
   generateZshCompletion,
 } from "../../src/lib/completions.js";
 import {
+  type CommandCompletions,
   extractCommandCompletions,
   extractRouteGroups,
   type RouteMap,
 } from "../../src/lib/introspect.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
+
+const generatedCommands: CommandCompletions = generatedTargets.commands;
 
 // -- Arbitraries --
 
@@ -276,7 +279,7 @@ describe("proposeCompletions: Stricli integration", () => {
 
 describe("property: flag names", () => {
   test("hidden flags are excluded", () => {
-    for (const command of Object.values(generatedTargets.commands)) {
+    for (const command of Object.values(generatedCommands)) {
       // The global --log-level is hidden; the parser still accepts it
       expect(command.flagNames ?? {}).not.toHaveProperty("--log-level");
     }
@@ -544,7 +547,7 @@ describe("complete.ts: generated completion targets", () => {
   });
 
   test("project create completes name:platform specs", () => {
-    expect(generatedTargets.commands["project create"]?.positionals).toEqual([
+    expect(generatedCommands["project create"]?.positionals).toEqual([
       PROJECT_SPEC_TARGET,
     ]);
   });

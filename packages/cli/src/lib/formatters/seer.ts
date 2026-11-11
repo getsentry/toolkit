@@ -154,7 +154,7 @@ export type IssueExplainData = {
 function buildRootCauseMarkdown(cause: RootCause, index: number): string {
   const lines: string[] = [];
 
-  lines.push(`### Cause #${index}: ${text(cause.description ?? "")}`);
+  lines.push(`### Cause #${index}: ${text(cause.description)}`);
   lines.push("");
 
   if (cause.relevant_repos && cause.relevant_repos.length > 0) {
@@ -360,7 +360,7 @@ export function formatSolution(solution: SolutionArtifact): string {
   lines.push("## Solution");
   lines.push("");
 
-  lines.push(`**Summary:** ${text(solution.data.one_line_summary ?? "")}`);
+  lines.push(`**Summary:** ${text(solution.data.one_line_summary)}`);
   lines.push("");
 
   if (solution.data.steps.length > 0) {
