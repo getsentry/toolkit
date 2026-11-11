@@ -622,9 +622,7 @@ export const uploadCommand = buildCommand({
       type: {
         kind: "parsed",
         parse: choiceParser(VALID_DIF_TYPES),
-        brief:
-          "Only upload files of this type (repeatable): dsym, elf, pe, pdb, " +
-          "portablepdb, wasm, breakpad, sourcebundle, jvm, dxil",
+        brief: `Only upload files of this type (repeatable): ${VALID_DIF_TYPES.join(", ")}`,
         optional: true,
         variadic: true,
       },
