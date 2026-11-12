@@ -162,9 +162,27 @@ export function hasDwarfQuality(quality: DebugQuality): boolean {
   return quality === "dwarf" || quality === "external-debug-info";
 }
 
-/** Whether a path names a debug companion produced by this command. */
+/** `<stem>.<build_id hex>.debug.wasm`, the name {@link companionPath} writes. */
+const OWN_COMPANION_NAME = /\.[0-9a-f]{8,}\.debug\.wasm$/i;
+
+/**
+ * Whether a path names a debug companion produced by this command.
+ *
+ * Only the `<stem>.<build_id>.debug.wasm` shape counts. A plain
+ * `app.debug.wasm` may be a debug build rather than a companion; callers that
+ * could destroy a companion by mistaking it for a module resolve those with
+ * {@link findCustomCompanions}.
+ */
 export function isDebugCompanionPath(path: string): boolean {
-  return basename(path).toLowerCase().endsWith(COMPANION_SUFFIX);
+  return OWN_COMPANION_NAME.test(basename(path));
+}
+
+/** Whether a path is named like a companion without carrying a build id. */
+function isCompanionLikePath(path: string): boolean {
+  return (
+    basename(path).toLowerCase().endsWith(COMPANION_SUFFIX) &&
+    !isDebugCompanionPath(path)
+  );
 }
 
 /** Whether a path names a WebAssembly module. */
@@ -429,6 +447,70 @@ export async function findReferencedCompanions(
   return companions;
 }
 
+/** Scanned paths that must not be prepared as modules. */
+type CustomCompanions = {
+  /** Known companions of another scanned module. */
+  companions: Set<string>;
+  /** `*.debug.wasm` files that may be companions but can't be matched. */
+  ambiguous: Set<string>;
+};
+
+/** Read a module's build id as hex, or `null` when it has none or is unreadable. */
+async function readBuildIdHex(path: string): Promise<string | null> {
+  try {
+    const { buildId } = inspectWasm(await readFile(path));
+    return buildId ? formatBuildId(buildId) : null;
+  } catch (error) {
+    log.debug(`No readable build_id in ${path}`, error);
+    return null;
+  }
+}
+
+/**
+ * Find scanned paths that are companions of another module, not modules.
+ *
+ * A companion is a complete copy of its module, so it looks like any module
+ * carrying DWARF, and splitting it would strip the debug info its deployable
+ * points at. A path counts as a companion when:
+ * - another candidate's `external_debug_info` names it, or
+ * - it is `<stem>.debug.wasm` (the `wasm-split -d` convention) next to a
+ *   `<stem>.wasm` carrying the same build id. The pointer alone misses this
+ *   when it is a remote URL.
+ *
+ * A `<stem>.debug.wasm` whose sibling carries a different build id is a
+ * separate build, so it is prepared like any module. One with no sibling can't
+ * be told apart and is reported as ambiguous: skipping it costs an upload,
+ * while splitting a companion would lose its DWARF.
+ *
+ * @param paths - Absolute paths of the scanned modules
+ */
+export async function findCustomCompanions(
+  paths: string[],
+): Promise<CustomCompanions> {
+  const companions = await findReferencedCompanions(paths);
+  const ambiguous = new Set<string>();
+  const scanned = new Set(paths.map((path) => resolve(path)));
+  for (const path of paths) {
+    const absolute = resolve(path);
+    if (companions.has(absolute) || !isCompanionLikePath(path)) {
+      continue;
+    }
+    const sibling = join(
+      dirname(absolute),
+      basename(absolute).slice(0, -COMPANION_SUFFIX.length) + ".wasm",
+    );
+    if (!scanned.has(sibling)) {
+      ambiguous.add(absolute);
+      continue;
+    }
+    const id = await readBuildIdHex(absolute);
+    if (id !== null && id === (await readBuildIdHex(sibling))) {
+      companions.add(absolute);
+    }
+  }
+  return { companions, ambiguous };
+}
+
 /** An existing companion, and the quality to report for the pair. */
 type ExistingCompanion = { companion: string; quality: DebugQuality };
 
@@ -637,7 +719,8 @@ export async function prepareWasmFile(
       path,
       action: "skipped",
       quality: "dwarf",
-      warning: "already a debug companion (*.debug.wasm); skipping",
+      warning:
+        "already a debug companion (<stem>.<build_id>.debug.wasm); skipping",
     };
   }
 

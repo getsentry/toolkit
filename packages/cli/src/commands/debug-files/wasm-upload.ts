@@ -43,7 +43,7 @@ import { resolveOrgAndProject } from "../../lib/resolve-target.js";
 import { buildIgnoreMatcher, normalizePath } from "../../lib/scan/index.js";
 import { debugIdFromBuildId, uuidToBytes } from "../../lib/wasm/build-id.js";
 import {
-  findReferencedCompanions,
+  findCustomCompanions,
   hasDwarfQuality,
   isDebugCompanionPath,
   isWasmPath,
@@ -518,24 +518,37 @@ export const wasmUploadCommand = buildCommand({
         !ignoreMatcher?.ignores(pathRelativeToRoot(path, paths)),
     );
 
-    if (candidates.length === 0) {
-      log.warn("No WebAssembly modules found.");
+    // A custom-named companion looks like a module with DWARF; splitting it
+    // would strip the debug info its deployable points at.
+    const { companions, ambiguous } = await findCustomCompanions(candidates);
+    const modules = candidates.filter((path) => {
+      const absolute = resolve(path);
+      if (companions.has(absolute)) {
+        log.debug(`Skipping ${path}: a debug companion of another module`);
+        return false;
+      }
+      if (ambiguous.has(absolute)) {
+        log.warn(
+          `Skipping ${path}: named like a debug companion, but no scanned module matches it. If it is a module, rename it or scan it together with <stem>.wasm.`,
+        );
+        return false;
+      }
+      return true;
+    });
+
+    // Checked after dropping companions, so a directory holding only
+    // companions ends like an empty scan instead of asking for credentials.
+    if (modules.length === 0) {
+      log.warn(
+        candidates.length === 0
+          ? "No WebAssembly modules found."
+          : "No WebAssembly modules found; every scanned .wasm is a debug companion.",
+      );
       return yield* reportWithoutUpload({
         results: [],
         hint: `No .wasm modules found. Try: ${usageHint()}`,
       });
     }
-
-    // A custom-named companion looks like a module with DWARF; splitting it
-    // would strip the debug info its deployable points at.
-    const companions = await findReferencedCompanions(candidates);
-    const modules = candidates.filter((path) => {
-      if (!companions.has(resolve(path))) {
-        return true;
-      }
-      log.debug(`Skipping ${path}: referenced as a debug companion`);
-      return false;
-    });
 
     // Resolve the upload target before touching any module: preparing strips
     // deployables in place, so a missing org/project or auth failure found
