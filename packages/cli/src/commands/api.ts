@@ -669,13 +669,11 @@ export function buildQueryParams(
     const rawValue = field.substring(eqIndex + 1);
     const value = parseFieldValue(rawValue);
 
-    // Handle arrays by creating string[] for repeated keys
-    // Use stringifyValue to handle objects (avoid "[object Object]")
-    if (Array.isArray(value)) {
-      result[key] = value.map(stringifyValue);
-    } else {
-      result[key] = stringifyValue(value);
-    }
+    const values = Array.isArray(value)
+      ? value.map(stringifyValue)
+      : stringifyValue(value);
+    const existing = Object.hasOwn(result, key) ? result[key] : undefined;
+    result[key] = existing === undefined ? values : [existing, values].flat();
   }
 
   return result;
@@ -1587,7 +1585,8 @@ export const apiCommand = buildCommand({
       "  key[sub]=value     Nested object: {key: {sub: value}}\n" +
       "  key[]=value        Array append: {key: [value]}\n" +
       "  key[]              Empty array: {key: []}\n\n" +
-      "Use --raw-field/-f to send values as strings without JSON parsing.",
+      "Use --raw-field/-f to send values as strings without JSON parsing. " +
+      "For GET requests, repeat a key to send an ordered list of values.",
     examples: [
       {
         description: "List organizations",
