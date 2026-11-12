@@ -12,6 +12,7 @@ import {
   ReplayTimelineBuilder,
   type ReplayTimelineCategory,
   type ReplayTimelineEvent,
+  type ReplayVideoSegment,
 } from "../../internal/replay-timeline";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -56,6 +57,7 @@ type ReplayRecording =
   | {
       status: "loaded";
       events: ReplayTimelineEvent[];
+      videoSegments: ReplayVideoSegment[];
       segmentsRead: number;
       truncated: boolean;
     };
@@ -76,6 +78,8 @@ const MAX_TIMELINE_LIMIT = 200;
 // this; the response says so instead of presenting a partial timeline as whole.
 const MAX_REPLAY_SEGMENTS = 500;
 const MAX_SUMMARY_URLS = 3;
+// Mobile SDKs cut a segment about every 5 seconds, so this covers a few minutes.
+const MAX_VIDEO_SEGMENTS = 50;
 
 const nullableString = z.string().nullable();
 
@@ -162,6 +166,33 @@ export const getReplayDetailsOutputSchema = z.object({
         .describe("Later activity is missing past `segmentsRead`."),
     }),
   ]),
+  video: z
+    .object({
+      segmentCount: z
+        .number()
+        .describe("Video clips in the recording segments read."),
+      matchingCount: z
+        .number()
+        .describe("Clips that overlap the timeline window."),
+      segments: z
+        .array(
+          z.object({
+            segmentId: z.number(),
+            offsetSeconds: z
+              .number()
+              .describe("Seconds from the replay start, to 0.1s."),
+            durationSeconds: z.number(),
+            downloadUrl: z.string(),
+          }),
+        )
+        .describe(
+          `First ${MAX_VIDEO_SEGMENTS} matching clips in playback order. Play them in order to watch the window.`,
+        ),
+    })
+    .nullable()
+    .describe(
+      "Screen video of a mobile replay, one clip per recording segment. Null for web replays or when the recording is unavailable. `downloadUrl` is an authenticated Sentry API URL: send `Authorization: Bearer <token>`, or run `sentry api` with its path.",
+    ),
   related: z.object({
     issues: z
       .array(
@@ -188,6 +219,15 @@ export const getReplayDetailsOutputSchema = z.object({
 
 type GetReplayDetailsPayload = z.infer<typeof getReplayDetailsOutputSchema>;
 type ReplayTimelinePayload = GetReplayDetailsPayload["timeline"];
+type ReplayVideoPayload = GetReplayDetailsPayload["video"];
+type LoadedReplayRecording = Extract<ReplayRecording, { status: "loaded" }>;
+
+/** The replay start and the requested window, as epoch milliseconds. */
+interface TimelineWindow {
+  replayStartMs: number;
+  startMs: number | null;
+  endMs: number | null;
+}
 
 export default defineTool({
   name: "get_replay_details",
@@ -202,6 +242,7 @@ export default defineTool({
     "- Share a replay URL",
     "- Ask what happened in a replay, or what a user saw and clicked",
     "- Need the moments before an error, a dead click, or the end of a session",
+    "- Want to download the screen video of a mobile replay",
     "",
     "<examples>",
     "get_replay_details(replayUrl='https://my-organization.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/')",
@@ -212,6 +253,7 @@ export default defineTool({
     "<hints>",
     "- Offsets are seconds from the replay start; negative offsets count back from the end, so startOffsetSeconds=-10 shows the last 10 seconds",
     "- `timeline.recorded` counts every recorded event by category, so you can see what to ask for next",
+    "- Mobile replays list `video.segments` download URLs for the same offset window",
     "</hints>",
   ].join("\n"),
   inputSchema: {
@@ -319,10 +361,22 @@ export default defineTool({
       }),
     ]);
 
-    const timeline =
+    const { timeline, video } =
       recording.status === "unavailable"
-        ? { status: "unavailable" as const, reason: recording.reason }
-        : buildTimeline({ replay, recording, timelineRequest });
+        ? {
+            timeline: {
+              status: "unavailable" as const,
+              reason: recording.reason,
+            },
+            video: null,
+          }
+        : buildRecordingPayload({
+            apiService,
+            organizationSlug: resolved.organizationSlug,
+            replay,
+            recording,
+            timelineRequest,
+          });
     const related = {
       issues: relatedIssues.map(({ eventId, issue }) => ({
         eventId,
@@ -344,6 +398,7 @@ export default defineTool({
           apiService.getReplayUrl(resolved.organizationSlug, replay.id),
       }),
       timeline,
+      video,
       related,
       // Replay URLs also reach this handler through get_sentry_resource, so
       // only suggest calls that are reachable in the session.
@@ -461,6 +516,7 @@ async function fetchReplayRecording({
     return {
       status: "loaded",
       events: builder.build(),
+      videoSegments: builder.videoSegments(),
       segmentsRead,
       truncated,
     };
@@ -614,15 +670,45 @@ function buildReplayUser(
     : null;
 }
 
-function buildTimeline({
+function buildRecordingPayload({
+  apiService,
+  organizationSlug,
+  replay,
+  recording,
+  timelineRequest,
+}: {
+  apiService: SentryApiService;
+  organizationSlug: string;
+  replay: ReplayDetails;
+  recording: LoadedReplayRecording;
+  timelineRequest: TimelineRequest;
+}): { timeline: ReplayTimelinePayload; video: ReplayVideoPayload } {
+  const timelineWindow = resolveTimelineWindow({
+    replay,
+    recording,
+    timelineRequest,
+  });
+  return {
+    timeline: buildTimeline({ recording, timelineRequest, timelineWindow }),
+    video: buildVideo({
+      apiService,
+      organizationSlug,
+      replay,
+      recording,
+      timelineWindow,
+    }),
+  };
+}
+
+function resolveTimelineWindow({
   replay,
   recording,
   timelineRequest,
 }: {
   replay: ReplayDetails;
-  recording: Extract<ReplayRecording, { status: "loaded" }>;
+  recording: LoadedReplayRecording;
   timelineRequest: TimelineRequest;
-}): Extract<ReplayTimelinePayload, { status: "loaded" }> {
+}): TimelineWindow {
   const { events } = recording;
   const startedAtMs = parseTimestampMs(replay.started_at);
   const replayStartMs = startedAtMs ?? events.at(0)?.timestampMs ?? 0;
@@ -651,6 +737,24 @@ function buildTimeline({
       "`startOffsetSeconds` must resolve to a time before `endOffsetSeconds`.",
     );
   }
+  return { replayStartMs, startMs: windowStartMs, endMs: windowEndMs };
+}
+
+function buildTimeline({
+  recording,
+  timelineRequest,
+  timelineWindow,
+}: {
+  recording: LoadedReplayRecording;
+  timelineRequest: TimelineRequest;
+  timelineWindow: TimelineWindow;
+}): Extract<ReplayTimelinePayload, { status: "loaded" }> {
+  const { events } = recording;
+  const {
+    replayStartMs,
+    startMs: windowStartMs,
+    endMs: windowEndMs,
+  } = timelineWindow;
 
   const categories = timelineRequest.categories
     ? new Set(timelineRequest.categories)
@@ -684,6 +788,51 @@ function buildTimeline({
     nextSkip: matching.length > shownEnd ? shownEnd : null,
     segmentsRead: recording.segmentsRead,
     truncated: recording.truncated,
+  };
+}
+
+/** Lists the video clips that overlap the timeline window. */
+function buildVideo({
+  apiService,
+  organizationSlug,
+  replay,
+  recording,
+  timelineWindow,
+}: {
+  apiService: SentryApiService;
+  organizationSlug: string;
+  replay: ReplayDetails;
+  recording: LoadedReplayRecording;
+  timelineWindow: TimelineWindow;
+}): ReplayVideoPayload {
+  const { videoSegments } = recording;
+  if (videoSegments.length === 0 || replay.project_id == null) {
+    return null;
+  }
+  const projectSlugOrId = String(replay.project_id);
+  const matching = videoSegments.filter(
+    (segment) =>
+      (timelineWindow.startMs === null ||
+        segment.timestampMs + segment.durationMs > timelineWindow.startMs) &&
+      (timelineWindow.endMs === null ||
+        segment.timestampMs <= timelineWindow.endMs),
+  );
+  return {
+    segmentCount: videoSegments.length,
+    matchingCount: matching.length,
+    segments: matching.slice(0, MAX_VIDEO_SEGMENTS).map((segment) => ({
+      segmentId: segment.segmentId,
+      offsetSeconds: toTenthsOfSecond(
+        segment.timestampMs - timelineWindow.replayStartMs,
+      ),
+      durationSeconds: segment.durationMs / 1000,
+      downloadUrl: apiService.getReplayVideoUrl({
+        organizationSlug,
+        projectSlugOrId,
+        replayId: replay.id,
+        segmentId: segment.segmentId,
+      }),
+    })),
   };
 }
 

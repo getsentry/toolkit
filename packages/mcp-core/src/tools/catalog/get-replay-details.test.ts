@@ -220,6 +220,7 @@ describe("get_replay_details", () => {
           "status": "loaded",
           "truncated": false,
         },
+        "video": null,
       }
     `);
   });
@@ -882,6 +883,99 @@ describe("get_replay_details", () => {
     expect(timeline.events).toEqual([
       { offsetSeconds: 5, label: "click", target: "button.ok", details: {} },
     ]);
+  });
+
+  describe("mobile video", () => {
+    const startMs = Date.parse(replayDetailsFixture.started_at);
+    const videoEvent = (
+      segmentId: number,
+      offsetMs: number,
+      duration: number,
+    ) => ({
+      type: 5,
+      timestamp: startMs + offsetMs,
+      data: {
+        tag: "video",
+        payload: {
+          segmentId,
+          duration,
+          container: "mp4",
+          encoding: "h264",
+          height: 1920,
+          width: 1080,
+        },
+      },
+    });
+    const videoBase = `https://us.sentry.io/api/0/projects/sentry-mcp-evals/${replayDetailsFixture.project_id}/replays/${replayDetailsFixture.id}/videos`;
+
+    function useVideoRecording() {
+      mswServer.use(
+        http.get(
+          recordingEndpoint,
+          () =>
+            HttpResponse.json([
+              [videoEvent(0, 0, 5000)],
+              [videoEvent(1, 5000, 5000)],
+              // Sentry skips empty videos.
+              [videoEvent(2, 10000, 0)],
+              [videoEvent(3, 10000, 4200)],
+            ]),
+          { once: true },
+        ),
+      );
+    }
+
+    it("lists video download URLs for every segment", async () => {
+      useVideoRecording();
+
+      const payload = await getPayload(directParams);
+
+      expect(payload.video).toEqual({
+        segmentCount: 3,
+        matchingCount: 3,
+        segments: [
+          {
+            segmentId: 0,
+            offsetSeconds: 0,
+            durationSeconds: 5,
+            downloadUrl: `${videoBase}/0/`,
+          },
+          {
+            segmentId: 1,
+            offsetSeconds: 5,
+            durationSeconds: 5,
+            downloadUrl: `${videoBase}/1/`,
+          },
+          {
+            segmentId: 3,
+            offsetSeconds: 10,
+            durationSeconds: 4.2,
+            downloadUrl: `${videoBase}/3/`,
+          },
+        ],
+      });
+      // Video events are not user activity.
+      expect(loadedTimeline(payload).recorded).toEqual({});
+    });
+
+    it("limits video segments to the timeline window", async () => {
+      useVideoRecording();
+
+      const payload = await getPayload({
+        ...directParams,
+        startOffsetSeconds: 6,
+        endOffsetSeconds: 9,
+      });
+
+      expect(payload.video?.matchingCount).toBe(1);
+      expect(payload.video?.segments.map((s) => s.segmentId)).toEqual([1]);
+    });
+
+    it("returns null video for web replays", async () => {
+      const payload = await getPayload(directParams);
+
+      expect(payload.video).toBeNull();
+    });
   });
 
   describe("tool definition", () => {

@@ -827,6 +827,24 @@ export class SentryApiService {
     );
   }
 
+  /**
+   * Authenticated API URL that downloads one mobile replay segment's video
+   * (`ProjectReplayVideoDetailsEndpoint`). Requests need Sentry credentials.
+   */
+  getReplayVideoUrl({
+    organizationSlug,
+    projectSlugOrId,
+    replayId,
+    segmentId,
+  }: {
+    organizationSlug: string;
+    projectSlugOrId: string;
+    replayId: string;
+    segmentId: number;
+  }): string {
+    return `${this.apiPrefix}${apiPath`/projects/${organizationSlug}/${projectSlugOrId}/replays/${replayId}/videos/${String(segmentId)}/`}`;
+  }
+
   getAIConversationUrl(
     organizationSlug: string,
     conversationId: string,

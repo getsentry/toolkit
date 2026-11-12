@@ -4,7 +4,8 @@
  * Recording segments mix rrweb DOM events with Sentry custom events. The
  * Sentry SDKs emit custom events as `{ type: 5, data: { tag, payload } }`,
  * where `tag` is `breadcrumb` (payload is a breadcrumb with a `category`),
- * `performanceSpan` (payload is a span with an `op`), or `options`. See
+ * `performanceSpan` (payload is a span with an `op`), `video` (mobile SDKs
+ * record the screen as one video per segment), or `options`. See
  * `packages/replay-internal/src/types/replayFrame.ts` in sentry-javascript and
  * `static/app/utils/replays/replayReader.tsx` in getsentry/sentry, whose
  * deduplication rules this mirrors.
@@ -49,6 +50,13 @@ export interface ReplayTimelineDetail {
   value: string;
 }
 
+/** One recording segment's screen video, from a mobile replay. */
+export interface ReplayVideoSegment {
+  segmentId: number;
+  timestampMs: number;
+  durationMs: number;
+}
+
 const NAVIGATION_SPAN_LABELS: Record<string, string> = {
   "navigation.navigate": "page load",
   "navigation.reload": "reload",
@@ -90,14 +98,27 @@ type UnknownRecord = Record<string, unknown>;
  */
 export class ReplayTimelineBuilder {
   private readonly events: ReplayTimelineEvent[] = [];
+  private readonly videos = new Map<number, ReplayVideoSegment>();
 
   addSegment(rawEvents: unknown[]): void {
     for (const rawEvent of rawEvents) {
+      const video = parseVideoEvent(rawEvent);
+      if (video) {
+        this.videos.set(video.segmentId, video);
+        continue;
+      }
       const event = parseRecordingEvent(rawEvent);
       if (event) {
         this.events.push(event);
       }
     }
+  }
+
+  /** Returns the video segments, sorted by time. Web replays have none. */
+  videoSegments(): ReplayVideoSegment[] {
+    return [...this.videos.values()].sort(
+      (a, b) => a.timestampMs - b.timestampMs,
+    );
   }
 
   /** Returns events sorted by time, with duplicate clicks and navigations removed. */
@@ -107,6 +128,34 @@ export class ReplayTimelineBuilder {
     );
     return removeDuplicateNavigations(removeDuplicateClicks(sorted));
   }
+}
+
+/**
+ * Mobile SDKs emit `{ type: 5, timestamp, data: { tag: "video", payload } }`
+ * with the segment ID and the duration in milliseconds. Like `hydrateFrames`
+ * in getsentry/sentry, empty videos are skipped.
+ */
+function parseVideoEvent(rawEvent: unknown): ReplayVideoSegment | null {
+  const event = asRecord(rawEvent);
+  const data = asRecord(event?.data);
+  if (data?.tag !== "video") {
+    return null;
+  }
+  const payload = asRecord(data.payload);
+  const segmentId = asNumber(payload?.segmentId);
+  const durationMs = asNumber(payload?.duration);
+  const timestampMs = asNumber(event?.timestamp);
+  if (
+    segmentId === null ||
+    !Number.isInteger(segmentId) ||
+    segmentId < 0 ||
+    durationMs === null ||
+    durationMs <= 0 ||
+    timestampMs === null
+  ) {
+    return null;
+  }
+  return { segmentId, timestampMs, durationMs };
 }
 
 function parseRecordingEvent(rawEvent: unknown): ReplayTimelineEvent | null {
