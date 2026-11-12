@@ -2189,30 +2189,37 @@ describe("structuredContent", () => {
     expect(result).toContain("CLOUDFLARE-MCP-41");
   });
 
-  it("renders the event body itself rather than asking the api for one", async () => {
+  it("maps the event entries into fields rather than rendering markdown", async () => {
     mockLatestEvent();
 
     const result = await getIssueDetails.handler(params, experimentalContext);
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(typeof payload.event.body).toBe("string");
-    expect(payload.event.body).toContain("### Error");
-    expect(payload.event.body).toContain("Something went wrong");
-    expect(payload.event.body).toContain("### Tags");
+    expect(payload.event).not.toHaveProperty("body");
+    expect(payload.event.message).toBe("Something went wrong");
+    expect(payload.event.tags).toEqual([
+      { key: "level", value: "error" },
+      { key: "environment", value: "production" },
+    ]);
   });
 
-  it("carries the response notes, which say which tool to call next", async () => {
+  it("offers the follow-up calls the markdown notes describe as actions", async () => {
     mockLatestEvent();
 
     const result = await getIssueDetails.handler(params, experimentalContext);
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.responseNotes.length).toBeGreaterThan(0);
-    const notes = payload.responseNotes.join("\n");
-    expect(notes).toContain("Fixes CLOUDFLARE-MCP-41");
-    expect(notes).toContain("search_issue_events");
+    expect(payload).not.toHaveProperty("responseNotes");
+    expect(payload.suggestedActions).toContainEqual(
+      expect.objectContaining({
+        toolName: "get_issue_breadcrumbs",
+        arguments: {
+          issueUrl: expect.stringContaining("CLOUDFLARE-MCP-41"),
+        },
+      }),
+    );
   });
 
   it("carries the top level message, which the body does not render", async () => {
@@ -2225,7 +2232,95 @@ describe("structuredContent", () => {
     expect(payload.event.message).toBe("TOP-LEVEL-MESSAGE");
   });
 
-  it("keeps an unsupported event type on the markdown path", async () => {
+  it("returns structured content for an unsupported event type", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/7777777777/events/latest/",
+        () => HttpResponse.json(createUnknownEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/FUTURE-TYPE-001",
+        () => HttpResponse.json(createUnsupportedIssue()),
+      ),
+    );
+
+    const logIssueSpy = vi.spyOn(logging, "logIssue");
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "FUTURE-TYPE-001" },
+      experimentalContext,
+    );
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
+    expect(payload.issue.shortId).toBe("FUTURE-TYPE-001");
+    expect(payload.event.type).toBe("future_ai_agent_trace");
+    expect(payload.event.exceptions).toBeNull();
+    expect(payload.event.tags).toEqual([{ key: "level", value: "error" }]);
+    // still reported, so support for the type gets added
+    expect(logIssueSpy).toHaveBeenCalledWith(
+      "Unsupported event type encountered: future_ai_agent_trace",
+      expect.anything(),
+    );
+    logIssueSpy.mockRestore();
+  });
+
+  // Sentry's event serializer sends dateCreated and dateReceived on every
+  // event, but the transaction and unknown (CSP and others) event schemas
+  // drop dateCreated, so occurredAt comes from dateReceived.
+  it("takes occurredAt from dateReceived for a transaction event", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
+        () => HttpResponse.json(createPerformanceIssue()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/7890123456/events/latest/",
+        () =>
+          HttpResponse.json(
+            createPerformanceEvent({
+              dateReceived: "2025-08-06T18:00:01.250000Z",
+            }),
+          ),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/trace/abcdef1234567890abcdef1234567890/",
+        () => HttpResponse.json(createTraceResponseFixture()),
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "PERF-N1-001" },
+      experimentalContext,
+    );
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(payload.event.type).toBe("transaction");
+    expect(payload.event.occurredAt).toBe("2025-08-06T18:00:01.250Z");
+  });
+
+  it("takes occurredAt from dateReceived for a CSP event", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/4256774711/events/latest/",
+        () => HttpResponse.json(createCspEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/BLOG-CSP-4XC/",
+        () => HttpResponse.json(createCspIssue()),
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "BLOG-CSP-4XC" },
+      experimentalContext,
+    );
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(payload.event.type).toBe("csp");
+    expect(payload.event.occurredAt).toBe("2025-11-19T19:24:12.491Z");
+  });
+
+  it("takes occurredAt from dateReceived for an unknown event type", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/*/issues/7777777777/events/latest/",
@@ -2241,12 +2336,13 @@ describe("structuredContent", () => {
       { ...params, issueId: "FUTURE-TYPE-001" },
       experimentalContext,
     );
+    const payload = getStructuredContent<Record<string, any>>(result);
 
-    expect(result).not.toHaveProperty("structuredContent");
-    expect(result).toContain('Unsupported event type "future_ai_agent_trace"');
+    expect(payload.event.type).toBe("future_ai_agent_trace");
+    expect(payload.event.occurredAt).toBe("2025-01-01T01:00:00.000Z");
   });
 
-  it("renders a transaction, whose body carries the performance trace", async () => {
+  it("maps a transaction's N+1 evidence and its spans", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
@@ -2255,6 +2351,10 @@ describe("structuredContent", () => {
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/7890123456/events/latest/",
         () => HttpResponse.json(createPerformanceEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/trace/abcdef1234567890abcdef1234567890/",
+        () => HttpResponse.json(createTraceResponseFixture()),
       ),
     );
 
@@ -2266,7 +2366,51 @@ describe("structuredContent", () => {
       .structuredContent;
 
     expect(payload.event.type).toBe("transaction");
-    expect(payload.event.body).toContain("Span");
+    expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
+    expect(payload.event.performance).toMatchObject({
+      issueType: "performance_n_plus_one_db_queries",
+      transactionName: "/api/users",
+      parentOperation: "GET /api/users",
+      repeatCount: 3,
+      repeatedOperations: expect.arrayContaining([
+        expect.stringContaining("SELECT"),
+      ]),
+    });
+    // the span tree from the fetched trace, parents linked by id
+    expect(payload.event.performance.spans).toEqual([
+      {
+        spanId: "parent123",
+        parentSpanId: null,
+        op: "http.server",
+        description: "GET /api/users",
+        durationMs: 250,
+        isOffender: false,
+      },
+      {
+        spanId: "span001",
+        parentSpanId: "parent123",
+        op: "db.query",
+        description: "SELECT * FROM users WHERE id = 1",
+        durationMs: 5,
+        isOffender: true,
+      },
+      {
+        spanId: "span002",
+        parentSpanId: "parent123",
+        op: "db.query",
+        description: "SELECT * FROM users WHERE id = 2",
+        durationMs: 5,
+        isOffender: true,
+      },
+      {
+        spanId: "span003",
+        parentSpanId: "parent123",
+        op: "db.query",
+        description: "SELECT * FROM users WHERE id = 3",
+        durationMs: 5,
+        isOffender: true,
+      },
+    ]);
   });
 
   it("keeps the attached replay, which lives on the event not the related list", async () => {
@@ -2296,7 +2440,7 @@ describe("structuredContent", () => {
     expect(payload.replays?.related).not.toContain(
       "1234567890abcdef1234567890abcdef",
     );
-    expect(payload.event.body).not.toContain(
+    expect(JSON.stringify(payload.event)).not.toContain(
       "1234567890abcdef1234567890abcdef",
     );
   });
@@ -2758,26 +2902,21 @@ describe("selected event package versions", () => {
       ],
     });
     expect(JSON.stringify(result)).not.toContain("unrelated");
-    expect(payload.event.body).toContain("Something went wrong");
+    expect(payload.event.message).toBe("Something went wrong");
     expect(payload).toMatchInlineSnapshot(`
       {
         "aiConversations": null,
         "codeLocation": null,
         "event": {
-          "body": "### Error
-
-      \`\`\`
-      Something went wrong
-      \`\`\`
-
-      ### Tags
-
-      **level**: \`error\`
-      **environment**: \`production\`
-
-      ",
+          "contexts": null,
+          "crashedThread": null,
+          "csp": null,
+          "evidence": null,
+          "exceptions": null,
+          "extra": null,
           "id": "7ca573c0f4814912aaa9bdc77d1a7d51",
           "message": "Something went wrong",
+          "metricAlert": null,
           "occurredAt": "2025-10-02T12:00:00.000Z",
           "packageVersions": {
             "metadataAvailable": true,
@@ -2802,7 +2941,23 @@ describe("selected event package versions", () => {
               },
             ],
           },
+          "performance": null,
+          "platform": "python",
+          "request": null,
+          "tags": [
+            {
+              "key": "level",
+              "value": "error",
+            },
+            {
+              "key": "environment",
+              "value": "production",
+            },
+          ],
+          "threadCount": 0,
+          "threads": null,
           "type": "default",
+          "user": null,
         },
         "externalIssues": null,
         "issue": {
@@ -2826,13 +2981,17 @@ describe("selected event package versions", () => {
           "usersImpacted": 1,
         },
         "replays": null,
-        "responseNotes": [
-          "Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.",
-          "The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.",
-          "Issue event search: Use the Sentry tool \`search_issue_events\`",
-          "Breadcrumb trail leading up to this error: Use the Sentry tool \`get_issue_breadcrumbs\`",
-        ],
         "seer": null,
+        "suggestedActions": [
+          {
+            "arguments": {
+              "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+            },
+            "reason": "Read the breadcrumb trail leading up to this event.",
+            "toolName": "get_issue_breadcrumbs",
+            "type": "tool_call",
+          },
+        ],
         "suspectCommit": null,
       }
     `);

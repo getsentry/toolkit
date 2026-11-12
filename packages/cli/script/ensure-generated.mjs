@@ -13,7 +13,7 @@
  *   node script/ensure-generated.mjs schema          # only the API schema
  *   node script/ensure-generated.mjs schema grammar  # the schema and parsers
  *
- * Plain Node (no tsx) so the check adds no noticeable startup time.
+ * Plain JavaScript (no TypeScript loader) so the check adds no noticeable startup time.
  */
 
 import { execSync } from "node:child_process";
@@ -63,7 +63,7 @@ function isGenerated(path) {
 }
 
 function run(script) {
-  // oxlint-disable-next-line no-console -- plain Node: this runs before tsx, so it cannot load the TypeScript logger.
+  // oxlint-disable-next-line no-console -- plain JavaScript: this runs before the TypeScript loader, so it cannot load the TypeScript logger.
   console.error(`Missing generated files; running \`pnpm run ${script}\`...`);
   // Send generator output to stderr: `pnpm run cli mcp` serves JSON-RPC on
   // stdout, so nothing else may write there.

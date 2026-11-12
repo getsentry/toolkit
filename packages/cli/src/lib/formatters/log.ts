@@ -7,7 +7,6 @@
 import { tableCell, text } from "@sentry/toolkit-core/markdown";
 import type {
   DetailedSentryLog,
-  SentryLog,
   TraceItemAttribute,
 } from "../../types/index.js";
 import { stringifyUnknown } from "../errors.js";
