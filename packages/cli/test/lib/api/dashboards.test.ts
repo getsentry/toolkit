@@ -682,16 +682,14 @@ describe("queryAllWidgets timeseries", () => {
   });
 
   test("omits ingestion and incomplete flags when the API reports none", async () => {
-    apiRequestToRegionMock.mockResolvedValue({
-      data: {
-        timeSeries: [
-          {
-            yAxis: "count()",
-            values: [{ timestamp: 1_700_000_000_000, value: 1 }],
-            meta: { valueType: "integer", valueUnit: null },
-          },
-        ],
-      },
+    mockResponse({
+      timeSeries: [
+        {
+          yAxis: "count()",
+          values: [bucket(1)],
+          meta: SERIES_META,
+        },
+      ],
     });
     const dashboard = makeDashboard([
       {
@@ -720,18 +718,31 @@ describe("queryAllWidgets timeseries", () => {
   });
 
   test("keeps the slowest ingestion status across widget queries", async () => {
-    apiRequestToRegionMock
+    const window = {
+      dataset: "errors",
+      start: 1_700_000_000_000,
+      end: 1_700_003_600_000,
+    };
+    listOrganizationEventsTimeseriesMock
       .mockResolvedValueOnce({
         data: {
-          meta: { ingestion: { status: "delayed", delaySeconds: 30 } },
+          meta: {
+            ...window,
+            ingestion: { status: "delayed", delaySeconds: 30 },
+          },
           timeSeries: [],
         },
+        response: new Response(),
       })
       .mockResolvedValueOnce({
         data: {
-          meta: { ingestion: { status: "delayed", delaySeconds: 120 } },
+          meta: {
+            ...window,
+            ingestion: { status: "delayed", delaySeconds: 120 },
+          },
           timeSeries: [],
         },
+        response: new Response(),
       });
     const dashboard = makeDashboard([
       {

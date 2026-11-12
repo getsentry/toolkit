@@ -75,7 +75,7 @@ describe("incomplete buckets", () => {
 
   test("buildChartModel carries per-bucket incomplete flags", () => {
     const data = makeTimeseries();
-    data.series[0]!.values[3] = {
+    data.series[0].values[3] = {
       timestamp: 1_700_000_180,
       value: 30,
       incomplete: true,
@@ -91,7 +91,7 @@ describe("incomplete buckets", () => {
 
   test("single-series bars fade incomplete columns", () => {
     const data = makeTimeseries();
-    data.series[0]!.values[3] = {
+    data.series[0].values[3] = {
       timestamp: 1_700_000_180,
       value: 30,
       incomplete: true,
