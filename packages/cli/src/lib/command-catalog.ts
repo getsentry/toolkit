@@ -86,11 +86,15 @@ function parametersSchema(command: Command): JsonSchema {
 
   if (positional?.kind === "tuple" && positional.parameters.length > 0) {
     const minItems = positional.parameters.filter((p) => !p.optional).length;
+    // `maxItems` rather than `items: false` ends the tuple: VS Code Copilot
+    // rejects an array whose `items` is not a schema. `items` only covers
+    // positions past `prefixItems`, which `maxItems` rules out.
     properties.positional = {
       type: "array",
       prefixItems: positional.parameters.map(positionalSchema),
-      items: false,
+      items: { type: "string" },
       ...(minItems > 0 ? { minItems } : {}),
+      maxItems: positional.parameters.length,
     };
     if (minItems > 0) required.push("positional");
   } else if (positional?.kind === "array") {

@@ -28,9 +28,10 @@ export type JsonSchema = {
   /** Suggested values; others are accepted too. */
   examples?: string[];
   default?: unknown;
-  items?: JsonSchema | false;
+  items?: JsonSchema;
   prefixItems?: JsonSchema[];
   minItems?: number;
+  maxItems?: number;
   /** By name; a name the schema does not list is `undefined`. */
   properties?: Partial<Record<string, JsonSchema>>;
   required?: string[];

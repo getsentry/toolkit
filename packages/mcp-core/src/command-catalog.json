@@ -17,7 +17,10 @@
                 "description": "<org>/ (all projects), <org>/<project>, or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -311,7 +314,10 @@
                 "description": "<org>/<project>, auto-detected project, or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -496,8 +502,11 @@
                 "description": "Rule id or name (same as view)"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -627,8 +636,11 @@
                 "description": "Rule id or name (same as view)"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -881,7 +893,10 @@
                 "description": "<org>/ (all projects), <org>/<project>, or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -985,8 +1000,11 @@
                 "description": "Issue alert rule ID or name"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -1065,8 +1083,11 @@
                 "description": "Target project or organization"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -1267,8 +1288,11 @@
                 "description": "Rule id or name (same as view)"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -1392,8 +1416,11 @@
                 "description": "Rule id or name (same as view)"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -1665,7 +1692,10 @@
                 "description": "<org>/, <org>/<project> (project ignored), or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -1768,8 +1798,11 @@
                 "description": "Metric alert rule ID or name"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -1853,8 +1886,11 @@
                 "description": "API endpoint relative to /api/0/, or an absolute HTTP(S) URL"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -2006,7 +2042,10 @@
                 "description": "Text in attribute names and/or has:<key> terms, e.g. 'gen_ai has:http.method'"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2
           },
           "flags": {
             "type": "object",
@@ -2333,8 +2372,11 @@
                 "description": "ID of the build to download"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -2565,7 +2607,10 @@
                 "description": "Shell to generate completions for (bash, zsh, or fish)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -2854,8 +2899,11 @@
                 "description": "Path to the code mappings JSON file"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -2934,8 +2982,11 @@
                 "description": "Path to the dart symbol map JSON file"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -4194,8 +4245,11 @@
                 "description": "Directory containing JVM source files"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -4276,8 +4330,11 @@
                 "description": "Path to the debug information file"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -4339,8 +4396,11 @@
                 "description": "Path to the debug information file"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -4483,8 +4543,11 @@
                 "description": "Path to the debug information file"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -4799,7 +4862,10 @@
                 "description": "<org>/ (all projects), <org>/<project>, or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -4897,7 +4963,10 @@
                 "description": "<org>/<project> or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -5028,8 +5097,11 @@
                 "description": "Issue: @latest, @most_frequent, <org>/ID, <org>/<project>#ID, <project>-suffix, ID, or suffix"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -5807,7 +5879,10 @@
                 "description": "<org>/ (all projects), <org>/<project>, or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -5992,7 +6067,10 @@
                 "description": "<org>/ (all projects), <org>/<project>, or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -6249,8 +6327,11 @@
                 "description": "Feedback: @latest, numeric ID, short ID, <org>/SHORT-ID, or <org>/<project>/<suffix>"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -6474,8 +6555,11 @@
                 "description": "Feedback: @latest, numeric ID, short ID, <org>/SHORT-ID, or <org>/<project>/<suffix>"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -6699,8 +6783,11 @@
                 "description": "Feedback: @latest, numeric ID, short ID, <org>/SHORT-ID, or <org>/<project>/<suffix>"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -6925,8 +7012,11 @@
                 "description": "Feedback: @latest, numeric ID, short ID, <org>/SHORT-ID, or <org>/<project>/<suffix>"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -7413,7 +7503,10 @@
                 "description": "<org>/ (all), <org>/<name> or <name> (a project, else matching names), or a name glob (<org>/web-*)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -7546,8 +7639,11 @@
                 "description": "Issue: @latest, @most_frequent, <org>/ID, <org>/<project>#ID, <project>-suffix, ID, or suffix"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -7643,8 +7739,11 @@
                 "description": "Issue: @latest, @most_frequent, <org>/ID, <org>/<project>#ID, <project>-suffix, ID, or suffix"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -7959,8 +8058,11 @@
                 "description": "URL of an existing tracker issue or GitHub pull request"
               }
             ],
-            "items": false,
-            "minItems": 2
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2,
+            "maxItems": 2
           },
           "flags": {
             "type": "object",
@@ -8088,7 +8190,10 @@
                 "description": "<org>/ (all projects), <org>/<project>, or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -8423,8 +8528,11 @@
                 "description": "Issue: @latest, @most_frequent, <org>/ID, <org>/<project>#ID, <project>-suffix, ID, or suffix"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -8521,8 +8629,11 @@
                 "description": "Issue: @latest, @most_frequent, <org>/ID, <org>/<project>#ID, <project>-suffix, ID, or suffix"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -8626,8 +8737,11 @@
                 "description": "Tag key, e.g. release, server_name, browser.name"
               }
             ],
-            "items": false,
-            "minItems": 2
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2,
+            "maxItems": 2
           },
           "flags": {
             "type": "object",
@@ -8759,8 +8873,11 @@
                 "description": "URL of an existing tracker issue or GitHub pull request"
               }
             ],
-            "items": false,
-            "minItems": 2
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2,
+            "maxItems": 2
           },
           "flags": {
             "type": "object",
@@ -8879,8 +8996,11 @@
                 "description": "Issue: @latest, @most_frequent, <org>/ID, <org>/<project>#ID, <project>-suffix, ID, or suffix"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -9458,7 +9578,10 @@
                 "description": "<org>/ (all), <org>/<name> or <name> (a project, else matching names), or a name glob (<org>/web-*)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -9597,7 +9720,10 @@
                 "description": "Only list organizations whose slug or name fuzzy-matches this text or matches this glob"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -9773,7 +9899,10 @@
                 "description": "Organization slug (optional if auto-detected)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -10052,8 +10181,11 @@
                 "description": "Path to the ProGuard mapping file"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -10193,8 +10325,11 @@
                 "description": "<org>/<project> or <project> (search across orgs)"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -10280,7 +10415,10 @@
                 "description": "<org>/ (all), <org>/<name> or <name> (a project, else matching names), or a name glob (<org>/web-*)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -10491,7 +10629,10 @@
                 "description": "<org>/<project> or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -10888,8 +11029,11 @@
                 "description": "[<org>/]<version> - Release version to archive"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -11093,8 +11237,11 @@
                 "description": "[<org>/]<version> - Release version to create"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -11317,8 +11464,11 @@
                 "description": "[<org>/]<version> - Release version to delete"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -11437,8 +11587,11 @@
                 "description": "Optional deploy name (quote multi-word names, e.g. \"Deploy #42\")"
               }
             ],
-            "items": false,
-            "minItems": 2
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2,
+            "maxItems": 3
           },
           "flags": {
             "type": "object",
@@ -11582,8 +11735,11 @@
                 "description": "[<org>/]<version> - Release version"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -11686,8 +11842,11 @@
                 "description": "[<org>/]<version> - Release version to finalize"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -11908,7 +12067,10 @@
                 "description": "<org>/ (all projects), <org>/<project>, or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -12217,8 +12379,11 @@
                 "description": "[<org>/]<version> - Release version to restore"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -12422,8 +12587,11 @@
                 "description": "[<org>/]<version> - Release version"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -12659,8 +12827,11 @@
                 "description": "[<org>/]<version> - Release version to view"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -12937,7 +13108,10 @@
                 "description": "<org>/ (all projects), <org>/<project>, or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -13562,7 +13736,10 @@
                 "description": "<org>/ (all), <org>/<name> or <name> (a project, else matching names), or a name glob (<org>/web-*)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -13895,8 +14072,11 @@
                 "description": "Path to the head image directory"
               }
             ],
-            "items": false,
-            "minItems": 2
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2,
+            "maxItems": 2
           },
           "flags": {
             "type": "object",
@@ -14055,8 +14235,11 @@
                 "description": "Path to the folder containing images to upload"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -14210,8 +14393,11 @@
                 "description": "Directory to scan for JS + sourcemap pairs"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -14295,8 +14481,11 @@
                 "description": "Directory to scan for JS files"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -14369,8 +14558,11 @@
                 "description": "Directory containing sourcemaps, or a glob like 'dist/**'"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -14810,7 +15002,10 @@
                 "description": "<org>/ (all), <org>/<name> or <name> (a project, else matching names), or a name glob (<org>/web-*)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -14946,8 +15141,11 @@
                 "description": "[<org>/]<name> - Name of the new token"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -15095,7 +15293,10 @@
                 "description": "Organization slug (auto-detected if omitted)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -15207,7 +15408,10 @@
                 "description": "<org>/<project> or <project> (search)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -15585,7 +15789,10 @@
                 "description": "Organization slug (auto-detected if omitted)"
               }
             ],
-            "items": false
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
@@ -15745,8 +15952,11 @@
                 "description": "Path to the wasm file"
               }
             ],
-            "items": false,
-            "minItems": 1
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1
           },
           "flags": {
             "type": "object",
