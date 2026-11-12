@@ -7776,9 +7776,13 @@
                 },
                 "solution": {
                   "type": ["string", "null"]
+                },
+                "failureReason": {
+                  "description": "Why the Seer run failed, when Sentry can explain it. \"out_of_credits\": the organization ran out of Seer credits, so someone with billing access must adjust Seer spend and auto-reload in Sentry before the run can continue.",
+                  "type": ["string", "null"]
                 }
               },
-              "required": ["status", "rootCause", "solution"],
+              "required": ["status", "rootCause", "solution", "failureReason"],
               "additionalProperties": false
             },
             {

@@ -1421,12 +1421,61 @@ describe("get_issue_details", () => {
 
     expect(parsePayload(result).seer).toMatchInlineSnapshot(`
       {
+        "failureReason": null,
         "rootCause": "The \`bottleById\` query fails because the input ID (3216) doesn't exist in the database.",
         "solution": "Use the canonical bottle ID for both batched TRPC calls.",
         "status": "Complete",
       }
     `);
   });
+
+  it.each([
+    {
+      name: "a run that ran out of credits",
+      autofix: { status: "error", failure_reason: "out_of_credits" },
+      expected: "out_of_credits",
+    },
+    {
+      name: "a run that failed for another reason",
+      autofix: { status: "error", failure_reason: "internal_error" },
+      expected: null,
+    },
+    {
+      name: "a run that is still processing",
+      autofix: { status: "processing", failure_reason: "out_of_credits" },
+      expected: null,
+    },
+  ])(
+    "reports the Seer failure reason for $name",
+    async ({ autofix, expected }) => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/autofix/",
+          () =>
+            HttpResponse.json({
+              autofix: { run_id: 456, blocks: [], ...autofix },
+            }),
+          { once: true },
+        ),
+      );
+
+      const result = await getIssueDetails.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+          eventId: undefined,
+          issueUrl: undefined,
+          regionUrl: null,
+        },
+        {
+          ...baseContext,
+          grantedSkills: new Set<Skill>(["inspect", "seer"]),
+        },
+      );
+
+      expect(parsePayload(result).seer?.failureReason).toBe(expected);
+    },
+  );
 
   it("maps a default event, which has no exception", async () => {
     // Mock a "default" event type - represents errors without exception data
