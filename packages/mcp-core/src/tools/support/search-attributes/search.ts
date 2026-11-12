@@ -90,6 +90,7 @@ export async function runSearchAttributes(
   };
 
   let rows = await fetchRows();
+  const totalFetchedAttributes = rows.length;
 
   const listAttributes = (importantInfo?: string[], notes?: string[]) =>
     formatListResult({
@@ -157,8 +158,6 @@ export async function runSearchAttributes(
     }
   }
 
-  console.log(rows);
-
   const matches =
     rows.length === 0
       ? { candidates: [] }
@@ -186,7 +185,7 @@ export async function runSearchAttributes(
     period,
     query,
     matches,
-    totalAttributes: rows.length,
+    totalAttributes: totalFetchedAttributes,
   });
 }
 
