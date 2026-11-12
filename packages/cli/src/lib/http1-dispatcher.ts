@@ -5,7 +5,13 @@
  * one origin share one connection. Sentry's edge resets all but one of the
  * concurrent upload streams on a connection with `ENHANCE_YOUR_CALM`, so
  * parallel uploads use HTTP/1.1 with one connection per request, as the
- * legacy sentry-cli did.
+ * legacy sentry-cli did (#2201).
+ *
+ * Why not HTTP/2 with one stream per connection (`maxConcurrentStreams: 1`)?
+ * On undici 8 it opens only 3 connections for 8 parallel uploads and queues
+ * the rest; in a local test that was about 2.5x slower than HTTP/1.1. HTTP/2
+ * also gains nothing here: the uploads are large bodies, so their speed
+ * depends on bandwidth, not on latency or header size.
  *
  * The dispatcher is an instance of the runtime's own global dispatcher class,
  * so no undici dependency is bundled and `NODE_USE_ENV_PROXY` still applies.
