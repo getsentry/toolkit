@@ -499,6 +499,16 @@ function latestMeasured(values: (number | null)[]): number | null {
   return values.findLast((v) => v !== null) ?? null;
 }
 
+/** Index of the last measured value, or -1 when nothing was measured. */
+function latestMeasuredIndex(values: (number | null)[]): number {
+  return values.findLastIndex((v) => v !== null);
+}
+
+/** Whether any series flags the bucket at `index` as still being ingested. */
+function bucketIncomplete(data: TimeseriesResult, index: number): boolean {
+  return data.series.some((s) => s.values[index]?.incomplete === true);
+}
+
 /** Format a value with its unit, or a dash when nothing was measured. */
 function formatMeasured(value: number | null, unit?: string | null): string {
   return value === null ? "—" : formatWithUnit(value, unit);
@@ -529,7 +539,10 @@ function renderTimeseriesContent(
       s.values.map((v) => v.incomplete === true),
       sparkWidth,
     );
-    const latestIncomplete = s.values.at(-1)?.incomplete === true;
+    // Read the flag from the bucket the displayed value comes from: a null
+    // incomplete tail must not mark the earlier, complete reading.
+    const latestIncomplete =
+      s.values[latestMeasuredIndex(values)]?.incomplete === true;
     const label =
       s.label.length > maxLabelLen
         ? `${s.label.slice(0, maxLabelLen - 1)}…`
@@ -1090,14 +1103,16 @@ function renderTimeseriesBarsContent(
     return [noDataLine()];
   }
 
-  const { values, timestamps, label, unit, latest, maxVal } = aggregated;
+  const { values, timestamps, label, unit, latest, latestIncomplete, maxVal } =
+    aggregated;
 
   // Header: series label + latest value
   const headerLabel = label.length > 20 ? `${label.slice(0, 18)}…` : label;
   const valStr = formatMeasured(latest, unit);
+  const plainSuffix = latestIncomplete ? ` ${INCOMPLETE_SUFFIX}` : "";
   const headerLine = isPlainOutput()
-    ? `${headerLabel}  ${valStr}`
-    : `${chalk.hex(COLORS.cyan)(headerLabel)}  ${chalk.bold(valStr)}`;
+    ? `${headerLabel}  ${valStr}${plainSuffix}`
+    : `${chalk.hex(COLORS.cyan)(headerLabel)}  ${latestIncomplete ? muted(valStr) : chalk.bold(valStr)}`;
 
   const lines: string[] = [headerLine];
 
@@ -1181,6 +1196,8 @@ type AggregatedTimeseries = {
   unit?: string | null;
   /** Last measured value, or null when nothing was measured. */
   latest: number | null;
+  /** Whether the bucket `latest` comes from is still being ingested. */
+  latestIncomplete: boolean;
   maxVal: number;
 };
 
@@ -1189,7 +1206,14 @@ function aggregateTimeseriesValues(
 ): AggregatedTimeseries {
   const first = data.series[0];
   if (!first || first.values.length === 0) {
-    return { values: [], timestamps: [], label: "", latest: null, maxVal: 1 };
+    return {
+      values: [],
+      timestamps: [],
+      label: "",
+      latest: null,
+      latestIncomplete: false,
+      maxVal: 1,
+    };
   }
 
   const timestamps = first.values.map((v) => v.timestamp);
@@ -1203,6 +1227,7 @@ function aggregateTimeseriesValues(
       label: first.label,
       unit: first.unit,
       latest: latestMeasured(values),
+      latestIncomplete: bucketIncomplete(data, latestMeasuredIndex(values)),
       maxVal: Math.max(...values.filter((v) => v !== null), 1),
     };
   }
@@ -1227,6 +1252,7 @@ function aggregateTimeseriesValues(
     label,
     unit: first.unit,
     latest: latestMeasured(summed),
+    latestIncomplete: bucketIncomplete(data, latestMeasuredIndex(summed)),
     maxVal: Math.max(...summed.filter((v) => v !== null), 1),
   };
 }

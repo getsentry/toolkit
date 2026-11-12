@@ -795,6 +795,58 @@ describe("formatDashboardWithData", () => {
       expect(output).toContain("(incomplete)");
     });
 
+    /** Same series, but the incomplete tail has no measurement yet. */
+    const unmeasuredTail = values.map((v) =>
+      v.incomplete ? { ...v, value: null } : v,
+    );
+
+    test("does not mark a complete sparkline value before an unmeasured incomplete tail", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values: unmeasuredTail }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).not.toContain("(incomplete)");
+    });
+
+    test("marks the latest bar chart value as incomplete", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "bar",
+            layout: { x: 0, y: 0, w: 2, h: 3 },
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).toContain("(incomplete)");
+    });
+
+    test("does not mark a complete bar chart value before an unmeasured incomplete tail", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "bar",
+            layout: { x: 0, y: 0, w: 2, h: 3 },
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values: unmeasuredTail }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).not.toContain("(incomplete)");
+      expect(output).toContain("┄");
+    });
+
     test("does not mark complete sparkline values", () => {
       const output = formatDashboardWithData(makeDashboardData());
       expect(output).not.toContain("(incomplete)");
