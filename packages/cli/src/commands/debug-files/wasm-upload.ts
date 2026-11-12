@@ -518,14 +518,6 @@ export const wasmUploadCommand = buildCommand({
         !ignoreMatcher?.ignores(pathRelativeToRoot(path, paths)),
     );
 
-    if (candidates.length === 0) {
-      log.warn("No WebAssembly modules found.");
-      return yield* reportWithoutUpload({
-        results: [],
-        hint: `No .wasm modules found. Try: ${usageHint()}`,
-      });
-    }
-
     // A custom-named companion looks like a module with DWARF; splitting it
     // would strip the debug info its deployable points at.
     const { companions, ambiguous } = await findCustomCompanions(candidates);
@@ -543,6 +535,20 @@ export const wasmUploadCommand = buildCommand({
       }
       return true;
     });
+
+    // Checked after dropping companions, so a directory holding only
+    // companions ends like an empty scan instead of asking for credentials.
+    if (modules.length === 0) {
+      log.warn(
+        candidates.length === 0
+          ? "No WebAssembly modules found."
+          : "No WebAssembly modules found; every scanned .wasm is a debug companion.",
+      );
+      return yield* reportWithoutUpload({
+        results: [],
+        hint: `No .wasm modules found. Try: ${usageHint()}`,
+      });
+    }
 
     // Resolve the upload target before touching any module: preparing strips
     // deployables in place, so a missing org/project or auth failure found

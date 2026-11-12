@@ -309,4 +309,39 @@ describe("upload target", () => {
     expect(new Uint8Array(await readFile(module))).toEqual(original);
     expect(await readdir(dir)).toEqual(["app.wasm"]);
   });
+
+  test("is not resolved when every scanned file is a companion", async () => {
+    // A lone wasm-split companion is skipped, leaving nothing to upload.
+    const dir = await mkdtemp(join(tmpdir(), "wasm-upload-companions-"));
+    await writeFile(
+      join(dir, "app.debug.wasm"),
+      wasmModule([
+        section(CODE_SECTION_ID, fromHex("00")),
+        customSection(".debug_info", fromHex("0102")),
+      ]),
+    );
+    const spy = vi
+      .spyOn(resolveTarget, "resolveOrgAndProject")
+      .mockResolvedValue(null);
+
+    const func = (await wasmUploadCommand.loader()) as unknown as (
+      this: unknown,
+      flags: Record<string, unknown>,
+      ...rest: string[]
+    ) => Promise<unknown>;
+    const context = {
+      stdout: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn(() => true) },
+      cwd: dir,
+      env: {} as NodeJS.ProcessEnv,
+      process: { ...process, exitCode: undefined } as typeof process,
+    };
+
+    try {
+      await expect(func.call(context, {}, dir)).resolves.toBeUndefined();
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
