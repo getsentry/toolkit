@@ -29,7 +29,7 @@ export default defineTool({
       .trim()
       .optional()
       .describe(
-        "Not used yet. Searching by query is not available, so the dataset's attributes are listed either way. Omit it.",
+        "What attribute to find, in plain English or as part of a key. Omit to list the dataset's attributes.",
       ),
     period: ParamPeriod.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
