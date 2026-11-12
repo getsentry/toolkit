@@ -43,7 +43,7 @@ import { resolveOrgAndProject } from "../../lib/resolve-target.js";
 import { buildIgnoreMatcher, normalizePath } from "../../lib/scan/index.js";
 import { debugIdFromBuildId, uuidToBytes } from "../../lib/wasm/build-id.js";
 import {
-  findReferencedCompanions,
+  findCustomCompanions,
   hasDwarfQuality,
   isDebugCompanionPath,
   isWasmPath,
@@ -528,13 +528,20 @@ export const wasmUploadCommand = buildCommand({
 
     // A custom-named companion looks like a module with DWARF; splitting it
     // would strip the debug info its deployable points at.
-    const companions = await findReferencedCompanions(candidates);
+    const { companions, ambiguous } = await findCustomCompanions(candidates);
     const modules = candidates.filter((path) => {
-      if (!companions.has(resolve(path))) {
-        return true;
+      const absolute = resolve(path);
+      if (companions.has(absolute)) {
+        log.debug(`Skipping ${path}: a debug companion of another module`);
+        return false;
       }
-      log.debug(`Skipping ${path}: referenced as a debug companion`);
-      return false;
+      if (ambiguous.has(absolute)) {
+        log.warn(
+          `Skipping ${path}: named like a debug companion, but no scanned module matches it. If it is a module, rename it or scan it together with <stem>.wasm.`,
+        );
+        return false;
+      }
+      return true;
     });
 
     // Resolve the upload target before touching any module: preparing strips

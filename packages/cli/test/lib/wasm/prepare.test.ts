@@ -15,6 +15,7 @@ import { parseSections } from "../../../src/lib/wasm/binary.js";
 import { formatBuildId, uuidToBytes } from "../../../src/lib/wasm/build-id.js";
 import {
   companionPath,
+  findCustomCompanions,
   findReferencedCompanions,
   hasDwarfQuality,
   inspectWasm,
@@ -372,7 +373,10 @@ describe("prepareWasmFile", () => {
   });
 
   test("skips a companion given as input", async () => {
-    const path = await writeModule("app.debug.wasm", dwarfModule());
+    const path = await writeModule(
+      "app.00000000000040008000000000000000.debug.wasm",
+      dwarfModule(),
+    );
     const result = await prepareWasmFile(path);
 
     expect(result.action).toBe("skipped");
@@ -549,6 +553,111 @@ describe("prepareWasmFile: pairs split by another tool", () => {
     // Pairing with it would claim an id for a file holding no debug info.
     expect(result.action).toBe("skipped");
     expect(result.quality).toBe("external-debug-info");
+  });
+});
+
+describe("isDebugCompanionPath", () => {
+  test("matches the <stem>.<build_id>.debug.wasm name this command writes", () => {
+    expect(
+      isDebugCompanionPath(
+        "dist/app.d5bcf04a000040008000000000000000.debug.wasm",
+      ),
+    ).toBe(true);
+    expect(
+      isDebugCompanionPath(
+        companionPath("app.wasm", formatBuildId(new Uint8Array(20))),
+      ),
+    ).toBe(true);
+  });
+
+  test("does not match a plain *.debug.wasm, which may be a debug build", () => {
+    expect(isDebugCompanionPath("dist/app.debug.wasm")).toBe(false);
+    expect(isDebugCompanionPath("dist/app.symbols.debug.wasm")).toBe(false);
+    expect(isDebugCompanionPath("dist/app.wasm")).toBe(false);
+  });
+});
+
+describe("findCustomCompanions", () => {
+  const buildId = new Uint8Array(16).fill(0x42);
+
+  test("treats <stem>.debug.wasm sharing its sibling's build id as a companion", async () => {
+    // `wasm-split -d app.debug.wasm --external-dwarf-url https://…` leaves a
+    // remote pointer, so only the shared build id ties the pair together.
+    const result = split(
+      dwarfModule(),
+      "https://cdn.example.com/app.debug.wasm",
+    );
+    const module = await writeModule("app.wasm", result.module);
+    const companion = await writeModule(
+      "app.debug.wasm",
+      result.companion as Uint8Array,
+    );
+
+    const found = await findCustomCompanions([module, companion]);
+
+    expect([...found.companions]).toEqual([companion]);
+    expect([...found.ambiguous]).toEqual([]);
+  });
+
+  test("prepares a debug build whose sibling carries a different build id", async () => {
+    const module = await writeModule(
+      "app.wasm",
+      wasmModule([code(), buildIdSection(buildId)]),
+    );
+    const debugBuild = await writeModule(
+      "app.debug.wasm",
+      wasmModule([
+        code(),
+        dwarf(),
+        buildIdSection(new Uint8Array(16).fill(0x43)),
+      ]),
+    );
+
+    const found = await findCustomCompanions([module, debugBuild]);
+
+    expect(found.companions.size).toBe(0);
+    expect(found.ambiguous.size).toBe(0);
+  });
+
+  test("prepares a debug build with no build id next to its release build", async () => {
+    const module = await writeModule("app.wasm", strippedModule());
+    const debugBuild = await writeModule("app.debug.wasm", dwarfModule());
+
+    const found = await findCustomCompanions([module, debugBuild]);
+
+    expect(found.companions.size).toBe(0);
+    expect(found.ambiguous.size).toBe(0);
+  });
+
+  test("reports a *.debug.wasm with no sibling as ambiguous", async () => {
+    // It may be a companion scanned without its module; splitting it would
+    // strip the DWARF that module points at.
+    const lone = await writeModule("app.debug.wasm", dwarfModule());
+
+    const found = await findCustomCompanions([lone]);
+
+    expect([...found.ambiguous]).toEqual([lone]);
+    expect(found.companions.size).toBe(0);
+  });
+
+  test("keeps a referenced companion out of the ambiguous set", async () => {
+    const companion = await writeModule(
+      "symbols.debug.wasm",
+      wasmModule([code(), dwarf(), buildIdSection(buildId)]),
+    );
+    const module = await writeModule(
+      "app.wasm",
+      wasmModule([
+        code(),
+        buildIdSection(buildId),
+        externalDebugInfoSection("symbols.debug.wasm"),
+      ]),
+    );
+
+    const found = await findCustomCompanions([module, companion]);
+
+    expect([...found.companions]).toEqual([companion]);
+    expect(found.ambiguous.size).toBe(0);
   });
 });
 
