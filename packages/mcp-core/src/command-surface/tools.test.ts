@@ -236,6 +236,14 @@ describe("command tools: arguments", () => {
     await expect(call("api")).rejects.toThrow("positional: required");
   });
 
+  it("refuses more positionals than the command takes", async () => {
+    const { call, calls } = setup();
+    await expect(
+      call("agent-conversation list", { positional: ["acme/", "extra"] }),
+    ).rejects.toThrow("positional: expected at most 1 value(s), got 2");
+    expect(calls).toEqual([]);
+  });
+
   it("ignores json, which is always on", async () => {
     const { call, calls } = setup();
     await call("org list", { flags: { json: true } });

@@ -62,14 +62,13 @@ function validateArray(
       `${path}: expected at least ${schema.minItems} value(s)${names.length ? ` (${names.join(", ")})` : ""}, got ${value.length}`,
     );
   }
+  if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+    errors.push(
+      `${path}: expected at most ${schema.maxItems} value(s), got ${value.length}`,
+    );
+  }
   value.forEach((item, index) => {
     const itemSchema = index < prefix.length ? prefix[index] : schema.items;
-    if (itemSchema === false) {
-      errors.push(
-        `${path}: expected at most ${prefix.length} value(s), got ${value.length}`,
-      );
-      return;
-    }
     if (itemSchema) {
       validateValue(itemSchema, item, `${path}[${index}]`, errors);
     }
