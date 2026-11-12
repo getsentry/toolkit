@@ -6,7 +6,7 @@
  * env vars, config defaults) — no slash-separated arg parsing needed.
  */
 
-import { existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import {
   dirname as posixDirname,
@@ -77,6 +77,16 @@ function formatUploadResult(data: UploadCommandResult): string {
 }
 
 const usageHint = () => sentry`sourcemap upload <directory>`;
+
+/** Whether `path` does not exist. Other stat failures (e.g. EACCES) are not "missing". */
+async function isMissingPath(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return false;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT";
+  }
+}
 
 /**
  * Compute the longest common directory prefix across a list of paths.
@@ -367,7 +377,7 @@ export const uploadCommand = buildCommand({
     // --allow-empty treats a missing directory like an empty one, so callers
     // that upload several build outputs one at a time (the bundler plugins)
     // can skip an output this build didn't produce.
-    const missing = flags["allow-empty"] && !existsSync(target.dir);
+    const missing = flags["allow-empty"] && (await isMissingPath(target.dir));
     if (!missing) {
       await assertDirectoryReadable(target.dir);
     }
