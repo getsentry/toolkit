@@ -1,4 +1,4 @@
-import { describeEval, ToolCallScorer } from "vitest-evals";
+import { describeEval, ToolCallScorer } from "vitest-evals/legacy";
 import { FIXTURES, McpToolCallTaskRunner } from "./utils";
 
 describeEval("get-trace-details", {
@@ -8,19 +8,10 @@ describeEval("get-trace-details", {
         input: `Show me trace ${FIXTURES.traceId} from Sentry in ${FIXTURES.organizationSlug}.`,
         expectedTools: [
           {
-            name: "search_sentry_tools",
+            name: "get_trace_details",
             arguments: {
-              query: "trace",
-            },
-          },
-          {
-            name: "execute_sentry_tool",
-            arguments: {
-              name: "get_trace_details",
-              arguments: {
-                organizationSlug: FIXTURES.organizationSlug,
-                traceId: FIXTURES.traceId,
-              },
+              organizationSlug: FIXTURES.organizationSlug,
+              traceId: FIXTURES.traceId,
             },
           },
         ],
@@ -29,19 +20,10 @@ describeEval("get-trace-details", {
         input: `Explain trace ${FIXTURES.traceId} in ${FIXTURES.organizationSlug}.`,
         expectedTools: [
           {
-            name: "search_sentry_tools",
+            name: "get_trace_details",
             arguments: {
-              query: "trace",
-            },
-          },
-          {
-            name: "execute_sentry_tool",
-            arguments: {
-              name: "get_trace_details",
-              arguments: {
-                organizationSlug: FIXTURES.organizationSlug,
-                traceId: FIXTURES.traceId,
-              },
+              organizationSlug: FIXTURES.organizationSlug,
+              traceId: FIXTURES.traceId,
             },
           },
         ],

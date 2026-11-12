@@ -55,10 +55,13 @@ Examples:
 
 type ToolDefinition = {
   name: string;
+  title: string;
   description: string | ((context: { experimentalMode: boolean }) => string);
   inputSchema: Record<string, ZodTypeAny>;
+  outputSchema?: ZodTypeAny;
   experimental?: boolean;
   hideInExperimentalMode?: boolean;
+  deprecated?: { replacedBy: readonly string[] };
   annotations?: {
     readOnlyHint?: boolean;
     destructiveHint?: boolean;
@@ -73,7 +76,7 @@ type ToolDefinition = {
  */
 function formatToolsForMCP(tools: Record<string, ToolDefinition>) {
   return Object.entries(tools).map(([_key, tool]) => {
-    const inputSchema = tool.inputSchema || {};
+    const inputSchema = tool.inputSchema;
     const zodObject =
       Object.keys(inputSchema).length > 0
         ? z.object(inputSchema)
@@ -86,10 +89,16 @@ function formatToolsForMCP(tools: Record<string, ToolDefinition>) {
 
     return {
       name: tool.name,
+      title: tool.title,
       description: toolTypesModule.resolveDescription(tool.description, {
         experimentalMode: false,
       }),
       inputSchema: jsonSchema,
+      // matches @modelcontextprotocol/server's
+      // standardSchemaToJsonSchema(schema, "output") (draft-2020-12)
+      ...(tool.outputSchema && {
+        outputSchema: z.toJSONSchema(tool.outputSchema, { io: "output" }),
+      }),
       ...(tool.annotations && { annotations: tool.annotations }),
     };
   });
@@ -162,7 +171,7 @@ async function main() {
     const toolsToMeasure = Object.fromEntries(
       Object.entries(toolsDefault).filter(
         ([, tool]) =>
-          surfacesModule.isTopLevelToolName(tool.name, false) &&
+          surfacesModule.isTopLevelTool(tool, false) &&
           toolTypesModule.isToolVisibleInMode(tool, false),
       ),
     );

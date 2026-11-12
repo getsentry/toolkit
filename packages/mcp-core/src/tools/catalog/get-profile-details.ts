@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isLegacySpeedscopeProfile } from "../../api-client/types";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -16,10 +17,14 @@ import {
   validateResourceId,
   validateSlugOrId,
 } from "../../utils/slug-validation";
+import { structuredResult } from "../../internal/tool-helpers/results";
+import { buildSuggestedToolAction } from "../../internal/tool-helpers/suggested-actions";
 import {
-  formatProfileChunkAnalysis,
-  formatTransactionProfileAnalysis,
-} from "../support/profile/formatter";
+  buildContinuousProfileDetails,
+  buildLegacyProfileDetails,
+  buildTransactionProfileDetails,
+  getProfileDetailsOutputSchema,
+} from "../support/profile/details-output";
 
 type ResolvedProfileDetailsParams =
   | {
@@ -175,13 +180,15 @@ async function resolveProjectContext(
 
 export default defineTool({
   name: "get_profile_details",
+  title: "Get Profile Details",
   skills: ["inspect"],
   requiredScopes: ["event:read"],
   requiredCapabilities: ["profiles"],
   hideInExperimentalMode: true,
 
   description: [
-    "Inspect a specific Sentry profile in detail.",
+    "Inspect one specific Sentry profile in detail, by profile ID, profiler ID or URL.",
+    "For aggregated hot paths across a transaction, use get_profile.",
     "",
     "USE THIS TOOL WHEN:",
     "- User shares a transaction profile URL and wants the details",
@@ -189,9 +196,11 @@ export default defineTool({
     "- User needs to inspect a continuous profile session by profiler ID and time range",
     "",
     "RETURNS:",
+    "- `profile.profileType`: `transaction`, `legacy`, or `continuous`",
     "- Transaction profile summary with profile URL, transaction, trace, release, and runtime details",
     "- Sample structure summaries such as frame count, sample count, stacks, and thread breakdown",
     "- Top frames by occurrence for a quick hotspot overview",
+    "- Legacy profiles (for example Android) return summary metadata only, with `samples: null` and a suggested get_profile call",
     "",
     "NOTE: This tool supports two profile modes.",
     "- Transaction profiles: pass `profileUrl` or `organizationSlug` + `projectSlugOrId` + `profileId`",
@@ -225,6 +234,11 @@ export default defineTool({
     ")",
     "```",
     "</examples>",
+    "",
+    "<hints>",
+    "- Open `profileUrl` in Sentry for the full flamegraph, and `traceUrl` to inspect the end-to-end request",
+    "- Use search_profiles to find similar profiles",
+    "</hints>",
   ].join("\n"),
 
   inputSchema: {
@@ -274,6 +288,8 @@ export default defineTool({
         "Show only user code frames in the hotspot table. Set to false to include library frames.",
       ),
   },
+
+  outputSchema: getProfileDetailsOutputSchema,
 
   annotations: {
     readOnlyHint: true,
@@ -352,18 +368,57 @@ export default defineTool({
           resolved.profileId,
         );
 
-      const traceUrl = profile.transaction?.trace_id
-        ? apiService.getTraceUrl(
-            resolved.organizationSlug,
-            profile.transaction.trace_id,
-          )
-        : undefined;
+      if (isLegacySpeedscopeProfile(profile)) {
+        const legacyTraceId = profile.metadata?.traceID;
+        const details = buildLegacyProfileDetails(profile, {
+          profileUrl,
+          project: projectSlug,
+          profileId: resolved.profileId,
+          traceUrl: legacyTraceId
+            ? apiService.getTraceUrl(resolved.organizationSlug, legacyTraceId)
+            : null,
+        });
+        // Legacy profiles have no sample data, so the aggregated flamegraph is
+        // the next step. Profile URLs also reach this handler through
+        // get_sentry_resource, so only suggest it when get_profile is callable.
+        const transactionName = details.profile.transactionName;
+        const flamegraphAction = transactionName
+          ? buildSuggestedToolAction({
+              toolName: "get_profile",
+              arguments: {
+                organizationSlug: resolved.organizationSlug,
+                projectSlugOrId: projectSlug,
+                transactionName,
+                ...(regionUrl ? { regionUrl } : {}),
+              },
+              reason:
+                "Legacy profiles have no sample data; the aggregated transaction flamegraph shows hot paths.",
+              experimentalMode: context.experimentalMode ?? false,
+              availableToolNames: context.availableToolNames,
+              directToolNames: context.directToolNames,
+            })
+          : null;
+        return structuredResult({
+          ...details,
+          suggestedActions: flamegraphAction ? [flamegraphAction] : [],
+        });
+      }
 
-      return formatTransactionProfileAnalysis(profile, {
-        focusOnUserCode: params.focusOnUserCode,
-        profileUrl,
-        projectSlug,
-        traceUrl,
+      const traceId = profile.transaction?.trace_id;
+      return structuredResult({
+        ...buildTransactionProfileDetails(
+          profile,
+          {
+            profileUrl,
+            project: projectSlug,
+            profileId: resolved.profileId,
+            traceUrl: traceId
+              ? apiService.getTraceUrl(resolved.organizationSlug, traceId)
+              : null,
+          },
+          { focusOnUserCode: params.focusOnUserCode },
+        ),
+        suggestedActions: [],
       });
     }
 
@@ -405,25 +460,19 @@ export default defineTool({
         },
       );
 
-    const chunkAnalysis = formatProfileChunkAnalysis(chunk, {
-      focusOnUserCode: params.focusOnUserCode,
-    }).replace("# Profile Chunk Details", "## Raw Sample Analysis");
-
-    return [
-      `# Continuous Profile ${resolved.profilerId}`,
-      "",
-      "## Summary",
-      `- **Profile URL**: ${profileUrl}`,
-      `- **Project**: ${projectSlug}`,
-      `- **Profiler ID**: ${resolved.profilerId}`,
-      `- **Time Range**: ${resolved.start} to ${resolved.end}`,
-      `- **Platform**: ${chunk.platform}`,
-      `- **Release**: ${chunk.release}`,
-      chunk.environment ? `- **Environment**: ${chunk.environment}` : "",
-      "",
-      chunkAnalysis,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    return structuredResult({
+      ...buildContinuousProfileDetails(
+        chunk,
+        {
+          profileUrl,
+          project: projectSlug,
+          profilerId: resolved.profilerId,
+          start: resolved.start,
+          end: resolved.end,
+        },
+        { focusOnUserCode: params.focusOnUserCode },
+      ),
+      suggestedActions: [],
+    });
   },
 });

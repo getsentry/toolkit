@@ -59,6 +59,7 @@ import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import {
   ApiError,
   ResolutionError,
+  TimeoutError,
   ValidationError,
 } from "../../../src/lib/errors.js";
 import type { TimeRange } from "../../../src/lib/time-range.js";
@@ -250,6 +251,42 @@ describe("issue list: error propagation", () => {
       expect(error).toBeInstanceOf(ApiError);
       expect((error as ApiError).status).toBe(400);
       expect((error as Error).message).toContain("Failed to fetch issues");
+    }
+  });
+
+  test("keeps a TimeoutError, with its hint, when every fetch times out", async () => {
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      return (
+        mockDefaultProject(req.url) ??
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    });
+    listIssuesAllPagesMock.mockRejectedValue(
+      new TimeoutError("Request timed out after 30s.", "Check status."),
+    );
+
+    const { context } = createContext();
+
+    try {
+      await func.call(context, {
+        limit: 10,
+        sort: "date",
+        period: parsePeriod("90d"),
+        json: false,
+      });
+      expect.unreachable("Should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(TimeoutError);
+      expect((error as TimeoutError).message).toContain(
+        "Failed to fetch issues",
+      );
+      expect((error as TimeoutError).hint).toBe("Check status.");
+    } finally {
+      listIssuesAllPagesMock.mockReset();
     }
   });
 
@@ -970,7 +1007,7 @@ describe("issue list: org-all mode (cursor pagination)", () => {
       id: "1",
       slug: "test-project",
       name: "Test Project",
-    } as Awaited<ReturnType<typeof projectsApi.getProject>>);
+    });
 
     const { context } = createOrgAllContext();
 
@@ -1507,10 +1544,7 @@ describe("issue list: collapse parameter optimization", () => {
     const { context } = createOrgAllContext();
     await orgAllFunc.call(context, callFlags, "my-org/");
 
-    return (listIssuesAllPagesMock.mock.calls[0]?.[2] ?? {}) as Record<
-      string,
-      unknown
-    >;
+    return listIssuesAllPagesMock.mock.calls[0]?.[2] ?? {};
   }
 
   beforeEach(async () => {
@@ -1564,10 +1598,7 @@ describe("issue list: collapse parameter optimization", () => {
         { limit: 10, period: parsePeriod("90d"), json: true },
         "my-org/",
       );
-      return (listIssuesAllPagesMock.mock.calls[0]?.[2] ?? {}) as Record<
-        string,
-        unknown
-      >;
+      return listIssuesAllPagesMock.mock.calls[0]?.[2] ?? {};
     }
 
     test("uses recommended on Sentry SaaS", async () => {
@@ -2273,7 +2304,7 @@ describe("issue list: comma-separated project slugs", () => {
       if (slug === "api") {
         throw new ApiError("Forbidden", 403);
       }
-      return catalog[0] as (typeof catalog)[number];
+      return catalog[0];
     });
 
     const error = await func

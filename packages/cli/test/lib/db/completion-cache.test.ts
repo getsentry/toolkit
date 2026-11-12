@@ -97,27 +97,7 @@ describe("completion seeding from API responses", () => {
     ).toEqual(["CLI-3C", "CLI-2B", "CLI-1A"]);
   });
 
-  test("unscoped issue lookups take the org from the permalink", async () => {
-    const issues = "https://sentry.io/api/0/issues";
-    await seedCompletions(
-      `${issues}/123/`,
-      json({
-        shortId: "CLI-1A",
-        title: "Boom",
-        permalink: "https://acme.sentry.io/issues/123/",
-      }),
-    );
-    await seedCompletions(
-      `${issues}/456/`,
-      json({ shortId: "CLI-2B", title: "No permalink" }),
-    );
-
-    expect(getCachedCompletionEntities("issue", ["acme"])).toEqual([
-      { orgSlug: "acme", value: "CLI-1A", label: "Boom" },
-    ]);
-  });
-
-  test("issue details store their tag keys, scoped and unscoped", async () => {
+  test("issue details store their tag keys", async () => {
     await seedCompletions(
       `${API}/issues/123/`,
       json({
@@ -128,6 +108,14 @@ describe("completion seeding from API responses", () => {
         ],
       }),
     );
+    await seedCompletions(`${API}/issues/`, json([{ shortId: "CLI-3C" }]));
+
+    expect(getCachedCompletionEntities("tag-key", ["acme"])).toEqual([
+      { orgSlug: "acme", value: "browser.name", label: "Browser.Name" },
+    ]);
+  });
+
+  test("unscoped issue lookups are not seeded", async () => {
     await seedCompletions(
       "https://sentry.io/api/0/issues/456/",
       json({
@@ -136,12 +124,9 @@ describe("completion seeding from API responses", () => {
         tags: [{ key: "release", name: "Release" }],
       }),
     );
-    await seedCompletions(`${API}/issues/`, json([{ shortId: "CLI-3C" }]));
 
-    expect(getCachedCompletionEntities("tag-key", ["acme"])).toEqual([
-      { orgSlug: "acme", value: "release", label: "Release" },
-      { orgSlug: "acme", value: "browser.name", label: "Browser.Name" },
-    ]);
+    expect(getCachedCompletionEntities("issue", ["acme"])).toEqual([]);
+    expect(getCachedCompletionEntities("tag-key", ["acme"])).toEqual([]);
   });
 
   test("dashboards are stored by numeric ID only", async () => {

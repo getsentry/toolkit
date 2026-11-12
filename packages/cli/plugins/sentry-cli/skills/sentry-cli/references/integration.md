@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-integration
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Sentry integrations
 requires:
   bins: ["sentry"]
@@ -37,6 +37,7 @@ List installed integrations
 | `status` | string | Integration status |
 | `organizationIntegrationStatus` | string | Status of the install in this organization |
 | `externalId` | string | Provider-side installation ID |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 

@@ -19,14 +19,16 @@ import {
   buildOrgListCommand,
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
-import type { OrgListConfig } from "../../lib/org-list.js";
-import { type SentryMonitor, SentryMonitorSchema } from "../../types/index.js";
+import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
+import type { SentryMonitor } from "../../types/index.js";
+import { MonitorListItemSchema } from "../../generated/output-schemas/monitor.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "monitor-list";
 
 /** Monitor with its organization context for display */
-type MonitorWithOrg = SentryMonitor & { orgSlug?: string };
+type MonitorWithOrg = WithOrg<SentryMonitor>;
 
 /**
  * Render a monitor's schedule for display.
@@ -59,10 +61,14 @@ const MONITOR_COLUMNS: Column<MonitorWithOrg>[] = [
 ];
 
 /** Shared config that plugs into the org-list framework. */
-const monitorListConfig: OrgListConfig<SentryMonitor, MonitorWithOrg> = {
+const monitorListConfig: OrgListConfig<
+  SentryMonitor,
+  MonitorWithOrg,
+  typeof MonitorListItemSchema
+> = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "monitors",
-  commandPrefix: "sentry monitor list",
+  commandPrefix: () => sentry`monitor list`,
   listForOrg: (org) => listMonitors(org),
   listPaginated: (org, opts) => listMonitorsPaginated(org, opts),
   withOrg: (monitor, orgSlug) => ({ ...monitor, orgSlug }),
@@ -70,7 +76,7 @@ const monitorListConfig: OrgListConfig<SentryMonitor, MonitorWithOrg> = {
   searchesNames: true,
   displayTable: (monitors: MonitorWithOrg[]) =>
     formatTable(monitors, MONITOR_COLUMNS),
-  schema: SentryMonitorSchema,
+  schema: MonitorListItemSchema,
 };
 
 const docs: OrgListCommandDocs = {
@@ -82,26 +88,26 @@ const docs: OrgListCommandDocs = {
   examples: [
     {
       description: "List monitors (organization auto-detected)",
-      command: "sentry monitor list",
+      run: "monitor list",
     },
     {
       description: "List cron monitors in an organization",
-      command: "sentry monitor list my-org/",
+      run: "monitor list my-org/",
     },
     {
       description: "Fetch the next page",
-      command: "sentry monitor list my-org/ -c next",
+      run: "monitor list my-org/ -c next",
     },
     {
       description: "Only monitors whose slug or name matches a glob",
-      command: "sentry monitor list 'my-org/nightly-*'",
+      run: "monitor list 'my-org/nightly-*'",
     },
     {
       description:
         "Monitors named like 'nightly' (fuzzy when nothing matches exactly)",
-      command: "sentry monitor list my-org/nigthly",
+      run: "monitor list my-org/nigthly",
     },
-    { description: "Output as JSON", command: "sentry monitor list --json" },
+    { description: "Output as JSON", run: "monitor list --json" },
   ],
 };
 

@@ -122,7 +122,17 @@ export function isAggregateQuery(fields: readonly string[]): boolean {
   return fields.some(isAggregateFieldOrEquation);
 }
 
-type SearchSyntaxDataset = EventsDataset | "replays";
+type SearchSyntaxDataset = EventsDataset | "replays" | "issues";
+
+// Issue search keys are camelCase, unlike event attributes.
+const ISSUE_SEARCH_MIXED_CASE_KEYS = new Set([
+  "activeSince",
+  "firstRelease",
+  "firstSeen",
+  "lastSeen",
+  "timesSeen",
+  "userCount",
+]);
 
 /** Every filter token, including those inside parenthesized groups. */
 function* filterTokens(
@@ -141,7 +151,11 @@ function* filterTokens(
  * Whether a parsed filter is Sentry search syntax rather than prose that
  * happens to contain a colon, like `Note: ...`, `10:30`, or a URL.
  */
-function isStructuredFilter(query: string, filter: FilterToken): boolean {
+function isStructuredFilter(
+  query: string,
+  filter: FilterToken,
+  dataset?: SearchSyntaxDataset,
+): boolean {
   const key = query.slice(
     filter.key.location.start.offset,
     filter.key.location.end.offset,
@@ -166,6 +180,10 @@ function isStructuredFilter(query: string, filter: FilterToken): boolean {
   }
 
   if (filter.key.type === Token.KEY_AGGREGATE || /^tags\[[^\]]+\]$/.test(key)) {
+    return true;
+  }
+
+  if (dataset === "issues" && ISSUE_SEARCH_MIXED_CASE_KEYS.has(key)) {
     return true;
   }
 
@@ -200,11 +218,33 @@ export function looksLikeSentrySearchSyntax(
   }
 
   for (const filter of filterTokens(tokens)) {
-    if (isStructuredFilter(trimmedQuery, filter)) {
+    if (isStructuredFilter(trimmedQuery, filter, dataset)) {
       return true;
     }
   }
   return false;
+}
+
+/**
+ * Note for an untranslated query that ran as literal text and matched nothing.
+ *
+ * Only multi-word queries without Sentry filters or quotes get the note, so
+ * single terms, quoted phrases, and structured searches stay unchanged.
+ */
+export function formatUntranslatedQueryNote(
+  query: string | undefined,
+  syntaxExample: string,
+  dataset?: SearchSyntaxDataset,
+): string | null {
+  const trimmedQuery = query?.trim() ?? "";
+  if (
+    !/\s/.test(trimmedQuery) ||
+    trimmedQuery.includes('"') ||
+    looksLikeSentrySearchSyntax(trimmedQuery, dataset)
+  ) {
+    return null;
+  }
+  return `\`query\` was not translated from natural language because no embedded agent or Seer translation was available, so Sentry searched for it as literal text and found nothing. Retry with Sentry search syntax, such as \`${syntaxExample}\`, and use \`period\` for the time range.`;
 }
 
 export function readRegexFilterValue(
@@ -276,6 +316,29 @@ function maskQuotedRegions(query: string): string {
   return out;
 }
 
+// `issue:` followed by a numeric ID or an all-numeric list, e.g. `issue:123`,
+// `!issue:"123"`, or `issue:[123, 456]`. Matches only the key, at a token start.
+const NUMERIC_ISSUE_FILTER_PATTERN =
+  /(?<=(?:^|[\s(])!?)issue:(?=(?:"?\d+"?|\[\s*"?\d+"?(?:\s*,\s*"?\d+"?)*\s*\])(?=[\s)]|$))/g;
+
+/**
+ * Rewrite `issue:<numeric id>` filters to `issue.id:<numeric id>`.
+ *
+ * The errors dataset resolves `issue:` values as short IDs (`PROJECT-123`) and
+ * rejects numeric group IDs with "Issue IDs do not exist". Other tools, such as
+ * get_sentry_resource, return and accept numeric IDs, so normalize them here.
+ */
+export function normalizeNumericIssueFilters(query: string): string {
+  const masked = maskQuotedRegions(query);
+  let result = "";
+  let lastIndex = 0;
+  for (const match of masked.matchAll(NUMERIC_ISSUE_FILTER_PATTERN)) {
+    result += `${query.slice(lastIndex, match.index)}issue.id:`;
+    lastIndex = match.index + match[0].length;
+  }
+  return lastIndex === 0 ? query : result + query.slice(lastIndex);
+}
+
 type SearchFilterOccurrence = {
   key: string;
   value: string;
@@ -340,7 +403,7 @@ function searchFilterOccurrences(query: string): SearchFilterOccurrence[] {
   // so a structured filter rewritten into one is still a downgrade.
   for (const match of masked.matchAll(SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN)) {
     const key = (match.groups?.regexKey ?? match.groups?.key)?.toLowerCase();
-    if (!key || match.index === undefined) {
+    if (!key) {
       continue;
     }
 
@@ -822,10 +885,7 @@ export async function fetchCustomAttributes(
     for (const attr of attributesResponse) {
       if (attr.key && !attr.key.startsWith("sentry:")) {
         customAttributes[attr.key] = { ...attr, name: attr.name || attr.key };
-        // Track field type from the attribute response with validation
-        if (attr.type) {
-          fieldTypes[attr.key] = attr.type;
-        }
+        fieldTypes[attr.key] = attr.type;
       }
     }
   }
@@ -1320,7 +1380,7 @@ export function createDatasetAttributesTool(options: {
       const recommendedFields = RECOMMENDED_FIELDS[normalizedDataset];
 
       // Combine field types from both static config and dynamic API
-      const allFieldTypes: Record<string, TraceItemAttributeType> = {
+      const allFieldTypes: Partial<Record<string, TraceItemAttributeType>> = {
         ...updatedFieldTypes,
       };
       const staticNumericFields =

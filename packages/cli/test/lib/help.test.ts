@@ -206,7 +206,7 @@ describe("printCustomHelp overview", () => {
 
   test("lists every command and subcommand for explicit help", () => {
     const output = stripAnsi(humanHelp(false));
-    expect(output).toContain("sentry auth list | login | logout");
+    expect(output).toContain("sentry auth list | login | bootstrap | logout");
     expect(output).toContain("sentry dashboard");
     expect(output).not.toContain("all commands:");
     expect(commandLines(output).length).toBeGreaterThan(
@@ -220,7 +220,7 @@ describe("printCustomHelp overview", () => {
         printCustomHelp({ overview: true }),
       ),
     );
-    expect(output).toContain("sentry auth list | login | logout");
+    expect(output).toContain("sentry auth list | login | bootstrap | logout");
     expect(output).toContain("sentry dashboard");
     expect(output).not.toContain("all commands:");
   });

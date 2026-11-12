@@ -12,14 +12,12 @@ import {
   getReplayRecordingSegments,
   resolveReplay,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseFilePath } from "../../lib/completion-target.js";
 import { ApiError, ResolutionError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
-import {
-  formatReplayDownloadResult,
-  type ReplayDownloadData,
-} from "../../lib/formatters/replay.js";
+import { formatReplayDownloadResult } from "../../lib/formatters/replay.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,
@@ -43,8 +41,8 @@ type DownloadFlags = {
   readonly fresh: boolean;
 };
 
-const USAGE_HINT =
-  "sentry replay download [<org>/<project>/]<replay-id> | <replay-url>";
+const usageHint = () =>
+  sentry`replay download [<org>/<project>/]<replay-id> | <replay-url>`;
 
 const log = logger.withTag("replay.download");
 
@@ -65,18 +63,15 @@ export const downloadCommand = buildCommand({
       {
         description:
           "Download a replay as rrweb JSON to ./<replay-id>.rrweb.json",
-        command:
-          "sentry replay download my-org/346789a703f6454384f1de473b8b9fcc",
+        run: "replay download my-org/346789a703f6454384f1de473b8b9fcc",
       },
       {
         description: "Choose where the file goes",
-        command:
-          "sentry replay download my-org/346789a703f6454384f1de473b8b9fcc --output ./replay.json",
+        run: "replay download my-org/346789a703f6454384f1de473b8b9fcc --output ./replay.json",
       },
       {
         description: "Download from a replay URL",
-        command:
-          "sentry replay download https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/",
+        run: "replay download https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/",
       },
     ],
   },
@@ -84,7 +79,7 @@ export const downloadCommand = buildCommand({
     human: formatReplayDownloadResult,
   },
   parameters: {
-    positional: replayArguments("download", USAGE_HINT),
+    positional: replayArguments("download", usageHint),
     flags: {
       output: {
         kind: "parsed",
@@ -118,7 +113,7 @@ export const downloadCommand = buildCommand({
         throw new ResolutionError(
           `Replay '${replayId}'`,
           "not found",
-          `sentry replay download ${resolved.org}/${replayId}`,
+          sentry`replay download ${resolved.org}/${replayId}`,
           [
             "Check that you are querying the right organization",
             "The replay may be past your retention window",
@@ -162,7 +157,7 @@ export const downloadCommand = buildCommand({
     await mkdir(dirname(output), { recursive: true });
     await writeFile(output, JSON.stringify(events));
 
-    yield new CommandOutput<ReplayDownloadData>({
+    yield new CommandOutput({
       org: resolved.org,
       replayId: replay.id,
       output,
@@ -179,7 +174,7 @@ function noRecordingError(org: string, replayId: string): ResolutionError {
   return new ResolutionError(
     `Replay '${replayId}'`,
     "has no recording to download",
-    `sentry replay view ${org}/${replayId}`,
+    sentry`replay view ${org}/${replayId}`,
     ["The replay may be archived or past your retention window"],
   );
 }

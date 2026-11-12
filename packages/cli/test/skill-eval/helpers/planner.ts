@@ -8,6 +8,7 @@
 import type { LLMClient } from "./llm-client.js";
 import { chatCompletion } from "./llm-client.js";
 import type { AgentPlan } from "./types.js";
+import { logger } from "../../../src/lib/logger.js";
 
 /**
  * Build the system prompt that frames the LLM as an agent with the skill loaded.
@@ -62,8 +63,8 @@ export async function generatePlan(
       { role: "user", content: userPrompt },
     ]);
   } catch (err) {
-    console.error(
-      `  [planner] API error: ${err instanceof Error ? err.message : String(err)}`,
+    logger.error(
+      `[planner] API error: ${err instanceof Error ? err.message : String(err)}`,
     );
     return null;
   }
@@ -71,8 +72,9 @@ export async function generatePlan(
   // Extract JSON from response (handle potential markdown fencing)
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    console.error("  [planner] Failed to extract JSON from response");
-    console.error(`  Response: ${text.slice(0, 300)}`);
+    logger.error(
+      `[planner] Failed to extract JSON from response\n  Response: ${text.slice(0, 300)}`,
+    );
     return null;
   }
 
@@ -84,7 +86,7 @@ export async function generatePlan(
     }
     return parsed;
   } catch {
-    console.error(`  [planner] Invalid JSON: ${jsonMatch[0].slice(0, 300)}`);
+    logger.error(`[planner] Invalid JSON: ${jsonMatch[0].slice(0, 300)}`);
     return null;
   }
 }

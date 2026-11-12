@@ -17,26 +17,24 @@ import {
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import {
-  ReleaseUpdateOutputSchema,
-  type SentryRelease,
-} from "../../types/index.js";
+import type { ReleaseUpdateOutput } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { ReleaseUpdateOutputSchema } from "../../generated/output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release archive [<org>/]<version>";
+const usageHint = () => sentry`release archive [<org>/]<version>`;
 
 /**
  * Render the human-readable result of archiving a release.
  *
- * @param data - Either the dry-run preview object or the updated release.
+ * @param release - Either the dry-run preview or the updated release.
  */
-function formatReleaseArchived(data: Record<string, unknown>): string {
-  if (data.dryRun) {
+function formatReleaseArchived(release: ReleaseUpdateOutput): string {
+  if (release.dryRun) {
     return renderMarkdown(
-      `Would archive release ${inlineCode(String(data.version))} (dry run)`,
+      `Would archive release ${inlineCode(release.version)} (dry run)`,
     );
   }
-  const release = data as unknown as SentryRelease;
   const lines: string[] = [];
   lines.push(`## Release Archived: ${text(release.version)}`);
   lines.push("");
@@ -58,15 +56,15 @@ export const archiveCommand = buildCommand({
       {
         description:
           "Archive a release (hide it from the default list, but keep it)",
-        command: "sentry release archive 1.0.0",
+        run: "release archive 1.0.0",
       },
       {
         description: "Archive a release in an explicit organization",
-        command: "sentry release archive my-org/1.0.0",
+        run: "release archive my-org/1.0.0",
       },
       {
         description: "Preview without archiving",
-        command: "sentry release archive my-org/1.0.0 --dry-run",
+        run: "release archive my-org/1.0.0 --dry-run",
       },
     ],
   },
@@ -79,7 +77,7 @@ export const archiveCommand = buildCommand({
       kind: "tuple",
       parameters: [
         releaseParameter(
-          USAGE_HINT,
+          usageHint,
           "[<org>/]<version> - Release version to archive",
         ),
       ],
@@ -101,7 +99,11 @@ export const archiveCommand = buildCommand({
     const { version, org, detectedFrom } = await target.resolved;
 
     if (flags["dry-run"]) {
-      yield new CommandOutput({ dryRun: true, version, org });
+      yield new CommandOutput({
+        dryRun: true,
+        version,
+        org,
+      });
       return { hint: "Dry run — release was not archived." };
     }
 

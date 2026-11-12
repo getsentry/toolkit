@@ -1,0 +1,25 @@
+schema_version: "1.0"
+
+name: "@getsentry/cli3to4"
+version: "0.1.0"
+description: "Migrate @sentry/cli v3 SDK usage to the v4 sentry package"
+author: "Sentry"
+license: "MIT"
+repository: "https://github.com/getsentry/toolkit"
+
+targets:
+  # Keep this aligned with the files matched in workflow.yaml.
+  languages: ["typescript", "tsx"]
+
+keywords: ["sentry", "sentry-cli", "migration", "v3", "v4"]
+
+registry:
+  access: "public"
+  visibility: "public"
+
+capabilities: []
+
+workflows:
+  - name: main
+    default: true
+    path: workflow.yaml

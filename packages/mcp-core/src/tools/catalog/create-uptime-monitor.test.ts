@@ -79,6 +79,7 @@ describe("create_uptime_monitor", () => {
         intervalSeconds: 300,
         timeoutMs: 8000,
         method: "GET",
+        headers: [["Accept", "application/json"]],
         environment: "production",
         downtimeThreshold: 3,
       },
@@ -94,6 +95,7 @@ describe("create_uptime_monitor", () => {
           intervalSeconds: 300,
           timeoutMs: 8000,
           method: "GET",
+          headers: [["Accept", "application/json"]],
         },
       ],
       config: {
@@ -164,6 +166,15 @@ describe("create_uptime_monitor", () => {
     expect(getStructuredContent(result)).toMatchObject({
       monitor: { id: "4509100000001002", status: "disabled" },
     });
+  });
+
+  it("accepts only [name, value] header pairs in the input schema", () => {
+    const { headers } = createUptimeMonitor.inputSchema;
+    expect(headers.safeParse([["Accept", "application/json"]]).success).toBe(
+      true,
+    );
+    expect(headers.safeParse([["Accept"]]).success).toBe(false);
+    expect(headers.safeParse([["Accept", "a", "b"]]).success).toBe(false);
   });
 
   it("rejects empty owner in the input schema", () => {

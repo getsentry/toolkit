@@ -10,6 +10,7 @@
 import { tableCell } from "@sentry/toolkit-core/markdown";
 import { relative, resolve as resolvePath } from "node:path";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceListParser,
@@ -122,15 +123,15 @@ export const resolveCommand = buildCommand({
       {
         description:
           "Report how each JS file's sourcemap resolves and whether a debug ID is injected",
-        command: "sentry sourcemap resolve ./dist",
+        run: "sourcemap resolve ./dist",
       },
       {
         description: "Output as JSON",
-        command: "sentry sourcemap resolve ./dist --json",
+        run: "sourcemap resolve ./dist --json",
       },
       {
         description: "Only scan some extensions",
-        command: "sentry sourcemap resolve ./build --ext .js,.mjs",
+        run: "sourcemap resolve ./build --ext .js,.mjs",
       },
     ],
   },
@@ -224,7 +225,7 @@ export const resolveCommand = buildCommand({
       }
     }
 
-    yield new CommandOutput<ResolveCommandResult>({
+    yield new CommandOutput({
       total: files.length,
       resolved,
       withDebugId,
@@ -236,7 +237,7 @@ export const resolveCommand = buildCommand({
     }
     if (withDebugId < files.length) {
       return {
-        hint: "Run `sentry sourcemap inject` to add debug IDs to files missing them.",
+        hint: `Run \`${sentry`sourcemap inject`}\` to add debug IDs to files missing them.`,
       };
     }
     return {};

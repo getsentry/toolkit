@@ -294,7 +294,7 @@ export const BASE_COMMON_FIELDS = {
 };
 
 // Known numeric fields for each dataset
-export const NUMERIC_FIELDS: Record<string, Set<string>> = {
+export const NUMERIC_FIELDS: Partial<Record<string, Set<string>>> = {
   spans: new Set([
     "span.duration",
     "span.self_time",

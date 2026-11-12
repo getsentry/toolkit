@@ -1,3 +1,4 @@
+import { CLI_MCP_ARGS, CLI_MCP_COMMAND } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 import { Button } from "../../ui/button";
 import { KeyIcon } from "../../ui/key-icon";
@@ -5,7 +6,7 @@ import { KeyWord } from "../../ui/key-word";
 import { getCursorDeepLink } from "../../../../client/utils";
 
 interface CursorInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "cli";
 }
 
 export function CursorInstructions({ transport }: CursorInstructionsProps) {
@@ -64,17 +65,6 @@ export function CursorInstructions({ transport }: CursorInstructionsProps) {
     );
   }
 
-  // Stdio transport
-  const defaultEnv = {
-    SENTRY_ACCESS_TOKEN: "sentry-user-token",
-    OPENAI_API_KEY: "your-openai-key",
-  } as const;
-  const coreConfig = {
-    command: "npx",
-    args: ["@sentry/mcp-server@latest"],
-    env: defaultEnv,
-  };
-
   return (
     <>
       <ol>
@@ -86,7 +76,7 @@ export function CursorInstructions({ transport }: CursorInstructionsProps) {
           to open Cursor Settings.
         </li>
         <li>
-          Select <strong>MCP Skills</strong>.
+          Select <strong>Skills and Integrations</strong>.
         </li>
         <li>
           Select <strong>New MCP Server</strong>.
@@ -97,12 +87,7 @@ export function CursorInstructions({ transport }: CursorInstructionsProps) {
             snippet={JSON.stringify(
               {
                 mcpServers: {
-                  sentry: {
-                    ...coreConfig,
-                    env: {
-                      ...coreConfig.env,
-                    },
-                  },
+                  sentry: { command: CLI_MCP_COMMAND, args: CLI_MCP_ARGS },
                 },
               },
               undefined,

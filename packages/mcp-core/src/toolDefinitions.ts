@@ -7,6 +7,8 @@ export type ToolDefinitionSurface = "direct" | "catalog";
 
 export interface ToolDefinition {
   name: string;
+  // Human-readable display name
+  title: string;
   description: string;
   // Full JSON Schema object for parameters
   inputSchema: unknown;
@@ -18,6 +20,8 @@ export interface ToolDefinition {
   skills: Skill[];
   // Whether this tool is exposed directly or through the catalog.
   surface: ToolDefinitionSurface;
+  // Set on names kept for backward compatibility; lists the replacements.
+  deprecated?: { replacedBy: string[] };
 }
 
 const toolDefinitions = toolDefinitionsData as ToolDefinition[];

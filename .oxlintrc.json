@@ -13,10 +13,18 @@
     "**/worker-configuration.d.ts",
     "**/tsconfig*.json",
     "packages/mcp-server-mocks/src/fixtures/**",
-    "packages/cli/test/init-eval/templates/sveltekit-app/**"
+    "packages/codemod-cli3to4/tests/**"
   ],
   "rules": {
-    "no-unused-vars": "off",
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrors": "none",
+        "ignoreRestSiblings": true
+      }
+    ],
     "typescript/return-await": ["error", "always"],
     "typescript/no-floating-promises": [
       "error",
@@ -37,6 +45,13 @@
         "allow": ["URL", "URLSearchParams"]
       }
     ],
+    "typescript/no-unnecessary-type-constraint": "error",
+    "typescript/no-unnecessary-type-arguments": "error",
+    "typescript/no-unnecessary-boolean-literal-compare": "error",
+    "typescript/no-unnecessary-template-expression": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unnecessary-type-parameters": "error",
+    "typescript/no-useless-default-assignment": "error",
     "jsx-a11y/interactive-supports-focus": "off",
     "unicorn/prefer-spread": "error"
   },
@@ -56,6 +71,7 @@
     {
       "files": ["packages/mcp-core/**/*.{ts,tsx,js,mjs,cjs}"],
       "rules": {
+        "typescript/no-unnecessary-condition": "error",
         "no-restricted-imports": [
           "error",
           {
@@ -82,6 +98,8 @@
       ],
       "rules": {
         "sentry-cli/no-silent-catch": "error",
+        "sentry-cli/no-raw-capture-exception": "error",
+        "sentry-cli/no-process-exit": "error",
         "sentry-cli/no-stdout-write-in-commands": "error",
         "sentry-cli/no-process-stdout-in-commands": "error",
         "sentry-cli/no-stderr-write-in-commands": "error",
@@ -100,6 +118,8 @@
         "sentry-cli/no-examples-in-full-description": "error",
         "sentry-cli/no-regex-markdown-parsing": "error",
         "sentry-cli/json-transform-uses-fields": "error",
+        "sentry-cli/no-runtime-output-schema-imports": "error",
+        "sentry-cli/no-hardcoded-sentry-command": "error",
         "no-restricted-imports": [
           "error",
           {
@@ -118,6 +138,15 @@
       }
     },
     {
+      "files": [
+        "packages/cli/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/logger/**/*.{ts,tsx,js,mjs,cjs}"
+      ],
+      "rules": {
+        "no-console": "error"
+      }
+    },
+    {
       "files": ["packages/cli/script/**/*.ts"],
       "rules": {
         "sentry-cli/no-regex-markdown-parsing": "error"
@@ -133,7 +162,8 @@
     {
       "files": [
         "packages/cli/src/lib/command.ts",
-        "packages/cli/src/lib/route-map.ts"
+        "packages/cli/src/lib/route-map.ts",
+        "packages/cli/src/root-help-routes.ts"
       ],
       "rules": {
         "no-restricted-imports": "off"
@@ -183,107 +213,107 @@
               },
               {
                 "name": "assert",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "async_hooks",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "buffer",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "child_process",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "crypto",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "dns",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "events",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "fs",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "fs/promises",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "http",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "https",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "module",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "net",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "os",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "path",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "perf_hooks",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "process",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "readline",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "stream",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "stream/promises",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "timers",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "tls",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "url",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "util",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "worker_threads",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "zlib",
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "name": "zod",
@@ -301,7 +331,7 @@
               },
               {
                 "group": ["node:*"],
-                "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+                "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
               },
               {
                 "group": ["zod/*", "@sentry/api/zod", "@sentry/api/valibot"],
@@ -314,39 +344,39 @@
           "error",
           {
             "name": "Buffer",
-            "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+            "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
           },
           {
             "name": "process",
-            "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+            "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
           },
           {
             "name": "global",
-            "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+            "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
           },
           {
             "name": "require",
-            "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+            "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
           },
           {
             "name": "module",
-            "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+            "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
           },
           {
             "name": "__dirname",
-            "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+            "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
           },
           {
             "name": "__filename",
-            "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+            "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
           },
           {
             "name": "setImmediate",
-            "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+            "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
           },
           {
             "name": "clearImmediate",
-            "message": "Shared toolkit-core modules move into @sentry/api and must run in browsers. Use web-standard APIs, or inject the host-specific piece."
+            "message": "Shared toolkit-core modules must run in browsers. Use web-standard APIs, or inject the host-specific piece."
           }
         ]
       }

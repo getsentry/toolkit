@@ -1,4 +1,4 @@
-import { describeEval } from "vitest-evals";
+import { describeEval } from "vitest-evals/legacy";
 import { FIXTURES, NoOpTaskRunner, ToolPredictionScorer } from "./utils";
 
 describeEval("create-team", {

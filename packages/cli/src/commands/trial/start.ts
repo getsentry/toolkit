@@ -17,13 +17,17 @@ import {
   getProductTrials,
   startProductTrial,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { detectSwappedTrialArgs } from "../../lib/arg-parsing.js";
 import { openBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { success } from "../../lib/formatters/colors.js";
-import { CommandOutput } from "../../lib/formatters/output.js";
+import {
+  CommandOutput,
+  type CommandYield,
+} from "../../lib/formatters/output.js";
 import { logger as log } from "../../lib/logger.js";
 import { prompt } from "../../lib/prompt.js";
 import {
@@ -59,7 +63,7 @@ function isValidTrialArg(name: string): boolean {
 }
 
 const USAGE = "<name> [<org>]";
-const USAGE_HINT = `sentry trial start ${USAGE}`;
+const usageHint = () => sentry`trial start ${USAGE}`;
 
 /** Parsed `trial start` arguments. */
 export type TrialStartInput = {
@@ -75,6 +79,21 @@ export type TrialStartInput = {
 export type ResolvedTrialStart = {
   readonly name: string;
   readonly org: string;
+};
+
+/**
+ * Data `trial start` yields: the plan trial's URL and QR code first, then
+ * the started trial.
+ */
+type TrialStartOutput = {
+  name?: string;
+  category?: string;
+  organization?: string;
+  lengthDays?: number | null;
+  started?: boolean;
+  url?: string;
+  qr?: string;
+  opened?: boolean;
 };
 
 /** The arguments of `trial start`. */
@@ -99,13 +118,13 @@ export function parseTrialStartArguments(
 ): TrialStartInput {
   const [first, second, ...extra] = args;
   if (first === undefined) {
-    throw new ContextError("Trial name", USAGE_HINT, [
+    throw new ContextError("Trial name", usageHint(), [
       `Valid trial names: ${NAMES_LIST}`,
     ]);
   }
   if (extra.length > 0) {
     throw new ValidationError(
-      `Too many arguments: ${extra.join(" ")}. Expected: ${USAGE_HINT}`,
+      `Too many arguments: ${extra.join(" ")}. Expected: ${usageHint()}`,
       "positional",
     );
   }
@@ -128,7 +147,7 @@ export function parseTrialStartArguments(
 
   return {
     name,
-    org: parseOrgInput(org, USAGE_HINT),
+    org: parseOrgInput(org, usageHint()),
     ...(swapped && { warning: swapped.warning }),
   };
 }
@@ -143,18 +162,18 @@ export const startCommand = buildCommand({
       `Valid trial names: ${NAMES_LIST}\n\n` +
       "Use 'plan' to start a Business plan trial (opens billing page).",
     examples: [
-      { description: "Start a Seer trial", command: "sentry trial start seer" },
+      { description: "Start a Seer trial", run: "trial start seer" },
       {
         description: "Start a trial for a specific organization",
-        command: "sentry trial start replays my-org",
+        run: "trial start replays my-org",
       },
       {
         description: "Start a Business plan trial (opens the browser)",
-        command: "sentry trial start plan",
+        run: "trial start plan",
       },
       {
         description: "Output the result as JSON",
-        command: "sentry trial start --json seer",
+        run: "trial start --json seer",
       },
     ],
   },
@@ -175,7 +194,7 @@ export const startCommand = buildCommand({
         const { org } = await resolveOrgInput(
           input.org,
           context.cwd,
-          "sentry trial start <name> <org>",
+          sentry`trial start <name> <org>`,
         );
         return { name: input.name, org };
       },
@@ -265,7 +284,7 @@ async function promptOpenBrowser(url: string): Promise<boolean> {
 async function* handlePlanTrial(
   orgSlug: string,
   json: boolean,
-): AsyncGenerator<unknown, void, undefined> {
+): AsyncGenerator<CommandYield<TrialStartOutput>, void, undefined> {
   const logger = log.withTag("trial");
 
   // Check if plan trial is actually available
@@ -314,16 +333,7 @@ async function* handlePlanTrial(
 }
 
 /** Format start result as human-readable output */
-function formatStartResult(data: {
-  name?: string;
-  category?: string;
-  organization?: string;
-  lengthDays?: number | null;
-  started?: boolean;
-  url?: string;
-  qr?: string;
-  opened?: boolean;
-}): string {
+function formatStartResult(data: TrialStartOutput): string {
   // Intermediate URL + QR code yield for plan trials
   if (data.url && data.qr && !data.category) {
     return `\n  ${data.url}\n\n${data.qr}`;

@@ -553,7 +553,7 @@ describe("formatLogDetails", () => {
     test("fallback: shows extraFields from log when allAttributes absent", () => {
       const log = createDetailedTestLog({
         "user.id": "u_99",
-      } as DetailedSentryLog);
+      });
       const result = stripAnsi(
         formatLogDetails(log, "test-org", undefined, ["user.id"]),
       );
@@ -566,7 +566,7 @@ describe("formatLogDetails", () => {
     test("fallback: shows Markdown in extraFields names and values literally", () => {
       const log = createDetailedTestLog({
         "a|b": "**bold** [link](https://example.com)",
-      } as DetailedSentryLog);
+      });
       const result = stripAnsi(
         formatLogDetails(log, "test-org", undefined, ["a|b"]),
       );

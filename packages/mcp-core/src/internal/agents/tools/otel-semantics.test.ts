@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { SentryApiService } from "../../../api-client";
 
 vi.mock("../logging", () => ({
   logIssue: vi.fn(),
@@ -13,16 +12,9 @@ describe("otel-semantics-lookup", () => {
     vi.clearAllMocks();
   });
 
-  const mockApiService = {} as SentryApiService;
-
   describe("lookupOtelSemantics", () => {
     it("should return namespace information for valid namespace", async () => {
-      const result = await lookupOtelSemantics(
-        "gen_ai",
-        "spans",
-        mockApiService,
-        "test-org",
-      );
+      const result = await lookupOtelSemantics("gen_ai");
 
       expect(result).toContain("# OpenTelemetry Semantic Conventions: gen_ai");
       expect(result).toContain("## Attributes");
@@ -33,29 +25,14 @@ describe("otel-semantics-lookup", () => {
     });
 
     it("should handle namespace with underscore and dash interchangeably", async () => {
-      const result1 = await lookupOtelSemantics(
-        "gen_ai",
-        "spans",
-        mockApiService,
-        "test-org",
-      );
-      const result2 = await lookupOtelSemantics(
-        "gen-ai",
-        "spans",
-        mockApiService,
-        "test-org",
-      );
+      const result1 = await lookupOtelSemantics("gen_ai");
+      const result2 = await lookupOtelSemantics("gen-ai");
 
       expect(result1).toBe(result2);
     });
 
     it("should return all attributes for a namespace", async () => {
-      const result = await lookupOtelSemantics(
-        "http",
-        "spans",
-        mockApiService,
-        "test-org",
-      );
+      const result = await lookupOtelSemantics("http");
 
       expect(result).toContain("total)");
       expect(result).toContain("`http.request.method`");
@@ -63,12 +40,7 @@ describe("otel-semantics-lookup", () => {
     });
 
     it("should return MCP semantic attributes", async () => {
-      const result = await lookupOtelSemantics(
-        "mcp",
-        "spans",
-        mockApiService,
-        "test-org",
-      );
+      const result = await lookupOtelSemantics("mcp");
 
       expect(result).toContain("# OpenTelemetry Semantic Conventions: mcp");
       expect(result).toContain("`mcp.method.name`");
@@ -81,9 +53,6 @@ describe("otel-semantics-lookup", () => {
     it("should handle invalid namespace", async () => {
       const result = await lookupOtelSemantics(
         "totally_invalid_namespace_that_does_not_exist",
-        "spans",
-        mockApiService,
-        "test-org",
       );
 
       expect(result).toContain(
@@ -92,12 +61,7 @@ describe("otel-semantics-lookup", () => {
     });
 
     it("should suggest similar namespaces", async () => {
-      const result = await lookupOtelSemantics(
-        "gen",
-        "spans",
-        mockApiService,
-        "test-org",
-      );
+      const result = await lookupOtelSemantics("gen");
 
       expect(result).toContain("Did you mean:");
       expect(result).toContain("gen_ai");

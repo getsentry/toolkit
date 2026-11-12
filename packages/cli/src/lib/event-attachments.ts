@@ -7,8 +7,9 @@
 
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { EventAttachmentDetailsResponse } from "@sentry/api";
-import type { SentryEvent } from "../types/index.js";
+import type { EventViewAttachment, SentryEvent } from "../types/index.js";
 import { listEventAttachments } from "./api-client.js";
+import { sentry } from "./app-identity.js";
 import { renderMarkdown } from "./formatters/markdown.js";
 import { formatBytes } from "./formatters/numbers.js";
 import { logger } from "./logger.js";
@@ -21,10 +22,6 @@ const log = logger.withTag("event.view");
 type EventWithOptionalProject = SentryEvent & {
   project?: string | { slug?: string | null } | null;
   projectSlug?: string | null;
-};
-
-export type EventViewAttachment = EventAttachmentDetailsResponse & {
-  download: string;
 };
 
 type AttachmentTarget = {
@@ -172,5 +169,5 @@ export function attachmentDownloadHint(
   const name = first.name || "attachment";
   const extra =
     attachments.length > 1 ? ` (${attachments.length - 1} more)` : "";
-  return `Download attachment: sentry api ${shellQuote(first.download)} > ${shellQuote(name)}${extra}`;
+  return `Download attachment: ${sentry`api ${shellQuote(first.download)} > ${shellQuote(name)}${extra}`}`;
 }

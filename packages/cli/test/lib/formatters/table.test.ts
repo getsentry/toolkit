@@ -114,7 +114,7 @@ describe("writeTable (TTY mode)", () => {
       } else {
         delete process.env.SENTRY_PLAIN_OUTPUT;
       }
-      process.stdout.columns = saved.columns as number;
+      process.stdout.columns = saved.columns;
     }
   }
 

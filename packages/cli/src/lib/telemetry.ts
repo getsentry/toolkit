@@ -10,6 +10,7 @@
  */
 
 import { createRequire } from "node:module";
+import type { Metric } from "@sentry/core";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 
@@ -41,8 +42,18 @@ import {
 import { ApiError, isUserError } from "./errors.js";
 import { attachSentryReporter, logger } from "./logger.js";
 import { sentryReporter } from "@sentry/logger";
+import {
+  SNAKE_SCORE_HANDLE_ATTRIBUTE,
+  SNAKE_SCORE_METRIC,
+} from "@sentry/toolkit-core/games";
 import { getSentryBaseUrl, isSentrySaasUrl } from "./sentry-urls.js";
 import { redactTelemetryEnvelope } from "./telemetry/credential-redaction.js";
+import { clearStoredEnvelopes } from "./telemetry/offline-store.js";
+import {
+  makeStoringTransport,
+  STORED_ENVELOPES_PER_RUN,
+  type StoringTransport,
+} from "./telemetry/offline-transport.js";
 import { makeCompressedTransport } from "./telemetry/zstd-transport.js";
 
 export type { Span } from "@sentry/core";
@@ -73,7 +84,7 @@ async function initTelemetryContext(): Promise<void> {
   } catch (error) {
     // Context initialization is not critical - continue without it
     // But capture the error for debugging
-    Sentry.captureException(error);
+    reportCliError(error);
   }
 }
 
@@ -160,6 +171,32 @@ export function isTelemetryEnabled(): boolean {
 }
 
 /**
+ * Attributes a Snake score metric may carry. Everything else the SDK adds
+ * (user.*, replay ids, ...) is dropped so a score cannot be linked to a user.
+ */
+const SNAKE_SCORE_ATTRIBUTE_ALLOWLIST = new Set([
+  SNAKE_SCORE_HANDLE_ATTRIBUTE,
+  "sentry.release",
+  "sentry.environment",
+  "sentry.sdk.name",
+  "sentry.sdk.version",
+]);
+
+/** `beforeSendMetric` hook: allowlist attributes for anonymous game scores, pass other metrics through. */
+export function scrubAnonymousMetric(metric: Metric): Metric {
+  if (metric.name !== SNAKE_SCORE_METRIC) {
+    return metric;
+  }
+  const attributes: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metric.attributes ?? {})) {
+    if (SNAKE_SCORE_ATTRIBUTE_ALLOWLIST.has(key)) {
+      attributes[key] = value;
+    }
+  }
+  return { ...metric, attributes };
+}
+
+/**
  * Wrap CLI execution with telemetry tracking.
  *
  * Creates a Sentry span for the command execution and captures exceptions.
@@ -184,8 +221,17 @@ export async function withTelemetry<T>(
   const enabled = isTelemetryEnabled();
   const client = initSentry(enabled, options);
   if (!client?.getOptions().enabled) {
+    // Opting out also discards telemetry stored by earlier runs. Library mode
+    // never touches the store: it belongs to the CLI, not the host.
+    if (!(enabled || options?.libraryMode)) {
+      clearStoredEnvelopes();
+    }
     return await callback(undefined);
   }
+
+  // Retry telemetry that earlier runs failed to send. The sends run in the
+  // background; the exit flush in createBeforeExitHandler waits for them.
+  storingTransport?.sendStored(STORED_ENVELOPES_PER_RUN);
 
   // Initialize user and instance context
   await initTelemetryContext();
@@ -267,7 +313,14 @@ export async function withTelemetry<T>(
  * and flushing pending events. Includes a re-entry guard since flush is async
  * and causes beforeExit to re-fire when complete.
  *
- * @param client - The Sentry client to flush
+ * It closes the client rather than only flushing it. The SDK flushes metrics
+ * and client reports on every `beforeExit`; when ingest is slow or
+ * unreachable, each failed send becomes a client report, and the runtime
+ * metrics timer keeps adding data, so the next `beforeExit` sends again and
+ * the process never exits (#1956). Closing removes those listeners and
+ * disables the client after this last flush.
+ *
+ * @param client - The Sentry client to close
  * @returns A handler function for process.on("beforeExit")
  *
  * @internal Exported for testing
@@ -285,11 +338,11 @@ export function createBeforeExitHandler(client: Sentry.NodeClient): () => void {
       Sentry.endSession();
     }
 
-    // Flush pending events before exit. Convert PromiseLike to Promise
-    // for proper error handling. The async work causes beforeExit to
+    // Flush pending events, then disable the client. Convert PromiseLike to
+    // Promise for proper error handling. The async work causes beforeExit to
     // re-fire when complete, which the isFlushing guard handles.
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-    Promise.resolve(client.flush(3000)).catch(() => {
+    Promise.resolve(client.close(3000)).catch(() => {
       // Ignore flush errors — telemetry should never block CLI exit
     });
   };
@@ -333,9 +386,9 @@ export function isEpipeError(event: Sentry.ErrorEvent): boolean {
 /**
  * Detect EBADF (bad file descriptor) errors in Sentry events.
  *
- * These occur when the init wizard's stdin reopen (`stdin-reopen.ts`) queues
- * reads on a destroyed file descriptor. Same class of OS-level noise as EPIPE
- * — not actionable, just different fd numbers producing duplicate issues.
+ * These occur when a read is queued on a terminal file descriptor that was
+ * already closed. Same class of OS-level noise as EPIPE — not actionable,
+ * just different fd numbers producing duplicate issues.
  *
  * @internal Exported for testing
  */
@@ -383,15 +436,22 @@ export function isUserApiError(error: unknown): boolean {
 /**
  * Record a client API error as span attributes for Discover queryability.
  *
- * Sets `api_error.status`, `api_error.message`, and optionally `api_error.detail`
- * on the span. Must be called before `span.end()`.
+ * Sets `api_error.status`, `api_error.message`, and either
+ * `api_error.denial_reason` (401/403) or `api_error.detail` on the span. Must
+ * be called before `span.end()`.
+ *
+ * A 401/403 detail is the CLI's own guidance, which can name organizations,
+ * and Sentry's data scrubbing replaces most of them with `[Filtered]`. The
+ * denial reason is a fixed category that tells those failures apart instead.
  *
  * @internal Exported for testing
  */
 export function recordApiErrorOnSpan(span: Span, error: ApiError): void {
   span.setAttribute("api_error.status", error.status);
   span.setAttribute("api_error.message", error.message);
-  if (error.detail) {
+  if (error.denialReason) {
+    span.setAttribute("api_error.denial_reason", error.denialReason);
+  } else if (error.detail) {
     span.setAttribute("api_error.detail", error.detail);
   }
 }
@@ -455,6 +515,9 @@ const hasGetSystemErrorMap = (() => {
 
 /** Current beforeExit handler, tracked so it can be replaced on re-init */
 let currentBeforeExitHandler: (() => void) | null = null;
+
+/** Transport of the current client, unless library mode left the store out. */
+let storingTransport: StoringTransport | undefined;
 
 let manualHttpTracing = false;
 
@@ -627,8 +690,15 @@ export function initSentry(
     // smaller payloads, faster compress/decompress on both sides.
     // Automatic gzip fallback when running on Node < 22.15, where
     // `node:zlib`'s zstd support is unavailable.
+    // Outside library mode, envelopes that fail to send are stored for the
+    // next run (telemetry/offline-transport.ts). Library mode must not write
+    // the host's disk or add work to its process.
     transport: (transportOptions) => {
-      const transport = makeCompressedTransport(transportOptions);
+      storingTransport = libraryMode
+        ? undefined
+        : makeStoringTransport(transportOptions);
+      const transport =
+        storingTransport ?? makeCompressedTransport(transportOptions);
       return {
         // The SDK adds log scope attributes after beforeSendLog and skips
         // beforeSend for internal errors. Redact at the final delivery boundary.
@@ -687,6 +757,8 @@ export function initSentry(
     // Propagate traces to Sentry API for distributed tracing
     tracePropagationTargets: getSentryTracePropagationTargets(),
 
+    beforeSendMetric: scrubAnonymousMetric,
+
     beforeSendTransaction: (event) => {
       // Remove server_name which may contain hostname (PII)
       event.server_name = undefined;
@@ -703,9 +775,9 @@ export function initSentry(
         return null;
       }
 
-      // EBADF errors come from the init wizard's stdin reopen queuing reads
-      // on a destroyed fd. Same class of OS-level noise as EPIPE — different
-      // fd numbers just produce duplicate issues. Not actionable — drop them.
+      // EBADF errors come from reads queued on a closed terminal fd. Same
+      // class of OS-level noise as EPIPE — different fd numbers just produce
+      // duplicate issues. Not actionable — drop them.
       if (isEbadfError(event)) {
         return null;
       }
@@ -973,73 +1045,6 @@ export function recordCacheHit(cacheName: string, hit: boolean): void {
   Sentry.metrics.distribution("cache.hit_rate", hit ? 100 : 0, {
     attributes: { cache_name: cacheName },
   });
-}
-
-export type WizardPromptKind = "select" | "multiselect" | "confirm" | "welcome";
-
-type WizardPromptTelemetry = {
-  setActiveStep(stepId: string, active: boolean): void;
-  tracePrompt<T>(kind: WizardPromptKind, prompt: () => Promise<T>): Promise<T>;
-};
-
-/**
- * Track time spent waiting for human input during `sentry init`.
- *
- * Prompt spans make user think-time visible in the trace instead of folding it
- * into the top-level `sentry.init` duration. The measurement is accumulated on
- * the root span so a run can be compared both with and without user wait time.
- */
-export function createWizardPromptTelemetry(): WizardPromptTelemetry {
-  let activeStepId: string | undefined;
-  let totalWaitMs = 0;
-
-  return {
-    setActiveStep(stepId, active) {
-      if (active) {
-        activeStepId = stepId;
-      } else if (activeStepId === stepId) {
-        activeStepId = undefined;
-      }
-    },
-    tracePrompt(kind, prompt) {
-      const stepId = activeStepId;
-      return withTracingSpan(
-        `wizard.prompt.${kind}`,
-        "ui.prompt",
-        async (span) => {
-          const startedAt = performance.now();
-          try {
-            return await prompt();
-          } finally {
-            const waitMs = Math.max(0, performance.now() - startedAt);
-            totalWaitMs += waitMs;
-
-            span.setAttributes({
-              "wizard.user_wait_ms": waitMs,
-              "wizard.user_wait_total_ms": totalWaitMs,
-            });
-            Sentry.setMeasurement(
-              "wizard.user_wait_ms",
-              totalWaitMs,
-              "millisecond",
-              Sentry.getRootSpan(span),
-            );
-            Sentry.metrics.distribution("wizard.user_wait_ms", waitMs, {
-              attributes: {
-                prompt_kind: kind,
-                ...(stepId ? { workflow_step: stepId } : {}),
-              },
-            });
-          }
-        },
-        {
-          "wizard.prompt.kind": kind,
-          "wizard.prompt.phase": stepId ? "workflow" : "preflight",
-          ...(stepId ? { "wizard.step.id": stepId } : {}),
-        },
-      );
-    },
-  };
 }
 
 /**

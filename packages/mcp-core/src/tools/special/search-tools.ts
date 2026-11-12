@@ -4,6 +4,7 @@ import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import { ALL_SKILLS } from "../../skills";
 import type { ServerContext } from "../../types";
+import type { StructuredToolOutput } from "../types";
 import type { ToolRegistry } from "../catalog-runtime/availability";
 import { searchToolCatalog } from "../catalog-runtime/search";
 
@@ -35,7 +36,9 @@ export const searchToolsOutputSchema = z.object({
 
 type SearchToolsOutput = z.infer<typeof searchToolsOutputSchema>;
 
-function createSearchToolsResult(payload: SearchToolsOutput) {
+function createSearchToolsResult(
+  payload: SearchToolsOutput,
+): StructuredToolOutput<SearchToolsOutput> {
   const activeSpan = getActiveSpan();
 
   if (activeSpan) {
@@ -52,6 +55,7 @@ function createSearchToolsResult(payload: SearchToolsOutput) {
 export function createSearchToolsTool(getTools: () => ToolRegistry) {
   return defineTool({
     name: "search_sentry_tools",
+    title: "Search Sentry Tools",
     skills: ALL_SKILLS,
     requiredScopes: [],
     description: [

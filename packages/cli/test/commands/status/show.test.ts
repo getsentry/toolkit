@@ -19,13 +19,13 @@ type ShowFunc = (this: unknown, flags: ShowFlags) => Promise<void>;
 let originalFetch: typeof globalThis.fetch;
 
 function mockFetch(payload: unknown, ok = true, status = 200): void {
-  globalThis.fetch = (async () =>
+  globalThis.fetch = async () =>
     ({
       ok,
       status,
       json: async () => payload,
       text: async () => JSON.stringify(payload),
-    }) as unknown as Response) as typeof globalThis.fetch;
+    }) as unknown as Response;
 }
 
 /** Create a mock Stricli context with stdout capture. */

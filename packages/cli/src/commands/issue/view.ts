@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { getLatestEvent, listReplayIdsForIssue } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { issueSelectorHelp, spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
@@ -24,20 +25,21 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import { resolveEffectiveOrg } from "../../lib/region.js";
 import {
   collectReplayIds,
   getReplayIdFromEvent,
 } from "../../lib/replay-search.js";
 import { getSpanTreeLines } from "../../lib/span-tree.js";
 import type { SentryEvent } from "../../types/index.js";
-import { IssueViewOutputSchema } from "../../types/index.js";
 import { type IssuesArguments, issuesPositional } from "./positional.js";
 import { mapIssueArgsConcurrently, resolveIssue } from "./utils.js";
+import { IssueViewOutputSchema } from "../../generated/output-schemas/issue.js";
 
 const log = logger.withTag("issue.view");
 
 /** Usage hint for a missing issue */
-const USAGE_HINT = "sentry issue view <issue> [<issue>...]";
+const usageHint = () => sentry`issue view <issue> [<issue>...]`;
 
 /** Maximum browser tabs opened without an explicit safety override. */
 export const MAX_WEB_ISSUES = 5;
@@ -122,6 +124,91 @@ async function buildIssueSpanData(
   return { trace: null };
 }
 
+/** Issue-scoped data fetched alongside (or after) the issue itself. */
+type IssueDetails = Pick<
+  SingleIssueViewData,
+  "replayIds" | "spanTreeLines" | "trace"
+> & {
+  /** Latest event, or `undefined` when it could not be fetched. */
+  event: SentryEvent | undefined;
+};
+
+/**
+ * Fetch the latest event, related replays, and optional span tree for an issue.
+ *
+ * The span tree only depends on the latest event, so its trace request starts
+ * as soon as the event arrives instead of also waiting on the replay lookup.
+ * Never rejects: every request is best-effort.
+ *
+ * @param orgSlug - Organization slug, or `undefined` when no org is known
+ * @param issueId - Numeric issue ID
+ * @param spans - Span tree depth (`0` skips the trace request)
+ */
+async function fetchIssueDetails(
+  orgSlug: string | undefined,
+  issueId: string,
+  spans: number,
+): Promise<IssueDetails> {
+  if (!orgSlug) {
+    return {
+      event: undefined,
+      replayIds: [],
+      ...(await buildIssueSpanData(undefined, undefined, spans)),
+    };
+  }
+
+  const [{ event, spanData }, relatedReplayIds] = await Promise.all([
+    tryGetLatestEvent(orgSlug, issueId).then(async (latest) => ({
+      event: latest,
+      spanData: await buildIssueSpanData(orgSlug, latest, spans),
+    })),
+    tryListReplayIdsForIssue(orgSlug, issueId),
+  ]);
+  const replayIds = collectReplayIds([
+    event ? getReplayIdFromEvent(event) : undefined,
+    ...relatedReplayIds,
+  ]);
+  return { event, replayIds, ...spanData };
+}
+
+/** Issue details started before the issue itself resolved. */
+type PrefetchedIssueDetails = {
+  /** Org slug the requests were sent to */
+  org: string;
+  /** Numeric issue ID the requests were sent for */
+  issueId: string;
+  /** In-flight details; never rejects */
+  details: Promise<IssueDetails>;
+};
+
+/**
+ * Start the latest-event, replay, and trace requests before the issue resolves
+ * when the argument already names the org and numeric ID (`org/123456789`).
+ *
+ * Otherwise `issue view org/123` runs issue → latest event → trace strictly in
+ * series. On high-latency connections that waterfall takes seconds and trips
+ * Sentry's Consecutive HTTP detector (CLI-3F5). Other argument forms need the
+ * issue response to learn the numeric ID. Pasted URLs are skipped too: their
+ * server is only applied once `resolveIssue` runs.
+ *
+ * @param issueArg - Parsed issue argument
+ * @param spans - Span tree depth (`0` skips the trace request)
+ */
+async function prefetchIssueDetails(
+  { parsed, baseUrl }: IssueArgument,
+  spans: number,
+): Promise<PrefetchedIssueDetails | undefined> {
+  if (parsed.type !== "explicit-org-numeric" || baseUrl) {
+    return;
+  }
+  const org = await resolveEffectiveOrg(parsed.org);
+  return {
+    org,
+    issueId: parsed.numericId,
+    details: fetchIssueDetails(org, parsed.numericId, spans),
+  };
+}
+
 /**
  * Resolve one issue and attach latest event, replays, and optional span tree.
  */
@@ -130,30 +217,25 @@ async function buildSingleIssueViewData(
   cwd: string,
   spans: number,
 ): Promise<SingleIssueViewData> {
+  const prefetched = await prefetchIssueDetails(issueArg, spans);
   const { org: orgSlug, issue } = await resolveIssue({
     issueArg,
     cwd,
     command: "view",
   });
 
-  const [event, relatedReplayIds] = orgSlug
-    ? await Promise.all([
-        tryGetLatestEvent(orgSlug, issue.id),
-        tryListReplayIdsForIssue(orgSlug, issue.id),
-      ])
-    : [undefined, []];
-  const replayIds = collectReplayIds([
-    event ? getReplayIdFromEvent(event) : undefined,
-    ...relatedReplayIds,
-  ]);
-  const spanData = await buildIssueSpanData(orgSlug, event, spans);
+  // A merged issue resolves to a different ID than the one requested, so the
+  // prefetched details would belong to the old issue.
+  const { event, ...details } =
+    prefetched && prefetched.org === orgSlug && prefetched.issueId === issue.id
+      ? await prefetched.details
+      : await fetchIssueDetails(orgSlug, issue.id, spans);
 
   return {
     org: orgSlug ?? null,
     issue,
     event: event ?? null,
-    replayIds,
-    ...spanData,
+    ...details,
   };
 }
 
@@ -255,59 +337,54 @@ export const viewCommand = buildCommand({
       "In multi-project mode (after 'issue list'), use alias-suffix format (e.g., 'f-g' " +
       "where 'f' is the project alias shown in the list).",
     examples: [
-      { description: "View an issue", command: "sentry issue view FRONT-ABC" },
+      { description: "View an issue", run: "issue view FRONT-ABC" },
       {
         description: "View the most recent issue",
-        command: "sentry issue view @latest",
+        run: "issue view @latest",
       },
       {
         description: "View several issues (space-separated, not commas)",
-        command: "sentry issue view FRONT-ABC BACK-2",
+        run: "issue view FRONT-ABC BACK-2",
       },
       {
         description: "Select an organization explicitly",
-        command: "sentry issue view my-org/FRONT-ABC",
+        run: "issue view my-org/FRONT-ABC",
       },
       {
         description:
           'Use a GitHub-style identifier (the "#" replaces the final slash)',
-        command: "sentry issue view my-org/my-project#FRONT-ABC",
+        run: "issue view my-org/my-project#FRONT-ABC",
       },
       {
         description: "Open issues in the browser (up to 5 tabs by default)",
-        command: "sentry issue view FRONT-ABC BACK-2 -w",
+        run: "issue view FRONT-ABC BACK-2 -w",
       },
       {
         description: "Allow more than 5 browser tabs",
-        command:
-          "sentry issue view FRONT-ABC BACK-2 API-3 WEB-4 IOS-5 OPS-6 -w --force",
+        run: "issue view FRONT-ABC BACK-2 API-3 WEB-4 IOS-5 OPS-6 -w --force",
       },
       {
         description:
           "Full JSON (issue fields + latest event + trace/replay context)",
-        command: "sentry issue view FRONT-ABC --json",
+        run: "issue view FRONT-ABC --json",
       },
       {
         description: "Select top-level fields to keep output small",
-        command:
-          "sentry issue view FRONT-ABC --json --fields shortId,title,culprit,count,userCount,permalink",
+        run: "issue view FRONT-ABC --json --fields shortId,title,culprit,count,userCount,permalink",
       },
       {
         description:
           "Select fields from the latest event instead of the whole event",
-        command:
-          "sentry issue view FRONT-ABC --json --fields event.id,event.title,event.dateCreated",
+        run: "issue view FRONT-ABC --json --fields event.id,event.title,event.dateCreated",
       },
       {
         description: "Extract the request URL and method from the latest event",
-        command:
-          "sentry issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == \"request\") | .data | {url, method}'",
+        run: "issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == \"request\") | .data | {url, method}'",
       },
       {
         description:
           "Extract the exception type and value from the latest event",
-        command:
-          "sentry issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == \"exception\") | .data.values[0] | {type, value}'",
+        run: "issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == \"exception\") | .data.values[0] | {type, value}'",
       },
     ],
   },
@@ -319,7 +396,7 @@ export const viewCommand = buildCommand({
   parameters: {
     positional: issuesPositional({
       brief: "One or more issue IDs",
-      usageHint: USAGE_HINT,
+      usageHint: usageHint,
       distinct: true,
     }),
     flags: {
@@ -362,7 +439,7 @@ export const viewCommand = buildCommand({
       requestedCount: issueArgs.length,
     });
     return {
-      hint: `Tip: Use 'sentry issue explain ${primaryArg}' for AI root cause analysis`,
+      hint: `Tip: Use '${sentry`issue explain ${primaryArg}`}' for AI root cause analysis`,
     };
   },
 });

@@ -8,7 +8,7 @@
  */
 
 import { isatty } from "node:tty";
-import type { SelectOptions } from "./init/ui/types.js";
+import type { SelectOptions } from "./select-ui/types.js";
 import { interactivePromptsAllowed } from "./interactive-prompts.js";
 
 /** Build-time switch; undefined (enabled) outside bundles that define it. */
@@ -36,7 +36,7 @@ export async function selectWithFilter(
   opts: SelectOptions<string>,
 ): Promise<string | null> {
   if (typeof __SENTRY_CLI_INK_UI__ === "undefined" || __SENTRY_CLI_INK_UI__) {
-    const ink = await import("./init/ui/ink-ui.js");
+    const ink = await import("./select-ui/ink-ui.js");
     return await ink.selectWithFilter(opts);
   }
   return null;

@@ -43,6 +43,19 @@ describe("credential redaction", () => {
   });
 
   test.each([
+    [
+      "runToken=SYNTHETIC0,stage=connect_agent",
+      "runToken=[REDACTED],stage=connect_agent",
+    ],
+    ['{"runToken":"SYNTHETIC0"}', '{"runToken":"[REDACTED]"}'],
+  ])("redacts onboarding run tokens: %s", (input, expected) => {
+    expect(redactCredentialText(input)).toBe(expected);
+    expect(
+      JSON.parse(redactCredentialText(JSON.stringify({ message: input }))),
+    ).toEqual({ message: expected });
+  });
+
+  test.each([
     "sntrys_SYNTHETIC_PAYLOAD\n_SYNTHETIC_SECRET",
     "sntryu_SYNTHETIC_PAYLOAD\r\n_SYNTHETIC_SECRET",
     "legacy_SYNTHETIC_PAYLOAD\n_SYNTHETIC_SECRET",

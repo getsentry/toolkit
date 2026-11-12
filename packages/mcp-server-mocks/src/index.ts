@@ -44,6 +44,7 @@ import issueActivityFixture from "./fixtures/issue-activity.json" with { type: "
 import issueCommentsFixture from "./fixtures/issue-comments.json" with { type: "json" };
 import issueNullCulpritFixture from "./fixtures/issue-null-culprit.json" with { type: "json" };
 import issueTagValuesFixture from "./fixtures/issue-tag-values.json" with { type: "json" };
+import issueTagsFixture from "./fixtures/issue-tags.json" with { type: "json" };
 import issueUserReportsFixture from "./fixtures/issue-user-reports.json" with { type: "json" };
 import monitorFixture from "./fixtures/monitor.json" with { type: "json" };
 import monitorCheckInsFixture from "./fixtures/monitor-checkins.json" with { type: "json" };
@@ -142,13 +143,17 @@ function buildHandlers(
 }
 
 function withTraceItemAttributeMetadata(
-  attributes: readonly { key: string; name: string }[],
+  attributes: readonly {
+    key: string;
+    name: string;
+    attributeSource?: { source_type: string };
+  }[],
   attributeType: "string" | "number" | "boolean",
 ) {
   return attributes.map((attribute) => ({
+    attributeSource: { source_type: "sentry" as const },
     ...attribute,
     attributeType,
-    attributeSource: { source_type: "sentry" as const },
   }));
 }
 
@@ -159,7 +164,12 @@ type IssueUpdateBody = {
   ignoreUserCount?: number;
   ignoreUserWindow?: number;
   ignoreWindow?: number;
+  priority?: string;
   status?: string;
+  statusDetails?: {
+    inRelease?: string;
+    inCommit?: { commit: string; repository: string };
+  };
   substatus?: string;
 };
 
@@ -231,6 +241,16 @@ function buildUpdatedIssueResponse(
 
   if (requestedStatus === "resolvedInNextRelease") {
     statusDetails = { inNextRelease: true };
+  } else if (body.statusDetails?.inRelease !== undefined) {
+    statusDetails = { inRelease: body.statusDetails.inRelease };
+  } else if (body.statusDetails?.inCommit !== undefined) {
+    // Sentry returns the serialized commit, keyed by its SHA.
+    statusDetails = {
+      inCommit: {
+        id: body.statusDetails.inCommit.commit,
+        repository: { name: body.statusDetails.inCommit.repository },
+      },
+    };
   } else if (status === "ignored") {
     statusDetails = buildMockIgnoredStatusDetails(body, substatus);
   } else if (body.status !== undefined) {
@@ -243,6 +263,7 @@ function buildUpdatedIssueResponse(
     substatus,
     statusDetails,
     assignedTo: body.assignedTo ?? baseIssue.assignedTo,
+    priority: body.priority ?? baseIssue.priority,
   };
 }
 
@@ -347,7 +368,7 @@ export const restHandlers = buildHandlers([
             stage: "connect_mcp",
             status: "completed",
             eventNote: null,
-            extra: null,
+            extra: { method: "mcp" },
           },
         ],
       });
@@ -1109,7 +1130,7 @@ export const restHandlers = buildHandlers([
           fields.length > 0 ? null : "Orderby must also be a selected field",
       }));
 
-      const environmentResults = environments.map((environment) => ({
+      const environmentResults = environments.map(() => ({
         valid: true,
         error: null,
       }));
@@ -1423,12 +1444,24 @@ export const restHandlers = buildHandlers([
     path: "/api/0/organizations/:org/issues/:issueId/user-reports/",
     fetch: () => HttpResponse.json(issueUserReportsFixture),
   },
-  // Issue tag values endpoints
+  // Issue tag keys and tag values endpoints
+  {
+    method: "get",
+    path: "/api/0/organizations/:org/issues/:issueId/tags/",
+    fetch: () => HttpResponse.json(issueTagsFixture),
+  },
   {
     method: "get",
     path: "/api/0/organizations/:org/issues/:issueId/tags/:tagKey/",
     fetch: ({ params }) => {
       const tagKey = params.tagKey as string;
+      // Sentry answers a key the issue does not have with a generic 404.
+      if (!issueTagsFixture.some((tag) => tag.key === tagKey)) {
+        return HttpResponse.json(
+          { detail: "The requested resource does not exist" },
+          { status: 404 },
+        );
+      }
       // Return fixture with the requested tag key
       return HttpResponse.json({
         ...issueTagValuesFixture,
@@ -1450,8 +1483,7 @@ export const restHandlers = buildHandlers([
   {
     method: "post",
     path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/teams/:teamSlug/",
-    fetch: async ({ request, params }) => {
-      const body = (await request.json()) as any;
+    fetch: async ({ params }) => {
       const teamSlug = params.teamSlug as string;
       return HttpResponse.json({
         ...teamFixture,
@@ -2007,6 +2039,29 @@ When Sentry detects an abnormal spike in events, it automatically activates spik
       );
     },
   ),
+  // docs.sentry.io serves unknown pages as a 200 "Page Not Found" document
+  http.get("https://docs.sentry.io/ai/mcp.md", () => {
+    return new HttpResponse(
+      `---
+title: "Page Not Found"
+url: "https://docs.sentry.io/ai/mcp"
+---
+
+# Page Not Found
+
+The page \`/ai/mcp\` does not exist.
+
+## Find what you need
+
+- [Site index](https://docs.sentry.io/llms.txt) — LLM-optimized page listing`,
+      {
+        headers: {
+          "Content-Type": "text/markdown",
+          "X-Sentry-Docs-Not-Found": "1",
+        },
+      },
+    );
+  }),
   // Catch-all for other doc paths - return 404
   http.get("https://docs.sentry.io/*.md", () => {
     return new HttpResponse(null, { status: 404 });

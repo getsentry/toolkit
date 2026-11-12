@@ -70,7 +70,7 @@ describe("completions", () => {
     test("fish descriptions keep their parentheses", () => {
       const script = getCompletionScript("fish");
       expect(script).toContain(
-        '-a "init" -d "Initialize Sentry in your project (experimental)"',
+        '-a "explore" -d "Query aggregate event data (Explore)"',
       );
     });
   });

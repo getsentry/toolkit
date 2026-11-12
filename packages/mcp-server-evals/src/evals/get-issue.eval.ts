@@ -1,4 +1,4 @@
-import { describeEval, ToolCallScorer } from "vitest-evals";
+import { describeEval, ToolCallScorer } from "vitest-evals/legacy";
 import { FIXTURES, McpToolCallTaskRunner } from "./utils";
 
 describeEval("get-issue", {
@@ -8,19 +8,10 @@ describeEval("get-issue", {
         input: `Explain CLOUDFLARE-MCP-41 from Sentry in ${FIXTURES.organizationSlug}.`,
         expectedTools: [
           {
-            name: "search_sentry_tools",
+            name: "get_issue_details",
             arguments: {
-              query: "issue",
-            },
-          },
-          {
-            name: "execute_sentry_tool",
-            arguments: {
-              name: "get_issue_details",
-              arguments: {
-                organizationSlug: FIXTURES.organizationSlug,
-                issueId: "CLOUDFLARE-MCP-41",
-              },
+              organizationSlug: FIXTURES.organizationSlug,
+              issueId: "CLOUDFLARE-MCP-41",
             },
           },
         ],
@@ -29,19 +20,10 @@ describeEval("get-issue", {
         input: `Explain the event with ID 7ca573c0f4814912aaa9bdc77d1a7d51 from Sentry in ${FIXTURES.organizationSlug}.`,
         expectedTools: [
           {
-            name: "search_sentry_tools",
+            name: "get_issue_details",
             arguments: {
-              query: "issue",
-            },
-          },
-          {
-            name: "execute_sentry_tool",
-            arguments: {
-              name: "get_issue_details",
-              arguments: {
-                organizationSlug: FIXTURES.organizationSlug,
-                eventId: "7ca573c0f4814912aaa9bdc77d1a7d51",
-              },
+              organizationSlug: FIXTURES.organizationSlug,
+              eventId: "7ca573c0f4814912aaa9bdc77d1a7d51",
             },
           },
         ],

@@ -6,6 +6,7 @@
  */
 
 import { tableCell, text } from "@sentry/toolkit-core/markdown";
+import type { InferOutput } from "valibot";
 import type {
   SpanListItem,
   TraceSpan,
@@ -27,6 +28,7 @@ import { colorizeSql, formatSqlBlock, isDbSpanOp } from "./sql.js";
 import { type Column, formatTable } from "./table.js";
 import { renderTextTable } from "./text-table.js";
 import { computeSpanDurationMs, formatRelativeTime } from "./time-utils.js";
+import type { FlatSpanSchema } from "../../output-schemas/span.js";
 
 /**
  * Format a duration in milliseconds to a human-readable string.
@@ -169,6 +171,7 @@ const TRACE_FIELD_ROOTS = new Set([
   "rootTransaction",
   "rootOp",
   "startTimestamp",
+  "replayId",
   "spans",
   "spanTreeLines",
 ]);
@@ -237,7 +240,7 @@ function includeTraceAttributes(
 
 /** Project trace JSON, retaining span IDs and topology for bare attributes. */
 export function projectTraceFields(
-  trace: TraceSummary & { spans: TraceSpan[] },
+  trace: TraceSummary & { replayId?: string | null; spans: TraceSpan[] },
   selection: TraceFieldSelection,
 ): Partial<TraceSummary> & { spans?: ProjectedTraceSpan[] } {
   const result: Partial<TraceSummary> & { spans?: ProjectedTraceSpan[] } =
@@ -359,7 +362,13 @@ export function computeTraceSummary(
  * @param summary - Computed trace summary
  * @returns Rendered terminal string
  */
-export function formatTraceSummary(summary: TraceSummary): string {
+export function formatTraceSummary(
+  summary: TraceSummary,
+  options: {
+    /** Newest stored replay linked to the trace, or null. */
+    replayId?: string | null;
+  } = {},
+): string {
   const kvRows: [string, string][] = [];
 
   if (summary.rootTransaction) {
@@ -375,6 +384,12 @@ export function formatTraceSummary(summary: TraceSummary): string {
     const date = new Date(summary.startTimestamp * 1000);
     kvRows.push(["Started", date.toLocaleString("sv-SE")]);
   }
+  if (options.replayId !== undefined) {
+    kvRows.push([
+      "Replay ID",
+      options.replayId ? `\`${options.replayId}\`` : "none",
+    ]);
+  }
 
   const md = `## Trace \`${summary.traceId}\`\n\n${mdKvTable(kvRows)}\n`;
   return renderMarkdown(md);
@@ -385,19 +400,7 @@ export function formatTraceSummary(summary: TraceSummary): string {
 // ---------------------------------------------------------------------------
 
 /** Flat span for list output — no nested children */
-export type FlatSpan = {
-  span_id: string;
-  trace_id?: string;
-  parent_span_id?: string | null;
-  op?: string;
-  description?: string | null;
-  duration_ms?: number;
-  start_timestamp: number;
-  project_slug?: string;
-  transaction?: string;
-  /** Custom attributes from --fields (index signature) */
-  [key: string]: unknown;
-};
+export type FlatSpan = InferOutput<typeof FlatSpanSchema>;
 
 /** Result of finding a span by ID in the tree */
 export type FoundSpan = {
