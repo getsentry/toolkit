@@ -1,128 +1,79 @@
 /**
- * Rendering and keyboard tests for the Ink select picker (`SelectPicker`).
+ * Rendering and keyboard tests for the select picker.
  *
  * Each test mounts the picker on a captured stream, feeds it keystrokes, and
- * checks the settled frame and the value the prompt resolved with.
+ * checks the last frame and the value the prompt resolved with.
  */
 
-import { Readable, Writable } from "node:stream";
+import { EventEmitter } from "node:events";
 import { setTimeout as sleep } from "node:timers/promises";
-import { render } from "ink";
-import { createElement } from "react";
 import { describe, expect, test, vi } from "vitest";
-import { SelectPicker } from "../../../src/lib/select-ui/ink-app.js";
+import {
+  createKeyParser,
+  mountSelectPrompt,
+} from "../../../src/lib/select-ui/picker.js";
 import type { SelectPrompt } from "../../../src/lib/select-ui/types.js";
 
-const CURSOR_TO_LINE_START = "\u001B[G";
-// oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences in captured Ink output
+/** Each frame starts by returning to the picker's first line and erasing. */
+const FRAME_START = "\r\u001b[J";
+// oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences in captured picker output
 const ANSI_CSI_RE = /\u001B\[[0-9;?]*[ -/]*[@-~]/g;
-// oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences in captured Ink output
-const ANSI_OSC_RE = /\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g;
 const LINE_SPLIT_RE = /\r?\n/;
 const DOWN_ARROW = "\u001B[B";
-const FRAME_SETTLE_MS = 80;
+const UP_ARROW = "\u001B[A";
+/** Longer than the picker's wait for the rest of a split escape sequence. */
+const ESCAPE_SETTLE_MS = 50;
 
-class CaptureStream extends Writable {
-  frames: string[] = [];
-  settledOutput = "";
-  columns: number;
-  rows: number;
-  isTTY = true;
+class CaptureStream extends EventEmitter {
+  output = "";
+  readonly columns: number;
+  readonly rows: number;
   constructor(columns = 120, rows = 40) {
     super();
     this.columns = columns;
     this.rows = rows;
   }
-  _write(chunk: Buffer, _enc: string, cb: () => void): void {
-    this.frames.push(chunk.toString());
-    cb();
-  }
-  allOutput(): string {
-    return this.frames.join("");
+  write(text: string): boolean {
+    this.output += text;
+    return true;
   }
   latestFrame(): string {
-    const output = this.settledOutput || this.allOutput();
-    const redrawStart = output.lastIndexOf(CURSOR_TO_LINE_START);
-    return redrawStart === -1
-      ? output
-      : output.slice(redrawStart + CURSOR_TO_LINE_START.length);
+    const start = this.output.lastIndexOf(FRAME_START);
+    return start === -1
+      ? this.output
+      : this.output.slice(start + FRAME_START.length);
   }
 }
 
-function makeStdin(): Readable {
-  const s = new Readable({
-    read() {
-      // Tests push keystrokes explicitly.
-    },
-  });
-  const shim = s as Readable & {
-    isTTY: boolean;
-    setRawMode: (v: boolean) => Readable;
-    resume: () => Readable;
-    pause: () => Readable;
-    ref: () => Readable;
-    unref: () => Readable;
-  };
-  shim.isTTY = true;
-  shim.setRawMode = () => s;
-  shim.resume = () => s;
-  shim.pause = () => s;
-  shim.ref = () => s;
-  shim.unref = () => s;
-  return s;
+function stripAnsi(output: string): string {
+  return output.replace(ANSI_CSI_RE, "");
 }
 
-/** Mount the picker, type `input`, and return the captured output. */
+/** Mount the picker, type `input` chunk by chunk, and return the output. */
 async function renderPicker(
   prompt: SelectPrompt,
   columns: number,
   options: { rows?: number; input?: string[] } = {},
-): Promise<CaptureStream> {
-  const out = new CaptureStream(columns, options.rows ?? 40);
-  const stdin = makeStdin();
-  const instance = render(createElement(SelectPicker, { prompt }), {
-    stdout: out as unknown as NodeJS.WriteStream,
-    stderr: out as unknown as NodeJS.WriteStream,
-    stdin: stdin as unknown as NodeJS.ReadStream,
-    patchConsole: false,
-    exitOnCtrlC: false,
-  });
-  for (const input of options.input ?? []) {
-    stdin.push(input);
-    // Ink buffers bare Esc for 20ms to distinguish it from escape sequences.
-    await sleep(input === "\u001b" ? FRAME_SETTLE_MS : 20);
+): Promise<{ frame: string; all: string }> {
+  const output = new CaptureStream(columns, options.rows ?? 40);
+  const input = new EventEmitter();
+  const picker = mountSelectPrompt(prompt, { input, output });
+  for (const chunk of options.input ?? []) {
+    input.emit("data", Buffer.from(chunk));
+    if (chunk.endsWith("\u001b")) {
+      await sleep(ESCAPE_SETTLE_MS);
+    }
   }
-  await sleep(FRAME_SETTLE_MS);
-  out.settledOutput = out.allOutput();
-  instance.unmount();
-  // waitUntilExit() hangs in CI — race with a short unref'd timeout.
-  await Promise.race([
-    instance.waitUntilExit().catch(() => {
-      // Ink may reject on unmount — ignore.
-    }),
-    new Promise<void>((r) => {
-      const t = setTimeout(r, 500);
-      if (typeof t === "object" && "unref" in t) {
-        t.unref();
-      }
-    }),
-  ]);
-  return out;
-}
-
-function stripFinalLineBreak(output: string): string {
-  return output.endsWith("\n") ? output.slice(0, -1) : output;
-}
-
-function stripAnsi(output: string): string {
-  return output.replace(ANSI_CSI_RE, "").replace(ANSI_OSC_RE, "");
+  const frame = stripAnsi(output.latestFrame());
+  picker.close();
+  return { frame, all: stripAnsi(output.output) };
 }
 
 function ignorePromptResolution(): void {
   // Some tests render the prompt but never submit it.
 }
 
-describe("SelectPicker", () => {
+describe("select picker", () => {
   test("typing filters entity names and slugs and confirms the visible choice", async () => {
     const resolve = vi.fn();
     const prompt: SelectPrompt = {
@@ -136,14 +87,15 @@ describe("SelectPicker", () => {
       resolve,
     };
 
-    const output = await renderPicker(prompt, 120, {
-      input: ["FRONT", DOWN_ARROW, "\r"],
+    const { frame } = await renderPicker(prompt, 120, {
+      input: ["FRONT", DOWN_ARROW],
     });
-    const frame = stripAnsi(output.latestFrame());
     expect(frame).toContain("/FRONT");
     expect(frame).toContain("2 of 3");
     expect(frame).toContain("Administration");
     expect(frame).not.toContain("Backend");
+
+    await renderPicker(prompt, 120, { input: ["FRONT", DOWN_ARROW, "\r"] });
     expect(resolve).toHaveBeenCalledWith("web");
   });
 
@@ -159,13 +111,16 @@ describe("SelectPicker", () => {
       resolve,
     };
 
-    const output = await renderPicker(prompt, 80, {
-      input: ["\u001b[200~fronend\u001b[201~\r"],
+    const { frame } = await renderPicker(prompt, 80, {
+      input: ["\u001b[200~fronend\u001b[201~"],
     });
-    const frame = stripAnsi(output.latestFrame());
     expect(frame).toContain("/fronend 1 of 2");
     expect(frame).toContain("Frontend");
     expect(frame).not.toContain("Backend");
+
+    await renderPicker(prompt, 80, {
+      input: ["\u001b[200~fronend\u001b[201~\r"],
+    });
     expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
   });
 
@@ -178,37 +133,18 @@ describe("SelectPicker", () => {
       resolve,
     };
 
-    const output = new CaptureStream(120);
-    const stdin = makeStdin();
-    const instance = render(createElement(SelectPicker, { prompt }), {
-      // CI defaults to non-interactive output, which skips intermediate frames.
-      interactive: true,
-      stdout: output as unknown as NodeJS.WriteStream,
-      stderr: output as unknown as NodeJS.WriteStream,
-      stdin: stdin as unknown as NodeJS.ReadStream,
-      patchConsole: false,
-      exitOnCtrlC: false,
+    const empty = await renderPicker(prompt, 120, {
+      input: ["frozz", `${DOWN_ARROW}\r`],
     });
-    try {
-      stdin.push("frozz");
-      // Observe the empty state before later input can coalesce its render.
-      await vi.waitFor(() => {
-        expect(stripAnsi(output.latestFrame())).toContain("No matches");
-      });
+    expect(empty.frame).toContain("No matches");
+    expect(resolve).not.toHaveBeenCalled();
 
-      stdin.push(`${DOWN_ARROW}\r`);
-      await instance.waitUntilRenderFlush();
-      expect(resolve).not.toHaveBeenCalled();
-
-      stdin.push("\u007f\r");
-      await vi.waitFor(() => {
-        expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
-        expect(stripAnsi(output.latestFrame())).toContain("/froz 1 of 1");
-      });
-    } finally {
-      instance.unmount();
-      await instance.waitUntilExit();
-    }
+    const restored = await renderPicker(prompt, 120, {
+      input: ["frozz", "\u007f"],
+    });
+    expect(restored.frame).toContain("/froz 1 of 1");
+    await renderPicker(prompt, 120, { input: ["frozz", "\u007f\r"] });
+    expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
   });
 
   test.each([
@@ -219,7 +155,7 @@ describe("SelectPicker", () => {
     },
     {
       action: "wraps up to the last filtered option",
-      navigation: "\u001b[A",
+      navigation: UP_ARROW,
       expected: "frontend-b",
     },
     {
@@ -240,11 +176,26 @@ describe("SelectPicker", () => {
       resolve,
     };
 
-    const output = await renderPicker(prompt, 80, {
+    await renderPicker(prompt, 80, {
       input: [`\u001b[200~front\u001b[201~${navigation}\r`],
     });
-    expect(stripAnsi(output.latestFrame())).toContain("/front 2 of 3");
     expect(resolve).toHaveBeenCalledExactlyOnceWith(expected);
+  });
+
+  test("a pasted newline does not confirm", async () => {
+    const resolve = vi.fn();
+    const prompt: SelectPrompt = {
+      message: "Choose a project",
+      options: [{ value: "frontend", label: "Frontend" }],
+      initialIndex: 0,
+      resolve,
+    };
+
+    const { frame } = await renderPicker(prompt, 80, {
+      input: ["\u001b[200~front\r\nend\u001b[201~"],
+    });
+    expect(frame).toContain("/frontend 1 of 1");
+    expect(resolve).not.toHaveBeenCalled();
   });
 
   test("same-chunk paste and Enter cannot confirm a filter with no matches", async () => {
@@ -256,10 +207,10 @@ describe("SelectPicker", () => {
       resolve,
     };
 
-    const output = await renderPicker(prompt, 80, {
+    const { frame } = await renderPicker(prompt, 80, {
       input: ["\u001b[200~missing\u001b[201~\r"],
     });
-    expect(stripAnsi(output.latestFrame())).toContain("No matches");
+    expect(frame).toContain("No matches");
     expect(resolve).not.toHaveBeenCalled();
   });
 
@@ -275,10 +226,9 @@ describe("SelectPicker", () => {
       resolve,
     };
 
-    const output = await renderPicker(prompt, 80, {
+    await renderPicker(prompt, 80, {
       input: ["\u001b[200~frozz\u001b[201~\u007f\r"],
     });
-    expect(stripAnsi(output.latestFrame())).toContain("/froz 1 of 2");
     expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend");
   });
 
@@ -300,10 +250,11 @@ describe("SelectPicker", () => {
         resolve,
       };
 
-      const output = await renderPicker(prompt, 80, {
-        input: [`${DOWN_ARROW}${input}\r`],
+      const { frame } = await renderPicker(prompt, 80, {
+        input: [`${DOWN_ARROW}${input}`],
       });
-      expect(stripAnsi(output.latestFrame())).toContain("type to filter");
+      expect(frame).toContain("type to filter");
+      await renderPicker(prompt, 80, { input: [`${DOWN_ARROW}${input}\r`] });
       expect(resolve).toHaveBeenCalledExactlyOnceWith("worker");
     },
   );
@@ -319,7 +270,7 @@ describe("SelectPicker", () => {
     const cleared = await renderPicker(prompt, 120, {
       input: ["front", "\u001b"],
     });
-    expect(stripAnsi(cleared.latestFrame())).toContain("type to filter");
+    expect(cleared.frame).toContain("type to filter");
     expect(resolve).not.toHaveBeenCalled();
 
     await renderPicker(prompt, 120, { input: ["front", "\u001b", "\u001b"] });
@@ -327,6 +278,29 @@ describe("SelectPicker", () => {
     resolve.mockClear();
     await renderPicker(prompt, 120, { input: ["front", "\u0003"] });
     expect(resolve).toHaveBeenCalledExactlyOnceWith(null);
+  });
+
+  test("an arrow key split across chunks moves instead of clearing", async () => {
+    const resolve = vi.fn();
+    const prompt: SelectPrompt = {
+      message: "Select a project:",
+      options: [
+        { value: "frontend-a", label: "Frontend A" },
+        { value: "frontend-b", label: "Frontend B" },
+      ],
+      initialIndex: 0,
+      resolve,
+    };
+    const output = new CaptureStream(80);
+    const input = new EventEmitter();
+    const picker = mountSelectPrompt(prompt, { input, output });
+    try {
+      input.emit("data", "front\u001b");
+      input.emit("data", "[B\r");
+    } finally {
+      picker.close();
+    }
+    expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend-b");
   });
 
   test("the compact project picker filters with the same keyboard controls", async () => {
@@ -340,11 +314,10 @@ describe("SelectPicker", () => {
       initialIndex: 0,
       resolve,
     };
-    const output = await renderPicker(prompt, 80, {
-      input: ["front", "\r"],
-    });
-    expect(stripAnsi(output.latestFrame())).toContain("/front");
-    expect(stripAnsi(output.latestFrame())).toContain("1 of 2");
+    const { frame } = await renderPicker(prompt, 80, { input: ["front"] });
+    expect(frame).toContain("/front");
+    expect(frame).toContain("1 of 2");
+    await renderPicker(prompt, 80, { input: ["front", "\r"] });
     expect(resolve).toHaveBeenCalledExactlyOnceWith("frontend-web");
   });
 
@@ -358,17 +331,15 @@ describe("SelectPicker", () => {
       initialIndex: 0,
       resolve: ignorePromptResolution,
     };
-    const output = await renderPicker(prompt, 40, {
+    const { frame } = await renderPicker(prompt, 40, {
       rows: 24,
       input: ["frontend", DOWN_ARROW],
     });
-    const frame = stripFinalLineBreak(stripAnsi(output.latestFrame()));
     expect(frame).toContain("/frontend");
     expect(frame).toContain("11 of 20");
-    expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(23);
-    expect(frame.split(LINE_SPLIT_RE).every((line) => line.length <= 40)).toBe(
-      true,
-    );
+    const lines = frame.split(LINE_SPLIT_RE);
+    expect(lines.length).toBeLessThanOrEqual(23);
+    expect(lines.every((line) => line.length <= 40)).toBe(true);
   });
 
   test.each([{ optionCount: 1 }, { optionCount: 3 }, { optionCount: 20 }])(
@@ -391,11 +362,7 @@ describe("SelectPicker", () => {
         { input: ["missing"], status: `/missing 0 of ${optionCount}` },
         { input: ["missing", "\u001b"], status: "type to filter" },
       ]) {
-        const output = await renderPicker(prompt, 40, {
-          rows: 24,
-          input,
-        });
-        const frame = stripFinalLineBreak(stripAnsi(output.latestFrame()));
+        const { frame } = await renderPicker(prompt, 40, { rows: 24, input });
         const lines = frame.split(LINE_SPLIT_RE);
         const filterRow = lines.findIndex((line) => line.includes(status));
         expect(filterRow).toBeGreaterThanOrEqual(0);
@@ -419,24 +386,19 @@ describe("SelectPicker", () => {
       resolve: ignorePromptResolution,
     };
 
-    const rendered = await renderPicker(prompt, 120, { rows: 24 });
-    const frame = stripFinalLineBreak(stripAnsi(rendered.latestFrame()));
+    const { frame } = await renderPicker(prompt, 120, { rows: 24 });
     expect(frame).toContain("Select a project in acme-platforms:");
     expect(frame).toContain("(1/20)");
     expect(frame).toContain("Project 1");
     expect(frame).not.toContain("Project 20");
     expect(frame.split(LINE_SPLIT_RE).length).toBeLessThanOrEqual(23);
 
-    const scrolledFrame = stripAnsi(
-      (
-        await renderPicker(prompt, 120, {
-          input: Array.from({ length: 7 }, () => DOWN_ARROW),
-          rows: 24,
-        })
-      ).allOutput(),
-    );
-    expect(scrolledFrame).toContain("(8/20)");
-    expect(scrolledFrame).toContain("Project 8");
+    const scrolled = await renderPicker(prompt, 120, {
+      input: Array.from({ length: 7 }, () => DOWN_ARROW),
+      rows: 24,
+    });
+    expect(scrolled.frame).toContain("(8/20)");
+    expect(scrolled.frame).toContain("Project 8");
   });
 
   test("long option hints stay on one terminal row", async () => {
@@ -454,10 +416,56 @@ describe("SelectPicker", () => {
       resolve: ignorePromptResolution,
     };
 
-    const frame = stripAnsi(
-      (await renderPicker(prompt, 40, { rows: 24 })).allOutput(),
-    );
+    const { frame } = await renderPicker(prompt, 40, { rows: 24 });
     expect(frame).toContain("▶  A This deliberately");
     expect(frame).not.toContain("UNIQUE_TAIL");
+  });
+
+  test("closing erases the picker, restores the cursor, and stops reading keys", () => {
+    const resolve = vi.fn();
+    const prompt: SelectPrompt = {
+      message: "Select a project:",
+      options: [{ value: "frontend", label: "Frontend" }],
+      initialIndex: 0,
+      resolve,
+    };
+    const output = new CaptureStream(80);
+    const input = new EventEmitter();
+    const picker = mountSelectPrompt(prompt, { input, output });
+    picker.close();
+
+    expect(output.output.endsWith(`${FRAME_START}\u001b[?25h`)).toBe(true);
+    expect(input.listenerCount("data")).toBe(0);
+    expect(output.listenerCount("resize")).toBe(0);
+  });
+});
+
+describe("createKeyParser", () => {
+  test("drops escape sequences the picker doesn't use", () => {
+    const parser = createKeyParser();
+    // Right arrow, F5, and Alt+x around typed text.
+    expect(parser.push("a\u001b[C\u001b[15~\u001bxb")).toEqual([
+      { name: "text", text: "ab" },
+    ]);
+    expect(parser.hasPendingEscape()).toBe(false);
+  });
+
+  test("keeps a trailing bare Esc pending until flushed", () => {
+    const parser = createKeyParser();
+    expect(parser.push("\u001b")).toEqual([]);
+    expect(parser.hasPendingEscape()).toBe(true);
+    expect(parser.flush()).toEqual([{ name: "escape" }]);
+    expect(parser.flush()).toEqual([]);
+  });
+
+  test("keeps a bracketed paste open across chunks", () => {
+    const parser = createKeyParser();
+    expect(parser.push("\u001b[200~fro")).toEqual([
+      { name: "text", text: "fro" },
+    ]);
+    expect(parser.push("nt\r\u001b[201~\r")).toEqual([
+      { name: "text", text: "nt" },
+      { name: "enter" },
+    ]);
   });
 });

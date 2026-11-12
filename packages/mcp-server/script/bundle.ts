@@ -34,7 +34,7 @@ const MAX_BUNDLE_BYTES = 3.75 * 1024 * 1024;
  * Inputs that serve the CLI but not this package: commands other than `mcp`,
  * `auth`, `cli defaults`, `cli fix`, and `help` (flag completion reads
  * `local/loopback.ts`, a leaf module of host constants), agent skills, shell
- * completions, syntax highlighting, the Ink select picker, terminal images
+ * completions, syntax highlighting, the select picker, terminal images
  * (the kitty/sixel help banner and dashboards, and `pngjs`),
  * build/sourcemap/debug-file processing, the SQLite WASM fallback for
  * Node.js < 22.15, Zod 3, and MCP SDK v1.
@@ -48,7 +48,7 @@ const FORBIDDEN_INPUTS: ReadonlyArray<RegExp> = [
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:sixel|sixel-image|kitty-image|formatters[\\/]sixel-dashboard)\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]generated[\\/]banner-image\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:bash-hook|build|dif|react-native|select-ui|snapshots|sourcemap|wasm)[\\/]/,
-  /[\\/]node_modules[\\/](?:cli-highlight|highlight\.js|parse5|ink|react|react-reconciler|yoga-layout|@sentry[\\/]symbolic|node-sqlite3-wasm|pngjs)[\\/]/,
+  /[\\/]node_modules[\\/](?:cli-highlight|highlight\.js|parse5|@sentry[\\/]symbolic|node-sqlite3-wasm|pngjs)[\\/]/,
   /[\\/]node_modules[\\/](?:zod[\\/]v3|@modelcontextprotocol[\\/]sdk)[\\/]/,
 ];
 
@@ -57,14 +57,14 @@ const NODE_VERSION_CHECK = `{let v=process.versions.node.split(".").map(Number);
 
 /**
  * Packages that only CLI-only code paths import: the SQLite WASM fallback
- * (Node.js < 22.15, which the version check rejects), the symbolic WASM
- * binary, and the Ink UI. They resolve to an empty module instead of a
+ * (Node.js < 22.15, which the version check rejects) and the symbolic WASM
+ * binary. They resolve to an empty module instead of a
  * `require()` of a package the tarball does not ship, so no dangling import
  * reaches the output. `zod/v3` is stubbed by {@link zodV3StubPlugin}, shared
  * with the CLI bundles.
  */
 const STUBBED_MODULES =
-  /^(?:node-sqlite3-wasm|@sentry\/symbolic\/symbolic_bg\.wasm|ink|react|react-reconciler|react-devtools-core|yoga-layout)(?:\/.*)?$/;
+  /^(?:node-sqlite3-wasm|@sentry\/symbolic\/symbolic_bg\.wasm)(?:\/.*)?$/;
 
 const stubModulesPlugin: Plugin = {
   name: "stub-cli-only-modules",
@@ -134,8 +134,8 @@ const result = await build({
     // highlight.js and parse5 stay out (see formatters/highlight.ts).
     __SENTRY_CLI_SYNTAX_HIGHLIGHT__: "false",
     // `auth switch` and `auth login` ask for an account by argument instead
-    // of the Ink picker (see lib/select-prompt.ts).
-    __SENTRY_CLI_INK_UI__: "false",
+    // of the interactive picker (see lib/select-prompt.ts).
+    __SENTRY_CLI_SELECT_UI__: "false",
     "import.meta.url": "import_meta_url",
   },
   external: ["node:*"],

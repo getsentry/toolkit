@@ -141,10 +141,14 @@ Top-level layout:
   (`src/bin.ts`) as code-split CommonJS chunks for both: every `import()` and
   every lazy `_require()` (telemetry, syntax highlighting, the field-list
   parser) starts a chunk, so a command loads only its own code. From source,
-  `pnpm run cli` and `pnpm run dev` run `node --import tsx/esm`, not the `tsx`
-  command: its CommonJS hook compiles a lazily required source module into a
-  second, CommonJS copy of its graph, which can't load packages that export
-  only to `import` (`test/script/dev-runner.test.ts`). The
+  `pnpm run cli` and `pnpm run dev` run Node's own type stripping
+  (`--experimental-strip-types`), not tsx: the `tsx` command's CommonJS hook
+  compiles a lazily required source module into a second, CommonJS copy of
+  its graph, which can't load packages that export only to `import`
+  (`test/script/dev-runner.test.ts`). So `src/` must stay erasable TypeScript
+  (`erasableSyntaxOnly`: no enums, namespaces, or parameter properties), JSON
+  imports need `with { type: "json" }`, and there is no JSX.
+  `script/require-shim.mjs` resolves the `.js` specifiers of `.ts` files. The
   completion engine (`src/complete-bin.ts`) is one file of its own. The main
   script runs one of them through `src/lib/chunk-loader.ts`, which reads the
   chunks from files next to it (npm) or from SEA assets (binary) and keeps a V8

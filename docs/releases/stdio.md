@@ -49,9 +49,9 @@ The package is a single file with no runtime dependencies.
   schemas. Zod keeps only its English locale
   (`packages/cli/script/lib/zod-locales-plugin.ts`).
 - CLI-only code stays out: the other commands, agent skills, completions,
-  syntax highlighting, the Ink UI, and debug-file processing. Help and `auth`
-  output render code blocks without colors, and account pickers take the
-  account as an argument instead of the Ink picker. The SQLite WASM fallback
+  syntax highlighting, the select picker, and debug-file processing. Help and
+  `auth` output render code blocks without colors, and account pickers take
+  the account as an argument instead of the interactive picker. The SQLite WASM fallback
   is left out too, so the package needs Node.js 22.15+. The bundle script
   fails if any of these reach the output or the file grows past its size
   budget. Packages that only those code paths import resolve to empty stub

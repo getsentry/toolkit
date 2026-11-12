@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { SelectPrompt } from "../../../src/lib/select-ui/types.js";
 
-const { mountSelectPrompt, terminal } = vi.hoisted(() => ({
+const { mountSelectPrompt, picker, terminal } = vi.hoisted(() => ({
   mountSelectPrompt: vi.fn(),
+  picker: { close: vi.fn() },
   terminal: {
     isRaw: false,
     setRawMode: vi.fn(),
+    resume: vi.fn(),
     pause: vi.fn(),
     destroy: vi.fn(),
+    once: vi.fn(),
+    removeListener: vi.fn(),
   },
 }));
 
@@ -25,17 +29,16 @@ vi.mock("node:tty", async (importOriginal) => ({
   ReadStream: class {
     isRaw = terminal.isRaw;
     setRawMode = terminal.setRawMode;
+    resume = terminal.resume;
     pause = terminal.pause;
     destroy = terminal.destroy;
+    once = terminal.once;
+    removeListener = terminal.removeListener;
   },
 }));
-vi.mock("../../../src/lib/select-ui/ink-app.tsx", () => ({
-  default: new URL("../../../src/lib/select-ui/ink-app.tsx", import.meta.url)
-    .pathname,
-  mountSelectPrompt,
-}));
+vi.mock("../../../src/lib/select-ui/picker.js", () => ({ mountSelectPrompt }));
 
-import { selectWithFilter } from "../../../src/lib/select-ui/ink-ui.js";
+import { selectWithFilter } from "../../../src/lib/select-ui/terminal.js";
 
 const OPTIONS = {
   message: "Select a project:",
@@ -46,23 +49,8 @@ const OPTIONS = {
   initialValue: "backend",
 };
 
-let exit: () => void;
-let instance: {
-  clear: ReturnType<typeof vi.fn>;
-  unmount: ReturnType<typeof vi.fn>;
-  waitUntilExit: ReturnType<typeof vi.fn>;
-};
-
 beforeEach(() => {
   vi.clearAllMocks();
-  const exited = new Promise<void>((resolve) => {
-    exit = resolve;
-  });
-  instance = {
-    clear: vi.fn(),
-    unmount: vi.fn(() => exit()),
-    waitUntilExit: vi.fn(() => exited),
-  };
 });
 
 afterEach(() => {
@@ -73,7 +61,7 @@ describe("inline filterable select", () => {
   test("returns the choice and releases the prompt and terminal", async () => {
     mountSelectPrompt.mockImplementation((prompt: SelectPrompt) => {
       queueMicrotask(() => prompt.resolve("backend"));
-      return instance;
+      return picker;
     });
 
     await expect(selectWithFilter(OPTIONS)).resolves.toBe("backend");
@@ -84,11 +72,14 @@ describe("inline filterable select", () => {
         options: OPTIONS.options,
         initialIndex: 1,
       }),
-      { stdin: terminal, exitOnCtrlC: false, patchConsole: false },
+      {
+        input: expect.objectContaining({ setRawMode: terminal.setRawMode }),
+        output: process.stdout,
+      },
     );
-    expect(instance.clear).toHaveBeenCalledOnce();
-    expect(instance.unmount).toHaveBeenCalledOnce();
-    expect(terminal.setRawMode).toHaveBeenCalledWith(false);
+    expect(terminal.setRawMode).toHaveBeenNthCalledWith(1, true);
+    expect(picker.close).toHaveBeenCalledOnce();
+    expect(terminal.setRawMode).toHaveBeenLastCalledWith(false);
     expect(terminal.destroy).toHaveBeenCalledOnce();
   });
 
@@ -101,15 +92,31 @@ describe("inline filterable select", () => {
         const cancel = process
           .listeners("SIGINT")
           .find((handler) => !initialHandlers.includes(handler));
-        cancel?.();
+        cancel?.("SIGINT");
       });
-      return instance;
+      return picker;
     });
 
     await expect(selectWithFilter(OPTIONS)).resolves.toBeNull();
 
     expect(process.listeners("SIGINT")).toEqual(initialHandlers);
-    expect(terminal.setRawMode).toHaveBeenCalledWith(false);
+    expect(terminal.setRawMode).toHaveBeenLastCalledWith(false);
+    expect(terminal.destroy).toHaveBeenCalledOnce();
+  });
+
+  test("rejects when the terminal fails to read", async () => {
+    const error = new Error("EIO");
+    mountSelectPrompt.mockImplementation(() => {
+      const [, onError] = terminal.once.mock.calls.find(
+        ([event]) => event === "error",
+      ) as [string, (error: unknown) => void];
+      queueMicrotask(() => onError(error));
+      return picker;
+    });
+
+    await expect(selectWithFilter(OPTIONS)).rejects.toBe(error);
+
+    expect(picker.close).toHaveBeenCalledOnce();
     expect(terminal.destroy).toHaveBeenCalledOnce();
   });
 
@@ -121,7 +128,7 @@ describe("inline filterable select", () => {
 
     await expect(selectWithFilter(OPTIONS)).rejects.toBe(error);
 
-    expect(terminal.setRawMode).toHaveBeenCalledWith(false);
+    expect(terminal.setRawMode).toHaveBeenLastCalledWith(false);
     expect(terminal.destroy).toHaveBeenCalledOnce();
   });
 });
