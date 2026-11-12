@@ -376,6 +376,27 @@ Avoid implementation jargon:
 - Avoid: `Inspect detector IDs before constructing workflow payloads.`
 - Avoid: `Display these results exactly as written.`
 
+## Feedback Suggestions
+
+When a result likely means a Sentry MCP bug or gap, add a response note that
+points the agent at `submit_feedback_to_sentry_team`. Build it with
+`formatFeedbackSuggestion` from
+`packages/mcp-core/src/internal/tool-helpers/feedback-suggestion.ts`. It returns
+null when the session cannot call the tool, for example when Sentry has no DSN.
+
+This is a note, not a `suggestedActions` entry: the agent has to write the task
+and description, so the call is never complete.
+
+Suggest feedback only for:
+
+- Unexpected errors, Sentry API 5xx errors, and embedded agent failures, with
+  the Event ID when there is one. `formatErrorForUser` adds these.
+- `search_sentry_tools` results with no match.
+- Translated event searches that return nothing.
+
+Do not suggest it for input, validation, permission, auth, rate limit,
+configuration, or AI provider errors, or for empty results that are expected.
+
 ## Snapshot Policy
 
 Every MCP tool test suite must include at least one representative successful

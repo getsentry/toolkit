@@ -7,7 +7,7 @@ import {
   LLMProviderError,
 } from "../errors";
 import { APICallError, RetryError } from "ai";
-import { ApiRateLimitError } from "../api-client";
+import { ApiRateLimitError, createApiError } from "../api-client";
 
 vi.mock("../telem/logging", () => ({
   logIssue: vi.fn(() => "mock-event-id"),
@@ -277,6 +277,55 @@ describe("formatErrorForUser", () => {
       expect(result).toContain("**Event ID**: evt-abc");
       expect(logIssue).not.toHaveBeenCalled();
       expect(logWarn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("feedback suggestion", () => {
+    const session = {
+      availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
+      directToolNames: new Set(["submit_feedback_to_sentry_team"]),
+    };
+
+    it("suggests reporting an unexpected error with its event ID", async () => {
+      const result = await formatErrorForUser(new Error("boom"), { session });
+
+      expect(result).toContain(
+        "If this keeps failing, use the Sentry tool `submit_feedback_to_sentry_team` with kind='broken' and eventId='mock-event-id' to report it to the Sentry MCP team.",
+      );
+    });
+
+    it("suggests reporting a Sentry API server error", async () => {
+      const result = await formatErrorForUser(
+        createApiError("Internal Error", 500),
+        { session },
+      );
+
+      expect(result).toContain("eventId='mock-event-id'");
+    });
+
+    it("suggests reporting an embedded agent failure", async () => {
+      const result = await formatErrorForUser(
+        new AgentExecutionError("agent failed", { eventId: "evt-1" }),
+        { session },
+      );
+
+      expect(result).toContain(
+        "If rephrasing does not help, use the Sentry tool `submit_feedback_to_sentry_team` with kind='broken' and eventId='evt-1'",
+      );
+    });
+
+    it("does not suggest reporting input errors", async () => {
+      const result = await formatErrorForUser(new UserInputError("bad input"), {
+        session,
+      });
+
+      expect(result).not.toContain("submit_feedback_to_sentry_team");
+    });
+
+    it("does not suggest reporting without the session tool surface", async () => {
+      const result = await formatErrorForUser(new Error("boom"));
+
+      expect(result).not.toContain("submit_feedback_to_sentry_team");
     });
   });
 });

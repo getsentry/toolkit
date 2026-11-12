@@ -1,6 +1,7 @@
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { formatFeedbackSuggestion } from "../../internal/tool-helpers/feedback-suggestion";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import { ALL_SKILLS } from "../../skills";
 import type { ServerContext } from "../../types";
@@ -32,6 +33,7 @@ export const searchToolsOutputSchema = z.object({
       annotations: toolAnnotationsOutputSchema,
     }),
   ),
+  notes: z.array(z.string()),
 });
 
 type SearchToolsOutput = z.infer<typeof searchToolsOutputSchema>;
@@ -116,9 +118,20 @@ export function createSearchToolsTool(getTools: () => ToolRegistry) {
         limit: params.limit ?? DEFAULT_LIMIT,
       });
 
+      const feedbackSuggestion =
+        results.length === 0
+          ? formatFeedbackSuggestion({
+              condition:
+                "No Sentry tool matched. Try other keywords first. If no Sentry tool can do this task",
+              kind: "missing",
+              session: context,
+            })
+          : null;
+
       return createSearchToolsResult({
         query: params.query,
         results,
+        notes: feedbackSuggestion ? [feedbackSuggestion] : [],
       });
     },
   });

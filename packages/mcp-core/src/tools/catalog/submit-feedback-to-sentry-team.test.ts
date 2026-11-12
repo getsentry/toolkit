@@ -50,6 +50,29 @@ describe("submit_feedback_to_sentry_team", () => {
     `);
   });
 
+  it("links feedback to the Sentry MCP error event", async () => {
+    await submitFeedbackToSentryTeam.handler(
+      {
+        task: "search checkout errors",
+        kind: "broken",
+        impact: "blocked",
+        description: "search_errors failed with an unexpected error.",
+        eventId: "0123456789ABCDEF0123456789ABCDEF",
+      },
+      createTestContext(),
+    );
+
+    expect(
+      vi.mocked(captureFeedback).mock.calls.at(-1)?.[0].associatedEventId,
+    ).toBe("0123456789abcdef0123456789abcdef");
+  });
+
+  it("rejects an event ID that is not a Sentry event ID", () => {
+    expect(
+      submitFeedbackToSentryTeam.inputSchema.eventId.safeParse("evt-1").success,
+    ).toBe(false);
+  });
+
   it("names a generic agent without client or user context", async () => {
     await submitFeedbackToSentryTeam.handler(
       {
