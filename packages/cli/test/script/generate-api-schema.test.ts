@@ -102,4 +102,36 @@ describe("SDK catalog projection", () => {
       );
     }
   });
+
+  test("discovers the installed timeseries transformation contract", () => {
+    const catalog = projectApiOperations(operations);
+    const [endpoint] = searchEndpoints(
+      "listOrganizationEventsTimeseries",
+      catalog,
+    );
+    expect(endpoint).toMatchObject({
+      method: "GET",
+      path: "/api/0/organizations/{organization_id_or_slug}/events-timeseries/",
+      queryParameters: expect.arrayContaining([
+        expect.objectContaining({
+          name: "yAxis",
+          type: "array",
+          required: false,
+        }),
+        expect.objectContaining({
+          name: "transformations[0]",
+          type: "array",
+          required: false,
+          description: expect.stringContaining("target axis index"),
+        }),
+        expect.objectContaining({
+          name: "interval",
+          description: expect.stringContaining("5m"),
+        }),
+      ]),
+    });
+    expect(searchEndpoints("transformations", catalog)).toContainEqual(
+      expect.objectContaining({ fn: "listOrganizationEventsTimeseries" }),
+    );
+  });
 });
