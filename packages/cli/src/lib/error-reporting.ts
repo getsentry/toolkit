@@ -291,9 +291,9 @@ const ENDPOINT_PATTERNS: [RegExp, string][] = [
 
 /**
  * Strip remaining bare numeric segments (e.g. /12345/) but preserve
- * the API version in a leading /api/0/.
+ * the API version in /api/0/, which may follow an install prefix.
  */
-const BARE_NUMERIC_SEGMENT_RE = /(?<!^\/api)\/\d+(?=\/|$)/g;
+const BARE_NUMERIC_SEGMENT_RE = /(?<!\/api)\/\d+(?=\/|$)/g;
 
 /** Scheme and host of an absolute URL. */
 const URL_ORIGIN_RE = /^[a-z][a-z\d+.-]*:\/\/[^/?#]*/i;

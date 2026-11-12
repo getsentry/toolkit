@@ -220,6 +220,10 @@ describe("normalizeEndpoint", () => {
       "https://sentry.example.com/api/0/organizations/{org}/events/",
     ],
     [
+      "https://sentry.example.com/sentry/api/0/organizations/my-org/",
+      "https://sentry.example.com/sentry/api/0/organizations/{org}/",
+    ],
+    [
       "/organizations/my-org/shortids/MY-PROJECT-1A/",
       "/organizations/{org}/shortids/{id}/",
     ],
