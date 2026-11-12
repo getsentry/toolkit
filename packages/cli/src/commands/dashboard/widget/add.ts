@@ -132,9 +132,8 @@ export const addCommand = buildCommand({
       WIDGET_TRANSFORMATION_HELP,
     examples: [
       {
-        description:
-          "Set independent ordered transformations for duplicate aggregates",
-        run: 'dashboard widget add my-org/12345 "Transformed counts" --display line --query count --query count --transformations \'{"0":["fill(linear)","smooth(ema,7)"],"1":["smooth(asap)"]}\'',
+        description: "Fill gaps and smooth a line chart",
+        run: 'dashboard widget add my-org/12345 "Requests" --display line --query count --transform-fill linear --transform-smooth ema --transform-window 7',
       },
       {
         description: "Add a counter widget",

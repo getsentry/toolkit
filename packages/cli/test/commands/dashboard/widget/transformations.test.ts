@@ -143,7 +143,7 @@ async function edit(args: string[]) {
   ]);
 }
 
-test("SDK add and edit accept JSON transformations and preserve them after reload", async () => {
+test("SDK add and edit validate raw controls and persist them after reload", async () => {
   const originalFetch = (globalThis as { __originalFetch: typeof fetch })
     .__originalFetch;
   const fetchSpy = vi
@@ -153,16 +153,15 @@ test("SDK add and edit accept JSON transformations and preserve them after reloa
     const sdk = createSentrySDK({
       token: TEST_TOKEN,
       url: server.url,
-      env: {
-        SENTRY_CONFIG_DIR: ctx.configDir,
-        SENTRY_CLI_NO_TELEMETRY: "1",
-      },
+      env: { SENTRY_CONFIG_DIR: ctx.configDir, SENTRY_CLI_NO_TELEMETRY: "1" },
     });
     await sdk.dashboard.widget.add(
       {
         display: "line",
         query: ["count", "count"],
-        transformations: '{"0":["fill(zero)"],"1":["smooth(asap)"]}',
+        transformAggregate: "all",
+        transformFill: "zero",
+        transformSmooth: "asap",
       },
       "test-org/123",
       "SDK chart",
@@ -170,18 +169,39 @@ test("SDK add and edit accept JSON transformations and preserve them after reloa
     expect(
       (await reload()).widgets?.[1]?.queries?.[0]?.transformations,
     ).toEqual({
-      "0": ["fill(zero)"],
-      "1": ["smooth(asap)"],
+      "0": ["fill(zero)", "smooth(asap)"],
+      "1": ["fill(zero)", "smooth(asap)"],
     });
     await sdk.dashboard.widget.edit(
-      { title: "SDK chart", transformations: '{"1":[]}' },
+      {
+        title: "SDK chart",
+        transformAggregate: "2",
+        transformSmooth: "ema",
+        transformWindow: "7",
+        transformAlpha: "0.25",
+        transformOrder: "smooth-first",
+      },
       "test-org/123",
     );
     expect(
       (await reload()).widgets?.[1]?.queries?.[0]?.transformations,
     ).toEqual({
-      "0": ["fill(zero)"],
+      "0": ["fill(zero)", "smooth(asap)"],
+      "1": ["smooth(ema,7,0.25)", "fill(zero)"],
     });
+    lastUpdate = undefined;
+    await expect(
+      sdk.dashboard.widget.edit(
+        {
+          title: "SDK chart",
+          transformAggregate: "2",
+          transformSmooth: "ema",
+          transformWindow: "0",
+        },
+        "test-org/123",
+      ),
+    ).rejects.toThrow("Invalid --transform-window");
+    expect(lastUpdate).toBeUndefined();
   } finally {
     fetchSpy.mockRestore();
   }
@@ -192,7 +212,7 @@ test.each([
   ["logs", "area", "count"],
   ["metrics", "bar", "p50(value,latency,distribution,none)"],
 ])(
-  "authors independent transformations for duplicate aggregates in %s and reloads",
+  "authors transformations on one duplicate aggregate in %s and reloads",
   async (dataset, display, aggregate) => {
     const result = await ctx.run([
       "dashboard",
@@ -208,62 +228,147 @@ test.each([
       aggregate,
       "--query",
       aggregate,
-      "--transformations",
-      '{"0":["fill(linear)","smooth(ema,7)"],"1":["smooth(asap)","fill(zero)"]}',
+      "--transform-aggregate",
+      "2",
+      "--transform-fill",
+      "zero",
+      "--transform-smooth",
+      "asap",
+      "--transform-order",
+      "smooth-first",
       "--json",
     ]);
     expect(result.exitCode, result.stderr).toBe(0);
     const reloaded = await reload();
     expect(reloaded.widgets?.[1]?.queries?.[0]?.transformations).toEqual({
-      "0": ["fill(linear)", "smooth(ema,7)"],
       "1": ["smooth(asap)", "fill(zero)"],
     });
     expect(
       reloaded.widgets?.[0]?.queries?.map((query) => query.transformations),
-    ).toEqual([
-      {
-        "0": ["fill( linear )", "smooth( ema , 7 , 0.25 )"],
-        "1": ["smooth(asap,7)", "fill(zero)"],
-        "2": [],
-      },
-      { "0": ["fill(locf)"] },
-    ]);
+    ).toEqual(
+      savedDashboard.widgets?.[0]?.queries?.map(
+        (query) => query.transformations,
+      ),
+    );
   },
 );
 
-test("replaces and clears transformations by axis, preserving omitted axes and queries after reload", async () => {
+test("omits the selector for a single aggregate and defaults new pairs to fill-first regardless of flag order", async () => {
+  const result = await ctx.run([
+    "dashboard",
+    "widget",
+    "add",
+    "test-org/123",
+    "Single",
+    "--display",
+    "line",
+    "--query",
+    "count",
+    "--transform-smooth",
+    "ema",
+    "--transform-window",
+    "7",
+    "--transform-fill",
+    "linear",
+    "--json",
+  ]);
+  expect(result.exitCode, result.stderr).toBe(0);
+  expect((await reload()).widgets?.[1]?.queries?.[0]?.transformations).toEqual({
+    "0": ["fill(linear)", "smooth(ema,7)"],
+  });
+});
+
+test("preserves omitted kinds verbatim and existing pair order on duplicate aggregates", async () => {
   const changed = await edit([
-    "--transformations",
-    '{"1":["smooth(sma,3)","fill(locf)"]}',
+    "--transform-aggregate",
+    "2",
+    "--transform-fill",
+    "locf",
   ]);
   expect(changed.exitCode, changed.stderr).toBe(0);
   expect((await reload()).widgets?.[0]?.queries?.[0]?.transformations).toEqual({
     "0": ["fill( linear )", "smooth( ema , 7 , 0.25 )"],
-    "1": ["smooth(sma,3)", "fill(locf)"],
+    "1": ["smooth(asap,7)", "fill(locf)"],
   });
-  const cleared = await edit(["--transformations", '{"1":[]}']);
-  expect(cleared.exitCode, cleared.stderr).toBe(0);
-  expect(
-    (await reload()).widgets?.[0]?.queries?.map(
-      (query) => query.transformations,
-    ),
-  ).toEqual([
-    { "0": ["fill( linear )", "smooth( ema , 7 , 0.25 )"] },
-    { "0": ["fill(locf)"] },
+  const first = await edit([
+    "--transform-aggregate",
+    "1",
+    "--transform-fill",
+    "zero",
   ]);
-  expect(lastUpdate?.widgets?.[0]?.queries?.[1]).toEqual(
-    expect.objectContaining({ id: "201" }),
-  );
+  expect(first.exitCode, first.stderr).toBe(0);
+  expect(
+    (await reload()).widgets?.[0]?.queries?.[0]?.transformations?.["0"],
+  ).toEqual(["fill(zero)", "smooth( ema , 7 , 0.25 )"]);
   expect(
     lastUpdate?.widgets?.[0]?.queries?.[1]?.transformations,
   ).toBeUndefined();
+  expect((await reload()).widgets?.[0]?.queries?.[1]?.transformations).toEqual({
+    "0": ["fill(locf)"],
+  });
 });
 
-test("omission and an empty patch preserve transformations when the feature is disabled", async () => {
+test("replaces the complete smoothing configuration and uses automatic EMA alpha when omitted", async () => {
+  const result = await edit([
+    "--transform-aggregate",
+    "1",
+    "--transform-smooth",
+    "ema",
+    "--transform-window",
+    "9",
+  ]);
+  expect(result.exitCode, result.stderr).toBe(0);
+  expect(
+    (await reload()).widgets?.[0]?.queries?.[0]?.transformations?.["0"],
+  ).toEqual(["fill( linear )", "smooth(ema,9)"]);
+});
+
+test.each([
+  {
+    name: "removes filling while preserving smoothing",
+    saved: ["smooth(asap,7)", "fill(zero)"],
+    flags: ["--transform-fill", "none"],
+    expected: ["smooth(asap,7)"],
+  },
+  {
+    name: "defaults a newly formed pair to fill-first",
+    saved: ["smooth(asap,7)"],
+    flags: ["--transform-fill", "linear"],
+    expected: ["fill(linear)", "smooth(asap,7)"],
+  },
+  {
+    name: "explicitly reorders an existing pair",
+    saved: ["fill(linear)", "smooth(asap,7)"],
+    flags: ["--transform-order", "smooth-first"],
+    expected: ["smooth(asap,7)", "fill(linear)"],
+  },
+  {
+    name: "removes smoothing while preserving filling",
+    saved: ["smooth(asap,7)", "fill(linear)"],
+    flags: ["--transform-smooth", "none"],
+    expected: ["fill(linear)"],
+  },
+  {
+    name: "clears both kinds on a selected aggregate",
+    saved: ["smooth(asap,7)", "fill(linear)"],
+    flags: ["--transform-clear"],
+    expected: undefined,
+  },
+])("$name", async ({ saved, flags, expected }) => {
+  const query = stored.widgets![0].queries![0];
+  query.transformations = { ...query.transformations, "1": saved };
+  const result = await edit(["--transform-aggregate", "2", ...flags]);
+  expect(result.exitCode, result.stderr).toBe(0);
+  expect(
+    (await reload()).widgets?.[0]?.queries?.[0]?.transformations?.["1"],
+  ).toEqual(expected);
+});
+
+test("unrelated edits preserve transformations when the feature is disabled", async () => {
   enabled = false;
   for (const args of [
     ["--new-title", "Renamed"],
-    ["--where", "span.op:http", "--transformations", "{}"],
+    ["--where", "span.op:http"],
   ]) {
     const result = await edit(args);
     expect(result.exitCode, result.stderr).toBe(0);
@@ -276,12 +381,19 @@ test("omission and an empty patch preserve transformations when the feature is d
         (query) => query.transformations,
       ),
     );
+    expect(
+      lastUpdate?.widgets?.[0]?.queries?.[0]?.transformations,
+    ).toBeUndefined();
   }
 });
 
-test("clears all transformations even when the feature is disabled", async () => {
+test("clears the first query even when the feature is disabled", async () => {
   enabled = false;
-  const result = await edit(["--transformations", '{"0":[],"1":[]}']);
+  const result = await edit([
+    "--transform-aggregate",
+    "all",
+    "--transform-clear",
+  ]);
   expect(result.exitCode, result.stderr).toBe(0);
   expect((await reload()).widgets?.[0]?.queries?.[0]?.transformations).toEqual(
     {},
@@ -291,7 +403,12 @@ test("clears all transformations even when the feature is disabled", async () =>
 
 test("surfaces feature-disabled errors without saving partial updates", async () => {
   enabled = false;
-  const result = await edit(["--transformations", '{"0":["fill(zero)"]}']);
+  const result = await edit([
+    "--transform-aggregate",
+    "1",
+    "--transform-fill",
+    "zero",
+  ]);
   expect(result.exitCode).toBe(30);
   expect(result.stderr).toContain("Transformations are not enabled");
   expect(stored).toEqual(savedDashboard);
@@ -310,34 +427,68 @@ test.each([
     "--query",
     "avg:span.duration",
   ],
+  [
+    "--query",
+    "count",
+    "--transform-aggregate",
+    "all",
+    "--transform-fill",
+    "linear",
+  ],
+  [
+    "--query",
+    "count",
+    "--transform-aggregate",
+    "1",
+    "--transform-fill",
+    "none",
+    "--transform-smooth",
+    "none",
+  ],
 ])(
-  "requires explicit correction after changing the aggregate list %j",
+  "requires a complete explicit decision for every affected saved position %j",
   async (...args) => {
     const result = await edit(args);
     expect(result.exitCode).toBe(21);
-    expect(result.stderr).toContain("requires explicit transformations or []");
+    expect(result.stderr).toContain(
+      "requires explicit --transform-fill and --transform-smooth",
+    );
     expect(stored).toEqual(savedDashboard);
     expect(lastUpdate).toBeUndefined();
   },
 );
 
-test("reorders aggregates with explicit transformations and acknowledges removed empty positions", async () => {
-  const result = await edit([
-    "--query",
-    "p95:span.duration",
-    "--query",
-    "count",
-    "--transformations",
-    '{"0":["smooth(ema,5,0.5)"],"1":["fill(zero)"],"2":[]}',
-  ]);
-  expect(result.exitCode, result.stderr).toBe(0);
-  const query = (await reload()).widgets?.[0]?.queries?.[0];
-  expect(query?.aggregates).toEqual(["p95(span.duration)", "count()"]);
-  expect(query?.transformations).toEqual({
-    "0": ["smooth(ema,5,0.5)"],
-    "1": ["fill(zero)"],
-  });
-});
+test.each([false, true])(
+  "rewrites aggregates and acknowledges removed positions with clear=%s",
+  async (clear) => {
+    const result = await edit([
+      "--query",
+      "p95:span.duration",
+      "--query",
+      "count",
+      "--transform-aggregate",
+      "all",
+      ...(clear
+        ? ["--transform-clear"]
+        : [
+            "--transform-fill",
+            "none",
+            "--transform-smooth",
+            "ema",
+            "--transform-window",
+            "5",
+            "--transform-alpha",
+            "0.5",
+          ]),
+    ]);
+    expect(result.exitCode, result.stderr).toBe(0);
+    const query = (await reload()).widgets?.[0]?.queries?.[0];
+    expect(query?.aggregates).toEqual(["p95(span.duration)", "count()"]);
+    expect(query?.transformations).toEqual(
+      clear ? {} : { "0": ["smooth(ema,5,0.5)"], "1": ["smooth(ema,5,0.5)"] },
+    );
+  },
+);
 
 test("retains positional transformations when the aggregate list is unchanged", async () => {
   const result = await edit([
@@ -354,16 +505,17 @@ test("retains positional transformations when the aggregate list is unchanged", 
   );
 });
 
-test("requires clearing a removed stored empty position", async () => {
-  stored.widgets![0]!.queries![0]!.transformations = { "2": [] };
+test("requires and allows clearing a removed stored empty position by its old number", async () => {
+  stored.widgets![0].queries![0].transformations = { "2": [] };
   const result = await edit(["--query", "count"]);
   expect(result.exitCode).toBe(21);
-  expect(result.stderr).toContain("saved aggregate position 2");
+  expect(result.stderr).toContain("saved aggregate 3");
   const corrected = await edit([
     "--query",
     "count",
-    "--transformations",
-    '{"2":[]}',
+    "--transform-aggregate",
+    "3",
+    "--transform-clear",
   ]);
   expect(corrected.exitCode, corrected.stderr).toBe(0);
   expect((await reload()).widgets?.[0]?.queries?.[0]?.transformations).toEqual(
@@ -388,8 +540,9 @@ test("considers saved transformations in later queries before changing display",
   const result = await edit([
     "--display",
     "table",
-    "--transformations",
-    '{"0":[],"1":[]}',
+    "--transform-aggregate",
+    "all",
+    "--transform-clear",
   ]);
   expect(result.exitCode).toBe(21);
   expect(result.stderr).toContain(
@@ -399,12 +552,13 @@ test("considers saved transformations in later queries before changing display",
 });
 
 test("allows clearing transformations while switching to an unsupported display", async () => {
-  stored.widgets![0]!.queries!.splice(1);
+  stored.widgets![0].queries!.splice(1);
   const result = await edit([
     "--display",
     "table",
-    "--transformations",
-    '{"0":[],"1":[]}',
+    "--transform-aggregate",
+    "all",
+    "--transform-clear",
   ]);
   expect(result.exitCode, result.stderr).toBe(0);
   const widget = (await reload()).widgets?.[0];
@@ -428,8 +582,8 @@ test.each([
       dataset,
       "--display",
       display,
-      "--transformations",
-      '{"0":["fill(zero)"]}',
+      "--transform-fill",
+      "zero",
     ]);
     expect(result.exitCode).toBe(21);
     expect(result.stderr).toContain("Transformations require dataset");
@@ -438,38 +592,50 @@ test.each([
 );
 
 test.each([
-  ["not-json", "Expected a JSON object", 252],
-  ['{"0":"fill(zero)"}', "Expected a JSON object mapping", 252],
-  ['{"01":["fill(zero)"]}', "Invalid aggregate position", 252],
-  ['{"__proto__":["fill(zero)"]}', "Invalid aggregate position", 252],
-  ['{"constructor":["fill(zero)"]}', "Invalid aggregate position", 252],
-  ['{"3":["fill(zero)"]}', "out of range", 21],
-  ['{"3":[]}', "out of range", 21],
+  [["--transform-fill", "zero"], "Choose --transform-aggregate"],
+  [["--transform-aggregate", "4", "--transform-clear"], "out of range"],
   [
-    '{"0":["fill(zero)","fill(linear)"]}',
-    "at most one fill and one smooth",
-    252,
+    ["--transform-aggregate", "1", "--transform-smooth", "ema"],
+    "requires --transform-window",
   ],
-  ['{"0":["smooth(ema,3,0)"]}', "Invalid transformation", 252],
-  ['{"0":["smooth(sma,0)"]}', "Invalid transformation", 252],
-  ['{"0":["fill(unknown)"]}', "Invalid transformation", 252],
-  ['{"0":[" fill(zero) "]}', "Invalid transformation", 252],
-  ['{"0":["fill(zero\\n)"]}', "Invalid transformation", 252],
-])("rejects malformed axis patches %s", async (patch, message, exitCode) => {
-  const result = await edit(["--transformations", patch]);
-  expect(result.exitCode).toBe(exitCode);
-  expect(result.stderr).toContain(message);
-  expect(stored).toEqual(savedDashboard);
-  expect(lastUpdate).toBeUndefined();
-});
+  [
+    ["--transform-aggregate", "1", "--transform-window", "7"],
+    "requires --transform-smooth",
+  ],
+  [
+    [
+      "--transform-aggregate",
+      "1",
+      "--transform-clear",
+      "--transform-fill",
+      "none",
+    ],
+    "cannot be combined",
+  ],
+  [
+    ["--transform-aggregate", "3", "--transform-order", "smooth-first"],
+    "requires both fill and smooth",
+  ],
+])(
+  "rejects invalid transformation edits %j before saving",
+  async (args, message) => {
+    const result = await edit(args);
+    expect(result.exitCode).toBe(21);
+    expect(result.stderr).toContain(message);
+    expect(stored).toEqual(savedDashboard);
+    expect(lastUpdate).toBeUndefined();
+  },
+);
 
 test.each(["add", "edit"])(
-  "%s help explains positional ordering and clear semantics",
+  "%s help explains selection, preservation, replacement, and clearing",
   async (command) => {
     const result = await ctx.run(["dashboard", "widget", command, "--help"]);
     expect(result.exitCode, result.stderr).toBe(0);
-    expect(result.stdout).toContain("--transformations");
-    expect(result.stdout).toContain("zero-based aggregate positions");
-    expect(result.stdout).toContain("[] clears an axis");
+    expect(result.stdout).toContain("--transform-aggregate");
+    expect(result.stdout).toContain("1-based aggregate number");
+    expect(result.stdout).toContain("replaces its complete configuration");
+    expect(result.stdout).toContain("--transform-clear");
+    expect(result.stdout).not.toContain("--transformations");
   },
 );

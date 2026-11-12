@@ -1,5 +1,5 @@
 import {
-  array,
+  boolean,
   check,
   digits,
   gtValue,
@@ -10,145 +10,273 @@ import {
   optional,
   picklist,
   pipe,
-  record,
   regex,
   safeInteger,
   safeParse,
-  strictTuple,
   string,
   toNumber,
   union,
-  variant,
 } from "valibot";
 import { textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import type { DashboardWidget } from "../../types/dashboard.js";
 import type { WidgetQueryFlags } from "./resolve.js";
 
-/** Ordered transformation replacements by zero-based aggregate position. */
+const FILL_MODES = ["zero", "linear", "locf", "none"] as const;
+const SMOOTH_MODES = ["sma", "ema", "asap", "none"] as const;
+const ORDERS = ["fill-first", "smooth-first"] as const;
+
 export type WidgetTransformationFlags = {
-  readonly transformations?: string | Record<string, string[]>;
+  readonly "transform-aggregate"?: string;
+  readonly "transform-fill"?: (typeof FILL_MODES)[number];
+  readonly "transform-smooth"?: (typeof SMOOTH_MODES)[number];
+  readonly "transform-window"?: string;
+  readonly "transform-alpha"?: string;
+  readonly "transform-order"?: (typeof ORDERS)[number];
+  readonly "transform-clear"?: boolean;
 };
 
-const transformationsSchema = record(string(), array(string()));
-const integerStringSchema = pipe(
+type TransformationChange =
+  | { kind: "keep" }
+  | { kind: "remove" }
+  | { kind: "set"; expression: string };
+
+type TransformationEdit = {
+  aggregate: number | "all" | undefined;
+  fill: TransformationChange;
+  smooth: TransformationChange;
+  order: (typeof ORDERS)[number] | undefined;
+};
+
+const positiveIntegerSchema = pipe(
   string(),
-  digits(),
-  check((value) => value === "0" || !value.startsWith("0")),
+  digits("Use a positive integer."),
+  check(
+    (value) => !value.startsWith("0"),
+    "Use a positive integer without leading zeros.",
+  ),
   toNumber(),
-  safeInteger(),
+  safeInteger("Use a safe integer."),
+  minValue(1, "Use a positive integer."),
 );
-const axisIndexSchema = pipe(integerStringSchema, minValue(0));
-const windowSchema = pipe(integerStringSchema, minValue(1));
 const alphaSchema = pipe(
   string(),
-  regex(/^(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i),
+  regex(/^(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i, "Use a decimal EMA factor."),
   toNumber(),
-  gtValue(0),
-  maxValue(1),
+  gtValue(0, "EMA alpha must be greater than 0 and at most 1."),
+  maxValue(1, "EMA alpha must be greater than 0 and at most 1."),
 );
-const transformationSchema = variant("name", [
-  object({
-    name: literal("fill"),
-    arguments: strictTuple([picklist(["zero", "linear", "locf"])]),
-  }),
-  object({
-    name: literal("smooth"),
-    arguments: union([
-      strictTuple([literal("sma"), windowSchema]),
-      strictTuple([literal("ema"), windowSchema, optional(alphaSchema)]),
-      strictTuple([literal("asap"), optional(windowSchema)]),
-    ]),
-  }),
-]);
+const flagSchema = object({
+  "transform-aggregate": optional(
+    union([literal("all"), positiveIntegerSchema]),
+  ),
+  "transform-fill": optional(picklist(FILL_MODES)),
+  "transform-smooth": optional(picklist(SMOOTH_MODES)),
+  "transform-window": optional(positiveIntegerSchema),
+  "transform-alpha": optional(alphaSchema),
+  "transform-order": optional(picklist(ORDERS)),
+  "transform-clear": optional(boolean()),
+});
 
 function invalidTransformations(message: string): never {
   throw new ValidationError(message, "transformations");
 }
 
-function validateTransformation(expression: string): string {
-  const match = /^(\w+)\(([^()\r\n]*)\)$/.exec(expression);
-  const parsed = safeParse(transformationSchema, {
-    name: match?.[0] === expression ? match[1] : undefined,
-    arguments: match?.[2]?.split(",").map((arg) => arg.trim()) ?? [],
-  });
-  if (parsed.success) {
-    return parsed.output.name;
-  }
-  return invalidTransformations(
-    `Invalid transformation "${expression}". Use fill(zero|linear|locf), smooth(sma,N), smooth(ema,N[,A]), or smooth(asap[,N]). N must be a positive integer and A must be greater than 0 and at most 1.`,
-  );
-}
-
-/** Parse a JSON axis patch. Empty arrays clear axes and omitted axes preserve them. */
-export function parseTransformations(value: string): Record<string, string[]> {
-  let input: unknown;
-  try {
-    input = JSON.parse(value);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    return invalidTransformations(
-      `Expected a JSON object, for example '{"0":["fill(linear)"],"1":[]}'. ${detail}`,
-    );
-  }
-  if (typeof input === "object" && input !== null) {
-    for (const index of Object.keys(input)) {
-      if (!safeParse(axisIndexSchema, index).success) {
-        invalidTransformations(
-          `Invalid aggregate position "${index}". Use a zero-based integer such as "0" or "1".`,
-        );
-      }
-    }
-  }
-  const parsed = safeParse(transformationsSchema, input);
+export function parseTransformationFlags(
+  flags: unknown,
+): TransformationEdit | undefined {
+  const parsed = safeParse(flagSchema, flags);
   if (!parsed.success) {
+    const issue = parsed.issues[0];
+    const key = issue.path?.[0]?.key;
     return invalidTransformations(
-      'Expected a JSON object mapping aggregate positions to arrays of transformation strings, for example \'{"0":["fill(linear)"],"1":[]}\'.',
+      `Invalid --${typeof key === "string" ? key : "transform"}. ${issue.message}`,
     );
   }
-  for (const [index, axisTransformations] of Object.entries(parsed.output)) {
-    const kinds = axisTransformations.map(validateTransformation);
-    if (
-      axisTransformations.length > 2 ||
-      new Set(kinds).size !== axisTransformations.length
-    ) {
+  const {
+    "transform-aggregate": aggregate,
+    "transform-fill": fill,
+    "transform-smooth": smooth,
+    "transform-window": window,
+    "transform-alpha": alpha,
+    "transform-order": order,
+    "transform-clear": clear,
+  } = parsed.output;
+  const hasSettings =
+    fill !== undefined ||
+    smooth !== undefined ||
+    window !== undefined ||
+    alpha !== undefined ||
+    order !== undefined;
+  if (clear && hasSettings) {
+    invalidTransformations(
+      "--transform-clear cannot be combined with other transformation settings. Select an aggregate and clear it, or specify fill and smoothing settings.",
+    );
+  }
+  if (!(clear || hasSettings)) {
+    if (aggregate !== undefined) {
       invalidTransformations(
-        `Aggregate position ${index} accepts at most one fill and one smooth transformation, in either order.`,
+        "--transform-aggregate requires a transformation setting or --transform-clear.",
       );
     }
+    return undefined;
   }
-  return parsed.output;
+  if (window !== undefined && (smooth === undefined || smooth === "none")) {
+    invalidTransformations(
+      "--transform-window requires --transform-smooth sma, ema, or asap.",
+    );
+  }
+  if (alpha !== undefined && smooth !== "ema") {
+    invalidTransformations(
+      "--transform-alpha requires --transform-smooth ema.",
+    );
+  }
+  if ((smooth === "sma" || smooth === "ema") && window === undefined) {
+    invalidTransformations(
+      `--transform-smooth ${smooth} requires --transform-window with a positive integer.`,
+    );
+  }
+  let smoothChange: TransformationChange = { kind: "keep" };
+  if (clear || smooth === "none") {
+    smoothChange = { kind: "remove" };
+  } else if (smooth !== undefined) {
+    const args = [smooth, window, alpha].filter((arg) => arg !== undefined);
+    smoothChange = { kind: "set", expression: `smooth(${args.join(",")})` };
+  }
+  return {
+    aggregate,
+    fill:
+      clear || fill === "none"
+        ? { kind: "remove" }
+        : fill === undefined
+          ? { kind: "keep" }
+          : { kind: "set", expression: `fill(${fill})` },
+    smooth: smoothChange,
+    order,
+  };
 }
 
 export const WIDGET_TRANSFORMATION_FLAGS = {
-  transformations: {
+  "transform-aggregate": {
     kind: "parsed",
-    parse: textParser(parseTransformations),
-    brief:
-      'JSON axis patch, e.g. \'{"0":["fill(linear)","smooth(ema,7)"],"1":[]}\'. Omitted axes preserve saved transformations; [] clears an axis',
+    parse: textParser(String),
     optional: true,
+    brief:
+      "Aggregate number (1-based) or all; optional for a single aggregate. Edits the first query",
+  },
+  "transform-fill": {
+    kind: "enum",
+    values: FILL_MODES,
+    optional: true,
+    brief:
+      "Fill gaps with zero, linear, or locf; none removes filling. Omission preserves saved filling",
+  },
+  "transform-smooth": {
+    kind: "enum",
+    values: SMOOTH_MODES,
+    optional: true,
+    brief:
+      "Replace the complete smoothing configuration; none removes smoothing. Omission preserves saved smoothing",
+  },
+  "transform-window": {
+    kind: "parsed",
+    parse: textParser(String),
+    optional: true,
+    brief:
+      "Positive integer window for sma/ema (required), or maximum window for asap (optional)",
+  },
+  "transform-alpha": {
+    kind: "parsed",
+    parse: textParser(String),
+    optional: true,
+    brief:
+      "EMA factor greater than 0 and at most 1; requires explicit --transform-smooth ema. Omission uses automatic alpha",
+  },
+  "transform-order": {
+    kind: "enum",
+    values: ORDERS,
+    optional: true,
+    brief:
+      "Application order; requires both fill and smooth. Existing pairs preserve order; new pairs default to fill-first",
+  },
+  "transform-clear": {
+    kind: "boolean",
+    optional: true,
+    brief:
+      "Clear both transformations on the selected aggregate(s); conflicts with other transformation settings",
   },
 } as const;
 
 export const WIDGET_TRANSFORMATION_HELP =
-  "Transformations (--transformations) target zero-based aggregate positions in the first query.\n" +
-  "Pass a JSON object mapping positions to arrays of ordered transformations.\n" +
-  "Each array replaces that axis's transformations.\n" +
-  "Omitted axes preserve saved values; [] clears an axis; {} changes nothing.\n" +
+  "Transformation flags edit the first query. --transform-aggregate selects a 1-based aggregate number or all.\n" +
+  "With multiple aggregates, select one explicitly. The selector applies to the whole command.\n" +
+  "Omitted fill or smooth settings preserve that kind's full saved configuration. Use none to remove a kind.\n" +
+  "A supplied --transform-smooth replaces its complete configuration; ema without --transform-alpha uses automatic alpha.\n" +
+  "sma and ema require --transform-window. asap uses an automatic window unless a maximum is supplied.\n" +
+  "Flag order does not affect transformation order. Existing pairs preserve order; new pairs default to fill-first.\n" +
+  "Use --transform-order to override order, or --transform-clear to remove both kinds.\n" +
   "Supported datasets are spans, logs, and tracemetrics with line, area, or bar displays.\n" +
-  "When changing --query, explicitly set or clear every saved transformed position.\n" +
-  "A removed position can be acknowledged with [].";
+  "When changing --query, explicitly set both fill and smooth (including none), or clear every saved transformed position.\n" +
+  "--transform-aggregate all also clears removed positions. Different settings on several aggregates require separate commands.";
 
-/** Merge explicit axis edits while keeping untouched saved queries on the omission path. */
+function editTransformations(
+  saved: string[],
+  edit: TransformationEdit,
+): string[] {
+  const changes = { fill: edit.fill, smooth: edit.smooth };
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const expression of saved) {
+    const kind = expression.slice(0, expression.indexOf("(")).trim();
+    if (kind !== "fill" && kind !== "smooth") {
+      if (edit.fill.kind === "remove" && edit.smooth.kind === "remove") {
+        continue;
+      }
+      invalidTransformations(
+        "The selected aggregate has an unrecognized saved transformation. Clear it with --transform-clear before configuring transformations.",
+      );
+    }
+    seen.add(kind);
+    const change = changes[kind];
+    if (change.kind === "keep") result.push(expression);
+    else if (change.kind === "set") result.push(change.expression);
+  }
+  for (const kind of ["fill", "smooth"] as const) {
+    const change = changes[kind];
+    if (!seen.has(kind) && change.kind === "set")
+      result.push(change.expression);
+  }
+  const order =
+    edit.order ??
+    (seen.has("fill") && seen.has("smooth") ? undefined : "fill-first");
+  const fillIndex = result.findIndex((expression) =>
+    expression.startsWith("fill("),
+  );
+  const smoothIndex = result.findIndex((expression) =>
+    expression.startsWith("smooth("),
+  );
+  if (edit.order && (fillIndex < 0 || smoothIndex < 0)) {
+    invalidTransformations(
+      "--transform-order requires both fill and smooth to remain active on every selected aggregate.",
+    );
+  }
+  if (
+    fillIndex >= 0 &&
+    smoothIndex >= 0 &&
+    ((order === "fill-first" && fillIndex > smoothIndex) ||
+      (order === "smooth-first" && smoothIndex > fillIndex))
+  ) {
+    result.reverse();
+  }
+  return result;
+}
+
 export function updateWidgetTransformations(
   widget: DashboardWidget,
   flags: WidgetQueryFlags & WidgetTransformationFlags,
   original?: DashboardWidget,
 ): DashboardWidget {
-  const patch =
-    typeof flags.transformations === "string"
-      ? parseTransformations(flags.transformations)
-      : flags.transformations;
+  const edit = parseTransformationFlags(flags);
   const savedQuery = original?.queries?.[0];
   const query = widget.queries?.[0];
   const aggregates = query?.aggregates ?? [];
@@ -160,57 +288,72 @@ export function updateWidgetTransformations(
       aggregates.some(
         (aggregate, index) => aggregate !== savedAggregates[index],
       ));
-
+  const selected = new Set<number>();
+  if (edit) {
+    if (edit.aggregate === "all") {
+      for (let index = 0; index < aggregates.length; index++)
+        selected.add(index);
+      for (const index of Object.keys(saved)) selected.add(Number(index));
+    } else {
+      if (edit.aggregate === undefined && aggregates.length !== 1) {
+        invalidTransformations(
+          `Choose --transform-aggregate <number> or all. Aggregates in the first query:\n${aggregates.map((aggregate, index) => `  ${index + 1}. ${aggregate}`).join("\n")}`,
+        );
+      }
+      const index = (edit.aggregate ?? 1) - 1;
+      const clearing =
+        edit.fill.kind === "remove" && edit.smooth.kind === "remove";
+      if (
+        index >= aggregates.length &&
+        !(clearing && index < savedAggregates.length)
+      ) {
+        invalidTransformations(
+          `Aggregate ${index + 1} is out of range for ${aggregates.length} aggregate(s). A removed saved aggregate can only be cleared.`,
+        );
+      }
+      selected.add(index);
+    }
+  }
   if (aggregatesChanged) {
-    for (const [index, axisTransformations] of Object.entries(saved)) {
+    for (const [index, transformations] of Object.entries(saved)) {
       if (
-        (axisTransformations.length > 0 ||
-          Number(index) >= aggregates.length) &&
-        !Object.hasOwn(patch ?? {}, index)
+        (transformations.length > 0 || Number(index) >= aggregates.length) &&
+        !(
+          selected.has(Number(index)) &&
+          edit &&
+          edit.fill.kind !== "keep" &&
+          edit.smooth.kind !== "keep"
+        )
       ) {
         invalidTransformations(
-          `Changing --query requires explicit transformations or [] for saved aggregate position ${index}. Pass --transformations to correct its association, including removed positions.`,
+          `Changing --query requires explicit --transform-fill and --transform-smooth (use none to remove a kind), or --transform-clear, for saved aggregate ${Number(index) + 1}. Use --transform-aggregate all to acknowledge every saved position, including removed positions.`,
         );
       }
     }
   }
-
-  const edited = patch !== undefined && Object.keys(patch).length > 0;
   let transformations = saved;
-  if (edited) {
+  if (edit) {
+    // Sentry replaces an explicit map in full, so merge untouched axes before saving.
     transformations = Object.fromEntries(
-      Object.entries(saved).filter(
-        ([, axisTransformations]) => axisTransformations.length > 0,
-      ),
+      Object.entries(saved).filter(([, values]) => values.length > 0),
     );
-    for (const [index, axisTransformations] of Object.entries(patch)) {
-      const axis = Number(index);
-      if (
-        axis >= aggregates.length &&
-        !(axisTransformations.length === 0 && axis < savedAggregates.length)
-      ) {
-        invalidTransformations(
-          `Aggregate position ${index} is out of range for ${aggregates.length} aggregate(s). Use a position from --query; [] may also clear a removed saved position.`,
-        );
-      }
-      if (axisTransformations.length === 0) {
-        delete transformations[index];
-      } else {
-        transformations[index] = axisTransformations;
-      }
+    for (const index of selected) {
+      const values =
+        index < aggregates.length
+          ? editTransformations(saved[String(index)] ?? [], edit)
+          : [];
+      if (values.length > 0) transformations[String(index)] = values;
+      else delete transformations[String(index)];
     }
   }
-
-  if (edited || flags.dataset !== undefined || flags.display !== undefined) {
+  if (edit || flags.dataset !== undefined || flags.display !== undefined) {
     const hasTransformations =
-      Object.values(transformations).some(
-        (axisTransformations) => axisTransformations.length > 0,
-      ) ||
+      Object.values(transformations).some((values) => values.length > 0) ||
       (original?.queries
         ?.slice(1)
         .some((remaining) =>
           Object.values(remaining.transformations ?? {}).some(
-            (axisTransformations) => axisTransformations.length > 0,
+            (values) => values.length > 0,
           ),
         ) ??
         false);
@@ -226,10 +369,7 @@ export function updateWidgetTransformations(
       );
     }
   }
-
-  if (!(edited && query)) {
-    return widget;
-  }
+  if (!(edit && query)) return widget;
   return {
     ...widget,
     queries: [

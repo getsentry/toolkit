@@ -225,9 +225,16 @@ export const editCommand = buildCommand({
       WIDGET_TRANSFORMATION_HELP,
     examples: [
       {
-        description:
-          "Replace transformations on one axis and clear another, preserving omitted axes",
-        run: 'dashboard widget edit my-org/12345 --index 0 --transformations \'{"0":["fill(linear)","smooth(ema,7)"],"1":[]}\'',
+        description: "Change filling on aggregate 2 and preserve its smoothing",
+        run: 'dashboard widget edit my-org/12345 --title "Requests" --transform-aggregate 2 --transform-fill linear',
+      },
+      {
+        description: "Smooth aggregate 2 before filling its gaps",
+        run: 'dashboard widget edit my-org/12345 --title "Requests" --transform-aggregate 2 --transform-fill linear --transform-smooth ema --transform-window 7 --transform-alpha 0.25 --transform-order smooth-first',
+      },
+      {
+        description: "Clear transformations while replacing aggregates",
+        run: 'dashboard widget edit my-org/12345 --title "Requests" --query count --query p95:span.duration --transform-aggregate all --transform-clear',
       },
       {
         description: "Change a widget's display type",
