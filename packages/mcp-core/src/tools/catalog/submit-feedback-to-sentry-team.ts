@@ -106,14 +106,6 @@ export default defineTool({
       .max(100)
       .optional()
       .describe("The Sentry MCP tool the feedback is about, if any."),
-    eventId: z
-      .string()
-      .trim()
-      .regex(/^[0-9a-f]{32}$/i)
-      .optional()
-      .describe(
-        "The Event ID from a Sentry MCP error response, if the feedback is about that error.",
-      ),
   },
   outputSchema: submitFeedbackToSentryTeamOutputSchema,
   skills: ALL_SKILLS,
@@ -145,9 +137,6 @@ export default defineTool({
       source: "mcp_agent",
       name: getFeedbackName(context),
       message: message.slice(0, MAX_FEEDBACK_MESSAGE_LENGTH),
-      ...(params.eventId
-        ? { associatedEventId: params.eventId.toLowerCase() }
-        : {}),
       tags: {
         "feedback.kind": params.kind,
         "feedback.impact": params.impact,

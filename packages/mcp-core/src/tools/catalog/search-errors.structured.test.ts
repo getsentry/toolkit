@@ -240,13 +240,12 @@ describe("search_errors structured output", () => {
       { query: "fatal errors in checkout" },
       getServerContext({
         availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
-        directToolNames: new Set(["submit_feedback_to_sentry_team"]),
       }),
     );
 
     expect(structuredContent.notes).toMatchInlineSnapshot(`
       [
-        "If this stays empty after you broaden the query and you expected matching data, use the Sentry tool \`submit_feedback_to_sentry_team\` with kind='broken' to report it to the Sentry MCP team.",
+        "If this stays empty after you broaden the query and you expected matching data, report it to the Sentry MCP team with \`submit_feedback_to_sentry_team\`.",
         "No results found. Try being more specific or using different terms in your search.",
       ]
     `);

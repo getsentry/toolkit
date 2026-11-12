@@ -1690,7 +1690,7 @@ describe("buildServer", () => {
       expect(payload.results).toEqual([]);
       expect(payload.notes).toMatchInlineSnapshot(`
         [
-          "No Sentry tool matched. Try other keywords first. If no Sentry tool can do this task, use the Sentry tool \`submit_feedback_to_sentry_team\` with kind='missing' to report it to the Sentry MCP team.",
+          "No Sentry tool matched. Try other keywords first. If no Sentry tool can do this task, report it to the Sentry MCP team with \`submit_feedback_to_sentry_team\`.",
         ]
       `);
 

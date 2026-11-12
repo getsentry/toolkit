@@ -182,7 +182,6 @@ describe("search_events", () => {
         constraints: {},
         sentryHost: "sentry.io",
         availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
-        directToolNames: new Set(["submit_feedback_to_sentry_team"]),
       },
     );
 
@@ -219,13 +218,12 @@ describe("search_events", () => {
         constraints: {},
         sentryHost: "sentry.io",
         availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
-        directToolNames: new Set(["submit_feedback_to_sentry_team"]),
       },
     );
 
     expect(result).toContain("No results found");
     expect(result).toContain(
-      "use the Sentry tool `submit_feedback_to_sentry_team` with kind='broken'",
+      "report it to the Sentry MCP team with `submit_feedback_to_sentry_team`",
     );
   });
 

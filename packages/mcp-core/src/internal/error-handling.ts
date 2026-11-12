@@ -12,10 +12,7 @@ import {
   isApiAuthenticationErrorDeep,
 } from "../api-client";
 import { logIssue, logWarn } from "../telem/logging";
-import {
-  type FeedbackSuggestionSession,
-  formatFeedbackSuggestion,
-} from "./tool-helpers/feedback-suggestion";
+import { formatFeedbackSuggestion } from "./tool-helpers/feedback-suggestion";
 import { APICallError, NoObjectGeneratedError, RetryError } from "ai";
 import type { ToolConfig } from "../tools/types";
 import type { ServerContext, TransportType } from "../types";
@@ -190,7 +187,7 @@ export async function formatErrorForUser(
   options?: {
     transport?: TransportType;
     /** Tool surface of the session, used to suggest reporting likely bugs. */
-    session?: FeedbackSuggestionSession;
+    session?: Pick<ServerContext, "availableToolNames">;
   },
 ): Promise<string> {
   // Only failures that point at a Sentry MCP bug suggest feedback; input,
@@ -198,15 +195,9 @@ export async function formatErrorForUser(
   const withFeedbackSuggestion = (
     parts: string[],
     condition: string,
-    eventId?: string | null,
   ): string[] => {
     const suggestion = options?.session
-      ? formatFeedbackSuggestion({
-          condition,
-          kind: "broken",
-          eventId,
-          session: options.session,
-        })
+      ? formatFeedbackSuggestion(condition, options.session)
       : null;
     return suggestion ? [...parts, suggestion] : parts;
   };
@@ -257,11 +248,9 @@ export async function formatErrorForUser(
     if (error.eventId) {
       parts.push(`**Event ID**: ${error.eventId}`);
     }
-    return withFeedbackSuggestion(
-      parts,
-      "If rephrasing does not help",
-      error.eventId,
-    ).join("\n\n");
+    return withFeedbackSuggestion(parts, "If rephrasing does not help").join(
+      "\n\n",
+    );
   }
 
   // Handle AI SDK APICallError / RetryError that weren't converted to
@@ -348,9 +337,7 @@ export async function formatErrorForUser(
       parts.push(`**Event ID**: ${eventId}`);
     }
     parts.push("Please contact support if the problem persists.");
-    return withFeedbackSuggestion(parts, "If this keeps failing", eventId).join(
-      "\n\n",
-    );
+    return withFeedbackSuggestion(parts, "If this keeps failing").join("\n\n");
   }
 
   // Handle generic ApiError (shouldn't happen with new hierarchy, but just in case)
@@ -383,9 +370,7 @@ export async function formatErrorForUser(
       parts.push(errorMsg);
     }
   }
-  return withFeedbackSuggestion(parts, "If this keeps failing", eventId).join(
-    "\n\n",
-  );
+  return withFeedbackSuggestion(parts, "If this keeps failing").join("\n\n");
 }
 
 /**

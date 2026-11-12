@@ -120,12 +120,10 @@ export function createSearchToolsTool(getTools: () => ToolRegistry) {
 
       const feedbackSuggestion =
         results.length === 0
-          ? formatFeedbackSuggestion({
-              condition:
-                "No Sentry tool matched. Try other keywords first. If no Sentry tool can do this task",
-              kind: "missing",
-              session: context,
-            })
+          ? formatFeedbackSuggestion(
+              "No Sentry tool matched. Try other keywords first. If no Sentry tool can do this task",
+              context,
+            )
           : null;
 
       return createSearchToolsResult({

@@ -283,14 +283,13 @@ describe("formatErrorForUser", () => {
   describe("feedback suggestion", () => {
     const session = {
       availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
-      directToolNames: new Set(["submit_feedback_to_sentry_team"]),
     };
 
-    it("suggests reporting an unexpected error with its event ID", async () => {
+    it("suggests reporting an unexpected error", async () => {
       const result = await formatErrorForUser(new Error("boom"), { session });
 
       expect(result).toContain(
-        "If this keeps failing, use the Sentry tool `submit_feedback_to_sentry_team` with kind='broken' and eventId='mock-event-id' to report it to the Sentry MCP team.",
+        "If this keeps failing, report it to the Sentry MCP team with `submit_feedback_to_sentry_team`.",
       );
     });
 
@@ -300,7 +299,7 @@ describe("formatErrorForUser", () => {
         { session },
       );
 
-      expect(result).toContain("eventId='mock-event-id'");
+      expect(result).toContain("`submit_feedback_to_sentry_team`");
     });
 
     it("suggests reporting an embedded agent failure", async () => {
@@ -310,7 +309,7 @@ describe("formatErrorForUser", () => {
       );
 
       expect(result).toContain(
-        "If rephrasing does not help, use the Sentry tool `submit_feedback_to_sentry_team` with kind='broken' and eventId='evt-1'",
+        "If rephrasing does not help, report it to the Sentry MCP team with `submit_feedback_to_sentry_team`.",
       );
     });
 

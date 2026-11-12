@@ -1009,12 +1009,10 @@ async function executeSearchEvents(
   // be a bad translation. An unknown environment already explains it.
   const emptyTranslationFeedbackNote =
     queryTranslated && !environmentNote
-      ? formatFeedbackSuggestion({
-          condition:
-            "If this stays empty after you broaden the query and you expected matching data",
-          kind: "broken",
-          session: context,
-        })
+      ? formatFeedbackSuggestion(
+          "If this stays empty after you broaden the query and you expected matching data",
+          context,
+        )
       : null;
   const notesFor = (resultCount: number): string[] => {
     if (resultCount > 0) {

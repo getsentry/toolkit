@@ -385,12 +385,14 @@ points the agent at `submit_feedback_to_sentry_team`. Build it with
 null when the session cannot call the tool, for example when Sentry has no DSN.
 
 This is a note, not a `suggestedActions` entry: the agent has to write the task
-and description, so the call is never complete.
+and description, so the call is never complete. The note only names the tool.
+Do not prefill arguments or event IDs; the feedback event already carries the
+user and client tags and the trace that Sentry MCP sets on every tool call.
 
 Suggest feedback only for:
 
-- Unexpected errors, Sentry API 5xx errors, and embedded agent failures, with
-  the Event ID when there is one. `formatErrorForUser` adds these.
+- Unexpected errors, Sentry API 5xx errors, and embedded agent failures.
+  `formatErrorForUser` adds these.
 - `search_sentry_tools` results with no match.
 - Translated event searches that return nothing.
 
