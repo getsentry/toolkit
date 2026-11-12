@@ -78,9 +78,10 @@ function recordLookup(result: "hit" | "miss" | "stale"): void {
 }
 
 /**
- * A memory store that reports each write with its body encoding, evictions,
- * and its usage after each write, and logs the first time it reaches
- * `maxBytes`.
+ * A memory store that reports each write it keeps, with its body encoding,
+ * evictions, and its usage after each write, and logs the first time it
+ * reaches `maxBytes`. Writes it rejects, such as oversized bodies, are not
+ * counted.
  *
  * The store has no eviction hook, so `set` derives evictions from its entry
  * count. Reading the key before and after the write separates the entry it
@@ -115,9 +116,11 @@ export function createMeteredMemoryStore(
       const stored = (await store.get(key)) !== undefined;
       const { bytes, entries } = store.stats();
       recordEvictions(before - (replaced ? 1 : 0) + (stored ? 1 : 0) - entries);
-      Sentry.metrics.count(WRITE_METRIC, 1, {
-        attributes: { "app.response_cache.encoding": entry.body.encoding },
-      });
+      if (stored) {
+        Sentry.metrics.count(WRITE_METRIC, 1, {
+          attributes: { "app.response_cache.encoding": entry.body.encoding },
+        });
+      }
       Sentry.metrics.gauge(MEMORY_BYTES_METRIC, bytes);
       Sentry.metrics.gauge(MEMORY_ENTRIES_METRIC, entries);
     },

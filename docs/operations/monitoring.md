@@ -349,9 +349,10 @@ off.
 - `app.response_cache.lookup` - Count of cache lookups, with
   `app.response_cache.result`: `hit` (served from cache), `miss`, or `stale`
   (an expired entry with an `ETag`, revalidated with `If-None-Match`)
-- `app.response_cache.write` - Count of responses written to the memory
-  store, with `app.response_cache.encoding`: `zstd`, `br`, or `identity`
-  (bodies under 256 bytes). `br` on every write means the Worker has no zstd.
+- `app.response_cache.write` - Count of responses the memory store kept, with
+  `app.response_cache.encoding`: `zstd`, `br`, or `identity` (bodies under 256
+  bytes). Writes the store rejects, such as oversized bodies, are not counted.
+  `br` on every write means the Worker has no zstd.
 - `app.response_cache.eviction` - Count of entries evicted to stay within the
   memory budget
 - `app.response_cache.memory.bytes` - Gauge of bytes the isolate's store

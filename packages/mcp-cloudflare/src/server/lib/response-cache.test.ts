@@ -258,7 +258,7 @@ describe("createMeteredMemoryStore", () => {
     );
   });
 
-  it("does not count replaced or expired entries as evictions", async () => {
+  it("does not count replaced or expired entries as evictions, or rejected entries as writes", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       const store = createMeteredMemoryStore();
@@ -276,6 +276,12 @@ describe("createMeteredMemoryStore", () => {
         expect.anything(),
       );
       expect(logInfo).not.toHaveBeenCalled();
+      // Four of the five writes were kept; the oversized one was not.
+      expect(
+        sentryMetricsCount.mock.calls.filter(
+          ([name]) => name === "app.response_cache.write",
+        ),
+      ).toHaveLength(4);
     } finally {
       vi.useRealTimers();
     }
