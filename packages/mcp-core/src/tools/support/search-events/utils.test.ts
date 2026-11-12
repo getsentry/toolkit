@@ -13,6 +13,7 @@ import {
   formatKnownUserValue,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
+  normalizeNumericIssueFilters,
 } from "./utils";
 
 describe("validateSearch tool contract", () => {
@@ -274,6 +275,34 @@ describe("formatEventValue", () => {
 });
 
 describe("search query helpers", () => {
+  it("rewrites numeric issue filters to issue.id", () => {
+    expect(normalizeNumericIssueFilters("issue:7819048471")).toBe(
+      "issue.id:7819048471",
+    );
+    expect(
+      normalizeNumericIssueFilters("environment:production !issue:123"),
+    ).toBe("environment:production !issue.id:123");
+    expect(normalizeNumericIssueFilters("issue:[123, 456]")).toBe(
+      "issue.id:[123, 456]",
+    );
+    expect(
+      normalizeNumericIssueFilters("(issue:123 OR issue:PROJ-1) level:error"),
+    ).toBe("(issue.id:123 OR issue:PROJ-1) level:error");
+  });
+
+  it("keeps short IDs, mixed lists, and non-issue keys as written", () => {
+    for (const query of [
+      "issue:PROJ-123",
+      "issue:[123,PROJ-1]",
+      "issue.id:123",
+      'message:"issue:123"',
+      "tags[issue]:123",
+      "level:error",
+    ]) {
+      expect(normalizeNumericIssueFilters(query)).toBe(query);
+    }
+  });
+
   it("should detect structured Sentry search syntax", () => {
     expect(looksLikeSentrySearchSyntax("vpn connections from China")).toBe(
       false,

@@ -73,6 +73,7 @@ import {
   isAggregateQuery,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
+  normalizeNumericIssueFilters,
   readRegexFilterValue,
   recordEventsSearchValidationTelemetry,
   validateEventsSearch,
@@ -1075,6 +1076,10 @@ async function executeSearchEvents(
       });
     }
     return withLeadingNote(formatReplayResults(replayParams), replays.length);
+  }
+
+  if (dataset === "errors") {
+    sentryQuery = normalizeNumericIssueFilters(sentryQuery);
   }
 
   if (timeSeries) {

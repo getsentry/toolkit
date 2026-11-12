@@ -3190,6 +3190,49 @@ describe("search_events", () => {
     expect(result).toContain("Database Error");
   });
 
+  it("rewrites a numeric issue: filter to issue.id: for errors", async () => {
+    process.env.OPENAI_API_KEY = "";
+    process.env.ANTHROPIC_API_KEY = "";
+    process.env.OPENROUTER_API_KEY = "";
+
+    let eventsQuery: string | null = null;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          eventsQuery = new URL(request.url).searchParams.get("query");
+          return HttpResponse.json({ data: [] });
+        },
+      ),
+    );
+
+    await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "issue:7819048471 environment:production",
+        fields: ["issue", "title", "timestamp"],
+        sort: "-timestamp",
+        period: "7d",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        constraints: {
+          organizationSlug: null,
+          regionUrl: null,
+          projectSlug: null,
+        },
+        accessToken: "test-token",
+        userId: "1",
+      },
+    );
+
+    expect(eventsQuery).toBe("issue.id:7819048471 environment:production");
+  });
+
   it("uses one agent pass to complete incomplete requests before final validation", async () => {
     let eventsRequestUrl: URL | undefined;
 

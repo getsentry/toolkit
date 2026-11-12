@@ -225,6 +225,55 @@ export function looksLikeSentrySearchSyntax(
   return false;
 }
 
+const NUMERIC_ISSUE_ID_PATTERN = /^\d+$/;
+
+/**
+ * Rewrite `issue:` filters whose values are all numeric group IDs to
+ * `issue.id:`.
+ *
+ * On the errors dataset, Sentry resolves `issue:` values as qualified short
+ * IDs (`PROJ-123`) and rejects numeric group IDs with "Issue IDs do not
+ * exist". Tools such as get_sentry_resource and issue URLs hand agents numeric
+ * IDs, so accept both forms. Lists that mix numeric and short IDs stay as
+ * written because neither key accepts both.
+ */
+export function normalizeNumericIssueFilters(query: string): string {
+  if (!query.includes("issue:")) {
+    return query;
+  }
+
+  const tokens = parseSearch(query);
+  if (!tokens) {
+    return query;
+  }
+
+  const keyRanges: Array<{ start: number; end: number }> = [];
+  for (const filter of filterTokens(tokens)) {
+    const start = filter.key.location.start.offset;
+    const end = filter.key.location.end.offset;
+    if (
+      filter.key.type !== Token.KEY_SIMPLE ||
+      query.slice(start, end) !== "issue"
+    ) {
+      continue;
+    }
+
+    const rawValue = query.slice(end + 1, filter.location.end.offset);
+    const values = /^\[.*\]$/.test(rawValue)
+      ? rawValue.slice(1, -1).split(",")
+      : [rawValue];
+    if (values.every((value) => NUMERIC_ISSUE_ID_PATTERN.test(value.trim()))) {
+      keyRanges.push({ start, end });
+    }
+  }
+
+  let normalized = query;
+  for (const { start, end } of keyRanges.sort((a, b) => b.start - a.start)) {
+    normalized = `${normalized.slice(0, start)}issue.id${normalized.slice(end)}`;
+  }
+  return normalized;
+}
+
 /**
  * Note for an untranslated query that ran as literal text and matched nothing.
  *
