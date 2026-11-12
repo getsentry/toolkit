@@ -145,9 +145,10 @@ Top-level layout:
   Node's own type stripping (`--experimental-strip-types`); the repository
   does not use tsx. A lazily required source module must resolve to the copy
   the ESM graph already loaded (`test/script/dev-runner.test.ts`). So `src/`
-  and `script/` must stay erasable TypeScript
-  (`erasableSyntaxOnly`: no enums, namespaces, or parameter properties), JSON
-  imports need `with { type: "json" }`, and there is no JSX.
+  and `script/` must stay erasable TypeScript (`erasableSyntaxOnly`: no
+  enums, namespaces, or parameter properties) with no `using` declarations
+  (Node 22 can't parse them, so free handles in `finally`), JSON imports need
+  `with { type: "json" }`, and there is no JSX.
   `script/require-shim.mjs` resolves the `.js` specifiers of `.ts` files. The
   completion engine (`src/complete-bin.ts`) is one file of its own. The main
   script runs one of them through `src/lib/chunk-loader.ts`, which reads the
