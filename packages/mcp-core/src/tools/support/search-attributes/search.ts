@@ -223,6 +223,38 @@ function withAgentFallback<T>({
   });
 }
 
+/**
+ * Both agents here are optional, so also fall back when the model's reply is
+ * unusable. callEmbeddedAgent reports that as a UserInputError, which
+ * withProviderFallback lets through for tools that need the agent's answer.
+ */
+function withAgentFallback<T>({
+  operation,
+  fallback,
+  run,
+}: {
+  operation: string;
+  fallback: () => T;
+  run: () => Promise<T>;
+}): Promise<T> {
+  return withProviderFallback({
+    operation,
+    fallback,
+    run: async () => {
+      try {
+        return await run();
+      } catch (error) {
+        if (!(error instanceof UserInputError)) throw error;
+        logWarn(error, {
+          loggerScope: ["agents", "provider-fallback"],
+          contexts: { aiProviderFallback: { operation, unusableOutput: true } },
+        });
+        return fallback();
+      }
+    },
+  });
+}
+
 /** Whether any attribute type came back at or near the endpoint's per-type cap. */
 function mayBeCutOff(attributes: TraceItemAttribute[]): boolean {
   const counts = new Map<string, number>();
