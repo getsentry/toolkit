@@ -13,7 +13,7 @@
  *
  * Zero manual config — all commands are auto-discovered.
  *
- * Run: tsx script/generate.ts sdk
+ * Run: pnpm ts script/generate.ts sdk
  */
 
 import { writeFile } from "node:fs/promises";
@@ -168,7 +168,7 @@ function extractSdkFlags(command: Command): SdkFlagInfo[] {
 
   const flags: SdkFlagInfo[] = [];
 
-  for (const [name, def] of Object.entries(flagDefs) as [string, FlagDef][]) {
+  for (const [name, def] of Object.entries(flagDefs)) {
     if (INTERNAL_FLAGS.has(name)) {
       continue;
     }

@@ -85,7 +85,7 @@ function parseMarker(token: Token | undefined): Marker | undefined {
 function childTokenLists(token: Token): Token[][] {
   const lists: Token[][] = [];
   if ("tokens" in token && Array.isArray(token.tokens)) {
-    lists.push(token.tokens as Token[]);
+    lists.push(token.tokens);
   }
   if (token.type === "list") {
     lists.push(token.items as Token[]);

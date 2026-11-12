@@ -45,7 +45,7 @@ function createMockKV(options?: {
     delete: vi.fn(),
     list: vi.fn(),
     getWithMetadata: vi.fn(),
-  } as unknown as KVNamespace;
+  };
 }
 
 /**
@@ -98,7 +98,7 @@ describe("verifyConstraintsAccess", () => {
       { accessToken: undefined, label: "undefined" },
     ];
 
-    for (const { accessToken, label } of testCases) {
+    for (const { accessToken } of testCases) {
       const result = await verifyConstraintsAccess(
         { organizationSlug: "org", projectSlug: null },
         { accessToken, sentryHost: host },

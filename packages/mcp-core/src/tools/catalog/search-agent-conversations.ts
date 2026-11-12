@@ -264,7 +264,7 @@ export default defineTool({
     if ((params.start && !params.end) || (!params.start && params.end)) {
       throw new UserInputError("`start` and `end` must be provided together.");
     }
-    const requestedPeriod = params.period ?? "30d";
+    const requestedPeriod = params.period;
 
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,

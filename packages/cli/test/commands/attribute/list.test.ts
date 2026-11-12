@@ -266,7 +266,7 @@ describe("fetchAttributeTypePage", () => {
     listSpy.mockImplementation(async (_org, options) => {
       const page = pages[options.cursor ?? "first"];
       expect(page).toBeDefined();
-      return page!;
+      return page;
     });
 
     const page = await fetchAttributeTypePage(
@@ -513,7 +513,7 @@ describe("listCommand.func", () => {
       expect(options.perPage).toBe(2);
       const page = pages[options.cursor ?? "first"];
       expect(page).toBeDefined();
-      return page!;
+      return page;
     });
     const collected: string[] = [];
     for (let index = 0; index < 5; index++) {
@@ -589,7 +589,7 @@ describe("listCommand.func", () => {
     expect(collected).toEqual(data.map((row) => row.key));
     expect(cursorLengths.length).toBeGreaterThan(10);
     // Cursor stops growing once paging reaches a steady state
-    expect(Math.max(...cursorLengths) - cursorLengths[0]!).toBeLessThan(64);
+    expect(Math.max(...cursorLengths) - cursorLengths[0]).toBeLessThan(64);
   });
 
   test("continues mixed types past 100 rows without losing partially selected pages", async () => {

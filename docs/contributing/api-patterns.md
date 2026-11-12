@@ -335,7 +335,17 @@ The CLI sends its requests through the shared transport in
 `packages/cli/src/lib/sentry-client.ts`. It follows the same shared rule; only
 the caps differ (`RETRY_POLICY`): the hosted MCP keeps its total wait short so
 a Workers request isn't held open, while the CLI can wait longer. The CLI also
-applies its own per-request timeout, which counts as a network failure.
+applies its own per-request timeout, which counts as a network failure. A CLI
+API function can pass `idempotent: true` to its SDK config when the request
+it sends is safe to resend even though Sentry does not mark the whole
+endpoint, such as chunk uploads or a release create without commits; check
+the handler in Sentry's source first.
+
+Node 26's `fetch` uses HTTP/2, and Sentry's edge resets concurrent upload
+streams on one connection with `ENHANCE_YOUR_CALM`. Code that uploads large
+bodies in parallel, such as chunk uploads, passes an HTTP/1.1 dispatcher from
+`createHttp1Dispatcher()` (`packages/cli/src/lib/http1-dispatcher.ts`) as the
+`dispatcher` option of `getSdkConfig`, and destroys it after the upload.
 
 ## Best Practices
 

@@ -144,9 +144,11 @@ export function getFilteredInputSchema(
       ([key]) => !constraintKeysToFilter.has(key),
     ),
   ) as Record<string, z.ZodType>;
-  const organizationSlug = schema.organizationSlug;
-  if (organizationSlug && isOrganizationSlugRequired(organizationSlug)) {
-    schema.organizationSlug = organizationSlug.optional();
+  if (
+    "organizationSlug" in schema &&
+    isOrganizationSlugRequired(schema.organizationSlug)
+  ) {
+    schema.organizationSlug = schema.organizationSlug.optional();
   }
   return schema;
 }

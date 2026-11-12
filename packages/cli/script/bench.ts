@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Local benchmark harness for DSN detection, project-root finding, and
  * (after the `src/lib/scan/` refactor lands) the generic scanner module.
@@ -195,7 +194,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
   const thresholdPct = Number(process.env.BENCH_THRESHOLD ?? 0.2);
 
   for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i] as string;
+    const arg = argv[i];
     const next = argv[i + 1];
     if (applyFlag(state, arg, next)) {
       i += 1;
@@ -477,7 +476,7 @@ async function buildOps(): Promise<OpEntry[]> {
           ".git/HEAD",
         ];
         for (let i = 0; i < 10_000; i += 1) {
-          const q = queries[i % queries.length] as string;
+          const q = queries[i % queries.length];
           stack.isIgnored(q, false);
         }
       },

@@ -654,7 +654,7 @@ describe("maybeCheckForUpdateInBackground", () => {
   });
 
   test("passes the Toolkit source from stable discovery to patch prefetch without legacy access", async () => {
-    const toolkitSource = UPGRADE_SOURCES[0]!;
+    const toolkitSource = UPGRADE_SOURCES[0];
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
       const url = extractInputUrl(input);
@@ -686,7 +686,7 @@ describe("maybeCheckForUpdateInBackground", () => {
   });
 
   test("keeps stable patch prefetch on the legacy source selected after a Toolkit 404", async () => {
-    const legacySource = UPGRADE_SOURCES[1]!;
+    const legacySource = UPGRADE_SOURCES[1];
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
       const url = extractInputUrl(input);
@@ -724,7 +724,7 @@ describe("maybeCheckForUpdateInBackground", () => {
 
   test("passes the Toolkit source from nightly discovery to patch prefetch without legacy access", async () => {
     setReleaseChannel("nightly");
-    const toolkitSource = UPGRADE_SOURCES[0]!;
+    const toolkitSource = UPGRADE_SOURCES[0];
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
       const url = extractInputUrl(input);

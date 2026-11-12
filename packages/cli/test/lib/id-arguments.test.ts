@@ -35,7 +35,7 @@ const EXAMPLES: Record<UnnamedKind, readonly [string, string]> = {
 };
 
 const KINDS = (Object.keys(EXAMPLES) as UnnamedKind[]).map(
-  (name) => [name, ID_KINDS[name] as IdKind, ...EXAMPLES[name]] as const,
+  (name) => [name, ID_KINDS[name], ...EXAMPLES[name]] as const,
 );
 
 function parse(

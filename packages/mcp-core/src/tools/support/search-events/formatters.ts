@@ -290,7 +290,7 @@ export function formatErrorResults(params: FormatEventResultsParams): string {
           value !== null &&
           value !== undefined
         ) {
-          if (key === "user" && typeof value === "object" && value !== null) {
+          if (key === "user" && typeof value === "object") {
             for (const line of formatUserFieldLines(
               value as Record<string, unknown>,
             )) {
@@ -448,7 +448,7 @@ export function formatLogResults(params: FormatEventResultsParams): string {
           value !== null &&
           value !== undefined
         ) {
-          if (key === "user" && typeof value === "object" && value !== null) {
+          if (key === "user" && typeof value === "object") {
             for (const line of formatUserFieldLines(
               value as Record<string, unknown>,
               { prefix: "- " },
@@ -582,7 +582,7 @@ export function formatSpanResults(params: FormatEventResultsParams): string {
           value !== null &&
           value !== undefined
         ) {
-          if (key === "user" && typeof value === "object" && value !== null) {
+          if (key === "user" && typeof value === "object") {
             for (const line of formatUserFieldLines(
               value as Record<string, unknown>,
             )) {
@@ -777,7 +777,7 @@ export function formatProfileResults(params: FormatEventResultsParams): string {
           value !== null &&
           value !== undefined
         ) {
-          if (key === "user" && typeof value === "object" && value !== null) {
+          if (key === "user" && typeof value === "object") {
             for (const line of formatUserFieldLines(
               value as Record<string, unknown>,
             )) {
@@ -922,7 +922,7 @@ export function formatTraceMetricsResults(
           value !== null &&
           value !== undefined
         ) {
-          if (key === "user" && typeof value === "object" && value !== null) {
+          if (key === "user" && typeof value === "object") {
             for (const line of formatUserFieldLines(
               value as Record<string, unknown>,
             )) {

@@ -316,6 +316,29 @@ function maskQuotedRegions(query: string): string {
   return out;
 }
 
+// `issue:` followed by a numeric ID or an all-numeric list, e.g. `issue:123`,
+// `!issue:"123"`, or `issue:[123, 456]`. Matches only the key, at a token start.
+const NUMERIC_ISSUE_FILTER_PATTERN =
+  /(?<=(?:^|[\s(])!?)issue:(?=(?:"?\d+"?|\[\s*"?\d+"?(?:\s*,\s*"?\d+"?)*\s*\])(?=[\s)]|$))/g;
+
+/**
+ * Rewrite `issue:<numeric id>` filters to `issue.id:<numeric id>`.
+ *
+ * The errors dataset resolves `issue:` values as short IDs (`PROJECT-123`) and
+ * rejects numeric group IDs with "Issue IDs do not exist". Other tools, such as
+ * get_sentry_resource, return and accept numeric IDs, so normalize them here.
+ */
+export function normalizeNumericIssueFilters(query: string): string {
+  const masked = maskQuotedRegions(query);
+  let result = "";
+  let lastIndex = 0;
+  for (const match of masked.matchAll(NUMERIC_ISSUE_FILTER_PATTERN)) {
+    result += `${query.slice(lastIndex, match.index)}issue.id:`;
+    lastIndex = match.index + match[0].length;
+  }
+  return lastIndex === 0 ? query : result + query.slice(lastIndex);
+}
+
 type SearchFilterOccurrence = {
   key: string;
   value: string;
@@ -380,7 +403,7 @@ function searchFilterOccurrences(query: string): SearchFilterOccurrence[] {
   // so a structured filter rewritten into one is still a downgrade.
   for (const match of masked.matchAll(SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN)) {
     const key = (match.groups?.regexKey ?? match.groups?.key)?.toLowerCase();
-    if (!key || match.index === undefined) {
+    if (!key) {
       continue;
     }
 
@@ -862,10 +885,7 @@ export async function fetchCustomAttributes(
     for (const attr of attributesResponse) {
       if (attr.key && !attr.key.startsWith("sentry:")) {
         customAttributes[attr.key] = { ...attr, name: attr.name || attr.key };
-        // Track field type from the attribute response with validation
-        if (attr.type) {
-          fieldTypes[attr.key] = attr.type;
-        }
+        fieldTypes[attr.key] = attr.type;
       }
     }
   }
@@ -1360,7 +1380,7 @@ export function createDatasetAttributesTool(options: {
       const recommendedFields = RECOMMENDED_FIELDS[normalizedDataset];
 
       // Combine field types from both static config and dynamic API
-      const allFieldTypes: Record<string, TraceItemAttributeType> = {
+      const allFieldTypes: Partial<Record<string, TraceItemAttributeType>> = {
         ...updatedFieldTypes,
       };
       const staticNumericFields =

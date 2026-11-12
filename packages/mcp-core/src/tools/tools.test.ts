@@ -82,10 +82,7 @@ test("unlisted tools declare a unique display title", () => {
 test("no tool is both read-only and destructive", () => {
   for (const tool of Object.values(tools.default)) {
     assert(
-      !(
-        tool.annotations.readOnlyHint === true &&
-        tool.annotations.destructiveHint === true
-      ),
+      !(tool.annotations.readOnlyHint && tool.annotations.destructiveHint),
       `${tool.name} cannot be both read-only and destructive`,
     );
   }

@@ -500,12 +500,12 @@ async function fetchReplayIssues({
   return await Promise.all(
     ids.map(async (eventId) => {
       try {
-        const [issue] = await apiService.listIssues({
+        const issues = await apiService.listIssues({
           organizationSlug,
           query: eventId,
           limit: 1,
         });
-        return { eventId, issue: issue ?? null };
+        return { eventId, issue: issues.at(0) ?? null };
       } catch {
         return { eventId, issue: null };
       }
@@ -625,7 +625,7 @@ function buildTimeline({
 }): Extract<ReplayTimelinePayload, { status: "loaded" }> {
   const { events } = recording;
   const startedAtMs = parseTimestampMs(replay.started_at);
-  const replayStartMs = startedAtMs ?? events[0]?.timestampMs ?? 0;
+  const replayStartMs = startedAtMs ?? events.at(0)?.timestampMs ?? 0;
   const replayEndMs =
     parseTimestampMs(replay.finished_at) ??
     (startedAtMs !== null && replay.duration != null

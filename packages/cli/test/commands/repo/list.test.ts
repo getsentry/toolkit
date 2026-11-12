@@ -180,7 +180,7 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("shows count when results exceed limit", async () => {
     const manyRepos = Array.from({ length: 10 }, (_, i) => ({
-      ...sampleRepos[0]!,
+      ...sampleRepos[0],
       id: String(i),
       name: `repo-${i}`,
     }));

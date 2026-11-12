@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Compare saved runs of the `sentry docs` agent benchmark.
  *

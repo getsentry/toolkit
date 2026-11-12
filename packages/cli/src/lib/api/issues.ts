@@ -7,6 +7,7 @@
 import type {
   GetOrganizationIssueData,
   ListOrganizationIssuesData,
+  UpdateOrganizationIssueData,
 } from "@sentry/api";
 import {
   getOrganizationIssue,
@@ -31,7 +32,6 @@ import { applyCustomHeaders } from "../custom-headers.js";
 import { ApiError, ValidationError } from "../errors.js";
 
 import {
-  API_MAX_PER_PAGE,
   getOrgSdkConfig,
   ORG_FANOUT_CONCURRENCY,
   type PaginatedResponse,
@@ -470,6 +470,10 @@ export async function tryGetIssueByShortId(
   }
 }
 
+type IssueUpdateStatusDetails = NonNullable<
+  NonNullable<UpdateOrganizationIssueData["body"]>["statusDetails"]
+>;
+
 /**
  * Resolution-release tracking for {@link updateIssueStatus}. Maps to the
  * `statusDetails` shape expected by Sentry's bulk mutate endpoint:
@@ -482,11 +486,14 @@ export async function tryGetIssueByShortId(
  *   Sentry resolves when a release containing the commit is created. Both
  *   `commit` (SHA) and `repository` (Sentry-registered repo name) are
  *   required by the API's InCommitValidator.
+ *
+ * Narrowed from the `@sentry/api` issue update body so each variant is
+ * exclusive.
  */
 export type ResolveStatusDetails =
-  | { inRelease: string }
+  | Required<Pick<IssueUpdateStatusDetails, "inRelease">>
   | { inNextRelease: true }
-  | { inCommit: { commit: string; repository: string } };
+  | Required<Pick<IssueUpdateStatusDetails, "inCommit">>;
 
 /**
  * Sentinel string meaning "resolve in the next release (tied to HEAD)".
@@ -751,7 +758,7 @@ export async function getSharedIssue(
   try {
     result = await getOrganizationSharedIssue({
       baseUrl: normalizedBase,
-      fetch: fetchUnauthenticated as unknown as typeof fetch,
+      fetch: fetchUnauthenticated,
       headers,
       parseAs: "json",
       path: { organization_id_or_slug: orgSlug, share_id: shareId },

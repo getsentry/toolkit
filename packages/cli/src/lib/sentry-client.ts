@@ -253,10 +253,14 @@ function buildTimeoutHint(idempotent: boolean): string {
   return `The Sentry API at ${baseUrl} did not respond in time. ${retry}\n  ${check}`;
 }
 
-/** Pass custom TLS options (CA certs for corporate proxies) to each fetch. */
+/**
+ * Pass custom TLS options (CA certs for corporate proxies) and the caller's
+ * undici dispatcher, if any, to each fetch.
+ */
 async function fetchWithCustomTls(
   input: Request | string | URL,
-  init?: RequestInit,
+  init: RequestInit | undefined,
+  dispatcher: RequestInit["dispatcher"],
 ): Promise<Response> {
   // On Bun, this passes `tls: { ca }` to fetch(); on Node, the extra
   // property is harmless (Node honors NODE_EXTRA_CA_CERTS natively).
@@ -264,7 +268,11 @@ async function fetchWithCustomTls(
   if (customTls) {
     warnIfSaasWithEnvCa(extractInputUrl(input));
   }
-  return await fetch(input, { ...init, ...customTls });
+  return await fetch(input, {
+    ...init,
+    ...customTls,
+    ...(dispatcher && { dispatcher }),
+  });
 }
 
 /** Best-effort `detail` from a Sentry error body. */
@@ -347,7 +355,11 @@ function selectAccountForRequest({ url, scope }: CredentialRequest): void {
  * response cache, and the CLI's error classes. Retries, timeouts, the 401
  * refresh, and redirect validation are in `@sentry/api/client`.
  */
-function createCliTransport(credential: CredentialContext | undefined) {
+function createCliTransport({
+  credential,
+  timeoutMs,
+  dispatcher,
+}: AuthenticatedFetchOptions) {
   return createApiTransport<CredentialContext>({
     credentials: {
       current: async (request) => {
@@ -368,8 +380,8 @@ function createCliTransport(credential: CredentialContext | undefined) {
       authorization: (current) => formatAuthHeader(current.token),
     },
     retry: RETRY_POLICY,
-    timeoutMs: resolveTimeoutMs,
-    fetch: fetchWithCustomTls,
+    timeoutMs: timeoutMs ?? resolveTimeoutMs,
+    fetch: (input, init) => fetchWithCustomTls(input, init, dispatcher),
     userAgent: getUserAgent(),
     prepareHeaders,
     isIdempotent: isIdempotentOperation,
@@ -438,12 +450,20 @@ type AuthenticatedFetchOptions = {
    * cannot match, such as chunk uploads to the server-provided URL.
    */
   idempotent?: boolean;
+  /**
+   * Per-attempt timeout for every request through this fetch, replacing
+   * {@link resolveTimeoutMs}. For callers whose URL comes from the server,
+   * such as chunk uploads, so no path override can match it.
+   */
+  timeoutMs?: number;
+  /** undici dispatcher for every request, such as one from `createHttp1Dispatcher`. */
+  dispatcher?: RequestInit["dispatcher"];
 };
 
 function createAuthenticatedFetch(
   options: AuthenticatedFetchOptions = {},
 ): (input: Request | string | URL, init?: RequestInit) => Promise<Response> {
-  const transport = createCliTransport(options.credential);
+  const transport = createCliTransport(options);
   const authenticatedFetch = async (
     input: Request | string | URL,
     init?: RequestInit,
@@ -497,12 +517,14 @@ function getAuthenticatedFetch(
     options.credential ||
     options.validatedRedirects ||
     options.bufferResponseBody ||
-    options.idempotent
+    options.idempotent ||
+    options.timeoutMs !== undefined ||
+    options.dispatcher
   ) {
-    return createAuthenticatedFetch(options) as unknown as typeof fetch;
+    return createAuthenticatedFetch(options);
   }
   if (!cachedFetch) {
-    cachedFetch = createAuthenticatedFetch(options) as unknown as typeof fetch;
+    cachedFetch = createAuthenticatedFetch(options);
   }
   return cachedFetch;
 }

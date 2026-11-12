@@ -126,7 +126,7 @@ export default defineTool({
     await ensureIssueWithinProjectConstraint({
       apiService,
       organizationSlug: orgSlug,
-      issueId: parsedIssueId!,
+      issueId: parsedIssueId,
       projectSlug: context.constraints.projectSlug,
     });
 
@@ -135,7 +135,7 @@ export default defineTool({
     try {
       tagValues = await apiService.getIssueTagValues({
         organizationSlug: orgSlug,
-        issueId: parsedIssueId!,
+        issueId: parsedIssueId,
         tagKey: params.tagKey,
       });
     } catch (error) {
@@ -143,7 +143,7 @@ export default defineTool({
         throw await explainTagValuesNotFound({
           apiService,
           organizationSlug: orgSlug,
-          issueId: parsedIssueId!,
+          issueId: parsedIssueId,
           tagKey: params.tagKey,
           error,
         });

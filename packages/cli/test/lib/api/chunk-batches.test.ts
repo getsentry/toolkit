@@ -8,13 +8,30 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 const fetchMock = vi.hoisted(() =>
   vi.fn(async () => new Response(null, { status: 200 })),
 );
+const getSdkConfigMock = vi.hoisted(() =>
+  vi.fn((_regionUrl: string, _options?: unknown) => ({ fetch: fetchMock })),
+);
 
 vi.mock("../../../src/lib/sentry-client.js", () => ({
-  getSdkConfig: () => ({ fetch: fetchMock }),
+  getSdkConfig: getSdkConfigMock,
+  getApiBaseUrl: () => "https://sentry.io",
+}));
+
+const http1Dispatcher = vi.hoisted(() => ({
+  destroy: () => Promise.resolve(),
+}));
+const destroyHttp1DispatcherMock = vi.hoisted(() =>
+  vi.fn(async (_dispatcher: unknown) => {}),
+);
+
+vi.mock("../../../src/lib/http1-dispatcher.js", () => ({
+  createHttp1Dispatcher: () => http1Dispatcher,
+  destroyHttp1Dispatcher: destroyHttp1DispatcherMock,
 }));
 
 import {
   batchChunkPayloads,
+  CHUNK_UPLOAD_TIMEOUT_MS,
   type ChunkPayload,
   uploadChunkPayloads,
 } from "../../../src/lib/api/chunk-upload.js";
@@ -35,6 +52,8 @@ function payload(sha1: string, size: number): ChunkPayload {
 
 afterEach(() => {
   fetchMock.mockClear();
+  getSdkConfigMock.mockClear();
+  destroyHttp1DispatcherMock.mockClear();
 });
 
 describe("batchChunkPayloads", () => {
@@ -94,6 +113,71 @@ describe("uploadChunkPayloads", () => {
       f.getAll("file").map((entry) => (entry as File).name),
     );
     expect(names.sort()).toEqual(["a", "b", "c", "d"]);
+  });
+
+  test("uploads through a retrying HTTP/1.1 fetch with the chunk-upload timeout", async () => {
+    await uploadChunkPayloads({
+      chunks: [payload("a", 10)],
+      serverOptions: SERVER_OPTIONS,
+      encoding: undefined,
+      regionUrl: "https://us.sentry.io",
+    });
+
+    expect(getSdkConfigMock).toHaveBeenCalledWith("https://us.sentry.io", {
+      idempotent: true,
+      timeoutMs: CHUNK_UPLOAD_TIMEOUT_MS,
+      dispatcher: http1Dispatcher,
+    });
+    expect(destroyHttp1DispatcherMock).toHaveBeenCalledWith(http1Dispatcher);
+  });
+
+  test("gives a failed chunk upload the shared 403 guidance", async () => {
+    fetchMock.mockResolvedValueOnce(
+      Response.json(
+        { detail: "You do not have permission to perform this action." },
+        { status: 403, statusText: "Forbidden" },
+      ),
+    );
+
+    await expect(
+      uploadChunkPayloads({
+        chunks: [payload("a", 10)],
+        serverOptions: SERVER_OPTIONS,
+        encoding: undefined,
+        regionUrl: "https://us.sentry.io",
+      }),
+    ).rejects.toMatchObject({
+      message: "Chunk upload failed: 403 Forbidden",
+      status: 403,
+      enriched403: true,
+      detail: expect.stringContaining("may lack the required scope"),
+    });
+  });
+
+  test("names the network cause when a chunk upload gets no response", async () => {
+    const streamReset = Object.assign(
+      new Error("Stream closed with error code NGHTTP2_ENHANCE_YOUR_CALM"),
+      { code: "ERR_HTTP2_STREAM_ERROR" },
+    );
+    fetchMock.mockRejectedValueOnce(
+      new TypeError("fetch failed", { cause: streamReset }),
+    );
+
+    await expect(
+      uploadChunkPayloads({
+        chunks: [payload("a", 10)],
+        serverOptions: SERVER_OPTIONS,
+        encoding: undefined,
+        regionUrl: "https://us.sentry.io",
+      }),
+    ).rejects.toMatchObject({
+      name: "ApiError",
+      message: "Chunk upload failed: Network error",
+      status: 0,
+      detail: expect.stringContaining(
+        "Stream closed with error code NGHTTP2_ENHANCE_YOUR_CALM",
+      ),
+    });
   });
 
   test("makes no request for no chunks", async () => {

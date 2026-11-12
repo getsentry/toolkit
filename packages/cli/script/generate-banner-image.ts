@@ -15,7 +15,7 @@
  * Output is a committed module (like `src/generated/skill-content.ts`) so the
  * runtime never needs to read the asset from disk.
  *
- * Usage:   tsx script/generate.ts banner
+ * Usage:   pnpm ts script/generate.ts banner
  * Output:  src/generated/banner-image.ts
  */
 
@@ -56,8 +56,8 @@ function gradientAt(t: number): [number, number, number] {
   const seg = clamped * (GRADIENT_ANCHORS.length - 1);
   const i = Math.min(GRADIENT_ANCHORS.length - 2, Math.floor(seg));
   const f = seg - i;
-  const a = GRADIENT_ANCHORS[i] as [number, number, number];
-  const b = GRADIENT_ANCHORS[i + 1] as [number, number, number];
+  const a = GRADIENT_ANCHORS[i];
+  const b = GRADIENT_ANCHORS[i + 1];
   return [
     Math.round(a[0] + (b[0] - a[0]) * f),
     Math.round(a[1] + (b[1] - a[1]) * f),
@@ -106,7 +106,7 @@ function encodePngBase64(mask: PNG): string {
   const model = maskModel(mask);
   const out = new PNG({ width: mask.width, height: mask.height });
   for (let y = 0; y < mask.height; y++) {
-    const [r, g, b] = palette[model.bandForRow(y)] as [number, number, number];
+    const [r, g, b] = palette[model.bandForRow(y)];
     for (let x = 0; x < mask.width; x++) {
       const i = (y * mask.width + x) * 4;
       out.data[i] = r;

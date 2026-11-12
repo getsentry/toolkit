@@ -169,7 +169,7 @@ export function buildFlamegraphAnalysis(
   flamegraph: Flamegraph,
   options: { focusOnUserCode: boolean; maxHotPaths: number },
 ): FlamegraphAnalysis {
-  const mainProfile = flamegraph.profiles[0];
+  const mainProfile = flamegraph.profiles.at(0);
   const sampleCount = sumOf(mainProfile?.sample_counts);
 
   // Split the main profile's sampled time by the leaf frame of each sample
@@ -224,7 +224,7 @@ export function buildFlamegraphAnalysis(
   const hotPaths = analyzeHotPathsFromFlamegraph(flamegraph, options).flatMap(
     (path) => {
       // callStack is leaf-to-root; output stacks read root-to-leaf.
-      const leaf = path.callStack[0];
+      const leaf = path.callStack.at(0);
       if (!leaf) {
         return [];
       }

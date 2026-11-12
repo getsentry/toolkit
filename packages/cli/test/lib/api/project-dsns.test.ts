@@ -62,7 +62,7 @@ function mockKeys(respond: (url: URL) => Response) {
   const requests: Request[] = [];
   const projectIds: string[] = [];
   globalThis.fetch = mockFetch(async (input, init) => {
-    const request = new Request(input!, init);
+    const request = new Request(input, init);
     const url = new URL(request.url);
     const id = /\/projects\/test-org\/(42|7)\/$/.exec(url.pathname)?.[1];
     if (id) {
@@ -121,7 +121,7 @@ describe.each([
     const result = await list();
 
     expect(requests).toHaveLength(1);
-    const request = requests[0]!;
+    const request = requests[0];
     expect(request.method).toBe("GET");
     expect(request.headers.get("Authorization")).toBe("Bearer test-token");
     const url = new URL(request.url);
@@ -191,7 +191,7 @@ describe.each([
 
 test("org metadata lookup failures surface instead of dropping keys or exposing IDs", async () => {
   globalThis.fetch = mockFetch(async (input, init) => {
-    const url = new URL(new Request(input!, init).url);
+    const url = new URL(new Request(input, init).url);
     if (url.pathname === "/api/0/organizations/test-org/project-keys/") {
       return keysResponse([projectKey()]);
     }

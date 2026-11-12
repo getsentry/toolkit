@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Ranking benchmark for `sentry docs`.
  *

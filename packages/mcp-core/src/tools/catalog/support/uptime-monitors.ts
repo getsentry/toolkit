@@ -232,19 +232,16 @@ export function toUptimeMonitorSummary(
   return {
     ...toUptimeMonitorListItem(monitor, webUrl),
     timeoutMs: monitor.timeoutMs,
-    ...(monitor.recoveryThreshold !== undefined &&
-    monitor.recoveryThreshold !== null
+    ...(monitor.recoveryThreshold !== undefined
       ? { recoveryThreshold: monitor.recoveryThreshold }
       : {}),
-    ...(monitor.downtimeThreshold !== undefined &&
-    monitor.downtimeThreshold !== null
+    ...(monitor.downtimeThreshold !== undefined
       ? { downtimeThreshold: monitor.downtimeThreshold }
       : {}),
-    ...(monitor.traceSampling !== undefined && monitor.traceSampling !== null
+    ...(monitor.traceSampling !== undefined
       ? { traceSampling: monitor.traceSampling }
       : {}),
-    ...(monitor.responseCaptureEnabled !== undefined &&
-    monitor.responseCaptureEnabled !== null
+    ...(monitor.responseCaptureEnabled !== undefined
       ? { responseCaptureEnabled: monitor.responseCaptureEnabled }
       : {}),
   };

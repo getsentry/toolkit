@@ -1,5 +1,6 @@
 import { captureFeedback } from "@sentry/core";
 import { z } from "zod";
+import { UserInputError } from "../../errors";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import { ALL_SKILLS } from "../../skills";
@@ -8,6 +9,27 @@ import { scrubSensitiveText } from "../../telem/sentry";
 // Sentry rejects User Feedback messages longer than 4096 code points. Slicing
 // UTF-16 units keeps us at or under that.
 const MAX_FEEDBACK_MESSAGE_LENGTH = 4096;
+
+// Filler that agents have sent instead of a real report, compared after
+// lowercasing and dropping everything but letters and digits.
+const PLACEHOLDER_DESCRIPTIONS = new Set([
+  "",
+  "na",
+  "none",
+  "noop",
+  "null",
+  "placeholder",
+  "tbd",
+  "test",
+  "todo",
+  "undefined",
+]);
+
+function isPlaceholder(text: string): boolean {
+  return PLACEHOLDER_DESCRIPTIONS.has(
+    text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ""),
+  );
+}
 
 /**
  * Name shown on the feedback instead of "Anonymous User". Our telemetry
@@ -38,8 +60,8 @@ export default defineTool({
     "Report friction with the Sentry MCP server to its maintainers.",
     "",
     "Use this tool when you need to:",
-    "- Report that no Sentry MCP tool could do what the user asked",
-    "- Report a tool that failed, returned wrong data, or was confusing",
+    "- Report that no Sentry MCP tool could do a Sentry task the user asked for",
+    "- Report a Sentry MCP tool that failed, returned wrong data, or was confusing",
     "- Suggest an improvement to the Sentry MCP tools",
     "",
     "<examples>",
@@ -47,7 +69,8 @@ export default defineTool({
     "</examples>",
     "",
     "<hints>",
-    "- Call at most once per task, after you finish or give up.",
+    "- Call it only when a Sentry MCP tool was missing, failed, or got in the way, at most once per task.",
+    "- Skip it if the task went fine, was skipped, or did not need Sentry. Do not use it to log progress or to test it.",
     "- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.",
     "- Do not include secrets, credentials, or personal data.",
     "</hints>",
@@ -93,6 +116,12 @@ export default defineTool({
     openWorldHint: true,
   },
   async handler(params, context) {
+    if (isPlaceholder(params.description)) {
+      throw new UserInputError(
+        "`description` is a placeholder. Describe what you tried and what went wrong, or skip this tool if there is nothing to report.",
+      );
+    }
+
     const message = scrubSensitiveText(
       [
         `Task: ${params.task}`,

@@ -147,9 +147,7 @@ function applyIssueEdits(
     const actionFilters = Array.isArray(body.actionFilters)
       ? (body.actionFilters as Record<string, unknown>[])
       : [];
-    const existingFilter = actionFilters[0] as
-      | Record<string, unknown>
-      | undefined;
+    const existingFilter = actionFilters[0];
     // When the rule has no action filter yet, a partial edit (e.g. only
     // --action) must still emit a valid DataConditionGroup. Seed the same
     // defaults the create path uses so the group carries a logicType and a
@@ -334,7 +332,7 @@ export const editCommand = buildCommand({
       id: stringifyUnknown(updated.id ?? rule.id),
       // The workflows endpoint returns `enabled` rather than `status`; map it
       // back to a status label so human/JSON output matches the create path.
-      status: updated.enabled === false ? "disabled" : "active",
+      status: !updated.enabled ? "disabled" : "active",
     } satisfies IssueAlertEditOutput);
   },
 });

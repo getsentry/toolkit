@@ -58,6 +58,7 @@ describe("update_issue", () => {
         "changes": {
           "assignedTo": null,
           "ignoreBehavior": null,
+          "priority": null,
           "status": {
             "from": "unresolved",
             "to": "resolved",
@@ -66,6 +67,7 @@ describe("update_issue", () => {
         "current": {
           "assignedTo": "Jane Developer",
           "ignoreBehavior": null,
+          "priority": "medium",
           "status": "resolved",
         },
         "effect": "The issue is now marked as resolved and will no longer generate alerts",
@@ -144,6 +146,7 @@ describe("update_issue", () => {
       status: null,
       ignoreBehavior: null,
       assignedTo: null,
+      priority: null,
     });
     expect(output.current.status).toBe("unresolved");
     expect(output.effect).toBeNull();
@@ -169,11 +172,13 @@ describe("update_issue", () => {
             "to": "john.doe",
           },
           "ignoreBehavior": null,
+          "priority": null,
           "status": null,
         },
         "current": {
           "assignedTo": "john.doe",
           "ignoreBehavior": null,
+          "priority": "medium",
           "status": "unresolved",
         },
         "effect": null,
@@ -338,7 +343,82 @@ describe("update_issue", () => {
       status: null,
       ignoreBehavior: null,
       assignedTo: null,
+      priority: null,
     });
+  });
+
+  it("updates issue priority without changing status or assignment", async () => {
+    let putBody: unknown;
+    mswServer.use(
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        async ({ request }) => {
+          putBody = await request.json();
+          return HttpResponse.json(createIssue({ priority: "low" }));
+        },
+        { once: true },
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        priority: "low",
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    expect(putBody).toEqual({ priority: "low" });
+    const output = structured(result);
+    expect(output.updated).toBe(true);
+    expect(output.changes).toEqual({
+      status: null,
+      ignoreBehavior: null,
+      assignedTo: null,
+      priority: { from: "medium", to: "low" },
+    });
+    expect(output.current.status).toBe("unresolved");
+    expect(output.current.priority).toBe("low");
+    expect(output.effect).toBeNull();
+  });
+
+  it("skips priority updates when the requested priority is already set", async () => {
+    let putCalled = false;
+    const currentIssue = createIssue({ priority: "high" });
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(currentIssue),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => {
+          putCalled = true;
+          return HttpResponse.json(currentIssue);
+        },
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        priority: "high",
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    expect(putCalled).toBe(false);
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.changes.priority).toBeNull();
+    expect(output.current.priority).toBe("high");
   });
 
   it("updates both status and assignment", async () => {
@@ -361,6 +441,7 @@ describe("update_issue", () => {
             "to": "You",
           },
           "ignoreBehavior": null,
+          "priority": null,
           "status": {
             "from": "unresolved",
             "to": "resolved",
@@ -369,6 +450,7 @@ describe("update_issue", () => {
         "current": {
           "assignedTo": "me",
           "ignoreBehavior": null,
+          "priority": "medium",
           "status": "resolved",
         },
         "effect": "The issue is now marked as resolved and will no longer generate alerts",
@@ -469,6 +551,376 @@ describe("update_issue", () => {
     expect(output.current.status).toBe("resolvedInNextRelease");
   });
 
+  it("resolves an issue in a specific release", async () => {
+    let putBody: unknown;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(createIssue({ status: "unresolved" })),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        async ({ request }) => {
+          putBody = await request.json();
+          return HttpResponse.json(
+            createIssue({
+              status: "resolved",
+              statusDetails: { inRelease: "backend@1.4.2" },
+            }),
+          );
+        },
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        inRelease: "backend@1.4.2",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    expect(putBody).toEqual({
+      status: "resolved",
+      statusDetails: { inRelease: "backend@1.4.2" },
+    });
+    expect(structured(result)).toMatchInlineSnapshot(`
+      {
+        "changes": {
+          "assignedTo": null,
+          "ignoreBehavior": null,
+          "priority": null,
+          "status": {
+            "from": "unresolved",
+            "to": "resolvedInRelease",
+          },
+        },
+        "current": {
+          "assignedTo": "Jane Developer",
+          "ignoreBehavior": null,
+          "priority": "medium",
+          "status": "resolvedInRelease",
+        },
+        "effect": "The issue is now marked as resolved in release backend@1.4.2. Events from newer releases will reopen it as a regression",
+        "issueId": "CLOUDFLARE-MCP-41",
+        "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+        "organizationSlug": "sentry-mcp-evals",
+        "reasonComment": null,
+        "title": "Error: Tool list_organizations is already registered",
+        "updated": true,
+      }
+    `);
+  });
+
+  it("resolves an issue in a commit", async () => {
+    let putBody: unknown;
+    const sha = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(createIssue({ status: "unresolved" })),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        async ({ request }) => {
+          putBody = await request.json();
+          return HttpResponse.json(
+            createIssue({
+              status: "resolved",
+              statusDetails: {
+                inCommit: { id: sha, repository: { name: "my-org/backend" } },
+              },
+            }),
+          );
+        },
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        inCommit: sha,
+        inCommitRepository: "my-org/backend",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    expect(putBody).toEqual({
+      status: "resolved",
+      statusDetails: {
+        inCommit: { commit: sha, repository: "my-org/backend" },
+      },
+    });
+    const output = structured(result);
+    expect(output.changes.status).toEqual({
+      from: "unresolved",
+      to: "resolvedInCommit",
+    });
+    expect(output.effect).toBe(
+      `The issue is now marked as resolved in commit ${sha}. It will be resolved in the first release that contains this commit`,
+    );
+  });
+
+  it.each([
+    {
+      name: "skips a commit resolution that Sentry reports as its release",
+      activityCommit: "A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2",
+      rejects: false,
+    },
+    {
+      name: "rejects a different commit on an issue resolved in a release",
+      activityCommit: "ffffffffffffffffffffffffffffffffffffffff",
+      rejects: true,
+    },
+  ])("$name", async ({ activityCommit, rejects }) => {
+    let putCalled = false;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () =>
+          HttpResponse.json(
+            createIssue({
+              status: "resolved",
+              statusDetails: { inRelease: "backend@1.4.2" },
+            }),
+          ),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/activities/",
+        () =>
+          HttpResponse.json({
+            activity: [
+              { id: "3", type: "note", data: { text: "shipped" } },
+              {
+                id: "2",
+                type: "set_resolved_in_commit",
+                data: { commit: { id: activityCommit } },
+              },
+              { id: "1", type: "set_resolved", data: {} },
+            ],
+          }),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => {
+          putCalled = true;
+          return HttpResponse.json(createIssue());
+        },
+      ),
+    );
+
+    const run = updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        inCommit: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+        inCommitRepository: "my-org/backend",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    if (rejects) {
+      await expect(run).rejects.toThrow(
+        "The issue is already resolved (`resolvedInRelease`)",
+      );
+    } else {
+      const output = structured(await run);
+      expect(output.updated).toBe(false);
+      expect(output.current.status).toBe("resolvedInRelease");
+    }
+    expect(putCalled).toBe(false);
+  });
+
+  it("skips updates when the issue is already resolved in the requested release", async () => {
+    let putCalled = false;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () =>
+          HttpResponse.json(
+            createIssue({
+              status: "resolved",
+              statusDetails: { inRelease: "backend@1.4.2" },
+            }),
+          ),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => {
+          putCalled = true;
+          return HttpResponse.json(createIssue());
+        },
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        inRelease: "backend@1.4.2",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    expect(putCalled).toBe(false);
+    const output = structured(result);
+    expect(output.updated).toBe(false);
+    expect(output.current.status).toBe("resolvedInRelease");
+  });
+
+  it.each([
+    { current: "resolved", statusDetails: {} },
+    {
+      current: "resolvedInNextRelease",
+      statusDetails: { inNextRelease: true },
+    },
+    {
+      current: "resolvedInRelease",
+      statusDetails: { inRelease: "backend@1.4.1" },
+    },
+  ])(
+    "rejects a release resolution for an issue that is already $current",
+    async ({ current, statusDetails }) => {
+      let putCalled = false;
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+          () =>
+            HttpResponse.json(
+              createIssue({ status: "resolved", statusDetails }),
+            ),
+        ),
+        http.put(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+          () => {
+            putCalled = true;
+            return HttpResponse.json(createIssue());
+          },
+        ),
+      );
+
+      await expect(
+        updateIssue.handler(
+          {
+            organizationSlug: "sentry-mcp-evals",
+            issueId: "CLOUDFLARE-MCP-41",
+            status: "resolved",
+            inRelease: "backend@1.4.2",
+            assignedTo: undefined,
+            issueUrl: undefined,
+            regionUrl: null,
+          },
+          serverContext,
+        ),
+      ).rejects.toThrow(
+        `The issue is already resolved (\`${current}\`). To resolve it in a different release or commit, first set \`status\` to \`unresolved\`, then resolve it again.`,
+      );
+      expect(putCalled).toBe(false);
+    },
+  );
+
+  it("skips a plain resolve when the issue is already resolved in a release", async () => {
+    let putCalled = false;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () =>
+          HttpResponse.json(
+            createIssue({
+              status: "resolved",
+              statusDetails: { inRelease: "backend@1.4.2" },
+            }),
+          ),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => {
+          putCalled = true;
+          return HttpResponse.json(createIssue());
+        },
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolved",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    expect(putCalled).toBe(false);
+    expect(structured(result).updated).toBe(false);
+  });
+
+  it.each([
+    {
+      name: "inRelease without resolved status",
+      params: { status: "resolvedInNextRelease" as const, inRelease: "1.0.0" },
+      error:
+        "`inRelease` and `inCommit` can only be used when `status` is `resolved`",
+    },
+    {
+      name: "both inRelease and inCommit",
+      params: {
+        status: "resolved" as const,
+        inRelease: "1.0.0",
+        inCommit: "abc",
+        inCommitRepository: "my-org/backend",
+      },
+      error: "Choose only one of `inRelease` or `inCommit`",
+    },
+    {
+      name: "inCommit without inCommitRepository",
+      params: { status: "resolved" as const, inCommit: "abc" },
+      error: "`inCommit` requires `inCommitRepository`",
+    },
+    {
+      name: "inCommitRepository without inCommit",
+      params: {
+        status: "resolved" as const,
+        inCommitRepository: "my-org/backend",
+      },
+      error: "`inCommitRepository` requires `inCommit`",
+    },
+  ])("rejects $name", async ({ params, error }) => {
+    await expect(
+      updateIssue.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+          assignedTo: undefined,
+          issueUrl: undefined,
+          regionUrl: null,
+          ...params,
+        },
+        serverContext,
+      ),
+    ).rejects.toThrow(error);
+  });
+
   it("assigns issue to team by slug", async () => {
     const result = await updateIssue.handler(
       {
@@ -504,6 +956,7 @@ describe("update_issue", () => {
             "from": null,
             "to": "Until escalating",
           },
+          "priority": null,
           "status": {
             "from": "unresolved",
             "to": "ignored",
@@ -512,6 +965,7 @@ describe("update_issue", () => {
         "current": {
           "assignedTo": "Jane Developer",
           "ignoreBehavior": "Until escalating",
+          "priority": "medium",
           "status": "ignored",
         },
         "effect": "The issue is now ignored until it escalates",
@@ -566,6 +1020,7 @@ describe("update_issue", () => {
             "from": null,
             "to": "Until it occurs 100 times in 60 minutes",
           },
+          "priority": null,
           "status": {
             "from": "unresolved",
             "to": "ignored",
@@ -574,6 +1029,7 @@ describe("update_issue", () => {
         "current": {
           "assignedTo": "Jane Developer",
           "ignoreBehavior": "Until it occurs 100 times in 60 minutes",
+          "priority": "medium",
           "status": "ignored",
         },
         "effect": "The issue is now ignored until it occurs 100 times in 60 minutes",
@@ -945,7 +1401,7 @@ describe("update_issue", () => {
         serverContext,
       ),
     ).rejects.toThrow(
-      "At least one of `status` or `assignedTo` must be provided to update the issue",
+      "At least one of `status`, `assignedTo`, or `priority` must be provided to update the issue",
     );
   });
 

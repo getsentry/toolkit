@@ -326,7 +326,7 @@ export const editCommand = buildCommand({
       org: orgSlug,
       id: stringifyUnknown(updated.id ?? rule.id),
       // The detectors endpoint returns `enabled` rather than `status`.
-      status: updated.enabled === false ? "disabled" : "active",
+      status: !updated.enabled ? "disabled" : "active",
     } satisfies MetricAlertEditOutput);
   },
 });

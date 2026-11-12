@@ -16,7 +16,15 @@
     "packages/codemod-cli3to4/tests/**"
   ],
   "rules": {
-    "no-unused-vars": "off",
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrors": "none",
+        "ignoreRestSiblings": true
+      }
+    ],
     "typescript/return-await": ["error", "always"],
     "typescript/no-floating-promises": [
       "error",
@@ -37,6 +45,13 @@
         "allow": ["URL", "URLSearchParams"]
       }
     ],
+    "typescript/no-unnecessary-type-constraint": "error",
+    "typescript/no-unnecessary-type-arguments": "error",
+    "typescript/no-unnecessary-boolean-literal-compare": "error",
+    "typescript/no-unnecessary-template-expression": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unnecessary-type-parameters": "error",
+    "typescript/no-useless-default-assignment": "error",
     "jsx-a11y/interactive-supports-focus": "off",
     "unicorn/prefer-spread": "error"
   },
@@ -56,6 +71,7 @@
     {
       "files": ["packages/mcp-core/**/*.{ts,tsx,js,mjs,cjs}"],
       "rules": {
+        "typescript/no-unnecessary-condition": "error",
         "no-restricted-imports": [
           "error",
           {
@@ -76,10 +92,7 @@
       }
     },
     {
-      "files": [
-        "packages/cli/src/**/*.{ts,tsx}",
-        "packages/cli/test/**/*.{ts,tsx}"
-      ],
+      "files": ["packages/cli/src/**/*.ts", "packages/cli/test/**/*.ts"],
       "rules": {
         "sentry-cli/no-silent-catch": "error",
         "sentry-cli/no-raw-capture-exception": "error",
@@ -137,7 +150,7 @@
       }
     },
     {
-      "files": ["packages/cli/src/**/*.{ts,tsx}"],
+      "files": ["packages/cli/src/**/*.ts"],
       "rules": {
         "typescript/no-explicit-any": "error",
         "typescript/no-non-null-assertion": "error"
@@ -154,7 +167,7 @@
       }
     },
     {
-      "files": ["packages/cli/src/commands/**/*.{ts,tsx}"],
+      "files": ["packages/cli/src/commands/**/*.ts"],
       "rules": {
         "no-restricted-imports": [
           "error",

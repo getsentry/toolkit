@@ -4,10 +4,11 @@ export function getTextContent(result: unknown): string {
   if (!Array.isArray(content)) {
     return "";
   }
-  return content?.find((item) => typeof item.text === "string")?.text ?? "";
+  return content.find((item) => typeof item.text === "string")?.text ?? "";
 }
 
 /** Returns structuredContent after checking the result has an object payload. */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- lets tests name the expected payload type
 export function getStructuredContent<T extends Record<string, unknown>>(
   result: unknown,
 ): T {

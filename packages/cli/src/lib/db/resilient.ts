@@ -286,7 +286,7 @@ export function createResilientDatabase(
 ): Database {
   const originalQuery = db.query.bind(db);
 
-  return new Proxy(db as object, {
+  return new Proxy(db, {
     get(target, prop) {
       if (prop === "query") {
         return (sql: string) => {
@@ -316,5 +316,5 @@ export function createResilientDatabase(
       }
       return value;
     },
-  }) as Database;
+  });
 }

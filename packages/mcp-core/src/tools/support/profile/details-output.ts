@@ -147,7 +147,7 @@ function buildSampleAnalysis(
 
   const topFrames = [...frameCounts.entries()]
     .flatMap(([frameIndex, count]) => {
-      const frame = profile.frames[frameIndex];
+      const frame = profile.frames.at(frameIndex);
       if (!frame || (options.focusOnUserCode && !frame.in_app)) {
         return [];
       }
@@ -216,7 +216,7 @@ function getTransactionProfileDurationNs(
     return null;
   }
 
-  const duration = elapsed[elapsed.length - 1]! - elapsed[0]!;
+  const duration = elapsed[elapsed.length - 1] - elapsed[0];
   return duration > 0 ? Math.round(duration) : null;
 }
 

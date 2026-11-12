@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Agent benchmark for `sentry docs`: time and tokens to finish real tasks.
  *

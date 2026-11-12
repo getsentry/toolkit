@@ -236,7 +236,7 @@ function buildReplayActions(
     availableToolNames: params.availableToolNames,
     directToolNames: params.directToolNames,
   };
-  const firstReplay = replays[0];
+  const firstReplay = replays.at(0);
   const traceId = replays.find((replay) => replay.traceIds[0])?.traceIds[0];
   const actions = [
     firstReplay

@@ -239,7 +239,7 @@ export default defineTool({
           ).result,
       });
 
-      query = translatedQuery.query ?? params.query;
+      query = translatedQuery.query;
       sort = translatedQuery.sort || params.sort;
       explanation = translatedQuery.explanation;
     } else {

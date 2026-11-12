@@ -425,11 +425,6 @@ export async function listMetricAlertsPaginated(
       sortBy: "-id",
       cursor: options.cursor,
       per_page: options.perPage,
-    } as {
-      query?: string;
-      sortBy?: string;
-      cursor?: string;
-      per_page?: number;
     },
   });
   const { data, nextCursor } = unwrapPaginatedResult<MetricDetector[]>(
@@ -734,7 +729,7 @@ function buildDetectorBody(
     detectorBody.enabled = Number(body.status) !== 1;
   }
   if (body.owner !== undefined) {
-    detectorBody.owner = body.owner as string | null;
+    detectorBody.owner = body.owner;
   }
   return detectorBody;
 }
@@ -846,9 +841,7 @@ export async function putMetricAlertRule(
     },
     // `buildDetectorBody` returns the camelCase detector document as a plain
     // record, so cast it into the SDK's typed body.
-    body: buildDetectorBody(body) as unknown as Parameters<
-      typeof updateOrganizationDetector
-    >[0]["body"],
+    body: buildDetectorBody(body),
   });
   return unwrapResult<UpdateOrganizationDetectorResponse>(
     result,

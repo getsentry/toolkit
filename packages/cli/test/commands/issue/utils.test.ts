@@ -1248,10 +1248,10 @@ describe("pollAutofixState", () => {
 
     // Spy on process.stdout.write to capture spinner output
     const origWrite = process.stdout.write.bind(process.stdout);
-    process.stdout.write = ((chunk: string | Uint8Array) => {
+    process.stdout.write = (chunk: string | Uint8Array) => {
       stdoutOutput += String(chunk);
       return true;
-    }) as typeof process.stdout.write;
+    };
 
     try {
       // Return PROCESSING first to allow animation interval to fire,
@@ -1584,6 +1584,36 @@ describe("ensureRootCauseAnalysis", () => {
     expect(triggerCalled).toBe(true); // Should have retried
   });
 
+  test("throws out_of_credits when the run stopped for credits", async () => {
+    // @ts-expect-error - partial mock
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      const body =
+        req.method === "POST"
+          ? { run_id: 12_346 }
+          : {
+              autofix: {
+                run_id: 12_346,
+                status: "ERROR",
+                failure_reason: "out_of_credits",
+                steps: [],
+              },
+            };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+
+    await expect(
+      ensureRootCauseAnalysis({
+        org: "test-org",
+        issueId: "123456789",
+        json: true,
+      }),
+    ).rejects.toMatchObject({ reason: "out_of_credits", orgSlug: "test-org" });
+  });
+
   test("polls until complete when state is PROCESSING", async () => {
     let fetchCount = 0;
 
@@ -1704,10 +1734,10 @@ describe("ensureRootCauseAnalysis", () => {
 
     // Spy on process.stdout.write to capture spinner output
     const origWrite = process.stdout.write.bind(process.stdout);
-    process.stdout.write = ((chunk: string | Uint8Array) => {
+    process.stdout.write = (chunk: string | Uint8Array) => {
       stdoutOutput += String(chunk);
       return true;
-    }) as typeof process.stdout.write;
+    };
 
     try {
       // @ts-expect-error - partial mock

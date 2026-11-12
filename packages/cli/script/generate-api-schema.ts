@@ -1,7 +1,7 @@
 /**
  * Generate the CLI discovery index from the installed SDK's operation catalog.
  *
- * Usage: tsx script/generate.ts schema
+ * Usage: pnpm ts script/generate.ts schema
  * Outputs: src/generated/api-schema.json and src/generated/idempotent-operations.json
  */
 

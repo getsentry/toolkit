@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Generate tool and skill definitions JSON for external consumption.
  *
@@ -30,7 +29,7 @@ function ensureDirExists(dir: string) {
 function zodFieldMapToJsonSchema(
   fieldMap: Record<string, ZodTypeAny>,
 ): unknown {
-  if (!fieldMap || Object.keys(fieldMap).length === 0) return {};
+  if (Object.keys(fieldMap).length === 0) return {};
   const obj = z.object(fieldMap);
   const { $schema: _, ...jsonSchema } = z.toJSONSchema(obj, {
     io: "input",
@@ -156,7 +155,7 @@ function generateToolDefinitions({
     if (!Array.isArray(t.requiredScopes)) {
       throw new Error(`Tool '${t.name}' is missing requiredScopes array`);
     }
-    const jsonSchema = zodFieldMapToJsonSchema(t.inputSchema || {});
+    const jsonSchema = zodFieldMapToJsonSchema(t.inputSchema);
     const surface: ToolSurface = isDirect ? "direct" : "catalog";
     return {
       name: t.name,

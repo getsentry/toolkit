@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/server";
-import { type Span, setUser, startSpan } from "@sentry/core";
+import { type Span, getClient, setUser, startSpan } from "@sentry/core";
 import {
   createDefaultEvent,
   eventFixture,
@@ -147,15 +147,19 @@ const DEFAULT_DIRECT_TOOL_NAMES = [
 describe("buildServer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // No DSN by default, so submit_feedback_to_sentry_team stays hidden.
+    vi.mocked(getClient).mockReturnValue(undefined);
     startedSpans = [];
-    vi.mocked(startSpan).mockImplementation((<T>(
-      _options: Parameters<typeof startSpan>[0],
-      callback: (span: Span) => T,
-    ) => {
-      const span = createMockSpan();
-      startedSpans.push(span);
-      return callback(span as unknown as Span);
-    }) as typeof startSpan);
+    vi.mocked(startSpan).mockImplementation(
+      <T>(
+        _options: Parameters<typeof startSpan>[0],
+        callback: (span: Span) => T,
+      ) => {
+        const span = createMockSpan();
+        startedSpans.push(span);
+        return callback(span as unknown as Span);
+      },
+    );
   });
 
   const baseContext: ServerContext = {
@@ -503,7 +507,7 @@ describe("buildServer", () => {
 
     expect(registeredTools.v2_tool).toBeDefined();
     await expect(
-      registeredTools.v2_tool?.handler({ value: "ok" }),
+      registeredTools.v2_tool.handler({ value: "ok" }),
     ).resolves.toMatchObject({
       content: [{ type: "text", text: "v2:ok" }],
     });
@@ -757,12 +761,38 @@ describe("buildServer", () => {
         }
       )._registeredTools;
 
-      await registeredTools.example_tool?.handler({}, {});
+      await registeredTools.example_tool.handler({}, {});
 
       expect(setUser).toHaveBeenCalledWith({
         id: "user-123",
         ip_address: "192.0.2.1",
       });
+    });
+  });
+
+  describe("experimental output schema", () => {
+    const createServer = (experimentalMode: boolean) =>
+      buildServer({
+        context: baseContext,
+        experimentalMode,
+        tools: {
+          graduating_tool: createMockTool("graduating_tool", {
+            experimentalOutputSchema: z.object({ status: z.string() }),
+          }),
+        },
+      });
+
+    it("advertises the schema to experimental sessions", async () => {
+      const [tool] = await listRegisteredTools(createServer(true));
+      expect(tool.outputSchema).toMatchObject({
+        type: "object",
+        properties: { status: { type: "string" } },
+      });
+    });
+
+    it("keeps it from stable sessions, which still get markdown", async () => {
+      const [tool] = await listRegisteredTools(createServer(false));
+      expect(tool.outputSchema).toBeUndefined();
     });
   });
 
@@ -1095,12 +1125,12 @@ describe("buildServer", () => {
         }),
       );
       expect(
-        dynamicDescription.mock.calls[0]![0].availableToolNames?.has(
+        dynamicDescription.mock.calls[0][0].availableToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
       expect(
-        dynamicDescription.mock.calls[0]![0].directToolNames?.has(
+        dynamicDescription.mock.calls[0][0].directToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
@@ -1473,8 +1503,9 @@ describe("buildServer", () => {
           properties: {
             query: { type: "string" },
             results: { type: "array" },
+            notes: { type: "array" },
           },
-          required: ["query", "results"],
+          required: ["query", "results", "notes"],
         },
         annotations: {
           readOnlyHint: true,
@@ -1525,8 +1556,8 @@ describe("buildServer", () => {
       );
       expect(getTextContent(result)).not.toContain("# Tool Search Results");
       expect(getTextContent(result)).not.toContain("```json");
-      expect(firstResult?.name).toBe("get_replay_details");
-      expect(Object.keys(firstResult ?? {}).sort()).toEqual([
+      expect(firstResult.name).toBe("get_replay_details");
+      expect(Object.keys(firstResult).sort()).toEqual([
         "annotations",
         "description",
         "inputSchema",
@@ -1535,7 +1566,7 @@ describe("buildServer", () => {
       expect(firstResult).not.toHaveProperty("requiredSkills");
       expect(firstResult).not.toHaveProperty("requiredScopes");
       expect(firstResult).not.toHaveProperty("skills");
-      expect(firstResult?.inputSchema.properties).not.toHaveProperty(
+      expect(firstResult.inputSchema.properties).not.toHaveProperty(
         "organizationSlug",
       );
     });
@@ -1640,6 +1671,47 @@ describe("buildServer", () => {
       }>(result);
 
       expect(payload.results.map((tool) => tool.name)).toContain("whoami");
+    });
+
+    it("search_sentry_tools suggests feedback when no tool matches", async () => {
+      vi.mocked(getClient).mockReturnValue({
+        getDsn: () => ({ host: "o1.ingest.sentry.io" }),
+      } as unknown as ReturnType<typeof getClient>);
+      const server = buildServer({ context: baseContext });
+
+      const result = await callRegisteredTool(server, "search_sentry_tools", {
+        query: "zzzz qqqq",
+      });
+      const payload = getStructuredContent<{
+        results: unknown[];
+        notes: string[];
+      }>(result);
+
+      expect(payload.results).toEqual([]);
+      expect(payload.notes).toMatchInlineSnapshot(`
+        [
+          "No Sentry tool matched. Try other keywords first. If no Sentry tool can do this task, report it to the Sentry MCP team with \`submit_feedback_to_sentry_team\`.",
+        ]
+      `);
+
+      const matched = await callRegisteredTool(server, "search_sentry_tools", {
+        query: "server version",
+      });
+      expect(getStructuredContent<{ notes: string[] }>(matched).notes).toEqual(
+        [],
+      );
+    });
+
+    it("search_sentry_tools omits the feedback note without a Sentry DSN", async () => {
+      const server = buildServer({ context: baseContext });
+
+      const result = await callRegisteredTool(server, "search_sentry_tools", {
+        query: "zzzz qqqq",
+      });
+
+      expect(getStructuredContent<{ notes: string[] }>(result).notes).toEqual(
+        [],
+      );
     });
 
     it("discovers and executes Sentry MCP server information from the catalog", async () => {
@@ -2128,9 +2200,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Event Stacktrace in **sentry-mcp-evals**",
-      );
+      expect(result.structuredContent).toMatchObject({
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+      });
     });
 
     it("execute_sentry_tool dispatches to catalog-only issue user reports", async () => {
@@ -3007,9 +3080,9 @@ describe("buildServer", () => {
         expect.any(Function),
       );
       const span = startedSpans[0];
-      expect(span?.setStatus).toHaveBeenCalledWith({ code: 2 });
+      expect(span.setStatus).toHaveBeenCalledWith({ code: 2 });
       // Expected validation failures mark the span failed without recording an exception.
-      expect(span?.recordException).not.toHaveBeenCalled();
+      expect(span.recordException).not.toHaveBeenCalled();
     });
 
     it("execute_sentry_tool injects constrained arguments for catalog-only tools", async () => {
@@ -3092,9 +3165,9 @@ describe("buildServer", () => {
       }>(result);
       const replayTool = payload.results[0];
 
-      expect(replayTool?.name).toBe("get_replay_details");
+      expect(replayTool.name).toBe("get_replay_details");
       expect(
-        Object.keys(replayTool?.inputSchema.properties ?? {}).sort(),
+        Object.keys(replayTool.inputSchema.properties ?? {}).sort(),
       ).toEqual([
         "categories",
         "endOffsetSeconds",
