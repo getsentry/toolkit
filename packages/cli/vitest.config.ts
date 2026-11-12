@@ -5,36 +5,64 @@ import { defineConfig, type Plugin } from "vitest/config";
 const JS_EXT_RE = /\.js$/;
 
 /**
- * Vite plugin to rewrite lazy `require("./relative/path.js")` calls in
- * `.ts` source files to the corresponding `.ts` path when the `.ts` file
- * exists on disk. Node.js `require()` bypasses Vite's resolve pipeline,
- * so `resolve.extensions` doesn't apply.
+ * Matches a lazy `require("./relative/path.js")` call, including a
+ * `createRequire()` result such as `_require(...)`, possibly spanning lines
+ * with a trailing comma. Group 2 is the path without its `.js` extension.
  */
-function requireJsToTsPlugin(): Plugin {
+const LAZY_RELATIVE_REQUIRE_RE =
+  /(?<![\w$.])[\w$]*require\(\s*(["'])(\.\.?\/[^"'\n]+)\.js\1\s*,?\s*\)/g;
+
+/**
+ * Vite plugin to load lazy `require("./relative/path.js")` calls in `.ts`
+ * source files through Vite's module graph.
+ *
+ * A `require()` goes straight to Node's native loader, which can't map the
+ * required module's own `.js` imports to `.ts` files, and which would load a
+ * second instance of the module that `vi.mock` and `vi.spyOn` never see.
+ * Under test, each call becomes a namespace import of the `.ts` file (or the
+ * `.js` file, for generated modules) added at the end of the file. Imports
+ * are hoisted, so the module loads eagerly; the namespace binding is live,
+ * so import cycles that the lazy require broke (`db/index.ts` and
+ * `db/resilient.ts`) still resolve by the time the call runs. Line breaks
+ * inside a replaced call are kept, so stack trace lines stay accurate.
+ */
+function lazyRequireToImportPlugin(): Plugin {
   return {
-    name: "require-js-to-ts",
+    name: "lazy-require-to-import",
     enforce: "pre",
     transform(code, id) {
       if (!(id.endsWith(".ts") && code.includes("require("))) {
         return;
       }
-      let changed = false;
+      const bindings = new Map<string, string>();
       const transformed = code.replace(
-        /require\(["'](\.[\w/.]+)\.js["']\)/g,
-        (match, relPath) => {
-          const dir = dirname(id);
-          const tsPath = join(dir, `${relPath}.ts`);
-          if (existsSync(tsPath)) {
-            changed = true;
-            return `require(${JSON.stringify(tsPath)})`;
+        LAZY_RELATIVE_REQUIRE_RE,
+        (match, _quote: string, relPath: string) => {
+          const target = [".ts", ".js"]
+            .map((ext) => join(dirname(id), `${relPath}${ext}`))
+            .find((path) => existsSync(path));
+          if (!target) {
+            return match;
           }
-          return match;
+          let binding = bindings.get(target);
+          if (!binding) {
+            binding = `__vitestLazyRequire${bindings.size}`;
+            bindings.set(target, binding);
+          }
+          // Parentheses keep the kept line breaks from ending the statement.
+          return `(${binding}${"\n".repeat(match.split("\n").length - 1)})`;
         },
       );
-      if (changed) {
-        return { code: transformed, map: null };
+      if (bindings.size === 0) {
+        return;
       }
-      return;
+      const imports = [...bindings]
+        .map(
+          ([target, binding]) =>
+            `import * as ${binding} from ${JSON.stringify(target)};`,
+        )
+        .join("\n");
+      return { code: `${transformed}\n${imports}\n`, map: null };
     },
   };
 }
@@ -68,7 +96,7 @@ function jsToTsResolvePlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [requireJsToTsPlugin(), jsToTsResolvePlugin()],
+  plugins: [lazyRequireToImportPlugin(), jsToTsResolvePlugin()],
   resolve: {
     // Allow .js imports to resolve to .ts files (ESM convention used throughout)
     extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],

@@ -55,8 +55,8 @@
   },
   "scripts": {
     "tsx": "tsx --env-file-if-exists=.env.local --import ./script/require-shim.mjs",
-    "cli": "node script/ensure-generated.mjs && tsx --env-file-if-exists=.env.local --import ./script/require-shim.mjs --import ./script/strip-arg-separator.mjs src/bin.ts",
-    "dev": "tsx script/generate.ts docs sdk && tsx --import ./script/require-shim.mjs --import ./script/strip-arg-separator.mjs src/bin.ts",
+    "cli": "node script/ensure-generated.mjs && node --env-file-if-exists=.env.local --import tsx/esm --import ./script/require-shim.mjs --import ./script/strip-arg-separator.mjs src/bin.ts",
+    "dev": "tsx script/generate.ts docs sdk && node --import tsx/esm --import ./script/require-shim.mjs --import ./script/strip-arg-separator.mjs src/bin.ts",
     "build": "pnpm --filter @sentry/mcp-core run build && tsx script/generate.ts docs sdk && pnpm tsx script/build.ts --single",
     "build:all": "pnpm --filter @sentry/mcp-core run build && tsx script/generate.ts docs sdk && pnpm tsx script/build.ts",
     "bundle": "pnpm --filter @sentry/mcp-core run build && tsx script/generate.ts docs sdk && pnpm tsx script/bundle.ts",
