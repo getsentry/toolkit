@@ -93,7 +93,7 @@ describe("external issue associations", () => {
     expect(invalidateCachedResponsesMatching).toHaveBeenCalledWith(
       "https://de.sentry.io/api/0/organizations/example/issues/123/",
     );
-    expect(invalidateCachedResponsesMatching).toHaveBeenCalledWith(
+    expect(invalidateCachedResponsesMatching).not.toHaveBeenCalledWith(
       "https://sentry.io/api/0/issues/123/",
     );
   });

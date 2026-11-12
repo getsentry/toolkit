@@ -148,14 +148,16 @@ describe("buildServer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     startedSpans = [];
-    vi.mocked(startSpan).mockImplementation((<T>(
-      _options: Parameters<typeof startSpan>[0],
-      callback: (span: Span) => T,
-    ) => {
-      const span = createMockSpan();
-      startedSpans.push(span);
-      return callback(span as unknown as Span);
-    }) as typeof startSpan);
+    vi.mocked(startSpan).mockImplementation(
+      <T>(
+        _options: Parameters<typeof startSpan>[0],
+        callback: (span: Span) => T,
+      ) => {
+        const span = createMockSpan();
+        startedSpans.push(span);
+        return callback(span as unknown as Span);
+      },
+    );
   });
 
   const baseContext: ServerContext = {
@@ -503,7 +505,7 @@ describe("buildServer", () => {
 
     expect(registeredTools.v2_tool).toBeDefined();
     await expect(
-      registeredTools.v2_tool?.handler({ value: "ok" }),
+      registeredTools.v2_tool.handler({ value: "ok" }),
     ).resolves.toMatchObject({
       content: [{ type: "text", text: "v2:ok" }],
     });
@@ -636,7 +638,7 @@ describe("buildServer", () => {
       );
 
       const text = getTextContent(result);
-      expect(text).toContain(`[console] ${replacedText}...`);
+      expect(text).toContain(`"message":"${replacedText}..."`);
       expect(text.isWellFormed()).toBe(true);
     });
 
@@ -719,9 +721,11 @@ describe("buildServer", () => {
           "status": "ok",
         }
       `);
-      expect(getTextContent(result)).toBe(
-        getGeneratedTextFromStructuredContent(result),
-      );
+      const text = getTextContent(result);
+      // Compact JSON: indentation costs tokens for clients that send the
+      // text to a model.
+      expect(text).toBe('{"status":"ok","count":2}');
+      expect(JSON.parse(text)).toEqual(payload);
     });
 
     it("sets user ID and IP address together for tool calls", async () => {
@@ -755,7 +759,7 @@ describe("buildServer", () => {
         }
       )._registeredTools;
 
-      await registeredTools.example_tool?.handler({}, {});
+      await registeredTools.example_tool.handler({}, {});
 
       expect(setUser).toHaveBeenCalledWith({
         id: "user-123",
@@ -1093,12 +1097,12 @@ describe("buildServer", () => {
         }),
       );
       expect(
-        dynamicDescription.mock.calls[0]![0].availableToolNames?.has(
+        dynamicDescription.mock.calls[0][0].availableToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
       expect(
-        dynamicDescription.mock.calls[0]![0].directToolNames?.has(
+        dynamicDescription.mock.calls[0][0].directToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
@@ -1523,8 +1527,8 @@ describe("buildServer", () => {
       );
       expect(getTextContent(result)).not.toContain("# Tool Search Results");
       expect(getTextContent(result)).not.toContain("```json");
-      expect(firstResult?.name).toBe("get_replay_details");
-      expect(Object.keys(firstResult ?? {}).sort()).toEqual([
+      expect(firstResult.name).toBe("get_replay_details");
+      expect(Object.keys(firstResult).sort()).toEqual([
         "annotations",
         "description",
         "inputSchema",
@@ -1533,7 +1537,7 @@ describe("buildServer", () => {
       expect(firstResult).not.toHaveProperty("requiredSkills");
       expect(firstResult).not.toHaveProperty("requiredScopes");
       expect(firstResult).not.toHaveProperty("skills");
-      expect(firstResult?.inputSchema.properties).not.toHaveProperty(
+      expect(firstResult.inputSchema.properties).not.toHaveProperty(
         "organizationSlug",
       );
     });
@@ -2090,7 +2094,7 @@ describe("buildServer", () => {
             },
           ],
         });
-        expect(getTextContent(result)).toBe(JSON.stringify(payload, null, 2));
+        expect(JSON.parse(getTextContent(result))).toEqual(payload);
         expect(result.isError).not.toBe(true);
         expect(getTextContent(result)).not.toContain("unrelated");
       },
@@ -2147,9 +2151,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Issue User Reports for Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(result.structuredContent).toMatchObject({
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+      });
     });
 
     it("discovers and dispatches issue linking with injected constraints", async () => {
@@ -2370,10 +2375,9 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Updated DSN in **sentry-mcp-evals/cloudflare-mcp**",
-      );
-      expect(getTextContent(result)).toContain("**Rate Limit**: Disabled");
+      expect(getStructuredContent(result)).toMatchObject({
+        dsn: { id: "d20df0a1ab5031c7f3c7edca9c02814d", rateLimit: null },
+      });
     });
 
     it.each([
@@ -3005,9 +3009,9 @@ describe("buildServer", () => {
         expect.any(Function),
       );
       const span = startedSpans[0];
-      expect(span?.setStatus).toHaveBeenCalledWith({ code: 2 });
+      expect(span.setStatus).toHaveBeenCalledWith({ code: 2 });
       // Expected validation failures mark the span failed without recording an exception.
-      expect(span?.recordException).not.toHaveBeenCalled();
+      expect(span.recordException).not.toHaveBeenCalled();
     });
 
     it("execute_sentry_tool injects constrained arguments for catalog-only tools", async () => {
@@ -3090,9 +3094,9 @@ describe("buildServer", () => {
       }>(result);
       const replayTool = payload.results[0];
 
-      expect(replayTool?.name).toBe("get_replay_details");
+      expect(replayTool.name).toBe("get_replay_details");
       expect(
-        Object.keys(replayTool?.inputSchema.properties ?? {}).sort(),
+        Object.keys(replayTool.inputSchema.properties ?? {}).sort(),
       ).toEqual([
         "categories",
         "endOffsetSeconds",

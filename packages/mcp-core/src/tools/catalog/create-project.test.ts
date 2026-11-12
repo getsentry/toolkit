@@ -6,7 +6,19 @@ import {
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, it, expect } from "vitest";
 import { z } from "zod";
-import createProject from "./create-project.js";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content";
+import createProject, { createProjectOutputSchema } from "./create-project.js";
+
+function getOutput(result: unknown) {
+  assertStructuredOnlyResult(result);
+  const content = getStructuredContent(result);
+  const parsed = createProjectOutputSchema.parse(content);
+  expect(parsed).toEqual(content);
+  return parsed;
+}
 
 const context = {
   constraints: {
@@ -43,21 +55,24 @@ describe("create_project", () => {
       },
       context,
     );
-    expect(result).toMatchInlineSnapshot(`
-      "# New Project in **sentry-mcp-evals**
-
-      **ID**: 4509109104082945
-      **Slug**: cloudflare-mcp
-      **Name**: cloudflare-mcp
-      **SENTRY_DSN**: https://d20df0a1ab5031c7f3c7edca9c02814d@o4509106732793856.ingest.us.sentry.io/4509109104082945
-
-      ## Response Notes
-
-      - Please tell the user the project slug and **SENTRY_DSN**.
-      - No additional DSN creation step is needed.
-      - The **SENTRY_DSN** value is used to initialize Sentry SDKs.
-      "
+    const output = getOutput(result);
+    expect(output).toMatchInlineSnapshot(`
+      {
+        "dsn": "https://d20df0a1ab5031c7f3c7edca9c02814d@o4509106732793856.ingest.us.sentry.io/4509109104082945",
+        "project": {
+          "id": "4509109104082945",
+          "name": "cloudflare-mcp",
+          "slug": "cloudflare-mcp",
+        },
+        "repository": null,
+      }
     `);
+    // Only the public DSN is exposed; secret keys and other key metadata stay private.
+    const text = JSON.stringify(result);
+    expect(text).not.toContain(clientKeyFixture.secret);
+    expect(text).not.toContain(clientKeyFixture.dsn.secret);
+    expect(text).not.toContain(clientKeyFixture.dsn.security);
+    expect(text).not.toContain("rateLimit");
   });
 
   it("uses an existing non-default DSN when no default key exists", async () => {
@@ -95,9 +110,7 @@ describe("create_project", () => {
       context,
     );
 
-    expect(result).toContain(
-      "**SENTRY_DSN**: https://production@example.com/1",
-    );
+    expect(getOutput(result).dsn).toBe("https://production@example.com/1");
   });
 
   it("creates a fallback default DSN when only inactive keys exist", async () => {
@@ -141,8 +154,10 @@ describe("create_project", () => {
       context,
     );
 
-    expect(result).toContain("**SENTRY_DSN**: https://fallback@example.com/1");
-    expect(result).not.toContain("https://inactive@example.com/1");
+    expect(getOutput(result).dsn).toBe("https://fallback@example.com/1");
+    expect(JSON.stringify(result)).not.toContain(
+      "https://inactive@example.com/1",
+    );
   });
 
   it("creates a fallback default DSN when no key exists", async () => {
@@ -177,7 +192,7 @@ describe("create_project", () => {
       context,
     );
 
-    expect(result).toContain("**SENTRY_DSN**: https://fallback@example.com/1");
+    expect(getOutput(result).dsn).toBe("https://fallback@example.com/1");
   });
 
   it("creates a fallback default DSN when key listing fails after creation", async () => {
@@ -212,8 +227,7 @@ describe("create_project", () => {
       context,
     );
 
-    expect(result).toContain("**SENTRY_DSN**: https://fallback@example.com/1");
-    expect(result).toContain("No additional DSN creation step is needed");
+    expect(getOutput(result).dsn).toBe("https://fallback@example.com/1");
   });
 
   it("returns project details when DSN setup fails after creation", async () => {
@@ -241,15 +255,11 @@ describe("create_project", () => {
       context,
     );
 
-    expect(result).toContain("**Slug**: cloudflare-mcp");
-    expect(result).toContain("**SENTRY_DSN**: unavailable");
-    expect(result).toContain(
-      "Project creation succeeded, but SENTRY_DSN could not be retrieved or created",
-    );
-    expect(result).toContain(
-      "Use create_dsn for this project before initializing Sentry SDKs",
-    );
-    expect(result).not.toContain("No additional DSN creation step is needed");
+    expect(getOutput(result)).toMatchObject({
+      project: { slug: "cloudflare-mcp" },
+      dsn: null,
+      repository: null,
+    });
   });
 
   it("passes an optional slug through project creation", async () => {
@@ -291,7 +301,7 @@ describe("create_project", () => {
       slug: "my-project",
       platform: "node",
     });
-    expect(result).toContain("**Slug**: my-project");
+    expect(getOutput(result).project.slug).toBe("my-project");
   });
 
   it("sends Sentry's platform ID when the agent passes a rejected alias", async () => {
@@ -337,9 +347,10 @@ describe("create_project", () => {
       context,
     );
 
-    expect(result).toContain("**Repository**: getsentry/sentry (linked)");
-    expect(result).toContain("**Code Mapping**: `/` -> `/`");
-    expect(result).not.toContain("Repository Link ID");
+    expect(getOutput(result).repository).toEqual({
+      name: "getsentry/sentry",
+      linked: true,
+    });
   });
 
   it("prefers an exact repository name over suffix matches", async () => {
@@ -393,7 +404,10 @@ describe("create_project", () => {
     );
 
     expect(mappingBody).toMatchObject({ repository: "getsentry/sentry" });
-    expect(result).toContain("**Repository**: getsentry/sentry (linked)");
+    expect(getOutput(result).repository).toEqual({
+      name: "getsentry/sentry",
+      linked: true,
+    });
   });
 
   it("returns project setup details when repository linking fails after creation", async () => {
@@ -417,11 +431,11 @@ describe("create_project", () => {
       context,
     );
 
-    expect(result).toContain("**Slug**: cloudflare-mcp");
-    expect(result).toContain("**SENTRY_DSN**:");
-    expect(result).toContain(
-      "Found getsentry/sentry but failed to link it to the project",
-    );
+    expect(getOutput(result)).toMatchObject({
+      project: { slug: "cloudflare-mcp" },
+      dsn: expect.any(String),
+      repository: { name: "getsentry/sentry", linked: false },
+    });
   });
 
   it("rejects an unknown repository before creating the project", async () => {

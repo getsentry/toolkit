@@ -71,7 +71,7 @@ export default defineTool({
       .enum(SEARCH_ATTRIBUTES_DATASETS)
       .optional()
       .describe(
-        "Which dataset's attributes to search: spans, logs, or metrics. Infer it from the question; ask the user to clarify if it cannot be inferred.",
+        "Which dataset's attributes to list: spans, logs, or metrics. Infer it from the question; ask the user to clarify if it cannot be inferred.",
       ),
   },
   async handler(params, context: ServerContext) {

@@ -4840,6 +4840,64 @@ describe("search_events", () => {
       expect(mockGenerateText).toHaveBeenCalled();
     });
 
+    describe("without an agent provider", () => {
+      const untranslatedNote =
+        "**Note:** `query` was not translated from natural language because no embedded agent or Seer translation was available, so Sentry searched for it as literal text and found nothing. Retry with Sentry search syntax, such as `environment:production`, and use `period` for the time range.";
+
+      beforeEach(() => {
+        process.env.OPENAI_API_KEY = "";
+        process.env.ANTHROPIC_API_KEY = "";
+        process.env.OPENROUTER_API_KEY = "";
+        mswServer.use(
+          mockOrganization(["mcp-search-events-seer-translate"]),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/search-agent/state/run-uuid/",
+            () => HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
+          ),
+        );
+      });
+
+      it.each([
+        ["natural language with no results", seerParams.query, [], true],
+        [
+          "natural language with results",
+          seerParams.query,
+          [{ "span.description": "GET /api/users" }],
+          false,
+        ],
+        ["Sentry syntax with no results", "span.op:http.client", [], false],
+      ])(
+        "notes an untranslated query only when it finds nothing: %s",
+        async (_name, query, data, expectNote) => {
+          const sentQueries: Array<string | null> = [];
+          mswServer.use(
+            http.get(
+              "https://sentry.io/api/0/organizations/test-org/events/",
+              ({ request }) => {
+                sentQueries.push(
+                  new URL(request.url).searchParams.get("query"),
+                );
+                return HttpResponse.json({ data });
+              },
+            ),
+          );
+
+          const result = await searchEvents.handler(
+            { ...seerParams, query },
+            context,
+          );
+
+          expect(sentQueries).toEqual([query]);
+          expect(mockGenerateText).not.toHaveBeenCalled();
+          if (expectNote) {
+            expect(result).toContain(untranslatedNote);
+          } else {
+            expect(result).not.toContain("was not translated");
+          }
+        },
+      );
+    });
+
     describe("assisted query outcome", () => {
       const mockSeerEvents = (
         resolver: Parameters<typeof http.get>[1],

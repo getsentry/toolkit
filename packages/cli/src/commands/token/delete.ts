@@ -10,6 +10,7 @@
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { deleteOrgAuthToken, listOrgAuthTokens } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { ORG_TARGET } from "../../lib/completion-target.js";
 import { selectAccountForOrg } from "../../lib/db/auth.js";
 import { ResolutionError, ValidationError } from "../../lib/errors.js";
@@ -40,7 +41,7 @@ import {
 } from "./shared.js";
 
 const USAGE = "[<org>/]<token-id-or-name>";
-const USAGE_HINT = `sentry token delete ${USAGE}`;
+const usageHint = () => sentry`token delete ${USAGE}`;
 const log = logger.withTag("token.delete");
 
 /** Sentry org (`sntrys_`) and user (`sntryu_`) auth token values. */
@@ -108,19 +109,19 @@ export function parseTokenArguments(args: readonly string[]): TokenInput {
   if (args.some((arg) => TOKEN_VALUE_PATTERN.test(arg))) {
     throw new ValidationError(
       "That looks like a token value, not a token ID or name. Use the ID " +
-        "or name from 'sentry token list'.",
+        `or name from '${sentry`token list`}'.`,
       "token-id",
     );
   }
   const { target, ids, name, baseUrl, warnings } = parseIdArguments(
     args,
     ID_KINDS.token,
-    { usageHint: USAGE_HINT, multiple: true },
+    { usageHint: usageHint(), multiple: true },
   );
   // Never choose one of several tokens for a destructive action.
   if (ids.length > 1) {
     throw new ValidationError(
-      `Revoke one token at a time, not ${ids.length}: ${USAGE_HINT}`,
+      `Revoke one token at a time, not ${ids.length}: ${usageHint()}`,
       "token-id",
     );
   }
@@ -137,14 +138,14 @@ export function parseTokenArguments(args: readonly string[]): TokenInput {
     const scoped = parseOrgScopedArg(
       unscopedName,
       "Token ID or name",
-      USAGE_HINT,
+      usageHint(),
     );
     orgArg = scoped.orgSlug;
     ref = { name: scoped.value };
   } else if (name !== undefined) {
     ref = { name };
   }
-  const org = parseOrgInput(orgArg, USAGE_HINT);
+  const org = parseOrgInput(orgArg, usageHint());
   return { ...ref, org: baseUrl ? { ...org, baseUrl } : org, warnings };
 }
 
@@ -167,7 +168,7 @@ async function findToken(org: string, ref: TokenRef): Promise<OrgAuthToken> {
     throw new ResolutionError(
       `Org auth token ${label}`,
       `not found in ${org}`,
-      `sentry token list ${org}`,
+      sentry`token list ${org}`,
       ["It may already be revoked."],
     );
   }
@@ -176,7 +177,7 @@ async function findToken(org: string, ref: TokenRef): Promise<OrgAuthToken> {
     const ids = matches.map((t) => t.id).join(", ");
     throw new ValidationError(
       `${matches.length} org auth tokens in ${org} are named '${ref.name}' ` +
-        `(IDs ${ids}). Pass the ID instead: sentry token delete ${org}/<token-id>`,
+        `(IDs ${ids}). Pass the ID instead: ${sentry`token delete ${org}/<token-id>`}`,
       "token-id",
     );
   }
@@ -200,19 +201,19 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Revoke token ID 12345 (auto-detect org)",
-        command: "sentry token delete 12345",
+        run: "token delete 12345",
       },
       {
         description: "Revoke the token named github-actions",
-        command: "sentry token delete my-org/github-actions",
+        run: "token delete my-org/github-actions",
       },
       {
         description: "Preview revoking token ID 12345",
-        command: "sentry token delete my-org/12345 --dry-run",
+        run: "token delete my-org/12345 --dry-run",
       },
       {
         description: "Revoke without the confirmation prompt",
-        command: "sentry token delete my-org/12345 --yes",
+        run: "token delete my-org/12345 --yes",
       },
     ],
   },
@@ -233,7 +234,7 @@ export const deleteCommand = buildDeleteCommand({
         const { org } = await resolveOrgInput(
           input.org,
           context.cwd,
-          USAGE_HINT,
+          usageHint(),
         );
         const ref: TokenRef =
           input.id === undefined ? { name: input.name } : { id: input.id };

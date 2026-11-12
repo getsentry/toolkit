@@ -14,6 +14,7 @@ import { captureEnvTokenHost } from "../../src/lib/env-token-host.js";
 import {
   HostScopeError,
   MalformedAuthTokenError,
+  ResolutionError,
   ValidationError,
 } from "../../src/lib/errors.js";
 import type { McpServerConfig } from "../../src/lib/mcp/config.js";
@@ -57,6 +58,26 @@ vi.mock("../../src/lib/db/auth.js", async (importOriginal) => {
   };
 });
 
+/** The startup scope check; it would otherwise call Sentry. */
+const scopeChecks = vi.hoisted(() => ({
+  calls: [] as { organizationSlug?: string; accessToken: string }[],
+  result: undefined as Error | undefined,
+}));
+
+vi.mock("../../src/lib/mcp/scope-check.js", () => ({
+  assertMcpScopeExists: vi.fn(
+    async (config: { organizationSlug?: string }, accessToken: string) => {
+      scopeChecks.calls.push({
+        organizationSlug: config.organizationSlug,
+        accessToken,
+      });
+      if (scopeChecks.result) {
+        throw scopeChecks.result;
+      }
+    },
+  ),
+}));
+
 vi.mock("../../src/lib/mcp/server.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/lib/mcp/server.js")>()),
   serveMcpStdio: vi.fn(
@@ -82,6 +103,8 @@ let workingDir = process.cwd();
 
 beforeEach(async () => {
   served.calls = [];
+  scopeChecks.calls = [];
+  scopeChecks.result = undefined;
   workingDir = process.cwd();
   await resetHostScopingState();
 });
@@ -189,6 +212,32 @@ describe("serveMcp scope", () => {
     const { config } = await start(["acme/web"]);
     expect(config.organizationSlug).toBe("acme");
     expect(config.projectSlug).toBe("web");
+    expect(scopeChecks.calls).toEqual([
+      { organizationSlug: "acme", accessToken: "cli-session-token" },
+    ]);
+  });
+
+  test("does not serve a scope Sentry reports as not found", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+    scopeChecks.result = new ResolutionError(
+      "Organization 'missing' (MCP server scope 'missing/')",
+      "not found",
+      "Check the <org>/ argument",
+    );
+
+    await expect(serve(["missing/"])).rejects.toBe(scopeChecks.result);
+    expect(served.calls).toHaveLength(0);
+  });
+
+  test("checks the scope with a static token", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+
+    await start(["--org", "acme"]);
+    expect(scopeChecks.calls).toEqual([
+      { organizationSlug: "acme", accessToken: "env-token" },
+    ]);
   });
 
   test("refuses a target that conflicts with --org before serving", async () => {
@@ -516,6 +565,10 @@ describe("serveMcp account routing", () => {
 
     expect(options.credentialRouter).toBeUndefined();
     expect(options.accessToken).toBe("b-token");
+    // The scope is checked with the account the org routed to.
+    expect(scopeChecks.calls).toEqual([
+      { organizationSlug: "b-org", accessToken: "b-token" },
+    ]);
     await expect(options.refreshAccessToken?.()).resolves.toBe(
       "b-token-rotated",
     );

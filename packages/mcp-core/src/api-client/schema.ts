@@ -164,6 +164,8 @@ export const DashboardWidgetQuerySchema = z
     name: z.string(),
     fields: z.array(z.string()),
     aggregates: z.array(z.string()),
+    // Keyed by aggregate position; omitted by servers that predate the field.
+    transformations: z.record(z.string(), z.array(z.string())).optional(),
     columns: z.array(z.string()),
     fieldAliases: z.array(z.string()),
     conditions: z.string(),
@@ -858,6 +860,7 @@ export const IssueSchema = z
     platform: z.string().nullable().optional(),
     status: z.string(),
     substatus: z.string().nullable().optional(),
+    priority: z.string().nullable().optional(),
     culprit: z.string().nullable(),
     type: z
       .union([
@@ -875,6 +878,9 @@ export const IssueSchema = z
         title: z.string().nullable().optional(),
         location: z.string().nullable().optional(),
         value: z.string().nullable().optional(),
+        // Feedback issues carry who submitted them.
+        name: z.string().nullable().optional(),
+        contact_email: z.string().nullable().optional(),
       })
       .optional(),
     seerFixabilityScore: z.number().nullable().optional(),
@@ -1067,7 +1073,7 @@ const BaseEventSchema = z.object({
     ]),
   ),
   contexts: z
-    .record(
+    .partialRecord(
       z.string(),
       z
         .object({
@@ -1353,6 +1359,7 @@ export const AutofixRunStateSchema = z.object({
       run_id: z.number(),
       updated_at: z.string().nullable().optional(),
       status: AutofixStatusSchema,
+      failure_reason: z.string().nullable().optional(),
       blocks: z.array(AutofixBlockSchema).default([]),
       pending_user_input: z.unknown().nullable().optional(),
       repo_pr_states: z
@@ -2140,9 +2147,9 @@ export const ProfileChunkSchema = z
     chunk_id: z.string(),
     profiler_id: z.string().optional(),
     event_id: z.string().optional(),
-    environment: z.preprocess((value) => value ?? null, z.string().nullable()),
+    environment: z.preprocess((value) => value || null, z.string().nullable()),
     platform: z.preprocess((value) => value ?? "unknown", z.string()),
-    release: z.preprocess((value) => value ?? "unknown", z.string()),
+    release: z.preprocess((value) => value || null, z.string().nullable()),
     version: z.preprocess((value) => value ?? "2", z.string()),
     profile: z.object({
       frames: z.array(ProfileFrameSchema),
@@ -2386,6 +2393,15 @@ export const AgenticOnboardingStageStatusUpdateSchema = z.enum([
   "failed",
 ]);
 
+const AgenticOnboardingConnectExtraSchema = z
+  .object({ method: z.enum(["cli", "mcp"]) })
+  .strict();
+
+export const AgenticOnboardingConnectStageInputSchema = z.enum([
+  "connect_agent",
+  "connect_mcp",
+]);
+
 const AgenticOnboardingCreateProjectExtraSchema = z
   .object({
     projectSlugs: z.array(z.string().trim().min(1)),
@@ -2400,6 +2416,7 @@ const AgenticOnboardingVerificationErrorExtraSchema = z
 
 const AgenticOnboardingStageWithoutExtraSchema =
   AgenticOnboardingStageSchema.exclude([
+    "connect_mcp",
     "create_project",
     "receive_verification_error",
   ]);
@@ -2410,6 +2427,10 @@ const AgenticOnboardingStageStateBaseSchema = z.object({
 });
 
 export const AgenticOnboardingStageStateSchema = z.discriminatedUnion("stage", [
+  AgenticOnboardingStageStateBaseSchema.extend({
+    stage: z.literal("connect_mcp"),
+    extra: AgenticOnboardingConnectExtraSchema.nullable(),
+  }),
   AgenticOnboardingStageStateBaseSchema.extend({
     stage: z.literal("create_project"),
     extra: AgenticOnboardingCreateProjectExtraSchema.nullable(),
@@ -2451,6 +2472,10 @@ const AgenticOnboardingStatusUpdateBaseSchema = z.object({
 export const AgenticOnboardingStatusUpdateSchema = z.discriminatedUnion(
   "stage",
   [
+    AgenticOnboardingStatusUpdateBaseSchema.extend({
+      stage: AgenticOnboardingConnectStageInputSchema,
+      extra: AgenticOnboardingConnectExtraSchema.optional(),
+    }),
     AgenticOnboardingStatusUpdateBaseSchema.extend({
       stage: z.literal("create_project"),
       extra: AgenticOnboardingCreateProjectExtraSchema.optional(),

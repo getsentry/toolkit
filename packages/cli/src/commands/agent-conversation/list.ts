@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { getProject, listConversations } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import { parseText, textParser } from "../../lib/completion-target.js";
 import {
@@ -137,54 +138,51 @@ export const listCommand = buildListCommand("agent-conversation", {
     examples: [
       {
         description: "List recent agent conversations",
-        command: "sentry agent-conversation list",
+        run: "agent-conversation list",
       },
       {
         description: "Explicit organization (all projects)",
-        command: "sentry agent-conversation list my-org/",
+        run: "agent-conversation list my-org/",
       },
       {
         description: "One project",
-        command: "sentry agent-conversation list my-org/my-project",
+        run: "agent-conversation list my-org/my-project",
       },
       {
         description: "Find a project across organizations",
-        command: "sentry agent-conversation list my-project",
+        run: "agent-conversation list my-project",
       },
       {
         description: "Show more, last 24 hours",
-        command: "sentry agent-conversation list --limit 50 --period 24h",
+        run: "agent-conversation list --limit 50 --period 24h",
       },
       {
         description: "Sort by highest error count",
-        command: "sentry agent-conversation list --sort -conversation.errors",
+        run: "agent-conversation list --sort -conversation.errors",
       },
       {
         description: "Sort by lowest total cost",
-        command: "sentry agent-conversation list --sort conversation.totalCost",
+        run: "agent-conversation list --sort conversation.totalCost",
       },
       {
         description: "Find conversations with errors",
-        command: 'sentry agent-conversation list -q "conversation.errors:>0"',
+        run: 'agent-conversation list -q "conversation.errors:>0"',
       },
       {
         description: "Find conversations for an agent",
-        command:
-          'sentry agent-conversation list -q "gen_ai.agent.name:my-agent"',
+        run: 'agent-conversation list -q "gen_ai.agent.name:my-agent"',
       },
       {
         description: "Find conversations with more than two tool calls",
-        command:
-          'sentry agent-conversation list -q "conversation.toolCalls:>2"',
+        run: 'agent-conversation list -q "conversation.toolCalls:>2"',
       },
       {
         description: "Find conversations that used a tool",
-        command:
-          'sentry agent-conversation list -q "gen_ai.tool.name:search_issues"',
+        run: 'agent-conversation list -q "gen_ai.tool.name:search_issues"',
       },
       {
         description: "Paginate through project results",
-        command: "sentry agent-conversation list my-org/my-project -c next",
+        run: "agent-conversation list my-org/my-project -c next",
       },
     ],
   },
@@ -302,8 +300,8 @@ export const listCommand = buildListCommand("agent-conversation", {
       hint: paginationHint({
         hasMore,
         hasPrev: !!hasPrev,
-        nextHint: `sentry agent-conversation list ${scope} -c next${flagSuffix}`,
-        prevHint: `sentry agent-conversation list ${scope} -c prev${flagSuffix}`,
+        nextHint: sentry`agent-conversation list ${scope} -c next${flagSuffix}`,
+        prevHint: sentry`agent-conversation list ${scope} -c prev${flagSuffix}`,
       }),
     };
   },

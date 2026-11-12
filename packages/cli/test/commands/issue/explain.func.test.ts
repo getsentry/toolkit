@@ -20,7 +20,7 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
 import { explainCommand } from "../../../src/commands/issue/explain.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
-import { ContextError } from "../../../src/lib/errors.js";
+import { ApiError, ContextError } from "../../../src/lib/errors.js";
 import type { IssueArgument } from "../../../src/lib/issue-arguments.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
 
@@ -170,6 +170,24 @@ describe("issue explain multiple IDs", () => {
     await expect(
       func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1", "IOS-2"),
     ).rejects.toBe(error);
+  });
+
+  test("throws out_of_credits when Sentry refuses the analysis with a 402", async () => {
+    resolveSpy.mockResolvedValue({ org: "test-org", issueId: "1" });
+    analyzeSpy.mockRejectedValue(
+      new ApiError(
+        "Failed to start root cause analysis: 402 Payment Required",
+        402,
+        "Your organization does not have enough credits to start an Autofix run.",
+        undefined,
+        { code: "seer_out_of_credits" },
+      ),
+    );
+
+    const func = await explainCommand.loader();
+    await expect(
+      func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1"),
+    ).rejects.toMatchObject({ reason: "out_of_credits", orgSlug: "test-org" });
   });
 
   test("fails to parse when no issue ID is provided", async () => {

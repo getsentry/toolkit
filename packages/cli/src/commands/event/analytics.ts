@@ -56,20 +56,19 @@ export const analyticsCommand = buildCommand({
     examples: [
       {
         description: "Accepted and dropped event analytics for a project",
-        command: "sentry event analytics my-org/my-project",
+        run: "event analytics my-org/my-project",
       },
       {
         description: "Analytics for a different dataset",
-        command: "sentry event analytics my-org/my-project --dataset spans",
+        run: "event analytics my-org/my-project --dataset spans",
       },
       {
         description: "Widen the time range",
-        command: "sentry event analytics my-org/my-project --period 7d",
+        run: "event analytics my-org/my-project --period 7d",
       },
       {
         description: "Select specific JSON fields",
-        command:
-          "sentry event analytics my-org/my-project --json --fields outcome,reason,events",
+        run: "event analytics my-org/my-project --json --fields outcome,reason,events",
       },
     ],
   },

@@ -1,11 +1,12 @@
 # Stdio Authentication
 
-How the stdio MCP server (`@sentry/mcp-server`) authenticates with Sentry.
+How the stdio MCP server (`sentry mcp`, also published as
+`@sentry/mcp-server`) authenticates with Sentry.
 
-Sign in once with `npx -y @sentry/mcp-server auth login`. The package runs
-the Sentry CLI's own `auth` commands and stores the session in the CLI's
-credential store, so the package and the CLI (which runs the same server as
-`sentry mcp`) share one login.
+Sign in once with `sentry auth login`, then run `sentry mcp`. The legacy
+`@sentry/mcp-server` package runs the CLI's own `auth` commands and stores the
+session in the CLI's credential store, so `npx -y @sentry/mcp-server auth
+login` and `sentry auth login` share one login.
 
 ## Credential Sources
 
@@ -34,8 +35,8 @@ with environment variables:
 
 ```json
 {
-  "command": "npx",
-  "args": ["-y", "@sentry/mcp-server@latest"],
+  "command": "sentry",
+  "args": ["mcp"],
   "env": {
     "SENTRY_AUTH_TOKEN": "sntryu_..."
   }
@@ -107,7 +108,7 @@ server matches the target and refused when it does not.
 
 The credential store can hold several accounts. The server starts with one:
 with `SENTRY_HOST`/`SENTRY_URL` set, a stored account on that server;
-otherwise the active account (`npx -y @sentry/mcp-server auth switch`). Calls
+otherwise the active account (`sentry auth switch`). Calls
 that target no organization use that startup account, and another process
 switching accounts does not change it.
 
@@ -135,12 +136,21 @@ organization once, at startup, and every call uses it. To use accounts on
 different servers at once (say, sentry.io and a self-hosted server), configure
 one MCP server per host via `SENTRY_HOST`.
 
+With a scope (`<org>/`, `<org>/<project>`, `--org`, `--project`), the server
+checks it with that credential before it connects: one request for the
+organization, then, for a project, one for the project on the organization's
+region (`links.regionUrl`). When Sentry answers 404, the server prints
+which part of the scope was not found on stderr and exits with the resolution
+exit code (23), instead of failing every call with a generic 404. Any other
+answer (401, 403, 5xx), a network failure, or no answer within 3 seconds starts
+the server as before.
+
 ## Upgrading From Older `@sentry/mcp-server` Versions
 
 Older releases had their own device code flow, bundled client ID, and token
 cache (`~/.sentry/mcp.json`, `SENTRY_MCP_AUTH_CACHE`). Current releases do not
-read that cache. Run `npx -y @sentry/mcp-server auth login` once, or set
-`SENTRY_AUTH_TOKEN`. `--access-token` / `SENTRY_ACCESS_TOKEN` keep working but are
+read that cache. Run `sentry auth login` (or `npx -y @sentry/mcp-server auth
+login`) once, or set `SENTRY_AUTH_TOKEN`. `--access-token` / `SENTRY_ACCESS_TOKEN` keep working but are
 deprecated (see above). `auth status`, `auth list`,
 `auth switch`, and `auth logout` work in the package as in the CLI.
 
@@ -152,6 +162,7 @@ deprecated (see above). `auth status`, `auth list`,
 | `packages/cli/src/commands/mcp.ts`                                  | `mcp` command flags and help                                  |
 | `packages/cli/src/lib/mcp/server.ts`                                | Agent providers, telemetry, and stdio startup                 |
 | `packages/cli/src/lib/mcp/account-router.ts`                        | Per-call routing between stored accounts                      |
+| `packages/cli/src/lib/mcp/scope-check.ts`                           | Startup check that the `<org>/[<project>]` scope exists       |
 | `packages/mcp-core/src/internal/tool-helpers/credential-routing.ts` | Applies `ServerContext.credentialRouter` to tool calls        |
 | `packages/cli/src/lib/db/auth.ts`                                   | CLI token storage and `refreshToken()`                        |
 | `packages/cli/src/lib/token-host.ts`                                | Host-scoping checks                                           |

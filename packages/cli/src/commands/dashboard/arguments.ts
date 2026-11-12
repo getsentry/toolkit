@@ -30,6 +30,7 @@ import {
   resolveDashboardId,
   resolveOrgFromTarget,
 } from "./resolve.js";
+import type { LazyCommand } from "../../lib/app-identity.js";
 
 const log = logger.withTag("dashboard");
 
@@ -152,16 +153,16 @@ async function resolveWholeTitle(
  */
 export function dashboardArguments(options: {
   readonly placeholder: string;
-  readonly usageHint: string;
+  readonly usageHint: LazyCommand;
 }) {
   const { placeholder, usageHint } = options;
   return boundArguments({
     placeholder,
     brief: "[<org/project>] <dashboard-id-or-title>",
     kind: DASHBOARD_TARGET,
-    parse: (args) => parseDashboardInput(args, usageHint),
+    parse: (args) => parseDashboardInput(args, usageHint()),
     resolve: (input: DashboardInput, context: SentryContext) =>
-      resolveDashboardInput(input, context.cwd, usageHint),
+      resolveDashboardInput(input, context.cwd, usageHint()),
   });
 }
 
@@ -199,7 +200,7 @@ function parseDashboardListInput(args: readonly string[]): DashboardListInput {
  *
  * @param usageHint - Usage shown when the org cannot be found
  */
-export function dashboardListArguments(usageHint: string) {
+export function dashboardListArguments(usageHint: LazyCommand) {
   return boundArguments({
     placeholder: "org/title-filter",
     brief: "[<org/project>] [<name-glob>]",
@@ -207,7 +208,7 @@ export function dashboardListArguments(usageHint: string) {
     parse: parseDashboardListInput,
     resolve: (input: DashboardListInput, context: SentryContext) => {
       applyInputContext(input);
-      return resolveOrgFromTarget(input.target, context.cwd, usageHint);
+      return resolveOrgFromTarget(input.target, context.cwd, usageHint());
     },
   });
 }

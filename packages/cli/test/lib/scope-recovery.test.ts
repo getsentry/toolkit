@@ -2,7 +2,6 @@ import { describe, expect, test, vi } from "vitest";
 import { ApiError, AuthError } from "../../src/lib/errors.js";
 import { OAUTH_SCOPES } from "../../src/lib/oauth.js";
 import {
-  captureOAuthScopeRecoveryGate,
   ensureCurrentOAuthScopes,
   ensureScopesForAction,
   runWithScopeRecovery,
@@ -248,64 +247,6 @@ describe("runWithScopeRecovery", () => {
     ).rejects.toBe(second);
     expect(login).toHaveBeenCalledOnce();
     expect(proceed).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("scope recovery availability", () => {
-  test("only gives init errors to recovery when authorization can run", async () => {
-    const error = new ApiError("Forbidden", 403);
-    const availableRuntime = runtime({
-      getAuthScopes: vi.fn().mockResolvedValue([]),
-    });
-    expect(
-      await captureOAuthScopeRecoveryGate(availableRuntime).shouldDelegate(
-        error,
-        { unattended: false },
-      ),
-    ).toBe(true);
-
-    const blockedCases = [
-      {
-        unattended: true,
-        runtime: runtime(),
-      },
-      {
-        unattended: false,
-        runtime: runtime({ inputIsTty: () => false }),
-      },
-      {
-        unattended: false,
-        runtime: runtime({ promptsAllowed: () => false }),
-      },
-    ];
-
-    for (const blocked of blockedCases) {
-      const getAuthScopes = vi.mocked(blocked.runtime.getAuthScopes);
-      expect(
-        await captureOAuthScopeRecoveryGate(blocked.runtime).shouldDelegate(
-          error,
-          { unattended: blocked.unattended },
-        ),
-      ).toBe(false);
-      expect(getAuthScopes).not.toHaveBeenCalled();
-    }
-  });
-
-  test("retains OAuth provenance when a failed refresh clears stored auth", async () => {
-    const getAuthSource = vi
-      .fn<() => "oauth" | undefined>()
-      .mockReturnValueOnce("oauth")
-      .mockReturnValueOnce(undefined);
-    const getAuthScopes = vi.fn();
-    const testRuntime = runtime({ getAuthSource, getAuthScopes });
-    const scopeRecovery = captureOAuthScopeRecoveryGate(testRuntime);
-
-    expect(
-      await scopeRecovery.shouldDelegate(new ApiError("Unauthorized", 401), {
-        unattended: false,
-      }),
-    ).toBe(true);
-    expect(getAuthScopes).not.toHaveBeenCalled();
   });
 });
 

@@ -47,6 +47,7 @@ import {
   getAutofixArtifactSummaries,
   getStatusDisplayName,
   isTerminalStatus,
+  SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE,
 } from "./tool-helpers/seer";
 import { formatToolCallInstruction } from "./tool-helpers/tool-call-formatting";
 import { isPlainObject } from "./type-guards";
@@ -236,11 +237,7 @@ export function formatEventOutput(
   },
 ) {
   let output = "";
-  const eventUser = (
-    event as Event & {
-      user?: z.infer<typeof EventSchema>["user"];
-    }
-  ).user;
+  const eventUser = event.user;
   const eventWithReplayMetadataStripped = options?.replaySummary
     ? stripReplayMetadata(event)
     : event;
@@ -256,16 +253,6 @@ export function formatEventOutput(
       availableToolNames: options.replaySummary.availableToolNames,
       directToolNames: options.replaySummary.directToolNames,
     });
-  }
-
-  // Check if entries exist (may be undefined for unsupported event types)
-  if (!eventToRender.entries || !Array.isArray(eventToRender.entries)) {
-    // For unsupported event types, just show tags and contexts
-    output += formatEventUser(eventUser);
-    output += formatTags(eventToRender.tags);
-    output += formatContext(eventToRender.context);
-    output += formatContexts(eventToRender.contexts);
-    return output;
   }
 
   // Look for the primary error information
@@ -418,13 +405,7 @@ function formatExceptionInterfaceOutput(
     // Add language-specific chain indicator for multiple exceptions
     if (isChained && index > 0) {
       parts.push("");
-      parts.push(
-        getExceptionChainMessage(
-          event.platform || null,
-          index,
-          exceptions.length,
-        ),
-      );
+      parts.push(getExceptionChainMessage(event.platform || null, index));
       parts.push("");
     }
 
@@ -441,7 +422,7 @@ function formatExceptionInterfaceOutput(
       parts.push("");
     }
 
-    if (!exception.stacktrace || !exception.stacktrace.frames) {
+    if (!exception.stacktrace) {
       parts.push("**Stacktrace:**");
       parts.push("```");
       parts.push("No stacktrace available");
@@ -494,7 +475,6 @@ function formatExceptionInterfaceOutput(
 function getExceptionChainMessage(
   platform: string | null,
   index: number,
-  totalExceptions: number,
 ): string {
   // Default message for unknown platforms
   const defaultMessage =
@@ -692,7 +672,7 @@ function formatThreadTable(
     "| Thread ID | Name | State | Flags | Frames |",
     "| --- | --- | --- | --- | ---: |",
     ...threads.map((thread) => {
-      const frameCount = thread.stacktrace?.frames?.length ?? 0;
+      const frameCount = thread.stacktrace?.frames.length ?? 0;
       return `| ${getThreadDisplayValue(thread.id)} | ${getThreadDisplayValue(thread.name)} | ${getThreadDisplayValue(thread.state)} | ${getThreadFlags(thread)} | ${frameCount} |`;
     }),
   ];
@@ -1085,7 +1065,7 @@ function buildTraceSpanTree(
     if (spanId && spanId.length > 0) {
       spanMap.set(spanId, span);
     }
-    for (const child of span.children ?? []) {
+    for (const child of span.children) {
       if (isTraceSpan(child)) {
         indexSpan(child);
       }
@@ -1176,7 +1156,7 @@ function convertTraceSpanToPerformanceSpan(
     level,
   };
 
-  for (const child of span.children ?? []) {
+  for (const child of span.children) {
     if (!isTraceSpan(child)) {
       continue;
     }
@@ -1275,8 +1255,8 @@ function renderPerformanceSpanTree(spans: PerformanceSpan[]): string[] {
   function renderSpan(span: PerformanceSpan, prefix = "", isLast = true): void {
     const connector = prefix === "" ? "" : isLast ? "└─ " : "├─ ";
 
-    const displayName = span.description?.trim() || span.op || "unnamed";
-    const spanId = span.span_id ?? "unknown";
+    const displayName = span.description.trim() || span.op || "unnamed";
+    const spanId = span.span_id;
     const durationDisplay =
       span.duration > 0 ? `${Math.round(span.duration)}ms` : "unknown";
 
@@ -1464,7 +1444,7 @@ function formatN1QueryEvidence(
   // Format parent span info if available
   if (evidenceData.parentSpan) {
     parts.push("**Parent Operation:**");
-    parts.push(`${evidenceData.parentSpan}`);
+    parts.push(evidenceData.parentSpan);
     parts.push("");
   }
 
@@ -1527,7 +1507,7 @@ function formatN1QueryEvidence(
     } else if (isValidSpanArray(spansData)) {
       // Only show offender summaries if we have spans data but couldn't build a tree
       const offenderSummaries = buildOffenderSummaries(
-        spansData as RawSpan[],
+        spansData,
         offenderSpanIds,
       );
 
@@ -1553,16 +1533,13 @@ function formatN1QueryEvidence(
  * This is lower priority as the generic evidenceDisplay fields usually
  * provide sufficient information for slow query issues.
  */
-function formatSlowDbQueryEvidence(
-  evidenceData: SlowDbEvidenceData,
-  spansData: unknown,
-): string {
+function formatSlowDbQueryEvidence(evidenceData: SlowDbEvidenceData): string {
   const parts: string[] = [];
 
   // Show parent span if available (generic field that applies to slow queries)
   if (evidenceData.parentSpan) {
     parts.push("**Parent Operation:**");
-    parts.push(`${evidenceData.parentSpan}`);
+    parts.push(evidenceData.parentSpan);
     parts.push("");
   }
 
@@ -1632,7 +1609,7 @@ function formatPerformanceIssueOutput(
       }
 
       case KNOWN_PERFORMANCE_ISSUE_TYPES.SLOW_DB_QUERY: {
-        const result = formatSlowDbQueryEvidence(evidenceData, spansData);
+        const result = formatSlowDbQueryEvidence(evidenceData);
         if (result) parts.push(result);
         break;
       }
@@ -1702,7 +1679,7 @@ type MetricIssueCondition = MetricIssueEvidenceData["conditions"][number];
 type Unverified<T> = { readonly [K in keyof T]?: unknown };
 
 function asUnverified<T>(value: unknown): Unverified<T> | undefined {
-  return isPlainObject(value) ? (value as Unverified<T>) : undefined;
+  return isPlainObject(value) ? value : undefined;
 }
 
 type MetricAlertQuery = {
@@ -2073,7 +2050,7 @@ function formatGenericEventOutput(event: Event): string {
     for (const display of occurrence.evidenceDisplay) {
       if (display.important) {
         parts.push(`**${display.name}:**`);
-        parts.push(`${display.value}`);
+        parts.push(display.value);
         parts.push("");
       }
     }
@@ -2150,7 +2127,7 @@ function formatContexts(contexts: z.infer<typeof EventSchema>["contexts"]) {
   )
     .map(
       ([name, data]) =>
-        `**${name}**\n${Object.entries(data)
+        `**${name}**\n${Object.entries(data ?? {})
           .filter(([key, _]) => key !== "type")
           .map(([key, value]) => {
             return `${key}: ${JSON.stringify(value, undefined, 2)}`;
@@ -2200,6 +2177,9 @@ function formatSeerSummary(autofixState: AutofixRunState | undefined): string {
   if (autofix.status === "error") {
     parts.push("");
     parts.push("**Status:** Analysis failed.");
+    if (autofix.failure_reason === "out_of_credits") {
+      parts.push(SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE);
+    }
   } else if (autofix.status === "awaiting_user_input") {
     parts.push("");
     parts.push("**Status:** Analysis paused - additional information needed.");
@@ -2585,7 +2565,7 @@ export function buildIssueResponseNotes({
     fallbackInstruction: "Issue event search is not available in this session",
   });
   notes.push(`Issue event search: ${issueEventSearchInstruction}`);
-  const hasMultipleThreads = event.entries?.some((entry) => {
+  const hasMultipleThreads = event.entries.some((entry) => {
     if (entry.type !== "threads") {
       return false;
     }
@@ -2808,9 +2788,7 @@ function formatIssueReplayOutput({
 }
 
 export function getReplayIdFromEvent(event: Event): string | null {
-  const replayContext = event.contexts?.replay as
-    | Record<string, unknown>
-    | undefined;
+  const replayContext = event.contexts?.replay;
   const replayContextId =
     typeof replayContext?.replay_id === "string"
       ? replayContext.replay_id

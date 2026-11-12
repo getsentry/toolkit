@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SentryApiService } from "../api-client";
-import type { AutofixRunState, Event, Issue } from "../api-client/types";
+import type { Event, Issue } from "../api-client/types";
 import {
   formatEventOutput,
   formatFrameHeader,
@@ -19,22 +19,6 @@ import {
 } from "./test-fixtures";
 
 // Helper functions to reduce duplication in event creation
-function createPythonExceptionEvent(
-  errorType: string,
-  errorMessage: string,
-  frames: any[],
-): Event {
-  return new EventBuilder("python")
-    .withException(
-      createExceptionValue({
-        type: errorType,
-        value: errorMessage,
-        stacktrace: createStackTrace(frames),
-      }),
-    )
-    .build();
-}
-
 function createSimpleExceptionEvent(
   platform: string,
   errorType: string,
@@ -291,7 +275,7 @@ describe("formatIssueOutput", () => {
             },
           ],
         },
-      } as AutofixRunState,
+      },
     });
 
     expect(output).toContain("**Summary:**");

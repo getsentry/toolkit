@@ -33,7 +33,7 @@ describe("listIssueEvents pagination", () => {
   test("sends per_page capped at the requested limit", async () => {
     let capturedUrl = "";
     globalThis.fetch = mockFetch(async (input, init) => {
-      capturedUrl = new Request(input!, init).url;
+      capturedUrl = new Request(input, init).url;
       return new Response(JSON.stringify(makeEvents(2)), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -48,7 +48,7 @@ describe("listIssueEvents pagination", () => {
   test("caps per_page at API_MAX_PER_PAGE for very large limits", async () => {
     let capturedUrl = "";
     globalThis.fetch = mockFetch(async (input, init) => {
-      capturedUrl = new Request(input!, init).url;
+      capturedUrl = new Request(input, init).url;
       return new Response(JSON.stringify(makeEvents(10)), {
         status: 200,
         headers: { "Content-Type": "application/json" },

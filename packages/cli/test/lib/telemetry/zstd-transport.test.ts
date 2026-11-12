@@ -100,7 +100,7 @@ function buildMockHttpModule(response: MockResponseShape): {
       return req;
     },
   };
-  return { httpModule: httpModule as never, captured };
+  return { httpModule: httpModule, captured };
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -300,7 +300,7 @@ describe("makeCompressedTransport", () => {
     };
     const transport = makeCompressedTransport({
       ...BASE_OPTIONS,
-      httpModule: throwingMod as never,
+      httpModule: throwingMod,
     });
     const envelope: any = createEnvelope({} as any, [
       [{ type: "event" } as any, { data: "x".repeat(4096) } as any],

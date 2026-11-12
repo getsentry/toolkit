@@ -4,6 +4,14 @@ import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import searchIssues from "./search-issues";
 import { prepareToolParams } from "../catalog-runtime/availability";
+import {
+  type SearchIssuesStructuredContent,
+  searchIssuesOutputSchema,
+} from "../support/search-issues/results";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content";
 import type { ServerContext } from "../../types";
 
 // Mock the AI SDK
@@ -24,6 +32,45 @@ vi.mock("ai", async (importOriginal) => {
     Output: { object: vi.fn(() => ({})) },
   };
 });
+
+const SEER_FEATURES = [
+  "mcp-search-events-seer-translate",
+  "gen-ai-issues-search",
+];
+
+// Sentry only serializes features when explicitly requested.
+const mockOrganization = (
+  features: string[],
+  { hideAiFeatures = false } = {},
+) =>
+  http.get(
+    "https://sentry.io/api/0/organizations/:org/",
+    ({ request, params }) =>
+      HttpResponse.json({
+        id: "1",
+        slug: params.org,
+        name: "Test Org",
+        ...(new URL(request.url).searchParams.get("include_feature_flags") ===
+        "1"
+          ? { features }
+          : {}),
+        hideAiFeatures,
+      }),
+  );
+
+const EMPTY_NOTE =
+  "No issues found matching your search criteria. Try adjusting your search criteria or time range.";
+
+async function runSearch(...args: Parameters<typeof searchIssues.handler>) {
+  const result = await searchIssues.handler(...args);
+  assertStructuredOnlyResult(result);
+  const structuredContent =
+    getStructuredContent<SearchIssuesStructuredContent>(result);
+  expect(searchIssuesOutputSchema.parse(structuredContent)).toEqual(
+    structuredContent,
+  );
+  return structuredContent;
+}
 
 describe("search_issues", () => {
   const mockGenerateText = vi.mocked(generateText);
@@ -70,6 +117,8 @@ describe("search_issues", () => {
     process.env.OPENAI_API_KEY = "test-key";
     process.env.OPENROUTER_API_KEY = "";
     mockGenerateText.mockResolvedValue(mockAIResponse());
+    // Seer translation stays off unless a test enables it.
+    mswServer.use(mockOrganization([]));
   });
 
   it.each([null, "https://tenant.my.sentry.io"])(
@@ -86,7 +135,7 @@ describe("search_issues", () => {
         }),
       );
 
-      const result = await searchIssues.handler(
+      const result = await runSearch(
         {
           organizationSlug: "product-org",
           query: "is:unresolved",
@@ -103,13 +152,15 @@ describe("search_issues", () => {
       expect(requests).toEqual([
         "https://tenant.my.sentry.io/api/0/organizations/product-org/issues/?limit=1&sort=date&statsPeriod=24h&query=is%3Aunresolved&project=123&collapse=unhandled",
       ]);
-      expect(result).toContain(
+      expect(result.url).toBe(
         "https://tenant.my.sentry.io/organizations/product-org/issues/?project=123&query=is%3Aunresolved",
       );
-      expect(result).toContain(
-        "[WEB-123](https://tenant.my.sentry.io/organizations/product-org/issues/WEB-123)",
+      expect(result.issues[0]?.url).toBe(
+        "https://tenant.my.sentry.io/organizations/product-org/issues/WEB-123",
       );
-      expect(result).not.toContain("https://product-org.sentry.io");
+      expect(JSON.stringify(result)).not.toContain(
+        "https://product-org.sentry.io",
+      );
     },
   );
 
@@ -150,7 +201,7 @@ describe("search_issues", () => {
       ),
     );
 
-    const result = await searchIssues.handler(
+    const result = await runSearch(
       {
         organizationSlug: "test-org",
         query: "unresolved issues",
@@ -164,34 +215,53 @@ describe("search_issues", () => {
       mockContext,
     );
 
+    expect(JSON.stringify(result)).not.toContain("permalink");
     expect(result).toMatchInlineSnapshot(`
-      "# Search Results for "unresolved issues"
-
-      **Suggested presentation:** Cards work well for these issues, with status, assignee, and issue ID links visible.
-
-      **View these results in Sentry**:
-      https://test-org.sentry.io/issues/?query=is%3Aunresolved
-      Please tell the user this dashboard link is available if they want to open the results in Sentry.
-
-      Found **1** issue:
-
-      ## 1. [PROJ-123](https://test-org.sentry.io/issues/PROJ-123)
-
-      **Test Error**
-
-      - **Status**: unresolved
-      - **Users**: 50
-      - **Events**: 100
-      - **First seen**: 2025-01-15
-      - **Last seen**: 2025-01-15
-      - **Culprit**: \`test.function\`
-
-      ## Next Steps
-
-      - Get more details about a specific issue: Use get_sentry_resource with the issue ID or issue URL
-      - Update issue status: Use the Sentry tool \`update_issue\` to resolve or assign issues
-      - View event counts: Use search_errors for aggregated statistics
-      "
+      {
+        "executedSearch": {
+          "period": "30d",
+          "projectSlugOrId": null,
+          "query": "is:unresolved",
+          "sort": "date",
+        },
+        "explanation": null,
+        "issues": [
+          {
+            "assignedTo": null,
+            "assigneeEmail": null,
+            "culprit": "test.function",
+            "firstSeen": "2025-01-15T10:00:00Z",
+            "issueCategory": null,
+            "lastSeen": "2025-01-15T12:00:00Z",
+            "occurrences": 100,
+            "projectSlug": "test-project",
+            "reporter": null,
+            "seerActionability": null,
+            "shortId": "PROJ-123",
+            "status": "unresolved",
+            "substatus": null,
+            "title": "Test Error",
+            "url": "https://test-org.sentry.io/issues/PROJ-123",
+            "usersImpacted": 50,
+          },
+        ],
+        "notes": [],
+        "presentationHint": "Cards work well for these issues, with status, assignee, and issue ID links visible. Please tell the user this dashboard link is available if they want to open the results in Sentry.",
+        "query": "unresolved issues",
+        "suggestedActions": [
+          {
+            "arguments": {
+              "organizationSlug": "test-org",
+              "resourceId": "PROJ-123",
+              "resourceType": "issue",
+            },
+            "reason": "Inspect the first matching issue.",
+            "toolName": "get_sentry_resource",
+            "type": "tool_call",
+          },
+        ],
+        "url": "https://test-org.sentry.io/issues/?query=is%3Aunresolved",
+      }
     `);
   });
 
@@ -218,7 +288,7 @@ describe("search_issues", () => {
       ),
     );
 
-    const result = await searchIssues.handler(
+    const result = await runSearch(
       {
         organizationSlug: "test-org",
         query: "is:unresolved",
@@ -232,7 +302,8 @@ describe("search_issues", () => {
       mockContext,
     );
 
-    expect(result).toContain("No issues found");
+    expect(result.issues).toEqual([]);
+    expect(result.notes).toEqual([EMPTY_NOTE]);
   });
 
   it("falls back when the AI SDK wraps a provider outage in RetryError", async () => {
@@ -263,7 +334,7 @@ describe("search_issues", () => {
       ),
     );
 
-    const result = await searchIssues.handler(
+    const result = await runSearch(
       {
         organizationSlug: "test-org",
         query: "is:unresolved",
@@ -277,7 +348,8 @@ describe("search_issues", () => {
       mockContext,
     );
 
-    expect(result).toContain("No issues found");
+    expect(result.issues).toEqual([]);
+    expect(result.notes).toEqual([EMPTY_NOTE]);
   });
 
   it("should search issues with direct query syntax (no agent)", async () => {
@@ -317,7 +389,7 @@ describe("search_issues", () => {
       ),
     );
 
-    const result = await searchIssues.handler(
+    const result = await runSearch(
       {
         organizationSlug: "test-org",
         query: "is:unresolved is:unassigned",
@@ -333,11 +405,12 @@ describe("search_issues", () => {
 
     // Should NOT have called the AI agent
     expect(mockGenerateText).not.toHaveBeenCalled();
-    expect(result).toContain("PROJ-123");
-    expect(result).toContain("Test Error");
+    expect(result.issues.map(({ shortId, title }) => [shortId, title])).toEqual(
+      [["PROJ-123", "Test Error"]],
+    );
   });
 
-  it("omits update_issue guidance when update_issue is unavailable in the session", async () => {
+  it("suggests only follow-ups the session can call", async () => {
     process.env.OPENAI_API_KEY = "";
     process.env.ANTHROPIC_API_KEY = "";
     process.env.OPENROUTER_API_KEY = "";
@@ -371,7 +444,7 @@ describe("search_issues", () => {
       ),
     );
 
-    const result = await searchIssues.handler(
+    const result = await runSearch(
       {
         organizationSlug: "test-org",
         query: "is:unresolved",
@@ -405,9 +478,10 @@ describe("search_issues", () => {
       },
     );
 
-    expect(result).toContain("PROJ-123");
-    expect(result).not.toContain("Update issue status");
-    expect(result).not.toContain("update_issue");
+    expect(result.issues.map((issue) => issue.shortId)).toEqual(["PROJ-123"]);
+    expect(result.suggestedActions.map((action) => action.toolName)).toEqual([
+      "get_sentry_resource",
+    ]);
   });
 
   it("should preserve explicit query syntax through agent repair", async () => {
@@ -445,7 +519,7 @@ describe("search_issues", () => {
       ),
     );
 
-    const result = await searchIssues.handler(
+    const result = await runSearch(
       {
         organizationSlug: "test-org",
         query: explicitQuery,
@@ -460,8 +534,10 @@ describe("search_issues", () => {
     );
 
     expect(mockGenerateText).toHaveBeenCalled();
-    expect(result).toContain("PROJ-123");
-    expect(result).toContain("Needs Review");
+    expect(result.executedSearch.query).toBe(explicitQuery);
+    expect(result.issues.map(({ shortId, title }) => [shortId, title])).toEqual(
+      [["PROJ-123", "Needs Review"]],
+    );
   });
 
   it("should handle project slug parameter", async () => {
@@ -496,7 +572,7 @@ describe("search_issues", () => {
       tool: searchIssues,
       params: {
         organizationSlug: " MyOrg ",
-        query: "all issues",
+        query: "is:unresolved",
         sort: "date",
         projectSlugOrId: " MyProject ",
         regionUrl: null,
@@ -507,10 +583,11 @@ describe("search_issues", () => {
       context: mockContext,
     }) as Parameters<typeof searchIssues.handler>[0];
 
-    const result = await searchIssues.handler(params, mockContext);
+    const result = await runSearch(params, mockContext);
 
     expect(mockGenerateText).not.toHaveBeenCalled();
-    expect(result).toContain("No issues found");
+    expect(result.issues).toEqual([]);
+    expect(result.notes).toEqual([EMPTY_NOTE]);
   });
 
   it("should handle numeric project ID", async () => {
@@ -528,7 +605,7 @@ describe("search_issues", () => {
       ),
     );
 
-    await searchIssues.handler(
+    await runSearch(
       {
         organizationSlug: "test-org",
         query: "all issues",
@@ -558,7 +635,7 @@ describe("search_issues", () => {
       ),
     );
 
-    await searchIssues.handler(
+    await runSearch(
       {
         organizationSlug: "test-org",
         query: "most frequent errors",
@@ -588,7 +665,7 @@ describe("search_issues", () => {
       ),
     );
 
-    await searchIssues.handler(
+    await runSearch(
       {
         organizationSlug: "test-org",
         query: "all issues",
@@ -618,7 +695,7 @@ describe("search_issues", () => {
       ),
     );
 
-    await searchIssues.handler(
+    await runSearch(
       {
         organizationSlug: "test-org",
         query: "test",
@@ -642,7 +719,7 @@ describe("search_issues", () => {
       }),
     );
 
-    const result = await searchIssues.handler(
+    const result = await runSearch(
       {
         organizationSlug: "test-org",
         query: "unresolved issues",
@@ -656,8 +733,13 @@ describe("search_issues", () => {
       mockContext,
     );
 
-    expect(result).toContain("Query Translation");
-    expect(result).toContain("Test query translation");
+    expect(result.explanation).toBe("Test query translation");
+    expect(result.executedSearch).toEqual({
+      query: "is:unresolved",
+      sort: "date",
+      period: "30d",
+      projectSlugOrId: null,
+    });
   });
 
   it("should handle empty results", async () => {
@@ -669,7 +751,7 @@ describe("search_issues", () => {
       }),
     );
 
-    const result = await searchIssues.handler(
+    const result = await runSearch(
       {
         organizationSlug: "test-org",
         query: "nonexistent issues",
@@ -683,8 +765,52 @@ describe("search_issues", () => {
       mockContext,
     );
 
-    expect(result).toContain("No issues found");
+    expect(result.issues).toEqual([]);
+    expect(result.notes).toEqual([EMPTY_NOTE]);
   });
+
+  it.each([
+    [
+      "top unresolved errors today",
+      [
+        "`query` was not translated from natural language because no embedded agent or Seer translation was available, so Sentry searched for it as literal text and found nothing. Retry with Sentry search syntax, such as `is:unresolved level:error`, and use `period` for the time range.",
+        EMPTY_NOTE,
+      ],
+    ],
+    ["is:unresolved level:error", [EMPTY_NOTE]],
+    ["firstSeen:-24h userCount:>100", [EMPTY_NOTE]],
+    ["TypeError", [EMPTY_NOTE]],
+    ['"connection reset by peer"', [EMPTY_NOTE]],
+  ])(
+    "notes an untranslated natural-language query that finds nothing (no agent): %s",
+    async (query, notes) => {
+      process.env.OPENAI_API_KEY = "";
+      process.env.ANTHROPIC_API_KEY = "";
+      process.env.OPENROUTER_API_KEY = "";
+      mswServer.use(
+        http.get("https://sentry.io/api/0/organizations/*/issues/", () =>
+          HttpResponse.json([]),
+        ),
+      );
+
+      const result = await runSearch(
+        {
+          organizationSlug: "test-org",
+          query,
+          sort: "date",
+          projectSlugOrId: null,
+          regionUrl: null,
+          limit: 10,
+          period: "30d",
+          includeExplanation: false,
+        },
+        mockContext,
+      );
+
+      expect(mockGenerateText).not.toHaveBeenCalled();
+      expect(result.notes).toEqual(notes);
+    },
+  );
 
   it("should pass agent query directly to API", async () => {
     mockGenerateText.mockResolvedValue(
@@ -703,7 +829,7 @@ describe("search_issues", () => {
       ),
     );
 
-    await searchIssues.handler(
+    await runSearch(
       {
         organizationSlug: "test-org",
         query: "unresolved errors",
@@ -737,7 +863,7 @@ describe("search_issues", () => {
         ),
       );
 
-      await searchIssues.handler(
+      await runSearch(
         {
           organizationSlug: "test-org",
           query: "test",
@@ -753,7 +879,7 @@ describe("search_issues", () => {
     }
   });
 
-  it("should format issues with proper markdown", async () => {
+  it("maps issue fields without the upstream passthrough", async () => {
     mockGenerateText.mockResolvedValue(mockAIResponse("", "date"));
 
     mswServer.use(
@@ -781,7 +907,7 @@ describe("search_issues", () => {
       }),
     );
 
-    const result = await searchIssues.handler(
+    const result = await runSearch(
       {
         organizationSlug: "test-org",
         query: "all issues",
@@ -795,10 +921,16 @@ describe("search_issues", () => {
       mockContext,
     );
 
-    expect(result).toContain("# Search Results");
-    expect(result).toContain("PROJ-123");
-    expect(result).toContain("Test Error");
-    expect(result).toContain("unresolved");
+    expect(result.query).toBe("all issues");
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0]).toMatchObject({
+      shortId: "PROJ-123",
+      title: "Test Error",
+      status: "unresolved",
+      occurrences: 100,
+      usersImpacted: 50,
+    });
+    expect(result.issues[0]).not.toHaveProperty("level");
   });
 
   it("rewrites unsupported OR and parentheses before calling the API (no agent)", async () => {
@@ -817,7 +949,7 @@ describe("search_issues", () => {
       ),
     );
 
-    const result = await searchIssues.handler(
+    const result = await runSearch(
       {
         organizationSlug: "test-org",
         query: "is:unresolved (is:regressed OR is:escalating)",
@@ -833,7 +965,10 @@ describe("search_issues", () => {
 
     expect(mockGenerateText).not.toHaveBeenCalled();
     expect(sentQuery).toBe("is:unresolved substatus:[regressed,escalating]");
-    expect(result).toContain(
+    expect(result.executedSearch.query).toBe(
+      "is:unresolved substatus:[regressed,escalating]",
+    );
+    expect(result.notes[0]).toContain(
       "Ran `is:unresolved substatus:[regressed,escalating]`.",
     );
   });
@@ -916,5 +1051,177 @@ describe("search_issues", () => {
         mockContext,
       ),
     ).rejects.toThrow();
+  });
+  describe("with Seer", () => {
+    const seerParams = {
+      organizationSlug: "test-org",
+      query: "my unresolved issues from the last day",
+      sort: "date" as const,
+      projectSlugOrId: "123",
+      regionUrl: null,
+      limit: 10,
+      period: "30d" as const,
+      includeExplanation: true,
+    };
+    const seerQuery = {
+      query: "is:unresolved assigned_or_suggested:me",
+      sort: "freq",
+      group_by: [],
+      visualization: [],
+      mode: "",
+      stats_period: "24h",
+      start: null,
+      end: null,
+    };
+    const mockSeerStart = vi.fn(async ({ request }: { request: Request }) => {
+      expect(await request.json()).toEqual({
+        project_ids: [123],
+        natural_language_query: seerParams.query,
+        strategy: "Issues",
+      });
+      return HttpResponse.json({ run_id: 1, sentry_run_id: "run-uuid" });
+    });
+    const mockSeerState = (response: Record<string, unknown>) =>
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/search-agent/state/run-uuid/",
+        () =>
+          HttpResponse.json({
+            session: { status: "completed", final_response: response },
+            sentry_run_id: "run-uuid",
+          }),
+      );
+    const issueRequests: URL[] = [];
+
+    beforeEach(() => {
+      mockSeerStart.mockClear();
+      issueRequests.length = 0;
+      mswServer.use(
+        http.post(
+          "https://sentry.io/api/0/organizations/test-org/search-agent/start/",
+          mockSeerStart,
+        ),
+        http.get(
+          "https://sentry.io/api/0/organizations/*/issues/",
+          ({ request }) => {
+            issueRequests.push(new URL(request.url));
+            return HttpResponse.json([]);
+          },
+        ),
+      );
+    });
+
+    it("translates natural language with Seer's Issues strategy", async () => {
+      mswServer.use(
+        mockOrganization(SEER_FEATURES),
+        mockSeerState({ responses: [seerQuery], unsupported_reason: null }),
+      );
+
+      const result = await runSearch(seerParams, mockContext);
+
+      expect(mockSeerStart).toHaveBeenCalledTimes(1);
+      expect(mockGenerateText).not.toHaveBeenCalled();
+      expect(
+        issueRequests.map((url) => Object.fromEntries(url.searchParams)),
+      ).toEqual([
+        expect.objectContaining({
+          query: "is:unresolved assigned_or_suggested:me",
+          sort: "freq",
+          statsPeriod: "24h",
+          project: "123",
+        }),
+      ]);
+      expect(result.explanation).toBe("Translated by Seer's search agent.");
+      expect(result.executedSearch).toMatchObject({
+        sort: "freq",
+        period: "24h",
+      });
+    });
+
+    it("keeps the requested sort and period when Seer returns neither", async () => {
+      mswServer.use(
+        mockOrganization(SEER_FEATURES),
+        mockSeerState({
+          responses: [{ ...seerQuery, sort: "trends", stats_period: "" }],
+        }),
+      );
+
+      await runSearch(seerParams, mockContext);
+
+      expect(issueRequests[0]?.searchParams.get("sort")).toBe("date");
+      expect(issueRequests[0]?.searchParams.get("statsPeriod")).toBe("30d");
+    });
+
+    it("falls back to the agent when Seer returns an absolute time range", async () => {
+      mockGenerateText.mockResolvedValue(
+        mockAIResponse("is:unresolved", "date"),
+      );
+      mswServer.use(
+        mockOrganization(SEER_FEATURES),
+        mockSeerState({
+          responses: [
+            {
+              ...seerQuery,
+              stats_period: "",
+              start: "2026-01-01T00:00:00",
+              end: "2026-01-02T00:00:00",
+            },
+          ],
+        }),
+      );
+
+      await runSearch(seerParams, mockContext);
+
+      expect(mockSeerStart).toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+      expect(issueRequests[0]?.searchParams.get("query")).toBe("is:unresolved");
+    });
+
+    it.each([
+      ["the rollout flag is off", ["gen-ai-issues-search"], {}],
+      ["issues search is off", ["mcp-search-events-seer-translate"], {}],
+      ["AI features are hidden", SEER_FEATURES, { hideAiFeatures: true }],
+    ])("falls back to the agent when %s", async (_name, features, options) => {
+      mockGenerateText.mockResolvedValue(
+        mockAIResponse("is:unresolved", "date"),
+      );
+      mswServer.use(mockOrganization(features, options));
+
+      await runSearch(seerParams, mockContext);
+
+      expect(mockSeerStart).not.toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+      expect(issueRequests[0]?.searchParams.get("query")).toBe("is:unresolved");
+    });
+
+    it("falls back to the agent when Seer returns 403", async () => {
+      mockGenerateText.mockResolvedValue(
+        mockAIResponse("is:unresolved", "date"),
+      );
+      mswServer.use(
+        mockOrganization(SEER_FEATURES),
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/search-agent/state/run-uuid/",
+          () => HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
+        ),
+      );
+
+      await runSearch(seerParams, mockContext);
+
+      expect(mockSeerStart).toHaveBeenCalled();
+      expect(mockGenerateText).toHaveBeenCalled();
+      expect(issueRequests[0]?.searchParams.get("query")).toBe("is:unresolved");
+    });
+
+    it.each(["is:unresolved", "firstSeen:-24h", "userCount:>100"])(
+      "skips Seer for Sentry search syntax %s",
+      async (query) => {
+        mockGenerateText.mockResolvedValue(mockAIResponse(query, "date"));
+        mswServer.use(mockOrganization(SEER_FEATURES));
+
+        await runSearch({ ...seerParams, query }, mockContext);
+
+        expect(mockSeerStart).not.toHaveBeenCalled();
+      },
+    );
   });
 });

@@ -21,7 +21,7 @@ export const tokenCommand = buildCommand({
     examples: [
       {
         description: "Print the stored auth token",
-        command: "sentry auth token",
+        run: "auth token",
       },
     ],
   },

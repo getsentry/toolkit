@@ -16,9 +16,12 @@ import {
   setProviderBaseUrls,
 } from "@sentry/mcp-core/internal/agents/provider-factory";
 import { buildServer } from "@sentry/mcp-core/server";
+import { findRetainedSkillTools } from "@sentry/mcp-core/skills";
 import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { startStdio } from "@sentry/mcp-core/transports/stdio";
 import type { CredentialRouter, ServerContext } from "@sentry/mcp-core/types";
+import tools from "@sentry/mcp-core/tools";
+import { setServerVersion } from "@sentry/mcp-core/version";
 import {
   close,
   consoleLoggingIntegration,
@@ -131,14 +134,12 @@ function warnNoProvider(config: McpServerConfig, env: NodeJS.ProcessEnv): void {
   }
 
   if (providerKeyCount > 1 && !configured) {
-    console.warn(
-      "Warning: Multiple LLM API keys are set, but no provider is explicitly configured.",
-    );
-    console.warn(
-      "Please set EMBEDDED_AGENT_PROVIDER='openai', 'azure-openai', 'anthropic', or 'openrouter' to specify which provider to use.",
-    );
-    console.warn(
-      "AI-powered search tools will be unavailable until a provider is selected.",
+    logger.warn(
+      [
+        "Multiple LLM API keys are set, but no provider is explicitly configured.",
+        "Please set EMBEDDED_AGENT_PROVIDER='openai', 'azure-openai', 'anthropic', or 'openrouter' to specify which provider to use.",
+        "AI-powered search tools will be unavailable until a provider is selected.",
+      ].join("\n"),
     );
   } else if (mismatch) {
     const expectedKey = expectedProviderKey(mismatch.configured);
@@ -148,33 +149,31 @@ function warnNoProvider(config: McpServerConfig, env: NodeJS.ProcessEnv): void {
     const changeProviderHint = config.agentProviderFromFlag
       ? "Change --agent-provider to match your available API key"
       : "Change EMBEDDED_AGENT_PROVIDER to match your available API key";
-    console.warn(`Warning: ${providerSetting} but ${expectedKey} is not set.`);
-    console.warn(`Found ${mismatch.availableKey} instead. Either:`);
-    console.warn(
-      `  - Set ${expectedKey} to use the ${mismatch.configured} provider, or`,
-    );
-    console.warn(`  - ${changeProviderHint}`);
-    console.warn(
-      "AI-powered search tools will be unavailable until this is resolved.",
+    logger.warn(
+      [
+        `${providerSetting} but ${expectedKey} is not set.`,
+        `Found ${mismatch.availableKey} instead. Either:`,
+        `  - Set ${expectedKey} to use the ${mismatch.configured} provider, or`,
+        `  - ${changeProviderHint}`,
+        "AI-powered search tools will be unavailable until this is resolved.",
+      ].join("\n"),
     );
   } else if (
     providerConfigError &&
     !providerConfigError.startsWith("No embedded agent provider configured")
   ) {
-    console.warn(`Warning: ${providerConfigError}`);
-    console.warn(
-      "AI-powered search tools will be unavailable until this is resolved.",
+    logger.warn(
+      `${providerConfigError}\nAI-powered search tools will be unavailable until this is resolved.`,
     );
   } else {
-    console.warn(
-      "Warning: No LLM API key found (OPENAI_API_KEY, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY).",
-    );
-    console.warn("AI-powered search tools will be unavailable.");
-    console.warn(
-      "Search tools still work with direct Sentry query syntax via the 'query' parameter.",
+    logger.warn(
+      [
+        "No LLM API key found (OPENAI_API_KEY, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY).",
+        "AI-powered search tools will be unavailable.",
+        "Search tools still work with direct Sentry query syntax via the 'query' parameter.",
+      ].join("\n"),
     );
   }
-  console.warn("");
 }
 
 /** Configure the embedded agent provider and report which one is active. */
@@ -209,19 +208,18 @@ function configureAgentProvider(
   } else if (env.EMBEDDED_AGENT_PROVIDER) {
     providerSource = "from EMBEDDED_AGENT_PROVIDER";
   }
-  console.warn(
+  logger.info(
     `Using ${getAgentProvider().label} for AI-powered search tools (${providerSource}).`,
   );
   if (providerSource === "auto-detected") {
-    console.warn(
-      "Deprecation warning: Auto-detection of LLM provider is deprecated.",
+    logger.warn(
+      [
+        "Auto-detection of LLM provider is deprecated.",
+        `Please set EMBEDDED_AGENT_PROVIDER='${resolvedProvider}' explicitly.`,
+        "Auto-detection will be removed in a future release.",
+      ].join("\n"),
     );
-    console.warn(
-      `Please set EMBEDDED_AGENT_PROVIDER='${resolvedProvider}' explicitly.`,
-    );
-    console.warn("Auto-detection will be removed in a future release.");
   }
-  console.warn("");
 }
 
 /**
@@ -235,7 +233,6 @@ export function initMcpTelemetry(config: McpServerConfig): void {
   try {
     process.cwd();
   } catch (error) {
-    // Log only the message: rendering the error's stack calls `process.cwd()`.
     log.debug(
       `Working directory is unavailable, starting without telemetry: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -246,6 +243,7 @@ export function initMcpTelemetry(config: McpServerConfig): void {
   const scopeContext = {
     "app.server.version": CLI_VERSION,
     // Tells `@sentry/mcp-server` installs apart from `sentry mcp`.
+    // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a telemetry value, not a hint.
     "app.server.distribution": name === "sentry" ? "sentry mcp" : packageName,
     "app.transport": "stdio",
     "app.upstream.host": config.sentryHost,
@@ -338,11 +336,11 @@ export function installProcessHandlers(): (
     // whose stream handler exits with the recorded code (see stream-errors.ts).
     process.exitCode = 1;
 
-    // If the client closed every pipe, console.error can throw EPIPE inside
-    // this handler and recurse forever (getsentry/sentry-mcp#1274).
+    // If the client closed every pipe, writing to stderr can throw EPIPE
+    // inside this handler and recurse forever (getsentry/sentry-mcp#1274).
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- stderr may already be closed; exiting is the only recovery.
     try {
-      console.error(label, error);
+      logger.error(label, error);
     } catch {
       // stderr may already be closed
     }
@@ -367,7 +365,13 @@ export function installProcessHandlers(): (
       return;
     }
     exiting = true;
-    console.error(`${signal} received, shutting down...`);
+    // The client may have closed stderr before the signal; exit cleanly anyway.
+    // oxlint-disable-next-line sentry-cli/no-silent-catch -- stderr may already be closed; shutting down is the only recovery.
+    try {
+      logger.info(`${signal} received, shutting down...`);
+    } catch {
+      // stderr may already be closed
+    }
     await flush(SENTRY_FLUSH_TIMEOUT_MS);
     // oxlint-disable-next-line sentry-cli/no-process-exit -- signal shutdown, after the flush.
     process.exit(0);
@@ -384,19 +388,37 @@ export function installProcessHandlers(): (
   return exitAfterError;
 }
 
+/**
+ * Warn about disabled skills that remove no tools, because another granted
+ * skill still grants each of them. The logger writes to stderr, which keeps
+ * stdout free for the transport.
+ */
+export function warnIneffectiveDisabledSkills(config: McpServerConfig): void {
+  for (const skill of config.disabledSkills) {
+    const retained = findRetainedSkillTools(tools, config.finalSkills, skill);
+    if (retained) {
+      logger.warn(
+        `Disabling the "${skill}" skill removed no tools. ${retained.tools.join(", ")} stay enabled through ${retained.grantedBy.join(", ")}.`,
+      );
+    }
+  }
+}
+
 /** Serve the MCP tools over stdio. Resolves once the client disconnects. */
 export async function serveMcpStdio(
   config: McpServerConfig,
   options: McpServeOptions,
 ): Promise<void> {
+  // @sentry/mcp-server ships at the CLI version, not mcp-core's.
+  setServerVersion(CLI_VERSION);
   configureAgentProvider(config, options.env);
   initMcpTelemetry(config);
+  warnIneffectiveDisabledSkills(config);
 
   if (config.experimental) {
-    console.warn(
+    logger.info(
       "Experimental mode enabled: Forward-looking tool variants and experimental features are available.",
     );
-    console.warn("");
   }
 
   const exitAfterError = installProcessHandlers();

@@ -2,6 +2,8 @@
 
 ## Status: ✅ Complete
 
+> **Update:** The website no longer has a Stdio transport. The CLI flow (`?transport=cli`, `sentry mcp`) replaced it, and `stdio-setup.tsx` was removed; `?transport=stdio` links now open the CLI flow. The npx `@sentry/mcp-server` setup is documented in the README.
+
 This document describes the refactoring of IDE integration instructions to improve code maintainability and add URL state persistence.
 
 ## Problem Statement

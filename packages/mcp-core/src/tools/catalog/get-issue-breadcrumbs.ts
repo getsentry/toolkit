@@ -1,12 +1,16 @@
 import { ApiNotFoundError } from "../../api-client";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
-import { fetchAndFormatBreadcrumbs } from "../../internal/tool-helpers/breadcrumbs";
+import {
+  fetchIssueBreadcrumbs,
+  issueBreadcrumbsOutputSchema,
+} from "../../internal/tool-helpers/breadcrumbs";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
 import {
   ensureIssueWithinProjectConstraint,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamEventIdOrLatest,
   ParamIssueShortId,
@@ -50,6 +54,7 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
+  outputSchema: issueBreadcrumbsOutputSchema,
   async handler(params, context: ServerContext) {
     const parsed = parseIssueParams({
       issueUrl: params.issueUrl,
@@ -73,11 +78,13 @@ export default defineTool({
         issueId: parsed.issueId,
         projectSlug: context.constraints.projectSlug,
       });
-      return await fetchAndFormatBreadcrumbs(
-        apiService,
-        parsed.organizationSlug,
-        parsed.issueId,
-        params.eventId,
+      return structuredResult(
+        await fetchIssueBreadcrumbs(
+          apiService,
+          parsed.organizationSlug,
+          parsed.issueId,
+          params.eventId,
+        ),
       );
     } catch (error) {
       if (error instanceof ApiNotFoundError) {

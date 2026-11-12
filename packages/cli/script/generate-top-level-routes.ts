@@ -19,6 +19,7 @@ import { mkdirSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { app, routes } from "../src/app.js";
 import { describeTopLevelRoutes } from "./lib/top-level-routes.js";
+import { logger } from "../src/lib/logger.js";
 
 const OUTPUT_PATH = "src/generated/top-level-routes.json";
 
@@ -29,7 +30,7 @@ export async function emit(): Promise<void> {
   mkdirSync("src/generated", { recursive: true });
   await writeFile(OUTPUT_PATH, `${JSON.stringify(described, null, 2)}\n`);
 
-  console.log(
+  logger.success(
     `Generated ${OUTPUT_PATH} (${Object.keys(described).length} routes)`,
   );
 }

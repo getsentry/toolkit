@@ -8,9 +8,10 @@
 import { isatty } from "node:tty";
 import type { SentryContext } from "../../context.js";
 import { triggerSolutionPlanning } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { ApiError, CliError } from "../../lib/errors.js";
+import { ApiError, CliError, SeerError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   formatSolution,
@@ -227,19 +228,19 @@ export const planCommand = buildCommand({
     examples: [
       {
         description: "Generate a fix plan (runs explain first if needed)",
-        command: "sentry issue plan 123456789",
+        run: "issue plan 123456789",
       },
       {
         description: "Generate a fix plan for the most recent issue",
-        command: "sentry issue plan @latest",
+        run: "issue plan @latest",
       },
       {
         description: "Use a short ID with an organization prefix",
-        command: "sentry issue plan my-org/MYPROJECT-ABC",
+        run: "issue plan my-org/MYPROJECT-ABC",
       },
       {
         description: "Force a fresh plan even if one already exists",
-        command: "sentry issue plan 123456789 --force",
+        run: "issue plan 123456789 --force",
       },
     ],
   },
@@ -318,10 +319,13 @@ export const planCommand = buildCommand({
           "Plan creation timed out after 6 minutes. Try again or check the issue in Sentry web UI.",
         timeoutHint:
           "The plan may still be generated in the background.\n" +
-          `  Or retry: sentry issue plan ${issueArg.text}`,
+          `  Or retry: ${sentry`issue plan ${issueArg.text}`}`,
       });
 
       if (finalState.status === "ERROR") {
+        if (finalState.failure_reason === "out_of_credits") {
+          throw new SeerError("out_of_credits", org);
+        }
         throw new Error(
           "Plan creation failed. Check the Sentry web UI for details.",
         );
@@ -341,7 +345,12 @@ export const planCommand = buildCommand({
       return yield new CommandOutput(buildPlanData(finalState));
     } catch (error) {
       if (error instanceof ApiError) {
-        throw handleSeerApiError(error.status, error.detail, resolvedOrg);
+        throw handleSeerApiError(
+          error.status,
+          error.detail,
+          resolvedOrg,
+          error.code,
+        );
       }
       throw error;
     }

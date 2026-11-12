@@ -281,8 +281,7 @@ describe("createChunkLoader", () => {
       { "cli.cjs": "exports.os = import('node:os');" },
       undefined,
     );
-    const os = (await (exports as { os: Promise<typeof import("node:os")> })
-      .os) as typeof import("node:os");
+    const os = await (exports as { os: Promise<typeof import("node:os")> }).os;
     expect(typeof os.tmpdir).toBe("function");
   });
 

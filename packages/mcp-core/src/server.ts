@@ -58,7 +58,7 @@ import tools from "./tools/index";
 import { isCatalogInfrastructureToolName } from "./tools/surfaces";
 import type { StructuredToolOutput } from "./tools/types";
 import type { ServerContext } from "./types";
-import { LIB_VERSION } from "./version";
+import { getServerVersion } from "./version";
 
 function getSkillGrantedAttributeName(skill: Skill): string {
   return `app.consent.skill.${skill.replaceAll("-", "_")}.granted`;
@@ -190,6 +190,9 @@ function isStructuredToolOutput(
 /**
  * Wraps structured-only output in an MCP CallToolResult with generated JSON
  * text for clients that do not read structuredContent yet.
+ *
+ * The text is compact JSON because clients that read it send it to a model,
+ * and indentation adds tokens without adding data.
  */
 function structuredOutputToCallToolResult(
   output: StructuredToolOutput,
@@ -198,7 +201,7 @@ function structuredOutputToCallToolResult(
     content: [
       {
         type: "text" as const,
-        text: JSON.stringify(output.structuredContent, null, 2),
+        text: JSON.stringify(output.structuredContent),
       },
     ],
     structuredContent: output.structuredContent,
@@ -310,7 +313,7 @@ export function buildServer({
   const server = new McpServer(
     {
       ...MCP_SERVER_INFO,
-      version: LIB_VERSION,
+      version: getServerVersion(),
     },
     {
       maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,

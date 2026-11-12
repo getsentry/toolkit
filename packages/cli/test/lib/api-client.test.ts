@@ -625,16 +625,6 @@ describe("findProjectsBySlug", () => {
       requests.push(req);
       const url = req.url;
 
-      // Regions endpoint - return single region to simplify test
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
       // Organizations list
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
         return new Response(
@@ -690,16 +680,6 @@ describe("findProjectsBySlug", () => {
       const req = new Request(input, init);
       const url = req.url;
 
-      // Regions endpoint
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
       // Organizations list
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
         return new Response(
@@ -726,16 +706,6 @@ describe("findProjectsBySlug", () => {
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
-
-      // Regions endpoint
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
 
       // Organizations list
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
@@ -784,16 +754,6 @@ describe("findProjectsBySlug", () => {
       const req = new Request(input, init);
       const url = req.url;
 
-      // Regions endpoint
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
       // Organizations list
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
         return new Response(
@@ -834,15 +794,6 @@ describe("findProjectsBySlug", () => {
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
-
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
 
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
         return new Response(
@@ -957,15 +908,6 @@ describe("resolveEventInOrg", () => {
       const req = new Request(input, init);
       const url = req.url;
 
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
       if (url.includes("/eventids/abc123def456/")) {
         return new Response(
           JSON.stringify({
@@ -995,19 +937,7 @@ describe("resolveEventInOrg", () => {
   test("returns null when event not found in org", async () => {
     const { resolveEventInOrg } = await import("../../src/lib/api-client.js");
 
-    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const req = new Request(input, init);
-      const url = req.url;
-
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
+    globalThis.fetch = async () => {
       return new Response(JSON.stringify({ detail: "Not Found" }), {
         status: 404,
         headers: { "Content-Type": "application/json" },
@@ -1053,15 +983,6 @@ describe("findEventAcrossOrgs", () => {
       const req = new Request(input, init);
       const url = req.url;
 
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
       if (url.includes("/organizations/") && !url.includes("/eventids/")) {
         return new Response(
           JSON.stringify([
@@ -1103,15 +1024,6 @@ describe("findEventAcrossOrgs", () => {
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
-
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
 
       if (url.includes("/organizations/") && !url.includes("/eventids/")) {
         return new Response(

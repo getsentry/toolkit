@@ -39,6 +39,8 @@ export type EnvVarEntry = {
  * install → display → logging/telemetry → cache/pagination → database.
  * The generator preserves this order in the output.
  */
+// Reference text for the env var docs page, which documents the `sentry` CLI.
+/* oxlint-disable sentry-cli/no-hardcoded-sentry-command */
 export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   // -- Auth --
   {
@@ -184,7 +186,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_INIT",
     description:
-      "Used with the install script. When set to `1`, the installer runs `sentry init` after installing the binary to guide you through project setup.",
+      "Used with the install script. When set to `1`, the installer runs `sentry init` after installing the binary, which prints the guide a coding agent follows to add Sentry to your project.",
     example: "1",
     installOnly: true,
   },
@@ -194,13 +196,6 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
       "Used with the PowerShell install script (`install.ps1`). When set to `1`, the installer leaves the user `PATH` unchanged. The bash install script takes the `--no-modify-path` flag instead.",
     example: "1",
     installOnly: true,
-  },
-  // -- Init wizard --
-  {
-    name: "SENTRY_INIT_TUI",
-    description:
-      "Control the TUI (terminal user interface) for `sentry init`. Set to `0` to disable the interactive TUI and use plain text logging output instead. Useful in CI/CD pipelines or environments without full terminal support.",
-    example: "0",
   },
   // -- Games --
   {
@@ -322,6 +317,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     example: "1",
   },
 ];
+/* oxlint-enable sentry-cli/no-hardcoded-sentry-command */
 
 /**
  * Subset of env vars surfaced in the branded `sentry --help` output and in

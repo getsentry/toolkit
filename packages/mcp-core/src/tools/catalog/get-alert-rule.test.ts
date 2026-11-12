@@ -3,7 +3,12 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getStructuredContent } from "../../test-utils/structured-content";
 import { prepareToolParams } from "../catalog-runtime/availability";
-import getAlertRule from "./get-alert-rule.js";
+import getAlertRule, { getAlertRuleOutputSchema } from "./get-alert-rule.js";
+
+function expectConformingOutput(result: unknown) {
+  const content = getStructuredContent(result);
+  expect(getAlertRuleOutputSchema.parse(content)).toEqual(content);
+}
 
 const context = {
   constraints: {
@@ -253,6 +258,7 @@ describe("get_alert_rule", () => {
         },
       }
     `);
+    expectConformingOutput(result);
   });
 
   it.each(["456", "10000000789", "detector:789"])(
@@ -350,12 +356,13 @@ describe("get_alert_rule", () => {
     expect(getStructuredContent(result)).toMatchObject({
       metricMonitor: { id: detector.id },
     });
+    expectConformingOutput(result);
     expect(query?.getAll("type")).toEqual(["metric_issue"]);
     expect(query?.get("query")).toContain(detector.name);
   });
 
   it("fetches issue alert details after resolving an exact name", async () => {
-    let listRequestUrl: string | null = null;
+    let listRequestUrl: string | undefined;
     mswServer.use(
       http.get(`${organizationApi}/workflows/`, ({ request }) => {
         listRequestUrl = request.url;
@@ -374,7 +381,7 @@ describe("get_alert_rule", () => {
       ruleIdOrName: "Notify backend team",
     });
 
-    expect(listRequestUrl).not.toBeNull();
+    expect(listRequestUrl).toBeDefined();
     const listParams = new URL(listRequestUrl ?? "").searchParams;
     expect(listParams.get("query")).toBe('name:"*Notify backend team*"');
     expect(listParams.get("projectSlug")).toBe("cloudflare-mcp");
@@ -384,7 +391,7 @@ describe("get_alert_rule", () => {
   });
 
   it("quotes issue alert name lookups for workflow query syntax", async () => {
-    let listRequestUrl: string | null = null;
+    let listRequestUrl: string | undefined;
     mswServer.use(
       http.get(`${organizationApi}/workflows/`, ({ request }) => {
         listRequestUrl = request.url;
@@ -399,7 +406,7 @@ describe("get_alert_rule", () => {
       ruleIdOrName: "Critical: backend",
     });
 
-    expect(listRequestUrl).not.toBeNull();
+    expect(listRequestUrl).toBeDefined();
     expect(new URL(listRequestUrl ?? "").searchParams.get("query")).toBe(
       'name:"*Critical: backend*"',
     );
@@ -567,6 +574,38 @@ describe("get_alert_rule", () => {
     );
   });
 
+  it("keeps only documented, well-formed detector config keys", async () => {
+    mswServer.use(
+      http.get(`${organizationApi}/detectors/:id/`, () =>
+        HttpResponse.json({
+          ...detector,
+          config: {
+            detectionType: "percent",
+            comparisonDelta: 3600,
+            fingerprintingRules: "private-fingerprinting-rules",
+            resolveAge: 720,
+            // A malformed allowlisted field is dropped without losing the rest.
+            mode: "not-a-mode",
+          },
+        }),
+      ),
+    );
+    const result = await getRule({ projectSlug: "cloudflare-mcp" });
+    expectConformingOutput(result);
+    expect(getStructuredContent(result)).toMatchObject({
+      alertRule: {
+        sources: [
+          {
+            config: { detectionType: "percent", comparisonDeltaSeconds: 3600 },
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /private-fingerprinting-rules|resolveAge|not-a-mode/,
+    );
+  });
+
   it("marks inaccessible sources and redacts other projects in a shared Alert", async () => {
     mswServer.use(
       http.get("*/workflows/123/", () =>
@@ -682,6 +721,7 @@ describe("get_alert_rule", () => {
       ),
     );
     const result = await getRule();
+    expectConformingOutput(result);
     expect(getStructuredContent(result)).toMatchObject({
       alertRule: {
         sources: [
