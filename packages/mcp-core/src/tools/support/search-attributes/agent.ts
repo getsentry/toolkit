@@ -3,6 +3,7 @@ import type { TraceItemAttribute } from "../../../api-client";
 import { callEmbeddedAgent } from "../../../internal/agents/callEmbeddedAgent";
 import type { SearchAttributesDataset } from "./search";
 import { keyHintsSystemPrompt, systemPrompt } from "./config";
+import { flatten } from "./format";
 
 const MAX_KEY_HINTS = 5;
 const MIN_KEY_HINT_LENGTH = 3;
@@ -128,8 +129,10 @@ function formatAttributeLine(attribute: TraceItemAttribute): string {
     );
   }
 
-  const line = `- ${key} (${type})`;
-  return details.length > 0 ? `${line}: ${details.join(" ")}` : line;
+  const trivialAttributeData = `- ${key} (${type})`;
+  return details.length > 0
+    ? `${trivialAttributeData}: ${flatten(details.join(" "))}`
+    : trivialAttributeData;
 }
 
 /**

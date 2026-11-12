@@ -3,7 +3,7 @@ import { ConfigurationError, UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
 import { withProviderFallback } from "../../../internal/agents/provider-fallback";
 import { apiServiceFromContext } from "../../../internal/tool-helpers/api";
-import { logIssue } from "../../../telem/logging";
+import { logIssue, logWarn } from "../../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import type { ServerContext } from "../../../types";
 import { fetchCustomAttributes } from "../search-events/utils";
@@ -113,7 +113,7 @@ export async function runSearchAttributes(
   // large org the right key can be past the cut. A substring search looks
   // through every key, so search again with hints made from the query.
   if (mayBeCutOff(rows)) {
-    const keyHints = await withProviderFallback<string[]>({
+    const keyHints = await withAgentFallback<string[]>({
       operation: "search_attributes.key_hints",
       fallback: () => [],
       run: () => generateKeyHintsAgent({ query, dataset }),
@@ -142,7 +142,7 @@ export async function runSearchAttributes(
   const matches =
     rows.length === 0
       ? { candidates: [] }
-      : await withProviderFallback<AttributeMatches | null>({
+      : await withAgentFallback<AttributeMatches | null>({
           operation: "search_attributes.shortlist",
           fallback: () => null,
           run: () =>
@@ -167,6 +167,38 @@ export async function runSearchAttributes(
     query,
     matches,
     totalAttributes: rows.length,
+  });
+}
+
+/**
+ * Both agents here are optional, so also fall back when the model's reply is
+ * unusable. callEmbeddedAgent reports that as a UserInputError, which
+ * withProviderFallback lets through for tools that need the agent's answer.
+ */
+function withAgentFallback<T>({
+  operation,
+  fallback,
+  run,
+}: {
+  operation: string;
+  fallback: () => T;
+  run: () => Promise<T>;
+}): Promise<T> {
+  return withProviderFallback({
+    operation,
+    fallback,
+    run: async () => {
+      try {
+        return await run();
+      } catch (error) {
+        if (!(error instanceof UserInputError)) throw error;
+        logWarn(error, {
+          loggerScope: ["agents", "provider-fallback"],
+          contexts: { aiProviderFallback: { operation, unusableOutput: true } },
+        });
+        return fallback();
+      }
+    },
   });
 }
 

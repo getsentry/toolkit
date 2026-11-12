@@ -42,6 +42,14 @@ function mockAgentResponse(
   } as any;
 }
 
+/** A reply with no structured output, which the agent reports as a UserInputError. */
+function noOutputResponse() {
+  return {
+    ...mockAgentResponse({ hints: [] }),
+    experimental_output: undefined,
+  };
+}
+
 function providerError() {
   return new APICallError({
     message: "Workspace budget exceeded",
@@ -116,6 +124,9 @@ function search(params: Record<string, unknown>) {
 describe("search_attributes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Drop queued replies a failed test left behind, so one failure can't
+    // break the tests after it.
+    mockGenerateText.mockReset();
     // Pin the provider so the local .env can't change which path runs.
     vi.stubEnv("EMBEDDED_AGENT_PROVIDER", "openai");
     vi.stubEnv("OPENAI_API_KEY", "test-key");
@@ -343,6 +354,11 @@ describe("search_attributes", () => {
         setUp: () => mockGenerateText.mockRejectedValueOnce(providerError()),
         note: "The AI provider couldn't match `query` right now, so these are the dataset's attributes instead.",
       },
+      {
+        reason: "the shortlist agent returns no output",
+        setUp: () => mockGenerateText.mockResolvedValueOnce(noOutputResponse()),
+        note: "The AI provider couldn't match `query` right now, so these are the dataset's attributes instead.",
+      },
     ])(
       "lists the attributes with a note when $reason",
       async ({ setUp, note }) => {
@@ -409,6 +425,11 @@ describe("search_attributes", () => {
         outcome: "fails",
         hintAgent: () =>
           mockGenerateText.mockRejectedValueOnce(providerError()),
+      },
+      {
+        outcome: "returns no output",
+        hintAgent: () =>
+          mockGenerateText.mockResolvedValueOnce(noOutputResponse()),
       },
     ])(
       "matches against the plain list when the hint agent $outcome",
