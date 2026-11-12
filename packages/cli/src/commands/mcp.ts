@@ -118,7 +118,7 @@ export const mcpCommand = buildCommand({
       {
         description:
           "Serve CLI commands instead of the tool catalog, read-only",
-        command: "sentry mcp --commands --read-only",
+        run: "mcp --commands --read-only",
       },
       {
         description: "Pick the LLM provider for AI-powered search",

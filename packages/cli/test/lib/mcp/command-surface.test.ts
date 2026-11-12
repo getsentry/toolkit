@@ -35,7 +35,7 @@ function tools() {
 /** Call the `sentry api` tool. */
 async function api(params: Record<string, unknown>): Promise<unknown> {
   const tool = tools().sentry_api;
-  return JSON.parse((await tool?.handler(params as never, context)) as string);
+  return JSON.parse((await tool.handler(params, context)) as string);
 }
 
 describe("createCliCommandTools", () => {

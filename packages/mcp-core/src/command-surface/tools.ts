@@ -126,7 +126,7 @@ function inputShape(parameters: JsonSchema): Record<string, z.ZodType> {
   const required = new Set(parameters.required ?? []);
   return Object.fromEntries(
     Object.entries(parameters.properties ?? {}).map(([name, schema]) => {
-      const field = z.unknown().meta(schema);
+      const field = z.unknown().meta(schema ?? {});
       return [name, required.has(name) ? field : field.optional()];
     }),
   );
@@ -176,7 +176,7 @@ export function createCommandTools(
       continue;
     }
     const name = commandToolName(entry);
-    if (tools[name]) {
+    if (Object.hasOwn(tools, name)) {
       throw new Error(`Two commands map to the MCP tool name ${name}`);
     }
     tools[name] = createCommandTool(entry, policy, options);

@@ -220,8 +220,7 @@ function pinTarget(
     const namesProject =
       titleSegments.length === 1
         ? segments.length >= 3
-        : (kind === "org/project" &&
-            titleSegments[1]?.startsWith("project") === true) ||
+        : (kind === "org/project" && titleSegments[1].startsWith("project")) ||
           (titleSegments[1] === "project" &&
             segments.length >= titleSegments.length);
     const project = segments[1];
@@ -343,7 +342,7 @@ export function pinConstraints(
   }
 
   if (entry.permission === "method") {
-    const [endpoint] = positional;
+    const endpoint = positional.at(0);
     if (endpoint !== undefined) {
       pinApiEndpoint(entry, endpoint, session);
     }

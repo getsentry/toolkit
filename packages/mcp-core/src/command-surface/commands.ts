@@ -102,7 +102,9 @@ export function isInjectedFlag(flag: string): boolean {
 }
 
 /** `entry`'s flag schemas, by flag name. */
-function flagSchemas(entry: CommandCatalogEntry): Record<string, JsonSchema> {
+function flagSchemas(
+  entry: CommandCatalogEntry,
+): Partial<Record<string, JsonSchema>> {
   return entry.parameters.properties?.flags?.properties ?? {};
 }
 

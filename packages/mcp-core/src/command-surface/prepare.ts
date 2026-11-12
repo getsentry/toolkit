@@ -164,7 +164,7 @@ export function prepareCommandCall({
   }
 
   // `sentry api` sends an absolute URL to that URL's own host.
-  const [endpoint] = positional ?? [];
+  const endpoint = positional?.at(0);
   if (
     entry.permission === "method" &&
     endpoint !== undefined &&

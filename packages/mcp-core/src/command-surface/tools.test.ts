@@ -33,11 +33,12 @@ function setup(
     params: Record<string, unknown> = {},
     context: ServerContext = createTestContext(),
   ): Promise<Record<string, unknown>> => {
-    const tool = tools[toolName(command)];
-    if (!tool) {
+    const name = toolName(command);
+    if (!Object.hasOwn(tools, name)) {
       throw new Error(`no tool for ${command}`);
     }
-    return JSON.parse((await tool.handler(params as never, context)) as string);
+    const tool = tools[name];
+    return JSON.parse((await tool.handler(params, context)) as string);
   };
   return { tools, calls, call };
 }
@@ -81,11 +82,11 @@ describe("command tools: listing", () => {
 
   it("grants writes only to the skill that covers them", () => {
     const { tools } = setup();
-    expect(tools.sentry_issue_list?.skills).toContain("inspect");
-    expect(tools.sentry_issue_resolve?.skills).toEqual(["triage"]);
-    expect(tools.sentry_issue_plan?.skills).toEqual(["seer"]);
-    expect(tools.sentry_project_delete?.skills).toEqual(["project-management"]);
-    expect(tools.sentry_api?.skills).toContain("inspect");
+    expect(tools.sentry_issue_list.skills).toContain("inspect");
+    expect(tools.sentry_issue_resolve.skills).toEqual(["triage"]);
+    expect(tools.sentry_issue_plan.skills).toEqual(["seer"]);
+    expect(tools.sentry_project_delete.skills).toEqual(["project-management"]);
+    expect(tools.sentry_api.skills).toContain("inspect");
   });
 
   it("refuses sentry api writes without a write skill", async () => {
@@ -115,8 +116,8 @@ describe("command tools: listing", () => {
 
   it("titles each tool from its command path", () => {
     const { tools } = setup();
-    expect(tools.sentry_issue_list?.title).toBe("Issue List");
-    expect(tools.sentry_agent_conversation_list?.title).toBe(
+    expect(tools.sentry_issue_list.title).toBe("Issue List");
+    expect(tools.sentry_agent_conversation_list.title).toBe(
       "Agent Conversation List",
     );
     const titles = Object.values(tools).map((tool) => tool.title);
@@ -124,7 +125,7 @@ describe("command tools: listing", () => {
   });
 
   it("describes a command with its brief and usable examples", () => {
-    const description = setup().tools.sentry_issue_view?.description ?? "";
+    const description = setup().tools.sentry_issue_view.description;
     expect(description).toMatch(/^View details of/);
     expect(description).toContain("sentry issue view FRONT-ABC");
     // Examples that pipe output elsewhere are dropped.
@@ -132,12 +133,12 @@ describe("command tools: listing", () => {
   });
 
   it("gives sentry api the hints of its session", () => {
-    expect(setup().tools.sentry_api?.annotations).toMatchObject({
+    expect(setup().tools.sentry_api.annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: true,
     });
     expect(
-      setup({ readOnly: true }).tools.sentry_api?.annotations,
+      setup({ readOnly: true }).tools.sentry_api.annotations,
     ).toMatchObject({ readOnlyHint: true, destructiveHint: false });
   });
 });
@@ -150,7 +151,7 @@ describe("command tools: permission classes", () => {
         tools.sentry_issue_list,
         tools.sentry_issue_resolve,
         tools.sentry_project_delete,
-      ].map((tool) => tool?.annotations),
+      ].map((tool) => tool.annotations),
     ).toEqual([
       { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
       { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
@@ -532,8 +533,8 @@ describe("command tools: results", () => {
       { maxResultChars: 2_000 },
       { data, hasMore: false },
     );
-    const text = (await tools.sentry_issue_list?.handler(
-      {} as never,
+    const text = (await tools.sentry_issue_list.handler(
+      {},
       createTestContext(),
     )) as string;
     const result = JSON.parse(text);
@@ -553,8 +554,8 @@ describe("command tools: results", () => {
       { data, hasMore: true, nextCursor: "0:100:0" },
     );
     const result = JSON.parse(
-      (await tools.sentry_issue_list?.handler(
-        {} as never,
+      (await tools.sentry_issue_list.handler(
+        {},
         createTestContext(),
       )) as string,
     );
@@ -569,8 +570,8 @@ describe("command tools: results", () => {
       { maxResultChars: 500 },
       { body: "x".repeat(2_000) },
     );
-    const text = (await tools.sentry_org_list?.handler(
-      {} as never,
+    const text = (await tools.sentry_org_list.handler(
+      {},
       createTestContext(),
     )) as string;
     const parsed = JSON.parse(text);
@@ -651,7 +652,7 @@ describe("buildServer with the command tools", () => {
       }
     ).flags.properties;
     expect(flags.query).toBeDefined();
-    expect(flags.limit?.default).toBe(25);
+    expect(flags.limit.default).toBe(25);
     expect(flags.json).toBeUndefined();
 
     const api = tools.find((tool) => tool.name === "sentry_api");
