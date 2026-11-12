@@ -587,18 +587,19 @@ function renderTableToken(table: Tokens.Table): string {
  * then strips ANSI codes. This produces human-readable output rather than
  * raw CommonMark source.
  *
- * @param md - Markdown source text
+ * @param md - Markdown source text. `null` and `undefined` render as empty,
+ *   so an API field that is not validated at runtime cannot crash the lexer.
  * @returns Styled terminal string (TTY) or clean plain text (non-TTY / plain mode)
  */
-export function renderMarkdown(md: string): string {
+export function renderMarkdown(md: string | null | undefined): string {
   if (isPlainOutput()) {
     // Parse and render to get structural formatting (headings, tables, lists),
     // then strip ANSI codes. This produces human-readable output with aligned
     // tables and proper heading emphasis, without ANSI escape sequences.
-    const tokens = marked.lexer(md);
+    const tokens = marked.lexer(md ?? "");
     return stripAnsi(renderBlocks(tokens)).trimEnd();
   }
-  const tokens = marked.lexer(md);
+  const tokens = marked.lexer(md ?? "");
   return renderBlocks(tokens).trimEnd();
 }
 
@@ -611,11 +612,12 @@ export function renderMarkdown(md: string): string {
  * clean text. This avoids maintaining a separate regex-based stripping
  * function that would need to replicate the markdown parser's rules.
  *
- * @param md - Inline markdown text
+ * @param md - Inline markdown text. `null` and `undefined` render as empty,
+ *   as in {@link renderMarkdown}.
  * @returns Styled string (TTY) or plain text (non-TTY / plain mode)
  */
-export function renderInlineMarkdown(md: string): string {
-  const tokens = marked.lexer(md);
+export function renderInlineMarkdown(md: string | null | undefined): string {
+  const tokens = marked.lexer(md ?? "");
   const rendered = renderInline(tokens.flatMap(flattenInline));
   return isPlainOutput() ? stripAnsi(rendered) : rendered;
 }
