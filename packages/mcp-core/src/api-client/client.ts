@@ -17,19 +17,15 @@ import {
 } from "@sentry/api";
 import { operations } from "@sentry/api/operations";
 import {
-  ApiError,
   ApiNotFoundError,
   apiPath,
-  ApiRateLimitError,
   type ApiTarget,
   ApiValidationError,
-  applyStatsMixinTimeParams,
   applyTimeParams,
   createApiClientCore,
   createApiError,
   createApiTransport,
   createIdempotentOperationMatcher,
-  parseStatsPeriod,
   readJsonResponse,
   type RetryPolicy,
   selectIdempotentWrites,
@@ -99,7 +95,6 @@ import {
   isProfilesDataset,
   normalizeEventsDataset,
 } from "../utils/events-datasets";
-import { isNumericId } from "../utils/slug-validation";
 import {
   type DashboardUrlOptions,
   getAIConversationsUrl as getAIConversationsUrlUtil,
@@ -1022,7 +1017,6 @@ export class SentryApiService {
       start,
       end,
       aggregateFunctions,
-      groupByFields,
     } = params;
 
     const urlParams = new URLSearchParams();

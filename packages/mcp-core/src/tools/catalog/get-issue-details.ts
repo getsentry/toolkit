@@ -10,7 +10,6 @@ import type {
   ExternalIssueList,
   Issue,
   Trace,
-  TransactionEvent,
 } from "../../api-client/types";
 import { ConfigurationError, UserInputError } from "../../errors";
 import type { CodeLocation } from "../../internal/code-location";
@@ -894,10 +893,6 @@ function getString(value: unknown): string | undefined {
 function isErrorEvent(event: Event): event is ErrorEvent | DefaultEvent {
   // "default" type represents error events without exception data
   return event.type === "error" || event.type === "default";
-}
-
-function isTransactionEvent(event: Event): event is TransactionEvent {
-  return event.type === "transaction";
 }
 
 function shouldFetchTraceForEvent(event: Event): { traceId: string } | null {
