@@ -392,13 +392,24 @@ export function makeExternalDebugInfoSection(url: string): WasmSection {
   );
 }
 
+/** Size of a `build_id` body written before the length prefix was standardized. */
+const LEGACY_BUILD_ID_LENGTH = 16;
+
 /**
  * Read the bytes out of a `build_id` section body.
+ *
+ * A body of exactly 16 bytes is a bare UUID from a producer that predates the
+ * length prefix. symbolic (getsentry/symbolic#1093) and `@sentry/wasm` both
+ * read it as is, so this does too: rejecting it would make callers stamp a
+ * second `build_id`, and the two readers would then pick different sections.
  *
  * @param contents - The section body, after its name
  * @returns The build id, or `null` when the body is malformed
  */
 export function decodeBuildId(contents: Uint8Array): Uint8Array | null {
+  if (contents.length === LEGACY_BUILD_ID_LENGTH) {
+    return contents;
+  }
   return decodeByteVector(contents, BUILD_ID_SECTION);
 }
 
