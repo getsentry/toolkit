@@ -75,6 +75,7 @@ import {
   looksLikeSentrySearchSyntax,
   readRegexFilterValue,
   recordEventsSearchValidationTelemetry,
+  rewriteNumericIssueFilters,
   validateEventsSearch,
 } from "./utils";
 
@@ -963,6 +964,10 @@ async function executeSearchEvents(
     untranslatedQueryNote = untranslatedNote
       ? `**Note:** ${untranslatedNote}`
       : null;
+  }
+
+  if (dataset === "errors") {
+    sentryQuery = rewriteNumericIssueFilters(sentryQuery);
   }
 
   // Flag any requested environment that doesn't exist (checking both the

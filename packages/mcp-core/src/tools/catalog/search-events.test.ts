@@ -187,6 +187,69 @@ describe("search_events", () => {
     expect(result).toContain("No results found");
   });
 
+  it("sends numeric issue IDs from the agent as issue.id on the errors dataset", async () => {
+    // MCP-SERVER-GP2: the agent turned "issue IDs 7768113107, 7768562918"
+    // into `issue:[...]`, which Sentry rejects with "Issue IDs do not exist".
+    mockGenerateText.mockResolvedValue(
+      mockAIResponse(
+        "errors",
+        "issue:[7768113107,7768562918]",
+        ["issue", "count()"],
+        undefined,
+        "-count()",
+      ),
+    );
+    const sentQueries: Array<string | null> = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        ({ request }) => {
+          sentQueries.push(new URL(request.url).searchParams.get("query"));
+          return HttpResponse.json(validEventsValidationResponse);
+        },
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          const url = new URL(request.url);
+          sentQueries.push(url.searchParams.get("query"));
+          expect(url.searchParams.get("dataset")).toBe("errors");
+          return HttpResponse.json({
+            data: [{ issue: "PROJ-1", "count()": 3 }],
+          });
+        },
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "count events for issue IDs 7768113107, 7768562918",
+        fields: null,
+        sort: null,
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(sentQueries).toEqual([
+      "issue.id:[7768113107,7768562918]",
+      "issue.id:[7768113107,7768562918]",
+    ]);
+    expect(result).toContain("- Query: `issue.id:[7768113107,7768562918]`");
+  });
+
   it("renders a timeseries when the agent returns timeSeries (per-hour)", async () => {
     const output = {
       dataset: "errors" as const,
