@@ -4055,6 +4055,108 @@ describe("search_events", () => {
       );
     });
 
+    describe("unknown attributes", () => {
+      const unknownFieldsValidation = {
+        ...validEventsValidationResponse,
+        valid: false,
+        field: [
+          { name: "message", valid: true, attrType: "string", error: null },
+          {
+            name: "error.message",
+            valid: false,
+            attrType: null,
+            error: "Unknown attribute",
+          },
+          {
+            name: "error.stack",
+            valid: false,
+            attrType: null,
+            error: "Unknown attribute",
+          },
+        ],
+      };
+      const logsParams = {
+        ...baseParams,
+        dataset: "logs" as const,
+        query: "trace:a717563797c74155a78dc35bf77aa91a severity:error",
+        fields: ["timestamp", "message", "error.message", "error.stack"],
+        sort: "-timestamp",
+      };
+
+      // Regression for MCP-SERVER-GPC: explicit log fields were rejected as
+      // "Unknown attribute" with no way to find the real key (`error`).
+      it("lists existing attributes that share the rejected key's stem", async () => {
+        const substringMatches: (string | null)[] = [];
+        mswServer.use(
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/events/validate/",
+            () => HttpResponse.json(unknownFieldsValidation),
+          ),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/trace-items/attributes/",
+            ({ request }) => {
+              const url = new URL(request.url);
+              substringMatches.push(url.searchParams.get("substringMatch"));
+              expect(url.searchParams.get("itemType")).toBe("logs");
+              return HttpResponse.json([
+                {
+                  key: "error",
+                  name: "error",
+                  attributeType: "string",
+                  attributeSource: { source_type: "user" },
+                },
+                {
+                  key: "error.type",
+                  name: "error.type",
+                  attributeType: "string",
+                  attributeSource: { source_type: "user" },
+                },
+              ]);
+            },
+          ),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/events/",
+            () => {
+              throw new Error("searchEvents should not be called");
+            },
+          ),
+        );
+
+        const result = searchEvents.handler(logsParams, context);
+
+        await expect(result).rejects.toThrow(UserInputError);
+        await expect(result).rejects.toThrow(
+          "INVALID error.message — Unknown attribute",
+        );
+        await expect(result).rejects.toThrow(
+          "Attributes that exist on logs in this time range:\n- matching `error`: `error`, `error.type`\nUse one of these keys, or drop the unknown field.",
+        );
+        // Both rejected keys share one stem, so one lookup covers them.
+        expect(substringMatches).toEqual(["error"]);
+      });
+
+      it("keeps the validation error when the attribute lookup fails", async () => {
+        mswServer.use(
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/events/validate/",
+            () => HttpResponse.json(unknownFieldsValidation),
+          ),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/trace-items/attributes/",
+            () => HttpResponse.json({ detail: "boom" }, { status: 500 }),
+          ),
+        );
+
+        const result = searchEvents.handler(logsParams, context);
+
+        await expect(result).rejects.toThrow(UserInputError);
+        await expect(result).rejects.toThrow(
+          "INVALID error.stack — Unknown attribute",
+        );
+        await expect(result).rejects.not.toThrow("Attributes that exist");
+      });
+    });
+
     it.each([
       {
         detail: "first_seen is not a valid function",

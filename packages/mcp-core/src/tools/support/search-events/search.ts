@@ -38,6 +38,7 @@ import {
 } from "./config";
 import { buildDroppedEventsNote } from "./dropped-events-note";
 import { getFieldRecoveryHints } from "./field-hints";
+import { getUnknownAttributeHints } from "./unknown-attribute-hints";
 import {
   formatErrorResults,
   formatLogResults,
@@ -1204,18 +1205,27 @@ async function executeSearchEvents(
 
   if (!lastValidation.valid) {
     const formatted = formatEventsValidationResults(lastValidation);
+    if (!formatted) {
+      throw new UserInputError("Search validation failed.");
+    }
+    const attributeHints = await getUnknownAttributeHints({
+      apiService,
+      organizationSlug,
+      dataset,
+      projectId,
+      timeParams,
+      validation: lastValidation,
+    });
     throw new UserInputError(
-      formatted
-        ? appendHints(
-            `Search validation failed:\n${formatted}`,
-            getFieldRecoveryHints({
-              dataset,
-              fields: requestFields,
-              sort: sortParam,
-              detail: formatted,
-            }),
-          )
-        : "Search validation failed.",
+      appendHints(`Search validation failed:\n${formatted}`, [
+        ...getFieldRecoveryHints({
+          dataset,
+          fields: requestFields,
+          sort: sortParam,
+          detail: formatted,
+        }),
+        ...attributeHints,
+      ]),
     );
   }
 
