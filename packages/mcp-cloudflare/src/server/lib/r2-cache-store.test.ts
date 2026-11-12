@@ -303,4 +303,41 @@ describe("createTieredStore", () => {
     await isolate("identity-a").get(ORG_EVENT_URL);
     expect(upstream).toHaveBeenCalledTimes(1);
   });
+
+  it("never persists the token under any Authorization header casing", async () => {
+    const memory = createMemoryStore();
+    const { cache } = createResponseCache({
+      store: memory,
+      allowlistedStore: createTieredStore({
+        memory,
+        bucket,
+        identity: "identity-a",
+        waitUntil,
+      }),
+      identity: "identity-a",
+      apiBaseUrl: "https://sentry.io",
+      waitUntil,
+    });
+    const bearer = `Bearer ${TOKEN}`;
+    await cache.store(
+      {
+        url: ORG_EVENT_URL,
+        requestHeaders: { Authorization: bearer, AUTHORIZATION: bearer },
+        identity: "identity-a",
+      },
+      Response.json(
+        { id: "event-1" },
+        { headers: { "Cache-Control": PRIVATE_5M, Vary: "Authorization" } },
+      ),
+    );
+    while (pending.length > 0) {
+      await Promise.all(pending.splice(0));
+    }
+
+    const [key] = await objectKeys();
+    expect(key).toBeDefined();
+    const object = await bucket.get(key ?? "");
+    const stored = new TextDecoder().decode(await object?.arrayBuffer());
+    expect(stored).not.toContain(TOKEN);
+  });
 });

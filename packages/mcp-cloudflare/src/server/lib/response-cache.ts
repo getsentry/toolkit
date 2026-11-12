@@ -75,20 +75,6 @@ async function sha256Hex(value: string): Promise<string> {
   ).join("");
 }
 
-/**
- * Request headers for `Vary` matching with the Authorization value hashed.
- * A response that varies on Authorization makes the cache policy keep the
- * request's headers, and an entry must never hold a raw token.
- */
-async function hashAuthorization(
-  requestHeaders: Record<string, string>,
-): Promise<Record<string, string>> {
-  const { authorization, ...rest } = requestHeaders;
-  return authorization
-    ? { ...rest, authorization: `sha256:${await sha256Hex(authorization)}` }
-    : rest;
-}
-
 function recordLookup(result: "hit" | "miss" | "stale"): void {
   Sentry.metrics.count(LOOKUP_METRIC, 1, {
     attributes: { "app.response_cache.result": result },
@@ -185,13 +171,15 @@ export function createResponseCache({
         return;
       }
       const key = await buildCacheKey("GET", url, identity);
+      // storeResponse hashes every Authorization header, whatever its casing,
+      // before the policy keeps request headers for Vary matching.
       await storeResponse({
         store: storeFor(url),
         codec,
         key,
         identity,
         url,
-        requestHeaders: await hashAuthorization(requestHeaders),
+        requestHeaders,
         response,
       });
     } finally {
@@ -216,7 +204,7 @@ export function createResponseCache({
             codec,
             key,
             url,
-            requestHeaders: await hashAuthorization(requestHeaders),
+            requestHeaders,
           });
           recordLookup(lookup?.kind ?? "miss");
           return lookup;
