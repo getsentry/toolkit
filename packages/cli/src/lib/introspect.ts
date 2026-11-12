@@ -10,7 +10,7 @@
  * for introspection and documentation generation.
  */
 
-import generatedCommandApi from "../generated/command-api.json";
+import generatedCommandApi from "../generated/command-api.json" with { type: "json" };
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
   CHOICE_TARGET,

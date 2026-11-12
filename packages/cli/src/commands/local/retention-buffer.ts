@@ -26,12 +26,12 @@ export type LocalRetentionBuffer = {
   ) => () => void;
 };
 export class RetentionLimitError extends Error {
-  constructor(
-    message: string,
-    readonly status: 400 | 409 = 400,
-  ) {
+  readonly status: 400 | 409;
+
+  constructor(message: string, status: 400 | 409 = 400) {
     super(message);
     this.name = "RetentionLimitError";
+    this.status = status;
   }
 }
 export function validateMaxEnvelopes(value: unknown): asserts value is number {

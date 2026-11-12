@@ -402,7 +402,9 @@ function configureServer({
       title: tool.title,
       description: resolvedDescription,
       inputSchema: filteredInputSchema,
-      outputSchema: tool.outputSchema,
+      outputSchema:
+        tool.outputSchema ??
+        (experimentalMode ? tool.experimentalOutputSchema : undefined),
       annotations: tool.annotations,
     };
     const handleToolCall = async (params: unknown): Promise<CallToolResult> => {
@@ -557,6 +559,7 @@ function configureServer({
               text: (
                 await formatErrorForUser(error, {
                   transport: context.transport,
+                  session: contextWithToolAvailability,
                 })
               ).toWellFormed(),
             },

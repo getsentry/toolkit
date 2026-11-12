@@ -1,86 +1,18 @@
 /**
- * esbuild plugin for the `with { type: "text" }` and
- * `with { type: "file" }` import attributes (esbuild only supports
- * `json`).
- *
- * - `text` — intercepts the import, reads the file, and default-
- *   exports its contents as a string (e.g. the grep worker source).
- * - `file` — pre-bundles the source file (TypeScript/TSX → JS) into
- *   a self-contained ESM module in the esbuild output directory, and
- *   replaces the import with a module that default-exports its
- *   relative filename (`"./ink-app.js"`). `src/lib/select-ui/ink-ui.ts`
- *   resolves that against `import.meta.url` in the npm bundle; the
- *   single-file executable ships the file as a SEA asset instead.
- *
- *   Bundling inlines ALL dependencies (local modules like
- *   `select-filter.ts` and packages like `ink` and `react`), because
- *   the sidecar loads where neither `node_modules` nor sibling
- *   source files exist.
- *
- *   Some of the inlined packages (e.g. `signal-exit`, used by Ink)
- *   are CJS modules that call `require("assert")` etc. esbuild
- *   wraps these in `__require` shims that throw "Dynamic require
- *   is not supported" at runtime. The banner injects a real
- *   `require` function via `createRequire` so CJS dependencies
- *   resolve Node builtins correctly inside the ESM bundle.
- *
- *   Non-TypeScript files (plain `.js`) are copied verbatim.
+ * esbuild plugin for the `with { type: "text" }` import attribute (esbuild
+ * only supports `json`): intercepts the import, reads the file, and
+ * default-exports its contents as a string (e.g. the grep worker source).
  *
  * Used by `script/build.ts` (single-file executable) and
  * `script/bundle.ts` (CJS library bundle).
  */
 
-import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
-import { basename, dirname, extname, resolve as resolvePath } from "node:path";
-import { build as esbuildBuild, type Plugin } from "esbuild";
+import { readFileSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
+import type { Plugin } from "esbuild";
 
 const TEXT_IMPORT_NS = "text-import";
-const FILE_PATH_NS = "file-path-import";
 const ANY_FILTER = /.*/;
-
-/** Extensions that need TypeScript/JSX transpilation before embedding. */
-const TS_EXTENSIONS = new Set([".ts", ".tsx", ".jsx"]);
-
-/**
- * Banner injected into the pre-bundled sidecar JS. Provides a real
- * `require` function so esbuild's CJS-wrapping `__require` shims
- * can resolve Node.js builtins (`assert`, `events`, etc.) at runtime.
- * Without this, `signal-exit` and other CJS deps of Ink throw
- * "Dynamic require of 'assert' is not supported".
- */
-const REQUIRE_BANNER =
-  'import { createRequire as ___cr } from "node:module";' +
-  " var require = ___cr(import.meta.url);";
-
-/**
- * Pre-bundle a TypeScript/TSX source file into self-contained JS.
- * All dependencies (local modules AND npm packages) are inlined;
- * only `node:*` builtins stay external.
- */
-async function prebundleTs(sourcePath: string, outPath: string): Promise<void> {
-  await esbuildBuild({
-    entryPoints: [sourcePath],
-    bundle: true,
-    outfile: outPath,
-    platform: "node",
-    target: "esnext",
-    format: "esm",
-    jsx: "automatic",
-    external: ["node:*"],
-    banner: { js: REQUIRE_BANNER },
-    minify: false,
-    write: true,
-  });
-}
-
-/** Resolve the output directory from the parent esbuild config. */
-function resolveOutdir(build: {
-  initialOptions: { outdir?: string; outfile?: string };
-}): string {
-  return build.initialOptions.outdir
-    ? resolvePath(build.initialOptions.outdir)
-    : dirname(resolvePath(build.initialOptions.outfile ?? "."));
-}
 
 const GREP_WORKER_SOURCE_RE = /grep-worker-source\.(js|ts)$/;
 
@@ -94,52 +26,15 @@ export const textImportPlugin: Plugin = {
       namespace: TEXT_IMPORT_NS,
     }));
 
-    build.onResolve({ filter: ANY_FILTER }, async (args) => {
+    build.onResolve({ filter: ANY_FILTER }, (args) => {
       if (args.with.type === "text") {
         return {
           path: resolvePath(args.resolveDir, args.path),
           namespace: TEXT_IMPORT_NS,
         };
       }
-      if (args.with.type === "file") {
-        const sourcePath = resolvePath(args.resolveDir, args.path);
-        const outdir = resolveOutdir(build);
-        mkdirSync(outdir, { recursive: true });
-
-        const ext = extname(sourcePath);
-        const outFilename = `${basename(sourcePath, ext)}.js`;
-        const outPath = resolvePath(outdir, outFilename);
-
-        try {
-          if (TS_EXTENSIONS.has(ext)) {
-            await prebundleTs(sourcePath, outPath);
-          } else {
-            copyFileSync(sourcePath, outPath);
-          }
-        } catch (err) {
-          throw new Error(
-            `text-import-plugin: failed to process ${sourcePath} → ${outPath}: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-        }
-
-        // Emit a virtual module that exports the sidecar filename as a
-        // string. For CJS bundles (npm distribution), the consumer resolves
-        // the full path at runtime using import.meta.url. For ESM bundles
-        // (Node SEA binary), the sidecar is embedded as a fossilize asset
-        // and extracted at runtime via node:sea.getAsset().
-        return {
-          path: outFilename,
-          namespace: FILE_PATH_NS,
-        };
-      }
       return null;
     });
-    build.onLoad({ filter: ANY_FILTER, namespace: FILE_PATH_NS }, (args) => ({
-      contents: `export default ${JSON.stringify(`./${args.path}`)};`,
-      loader: "js",
-    }));
     build.onLoad({ filter: ANY_FILTER, namespace: TEXT_IMPORT_NS }, (args) => {
       const content = readFileSync(args.path, "utf-8");
       return {

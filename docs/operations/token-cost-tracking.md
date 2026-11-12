@@ -110,9 +110,9 @@ tool search.
 **CLI options:**
 
 ```bash
-tsx measure-token-cost.ts              # Display table
-tsx measure-token-cost.ts -o file.json # Write JSON to file
-tsx measure-token-cost.ts --help       # Show help
+pnpm run measure-tokens                   # Display table
+pnpm run measure-tokens -- -o file.json   # Write JSON to file
+pnpm run measure-tokens -- --help         # Show help
 ```
 
 ## Optimizing Token Cost
