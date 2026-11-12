@@ -210,7 +210,7 @@ describe("sentry issue tags", () => {
     tagResponse = {
       ...TAG,
       key: "\u001b[2Jrelease\u202e",
-      topValues: [{ ...TAG.topValues![0]!, value }],
+      topValues: [{ ...TAG.topValues![0], value }],
     };
     const args = ["issue", "tags", "test-org/12345", "release"];
     const human = await runCli(args);
@@ -307,7 +307,13 @@ describe("sentry issue tags", () => {
       expect(result.stderr).toContain(
         `sentry issue tags ${correctedIssue} 'release' '--environment' 'team'"'"'s production'`,
       );
-      expect(requests).toEqual([]);
+      // Only the account's org list may be read, to find a sole org
+      expect(
+        requests.filter(
+          (request) =>
+            new URL(request.url).pathname !== "/api/0/organizations/",
+        ),
+      ).toEqual([]);
     },
   );
 

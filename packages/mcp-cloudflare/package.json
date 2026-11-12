@@ -30,9 +30,10 @@
     "tsc": "tsc --noEmit"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.13.15",
+    "@cloudflare/vite-plugin": "catalog:",
     "@cloudflare/vitest-plugin": "catalog:",
     "@cloudflare/workers-types": "catalog:",
+    "@sentry/api": "catalog:",
     "@sentry/mcp-core": "workspace:*",
     "@sentry/mcp-server-mocks": "workspace:*",
     "@sentry/mcp-server-tsconfig": "workspace:*",
@@ -56,7 +57,6 @@
     "@ai-sdk/mcp": "catalog:",
     "@ai-sdk/react": "catalog:",
     "@cloudflare/workers-oauth-provider": "catalog:",
-    "@modelcontextprotocol/sdk": "catalog:",
     "@modelcontextprotocol/server": "catalog:",
     "@radix-ui/react-accordion": "catalog:",
     "@radix-ui/react-slot": "catalog:",
@@ -65,7 +65,6 @@
     "agents": "catalog:",
     "ai": "catalog:",
     "asciinema-player": "^3.17.0",
-    "better-sqlite3": "catalog:",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "hono": "catalog:",

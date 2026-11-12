@@ -74,8 +74,8 @@ type Completion = {
 /**
  * Run `sentry __complete`.
  *
- * `src/bin.ts` and the npm package's `dist/bin.cjs` (`dist/complete.cjs`)
- * call this before anything else of the CLI loads, so a TAB press loads only
+ * `src/bin.ts` and the packages' main script (`src/chunk-main.ts`, which
+ * runs `complete.cjs`) call this before anything else of the CLI loads, so a TAB press loads only
  * this module's imports. `test/script/cli-startup.test.ts` keeps them free of
  * `@sentry/node`, the API client, and the command tree.
  *
@@ -368,34 +368,6 @@ const COMPLETERS = Object.freeze({
   file: (partial) => completePaths(partial, { directoriesOnly: false }),
   /** Directory paths only. */
   directory: (partial) => completePaths(partial, { directoriesOnly: true }),
-  /**
-   * `sentry init`'s `[<target>] [<directory>]`: what `org/project` does, or
-   * directories once the word looks like a path (`./`, `../`, `/`, `~/`).
-   * At most one of each, in either order.
-   */
-  "org-project-or-directory": async (partial, slot) => {
-    const { looksLikePath } = await import("./arg-parsing.js");
-    const [previous, ...rest] = slot.positionals;
-    if (rest.length > 0) {
-      return [];
-    }
-    const afterTarget = previous !== undefined && !looksLikePath(previous);
-    if (!(afterTarget || looksLikePath(partial))) {
-      return completeOrgSlashProject(partial);
-    }
-    if (previous !== undefined && !afterTarget) {
-      return [];
-    }
-    // Every suggestion must still look like a path: `.` and `~` alone
-    // list inside themselves, and a bare word after a target becomes `./…`
-    const path =
-      partial === "." || partial === "~"
-        ? `${partial}/`
-        : looksLikePath(partial)
-          ? partial
-          : `./${partial}`;
-    return completePaths(path, { directoriesOnly: true });
-  },
   /** A CLI command path, one route segment per word (`help issue list`). */
   "command-path": (partial, slot) =>
     completeSubcommands(slot.positionals.join(" "), partial),

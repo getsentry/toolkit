@@ -22,6 +22,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { type MergeIssuesResult, mergeIssues } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseIssueReference } from "../../lib/completion-target.js";
 import {
@@ -45,7 +46,7 @@ const log = logger.withTag("issue.merge");
 const COMMAND = "merge";
 /** Full command path for error messages (this one isn't passed to resolveIssue). */
 const COMMAND_PATH = "issue merge";
-const USAGE_HINT = "sentry issue merge <issue> <issue> [<issue>...]";
+const usageHint = () => sentry`issue merge <issue> <issue> [<issue>...]`;
 
 type MergeFlags = {
   readonly json: boolean;
@@ -107,22 +108,8 @@ async function resolveAllIssues(
     ),
   );
 
-  // Every resolved issue must have a concrete org slug — otherwise we
-  // can't safely decide whether a merge is cross-org. A bare numeric ID
-  // that couldn't pick up an org from DSN/env/config would return
-  // `org: undefined`; those must error before we proceed.
-  const missingOrg = resolved.filter((r) => !r.org);
-  if (missingOrg.length > 0) {
-    const badIds = missingOrg.map((r) => r.issue.shortId).join(", ");
-    throw new ValidationError(
-      `Could not determine the organization for: ${badIds}.\n\n` +
-        "Provide the org explicitly (e.g. <org>/<issue>) so the merge\n" +
-        "can verify all issues belong to the same organization.",
-    );
-  }
-
-  // Collect the fully-resolved orgs and require a single one.
-  const orgs = new Set(resolved.map((r) => r.org as string));
+  // Collect the resolved orgs and require a single one.
+  const orgs = new Set(resolved.map((r) => r.org));
   if (orgs.size > 1) {
     throw new ValidationError(
       `Cannot merge issues across organizations (${[...orgs].join(", ")}).\n\n` +
@@ -132,8 +119,7 @@ async function resolveAllIssues(
 
   const [org] = orgs;
   if (!org) {
-    // Unreachable — resolved.length >= 1 (callers guard for <2) and we
-    // just asserted every entry has a non-empty org.
+    // Unreachable — resolved.length >= 1 (callers guard for <2).
     throw new CliError("Internal error: resolved issue missing org slug.");
   }
 
@@ -275,20 +261,19 @@ export const mergeCommand = buildCommand({
       {
         description:
           "Let Sentry pick the parent (typically the largest by event count)",
-        command: "sentry issue merge CLI-K9 CLI-15H CLI-15N",
+        run: "issue merge CLI-K9 CLI-15H CLI-15N",
       },
       {
         description: "Pin the canonical parent explicitly",
-        command: "sentry issue merge CLI-K9 CLI-15H CLI-15N --into CLI-K9",
+        run: "issue merge CLI-K9 CLI-15H CLI-15N --into CLI-K9",
       },
       {
         description: "Use organization-qualified IDs",
-        command:
-          "sentry issue merge my-org/CLI-K9 my-org/CLI-15H --into my-org/CLI-K9",
+        run: "issue merge my-org/CLI-K9 my-org/CLI-15H --into my-org/CLI-K9",
       },
       {
         description: "Use project-alias IDs",
-        command: "sentry issue merge cli-k9 cli-15h --into cli-k9",
+        run: "issue merge cli-k9 cli-15h --into cli-k9",
       },
     ],
   },
@@ -301,7 +286,7 @@ export const mergeCommand = buildCommand({
     // counts `--into` too
     positional: issuesPositional({
       brief: "Issue IDs to merge (2 or more required)",
-      usageHint: USAGE_HINT,
+      usageHint: usageHint,
       optional: true,
     }),
     flags: {
@@ -337,10 +322,10 @@ export const mergeCommand = buildCommand({
     if (effectiveArgs.length < 2) {
       const hint =
         args.length === 1
-          ? "Tip: you can also write: sentry issue merge CLI-K9 --into CLI-15H"
-          : "Example: sentry issue merge CLI-K9 CLI-15H CLI-15N";
+          ? `Tip: you can also write: ${sentry`issue merge CLI-K9 --into CLI-15H`}`
+          : `Example: ${sentry`issue merge CLI-K9 CLI-15H CLI-15N`}`;
       throw new ValidationError(
-        `'sentry ${COMMAND_PATH}' needs at least 2 issue IDs (got ${args.length}).\n\n` +
+        `'${sentry`${COMMAND_PATH}`}' needs at least 2 issue IDs (got ${args.length}).\n\n` +
           hint,
       );
     }
@@ -372,7 +357,7 @@ export const mergeCommand = buildCommand({
       );
     }
 
-    yield new CommandOutput<MergeCommandResult>({
+    yield new CommandOutput({
       org,
       parentShortId,
       childShortIds,

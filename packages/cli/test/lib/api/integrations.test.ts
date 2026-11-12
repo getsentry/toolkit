@@ -77,7 +77,7 @@ describe("integration API", () => {
     expect(page.data).toEqual([integration]);
     expect(page.nextCursor).toBe("0:25:0");
     expect(calls).toHaveLength(1);
-    const { url, method } = calls[0]!;
+    const { url, method } = calls[0];
     expect(method).toBe("GET");
     expect(url.pathname).toBe("/api/0/organizations/my-org/integrations/");
     expect(url.searchParams.get("includeConfig")).toBe("0");

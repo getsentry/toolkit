@@ -169,7 +169,7 @@ SENTRY_CLIENT_SECRET = "..." # OAuth app secret
 ### Sentry API Response Cache
 
 The MCP handler can cache Sentry API GET responses through the shared
-response cache in `@sentry/toolkit-core/api-client/response-cache`. It is
+response cache in `@sentry/api/client`. It is
 behind `MCP_RESPONSE_CACHE`:
 
 | Value               | Behavior                                                                   |

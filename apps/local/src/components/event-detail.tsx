@@ -1,7 +1,7 @@
-import { envelopeAttachments } from "@/lib/attachments.ts";
+import { envelopeAttachments, eventAttachments } from "@/lib/attachments.ts";
 import { EventContext, FeedbackInspector } from "./event-context.tsx";
 import { AiInspector } from "./ai-inspector.tsx";
-import { AttachmentDetail, EnvelopeAttachments } from "./attachment-detail.tsx";
+import { AttachmentDetail, AttachmentList } from "./attachment-detail.tsx";
 import { errorMarkdown, inspectAi, hasEventContext } from "@/lib/inspection.ts";
 import { Button } from "./ui/button.tsx";
 import { useCopyToClipboard } from "@uidotdev/usehooks";
@@ -107,8 +107,13 @@ export function EventDetail({
   const [, copyForAi] = useCopyToClipboard();
   const ai = inspectAi(item.payload);
   const attachments = useMemo(
-    () => (item.type === "envelope" ? envelopeAttachments(item) : []),
-    [item],
+    () =>
+      item.type === "envelope"
+        ? envelopeAttachments(item)
+        : item.type === "event"
+          ? eventAttachments(item, relatedItems ?? [])
+          : [],
+    [item, relatedItems],
   );
   const hasContext =
     (item.type === "event" || item.type === "transaction") &&
@@ -226,7 +231,10 @@ export function EventDetail({
               <AttachmentDetail item={item} />
             ) : null}
             {item.type === "envelope" ? (
-              <EnvelopeAttachments attachments={attachments} />
+              <AttachmentList
+                label="Envelope attachments"
+                attachments={attachments}
+              />
             ) : null}
             {item.type === "feedback" || item.type === "user_report" ? (
               <FeedbackInspector
@@ -272,10 +280,20 @@ export function EventDetail({
                 />
               </section>
             ) : null}
+            {item.type === "event" && attachments.length ? (
+              <section className="space-y-2">
+                <h3 className="text-sm font-medium">Attachments</h3>
+                <AttachmentList
+                  label="Event attachments"
+                  attachments={attachments}
+                />
+              </section>
+            ) : null}
             {!fields.length &&
             !(isRequestOrSpan && summaryFields.length) &&
             !exceptions.length &&
             !attributes.length &&
+            !attachments.length &&
             !ai &&
             !hasContext &&
             !trace &&

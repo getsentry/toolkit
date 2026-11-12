@@ -20,17 +20,16 @@ import {
   buildOrgListCommand,
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
-import type { OrgListConfig } from "../../lib/org-list.js";
-import {
-  type SentryRepository,
-  SentryRepositorySchema,
-} from "../../types/index.js";
+import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
+import type { SentryRepository } from "../../types/index.js";
+import { RepositoryListItemSchema } from "../../generated/output-schemas/repo.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "repo-list";
 
 /** Repository with its organization context for display */
-type RepositoryWithOrg = SentryRepository & { orgSlug?: string };
+type RepositoryWithOrg = WithOrg<SentryRepository>;
 
 /** Column definitions for the repository table. */
 const REPO_COLUMNS: Column<RepositoryWithOrg>[] = [
@@ -42,10 +41,14 @@ const REPO_COLUMNS: Column<RepositoryWithOrg>[] = [
 ];
 
 /** Shared config that plugs into the org-list framework. */
-const repoListConfig: OrgListConfig<SentryRepository, RepositoryWithOrg> = {
+const repoListConfig: OrgListConfig<
+  SentryRepository,
+  RepositoryWithOrg,
+  typeof RepositoryListItemSchema
+> = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "repositories",
-  commandPrefix: "sentry repo list",
+  commandPrefix: () => sentry`repo list`,
   listForOrg: (org) => listRepositories(org),
   listPaginated: (org, opts) => listRepositoriesPaginated(org, opts),
   withOrg: (repo, orgSlug) => ({ ...repo, orgSlug }),
@@ -58,7 +61,7 @@ const repoListConfig: OrgListConfig<SentryRepository, RepositoryWithOrg> = {
   searchesNames: true,
   displayTable: (repos: RepositoryWithOrg[]) =>
     formatTable(repos, REPO_COLUMNS),
-  schema: SentryRepositorySchema,
+  schema: RepositoryListItemSchema,
 };
 
 const docs: OrgListCommandDocs = {
@@ -70,26 +73,26 @@ const docs: OrgListCommandDocs = {
   examples: [
     {
       description: "List repositories (organization auto-detected)",
-      command: "sentry repo list",
+      run: "repo list",
     },
     {
       description: "List repositories in an organization",
-      command: "sentry repo list my-org/",
+      run: "repo list my-org/",
     },
     {
       description: "Fetch the next page",
-      command: "sentry repo list my-org/ -c next",
+      run: "repo list my-org/ -c next",
     },
     {
       description: "Only repositories whose name matches a glob",
-      command: "sentry repo list 'my-org/getsentry/*'",
+      run: "repo list 'my-org/getsentry/*'",
     },
     {
       description:
         "Repositories named like 'sentry-python' (fuzzy when nothing matches exactly)",
-      command: "sentry repo list my-org/sentry-pyhton",
+      run: "repo list my-org/sentry-pyhton",
     },
-    { description: "Output as JSON", command: "sentry repo list --json" },
+    { description: "Output as JSON", run: "repo list --json" },
   ],
 };
 

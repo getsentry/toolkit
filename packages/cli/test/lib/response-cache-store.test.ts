@@ -14,7 +14,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CacheEntry } from "@sentry/toolkit-core/api-client/response-cache";
+import type { CacheEntry } from "@sentry/api/client";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   createFileStore,
@@ -58,7 +58,7 @@ async function lastUsed(key: string, secondsAgo: number): Promise<void> {
 }
 
 async function keys(): Promise<string[]> {
-  return (await readdir(dir)).map((file) => file.split(".")[0]!).sort();
+  return (await readdir(dir)).map((file) => file.split(".")[0]).sort();
 }
 
 describe("createFileStore", () => {

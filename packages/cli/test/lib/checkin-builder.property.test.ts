@@ -126,7 +126,7 @@ describe("property: buildCheckIn", () => {
           const checkIn = buildCheckIn({
             checkInId,
             monitorSlug,
-            status: status as "in_progress" | "ok" | "error",
+            status: status,
           });
           expect(checkIn.check_in_id).toBe(checkInId);
           expect(checkIn.monitor_slug).toBe(monitorSlug);

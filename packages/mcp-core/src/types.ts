@@ -5,7 +5,7 @@
  * and server context. Uses advanced TypeScript patterns for type-safe parameter
  * extraction and handler registration.
  */
-import type { TransportCache } from "@sentry/toolkit-core/api-client/transport";
+import type { TransportCache } from "@sentry/api/client";
 import type { Skill } from "./skills";
 
 /**

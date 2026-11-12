@@ -18,6 +18,19 @@ function isErrorLike(value: unknown): value is ErrorLike {
 }
 
 /**
+ * The working directory with a trailing separator, stripped from stack frame
+ * paths. `undefined` when the directory was deleted, which makes
+ * `process.cwd()` throw; frames then keep their absolute paths.
+ */
+function cwdPrefix(): string | undefined {
+  try {
+    return process.cwd() + sep;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Render an error as its message, its stack frames, and its causes. Unlike
  * `util.inspect`, this leaves out the error's other properties, which can
  * hold request or response details.
@@ -38,13 +51,14 @@ function formatError(error: ErrorLike, depth: number, stack: boolean): string {
     return `${depth > 0 ? "[cause]: " : ""}${message}${cause}`;
   }
   const indent = "  ".repeat(depth + 1);
-  const cwd = process.cwd() + sep;
+  const cwd = cwdPrefix();
   const frames = error.stack
     .split("\n")
     .slice(message.split("\n").length)
-    .map(
-      (frame) => indent + frame.trim().replace("file://", "").replace(cwd, ""),
-    )
+    .map((frame) => {
+      const line = frame.trim().replace("file://", "");
+      return indent + (cwd ? line.replace(cwd, "") : line);
+    })
     .join("\n");
   return `${prefix}${message}\n${frames}${cause}`;
 }

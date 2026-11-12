@@ -5,17 +5,6 @@
  * Supports --refresh for auto-refreshing live display.
  */
 
-import {
-  array,
-  description,
-  looseObject,
-  number,
-  object,
-  optional,
-  pipe,
-  string,
-  unknown,
-} from "valibot";
 import type { SentryContext } from "../../context.js";
 import { getDashboard, queryAllWidgets } from "../../lib/api-client.js";
 import { openInBrowser } from "../../lib/browser.js";
@@ -42,14 +31,14 @@ import {
   type TimeRange,
   timeRangeToSeconds,
 } from "../../lib/time-range.js";
-import {
-  type DashboardWidget,
-  DashboardWidgetLayoutSchema,
-  DashboardWidgetQuerySchema,
-  type WidgetDataResult,
+import type {
+  DashboardWidget,
+  WidgetDataResult,
 } from "../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "./arguments.js";
 import { withDashboardErrors } from "./resolve.js";
+import { DashboardViewOutputSchema } from "../../generated/output-schemas/dashboard.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Default auto-refresh interval in seconds */
 const DEFAULT_REFRESH_INTERVAL = 60;
@@ -106,59 +95,6 @@ function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
     signal.addEventListener("abort", onAbort, { once: true });
   });
 }
-
-/** JSON fields of {@link DashboardViewData}, for `--fields`. */
-const DashboardViewOutputSchema = object({
-  id: pipe(string(), description("Dashboard ID")),
-  title: pipe(string(), description("Dashboard title")),
-  period: pipe(string(), description("Time range of the widget data")),
-  fetchedAt: pipe(
-    string(),
-    description("When the data was fetched (ISO 8601)"),
-  ),
-  url: pipe(string(), description("Dashboard URL")),
-  dateCreated: optional(
-    pipe(string(), description("Creation date (ISO 8601)")),
-  ),
-  environment: optional(
-    pipe(array(string()), description("Environment filter")),
-  ),
-  widgets: pipe(
-    array(
-      object({
-        title: pipe(string(), description("Widget title")),
-        displayType: pipe(string(), description("Display type")),
-        widgetType: optional(pipe(string(), description("Dataset"))),
-        description: optional(
-          pipe(string(), description("Markdown content of a text widget")),
-        ),
-        layout: optional(DashboardWidgetLayoutSchema),
-        queries: optional(array(DashboardWidgetQuerySchema)),
-        data: pipe(
-          looseObject({
-            type: pipe(
-              string(),
-              description(
-                "Result kind: timeseries, table, scalar, text, unsupported, or error",
-              ),
-            ),
-            series: optional(array(unknown())),
-            columns: optional(array(unknown())),
-            rows: optional(array(unknown())),
-            value: optional(number()),
-            previousValue: optional(number()),
-            unit: optional(unknown()),
-            content: optional(string()),
-            reason: optional(string()),
-            message: optional(string()),
-          }),
-          description("Widget query result"),
-        ),
-      }),
-    ),
-    description("Widgets with their query results"),
-  ),
-});
 
 /**
  * Build the DashboardViewData from a dashboard and its widget query results.
@@ -233,44 +169,44 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View a dashboard by title",
-        command: "sentry dashboard view 'Frontend Performance'",
+        run: "dashboard view 'Frontend Performance'",
       },
       {
         description: "View a dashboard by ID",
-        command: "sentry dashboard view 12345",
+        run: "dashboard view 12345",
       },
       {
         description: "View by ID in an explicit organization",
-        command: "sentry dashboard view my-org/12345",
+        run: "dashboard view my-org/12345",
       },
       {
         description: "Include project context in the same argument",
-        command: "sentry dashboard view my-org/my-project/12345",
+        run: "dashboard view my-org/my-project/12345",
       },
       {
         description:
           "Pass the organization separately, e.g. for titles that contain a slash",
-        command: 'sentry dashboard view my-org/ "incidents/2026"',
+        run: 'dashboard view my-org/ "incidents/2026"',
       },
       {
         description: "Override the time period",
-        command: "sentry dashboard view 12345 --period 7d",
+        run: "dashboard view 12345 --period 7d",
       },
       {
         description: "Render charts with sixel graphics",
-        command: "sentry dashboard view 12345 --renderer sixel",
+        run: "dashboard view 12345 --renderer sixel",
       },
       {
         description: "Auto-refresh every 30 seconds",
-        command: "sentry dashboard view 'Backend Performance' --refresh 30",
+        run: "dashboard view 'Backend Performance' --refresh 30",
       },
       {
         description: "Output as JSON",
-        command: "sentry dashboard view 12345 --json",
+        run: "dashboard view 12345 --json",
       },
       {
         description: "Open in the browser",
-        command: "sentry dashboard view 12345 -w",
+        run: "dashboard view 12345 -w",
       },
     ],
   },
@@ -282,7 +218,7 @@ export const viewCommand = buildCommand({
   parameters: {
     positional: dashboardArguments({
       placeholder: "org/project/dashboard",
-      usageHint: "sentry dashboard view <org>/ <id>",
+      usageHint: () => sentry`dashboard view <org>/ <id>`,
     }),
     flags: {
       web: {

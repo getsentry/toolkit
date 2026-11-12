@@ -43,7 +43,7 @@ export const searchIssueEventsAgentOutputSchema = z
   .refine(
     (data) => {
       // Only validate if both sort and fields are present
-      if (!data.sort || !data.fields || data.fields.length === 0) {
+      if (!data.sort || data.fields.length === 0) {
         return true;
       }
 
@@ -91,10 +91,7 @@ export async function searchIssueEventsAgent(
   });
 
   // Use callEmbeddedAgent to translate the query with tool call capture
-  return await callEmbeddedAgent<
-    z.output<typeof searchIssueEventsAgentOutputSchema>,
-    typeof searchIssueEventsAgentOutputSchema
-  >({
+  return await callEmbeddedAgent({
     system: systemPrompt,
     prompt: options.query,
     tools: {

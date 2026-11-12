@@ -23,7 +23,7 @@ import { useEnvSandbox, useTestConfigDir } from "../helpers.js";
 import { createMockServer, type MockServer } from "../mocks/server.js";
 
 const { selectWithFilter } = vi.hoisted(() => ({ selectWithFilter: vi.fn() }));
-vi.mock("../../src/lib/init/ui/ink-ui.js", () => ({ selectWithFilter }));
+vi.mock("../../src/lib/select-ui/ink-ui.js", () => ({ selectWithFilter }));
 
 useTestConfigDir("test-target-picker-");
 useEnvSandbox([

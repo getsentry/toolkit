@@ -14,12 +14,43 @@ export interface StructuredToolOutput<
   TStructuredContent extends Record<string, unknown> = Record<string, unknown>,
 > {
   structuredContent: TStructuredContent;
+  /**
+   * The server generates `content` from `structuredContent`. A handler that
+   * sets its own would ship it unchanged next to the payload.
+   */
+  content?: never;
 }
 export type ToolOutput =
   | string
   | ToolContent[]
   | CallToolResult
   | StructuredToolOutput;
+
+/** Zod schema a tool can declare as its MCP `outputSchema`. */
+export type ToolOutputSchema = z.ZodType<Record<string, unknown>>;
+
+/**
+ * What a handler must return for a given `outputSchema`.
+ *
+ * With a schema, the handler returns `structuredContent` typed as the schema's
+ * `z.output`. The SDK validates the raw payload against the schema but sends
+ * that raw payload, not the parse result, and advertises the schema to clients
+ * in its output form (`standardSchemaToJsonSchema(schema, "output")`). So the
+ * payload must already be what the schema outputs; `z.input` would accept
+ * payloads that rely on defaults and break the advertised shape. Output
+ * schemas must not use transforms, because the SDK cannot advertise them as
+ * JSON Schema.
+ *
+ * Markdown, strings, and raw MCP content are only allowed without a schema.
+ * Tools without a schema may still pass through another tool's structured
+ * result (`execute_sentry_tool`, `get_sentry_resource`). The type distributes
+ * over a union so `ToolConfig<any>` registries accept every tool.
+ */
+export type ToolOutputFor<TOutputSchema extends ToolOutputSchema | undefined> =
+  TOutputSchema extends ToolOutputSchema
+    ? StructuredToolOutput<z.output<TOutputSchema>>
+    : ToolOutput;
+
 /**
  * Keeps schema-inferred handler params at tool definition sites while allowing
  * heterogeneous tool registries to store many concrete handler signatures.
@@ -53,6 +84,12 @@ export type ToolDescription =
   | ((context: DescriptionContext) => string);
 
 /**
+ * Longest allowed tool description, in characters. VS Code (via OpenAI)
+ * limits descriptions to 1,024; this cap limits the damage until that rises.
+ */
+export const MAX_TOOL_DESCRIPTION_LENGTH = 2_048;
+
+/**
  * Resolves a tool description to a string.
  * Handles both static strings and dynamic description functions.
  */
@@ -80,8 +117,13 @@ export function isToolVisibleInMode(
 
 export interface ToolConfig<
   TSchema extends Record<string, z.ZodType> = Record<string, z.ZodType>,
+  TOutputSchema extends ToolOutputSchema | undefined =
+    | ToolOutputSchema
+    | undefined,
 > {
   name: string;
+  /** Human-readable display name exported as the MCP tool `title`. */
+  title: string;
   description: ToolDescription;
   inputSchema: TSchema;
   skills: Skill[]; // Which skill categories this tool belongs to
@@ -89,19 +131,39 @@ export interface ToolConfig<
   requiredScopes: Scope[]; // LEGACY: Which API scopes needed (deprecated, for backward compatibility)
   experimental?: boolean; // Mark tool as experimental (only shown in experimental mode)
   hideInExperimentalMode?: boolean; // Hide tool when experimental mode is active (for tools replaced by unified tools)
+  /**
+   * Marks a name kept only for backward compatibility. Deprecated tools are
+   * never listed in tools/list (see isTopLevelTool in surfaces.ts) but stay
+   * callable through execute_sentry_tool. `replacedBy` names the tool or tools
+   * new callers should use instead.
+   */
+  deprecated?: { replacedBy: readonly string[] };
   requiredCapabilities?: (keyof ProjectCapabilities)[]; // Project capabilities required for this tool
-  outputSchema?: z.ZodType;
+  /**
+   * Structured result contract. When set, the handler must return
+   * `structuredResult(...)` typed as this schema's output; see
+   * `ToolOutputFor`.
+   */
+  outputSchema?: TOutputSchema;
+  /**
+   * Structured result contract advertised only to experimental sessions, for a
+   * tool whose structured payload has not graduated yet. Set it instead of
+   * `outputSchema`; the handler must return `structuredResult(...)` matching it
+   * on every experimental success path. tsc cannot check that, because stable
+   * sessions still get markdown, so the tool's tests must parse the payload.
+   */
+  experimentalOutputSchema?: ToolOutputSchema;
   annotations: {
     // readOnlyHint, destructiveHint, and openWorldHint are required so every
     // tool declares its safety posture explicitly. Filters and confirmation
     // gates rely on these; an undefined hint is a silent gap. Enforced further
-    // by tools.test.ts (see "complete MCP safety annotations").
+    // by server.metadata.test.ts ("sets every safety hint explicitly").
     readOnlyHint: boolean;
     destructiveHint: boolean;
     idempotentHint?: boolean;
     openWorldHint: boolean;
   };
-  handler: ToolHandler<TSchema>;
+  handler: ToolHandler<TSchema, ToolOutputFor<TOutputSchema>>;
   /**
    * Optional hook invoked when the handler throws, for tool-specific failure
    * telemetry (e.g. logging the failing query). The error is still formatted

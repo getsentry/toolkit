@@ -16,26 +16,24 @@ import {
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import {
-  ReleaseUpdateOutputSchema,
-  type SentryRelease,
-} from "../../types/index.js";
+import type { ReleaseUpdateOutput } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { ReleaseUpdateOutputSchema } from "../../generated/output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release restore [<org>/]<version>";
+const usageHint = () => sentry`release restore [<org>/]<version>`;
 
 /**
  * Render the human-readable result of restoring a release.
  *
- * @param data - Either the dry-run preview object or the updated release.
+ * @param release - Either the dry-run preview or the updated release.
  */
-function formatReleaseRestored(data: Record<string, unknown>): string {
-  if (data.dryRun) {
+function formatReleaseRestored(release: ReleaseUpdateOutput): string {
+  if (release.dryRun) {
     return renderMarkdown(
-      `Would restore release ${inlineCode(String(data.version))} (dry run)`,
+      `Would restore release ${inlineCode(release.version)} (dry run)`,
     );
   }
-  const release = data as unknown as SentryRelease;
   const lines: string[] = [];
   lines.push(`## Release Restored: ${text(release.version)}`);
   lines.push("");
@@ -55,15 +53,15 @@ export const restoreCommand = buildCommand({
     examples: [
       {
         description: "Restore a previously archived release",
-        command: "sentry release restore 1.0.0",
+        run: "release restore 1.0.0",
       },
       {
         description: "Restore a release in an explicit organization",
-        command: "sentry release restore my-org/1.0.0",
+        run: "release restore my-org/1.0.0",
       },
       {
         description: "Preview without restoring",
-        command: "sentry release restore 1.0.0 --dry-run",
+        run: "release restore 1.0.0 --dry-run",
       },
     ],
   },
@@ -76,7 +74,7 @@ export const restoreCommand = buildCommand({
       kind: "tuple",
       parameters: [
         releaseParameter(
-          USAGE_HINT,
+          usageHint,
           "[<org>/]<version> - Release version to restore",
         ),
       ],
@@ -98,7 +96,11 @@ export const restoreCommand = buildCommand({
     const { version, org, detectedFrom } = await target.resolved;
 
     if (flags["dry-run"]) {
-      yield new CommandOutput({ dryRun: true, version, org });
+      yield new CommandOutput({
+        dryRun: true,
+        version,
+        org,
+      });
       return { hint: "Dry run — release was not restored." };
     }
 

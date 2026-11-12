@@ -2,6 +2,7 @@ import { z } from "zod";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamOrganizationSlug,
   ParamProjectSlug,
@@ -11,8 +12,35 @@ import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { validateResourceId } from "../../utils/slug-validation";
 
+export const updateDsnOutputSchema = z.object({
+  dsn: z.object({
+    id: z.string(),
+    name: z.string(),
+    dsn: z.string(),
+    isActive: z.boolean(),
+    rateLimit: z
+      .object({
+        count: z.number(),
+        windowSeconds: z.number(),
+      })
+      .nullable()
+      .describe("Null when rate limiting is disabled."),
+    browserSdkVersion: z.string().nullable(),
+    loaderOptions: z
+      .object({
+        hasReplay: z.boolean(),
+        hasPerformance: z.boolean(),
+        hasDebug: z.boolean(),
+        hasFeedback: z.boolean().optional(),
+        hasLogsAndMetrics: z.boolean().optional(),
+      })
+      .nullable(),
+  }),
+});
+
 export default defineTool({
   name: "update_dsn",
+  title: "Update DSN",
   skills: ["project-management"], // DSN management is part of project setup
   requiredScopes: ["project:write"],
   description: [
@@ -46,6 +74,7 @@ export default defineTool({
     "<hints>",
     "- Use `find_dsns()` first to find the `keyId` for the DSN you want to update.",
     "- Both `rateLimitWindow` (seconds) and `rateLimitCount` (error cap) must be provided together to set a rate limit.",
+    "- Returns the settings Sentry saved after the update. Compare them with what you requested and tell the user if any field didn't change.",
     "</hints>",
   ].join("\n"),
   inputSchema: {
@@ -124,6 +153,7 @@ export default defineTool({
       )
       .optional(),
   },
+  outputSchema: updateDsnOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: true,
@@ -239,70 +269,38 @@ export default defineTool({
       dynamicSdkLoaderOptions,
     });
 
-    let output = `# Updated DSN in **${organizationSlug}/${params.projectSlug}**\n\n`;
-    output += `**DSN ID**: ${clientKey.id}\n`;
-    output += `**DSN**: ${clientKey.dsn.public}\n`;
-    output += `**Name**: ${clientKey.name}\n`;
-    output += `**Status**: ${clientKey.isActive ? "Active" : "Inactive"}\n`;
-
-    if (
-      clientKey.rateLimit &&
-      clientKey.rateLimit.count > 0 &&
-      clientKey.rateLimit.window > 0
-    ) {
-      output += `**Rate Limit**: ${clientKey.rateLimit.count} events per ${clientKey.rateLimit.window} seconds\n`;
-    } else {
-      output += `**Rate Limit**: Disabled\n`;
-    }
-
-    if (clientKey.browserSdkVersion) {
-      output += `**Browser SDK Version**: ${clientKey.browserSdkVersion}\n`;
-    }
-
-    if (clientKey.dynamicSdkLoaderOptions) {
-      const loader = clientKey.dynamicSdkLoaderOptions;
-      const optionsStr = [
-        `Replay: ${loader.hasReplay ? "Enabled" : "Disabled"}`,
-        `Performance: ${loader.hasPerformance ? "Enabled" : "Disabled"}`,
-        `Debug: ${loader.hasDebug ? "Enabled" : "Disabled"}`,
-        loader.hasFeedback !== undefined
-          ? `Feedback: ${loader.hasFeedback ? "Enabled" : "Disabled"}`
+    const { rateLimit: appliedRateLimit, dynamicSdkLoaderOptions: loader } =
+      clientKey;
+    return structuredResult({
+      dsn: {
+        id: String(clientKey.id),
+        name: clientKey.name,
+        dsn: clientKey.dsn.public,
+        isActive: clientKey.isActive,
+        rateLimit:
+          appliedRateLimit &&
+          appliedRateLimit.count > 0 &&
+          appliedRateLimit.window > 0
+            ? {
+                count: appliedRateLimit.count,
+                windowSeconds: appliedRateLimit.window,
+              }
+            : null,
+        browserSdkVersion: clientKey.browserSdkVersion || null,
+        loaderOptions: loader
+          ? {
+              hasReplay: loader.hasReplay,
+              hasPerformance: loader.hasPerformance,
+              hasDebug: loader.hasDebug,
+              ...(loader.hasFeedback === undefined
+                ? {}
+                : { hasFeedback: loader.hasFeedback }),
+              ...(loader.hasLogsAndMetrics === undefined
+                ? {}
+                : { hasLogsAndMetrics: loader.hasLogsAndMetrics }),
+            }
           : null,
-        loader.hasLogsAndMetrics !== undefined
-          ? `Logs & Metrics: ${loader.hasLogsAndMetrics ? "Enabled" : "Disabled"}`
-          : null,
-      ]
-        .filter((val): val is string => val !== null)
-        .join(", ");
-      output += `**Loader Options**: ${optionsStr}\n`;
-    }
-
-    const updates: string[] = [];
-    if (params.name) updates.push(`name to "${params.name}"`);
-    if (params.isActive !== undefined)
-      updates.push(`status to ${params.isActive ? "active" : "inactive"}`);
-    if (params.disableRateLimit || zeroRateLimit)
-      updates.push("rate limit disabled");
-    else if (params.rateLimitWindow !== undefined) {
-      updates.push(
-        `rate limit to ${params.rateLimitCount} events per ${params.rateLimitWindow}s`,
-      );
-    }
-    if (params.browserSdkVersion)
-      updates.push(`browser SDK version to "${params.browserSdkVersion}"`);
-    if (dynamicSdkLoaderOptions) {
-      updates.push("loader options updated");
-    }
-
-    if (updates.length > 0) {
-      output += `\n## Updates Applied\n`;
-      output += updates.map((update) => `- Updated ${update}`).join("\n");
-      output += `\n`;
-    }
-
-    output += "\n## Response Notes\n\n";
-    output += "- Please tell the user the updated DSN settings.\n";
-
-    return output;
+      },
+    });
   },
 });

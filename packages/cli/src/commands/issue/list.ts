@@ -14,6 +14,7 @@ import {
   listIssuesAllPages,
 } from "../../lib/api-client.js";
 import { extractRequiredScopes } from "../../lib/api-scope.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   CURSOR_KEYWORDS,
   formatProjectTarget,
@@ -44,6 +45,7 @@ import { createDsnFingerprint } from "../../lib/dsn/index.js";
 import {
   ApiError,
   ContextError,
+  TimeoutError,
   toSearchQueryError,
   ValidationError,
   withAuthGuard,
@@ -53,10 +55,7 @@ import {
   shouldAutoCompact,
   writeIssueTable,
 } from "../../lib/formatters/index.js";
-import {
-  CommandOutput,
-  type OutputConfig,
-} from "../../lib/formatters/output.js";
+import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   appendQueryHint,
   buildListCommand,
@@ -74,6 +73,7 @@ import {
   type FetchResult as FetchResultOf,
   jsonTransformListResult,
   type ListCommandMeta,
+  type ListJson,
   type ListResult,
   type ModeHandler,
   trimWithGroupGuarantee,
@@ -103,12 +103,9 @@ import {
 } from "../../lib/time-range.js";
 import { tipsSuppressed } from "../../lib/tips.js";
 import { shellQuote } from "../../lib/utils.js";
-import {
-  type SentryIssue,
-  SentryIssueSchema,
-  type Writer,
-} from "../../types/index.js";
+import type { SentryIssue, Writer } from "../../types/index.js";
 import { resolveIssue } from "./utils.js";
+import { SentryIssueSchema } from "../../generated/output-schemas/issue.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "issue-list";
@@ -188,7 +185,7 @@ function defaultIssueSort(): SortValue {
 }
 
 /** Usage hint for ContextError messages */
-const USAGE_HINT = "sentry issue list <org>/<project>";
+const usageHint = () => sentry`issue list <org>/<project>`;
 
 /** Options returned by {@link buildListApiOptions}. */
 type ListApiOptions = {
@@ -388,11 +385,11 @@ function formatListHeader(title: string): string {
 function formatListFooter(mode: "single" | "multi" | "none"): string {
   switch (mode) {
     case "single":
-      return "\nTip: Use 'sentry issue view <ID>' to view details (bold part works as shorthand).";
+      return `\nTip: Use '${sentry`issue view <ID>`}' to view details (bold part works as shorthand).`;
     case "multi":
-      return "\nTip: Use 'sentry issue view <ALIAS>' to view details (see ALIAS column).";
+      return `\nTip: Use '${sentry`issue view <ALIAS>`}' to view details (see ALIAS column).`;
     default:
-      return "\nTip: Use 'sentry issue view <SHORT_ID>' to view issue details.";
+      return `\nTip: Use '${sentry`issue view <SHORT_ID>`}' to view issue details.`;
   }
 }
 
@@ -725,7 +722,7 @@ function trimWithProjectGuarantee(
 /** Re-run the failed search with an explicit target, preserving search and output flags. */
 function contextRecoveryCommand(target: string, flags: ListFlags): string {
   const parts = [
-    `sentry issue list ${shellQuote(target)}`,
+    sentry`issue list ${shellQuote(target)}`,
     `--limit ${flags.limit}`,
     `--sort ${flags.sort}`,
     `--period ${shellQuote(formatTimeRangeFlag(flags.period))}`,
@@ -769,7 +766,7 @@ function pageHint(
   target: string,
   flags: ListFlags,
 ): string {
-  return appendIssueFlags(`sentry issue list ${target} -c ${direction}`, flags);
+  return appendIssueFlags(sentry`issue list ${target} -c ${direction}`, flags);
 }
 
 /**
@@ -1067,7 +1064,7 @@ function build400Detail(
   }
 
   suggestions.push(
-    "Verify you have access to the target project: sentry project list <org>/",
+    `Verify you have access to the target project: ${sentry`project list <org>/`}`,
   );
 
   return formatDetailWithSuggestions(lines, suggestions);
@@ -1128,13 +1125,9 @@ function enrichIssueListError(
       const detail = error.enriched403
         ? appendProjectMembershipHint(error.detail)
         : build403Detail(error.detail);
-      throw new ApiError(
-        error.message,
-        error.status,
-        detail,
-        error.endpoint,
-        true,
-      );
+      throw new ApiError(error.message, error.status, detail, error.endpoint, {
+        enriched403: true,
+      });
     }
   }
   throw error;
@@ -1190,10 +1183,10 @@ function build403Detail(originalDetail: unknown): string {
       "  • Check token scopes at: https://sentry.io/settings/account/api/auth-tokens/",
     );
   } else {
-    lines.push("  • Re-authenticate with: sentry auth login");
+    lines.push(`  • Re-authenticate with: ${sentry`auth login`}`);
   }
 
-  lines.push("  • Verify project membership: sentry project list <org>/");
+  lines.push(`  • Verify project membership: ${sentry`project list <org>/`}`);
 
   return lines.join("\n  ");
 }
@@ -1206,7 +1199,7 @@ function build403Detail(originalDetail: unknown): string {
  */
 function appendProjectMembershipHint(detail: string | undefined): string {
   const base = detail ?? "You do not have permission to perform this action.";
-  return `${base}\n  Verify project membership: sentry project list <org>/`;
+  return `${base}\n  Verify project membership: ${sentry`project list <org>/`}`;
 }
 
 /**
@@ -1223,26 +1216,33 @@ async function handleResolvedTargets(
 ): Promise<IssueListResult> {
   const { parsed, flags, cwd, timeRange, projectSearchResolution } = options;
 
-  const { targets, footer, skippedSelfHosted, detectedDsns } =
+  const { targets, footer, skippedSelfHosted, detectedDsns, soleOrg } =
     await resolveProjectBoundTargets(parsed, {
       cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
       formatRecoveryCommand: (target) => contextRecoveryCommand(target, flags),
       projectSearchResolution,
       enrichProjectIds: true,
       checkIssueShortId: true,
+      orgWideFallback: true,
     });
+
+  // No detected context, and the account has a single organization: list it
+  // org-wide, the same as `sentry issue list <org>/` (CLI-3B).
+  if (soleOrg) {
+    return await handleOrganizationIssues({ org: soleOrg, flags, timeRange });
+  }
 
   if (targets.length === 0) {
     if (skippedSelfHosted) {
       throw new ContextError(
         "Organization and project",
-        USAGE_HINT,
+        usageHint(),
         undefined,
         `Found ${skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`,
       );
     }
-    throw new ContextError("Organization and project", USAGE_HINT);
+    throw new ContextError("Organization and project", usageHint());
   }
 
   // Build a compound cursor context key that encodes the full target set +
@@ -1346,8 +1346,13 @@ async function handleResolvedTargets(
         first.status,
         detail,
         first.endpoint,
-        first.enriched403 || first.status === 403,
+        { enriched403: first.enriched403 || first.status === 403 },
       );
+    }
+
+    // Keep the timeout's status-page hint and exit code.
+    if (first instanceof TimeoutError) {
+      throw new TimeoutError(`${prefix}: ${first.message}`, first.hint);
     }
 
     throw new Error(`${prefix}: ${first.message}`);
@@ -1512,7 +1517,7 @@ async function handleResolvedTargets(
 const issueListMeta: ListCommandMeta = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "issues",
-  commandPrefix: "sentry issue list",
+  commandPrefix: () => sentry`issue list`,
 };
 
 /**
@@ -1604,7 +1609,7 @@ function formatIssueListHuman(result: IssueListResult): string {
 function jsonTransformIssueList(
   result: IssueListResult,
   fields?: string[],
-): unknown {
+): ListJson<SentryIssue> {
   const transformed = jsonTransformListResult(result, fields);
   // Only inject into empty paginated envelopes — helps agents discover
   // query syntax when their search returned nothing.
@@ -1623,7 +1628,7 @@ function jsonTransformIssueList(
 }
 
 /** Output configuration for the issue list command. */
-const issueListOutput: OutputConfig<IssueListResult> = {
+const issueListOutput = {
   human: formatIssueListHuman,
   jsonTransform: jsonTransformIssueList,
   schema: SentryIssueSchema,
@@ -1663,50 +1668,48 @@ export const listCommand = buildListCommand("issue", {
     examples: [
       {
         description: "List issues (project auto-detected)",
-        command: "sentry issue list",
+        run: "issue list",
       },
       {
         description: "List issues in a specific project",
-        command: "sentry issue list my-org/frontend",
+        run: "issue list my-org/frontend",
       },
       {
         description: "Several projects in the same organization",
-        command: "sentry issue list my-org/frontend,backend,worker",
+        run: "issue list my-org/frontend,backend,worker",
       },
       {
         description: "All projects in an organization",
-        command: "sentry issue list my-org/",
+        run: "issue list my-org/",
       },
       {
         description: "Search for a project across organizations",
-        command: "sentry issue list frontend",
+        run: "issue list frontend",
       },
       {
         description: "Show only unresolved issues",
-        command: 'sentry issue list my-org/frontend --query "is:unresolved"',
+        run: 'issue list my-org/frontend --query "is:unresolved"',
       },
       {
         description: "Sort by frequency",
-        command: "sentry issue list my-org/frontend --sort freq --limit 20",
+        run: "issue list my-org/frontend --sort freq --limit 20",
       },
       {
         description: "Sort by Sentry's recommended relevance ranking",
-        command: "sentry issue list my-org/frontend --sort recommended",
+        run: "issue list my-org/frontend --sort recommended",
       },
       {
         description:
           "Multiple filters (space-separated terms are combined with AND)",
-        command:
-          'sentry issue list --query "is:unresolved level:error assigned:me"',
+        run: 'issue list --query "is:unresolved level:error assigned:me"',
       },
       {
         description: "Negation and wildcards",
-        command:
-          'sentry issue list --query "!browser:Chrome message:*timeout*"',
+        run: 'issue list --query "!browser:Chrome message:*timeout*"',
       },
       {
         description: "Match multiple values for one key",
-        command: 'sentry issue list --query "browser:[Chrome,Firefox]"',
+        run: 'issue list --query "browser:[Chrome,Firefox]"',
       },
     ],
   },
@@ -1813,7 +1816,7 @@ export const listCommand = buildListCommand("issue", {
         compact: true,
       } satisfies IssueListResult);
       return {
-        hint: `Tip: Use 'sentry issue view ${shortId}' for full details`,
+        hint: `Tip: Use '${sentry`issue view ${shortId}`}' for full details`,
       };
     }
 

@@ -333,10 +333,10 @@ export const bashHookCommand = buildCommand({
   },
   async *func(this: SentryContext, flags: BashHookFlags) {
     if (flags["send-event"]) {
-      yield new CommandOutput<SendEventResult>(await handleSendEvent(flags));
+      yield new CommandOutput(await handleSendEvent(flags));
       return;
     }
 
-    yield new CommandOutput<BashHookResult>(handleScriptOutput(flags));
+    yield new CommandOutput(handleScriptOutput(flags));
   },
 });

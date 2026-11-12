@@ -19,6 +19,7 @@
 import { execFileSync } from "node:child_process";
 import type { ResolveCommitSpec } from "../../lib/api/issues.js";
 import { listRepositoriesCached } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
   getHeadCommit,
@@ -88,7 +89,7 @@ function formatAvailableRepos(repos: SentryRepository[]): string {
     .join("\n");
   const more =
     repos.length > MAX
-      ? `\n  ... and ${repos.length - MAX} more (sentry repo list <org>/)`
+      ? `\n  ... and ${repos.length - MAX} more (${sentry`repo list <org>/`})`
       : "";
   return `Available repositories in this organization:\n${names}${more}`;
 }
@@ -160,7 +161,7 @@ export async function resolveCommitSpec(
   if (!match) {
     throw new ValidationError(
       `--in @commit:${spec.repository}@${spec.commit}: no Sentry repository named '${spec.repository}' in organization '${orgSlug}'.\n\n` +
-        `${formatAvailableRepos(sentryRepos)}`,
+        formatAvailableRepos(sentryRepos),
       "in",
     );
   }

@@ -219,6 +219,23 @@ describe("fancyReporter", () => {
     expect(stream.text()).not.toContain("secret");
   });
 
+  test("writes an error's stack when the working directory was deleted", () => {
+    const { logger, stream } = fancyLogger({ CI: "true" });
+    vi.spyOn(process, "cwd").mockImplementation(() => {
+      throw Object.assign(new Error("uv_cwd"), { code: "ENOENT" });
+    });
+
+    try {
+      logger.error("Uncaught exception:", new Error("boom"));
+    } finally {
+      vi.restoreAllMocks();
+    }
+
+    expect(stream.text()).toMatch(
+      /^\[error\] Uncaught exception: boom\n {2}at /,
+    );
+  });
+
   test("writes icons, badges, and inline code in the interactive layout", () => {
     const { logger, stream } = fancyLogger({
       NODE_ENV: "production",

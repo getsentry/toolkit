@@ -14,6 +14,7 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { Skill } from "../../skills";
 import * as logging from "../../telem/logging";
 import {
@@ -405,7 +406,7 @@ describe("get_issue_details", () => {
       "- Agent conversation found in this trace: `conv-123`. Matching span: `span-123`.",
     );
     expect(text).toContain(
-      '- Use the Sentry tool `execute_sentry_tool(name=\'get_agent_conversation_details\', arguments={"organizationSlug":"sentry-mcp-evals","conversationId":"conv-123"})` to fetch the full transcript.',
+      "- Use the Sentry tool `get_agent_conversation_details(organizationSlug='sentry-mcp-evals', conversationId='conv-123')` to fetch the full transcript.",
     );
     expect(
       (result as { structuredContent?: unknown }).structuredContent,
@@ -460,7 +461,7 @@ describe("get_issue_details", () => {
       - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
       - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
       - Agent conversation found in this trace: \`conv-123\`. Matching span: \`span-123\`.
-      - Use the Sentry tool \`execute_sentry_tool(name='get_agent_conversation_details', arguments={"organizationSlug":"sentry-mcp-evals","conversationId":"conv-123"})\` to fetch the full transcript.
+      - Use the Sentry tool \`get_agent_conversation_details(organizationSlug='sentry-mcp-evals', conversationId='conv-123')\` to fetch the full transcript.
       - Issue event search: Use the Sentry tool \`search_issue_events\`
       - Full distributed trace and span tree: Use the Sentry tool \`get_sentry_resource\`
       - Related span search: Use the Sentry tool \`search_traces\`
@@ -2100,7 +2101,7 @@ describe("get_issue_details", () => {
       ## Response Notes
 
       - Agent conversation found in this trace: \`conv-unsupported\`. Matching span: \`span-unsupported\`.
-      - Use the Sentry tool \`execute_sentry_tool(name='get_agent_conversation_details', arguments={"organizationSlug":"sentry-mcp-evals","conversationId":"conv-unsupported"})\` to fetch the full transcript.
+      - Use the Sentry tool \`get_agent_conversation_details(organizationSlug='sentry-mcp-evals', conversationId='conv-unsupported')\` to fetch the full transcript.
       "
     `);
 
@@ -2188,30 +2189,37 @@ describe("structuredContent", () => {
     expect(result).toContain("CLOUDFLARE-MCP-41");
   });
 
-  it("renders the event body itself rather than asking the api for one", async () => {
+  it("maps the event entries into fields rather than rendering markdown", async () => {
     mockLatestEvent();
 
     const result = await getIssueDetails.handler(params, experimentalContext);
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(typeof payload.event.body).toBe("string");
-    expect(payload.event.body).toContain("### Error");
-    expect(payload.event.body).toContain("Something went wrong");
-    expect(payload.event.body).toContain("### Tags");
+    expect(payload.event).not.toHaveProperty("body");
+    expect(payload.event.message).toBe("Something went wrong");
+    expect(payload.event.tags).toEqual([
+      { key: "level", value: "error" },
+      { key: "environment", value: "production" },
+    ]);
   });
 
-  it("carries the response notes, which say which tool to call next", async () => {
+  it("offers the follow-up calls the markdown notes describe as actions", async () => {
     mockLatestEvent();
 
     const result = await getIssueDetails.handler(params, experimentalContext);
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.responseNotes.length).toBeGreaterThan(0);
-    const notes = payload.responseNotes.join("\n");
-    expect(notes).toContain("Fixes CLOUDFLARE-MCP-41");
-    expect(notes).toContain("search_issue_events");
+    expect(payload).not.toHaveProperty("responseNotes");
+    expect(payload.suggestedActions).toContainEqual(
+      expect.objectContaining({
+        toolName: "get_issue_breadcrumbs",
+        arguments: {
+          issueUrl: expect.stringContaining("CLOUDFLARE-MCP-41"),
+        },
+      }),
+    );
   });
 
   it("carries the top level message, which the body does not render", async () => {
@@ -2224,7 +2232,95 @@ describe("structuredContent", () => {
     expect(payload.event.message).toBe("TOP-LEVEL-MESSAGE");
   });
 
-  it("keeps an unsupported event type on the markdown path", async () => {
+  it("returns structured content for an unsupported event type", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/7777777777/events/latest/",
+        () => HttpResponse.json(createUnknownEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/FUTURE-TYPE-001",
+        () => HttpResponse.json(createUnsupportedIssue()),
+      ),
+    );
+
+    const logIssueSpy = vi.spyOn(logging, "logIssue");
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "FUTURE-TYPE-001" },
+      experimentalContext,
+    );
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
+    expect(payload.issue.shortId).toBe("FUTURE-TYPE-001");
+    expect(payload.event.type).toBe("future_ai_agent_trace");
+    expect(payload.event.exceptions).toBeNull();
+    expect(payload.event.tags).toEqual([{ key: "level", value: "error" }]);
+    // still reported, so support for the type gets added
+    expect(logIssueSpy).toHaveBeenCalledWith(
+      "Unsupported event type encountered: future_ai_agent_trace",
+      expect.anything(),
+    );
+    logIssueSpy.mockRestore();
+  });
+
+  // Sentry's event serializer sends dateCreated and dateReceived on every
+  // event, but the transaction and unknown (CSP and others) event schemas
+  // drop dateCreated, so occurredAt comes from dateReceived.
+  it("takes occurredAt from dateReceived for a transaction event", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
+        () => HttpResponse.json(createPerformanceIssue()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/7890123456/events/latest/",
+        () =>
+          HttpResponse.json(
+            createPerformanceEvent({
+              dateReceived: "2025-08-06T18:00:01.250000Z",
+            }),
+          ),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/trace/abcdef1234567890abcdef1234567890/",
+        () => HttpResponse.json(createTraceResponseFixture()),
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "PERF-N1-001" },
+      experimentalContext,
+    );
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(payload.event.type).toBe("transaction");
+    expect(payload.event.occurredAt).toBe("2025-08-06T18:00:01.250Z");
+  });
+
+  it("takes occurredAt from dateReceived for a CSP event", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/4256774711/events/latest/",
+        () => HttpResponse.json(createCspEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/BLOG-CSP-4XC/",
+        () => HttpResponse.json(createCspIssue()),
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "BLOG-CSP-4XC" },
+      experimentalContext,
+    );
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(payload.event.type).toBe("csp");
+    expect(payload.event.occurredAt).toBe("2025-11-19T19:24:12.491Z");
+  });
+
+  it("takes occurredAt from dateReceived for an unknown event type", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/*/issues/7777777777/events/latest/",
@@ -2240,12 +2336,13 @@ describe("structuredContent", () => {
       { ...params, issueId: "FUTURE-TYPE-001" },
       experimentalContext,
     );
+    const payload = getStructuredContent<Record<string, any>>(result);
 
-    expect(result).not.toHaveProperty("structuredContent");
-    expect(result).toContain('Unsupported event type "future_ai_agent_trace"');
+    expect(payload.event.type).toBe("future_ai_agent_trace");
+    expect(payload.event.occurredAt).toBe("2025-01-01T01:00:00.000Z");
   });
 
-  it("renders a transaction, whose body carries the performance trace", async () => {
+  it("maps a transaction's N+1 evidence and its spans", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
@@ -2254,6 +2351,10 @@ describe("structuredContent", () => {
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/7890123456/events/latest/",
         () => HttpResponse.json(createPerformanceEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/trace/abcdef1234567890abcdef1234567890/",
+        () => HttpResponse.json(createTraceResponseFixture()),
       ),
     );
 
@@ -2265,7 +2366,51 @@ describe("structuredContent", () => {
       .structuredContent;
 
     expect(payload.event.type).toBe("transaction");
-    expect(payload.event.body).toContain("Span");
+    expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
+    expect(payload.event.performance).toMatchObject({
+      issueType: "performance_n_plus_one_db_queries",
+      transactionName: "/api/users",
+      parentOperation: "GET /api/users",
+      repeatCount: 3,
+      repeatedOperations: expect.arrayContaining([
+        expect.stringContaining("SELECT"),
+      ]),
+    });
+    // the span tree from the fetched trace, parents linked by id
+    expect(payload.event.performance.spans).toEqual([
+      {
+        spanId: "parent123",
+        parentSpanId: null,
+        op: "http.server",
+        description: "GET /api/users",
+        durationMs: 250,
+        isOffender: false,
+      },
+      {
+        spanId: "span001",
+        parentSpanId: "parent123",
+        op: "db.query",
+        description: "SELECT * FROM users WHERE id = 1",
+        durationMs: 5,
+        isOffender: true,
+      },
+      {
+        spanId: "span002",
+        parentSpanId: "parent123",
+        op: "db.query",
+        description: "SELECT * FROM users WHERE id = 2",
+        durationMs: 5,
+        isOffender: true,
+      },
+      {
+        spanId: "span003",
+        parentSpanId: "parent123",
+        op: "db.query",
+        description: "SELECT * FROM users WHERE id = 3",
+        durationMs: 5,
+        isOffender: true,
+      },
+    ]);
   });
 
   it("keeps the attached replay, which lives on the event not the related list", async () => {
@@ -2295,7 +2440,7 @@ describe("structuredContent", () => {
     expect(payload.replays?.related).not.toContain(
       "1234567890abcdef1234567890abcdef",
     );
-    expect(payload.event.body).not.toContain(
+    expect(JSON.stringify(payload.event)).not.toContain(
       "1234567890abcdef1234567890abcdef",
     );
   });
@@ -2677,4 +2822,494 @@ describe("suspect commits", () => {
       }
     },
   );
+});
+
+describe("selected event package versions", () => {
+  beforeEach(() => mswServer.resetHandlers());
+  afterEach(() => mswServer.resetHandlers());
+  const eventId = "7ca573c0f4814912aaa9bdc77d1a7d51";
+  const params = {
+    organizationSlug: "sentry-mcp-evals",
+    issueId: "CLOUDFLARE-MCP-41",
+    eventId,
+    regionUrl: null,
+    packageNames: ["example", "@example/client", "missing"],
+  };
+
+  function mockPackages(
+    packages: unknown,
+    suppliedFormatting: boolean | "json" = true,
+  ) {
+    mswServer.use(
+      http.get(
+        `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+        ({ request }) => {
+          expect(new URL(request.url).searchParams.get("llmFormat")).toBeNull();
+          return HttpResponse.json({
+            ...createDefaultEvent({ id: eventId, contexts: {} }),
+            packages,
+            formatted:
+              suppliedFormatting === "json"
+                ? {
+                    format: "json",
+                    content: JSON.stringify({ message: "Synthetic event" }),
+                  }
+                : suppliedFormatting
+                  ? {
+                      format: "markdown",
+                      content: "### Message\n\nSynthetic event",
+                    }
+                  : undefined,
+          });
+        },
+      ),
+    );
+  }
+
+  it("retains only selected packages in structured event output", async () => {
+    mockPackages(
+      { example: "1.2.3", "@example/client": "2.0.0", unrelated: "9.9.9" },
+      "json",
+    );
+    const result = await getIssueDetails.handler(params, {
+      ...baseContext,
+      experimentalMode: true,
+    });
+    const payload = getIssueDetailsOutputSchema.parse(
+      getStructuredContent(result),
+    );
+    expect(payload.event).toHaveProperty("packageVersions", {
+      metadataAvailable: true,
+      packages: [
+        {
+          name: "example",
+          status: "recorded",
+          version: "1.2.3",
+          truncated: false,
+        },
+        {
+          name: "@example/client",
+          status: "recorded",
+          version: "2.0.0",
+          truncated: false,
+        },
+        {
+          name: "missing",
+          status: "not_listed",
+          version: null,
+          truncated: false,
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("unrelated");
+    expect(payload.event.message).toBe("Something went wrong");
+    expect(payload).toMatchInlineSnapshot(`
+      {
+        "aiConversations": null,
+        "codeLocation": null,
+        "event": {
+          "contexts": null,
+          "crashedThread": null,
+          "csp": null,
+          "evidence": null,
+          "exceptions": null,
+          "extra": null,
+          "id": "7ca573c0f4814912aaa9bdc77d1a7d51",
+          "message": "Something went wrong",
+          "metricAlert": null,
+          "occurredAt": "2025-10-02T12:00:00.000Z",
+          "packageVersions": {
+            "metadataAvailable": true,
+            "packages": [
+              {
+                "name": "example",
+                "status": "recorded",
+                "truncated": false,
+                "version": "1.2.3",
+              },
+              {
+                "name": "@example/client",
+                "status": "recorded",
+                "truncated": false,
+                "version": "2.0.0",
+              },
+              {
+                "name": "missing",
+                "status": "not_listed",
+                "truncated": false,
+                "version": null,
+              },
+            ],
+          },
+          "performance": null,
+          "platform": "python",
+          "request": null,
+          "tags": [
+            {
+              "key": "level",
+              "value": "error",
+            },
+            {
+              "key": "environment",
+              "value": "production",
+            },
+          ],
+          "threadCount": 0,
+          "threads": null,
+          "type": "default",
+          "user": null,
+        },
+        "externalIssues": null,
+        "issue": {
+          "assignedTo": "Jane Developer",
+          "culprit": "Object.fetch(index)",
+          "firstSeen": "2025-04-03T22:51:19.403000Z",
+          "issueCategory": "error",
+          "issueType": "error",
+          "lastSeen": "2025-04-12T11:34:11Z",
+          "location": null,
+          "occurrences": 25,
+          "platform": "javascript",
+          "project": "CLOUDFLARE-MCP",
+          "queryPattern": null,
+          "seerActionability": null,
+          "shortId": "CLOUDFLARE-MCP-41",
+          "status": "unresolved",
+          "substatus": "ongoing",
+          "title": "Error: Tool list_organizations is already registered",
+          "url": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+          "usersImpacted": 1,
+        },
+        "replays": null,
+        "seer": null,
+        "suggestedActions": [
+          {
+            "arguments": {
+              "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+            },
+            "reason": "Read the breadcrumb trail leading up to this event.",
+            "toolName": "get_issue_breadcrumbs",
+            "type": "tool_call",
+          },
+        ],
+        "suspectCommit": null,
+      }
+    `);
+  });
+
+  it.each([undefined, null, {}])(
+    "reports unavailable structured metadata for %j",
+    async (packages) => {
+      mockPackages(packages, "json");
+      const payload = getIssueDetailsOutputSchema.parse(
+        getStructuredContent(
+          await getIssueDetails.handler(params, {
+            ...baseContext,
+            experimentalMode: true,
+          }),
+        ),
+      );
+      expect(payload.event.packageVersions).toEqual({
+        metadataAvailable: false,
+        packages: [],
+      });
+    },
+  );
+
+  it("preserves package states, exact names, bounds, and raw strings in structured output", async () => {
+    const specialName = "<example>\n*client*";
+    const specialVersion = "<version>\n`1.0`";
+    mockPackages(
+      {
+        example: null,
+        blank: " ",
+        long: "v".repeat(300),
+        [specialName]: specialVersion,
+      },
+      "json",
+    );
+    const result = await getIssueDetails.handler(
+      {
+        ...params,
+        packageNames: [
+          "example",
+          "blank",
+          "Example",
+          "constructor",
+          "long",
+          specialName,
+          "long",
+        ],
+      },
+      { ...baseContext, experimentalMode: true },
+    );
+    const payload = getIssueDetailsOutputSchema.parse(
+      getStructuredContent(result),
+    );
+    expect(payload.event.packageVersions).toEqual({
+      metadataAvailable: true,
+      packages: [
+        {
+          name: "example",
+          status: "version_not_recorded",
+          version: null,
+          truncated: false,
+        },
+        {
+          name: "blank",
+          status: "version_not_recorded",
+          version: null,
+          truncated: false,
+        },
+        {
+          name: "Example",
+          status: "not_listed",
+          version: null,
+          truncated: false,
+        },
+        {
+          name: "constructor",
+          status: "not_listed",
+          version: null,
+          truncated: false,
+        },
+        {
+          name: "long",
+          status: "recorded",
+          version: "v".repeat(256),
+          truncated: true,
+        },
+        {
+          name: specialName,
+          status: "recorded",
+          version: specialVersion,
+          truncated: false,
+        },
+      ],
+    });
+  });
+
+  it("preserves structured output when package selection is omitted", async () => {
+    mockPackages({ example: "1.2.3" }, "json");
+    const withMetadata = await getIssueDetails.handler(
+      { ...params, packageNames: undefined },
+      { ...baseContext, experimentalMode: true },
+    );
+    mockPackages(undefined, "json");
+    const withoutMetadata = await getIssueDetails.handler(
+      { ...params, packageNames: undefined },
+      { ...baseContext, experimentalMode: true },
+    );
+    expect(withMetadata).toEqual(withoutMetadata);
+    const payload = getIssueDetailsOutputSchema.parse(
+      getStructuredContent(withMetadata),
+    );
+    expect(payload.event).not.toHaveProperty("packageVersions");
+  });
+
+  it("adds only selected versions to Markdown despite legacy supplied formatting", async () => {
+    mockPackages({
+      example: "1.2.3",
+      "@example/client": "2.0.0",
+      unrelated: "9.9.9",
+    });
+    const result = await getIssueDetails.handler(params, baseContext);
+    expect(result).not.toContain("unrelated");
+    expect(result).toMatchInlineSnapshot(`
+      "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
+
+      **Description**: Error: Tool list_organizations is already registered
+      **Culprit**: Object.fetch(index)
+      **First Seen**: 2025-04-03T22:51:19.403Z
+      **Last Seen**: 2025-04-12T11:34:11.000Z
+      **Occurrences**: 25
+      **Users Impacted**: 1
+      **Status**: unresolved
+      **Substatus**: ongoing
+      **Assigned To**: Jane Developer (User)
+      **Issue Type**: error
+      **Issue Category**: error
+      **Platform**: javascript
+      **Project**: CLOUDFLARE-MCP
+      **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
+
+      ## Event Details
+
+      **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
+      **Type**: default
+      **Occurred At**: 2025-10-02T12:00:00.000Z
+      **Message**:
+      Something went wrong
+
+      ### Error
+
+      \`\`\`
+      Something went wrong
+      \`\`\`
+
+      ### Tags
+
+      **level**: \`error\`
+      **environment**: \`production\`
+
+
+      ### Selected Package Versions
+
+      - \`example\`: \`1.2.3\`
+      - \`@example/client\`: \`2.0.0\`
+      - \`missing\`: Not listed in this event's package metadata
+
+      ## Response Notes
+
+      - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
+      - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
+      - Issue event search: Use the Sentry tool \`search_issue_events\`
+      "
+    `);
+  });
+
+  it("adds selected versions with the local fallback formatter", async () => {
+    mockPackages({ example: "1.2.3", unrelated: "9.9.9" }, false);
+    const result = await getIssueDetails.handler(params, baseContext);
+    expect(result).toContain("### Selected Package Versions");
+    expect(result).toContain("- `example`: `1.2.3`");
+    expect(result).not.toContain("unrelated");
+  });
+
+  it.each([undefined, null, {}])(
+    "reports unavailable metadata for %j",
+    async (packages) => {
+      mockPackages(packages);
+      const result = await getIssueDetails.handler(params, baseContext);
+      expect(result).toContain(
+        "Package metadata is unavailable for this event.",
+      );
+      expect(result).not.toContain("Not listed");
+    },
+  );
+
+  it("distinguishes absent names and unrecorded versions", async () => {
+    mockPackages({ example: null, "@example/client": "" });
+    const result = await getIssueDetails.handler(params, baseContext);
+    expect(result).toContain("- `example`: Version not recorded");
+    expect(result).toContain("- `@example/client`: Version not recorded");
+    expect(result).toContain(
+      "- `missing`: Not listed in this event's package metadata",
+    );
+  });
+
+  it("matches exact names, deduplicates selections, and ignores inherited properties", async () => {
+    mockPackages({ example: "1" });
+    const result = await getIssueDetails.handler(
+      {
+        ...params,
+        packageNames: ["example", "example", "Example", "constructor"],
+      },
+      baseContext,
+    );
+    const text = typeof result === "string" ? result : getTextContent(result);
+    expect(text.match(/- `example`: `1`/g)).toHaveLength(1);
+    expect(result).toContain("- `Example`: Not listed");
+    expect(result).toContain("- `constructor`: Not listed");
+  });
+
+  it("caps versions and keeps package data inside list entries", async () => {
+    mockPackages({
+      example: "v".repeat(300),
+      "<script>\n# heading": "`value`\n# heading [link](url) | &lt;",
+    });
+    const result = await getIssueDetails.handler(
+      { ...params, packageNames: ["example", "<script>\n# heading"] },
+      baseContext,
+    );
+    expect(result).toContain(
+      `- \`example\`: \`${"v".repeat(256)}\` (truncated)`,
+    );
+    expect(result).not.toContain("v".repeat(257));
+    expect(result).toContain(
+      "- `<script> # heading`: `` `value` # heading [link](url) | &lt; ``",
+    );
+    expect(result).not.toContain("\n# heading");
+  });
+
+  it("preserves surrounding spaces in selected package names and versions", async () => {
+    mockPackages({ " example ": " 1.2.3 " });
+    const result = await getIssueDetails.handler(
+      { ...params, packageNames: [" example "] },
+      baseContext,
+    );
+    expect(result).toContain("- `  example  `: `  1.2.3  `");
+  });
+
+  it.each([true, false])(
+    "preserves ordinary output when selection is omitted (supplied=%s)",
+    async (supplied) => {
+      mockPackages({ example: "1.2.3" }, supplied);
+      const withMetadata = await getIssueDetails.handler(
+        { ...params, packageNames: undefined },
+        baseContext,
+      );
+      mockPackages(undefined, supplied);
+      const withoutMetadata = await getIssueDetails.handler(
+        { ...params, packageNames: undefined },
+        baseContext,
+      );
+      expect(withMetadata).toEqual(withoutMetadata);
+      expect(withMetadata).not.toContain("Selected Package Versions");
+    },
+  );
+
+  it.each(
+    [
+      [],
+      Array.from({ length: 11 }, (_, i) => `package${i}`),
+      [""],
+      ["x".repeat(257)],
+    ].map((packageNames) => ({ packageNames })),
+  )("rejects out-of-bounds selection %j", ({ packageNames }) => {
+    expect(
+      z
+        .object(getIssueDetails.inputSchema)
+        .safeParse({ ...params, packageNames }).success,
+    ).toBe(false);
+  });
+
+  it("accepts the maximum bounded selection", async () => {
+    const packageNames = Array.from(
+      { length: 10 },
+      (_, i) => `${i}${"x".repeat(255)}`,
+    );
+    mockPackages(
+      Object.fromEntries(packageNames.map((name) => [name, "v".repeat(256)])),
+    );
+    const input = z
+      .object(getIssueDetails.inputSchema)
+      .parse({ ...params, packageNames });
+    const result = await getIssueDetails.handler(input, baseContext);
+    const text = typeof result === "string" ? result : getTextContent(result);
+    expect(text.match(/: `v{256}`\n/g)).toHaveLength(10);
+    expect(result).not.toContain("truncated");
+  });
+
+  it("retains selected packages even for an unsupported event type", async () => {
+    mswServer.use(
+      http.get(
+        `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+        () =>
+          HttpResponse.json({
+            ...createUnknownEvent({ id: eventId, contexts: {} }),
+            packages: { example: "1.2.3" },
+          }),
+      ),
+    );
+    const result = await getIssueDetails.handler(params, baseContext);
+    expect(result).toContain("Unsupported event type");
+    expect(result).toContain("- `example`: `1.2.3`");
+  });
+
+  it("requires an exact event", async () => {
+    await expect(
+      getIssueDetails.handler({ ...params, eventId: undefined }, baseContext),
+    ).rejects.toThrow("requires an explicit `eventId`");
+  });
 });

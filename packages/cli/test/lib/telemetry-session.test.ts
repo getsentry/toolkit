@@ -22,11 +22,11 @@ import {
 describe("createBeforeExitHandler", () => {
   /**
    * Create a minimal mock NodeClient for testing the beforeExit handler.
-   * Only needs flush() since that's all the handler uses from the client.
+   * Only needs close() since that's all the handler uses from the client.
    */
   function createMockClient(): Sentry.NodeClient {
     return {
-      flush: () => Promise.resolve(true),
+      close: () => Promise.resolve(true),
     } as unknown as Sentry.NodeClient;
   }
 
@@ -117,9 +117,9 @@ describe("createBeforeExitHandler", () => {
     endSessionSpy.mockRestore();
   });
 
-  test("flushes client on beforeExit", () => {
+  test("flushes and closes the client on beforeExit", () => {
     const mockClient = createMockClient();
-    const flushSpy = vi.spyOn(mockClient, "flush");
+    const closeSpy = vi.spyOn(mockClient, "close");
     const handler = createBeforeExitHandler(mockClient);
 
     const getIsolationScopeSpy = vi
@@ -130,10 +130,10 @@ describe("createBeforeExitHandler", () => {
 
     handler();
 
-    expect(flushSpy).toHaveBeenCalledWith(3000);
+    expect(closeSpy).toHaveBeenCalledWith(3000);
 
     getIsolationScopeSpy.mockRestore();
-    flushSpy.mockRestore();
+    closeSpy.mockRestore();
   });
 });
 

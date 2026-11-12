@@ -1,4 +1,5 @@
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { createCommand } from "./create.js";
 import { listCommand } from "./list.js";
 import { restoreCommand } from "./restore.js";
@@ -18,7 +19,7 @@ export const dashboardRoute = buildRouteMap({
   defaultCommand: "view",
   aliases: { history: "revisions" },
   docs: {
-    brief: "Manage Sentry dashboards",
+    brief: topLevelBrief("dashboard"),
     fullDescription:
       "View and manage dashboards in your Sentry organization.\n\n" +
       "Commands:\n" +

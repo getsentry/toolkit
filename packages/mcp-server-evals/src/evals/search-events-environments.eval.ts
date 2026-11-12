@@ -1,7 +1,7 @@
 import { SentryApiService } from "@sentry/mcp-core/api-client";
 import { searchEventsAgent } from "@sentry/mcp-core/tools/search-events/agent";
 import { expect } from "vitest";
-import { describeEval } from "vitest-evals";
+import { describeEval } from "vitest-evals/legacy";
 import "../setup-env";
 import { StructuredOutputScorer } from "./utils/structuredOutputScorer";
 
@@ -60,7 +60,7 @@ describeEval("search-events-environment-grounding", {
     );
     expect(validationCalls.length).toBeGreaterThan(0);
 
-    const queries = [agentResult.result.query];
+    const queries: string[] = [agentResult.result.query];
     for (const call of validationCalls) {
       expect(call.args).toBeTypeOf("object");
       expect(call.args).not.toBeNull();

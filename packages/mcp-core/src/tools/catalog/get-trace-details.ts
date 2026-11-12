@@ -60,6 +60,7 @@ interface SpanExpansionCandidate {
 
 export default defineTool({
   name: "get_trace_details",
+  title: "Get Trace Details",
   skills: ["inspect"], // Only available in inspect skill
   requiredScopes: ["event:read"],
   requiredCapabilities: ["traces"],
@@ -599,18 +600,20 @@ function calculateOperationStats(trace: Trace): Record<
   }
 > {
   const allSpans = getAllSpansFlattened(trace);
-  const operationSpans: Record<string, TraceSpan[]> = {};
+  const operationSpans = new Map<string, TraceSpan[]>();
 
   // Group leaf spans by operation type (only spans with no children)
   for (const span of allSpans) {
     // Only consider leaf nodes - spans that have no children
-    if (!span.children || span.children.length === 0) {
+    if (span.children.length === 0) {
       // Use span.op if available, otherwise extract from span.name, fallback to "unknown"
       const op = span.op || (span.name ? span.name.split(" ")[0] : "unknown");
-      if (!operationSpans[op]) {
-        operationSpans[op] = [];
+      const bucket = operationSpans.get(op);
+      if (bucket) {
+        bucket.push(span);
+      } else {
+        operationSpans.set(op, [span]);
       }
-      operationSpans[op].push(span);
     }
   }
 
@@ -620,7 +623,7 @@ function calculateOperationStats(trace: Trace): Record<
   > = {};
 
   // Calculate stats for each operation
-  for (const [op, opSpans] of Object.entries(operationSpans)) {
+  for (const [op, opSpans] of operationSpans) {
     const durations = opSpans
       .map((span) => span.duration || 0)
       .filter((duration) => duration > 0)
@@ -895,7 +898,7 @@ function formatFocusedSpanOutput({
   sections.push("");
   sections.push("## Summary");
   sections.push("");
-  sections.push(`**Project**: ${focusedSpan.project_slug ?? "unknown"}`);
+  sections.push(`**Project**: ${focusedSpan.project_slug}`);
   sections.push(`**Operation**: ${focusedSpan.op ?? "unknown"}`);
   sections.push(`**Description**: ${formatTraceSpanDescription(focusedSpan)}`);
   sections.push(`**Duration**: ${formatDuration(focusedSpan.duration)}`);
@@ -1072,20 +1075,18 @@ function formatSpanAttributeSections(
       span.additional_attributes ?? {},
     ),
   );
-  sections.push(...formatJsonSection("### Errors", span.errors ?? []));
-  sections.push(
-    ...formatJsonSection("### Occurrences", span.occurrences ?? []),
-  );
+  sections.push(...formatJsonSection("### Errors", span.errors));
+  sections.push(...formatJsonSection("### Occurrences", span.occurrences));
 
   return sections;
 }
 
-function formatJsonSection(title: string, value: unknown): string[] {
+function formatJsonSection(title: string, value: object): string[] {
   return [
     title,
     "",
     "```json",
-    JSON.stringify(sortJsonValue(value), null, 2) ?? "null",
+    JSON.stringify(sortJsonValue(value), null, 2),
     "```",
     "",
   ];

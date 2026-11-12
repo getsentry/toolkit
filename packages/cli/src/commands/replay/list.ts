@@ -11,6 +11,7 @@ import {
   listReplays,
   type ReplaySortValue,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import {
   choiceParser,
@@ -42,6 +43,7 @@ import {
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   getReplayUserLabel,
@@ -58,11 +60,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  REPLAY_LIST_FIELDS,
-  type ReplayListItem,
-  ReplayListItemOutputSchema,
-} from "../../types/index.js";
+import { REPLAY_LIST_FIELDS, type ReplayListItem } from "../../types/index.js";
+import { ReplayListItemOutputSchema } from "../../generated/output-schemas/replay.js";
 
 type ListFlags = {
   readonly environment?: readonly string[];
@@ -134,8 +133,8 @@ function replayUserLabel(replay: ReplayListItem): string {
 const REPLAY_COLUMNS: Column<ReplayListItem>[] = [
   {
     header: "ID",
-    value: (replay) => `\`${replay.id.slice(0, 8)}\``,
-    minWidth: 8,
+    value: (replay) => `\`${replay.id}\``,
+    minWidth: 32,
     shrinkable: false,
   },
   {
@@ -202,7 +201,7 @@ function nextPageHint(
   flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">,
 ): string {
   return appendReplayFlags(
-    `sentry replay list ${formatScope(org, project)} -c next`,
+    sentry`replay list ${formatScope(org, project)} -c next`,
     flags,
   );
 }
@@ -213,7 +212,7 @@ function prevPageHint(
   flags: Pick<ListFlags, "environment" | "query" | "sort" | "period">,
 ): string {
   return appendReplayFlags(
-    `sentry replay list ${formatScope(org, project)} -c prev`,
+    sentry`replay list ${formatScope(org, project)} -c prev`,
     flags,
   );
 }
@@ -231,13 +230,13 @@ function formatReplayListHuman(result: ReplayListResult): string {
 function jsonTransformReplayList(
   result: ReplayListResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<ReplayListItem> {
   const items =
     fields && fields.length > 0
       ? result.replays.map((replay) => filterFields(replay, fields))
       : result.replays;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<ReplayListItem> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: result.hasPrev,
@@ -262,49 +261,47 @@ export const listCommand = buildListCommand("replay", {
     examples: [
       {
         description: "List recent replays (project auto-detected)",
-        command: "sentry replay list",
+        run: "replay list",
       },
       {
         description: "List recent replays for a project",
-        command: "sentry replay list my-org/frontend",
+        run: "replay list my-org/frontend",
       },
       {
         description: "Search across all projects in an organization",
-        command: 'sentry replay list my-org/ --query "environment:production"',
+        run: 'replay list my-org/ --query "environment:production"',
       },
       {
         description: "Change the time window and sort",
-        command:
-          "sentry replay list my-org/frontend --period 24h --sort errors",
+        run: "replay list my-org/frontend --period 24h --sort errors",
       },
       {
         description: "Find replays for a user",
-        command:
-          'sentry replay list my-org/frontend -q "user.email:foo@example.com"',
+        run: 'replay list my-org/frontend -q "user.email:foo@example.com"',
       },
       {
         description: "Filter by environments",
-        command: "sentry replay list my-org/frontend -e production -e canary",
+        run: "replay list my-org/frontend -e production -e canary",
       },
       {
         description: "Show more results",
-        command: "sentry replay list my-org/frontend --limit 50",
+        run: "replay list my-org/frontend --limit 50",
       },
       {
         description: "Fetch the next page",
-        command: "sentry replay list my-org/frontend -c next",
+        run: "replay list my-org/frontend -c next",
       },
       {
         description: "Fetch the previous page",
-        command: "sentry replay list my-org/frontend -c prev",
+        run: "replay list my-org/frontend -c prev",
       },
       {
         description: "Output as JSON",
-        command: "sentry replay list my-org/frontend --json",
+        run: "replay list my-org/frontend --json",
       },
       {
         description: "Find a project across organizations",
-        command: "sentry replay list frontend",
+        run: "replay list frontend",
       },
     ],
   },
@@ -428,7 +425,7 @@ export const listCommand = buildListCommand("replay", {
       const countText = `Showing ${replays.length} replay${replays.length === 1 ? "" : "s"}.`;
       const firstReplay = replays[0];
       const replayHint = firstReplay
-        ? `Use 'sentry replay view ${resolved.org}/${firstReplay.id}' for details.`
+        ? `Use '${sentry`replay view ${resolved.org}/${firstReplay.id}`}' for details.`
         : undefined;
       hint = nav
         ? `${countText} ${nav}`

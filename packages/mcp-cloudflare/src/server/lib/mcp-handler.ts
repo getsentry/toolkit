@@ -588,7 +588,7 @@ const mcpHandler: ExportedHandler<Env> = {
       );
     }
 
-    const grantedSkills = (rawProps.grantedSkills as string[]).map((skill) =>
+    const grantedSkills = rawProps.grantedSkills.map((skill) =>
       skill === "preprod" ? "inspect" : skill,
     );
     const { valid: validSkills, invalid: invalidSkills } =

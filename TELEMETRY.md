@@ -176,6 +176,14 @@ sort=-timestamp
 Use the skill id with `-` replaced by `_` in span attribute keys, such as
 `app.consent.skill.project_management.granted`.
 
+Calls to tool names the server does not register.
+
+```text
+dataset=spans query='span.op:mcp.server error.type:unknown_tool'
+fields=mcp.tool.name,app.transport,app.server.version,count()
+sort=-count()
+```
+
 Resource dispatch behavior for `get_sentry_resource`.
 
 ```text
@@ -256,6 +264,12 @@ Attributes: `gen_ai.tool.name`, `mcp.tool.name`, `gen_ai.tool.call.arguments.<ke
 For `search_sentry_tools`, inspect `gen_ai.tool.call.arguments.query` and
 `gen_ai.tool.call.result.count` to identify zero-result catalog searches.
 
+A `tools/call` for a tool name the server does not register fails with JSON-RPC
+error `-32602` before any tool handler runs. Its span has status `error`,
+`error.type: unknown_tool`, and `rpc.response.status_code: -32602`, and creates
+no Sentry issue. Group by `mcp.tool.name` to see which names clients still
+call, such as the removed `search_sentry_tools` and `execute_sentry_tool`.
+
 ### Resource Resolution
 
 `get_sentry_resource` routes a URL or ID to the wrong resource handler, or a
@@ -288,7 +302,7 @@ Attributes: `gen_ai.provider.name`, `gen_ai.request.model`,
 | ------------------------- | -------------------------------------------- | --------------------------------------- |
 | `VITE_SENTRY_DSN`         | Cloudflare Sentry telemetry                  | disabled when unset                     |
 | `VITE_SENTRY_ENVIRONMENT` | Cloudflare Sentry environment                | development                             |
-| `SENTRY_DSN`              | stdio and Node telemetry                     | disabled when unset                     |
+| `SENTRY_CLI_NO_TELEMETRY` | stdio telemetry off when `1`                 | on, to the CLI's project                |
 | `SENTRY_RELEASE`          | stdio release tag                            | unset                                   |
 | `SENTRY_HOST`             | upstream Sentry host and `app.upstream.host` | `sentry.io`                             |
 | `NODE_ENV`                | stdio environment                            | production fallback in packaged runtime |

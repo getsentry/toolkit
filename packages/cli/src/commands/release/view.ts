@@ -23,10 +23,12 @@ import {
   FRESH_ALIASES,
   FRESH_FLAG,
 } from "../../lib/list-command.js";
-import { type SentryRelease, SentryReleaseSchema } from "../../types/index.js";
+import type { SentryRelease } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { SentryReleaseSchema } from "../../generated/output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release view [<org>/]<version>";
+const usageHint = () => sentry`release view [<org>/]<version>`;
 
 /** Wrap a plain "—" in muted color for consistent table styling. */
 function mutedIfDash(value: string): string {
@@ -161,19 +163,19 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View release details",
-        command: "sentry release view 1.0.0",
+        run: "release view 1.0.0",
       },
       {
         description: "View a release in an explicit organization",
-        command: "sentry release view my-org/1.0.0",
+        run: "release view my-org/1.0.0",
       },
       {
         description: "View a release whose version contains a package name",
-        command: 'sentry release view "sentry-cli@0.24.0"',
+        run: 'release view "sentry-cli@0.24.0"',
       },
       {
         description: "Output as JSON",
-        command: "sentry release view 1.0.0 --json",
+        run: "release view 1.0.0 --json",
       },
     ],
   },
@@ -186,7 +188,7 @@ export const viewCommand = buildCommand({
       kind: "tuple",
       parameters: [
         releaseParameter(
-          USAGE_HINT,
+          usageHint,
           "[<org>/]<version> - Release version to view",
         ),
       ],

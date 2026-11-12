@@ -5,9 +5,9 @@
  */
 
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
-import { looseObject } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createRelease } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   parseProjectList,
@@ -21,32 +21,18 @@ import {
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import {
-  DryRunOutputField,
-  type SentryRelease,
-  SentryReleaseSchema,
-} from "../../types/index.js";
+import type { SentryRelease, WithOutputFields } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { ReleaseCreateOutputSchema } from "../../generated/output-schemas/release.js";
+import type { ReleaseCreateOutputFields } from "../../output-schemas/release.js";
 
-const USAGE_HINT = "sentry release create [<org>/]<version>";
-
-/**
- * JSON output: the created release, or with `--dry-run` the release that
- * would be created, in the same shape (`projects` as `{ slug }` objects).
- */
-const ReleaseCreateOutputSchema = looseObject({
-  ...SentryReleaseSchema.entries,
-  dryRun: DryRunOutputField,
-});
+const usageHint = () => sentry`release create [<org>/]<version>`;
 
 /** The release `--dry-run` reports: the request body, shaped like a release. */
-type ReleaseCreateDryRun = Pick<
-  SentryRelease,
-  "version" | "ref" | "url" | "dateReleased"
-> & {
-  dryRun: true;
-  projects: { slug: string }[];
-};
+type ReleaseCreateDryRun = WithOutputFields<
+  Pick<SentryRelease, "version" | "ref" | "url" | "dateReleased">,
+  typeof ReleaseCreateOutputFields
+> & { projects: { slug: string }[] };
 
 function formatReleaseCreated(release: SentryRelease): string {
   const lines: string[] = [];
@@ -78,43 +64,41 @@ export const createCommand = buildCommand({
     examples: [
       {
         description: "Create a release",
-        command: "sentry release create 1.0.0",
+        run: "release create 1.0.0",
       },
       {
         description: "Create a release in an explicit organization",
-        command: "sentry release create my-org/1.0.0",
+        run: "release create my-org/1.0.0",
       },
       {
         description: "Create and finalize a release",
-        command: "sentry release create 1.0.0 --finalize",
+        run: "release create 1.0.0 --finalize",
       },
       {
         description: "Create a release for specific projects",
-        command: "sentry release create 1.0.0 --project proj-a,proj-b",
+        run: "release create 1.0.0 --project proj-a,proj-b",
       },
       {
         description:
           "Typical CI release: create, associate commits, finalize, and record a deploy",
-        command: [
-          "sentry release create my-org/1.0.0 --project my-project",
-          "sentry release set-commits my-org/1.0.0 --auto",
-          "sentry release finalize my-org/1.0.0",
-          "sentry release deploy my-org/1.0.0 production",
+        run: [
+          "release create my-org/1.0.0 --project my-project",
+          "release set-commits my-org/1.0.0 --auto",
+          "release finalize my-org/1.0.0",
+          "release deploy my-org/1.0.0 production",
         ],
       },
       {
         description: "Create a release from a proposed version",
-        command:
-          'sentry release create "$(sentry release propose-version --json | jq -r .version)"',
+        run: 'release create "$(sentry release propose-version --json | jq -r .version)"',
       },
       {
         description: "Set the release ref and URL",
-        command:
-          "sentry release create 1.0.0 --ref main --url https://github.com/org/repo/releases/tag/1.0.0",
+        run: "release create 1.0.0 --ref main --url https://github.com/org/repo/releases/tag/1.0.0",
       },
       {
         description: "Preview without creating",
-        command: "sentry release create 1.0.0 --dry-run",
+        run: "release create 1.0.0 --dry-run",
       },
     ],
   },
@@ -140,7 +124,7 @@ export const createCommand = buildCommand({
       kind: "tuple",
       parameters: [
         releaseParameter(
-          USAGE_HINT,
+          usageHint,
           "[<org>/]<version> - Release version to create",
         ),
       ],
@@ -212,7 +196,7 @@ export const createCommand = buildCommand({
         url: body.url,
         dateReleased: body.dateReleased,
       };
-      yield new CommandOutput<SentryRelease | ReleaseCreateDryRun>(preview);
+      yield new CommandOutput(preview);
       return { hint: "Dry run — no release was created." };
     }
 
@@ -221,7 +205,7 @@ export const createCommand = buildCommand({
 
     const hint = flags.finalize
       ? "Release created and finalized."
-      : `Release created. Finalize with: sentry release finalize ${version}`;
+      : `Release created. Finalize with: ${sentry`release finalize ${version}`}`;
     return { hint };
   },
 });

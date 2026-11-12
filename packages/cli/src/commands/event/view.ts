@@ -17,6 +17,7 @@ import {
   type ResolvedEvent,
   resolveEventInOrg,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   type IssueSelector,
   issueSelectorHelp,
@@ -39,13 +40,12 @@ import {
 } from "../../lib/errors.js";
 import {
   attachmentDownloadHint,
-  type EventViewAttachment,
   eventProjectSlug,
   formatEventAttachments,
   loadEventAttachments,
 } from "../../lib/event-attachments.js";
 import { formatEventDetails } from "../../lib/formatters/index.js";
-import { filterFields } from "../../lib/formatters/json.js";
+import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { validateHexId } from "../../lib/hex-id.js";
 import {
@@ -79,8 +79,11 @@ import {
 import { buildEventSearchUrl } from "../../lib/sentry-web-urls.js";
 import { getSpanTreeLines } from "../../lib/span-tree.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
-import { EventViewOutputSchema, type SentryEvent } from "../../types/index.js";
+import type { InferOutput } from "valibot";
+import type { SentryEvent } from "../../types/index.js";
 import { findSelectorIssue } from "../issue/utils.js";
+import { EventViewOutputSchema } from "../../generated/output-schemas/event.js";
+import type { EventViewOutputFields } from "../../output-schemas/event.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -90,17 +93,21 @@ type ViewFlags = {
   readonly fields?: string[];
 };
 
-/** Return type for a single event — includes all data both renderers need */
-type SingleEventViewData = {
-  event: SentryEvent;
-  trace: { traceId: string; spans: unknown[] } | null;
-  /** Pre-formatted span tree lines for human output (not serialized) */
-  spanTreeLines?: string[];
-  /** Attachment metadata; omitted from human output when empty */
-  attachments?: EventViewAttachment[];
-  /** Resolved organization, including cross-org fallback results */
-  org?: string;
-};
+type EventViewFields = InferOutput<typeof EventViewOutputFields>;
+
+/**
+ * Return type for a single event — includes all data both renderers need.
+ * `trace` and `attachments` come from {@link EventViewOutputFields}, the
+ * fields JSON output adds to the event.
+ */
+type SingleEventViewData = Pick<EventViewFields, "trace"> &
+  Partial<Pick<EventViewFields, "attachments">> & {
+    event: SentryEvent;
+    /** Pre-formatted span tree lines for human output (not serialized) */
+    spanTreeLines?: string[];
+    /** Resolved organization, including cross-org fallback results */
+    org?: string;
+  };
 
 /**
  * Output type for event view — supports both single and multi-event.
@@ -154,20 +161,13 @@ export function formatEventView(data: EventViewData): string {
  * This preserves backward compatibility: single-event callers still get
  * a flat object, while multi-event callers get an array.
  */
-export function jsonTransformEventView(
-  data: EventViewData,
-  fields?: string[],
-): unknown {
-  const transform = (entry: SingleEventViewData): Record<string, unknown> => {
-    const result: Record<string, unknown> = {
-      ...entry.event,
+export function jsonTransformEventView(data: EventViewData, fields?: string[]) {
+  const transform = (entry: SingleEventViewData) => {
+    const fieldsOut: EventViewFields = {
       trace: entry.trace,
       attachments: entry.attachments ?? [],
     };
-    if (fields && fields.length > 0) {
-      return filterFields(result, fields) as Record<string, unknown>;
-    }
-    return result;
+    return filterFieldsIfSet({ ...entry.event, ...fieldsOut }, fields);
   };
 
   // Use requestedCount (not events.length) to decide the shape so that
@@ -187,7 +187,7 @@ export function jsonTransformEventView(
 function replayHint(org: string, event: SentryEvent): string | undefined {
   const replayId = getReplayIdFromEvent(event);
   return replayId
-    ? `Related replay: sentry replay view ${org}/${replayId}`
+    ? `Related replay: ${sentry`replay view ${org}/${replayId}`}`
     : undefined;
 }
 
@@ -212,7 +212,7 @@ function viewOutputHint(
 }
 
 /** Usage hint for ContextError messages */
-const USAGE_HINT = "sentry event view <org>/<project> <event-id>";
+const usageHint = () => sentry`event view <org>/<project> <event-id>`;
 
 /**
  * Expand positional args by splitting each on newlines.
@@ -238,14 +238,14 @@ const LATEST_EVENT_SENTINEL = "@latest";
 const DEFAULT_SELECTOR: IssueSelector = "@latest";
 
 /** Usage hint for magic selectors */
-const SELECTOR_HINT = "sentry event view [<org>/[<project>/]]@latest";
+const selectorHint = () => sentry`event view [<org>/[<project>/]]@latest`;
 
 /**
  * Shared usage hint shown when a bare "latest" is passed without an issue.
  * There is no "latest event of a project" API — the latest-event lookup is
  * keyed by issue, so the user must supply an issue ID (or short ID).
  */
-const BARE_LATEST_HINT = "sentry event view <issue-id>";
+const bareLatestHint = () => sentry`event view <issue-id>`;
 
 /**
  * The arguments of `event view`, parsed. Parsing has no side effects: the
@@ -329,7 +329,7 @@ export function parseEventViewInput(args: readonly string[]): EventViewInput {
     let parsed: ReturnType<typeof parseIdArguments>;
     try {
       parsed = parseIdArguments(tokens, ID_KINDS.event, {
-        usageHint: USAGE_HINT,
+        usageHint: usageHint(),
         multiple: true,
         needsProject: true,
         validate: false,
@@ -364,9 +364,9 @@ export function parseEventViewInput(args: readonly string[]): EventViewInput {
   if (input.eventId.toLowerCase() === "latest") {
     // There is no "latest event of a project" endpoint — the latest-event
     // lookup is keyed by issue, so a bare "latest" has nothing to resolve
-    throw new ContextError("Issue ID", BARE_LATEST_HINT, [
-      "'latest' resolves the newest event of an issue — pass an issue ID, e.g. 'sentry event view 17370'",
-      `Or use the @latest selector for the latest event of the most recent unresolved issue: ${SELECTOR_HINT}`,
+    throw new ContextError("Issue ID", bareLatestHint(), [
+      `'latest' resolves the newest event of an issue — pass an issue ID, e.g. '${sentry`event view 17370`}'`,
+      `Or use the @latest selector for the latest event of the most recent unresolved issue: ${selectorHint()}`,
     ]);
   }
   const target = parseOrgProjectInput(input.targetArg);
@@ -419,7 +419,7 @@ function selectorInput(tokens: readonly string[]): IssueInput | null {
     otherIsId
   ) {
     throw new ValidationError(
-      `'${token}' selects one event; pass it alone or after a target, not with IDs: ${SELECTOR_HINT}`,
+      `'${token}' selects one event; pass it alone or after a target, not with IDs: ${selectorHint()}`,
       "positional",
     );
   }
@@ -451,7 +451,7 @@ function targetOnlyInput(
     return null;
   }
   const parsed = parseIdArguments(tokens, ID_KINDS.event, {
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
     multiple: true,
     optional: true,
     needsProject: true,
@@ -484,7 +484,7 @@ function issueFromUrl(url: ParsedSentryUrl): IssueInput | null {
       issueId: url.issueId,
     };
   }
-  throw new ContextError("Event ID", USAGE_HINT, [
+  throw new ContextError("Event ID", usageHint(), [
     "Pass an event URL: https://sentry.io/organizations/{org}/issues/{id}/events/{eventId}/",
     "Or an issue URL to view the latest event: https://sentry.io/organizations/{org}/issues/{id}/",
   ]);
@@ -595,7 +595,7 @@ async function validateAndRecoverEventId(
     const result = await recoverHexId(rawEventId, "event", recoveryCtx);
     return handleRecoveryResult(result, err, {
       entityType: "event",
-      canonicalCommand: `sentry event view ${recoveryCtx.org || "<org>"}/${recoveryCtx.project ?? "<project>"}/<id>`,
+      canonicalCommand: sentry`event view ${recoveryCtx.org || "<org>"}/${recoveryCtx.project ?? "<project>"}/<id>`,
       logTag: "event.view",
     });
   }
@@ -691,8 +691,8 @@ export async function resolveEventTarget(
     case ProjectSpecificationType.ProjectSearch: {
       const resolved = await resolveProjectBoundSlug(
         parsed.projectSlug,
-        USAGE_HINT,
-        `sentry event view <org>/${parsed.projectSlug} ${eventId}`,
+        usageHint(),
+        sentry`event view <org>/${parsed.projectSlug} ${eventId}`,
         parsed.originalSlug,
       );
       target = {
@@ -747,7 +747,7 @@ export async function resolveOrgAllTarget(
     throw new ResolutionError(
       `Event ${eventId} in organization "${org}"`,
       "not found",
-      `sentry event view ${org}/<project> ${eventId}`,
+      sentry`event view ${org}/<project> ${eventId}`,
     );
   }
   return {
@@ -769,7 +769,10 @@ export async function resolveAutoDetectTarget(
   eventId: string,
   cwd: string,
 ): Promise<ResolvedEventTarget | null> {
-  const autoTarget = await resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
+  const autoTarget = await resolveOrgAndProject({
+    cwd,
+    usageHint: usageHint(),
+  });
   if (autoTarget) {
     return autoTarget;
   }
@@ -780,7 +783,7 @@ export async function resolveAutoDetectTarget(
       .withTag("event.view")
       .warn(
         `Found event in ${resolved.org}/${resolved.project}. ` +
-          `Use: sentry event view ${resolved.org}/${resolved.project} ${eventId}`,
+          `Use: ${sentry`event view ${resolved.org}/${resolved.project} ${eventId}`}`,
       );
     return {
       org: resolved.org,
@@ -962,14 +965,14 @@ export async function fetchEventWithContext(
       // Nudge the user when the event ID looks like an issue short ID
       if (issueForm(eventId) === "short-id") {
         suggestions.unshift(
-          `This looks like an issue short ID. Try: sentry issue view ${eventId}`,
+          `This looks like an issue short ID. Try: ${sentry`issue view ${eventId}`}`,
         );
       }
 
       throw new ResolutionError(
         `Event '${eventId}'`,
         `not found in ${org}/${project}`,
-        `sentry event view ${org}/<project> ${eventId}`,
+        sentry`event view ${org}/<project> ${eventId}`,
         suggestions,
       );
     }
@@ -1039,14 +1042,14 @@ async function resolveSelectorScope(
     case ProjectSpecificationType.ProjectSearch:
       return await resolveProjectBoundSlug(
         parsed.projectSlug,
-        SELECTOR_HINT,
-        `sentry event view <org>/${parsed.projectSlug}/${selector}`,
+        selectorHint(),
+        sentry`event view <org>/${parsed.projectSlug}/${selector}`,
         parsed.originalSlug,
       );
     case ProjectSpecificationType.AutoDetect: {
       const resolved = await resolveOrg({ cwd });
       if (!resolved) {
-        throw new ContextError("Organization", SELECTOR_HINT);
+        throw new ContextError("Organization", selectorHint());
       }
       return { org: resolved.org };
     }
@@ -1084,7 +1087,7 @@ async function resolveSelectorEvent(
   return {
     org,
     data,
-    hint: `Showing the latest event of ${issue.shortId} (${selector}). Pass an event ID to view a specific one: ${USAGE_HINT}`,
+    hint: `Showing the latest event of ${issue.shortId} (${selector}). Pass an event ID to view a specific one: ${usageHint()}`,
   };
 }
 
@@ -1128,7 +1131,7 @@ async function resolveIssueIdShortcut(
       : undefined;
   const resolved = await resolveOrg({ org: explicitOrg, cwd });
   if (!resolved) {
-    throw new ContextError("Organization", `sentry event view ${issueId}`);
+    throw new ContextError("Organization", sentry`event view ${issueId}`);
   }
   const org = resolved.org;
   log.info(`Fetching latest event for issue ${issueId}...`);
@@ -1189,7 +1192,7 @@ async function resolveIssueShortcut(
     if (!resolved) {
       throw new ContextError(
         "Organization",
-        `sentry issue view ${issueShortId}`,
+        sentry`issue view ${issueShortId}`,
       );
     }
 
@@ -1202,7 +1205,7 @@ async function resolveIssueShortcut(
         throw new ResolutionError(
           `Issue '${issueShortId}'`,
           "has no associated project",
-          `sentry event view <org>/<project> ${eventId}`,
+          sentry`event view <org>/<project> ${eventId}`,
           ["Specify the project explicitly to view this event"],
         );
       }
@@ -1231,7 +1234,7 @@ async function resolveIssueShortcut(
     return {
       org: resolved.org,
       data,
-      hint: `Tip: Use 'sentry issue view ${issueShortId}' to view the full issue`,
+      hint: `Tip: Use '${sentry`issue view ${issueShortId}`}' to view the full issue`,
     };
   }
 
@@ -1355,50 +1358,46 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View an event",
-        command: "sentry event view abc123def456abc123def456abc12345",
+        run: "event view abc123def456abc123def456abc12345",
       },
       {
         description: "View a specific event using an issue short ID",
-        command: "sentry event view PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac",
+        run: "event view PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac",
       },
       {
         description: "View a specific event with an explicit organization",
-        command:
-          "sentry event view my-org/PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac",
+        run: "event view my-org/PROJ-ABC 7388f6a62b7d436ab77bb5365f97a1ac",
       },
       {
         description: "View the latest event for an issue",
-        command: "sentry event view PROJ-ABC",
+        run: "event view PROJ-ABC",
       },
       {
         description:
           "View the latest event of the most recent unresolved issue in a project",
-        command: "sentry event view my-org/my-project",
+        run: "event view my-org/my-project",
       },
       {
         description: "View the latest event of the most frequent issue",
-        command: "sentry event view @most_frequent",
+        run: "event view @most_frequent",
       },
       {
         description: "Open in the browser",
-        command: "sentry event view abc123def456abc123def456abc12345 -w",
+        run: "event view abc123def456abc123def456abc12345 -w",
       },
       {
         description:
           "Download an attachment listed by --json (with sentry api)",
-        command:
-          "sentry api 'https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1' > screenshot.png",
+        run: "api 'https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1' > screenshot.png",
       },
       {
         description: "View an event in an explicit project",
-        command:
-          "sentry event view my-org/my-project abc123def456abc123def456abc12345",
+        run: "event view my-org/my-project abc123def456abc123def456abc12345",
       },
       {
         description:
           "View several events, finding the project across organizations",
-        command:
-          "sentry event view my-project abc123def456abc123def456abc12345 def456abc123def456abc123def45678",
+        run: "event view my-project abc123def456abc123def456abc12345 def456abc123def456abc123def45678",
       },
     ],
   },
@@ -1485,7 +1484,7 @@ export const viewCommand = buildCommand({
     });
 
     if (!target) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
 
     if (flags.web) {

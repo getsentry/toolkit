@@ -1,4 +1,5 @@
 import {
+  createDefaultEvent,
   mswServer,
   organizationFixture,
   replayDetailsFixture,
@@ -8,7 +9,11 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { encode as encodePng } from "fast-png";
 import { http, HttpResponse } from "msw";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getStructuredContent } from "../../test-utils/structured-content";
+import { getSnapshotOutputSchema } from "../support/snapshots/summary";
+import { getIssueDetailsOutputSchema } from "./get-issue-details";
+import { getReplayDetailsOutputSchema } from "./get-replay-details";
 import getSentryResource from "./get-sentry-resource.js";
 import { resolveDescription } from "../../tools/types.js";
 
@@ -16,6 +21,25 @@ const originalOpenAIApiKey = process.env.OPENAI_API_KEY;
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
 const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
 const originalEmbeddedAgentProvider = process.env.EMBEDDED_AGENT_PROVIDER;
+
+function expectReplayWithDeadClick(result: unknown) {
+  const payload = getReplayDetailsOutputSchema.parse(
+    getStructuredContent(result),
+  );
+  expect(payload.replay).toMatchObject({
+    id: replayDetailsFixture.id,
+    organizationSlug: "sentry-mcp-evals",
+  });
+  expect(payload.timeline).toMatchObject({
+    status: "loaded",
+    events: expect.arrayContaining([
+      expect.objectContaining({
+        label: "dead click",
+        target: "div.modal > button.place-order",
+      }),
+    ]),
+  });
+}
 
 const baseContext = {
   constraints: {
@@ -51,6 +75,10 @@ function callHandler(params: {
     | "dashboard";
   resourceId?: string;
   organizationSlug?: string;
+  issueUrl?: string;
+  resourceUrl?: string;
+  issueId?: string;
+  id?: string;
 }) {
   return getSentryResource.handler(params, baseContext);
 }
@@ -147,6 +175,24 @@ describe("get_sentry_resource", () => {
 
   // ─── URL mode: issue URLs ──────────────────────────────────────────────────
   describe("URL mode — issue URLs", () => {
+    it.each([
+      {
+        issueUrl: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+      },
+      {
+        resourceUrl:
+          "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+      },
+      { organizationSlug: "sentry-mcp-evals", issueId: "cloudflare-mcp-41" },
+      { organizationSlug: "sentry-mcp-evals", id: "CLOUDFLARE-MCP-41" },
+      { organizationSlug: "sentry-mcp-evals", resourceId: "CLOUDFLARE-MCP-41" },
+    ])("resolves issue from alias params %o", async (params) => {
+      const result = await callHandler(params);
+      expect(result).toContain(
+        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
+      );
+    });
+
     it("resolves issue from subdomain URL (my-org.sentry.io)", async () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
@@ -302,11 +348,16 @@ describe("get_sentry_resource", () => {
         url: `https://my-org.sentry.io/explore/profiling/profile/backend/${transactionProfileV1Fixture.profile_id}/flamegraph/`,
       });
 
-      expect(result).toContain(
-        `# Profile ${transactionProfileV1Fixture.profile_id}`,
-      );
-      expect(result).toContain("**Project**: backend");
-      expect(result).toContain("**Transaction**: /api/users");
+      expect(result).toMatchObject({
+        structuredContent: {
+          profile: {
+            profileType: "transaction",
+            profileId: transactionProfileV1Fixture.profile_id,
+            project: "backend",
+            transactionName: "/api/users",
+          },
+        },
+      });
     });
 
     it("dispatches transaction profile URLs with organizations path", async () => {
@@ -314,12 +365,14 @@ describe("get_sentry_resource", () => {
         url: `https://sentry.io/organizations/my-org/profiling/profile/backend/${transactionProfileV1Fixture.profile_id}/flamegraph/?frameName=handle_request`,
       });
 
-      expect(result).toContain(
-        `# Profile ${transactionProfileV1Fixture.profile_id}`,
-      );
-      expect(result).toContain(
-        "**Trace ID**: a4d1aae7216b47ff8117cf4e09ce9d0a",
-      );
+      expect(result).toMatchObject({
+        structuredContent: {
+          profile: {
+            profileId: transactionProfileV1Fixture.profile_id,
+            traceId: "a4d1aae7216b47ff8117cf4e09ce9d0a",
+          },
+        },
+      });
     });
 
     it("dispatches continuous profile URLs to get_profile_details", async () => {
@@ -327,10 +380,14 @@ describe("get_sentry_resource", () => {
         url: "https://my-org.sentry.io/profiling/profile/backend/flamegraph/?profilerId=041bde57b9844e36b8b7e5734efae5f7&start=2024-01-01T00:00:00Z&end=2024-01-01T01:00:00Z",
       });
 
-      expect(result).toContain(
-        "# Continuous Profile 041bde57b9844e36b8b7e5734efae5f7",
-      );
-      expect(result).toContain("## Raw Sample Analysis");
+      expect(result).toMatchObject({
+        structuredContent: {
+          profile: {
+            profileType: "continuous",
+            profilerId: "041bde57b9844e36b8b7e5734efae5f7",
+          },
+        },
+      });
     });
 
     it("rejects profile URLs outside the active constrained project", async () => {
@@ -359,12 +416,7 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: `https://sentry-mcp-evals.sentry.io/replays/${replayDetailsFixture.id}/`,
       });
-      expect(result).toContain(
-        `# Replay ${replayDetailsFixture.id} in **sentry-mcp-evals**`,
-      );
-      expect(result).toContain(
-        "**dead click** · `div.modal > button.place-order`",
-      );
+      expectReplayWithDeadClick(result);
     });
 
     it("dispatches monitor URL with a simple slug to get_monitor_details", async () => {
@@ -378,10 +430,10 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://my-org.sentry.io/crons/daily-backup/",
       });
-      expect(result).toContain("# Monitor daily-backup in **my-org**");
-      expect(result).toContain(
-        "[Open Monitor](https://my-org.sentry.io/crons/backend/daily-backup/)",
-      );
+      expect(getStructuredContent(result).monitor).toMatchObject({
+        slug: "daily-backup",
+        url: "https://my-org.sentry.io/crons/backend/daily-backup/",
+      });
     });
 
     it("dispatches monitor URL with project/slug path to get_monitor_details", async () => {
@@ -396,10 +448,10 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://my-org.sentry.io/crons/my-project/my-monitor/",
       });
-      expect(result).toContain("# Monitor my-monitor in **my-org**");
-      expect(result).toContain(
-        "[Open Monitor](https://my-org.sentry.io/crons/my-project/my-monitor/)",
-      );
+      expect(getStructuredContent(result).monitor).toMatchObject({
+        slug: "my-monitor",
+        url: "https://my-org.sentry.io/crons/my-project/my-monitor/",
+      });
     });
 
     it("dispatches monitor URL with numeric project ID under an active project constraint", async () => {
@@ -425,10 +477,10 @@ describe("get_sentry_resource", () => {
         },
       );
 
-      expect(result).toContain("# Monitor my-monitor in **my-org**");
-      expect(result).toContain(
-        "[Open Monitor](https://my-org.sentry.io/crons/backend/my-monitor/)",
-      );
+      expect(getStructuredContent(result).monitor).toMatchObject({
+        slug: "my-monitor",
+        url: "https://my-org.sentry.io/crons/backend/my-monitor/",
+      });
     });
 
     it("rejects numeric monitor project IDs outside the active project constraint before monitor reads", async () => {
@@ -505,10 +557,10 @@ describe("get_sentry_resource", () => {
         },
       );
 
-      expect(result).toContain("# Monitor my-monitor in **my-org**");
-      expect(result).toContain(
-        "[Open Monitor](https://my-org.sentry.io/crons/backend/my-monitor/)",
-      );
+      expect(getStructuredContent(result).monitor).toMatchObject({
+        slug: "my-monitor",
+        url: "https://my-org.sentry.io/crons/backend/my-monitor/",
+      });
     });
 
     it("returns guidance for release URL", async () => {
@@ -569,9 +621,9 @@ describe("get_sentry_resource", () => {
           sentryProtocol: "http",
         },
       );
-      expect(result).toContain(
-        "[Open Monitor](http://sentry.internal:9000/organizations/my-org/crons/backend/daily-backup/)",
-      );
+      expect(getStructuredContent(result).monitor).toMatchObject({
+        url: "http://sentry.internal:9000/organizations/my-org/crons/backend/daily-backup/",
+      });
     });
 
     it("uses configured host and protocol for self-hosted release URL", async () => {
@@ -600,11 +652,10 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/dashboard/101/",
       });
-      expect(result).toContain(
-        "# Dashboard Errors Overview in **sentry-mcp-evals**",
-      );
-      expect(result).toContain("**ID**: 101");
-      expect(result).toContain("[Open Dashboard]");
+      expect(getStructuredContent(result).dashboard).toMatchObject({
+        id: "101",
+        title: "Errors Overview",
+      });
     });
 
     it("dispatches explicit dashboard resourceType to get_dashboard_details by ID", async () => {
@@ -613,10 +664,10 @@ describe("get_sentry_resource", () => {
         resourceId: "101",
         organizationSlug: "sentry-mcp-evals",
       });
-      expect(result).toContain(
-        "# Dashboard Errors Overview in **sentry-mcp-evals**",
-      );
-      expect(result).toContain("**ID**: 101");
+      expect(getStructuredContent(result).dashboard).toMatchObject({
+        id: "101",
+        title: "Errors Overview",
+      });
     });
 
     it("dispatches explicit dashboard resourceType to get_dashboard_details by title", async () => {
@@ -625,10 +676,10 @@ describe("get_sentry_resource", () => {
         resourceId: "Errors Overview",
         organizationSlug: "sentry-mcp-evals",
       });
-      expect(result).toContain(
-        "# Dashboard Errors Overview in **sentry-mcp-evals**",
-      );
-      expect(result).toContain("**ID**: 101");
+      expect(getStructuredContent(result).dashboard).toMatchObject({
+        id: "101",
+        title: "Errors Overview",
+      });
     });
 
     it("rejects dashboard URL when get_dashboard_details is not available", async () => {
@@ -767,12 +818,7 @@ describe("get_sentry_resource", () => {
         organizationSlug: "sentry-mcp-evals",
         resourceId: replayDetailsFixture.id,
       });
-      expect(result).toContain(
-        `# Replay ${replayDetailsFixture.id} in **sentry-mcp-evals**`,
-      );
-      expect(result).toContain(
-        "**dead click** · `div.modal > button.place-order`",
-      );
+      expectReplayWithDeadClick(result);
     });
 
     it("fetches snapshot by snapshot ID", async () => {
@@ -811,18 +857,18 @@ describe("get_sentry_resource", () => {
         organizationSlug: "sentry",
         resourceId: "55",
       });
-      expect(result).toContain("# Snapshot 55 in **sentry**");
-      expect(result).toContain(
-        "**URL**: https://sentry.sentry.io/preprod/snapshots/55/",
+      const snapshot = getSnapshotOutputSchema.parse(
+        getStructuredContent(result),
       );
-      expect(result).toContain("**Images**: 0 total");
-      expect(result).toContain(
-        "Use the Sentry tool `get_snapshot_image` to view a specific image preview",
+      expect(snapshot.snapshotId).toBe("55");
+      expect(snapshot.url).toBe(
+        "https://sentry.sentry.io/preprod/snapshots/55/",
       );
-      expect(result).toContain(
-        "- Use the Sentry tool `get_snapshot_image` to fetch original full-resolution image bytes",
-      );
-      expect(result).not.toContain("?selectedSnapshot=");
+      expect(snapshot.counts.total).toBe(0);
+      expect(snapshot.responseNotes).toEqual([
+        "Use the Sentry tool `get_snapshot_image(organizationSlug='sentry', snapshotId='55', imageIdentifier='<imageFileName>')` to view one image preview; pass its imageFileName as imageIdentifier.",
+        "Use the Sentry tool `get_snapshot_image(organizationSlug='sentry', snapshotId='55', imageIdentifier='<imageFileName>', imageResolution='full')` to fetch original full-resolution image bytes",
+      ]);
     });
 
     it("fetches snapshot by URL and preserves no-diff image inventory compatibility", async () => {
@@ -857,12 +903,21 @@ describe("get_sentry_resource", () => {
         url: "https://sentry.sentry.io/preprod/snapshots/55/",
       });
 
-      expect(result).toContain("# Snapshot 55 in **sentry**");
-      expect(result).toContain("**Snapshot Images:**");
-      expect(result).toContain("no_change_login.png — No Change Login — auth");
-      expect(result).toContain(
-        "Use the Sentry tool `get_snapshot_image` to view a specific image preview",
+      const snapshot = getSnapshotOutputSchema.parse(
+        getStructuredContent(result),
       );
+      expect(snapshot.snapshotId).toBe("55");
+      expect(snapshot.images).toEqual([
+        {
+          group: "auth",
+          images: [
+            {
+              imageFileName: "snapshots-iphone-16/no_change_login.png",
+              displayName: "No Change Login",
+            },
+          ],
+        },
+      ]);
     });
 
     it("fetches snapshot image by snapshot URL selectedSnapshot query", async () => {
@@ -926,7 +981,7 @@ describe("get_sentry_resource", () => {
   describe("Validation errors", () => {
     it("throws when neither url nor resourceType provided", async () => {
       await expect(
-        callHandler({ organizationSlug: "my-org", resourceId: "X-1" }),
+        callHandler({ organizationSlug: "my-org", resourceId: "my-cron-job" }),
       ).rejects.toThrow("Either `url` or `resourceType` must be provided");
     });
 
@@ -1035,7 +1090,13 @@ describe("get_sentry_resource", () => {
         organizationSlug: "my-org",
         resourceId: "something",
       });
-      expect(result).toContain("# Replay something in **my-org**");
+      const payload = getReplayDetailsOutputSchema.parse(
+        getStructuredContent(result),
+      );
+      expect(payload.replay).toMatchObject({
+        id: "something",
+        organizationSlug: "my-org",
+      });
     });
   });
 
@@ -1060,6 +1121,11 @@ describe("get_sentry_resource", () => {
         "resourceType",
         "resourceId",
         "organizationSlug",
+        "packageNames",
+        "issueUrl",
+        "resourceUrl",
+        "issueId",
+        "id",
       ]);
     });
 
@@ -1100,5 +1166,161 @@ describe("get_sentry_resource", () => {
       expect(desc).not.toContain("monitor");
       expect(desc).toContain("dashboard");
     });
+  });
+});
+
+describe("event package selection", () => {
+  beforeEach(() => mswServer.resetHandlers());
+  afterEach(() => mswServer.resetHandlers());
+  const eventId = "7ca573c0f4814912aaa9bdc77d1a7d51";
+
+  it.each([
+    {
+      resourceType: "event" as const,
+      organizationSlug: "sentry-mcp-evals",
+      resourceId: eventId,
+    },
+    {
+      url: `https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/events/${eventId}/`,
+    },
+  ])(
+    "forwards selected packages through the event reader (%j)",
+    async (params) => {
+      mswServer.use(
+        http.get(
+          `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+          () =>
+            HttpResponse.json({
+              ...createDefaultEvent({ id: eventId, contexts: {} }),
+              packages: { example: "1.2.3", unrelated: "9.9.9" },
+              formatted: {
+                format: "markdown",
+                content: "### Message\n\nSynthetic event",
+              },
+            }),
+        ),
+      );
+      const result = await getSentryResource.handler(
+        { ...params, packageNames: ["example"] },
+        baseContext,
+      );
+      expect(result).not.toContain("unrelated");
+      expect(result).toMatchInlineSnapshot(`
+        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
+
+        **Description**: Error: Tool list_organizations is already registered
+        **Culprit**: Object.fetch(index)
+        **First Seen**: 2025-04-03T22:51:19.403Z
+        **Last Seen**: 2025-04-12T11:34:11.000Z
+        **Occurrences**: 25
+        **Users Impacted**: 1
+        **Status**: unresolved
+        **Substatus**: ongoing
+        **Assigned To**: Jane Developer (User)
+        **Issue Type**: error
+        **Issue Category**: error
+        **Platform**: javascript
+        **Project**: CLOUDFLARE-MCP
+        **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
+
+        ## Event Details
+
+        **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
+        **Type**: default
+        **Occurred At**: 2025-10-02T12:00:00.000Z
+        **Message**:
+        Something went wrong
+
+        ### Error
+
+        \`\`\`
+        Something went wrong
+        \`\`\`
+
+        ### Tags
+
+        **level**: \`error\`
+        **environment**: \`production\`
+
+
+        ### Selected Package Versions
+
+        - \`example\`: \`1.2.3\`
+
+        ## Response Notes
+
+        - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
+        - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
+        - Issue event search: Use the Sentry tool \`search_issue_events\`
+        "
+      `);
+    },
+  );
+
+  it("returns selected packages when an event URL resolves to structured output", async () => {
+    mswServer.use(
+      http.get(
+        `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+        () =>
+          HttpResponse.json({
+            ...createDefaultEvent({ id: eventId, contexts: {} }),
+            packages: { example: "1.2.3", unrelated: "9.9.9" },
+            formatted: {
+              format: "json",
+              content: JSON.stringify({ message: "Synthetic event" }),
+            },
+          }),
+      ),
+    );
+    const result = await getSentryResource.handler(
+      {
+        url: `https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/events/${eventId}/`,
+        packageNames: ["example"],
+      },
+      { ...baseContext, experimentalMode: true },
+    );
+    const payload = getIssueDetailsOutputSchema.parse(
+      getStructuredContent(result),
+    );
+    expect(payload.event.packageVersions).toEqual({
+      metadataAvailable: true,
+      packages: [
+        {
+          name: "example",
+          status: "recorded",
+          version: "1.2.3",
+          truncated: false,
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("unrelated");
+  });
+
+  it("rejects latest instead of an exact event ID", async () => {
+    await expect(
+      getSentryResource.handler(
+        {
+          resourceType: "event",
+          organizationSlug: "sentry-mcp-evals",
+          resourceId: "latest",
+          packageNames: ["example"],
+        },
+        baseContext,
+      ),
+    ).rejects.toThrow("32-character hexadecimal event ID");
+  });
+
+  it("rejects package selection for other resource types", async () => {
+    await expect(
+      getSentryResource.handler(
+        {
+          resourceType: "issue",
+          organizationSlug: "sentry-mcp-evals",
+          resourceId: "CLOUDFLARE-MCP-41",
+          packageNames: ["example"],
+        },
+        baseContext,
+      ),
+    ).rejects.toThrow("requires an event URL");
   });
 });

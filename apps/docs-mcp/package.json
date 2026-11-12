@@ -16,7 +16,7 @@
     "@mastra/core": "^1.63.2",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@openrouter/ai-sdk-provider": "^1.5.4",
-    "@sentry/cloudflare": "^10.62.0",
+    "@sentry/cloudflare": "catalog:",
     "@sentry/toolkit-core": "workspace:*",
     "ai": "^5.0.0",
     "hono": "^4.13.11",

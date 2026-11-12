@@ -260,7 +260,7 @@ describe("buildCommandInfo", () => {
       __examples: [
         {
           description: "List things in an org",
-          command: "sentry thing list myorg",
+          run: "thing list myorg",
         },
       ],
       parameters: {
@@ -298,7 +298,7 @@ describe("buildCommandInfo", () => {
       __examples: [
         {
           description: "Create, then finalize",
-          command: ["sentry thing create a", "sentry thing finalize a"],
+          run: ["thing create a", "thing finalize a"],
         },
       ],
     });

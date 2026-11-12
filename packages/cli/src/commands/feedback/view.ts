@@ -27,8 +27,8 @@ import {
   getReplayIdFromEvent,
 } from "../../lib/replay-search.js";
 import type { FeedbackViewResult, SentryEvent } from "../../types/index.js";
-import { FeedbackViewOutputSchema } from "../../types/index.js";
 import { type FeedbackTarget, feedbackPositional } from "./positional.js";
+import { FeedbackViewOutputSchema } from "../../generated/output-schemas/feedback.js";
 
 const log = logger.withTag("feedback.view");
 
@@ -82,8 +82,8 @@ async function tryListAttachments(
 function jsonTransformFeedbackView(
   data: FeedbackViewResult,
   fields?: string[],
-): unknown {
-  const result: Record<string, unknown> = {
+) {
+  const result = {
     ...data.feedback,
     org: data.org,
     event: data.event,
@@ -111,32 +111,32 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View the most recent unresolved Feedback",
-        command: "sentry feedback view @latest",
+        run: "feedback view @latest",
       },
       {
         description:
           "Most recent unresolved Feedback in an explicit organization",
-        command: "sentry feedback view my-org/@latest",
+        run: "feedback view my-org/@latest",
       },
       {
         description: "View by short ID",
-        command: "sentry feedback view FRONTEND-2SDJ",
+        run: "feedback view FRONTEND-2SDJ",
       },
       {
         description: "View by numeric ID",
-        command: "sentry feedback view 5146636313",
+        run: "feedback view 5146636313",
       },
       {
         description: "View in an explicit organization",
-        command: "sentry feedback view my-org/FRONTEND-2SDJ",
+        run: "feedback view my-org/FRONTEND-2SDJ",
       },
       {
         description: "`view` is the default command",
-        command: "sentry feedback my-org/FRONTEND-2SDJ",
+        run: "feedback my-org/FRONTEND-2SDJ",
       },
       {
         description: "Open the Feedback item in Sentry",
-        command: "sentry feedback view my-org/FRONTEND-2SDJ --web",
+        run: "feedback view my-org/FRONTEND-2SDJ --web",
       },
     ],
   },

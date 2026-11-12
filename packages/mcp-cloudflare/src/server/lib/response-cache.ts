@@ -21,7 +21,7 @@ import {
   lookupResponse,
   type MemoryStore,
   storeResponse,
-} from "@sentry/toolkit-core/api-client/response-cache";
+} from "@sentry/api/client";
 import { createBodyCodec } from "@sentry/toolkit-core/response-cache/codec";
 
 export type ResponseCacheMode = "off" | "memory" | "tiered";
@@ -81,32 +81,43 @@ function recordLookup(result: "hit" | "miss" | "stale"): void {
  * A memory store that reports each write with its body encoding, evictions,
  * and its usage after each write, and logs the first time it reaches
  * `maxBytes`.
+ *
+ * The store has no eviction hook, so `set` derives evictions from its entry
+ * count. Reading the key before and after the write separates the entry it
+ * replaces, or one that expired, from entries evicted for the budget.
  */
 export function createMeteredMemoryStore(
   maxBytes = MEMORY_BUDGET_BYTES,
 ): MemoryStore {
   let budgetReached = false;
-  const store: MemoryStore = createMemoryStore({
-    maxBytes,
-    onEvict: () => {
-      Sentry.metrics.count(EVICTION_METRIC, 1);
-      if (!budgetReached) {
-        budgetReached = true;
-        logInfo("Response cache reached its memory budget", {
-          loggerScope: LOGGER_SCOPE,
-          extra: { budgetBytes: maxBytes, ...store.stats() },
-        });
-      }
-    },
-  });
+  const store = createMemoryStore({ maxBytes });
+
+  function recordEvictions(count: number): void {
+    if (count <= 0) {
+      return;
+    }
+    Sentry.metrics.count(EVICTION_METRIC, count);
+    if (!budgetReached) {
+      budgetReached = true;
+      logInfo("Response cache reached its memory budget", {
+        loggerScope: LOGGER_SCOPE,
+        extra: { budgetBytes: maxBytes, ...store.stats() },
+      });
+    }
+  }
+
   return {
     ...store,
     async set(key, entry, ttlMs) {
+      const replaced = (await store.get(key)) !== undefined;
+      const before = store.stats().entries;
       await store.set(key, entry, ttlMs);
+      const stored = (await store.get(key)) !== undefined;
+      const { bytes, entries } = store.stats();
+      recordEvictions(before - (replaced ? 1 : 0) + (stored ? 1 : 0) - entries);
       Sentry.metrics.count(WRITE_METRIC, 1, {
         attributes: { "app.response_cache.encoding": entry.body.encoding },
       });
-      const { bytes, entries } = store.stats();
       Sentry.metrics.gauge(MEMORY_BYTES_METRIC, bytes);
       Sentry.metrics.gauge(MEMORY_ENTRIES_METRIC, entries);
     },

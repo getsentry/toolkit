@@ -21,6 +21,7 @@ import {
   type McpScope,
   parseMcpTarget,
 } from "../lib/mcp/args.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 /**
  * mcp-core's `ALL_SKILLS`, copied so the command tree does not import
@@ -67,7 +68,7 @@ export const mcpCommand = buildCommand({
   auth: false,
   skipRcUrlCheck: true,
   docs: {
-    brief: "Start a local Sentry MCP server",
+    brief: topLevelBrief("mcp"),
     fullDescription:
       "Serve the Sentry MCP tools over stdio, for MCP clients such as Claude Code, Cursor, or VS Code. " +
       "Uses the current Sentry CLI login, refreshing it as needed, and stays on the account it started with. " +
@@ -82,7 +83,6 @@ export const mcpCommand = buildCommand({
       "  SENTRY_AUTH_TOKEN        Sentry token (same as for other commands)\n" +
       "  SENTRY_HOST, SENTRY_URL  Sentry instance (same as for other commands; http:// for plain HTTP)\n" +
       "  MCP_URL                  MCP server URL reported in telemetry\n" +
-      "  SENTRY_DSN               DSN for the server's own telemetry\n" +
       "  OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY\n" +
       "                           LLM API key for AI-powered search tools\n" +
       "  OPENAI_MODEL, ANTHROPIC_MODEL, OPENROUTER_MODEL\n" +
@@ -96,27 +96,27 @@ export const mcpCommand = buildCommand({
     examples: [
       {
         description: "Start the server with the current CLI login",
-        command: "sentry mcp",
+        run: "mcp",
       },
       {
         description: "Limit every call to one organization",
-        command: "sentry mcp acme/",
+        run: "mcp acme/",
       },
       {
         description: "Limit calls to one project",
-        command: "sentry mcp acme/web",
+        run: "mcp acme/web",
       },
       {
         description: "Grant every skill, including seer on self-hosted",
-        command: "sentry mcp --all-skills",
+        run: "mcp --all-skills",
       },
       {
         description: "Grant only some skills",
-        command: "sentry mcp --skills inspect,triage",
+        run: "mcp --skills inspect,triage",
       },
       {
         description: "Pick the LLM provider for AI-powered search",
-        command: "sentry mcp --agent-provider anthropic",
+        run: "mcp --agent-provider anthropic",
       },
     ],
   },
@@ -134,7 +134,7 @@ export const mcpCommand = buildCommand({
       ],
     },
     flags: {
-      "access-token": stringFlag("Deprecated: set SENTRY_AUTH_TOKEN instead"),
+      "access-token": deprecatedStringFlag("SENTRY_AUTH_TOKEN"),
       host: deprecatedStringFlag("SENTRY_HOST"),
       url: deprecatedStringFlag("SENTRY_URL"),
       "insecure-http": deprecatedBooleanFlag("an http:// SENTRY_URL"),
@@ -174,7 +174,6 @@ export const mcpCommand = buildCommand({
         "Anthropic model (default: claude-sonnet-4-5)",
       ),
       "mcp-url": stringFlag("MCP server URL reported in telemetry"),
-      "sentry-dsn": stringFlag("DSN for the server's own telemetry"),
     },
   },
   // oxlint-disable-next-line require-yield -- The server speaks JSON-RPC on stdout; the command yields no output.

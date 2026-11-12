@@ -63,7 +63,7 @@ import {
   isWorkerSupported,
 } from "./worker-pool.js";
 
-/** Default line-truncation length for the init-wizard wire shape. */
+/** Default line-truncation length for reported matches. */
 const DEFAULT_MAX_LINE_LENGTH = 2000;
 
 function createStats(): GrepStats {
@@ -651,7 +651,7 @@ export async function* grepFiles(opts: GrepOptions): AsyncGenerator<GrepMatch> {
 /**
  * Drain `grepFiles` into a sorted-by-[path, lineNum] array plus
  * aggregate stats. Primary entry point for Promise-returning callers
- * (init wizard, diagnostic scripts).
+ * (the DSN scanner, diagnostic scripts).
  */
 export async function collectGrep(opts: GrepOptions): Promise<GrepResult> {
   const setup = setupGrepPipeline(opts);

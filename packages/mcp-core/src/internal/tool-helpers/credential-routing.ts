@@ -25,7 +25,7 @@ const ORGANIZATION_URL_PARAMS = [
  * constraint injection), else the organization of a Sentry URL parameter.
  * The tool handlers resolve the organization from the same values.
  */
-function getTargetOrganizationSlug(
+export function getTargetOrganizationSlug(
   params: Record<string, unknown>,
 ): string | null {
   const slug = params.organizationSlug;
@@ -195,9 +195,6 @@ export async function mapCredentialContexts<T>(
   let firstError: unknown;
   for (const [index, result] of settled.entries()) {
     const entry = entries[index];
-    if (!entry) {
-      continue;
-    }
     if (result.status === "fulfilled") {
       results.push({ entry, value: result.value });
       continue;

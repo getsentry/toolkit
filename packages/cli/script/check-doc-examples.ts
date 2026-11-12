@@ -11,6 +11,9 @@
  *      matches a project first, so examples that mean the org must use the
  *      trailing-slash form (`my-org/`)
  *
+ * Hints built with the `` sentry`…` `` tag (src/lib/app-identity.ts) get the
+ * same checks, with each interpolation read as a placeholder.
+ *
  * Library examples that pass only string literals to `sdk.run(…)` get the same
  * checks, since `run()` takes the same argv as the CLI. Those calls are found
  * by parsing TypeScript fences and `@example` JSDoc with the TypeScript
@@ -27,9 +30,10 @@
  *   1 - At least one example names a missing command, flag, or ambiguous target
  */
 
-import { mkdirSync, readdirSync } from "node:fs";
-import { access, readFile, writeFile } from "node:fs/promises";
+import { readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import ts from "typescript";
 import { exampleSteps } from "../src/lib/command-example.js";
 import type {
   Command,
@@ -37,6 +41,7 @@ import type {
   RouteMap,
   RouteTarget,
 } from "../src/lib/introspect.js";
+import { writeRouteTreeStubs } from "./lib/route-tree-stubs.js";
 import { blankCodeBlocks, markdownCodeBlocks } from "./markdown.js";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
 import {
@@ -45,20 +50,9 @@ import {
   sdkRunCalls,
 } from "./sdk-run-calls.js";
 import { shellCommands } from "./shell-words.js";
+import { logger } from "../src/lib/logger.js";
 
-// Bootstrap: skill-content stub (same pattern as generate-docs-sections.ts)
-const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
-const skillContentExists = await access(SKILL_CONTENT_PATH).then(
-  () => true,
-  () => false,
-);
-if (!skillContentExists) {
-  mkdirSync("src/generated", { recursive: true });
-  await writeFile(
-    SKILL_CONTENT_PATH,
-    "export const SKILL_FILES: [string, string][] = [];\n",
-  );
-}
+await writeRouteTreeStubs();
 
 const { routes } = await import("../src/app.js");
 const { isCommand, isRouteMap } = await import("../src/lib/introspect.js");
@@ -73,11 +67,15 @@ const EXTRA_DOC_FILES = [
   "README.md",
   "CONTRIBUTING.md",
   "DEVELOPMENT.md",
+  "init.md",
   "plugins/README.md",
 ];
 
 /** Source files whose JSDoc shows `sdk.run(…)` examples. */
 const SDK_EXAMPLE_FILES = ["src/index.ts"];
+
+/** Source scanned for `` sentry`…` `` hints. */
+const SOURCE_DIR = "src";
 
 /** Flags Stricli handles before command dispatch. */
 const BUILTIN_FLAGS = new Set(["help", "help-all", "version"]);
@@ -267,6 +265,40 @@ function checkWords(words: string[]): string[] {
   return problems;
 }
 
+/**
+ * Commands built with the `` sentry`…` `` tag in one source file, as
+ * `sentry …` lines with each interpolation as an `<arg>` placeholder.
+ */
+function sentryTagCommands(file: string, code: string): string[] {
+  const source = ts.createSourceFile(file, code, ts.ScriptTarget.Latest);
+  const commands: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isTaggedTemplateExpression(node) &&
+      ts.isIdentifier(node.tag) &&
+      node.tag.text === "sentry"
+    ) {
+      const { template } = node;
+      const text = ts.isNoSubstitutionTemplateLiteral(template)
+        ? template.text
+        : template.head.text +
+          template.templateSpans
+            .map((span) => `<arg>${span.literal.text}`)
+            .join("");
+      commands.push(`sentry ${text}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return commands;
+}
+
+function listSource(dir: string): string[] {
+  return readdirSync(dir, { recursive: true, encoding: "utf-8" })
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts"))
+    .map((f) => join(dir, f));
+}
+
 function listMarkdown(dir: string): string[] {
   return readdirSync(dir, { recursive: true, encoding: "utf-8" })
     .filter((f) => f.endsWith(".md") || f.endsWith(".mdx"))
@@ -300,7 +332,7 @@ function commandExamples(
   }
   const source = `\`${["sentry", ...path].join(" ")}\` help`;
   return (target.__examples ?? []).flatMap((e) =>
-    exampleSteps(e).map((invocation) => ({ source, invocation })),
+    exampleSteps(e, "sentry").map((invocation) => ({ source, invocation })),
   );
 }
 
@@ -333,16 +365,31 @@ for (const file of [...files, ...SDK_EXAMPLE_FILES]) {
   }
 }
 
+const sourceFiles = listSource(SOURCE_DIR);
+for (const file of sourceFiles) {
+  const content = await readFile(file, "utf-8");
+  if (!content.includes("sentry`")) {
+    continue;
+  }
+  for (const invocation of sentryTagCommands(file, content)) {
+    checked += 1;
+    for (const problem of checkInvocation(invocation)) {
+      findings.push({ file, example: invocation, problem });
+    }
+  }
+}
+
 if (findings.length === 0) {
-  console.log(
-    `✓ ${checked} sentry examples in ${files.length + SDK_EXAMPLE_FILES.length} files match the CLI`,
+  logger.success(
+    `${checked} sentry examples in ${files.length + SDK_EXAMPLE_FILES.length + sourceFiles.length} files match the CLI`,
   );
   process.exit(0);
 }
 
-console.error(`✗ ${findings.length} doc example problem(s):\n`);
-for (const f of findings) {
-  console.error(`  ${f.file}: ${f.example}`);
-  console.error(`    → ${f.problem}\n`);
-}
+logger.error(
+  [
+    `${findings.length} doc example problem(s):\n`,
+    ...findings.map((f) => `  ${f.file}: ${f.example}\n    → ${f.problem}\n`),
+  ].join("\n"),
+);
 process.exit(1);

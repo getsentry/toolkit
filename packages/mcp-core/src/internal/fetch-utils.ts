@@ -45,7 +45,7 @@ export async function retryWithBackoff<T>(
   {
     maxRetries = 3,
     initialDelay = 1000,
-    shouldRetry = (error: unknown) => true,
+    shouldRetry = () => true,
   }: {
     maxRetries?: number;
     initialDelay?: number;

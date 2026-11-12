@@ -1,8 +1,8 @@
 /**
  * Resolve the CLI's config directory.
  *
- * Kept free of the logger and the database so the SEA bootstrap
- * (`src/sea-main.ts`) can find the code cache without loading either.
+ * Kept free of the logger and the database so the CLI's main script
+ * (`src/chunk-main.ts`) can find the code cache without loading either.
  */
 
 import { existsSync } from "node:fs";

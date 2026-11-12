@@ -1,8 +1,4 @@
-import {
-  type CacheEntry,
-  createMemoryStore,
-} from "@sentry/toolkit-core/api-client/response-cache";
-import { ENTRY_OVERHEAD_BYTES } from "@sentry/toolkit-core/api-client/response-cache/memory-store";
+import { type CacheEntry, createMemoryStore } from "@sentry/api/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { logInfo, sentryMetricsCount, sentryMetricsGauge } = vi.hoisted(() => ({
@@ -226,7 +222,9 @@ describe("createMeteredMemoryStore", () => {
   }
 
   it("reports each write, its usage, and every eviction", async () => {
-    const entrySize = 100 + ENTRY_OVERHEAD_BYTES;
+    const probe = createMemoryStore();
+    await probe.set("probe", entry(100), 60_000);
+    const entrySize = probe.stats().bytes;
     const store = createMeteredMemoryStore(entrySize * 2);
     for (const key of ["a", "b", "c", "d"]) {
       await store.set(key, entry(100), 60_000);
@@ -258,6 +256,29 @@ describe("createMeteredMemoryStore", () => {
         extra: expect.objectContaining({ budgetBytes: entrySize * 2 }),
       }),
     );
+  });
+
+  it("does not count replaced or expired entries as evictions", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const store = createMeteredMemoryStore();
+      await store.set("a", entry(100), 60_000);
+      await store.set("a", entry(200), 60_000);
+      await store.set("b", entry(100), 1_000);
+      vi.setSystemTime(Date.now() + 2_000);
+      await store.set("b", entry(100), 60_000);
+      // Too large to keep: rejected, not evicted.
+      await store.set("c", entry(2 * 1024 * 1024), 60_000);
+
+      expect(store.stats().entries).toBe(2);
+      expect(sentryMetricsCount).not.toHaveBeenCalledWith(
+        "app.response_cache.eviction",
+        expect.anything(),
+      );
+      expect(logInfo).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -37,7 +37,7 @@ import {
 } from "./errors.js";
 import { logger } from "./logger.js";
 import { normalizeHttpOrigin } from "./sentry-urls.js";
-import { getActiveTokenHost } from "./token-host.js";
+import { getActiveTokenHost, isLoginTrustAnchorFor } from "./token-host.js";
 import { getLoginCommand } from "./app-identity.js";
 
 /**
@@ -271,15 +271,16 @@ function assertRefreshHostTrusted(refreshUrl: string): string {
  *
  * @param scope - Space-joined scope string to request. Defaults to the full
  *   {@link SCOPES} set. Use {@link resolveOAuthScopeString} to build it.
+ * @param loginHint - Email of the account expected to approve the request
  */
-async function requestDeviceCode(scope: string = SCOPES) {
+async function requestDeviceCode(scope: string = SCOPES, loginHint?: string) {
   const clientId = getClientId();
   const response = await fetchWithConnectionError(
     `${getSentryUrl()}/oauth/device/code/`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: deviceCodeRequestBody(clientId, scope),
+      body: deviceCodeRequestBody(clientId, scope, loginHint),
     },
   );
 
@@ -419,6 +420,8 @@ async function attemptPoll(
  * @param timeout - Maximum time to wait for authorization in ms (default: 10 minutes)
  * @param scope - Space-joined scope string to request. Defaults to the full
  *   {@link SCOPES} set. Build it via {@link resolveOAuthScopeString}.
+ * @param loginHint - Email of the account expected to approve the request.
+ *   Sentry refuses approval from any other signed-in user.
  * @returns The token response containing access_token and metadata
  * @throws {ApiError} When unable to connect to Sentry or API returns an error
  * @throws {DeviceFlowError} When authorization fails, is denied, or times out
@@ -427,6 +430,7 @@ export async function performDeviceFlow(
   callbacks: DeviceFlowCallbacks,
   timeout = 600_000, // 10 minutes default (matches Sentry's expires_in)
   scope: string = SCOPES,
+  loginHint?: string,
 ): Promise<TokenResponse> {
   // Step 1: Request device code
   const {
@@ -436,7 +440,7 @@ export async function performDeviceFlow(
     verification_uri_complete,
     interval,
     expires_in,
-  } = await requestDeviceCode(scope);
+  } = await requestDeviceCode(scope, loginHint);
 
   // Notify caller of the user code
   await callbacks.onUserCode(
@@ -607,6 +611,56 @@ export async function refreshAccessToken(
       response.status,
       result.issues.map((i) => i.message).join(", "),
       "/oauth/token/",
+    );
+  }
+
+  return result.output;
+}
+
+/** Exchange a single-use setup credential without retries or redirects. */
+export async function exchangeSetupCode(
+  code: string,
+  host: string,
+): Promise<TokenResponse> {
+  const response = await fetchWithConnectionError(
+    host + "/oauth/token/",
+    {
+      method: "POST",
+      redirect: "error",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:sentry:params:oauth:grant-type:setup_code",
+        client_id: getClientId(),
+        setup_code: code,
+      }),
+    },
+    isLoginTrustAnchorFor(host) || undefined,
+  );
+
+  if (!response.ok) {
+    throw new AuthError(
+      "invalid",
+      "Setup-code authentication failed. Generate a new setup code in Sentry and try again.",
+    );
+  }
+
+  let data: unknown;
+
+  try {
+    data = await response.json();
+  } catch {
+    throw new AuthError(
+      "invalid",
+      "The setup endpoint returned an invalid token response. Generate a new setup code in Sentry.",
+    );
+  }
+
+  const result = safeParse(TokenResponseSchema, data);
+
+  if (!result.success) {
+    throw new AuthError(
+      "invalid",
+      "The setup endpoint returned an invalid token response. Generate a new setup code in Sentry.",
     );
   }
 
