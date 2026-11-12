@@ -2558,8 +2558,8 @@ packages:
       hono-rate-limiter: ^0.4.2
       zod: ^4.6.6
 
-  '@hono/node-server@1.19.19':
-    resolution: {integrity: sha512-Fy9R7PACOzHU9LDpfnuzVyuVYevKQRcEG2mZhmfc+DRdmayEd3RVfa2XOt2IgGcPNgA77Yk63KBszepcMFK5Ng==}
+  '@hono/node-server@1.19.17':
+    resolution: {integrity: sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: ^4
@@ -10464,7 +10464,7 @@ snapshots:
       pkce-challenge: 5.0.1
       zod: 4.6.7
 
-  '@hono/node-server@1.19.19(hono@4.13.13)':
+  '@hono/node-server@1.19.17(hono@4.13.13)':
     dependencies:
       hono: 4.13.13
 
@@ -12235,7 +12235,7 @@ snapshots:
   '@spotlightjs/spotlight@4.11.8(@cfworker/json-schema@4.1.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(hono-rate-limiter@0.4.2(hono@4.13.13))':
     dependencies:
       '@hono/mcp': 0.2.5(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7))(hono-rate-limiter@0.4.2(hono@4.13.13))(hono@4.13.13)(zod@4.6.7)
-      '@hono/node-server': 1.19.19(hono@4.13.13)
+      '@hono/node-server': 1.19.17(hono@4.13.13)
       '@jridgewell/trace-mapping': 0.3.31
       '@modelcontextprotocol/sdk': 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@sentry/core': 10.63.0
