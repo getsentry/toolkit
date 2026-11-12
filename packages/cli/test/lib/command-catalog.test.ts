@@ -80,6 +80,29 @@ describe("command catalog", () => {
     }
   });
 
+  test("gives every array an item schema, which VS Code Copilot requires", () => {
+    const arraysWithoutItems = (schema: unknown, path: string): string[] => {
+      if (!schema || typeof schema !== "object") return [];
+      const node = schema as Record<string, unknown>;
+      const own =
+        node.type === "array" &&
+        (typeof node.items !== "object" || node.items === null)
+          ? [path]
+          : [];
+      return [
+        ...own,
+        ...Object.entries(node).flatMap(([key, value]) =>
+          arraysWithoutItems(value, `${path}.${key}`),
+        ),
+      ];
+    };
+    expect(
+      committedCatalog().commands.flatMap((entry) =>
+        arraysWithoutItems(entry.parameters, entry.path),
+      ),
+    ).toEqual([]);
+  });
+
   test("describes positionals and visible flags as JSON Schema", () => {
     const command: Command = {
       brief: "Do a thing",
@@ -141,8 +164,9 @@ describe("command catalog", () => {
                   { type: "string", title: "org", description: "Organization" },
                   { type: "string", title: "name" },
                 ],
-                items: false,
+                items: { type: "string" },
                 minItems: 1,
+                maxItems: 2,
               },
               flags: {
                 type: "object",
