@@ -9,7 +9,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { parseSections } from "../../../src/lib/wasm/binary.js";
 import { formatBuildId, uuidToBytes } from "../../../src/lib/wasm/build-id.js";
@@ -504,7 +504,16 @@ describe("prepareWasmFile: pairs split by another tool", () => {
     const result = await prepareWasmFile(module);
 
     expect(result.action).toBe("split");
-    expect(hasSection(await readFile(module), ".debug_info")).toBe(false);
+    const after = await readFile(module);
+    expect(hasSection(after, ".debug_info")).toBe(false);
+    // The stale pointer is replaced, not kept alongside the new one.
+    const pointers = parseSections(after).filter(
+      (entry) => entry.name === "external_debug_info",
+    );
+    expect(pointers).toHaveLength(1);
+    expect(inspectWasm(after).externalDebugInfo).toBe(
+      basename(result.companion as string),
+    );
   });
 
   test("skips when the companion is missing", async () => {
