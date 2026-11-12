@@ -274,8 +274,11 @@ describe("parseTmuxInfo", () => {
 describe("probeQueries", () => {
   test("outside tmux, sends the kitty query between cursor reports with DA1 last", () => {
     const { query, sentinels } = probeQueries(undefined);
-    expect(query.startsWith(`${ESC}[16t${ESC}[6n${ESC}_G`)).toBe(true);
-    expect(query.endsWith(`${ESC}[6n${ESC}[c`)).toBe(true);
+    // Autowrap is off around the kitty query so printed text can't wrap.
+    expect(query.startsWith(`${ESC}[16t${ESC}[6n${ESC}[?7l${ESC}_G`)).toBe(
+      true,
+    );
+    expect(query.endsWith(`${ESC}[?7h${ESC}[6n${ESC}[c`)).toBe(true);
     expect(sentinels).toBe(1);
   });
 
@@ -318,12 +321,6 @@ describe("kittyQueryCleanup", () => {
     // macOS Terminal.app prints the APC body, moving the cursor right.
     expect(kittyQueryCleanup(`${ESC}[12;1R${ESC}[12;34R${da}`)).toBe(
       `${ESC}[12;1H${ESC}[K`,
-    );
-  });
-
-  test("clears to the end of the screen when the printed query wrapped", () => {
-    expect(kittyQueryCleanup(`${ESC}[23;10R${ESC}[24;3R${da}`)).toBe(
-      `${ESC}[23;10H${ESC}[J`,
     );
   });
 

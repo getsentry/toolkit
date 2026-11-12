@@ -13,8 +13,9 @@
  *   - Kitty graphics query (`ESC _ G ... a=q ... ESC \`) — an `OK` reply means
  *     the terminal speaks the newer kitty protocol, preferred over sixel.
  *   - Cursor position reports (`ESC [ 6 n`) just before and after the kitty
- *     query. Some terminals (macOS Terminal.app) print an APC string's body
- *     instead of ignoring it; if the cursor moved, the printed text is erased.
+ *     query, with autowrap off in between. Some terminals (macOS Terminal.app)
+ *     print an APC string's body instead of ignoring it; if the cursor moved,
+ *     the printed text is erased.
  * The probe is gated behind an interactive TTY, honors plain-output/opt-out
  * signals, has a short timeout, restores terminal state, and never throws.
  * The result is cached for the process.
@@ -172,6 +173,14 @@ const MAX_PASSTHROUGH_QUIET_READS = 4;
 /** Cursor position request; answered with `ESC [ <row> ; <col> R`. */
 const CPR_QUERY = "\x1b[6n";
 
+/**
+ * Turn autowrap (DECAWM) off and back on. Wrapped around the kitty query so
+ * that a terminal printing it can't wrap, and so can't scroll the screen at
+ * the last row, which would move the text away from the reported position.
+ */
+const AUTOWRAP_OFF = "\x1b[?7l";
+const AUTOWRAP_ON = "\x1b[?7h";
+
 /** Every cursor position report in a buffer. */
 // oxlint-disable-next-line no-control-regex -- parsing terminal escapes
 const CPR_GLOBAL_RE = /\x1b\[(\d+);(\d+)R/g;
@@ -242,8 +251,9 @@ function detectTmux(): TmuxInfo | undefined {
  * The probe queries to send, and how many Primary DA replies end the reply.
  *
  * Outside tmux the cell-size and kitty queries go first and DA1 last, so DA1 is
- * the drain sentinel. The kitty query is bracketed by cursor position requests
- * so {@link kittyQueryCleanup} can tell whether the terminal printed it.
+ * the drain sentinel. The kitty query is bracketed by cursor position requests,
+ * with autowrap off in between, so {@link kittyQueryCleanup} can tell whether
+ * the terminal printed it.
  * Inside tmux, tmux answers cell size and DA1 immediately, while passthrough
  * queries round-trip to the outer terminal; a second,
  * passthrough DA1 after the kitty query is the sentinel for that round-trip.
@@ -257,7 +267,7 @@ export function probeQueries(tmux: TmuxInfo | undefined): {
 } {
   if (!tmux) {
     return {
-      query: `\x1b[16t${CPR_QUERY}${KITTY_QUERY}${CPR_QUERY}\x1b[c`,
+      query: `\x1b[16t${CPR_QUERY}${AUTOWRAP_OFF}${KITTY_QUERY}${AUTOWRAP_ON}${CPR_QUERY}\x1b[c`,
       sentinels: 1,
     };
   }
@@ -275,8 +285,8 @@ export function probeQueries(tmux: TmuxInfo | undefined): {
  * instead of ignoring it, or `""` when it didn't. Compares the cursor position
  * reports sent just before and after the query (see {@link probeQueries}): if
  * the cursor moved, the query was printed from the first position, so this
- * moves back there and clears to the end of the line, or to the end of the
- * screen when the text wrapped onto later lines.
+ * moves back there and clears to the end of the line. Autowrap is off while
+ * the query is sent, so the printed text stays on that line.
  * @internal Exported for tests.
  */
 export function kittyQueryCleanup(reply: string): string {
@@ -284,8 +294,7 @@ export function kittyQueryCleanup(reply: string): string {
   if (!(before && after) || before[0] === after[0]) {
     return "";
   }
-  const clear = before[1] === after[1] ? "\x1b[K" : "\x1b[J";
-  return `\x1b[${before[1]};${before[2]}H${clear}`;
+  return `\x1b[${before[1]};${before[2]}H\x1b[K`;
 }
 
 /**
