@@ -142,7 +142,7 @@ export default defineTool({
     );
 
     // Step 2: Start analysis if none exists or the last one failed, so a run
-    // that stopped (e.g. out of credits) can be retried after a top-up.
+    // that stopped (e.g. out of credits) can be retried.
     const previousRun = autofixState.autofix;
     if (!previousRun || previousRun.status === "error") {
       let startResult: Awaited<ReturnType<typeof apiService.startAutofix>>;
