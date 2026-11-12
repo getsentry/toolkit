@@ -53,7 +53,7 @@ export default defineTool({
     "",
     "This tool automatically:",
     "1. Checks if analysis already exists (instant results)",
-    "2. Starts new AI analysis if needed (~2-5 minutes)",
+    "2. Starts new AI analysis if none exists or the last one failed (~2-5 minutes)",
     "3. Returns complete fix recommendations",
     "",
     "<examples>",
@@ -75,7 +75,7 @@ export default defineTool({
     "- Seer Autofix does not support metric alert issues (issueCategory: metric); use get_issue_details and search_metrics or search_traces instead",
     "- If the user provides an issueUrl, extract it and use that parameter alone",
     "- The analysis includes actual code snippets and fixes, not just error descriptions",
-    "- Results are cached - subsequent calls return instantly",
+    "- Results are cached - subsequent calls return instantly, except that a failed analysis is retried",
     "</hints>",
   ].join("\n"),
   inputSchema: {
@@ -141,8 +141,11 @@ export default defineTool({
       },
     );
 
-    // Step 2: Start analysis if none exists
-    if (!autofixState.autofix) {
+    // Step 2: Start analysis if none exists or the last one failed, so a run
+    // that stopped (e.g. out of credits) can be retried after a top-up.
+    const previousRun = autofixState.autofix;
+    let newRunId: number | undefined;
+    if (!previousRun || previousRun.status === "error") {
       let startResult: Awaited<ReturnType<typeof apiService.startAutofix>>;
       try {
         startResult = await apiService.startAutofix({
@@ -159,8 +162,11 @@ export default defineTool({
         }
         throw error;
       }
-      output += `Starting new analysis...\n\n`;
-      output += `Analysis started with Run ID: ${startResult.run_id}\n\n`;
+      newRunId = startResult.run_id;
+      output += previousRun
+        ? `Previous analysis (Run ID: ${previousRun.run_id}) failed, starting a new one...\n\n`
+        : `Starting new analysis...\n\n`;
+      output += `Analysis started with Run ID: ${newRunId}\n\n`;
 
       // Give it a moment to initialize
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -184,20 +190,16 @@ export default defineTool({
         },
       );
     } else {
-      output += `Found existing analysis (Run ID: ${autofixState.autofix.run_id})\n\n`;
+      output += `Found existing analysis (Run ID: ${previousRun.run_id})\n\n`;
 
-      // Check if existing analysis is already complete
-      const existingStatus = autofixState.autofix.status;
+      // Completed and waiting-for-input runs are returned as they are
+      const existingStatus = previousRun.status;
       if (isTerminalStatus(existingStatus)) {
-        // Return results immediately, no polling needed
         output += `## Analysis ${getStatusDisplayName(existingStatus)}\n\n`;
-        output += getOutputForAutofixRun(autofixState.autofix);
+        output += getOutputForAutofixRun(previousRun);
 
         if (existingStatus !== "completed") {
           output += `\n**Status**: ${existingStatus}\n`;
-          output += getFailureReasonGuidance(
-            autofixState.autofix.failure_reason,
-          );
           output += getHumanInterventionGuidance(existingStatus);
           output += "\n";
         }
@@ -223,9 +225,12 @@ export default defineTool({
       }
 
       const status = autofixState.autofix.status;
+      // Right after a restart, Sentry can still return the failed run.
+      const isStaleRun =
+        newRunId !== undefined && autofixState.autofix.run_id !== newRunId;
 
       // Check if completed (terminal state)
-      if (isTerminalStatus(status)) {
+      if (!isStaleRun && isTerminalStatus(status)) {
         output += `## Analysis ${getStatusDisplayName(status)}\n\n`;
         output += getOutputForAutofixRun(autofixState.autofix);
 
@@ -241,7 +246,7 @@ export default defineTool({
       }
 
       // Update status if changed
-      if (status !== lastStatus) {
+      if (!isStaleRun && status !== lastStatus) {
         const activeTodo = getActiveAutofixTodo(autofixState.autofix);
         if (activeTodo) {
           output += `Processing: ${activeTodo}...\n`;
@@ -297,7 +302,10 @@ export default defineTool({
     }
 
     // Show current progress
-    if (autofixState.autofix) {
+    if (
+      autofixState.autofix &&
+      (newRunId === undefined || autofixState.autofix.run_id === newRunId)
+    ) {
       output += `**Current Status**: ${getStatusDisplayName(autofixState.autofix.status)}\n\n`;
       output += getOutputForAutofixRun(autofixState.autofix);
     }
