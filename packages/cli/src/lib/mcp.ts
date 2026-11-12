@@ -456,9 +456,13 @@ export async function serveMcp(
     const getToken = router
       ? async () => (await router.resolve(target)).accessToken
       : async () => token;
+    const accessToken = await getToken();
+    // As below: report a scope that does not exist now, not on every call.
+    const { assertMcpScopeExists } = await import("./mcp/scope-check.js");
+    await assertMcpScopeExists(config, accessToken);
     const { createCliCommandTools } = await import("./mcp/command-surface.js");
     await serveMcpStdio(config, {
-      accessToken: await getToken(),
+      accessToken,
       env,
       tools: createCliCommandTools({ config, cwd, getToken }),
     });
