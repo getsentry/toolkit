@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Bundle the CLI's `src/mcp-server.ts` into this package's `dist/sentry-mcp.cjs`.
  *
@@ -34,7 +33,7 @@ const MAX_BUNDLE_BYTES = 3.75 * 1024 * 1024;
  * Inputs that serve the CLI but not this package: commands other than `mcp`,
  * `auth`, `cli defaults`, `cli fix`, and `help` (flag completion reads
  * `local/loopback.ts`, a leaf module of host constants), agent skills, shell
- * completions, syntax highlighting, the select picker, terminal images
+ * completions, syntax highlighting, terminal images
  * (the kitty/sixel help banner and dashboards, and `pngjs`),
  * build/sourcemap/debug-file processing, the SQLite WASM fallback for
  * Node.js < 22.15, Zod 3, and MCP SDK v1.
@@ -47,7 +46,7 @@ const FORBIDDEN_INPUTS: ReadonlyArray<RegExp> = [
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:agent-skills|complete|completions)\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:sixel|sixel-image|kitty-image|formatters[\\/]sixel-dashboard)\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]generated[\\/]banner-image\.ts$/,
-  /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:bash-hook|build|dif|react-native|select-ui|snapshots|sourcemap|wasm)[\\/]/,
+  /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:bash-hook|build|dif|react-native|snapshots|sourcemap|wasm)[\\/]/,
   /[\\/]node_modules[\\/](?:cli-highlight|highlight\.js|parse5|@sentry[\\/]symbolic|node-sqlite3-wasm|pngjs)[\\/]/,
   /[\\/]node_modules[\\/](?:zod[\\/]v3|@modelcontextprotocol[\\/]sdk)[\\/]/,
 ];
@@ -133,9 +132,6 @@ const result = await build({
     // Code blocks in help and auth output render without colors, so
     // highlight.js and parse5 stay out (see formatters/highlight.ts).
     __SENTRY_CLI_SYNTAX_HIGHLIGHT__: "false",
-    // `auth switch` and `auth login` ask for an account by argument instead
-    // of the interactive picker (see lib/select-prompt.ts).
-    __SENTRY_CLI_SELECT_UI__: "false",
     "import.meta.url": "import_meta_url",
   },
   external: ["node:*"],
