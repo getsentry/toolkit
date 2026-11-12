@@ -5,6 +5,7 @@ import {
   DATASET_FIELDS,
   RECOMMENDED_FIELDS,
 } from "../search-events/config";
+import { AttributeMatches } from "./agent";
 import type { SearchAttributesDataset } from "./search";
 
 const DATASET_LABELS: Record<
@@ -77,29 +78,91 @@ export function formatListResult({
     lines.push(`- Showing ${shown.length} of ${sorted.length}.`);
   }
   lines.push(
+    `- There is no pagination. Input a \`query\` to narrow down your search.`,
     `- Use a key with \`${labels.associatedTool}\` to query its values.`,
     ...notes.map((note) => `- ${note}`),
   );
   return lines.join("\n");
 }
 
-/**
- * Search events' recommended fields first, then the rest. Both sort by key so
- * related attributes (http.*, db.*) stay together.
- */
-function sortAttributes(
-  attributes: TraceItemAttribute[],
-  dataset: SearchAttributesDataset,
-): TraceItemAttribute[] {
-  const recommended = new Set([
-    ...RECOMMENDED_FIELDS[normalizeEventsDataset(dataset)].basic,
-    ...Object.keys(DATASET_FIELDS[normalizeEventsDataset(dataset)]),
-    ...Object.keys(BASE_COMMON_FIELDS),
-  ]);
-  const group = ({ key }: TraceItemAttribute) => (recommended.has(key) ? 0 : 1);
-  return [...attributes].sort(
-    (a, b) => group(a) - group(b) || a.key.localeCompare(b.key),
+export function formatFindResult({
+  organizationSlug,
+  dataset,
+  period,
+  query,
+  matches,
+  totalAttributes,
+}: QuerySettings & {
+  query: string;
+  matches: AttributeMatches;
+  totalAttributes: number;
+}): string {
+  const labels = DATASET_LABELS[dataset];
+  const lines = [
+    `# ${labels.title} Matching "${query}" in **${organizationSlug}** (last ${period})`,
+    "",
+  ];
+  if (totalAttributes === 0)
+    return formatNoneSeen(lines, labels.title.toLowerCase(), period);
+
+  const { best, candidates } = matches;
+  if (!best && candidates.length === 0) {
+    lines.push(
+      `None of the ${totalAttributes} ${labels.title.toLowerCase()} seen in the last ${period} match this query.`,
+      "",
+      "## Response Notes",
+      "",
+      "- Try another `query`, or omit `query` to list every attribute.",
+    );
+    return lines.join("\n");
+  }
+
+  if (best) lines.push(...formatBestMatch(best), "");
+  if (candidates.length > 0) {
+    lines.push(
+      best ? "## Other Candidates" : "## Possible Matches",
+      "",
+      ...formatAttributeTable(candidates),
+      "",
+    );
+  }
+  lines.push(
+    "## Response Notes",
+    "",
+    `- Use a key with \`${labels.associatedTool}\` to query its values.`,
   );
+  return lines.join("\n");
+}
+
+function formatBestMatch({
+  key,
+  type,
+  secondaryAliases,
+  context,
+  attributeSource,
+}: TraceItemAttribute): string[] {
+  const lines = [`## Best Match: \`${key}\``, "", `**Type**: ${type}`];
+  if (attributeSource.source_type === "sentry") {
+    lines.push("**Added by Sentry**");
+  }
+  const brief = flatten(context?.brief);
+  if (brief) lines.push(`**Description**: ${brief}`);
+  if (context?.examples?.length) {
+    lines.push(`**Examples**: ${context.examples.join(", ")}`);
+  }
+  if (secondaryAliases?.length) {
+    lines.push(
+      `**Aliases**: ${secondaryAliases.map((alias) => `\`${alias}\``).join(", ")}`,
+    );
+  }
+  if (context?.isDeprecated) {
+    lines.push(
+      context.replacementAttribute
+        ? `**Deprecated**: use \`${context.replacementAttribute}\` instead`
+        : "**Deprecated**",
+    );
+  }
+  return lines;
 }
 
 function formatNoneSeen(lines: string[], noun: string, period: string): string {
@@ -122,6 +185,25 @@ function formatAttributeTable(attributes: TraceItemAttribute[]): string[] {
         `| \`${escapeCell(attribute.key)}\` | ${attribute.type} | ${escapeCell(describeCell(attribute))} | ${attribute.attributeSource.source_type === "sentry" ? "yes" : ""} | ${attribute.context?.isDeprecated ? "yes" : ""} | ${escapeCell(attribute.context?.replacementAttribute ?? "")} |`,
     ),
   ];
+}
+
+/**
+ * Search events' recommended fields first, then the rest. Both sort by key so
+ * related attributes (http.*, db.*) stay together.
+ */
+function sortAttributes(
+  attributes: TraceItemAttribute[],
+  dataset: SearchAttributesDataset,
+): TraceItemAttribute[] {
+  const recommended = new Set([
+    ...RECOMMENDED_FIELDS[normalizeEventsDataset(dataset)].basic,
+    ...Object.keys(DATASET_FIELDS[normalizeEventsDataset(dataset)]),
+    ...Object.keys(BASE_COMMON_FIELDS),
+  ]);
+  const group = ({ key }: TraceItemAttribute) => (recommended.has(key) ? 0 : 1);
+  return [...attributes].sort(
+    (a, b) => group(a) - group(b) || a.key.localeCompare(b.key),
+  );
 }
 
 /** Blank when there's no description */
