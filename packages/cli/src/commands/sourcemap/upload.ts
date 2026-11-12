@@ -6,6 +6,7 @@
  * env vars, config defaults) — no slash-separated arg parsing needed.
  */
 
+import { existsSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import {
   dirname as posixDirname,
@@ -223,7 +224,7 @@ export const uploadCommand = buildCommand({
       "Exits with an error if zero JS + sourcemap pairs are discovered " +
       "(typical cause: bundler not emitting .map files). Pass " +
       "--allow-empty to suppress this check for directories that may " +
-      "legitimately be empty.",
+      "legitimately be empty or missing.",
     examples: [
       {
         description: "Upload sourcemaps from dist/",
@@ -335,8 +336,9 @@ export const uploadCommand = buildCommand({
       "allow-empty": {
         kind: "boolean",
         brief:
-          "Exit successfully when no JS + sourcemap pairs are found " +
-          "(default: error out to catch silent build misconfigurations)",
+          "Exit successfully when no JS + sourcemap pairs are found or " +
+          "the directory does not exist (default: error out to catch " +
+          "silent build misconfigurations)",
         optional: true,
         default: false,
       },
@@ -362,7 +364,13 @@ export const uploadCommand = buildCommand({
     // don't write debug IDs when the upload won't proceed (empty dir,
     // typoed path, missing credentials).
     const target = await resolveUploadTarget(dir);
-    await assertDirectoryReadable(target.dir);
+    // --allow-empty treats a missing directory like an empty one, so callers
+    // that upload several build outputs one at a time (the bundler plugins)
+    // can skip an output this build didn't produce.
+    const missing = flags["allow-empty"] && !existsSync(target.dir);
+    if (!missing) {
+      await assertDirectoryReadable(target.dir);
+    }
 
     const extensions = flags.ext?.split(",").map((e) => e.trim());
     const extSet = extensions
@@ -377,12 +385,14 @@ export const uploadCommand = buildCommand({
       flags["ignore-file"],
     );
 
-    const pairs = await discoverFilePairs(
-      target.dir,
-      extSet,
-      ignoreMatcher,
-      target.include,
-    );
+    const pairs = missing
+      ? []
+      : await discoverFilePairs(
+          target.dir,
+          extSet,
+          ignoreMatcher,
+          target.include,
+        );
 
     if (pairs.length === 0) {
       if (!flags["allow-empty"]) {
@@ -401,9 +411,10 @@ export const uploadCommand = buildCommand({
         filesUploaded: 0,
       });
       return {
-        hint:
-          "No JS + sourcemap pairs found in the target directory. " +
-          "If this is unexpected, check your bundler emits .map files.",
+        hint: missing
+          ? `Directory '${target.dir}' does not exist, so nothing was uploaded from it.`
+          : "No JS + sourcemap pairs found in the target directory. " +
+            "If this is unexpected, check your bundler emits .map files.",
       };
     }
 
