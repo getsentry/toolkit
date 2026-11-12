@@ -345,4 +345,10 @@ describe("finalizeMcpConfig", () => {
       "--read-only works only with --commands",
     );
   });
+
+  it("rejects --commands with a project but no organization", () => {
+    expect(() => finalize({ commands: true, projectSlug: "web" })).toThrow(
+      "--commands needs the organization of --project",
+    );
+  });
 });

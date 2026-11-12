@@ -311,6 +311,18 @@ describe("command tools: session constraints", () => {
   const org = constrained({ organizationSlug: "acme", projectSlug: null });
   const project = constrained({ organizationSlug: "acme", projectSlug: "web" });
 
+  it("refuses calls in a project session with no organization", async () => {
+    const { call, calls } = setup();
+    const projectOnly = constrained({
+      organizationSlug: null,
+      projectSlug: "web",
+    });
+    await expect(call("issue list", {}, projectOnly)).rejects.toThrow(
+      "limited to project web with no organization",
+    );
+    expect(calls).toEqual([]);
+  });
+
   it("passes the session's target as the default", async () => {
     const { call, calls } = setup();
     await call("issue list", {}, project);

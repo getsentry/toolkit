@@ -315,6 +315,13 @@ export function pinConstraints(
 ): string[] {
   const org = constraints.organizationSlug;
   if (!org) {
+    // Targets are checked against the organization; without one, a project
+    // limit could not be kept.
+    if (constraints.projectSlug) {
+      throw new UserInputError(
+        `This session is limited to project ${constraints.projectSlug} with no organization, so \`${commandName(entry)}\` cannot be checked against it. Restart the server with <org>/${constraints.projectSlug}.`,
+      );
+    }
     return positional;
   }
   const session: Session = { org, project: constraints.projectSlug ?? null };

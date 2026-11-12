@@ -189,6 +189,12 @@ export function finalizeMcpConfig(input: McpMergedArgs): McpServerConfig {
       "--read-only works only with --commands. To limit the tool catalog, pass --skills.",
     );
   }
+  // Command tools check targets against the session's organization.
+  if (input.commands && input.projectSlug && !input.organizationSlug) {
+    throw new ValidationError(
+      "--commands needs the organization of --project. Pass <org>/<project>.",
+    );
+  }
 
   return {
     sentryHost,
