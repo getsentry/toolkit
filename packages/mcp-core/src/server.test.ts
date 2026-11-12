@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/server";
-import { type Span, setUser, startSpan } from "@sentry/core";
+import { type Span, getClient, setUser, startSpan } from "@sentry/core";
 import {
   createDefaultEvent,
   eventFixture,
@@ -147,6 +147,8 @@ const DEFAULT_DIRECT_TOOL_NAMES = [
 describe("buildServer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // No DSN by default, so submit_feedback_to_sentry_team stays hidden.
+    vi.mocked(getClient).mockReturnValue(undefined);
     startedSpans = [];
     vi.mocked(startSpan).mockImplementation(
       <T>(
@@ -1501,8 +1503,9 @@ describe("buildServer", () => {
           properties: {
             query: { type: "string" },
             results: { type: "array" },
+            notes: { type: "array" },
           },
-          required: ["query", "results"],
+          required: ["query", "results", "notes"],
         },
         annotations: {
           readOnlyHint: true,
@@ -1668,6 +1671,47 @@ describe("buildServer", () => {
       }>(result);
 
       expect(payload.results.map((tool) => tool.name)).toContain("whoami");
+    });
+
+    it("search_sentry_tools suggests feedback when no tool matches", async () => {
+      vi.mocked(getClient).mockReturnValue({
+        getDsn: () => ({ host: "o1.ingest.sentry.io" }),
+      } as unknown as ReturnType<typeof getClient>);
+      const server = buildServer({ context: baseContext });
+
+      const result = await callRegisteredTool(server, "search_sentry_tools", {
+        query: "zzzz qqqq",
+      });
+      const payload = getStructuredContent<{
+        results: unknown[];
+        notes: string[];
+      }>(result);
+
+      expect(payload.results).toEqual([]);
+      expect(payload.notes).toMatchInlineSnapshot(`
+        [
+          "No Sentry tool matched. Try other keywords first. If no Sentry tool can do this task, report it to the Sentry MCP team with \`submit_feedback_to_sentry_team\`.",
+        ]
+      `);
+
+      const matched = await callRegisteredTool(server, "search_sentry_tools", {
+        query: "server version",
+      });
+      expect(getStructuredContent<{ notes: string[] }>(matched).notes).toEqual(
+        [],
+      );
+    });
+
+    it("search_sentry_tools omits the feedback note without a Sentry DSN", async () => {
+      const server = buildServer({ context: baseContext });
+
+      const result = await callRegisteredTool(server, "search_sentry_tools", {
+        query: "zzzz qqqq",
+      });
+
+      expect(getStructuredContent<{ notes: string[] }>(result).notes).toEqual(
+        [],
+      );
     });
 
     it("discovers and executes Sentry MCP server information from the catalog", async () => {
