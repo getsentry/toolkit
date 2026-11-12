@@ -340,6 +340,17 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     }
   });
 
+  test("non-existent directory with --allow-empty: skips it and names it", async () => {
+    // Bundler plugins upload each build output in turn with allowEmpty, so a
+    // missing output must not abort the outputs after it.
+    const missing = join(dir, "does-not-exist");
+    const ctx = makeContext();
+    await func.call(ctx, { "allow-empty": true }, missing);
+    const out = ctx.stdout.write.mock.calls.join("");
+    expect(out).toMatch(/Files uploaded\W+0/);
+    expect(out).toContain(`Directory '${missing}' does not exist`);
+  });
+
   test("error path does not mutate files (js-only dir)", async () => {
     // Discovery must be read-only — injection only runs once we've
     // decided the upload will proceed.

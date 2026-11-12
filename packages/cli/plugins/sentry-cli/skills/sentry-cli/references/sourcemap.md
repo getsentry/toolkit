@@ -64,7 +64,7 @@ Upload sourcemaps to Sentry
 - `--strip-prefix <value> - Strip a prefix from uploaded file paths (e.g. 'build/')`
 - `--strip-common-prefix - Automatically strip the longest common path prefix from all files`
 - `--no-rewrite - Upload files as-is without injecting debug IDs`
-- `--allow-empty - Exit successfully when no JS + sourcemap pairs are found (default: error out to catch silent build misconfigurations)`
+- `--allow-empty - Exit successfully when no JS + sourcemap pairs are found or the directory does not exist (default: error out to catch silent build misconfigurations)`
 
 **Examples:**
 
