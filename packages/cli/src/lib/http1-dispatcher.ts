@@ -9,15 +9,15 @@
  *
  * The dispatcher is an instance of the runtime's own global dispatcher class,
  * so no undici dependency is bundled and `NODE_USE_ENV_PROXY` still applies.
- * Older undici (Node 24 and older) already uses HTTP/1.1 and Bun has no
- * undici dispatcher; both get `undefined`.
+ * undici 7 (Node 24) already uses HTTP/1.1; there the dispatcher only turns
+ * off what is already off.
  */
 
 import { logger } from "./logger.js";
 
 const log = logger.withTag("http");
 
-/** undici 8 registers its global dispatcher under this symbol. */
+/** undici's global dispatcher symbol, set by Node 24 (undici 7) and Node 26 (undici 8). */
 const GLOBAL_DISPATCHER_V2 = Symbol.for("undici.globalDispatcher.2");
 
 /** An undici dispatcher, as `fetch` accepts it. */
@@ -26,9 +26,13 @@ export type Http1Dispatcher = NonNullable<RequestInit["dispatcher"]>;
 type DispatcherClass = new (options: { allowH2: false }) => Http1Dispatcher;
 
 /**
- * Create an HTTP/1.1-only dispatcher, or `undefined` when the runtime's
- * fetch does not use HTTP/2 by default. Destroy it after use, or its
- * keep-alive sockets hold the process open.
+ * Create an HTTP/1.1-only dispatcher, or `undefined` when no undici global
+ * dispatcher is registered or its class rejects the options. Destroy it
+ * after use, or its keep-alive sockets hold the process open.
+ *
+ * Node loads undici, and registers the global dispatcher, on the first
+ * `fetch`. Chunk uploads always follow the chunk-upload options request, so
+ * the dispatcher is registered by the time this runs.
  */
 export function createHttp1Dispatcher(): Http1Dispatcher | undefined {
   const registered = (globalThis as Record<PropertyKey, unknown>)[
