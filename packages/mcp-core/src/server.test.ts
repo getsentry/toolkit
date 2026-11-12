@@ -782,7 +782,7 @@ describe("buildServer", () => {
 
     it("advertises the schema to experimental sessions", async () => {
       const [tool] = await listRegisteredTools(createServer(true));
-      expect(tool?.outputSchema).toMatchObject({
+      expect(tool.outputSchema).toMatchObject({
         type: "object",
         properties: { status: { type: "string" } },
       });
@@ -790,7 +790,7 @@ describe("buildServer", () => {
 
     it("keeps it from stable sessions, which still get markdown", async () => {
       const [tool] = await listRegisteredTools(createServer(false));
-      expect(tool?.outputSchema).toBeUndefined();
+      expect(tool.outputSchema).toBeUndefined();
     });
   });
 

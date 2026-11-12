@@ -355,9 +355,9 @@ function mapPerformance(
       ? (OCCURRENCE_TYPE_TO_ISSUE_TYPE[occurrence.type] ?? null)
       : (nonEmptyString(occurrence.issueType) ??
         nonEmptyString(occurrence.type));
-  const evidenceData = record(occurrence.evidenceData) as
-    | N1EvidenceData
-    | undefined;
+  const evidenceData: N1EvidenceData | undefined = record(
+    occurrence.evidenceData,
+  );
   const isN1 = issueType != null && N1_ISSUE_TYPES.has(issueType);
   const repeatCount =
     isN1 && evidenceData

@@ -1206,8 +1206,8 @@ function renderPerformanceSpanTree(spans: PerformanceSpan[]): string[] {
   function renderSpan(span: PerformanceSpan, prefix = "", isLast = true): void {
     const connector = prefix === "" ? "" : isLast ? "└─ " : "├─ ";
 
-    const displayName = span.description.trim() || span.op || "unnamed";
-    const spanId = span.span_id;
+    const displayName = span.description?.trim() || span.op || "unnamed";
+    const spanId = span.span_id ?? "unknown";
     const durationDisplay =
       span.duration != null && span.duration > 0
         ? `${Math.round(span.duration)}ms`

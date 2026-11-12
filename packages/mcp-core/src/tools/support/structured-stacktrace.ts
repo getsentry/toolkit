@@ -107,7 +107,7 @@ function mapVars(
   }
   const mapped: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(vars)) {
-    const json = JSON.stringify(value) ?? "";
+    const json = JSON.stringify(value);
     mapped[key] =
       json.length > MAX_VAR_LENGTH
         ? `${json.slice(0, MAX_VAR_LENGTH)}…`
@@ -194,7 +194,7 @@ export function mapStructuredStacktrace(
   stacktrace: Stacktrace | null | undefined,
   { detail = true }: { detail?: boolean } = {},
 ): StructuredStacktrace | null {
-  if (!stacktrace?.frames?.length) {
+  if (!stacktrace?.frames.length) {
     return null;
   }
   const { frames } = stacktrace;
@@ -216,7 +216,7 @@ export function mapStructuredThreadSummary(
     state: nonEmptyString(thread.state),
     crashed: thread.crashed === true,
     current: thread.current === true,
-    frameCount: thread.stacktrace?.frames?.length ?? 0,
+    frameCount: thread.stacktrace?.frames.length ?? 0,
   };
 }
 
