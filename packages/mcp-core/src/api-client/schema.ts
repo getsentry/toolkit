@@ -910,6 +910,18 @@ export const FrameInterface = z
   })
   .partial();
 
+const StacktraceSchema = z
+  .object({
+    frames: z.array(FrameInterface),
+    framesOmitted: z.array(z.unknown()).nullable().optional(),
+    registers: z.record(z.string(), z.unknown()).nullable().optional(),
+    hasSystemFrames: z.boolean().nullable().optional(),
+  })
+  .partial()
+  .extend({
+    frames: z.array(FrameInterface),
+  });
+
 // XXX: Sentry's schema generally speaking is "assume all user input is missing"
 // so we need to handle effectively every field being optional or nullable.
 export const ExceptionInterface = z
@@ -923,11 +935,8 @@ export const ExceptionInterface = z
       .nullable(),
     type: z.string().nullable(),
     value: z.string().nullable(),
-    stacktrace: z
-      .object({
-        frames: z.array(FrameInterface),
-      })
-      .nullable(),
+    module: z.string().nullable(),
+    stacktrace: StacktraceSchema.nullable(),
   })
   .partial();
 
@@ -957,18 +966,6 @@ export const MessageEntrySchema = z
     params: z.array(z.unknown()).optional(),
   })
   .partial();
-
-const StacktraceSchema = z
-  .object({
-    frames: z.array(FrameInterface),
-    framesOmitted: z.array(z.unknown()).nullable().optional(),
-    registers: z.record(z.string(), z.unknown()).nullable().optional(),
-    hasSystemFrames: z.boolean().nullable().optional(),
-  })
-  .partial()
-  .extend({
-    frames: z.array(FrameInterface),
-  });
 
 export const ThreadEntrySchema = z
   .object({
