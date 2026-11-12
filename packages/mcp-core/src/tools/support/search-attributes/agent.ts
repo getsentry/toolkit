@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { TraceItemAttribute } from "../../../api-client";
 import { callEmbeddedAgent } from "../../../internal/agents/callEmbeddedAgent";
 import type { SearchAttributesDataset } from "./search";
-import { lookupOtelSemantics } from "../../../internal/agents/tools/otel-semantics";
 import { keyHintsSystemPrompt, systemPrompt } from "./config";
 
 const MAX_KEY_HINTS = 5;
@@ -27,10 +26,7 @@ export async function generateKeyHintsAgent({
   query: string;
   dataset: SearchAttributesDataset;
 }): Promise<string[]> {
-  const { result } = await callEmbeddedAgent<
-    KeyHintsAgentOutput,
-    typeof keyHintsAgentOutputSchema
-  >({
+  const { result } = await callEmbeddedAgent<KeyHintsAgentOutput>({
     system: keyHintsSystemPrompt,
     prompt: `Dataset: ${dataset}\nQuestion: ${query}`,
     tools: {},
@@ -88,10 +84,7 @@ export interface ShortlistAttributesAgentOptions {
 export async function shortlistAttributesAgent(
   options: ShortlistAttributesAgentOptions,
 ): Promise<AttributeMatches> {
-  const { result } = await callEmbeddedAgent<
-    ShortlistAttributesAgentOutput,
-    typeof shortlistAttributesAgentOutputSchema
-  >({
+  const { result } = await callEmbeddedAgent<ShortlistAttributesAgentOutput>({
     system: systemPrompt,
     prompt: buildShortlistPrompt(options),
     tools: {},
