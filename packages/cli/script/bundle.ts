@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 import { existsSync } from "node:fs";
 import {
   chmod,
@@ -11,7 +10,7 @@ import {
 import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import { type BuildOptions, build, type Plugin } from "esbuild";
-import pkg from "../package.json";
+import pkg from "../package.json" with { type: "json" };
 import {
   buildMainScript,
   chunkBuild,

@@ -10,7 +10,7 @@
  * by esbuild, and the `.wasm` bytes are loaded lazily on first use:
  *   - SEA binary: embedded asset via `node:sea.getRawAsset()`
  *   - npm bundle: the `.wasm` copied next to the bundle at build time
- *   - dev (tsx): resolved from the installed `@sentry/symbolic` package
+ *   - dev (from source): resolved from the installed `@sentry/symbolic` package
  */
 
 import { existsSync, readFileSync } from "node:fs";

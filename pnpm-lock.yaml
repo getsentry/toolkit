@@ -89,9 +89,6 @@ importers:
       tsdown:
         specifier: 'catalog:'
         version: 0.12.9(typescript@5.9.3)
-      tsx:
-        specifier: 'catalog:'
-        version: 4.20.3
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -475,9 +472,6 @@ importers:
       tinyglobby:
         specifier: ^0.2.17
         version: 0.2.17
-      tsx:
-        specifier: ^4.22.4
-        version: 4.23.13
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -741,9 +735,6 @@ importers:
       esbuild:
         specifier: ^0.28.1
         version: 0.28.2
-      tsx:
-        specifier: 'catalog:'
-        version: 4.20.3
 
   packages/mcp-server-evals:
     dependencies:
@@ -845,9 +836,6 @@ importers:
       tsdown:
         specifier: 'catalog:'
         version: 0.12.9(typescript@5.9.3)
-      tsx:
-        specifier: 'catalog:'
-        version: 4.20.3
       typescript:
         specifier: 'catalog:'
         version: 5.9.3

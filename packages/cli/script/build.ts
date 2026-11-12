@@ -1,5 +1,3 @@
-#!/usr/bin/env tsx
-
 /**
  * Build script for Sentry CLI
  *

@@ -1,6 +1,6 @@
 /**
  * Preview the org and project pickers with local fixtures, without
- * authentication or project changes. Run `pnpm tsx script/preview-selectors.ts`.
+ * authentication or project changes. Run `pnpm pnpm ts script/preview-selectors.ts`.
  */
 import { selectWithFilter } from "../src/lib/select-ui/terminal.js";
 import type { SelectOptions } from "../src/lib/select-ui/types.js";

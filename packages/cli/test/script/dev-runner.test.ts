@@ -1,9 +1,8 @@
 /**
  * The `cli` script runs the CLI from source. A lazy relative `require` there
- * must return the module the ESM graph already loaded. The `tsx` command's
- * CommonJS hook instead compiles a second, CommonJS copy of the module's whole
- * graph, which can't load packages that export only to `import`
- * (`@sentry/api/client`).
+ * must return the module the ESM graph already loaded, not compile a second,
+ * CommonJS copy of the module's whole graph (as the `tsx` loader did), which
+ * can't load packages that export only to `import` (`@sentry/api/client`).
  */
 
 import { spawnSync } from "node:child_process";
