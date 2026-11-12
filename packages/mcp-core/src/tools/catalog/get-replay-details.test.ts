@@ -552,6 +552,22 @@ describe("get_replay_details", () => {
     );
   });
 
+  it("explains a replay that Sentry can't find instead of blaming the input", async () => {
+    // Error events can name a replay that was never stored or isn't ingested
+    // yet. The replay details endpoint then answers a bare 404.
+    mswServer.use(
+      http.get(replayEndpoint, () => new HttpResponse(null, { status: 404 }), {
+        once: true,
+      }),
+    );
+
+    await expect(
+      getReplayDetails.handler(directParams, getServerContext()),
+    ).rejects.toThrowErrorMatchingInlineSnapshot(
+      `[UserInputError: Replay 7e07485f-12f9-416b-8b14-26260799b51f was not found in organization "sentry-mcp-evals". An event's replay ID does not guarantee a stored replay: the replay may still be processing, may not have been stored (dropped, rate limited, or over quota), may be past retention, or may belong to a project you can't access. Continue without the replay instead of retrying with different parameters.]`,
+    );
+  });
+
   it("rejects replay URLs outside the active organization constraint", () => {
     expect(() =>
       resolveReplayParams({

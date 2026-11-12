@@ -5,7 +5,7 @@ import type {
   SentryApiService,
   TraceMeta,
 } from "../../api-client";
-import { ApiClientError } from "../../api-client";
+import { ApiClientError, ApiNotFoundError } from "../../api-client";
 import { ConfigurationError, UserInputError } from "../../errors";
 import {
   REPLAY_TIMELINE_CATEGORIES,
@@ -290,10 +290,25 @@ export default defineTool({
       limit: params.limit ?? DEFAULT_TIMELINE_LIMIT,
       skip: params.skip ?? 0,
     };
-    const replay = await apiService.getReplayDetails({
-      organizationSlug: resolved.organizationSlug,
-      replayId: resolved.replayId,
-    });
+    let replay: ReplayDetails;
+    try {
+      replay = await apiService.getReplayDetails(resolved);
+    } catch (error) {
+      // Sentry answers a bare 404 when no replay row exists in the caller's
+      // projects. Events carry replay IDs before (or without) a stored replay,
+      // so say that instead of asking the agent to fix its parameters.
+      if (error instanceof ApiNotFoundError) {
+        throw new UserInputError(
+          `Replay ${resolved.replayId} was not found in organization "${resolved.organizationSlug}". ` +
+            "An event's replay ID does not guarantee a stored replay: the replay may still be processing, " +
+            "may not have been stored (dropped, rate limited, or over quota), may be past retention, " +
+            "or may belong to a project you can't access. " +
+            "Continue without the replay instead of retrying with different parameters.",
+          { cause: error },
+        );
+      }
+      throw error;
+    }
     await assertReplayWithinProjectConstraint({
       apiService,
       organizationSlug: resolved.organizationSlug,
