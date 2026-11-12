@@ -35,6 +35,7 @@ import {
   assertWasmHeader,
   decodeExternalDebugInfo,
   EXTERNAL_DEBUG_INFO_SECTION,
+  encodeModule,
   isCodeSection,
   isDebugSection,
   isExternalDebugInfoSection,
@@ -191,6 +192,20 @@ export function companionPath(
 /** Path relative to the module, for its `external_debug_info` section. */
 function externalDebugInfoPath(wasmPath: string, companion: string): string {
   return relative(dirname(wasmPath), companion).split(sep).join("/");
+}
+
+/**
+ * Drop any `external_debug_info` pointer a previous tool left on a module.
+ *
+ * The split appends a pointer to the new companion. Keeping the old one too
+ * would leave two, and readers disagree on which to follow.
+ */
+function withoutExternalDebugInfo(bytes: Uint8Array): Uint8Array {
+  const sections = parseSections(bytes);
+  const kept = sections.filter(
+    (section) => !isExternalDebugInfoSection(section),
+  );
+  return kept.length === sections.length ? bytes : encodeModule(kept);
 }
 
 /** Which debug-relevant sections a module turned out to contain. */
@@ -733,7 +748,7 @@ export async function prepareWasmFile(
   const buildId = inspection.buildId ?? options.buildId ?? randomBuildId();
   const companion = companionPath(path, formatBuildId(buildId), options.outDir);
 
-  const split = splitWasm(bytes, {
+  const split = splitWasm(withoutExternalDebugInfo(bytes), {
     companion: true,
     strip: true,
     buildId,
