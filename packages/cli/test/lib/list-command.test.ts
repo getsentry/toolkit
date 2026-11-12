@@ -86,7 +86,7 @@ function makeFakeConfig(
   return {
     paginationKey: "fake-list",
     entityPlural: "widgets",
-    commandPrefix: "sentry widget list",
+    commandPrefix: () => "sentry widget list",
     listForOrg: vi.fn(() => Promise.resolve([])),
     listPaginated: vi.fn(() =>
       Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),

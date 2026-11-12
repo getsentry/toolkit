@@ -8,6 +8,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { getCustomerTrialInfo } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -185,13 +186,13 @@ export const listCommand = buildCommand({
     examples: [
       {
         description: "List all trials for the current organization",
-        command: "sentry trial list",
+        run: "trial list",
       },
       {
         description: "List trials for a specific organization",
-        command: "sentry trial list my-org",
+        run: "trial list my-org",
       },
-      { description: "Output as JSON", command: "sentry trial list --json" },
+      { description: "Output as JSON", run: "trial list --json" },
     ],
   },
   output: {
@@ -246,11 +247,11 @@ export const listCommand = buildCommand({
       (e) => e.status === "available" && e.category !== "plan",
     );
     if (hasAvailableProduct) {
-      hints.push("Tip: Use 'sentry trial start <name>' to start a trial");
+      hints.push(`Tip: Use '${sentry`trial start <name>`}' to start a trial`);
     }
     if (planEntry?.status === "available") {
       hints.push(
-        "Tip: Use 'sentry trial start plan' to start a Business plan trial",
+        `Tip: Use '${sentry`trial start plan`}' to start a Business plan trial`,
       );
     }
 

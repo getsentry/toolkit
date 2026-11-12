@@ -1,6 +1,6 @@
 ---
 name: sentry-cli
-version: 0.49.0-dev.0
+version: 0.50.0-dev.0
 description: Guide for using the Sentry CLI to interact with Sentry from the command line. Use when the user asks about viewing issues, events, projects, organizations, making API calls, or authenticating with Sentry via CLI.
 requires:
   bins: ["sentry"]
@@ -27,6 +27,7 @@ Best practices and operational guidance for AI coding agents using the Sentry CL
 - **Use `sentry issue view` to investigate issues** — when asked about a specific issue (e.g., `CLI-G5`, `PROJECT-123`), use `sentry issue view` directly. Multiple IDs can be passed in one invocation: `sentry issue view A B C --json` returns an array of the same objects.
 - **Use `--json` for machine-readable output** — pipe through `jq` for filtering. Human-readable output includes formatting that is hard to parse.
 - **The CLI auto-detects org/project — don't discover it yourself** — most commands work without explicit targets by checking `.sentryclirc` config files, scanning for DSNs in `.env` files and source code, and matching directory names. Do **not** run `sentry org list` and then `sentry project list` to figure out which project this checkout belongs to — that manual fan-out just replicates the detection the CLI already runs on every command. Only specify `<org>/<project>` when the CLI reports it can't detect the target or detects the wrong one.
+- **Report CLI friction with `sentry cli feedback`** — if no command could do what the user asked, a command failed or returned wrong data, its output or help was confusing, or it took several tries to get a command right, run `sentry cli feedback "<task>: <what you tried and what got in the way>"`. Send it at most once per task, after you finish or give up. Feedback goes to the Sentry CLI maintainers, not the user's Sentry organization, so do not include secrets, credentials, or personal data. If it fails because telemetry is disabled, skip it.
 
 ### Design Principles
 

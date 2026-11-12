@@ -39,7 +39,7 @@ import {
 } from "@stricli/core";
 import type { GenericSchema } from "valibot";
 import type { Writer } from "../types/index.js";
-import { asRunningAppCommand } from "./app-identity.js";
+import { getInvocationCommand, sentry } from "./app-identity.js";
 import { appendCacheHint } from "./cache-hint.js";
 import type { CommandExposure, DeclaredPermission } from "./command-access.js";
 import { type CommandExample, exampleSteps } from "./command-example.js";
@@ -487,7 +487,7 @@ function prepareNativeDocs(
   }
   const rendered = examples
     .map((example) => {
-      const steps = exampleSteps(example).map(asRunningAppCommand);
+      const steps = exampleSteps(example, getInvocationCommand());
       return steps.length === 1
         ? `  ${steps[0]} # ${example.description}`
         : [`  # ${example.description}`, ...steps.map((s) => `  ${s}`)].join(
@@ -592,10 +592,7 @@ export function buildCommand<
     builderArgs.skipRcUrlCheck === true || builderArgs.auth === "dsn";
 
   // Merge global flags into the command's flag definitions.
-  const existingParams = (builderArgs.parameters ?? {}) as Record<
-    string,
-    unknown
-  >;
+  const existingParams = builderArgs.parameters ?? {};
   const existingFlags = (existingParams.flags ?? {}) as Record<string, unknown>;
 
   const { mergedFlags, commandOwnsOrg, commandOwnsProject, stripKeys } =
@@ -758,7 +755,7 @@ export function buildCommand<
     }
     ctx.stderr.write(
       warning(
-        `Tip: use --help for help (e.g., sentry ${pathSegments.join(" ")} --help)\n\n`,
+        `Tip: use --help for help (e.g., ${sentry`${pathSegments.join(" ")} --help`})\n\n`,
       ),
     );
     stdout.write(`${formatHelpHuman(result)}\n`);
@@ -813,7 +810,7 @@ export function buildCommand<
       commandOwnsProject,
     );
 
-    const cleanFlags = cleanRawFlags(flags as Record<string, unknown>);
+    const cleanFlags = cleanRawFlags(flags);
     setFlagContext(cleanFlags);
     if (args.length > 0) {
       setArgsContext(args.flatMap(rawPositional));

@@ -13,15 +13,14 @@ import { getTraceData } from "@sentry/node";
 import {
   computeInvalidationPrefixes,
   createApiTransport,
-  type ApiPathScope,
   type CredentialRequest,
   extractUrlPath,
   getValidatedResponseSource,
-  parseApiPathScope,
   type ResponseBodyMode,
   type RetryPolicy,
   type TransportCache,
 } from "@sentry/api/client";
+import { sentry } from "./app-identity.js";
 import { formatAuthHeader } from "./auth-header.js";
 import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
@@ -249,8 +248,8 @@ function buildTimeoutHint(idempotent: boolean): string {
     ? "Try again."
     : "The change may still have been applied; check before trying again.";
   const check = isSentrySaasUrl(baseUrl)
-    ? "Check Sentry's status with: sentry status"
-    : `Check the server's health with: sentry status --url ${baseUrl}`;
+    ? `Check Sentry's status with: ${sentry`status`}`
+    : `Check the server's health with: ${sentry`status --url ${baseUrl}`}`;
   return `The Sentry API at ${baseUrl} did not respond in time. ${retry}\n  ${check}`;
 }
 
@@ -325,15 +324,13 @@ async function withHttpSpan(
 const NUMERIC_ORG_ID = /^\d+$/;
 
 /**
- * Use the stored account that knows the organization `scope` names
- * (`selectAccountForOrg`). `server` limits the candidates to accounts on
- * it; without it, an account on another server qualifies and brings its
- * server along.
+ * Use the stored account that knows the organization the request's path
+ * targets (`selectAccountForOrg`), so requests built without an org's
+ * region still reach it. Only accounts on the request's server qualify: its
+ * URL is already built. Requests routed by `resolveOrgBaseUrl` picked an
+ * account, on any server, before their URL was built.
  */
-function selectAccountForScope(
-  scope: ApiPathScope | undefined,
-  server?: string,
-): void {
+function selectAccountForRequest({ url, scope }: CredentialRequest): void {
   if (!scope) {
     return;
   }
@@ -341,19 +338,8 @@ function selectAccountForScope(
   selectAccountForOrg(
     organization,
     NUMERIC_ORG_ID.test(organization) ? organization : undefined,
-    { server },
+    { server: url },
   );
-}
-
-/**
- * Use the stored account that knows the organization the request's path
- * targets, so requests no command resolved an org for still reach it. Only
- * accounts on the request's server qualify: its URL is already built.
- * Callers that build the URL from {@link getDefaultSdkConfig} with a `path`
- * have already picked an account on any server.
- */
-function selectAccountForRequest({ url, scope }: CredentialRequest): void {
-  selectAccountForScope(scope, url);
 }
 
 /**
@@ -361,7 +347,10 @@ function selectAccountForRequest({ url, scope }: CredentialRequest): void {
  * response cache, and the CLI's error classes. Retries, timeouts, the 401
  * refresh, and redirect validation are in `@sentry/api/client`.
  */
-function createCliTransport(credential: CredentialContext | undefined) {
+function createCliTransport(
+  credential: CredentialContext | undefined,
+  timeoutMs: number | undefined,
+) {
   return createApiTransport<CredentialContext>({
     credentials: {
       current: async (request) => {
@@ -382,7 +371,7 @@ function createCliTransport(credential: CredentialContext | undefined) {
       authorization: (current) => formatAuthHeader(current.token),
     },
     retry: RETRY_POLICY,
-    timeoutMs: resolveTimeoutMs,
+    timeoutMs: timeoutMs ?? resolveTimeoutMs,
     fetch: fetchWithCustomTls,
     userAgent: getUserAgent(),
     prepareHeaders,
@@ -452,12 +441,18 @@ type AuthenticatedFetchOptions = {
    * cannot match, such as chunk uploads to the server-provided URL.
    */
   idempotent?: boolean;
+  /**
+   * Per-attempt timeout for every request through this fetch, replacing
+   * {@link resolveTimeoutMs}. For callers whose URL comes from the server,
+   * such as chunk uploads, so no path override can match it.
+   */
+  timeoutMs?: number;
 };
 
 function createAuthenticatedFetch(
   options: AuthenticatedFetchOptions = {},
 ): (input: Request | string | URL, init?: RequestInit) => Promise<Response> {
-  const transport = createCliTransport(options.credential);
+  const transport = createCliTransport(options.credential, options.timeoutMs);
   const authenticatedFetch = async (
     input: Request | string | URL,
     init?: RequestInit,
@@ -511,12 +506,13 @@ function getAuthenticatedFetch(
     options.credential ||
     options.validatedRedirects ||
     options.bufferResponseBody ||
-    options.idempotent
+    options.idempotent ||
+    options.timeoutMs !== undefined
   ) {
-    return createAuthenticatedFetch(options) as unknown as typeof fetch;
+    return createAuthenticatedFetch(options);
   }
   if (!cachedFetch) {
-    cachedFetch = createAuthenticatedFetch(options) as unknown as typeof fetch;
+    cachedFetch = createAuthenticatedFetch(options);
   }
   return cachedFetch;
 }
@@ -575,27 +571,14 @@ export function getSdkConfig(
 /**
  * Get SDK config for the default API (control silo or self-hosted).
  *
- * When `path` names an organization, the stored account that knows it is
- * picked first, on any server, so the base URL follows that account's
- * server: `sentry api organizations/<org>/` reaches a self-hosted org while
- * a SaaS login is active. An explicit server still limits the candidates
- * to accounts on it (see `selectAccountForOrg`).
- *
  * The credential is not pinned, so the transport can still pick the stored
  * account that knows the organization a request's path names; it only picks
  * among accounts on the server this base URL belongs to.
  */
 export function getDefaultSdkConfig(
-  options: Pick<AuthenticatedFetchOptions, "bufferResponseBody"> & {
-    /** API path relative to `/api/0/`, optionally with a query string. */
-    path?: string;
-  } = {},
+  options: Pick<AuthenticatedFetchOptions, "bufferResponseBody"> = {},
 ) {
-  const { path, ...fetchOptions } = options;
-  if (path !== undefined) {
-    selectAccountForScope(parseApiPathScope(path));
-  }
-  return getSdkConfig(getApiBaseUrl(), fetchOptions);
+  return getSdkConfig(getApiBaseUrl(), options);
 }
 
 /**

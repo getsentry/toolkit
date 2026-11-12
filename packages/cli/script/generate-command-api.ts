@@ -17,6 +17,7 @@ import {
   type RouteTarget,
 } from "../src/lib/introspect.js";
 import { commandApiAnalysis } from "./lib/command-api-analysis.js";
+import { logger } from "../src/lib/logger.js";
 
 const OUTPUT_PATH = "src/generated/command-api.json";
 const ACCESS_OUTPUT_PATH = "src/generated/command-api-access.json";
@@ -81,13 +82,13 @@ export async function emit(): Promise<void> {
 
   for (const [target, path] of paths) {
     if (isCommand(target) && !matched.has(target)) {
-      console.warn(
+      logger.warn(
         `API discovery: no source command export found for sentry ${path.join(" ")}`,
       );
     }
   }
   for (const [location, { commands, reason }] of unresolved) {
-    console.warn(
+    logger.warn(
       `API discovery: ${location}: ${reason} (${[...commands].sort().join(", ")})`,
     );
   }
@@ -117,7 +118,7 @@ export async function emit(): Promise<void> {
     ACCESS_OUTPUT_PATH,
     `${JSON.stringify(apiAccessByCommand, null, 2)}\n`,
   );
-  console.log(
+  logger.success(
     `Generated ${OUTPUT_PATH} (${Object.keys(catalog).length} commands; ${unresolved.size} unresolved requests)`,
   );
 }

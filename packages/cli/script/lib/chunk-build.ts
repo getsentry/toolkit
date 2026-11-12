@@ -12,6 +12,7 @@ import { build } from "esbuild";
 import { uploadSourcemaps } from "../../src/lib/api/sourcemaps.js";
 import type { MainChunkBuild } from "../../src/chunk-main.js";
 import { injectDebugId } from "../debug-id.js";
+import { logger } from "../../src/lib/logger.js";
 
 /** A JavaScript file with a debug ID, and its sourcemap. */
 export type InjectedFile = {
@@ -37,9 +38,7 @@ export async function injectDebugIds(
         return { jsPath, mapPath, debugId };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.warn(
-          `  Warning: Debug ID injection failed for ${jsPath}: ${msg}`,
-        );
+        logger.warn(`Debug ID injection failed for ${jsPath}: ${msg}`);
         return;
       }
     }),
@@ -58,7 +57,7 @@ export async function uploadChunkSourcemaps(
   options: { readonly release: string; readonly urlPrefix: string },
 ): Promise<boolean> {
   try {
-    console.log(`  Uploading ${injected.length} sourcemaps to Sentry...`);
+    logger.start(`Uploading ${injected.length} sourcemaps to Sentry...`);
     await uploadSourcemaps({
       org: "sentry",
       project: "cli",
@@ -79,11 +78,11 @@ export async function uploadChunkSourcemaps(
         },
       ]),
     });
-    console.log("  Sourcemaps uploaded to Sentry");
+    logger.success("Sourcemaps uploaded to Sentry");
     return true;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`  Warning: Sourcemap upload failed: ${msg}`);
+    logger.warn(`Sourcemap upload failed: ${msg}`);
     return false;
   }
 }

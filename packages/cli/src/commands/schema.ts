@@ -20,6 +20,7 @@ import {
   type SchemaEndpoint,
   searchEndpoints,
 } from "../lib/api-schema.js";
+import { sentry } from "../lib/app-identity.js";
 import { buildCommand } from "../lib/command.js";
 import { choiceParser, parseText } from "../lib/completion-target.js";
 import { OutputError, ResolutionError } from "../lib/errors.js";
@@ -231,13 +232,13 @@ function jsonTransformSchema(data: SchemaResult, fields?: string[]): unknown {
 function noResourceMatchError(resource: string): ResolutionError {
   const names = getResourceSummaries().map((r) => r.name);
   const [closest] = fuzzyMatch(resource, names, { maxResults: 1 });
-  const browseHint = "sentry schema";
-  const searchHint = `sentry schema --search ${resource}    Search endpoints by keyword`;
+  const browseHint = sentry`schema`;
+  const searchHint = sentry`schema --search ${resource}    Search endpoints by keyword`;
   // Lead with the closest resource name when a typo has an obvious fix
   // (e.g. "committers" → "commits"); otherwise point at the full browse.
-  const primaryHint = closest ? `sentry schema ${closest}` : browseHint;
+  const primaryHint = closest ? sentry`schema ${closest}` : browseHint;
   const suggestions = closest
-    ? ["sentry schema                    Browse all resources", searchHint]
+    ? [sentry`schema                    Browse all resources`, searchHint]
     : [searchHint];
   return new ResolutionError(
     `Resource "${resource}"`,
@@ -290,8 +291,8 @@ function pathNotFoundError(
       `Endpoint '${label}'`,
       "does not exist in the schema",
       example
-        ? `sentry schema "${example.method} ${example.path}"`
-        : "sentry schema",
+        ? sentry`schema "${example.method} ${example.path}"`
+        : sentry`schema`,
       [`Available methods at this path: ${methods}`],
     );
   }
@@ -299,16 +300,16 @@ function pathNotFoundError(
   const segment = lastConcreteSegment(query.path);
   const resourceExists =
     segment !== undefined && getEndpointsByResource(segment).length > 0;
-  let hint = "sentry schema";
+  let hint = sentry`schema`;
   if (resourceExists) {
-    hint = `sentry schema ${segment}`;
+    hint = sentry`schema ${segment}`;
   } else if (segment) {
-    hint = `sentry schema --search ${segment}`;
+    hint = sentry`schema --search ${segment}`;
   }
-  const suggestions = ["sentry schema                    Browse all resources"];
+  const suggestions = [sentry`schema                    Browse all resources`];
   if (resourceExists && segment) {
     suggestions.unshift(
-      `sentry schema --search ${segment}    Search endpoints by keyword`,
+      sentry`schema --search ${segment}    Search endpoints by keyword`,
     );
   }
   throw new ResolutionError(
@@ -364,8 +365,8 @@ function resolveGlobQuery(resource: string): SchemaResult {
     throw new ResolutionError(
       `Pattern "${resource}"`,
       "matched no resources",
-      "sentry schema",
-      ["sentry schema --all    List every endpoint in a flat table"],
+      sentry`schema`,
+      [sentry`schema --all    List every endpoint in a flat table`],
     );
   }
   const endpoints = matched.flatMap((r) => getEndpointsByResource(r.name));
@@ -449,52 +450,51 @@ export const schemaCommand = buildCommand({
       "operations, and endpoint details. Search by API concepts or CLI command paths; " +
       "discovery results explain matches and related commands. Use with --json for machine-readable output.",
     examples: [
-      { description: "List all API resources", command: "sentry schema" },
+      { description: "List all API resources", run: "schema" },
       {
         description: "Browse issue endpoints",
-        command: "sentry schema issues",
+        run: "schema issues",
       },
       {
         description: "Find list operations (there may be multiple candidates)",
-        command: "sentry schema issues list",
+        run: "schema issues list",
       },
       {
         description: "Find APIs used by log listing",
-        command: "sentry schema log list",
+        run: "schema log list",
       },
       {
         description:
           "Find APIs used by trace listing, including command aliases",
-        command: "sentry schema trace ls",
+        run: "schema trace ls",
       },
       {
         description: "Find APIs used by a command group",
-        command: "sentry schema alert metrics",
+        run: "schema alert metrics",
       },
       {
         description: "Find APIs used by a nested command",
-        command: "sentry schema alert metrics view",
+        run: "schema alert metrics view",
       },
       {
         description: "Look up an endpoint by its exact operation ID",
-        command: "sentry schema listOrganizationEvents",
+        run: "schema listOrganizationEvents",
       },
       {
         description: "Look up an endpoint by HTTP method and path",
-        command:
-          'sentry schema "GET /api/0/organizations/{organization_id_or_slug}/issues/"',
+        run: 'schema "GET /api/0/organizations/{organization_id_or_slug}/issues/"',
       },
       {
         description: "Search for monitoring-related endpoints",
-        command: "sentry schema --search monitor",
+        run: "schema --search monitor",
       },
       {
         description: "Browse resources matching a glob",
-        command: "sentry schema 'monitor*'",
+        run: "schema 'monitor*'",
       },
       {
         description: "Flat list of every endpoint",
-        command: "sentry schema --all",
+        run: "schema --all",
       },
     ],
   },

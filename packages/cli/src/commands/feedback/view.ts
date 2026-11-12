@@ -112,32 +112,32 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View the most recent unresolved Feedback",
-        command: "sentry feedback view @latest",
+        run: "feedback view @latest",
       },
       {
         description:
           "Most recent unresolved Feedback in an explicit organization",
-        command: "sentry feedback view my-org/@latest",
+        run: "feedback view my-org/@latest",
       },
       {
         description: "View by short ID",
-        command: "sentry feedback view FRONTEND-2SDJ",
+        run: "feedback view FRONTEND-2SDJ",
       },
       {
         description: "View by numeric ID",
-        command: "sentry feedback view 5146636313",
+        run: "feedback view 5146636313",
       },
       {
         description: "View in an explicit organization",
-        command: "sentry feedback view my-org/FRONTEND-2SDJ",
+        run: "feedback view my-org/FRONTEND-2SDJ",
       },
       {
         description: "`view` is the default command",
-        command: "sentry feedback my-org/FRONTEND-2SDJ",
+        run: "feedback my-org/FRONTEND-2SDJ",
       },
       {
         description: "Open the Feedback item in Sentry",
-        command: "sentry feedback view my-org/FRONTEND-2SDJ --web",
+        run: "feedback view my-org/FRONTEND-2SDJ --web",
       },
     ],
   },

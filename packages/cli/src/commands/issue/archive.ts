@@ -348,47 +348,47 @@ export const archiveCommand = buildCommand({
     examples: [
       {
         description: "Archive forever (fully silenced)",
-        command: "sentry issue archive CLI-G5",
+        run: "issue archive CLI-G5",
       },
       {
         description: "Unarchive when Sentry detects a spike in event frequency",
-        command: "sentry issue archive CLI-G5 --until auto",
+        run: "issue archive CLI-G5 --until auto",
       },
       {
         description: "Archive for 1 hour",
-        command: "sentry issue archive CLI-G5 --until 1h",
+        run: "issue archive CLI-G5 --until 1h",
       },
       {
         description: "Archive for 7 days",
-        command: "sentry issue archive CLI-G5 --until 7d",
+        run: "issue archive CLI-G5 --until 7d",
       },
       {
         description: "Archive until a specific date",
-        command: "sentry issue archive CLI-G5 --until 2026-12-31",
+        run: "issue archive CLI-G5 --until 2026-12-31",
       },
       {
         description: "Unarchive after 100 more events",
-        command: "sentry issue archive CLI-G5 --until 100x",
+        run: "issue archive CLI-G5 --until 100x",
       },
       {
         description: "Unarchive after 10 more users are affected",
-        command: "sentry issue archive CLI-G5 --until 10u",
+        run: "issue archive CLI-G5 --until 10u",
       },
       {
         description: "Unarchive after 100 events within 1 hour",
-        command: "sentry issue archive CLI-G5 --until 100x/1h",
+        run: "issue archive CLI-G5 --until 100x/1h",
       },
       {
         description: "Unarchive after 10 users within 1 day",
-        command: "sentry issue archive CLI-G5 --until 10u/1d",
+        run: "issue archive CLI-G5 --until 10u/1d",
       },
       {
         description: "Use the verbose condition form",
-        command: "sentry issue archive CLI-G5 --until 10events/2hours",
+        run: "issue archive CLI-G5 --until 10events/2hours",
       },
       {
         description: "`ignore` is an alias for `archive`",
-        command: "sentry issue ignore CLI-G5 --until auto",
+        run: "issue ignore CLI-G5 --until auto",
       },
     ],
   },

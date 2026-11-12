@@ -5,6 +5,10 @@ import {
   runSearchEvents,
   searchToolBase,
 } from "../support/search-events/search";
+import { buildSearchEventsOutputSchema } from "../support/search-events/structured";
+
+export const searchProfilesOutputSchema =
+  buildSearchEventsOutputSchema("profiles");
 
 export default defineTool({
   ...searchToolBase("search_profiles"),
@@ -27,9 +31,11 @@ export default defineTool({
     "</hints>",
   ].join("\n"),
   inputSchema: buildDatasetSearchInputSchema(),
+  outputSchema: searchProfilesOutputSchema,
   async handler(params, context: ServerContext) {
     return await runSearchEvents({ ...params, dataset: "profiles" }, context, {
       lockDataset: true,
+      output: "structured",
     });
   },
 });

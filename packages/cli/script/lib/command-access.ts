@@ -7,8 +7,9 @@
  * - it also sends a write method outside the Sentry API (DSN ingest, the docs
  *   service), and must say whether that writes;
  * - the analysis can't follow its source, or can't read a request's method;
- * - `method`, for a command without fixed requests whose class each call's
- *   HTTP method sets (`sentry api`).
+ * - `method`, for a command whose `--method` flag sets each call's class
+ *   (`sentry api`). Its fixed requests may only read, like the org region
+ *   lookup `sentry api` makes before the call.
  * Hidden commands never run for agents, so they need no declaration, but a
  * declaration they make is still checked.
  */
@@ -112,9 +113,9 @@ export function commandAccessProblems(
       );
     }
   } else if (declared === "method") {
-    if (api === "read") {
+    if (!command.parameters.flags?.method) {
       problems.push(
-        'declares `permission: "method"`, but its Sentry API requests are read-only',
+        'declares `permission: "method"`, but has no `--method` flag to take the class from',
       );
     } else if (otherWrites.length > 0) {
       problems.push(

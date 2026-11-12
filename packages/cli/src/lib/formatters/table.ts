@@ -9,7 +9,6 @@
  * treats them as zero-width for column sizing.
  */
 
-import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { Writer } from "../../types/index.js";
 import {
   isPlainOutput,

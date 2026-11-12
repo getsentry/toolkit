@@ -4,8 +4,14 @@ import { ApiError } from "../../api-client/index";
 import { UserInputError } from "../../errors";
 import { fetchWithTimeout } from "../../internal/fetch-utils";
 import { defineTool } from "../../internal/tool-helpers/define";
-import type { ServerContext } from "../../types";
 import { getUserAgent } from "../../version";
+
+const DOC_NOT_FOUND_MESSAGE =
+  "Documentation not found at this path. The page may have been moved or removed. Use `search_docs()` to find the current path, and pass the `path` from its results exactly.";
+
+// docs.sentry.io answers unknown paths with 200 and a "Page Not Found" page,
+// marked with this header.
+const NOT_FOUND_HEADER = "x-sentry-docs-not-found";
 
 export default defineTool({
   name: "get_doc",
@@ -47,7 +53,7 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
-  async handler(params, context: ServerContext) {
+  async handler(params) {
     const docContext = { "doc.path": params.path };
     setTags(docContext);
     setAttributes(docContext);
@@ -87,17 +93,11 @@ export default defineTool({
       15000, // 15 second timeout
     );
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        output += `**Error**: Documentation not found at this path.\n\n`;
-        output += `Please verify the path is correct. Common issues:\n`;
-        output += `- Path should start with / (e.g., /platforms/javascript/guides/nextjs.md)\n`;
-        output += `- Path should match exactly what's shown in search_docs results\n`;
-        output += `- Some pages may have been moved or renamed\n\n`;
-        output += `Try searching again with \`search_docs()\` to find the correct path.\n`;
-        return output;
-      }
+    if (response.status === 404 || response.headers.has(NOT_FOUND_HEADER)) {
+      throw new UserInputError(DOC_NOT_FOUND_MESSAGE);
+    }
 
+    if (!response.ok) {
       throw new ApiError(
         `Failed to fetch documentation: ${response.statusText}`,
         response.status,

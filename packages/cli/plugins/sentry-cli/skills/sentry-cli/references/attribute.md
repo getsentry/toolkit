@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-attribute
-version: 0.49.0-dev.0
+version: 0.50.0-dev.0
 description: Explore span, log, and metric attributes
 requires:
   bins: ["sentry"]

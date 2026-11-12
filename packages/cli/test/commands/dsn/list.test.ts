@@ -336,14 +336,20 @@ describe("dsn list", () => {
       join(configDir(), ".env"),
       `SENTRY_DSN=https://${"a".repeat(32)}@sentry.example.com/42\n`,
     );
+    const requestedPaths: string[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {
       const url = new URL(new Request(input, init).url);
-      if (url.pathname === "/api/0/users/me/regions/") {
-        return response({ regions: [] });
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/api/0/organizations/") {
+        return response([{ id: "1", slug: "test-org", name: "Test Org" }]);
       }
-      expect(url.pathname).toBe("/api/0/projects/");
-      expect(url.searchParams.get("query")).toBe(`dsn:${"a".repeat(32)}`);
-      return response([]);
+      if (url.pathname === "/api/0/organizations/test-org/dsn-lookup/") {
+        expect(url.searchParams.get("dsn")).toBe(
+          `https://${"a".repeat(32)}@sentry.example.com/42`,
+        );
+        return response({ detail: "DSN not found" }, undefined, 404);
+      }
+      return response({ detail: "Not found" }, undefined, 404);
     });
     await expect(invoke()).rejects.toMatchObject({
       name: "ContextError",
@@ -352,6 +358,10 @@ describe("dsn list", () => {
         "Found 1 DSN(s) that could not be resolved — you may not have access to these projects",
       ),
     });
+    expect(requestedPaths).toContain(
+      "/api/0/organizations/test-org/dsn-lookup/",
+    );
+    expect(requestedPaths).not.toContain("/api/0/projects/");
   });
 
   test.each([false, true])(

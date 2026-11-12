@@ -13,6 +13,7 @@ import {
   type CreateSnapshotResponse,
   createPreprodSnapshot,
   fetchSnapshotsUploadOptions,
+  type SnapshotManifest,
 } from "../../lib/api/preprod-artifacts.js";
 import {
   collectVcsMetadata,
@@ -42,9 +43,9 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import {
+  findExistingObjects,
   type ObjectstoreConfig,
-  objectExists,
-  putObject,
+  putObjects,
 } from "../../lib/objectstore.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
 import {
@@ -54,13 +55,11 @@ import {
   splitAndTrim,
   validateImageSizes,
 } from "../../lib/snapshots/images.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("snapshots.upload");
 
-const USAGE_HINT = "sentry snapshots upload <path> --app-id <id>";
-
-/** Concurrency for objectstore HEAD/PUT requests. */
-const UPLOAD_CONCURRENCY = 8;
+const usageHint = () => sentry`snapshots upload <path> --app-id <id>`;
 
 /** Flags accepted by `snapshots upload`. */
 type UploadFlags = {
@@ -204,19 +203,11 @@ async function resolveSelective(
   return { selective, allImageNames };
 }
 
-/** Run `fn` over `items` with bounded concurrency. */
-async function runPooled<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  for (let i = 0; i < items.length; i += limit) {
-    await Promise.all(items.slice(i, i + limit).map(fn));
-  }
-}
+/** Manifest entries keyed by relative image path. */
+type ManifestImages = SnapshotManifest["images"];
 
 /** A per-image manifest metadata entry (width/height override sidecar). */
-function imageMetadata(image: CollectedImage): Record<string, unknown> {
+function imageMetadata(image: CollectedImage): ManifestImages[string] {
   return {
     ...image.sidecar,
     content_hash: image.hash,
@@ -228,7 +219,7 @@ function imageMetadata(image: CollectedImage): Record<string, unknown> {
 /** Result of uploading images to objectstore. */
 type UploadImagesResult = {
   /** Manifest entries keyed by relative image path. */
-  entries: Record<string, Record<string, unknown>>;
+  entries: ManifestImages;
   /** Number of images newly uploaded. */
   uploaded: number;
   /** Number of images skipped (already present). */
@@ -258,7 +249,7 @@ async function uploadImages(
     );
   }
 
-  const entries: Record<string, Record<string, unknown>> = {};
+  const entries: ManifestImages = {};
   const prepared: { path: string; key: string }[] = [];
   const duplicates: string[] = [];
   for (const image of images) {
@@ -276,17 +267,15 @@ async function uploadImages(
     log.warn(`Duplicate paths encountered, skipping: ${duplicates.join(", ")}`);
   }
 
-  // HEAD to find objects already present, then PUT only the missing ones.
-  const existing = new Set<string>();
-  await runPooled(prepared, UPLOAD_CONCURRENCY, async (item) => {
-    if (await objectExists(config, item.key)) {
-      existing.add(item.key);
-    }
-  });
+  // Batched HEADs find objects already present, then only the missing ones are
+  // uploaded. Batching keeps the request count low enough to stay under the
+  // Sentry proxy's per-request rate limit.
+  const existing = await findExistingObjects(
+    config,
+    prepared.map((item) => item.key),
+  );
   const missing = prepared.filter((item) => !existing.has(item.key));
-  await runPooled(missing, UPLOAD_CONCURRENCY, async (item) => {
-    await putObject(config, item.key, await readFile(item.path));
-  });
+  await putObjects(config, missing);
 
   return {
     entries,
@@ -298,7 +287,7 @@ async function uploadImages(
 /** Inputs for {@link buildManifest}. */
 type ManifestOptions = {
   appId: string;
-  entries: Record<string, Record<string, unknown>>;
+  entries: ManifestImages;
   diffThreshold?: number;
   selective: boolean;
   allImageNames?: string[];
@@ -306,8 +295,8 @@ type ManifestOptions = {
 };
 
 /** Build the snapshot manifest body (VcsInfo flattened at the top level). */
-function buildManifest(opts: ManifestOptions): Record<string, unknown> {
-  const manifest: Record<string, unknown> = {
+function buildManifest(opts: ManifestOptions): SnapshotManifest {
+  const manifest: SnapshotManifest = {
     app_id: opts.appId,
     images: opts.entries,
     ...vcsInfoToBody(opts.vcs),
@@ -356,19 +345,16 @@ export const uploadCommand = buildCommand({
     examples: [
       {
         description: "Upload a folder of screenshots as a snapshot for an app",
-        command:
-          "sentry snapshots upload ./screenshots --app-id com.example.app",
+        run: "snapshots upload ./screenshots --app-id com.example.app",
       },
       {
         description:
           "Upload only a subset of images (removals/renames not inferred on PRs)",
-        command:
-          "sentry snapshots upload ./screenshots --app-id my-app --selective",
+        run: "snapshots upload ./screenshots --app-id my-app --selective",
       },
       {
         description: "Only flag images that differ by more than 1%",
-        command:
-          "sentry snapshots upload ./screenshots --app-id my-app --diff-threshold 0.01",
+        run: "snapshots upload ./screenshots --app-id my-app --diff-threshold 0.01",
       },
     ],
   },
@@ -494,10 +480,10 @@ export const uploadCommand = buildCommand({
 
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 

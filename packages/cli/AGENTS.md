@@ -236,7 +236,7 @@ Formatting and rendering logic belongs in `src/lib/formatters/<domain>.ts`. If a
 
 Reference: `src/lib/formatters/replay.ts` (extracted from `replay/view.ts`), `src/lib/formatters/trace.ts`, `src/lib/formatters/human.ts`.
 
-Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output.
+Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output. Oxlint's `no-console` bans `console.*` in every package that uses `@sentry/logger` (`packages/cli`, including `script/` and `test/`, and `packages/logger`). Scripts and test helpers import the same `logger` from `src/lib/logger.ts`. A call that must bypass the logger, such as stdout a parent process reads, gets an `oxlint-disable-next-line no-console -- <reason>` comment.
 
 ### Declaring Command Output
 
@@ -829,10 +829,11 @@ All command docs and skill files are generated via `pnpm run generate:docs`. Thi
 
 - **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
-- **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write examples in `fullDescription` (an `Examples:` block, or indented `sentry …` lines under any label) or an Examples heading in a fragment; the `sentry-cli/no-examples-in-full-description` lint rule and `pnpm run check:fragments` reject both.
+- **Hints name the running program**: the same code runs as `sentry`, `npx sentry`, and `sentry-mcp`, so write a hint's command with the `` sentry`…` `` tag from `src/lib/app-identity.ts`, without the program name (`` sentry`issue list ${org}/` ``), inside the function that builds the hint. The tag inserts interpolated values as they are and nothing rewrites a hint later, so errors such as `ContextError` print usage lines as given. Keep a command in a constant or table as a `LazyCommand`, `` const usageHint = () => sentry`issue view <id>` ``, and call it where the hint is shown: the entry point registers the program only after the command modules load (`test/lib/app-identity-import.test.ts` checks that no hint is built at import). Command help prose (`docs`, `fullDescription`, `brief`) stays `sentry …`; `docs.examples` steps leave the program out. Lint (`sentry-cli/no-hardcoded-sentry-command`) flags a bare `sentry <route>` (routes come from `src/command-manifest.ts`), and `pnpm run check:doc-examples` checks each tag's command and flags against the route tree.
+- **Examples belong to the command**: add them to `docs.examples` (`{ description, run }[]`, see `src/commands/agent-conversation/list.ts`). Write each step without the program name, as `run: "issue list my-org/"`; `--help` adds the running program and the generated docs and skill references add `sentry`. A step inside other shell text keeps that text around it, as `{ prefix: "sudo ", args: "cli fix" }`. They render in `--help`, the generated docs, and the skill references. Don't hand-write examples in `fullDescription` (an `Examples:` block, or indented `sentry …` lines under any label) or an Examples heading in a fragment; the `sentry-cli/no-examples-in-full-description` lint rule and `pnpm run check:fragments` reject both.
 - **Target syntax belongs to the positional**: describe accepted target forms in the positional `brief` (use `ORG_ALL_TARGET_BRIEF` or `PROJECT_TARGET_BRIEF` from `src/lib/list-command.ts` for `[<org>/][<project>]` targets), not in a `Target patterns:` block. The brief renders in `--help`, the generated docs, and the skill references.
 - Use fragments in `apps/cli-docs/src/fragments/commands/` only for prose the command metadata can't carry: guides, permissions, caveats.
-- `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. Multi-step workflows belong in `docs.examples` too: pass `command` an array of steps (see `release create` and `local run`), and every step is checked and shown in `--help`, the docs, and the skill. Reserve `<!-- allow-commands: <reason> -->` (on the line directly above the block) for sample output and guides that interleave non-`sentry` commands.
+- `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. Multi-step workflows belong in `docs.examples` too: pass `run` an array of steps (see `release create` and `local run`), and every step is checked and shown in `--help`, the docs, and the skill. Reserve `<!-- allow-commands: <reason> -->` (on the line directly above the block) for sample output and guides that interleave non-`sentry` commands.
 - `pnpm run check:fragments` validates fragment ↔ route consistency.
 - Positional `placeholder` values must be descriptive: `"org/project/trace-id"` not `"args"`.
 - Don't restate a value flag's `default` in its `brief`; help and docs already show it (`test/lib/flag-briefs.test.ts`).
@@ -909,7 +910,7 @@ CliError (base, exitCode=1)
 ├── ResolutionError (exitCode=23 — value provided but not found)
 ├── ValidationError (exitCode=21 — input validation)
 ├── DeviceFlowError (exitCode=51 — OAuth flow)
-├── SeerError (exitCode=40–42 by reason — 'not_enabled' | 'no_budget' | 'ai_disabled')
+├── SeerError (exitCode=40–43 by reason — 'not_enabled' | 'no_budget' | 'ai_disabled' | 'out_of_credits')
 ├── TimeoutError (exitCode=31 — operation timed out)
 └── UpgradeError (exitCode=50 — upgrade failures)
 ```

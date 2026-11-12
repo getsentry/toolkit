@@ -258,6 +258,7 @@ async function addToShellConfig(
     return {
       modified: true,
       configFile,
+      // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- names the binary, not a command.
       message: `Added sentry ${label} in ${configFile}`,
       manualCommand: null,
     };

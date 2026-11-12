@@ -463,8 +463,13 @@ export async function serveMcp(
         organizationSlug: config.organizationSlug ?? null,
       })
     : undefined;
+  const accessToken = credential?.accessToken ?? token;
+  // Every call carries the scope, so report one that does not exist now,
+  // naming it, instead of as a generic 404 on each call.
+  const { assertMcpScopeExists } = await import("./mcp/scope-check.js");
+  await assertMcpScopeExists(config, accessToken);
   await serveMcpStdio(config, {
-    accessToken: credential?.accessToken ?? token,
+    accessToken,
     // Force a refresh past the usual threshold: the upstream already rejected
     // the current token, so mirror `--follow`'s refresh-on-401 behavior. The
     // pin keeps the refresh on the startup account. Requests can arrive

@@ -24,23 +24,33 @@ import {
   constants as zlibConstants,
   zstdCompress as zstdCompressCb,
 } from "node:zlib";
+import {
+  type AssembleOrganizationArtifactBundleData,
+  type AssembleProjectDebugFilesData,
+  assembleOrganizationArtifactBundle,
+  assembleProjectDebugFiles,
+  getOrganizationChunkUploadOptions,
+} from "@sentry/api";
 import pLimit from "p-limit";
 import {
   array,
-  type GenericSchema,
   type InferOutput,
   nullish,
   number,
   object,
   optional,
   picklist,
+  record,
   string,
 } from "valibot";
-import { ApiError } from "../errors.js";
+import { ApiError, projectsNotFoundError } from "../errors.js";
 import { logger } from "../logger.js";
-import { resolveOrgRegion } from "../region.js";
 import { getSdkConfig } from "../sentry-client.js";
-import { apiRequestToRegion } from "./infrastructure.js";
+import {
+  getOrgSdkConfig,
+  throwRawApiError,
+  unwrapValidatedResult,
+} from "./infrastructure.js";
 
 const gzipAsync = promisify(gzipCb);
 // zstdCompress exists only on Node.js 22.15+. On older runtimes (npm package
@@ -96,6 +106,11 @@ export const AssembleResponseSchema = object({
 
 export type AssembleResponse = InferOutput<typeof AssembleResponseSchema>;
 
+/** Response from the DIF assemble endpoint, keyed by file checksum. */
+const DifAssembleResponseSchema = record(string(), AssembleResponseSchema);
+
+export type DifAssembleResponse = InferOutput<typeof DifAssembleResponseSchema>;
+
 // ── Types ───────────────────────────────────────────────────────────
 
 /** Chunk metadata after splitting the ZIP for upload. */
@@ -115,6 +130,16 @@ export const ASSEMBLE_POLL_INTERVAL_MS = 1000;
 
 /** Maximum time to wait for assembly. */
 export const ASSEMBLE_MAX_WAIT_MS = 300_000;
+
+/**
+ * Per-attempt timeout for chunk-upload POSTs, instead of the 30s default.
+ * Storing the chunks sometimes takes the server longer than 30s; the client
+ * then aborts a request the server finishes and uploads it again. The proxy
+ * in front of Sentry, on sentry.io and in self-hosted's nginx config, waits
+ * up to 90s for the endpoint to respond, so 120s covers that plus time to
+ * send the request body.
+ */
+export const CHUNK_UPLOAD_TIMEOUT_MS = 120_000;
 
 /**
  * Fallback per-file size cap (2 GiB) used when the server advertises no
@@ -145,11 +170,17 @@ export type UploadEncoding = (typeof UPLOAD_CODECS)[number];
 export async function getChunkUploadOptions(
   orgSlug: string,
 ): Promise<ChunkServerOptions> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion<ChunkServerOptions>(
-    regionUrl,
+  const config = getOrgSdkConfig();
+  const result = await getOrganizationChunkUploadOptions({
+    ...config,
+    path: { organization_id_or_slug: orgSlug },
+  });
+  // The schema also reads `maxWait`, which the generated type lacks.
+  const data = unwrapValidatedResult(
+    result,
+    "Failed to get chunk upload options",
+    ChunkServerOptionsSchema,
     `organizations/${orgSlug}/chunk-upload/`,
-    { schema: ChunkServerOptionsSchema },
   );
 
   // Self-hosted Sentry instances may return a chunk-upload URL that embeds
@@ -286,12 +317,7 @@ export async function uploadChunk(params: {
 
   const response = await authFetch(url, init);
   if (!response.ok) {
-    throw new ApiError(
-      `Chunk upload failed: ${response.status} ${response.statusText}`,
-      response.status,
-      await response.text().catch(() => ""),
-      url,
-    );
+    await throwRawApiError(response, url, "Chunk upload failed");
   }
 }
 
@@ -359,6 +385,22 @@ export function hashBuffer(
 }
 
 /**
+ * Authenticated fetch for chunk-upload POSTs to the server-provided URL.
+ *
+ * Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
+ * explicitly: the server-provided URL need not match the catalog path, which
+ * is also why the timeout is set here rather than by URL.
+ */
+function getChunkUploadFetch(
+  regionUrl: string,
+): (url: string, init: RequestInit) => Promise<Response> {
+  return getSdkConfig(regionUrl, {
+    idempotent: true,
+    timeoutMs: CHUNK_UPLOAD_TIMEOUT_MS,
+  }).fetch;
+}
+
+/**
  * Upload chunks the server reports as missing, in parallel.
  *
  * Filters the full chunk list against the set of missing checksums,
@@ -395,9 +437,7 @@ export async function uploadMissingChunks(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  // Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
-  // explicitly: the server-provided URL need not match the catalog path.
-  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
+  const authFetch = getChunkUploadFetch(regionUrl);
 
   await Promise.all(
     missingChunks.map((chunk) =>
@@ -489,15 +529,7 @@ async function uploadChunkBatch(params: {
 
   const response = await authFetch(url, init);
   if (!response.ok) {
-    throw new ApiError(
-      `Chunk upload failed: ${response.status} ${response.statusText}`,
-      response.status,
-      await response.text().catch((err) => {
-        log.debug("Failed to read chunk upload error response body", err);
-        return "";
-      }),
-      url,
-    );
+    await throwRawApiError(response, url, "Chunk upload failed");
   }
 }
 
@@ -517,9 +549,7 @@ export async function uploadChunkPayloads(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  // Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
-  // explicitly: the server-provided URL need not match the catalog path.
-  const { fetch: authFetch } = getSdkConfig(regionUrl, { idempotent: true });
+  const authFetch = getChunkUploadFetch(regionUrl);
 
   await Promise.all(
     batchChunkPayloads(chunks, serverOptions).map((batch) =>
@@ -572,36 +602,105 @@ export async function uploadMissingBufferChunks(params: {
 }
 
 /**
- * Poll an assemble endpoint until the server reports completion.
+ * Request DIF assembly for one batch of files.
  *
- * Re-sends the same assemble body on each poll (the server uses
+ * The server answers with one entry per file checksum in the body. Sending the
+ * same body again polls the assembly state.
+ *
+ * @param org - Organization slug
+ * @param project - Project slug
+ * @param body - Files to assemble, keyed by overall checksum
+ */
+export async function assembleDebugFiles(
+  org: string,
+  project: string,
+  body: NonNullable<AssembleProjectDebugFilesData["body"]>,
+): Promise<DifAssembleResponse> {
+  const config = getOrgSdkConfig();
+  const result = await assembleProjectDebugFiles({
+    ...config,
+    path: { organization_id_or_slug: org, project_id_or_slug: project },
+    body,
+  });
+  return unwrapValidatedResult(
+    result,
+    "Failed to assemble debug files",
+    DifAssembleResponseSchema,
+    `projects/${org}/${project}/files/difs/assemble/`,
+  );
+}
+
+/**
+ * Request assembly of an artifact bundle. Sending the same body again polls
+ * the assembly state.
+ *
+ * @param org - Organization slug
+ * @param body - Bundle checksum, chunk checksums, projects and release
+ */
+export async function assembleArtifactBundle(
+  org: string,
+  body: NonNullable<AssembleOrganizationArtifactBundleData["body"]>,
+): Promise<AssembleResponse> {
+  const config = getOrgSdkConfig();
+  const result = await assembleOrganizationArtifactBundle({
+    ...config,
+    path: { organization_id_or_slug: org },
+    body,
+  });
+  try {
+    return unwrapValidatedResult(
+      result,
+      "Failed to assemble artifact bundle",
+      AssembleResponseSchema,
+      `organizations/${org}/artifactbundle/assemble/`,
+    );
+  } catch (error) {
+    const projects = body.projects ?? [];
+    if (projects.length > 0 && isInvalidProjectsError(error)) {
+      throw projectsNotFoundError(org, projects);
+    }
+    throw error;
+  }
+}
+
+/**
+ * The assemble endpoint's 400 when a project slug or ID is not an active
+ * project of the org (`OrganizationArtifactBundleAssembleEndpoint` in Sentry,
+ * CLI-344).
+ */
+function isInvalidProjectsError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 400 &&
+    (error.detail?.includes("One or more projects are invalid") ?? false)
+  );
+}
+
+/**
+ * Poll an assemble request until the server reports completion.
+ *
+ * `assemble` re-sends the same assemble body on each poll (the server uses
  * the checksum to look up existing assembly state). By default returns when
  * the state is `"ok"` or `"created"`; set `waitForOk` to block until the server
  * finishes processing (`"ok"` only). Throws on `"error"` or timeout.
  *
- * @param params.regionUrl - Region base URL
- * @param params.endpoint - The endpoint path to POST to
- * @param params.body - The request body to send on each poll
+ * @param params.assemble - Sends the assemble request and returns its state
+ * @param params.endpoint - The assemble endpoint path, for error messages
  * @param params.entityName - Human-readable name for error messages
- * @param params.schema - Valibot schema for the response (defaults to {@link AssembleResponseSchema})
  * @param params.waitForOk - Keep polling on `"created"`, returning only on `"ok"`
  * @param params.deadlineMs - Override the default poll timeout window
  */
 export async function pollAssembly(params: {
-  regionUrl: string;
+  assemble: () => Promise<AssembleResponse>;
   endpoint: string;
-  body: unknown;
   entityName: string;
-  schema?: GenericSchema<unknown, AssembleResponse>;
   waitForOk?: boolean;
   deadlineMs?: number;
 }): Promise<void> {
   const {
-    regionUrl,
+    assemble,
     endpoint,
-    body,
     entityName,
-    schema = AssembleResponseSchema,
     waitForOk = false,
     deadlineMs = ASSEMBLE_MAX_WAIT_MS,
   } = params;
@@ -610,15 +709,7 @@ export async function pollAssembly(params: {
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, ASSEMBLE_POLL_INTERVAL_MS));
 
-    const { data: pollResult } = await apiRequestToRegion<AssembleResponse>(
-      regionUrl,
-      endpoint,
-      {
-        method: "POST",
-        body,
-        schema,
-      },
-    );
+    const pollResult = await assemble();
 
     if (pollResult.state === "ok") {
       return;

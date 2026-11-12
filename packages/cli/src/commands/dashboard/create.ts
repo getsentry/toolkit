@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { createDashboard, getProject } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   type ParsedOrgProject,
   parseOrgProjectInput,
@@ -30,15 +31,12 @@ import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { DashboardCreateOutputSchema } from "../../generated/output-schemas/dashboard.js";
-import type { DashboardCreateOutput } from "../../output-schemas/dashboard.js";
 import { withDashboardErrors } from "./resolve.js";
 
 type CreateFlags = {
   readonly json: boolean;
   readonly fields?: string[];
 };
-
-type CreateResult = DashboardCreateOutput;
 
 /** `dashboard create`'s positionals, parsed: the title and the target. */
 type CreateInput = {
@@ -124,7 +122,7 @@ async function resolveDashboardTarget(
     case "project-search": {
       const found = await resolveProjectBoundSlug(
         parsed.projectSlug,
-        "sentry dashboard create <org>/<project> <title>",
+        sentry`dashboard create <org>/<project> <title>`,
         undefined,
         parsed.originalSlug,
       );
@@ -141,7 +139,7 @@ async function resolveDashboardTarget(
         if (!resolved) {
           throw new ContextError(
             "Organization",
-            "sentry dashboard create <org>/ <title>",
+            sentry`dashboard create <org>/ <title>`,
           );
         }
         return { orgSlug: resolved.org, projectIds: [] };
@@ -169,15 +167,15 @@ export const createCommand = buildCommand({
     examples: [
       {
         description: "Create a dashboard (organization auto-detected)",
-        command: "sentry dashboard create 'Frontend Performance'",
+        run: "dashboard create 'Frontend Performance'",
       },
       {
         description: "Create a dashboard in an explicit organization",
-        command: "sentry dashboard create my-org/ 'My Dashboard'",
+        run: "dashboard create my-org/ 'My Dashboard'",
       },
       {
         description: "Use the organization of an explicit project",
-        command: "sentry dashboard create my-org/my-project 'My Dashboard'",
+        run: "dashboard create my-org/my-project 'My Dashboard'",
       },
     ],
   },

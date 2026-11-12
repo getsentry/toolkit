@@ -13,6 +13,7 @@ import {
   API_MAX_PER_PAGE,
   listDashboardsPaginated,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { openInBrowser } from "../../lib/browser.js";
 import {
   advancePaginationState,
@@ -352,8 +353,8 @@ function buildHint(
   const navRaw = paginationHint({
     hasPrev: !!result.hasPrev,
     hasMore: !!result.hasMore,
-    prevHint: `sentry dashboard list ${orgSlug}/${filterArg} -c prev`,
-    nextHint: `sentry dashboard list ${orgSlug}/${filterArg} -c next`,
+    prevHint: sentry`dashboard list ${orgSlug}/${filterArg} -c prev`,
+    nextHint: sentry`dashboard list ${orgSlug}/${filterArg} -c next`,
   });
   const nav = navRaw ? ` ${navRaw}` : "";
   const url = buildDashboardsListUrl(orgSlug);
@@ -379,39 +380,39 @@ export const listCommand = buildListCommand("dashboard", {
     examples: [
       {
         description: "List dashboards (organization auto-detected)",
-        command: "sentry dashboard list",
+        run: "dashboard list",
       },
       {
         description: "List dashboards in an explicit organization",
-        command: "sentry dashboard list my-org/",
+        run: "dashboard list my-org/",
       },
       {
         description: "Use the organization of an explicit project",
-        command: "sentry dashboard list my-org/my-project",
+        run: "dashboard list my-org/my-project",
       },
       {
         description: "Filter by title glob",
-        command: "sentry dashboard list 'Backend*'",
+        run: "dashboard list 'Backend*'",
       },
       {
         description: "Filter within an organization",
-        command: "sentry dashboard list my-org/ '*API*'",
+        run: "dashboard list my-org/ '*API*'",
       },
       {
         description: "Fetch the next page",
-        command: "sentry dashboard list -c next",
+        run: "dashboard list -c next",
       },
       {
         description: "Fetch the previous page",
-        command: "sentry dashboard list -c prev",
+        run: "dashboard list -c prev",
       },
       {
         description: "Output JSON with the pagination envelope",
-        command: "sentry dashboard list --json",
+        run: "dashboard list --json",
       },
       {
         description: "Open the dashboard list in the browser",
-        command: "sentry dashboard list -w",
+        run: "dashboard list -w",
       },
     ],
   },
@@ -421,7 +422,7 @@ export const listCommand = buildListCommand("dashboard", {
     schema: DashboardListItemSchema,
   },
   parameters: {
-    positional: dashboardListArguments("sentry dashboard list <org>/"),
+    positional: dashboardListArguments(() => sentry`dashboard list <org>/`),
     flags: {
       web: {
         kind: "boolean",

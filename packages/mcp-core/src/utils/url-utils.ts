@@ -109,8 +109,8 @@ function extractTraceMetricFromAggregate(
   }
 
   return normalizeTraceMetric({
-    name: args[1]!,
-    type: args[2]!,
+    name: args[1],
+    type: args[2],
     unit: args[3],
   });
 }
@@ -674,7 +674,7 @@ export function extractConversationIdFromSearchQuery(
     return undefined;
   }
 
-  const conversationId = matches[0][1] ?? matches[0][2];
+  const conversationId = matches[0].at(1) ?? matches[0][2];
   if (conversationId.startsWith("[")) {
     return undefined;
   }

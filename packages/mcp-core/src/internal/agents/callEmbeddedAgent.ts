@@ -108,10 +108,7 @@ interface EmbeddedAgentResult<T> {
  * - Errors are re-thrown for the calling agent to handle
  * - Each agent can implement its own error handling strategy
  */
-export async function callEmbeddedAgent<
-  TOutput,
-  TSchema extends z.ZodType<TOutput, unknown>,
->({
+export async function callEmbeddedAgent<TOutput>({
   system,
   prompt,
   tools,
@@ -121,7 +118,7 @@ export async function callEmbeddedAgent<
   system: string;
   prompt: string;
   tools: Record<string, Tool>;
-  schema: TSchema;
+  schema: z.ZodType<TOutput>;
   /** Whether this step produced a result that permits a final response. */
   isReadyToFinalize?: (step: StepResult<Record<string, Tool>>) => boolean;
 }): Promise<EmbeddedAgentResult<TOutput>> {
@@ -141,8 +138,8 @@ export async function callEmbeddedAgent<
   try {
     const result = await generateText({
       model: provider.getModel(),
-      // generateText sets a call-level user-agent that replaces any
-      // provider-level one, so ours has to go on the call.
+      // generateText sets a call-level user-agent that replaces the
+      // providers' own, so ours has to go on the call too.
       headers: { "User-Agent": getUserAgent() },
       system,
       prompt,
@@ -162,13 +159,11 @@ export async function callEmbeddedAgent<
       // See: https://github.com/getsentry/sentry-mcp/issues/623
       providerOptions: provider.getProviderOptions(),
       onStepFinish: (event) => {
-        if (event.toolCalls && event.toolCalls.length > 0) {
-          for (const toolCall of event.toolCalls) {
-            capturedToolCalls.push({
-              toolName: toolCall.toolName,
-              args: toolCall.input,
-            });
-          }
+        for (const toolCall of event.toolCalls) {
+          capturedToolCalls.push({
+            toolName: toolCall.toolName,
+            args: toolCall.input,
+          });
         }
       },
     });
@@ -184,7 +179,6 @@ export async function callEmbeddedAgent<
 
     if (
       typeof rawOutput === "object" &&
-      rawOutput !== null &&
       "error" in rawOutput &&
       typeof (rawOutput as { error?: unknown }).error === "string"
     ) {
@@ -395,7 +389,7 @@ function extractJsonCandidates(text: string): string[] {
  */
 function rescueFromText<TOutput>(
   text: string,
-  schema: z.ZodType<TOutput, unknown>,
+  schema: z.ZodType<TOutput>,
 ): TOutput | null {
   for (const candidate of extractJsonCandidates(text)) {
     try {

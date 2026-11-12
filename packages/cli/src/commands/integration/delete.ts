@@ -32,9 +32,10 @@ import {
   parseOrgInput,
   resolveOrgInput,
 } from "../../lib/target-positional.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const USAGE = "[<org>/]<integration-id>";
-const USAGE_HINT = `sentry integration delete ${USAGE}`;
+const usageHint = () => sentry`integration delete ${USAGE}`;
 
 const log = logger.withTag("integration.delete");
 
@@ -109,17 +110,17 @@ export function parseIntegrationArguments(
   const { target, ids, baseUrl, warnings } = parseIdArguments(
     args,
     ID_KINDS.integration,
-    { usageHint: USAGE_HINT, multiple: true },
+    { usageHint: usageHint(), multiple: true },
   );
   // Not an ignored extra: deleting one of several IDs would surprise
   if (ids.length > 1) {
     throw new ValidationError(
-      `Remove one integration at a time, not ${ids.length}: ${USAGE_HINT}`,
+      `Remove one integration at a time, not ${ids.length}: ${usageHint()}`,
       "integration-id",
     );
   }
   const [id = ""] = ids;
-  const org = parseOrgInput(target, USAGE_HINT);
+  const org = parseOrgInput(target, usageHint());
   return { id, org: baseUrl ? { ...org, baseUrl } : org, warnings };
 }
 
@@ -164,15 +165,15 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Remove an integration (auto-detect org)",
-        command: "sentry integration delete 12345",
+        run: "integration delete 12345",
       },
       {
         description: "Preview removing an integration",
-        command: "sentry integration delete my-org/12345 --dry-run",
+        run: "integration delete my-org/12345 --dry-run",
       },
       {
         description: "Remove without the confirmation prompt",
-        command: "sentry integration delete my-org/12345 --yes",
+        run: "integration delete my-org/12345 --yes",
       },
     ],
   },
@@ -195,7 +196,7 @@ export const deleteCommand = buildDeleteCommand({
         const { org } = await resolveOrgInput(
           input.org,
           context.cwd,
-          USAGE_HINT,
+          usageHint(),
         );
         return { org, id: input.id };
       },

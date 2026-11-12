@@ -5,12 +5,14 @@
  * conversation spans returned by the Sentry Explore agent conversations endpoints.
  */
 
+import { vRetrieveOrganizationAiConversationResponse } from "@sentry/api/valibot";
 import {
   array,
   boolean,
   type InferOutput,
   looseObject,
   nullable,
+  nullish,
   number,
   object,
   optional,
@@ -96,13 +98,23 @@ export type AgentConversationSpan = InferOutput<
   typeof AgentConversationSpanSchema
 >;
 
+const sdkConversation = vRetrieveOrganizationAiConversationResponse.entries;
+const sdkStats = sdkConversation.stats.wrapped.entries;
+
+/**
+ * Conversation stats the CLI reads.
+ *
+ * Built from the `@sentry/api` schema. Only these fields are required: the
+ * server added the others (token and cost breakdowns, `usageByModel`) one at
+ * a time, and older self-hosted servers don't send them.
+ */
 export const ConversationStatsSchema = looseObject({
-  errors: number(),
-  llmCalls: number(),
-  toolCalls: number(),
-  toolErrors: number(),
-  totalCost: number(),
-  totalTokens: number(),
+  errors: sdkStats.errors,
+  llmCalls: sdkStats.llmCalls,
+  toolCalls: sdkStats.toolCalls,
+  toolErrors: sdkStats.toolErrors,
+  totalCost: sdkStats.totalCost,
+  totalTokens: sdkStats.totalTokens,
 });
 
 export type ConversationStats = InferOutput<typeof ConversationStatsSchema>;
@@ -115,13 +127,20 @@ export type ConversationStats = InferOutput<typeof ConversationStatsSchema>;
  * (conversation-level metadata + a page of spans) instead of a bare span
  * array. Pagination still uses the `Link` header; each page is an envelope
  * whose `spans` field holds that page's rows.
+ *
+ * Built from the `@sentry/api` schema. The spec types `spans` as plain
+ * records, so the CLI checks them with its own span schema. `projects` and
+ * `webUrl` are not checked because the CLI doesn't read them.
  */
 export const AgentConversationDetailsSchema = looseObject({
-  conversationId: string(),
-  title: nullable(string()),
+  conversationId: sdkConversation.conversationId,
+  title: sdkConversation.title,
   spans: array(AgentConversationSpanSchema),
-  /** Added after the original envelope; optional for older self-hosted servers. */
-  stats: optional(ConversationStatsSchema),
+  /**
+   * The server sends `null` on every page after the first, and older
+   * self-hosted servers leave it out.
+   */
+  stats: nullish(ConversationStatsSchema),
 });
 
 export type AgentConversationDetails = InferOutput<

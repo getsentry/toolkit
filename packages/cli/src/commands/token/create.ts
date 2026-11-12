@@ -26,8 +26,9 @@ import {
   explainTokenForbidden,
   parseOrgScopedArg,
 } from "./shared.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry token create [<org>/]<name>";
+const usageHint = () => sentry`token create [<org>/]<name>`;
 
 type CreateFlags = {
   readonly "dry-run": boolean;
@@ -83,15 +84,15 @@ export const createCommand = buildCommand({
     examples: [
       {
         description: "Create a token (auto-detect org)",
-        command: "sentry token create github-actions",
+        run: "token create github-actions",
       },
       {
         description: "Create a token in a specific org",
-        command: "sentry token create my-org/github-actions",
+        run: "token create my-org/github-actions",
       },
       {
         description: "Output as JSON, including the token value",
-        command: "sentry token create my-org/github-actions --json",
+        run: "token create my-org/github-actions --json",
       },
     ],
   },
@@ -107,12 +108,12 @@ export const createCommand = buildCommand({
           brief: "[<org>/]<name> - Name of the new token",
           parse: boundPositional(
             ORG_TARGET,
-            (raw) => parseOrgScopedArg(raw, "Token name", USAGE_HINT),
+            (raw) => parseOrgScopedArg(raw, "Token name", usageHint()),
             async ({ value: name, orgSlug }, context: SentryContext) => {
               const { org } = await resolveOrgInput(
                 { org: orgSlug },
                 context.cwd,
-                USAGE_HINT,
+                usageHint(),
               );
               return { name, org };
             },

@@ -438,15 +438,15 @@ export const uninstallCommand = buildDeleteCommand({
     examples: [
       {
         description: "Show what would be removed",
-        command: "sentry cli uninstall --dry-run",
+        run: "cli uninstall --dry-run",
       },
       {
         description: "Uninstall, keeping the config directory",
-        command: "sentry cli uninstall --yes --keep-config",
+        run: "cli uninstall --yes --keep-config",
       },
       {
         description: "Full uninstall with confirmation",
-        command: "sentry cli uninstall",
+        run: "cli uninstall",
       },
     ],
   },

@@ -24,6 +24,7 @@ import {
   boundPositional,
 } from "../../lib/positional-parse.js";
 import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
+import type { LazyCommand } from "../../lib/app-identity.js";
 
 /** A rule ID or name and the target to find it in. */
 export type AlertRuleRef = {
@@ -58,11 +59,11 @@ export function alertRuleParameter(options: {
   readonly brief: string;
   readonly kind: typeof ORG_TARGET | typeof ORG_PROJECT_TARGET;
   readonly split: RuleArgSplitter;
-  readonly usageHint: string;
+  readonly usageHint: LazyCommand;
 }) {
   const { placeholder, brief, kind, split, usageHint } = options;
   const parse = (raw: string | undefined) => {
-    const { ref, targetArg } = split(raw ?? "", usageHint);
+    const { ref, targetArg } = split(raw ?? "", usageHint());
     return { ref, ...parseOrgProjectInput(targetArg) };
   };
   return {

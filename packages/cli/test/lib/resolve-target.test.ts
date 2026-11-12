@@ -906,7 +906,7 @@ describe("tryFuzzyProjectRecovery", () => {
       // Match /organizations/<org>/projects/
       const orgMatch = url.match(/\/organizations\/([^/]+)\/projects/);
       if (orgMatch) {
-        const org = orgMatch[1] as string;
+        const org = orgMatch[1];
         const slugs = projectsByOrg[org];
         if (slugs) {
           const projects = slugs.map((slug, i) => ({

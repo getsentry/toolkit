@@ -122,7 +122,7 @@ test("uses explicit proxy headers for a new server while preserving the old logi
   await expect(
     bootstrapAuthentication({ force: true, url: host }),
   ).rejects.toThrow(/Setup-code/);
-  expect(fetch.mock.calls[0]![1].headers.get("X-IAP-Token")).toBe(
+  expect(fetch.mock.calls[0][1].headers.get("X-IAP-Token")).toBe(
     "proxy-secret",
   );
   expect(getAuthConfig()?.token).toBe("old-server-token");
@@ -194,7 +194,7 @@ test.each([
     );
 
     expect(fetch).toHaveBeenCalledOnce();
-    expect(fetch.mock.calls[0]![1].headers.get("X-IAP-Token")).toBe(
+    expect(fetch.mock.calls[0][1].headers.get("X-IAP-Token")).toBe(
       trusted ? "proxy-secret" : null,
     );
   },

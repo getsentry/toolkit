@@ -1,23 +1,38 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-vi.mock("../../../src/lib/api/infrastructure.js", () => ({
-  apiRequestToRegion: vi.fn(),
-  apiRequestToRegionNoContent: vi.fn(),
+const {
+  createOrganizationAuthTokenMock,
+  deleteOrganizationAuthTokenMock,
+  listOrganizationAuthTokensMock,
+} = vi.hoisted(() => ({
+  createOrganizationAuthTokenMock: vi.fn(),
+  deleteOrganizationAuthTokenMock: vi.fn(),
+  listOrganizationAuthTokensMock: vi.fn(),
 }));
 
-vi.mock("../../../src/lib/sentry-client.js", () => ({
+vi.mock("@sentry/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@sentry/api")>();
+  return {
+    ...actual,
+    createOrganizationAuthToken: createOrganizationAuthTokenMock,
+    deleteOrganizationAuthToken: deleteOrganizationAuthTokenMock,
+    listOrganizationAuthTokens: listOrganizationAuthTokensMock,
+  };
+});
+
+vi.mock("../../../src/lib/sentry-client.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../src/lib/sentry-client.js")
+  >()),
   getControlSiloUrl: () => "https://sentry.io",
 }));
 
-import {
-  apiRequestToRegion,
-  apiRequestToRegionNoContent,
-} from "../../../src/lib/api/infrastructure.js";
 import {
   createOrgAuthToken,
   deleteOrgAuthToken,
   listOrgAuthTokens,
 } from "../../../src/lib/api/org-auth-tokens.js";
+import { ApiError } from "../../../src/lib/errors.js";
 
 const token = {
   id: "7",
@@ -30,47 +45,76 @@ const token = {
 
 describe("org auth token API", () => {
   beforeEach(() => {
-    vi.mocked(apiRequestToRegion).mockReset();
-    vi.mocked(apiRequestToRegionNoContent).mockReset();
+    createOrganizationAuthTokenMock.mockReset();
+    deleteOrganizationAuthTokenMock.mockReset();
+    listOrganizationAuthTokensMock.mockReset();
   });
 
   test("lists tokens from the control silo", async () => {
-    vi.mocked(apiRequestToRegion).mockResolvedValue({
+    listOrganizationAuthTokensMock.mockResolvedValue({
       data: [token],
-      headers: new Headers(),
+      response: new Response(),
     });
 
     await expect(listOrgAuthTokens("my-org")).resolves.toEqual([token]);
-    expect(apiRequestToRegion).toHaveBeenCalledWith(
-      "https://sentry.io",
-      "/organizations/my-org/org-auth-tokens/",
-      expect.objectContaining({ schema: expect.any(Object) }),
+    expect(listOrganizationAuthTokensMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseUrl: "https://sentry.io",
+        path: { organization_id_or_slug: "my-org" },
+      }),
     );
   });
 
+  test("rejects a token list that doesn't match the schema", async () => {
+    listOrganizationAuthTokensMock.mockResolvedValue({
+      data: [{ id: 7 }],
+      response: new Response(),
+    });
+
+    await expect(listOrgAuthTokens("my-org")).rejects.toThrow();
+  });
+
   test("creates a token with only a name", async () => {
-    vi.mocked(apiRequestToRegion).mockResolvedValue({
+    createOrganizationAuthTokenMock.mockResolvedValue({
       data: { ...token, token: "sntrys_secret" },
-      headers: new Headers(),
+      response: new Response(null, { status: 201 }),
     });
 
     const created = await createOrgAuthToken("my-org", "ci");
     expect(created.token).toBe("sntrys_secret");
-    expect(apiRequestToRegion).toHaveBeenCalledWith(
-      "https://sentry.io",
-      "/organizations/my-org/org-auth-tokens/",
-      expect.objectContaining({ method: "POST", body: { name: "ci" } }),
+    expect(createOrganizationAuthTokenMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseUrl: "https://sentry.io",
+        path: { organization_id_or_slug: "my-org" },
+        body: { name: "ci" },
+      }),
     );
   });
 
   test("deletes a token by ID", async () => {
-    vi.mocked(apiRequestToRegionNoContent).mockResolvedValue();
+    deleteOrganizationAuthTokenMock.mockResolvedValue({
+      data: {},
+      response: new Response(null, { status: 204 }),
+    });
 
     await deleteOrgAuthToken("my-org", "7");
-    expect(apiRequestToRegionNoContent).toHaveBeenCalledWith(
-      "https://sentry.io",
-      "/organizations/my-org/org-auth-tokens/7/",
-      { method: "DELETE" },
+    expect(deleteOrganizationAuthTokenMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseUrl: "https://sentry.io",
+        path: { organization_id_or_slug: "my-org", token_id: "7" },
+      }),
     );
+  });
+
+  test("keeps the HTTP status on errors", async () => {
+    deleteOrganizationAuthTokenMock.mockResolvedValue({
+      error: { detail: "You do not have permission" },
+      response: new Response(null, { status: 403, statusText: "Forbidden" }),
+    });
+
+    await expect(deleteOrgAuthToken("my-org", "7")).rejects.toMatchObject({
+      name: ApiError.name,
+      status: 403,
+    });
   });
 });

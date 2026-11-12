@@ -6,6 +6,7 @@ import {
   ensureIssueWithinProjectConstraint,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamIssueShortId,
   ParamIssueUrl,
@@ -16,28 +17,109 @@ import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { formatDate } from "./support/api-formatting";
 
-function getReporter(report: UserReportList[number]): string {
-  const userId = report.user?.id?.trim();
-  // Older Sentry serializers can emit sentinel strings when no user ID exists.
-  const userIdReporter =
-    userId && !["none", "null"].includes(userId.toLowerCase())
-      ? `user:${userId}`
-      : null;
-  return (
-    report.name?.trim() ||
-    report.email?.trim() ||
-    report.user?.name?.trim() ||
-    report.user?.email?.trim() ||
-    report.user?.username?.trim() ||
-    userIdReporter ||
-    "anonymous"
-  );
+type UserReport = UserReportList[number];
+
+function orNull(value: string | null | undefined): string | null {
+  return value?.trim() || null;
 }
 
-function formatUserReport(report: UserReportList[number]): string {
-  const date = formatDate(report.dateCreated) ?? "unknown time";
-  const reporter = getReporter(report);
-  return `- ${date} by ${reporter}:\n  - "${report.comments}"`;
+/**
+ * Sentry fills display names from the email or username when no real name
+ * exists, so treat a name that just repeats one of those as missing.
+ */
+function realName(
+  value: string | null | undefined,
+  identities: Array<string | null>,
+): string | null {
+  const name = orNull(value);
+  if (!name) {
+    return null;
+  }
+  const lowered = name.toLowerCase();
+  return identities.some((identity) => identity?.toLowerCase() === lowered)
+    ? null
+    : name;
+}
+
+function mapEventUser(user: UserReport["user"]) {
+  if (!user) {
+    return null;
+  }
+  const id = orNull(user.id);
+  const username = orNull(user.username);
+  const email = orNull(user.email);
+  const mapped = {
+    // Older Sentry serializers can emit sentinel strings when no user ID exists.
+    id: id && !["none", "null"].includes(id.toLowerCase()) ? id : null,
+    username,
+    name: realName(user.name, [email, username]),
+    email,
+    ipAddress: orNull(user.ipAddress),
+  };
+  return Object.values(mapped).some((value) => value !== null) ? mapped : null;
+}
+
+const eventUserSchema = z
+  .object({
+    id: z.string().nullable(),
+    username: z.string().nullable(),
+    name: z
+      .string()
+      .nullable()
+      .describe("Null when Sentry only has an email or username."),
+    email: z.string().nullable(),
+    ipAddress: z.string().nullable(),
+  })
+  .nullable()
+  .describe("The user on the linked event. Null when the event has none.");
+
+export const getIssueUserReportsOutputSchema = z.object({
+  organizationSlug: z.string(),
+  issueId: z.string(),
+  reports: z.array(
+    z.object({
+      id: z.string(),
+      eventId: z.string(),
+      name: z
+        .string()
+        .nullable()
+        .describe(
+          "Name the reporter entered, falling back to the event user's name. Null when Sentry only has an email or username.",
+        ),
+      email: z
+        .string()
+        .nullable()
+        .describe("Email on the report, falling back to the event user."),
+      user: eventUserSchema,
+      comments: z.string(),
+      dateCreated: z.string().nullable(),
+    }),
+  ),
+  nextCursor: z
+    .string()
+    .nullable()
+    .describe("Pass as cursor with the same issue scope for the next page."),
+});
+
+function mapUserReport(report: UserReport) {
+  const user = mapEventUser(report.user);
+  const email = orNull(report.email) ?? user?.email ?? null;
+  return {
+    id: report.id,
+    eventId: report.eventID,
+    name:
+      realName(report.name, [
+        email,
+        user?.email ?? null,
+        user?.username ?? null,
+      ]) ??
+      user?.name ??
+      null,
+    email,
+    user,
+    comments: report.comments,
+    dateCreated: formatDate(report.dateCreated),
+  };
 }
 
 export default defineTool({
@@ -87,6 +169,7 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
+  outputSchema: getIssueUserReportsOutputSchema,
   async handler(params, context: ServerContext) {
     const parsed = parseIssueParams({
       issueUrl: params.issueUrl,
@@ -117,23 +200,11 @@ export default defineTool({
       limit: params.limit,
     });
 
-    const output = [
-      `# Issue User Reports for Issue ${parsed.issueId} in **${parsed.organizationSlug}**`,
-      "",
-      reports.length === 0
-        ? "No issue user reports found for this issue."
-        : reports.map(formatUserReport).join("\n"),
-    ];
-
-    if (nextCursor) {
-      output.push(
-        "",
-        "## Response Notes",
-        "",
-        `- More user reports are available. Pass \`cursor: "${nextCursor}"\` with the same issue scope to fetch the next page.`,
-      );
-    }
-
-    return `${output.join("\n")}\n`;
+    return structuredResult({
+      organizationSlug: parsed.organizationSlug,
+      issueId: parsed.issueId,
+      reports: reports.map(mapUserReport),
+      nextCursor: nextCursor ?? null,
+    });
   },
 });

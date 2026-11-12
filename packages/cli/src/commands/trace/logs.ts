@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { type LogSortDirection, listTraceLogs } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   buildProjectQuery,
   parseLogSort,
@@ -95,7 +96,7 @@ function formatTraceLogsHuman(data: TraceLogsData): string {
 const DEFAULT_PERIOD = "14d";
 
 /** Usage hint shown in error messages */
-const USAGE_HINT = "sentry trace logs [<org>/[<project>/]]<trace-id>";
+const usageHint = () => sentry`trace logs [<org>/[<project>/]]<trace-id>`;
 
 /**
  * Parse --limit flag, delegating range validation to shared utility.
@@ -115,7 +116,7 @@ type TraceLogsArguments = BoundArguments<TraceTargetInput, TraceLogsTarget>;
 
 /** Parse `trace logs` arguments, without side effects. */
 function parseTraceLogsInput(args: readonly string[]): TraceTargetInput {
-  return parseTraceTargetInput(args, USAGE_HINT);
+  return parseTraceTargetInput(args, usageHint());
 }
 
 /**
@@ -131,7 +132,8 @@ async function resolveTraceLogsTarget(
   const { traceId, org } = await resolveTraceOrg(
     parsed,
     context.cwd,
-    USAGE_HINT,
+    "trace logs",
+    usageHint(),
   );
   return {
     traceId,
@@ -152,35 +154,31 @@ export const logsCommand = buildCommand({
     examples: [
       {
         description: "View logs for a trace",
-        command: "sentry trace logs abc123def456abc123def456abc12345",
+        run: "trace logs abc123def456abc123def456abc12345",
       },
       {
         description: "Filter trace logs to one project",
-        command:
-          "sentry trace logs my-org/cli-server/abc123def456abc123def456abc12345",
+        run: "trace logs my-org/cli-server/abc123def456abc123def456abc12345",
       },
       {
         description: "Filter trace logs to several projects",
-        command:
-          'sentry trace logs abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
+        run: 'trace logs abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
       },
       {
         description: "Search with a longer time window",
-        command:
-          "sentry trace logs --period 30d abc123def456abc123def456abc12345",
+        run: "trace logs --period 30d abc123def456abc123def456abc12345",
       },
       {
         description: "Only error logs",
-        command:
-          "sentry trace logs -q 'severity:error' abc123def456abc123def456abc12345",
+        run: "trace logs -q 'severity:error' abc123def456abc123def456abc12345",
       },
       {
         description: "Output as JSON",
-        command: "sentry trace logs --json abc123def456abc123def456abc12345",
+        run: "trace logs --json abc123def456abc123def456abc12345",
       },
       {
         description: "Logs for a trace in an explicit organization",
-        command: "sentry trace logs my-org/abc123def456abc123def456abc12345",
+        run: "trace logs my-org/abc123def456abc123def456abc12345",
       },
     ],
   },
@@ -283,7 +281,7 @@ export const logsCommand = buildCommand({
 
     const emptyMessage =
       `No logs found for trace ${traceId} in the last ${formatTimeRangeFlag(flags.period)}.\n\n` +
-      `Try a longer period: sentry trace logs --period 30d ${traceId}`;
+      `Try a longer period: ${sentry`trace logs --period 30d ${traceId}`}`;
 
     yield new CommandOutput({
       logs,
@@ -295,11 +293,11 @@ export const logsCommand = buildCommand({
     // Build hint with real values for easy copy-paste
     if (projectFilter) {
       return {
-        hint: `Filtered to project '${projectFilter}'. Full trace logs: sentry trace logs ${org}/${traceId}`,
+        hint: `Filtered to project '${projectFilter}'. Full trace logs: ${sentry`trace logs ${org}/${traceId}`}`,
       };
     }
     return {
-      hint: `Filter by project: sentry trace logs ${org}/<project>/${traceId}`,
+      hint: `Filter by project: ${sentry`trace logs ${org}/<project>/${traceId}`}`,
     };
   },
 });

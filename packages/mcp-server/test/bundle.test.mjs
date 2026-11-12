@@ -61,7 +61,7 @@ for (const flag of ["--version", "-v"]) {
   });
 }
 
-test("--help lists only mcp, auth, and help", () => {
+test("--help lists only mcp, auth, cli, and help", () => {
   const result = run(["--help"]);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /^USAGE\n {2}sentry-mcp mcp /);
@@ -71,7 +71,7 @@ test("--help lists only mcp, auth, and help", () => {
       .trim()
       .split("\n")
       .map((line) => line.trim().split(/\s+/)[0]),
-    ["mcp", "auth", "help"],
+    ["mcp", "auth", "cli", "help"],
   );
 });
 
@@ -114,6 +114,19 @@ test("runs the CLI's auth commands", () => {
   assert.match(
     result.stderr,
     /Not authenticated\. Run 'sentry-mcp auth login'/,
+  );
+});
+
+test("runs only the CLI's defaults and fix under cli", () => {
+  const result = run(["cli", "--help"]);
+  assert.equal(result.status, 0, result.stderr);
+  const commands = result.stdout.split("COMMANDS\n")[1] ?? "";
+  assert.deepEqual(
+    commands
+      .trim()
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/)[0]),
+    ["defaults", "fix"],
   );
 });
 
@@ -250,21 +263,32 @@ test("sends the package version in the Sentry User-Agent", async () => {
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
+  // Drain stderr so a chatty server can't fill the pipe, and show it on failure.
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
   try {
     const whoami = new Promise((resolve, reject) => {
+      const fail = (message) => reject(new Error(`${message}\n${stderr}`));
       let buffer = "";
-      child.on("close", (code) => reject(new Error(`server exited (${code})`)));
+      child.on("close", (code) => fail(`server exited (${code})`));
       child.stdout.on("data", (chunk) => {
         buffer += chunk;
         const parts = buffer.split("\n");
         buffer = parts.pop() ?? "";
-        const response = parts
-          .filter(Boolean)
-          .map((line) => JSON.parse(line))
-          .find((message) => message.id === 2);
-        if (response) resolve(response);
+        for (const line of parts.filter(Boolean)) {
+          let message;
+          try {
+            message = JSON.parse(line);
+          } catch {
+            fail(`non-JSON stdout line: ${line}`);
+            return;
+          }
+          if (message.id === 2) resolve(message);
+        }
       });
-      setTimeout(() => reject(new Error("no whoami response")), 20_000).unref();
+      setTimeout(() => fail("no whoami response"), 20_000).unref();
     });
     const send = (message) =>
       child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
@@ -284,8 +308,14 @@ test("sends the package version in the Sentry User-Agent", async () => {
       params: { name: "whoami", arguments: {} },
     });
     const response = await whoami;
-    assert.ok(!response.result?.isError, JSON.stringify(response));
-    assert.ok(userAgents.length > 0, "whoami made no Sentry request");
+    assert.ok(
+      !response.result?.isError,
+      `${JSON.stringify(response)}\n${stderr}`,
+    );
+    assert.ok(
+      userAgents.length > 0,
+      `whoami made no Sentry request\n${stderr}`,
+    );
     for (const userAgent of userAgents) {
       assert.equal(userAgent, `sentry-mcp/${version} (https://mcp.sentry.dev)`);
     }

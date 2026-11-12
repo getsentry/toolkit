@@ -64,6 +64,7 @@ function isGenerated(path) {
 }
 
 function run(script) {
+  // oxlint-disable-next-line no-console -- plain Node: this runs before tsx, so it cannot load the TypeScript logger.
   console.error(`Missing generated files; running \`pnpm run ${script}\`...`);
   // Send generator output to stderr: `pnpm run cli mcp` serves JSON-RPC on
   // stdout, so nothing else may write there.

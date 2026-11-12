@@ -54,15 +54,12 @@ describe("CVE: custom-headers leak (share URL + auth-login bypass)", () => {
     // Intercept fetch to capture outbound headers
     const originalFetch = globalThis.fetch;
     let capturedHeaders: Headers | undefined;
-    globalThis.fetch = (async (
-      input: RequestInfo | URL,
-      init?: RequestInit,
-    ) => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       capturedHeaders = new Headers(
         init?.headers ?? (input instanceof Request ? input.headers : undefined),
       );
       return new Response("{}", { status: 404 });
-    }) as typeof fetch;
+    };
 
     try {
       await getSharedIssue(

@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../../context.js";
 import { createMetricAlertRule } from "../../../lib/api-client.js";
+import { sentry } from "../../../lib/app-identity.js";
 import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
@@ -79,7 +80,7 @@ function resolveMetricCreateOrg(
     parsed,
     cwd,
     "alert metrics create",
-    "sentry alert metrics create <org>/",
+    sentry`alert metrics create <org>/`,
   );
 }
 
@@ -102,14 +103,12 @@ export const createCommand = buildCommand({
     examples: [
       {
         description: "Alert when P95 span duration goes above 500ms",
-        command:
-          "sentry alert metrics create my-org/ --name 'P95 latency' --project my-project --query 'environment:prod' --aggregate 'p95(span.duration)' --dataset spans --time-window 5 --trigger '{\"alertThreshold\":500}'",
+        run: "alert metrics create my-org/ --name 'P95 latency' --project my-project --query 'environment:prod' --aggregate 'p95(span.duration)' --dataset spans --time-window 5 --trigger '{\"alertThreshold\":500}'",
       },
       {
         description:
           "Preview an alert on any matching log line that notifies through an existing alert",
-        command:
-          "sentry alert metrics create my-org/ --name 'AI chat failures' --project my-project --query 'action:ai.chat result:error' --aggregate 'count()' --dataset logs --time-window 5 --trigger '{\"alertThreshold\":0,\"resolveThreshold\":0}' --workflow 12345 --dry-run",
+        run: "alert metrics create my-org/ --name 'AI chat failures' --project my-project --query 'action:ai.chat result:error' --aggregate 'count()' --dataset logs --time-window 5 --trigger '{\"alertThreshold\":0,\"resolveThreshold\":0}' --workflow 12345 --dry-run",
       },
     ],
   },

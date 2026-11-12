@@ -124,7 +124,7 @@ export function Chat({ isOpen, onClose, onLogout }: ChatProps) {
           return {
             name,
             description: def ? def.description.split("\n")[0] : "",
-          } as { name: string; description: string };
+          };
         });
 
       content =
