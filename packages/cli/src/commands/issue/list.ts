@@ -8,21 +8,23 @@
 import type { SentryContext } from "../../context.js";
 import { buildProjectAliasMap } from "../../lib/alias.js";
 import {
-  API_MAX_PER_PAGE,
   buildIssueListCollapse,
   type IssueCollapseField,
   type IssuesPage,
   listIssuesAllPages,
-  listIssuesPaginated,
 } from "../../lib/api-client.js";
 import { extractRequiredScopes } from "../../lib/api-scope.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
+  CURSOR_KEYWORDS,
   formatProjectTarget,
   looksLikeIssueShortId,
-  parseOrgProjectArg,
+  type ParsedOrgProject,
+  parseCursorFlag,
   rejectIssueCommandTokenListTarget,
 } from "../../lib/arg-parsing.js";
 
+import { choiceParser } from "../../lib/completion-target.js";
 import { getActiveEnvVarName, isEnvTokenActive } from "../../lib/db/auth.js";
 import {
   advancePaginationState,
@@ -43,6 +45,7 @@ import { createDsnFingerprint } from "../../lib/dsn/index.js";
 import {
   ApiError,
   ContextError,
+  TimeoutError,
   toSearchQueryError,
   ValidationError,
   withAuthGuard,
@@ -52,19 +55,15 @@ import {
   shouldAutoCompact,
   writeIssueTable,
 } from "../../lib/formatters/index.js";
-import {
-  CommandOutput,
-  type OutputConfig,
-} from "../../lib/formatters/output.js";
+import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   appendQueryHint,
   buildListCommand,
   buildListLimitFlag,
   LIST_BASE_ALIASES,
   LIST_MAX_LIMIT,
-  LIST_TARGET_POSITIONAL,
+  listTargetPositional,
   paginationHint,
-  parseCursorFlag,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
@@ -74,6 +73,7 @@ import {
   type FetchResult as FetchResultOf,
   jsonTransformListResult,
   type ListCommandMeta,
+  type ListJson,
   type ListResult,
   type ModeHandler,
   trimWithGroupGuarantee,
@@ -87,10 +87,11 @@ import {
 } from "../../lib/resolve-target.js";
 import {
   SEARCH_SYNTAX_REFERENCE,
-  sanitizeQuery,
+  sanitizeIssueQuery,
   unscopedCountFilterKeys,
 } from "../../lib/search-query.js";
 import { isSaaS } from "../../lib/sentry-web-urls.js";
+import type { ListCommandTarget } from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   formatTimeRangeFlag,
@@ -101,12 +102,10 @@ import {
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
 import { tipsSuppressed } from "../../lib/tips.js";
-import {
-  type SentryIssue,
-  SentryIssueSchema,
-  type Writer,
-} from "../../types/index.js";
+import { shellQuote } from "../../lib/utils.js";
+import type { SentryIssue, Writer } from "../../types/index.js";
 import { resolveIssue } from "./utils.js";
+import { SentryIssueSchema } from "../../generated/output-schemas/issue.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "issue-list";
@@ -186,7 +185,7 @@ function defaultIssueSort(): SortValue {
 }
 
 /** Usage hint for ContextError messages */
-const USAGE_HINT = "sentry issue list <org>/<project>";
+const usageHint = () => sentry`issue list <org>/<project>`;
 
 /** Options returned by {@link buildListApiOptions}. */
 type ListApiOptions = {
@@ -386,11 +385,11 @@ function formatListHeader(title: string): string {
 function formatListFooter(mode: "single" | "multi" | "none"): string {
   switch (mode) {
     case "single":
-      return "\nTip: Use 'sentry issue view <ID>' to view details (bold part works as shorthand).";
+      return `\nTip: Use '${sentry`issue view <ID>`}' to view details (bold part works as shorthand).`;
     case "multi":
-      return "\nTip: Use 'sentry issue view <ALIAS>' to view details (see ALIAS column).";
+      return `\nTip: Use '${sentry`issue view <ALIAS>`}' to view details (see ALIAS column).`;
     default:
-      return "\nTip: Use 'sentry issue view <SHORT_ID>' to view issue details.";
+      return `\nTip: Use '${sentry`issue view <SHORT_ID>`}' to view issue details.`;
   }
 }
 
@@ -720,6 +719,35 @@ function trimWithProjectGuarantee(
   );
 }
 
+/** Re-run the failed search with an explicit target, preserving search and output flags. */
+function contextRecoveryCommand(target: string, flags: ListFlags): string {
+  const parts = [
+    sentry`issue list ${shellQuote(target)}`,
+    `--limit ${flags.limit}`,
+    `--sort ${flags.sort}`,
+    `--period ${shellQuote(formatTimeRangeFlag(flags.period))}`,
+  ];
+  appendQueryHint(parts, flags.query);
+  if (flags.cursor !== undefined) {
+    // Navigation state belongs to a resolved target; a candidate may have none.
+    const cursor = CURSOR_KEYWORDS.has(flags.cursor) ? "first" : flags.cursor;
+    parts.push(`--cursor ${shellQuote(cursor)}`);
+  }
+  if (flags.json) {
+    parts.push("--json");
+  }
+  if (flags.fields) {
+    parts.push(`--fields ${shellQuote(flags.fields.join(","))}`);
+  }
+  if (flags.fresh) {
+    parts.push("--fresh");
+  }
+  if (flags.compact !== undefined) {
+    parts.push(flags.compact ? "--compact" : "--no-compact");
+  }
+  return parts.join(" ");
+}
+
 /** Build the CLI hint for fetching the next page, preserving active flags. */
 /** Append active non-default issue list flags to a base command string. */
 function appendIssueFlags(base: string, flags: ListFlags): string {
@@ -738,14 +766,13 @@ function pageHint(
   target: string,
   flags: ListFlags,
 ): string {
-  return appendIssueFlags(`sentry issue list ${target} -c ${direction}`, flags);
+  return appendIssueFlags(sentry`issue list ${target} -c ${direction}`, flags);
 }
 
 /**
  * Fetch issues for an organization, optionally restricted to a project set.
  *
- * When `cursor` is provided (--cursor resume), fetches a single page to keep the
- * cursor chain intact. Otherwise auto-paginates up to the requested limit.
+ * Auto-paginates up to the requested limit, resuming from `cursor` when given.
  */
 async function fetchOrganizationIssues(
   org: string,
@@ -762,29 +789,10 @@ async function fetchOrganizationIssues(
   const timeParams = timeRangeToApiParams(timeRange);
   const { cursor, onPage, projects } = options;
 
-  // When resuming with --cursor, fetch a single page so the cursor chain stays intact.
-  if (cursor) {
-    const perPage = Math.min(flags.limit, API_MAX_PER_PAGE);
-    const response = await listIssuesPaginated(org, "", {
-      query: flags.query,
-      cursor,
-      perPage,
-      sort: flags.sort,
-      ...timeParams,
-      projects,
-      groupStatsPeriod: apiOpts.groupStatsPeriod,
-      collapse: apiOpts.collapse,
-    });
-    return {
-      issues: applyQueryScopedCounts(response.data),
-      nextCursor: response.nextCursor,
-    };
-  }
-
-  // No cursor — auto-paginate from the beginning via the shared helper.
   const { issues, nextCursor } = await listIssuesAllPages(org, "", {
     query: flags.query,
     limit: flags.limit,
+    startCursor: cursor,
     sort: flags.sort,
     ...timeParams,
     projects,
@@ -992,7 +1000,7 @@ async function handleOrganizationIssues(
 
 /** Options for {@link handleResolvedTargets}. */
 type ResolvedTargetsOptions = {
-  parsed: ReturnType<typeof parseOrgProjectArg>;
+  parsed: ParsedOrgProject;
   flags: ListFlags;
   cwd: string;
   timeRange: TimeRange;
@@ -1056,7 +1064,7 @@ function build400Detail(
   }
 
   suggestions.push(
-    "Verify you have access to the target project: sentry project list <org>/",
+    `Verify you have access to the target project: ${sentry`project list <org>/`}`,
   );
 
   return formatDetailWithSuggestions(lines, suggestions);
@@ -1117,13 +1125,9 @@ function enrichIssueListError(
       const detail = error.enriched403
         ? appendProjectMembershipHint(error.detail)
         : build403Detail(error.detail);
-      throw new ApiError(
-        error.message,
-        error.status,
-        detail,
-        error.endpoint,
-        true,
-      );
+      throw new ApiError(error.message, error.status, detail, error.endpoint, {
+        enriched403: true,
+      });
     }
   }
   throw error;
@@ -1179,10 +1183,10 @@ function build403Detail(originalDetail: unknown): string {
       "  • Check token scopes at: https://sentry.io/settings/account/api/auth-tokens/",
     );
   } else {
-    lines.push("  • Re-authenticate with: sentry auth login");
+    lines.push(`  • Re-authenticate with: ${sentry`auth login`}`);
   }
 
-  lines.push("  • Verify project membership: sentry project list <org>/");
+  lines.push(`  • Verify project membership: ${sentry`project list <org>/`}`);
 
   return lines.join("\n  ");
 }
@@ -1195,7 +1199,7 @@ function build403Detail(originalDetail: unknown): string {
  */
 function appendProjectMembershipHint(detail: string | undefined): string {
   const base = detail ?? "You do not have permission to perform this action.";
-  return `${base}\n  Verify project membership: sentry project list <org>/`;
+  return `${base}\n  Verify project membership: ${sentry`project list <org>/`}`;
 }
 
 /**
@@ -1212,25 +1216,33 @@ async function handleResolvedTargets(
 ): Promise<IssueListResult> {
   const { parsed, flags, cwd, timeRange, projectSearchResolution } = options;
 
-  const { targets, footer, skippedSelfHosted, detectedDsns } =
+  const { targets, footer, skippedSelfHosted, detectedDsns, soleOrg } =
     await resolveProjectBoundTargets(parsed, {
       cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
+      formatRecoveryCommand: (target) => contextRecoveryCommand(target, flags),
       projectSearchResolution,
       enrichProjectIds: true,
       checkIssueShortId: true,
+      orgWideFallback: true,
     });
+
+  // No detected context, and the account has a single organization: list it
+  // org-wide, the same as `sentry issue list <org>/` (CLI-3B).
+  if (soleOrg) {
+    return await handleOrganizationIssues({ org: soleOrg, flags, timeRange });
+  }
 
   if (targets.length === 0) {
     if (skippedSelfHosted) {
       throw new ContextError(
         "Organization and project",
-        USAGE_HINT,
+        usageHint(),
         undefined,
         `Found ${skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`,
       );
     }
-    throw new ContextError("Organization and project", USAGE_HINT);
+    throw new ContextError("Organization and project", usageHint());
   }
 
   // Build a compound cursor context key that encodes the full target set +
@@ -1334,8 +1346,13 @@ async function handleResolvedTargets(
         first.status,
         detail,
         first.endpoint,
-        first.enriched403 || first.status === 403,
+        { enriched403: first.enriched403 || first.status === 403 },
       );
+    }
+
+    // Keep the timeout's status-page hint and exit code.
+    if (first instanceof TimeoutError) {
+      throw new TimeoutError(`${prefix}: ${first.message}`, first.hint);
     }
 
     throw new Error(`${prefix}: ${first.message}`);
@@ -1500,7 +1517,7 @@ async function handleResolvedTargets(
 const issueListMeta: ListCommandMeta = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "issues",
-  commandPrefix: "sentry issue list",
+  commandPrefix: () => sentry`issue list`,
 };
 
 /**
@@ -1592,7 +1609,7 @@ function formatIssueListHuman(result: IssueListResult): string {
 function jsonTransformIssueList(
   result: IssueListResult,
   fields?: string[],
-): unknown {
+): ListJson<SentryIssue> {
   const transformed = jsonTransformListResult(result, fields);
   // Only inject into empty paginated envelopes — helps agents discover
   // query syntax when their search returned nothing.
@@ -1611,7 +1628,7 @@ function jsonTransformIssueList(
 }
 
 /** Output configuration for the issue list command. */
-const issueListOutput: OutputConfig<IssueListResult> = {
+const issueListOutput = {
   human: formatIssueListHuman,
   jsonTransform: jsonTransformIssueList,
   schema: SentryIssueSchema,
@@ -1626,12 +1643,6 @@ export const listCommand = buildListCommand("issue", {
     brief: "List issues in a project",
     fullDescription:
       "List issues from Sentry projects.\n\n" +
-      "Target patterns:\n" +
-      "  sentry issue list               # auto-detect from DSN or config\n" +
-      "  sentry issue list <org>/<proj>  # explicit org and project\n" +
-      "  sentry issue list <org>/a,b     # several projects in the same org\n" +
-      "  sentry issue list <org>/        # all projects in org (trailing / required)\n" +
-      "  sentry issue list <project>     # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "In monorepos with multiple Sentry projects, shows issues from all detected projects.\n\n" +
       "The --limit flag specifies the total number of issues to display (max 1000). " +
@@ -1644,28 +1655,79 @@ export const listCommand = buildListCommand("issue", {
       "  Terms are space-separated and implicitly ANDed together.\n" +
       "  AND/OR operators are NOT supported. Use alternatives:\n" +
       "    key:[val1,val2]   # in-list: matches val1 OR val2 for one key\n" +
+      "    status:[resolved,ignored]   # is: has no in-list; use status/substatus\n" +
       "    *term*            # wildcard matching\n" +
+      "  Same-key ORs are rewritten to in-lists automatically, including\n" +
+      "  is:resolved OR is:ignored → status:[resolved,ignored].\n" +
       "  Filters:  key:value, !key:value (negation), key:>N, key:<N\n" +
       '  Quoted:   message:"exact phrase with spaces"\n' +
       "  Built-in: is:unresolved, is:resolved, assigned:me, has:user\n" +
       "  Dates:    age:-24h (last 24h), firstSeen:+7d (older than 7d)\n" +
       "  Docs:     https://docs.sentry.io/concepts/search/\n\n" +
       "Alias: `sentry issues` → `sentry issue list`",
+    examples: [
+      {
+        description: "List issues (project auto-detected)",
+        run: "issue list",
+      },
+      {
+        description: "List issues in a specific project",
+        run: "issue list my-org/frontend",
+      },
+      {
+        description: "Several projects in the same organization",
+        run: "issue list my-org/frontend,backend,worker",
+      },
+      {
+        description: "All projects in an organization",
+        run: "issue list my-org/",
+      },
+      {
+        description: "Search for a project across organizations",
+        run: "issue list frontend",
+      },
+      {
+        description: "Show only unresolved issues",
+        run: 'issue list my-org/frontend --query "is:unresolved"',
+      },
+      {
+        description: "Sort by frequency",
+        run: "issue list my-org/frontend --sort freq --limit 20",
+      },
+      {
+        description: "Sort by Sentry's recommended relevance ranking",
+        run: "issue list my-org/frontend --sort recommended",
+      },
+      {
+        description:
+          "Multiple filters (space-separated terms are combined with AND)",
+        run: 'issue list --query "is:unresolved level:error assigned:me"',
+      },
+      {
+        description: "Negation and wildcards",
+        run: 'issue list --query "!browser:Chrome message:*timeout*"',
+      },
+      {
+        description: "Match multiple values for one key",
+        run: 'issue list --query "browser:[Chrome,Firefox]"',
+      },
+    ],
   },
   output: issueListOutput,
   parameters: {
-    positional: LIST_TARGET_POSITIONAL,
+    positional: listTargetPositional({ multi: true }),
     flags: {
       query: {
         kind: "parsed",
-        parse: sanitizeQuery,
-        brief: "Search query (Sentry syntax, implicit AND, no OR operator)",
+        parse: sanitizeIssueQuery,
+        brief:
+          "Search query (Sentry syntax, implicit AND; same-key OR becomes an in-list)",
         optional: true,
       },
       limit: buildListLimitFlag("issues"),
       sort: {
         kind: "parsed",
-        parse: parseSort,
+        parse: choiceParser(VALID_SORT_VALUES, parseSort),
         brief:
           "Sort by: recommended, date, new, freq, user (default: recommended on sentry.io, else date)",
         optional: true,
@@ -1696,7 +1758,11 @@ export const listCommand = buildListCommand("issue", {
       t: "period",
     },
   },
-  async *func(this: SentryContext, rawFlags: ListFlagsInput, target?: string) {
+  async *func(
+    this: SentryContext,
+    rawFlags: ListFlagsInput,
+    target: ListCommandTarget,
+  ) {
     const { cwd } = this;
     const log = logger.withTag("issue.list");
 
@@ -1708,11 +1774,11 @@ export const listCommand = buildListCommand("issue", {
       sort: rawFlags.sort ?? defaultIssueSort(),
     };
 
-    if (target) {
-      rejectIssueCommandTokenListTarget(target);
+    if (target.raw) {
+      rejectIssueCommandTokenListTarget(target.raw);
     }
 
-    const parsed = parseOrgProjectArg(target, { multi: true });
+    const { parsed } = await target.resolved;
 
     // Auto-recover: user passed an issue short ID (e.g., "ARMAX-3E" or a
     // lowercase/multi-segment variant like "javascript-react-mr-1b") instead
@@ -1750,7 +1816,7 @@ export const listCommand = buildListCommand("issue", {
         compact: true,
       } satisfies IssueListResult);
       return {
-        hint: `Tip: Use 'sentry issue view ${shortId}' for full details`,
+        hint: `Tip: Use '${sentry`issue view ${shortId}`}' for full details`,
       };
     }
 

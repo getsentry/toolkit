@@ -92,7 +92,14 @@ describe.each([
     await func.call(context, { json: true }, "TEST-PROJECT-1A");
 
     expect(resolveIssue).toHaveBeenCalledWith({
-      issueArg: "TEST-PROJECT-1A",
+      issueArg: {
+        text: "TEST-PROJECT-1A",
+        parsed: {
+          type: "project-search",
+          projectSlug: "test-project",
+          suffix: "1A",
+        },
+      },
       cwd: "/tmp",
       command: name,
       commandBase: "sentry feedback",

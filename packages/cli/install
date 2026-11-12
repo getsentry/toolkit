@@ -90,6 +90,7 @@ Environment Variables:
     SENTRY_INSTALL_DIR      Override the installation directory
     SENTRY_VERSION          Install a specific version (e.g., 0.42.2, nightly)
     SENTRY_INIT             Set to 1 to run \`sentry init\` after installing
+    SENTRY_CLI_NO_TELEMETRY Set to 1 to disable installer error reporting
 
 Examples:
     curl -fsSL https://cli.sentry.dev/install | bash
@@ -474,21 +475,17 @@ fi
 # terminal only when both output streams are interactive; setup checks whether
 # this is a fresh human install before starting login.
 trap - ERR
-if [[ "${SENTRY_INIT:-}" != "1" && -t 1 && -t 2 ]] && { exec 3</dev/tty; } 2>/dev/null; then
+if [[ -t 1 && -t 2 ]] && { exec 3</dev/tty; } 2>/dev/null; then
   # shellcheck disable=SC2086
   "$tmp_binary" cli setup $setup_args <&3 3<&-
-  exit 0
+  exec 3<&-
+else
+  # shellcheck disable=SC2086
+  "$tmp_binary" cli setup $setup_args
 fi
 
-# shellcheck disable=SC2086
-"$tmp_binary" cli setup $setup_args
-
-# Optionally launch the setup wizard after install.
-# Reconnect stdin to the real terminal so the wizard can prompt
-# interactively — when piped (curl | bash), stdin is the pipe.
+# Optionally print the agent setup guide after install. `sentry init` only
+# writes text, so it needs no terminal.
 if [[ "${SENTRY_INIT:-}" == "1" ]]; then
-  if [[ ! -e /dev/tty ]]; then
-    die "SENTRY_INIT=1 requires an interactive terminal (/dev/tty not available)" "init"
-  fi
-  "$init_binary" init </dev/tty
+  "$init_binary" init
 fi

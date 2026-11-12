@@ -119,7 +119,7 @@ function displayResults(results: ValidationResult[]): void {
 
   for (const result of results) {
     const skill = SKILLS[result.skill];
-    const scopeList = Array.from(result.requiredScopes).sort();
+    const scopeList = [...result.requiredScopes].sort();
 
     console.log(
       `\n${colors.bright}${colors.cyan}Skill: ${skill.name}${colors.reset}`,

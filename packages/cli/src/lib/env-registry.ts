@@ -39,6 +39,8 @@ export type EnvVarEntry = {
  * install → display → logging/telemetry → cache/pagination → database.
  * The generator preserves this order in the output.
  */
+// Reference text for the env var docs page, which documents the `sentry` CLI.
+/* oxlint-disable sentry-cli/no-hardcoded-sentry-command */
 export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   // -- Auth --
   {
@@ -65,6 +67,12 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     briefDescription: "Prefer the env-var token over a stored OAuth login.",
     selfHosted: true,
     devGuide: "Force env token to take priority over stored OAuth token",
+  },
+  {
+    name: "SENTRY_ACCESS_TOKEN",
+    description:
+      "Deprecated. Auth token for `@sentry/mcp-server` and `sentry mcp` only (the env form of the deprecated `--access-token` flag). It acts as `SENTRY_AUTH_TOKEN` and prints a deprecation warning; set that instead. Other commands ignore it.",
+    example: "sntryu_YOUR_TOKEN_HERE",
   },
   // -- Targeting --
   {
@@ -131,6 +139,12 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     selfHosted: true,
     devGuide: "Sentry OAuth app client ID",
   },
+  {
+    name: "SENTRY_SETUP_CODE",
+    description:
+      "Private, short-lived code for headless OAuth authentication with sentry auth bootstrap or the installer. Each code can be redeemed once.",
+    devGuide: "One-time setup code for headless authentication",
+  },
   // -- Custom headers --
   {
     name: "SENTRY_CUSTOM_HEADERS",
@@ -172,16 +186,23 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_INIT",
     description:
-      "Used with the install script. When set to `1`, the installer runs `sentry init` after installing the binary to guide you through project setup.",
+      "Used with the install script. When set to `1`, the installer runs `sentry init` after installing the binary, which prints the guide a coding agent follows to add Sentry to your project.",
     example: "1",
     installOnly: true,
   },
-  // -- Init wizard --
   {
-    name: "SENTRY_INIT_TUI",
+    name: "SENTRY_NO_MODIFY_PATH",
     description:
-      "Control the TUI (terminal user interface) for `sentry init`. Set to `0` to disable the interactive TUI and use plain text logging output instead. Useful in CI/CD pipelines or environments without full terminal support.",
-    example: "0",
+      "Used with the PowerShell install script (`install.ps1`). When set to `1`, the installer leaves the user `PATH` unchanged. The bash install script takes the `--no-modify-path` flag instead.",
+    example: "1",
+    installOnly: true,
+  },
+  // -- Games --
+  {
+    name: "SENTRY_GAMES_API_URL",
+    description:
+      "Base URL of the service that serves the `sentry games leaderboard` scores. Defaults to `https://games.sentry.new`. Mainly useful for testing.",
+    example: "http://localhost:8787",
   },
   // -- TLS / Certificates --
   {
@@ -292,10 +313,11 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   {
     name: "SENTRY_CLI_NO_AUTO_REPAIR",
     description:
-      "Disable automatic database schema repair. By default, the CLI automatically repairs its SQLite database when it detects schema drift. Set this to `1` to prevent auto-repair.",
+      "Disable automatic database schema repair. By default, the CLI automatically repairs its SQLite database when it detects schema drift, including clearing cached data a newer CLI version wrote. Set this to `1` to prevent auto-repair; `sentry cli fix` still repairs on demand.",
     example: "1",
   },
 ];
+/* oxlint-enable sentry-cli/no-hardcoded-sentry-command */
 
 /**
  * Subset of env vars surfaced in the branded `sentry --help` output and in

@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-agent-conversation
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: List and view agent conversations
 requires:
   bins: ["sentry"]
@@ -14,6 +14,12 @@ List and view agent conversations
 ### `sentry agent-conversation list [<org/project>]`
 
 List recent agent conversations
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all projects), &lt;org&gt;/&lt;project&gt;, or &lt;project&gt; (search) |
 
 **Flags:**
 - `-n, --limit <value> - Number of conversations (1-1000) - (default: "25")`
@@ -89,6 +95,12 @@ sentry agent-conversation list my-org/my-project -c next
 ### `sentry agent-conversation view [<org>/]<conversation-id>`
 
 View an agent conversation transcript
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org>/]<conversation-id>` | Organization slug (optional) and conversation ID |
 
 **Flags:**
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`

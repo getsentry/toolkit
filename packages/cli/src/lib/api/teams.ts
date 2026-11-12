@@ -10,8 +10,6 @@ import {
   listOrganizationTeams,
   listProjectTeams as sdkListProjectTeams,
 } from "@sentry/api";
-// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
 
 import type { SentryTeam } from "../../types/index.js";
 
@@ -23,13 +21,14 @@ import {
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
+import { reportCliError } from "../error-reporting.js";
 
 /**
  * List teams in an organization.
  * Uses region-aware routing for multi-region support.
  */
 export async function listTeams(orgSlug: string): Promise<SentryTeam[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationTeams({
     ...config,
@@ -44,14 +43,15 @@ export async function listTeams(orgSlug: string): Promise<SentryTeam[]> {
  * Returns a single page of results with cursor metadata.
  *
  * @param orgSlug - Organization slug
- * @param options - Pagination options
+ * @param options - Pagination options; `query` keeps only teams whose slug
+ *   or name contains it (case-insensitive, matched by the server)
  * @returns Single page of teams with cursor metadata
  */
 export async function listTeamsPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number } = {},
+  options: { cursor?: string; perPage?: number; query?: string } = {},
 ): Promise<PaginatedResponse<SentryTeam[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationTeams({
     ...config,
@@ -59,7 +59,8 @@ export async function listTeamsPaginated(
     query: {
       cursor: options.cursor,
       per_page: options.perPage ?? 25,
-    } as { cursor?: string; per_page?: number },
+      query: options.query,
+    },
   });
 
   return unwrapPaginatedResult<SentryTeam[]>(result, "Failed to list teams");
@@ -79,7 +80,7 @@ export async function listProjectTeams(
   orgSlug: string,
   projectSlug: string,
 ): Promise<SentryTeam[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await sdkListProjectTeams({
     ...config,
     path: {
@@ -106,7 +107,7 @@ export async function createTeam(
   orgSlug: string,
   slug: string,
 ): Promise<SentryTeam> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await createOrganizationTeam({
     ...config,
     path: { organization_id_or_slug: orgSlug },
@@ -118,7 +119,7 @@ export async function createTeam(
   try {
     await addMemberToTeam(orgSlug, team.slug, "me");
   } catch (error) {
-    Sentry.captureException(error, {
+    reportCliError(error, {
       extra: { orgSlug, teamSlug: team.slug, context: "auto-add member" },
     });
     logger.warn(
@@ -141,7 +142,7 @@ export async function addMemberToTeam(
   teamSlug: string,
   memberId: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await addOrganizationMemberTeam({
     ...config,
     path: {

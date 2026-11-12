@@ -2,7 +2,10 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { useTestConfigDir } from "../../helpers.js";
-import { claimDaemonOwnership } from "../../../src/commands/local/daemon.js";
+import {
+  claimDaemonOwnership,
+  waitForLocalDaemonShutdown,
+} from "../../../src/commands/local/daemon.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs/promises")>();
@@ -167,4 +170,58 @@ describe("Local daemon ownership", () => {
     await expect(claimDaemonOwnership(directory)).rejects.toThrow("denied");
     expect(await readFile(owner, "utf8")).toBe("42");
   });
+});
+
+describe("Local daemon shutdown ownership reads", () => {
+  const state = {
+    host: "127.0.0.1",
+    port: 8969,
+    pid: process.pid,
+    token: "stopping",
+    version: 1,
+  };
+
+  test("retries a transient owner read error while the stopped daemon releases its file", async () => {
+    const fs =
+      await vi.importActual<typeof import("node:fs/promises")>(
+        "node:fs/promises",
+      );
+    const directory = getConfigDir();
+    await mkdir(directory, { recursive: true });
+    const owner = join(directory, "local-control-plane.owner");
+    await writeFile(owner, String(process.pid));
+    vi.mocked(readFile)
+      .mockImplementationOnce(fs.readFile)
+      .mockImplementationOnce(async () => {
+        await fs.rm(owner);
+        throw Object.assign(new Error("owner deletion in progress"), {
+          code: "EPERM",
+        });
+      });
+    await expect(waitForLocalDaemonShutdown(state)).resolves.toBeUndefined();
+  });
+
+  test.each(["EPERM", "EACCES"])(
+    "preserves an owner when reads remain denied with %s",
+    async (code) => {
+      const fs =
+        await vi.importActual<typeof import("node:fs/promises")>(
+          "node:fs/promises",
+        );
+      const directory = getConfigDir();
+      await mkdir(directory, { recursive: true });
+      const owner = join(directory, "local-control-plane.owner");
+      await writeFile(owner, String(process.pid));
+      const denied = Object.assign(new Error("owner remains unreadable"), {
+        code,
+      });
+      vi.mocked(readFile).mockRejectedValue(denied);
+      try {
+        await expect(waitForLocalDaemonShutdown(state)).rejects.toBe(denied);
+        expect(await fs.readFile(owner, "utf8")).toBe(String(process.pid));
+      } finally {
+        vi.mocked(readFile).mockImplementation(fs.readFile);
+      }
+    },
+  );
 });

@@ -33,6 +33,7 @@ function mapTeam(team: Team) {
 
 export default defineTool({
   name: "add_team_to_project",
+  title: "Add Team to Project",
   skills: ["project-management"],
   requiredScopes: ["project:write", "team:read", "org:read"],
   description: [

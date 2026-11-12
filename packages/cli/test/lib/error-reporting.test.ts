@@ -9,7 +9,8 @@
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
+import { ArgumentParseError, FlagNotFoundError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
 import {
@@ -18,6 +19,7 @@ import {
   extractMessagePrefix,
   extractResourceKind,
   normalizeEndpoint,
+  reportArgumentError,
   reportCliError,
 } from "../../src/lib/error-reporting.js";
 import {
@@ -32,7 +34,6 @@ import {
   ResolutionError,
   SeerError,
   ValidationError,
-  WizardError,
 } from "../../src/lib/errors.js";
 
 // ---------------------------------------------------------------------------
@@ -263,6 +264,18 @@ describe("classifySilenced", () => {
     expect(classifySilenced(err)).toBe("network_error");
   });
 
+  test("silences a fetch failure wrapped as ApiError(0) (CLI-29S)", () => {
+    const wrapped = new ApiError("Failed to create release: Network error", 0);
+    wrapped.cause = new TypeError("fetch failed");
+    expect(classifySilenced(wrapped)).toBe("network_error");
+  });
+
+  test("does NOT silence ApiError(0) wrapping a non-network error", () => {
+    const wrapped = new ApiError("Failed to create release: Network error", 0);
+    wrapped.cause = new Error("unable to open database file");
+    expect(classifySilenced(wrapped)).toBeNull();
+  });
+
   test("does NOT silence a TLS cert error wrapped as ApiError(0)", () => {
     // status 0 is shared by network failures and TLS cert errors; the latter
     // are actionable (missing CA) and must stay captured.
@@ -353,6 +366,36 @@ describe("classifySilenced", () => {
     ).toBe("user_input_error");
   });
 
+  test.each([
+    [
+      "repository",
+      "Could not determine the repository: there is no 'origin' git remote and no CI repository variables.",
+    ],
+    ["repository", "No Sentry repository matching 'owner/repo' (from CI)."],
+    [
+      "commit.repository",
+      "Sentry organization 'my-org' has no repository named 'owner/repo'.",
+    ],
+  ])(
+    "silences set-commits ValidationError with field '%s' (CLI-17R, CLI-4G3)",
+    (field, message) => {
+      // The org's setup has to change (no repository in the build, or the
+      // repository isn't added in Sentry); it is not a CLI bug.
+      expect(classifySilenced(new ValidationError(message, field))).toBe(
+        "user_validation",
+      );
+    },
+  );
+
+  test.each(["release.version", "release.projects"])(
+    "silences release create ValidationError with field '%s' (CLI-2G3)",
+    (field) => {
+      expect(classifySilenced(new ValidationError("rejected", field))).toBe(
+        "user_validation",
+      );
+    },
+  );
+
   test("silences ResolutionError (user provided a value that wasn't found)", () => {
     expect(
       classifySilenced(
@@ -387,6 +430,34 @@ describe("classifySilenced", () => {
   test("does NOT silence SeerError when SENTRY_URL points at SaaS", () => {
     withSentryUrl("https://sentry.io", () => {
       expect(classifySilenced(new SeerError("not_enabled"))).toBeNull();
+    });
+  });
+
+  const unexpectedResponse = () =>
+    new ApiError(
+      "Failed to list repositories: unexpected response format",
+      200,
+      "Expected the repositories endpoint to return an array.",
+      "/api/0/organizations/test-org/repos/",
+    );
+
+  test("silences a 2xx ApiError on self-hosted (CLI-3DE)", () => {
+    withSentryUrl("http://localhost:8000", () => {
+      expect(classifySilenced(unexpectedResponse())).toBe(
+        "unexpected_response_self_hosted",
+      );
+    });
+  });
+
+  test("does NOT silence a 2xx ApiError when SENTRY_URL points at SaaS", () => {
+    withSentryUrl("https://sentry.io", () => {
+      expect(classifySilenced(unexpectedResponse())).toBeNull();
+    });
+  });
+
+  test("does NOT silence a 5xx ApiError on self-hosted", () => {
+    withSentryUrl("http://localhost:8000", () => {
+      expect(classifySilenced(new ApiError("Server error", 500))).toBeNull();
     });
   });
 });
@@ -460,7 +531,7 @@ describe("enrichEventWithGroupingTags", () => {
 
   test("sets cli_error.kind from exception value", () => {
     const event = makeEvent("TypeError");
-    event.exception!.values![0]!.value =
+    event.exception!.values![0].value =
       "Cannot read properties of undefined (reading 'replaceAll')";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("Cannot read properties of");
@@ -468,17 +539,17 @@ describe("enrichEventWithGroupingTags", () => {
 
   test("sets cli_error.kind for fetch failed TypeError", () => {
     const event = makeEvent("TypeError");
-    event.exception!.values![0]!.value = "fetch failed";
+    event.exception!.values![0].value = "fetch failed";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("fetch failed");
   });
 
   test("sets cli_error.kind for Error with variable project count", () => {
     const event1 = makeEvent("Error");
-    event1.exception!.values![0]!.value =
+    event1.exception!.values![0].value =
       "Failed to fetch issues from 3 project(s): Failed to list issues: 400 Bad Request";
     const event2 = makeEvent("Error");
-    event2.exception!.values![0]!.value =
+    event2.exception!.values![0].value =
       "Failed to fetch issues from 1 project(s): Failed to list issues: 400 Bad Request";
     const result1 = enrichEventWithGroupingTags(event1);
     const result2 = enrichEventWithGroupingTags(event2);
@@ -501,7 +572,7 @@ describe("enrichEventWithGroupingTags", () => {
       "cli_error.class": "ContextError",
       "cli_error.kind": "Organization",
     });
-    event.exception!.values![0]!.value = "some different message";
+    event.exception!.values![0].value = "some different message";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("Organization");
   });
@@ -632,6 +703,24 @@ describe("reportCliError integration", () => {
     );
   });
 
+  test("silences set-commits repository ValidationError and records the field", () => {
+    reportCliError(
+      new ValidationError("No Sentry repository matching 'a/b'.", "repository"),
+    );
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          error_class: "ValidationError",
+          reason: "user_validation",
+          validation_field: "repository",
+        }),
+      }),
+    );
+  });
+
   test("captures SeerError (marketing dashboard)", () => {
     reportCliError(new SeerError("not_enabled", "my-org"));
     expect(captureSpy).toHaveBeenCalled();
@@ -651,6 +740,29 @@ describe("reportCliError integration", () => {
           error_class: "SeerError",
           reason: "seer_unavailable_self_hosted",
           seer_reason: "not_enabled",
+        }),
+      }),
+    );
+  });
+
+  test("silences a 2xx ApiError on self-hosted and emits metric (CLI-3DE)", () => {
+    withSentryUrl("http://localhost:8000", () => {
+      reportCliError(
+        new ApiError(
+          "Failed to list repositories: unexpected response format",
+          200,
+        ),
+      );
+    });
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          error_class: "ApiError",
+          reason: "unexpected_response_self_hosted",
+          api_status: 200,
         }),
       }),
     );
@@ -683,7 +795,7 @@ describe("reportCliError integration", () => {
     expect(error).toBeInstanceOf(MalformedAuthTokenError);
 
     const { tags, contexts } = capturedScopeTags(error);
-    expect(captureSpy).toHaveBeenCalledExactlyOnceWith(error);
+    expect(captureSpy).toHaveBeenCalledExactlyOnceWith(error, undefined);
     expect(metricSpy).not.toHaveBeenCalled();
     expect(tags).toMatchObject({
       "cli_error.class": "MalformedAuthTokenError",
@@ -699,6 +811,31 @@ describe("reportCliError integration", () => {
     });
     expect(diagnostics).not.toContain(firstPart);
     expect(diagnostics).not.toContain(secondPart);
+  });
+
+  test("passes the caller's tags and extras to the captured event", () => {
+    const error = new Error("disk failed");
+    const context = {
+      level: "warning" as const,
+      tags: { "setup.step": "agent-skills" },
+      extra: { path: "/tmp/skill" },
+    };
+    reportCliError(error, context);
+    expect(captureSpy).toHaveBeenCalledExactlyOnceWith(error, context);
+  });
+
+  test("silences a 4xx ApiError even when the caller passes context", () => {
+    reportCliError(new ApiError("forbidden", 403), {
+      tags: { "setup.step": "agent-skills" },
+    });
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({ reason: "api_user_error" }),
+      }),
+    );
   });
 
   test("captures ApiError(400) with normalized endpoint tag", () => {
@@ -732,14 +869,6 @@ describe("reportCliError integration", () => {
     );
     expect(tags["cli_error.class"]).toBe("HostScopeError");
     expect(tags["cli_error.kind"]).toBe("host_scope");
-  });
-
-  test("WizardError gets kind=wizard", () => {
-    const { tags } = capturedScopeTags(
-      new WizardError("Workflow returned an error"),
-    );
-    expect(tags["cli_error.class"]).toBe("WizardError");
-    expect(tags["cli_error.kind"]).toBe("wizard");
   });
 
   test("bare CliError gets kind from message prefix", () => {
@@ -825,5 +954,56 @@ describe("reportCliError integration", () => {
     reportCliError(new ApiError("server fail", 500));
     expect(captureSpy).toHaveBeenCalled();
     expect(metricSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("reportArgumentError", () => {
+  let messageSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    messageSpy = vi.spyOn(Sentry, "captureEvent");
+  });
+
+  afterEach(() => {
+    messageSpy.mockRestore();
+  });
+
+  test("captures one info message with the parser's error class", () => {
+    const error = new ArgumentParseError(
+      "period",
+      "bogus",
+      new ValidationError("Invalid period 'bogus'", "period"),
+    );
+    reportArgumentError(error, 'Failed to parse "bogus" for period');
+    expect(messageSpy).toHaveBeenCalledWith({
+      message: "invalid_argument",
+      level: "info",
+      tags: { "argument_error.class": "ArgumentParseError" },
+      contexts: {
+        invalid_argument: {
+          error_class: "ArgumentParseError",
+          cause_class: "ValidationError",
+          message: 'Failed to parse "bogus" for period',
+        },
+      },
+    });
+  });
+
+  test("reports scanner errors that wrap no parser error", () => {
+    reportArgumentError(
+      new FlagNotFoundError("nope", []),
+      "No flag registered for --nope",
+    );
+    expect(messageSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "invalid_argument",
+        contexts: {
+          invalid_argument: expect.objectContaining({
+            error_class: "FlagNotFoundError",
+            cause_class: null,
+          }),
+        },
+      }),
+    );
   });
 });

@@ -25,6 +25,6 @@ describe("check-env-coverage", () => {
   test("passes against the current source tree", () => {
     const result = runCheck();
     expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(result.stdout).toContain("user-facing env var(s) read in src/");
+    expect(result.stderr).toContain("user-facing env var(s) read in src/");
   });
 });

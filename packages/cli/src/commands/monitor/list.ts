@@ -12,21 +12,23 @@
  * - Cross-org project search (e.g., sentry)
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import { listMonitors, listMonitorsPaginated } from "../../lib/api-client.js";
-import { escapeMarkdownCell } from "../../lib/formatters/markdown.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import {
   buildOrgListCommand,
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
-import type { OrgListConfig } from "../../lib/org-list.js";
-import { type SentryMonitor, SentryMonitorSchema } from "../../types/index.js";
+import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
+import type { SentryMonitor } from "../../types/index.js";
+import { MonitorListItemSchema } from "../../generated/output-schemas/monitor.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "monitor-list";
 
 /** Monitor with its organization context for display */
-type MonitorWithOrg = SentryMonitor & { orgSlug?: string };
+type MonitorWithOrg = WithOrg<SentryMonitor>;
 
 /**
  * Render a monitor's schedule for display.
@@ -53,42 +55,60 @@ export function formatSchedule(monitor: MonitorWithOrg): string {
 const MONITOR_COLUMNS: Column<MonitorWithOrg>[] = [
   { header: "ID", value: (m) => m.id },
   { header: "SLUG", value: (m) => m.slug },
-  { header: "NAME", value: (m) => escapeMarkdownCell(m.name) },
+  { header: "NAME", value: (m) => tableCell(m.name) },
   { header: "STATUS", value: (m) => m.status },
-  { header: "SCHEDULE", value: (m) => escapeMarkdownCell(formatSchedule(m)) },
+  { header: "SCHEDULE", value: (m) => tableCell(formatSchedule(m)) },
 ];
 
 /** Shared config that plugs into the org-list framework. */
-const monitorListConfig: OrgListConfig<SentryMonitor, MonitorWithOrg> = {
+const monitorListConfig: OrgListConfig<
+  SentryMonitor,
+  MonitorWithOrg,
+  typeof MonitorListItemSchema
+> = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "monitors",
-  commandPrefix: "sentry monitor list",
+  commandPrefix: () => sentry`monitor list`,
   listForOrg: (org) => listMonitors(org),
   listPaginated: (org, opts) => listMonitorsPaginated(org, opts),
   withOrg: (monitor, orgSlug) => ({ ...monitor, orgSlug }),
+  namesOf: (monitor) => [monitor.slug, monitor.name],
+  searchesNames: true,
   displayTable: (monitors: MonitorWithOrg[]) =>
     formatTable(monitors, MONITOR_COLUMNS),
-  schema: SentryMonitorSchema,
+  schema: MonitorListItemSchema,
 };
 
 const docs: OrgListCommandDocs = {
   brief: "List cron monitors",
   fullDescription:
     "List cron monitors in an organization.\n\n" +
-    "Target specification:\n" +
-    "  sentry monitor list               # auto-detect from DSN or config\n" +
-    "  sentry monitor list <org>/        # list all monitors in org (paginated)\n" +
-    "  sentry monitor list <org>/<proj>  # list monitors in org (project context)\n" +
-    "  sentry monitor list <org>         # list monitors in org\n\n" +
-    "Pagination:\n" +
-    "  sentry monitor list <org>/ -c next  # fetch next page\n" +
-    "  sentry monitor list <org>/ -c prev  # fetch previous page\n\n" +
-    "Examples:\n" +
-    "  sentry monitor list              # auto-detect or list all\n" +
-    "  sentry monitor list my-org/      # list monitors in my-org (paginated)\n" +
-    "  sentry monitor list --limit 10\n" +
-    "  sentry monitor list --json\n\n" +
+    "`<org>/<name>` lists monitors whose slug or name matches `<name>`, a glob (`<org>/nightly-*`) or text: exact or partial matches first, then close (fuzzy) matches. A bare `<name>` that is no project does the same in the detected organizations. Name filters can't be combined with --cursor.\n\n" +
     "Alias: `sentry monitors` → `sentry monitor list`",
+  examples: [
+    {
+      description: "List monitors (organization auto-detected)",
+      run: "monitor list",
+    },
+    {
+      description: "List cron monitors in an organization",
+      run: "monitor list my-org/",
+    },
+    {
+      description: "Fetch the next page",
+      run: "monitor list my-org/ -c next",
+    },
+    {
+      description: "Only monitors whose slug or name matches a glob",
+      run: "monitor list 'my-org/nightly-*'",
+    },
+    {
+      description:
+        "Monitors named like 'nightly' (fuzzy when nothing matches exactly)",
+      run: "monitor list my-org/nigthly",
+    },
+    { description: "Output as JSON", run: "monitor list --json" },
+  ],
 };
 
 export const listCommand = buildOrgListCommand(

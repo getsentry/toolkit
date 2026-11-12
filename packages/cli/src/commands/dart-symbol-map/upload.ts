@@ -15,11 +15,13 @@ import { basename } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { uploadDartSymbolMap } from "../../lib/api/dart-symbols.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath, parseText } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("dart-symbol-map.upload");
 
@@ -41,7 +43,7 @@ type DartSymbolMapUploadResult = {
 
 // Formatter
 
-const USAGE_HINT = "sentry dart-symbol-map upload --debug-id <uuid> <path>";
+const usageHint = () => sentry`dart-symbol-map upload --debug-id <uuid> <path>`;
 
 /** Format human-readable output for upload results. */
 function formatUploadResult(data: DartSymbolMapUploadResult): string {
@@ -167,11 +169,21 @@ export const uploadCommand = buildCommand({
       "A debug ID (--debug-id) is required to associate the map with its " +
       "companion native debug file (dSYM/ELF). The sentry-dart-plugin " +
       "extracts this automatically.\n\n" +
-      "Usage:\n" +
-      "  sentry dart-symbol-map upload --debug-id <uuid> mapping.json\n" +
-      "  sentry dart-symbol-map upload --debug-id <uuid> mapping.json --no-upload\n" +
-      "  sentry dart-symbol-map upload --debug-id <uuid> mapping.json --json\n\n" +
       "Supported on Sentry SaaS and self-hosted >= 25.8.0.",
+    examples: [
+      {
+        description: "Upload a Dart symbol map with a debug ID",
+        run: "dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json",
+      },
+      {
+        description: "Validate without uploading",
+        run: "dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json --no-upload",
+      },
+      {
+        description: "Output as JSON",
+        run: "dart-symbol-map upload --debug-id 12345678-1234-1234-1234-123456789abc mapping.json --json",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,
@@ -182,7 +194,7 @@ export const uploadCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the dart symbol map JSON file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "path",
         },
       ],
@@ -190,7 +202,7 @@ export const uploadCommand = buildCommand({
     flags: {
       "debug-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Debug ID (UUID) from the companion native debug file",
       },
       "no-upload": {
@@ -227,7 +239,7 @@ export const uploadCommand = buildCommand({
 
     // 3. --no-upload: validate only, no auth needed
     if (flags["no-upload"]) {
-      yield new CommandOutput<DartSymbolMapUploadResult>({
+      yield new CommandOutput({
         path: mappingPath,
         debugId: flags["debug-id"],
         uploaded: false,
@@ -240,10 +252,10 @@ export const uploadCommand = buildCommand({
     // 4. Resolve org/project
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 
@@ -262,7 +274,7 @@ export const uploadCommand = buildCommand({
     });
 
     // 6. Yield result
-    yield new CommandOutput<DartSymbolMapUploadResult>({
+    yield new CommandOutput({
       org,
       project,
       path: mappingPath,

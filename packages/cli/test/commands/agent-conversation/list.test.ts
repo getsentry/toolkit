@@ -103,6 +103,7 @@ function createMockContext() {
       stdout: { write: stdoutWrite },
       stderr: { write: stderrWrite },
       cwd: "/tmp",
+      commandPrefix: ["sentry", "agent-conversation", "list"],
     },
     stdoutWrite,
     stderrWrite,
@@ -208,7 +209,7 @@ describe("listCommand.func", () => {
     getProjectSpy = vi.spyOn(apiClient, "getProject");
     listConversationsSpy = vi.spyOn(apiClient, "listConversations");
     resolveTargetSpy = vi
-      .spyOn(resolveTarget, "resolveOrgOptionalFromArg")
+      .spyOn(resolveTarget, "resolveOrgOptionalTarget")
       .mockResolvedValue({ org: ORG });
     withProgressSpy = vi
       .spyOn(polling, "withProgress")
@@ -246,7 +247,7 @@ describe("listCommand.func", () => {
     await func.call(context, JSON_FLAGS, `${ORG}/`);
 
     expect(resolveTargetSpy).toHaveBeenCalledWith(
-      `${ORG}/`,
+      { type: "org-all", org: ORG },
       "/tmp",
       "agent-conversation list",
     );
@@ -268,7 +269,7 @@ describe("listCommand.func", () => {
     await func.call(context, JSON_FLAGS, undefined);
 
     expect(resolveTargetSpy).toHaveBeenCalledWith(
-      undefined,
+      { type: "auto-detect" },
       "/tmp",
       "agent-conversation list",
     );

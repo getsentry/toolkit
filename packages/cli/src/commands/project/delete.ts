@@ -14,7 +14,8 @@
  * Safety measures:
  * - Uses `buildDeleteCommand` — auto-injects `--yes`/`--force`/`--dry-run`
  *   flags and enforces the non-interactive guard before `func()` runs
- * - No auto-detect mode: `requireExplicitTarget` blocks accidental deletion
+ * - No auto-detect mode: `buildDeleteCommand` marks the command destructive,
+ *   so an omitted target fails before `func()` runs
  * - Type-out confirmation via `confirmByTyping` (unless --yes/--force)
  */
 
@@ -24,29 +25,28 @@ import {
   getOrganization,
   getProject,
 } from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { sentry } from "../../lib/app-identity.js";
 import { getCachedOrgRole } from "../../lib/db/regions.js";
 import { ApiError } from "../../lib/errors.js";
 import {
   formatProjectDeleted,
   type ProjectDeleteResult,
 } from "../../lib/formatters/human.js";
+import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import {
   buildDeleteCommand,
   confirmByTyping,
   isConfirmationBypassed,
-  requireExplicitTarget,
 } from "../../lib/mutate-command.js";
-import { resolveProjectBoundTarget } from "../../lib/resolve-target.js";
 import { buildProjectUrl } from "../../lib/sentry-web-urls.js";
+import {
+  type ProjectBoundTarget,
+  projectBoundTarget,
+} from "../../lib/target-positional.js";
 
 const log = logger.withTag("project.delete");
-
-/** Command name used in error messages and resolution hints */
-const COMMAND_NAME = "project delete";
 
 /**
  * Build an actionable 403 error by checking the user's org role.
@@ -102,7 +102,7 @@ async function buildPermissionError(
   return new ApiError(
     `Permission denied: cannot delete ${label}.\n\n` +
       `This requires a ${rolesWithAccess} role, or a token with the 'project:admin' scope.\n` +
-      `  Check your role:  sentry org view ${orgSlug}`,
+      `  Check your role:  ${sentry`org view ${orgSlug}`}`,
     403,
   );
 }
@@ -135,32 +135,41 @@ export const deleteCommand = buildDeleteCommand({
     brief: "Delete a project",
     fullDescription:
       "Permanently delete a Sentry project. This action cannot be undone.\n\n" +
-      "Requires explicit target — auto-detection is disabled for safety.\n\n" +
-      "Examples:\n" +
-      "  sentry project delete acme-corp/my-app\n" +
-      "  sentry project delete my-app\n" +
-      "  sentry project delete acme-corp/my-app --yes\n" +
-      "  sentry project delete acme-corp/my-app --force\n" +
-      "  sentry project delete acme-corp/my-app --dry-run",
+      "Requires explicit target — auto-detection is disabled for safety.",
+    examples: [
+      {
+        description: "Delete a project (prompts for confirmation)",
+        run: "project delete my-org/old-project",
+      },
+      {
+        description: "Delete without confirmation",
+        run: "project delete my-org/old-project --yes",
+      },
+      {
+        description: "Preview the deletion",
+        run: "project delete my-org/old-project --dry-run",
+      },
+    ],
   },
   output: {
     human: formatProjectDeleted,
-    jsonTransform: (result: ProjectDeleteResult) => {
-      if (result.dryRun) {
-        return {
-          dryRun: true,
-          org: result.orgSlug,
-          project: result.projectSlug,
-          name: result.projectName,
-          url: result.url,
-        };
-      }
-      return {
-        deleted: true,
-        org: result.orgSlug,
-        project: result.projectSlug,
-      };
-    },
+    jsonTransform: (result: ProjectDeleteResult, fields?: string[]) =>
+      filterFieldsIfSet(
+        result.dryRun
+          ? {
+              dryRun: true,
+              org: result.orgSlug,
+              project: result.projectSlug,
+              name: result.projectName,
+              url: result.url,
+            }
+          : {
+              deleted: true,
+              org: result.orgSlug,
+              project: result.projectSlug,
+            },
+        fields,
+      ),
   },
   parameters: {
     positional: {
@@ -169,23 +178,17 @@ export const deleteCommand = buildDeleteCommand({
         {
           placeholder: "org/project",
           brief: "<org>/<project> or <project> (search across orgs)",
-          parse: parseOrgProjectTarget,
+          parse: projectBoundTarget,
         },
       ],
     },
   },
-  async *func(this: SentryContext, flags: DeleteFlags, target: string) {
-    const { cwd } = this;
-
-    // Block auto-detect for safety — destructive commands require explicit targets
-    const parsed = parseOrgProjectArg(target);
-    requireExplicitTarget(
-      parsed,
-      "Project target",
-      `sentry ${COMMAND_NAME} <org>/<project>`,
-    );
-
-    const resolved = await resolveProjectBoundTarget(parsed, cwd, COMMAND_NAME);
+  async *func(
+    this: SentryContext,
+    flags: DeleteFlags,
+    target: ProjectBoundTarget,
+  ) {
+    const resolved = await target.resolved;
     const { org: orgSlug, project: projectSlug } = resolved;
 
     // Use already-fetched project data from project-search, or fetch for

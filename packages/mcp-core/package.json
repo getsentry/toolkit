@@ -137,9 +137,17 @@
       "types": "./dist/utils/url-utils.d.ts",
       "default": "./dist/utils/url-utils.js"
     },
+    "./constraint-lookup": {
+      "types": "./dist/constraint-lookup.d.ts",
+      "default": "./dist/constraint-lookup.js"
+    },
     "./scopes": {
       "types": "./dist/scopes.d.ts",
       "default": "./dist/scopes.js"
+    },
+    "./transports/stdio": {
+      "types": "./dist/transports/stdio.d.ts",
+      "default": "./dist/transports/stdio.js"
     }
   },
   "scripts": {
@@ -159,6 +167,7 @@
   "devDependencies": {
     "@ai-sdk/provider": "^3.0.6",
     "@ai-sdk/provider-utils": "^4.0.11",
+    "@modelcontextprotocol/sdk": "catalog:",
     "@sentry/mcp-server-mocks": "workspace:*",
     "@sentry/mcp-server-tsconfig": "workspace:*",
     "msw": "catalog:",
@@ -171,10 +180,10 @@
     "@ai-sdk/openai": "catalog:",
     "@logtape/logtape": "^1.1.1",
     "@logtape/sentry": "^1.1.1",
-    "@modelcontextprotocol/sdk": "catalog:",
     "@modelcontextprotocol/server": "catalog:",
-    "@sentry/api": "0.337.0",
+    "@sentry/api": "catalog:",
     "@sentry/core": "catalog:",
+    "@sentry/search-syntax": "catalog:",
     "@sentry/toolkit-core": "workspace:*",
     "ai": "catalog:",
     "dotenv": "catalog:",

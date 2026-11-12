@@ -5,7 +5,6 @@ import { SENTRY_GUIDES } from "@sentry/mcp-core/constants";
 import { z } from "zod";
 import type { RateLimitResult } from "../types/chat";
 import type {
-  AutoRagSearchResponse,
   ComparisonFilter,
   CompoundFilter,
   AutoRagSearchRequest,
@@ -38,7 +37,7 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
         const encoder = new TextEncoder();
         const data = encoder.encode(clientIP);
         const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashArray = [...new Uint8Array(hashBuffer)];
         const hashHex = hashArray
           .map((b) => b.toString(16).padStart(2, "0"))
           .join("");
@@ -167,7 +166,7 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
         await c.env.AI.autorag(autoragId).search(searchParams);
 
       // Process search results - handle the actual response format from Cloudflare AI
-      const searchData = searchResult as AutoRagSearchResponse;
+      const searchData = searchResult;
 
       if (searchData.data?.length === 0) {
         logger.warn(

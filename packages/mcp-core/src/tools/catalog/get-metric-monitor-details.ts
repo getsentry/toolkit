@@ -17,6 +17,7 @@ export const getMetricMonitorDetailsOutputSchema = z.object({
 
 export default defineTool({
   name: "get_metric_monitor_details",
+  title: "Get Metric Monitor Details",
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [

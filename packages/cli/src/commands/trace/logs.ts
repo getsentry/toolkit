@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { type LogSortDirection, listTraceLogs } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   buildProjectQuery,
   parseLogSort,
@@ -13,7 +14,7 @@ import {
 } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { ORG_PROJECT_TARGET, textParser } from "../../lib/completion-target.js";
 import { toSearchQueryError } from "../../lib/errors.js";
 import { filterFields } from "../../lib/formatters/json.js";
 import { formatLogTable } from "../../lib/formatters/log.js";
@@ -25,6 +26,10 @@ import {
   LIST_MAX_LIMIT,
 } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
 import { buildTraceUrl } from "../../lib/sentry-web-urls.js";
 import {
@@ -35,8 +40,11 @@ import {
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
 import {
-  parseTraceTarget,
+  applyTraceTargetInput,
+  parseTraceTargetInput,
+  type ResolvedTraceOrg,
   resolveTraceOrg,
+  type TraceTargetInput,
   warnIfNormalized,
 } from "../../lib/trace-target.js";
 
@@ -88,7 +96,7 @@ function formatTraceLogsHuman(data: TraceLogsData): string {
 const DEFAULT_PERIOD = "14d";
 
 /** Usage hint shown in error messages */
-const USAGE_HINT = "sentry trace logs [<org>/[<project>/]]<trace-id>";
+const usageHint = () => sentry`trace logs [<org>/[<project>/]]<trace-id>`;
 
 /**
  * Parse --limit flag, delegating range validation to shared utility.
@@ -97,24 +105,81 @@ function parseLimit(value: string): number {
   return validateLimit(value, 1, LIST_MAX_LIMIT);
 }
 
+/** `trace logs` arguments, resolved. */
+type TraceLogsTarget = ResolvedTraceOrg & {
+  /** Project the user named, to filter the trace's logs by */
+  readonly projectFilter?: string;
+};
+
+/** The arguments of `trace logs`. */
+type TraceLogsArguments = BoundArguments<TraceTargetInput, TraceLogsTarget>;
+
+/** Parse `trace logs` arguments, without side effects. */
+function parseTraceLogsInput(args: readonly string[]): TraceTargetInput {
+  return parseTraceTargetInput(args, usageHint());
+}
+
+/**
+ * Resolve `trace logs` arguments to the trace's org; a project the user
+ * named becomes a filter.
+ */
+async function resolveTraceLogsTarget(
+  input: TraceTargetInput,
+  context: SentryContext,
+): Promise<TraceLogsTarget> {
+  const parsed = applyTraceTargetInput(input);
+  warnIfNormalized(parsed, "trace.logs");
+  const { traceId, org } = await resolveTraceOrg(
+    parsed,
+    context.cwd,
+    "trace logs",
+    usageHint(),
+  );
+  return {
+    traceId,
+    org,
+    projectFilter: parsed.type === "explicit" ? parsed.project : undefined,
+  };
+}
+
 export const logsCommand = buildCommand({
   docs: {
     brief: "View logs associated with a trace",
     fullDescription:
       "View logs associated with a specific distributed trace.\n\n" +
-      "Target specification:\n" +
-      "  sentry trace logs <trace-id>                    # auto-detect org\n" +
-      "  sentry trace logs <org>/<trace-id>              # explicit org\n" +
-      "  sentry trace logs <org>/<project>/<trace-id>    # filter to project\n\n" +
       "When a project is specified, only logs from that project are shown.\n" +
       "Use --query 'project:[a,b]' to filter to multiple projects.\n\n" +
-      "The trace ID is the 32-character hexadecimal identifier.\n\n" +
-      "Examples:\n" +
-      "  sentry trace logs abc123def456abc123def456abc123de\n" +
-      "  sentry trace logs myorg/abc123def456abc123def456abc123de\n" +
-      "  sentry trace logs myorg/backend/abc123def456abc123def456abc123de\n" +
-      "  sentry trace logs --period 7d abc123def456abc123def456abc123de\n" +
-      "  sentry trace logs --json abc123def456abc123def456abc123de",
+      "The trace ID is the 32-character hexadecimal identifier.",
+    examples: [
+      {
+        description: "View logs for a trace",
+        run: "trace logs abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Filter trace logs to one project",
+        run: "trace logs my-org/cli-server/abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Filter trace logs to several projects",
+        run: 'trace logs abc123def456abc123def456abc12345 -q "project:[cli-server,api]"',
+      },
+      {
+        description: "Search with a longer time window",
+        run: "trace logs --period 30d abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Only error logs",
+        run: "trace logs -q 'severity:error' abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Output as JSON",
+        run: "trace logs --json abc123def456abc123def456abc12345",
+      },
+      {
+        description: "Logs for a trace in an explicit organization",
+        run: "trace logs my-org/abc123def456abc123def456abc12345",
+      },
+    ],
   },
   output: {
     human: formatTraceLogsHuman,
@@ -127,15 +192,14 @@ export const logsCommand = buildCommand({
     },
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/trace-id",
-        brief:
-          "[<org>/[<project>/]]<trace-id> - Optional org/project and required trace ID",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: boundArguments({
+      placeholder: "org/project/trace-id",
+      brief:
+        "[<org>/[<project>/]]<trace-id> - Optional org/project and required trace ID",
+      kind: ORG_PROJECT_TARGET,
+      parse: parseTraceLogsInput,
+      resolve: resolveTraceLogsTarget,
+    }),
     flags: {
       web: {
         kind: "boolean",
@@ -150,7 +214,7 @@ export const logsCommand = buildCommand({
       },
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of log entries (<=${LIST_MAX_LIMIT})`,
         default: "100", // Logs are high-volume; 25 is too stingy for debugging
       },
@@ -178,17 +242,14 @@ export const logsCommand = buildCommand({
       s: "sort",
     },
   },
-  async *func(this: SentryContext, flags: LogsFlags, ...args: string[]) {
+  async *func(
+    this: SentryContext,
+    flags: LogsFlags,
+    target: TraceLogsArguments,
+  ) {
     applyFreshFlag(flags);
-    const { cwd } = this;
     const timeRange = flags.period;
-
-    // Parse and resolve org/trace-id (project captured for filtering)
-    const parsed = parseTraceTarget(args, USAGE_HINT);
-    warnIfNormalized(parsed, "trace.logs");
-    const { traceId, org } = await resolveTraceOrg(parsed, cwd, USAGE_HINT);
-    const projectFilter =
-      parsed.type === "explicit" ? parsed.project : undefined;
+    const { traceId, org, projectFilter } = await target.resolved;
 
     if (flags.web) {
       await openInBrowser(buildTraceUrl(org, traceId), "trace");
@@ -219,7 +280,7 @@ export const logsCommand = buildCommand({
 
     const emptyMessage =
       `No logs found for trace ${traceId} in the last ${formatTimeRangeFlag(flags.period)}.\n\n` +
-      `Try a longer period: sentry trace logs --period 30d ${traceId}`;
+      `Try a longer period: ${sentry`trace logs --period 30d ${traceId}`}`;
 
     yield new CommandOutput({
       logs,
@@ -231,11 +292,11 @@ export const logsCommand = buildCommand({
     // Build hint with real values for easy copy-paste
     if (projectFilter) {
       return {
-        hint: `Filtered to project '${projectFilter}'. Full trace logs: sentry trace logs ${org}/${traceId}`,
+        hint: `Filtered to project '${projectFilter}'. Full trace logs: ${sentry`trace logs ${org}/${traceId}`}`,
       };
     }
     return {
-      hint: `Filter by project: sentry trace logs ${org}/<project>/${traceId}`,
+      hint: `Filter by project: ${sentry`trace logs ${org}/<project>/${traceId}`}`,
     };
   },
 });

@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-org
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Sentry organizations
 requires:
   bins: ["sentry"]
@@ -15,18 +15,37 @@ Work with Sentry organizations
 
 List organizations
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<filter>]` | Only list organizations whose slug or name fuzzy-matches this text or matches this glob |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of organizations to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 - `-a, --account <value> - Only list organizations of this account (email, username, or account id; <who>:<server> for one server; env:SENTRY_AUTH_TOKEN)`
 
-### `sentry org view [<org>]`
+**JSON Fields** (use `--json --fields` to select specific fields):
 
-View details of an organization
-
-**Flags:**
-- `-w, --web - Open in browser`
-- `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Organization ID |
+| `slug` | string | Organization slug |
+| `name` | string | Organization name |
+| `dateCreated` | string | When the organization was created (ISO 8601) |
+| `status` | object | Organization status |
+| `isEarlyAdopter` | boolean | Whether the organization is an early adopter |
+| `require2FA` | boolean | Whether members must use two-factor authentication |
+| `features` | array | Features enabled for the organization |
+| `avatar` | object | Organization avatar |
+| `links` | object | Organization and region URLs |
+| `hasAuthProvider` | boolean | Whether SSO is configured for the organization |
+| `allowMemberInvite` | boolean | Whether members can invite other members |
+| `allowMemberProjectCreation` | boolean | Whether members can create projects |
+| `orgRole` | string | Your role in the organization |
+| `region` | string | Region, when orgs span several (e.g. US, EU) |
+| `account` | object | Account the org was listed under, across accounts |
 
 **Examples:**
 
@@ -34,25 +53,63 @@ View details of an organization
 # List organizations
 sentry org list
 
-# Only one account's organizations
-sentry org list --account jane@acme.com
-# The same email on several servers: add the server
-sentry org list -a jane@example.com:sentry.io
-
-# Only organizations whose slug or name matches "acme", best matches first
-# (case-insensitive; prefix, substring, and small typos match too)
+# Only organizations whose slug or name matches (fuzzy, best matches first)
 sentry org list acme
-# ...or matches a glob
+
+# Only organizations matching a glob
 sentry org list 'acme-*'
 
+# Only one account's organizations
+sentry org list --account jane@acme.com
+
+# Same email on several servers: add the server
+sentry org list -a jane@example.com:sentry.io
+
+# Output as JSON
+sentry org list --json
+```
+
+### `sentry org view [<org>]`
+
+View details of an organization
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org>]` | Organization slug (optional if auto-detected) |
+
+**Flags:**
+- `-w, --web - Open in browser`
+- `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Organization ID |
+| `slug` | string | Organization slug |
+| `name` | string | Organization name |
+| `dateCreated` | string | When the organization was created (ISO 8601) |
+| `status` | object | Organization status |
+| `isEarlyAdopter` | boolean | Whether the organization is an early adopter |
+| `require2FA` | boolean | Whether members must use two-factor authentication |
+| `features` | array | Features enabled for the organization |
+| `avatar` | object | Organization avatar |
+| `links` | object | Organization and region URLs |
+| `hasAuthProvider` | boolean | Whether SSO is configured for the organization |
+| `allowMemberInvite` | boolean | Whether members can invite other members |
+| `allowMemberProjectCreation` | boolean | Whether members can create projects |
+| `orgRole` | string | Your role in the organization |
+
+**Examples:**
+
+```bash
 # View organization details
 sentry org view my-org
 
-# Open in browser
+# Open in the browser
 sentry org view my-org -w
-
-# JSON output
-sentry org list --json
 ```
 
 All commands also support `--json`, `--fields`, `--help`, `--log-level`, and `--verbose` flags.

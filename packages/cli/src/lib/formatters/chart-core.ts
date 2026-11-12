@@ -3,10 +3,9 @@
  *
  * Turns a {@link TimeseriesResult} into a resolution-independent
  * {@link ChartModel}, then rasterizes that model into an RGBA pixel canvas.
- * Both the sixel renderer (pixel resolution) and the ASCII renderer
- * (character-cell resolution) consume this single core so the two paths
- * agree on layout, palette, and stacking. The output resolution is chosen by
- * the target and fed in upfront via {@link rasterizeChart}.
+ * Dashboard and Explore graphics share this rasterizer. Callers can also
+ * construct a model directly when their data has different stacking or scale
+ * semantics. The output resolution is chosen by {@link rasterizeChart}'s caller.
  */
 
 import type { TimeseriesResult } from "../../types/dashboard.js";
@@ -71,7 +70,8 @@ export function hexToRgb(hex: string): [number, number, number] {
 /** One series in a chart model: a label plus its per-bucket values. */
 export type ChartSeries = {
   label: string;
-  values: number[];
+  /** Per-bucket values; null leaves a gap without shifting later buckets. */
+  values: (number | null)[];
 };
 
 /** Heatmap grid model: categories (rows) × time buckets (columns). */
@@ -115,7 +115,7 @@ export function buildChartModel(
     return;
   }
 
-  const series: ChartSeries[] = data.series.map((s) => ({
+  const series = data.series.map((s) => ({
     label: s.label,
     values: s.values.map((v) => v.value),
   }));
@@ -124,7 +124,7 @@ export function buildChartModel(
 
   const maxVal = stacked
     ? Math.max(...bucketTotals(series, buckets), 1)
-    : Math.max(...(series[0]?.values ?? []), 1);
+    : Math.max(...(series[0]?.values ?? []).filter((v) => v !== null), 1);
 
   return { kind: "timeseries", series, buckets, maxVal, stacked };
 }
@@ -136,7 +136,9 @@ export function buildCategoricalChartModel(
   const series = data.series
     .map((item) => ({
       label: item.label,
-      values: [item.values.reduce((total, value) => total + value.value, 0)],
+      values: [
+        item.values.reduce((total, value) => total + (value.value ?? 0), 0),
+      ],
     }))
     .sort((a, b) => {
       if (a.label === "Other") {
@@ -178,7 +180,8 @@ export function buildHeatmapModel(
     return;
   }
   const rows = data.series.map((s) => {
-    const vals = s.values.map((v) => v.value);
+    // Unmeasured cells take the lowest intensity, which renders blank.
+    const vals = s.values.map((v) => v.value ?? 0);
     // pad shorter rows so every row has exactly `buckets` columns
     return vals.length < buckets
       ? // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
@@ -197,7 +200,7 @@ function bucketTotals(series: ChartSeries[], buckets: number): number[] {
     for (let i = 0; i < buckets; i++) {
       const total = totals[i];
       const value = s.values[i];
-      if (total !== undefined && value !== undefined) {
+      if (total !== undefined && value != null) {
         totals[i] = total + value;
       }
     }
@@ -216,6 +219,8 @@ export type RasterizeOpts = {
   height: number;
   /** Leave the background transparent instead of filling it. */
   backgroundTransparent?: boolean;
+  /** Minimum single-series bar height in pixels; nulls stay empty. Default: 0. */
+  minBarHeight?: number;
 };
 
 /**
@@ -223,7 +228,7 @@ export type RasterizeOpts = {
  *
  * This is the pixel core: the resolution is chosen by the caller for its
  * output target (sixel cell pixels, or an ASCII cell-grid multiple). Returns
- * `undefined` when the model has no buckets to draw.
+ * `undefined` when there are no buckets.
  */
 export function rasterizeChart(
   model: ChartModel,
@@ -253,7 +258,7 @@ export function rasterizeChart(
   } else if (fitted.stacked) {
     drawStackedColumns(img, fitted, height, layout);
   } else {
-    drawBars(img, fitted, height, layout);
+    drawBars(img, fitted, height, layout, opts.minBarHeight ?? 0);
   }
 
   return img;
@@ -262,16 +267,23 @@ export function rasterizeChart(
 /**
  * Downsample a model's series so the bucket count fits the canvas: with a 1px
  * bar and 1px gap each column needs ~2px, so cap buckets at `width / 2`.
- * Returns the model unchanged when it already fits.
+ * Returns the model unchanged when it already fits. A single-series column
+ * averages only its measured buckets; a column with none stays a gap, so later
+ * buckets keep their position. A stacked column averages each series over the
+ * whole window, counting an unmeasured bucket as nothing, so the stack never
+ * grows past `maxVal`; a column with nothing measured draws no segments.
  */
 function fitModelToWidth(model: ChartModel, width: number): ChartModel {
   const maxBuckets = Math.max(1, Math.floor(width / 2));
   if (model.buckets <= maxBuckets || model.kind === "categorical") {
     return model;
   }
-  const series = model.series.map((s) => ({
+  const series: ChartSeries[] = model.series.map((s) => ({
     label: s.label,
-    values: downsample(s.values, maxBuckets),
+    values: downsample(
+      model.stacked ? s.values.map((v) => v ?? 0) : s.values,
+      maxBuckets,
+    ),
   }));
   const buckets = Math.max(...series.map((s) => s.values.length));
   return { ...model, series, buckets };
@@ -296,6 +308,7 @@ function drawBars(
   model: ChartModel,
   height: number,
   layout: BarLayout,
+  minBarHeight: number,
 ): void {
   const series = model.series[0];
   if (!series) {
@@ -304,8 +317,14 @@ function drawBars(
   const color = hexToRgb(seriesColor(series.label, 0));
 
   for (let i = 0; i < series.values.length; i++) {
-    const value = series.values[i] ?? 0;
-    const h = Math.round((value / model.maxVal) * height);
+    const value = series.values[i];
+    if (value == null) {
+      continue;
+    }
+    const h = Math.max(
+      minBarHeight,
+      Math.round((value / model.maxVal) * height),
+    );
     const x0 = i * (layout.barWidth + layout.gap);
     drawPixelRect(img, {
       x: x0,

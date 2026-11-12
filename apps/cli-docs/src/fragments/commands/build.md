@@ -1,18 +1,5 @@
 
 
-## Examples
-
-```bash
-# Download a build artifact by ID
-sentry build download 1234567890
-
-# Download to a specific path
-sentry build download 1234567890 --output ./app.ipa
-
-# Output the result as JSON
-sentry build download 1234567890 --json
-```
-
 ## Important Notes
 
 - `build upload` supports **Android APK/AAB** and **iOS XCArchive/IPA**. An

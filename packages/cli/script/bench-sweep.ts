@@ -41,6 +41,7 @@ import {
   PRESETS,
   type PresetName,
 } from "../test/fixtures/bench/presets.js";
+import { logger } from "../src/lib/logger.js";
 
 /** Default concurrency values we sweep across. */
 const DEFAULT_VALUES = [1, 2, 4, 8, 16, 32, 50, 100, 200] as const;
@@ -74,7 +75,7 @@ function parseArgs(argv: readonly string[]): SweepArgs {
   const kneeThresholdPct = 0.03; // 3%
 
   for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i] as string;
+    const arg = argv[i];
     const next = argv[i + 1];
     switch (arg) {
       case "--size": {
@@ -144,10 +145,14 @@ function parseArgs(argv: readonly string[]): SweepArgs {
 }
 
 function printHelp(): void {
-  console.log("Usage: pnpm run bench:sweep [-- --size small|medium|large|all]");
-  console.log("                             [--values 1,2,4,8,...]");
-  console.log("                             [--runs N] [--warmup N]");
-  console.log("                             [--json]");
+  logger.log(
+    [
+      "Usage: pnpm run bench:sweep [-- --size small|medium|large|all]",
+      "                             [--values 1,2,4,8,...]",
+      "                             [--runs N] [--warmup N]",
+      "                             [--json]",
+    ].join("\n"),
+  );
 }
 
 /** Resolve (or create) a synthetic fixture, same as bench.ts. */
@@ -234,12 +239,12 @@ async function runSweep(args: SweepArgs): Promise<SweepResult[]> {
   for (const fx of fixtures) {
     if (!existsSync(fx.rootDir)) {
       if (!args.json) {
-        console.error(`✗ fixture missing: ${fx.rootDir}`);
+        logger.error(`fixture missing: ${fx.rootDir}`);
       }
       continue;
     }
     if (!args.json) {
-      console.log(`\n${fx.label}  (${fx.rootDir})`);
+      logger.log(`\n${fx.label}  (${fx.rootDir})`);
     }
     await withBenchDb(async () => {
       await sweepFixture(fx, ops, args, results);
@@ -273,7 +278,7 @@ async function sweepFixture(
         runs: stats.runs,
       });
       if (!args.json) {
-        console.log(
+        logger.log(
           `  ${op.label.padEnd(24)}  conc=${String(concurrency).padStart(3)}  p50 ${stats.p50.toFixed(1).padStart(6)}ms  p95 ${stats.p95.toFixed(1).padStart(6)}ms`,
         );
       }
@@ -321,20 +326,19 @@ function printKnees(
     list.push(r);
     byKey.set(key, list);
   }
-  console.log("");
-  console.log(
+  const lines = [
     `Knee analysis (smallest concurrency past which each additional step gains < ${(thresholdPct * 100).toFixed(0)}%)`,
-  );
-  console.log("─".repeat(72));
+    "─".repeat(72),
+  ];
   for (const [key, entries] of byKey) {
     const [fixture, operation] = key.split("||");
     const knee = findKnee(entries, thresholdPct);
     const minP50 = Math.min(...entries.map((e) => e.p50));
-    console.log(
+    lines.push(
       `  ${String(fixture).padEnd(20)}  ${String(operation).padEnd(24)}  knee = ${knee ?? "?"} (best p50 ${minP50.toFixed(1)}ms)`,
     );
   }
-  console.log("");
+  logger.log(`\n${lines.join("\n")}\n`);
 }
 
 async function main(): Promise<number> {
@@ -355,7 +359,7 @@ async function main(): Promise<number> {
     };
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
-    console.log(
+    logger.log(
       `\nsystem: ${platform()}/${arch()}, availableParallelism=${availableParallelism()}`,
     );
     printKnees(results, args.kneeThresholdPct);
@@ -367,6 +371,6 @@ async function main(): Promise<number> {
 main()
   .then((code) => process.exit(code))
   .catch((error) => {
-    console.error(error);
+    logger.error(error);
     process.exit(1);
   });

@@ -5,26 +5,40 @@
  */
 
 import { stat } from "node:fs/promises";
-// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import { reportCliError } from "../error-reporting.js";
+import { logger } from "../logger.js";
+
+const log = logger.withTag("fs");
 
 /**
- * Check if an error is an expected file system error that should be silently ignored.
+ * System error codes that point at a CLI bug rather than the user's
+ * filesystem: we leaked descriptors, exhausted memory, or used a closed fd.
+ * These stay reported even though they come from a syscall.
+ */
+const REPORTABLE_SYSTEM_ERROR_CODES: ReadonlySet<string> = new Set([
+  "EMFILE",
+  "ENFILE",
+  "ENOMEM",
+  "EBADF",
+]);
+
+/**
+ * POSIX errno names (`EIO`, `ENOTCONN`, …) plus libuv's `UNKNOWN`. Excludes
+ * Node's own `ERR_*` codes, which signal misuse of an API by our code.
+ */
+const ERRNO_CODE_RE = /^(E[A-Z0-9]+|UNKNOWN)$/;
+
+/**
+ * Check if an error is an expected file system error that should be ignored.
  *
- * Expected errors during file scanning:
- * - ENOENT: File or directory does not exist
- * - EACCES: Permission denied (e.g., no read access)
- * - EPERM: Operation not permitted (e.g., file locked, or system-level restriction)
- * - EISDIR: Path is a directory, not a file (e.g., `.env/` directory instead of `.env` file)
- * - ENOTDIR: A path component is not a directory (e.g., `/file.txt/child`)
- * - EINVAL: Invalid argument (e.g., scandir on a special/virtual filesystem entry like /proc paths)
- * - ELOOP: Too many symbolic links (e.g., cyclic symlink encountered during scan)
- * - ETIMEDOUT: Connection timed out (e.g., transient read on a network or cloud-mounted filesystem)
- * - ENOTCONN: Transport endpoint is not connected (e.g., a stale or disconnected FUSE/network mount)
- * - Unknown system error: Non-POSIX kernel errors on macOS (e.g., errno -11 / EAGAIN on .trace bundles)
- *   that Node.js cannot map to a standard code string
- *
- * All other errors are unexpected and should be reported to Sentry.
+ * Scanning is best-effort: any directory or file the OS refuses to read is
+ * skipped. An OS errno describes the user's machine — missing files,
+ * permissions, virtual filesystems (`/proc` → EINVAL), and unhealthy
+ * network, cloud, or FUSE mounts (EIO, ENOTCONN, ETIMEDOUT, ECANCELED,
+ * EINTR, macOS "Unknown system error -11", …). None of these are
+ * actionable for the CLI, and allowlisting them one errno at a time kept
+ * missing the next one. Only {@link REPORTABLE_SYSTEM_ERROR_CODES} and
+ * non-errno errors (bugs in our own code) are reported to Sentry.
  *
  * @param error - The error to check
  * @returns True if the error is expected and should be ignored
@@ -34,21 +48,8 @@ function isIgnorableFileError(error: unknown): boolean {
     return false;
   }
   const code = (error as NodeJS.ErrnoException).code;
-  if (
-    code === "ENOENT" ||
-    code === "EACCES" ||
-    code === "EPERM" ||
-    code === "EISDIR" ||
-    code === "ENOTDIR" ||
-    code === "EINVAL" ||
-    code === "ELOOP" ||
-    code === "ETIMEDOUT" ||
-    code === "ENOTCONN" ||
-    // macOS surfaces non-POSIX kernel errors (e.g. errno -11 on .trace bundles)
-    // as "Unknown system error -N" without a standard POSIX code string.
-    code === "UNKNOWN"
-  ) {
-    return true;
+  if (typeof code === "string" && ERRNO_CODE_RE.test(code)) {
+    return !REPORTABLE_SYSTEM_ERROR_CODES.has(code);
   }
   // Node.js may omit the code entirely for non-POSIX kernel errors; fall back
   // to matching the message prefix that macOS / libuv uses in that case.
@@ -59,6 +60,9 @@ function isIgnorableFileError(error: unknown): boolean {
  * Handle a file system error by either ignoring it (for expected errors)
  * or capturing it to Sentry (for unexpected errors).
  *
+ * Ignored errors other than ENOENT are logged at debug level so
+ * `--verbose` explains why a directory or file was skipped.
+ *
  * @param error - The error that occurred
  * @param context - Additional context for Sentry (e.g., file path, operation)
  */
@@ -67,7 +71,7 @@ export function handleFileError(
   context: { operation: string; path?: string },
 ): void {
   if (!isIgnorableFileError(error)) {
-    Sentry.captureException(error, {
+    reportCliError(error, {
       tags: {
         operation: context.operation,
       },
@@ -75,6 +79,12 @@ export function handleFileError(
         path: context.path,
       },
     });
+    return;
+  }
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    log.debug(
+      `${context.operation}: skipped unreadable path (${(error as Error).message})`,
+    );
   }
 }
 

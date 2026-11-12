@@ -10,6 +10,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ignore from "ignore";
+import picomatch from "picomatch";
 import { beforeEach, describe, expect, test } from "vitest";
 import { buildEmptyDiscoveryError } from "../../../src/lib/sourcemap/inject.js";
 import {
@@ -161,15 +162,18 @@ describe("syncWasmSourcemap", () => {
 
     // The id is still reportable: it was read off the module.
     expect(result.debugId).toBe(FIXED_UUID);
-    expect(result.mapWritten).toBe(false);
+    // Reported as a real run would write it, so `inject --dry-run` counts it.
+    expect(result.mapWritten).toBe(true);
+    expect(result.moduleStamped).toBe(false);
     expect(await readFile(wasmPath)).toEqual(wasmBefore);
     expect(await readFile(mapPath)).toEqual(mapBefore);
   });
 
-  test("dry run over an unstamped module reports no id", async () => {
+  test("dry run over an unstamped module reports no id but both changes", async () => {
     const wasmPath = await writeWasm("bare.wasm");
     const mapPath = await writeMap("bare.wasm.map");
     const wasmBefore = await readFile(wasmPath);
+    const mapBefore = await readFile(mapPath);
 
     const result = await syncWasmSourcemap(
       { wasmPath, mapPath },
@@ -177,8 +181,23 @@ describe("syncWasmSourcemap", () => {
     );
 
     expect(result.debugId).toBeUndefined();
-    expect(result.moduleStamped).toBe(false);
+    expect(result.moduleStamped).toBe(true);
+    expect(result.mapWritten).toBe(true);
     expect(await readFile(wasmPath)).toEqual(wasmBefore);
+    expect(await readFile(mapPath)).toEqual(mapBefore);
+  });
+
+  test("dry run over an already-synced pair reports nothing to change", async () => {
+    const wasmPath = await writeWasm("app.wasm", FIXED_UUID);
+    const mapPath = await writeMap("app.wasm.map", FIXED_UUID);
+
+    const result = await syncWasmSourcemap(
+      { wasmPath, mapPath },
+      { dryRun: true },
+    );
+
+    expect(result.mapWritten).toBe(false);
+    expect(result.moduleStamped).toBe(false);
   });
 });
 
@@ -221,7 +240,37 @@ describe("discoverWasmPairs", () => {
     const matcher = ignore();
     matcher.add(["vendor/**"]);
 
-    const pairs = await discoverWasmPairs(dir, matcher);
+    const pairs = await discoverWasmPairs(dir, { ignoreMatcher: matcher });
+
+    expect(pairs.map((p) => p.wasmPath)).toEqual([wasmPath]);
+  });
+
+  test("keeps only pairs a glob target matches", async () => {
+    await mkdir(join(dir, "pkg"));
+    await writeFile(
+      join(dir, "pkg", "app.wasm"),
+      wasmModule([customSection("name", fromHex("00"))]),
+    );
+    await writeFile(join(dir, "pkg", "app.wasm.map"), '{"version":3}');
+    await writeWasm("other.wasm", FIXED_UUID);
+    await writeMap("other.wasm.map");
+
+    const pairs = await discoverWasmPairs(dir, {
+      include: picomatch("pkg/**"),
+    });
+
+    expect(pairs.map((p) => p.wasmPath)).toEqual([
+      join(dir, "pkg", "app.wasm"),
+    ]);
+  });
+
+  test("keeps a pair when only its map matches the glob", async () => {
+    const wasmPath = await writeWasm("app.wasm", FIXED_UUID);
+    await writeMap("app.wasm.map");
+
+    const pairs = await discoverWasmPairs(dir, {
+      include: picomatch("**/*.map"),
+    });
 
     expect(pairs.map((p) => p.wasmPath)).toEqual([wasmPath]);
   });
@@ -274,6 +323,30 @@ describe("addWasmDiscoveryCounts", () => {
     expect(buildEmptyDiscoveryError(dir, diag).message).toContain(
       "1 .wasm.map file(s)",
     );
+  });
+
+  test("counts only what a glob target matches", async () => {
+    await mkdir(join(dir, "pkg"));
+    await writeFile(
+      join(dir, "pkg", "app.wasm"),
+      wasmModule([customSection("name", fromHex("00"))]),
+    );
+    await writeFile(join(dir, "pkg", "app.wasm.map"), '{"version":3}');
+    await writeWasm("other.wasm", FIXED_UUID);
+    await writeMap("other.wasm.map");
+
+    const diag = await addWasmDiscoveryCounts(
+      dir,
+      { jsFiles: 0, mapFiles: 1 },
+      { include: picomatch("pkg/**") },
+    );
+
+    expect(diag).toEqual({
+      jsFiles: 0,
+      mapFiles: 0,
+      wasmFiles: 1,
+      wasmMaps: 1,
+    });
   });
 
   test("leaves JS maps in the JS tally", async () => {

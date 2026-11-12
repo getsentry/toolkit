@@ -13,6 +13,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -169,7 +170,7 @@ describe.each(DRIVERS)("sqlite adapter [%s driver]", (kind) => {
     const row = db.query("SELECT data FROM t").get() as {
       data: Uint8Array;
     };
-    expect(Array.from(row.data)).toEqual([1, 2, 3, 255]);
+    expect([...row.data]).toEqual([1, 2, 3, 255]);
     db.close();
   });
 
@@ -366,5 +367,70 @@ describe("wasm driver lock handling", () => {
     const db = new Database(dbPath);
     expect(existsSync(lockDir)).toBe(true);
     db.close();
+  });
+});
+
+/**
+ * The native driver leaves `cli.db` in WAL mode, which is stored in the file
+ * header. The WASM driver can't read a WAL database, so it switches the file
+ * back to a rollback journal on open.
+ */
+describe("wasm driver and a WAL-mode database", () => {
+  let dir: string;
+
+  afterEach(() => {
+    __setDriverForTests(null);
+    if (dir) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /** Write one row with the native driver in WAL mode, then close. */
+  function createWalDatabase(): string {
+    dir = mkdtempSync(join(tmpdir(), "sqlite-wal-"));
+    const dbPath = join(dir, "cli.db");
+    __setDriverForTests("node");
+    const native = new Database(dbPath);
+    native.exec("PRAGMA journal_mode = WAL");
+    native.exec("CREATE TABLE t (a INTEGER)");
+    native.query("INSERT INTO t (a) VALUES (?)").run(1);
+    native.close();
+    expect(readFileSync(dbPath)[18]).toBe(2);
+    return dbPath;
+  }
+
+  test("reads a database the native driver left in WAL mode", () => {
+    const dbPath = createWalDatabase();
+
+    __setDriverForTests("wasm");
+    const db = new Database(dbPath);
+    expect(db.query("SELECT a FROM t").get()).toEqual({ a: 1 });
+    db.query("INSERT INTO t (a) VALUES (?)").run(2);
+    db.close();
+
+    expect(readFileSync(dbPath)[18]).toBe(1);
+    expect(existsSync(`${dbPath}.lock`)).toBe(false);
+
+    __setDriverForTests("node");
+    const native = new Database(dbPath);
+    expect(native.query("SELECT a FROM t ORDER BY a").all()).toEqual([
+      { a: 1 },
+      { a: 2 },
+    ]);
+    native.close();
+  });
+
+  test("leaves WAL mode alone while a -shm file exists", () => {
+    const dbPath = createWalDatabase();
+    // A native process that still has the database open keeps a -shm file.
+    writeFileSync(`${dbPath}-shm`, "");
+
+    __setDriverForTests("wasm");
+    const db = new Database(dbPath);
+    expect(() => db.query("SELECT a FROM t").get()).toThrow(
+      "unable to open database file",
+    );
+    db.close();
+    expect(readFileSync(dbPath)[18]).toBe(2);
   });
 });

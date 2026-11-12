@@ -23,12 +23,14 @@
  * @see https://cli.sentry.dev/exit-codes/ for full reference
  */
 
+import { ArgumentScannerError, ExitCode } from "@stricli/core";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
   buildBillingUrl,
   buildOrgSettingsUrl,
   buildSeerSettingsUrl,
 } from "./sentry-urls.js";
+import { getLoginCommand, getUrlLoginCommand, sentry } from "./app-identity.js";
 
 // ---------------------------------------------------------------------------
 // Exit code constants
@@ -71,6 +73,8 @@ export const EXIT = {
   API: 30,
   /** Operation timed out */
   TIMEOUT: 31,
+  /** Rate limited by the Sentry API — wait before retrying */
+  RATE_LIMITED: 32,
 
   // 40–49: Feature / billing (HTTP 402/451 family)
   /** Seer not enabled for the organization */
@@ -79,6 +83,8 @@ export const EXIT = {
   SEER_NO_BUDGET: 41,
   /** AI features disabled by org admin */
   SEER_AI_DISABLED: 42,
+  /** Organization is out of Seer credits */
+  SEER_OUT_OF_CREDITS: 43,
 
   // 50–59: Operations
   /** CLI upgrade failed */
@@ -89,14 +95,8 @@ export const EXIT = {
   // 60–69: Command-specific
   /** Command produced output but should exit non-zero */
   OUTPUT_ERROR: 60,
-  /** Init wizard error (generic) */
-  WIZARD: 61,
-  /** Init wizard: dependency installation failed */
-  WIZARD_DEPS: 62,
-  /** Init wizard: codemod plan or apply failed */
-  WIZARD_CODEMOD: 63,
-  /** Init wizard: user stopped after verification */
-  WIZARD_VERIFY: 64,
+  /** `sentry local run --verify` received no events from the SDK */
+  VERIFY_FAILED: 64,
 } as const;
 
 /**
@@ -149,14 +149,14 @@ export class HostScopeError extends CliError {
       super(
         `${sourceOrMessage}: ${destinationUrl}\n` +
           "Refusing to route requests to this host because no Sentry credentials are configured for it.\n" +
-          `To use this host, run: sentry auth login --url ${destinationUrl}`,
+          `To use this host, run: ${getUrlLoginCommand()} ${destinationUrl}`,
         EXIT.AUTH_HOST_SCOPE,
       );
     } else {
       super(
         `${sourceOrMessage}: ${destinationUrl}\n` +
           `Refusing to route requests here because it doesn't match the host your Sentry credentials are for (${tokenHost}).\n` +
-          `To use this host, run: sentry auth login --url ${destinationUrl}\n` +
+          `To use this host, run: ${getUrlLoginCommand()} ${destinationUrl}\n` +
           "To keep using your current credentials, remove this URL override.",
         EXIT.AUTH_HOST_SCOPE,
       );
@@ -165,6 +165,39 @@ export class HostScopeError extends CliError {
   }
 }
 
+/** A function argument named by a Sentry 400 error body, with the server's suggested fix. */
+export type FunctionArgument = {
+  function: string;
+  argument: string;
+  hint?: string;
+};
+
+/**
+ * Why Sentry refused a request with a 401 or 403, as far as the CLI can tell.
+ *
+ * Recorded on spans and the `cli.error.silenced` metric, so each value is a
+ * fixed category: never a slug, token, URL, or text from the server. Avoid
+ * words such as "auth" and "token" in new values; Sentry's data scrubbing
+ * replaces values that contain them with `[Filtered]`.
+ *
+ * - `org_mismatch`: an org auth token for another organization
+ * - `insufficient_scope`: the token lacks every scope the endpoint accepts
+ * - `member_policy`: an org setting blocks members from the action
+ * - `seat_limit`: the member is disabled because the org is over its limit
+ * - `access_denied`: a 403 that names no missing scope
+ * - `expired`: Sentry says the credential expired
+ * - `unrecognized`: Sentry does not know the credential (revoked, mistyped,
+ *   or created on another server)
+ */
+export type ApiDenialReason =
+  | "org_mismatch"
+  | "insufficient_scope"
+  | "member_policy"
+  | "seat_limit"
+  | "access_denied"
+  | "expired"
+  | "unrecognized";
+
 /**
  * API request errors from Sentry.
  *
@@ -172,11 +205,25 @@ export class HostScopeError extends CliError {
  * @param status - HTTP status code
  * @param detail - Detailed error message from API response
  * @param endpoint - API endpoint that failed
+ * @param options - Structured error fields, documented on the fields below
  */
 export class ApiError extends CliError {
   readonly status: number;
   readonly detail?: string;
   readonly endpoint?: string;
+
+  /**
+   * Machine-readable `code` from the error body, when the server sent one
+   * (e.g. `invalid_search_query`).
+   */
+  readonly code?: string;
+
+  /**
+   * Function and argument the server rejected, sent with code
+   * `invalid_function_argument` (e.g. `p75` and `cart.total`), plus its
+   * `hint` when the server suggests a fix.
+   */
+  readonly functionArgument?: FunctionArgument;
 
   /**
    * Set by centralized 403 enrichment in `infrastructure.ts`.
@@ -185,12 +232,25 @@ export class ApiError extends CliError {
    */
   readonly enriched403: boolean;
 
+  /** Set with the 401/403 enrichment in `infrastructure.ts`. */
+  readonly denialReason?: ApiDenialReason;
+
   constructor(
     message: string,
     status: number,
     detail?: string,
     endpoint?: string,
-    enriched403 = false,
+    {
+      enriched403 = false,
+      code,
+      functionArgument,
+      denialReason,
+    }: {
+      enriched403?: boolean;
+      code?: string;
+      functionArgument?: FunctionArgument;
+      denialReason?: ApiDenialReason;
+    } = {},
   ) {
     super(message, EXIT.API);
     this.name = "ApiError";
@@ -198,6 +258,9 @@ export class ApiError extends CliError {
     this.detail = detail;
     this.endpoint = endpoint;
     this.enriched403 = enriched403;
+    this.code = code;
+    this.functionArgument = functionArgument;
+    this.denialReason = denialReason;
   }
 
   override format(): string {
@@ -209,6 +272,37 @@ export class ApiError extends CliError {
       msg += `\n  ${this.detail}`;
     }
     return msg;
+  }
+}
+
+/**
+ * The Sentry API rejected a request with 429 and the CLI could not wait it
+ * out (the wait exceeds the cap, or retries ran out).
+ *
+ * @param endpoint - API path that was rate limited
+ * @param retryAfterMs - Server-requested wait, when known
+ * @param serverDetail - The API's `detail` message, when present
+ */
+export class RateLimitError extends ApiError {
+  /** Distinct exit code so scripts and agents can back off without parsing stderr. */
+  override readonly exitCode: number = EXIT.RATE_LIMITED;
+  readonly retryAfterMs?: number;
+
+  constructor(endpoint: string, retryAfterMs?: number, serverDetail?: string) {
+    const seconds = Math.max(1, Math.ceil((retryAfterMs ?? 0) / 1000));
+    const wait =
+      retryAfterMs === undefined
+        ? "a few seconds"
+        : `${seconds} second${seconds === 1 ? "" : "s"}`;
+    const advice = `Retry in ${wait}; do not repeat the request before then. Make fewer requests in parallel.`;
+    super(
+      "Rate limited by the Sentry API",
+      429,
+      serverDetail ? `${serverDetail}\n  ${advice}` : advice,
+      endpoint,
+    );
+    this.name = "RateLimitError";
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -238,9 +332,8 @@ export class AuthError extends CliError {
     options?: AuthErrorOptions,
   ) {
     const defaultMessages: Record<AuthErrorReason, string> = {
-      not_authenticated: "Not authenticated. Run 'sentry auth login' first.",
-      expired:
-        "Authentication expired. Run 'sentry auth login' to re-authenticate.",
+      not_authenticated: `Not authenticated. Run '${getLoginCommand()}' first.`,
+      expired: `Authentication expired. Run '${getLoginCommand()}' to re-authenticate.`,
       invalid: "Invalid authentication token.",
     };
     const exitCodes: Record<AuthErrorReason, number> = {
@@ -261,7 +354,7 @@ export class MalformedAuthTokenError extends AuthError {
     super(
       "invalid",
       "Invalid authentication token. Copy it again as a single line without spaces or control characters, " +
-        "or run 'sentry auth login' to replace stored credentials.",
+        `or run '${getLoginCommand()}' to replace stored credentials.`,
     );
     this.name = "MalformedAuthTokenError";
   }
@@ -311,18 +404,21 @@ export class OutputError extends CliError {
   }
 }
 
-const DEFAULT_CONTEXT_ALTERNATIVES = [
-  "Run from a directory with a Sentry DSN in source code or .env files",
-  "Set SENTRY_ORG and SENTRY_PROJECT (or SENTRY_DSN) environment variables",
-  "Run 'sentry org list' to find your organization slug",
-  "Run 'sentry project list <org>/' to find project slugs",
-] as const;
+/** Ways to provide context when auto-detection found none. */
+function defaultContextAlternatives(): string[] {
+  return [
+    "Run from a directory with a Sentry DSN in source code or .env files",
+    "Set SENTRY_ORG and SENTRY_PROJECT (or SENTRY_DSN) environment variables",
+    `Run '${sentry`org list`}' to find your organization slug`,
+    `Run '${sentry`project list <org>/`}' to find project slugs`,
+  ];
+}
 
 /**
  * Build the formatted context error message with usage hints.
  *
  * @param resource - What is required (e.g., "Organization", "Trace ID and span ID")
- * @param command - Single-line CLI usage example (e.g., "sentry org view <org-slug>")
+ * @param command - Single-line CLI usage example (e.g., sentry`org view <org-slug>`)
  * @param alternatives - Alternative ways to provide the context
  * @param note - Optional informational context (e.g., "Found 2 DSN(s) that could not be resolved").
  *   Rendered as a separate "Note:" section after alternatives. Use this for diagnostic
@@ -407,7 +503,7 @@ function buildResolutionMessage(
  *
  * @param resource - What is required (e.g., "Organization", "Organization and project").
  *   Use " and " to join compound resources — triggers plural grammar ("are required").
- * @param command - **Single-line** CLI usage example (e.g., "sentry org view <org-slug>").
+ * @param command - **Single-line** CLI usage example (e.g., sentry`org view <org-slug>`).
  *   Must not contain newlines — multi-line messages indicate a resolution failure
  *   that should use {@link ResolutionError}.
  * @param alternatives - Alternative ways to resolve (defaults to DSN/project detection hints).
@@ -430,9 +526,7 @@ export class ContextError extends CliError {
   ) {
     // When alternatives is omitted, auto-detection was tried and failed
     const isAutoDetect = alternatives === undefined;
-    const resolvedAlternatives = alternatives ?? [
-      ...DEFAULT_CONTEXT_ALTERNATIVES,
-    ];
+    const resolvedAlternatives = alternatives ?? defaultContextAlternatives();
 
     // Include full formatted message so it's shown even when caught by external handlers
     super(
@@ -513,6 +607,33 @@ export class ResolutionError extends CliError {
   override format(): string {
     return this.message;
   }
+}
+
+/**
+ * {@link ResolutionError} for project slugs that Sentry rejected for an org
+ * without saying which one (release create, artifact bundle assemble).
+ *
+ * @param org - Organization slug
+ * @param projects - The project slugs that were sent
+ * @param extraSuggestions - More bullets shown under "Or:"
+ */
+export function projectsNotFoundError(
+  org: string,
+  projects: string[],
+  extraSuggestions: string[] = [],
+): ResolutionError {
+  const quoted = projects.map((p) => `'${p}'`).join(", ");
+  return new ResolutionError(
+    projects.length === 1
+      ? `Project ${quoted}`
+      : `One of the projects ${quoted}`,
+    `was not found in organization '${org}'`,
+    sentry`project list ${org}/`,
+    [
+      "Check the slug passed with --project (or the bundler plugin's `project` option)",
+      ...extraSuggestions,
+    ],
+  );
 }
 
 /**
@@ -640,7 +761,11 @@ export class UpgradeTransportError extends UpgradeError {
 
 // Seer Errors
 
-export type SeerErrorReason = "not_enabled" | "no_budget" | "ai_disabled";
+export type SeerErrorReason =
+  | "not_enabled"
+  | "no_budget"
+  | "ai_disabled"
+  | "out_of_credits";
 
 /**
  * Seer-specific errors with actionable suggestions.
@@ -657,11 +782,13 @@ export class SeerError extends CliError {
       not_enabled: "Seer is not enabled for this organization.",
       no_budget: "Seer requires a paid plan.",
       ai_disabled: "AI features are disabled for this organization.",
+      out_of_credits: "Your organization is out of Seer credits.",
     };
     const exitCodes: Record<SeerErrorReason, number> = {
       not_enabled: EXIT.SEER_NOT_ENABLED,
       no_budget: EXIT.SEER_NO_BUDGET,
       ai_disabled: EXIT.SEER_AI_DISABLED,
+      out_of_credits: EXIT.SEER_OUT_OF_CREDITS,
     };
     super(messages[reason], exitCodes[reason]);
     this.name = "SeerError";
@@ -676,8 +803,8 @@ export class SeerError extends CliError {
     // where the prompt can't fire — hence the direct command suggestion
     // (CLI-1D/BW/98, 237 users combined).
     const trialHint = this.orgSlug
-      ? `\n\nStart a free trial:\n  sentry trial start seer ${this.orgSlug}`
-      : "\n\nYou may be eligible for a free trial:\n  sentry trial list";
+      ? `\n\nStart a free trial:\n  ${sentry`trial start seer ${this.orgSlug}`}`
+      : `\n\nYou may be eligible for a free trial:\n  ${sentry`trial list`}`;
 
     // When org slug is known, provide direct URLs to settings
     if (this.orgSlug) {
@@ -686,6 +813,10 @@ export class SeerError extends CliError {
         no_budget: `To use Seer features, upgrade your plan:\n  ${buildBillingUrl(this.orgSlug, "seer")}${trialHint}`,
         // ai_disabled is an admin decision — don't suggest trial
         ai_disabled: `To enable AI features:\n  ${buildOrgSettingsUrl(this.orgSlug, "hideAiFeatures")}`,
+        // out_of_credits orgs already have Seer, so a trial is not the fix.
+        // Sentry doesn't say whether auto-reload is off or has run through its
+        // top-ups, so the advice covers both.
+        out_of_credits: `Someone with billing access can adjust Seer spend and auto-reload in Sentry:\n  ${buildBillingUrl(this.orgSlug, "seer")}`,
       };
       return `${this.message}\n\n${suggestions[this.reason]}`;
     }
@@ -697,6 +828,9 @@ export class SeerError extends CliError {
       // ai_disabled is an admin decision — don't suggest trial
       ai_disabled:
         "To enable AI features, check the 'Hide AI Features' setting in your organization settings.",
+      // out_of_credits orgs already have Seer, so a trial is not the fix
+      out_of_credits:
+        "Someone with billing access can adjust Seer spend and auto-reload in your organization's billing settings.",
     };
     return `${this.message}\n\n${fallbackSuggestions[this.reason]}`;
   }
@@ -726,24 +860,6 @@ export class TimeoutError extends CliError {
       msg += `\n\n${this.hint}`;
     }
     return msg;
-  }
-}
-
-/**
- * Error thrown by the init wizard when it has already displayed
- * the error via clack UI. The `rendered` flag tells the framework
- * error handler to skip its own formatting.
- */
-export class WizardError extends CliError {
-  readonly rendered: boolean;
-
-  constructor(
-    message: string,
-    options?: { rendered?: boolean; exitCode?: number },
-  ) {
-    super(message, options?.exitCode ?? EXIT.WIZARD);
-    this.name = "WizardError";
-    this.rendered = options?.rendered ?? true;
   }
 }
 
@@ -812,29 +928,44 @@ export function formatError(error: unknown): string {
  * Get process exit code for an error.
  *
  * @param error - Any thrown value
- * @returns Exit code (from CliError.exitCode or 1 for other errors)
+ * @returns Exit code (from CliError.exitCode, Stricli's `InvalidArgument`
+ *   for an argument error the command wrapper threw, or 1 for other errors)
  */
 export function getExitCode(error: unknown): number {
   if (error instanceof CliError) {
     return error.exitCode;
   }
+  // `boundArguments` positionals parse in the command wrapper, after
+  // Stricli's scanner; their errors exit like the scanner's
+  if (error instanceof ArgumentScannerError) {
+    return ExitCode.InvalidArgument;
+  }
   return 1;
 }
 
 /**
- * Sentry's search-query parser emits a 400 whose detail begins with this phrase
- * when the user's `--query` cannot be parsed (e.g. `is:403`, `lastSeen:>=-24h`,
- * an empty `status:`). The server is telling us the user-supplied query is
- * malformed — a user input error, not the CLI constructing a bad request.
+ * Issue search wraps search-query parser failures in this phrase
+ * (e.g. `is:403`, `lastSeen:>=-24h`, an empty `status:`). The server is telling
+ * us the user-supplied query is malformed — a user input error, not the CLI
+ * constructing a bad request.
  */
 const SEARCH_QUERY_PARSE_MARKER = "Error parsing search query";
 
 /**
+ * `code` the Events endpoint (explore, spans, logs, traces) sends next to
+ * `detail` when its search-query parser rejects the `query` parameter
+ * (getsentry/sentry#129957).
+ */
+const SEARCH_QUERY_PARSE_CODE = "invalid_search_query";
+
+/**
  * Whether an {@link ApiError} is a Sentry search-query parse failure (HTTP 400
- * whose detail reports an unparseable query). The CLI preserves the server's
+ * that reports an unparseable query). Events endpoints mark these with
+ * {@link SEARCH_QUERY_PARSE_CODE}; issue search only has the
+ * {@link SEARCH_QUERY_PARSE_MARKER} phrase. The CLI preserves the server's
  * detail when re-wrapping list errors (`enrichIssueListError` in
- * `commands/issue/list.ts` prepends the original detail), so a substring match
- * is robust to that wrapping.
+ * `commands/issue/list.ts` prepends the original detail), so the marker is
+ * matched as a substring.
  *
  * Shared by the three 4xx classifiers so they agree on these 400s:
  * `classifySilenced` (Sentry capture), {@link isUserError} (upgrade nudge), and
@@ -843,7 +974,8 @@ const SEARCH_QUERY_PARSE_MARKER = "Error parsing search query";
 export function isSearchQueryParseError(error: ApiError): boolean {
   return (
     error.status === 400 &&
-    (error.detail?.includes(SEARCH_QUERY_PARSE_MARKER) ?? false)
+    (error.code === SEARCH_QUERY_PARSE_CODE ||
+      (error.detail?.includes(SEARCH_QUERY_PARSE_MARKER) ?? false))
   );
 }
 
@@ -979,8 +1111,7 @@ export function isUserError(error: unknown): boolean {
     error instanceof ValidationError ||
     error instanceof DeviceFlowError ||
     error instanceof SeerError ||
-    error instanceof OutputError ||
-    error instanceof WizardError
+    error instanceof OutputError
   ) {
     return true;
   }

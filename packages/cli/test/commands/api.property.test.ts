@@ -15,7 +15,6 @@ import {
   oneof,
   property,
   record,
-  string,
   stringMatching,
   tuple,
   uniqueArray,
@@ -31,8 +30,6 @@ import {
   parseFieldValue,
   parseMethod,
   resolveBody,
-  resolveEffectiveHeaders,
-  resolveRequestUrl,
   setNestedValue,
 } from "../../src/commands/api.js";
 import { ValidationError } from "../../src/lib/errors.js";
@@ -244,9 +241,7 @@ describe("parseMethod properties", () => {
       property(validMethodArb, (method) => {
         const result = parseMethod(method);
         expect(result).toBe(method.toUpperCase() as typeof result);
-        expect(["GET", "POST", "PUT", "DELETE", "PATCH"]).toContain(
-          result as string,
-        );
+        expect(["GET", "POST", "PUT", "DELETE", "PATCH"]).toContain(result);
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
@@ -538,11 +533,11 @@ const bareFieldArb = stringMatching(/^[a-zA-Z][a-zA-Z0-9]{1,15}$/).filter(
 function captureStderr(fn: () => void): string {
   let output = "";
   const original = process.stderr.write;
-  process.stderr.write = ((chunk: string | Uint8Array) => {
+  process.stderr.write = (chunk: string | Uint8Array) => {
     output +=
       typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
     return true;
-  }) as typeof process.stderr.write;
+  };
   try {
     fn();
   } finally {
@@ -775,7 +770,7 @@ describe("property: buildFromFields", () => {
   });
 });
 
-const MOCK_STDIN = process.stdin as unknown as NodeJS.ReadStream & { fd: 0 };
+const MOCK_STDIN = process.stdin;
 
 describe("property: resolveBody", () => {
   test("--data always returns a body (no params)", async () => {
@@ -820,133 +815,6 @@ describe("property: resolveBody", () => {
           ).rejects.toThrow(ValidationError);
         },
       ),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-});
-
-// Dry-run property tests
-
-/** Arbitrary for HTTP methods */
-
-/** Arbitrary for clean API endpoint paths (no query string, for dry-run tests) */
-const dryRunEndpointArb = stringMatching(
-  /^[a-z][a-z0-9-]*\/[a-z0-9-]*\/$/,
-).filter((s) => s.length > 3 && s.length < 80);
-
-/** Arbitrary for query param values */
-const paramValueArb = stringMatching(/^[a-zA-Z0-9_-]+$/).filter(
-  (s) => s.length > 0 && s.length < 40,
-);
-
-/** Arbitrary for query param maps */
-const paramsArb = dictionary(
-  stringMatching(/^[a-zA-Z][a-zA-Z0-9_]*$/).filter(
-    (s) => s.length > 0 && s.length < 20,
-  ),
-  paramValueArb,
-  { minKeys: 0, maxKeys: 3 },
-);
-
-describe("property: resolveRequestUrl", () => {
-  test("always contains /api/0/ prefix", () => {
-    fcAssert(
-      property(dryRunEndpointArb, (endpoint) => {
-        const url = resolveRequestUrl(endpoint);
-        expect(url).toContain("/api/0/");
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("always contains the endpoint path", () => {
-    fcAssert(
-      property(dryRunEndpointArb, (endpoint) => {
-        const url = resolveRequestUrl(endpoint);
-        const normalized = endpoint.startsWith("/")
-          ? endpoint.slice(1)
-          : endpoint;
-        expect(url).toContain(normalized);
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("includes query string when params provided", () => {
-    fcAssert(
-      property(dryRunEndpointArb, paramsArb, (endpoint, params) => {
-        const url = resolveRequestUrl(endpoint, params);
-        if (Object.keys(params).length > 0) {
-          expect(url).toContain("?");
-          for (const key of Object.keys(params)) {
-            expect(url).toContain(key);
-          }
-        }
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-});
-
-describe("property: resolveEffectiveHeaders", () => {
-  /** Arbitrary for custom header entries (non-content-type keys) */
-  const headerKeyArb = stringMatching(/^X-[A-Za-z]{1,10}$/);
-  const headerValueArb = string({ minLength: 1, maxLength: 20 });
-  const customHeadersArb = dictionary(headerKeyArb, headerValueArb, {
-    minKeys: 0,
-    maxKeys: 3,
-  });
-
-  test("preserves all custom headers", () => {
-    fcAssert(
-      property(customHeadersArb, (custom) => {
-        const result = resolveEffectiveHeaders(custom, undefined);
-        for (const [key, value] of Object.entries(custom)) {
-          expect(result[key]).toBe(value);
-        }
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("auto-adds Content-Type for object bodies without it", () => {
-    fcAssert(
-      property(customHeadersArb, jsonValue(), (custom, body) => {
-        // Ensure body is a non-null object (not string/number/boolean/null)
-        if (body === null || body === undefined || typeof body !== "object") {
-          return;
-        }
-        const result = resolveEffectiveHeaders(custom, body);
-        expect(result["Content-Type"]).toBe("application/json");
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("never adds Content-Type for string bodies", () => {
-    fcAssert(
-      property(customHeadersArb, string(), (custom, body) => {
-        const result = resolveEffectiveHeaders(custom, body);
-        // Should not have auto-added Content-Type (only custom headers)
-        if (!custom["Content-Type"]) {
-          expect(result["Content-Type"]).toBeUndefined();
-        }
-      }),
-      { numRuns: DEFAULT_NUM_RUNS },
-    );
-  });
-
-  test("does not override explicit Content-Type", () => {
-    const contentTypeArb = constantFrom(
-      "text/plain",
-      "text/xml",
-      "application/x-www-form-urlencoded",
-    );
-    fcAssert(
-      property(contentTypeArb, jsonValue(), (ct, body) => {
-        const result = resolveEffectiveHeaders({ "Content-Type": ct }, body);
-        expect(result["Content-Type"]).toBe(ct);
-      }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
   });

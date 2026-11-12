@@ -11,15 +11,15 @@
  */
 
 import { DEFAULT_SENTRY_URL, getConfiguredSentryUrl } from "../constants.js";
+import { invocationState } from "../env.js";
 import { logger } from "../logger.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
-import { recordCacheHit } from "../telemetry.js";
 import {
   getAccountIdForIdentity,
   getCredentialContext,
   getIdentityFingerprint,
 } from "./auth.js";
-import { getDatabase } from "./index.js";
+import { getDatabase, recordCacheHit } from "./index.js";
 import { runUpsert } from "./utils.js";
 
 const log = logger.withTag("db.regions");
@@ -38,7 +38,7 @@ function getActiveSourceOrigin(): string {
 
 /**
  * Process-local trust extension: origins that were vouched for by the
- * active token's issuing host (via `/users/me/regions/` responses or
+ * active token's issuing host (via org `links.regionUrl` responses or
  * `org_regions` table entries from prior invocations). Used by the
  * fetch-layer trust check in `token-host.ts` to admit requests to
  * regional silos that share the token's trust class.
@@ -204,17 +204,17 @@ export function resetTrustedRegionUrlsForTesting(): void {
   clearTrustedHostState();
 }
 
-/** When true, getCachedOrganizations() returns empty (forces API fetch). */
-let orgCacheDisabled = false;
+/** Per invocation: when set, getCachedOrganizations() returns empty (forces API fetch). */
+const orgCacheState = invocationState(() => ({ readDisabled: false }));
 
 /** Disable the org listing cache for this invocation (e.g., `--fresh` flag). */
 export function disableOrgCache(): void {
-  orgCacheDisabled = true;
+  orgCacheState().readDisabled = true;
 }
 
 /** Re-enable the org listing cache. Exported for testing. */
 export function enableOrgCache(): void {
-  orgCacheDisabled = false;
+  orgCacheState().readDisabled = false;
 }
 
 type OrgRegionRow = {
@@ -499,7 +499,7 @@ export function getCachedOrganizations(
   sourceOrigin = getActiveSourceOrigin(),
   identity = getIdentityFingerprint(),
 ): CachedOrg[] {
-  if (orgCacheDisabled) {
+  if (orgCacheState().readDisabled) {
     return [];
   }
 

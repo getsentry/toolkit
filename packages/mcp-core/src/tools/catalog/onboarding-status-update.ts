@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  AgenticOnboardingConnectStageInputSchema,
   AgenticOnboardingRunStatusUpdateSchema,
   AgenticOnboardingRunTokenSchema,
   AgenticOnboardingStageSchema,
@@ -8,6 +9,7 @@ import {
 } from "../../api-client/schema";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { ALL_SKILLS } from "../../skills";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
@@ -75,8 +77,15 @@ const receiveVerificationErrorUpdateSchema = updateBaseSchema.extend({
     ),
 });
 
+const connectUpdateSchema = updateBaseSchema.extend({
+  stage: AgenticOnboardingConnectStageInputSchema.describe(
+    "Report progress while connecting to the user's Sentry account. connect_mcp is accepted as an older name.",
+  ),
+});
+
 const updateWithoutExtraSchema = updateBaseSchema.extend({
   stage: AgenticOnboardingStageSchema.exclude([
+    "connect_mcp",
     "create_project",
     "receive_verification_error",
   ]).describe(
@@ -86,14 +95,37 @@ const updateWithoutExtraSchema = updateBaseSchema.extend({
 
 const onboardingUpdateSchema = z
   .discriminatedUnion("stage", [
+    connectUpdateSchema,
     createProjectUpdateSchema,
     receiveVerificationErrorUpdateSchema,
     updateWithoutExtraSchema,
   ])
   .describe("The stage-specific onboarding progress update.");
 
+type OnboardingUpdate = z.infer<typeof onboardingUpdateSchema>;
+
+const CONNECTION_METHOD = "mcp" as const;
+
+function withConnectionMethod(update: OnboardingUpdate) {
+  if (update.stage !== "connect_agent" && update.stage !== "connect_mcp") {
+    return update;
+  }
+  return {
+    ...update,
+    stage: "connect_agent" as const,
+    extra: { method: CONNECTION_METHOD },
+  };
+}
+
+export const onboardingStatusUpdateOutputSchema = z.object({
+  continueUpdates: z
+    .boolean()
+    .describe("False when Sentry wants no further updates for this run."),
+});
+
 export default defineTool({
   name: "onboarding_status_update",
+  title: "Update Onboarding Status",
   skills: ALL_SKILLS,
   includeInSkillDefinitions: false,
   requiredScopes: ["org:read"],
@@ -109,6 +141,7 @@ export default defineTool({
     "- status is required for every update.",
     "- Set runStatus to completed or failed only when the entire onboarding run reaches that state.",
     "- A failed status requires a brief eventNote explaining the failure.",
+    "- Stop sending updates when the result has continueUpdates: false.",
     "</hints>",
   ].join("\n"),
   inputSchema: {
@@ -119,6 +152,7 @@ export default defineTool({
     ),
     update: onboardingUpdateSchema,
   },
+  outputSchema: onboardingStatusUpdateOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
@@ -135,7 +169,7 @@ export default defineTool({
     const update = AgenticOnboardingStatusUpdateSchema.parse({
       schemaVersion: 1,
       runToken: params.runToken,
-      ...params.update,
+      ...withConnectionMethod(params.update),
     });
 
     const run = await apiService.updateAgenticOnboardingStatus({
@@ -143,6 +177,6 @@ export default defineTool({
       update,
     });
 
-    return `Onboarding status updated. Continue updates: ${run.continueUpdates ? "yes" : "no"}.`;
+    return structuredResult({ continueUpdates: run.continueUpdates });
   },
 });

@@ -1,9 +1,5 @@
 import { z } from "zod";
-import type { SentryApiService } from "../../../api-client";
-import {
-  type EventsDataset,
-  PUBLIC_EVENTS_DATASETS,
-} from "../../../utils/events-datasets";
+import { PUBLIC_EVENTS_DATASETS } from "../../../utils/events-datasets";
 import { agentTool, recordAgentToolResultCount } from "./utils";
 
 // Import all JSON files directly
@@ -82,7 +78,7 @@ import webengine from "./data/webengine.json";
 import zos from "./data/zos.json";
 
 // Create the namespaceData object
-const namespaceData: Record<string, NamespaceData> = {
+const namespaceData: Partial<Record<string, NamespaceData>> = {
   android,
   app,
   artifact,
@@ -178,13 +174,7 @@ interface NamespaceData {
 /**
  * Lookup OpenTelemetry semantic convention attributes for a given namespace
  */
-export async function lookupOtelSemantics(
-  namespace: string,
-  dataset: EventsDataset,
-  apiService: SentryApiService,
-  organizationSlug: string,
-  projectId?: string,
-): Promise<string> {
+export async function lookupOtelSemantics(namespace: string): Promise<string> {
   // Normalize namespace (replace - with _)
   const normalizedNamespace = namespace.replace(/-/g, "_");
 
@@ -253,14 +243,8 @@ export async function lookupOtelSemantics(
  */
 /**
  * Create a tool for looking up OpenTelemetry semantic convention attributes
- * The tool is pre-bound with the API service and organization configured for the appropriate region
  */
-export function createOtelLookupTool(options: {
-  apiService: SentryApiService;
-  organizationSlug: string;
-  projectId?: string;
-}) {
-  const { apiService, organizationSlug, projectId } = options;
+export function createOtelLookupTool() {
   return agentTool({
     description:
       "Look up OpenTelemetry semantic convention attributes for a specific namespace. OpenTelemetry attributes are universal standards that work across all datasets.",
@@ -276,14 +260,8 @@ export function createOtelLookupTool(options: {
           "REQUIRED: Dataset to check attribute availability in. The agent MUST specify this based on their chosen dataset.",
         ),
     }),
-    execute: async ({ namespace, dataset }) => {
-      return await lookupOtelSemantics(
-        namespace,
-        dataset,
-        apiService,
-        organizationSlug,
-        projectId,
-      );
+    execute: async ({ namespace }) => {
+      return await lookupOtelSemantics(namespace);
     },
   });
 }

@@ -3,7 +3,7 @@
   "compilerOptions": {
     "types": [
       "@cloudflare/workers-types",
-      "@cloudflare/vitest-pool-workers"
+      "@cloudflare/vitest-plugin"
     ]
   },
   "include": [

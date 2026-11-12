@@ -8,6 +8,7 @@
  * the func() body without real HTTP calls or database access.
  */
 
+import { ArgumentParseError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   flattenSpanTree,
@@ -45,6 +46,7 @@ import * as browser from "../../../src/lib/browser.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import {
+  ApiError,
   ContextError,
   ResolutionError,
   ValidationError,
@@ -118,6 +120,7 @@ describe("formatTraceView", () => {
 
 describe("viewCommand.func", () => {
   let getDetailedTraceSpy: ReturnType<typeof spyOn>;
+  let findTraceReplaySpy: ReturnType<typeof spyOn>;
   let fetchMultiSpanDetailsSpy: ReturnType<typeof spyOn>;
   let getIssueByShortIdSpy: ReturnType<typeof spyOn>;
   let getLatestEventSpy: ReturnType<typeof spyOn>;
@@ -152,6 +155,38 @@ describe("viewCommand.func", () => {
     },
   ];
 
+  const attributeSpans: TraceSpan[] = [
+    {
+      span_id: "root",
+      op: "http.server",
+      start_timestamp: 1,
+      end_timestamp: 2,
+      project_slug: "test-project",
+      additional_attributes: { "http.method": "GET", unused: "root value" },
+      children: [
+        {
+          span_id: "child",
+          op: "http.client",
+          start_timestamp: 1.1,
+          end_timestamp: 1.9,
+          additional_attributes: {
+            "http.method": "POST",
+            unused: "child value",
+          },
+          children: [
+            {
+              span_id: "grandchild",
+              start_timestamp: 1.2,
+              end_timestamp: 1.8,
+              additional_attributes: { "http.method": "PUT" },
+              children: [],
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
   function createMockContext() {
     const stdoutWrite = vi.fn(() => true);
     return {
@@ -164,8 +199,27 @@ describe("viewCommand.func", () => {
     };
   }
 
+  async function renderTraceJson(
+    fields: string,
+    spans: TraceSpan[] = attributeSpans,
+  ): Promise<unknown> {
+    getDetailedTraceSpy.mockResolvedValue(spans);
+    const { context, stdoutWrite } = createMockContext();
+    const func = await viewCommand.loader();
+    await func.call(
+      context,
+      { json: true, web: false, spans: 100, fields },
+      "test-org/test-project",
+      "aaaa1111bbbb2222cccc3333dddd4444",
+    );
+    return JSON.parse(stdoutWrite.mock.calls.map((call) => call[0]).join(""));
+  }
+
   beforeEach(async () => {
     getDetailedTraceSpy = vi.spyOn(apiClient, "getDetailedTrace");
+    findTraceReplaySpy = vi
+      .spyOn(apiClient, "findTraceReplay")
+      .mockResolvedValue(undefined);
     fetchMultiSpanDetailsSpy = vi
       .spyOn(apiClient, "fetchMultiSpanDetails")
       .mockResolvedValue(new Map());
@@ -189,6 +243,7 @@ describe("viewCommand.func", () => {
 
   afterEach(() => {
     getDetailedTraceSpy.mockRestore();
+    findTraceReplaySpy.mockRestore();
     fetchMultiSpanDetailsSpy.mockRestore();
     getIssueByShortIdSpy.mockRestore();
     getLatestEventSpy.mockRestore();
@@ -217,6 +272,252 @@ describe("viewCommand.func", () => {
     expect(parsed).toHaveProperty("spans");
     expect(parsed.traceId).toBe("aaaa1111bbbb2222cccc3333dddd4444");
     expect(parsed.spans).toHaveLength(1);
+    expect(parsed.spans).toEqual(sampleSpans);
+  });
+
+  test("--fields returns requested attributes throughout the tree with explicit summary fields", async () => {
+    const output = await renderTraceJson("traceId,http.method");
+
+    expect(getDetailedTraceSpy).toHaveBeenCalledWith(
+      "test-org",
+      "aaaa1111bbbb2222cccc3333dddd4444",
+      { additionalAttributes: ["http.method"] },
+    );
+    expect(output).toEqual({
+      traceId: "aaaa1111bbbb2222cccc3333dddd4444",
+      spans: [
+        {
+          span_id: "root",
+          additional_attributes: { "http.method": "GET" },
+          children: [
+            {
+              span_id: "child",
+              additional_attributes: { "http.method": "POST" },
+              children: [
+                {
+                  span_id: "grandchild",
+                  additional_attributes: { "http.method": "PUT" },
+                  children: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  test("--fields retains ancestors when only a child has the requested attribute", async () => {
+    const spans: TraceSpan[] = [
+      {
+        span_id: "root",
+        start_timestamp: 1,
+        children: [
+          {
+            span_id: "child",
+            start_timestamp: 2,
+            additional_attributes: { "http.method": "GET" },
+            children: [],
+          },
+        ],
+      },
+    ];
+
+    expect(await renderTraceJson("http.method", spans)).toEqual({
+      spans: [
+        {
+          span_id: "root",
+          children: [
+            {
+              span_id: "child",
+              additional_attributes: { "http.method": "GET" },
+              children: [],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  test("--fields preserves falsey attributes and tolerates attributes absent from the trace", async () => {
+    const attributes = {
+      "http.method": "",
+      retries: 0,
+      optional: null,
+      cached: false,
+    };
+    const spans: TraceSpan[] = [
+      {
+        span_id: "root",
+        start_timestamp: 1,
+        additional_attributes: attributes,
+      },
+    ];
+
+    expect(
+      await renderTraceJson(
+        "http.method,retries,optional,cached,missing",
+        spans,
+      ),
+    ).toEqual({
+      spans: [{ span_id: "root", additional_attributes: attributes }],
+    });
+  });
+
+  test.each(["spans,http.method", "http.method,spans"])(
+    "--fields %s keeps the complete tree and still requests the attribute",
+    async (fields) => {
+      expect(await renderTraceJson(fields)).toEqual({ spans: attributeSpans });
+      expect(getDetailedTraceSpy).toHaveBeenCalledWith(
+        "test-org",
+        "aaaa1111bbbb2222cccc3333dddd4444",
+        { additionalAttributes: ["http.method"] },
+      );
+    },
+  );
+
+  test.each([
+    {
+      fields: "spans.span_id",
+      additionalAttributes: undefined,
+      expected: { spans: [{ span_id: "root" }] },
+    },
+    {
+      fields: "spans.additional_attributes.http.method",
+      additionalAttributes: ["http.method"],
+      expected: {
+        spans: [{ additional_attributes: { "http.method": "GET" } }],
+      },
+    },
+    {
+      fields: "spans.children.additional_attributes.http.method",
+      additionalAttributes: ["http.method"],
+      expected: {
+        spans: [
+          { children: [{ additional_attributes: { "http.method": "POST" } }] },
+        ],
+      },
+    },
+  ])(
+    "--fields $fields projects only the explicit structural path",
+    async ({ fields, additionalAttributes, expected }) => {
+      expect(await renderTraceJson(fields)).toEqual(expected);
+      expect(getDetailedTraceSpy).toHaveBeenCalledWith(
+        "test-org",
+        "aaaa1111bbbb2222cccc3333dddd4444",
+        { additionalAttributes },
+      );
+    },
+  );
+
+  test("--fields combines explicit root fields and recursive attributes on the same nodes", async () => {
+    expect(await renderTraceJson("spans.op,http.method")).toEqual({
+      spans: [
+        {
+          span_id: "root",
+          op: "http.server",
+          additional_attributes: { "http.method": "GET" },
+          children: [
+            {
+              span_id: "child",
+              additional_attributes: { "http.method": "POST" },
+              children: [
+                {
+                  span_id: "grandchild",
+                  additional_attributes: { "http.method": "PUT" },
+                  children: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  test("--fields selects nested detail attributes without forwarding the JSON path", async () => {
+    fetchMultiSpanDetailsSpy.mockResolvedValue(
+      new Map([
+        [
+          "root",
+          {
+            itemId: "root",
+            timestamp: "2024-01-30T13:32:15Z",
+            attributes: [
+              { name: "http.method", type: "str", value: "GET" },
+              { name: "http.url", type: "str", value: "https://example.com" },
+            ],
+            meta: {},
+            links: null,
+          },
+        ],
+      ]),
+    );
+
+    expect(await renderTraceJson("spans.data.http.method")).toEqual({
+      spans: [{ data: { "http.method": "GET" } }],
+    });
+    expect(getDetailedTraceSpy).toHaveBeenCalledWith(
+      "test-org",
+      "aaaa1111bbbb2222cccc3333dddd4444",
+      { additionalAttributes: undefined },
+    );
+    expect(fetchMultiSpanDetailsSpy).toHaveBeenCalled();
+  });
+
+  test("--fields whole attributes dominate explicit partial selections", async () => {
+    const spans: TraceSpan[] = [
+      {
+        span_id: "root",
+        start_timestamp: 1,
+        additional_attributes: { values: ["first", "second"] },
+      },
+    ];
+
+    expect(
+      await renderTraceJson(
+        "values,spans.additional_attributes.values.0",
+        spans,
+      ),
+    ).toEqual({
+      spans: [
+        {
+          span_id: "root",
+          additional_attributes: { values: ["first", "second"] },
+        },
+      ],
+    });
+  });
+
+  test("--fields supports literal attribute names beginning with spans via the canonical path", async () => {
+    const spans: TraceSpan[] = [
+      {
+        span_id: "root",
+        start_timestamp: 1,
+        additional_attributes: { "spans.foo": "value" },
+      },
+    ];
+
+    expect(
+      await renderTraceJson("spans.additional_attributes.spans.foo", spans),
+    ).toEqual({ spans: [{ additional_attributes: { "spans.foo": "value" } }] });
+    expect(getDetailedTraceSpy).toHaveBeenCalledWith(
+      "test-org",
+      "aaaa1111bbbb2222cccc3333dddd4444",
+      { additionalAttributes: ["spans.foo"] },
+    );
+  });
+
+  test("--fields summary-only selection preserves JSON detail fetching", async () => {
+    expect(await renderTraceJson("traceId")).toEqual({
+      traceId: "aaaa1111bbbb2222cccc3333dddd4444",
+    });
+    expect(getDetailedTraceSpy).toHaveBeenCalledWith(
+      "test-org",
+      "aaaa1111bbbb2222cccc3333dddd4444",
+      { additionalAttributes: undefined },
+    );
+    expect(fetchMultiSpanDetailsSpy).toHaveBeenCalled();
   });
 
   test("writes human output with summary and span tree", async () => {
@@ -235,6 +536,91 @@ describe("viewCommand.func", () => {
     expect(output).toContain("aaaa1111bbbb2222cccc3333dddd4444");
     // Explicit org/project triggers project-filtered hint
     expect(output).toContain("Filtered to project");
+  });
+
+  describe("linked replays", () => {
+    const TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
+    const REPLAY_ID = "63f8ece8e1d24177bfedcec2bf391ee3";
+
+    async function renderHuman(): Promise<string> {
+      getDetailedTraceSpy.mockResolvedValue(sampleSpans);
+      const { context, stdoutWrite } = createMockContext();
+      const func = await viewCommand.loader();
+      await func.call(
+        context,
+        { json: false, web: false, spans: 100 },
+        "test-org/",
+        TRACE_ID,
+      );
+      return stdoutWrite.mock.calls.map((c) => c[0]).join("");
+    }
+
+    test("shows the stored replay ID without a hint", async () => {
+      findTraceReplaySpy.mockResolvedValue({ id: REPLAY_ID });
+
+      const output = await renderHuman();
+
+      expect(findTraceReplaySpy).toHaveBeenCalledWith("test-org", TRACE_ID);
+      expect(output).toMatch(new RegExp(`Replay ID\\s*│\\s*${REPLAY_ID}`));
+      expect(output).not.toContain("sentry replay view");
+    });
+
+    test("shows none when no replay is stored", async () => {
+      const output = await renderHuman();
+
+      expect(output).toMatch(/Replay ID\s*│\s*none/);
+    });
+
+    test("omits the row when the replay lookup fails", async () => {
+      findTraceReplaySpy.mockRejectedValue(
+        new ApiError("Forbidden", 403, "Forbidden"),
+      );
+
+      const output = await renderHuman();
+
+      expect(output).toContain(TRACE_ID);
+      expect(output).not.toMatch(/Replay ID\s*│/);
+    });
+
+    async function renderJson(
+      fields?: string,
+    ): Promise<Record<string, unknown>> {
+      getDetailedTraceSpy.mockResolvedValue(sampleSpans);
+      const { context, stdoutWrite } = createMockContext();
+      const func = await viewCommand.loader();
+      await func.call(
+        context,
+        { json: true, web: false, spans: 100, fields },
+        "test-org/",
+        TRACE_ID,
+      );
+      return JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    }
+
+    test("sets replayId to null in JSON when no replay is stored", async () => {
+      const output = await renderJson();
+
+      expect(output).toHaveProperty("replayId", null);
+    });
+
+    test("omits replayId from JSON when the lookup fails", async () => {
+      findTraceReplaySpy.mockRejectedValue(
+        new ApiError("Forbidden", 403, "Forbidden"),
+      );
+
+      const output = await renderJson();
+
+      expect(output).not.toHaveProperty("replayId");
+    });
+
+    test("selects replayId with --fields", async () => {
+      findTraceReplaySpy.mockResolvedValue({ id: REPLAY_ID });
+
+      expect(await renderJson("replayId")).toEqual({ replayId: REPLAY_ID });
+      expect(getDetailedTraceSpy).toHaveBeenCalledWith("test-org", TRACE_ID, {
+        additionalAttributes: undefined,
+      });
+    });
   });
 
   test("throws ResolutionError when no spans found", async () => {
@@ -328,10 +714,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "my-org",
       "aaaa1111bbbb2222cccc3333dddd4444",
-      expect.objectContaining({ projectId: undefined }),
-    );
-    expect(getDetailedTraceSpy.mock.calls[0]?.[2]).not.toHaveProperty(
-      "timestamp",
+      { additionalAttributes: undefined },
     );
   });
 
@@ -353,6 +736,39 @@ describe("viewCommand.func", () => {
         "aaaa1111bbbb2222cccc3333dddd4444",
       ),
     ).rejects.toThrow(ContextError);
+  });
+
+  test("a missing trace ID fails to parse, before any lookup", async () => {
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+
+    const error = await func
+      .call(context, { json: false, web: false, spans: 100 }, "my-org/web")
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ArgumentParseError);
+    expect((error as ArgumentParseError).exception).toBeInstanceOf(
+      ContextError,
+    );
+    expect(resolveOrgAndProjectSpy).not.toHaveBeenCalled();
+    expect(getDetailedTraceSpy).not.toHaveBeenCalled();
+  });
+
+  test("recovers a malformed trace ID when it resolves", async () => {
+    getDetailedTraceSpy.mockResolvedValue(sampleSpans);
+
+    const { context } = createMockContext();
+    const func = await viewCommand.loader();
+    await func.call(
+      context,
+      { json: true, web: false, spans: 100 },
+      "my-org/aaaa1111bbbb2222cccc3333dddd4444ios",
+    );
+
+    expect(getDetailedTraceSpy).toHaveBeenCalledWith(
+      "my-org",
+      "aaaa1111bbbb2222cccc3333dddd4444",
+      expect.anything(),
+    );
   });
 
   test("resolves project search target", async () => {
@@ -389,7 +805,7 @@ describe("viewCommand.func", () => {
       "test-org/test-project",
     );
 
-    // Command should complete (warning goes to consola, not stdout)
+    // Command should complete (warning goes to the logger, not stdout)
     expect(getDetailedTraceSpy).toHaveBeenCalled();
   });
 
@@ -441,7 +857,7 @@ describe("viewCommand.func", () => {
     expect(getDetailedTraceSpy).toHaveBeenCalledWith(
       "test-org",
       traceIdFromEvent,
-      { additionalAttributes: undefined, projectId: undefined },
+      { additionalAttributes: undefined },
     );
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

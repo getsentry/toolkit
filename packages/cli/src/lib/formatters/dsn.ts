@@ -1,8 +1,8 @@
 /** Human output for the public DSN fields shown in Sentry's Client Keys UI. */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { ProjectDsn } from "../api/projects.js";
 import type { ListResult } from "../org-list.js";
-import { escapeMarkdownCell } from "./markdown.js";
 import { type Column, formatTable } from "./table.js";
 import { formatRelativeTime } from "./time-utils.js";
 
@@ -17,12 +17,12 @@ export type DsnListItem = ProjectDsn & {
 const COLUMNS: Column<DsnListItem>[] = [
   {
     header: "PROJECT",
-    value: (item) => escapeMarkdownCell(`${item.org}/${item.project}`),
+    value: (item) => tableCell(`${item.org}/${item.project}`),
     minWidth: 24,
   },
   {
     header: "NAME",
-    value: (item) => escapeMarkdownCell(item.name),
+    value: (item) => tableCell(item.name),
     minWidth: 12,
   },
   {
@@ -37,7 +37,7 @@ const COLUMNS: Column<DsnListItem>[] = [
   },
   {
     header: "DSN",
-    value: (item) => escapeMarkdownCell(item.dsn),
+    value: (item) => tableCell(item.dsn),
     shrinkable: false,
   },
 ];

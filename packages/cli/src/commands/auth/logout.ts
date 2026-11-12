@@ -9,7 +9,13 @@ import {
   pointDefaultUrlAtAccount,
   resolveAccountSelector,
 } from "../../lib/account-selection.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  ACCOUNT_SERVER_TARGET,
+  completingParser,
+  parseAccountSelector,
+} from "../../lib/completion-target.js";
 import {
   type AccountSummary,
   getAccountRow,
@@ -53,8 +59,6 @@ type LogoutFlags = {
   readonly fields?: string[];
 };
 
-const COMMAND = "sentry auth logout";
-
 /** Selector that logs out of every stored account. */
 const ALL_ACCOUNTS = "all";
 
@@ -91,19 +95,38 @@ export const logoutCommand = buildCommand({
       "accounts (email, username, user ID, or account ID; space- or\n" +
       "comma-separated) to remove those instead, or 'all' to remove every\n" +
       "stored account. When the same email is stored for several servers, add\n" +
-      "--url <server> to pick the one on that server.\n\n" +
-      "Examples:\n" +
-      "  sentry auth logout\n" +
-      "  sentry auth logout jane@acme.com,jane@personal.dev\n" +
-      "  sentry auth logout jane@acme.com --url https://sentry.acme.com\n" +
-      "  sentry auth logout all",
+      "--url <server> to pick the one on that server.",
+    examples: [
+      {
+        description:
+          "Log out of the active account (the most recently used other account becomes active)",
+        run: "auth logout",
+      },
+      {
+        description: "Log out of a specific account",
+        run: "auth logout jane@example.com",
+      },
+      {
+        description: "Log out of several accounts (space- or comma-separated)",
+        run: "auth logout jane@example.com,jane@personal.dev",
+      },
+      {
+        description:
+          "Pick the account on one server when the same email is stored twice",
+        run: "auth logout jane@example.com --url https://sentry.example.com",
+      },
+      {
+        description: "Log out of every stored account",
+        run: "auth logout all",
+      },
+    ],
   },
   output: { human: formatLogoutResult },
   parameters: {
     flags: {
       url: {
         kind: "parsed",
-        parse: parseLoginUrl,
+        parse: completingParser(ACCOUNT_SERVER_TARGET, parseLoginUrl),
         brief:
           "Only match accounts on this server (disambiguates the same email on several servers)",
         optional: true,
@@ -115,7 +138,7 @@ export const logoutCommand = buildCommand({
         placeholder: "account",
         brief:
           "Accounts to log out of (email, username, user ID, or account ID; comma-separated), or 'all'",
-        parse: String,
+        parse: parseAccountSelector,
       },
     },
   },
@@ -127,7 +150,7 @@ export const logoutCommand = buildCommand({
     const accounts = listAccounts();
     if (accounts.length === 0) {
       assertNotEnvOnly();
-      return yield new CommandOutput<LogoutResult>({
+      return yield new CommandOutput({
         loggedOut: false,
         message: "Not currently authenticated.",
       });
@@ -153,7 +176,7 @@ export const logoutCommand = buildCommand({
     if (selectors.length > 0) {
       targets = uniqueAccounts(
         selectors.map((sel) =>
-          resolveAccountSelector(sel, COMMAND, { url: flags.url }),
+          resolveAccountSelector(sel, sentry`auth logout`, { url: flags.url }),
         ),
       );
     } else {
@@ -161,10 +184,9 @@ export const logoutCommand = buildCommand({
       targets = active ? [active] : [];
     }
     if (targets.length === 0) {
-      return yield new CommandOutput<LogoutResult>({
+      return yield new CommandOutput({
         loggedOut: false,
-        message:
-          "No account is active. Run 'sentry auth list' and pass an account to log out of, or 'all'.",
+        message: `No account is active. Run '${sentry`auth list`}' and pass an account to log out of, or 'all'.`,
       });
     }
 
@@ -207,7 +229,7 @@ async function* finishLogout(
   if (removed.some((a) => a.active) && activeAccount) {
     pointDefaultUrlAtAccount(activeAccount.host);
   }
-  yield new CommandOutput<LogoutResult>({
+  yield new CommandOutput({
     loggedOut: removed.length > 0,
     ...(removed.length === 0 ? { message: "No stored account matched." } : {}),
     configPath,

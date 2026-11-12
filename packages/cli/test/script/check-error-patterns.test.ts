@@ -56,6 +56,6 @@ describe("check-error-patterns (subprocess)", () => {
   test("passes against the current source tree", () => {
     const result = runCheck();
     expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(result.stdout).toContain("No error class anti-patterns found");
+    expect(result.stderr).toContain("No error class anti-patterns found");
   });
 });

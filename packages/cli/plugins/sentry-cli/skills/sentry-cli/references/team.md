@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-team
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Sentry teams
 requires:
   bins: ["sentry"]
@@ -15,6 +15,12 @@ Work with Sentry teams
 
 List teams
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
+
 **Flags:**
 - `-n, --limit <value> - Maximum number of teams to list - (default: "25")`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
@@ -27,19 +33,29 @@ List teams
 | `id` | string | Team ID |
 | `slug` | string | Team slug |
 | `name` | string | Team name |
-| `dateCreated` | string \| null | Creation date (ISO 8601) |
-| `isMember` | boolean | Whether you are a member |
-| `teamRole` | string \| null | Your role in the team |
-| `memberCount` | number | Number of members |
+| `dateCreated` | string \| null | When the team was created (ISO 8601) |
+| `isMember` | boolean | Whether the requesting user is a member of the team |
+| `teamRole` | string \| null | The requesting user's role in the team |
+| `memberCount` | number | Number of members in the team |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 
 ```bash
-# List teams
+# List teams (organization auto-detected)
+sentry team list
+
+# List teams in an organization
 sentry team list my-org/
 
-# Paginate through teams
+# Fetch the next page
 sentry team list my-org/ -c next
+
+# Only teams whose slug or name matches a glob
+sentry team list 'my-org/back*'
+
+# Teams named like 'backend' when no such project exists (fuzzy)
+sentry team list my-org/backnd
 
 # Output as JSON
 sentry team list --json

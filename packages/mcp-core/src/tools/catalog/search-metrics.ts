@@ -5,10 +5,15 @@ import {
   runSearchEvents,
   searchToolBase,
 } from "../support/search-events/search";
+import { buildSearchEventsOutputSchema } from "../support/search-events/structured";
+
+export const searchMetricsOutputSchema =
+  buildSearchEventsOutputSchema("metrics");
 
 export default defineTool({
   ...searchToolBase("search_metrics"),
   name: "search_metrics",
+  title: "Search Metrics",
   description: [
     "Search Sentry metrics: counters, gauges, and distributions, as rows or aggregates. Use for metric values, percentiles, totals, and trends.",
     "",
@@ -29,9 +34,11 @@ export default defineTool({
     "</hints>",
   ].join("\n"),
   inputSchema: buildDatasetSearchInputSchema(),
+  outputSchema: searchMetricsOutputSchema,
   async handler(params, context: ServerContext) {
     return await runSearchEvents({ ...params, dataset: "metrics" }, context, {
       lockDataset: true,
+      output: "structured",
     });
   },
 });

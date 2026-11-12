@@ -1,4 +1,7 @@
 import {
+  Database,
+  Globe,
+  Paperclip,
   Activity,
   Bot,
   Boxes,
@@ -18,7 +21,7 @@ export type WorkspaceNavigationItem = {
   id: WorkspaceView;
   label: string;
   singularLabel: string;
-  section: "Explore" | "Inspect";
+  section: "Explore" | "Performance" | "Diagnostics";
   emptyState: {
     title: string;
     description: string;
@@ -30,7 +33,7 @@ export type WorkspaceNavigationItem = {
 export const workspaceNavigation: WorkspaceNavigationItem[] = [
   {
     id: "live",
-    label: "Live Activity",
+    label: "Events",
     singularLabel: "event",
     section: "Explore",
     emptyState: {
@@ -92,10 +95,58 @@ export const workspaceNavigation: WorkspaceNavigationItem[] = [
     getItems: (snapshot) => snapshot.ai,
   },
   {
+    id: "queries",
+    label: "Queries",
+    singularLabel: "query",
+    section: "Performance",
+    icon: Database,
+    emptyState: {
+      title: "No queries captured",
+      description: "Database spans from your SDK will appear here.",
+    },
+    getItems: (snapshot) => snapshot.traces,
+  },
+  {
+    id: "resources",
+    label: "Resources",
+    singularLabel: "resource",
+    section: "Performance",
+    icon: Globe,
+    emptyState: {
+      title: "No resources captured",
+      description: "Resource loading spans from your SDK will appear here.",
+    },
+    getItems: (snapshot) => snapshot.traces,
+  },
+  {
+    id: "web-vitals",
+    label: "Web Vitals",
+    singularLabel: "visit",
+    section: "Performance",
+    icon: Gauge,
+    emptyState: {
+      title: "No Web Vitals captured",
+      description: "Browser pageload measurements will appear here.",
+    },
+    getItems: (snapshot) => snapshot.traces,
+  },
+  {
+    id: "attachments",
+    label: "Attachments",
+    singularLabel: "attachment",
+    section: "Diagnostics",
+    icon: Paperclip,
+    emptyState: {
+      title: "No attachments captured",
+      description: "Files attached to SDK envelopes will appear here.",
+    },
+    getItems: (snapshot) => snapshot.attachments,
+  },
+  {
     id: "envelopes",
     label: "Envelopes",
     singularLabel: "envelope",
-    section: "Inspect",
+    section: "Diagnostics",
     emptyState: {
       title: "No envelopes received",
       description: "Raw envelopes received by this viewer will appear here.",
@@ -105,9 +156,9 @@ export const workspaceNavigation: WorkspaceNavigationItem[] = [
   },
   {
     id: "sdks",
-    label: "Sessions & SDKs",
+    label: "SDKs",
     singularLabel: "session or client report",
-    section: "Inspect",
+    section: "Diagnostics",
     emptyState: {
       title: "No sessions or client reports",
       description: "SDK sessions and client reports will appear here.",
@@ -119,7 +170,7 @@ export const workspaceNavigation: WorkspaceNavigationItem[] = [
     id: "feedback",
     label: "Feedback",
     singularLabel: "feedback item",
-    section: "Inspect",
+    section: "Diagnostics",
     emptyState: {
       title: "No feedback received",
       description:
@@ -132,7 +183,7 @@ export const workspaceNavigation: WorkspaceNavigationItem[] = [
     id: "profiles",
     label: "Profiles",
     singularLabel: "profile",
-    section: "Inspect",
+    section: "Performance",
     emptyState: {
       title: "No profiles captured",
       description: "Profiling data from supported SDKs will appear here.",

@@ -64,7 +64,7 @@ afterEach(() => {
 function mockFetch(
   fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
-  globalThis.fetch = fn as typeof globalThis.fetch;
+  globalThis.fetch = fn;
 }
 
 // ============================================================================
@@ -74,7 +74,8 @@ function mockFetch(
 const BINARY_NAME = getPlatformBinaryName();
 
 function versionHex(version: string): string {
-  return Array.from(version)
+  return version
+    .split("")
     .map((c) => c.charCodeAt(0).toString(16).padStart(2, "0"))
     .join("");
 }
@@ -149,7 +150,7 @@ describe("resolveStableDelta", () => {
         return new Response(JSON.stringify(releases), { status: 200 });
       }
       if (urlStr === patchUrl) {
-        return new Response(emptyTrdiff10.buffer as ArrayBuffer, {
+        return new Response(emptyTrdiff10.buffer, {
           status: 200,
         });
       }
@@ -226,7 +227,7 @@ describe("resolveNightlyDelta", () => {
                 mediaType: "application/octet-stream",
                 size: 1000,
                 annotations: {
-                  "org.opencontainers.image.title": `${BINARY_NAME}`,
+                  "org.opencontainers.image.title": BINARY_NAME,
                 },
               },
             ],
@@ -392,12 +393,9 @@ describe("attemptDeltaUpgrade", () => {
         return new Response(JSON.stringify(releases), { status: 200 });
       }
       if (urlStr === patchUrl) {
-        return new Response(
-          new Uint8Array([0, 1, 2, 3]).buffer as ArrayBuffer,
-          {
-            status: 200,
-          },
-        );
+        return new Response(new Uint8Array([0, 1, 2, 3]).buffer, {
+          status: 200,
+        });
       }
       return new Response("Not Found", { status: 404 });
     });

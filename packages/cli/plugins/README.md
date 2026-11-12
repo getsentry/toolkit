@@ -22,7 +22,8 @@ npx @sentry/dotagents add https://cli.sentry.dev sentry-cli
 
 ### Cursor
 
-Skills are automatically available in `.cursor/skills/` for Cursor users.
+`packages/cli/.cursor/skills/sentry-cli/` symlinks to the skill files, so
+Cursor picks them up when you open this repository.
 
 ### Other Agents
 
@@ -48,25 +49,21 @@ The skill will guide the assistant to provide accurate CLI commands.
 
 ## Repository Structure
 
+<!-- GENERATED:START skill-layout -->
 ```
-cli/                              # Repository root
-├── .claude-plugin/
-│   └── marketplace.json          # Marketplace manifest
-├── .cursor/
-│   └── skills/
-│       └── sentry-cli/
-│           └── SKILL.md          # Symlink to plugins location
-├── plugins/
-│   ├── README.md                 # This file
-│   └── sentry-cli/
-│       ├── .claude-plugin/
-│       │   └── plugin.json       # Plugin manifest
-│       └── skills/
-│           └── sentry-cli/
-│               └── SKILL.md      # CLI usage skill (auto-generated)
-└── script/
-    └── generate-skill.ts         # Generates SKILL.md from CLI commands
+packages/cli/.claude-plugin/marketplace.json                  # Marketplace manifest
+packages/cli/.cursor/skills/sentry-cli/SKILL.md               # Symlink to the plugin skill
+packages/cli/.cursor/skills/sentry-cli/references             # Symlink to the plugin references
+packages/cli/plugins/README.md                                # This file
+packages/cli/plugins/sentry-cli/.claude-plugin/plugin.json    # Plugin manifest
+packages/cli/plugins/sentry-cli/skills/sentry-cli/SKILL.md    # CLI usage skill (generated)
+packages/cli/plugins/sentry-cli/skills/sentry-cli/references  # One file per command group (generated)
+packages/cli/script/generate-skill.ts                         # Generates SKILL.md and references/
 ```
+<!-- GENERATED:END skill-layout -->
+
+The docs site also serves these files, plus a generated `index.json` discovery
+manifest, from `apps/cli-docs/public/.well-known/skills/`.
 
 ## Updating SKILL.md
 

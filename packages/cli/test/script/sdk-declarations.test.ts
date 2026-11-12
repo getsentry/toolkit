@@ -47,4 +47,14 @@ describe("SDK entry-point declarations", () => {
 };`;
     expect(extractSentryOptions(fixture)).toBe(fixture);
   });
+
+  test("is not cut short by braces inside comments or string literal types", () => {
+    const declaration = `export type SentryOptions = {
+  /** Closing brace in prose: } */
+  mode?: "}" | "{";
+  token?: string;
+};`;
+    const fixture = `/** Options. */\n${declaration}\n\nexport type Other = {};`;
+    expect(extractSentryOptions(fixture)).toBe(declaration);
+  });
 });

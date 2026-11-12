@@ -42,11 +42,21 @@ vi.mock("../../src/lib/telemetry.js", () => ({
     callback: (span: undefined) => Promise<T>,
   ): Promise<T> => await callback(undefined),
 }));
-vi.mock("@sentry/node-core/light", () => ({ getClient: () => null }));
+vi.mock("@sentry/node", () => ({ getClient: () => null }));
 
 import { getCustomHeaders } from "../../src/lib/custom-headers.js";
 import { getEnv } from "../../src/lib/env.js";
+import {
+  disableResponseCache,
+  getLastCacheHitAge,
+  isCacheDisabled,
+  setLastCacheHitAgeForTesting,
+} from "../../src/lib/response-cache.js";
 import { buildInvoker } from "../../src/lib/sdk-invoke.js";
+import {
+  isLoginTrustAnchorFor,
+  registerLoginTrustAnchor,
+} from "../../src/lib/token-host.js";
 import { useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("sdk-invoke-isolation-focused-");
@@ -104,6 +114,43 @@ describe("overlapping SDK invocation isolation", () => {
       header: "second",
       host: "https://second.example.com",
       token: "token-second",
+    });
+  });
+
+  test("keeps login anchors, --fresh, and cache-hit age invocation-local", async () => {
+    const anchor = "https://login.example.com";
+    const firstSet = Promise.withResolvers<void>();
+    const secondRead = Promise.withResolvers<void>();
+    invocationState.handler = async (context, flags) => {
+      if (flags.id === "first") {
+        registerLoginTrustAnchor(anchor);
+        disableResponseCache();
+        setLastCacheHitAgeForTesting(1000);
+        firstSet.resolve();
+        await secondRead.promise;
+      }
+      context.stdout.captureObject?.({
+        anchored: isLoginTrustAnchorFor(anchor),
+        cacheDisabled: isCacheDisabled(),
+        cacheHitAge: getLastCacheHitAge() ?? null,
+      });
+    };
+
+    const invoke = buildInvoker({ token: "token", persist: true });
+    const first = invoke(["focused", "probe"], { id: "first" }, []);
+    await firstSet.promise;
+    const second = await invoke(["focused", "probe"], { id: "second" }, []);
+    secondRead.resolve();
+
+    expect(second).toEqual({
+      anchored: false,
+      cacheDisabled: false,
+      cacheHitAge: null,
+    });
+    expect(await first).toEqual({
+      anchored: true,
+      cacheDisabled: true,
+      cacheHitAge: 1000,
     });
   });
 });

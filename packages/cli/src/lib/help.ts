@@ -6,7 +6,7 @@
  * Commands are auto-generated from Stricli's route structure.
  */
 
-import { routes } from "../app.js";
+import { sentry } from "./app-identity.js";
 import { formatBanner } from "./banner.js";
 import { isAuthenticated } from "./db/auth.js";
 import { detectAgent } from "./detect-agent.js";
@@ -29,7 +29,7 @@ import {
   type RouteMapEntry,
   resolveCommandPath,
 } from "./introspect.js";
-import { sixelBanner, sixelBannerRows } from "./sixel.js";
+import { getRoutes } from "./route-registry.js";
 
 const TAGLINE = "The command-line interface for Sentry";
 
@@ -112,7 +112,7 @@ const MIN_OVERVIEW_COMMANDS = 3;
 /** Visible top-level route entries, in registration order. */
 function visibleRouteEntries(): RouteMapEntry[] {
   // Cast to our introspection types — Stricli's generic types are compatible
-  const routeMap = routes as unknown as RouteMap;
+  const routeMap = getRoutes() as unknown as RouteMap;
   return routeMap
     .getAllEntries()
     .filter((entry: RouteMapEntry) => !entry.hidden);
@@ -137,7 +137,7 @@ function toHelpCommand(
       .filter((sub: RouteMapEntry) => !sub.hidden)
       .map((sub: RouteMapEntry) => sub.name.original);
     return {
-      usage: `sentry ${routeName} ${pickSubcommands(routeName, subNames).join(" | ")}`,
+      usage: sentry`${routeName} ${pickSubcommands(routeName, subNames).join(" | ")}`,
       description: brief,
     };
   }
@@ -149,13 +149,13 @@ function toHelpCommand(
       getPositionalString(entry.target.parameters.positional);
     const usageSuffix = placeholder ? ` ${placeholder}` : "";
     return {
-      usage: `sentry ${routeName}${usageSuffix}`,
+      usage: sentry`${routeName}${usageSuffix}`,
       description: brief,
     };
   }
 
   return {
-    usage: `sentry ${routeName}`,
+    usage: sentry`${routeName}`,
     description: brief,
   };
 }
@@ -217,10 +217,7 @@ function fitToTerminalHeight(
   );
 }
 
-const EXAMPLE_LOGGED_OUT = "sentry auth";
-const EXAMPLE_LOGGED_IN = "sentry issue list";
 const DOCS_URL = "https://cli.sentry.dev/getting-started/";
-const FULL_HELP_COMMAND = "sentry help";
 
 /**
  * Format the command list with aligned descriptions.
@@ -282,6 +279,28 @@ function formatEnvVars(): string {
   }).join("\n");
 }
 
+/**
+ * Renders the help banner as a terminal image (kitty or sixel).
+ *
+ * The full CLI registers one from `app.ts` with {@link setGraphicsBanner}.
+ * Applications that don't, such as `@sentry/mcp-server`, show the block-art
+ * banner instead and leave the image code (`sixel.ts`, `pngjs`, `jpeg-js`)
+ * out of their bundle.
+ */
+export type GraphicsBanner = {
+  /** The image for `columns`, or undefined when the terminal can't show it. */
+  render: (columns: number) => string | undefined;
+  /** Rows the image occupies beyond its lines of text. */
+  extraRows: () => number;
+};
+
+let graphicsBanner: GraphicsBanner | undefined;
+
+/** Register the image banner for {@link printCustomHelp}. */
+export function setGraphicsBanner(banner: GraphicsBanner | undefined): void {
+  graphicsBanner = banner;
+}
+
 /** Options for {@link printCustomHelp}. */
 type CustomHelpOptions = {
   /**
@@ -298,26 +317,27 @@ type CustomHelpOptions = {
  */
 export function printCustomHelp(options: CustomHelpOptions = {}): string {
   const loggedIn = isAuthenticated();
-  const example = loggedIn ? EXAMPLE_LOGGED_IN : EXAMPLE_LOGGED_OUT;
+  const example = loggedIn ? sentry`issue list` : sentry`auth`;
   const overview = Boolean(options.overview) && !detectAgent();
 
   const header: string[] = [];
-  // Extra rows the sixel image occupies beyond its single line of text.
-  let sixelExtraRows = 0;
+  // Extra rows the banner image occupies beyond its lines of text.
+  let imageExtraRows = 0;
 
   // Skip banner for non-TTY to avoid wasting tokens in agent loops
   if (process.stdout.isTTY) {
     const cols = process.stdout.columns ?? 80;
-    // Prefer a real sixel image on capable terminals; otherwise fall back to the
-    // block-art banner sized to the terminal width (returns "" only when the
-    // terminal is too narrow for even the compact mark).
-    const sixel = sixelBanner(cols);
-    const banner = sixel ?? formatBanner(cols);
+    // Prefer a real kitty/sixel image on capable terminals; otherwise fall back
+    // to the block-art banner sized to the terminal width (returns "" only when
+    // the terminal is too narrow for even the compact mark).
+    const graphics = graphicsBanner;
+    const image = graphics?.render(cols);
+    const banner = image ?? formatBanner(cols);
     if (banner) {
       header.push("");
       header.push(banner);
       header.push("");
-      sixelExtraRows = sixel ? sixelBannerRows() - 1 : 0;
+      imageExtraRows = image && graphics ? graphics.extraRows() : 0;
     }
   }
 
@@ -347,7 +367,7 @@ export function printCustomHelp(options: CustomHelpOptions = {}): string {
   // Example
   lines.push(`  ${muted("try:")} ${magenta(example)}`);
   if (overview) {
-    lines.push(`  ${muted("all commands:")} ${magenta(FULL_HELP_COMMAND)}`);
+    lines.push(`  ${muted("all commands:")} ${magenta(sentry`help`)}`);
   }
   lines.push("");
 
@@ -360,7 +380,7 @@ export function printCustomHelp(options: CustomHelpOptions = {}): string {
   // fit above the fold. Entries such as the flags and env-var sections span
   // several lines, so count rendered lines rather than array entries.
   const reservedRows =
-    [...header, ...lines].join("\n").split("\n").length + sixelExtraRows;
+    [...header, ...lines].join("\n").split("\n").length + imageExtraRows;
   const commands = overview
     ? fitToTerminalHeight(generateOverviewCommands(loggedIn), reservedRows)
     : generateCommands();
@@ -460,7 +480,7 @@ export function introspectAllCommands(): {
   envVars: HelpEnvVarInfo[];
   flags: HelpFlagInfo[];
 } {
-  const routeMap = routes as unknown as RouteMap;
+  const routeMap = getRoutes() as unknown as RouteMap;
   return {
     routes: extractAllRoutes(routeMap),
     envVars: buildTopLevelEnvVars(),
@@ -476,7 +496,7 @@ export function introspectAllCommands(): {
 export function introspectCommand(
   commandPath: string[],
 ): CommandInfo | RouteInfo | { error: string; suggestions?: string[] } {
-  const routeMap = routes as unknown as RouteMap;
+  const routeMap = getRoutes() as unknown as RouteMap;
   const resolved = resolveCommandPath(routeMap, commandPath);
   if (!resolved) {
     return { error: `Command not found: ${commandPath.join(" ")}` };
@@ -836,7 +856,7 @@ function formatCommandHuman(cmd: CommandInfo): string {
  */
 function formatGroupHuman(group: RouteInfo): string {
   const lines: string[] = [];
-  lines.push(`sentry ${group.name}`);
+  lines.push(sentry`${group.name}`);
   lines.push("");
   lines.push(`  ${group.brief}`);
   lines.push("");
@@ -849,6 +869,7 @@ function formatGroupHuman(group: RouteInfo): string {
 
   // Strip "sentry <group> " prefix to get subcommand name.
   // For nested routes like "sentry dashboard widget add", this yields "widget add".
+  // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- matches command paths, not a hint.
   const prefix = `sentry ${group.name} `;
   const subName = (cmd: CommandInfo) =>
     cmd.path.startsWith(prefix)
@@ -882,12 +903,12 @@ export function formatHelpHuman(data: HelpJsonResult): string {
 
   // Route group
   if ("commands" in data && "name" in data) {
-    return formatGroupHuman(data as RouteInfo);
+    return formatGroupHuman(data);
   }
 
   // Single command
   if ("path" in data) {
-    return formatCommandHuman(data as CommandInfo);
+    return formatCommandHuman(data);
   }
 
   // Error (with optional fuzzy suggestions)

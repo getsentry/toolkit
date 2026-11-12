@@ -1,22 +1,44 @@
 import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WORKER = "sentry-mcp";
+const SETTLE_ATTEMPTS = 15;
+const SETTLE_DELAY_MS = 2_000;
 
+// Messages are fixed strings, so they are safe to print in CI logs, unlike
+// errors from fetch or JSON parsing that may carry API content.
+class DeploymentError extends Error {}
+
+// A leftover stage serves one version at 100% beside a candidate at 0%. That
+// routes traffic exactly like a single-version deployment, so it must not block
+// every later deployment.
 function active(deployment) {
+  const versions = deployment?.versions;
+  const serving = Array.isArray(versions)
+    ? versions.filter((version) => version?.percentage === 100)
+    : [];
   if (
-    !deployment ||
-    !UUID.test(deployment.id) ||
-    deployment.versions?.length !== 1 ||
-    deployment.versions[0].percentage !== 100 ||
-    !UUID.test(deployment.versions[0].version_id)
+    !UUID.test(deployment?.id ?? "") ||
+    serving.length !== 1 ||
+    !versions.every(
+      (version) =>
+        UUID.test(version?.version_id ?? "") &&
+        (version === serving[0] || version.percentage === 0),
+    )
   ) {
-    throw new Error("Expected a single active Worker version at 100% traffic");
+    throw new DeploymentError(
+      "Expected a single active Worker version at 100% traffic",
+    );
   }
-  return { id: deployment.id, version: deployment.versions[0].version_id };
+  return { id: deployment.id, version: serving[0].version_id };
+}
+
+function newestMessage(deployments) {
+  return deployments[0]?.annotations?.["workers/message"];
 }
 
 export function capturePrevious(deployments, marker) {
@@ -24,7 +46,7 @@ export function capturePrevious(deployments, marker) {
     !Array.isArray(deployments) ||
     !/^toolkit-mcp:\d+:\d+:[0-9a-f]{40}$/.test(marker)
   ) {
-    throw new Error("Missing deployment history or run identity");
+    throw new DeploymentError("Missing deployment history or run identity");
   }
   return { previous: active(deployments[0]), marker };
 }
@@ -47,7 +69,7 @@ function stagedVersions(deployment, previousVersion, candidateVersion) {
         version.version_id === candidateVersion && version.percentage === 0,
     )
   ) {
-    throw new Error(
+    throw new DeploymentError(
       "Candidate stage must contain the previous version at 100% and candidate at 0%",
     );
   }
@@ -56,7 +78,9 @@ function stagedVersions(deployment, previousVersion, candidateVersion) {
 
 export function verifyStagedCandidate(deployments, journal) {
   if (!Array.isArray(deployments) || !journal?.previous || !journal?.marker) {
-    throw new Error("Missing candidate stage or previous-version journal");
+    throw new DeploymentError(
+      "Missing candidate stage or previous-version journal",
+    );
   }
   const previous = active(deployments[1]);
   const staged = stagedVersions(
@@ -72,14 +96,16 @@ export function verifyStagedCandidate(deployments, journal) {
       `${journal.marker}:stage` ||
     (journal.staged && journal.staged.id !== staged.id)
   ) {
-    throw new Error("Candidate stage ownership or prior version changed");
+    throw new DeploymentError(
+      "Candidate stage ownership or prior version changed",
+    );
   }
   return { ...journal, staged };
 }
 
 export function verifyPromotedCandidate(deployments, journal) {
   if (!Array.isArray(deployments) || !journal?.staged) {
-    throw new Error("Missing verified candidate stage");
+    throw new DeploymentError("Missing verified candidate stage");
   }
   const candidate = active(deployments[0]);
   verifyStagedCandidate(deployments.slice(1), journal);
@@ -92,7 +118,9 @@ export function verifyPromotedCandidate(deployments, journal) {
       (journal.candidate.id !== candidate.id ||
         journal.candidate.version !== candidate.version))
   ) {
-    throw new Error("Promotion ownership or candidate version changed");
+    throw new DeploymentError(
+      "Promotion ownership or candidate version changed",
+    );
   }
   return { ...journal, candidate };
 }
@@ -105,7 +133,7 @@ export function recoverManualSnapshot(deployments, marker) {
     !Array.isArray(deployments) ||
     !/^toolkit-mcp:\d+:\d+:[0-9a-f]{40}$/.test(marker)
   ) {
-    throw new Error("Invalid manual recovery run identity");
+    throw new DeploymentError("Invalid manual recovery run identity");
   }
   if (deployments[0]?.annotations?.["workers/message"] === `${marker}:stage`) {
     const previous = active(deployments[1]);
@@ -130,12 +158,16 @@ export function recoverManualSnapshot(deployments, marker) {
     });
     return verifyPromotedCandidate(deployments, staged);
   }
-  throw new Error("Latest deployment is not owned by the requested run marker");
+  throw new DeploymentError(
+    "Latest deployment is not owned by the requested run marker",
+  );
 }
 
 export function verifyCandidate(deployments, journal) {
   if (!Array.isArray(deployments) || !journal?.previous || !journal.marker) {
-    throw new Error("Missing deployment history or previous-version journal");
+    throw new DeploymentError(
+      "Missing deployment history or previous-version journal",
+    );
   }
   const candidate = active(deployments[0]);
   if (
@@ -144,7 +176,7 @@ export function verifyCandidate(deployments, journal) {
     deployments[1]?.id !== journal.previous.id ||
     active(deployments[1]).version !== journal.previous.version
   ) {
-    throw new Error(
+    throw new DeploymentError(
       "Deployment ownership or prior version changed; refusing recovery",
     );
   }
@@ -166,35 +198,58 @@ export function assertOwnedCandidate(deployments, journal) {
     actual.candidate.id !== journal.candidate.id ||
     actual.candidate.version !== journal.candidate.version
   ) {
-    throw new Error(
+    throw new DeploymentError(
       "Production no longer runs this job's candidate; refusing recovery",
     );
   }
   return journal.previous.version;
 }
 
-async function listDeployments(env) {
+/** Read deployment history for an existing Worker without exposing API responses. */
+export async function listDeployments(env, worker = WORKER) {
   if (
     !/^[0-9a-f]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID ?? "") ||
     !env.CLOUDFLARE_API_TOKEN
   ) {
-    throw new Error("Cloudflare account ID and API token are required");
+    throw new DeploymentError(
+      "Cloudflare account ID and API token are required",
+    );
   }
   const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER}/deployments?per_page=3`,
+    `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${encodeURIComponent(worker)}/deployments?per_page=3`,
     {
       headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` },
       signal: AbortSignal.timeout(15_000),
     },
   );
   if (!response.ok) {
-    throw new Error("Cloudflare deployment lookup failed");
+    throw new DeploymentError("Cloudflare deployment lookup failed");
   }
   const body = await response.json();
   if (body.success !== true || !Array.isArray(body.result?.deployments)) {
-    throw new Error("Cloudflare returned an invalid deployment list");
+    throw new DeploymentError("Cloudflare returned an invalid deployment list");
   }
   return body.result.deployments;
+}
+
+// Cloudflare can keep listing the previous deployment first for a few seconds
+// after `wrangler versions deploy` succeeds. Re-read until `settled` holds;
+// callers still validate whatever the final read returns.
+export async function listSettled(
+  env,
+  settled,
+  { list = listDeployments, sleep = delay } = {},
+) {
+  let deployments = await list(env);
+  for (
+    let attempt = 1;
+    attempt < SETTLE_ATTEMPTS && !settled(deployments);
+    attempt++
+  ) {
+    await sleep(SETTLE_DELAY_MS);
+    deployments = await list(env);
+  }
+  return deployments;
 }
 
 function runMarker(env) {
@@ -205,7 +260,7 @@ function runMarker(env) {
     ) ||
     !/^[0-9a-f]{40}$/.test(env.SOURCE_SHA ?? env.TESTED_SHA ?? "")
   ) {
-    throw new Error("Invalid GitHub run identity");
+    throw new DeploymentError("Invalid GitHub run identity");
   }
   return `toolkit-mcp:${env.SOURCE_RUN_ID ?? env.GITHUB_RUN_ID}:${env.SOURCE_RUN_ATTEMPT ?? env.GITHUB_RUN_ATTEMPT}:${env.SOURCE_SHA ?? env.TESTED_SHA}`;
 }
@@ -216,23 +271,25 @@ function runWrangler(args, env, spawn = spawnSync) {
     env,
     stdio: "inherit",
   });
-  if (child.error) throw new Error("Wrangler could not start");
+  if (child.error) throw new DeploymentError("Wrangler could not start");
   if (child.status !== 0)
-    throw new Error("Cloudflare version transition failed");
+    throw new DeploymentError("Cloudflare version transition failed");
 }
 
-export function parseUploadedVersion(output) {
+/** Identify the exact version uploaded for the intended Worker. */
+export function parseUploadedVersion(output, expectedWorker = WORKER) {
   if (typeof output !== "string" || output.length > 64_000) {
-    throw new Error("Invalid Wrangler upload output");
+    throw new DeploymentError("Invalid Wrangler upload output");
   }
   const lines = output.trimEnd().split("\n");
-  if (lines.length !== 2) throw new Error("Incomplete Wrangler upload output");
+  if (lines.length !== 2)
+    throw new DeploymentError("Incomplete Wrangler upload output");
   let session;
   let success;
   try {
     [session, success] = lines.map((line) => JSON.parse(line));
   } catch {
-    throw new Error("Invalid Wrangler upload output");
+    throw new DeploymentError("Invalid Wrangler upload output");
   }
   if (
     session?.type !== "wrangler-session" ||
@@ -241,11 +298,11 @@ export function parseUploadedVersion(output) {
     session.command_line_args[1] !== "upload" ||
     !session.command_line_args.includes("--experimental-auto-create=false") ||
     success?.type !== "version-upload" ||
-    success.worker_name !== WORKER ||
+    success.worker_name !== expectedWorker ||
     success.worker_name_overridden !== false ||
     !UUID.test(success.version_id)
   ) {
-    throw new Error(
+    throw new DeploymentError(
       "Wrangler did not confirm a production Worker version upload",
     );
   }
@@ -256,30 +313,50 @@ export async function restorePreviousVersion(
   deployments,
   journal,
   env,
-  { list = listDeployments, spawn = spawnSync } = {},
+  { list = listDeployments, sleep = delay, spawn = spawnSync } = {},
 ) {
   const previous = assertOwnedCandidate(deployments, journal);
   if (!UUID.test(previous)) {
-    throw new Error("Invalid captured previous version");
+    throw new DeploymentError("Invalid captured previous version");
   }
+  const message = `Toolkit recovery ${env.GITHUB_RUN_ID}`;
   runWrangler(
-    [
-      "versions",
-      "deploy",
-      `${previous}@100`,
-      "--yes",
-      "--message",
-      `Toolkit recovery ${env.GITHUB_RUN_ID}`,
-    ],
+    ["versions", "deploy", `${previous}@100`, "--yes", "--message", message],
     env,
     spawn,
   );
-  const recovered = active((await list(env))[0]);
+  const current = await listSettled(
+    env,
+    (listed) => newestMessage(listed) === message,
+    { list, sleep },
+  );
+  const recovered = active(current[0]);
   if (recovered.version !== previous || recovered.id === deployments[0].id) {
-    throw new Error(
+    throw new DeploymentError(
       "Cloudflare did not activate the captured previous version",
     );
   }
+}
+
+// Recovers after `stage` failed before verifying its deployment. An unchanged
+// newest deployment may be a stale read, not proof that staging never happened.
+export async function recoverUnverifiedStage(journal, env, options = {}) {
+  const current = await listSettled(
+    env,
+    (listed) => listed[0]?.id !== journal.previous.id,
+    options,
+  );
+  if (current[0]?.id === journal.previous.id) {
+    if (journal.stageDeployed) {
+      throw new DeploymentError(
+        "Cloudflare does not list the staged candidate; run manual recovery",
+      );
+    }
+    if (active(current[0]).version === journal.previous.version) return;
+    throw new DeploymentError("Production changed during candidate staging");
+  }
+  const staged = verifyStagedCandidate(current, journal);
+  await restorePreviousVersion(current, staged, env, options);
 }
 
 async function main(command, env) {
@@ -294,10 +371,10 @@ async function main(command, env) {
       "manual",
     ].includes(command)
   ) {
-    throw new Error("Unknown Cloudflare deployment operation");
+    throw new DeploymentError("Unknown Cloudflare deployment operation");
   }
   if (!env.RUNNER_TEMP) {
-    throw new Error("RUNNER_TEMP is required");
+    throw new DeploymentError("RUNNER_TEMP is required");
   }
   const path = join(env.RUNNER_TEMP, "mcp-production-deployment.json");
   const deployments = await listDeployments(env);
@@ -320,7 +397,7 @@ async function main(command, env) {
   }
   const journal = JSON.parse(await readFile(path, "utf8"));
   if (journal.marker !== runMarker(env)) {
-    throw new Error("Deployment journal belongs to another run");
+    throw new DeploymentError("Deployment journal belongs to another run");
   }
   if (command === "uploaded") {
     const candidateVersion = parseUploadedVersion(
@@ -332,7 +409,7 @@ async function main(command, env) {
       live.version !== journal.previous.version ||
       candidateVersion === live.version
     ) {
-      throw new Error("Production changed during candidate upload");
+      throw new DeploymentError("Production changed during candidate upload");
     }
     await writeFile(path, JSON.stringify({ ...journal, candidateVersion }), {
       mode: 0o600,
@@ -352,7 +429,9 @@ async function main(command, env) {
       active(deployments[0]).id !== journal.previous.id ||
       active(deployments[0]).version !== journal.previous.version
     ) {
-      throw new Error("Prior deployment changed before candidate staging");
+      throw new DeploymentError(
+        "Prior deployment changed before candidate staging",
+      );
     }
     runWrangler(
       [
@@ -366,7 +445,16 @@ async function main(command, env) {
       ],
       env,
     );
-    const staged = verifyStagedCandidate(await listDeployments(env), journal);
+    // Tells recovery that a stage exists even if Cloudflare does not list it.
+    const deployed = { ...journal, stageDeployed: true };
+    await writeFile(path, JSON.stringify(deployed), { mode: 0o600 });
+    const staged = verifyStagedCandidate(
+      await listSettled(
+        env,
+        (listed) => newestMessage(listed) === `${journal.marker}:stage`,
+      ),
+      deployed,
+    );
     await writeFile(path, JSON.stringify(staged), { mode: 0o600 });
     return;
   }
@@ -384,7 +472,10 @@ async function main(command, env) {
       env,
     );
     const promoted = verifyPromotedCandidate(
-      await listDeployments(env),
+      await listSettled(
+        env,
+        (listed) => newestMessage(listed) === `${journal.marker}:promote`,
+      ),
       journal,
     );
     await writeFile(path, JSON.stringify(promoted), { mode: 0o600 });
@@ -399,13 +490,7 @@ async function main(command, env) {
   }
   if (command === "recover") {
     if (!journal.staged && journal.candidateVersion) {
-      if (deployments[0]?.id === journal.previous.id) {
-        const live = active(deployments[0]);
-        if (live.version === journal.previous.version) return;
-        throw new Error("Production changed during candidate staging");
-      }
-      const staged = verifyStagedCandidate(deployments, journal);
-      await restorePreviousVersion(deployments, staged, env);
+      await recoverUnverifiedStage(journal, env);
       return;
     }
     if (
@@ -426,8 +511,10 @@ async function main(command, env) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main(process.argv[2], process.env).catch((error) => {
     // Keep API responses and credentials out of CI logs.
+    const reason =
+      error instanceof DeploymentError ? error.message : "unexpected error";
     console.error(
-      "Cloudflare deployment operation failed; inspect ownership and deployment state.",
+      `Cloudflare deployment operation failed (${reason}); inspect ownership and deployment state.`,
     );
     process.exitCode = 1;
   });

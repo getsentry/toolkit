@@ -32,6 +32,12 @@ export interface SentryContext extends CommandContext {
    * help when a user passes `help` as a positional argument.
    */
   readonly commandPrefix?: readonly string[];
+  /**
+   * Set by the typed SDK invoker, which calls a command's func directly.
+   * Turns off CLI-only `help` recovery, so a failing call with a `help`
+   * positional throws its error instead of returning help text.
+   */
+  readonly directInvoke?: boolean;
 }
 
 /**

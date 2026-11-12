@@ -1,7 +1,7 @@
 /**
  * Shared outbound mock registrations for Cloudflare Workers tests.
  *
- * The current vitest-pool-workers stack configures Miniflare's `fetchMock`
+ * The Cloudflare Vitest plugin configures Miniflare's `outboundService`
  * centrally from vitest.config.ts so test files do not need per-file setup.
  */
 import {

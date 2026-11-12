@@ -14,18 +14,94 @@ import {
   expect,
   test,
 } from "vitest";
+import { paginate } from "../../src/lib/api/infrastructure.js";
 import { EXIT } from "../../src/lib/errors.js";
-import { createE2EContext, type E2EContext } from "../fixture.js";
+import { createE2EContext, type E2EContext, runCli } from "../fixture.js";
+import organizationsFixture from "../fixtures/organizations.json";
+import transactionsFixture from "../fixtures/transactions.json";
 import { cleanupTestDir, createTestConfigDir } from "../helpers.js";
-import { createSentryMockServer, TEST_TOKEN } from "../mocks/routes.js";
-import type { MockServer } from "../mocks/server.js";
+import { apiRoutes, TEST_TOKEN } from "../mocks/routes.js";
+import { createMockServer, type MockServer } from "../mocks/server.js";
 
 let testConfigDir: string;
 let mockServer: MockServer;
 let ctx: E2EContext;
+const paginationRequests: URL[] = [];
+const preparedRequests: {
+  url: string;
+  method: string;
+  headers: Headers;
+  body: string;
+}[] = [];
+const nextCursor = "2:1:0";
+const prevCursor = "2:0:1";
+const alternateToken = "test-api-other-identity";
+const cursorOrganizations = Array.from({ length: 4 }, (_, index) => ({
+  ...organizationsFixture[index % organizationsFixture.length],
+  id: String(100_001 + index),
+  slug: `test-org-${index + 1}`,
+  name: `Test Organization ${index + 1}`,
+}));
+const cursorTransactions = Array.from({ length: 4 }, (_, index) => ({
+  ...transactionsFixture.data[index % transactionsFixture.data.length],
+  id: String(index + 1).padStart(16, "0"),
+}));
+let failNextPage = false;
 
 beforeAll(async () => {
-  mockServer = createSentryMockServer();
+  mockServer = createMockServer(
+    [
+      ...apiRoutes,
+      {
+        method: "POST",
+        path: "/api/0/api-prepared-request/",
+        response: async (req) => {
+          preparedRequests.push({
+            url: req.url,
+            method: req.method,
+            headers: req.headers,
+            body: await req.text(),
+          });
+          return {
+            status: 422,
+            body: { detail: "Unsupported request", meta: { field: "title" } },
+          };
+        },
+      },
+      {
+        method: "GET",
+        path: "/api/0/api-pagination/",
+        response: (req, _params, serverUrl) => {
+          const url = new URL(req.url);
+          paginationRequests.push(url);
+          if (url.searchParams.get("cursor") === nextCursor && failNextPage) {
+            failNextPage = false;
+            return { status: 403, body: { detail: "Access denied" } };
+          }
+          const perPage = Number(url.searchParams.get("per_page") ?? "2");
+          const page = Number(
+            url.searchParams.get("cursor")?.split(":")[1] ?? "0",
+          );
+          const start = page * perPage;
+          const next = `${perPage}:${page + 1}:0`;
+          const previous = `${perPage}:${page - 1}:1`;
+          const envelope = url.searchParams.get("envelope") === "events";
+          const rows = envelope ? cursorTransactions : cursorOrganizations;
+          const data = rows.slice(start, start + perPage);
+          return {
+            body: envelope ? { ...transactionsFixture, data } : data,
+            headers: {
+              "Cache-Control": "no-store",
+              Link:
+                `<${serverUrl}/api/0/api-pagination/?cursor=${next}>; rel="next"; results="${start + perPage < rows.length}"; cursor="${next}", ` +
+                `<${serverUrl}/api/0/api-pagination/?cursor=${previous}>; rel="previous"; results="${page > 0}"; cursor="${previous}"`,
+            },
+          };
+        },
+      },
+    ],
+    { validTokens: [TEST_TOKEN, alternateToken] },
+  );
   await mockServer.start();
 });
 
@@ -34,6 +110,9 @@ afterAll(() => {
 });
 
 beforeEach(async () => {
+  paginationRequests.length = 0;
+  preparedRequests.length = 0;
+  failNextPage = false;
   testConfigDir = await createTestConfigDir("e2e-api-");
   ctx = createE2EContext(testConfigDir, mockServer.url);
 });
@@ -122,6 +201,264 @@ describe("sentry api", () => {
 
     expect(result.exitCode, result.stderr + result.stdout).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({ method: "GET" });
+  });
+
+  test("previews and dispatches a raw input file with custom headers", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const file = `${testConfigDir}/request.txt`;
+    await writeFile(file, "raw payload");
+    const args = [
+      "api",
+      "api-prepared-request/",
+      "--method",
+      "POST",
+      "--input",
+      file,
+      "-H",
+      "content-type: application/custom",
+      "--json",
+    ];
+
+    const preview = await ctx.run([...args, "--dry-run"]);
+    expect(preview.exitCode, preview.stderr + preview.stdout).toBe(0);
+    expect(preparedRequests).toHaveLength(0);
+    const request = JSON.parse(preview.stdout);
+    const previewHeaders = new Headers(request.headers);
+    expect(request.body).toBe("raw payload");
+    expect(previewHeaders.get("Content-Type")).toBe("application/custom");
+    expect(previewHeaders.has("Authorization")).toBe(false);
+
+    const result = await ctx.run(args);
+    expect(result.exitCode).toBe(EXIT.OUTPUT_ERROR);
+    expect(preparedRequests).toHaveLength(1);
+    const sent = preparedRequests[0];
+    expect(sent.url).toBe(request.url);
+    expect(sent.method).toBe(request.method);
+    expect(sent.body).toBe("raw payload");
+    for (const [name, value] of previewHeaders) {
+      expect(sent.headers.get(name)).toBe(value);
+    }
+    expect(sent.headers.get("Authorization")).toBe(`Bearer ${TEST_TOKEN}`);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 422,
+      body: { detail: "Unsupported request", meta: { field: "title" } },
+    });
+  });
+
+  test("navigates next, prev and first while preserving filters and --fields", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const args = [
+      "api",
+      "api-pagination/?project=1&project=2&query=foo%23bar&cursor=url-old&cursor=url-older#anchor",
+      "-F",
+      "cursor=typed-old",
+      "-f",
+      "cursor=raw-old",
+      "-f",
+      "per_page=2",
+      "--json",
+      "--fields",
+      "name",
+    ];
+
+    for (const [cursor, start, hasPrev] of [
+      ["first", 0, false],
+      ["next", 2, true],
+      ["prev", 0, false],
+      ["next", 2, true],
+      ["first", 0, false],
+    ] as const) {
+      const result = await ctx.run([...args, "-c", cursor]);
+      expect(result.exitCode, result.stderr + result.stdout).toBe(0);
+      const page = JSON.parse(result.stdout);
+      expect(page).toEqual({
+        status: 200,
+        statusText: "OK",
+        body: cursorOrganizations
+          .slice(start, start + 2)
+          .map(({ name }) => ({ name })),
+        pagination: hasPrev ? { prevCursor, hasPrev } : { nextCursor, hasPrev },
+      });
+    }
+    expect(
+      paginationRequests.map((url) => url.searchParams.getAll("cursor")),
+    ).toEqual([[], [nextCursor], [], [nextCursor], []]);
+    for (const url of paginationRequests) {
+      expect(url.searchParams.get("query")).toBe("foo#bar");
+      expect(url.searchParams.get("per_page")).toBe("2");
+      expect(url.searchParams.getAll("project")).toEqual(["1", "2"]);
+    }
+  });
+
+  test("dry-runs and failed requests do not advance pagination history", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const request = ["api", "api-pagination/", "-f", "per_page=2"];
+    const args = [...request, "--json"];
+    const preview = await ctx.run([...args, "--dry-run"]);
+    expect(preview.exitCode, preview.stderr + preview.stdout).toBe(0);
+    const missing = await ctx.run([...args, "--cursor", "next"]);
+    expect(missing.exitCode).toBe(EXIT.VALIDATION);
+    expect(paginationRequests).toHaveLength(0);
+
+    const first = await ctx.run([...request, "--silent"]);
+    expect(first.exitCode, first.stderr + first.stdout).toBe(0);
+    expect(first.stdout).toBe("");
+    const nextPreview = await ctx.run([
+      ...args,
+      "--cursor",
+      "next",
+      "--dry-run",
+    ]);
+    expect(nextPreview.exitCode, nextPreview.stderr + nextPreview.stdout).toBe(
+      0,
+    );
+    expect(
+      new URL(JSON.parse(nextPreview.stdout).url).searchParams.get("cursor"),
+    ).toBe(nextCursor);
+    expect(paginationRequests).toHaveLength(1);
+
+    failNextPage = true;
+    const failed = await ctx.run([...args, "--cursor", "next"]);
+    expect(failed.exitCode).toBe(EXIT.OUTPUT_ERROR);
+    expect(JSON.parse(failed.stdout).status).toBe(403);
+    const retried = await ctx.run([...args, "--cursor", "next"]);
+    expect(retried.exitCode, retried.stderr + retried.stdout).toBe(0);
+    expect(JSON.parse(retried.stdout).body).toEqual(
+      cursorOrganizations.slice(2),
+    );
+    expect(
+      paginationRequests.map((url) => url.searchParams.get("cursor")),
+    ).toEqual([null, nextCursor, nextCursor]);
+    const exhausted = await ctx.run([...args, "--cursor", "next"]);
+    expect(exhausted.exitCode).toBe(EXIT.VALIDATION);
+    expect(paginationRequests).toHaveLength(3);
+  });
+
+  test.each(["query", "host", "identity"])(
+    "does not reuse pagination history after changing the %s",
+    async (change) => {
+      const args = ["api", "api-pagination/", "-f", "per_page=2", "--json"];
+      const env = {
+        SENTRY_AUTH_TOKEN: TEST_TOKEN,
+        SENTRY_TOKEN: "",
+        SENTRY_CONFIG_DIR: testConfigDir,
+        SENTRY_URL: mockServer.url,
+        SENTRY_CLI_NO_TELEMETRY: "1",
+      };
+      const first = await runCli(args, { env });
+      expect(first.exitCode, first.stderr + first.stdout).toBe(0);
+      const changed = await runCli(
+        [
+          ...args,
+          "--cursor",
+          "next",
+          ...(change === "query" ? ["-f", "query=other"] : []),
+        ],
+        {
+          env: {
+            ...env,
+            SENTRY_URL:
+              change === "host"
+                ? mockServer.url.replace("localhost", "127.0.0.1")
+                : mockServer.url,
+            SENTRY_AUTH_TOKEN:
+              change === "identity" ? alternateToken : TEST_TOKEN,
+          },
+        },
+      );
+      expect(changed.exitCode).toBe(EXIT.VALIDATION);
+      expect(paginationRequests).toHaveLength(1);
+      const resumed = await runCli([...args, "--cursor", "next"], { env });
+      expect(resumed.exitCode, resumed.stderr + resumed.stdout).toBe(0);
+      expect(JSON.parse(resumed.stdout).body).toEqual(
+        cursorOrganizations.slice(2),
+      );
+      expect(paginationRequests).toHaveLength(2);
+    },
+  );
+
+  test.each([
+    { format: "shared", envelope: false },
+    { format: "legacy", envelope: true },
+  ])(
+    "resumes a $format bookmark across next and prev",
+    async ({ format, envelope }) => {
+      await ctx.setAuthToken(TEST_TOKEN);
+      const rows = envelope ? cursorTransactions : cursorOrganizations;
+      const nativePage = await paginate<{ id: string }>(
+        { limit: 1, cursor: "2:0:0" },
+        () => Promise.resolve({ data: rows.slice(0, 2), nextCursor }),
+      );
+      expect(nativePage.nextCursor).toBeDefined();
+      const cursor =
+        format === "legacy" ? "cli1~2~1~2:0:0" : String(nativePage.nextCursor);
+      const args = [
+        "api",
+        `api-pagination/${envelope ? "?envelope=events" : ""}`,
+        "-f",
+        "per_page=9",
+        "--json",
+      ];
+      const preview = await ctx.run([...args, "--cursor", cursor, "--dry-run"]);
+      expect(preview.exitCode, preview.stderr + preview.stdout).toBe(0);
+      const url = new URL(JSON.parse(preview.stdout).url);
+      expect(url.searchParams.get("per_page")).toBe("2");
+      expect(url.searchParams.get("cursor")).toBe("2:0:0");
+      expect(paginationRequests).toHaveLength(0);
+
+      for (const [pageCursor, data, hasPrev] of [
+        [cursor, rows.slice(1, 2), false],
+        ["next", rows.slice(2), true],
+        ["prev", rows.slice(1, 2), false],
+      ] as const) {
+        const result = await ctx.run([...args, "--cursor", pageCursor]);
+        expect(result.exitCode, result.stderr + result.stdout).toBe(0);
+        const page = JSON.parse(result.stdout);
+        expect(page.body).toEqual(
+          envelope ? { ...transactionsFixture, data } : data,
+        );
+        expect(page.pagination.hasPrev).toBe(hasPrev);
+        expect(page.pagination.nextCursor).toBe(
+          hasPrev ? undefined : nextCursor,
+        );
+      }
+      expect(paginationRequests[0].href).toBe(url.href);
+      expect(
+        paginationRequests.map((request) => request.searchParams.get("cursor")),
+      ).toEqual(["2:0:0", nextCursor, "2:0:0"]);
+      expect(
+        paginationRequests.every(
+          (request) => request.searchParams.get("per_page") === "2",
+        ),
+      ).toBe(true);
+    },
+  );
+
+  test("rejects mid-page bookmarks on object responses without saving history", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const args = ["api", "organizations/test-org/", "--json"];
+    const result = await ctx.run([...args, "--cursor", "cli1~2~1~"]);
+    expect(result.exitCode).toBe(EXIT.VALIDATION);
+    expect(result.stderr + result.stdout).toContain("not an array");
+    const next = await ctx.run([...args, "--cursor", "next"]);
+    expect(next.exitCode).toBe(EXIT.VALIDATION);
+    expect(next.stderr + next.stdout).toContain("No next page saved");
+  });
+
+  test("rejects --cursor for non-GET requests before sending them", async () => {
+    await ctx.setAuthToken(TEST_TOKEN);
+    const result = await ctx.run([
+      "api",
+      "api-prepared-request/",
+      "--method",
+      "POST",
+      "--cursor",
+      nextCursor,
+    ]);
+
+    expect(result.exitCode).toBe(EXIT.VALIDATION);
+    expect(result.stdout + result.stderr).toMatch(/cursor.*GET|GET.*cursor/i);
+    expect(preparedRequests).toHaveLength(0);
   });
 
   test("empty error bodies report the HTTP status and request", async () => {
@@ -261,8 +598,9 @@ describe("sentry api", () => {
 
       expect(result.exitCode).toBe(0);
       // Verbose output goes to stderr via logger.debug()
-      // consola formats as: [debug] [api] > GET /api/0/organizations/
-      expect(result.stderr).toMatch(/> GET \/api\/0\/organizations\//);
+      expect(result.stderr).toContain(
+        `> GET ${mockServer.url}/api/0/organizations/`,
+      );
       expect(result.stderr).toMatch(/< HTTP 200 OK/);
       expect(result.stderr).toMatch(/< content-type:/i);
       // stdout should still contain the response body
@@ -274,27 +612,6 @@ describe("sentry api", () => {
   // ─────────────────────────────────────────────────────────────────────────────
   // Input From File Tests
   // ─────────────────────────────────────────────────────────────────────────────
-
-  test("--input reads body from file", { timeout: 15_000 }, async () => {
-    await ctx.setAuthToken(TEST_TOKEN);
-
-    // Create a temp file with JSON body
-    const tempFile = `${testConfigDir}/input.json`;
-    await writeFile(tempFile, JSON.stringify({ status: "resolved" }));
-
-    // Try to update a non-existent issue - this will fail but tests the flow
-    const result = await ctx.run([
-      "api",
-      "issues/999999999/",
-      "-X",
-      "PUT",
-      "--input",
-      tempFile,
-    ]);
-
-    // Will fail with 404 or similar, but the flag should be processed
-    expect(result.exitCode).toBe(EXIT.OUTPUT_ERROR);
-  });
 
   test(
     "--input with non-existent file throws error",

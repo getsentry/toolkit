@@ -7,7 +7,7 @@ The Sentry CLI includes several features designed to streamline your workflow, e
 
 ## Interactive Selection
 
-When the CLI asks you to choose an organization or project, type to filter the loaded options by name or slug. The filter appears as `/text` below the list. Matching ignores case and tolerates small typos. Use arrow keys to navigate, Enter to select, and Backspace to edit. Esc clears the filter before cancelling; Ctrl+C cancels immediately. The same controls work in the organization, team, and monorepo app selectors in `sentry init`.
+When the CLI asks you to choose an organization or project, type to filter the loaded options by name or slug. The filter appears as `/text` below the list. Matching ignores case and tolerates small typos. Use arrow keys to navigate, Enter to select, and Backspace to edit. Esc clears the filter before cancelling; Ctrl+C cancels immediately.
 
 Selectors tolerate typos in unfinished prefixes: `frone` can find `frontend-web`. Queries with one or two characters match literal text only, so `ap` finds `api` but `zz` does not find `ui`.
 
@@ -31,8 +31,9 @@ For monorepos or when DSN detection picks up the wrong project, use a [`.sentryc
 
 ### Supported Languages
 
-The CLI scans source files for DSN URLs (the `https://…@….ingest.sentry.io/…` pattern) using a universal regex — no language-specific parsing is needed. Any text file with a recognized extension is scanned, including:
+The CLI scans source files for DSN URLs (the `https://<key>@<host>/<project-id>` pattern, so self-hosted DSNs match too) using a universal regex — no language-specific parsing is needed. Any text file with a recognized extension is scanned, including:
 
+<!-- GENERATED:START dsn-extensions -->
 | Language Family | File Extensions |
 |----------------|-----------------|
 | JavaScript/TypeScript | `.js`, `.ts`, `.jsx`, `.tsx`, `.mjs`, `.cjs`, `.astro`, `.vue`, `.svelte` |
@@ -46,7 +47,9 @@ The CLI scans source files for DSN URLs (the `https://…@….ingest.sentry.io/�
 | Rust | `.rs` |
 | Dart/Flutter | `.dart` |
 | Elixir/Erlang | `.ex`, `.exs`, `.erl` |
-| Config files | `.json`, `.yaml`, `.yml`, `.toml`, `.xml`, `.properties` |
+| Lua | `.lua` |
+| Config files | `.json`, `.yaml`, `.yml`, `.toml`, `.xml`, `.properties`, `.config` |
+<!-- GENERATED:END dsn-extensions -->
 
 ### Caching
 
@@ -69,14 +72,9 @@ sentry issue list my-org/my-project
 sentry issue list
 ```
 
-The CLI will show which project was detected:
-
-```
-Detected project: my-app (from .env)
-
-ID          SHORT ID    TITLE                           COUNT
-123456789   MYAPP-ABC   TypeError: Cannot read prop...  142
-```
+The list title names the project the CLI resolved (for example,
+`Issues in my-org/my-app:`). View commands such as `sentry org view` also print a
+`Detected from <source>` hint naming the file or variable the DSN came from.
 
 ## Monorepo Support & Alias System
 
@@ -92,34 +90,32 @@ When you run `sentry issue list`, the CLI:
 
 Aliases are the shortest unique prefix of each project slug. For example:
 
+<!-- GENERATED:START alias-unique-prefix -->
 | Project Slug | Alias |
-|--------------|-------|
-| `frontend` | `f` |
+|---|---|
+| `frontend` | `fr` |
 | `functions` | `fu` |
 | `backend` | `b` |
+<!-- GENERATED:END alias-unique-prefix -->
 
 For projects with a common prefix (like `spotlight-electron`, `spotlight-website`), the prefix is stripped first:
 
+<!-- GENERATED:START alias-common-prefix -->
 | Project Slug | Alias |
-|--------------|-------|
+|---|---|
 | `spotlight-electron` | `e` |
 | `spotlight-website` | `w` |
 | `spotlight-backend` | `b` |
+<!-- GENERATED:END alias-common-prefix -->
 
 ### Using Alias-Suffix Format
 
-After running `issue list`, you can reference issues using the `alias-suffix` format:
+After running `issue list`, you can reference issues using the `alias-suffix` format.
+When several projects are listed, the `SHORT ID` column shows each issue's
+alias-suffix below its short ID (`SPOTLIGHT-ELEC-4Y` → `e-4y`):
 
 ```bash
-# List issues - note the ALIAS column
 sentry issue list
-```
-
-```
-ALIAS  SHORT ID             TITLE                           COUNT
-e      SPOTLIGHT-ELEC-4Y    TypeError: Cannot read prop...  142
-w      SPOTLIGHT-WEB-ABC    Failed to fetch user data       89
-b      SPOTLIGHT-BACK-XYZ   Connection timeout              34
 ```
 
 ```bash
@@ -135,56 +131,35 @@ sentry issue plan b-XYZ
 
 ### Cross-Organization Support
 
-If you work with multiple organizations that have projects with the same slug, the CLI uses org-prefixed aliases:
+If you work with multiple organizations that have projects with the same slug, the CLI prefixes those aliases with the shortest unique org prefix:
 
-```
-ALIAS    SHORT ID        TITLE
-o1:api   ORG1-API-123    Error in API handler
-o2:api   ORG2-API-456    Database connection failed
-```
+<!-- GENERATED:START alias-cross-org -->
+| Org/Project | Alias |
+|---|---|
+| `acme/api` | `a/a` |
+| `globex/api` | `g/a` |
+<!-- GENERATED:END alias-cross-org -->
 
 ## Issue ID Formats
 
-The CLI accepts several formats for identifying issues:
+The CLI accepts these formats wherever a command takes an issue:
 
-### Numeric ID
-
-The internal Sentry issue ID:
-
-```bash
-sentry issue view 123456789
-sentry issue explain 987654321
-```
-
-### Full Short ID
-
-The project-prefixed short ID shown in Sentry UI:
-
-```bash
-sentry issue view MYPROJECT-ABC
-sentry issue explain FRONTEND-XYZ
-```
-
-### Short Suffix
-
-Just the suffix portion when project context is provided via the `<org>/` prefix:
-
-```bash
-sentry issue view my-org/myproject-ABC
-```
-
-### GitHub-Style (`#` separator)
-
-A `#` may be used in place of the final slash, matching how issues are referenced
-on GitHub. This is handy for AI agents and tooling that emit `org/project#SHORTID`:
-
-```bash
-# Equivalent to my-org/my-project/PROJ-123
-sentry issue view my-org/my-project#PROJ-123
-
-# Project context only (org auto-detected)
-sentry issue view my-project#PROJ-123
-```
+<!-- GENERATED:START issue-id-formats -->
+| Format | Example | Meaning |
+|--------|---------|---------|
+| `<numeric-id>` | `123456789` | The issue's numeric ID |
+| `<project>-<suffix>` | `cli-G` | A short ID, as shown in Sentry. A project alias from `sentry issue list` works in place of the project (`e-4Y`). Otherwise the project is looked up in the default organization, or in every accessible organization |
+| `<suffix>` | `G` | The suffix of a short ID, in the auto-detected project |
+| `<org>/<project>-<suffix>` | `my-org/cli-G` | A short ID in that organization |
+| `<org>/<project>/<id>` | `my-org/cli/CLI-G` | An issue in that project. `<id>` is a short ID, its suffix, or a numeric ID |
+| `<org>/<numeric-id>` | `my-org/123456789` | A numeric ID in that organization |
+| `<org>/<suffix>` | `my-org/G` | Always fails: it names no project. Use `<org>/<project>-<suffix>` or `<org>/<project>/<suffix>` |
+| `[<org>/]<project>#<id>` | `my-org/cli#CLI-G` | GitHub-style: `<org>/<project>#<id>` is the same as `<org>/<project>/<id>`, `<project>#<id>` as `<project>:<id>`, and `#<id>` as `<id>` |
+| `<project>:<id>` | `cli:CLI-G` | An issue in that project. `<id>` is a short ID, its suffix, or a numeric ID |
+| `[<org>/]@<selector>` | `@latest` | The top issue in the organization: `@latest` (most recent) or `@most_frequent` |
+| `https://<org>.sentry.io/issues/<id>/` | `https://my-org.sentry.io/issues/123456789/` | An issue URL or share link copied from Sentry |
+| `<text with spaces>` | `login timeout` | The one issue in the organization whose search matches the text. Quote it in the shell |
+<!-- GENERATED:END issue-id-formats -->
 
 ### Alias-Suffix
 

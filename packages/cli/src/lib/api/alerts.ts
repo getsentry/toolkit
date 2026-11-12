@@ -10,11 +10,17 @@ import {
   createOrganizationProjectDetector,
   createOrganizationWorkflow,
   deleteOrganizationDetector,
+  deleteOrganizationWorkflow,
   getOrganizationDetector,
+  type GetOrganizationDetectorResponse,
   getOrganizationWorkflow,
+  type GetOrganizationWorkflowResponse,
   listOrganizationDetectors,
+  listOrganizationWorkflows,
   updateOrganizationDetector,
   updateOrganizationWorkflow,
+  type UpdateOrganizationDetectorResponse,
+  type UpdateOrganizationWorkflowResponse,
 } from "@sentry/api";
 import {
   METRIC_MONITOR_PRIORITY,
@@ -28,13 +34,9 @@ import {
   metricAlertSource,
 } from "../../types/metric-alert.js";
 import { ApiError, ValidationError } from "../errors.js";
-import { resolveOrgRegion } from "../region.js";
 import {
-  apiRequestToRegion,
-  apiRequestToRegionNoContent,
   getOrgSdkConfig,
   type PaginatedResponse,
-  parseLinkHeader,
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
@@ -64,7 +66,12 @@ export type IssueAlertRule = {
 };
 
 /** A single metric alert rule (threshold-based, org-scoped) */
-export type MetricAlertRule = {
+export type MetricAlertRule = Partial<
+  Pick<
+    GetOrganizationDetectorResponse,
+    "config" | "conditionGroup" | "workflowIds"
+  >
+> & {
   id: string;
   name: string;
   /** 0/"0"/absent = active, 1/"1" = disabled */
@@ -102,6 +109,8 @@ type MetricDetector = {
   dataSources?: Record<string, unknown>[] | null;
   /** Detection settings (`detectionType`, `comparisonDelta`, …), kept on edit. */
   config?: Record<string, unknown> | null;
+  conditionGroup?: GetOrganizationDetectorResponse["conditionGroup"];
+  workflowIds?: GetOrganizationDetectorResponse["workflowIds"];
 };
 
 /**
@@ -233,7 +242,7 @@ function mapDetectorToMetricAlertRule(
 // Issue alerts
 //
 // Issue alert rules are read from the org-scoped `/organizations/{org}/workflows/`
-// endpoint (filtered by `projectSlug`). The legacy project-scoped
+// endpoint (filtered by `project`). The legacy project-scoped
 // `/projects/{org}/{project}/rules/` endpoint was deprecated on 2026-05-14 and
 // now returns HTTP 410 during recurring brownouts (getsentry/cli#1182). The
 // workflows endpoint returns rule-shaped payloads, so the existing
@@ -243,7 +252,7 @@ function mapDetectorToMetricAlertRule(
 /**
  * Keep only workflows that are attached to a detector.
  *
- * A `projectSlug`-filtered workflows response can also include unattached
+ * A project-filtered workflows response can also include unattached
  * org-level workflows; those are not issue alert rules, so we drop any entry
  * with no `detectorIds`. Mirrors the sentry-mcp filter of the same name.
  */
@@ -266,20 +275,21 @@ export async function listIssueAlertsPaginated(
   projectSlug: string,
   options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<IssueAlertRule[]>> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data, headers } = await apiRequestToRegion<IssueAlertRule[]>(
-    regionUrl,
-    `/organizations/${orgSlug}/workflows/`,
-    {
-      params: {
-        projectSlug,
-        sortBy: "-id",
-        per_page: options.perPage,
-        cursor: options.cursor,
-      },
+  const config = getOrgSdkConfig();
+  const result = await listOrganizationWorkflows({
+    ...config,
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      project: [projectSlug],
+      sortBy: "-id",
+      per_page: options.perPage,
+      cursor: options.cursor,
     },
+  });
+  const { data, nextCursor } = unwrapPaginatedResult<IssueAlertRule[]>(
+    result,
+    "Failed to list issue alert rules",
   );
-  const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
   return { data: filterAttachedIssueAlertRules(data), nextCursor };
 }
 
@@ -291,8 +301,8 @@ export async function listIssueAlertsPaginated(
 export async function getIssueAlertWorkflowDocument(
   orgSlug: string,
   workflowId: string,
-): Promise<Record<string, unknown>> {
-  const config = await getOrgSdkConfig(orgSlug);
+): Promise<GetOrganizationWorkflowResponse> {
+  const config = getOrgSdkConfig();
   const result = await getOrganizationWorkflow({
     ...config,
     path: {
@@ -300,7 +310,7 @@ export async function getIssueAlertWorkflowDocument(
       workflow_id: Number(workflowId),
     },
   });
-  return unwrapResult<Record<string, unknown>>(
+  return unwrapResult<GetOrganizationWorkflowResponse>(
     result,
     "Failed to fetch issue alert rule",
   );
@@ -317,7 +327,7 @@ export async function resolveErrorDetectorId(
   orgSlug: string,
   projectSlug: string,
 ): Promise<number> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await listOrganizationDetectors({
     ...config,
     path: { organization_id_or_slug: orgSlug },
@@ -355,11 +365,15 @@ export async function getIssueAlertRule(
   projectSlug: string,
   ruleId: string,
 ): Promise<IssueAlertRule> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion<IssueAlertRule[]>(
-    regionUrl,
-    `/organizations/${orgSlug}/workflows/`,
-    { params: { projectSlug, id: ruleId, per_page: 1 } },
+  const config = getOrgSdkConfig();
+  const result = await listOrganizationWorkflows({
+    ...config,
+    path: { organization_id_or_slug: orgSlug },
+    query: { project: [projectSlug], id: [Number(ruleId)], per_page: 1 },
+  });
+  const data = unwrapResult<IssueAlertRule[]>(
+    result,
+    "Failed to fetch issue alert rule",
   );
   const rule = filterAttachedIssueAlertRules(data)[0];
   if (!rule) {
@@ -402,7 +416,7 @@ export async function listMetricAlertsPaginated(
   orgSlug: string,
   options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<MetricAlertRule[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await listOrganizationDetectors({
     ...config,
     path: { organization_id_or_slug: orgSlug },
@@ -411,11 +425,6 @@ export async function listMetricAlertsPaginated(
       sortBy: "-id",
       cursor: options.cursor,
       per_page: options.perPage,
-    } as {
-      query?: string;
-      sortBy?: string;
-      cursor?: string;
-      per_page?: number;
     },
   });
   const { data, nextCursor } = unwrapPaginatedResult<MetricDetector[]>(
@@ -429,7 +438,8 @@ export async function listMetricAlertsPaginated(
  * Get a single metric alert rule by ID.
  *
  * Reads from the org-scoped `/detectors/{id}/` endpoint and maps the detector
- * onto the flat `MetricAlertRule` shape.
+ * onto the flat `MetricAlertRule` shape, preserving native detection settings,
+ * conditions, and workflow links for inspection. List results stay compact.
  *
  * The `/detectors/{id}/` endpoint returns any detector kind (uptime, cron,
  * error, …), unlike the `type:metric_issue`-filtered list. A non-metric id is
@@ -444,7 +454,13 @@ export async function getMetricAlertRule(
   orgSlug: string,
   ruleId: string,
 ): Promise<MetricAlertRule> {
-  return mapDetectorToMetricAlertRule(await getMetricDetector(orgSlug, ruleId));
+  const detector = await getMetricDetector(orgSlug, ruleId);
+  return {
+    ...mapDetectorToMetricAlertRule(detector),
+    config: detector.config ?? undefined,
+    conditionGroup: detector.conditionGroup,
+    workflowIds: detector.workflowIds,
+  };
 }
 
 /** Fetch a metric-issue detector, rejecting other detector kinds with a 404. */
@@ -452,7 +468,7 @@ async function getMetricDetector(
   orgSlug: string,
   ruleId: string,
 ): Promise<MetricDetector> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await getOrganizationDetector({
     ...config,
     // The SDK types detector_id as number, but detector IDs are opaque strings
@@ -495,12 +511,15 @@ export async function deleteIssueAlertRule(
   orgSlug: string,
   ruleId: string,
 ): Promise<void> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  await apiRequestToRegionNoContent(
-    regionUrl,
-    `/organizations/${orgSlug}/workflows/${encodeURIComponent(ruleId)}/`,
-    { method: "DELETE" },
-  );
+  const config = getOrgSdkConfig();
+  const result = await deleteOrganizationWorkflow({
+    ...config,
+    path: {
+      organization_id_or_slug: orgSlug,
+      workflow_id: Number(ruleId),
+    },
+  });
+  unwrapResult(result, `Failed to delete issue alert rule '${ruleId}'`);
 }
 
 /**
@@ -513,21 +532,21 @@ export async function updateIssueAlertRule(
   orgSlug: string,
   workflowId: string,
   body: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const config = await getOrgSdkConfig(orgSlug);
+): Promise<UpdateOrganizationWorkflowResponse> {
+  const config = getOrgSdkConfig();
   const result = await updateOrganizationWorkflow({
     ...config,
     path: {
       organization_id_or_slug: orgSlug,
       workflow_id: Number(workflowId),
     },
-    // The SDK types conditions/actions as `unknown[]`; the CLI supplies the
-    // workflow-native body as a plain record, so cast into the typed arg.
+    // The CLI builds the camelCase workflow body as a plain record, so cast
+    // it into the SDK's typed body.
     body: body as unknown as Parameters<
       typeof updateOrganizationWorkflow
     >[0]["body"],
   });
-  return unwrapResult<Record<string, unknown>>(
+  return unwrapResult<UpdateOrganizationWorkflowResponse>(
     result,
     "Failed to update issue alert rule",
   );
@@ -544,12 +563,12 @@ export async function createIssueAlertRule(
   orgSlug: string,
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await createOrganizationWorkflow({
     ...config,
     path: { organization_id_or_slug: orgSlug },
-    // The SDK types conditions/actions as `unknown[]`; the CLI supplies the
-    // workflow-native body as a plain record, so cast into the typed arg.
+    // The CLI builds the camelCase workflow body as a plain record, so cast
+    // it into the SDK's typed body.
     body: body as unknown as Parameters<
       typeof createOrganizationWorkflow
     >[0]["body"],
@@ -710,7 +729,7 @@ function buildDetectorBody(
     detectorBody.enabled = Number(body.status) !== 1;
   }
   if (body.owner !== undefined) {
-    detectorBody.owner = body.owner as string | null;
+    detectorBody.owner = body.owner;
   }
   return detectorBody;
 }
@@ -750,7 +769,7 @@ export async function deleteMetricAlertRule(
   orgSlug: string,
   ruleId: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await deleteOrganizationDetector({
     ...config,
     // Detector IDs are opaque strings the API accepts verbatim; the SDK types
@@ -809,8 +828,8 @@ export async function putMetricAlertRule(
   orgSlug: string,
   ruleId: string,
   body: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const config = await getOrgSdkConfig(orgSlug);
+): Promise<UpdateOrganizationDetectorResponse> {
+  const config = getOrgSdkConfig();
   const result = await updateOrganizationDetector({
     ...config,
     path: {
@@ -820,14 +839,11 @@ export async function putMetricAlertRule(
       organization_id_or_slug: string;
       detector_id: number;
     },
-    // The SDK types the detector body with snake_case keys and opaque
-    // dataSources/conditions; the CLI supplies the camelCase document the
-    // endpoint's CamelSnakeSerializer expects, so cast into the typed arg.
-    body: buildDetectorBody(body) as unknown as Parameters<
-      typeof updateOrganizationDetector
-    >[0]["body"],
+    // `buildDetectorBody` returns the camelCase detector document as a plain
+    // record, so cast it into the SDK's typed body.
+    body: buildDetectorBody(body),
   });
-  return unwrapResult<Record<string, unknown>>(
+  return unwrapResult<UpdateOrganizationDetectorResponse>(
     result,
     `Failed to update metric alert rule '${ruleId}'`,
   );
@@ -844,7 +860,7 @@ export async function createMetricAlertRule(
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const projectSlug = resolveDetectorProject(body);
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await createOrganizationProjectDetector({
     ...config,
     path: {

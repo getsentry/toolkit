@@ -5,9 +5,9 @@
  * including trace-associated logs.
  */
 
-import { listOrganizationEvents } from "@sentry/api";
+import { listOrganizationEvents, listOrganizationTraceLogs } from "@sentry/api";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
 
 import {
@@ -21,17 +21,15 @@ import {
 } from "../../types/index.js";
 import { ApiError } from "../errors.js";
 import { decodeUuidV7Timestamp } from "../hex-id.js";
-import { resolveOrgRegion } from "../region.js";
 import { LOG_RETENTION_PERIOD } from "../retention.js";
 import { isAllDigits } from "../utils.js";
 import {
   API_MAX_PER_PAGE,
-  apiRequestToRegion,
   getOrgSdkConfig,
   paginate,
-  parseLinkHeader,
   unwrapPaginatedResult,
   unwrapResult,
+  validateResponse,
 } from "./infrastructure.js";
 import { getTraceItemDetail } from "./traces.js";
 
@@ -189,7 +187,7 @@ export async function listLogs(
     .filter(Boolean)
     .join(" ");
 
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   // Merge extra fields (from --fields) with the default set, deduplicating
   const fields = options.extraFields?.length
@@ -220,7 +218,7 @@ export async function listLogs(
           start: options.start,
           end: options.end,
           sort: toApiSort(options.sort),
-        } as Parameters<typeof listOrganizationEvents>[0]["query"],
+        },
       });
 
       const { data: raw, nextCursor } = unwrapPaginatedResult<unknown>(
@@ -304,7 +302,7 @@ function getLogLookupWindow(
  * Batch size must not exceed {@link API_MAX_PER_PAGE}.
  */
 type GetLogsBatchOptions = {
-  config: Awaited<ReturnType<typeof getOrgSdkConfig>>;
+  config: ReturnType<typeof getOrgSdkConfig>;
   extraFields?: string[];
   /** Numeric project ID for direct project selection. @see {@link ListLogsOptions.projectId} */
   projectId?: number;
@@ -415,7 +413,7 @@ export async function getLogs(
   options: GetLogsOptions = {},
 ): Promise<DetailedSentryLog[]> {
   const { extraFields, projectId } = options;
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const batchOptions: GetLogsBatchOptions = { config, extraFields, projectId };
 
   // Single batch — no splitting needed
@@ -478,16 +476,16 @@ export async function listTraceLogs(
   traceId: string,
   options: ListTraceLogsOptions = {},
 ): Promise<TraceLog[]> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
+  const config = getOrgSdkConfig();
 
   const { data } = await paginate(
     options,
     async (perPage, cursor) => {
-      const { data: response, headers } = await apiRequestToRegion<{
-        data: TraceLog[];
-      }>(regionUrl, `/organizations/${orgSlug}/trace-logs/`, {
-        params: {
-          traceId,
+      const result = await listOrganizationTraceLogs({
+        ...config,
+        path: { organization_id_or_slug: orgSlug },
+        query: {
+          traceId: [traceId],
           statsPeriod:
             options.start || options.end
               ? undefined
@@ -497,13 +495,21 @@ export async function listTraceLogs(
           per_page: perPage,
           cursor,
           query: options.query,
-          sort: toApiSort(options.sort),
+          sort: [toApiSort(options.sort)],
         },
-        schema: TraceLogsResponseSchema,
       });
 
-      const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
-      return { data: response.data, nextCursor };
+      const page = unwrapPaginatedResult<unknown>(
+        result,
+        "Failed to list trace logs",
+      );
+      const response = validateResponse(
+        TraceLogsResponseSchema,
+        page.data,
+        `/organizations/${orgSlug}/trace-logs/`,
+        page.response?.status ?? 0,
+      );
+      return { data: response.data, nextCursor: page.nextCursor };
     },
     API_MAX_PER_PAGE,
   );
@@ -518,17 +524,10 @@ export async function listTraceLogs(
  * to enumerate field names. This is the same endpoint the Sentry UI uses when
  * expanding a log row to show its full attribute set.
  *
- * The endpoint is EXPERIMENTAL and not yet in @sentry/api; called directly via
- * apiRequestToRegion following the same pattern as listTraceLogs.
- *
  * @param orgSlug - Organization slug
  * @param projectSlug - Project slug
  * @param logId - The sentry.item_id of the log entry
  * @param traceId - The trace ID (required by the endpoint)
- *
- * Uses the experimental /projects/{org}/{project}/trace-items/ endpoint directly via
- * apiRequestToRegion — it is not yet available in @sentry/api (generated from
- * getsentry/sentry-api-schema) because the endpoint is marked EXPERIMENTAL in Sentry.
  */
 export function getLogItemDetail(
   orgSlug: string,

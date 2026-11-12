@@ -346,7 +346,16 @@ function mockProjectFetch(
       } else {
         linkParts.push(`<${url}>; rel="next"; results="false"; cursor="0:0:0"`);
       }
-      return new Response(JSON.stringify(projects), {
+      // Like Sentry: `?query=` keeps slugs or names containing it.
+      const query = new URL(url).searchParams.get("query")?.toLowerCase();
+      const page = query
+        ? projects.filter(
+            ({ slug, name }) =>
+              slug.toLowerCase().includes(query) ||
+              name.toLowerCase().includes(query),
+          )
+        : projects;
+      return new Response(JSON.stringify(page), {
         status: 200,
         headers: {
           "Content-Type": "application/json",
@@ -433,6 +442,98 @@ describe("handleExplicit", () => {
     expect(result.hint).toContain("No project");
     expect(result.hint).toContain("nonexistent");
     expect(result.hint).toContain("Tip:");
+  });
+
+  test("no direct match falls back to fuzzy name matching", async () => {
+    const requests: string[] = [];
+    const fetch = mockProjectFetch(sampleProjects);
+    globalThis.fetch = (input, init) => {
+      requests.push(new Request(input, init).url);
+      return fetch(input, init);
+    };
+
+    const result = (await handleExplicit("test-org", "frontnd", {
+      limit: 30,
+      json: false,
+      fresh: false,
+    })) as Awaited<ReturnType<typeof handleExplicit>> & { title?: string };
+
+    expect(result.items.map((p) => p.slug)).toEqual(["frontend"]);
+    expect(result.title).toContain("No project 'frontnd'");
+    // The server's substring search finds nothing, so every project is read.
+    expect(requests.some((url) => url.includes("query=frontnd"))).toBe(true);
+  });
+
+  test("only a 404 falls back to name matching", async () => {
+    const urls: string[] = [];
+    const fetch = mockProjectFetch(sampleProjects);
+    globalThis.fetch = (input, init) => {
+      const url = new Request(input, init).url;
+      urls.push(url);
+      if (url.includes("/projects/test-org/frontnd/")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ detail: "Forbidden" }), {
+            status: 403,
+          }),
+        );
+      }
+      return fetch(input, init);
+    };
+
+    const result = await handleExplicit("test-org", "frontnd", {
+      limit: 30,
+      json: false,
+      fresh: false,
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.hint).toContain("No project 'frontnd' found");
+    expect(urls.some((url) => url.includes("/organizations/"))).toBe(false);
+  });
+
+  test("a failing name fallback keeps the not-found hint", async () => {
+    // A bad org: the project lookup and the fallback listing both 404.
+    globalThis.fetch = () =>
+      Promise.resolve(
+        new Response(JSON.stringify({ detail: "Not found" }), { status: 404 }),
+      );
+
+    const result = await handleExplicit("test-org", "frontnd", {
+      limit: 30,
+      json: false,
+      fresh: false,
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.hint).toContain("No project 'frontnd' found");
+  });
+
+  test("fuzzy matches dropped by --platform say so", async () => {
+    globalThis.fetch = mockProjectFetch(sampleProjects);
+
+    const result = await handleExplicit("test-org", "frontnd", {
+      limit: 30,
+      json: false,
+      platform: "rust",
+      fresh: false,
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.hint).toContain("No project 'frontnd' in 'test-org'");
+    expect(result.hint).toContain("on platform 'rust'");
+  });
+
+  test("no direct or fuzzy match keeps the not-found hint", async () => {
+    globalThis.fetch = mockProjectFetch(sampleProjects);
+
+    const result = await handleExplicit("test-org", "zzzzzz", {
+      limit: 30,
+      json: false,
+      fresh: false,
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.hint).toContain("No project 'zzzzzz' found");
   });
 
   test("platform filter with no match returns empty with hint", async () => {
@@ -570,10 +671,7 @@ describe("project list: comma-separated project slugs", () => {
 
   test("propagates lookup errors other than not found", async () => {
     const projectFetch = mockProjectFetch(sampleProjects);
-    globalThis.fetch = (async (
-      input: RequestInfo | URL,
-      init?: RequestInit,
-    ) => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       if (
         new Request(input, init).url.includes("/projects/test-org/backend/")
       ) {
@@ -582,7 +680,7 @@ describe("project list: comma-separated project slugs", () => {
         });
       }
       return await projectFetch(input, init);
-    }) as typeof globalThis.fetch;
+    };
     const { context } = createCommandContext();
 
     const error = await func
@@ -668,14 +766,14 @@ describe("handleOrgAll", () => {
 
     const result = await handleOrgAll({
       org: "test-org",
-      flags: { limit: 30, json: true, fresh: false },
+      flags: { limit: 2, json: true, fresh: false },
       contextKey: "type:org:test-org",
       cursor: undefined,
       direction: "next",
     });
 
     expect(result.hasMore).toBe(true);
-    expect(result.nextCursor).toBe("1735689600000:100:0");
+    expect(result.nextCursor).toContain("1735689600000:100:0");
     expect(result.items).toHaveLength(2);
   });
 
@@ -702,7 +800,7 @@ describe("handleOrgAll", () => {
 
     await handleOrgAll({
       org: "test-org",
-      flags: { limit: 30, json: false, fresh: false },
+      flags: { limit: 2, json: false, fresh: false },
       contextKey: "type:org:test-org",
       cursor: undefined,
       direction: "next",
@@ -710,7 +808,7 @@ describe("handleOrgAll", () => {
 
     const state = getPaginationState(PAGINATION_KEY, "type:org:test-org");
     expect(state).toBeDefined();
-    expect(state!.stack).toContain("1735689600000:100:0");
+    expect(state!.stack.at(-1)).toContain("1735689600000:100:0");
   });
 
   test("no hasMore truncates pagination stack", async () => {
@@ -1485,7 +1583,7 @@ describe("handleAutoDetect", () => {
     });
 
     const result = await handleAutoDetect("/tmp/test-project", {
-      limit: 30,
+      limit: 2,
       json: false,
       fresh: false,
     });
@@ -1503,7 +1601,7 @@ describe("handleAutoDetect", () => {
     });
 
     const result = await handleAutoDetect("/tmp/test-project", {
-      limit: 30,
+      limit: 2,
       json: true,
       fresh: false,
     });
@@ -1514,6 +1612,45 @@ describe("handleAutoDetect", () => {
     const jsonHint = (result.jsonExtra as Record<string, unknown>)?.hint;
     expect(jsonHint).toContain("test-org/");
     expect(jsonHint).toContain("--json");
+  });
+
+  test("name filter: jsonExtra hint keeps the filter", async () => {
+    setDefaultOrganization("test-org");
+    const manyProjects = Array.from({ length: 5 }, (_, i) =>
+      makeProject({ id: String(i), slug: `web-${i}`, name: `Web ${i}` }),
+    );
+    globalThis.fetch = mockProjectFetch(manyProjects);
+
+    const result = await handleAutoDetect("/tmp/test-project", {
+      limit: 2,
+      json: true,
+      fresh: false,
+      filter: "web-*",
+    });
+
+    expect(result.hasMore).toBe(true);
+    const jsonHint = (result.jsonExtra as Record<string, unknown>)?.hint;
+    expect(jsonHint).toBe("sentry project list 'test-org/web-*' --json");
+  });
+
+  test("name filter: empty hint names the platform that excluded matches", async () => {
+    setDefaultOrganization("test-org");
+    globalThis.fetch = mockProjectFetch([
+      makeProject({ id: "1", slug: "web-app", platform: "javascript" }),
+    ]);
+
+    const result = await handleAutoDetect("/tmp/test-project", {
+      limit: 30,
+      json: false,
+      fresh: false,
+      filter: "web-*",
+      platform: "rust",
+    });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.hint).toContain(
+      "No projects matching 'web-*' on platform 'rust' found.",
+    );
   });
 
   test("fast path: non-auth API errors return empty results instead of throwing", async () => {
@@ -1578,5 +1715,129 @@ describe("handleAutoDetect", () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.platform).toBe("python");
     expect(result.hasMore).toBe(false);
+  });
+});
+
+describe("project list: name filter", () => {
+  const flags = { limit: 30, json: true, fresh: false };
+  const projects: SentryProject[] = [
+    ...sampleProjects,
+    {
+      id: "3",
+      slug: "web-checkout",
+      name: "Web Checkout",
+      platform: "javascript",
+      dateCreated: "2024-01-01T00:00:00Z",
+      status: "active",
+    },
+  ];
+  let func: Awaited<ReturnType<typeof listCommand.loader>>;
+
+  beforeEach(async () => {
+    originalFetch = globalThis.fetch;
+    func = await listCommand.loader();
+    setAuthToken("test-token");
+    setOrgRegion("test-org", DEFAULT_SENTRY_URL);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  async function run(
+    runFlags: Record<string, unknown>,
+    ...args: (string | undefined)[]
+  ): Promise<string> {
+    let output = "";
+    const context = {
+      process,
+      env: process.env,
+      stdout: {
+        write(value: string) {
+          output += value;
+          return true;
+        },
+      },
+      stderr: { write: () => true },
+      cwd: getConfigDir(),
+    };
+    await func.call(context, { ...flags, ...runFlags }, ...args);
+    return output;
+  }
+
+  function slugs(output: string): string[] {
+    const parsed = JSON.parse(output) as
+      | SentryProject[]
+      | { data: SentryProject[] };
+    const items = Array.isArray(parsed) ? parsed : parsed.data;
+    return items.map(({ slug }) => slug);
+  }
+
+  test("<org>/<glob> keeps projects whose slug or name matches", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    expect(slugs(await run({}, "test-org/*end"))).toEqual([
+      "frontend",
+      "backend",
+    ]);
+    expect(slugs(await run({}, "test-org/web checkout"))).toEqual([
+      "web-checkout",
+    ]);
+  });
+
+  test("plain text is fuzzy", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    expect(slugs(await run({}, "test-org/frontnd"))).toEqual(["frontend"]);
+  });
+
+  test("a lone <org>/<glob> splits into target and filter", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    expect(slugs(await run({}, "test-org/web-*"))).toEqual(["web-checkout"]);
+  });
+
+  test("the server narrows a glob by its literal text", async () => {
+    const urls: string[] = [];
+    const fetch = mockProjectFetch(projects);
+    globalThis.fetch = (input, init) => {
+      urls.push(new Request(input, init).url);
+      return fetch(input, init);
+    };
+    expect(slugs(await run({}, "test-org/web-*"))).toEqual(["web-checkout"]);
+    const listed = urls.filter((url) => url.includes("/organizations/"));
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed.every((url) => url.includes("query=web-"))).toBe(true);
+  });
+
+  test("<org>/<text> with no such project matches names fuzzily", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    expect(slugs(await run({}, "test-org/frontnd"))).toEqual(["frontend"]);
+  });
+
+  test("combines with --platform", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    expect(
+      slugs(await run({ platform: "javascript" }, "test-org/*end")),
+    ).toEqual(["frontend"]);
+  });
+
+  test("--limit applies after filtering", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    expect(slugs(await run({ limit: 1 }, "test-org/*end"))).toEqual([
+      "frontend",
+    ]);
+  });
+
+  test("names the filter when nothing matches", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    const output = await run({ json: false }, "test-org/nope-*");
+    expect(output).toContain(
+      "No projects matching 'nope-*' in organization 'test-org'.",
+    );
+  });
+
+  test("rejects --cursor with a filter", async () => {
+    globalThis.fetch = mockProjectFetch(projects);
+    await expect(run({ cursor: "next" }, "test-org/web-*")).rejects.toThrow(
+      ValidationError,
+    );
   });
 });

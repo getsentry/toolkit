@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-integration
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Sentry integrations
 requires:
   bins: ["sentry"]
@@ -14,6 +14,12 @@ Work with Sentry integrations
 ### `sentry integration list [<org/project>]`
 
 List installed integrations
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
 
 **Flags:**
 - `-n, --limit <value> - Maximum number of integrations to list - (default: "25")`
@@ -31,6 +37,7 @@ List installed integrations
 | `status` | string | Integration status |
 | `organizationIntegrationStatus` | string | Status of the install in this organization |
 | `externalId` | string | Provider-side installation ID |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 
@@ -44,13 +51,27 @@ sentry integration list my-org/
 # Fetch the next page
 sentry integration list my-org/ -c next
 
+# Only integrations whose name or provider matches a glob
+sentry integration list 'my-org/git*'
+
+# Integrations named like 'GitHub' (fuzzy when nothing matches exactly)
+sentry integration list my-org/githb
+
 # Output as JSON
 sentry integration list --json
 ```
 
-### `sentry integration delete <org/integration-id>`
+### `sentry integration delete [<org>/]<integration-id>`
 
 Remove an installed integration
+
+**Destructive:** This command deletes data or makes changes that can't easily be undone. Use `--dry-run` to preview the changes first. Confirm with the user before running it.
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org>/]<integration-id>` | [&lt;org&gt;/]&lt;integration-id&gt; - Integration to remove |
 
 **Flags:**
 - `-y, --yes - Skip confirmation prompt`

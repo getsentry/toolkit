@@ -73,6 +73,7 @@ function resolveChangedSlackDestinations(
 
 export default defineTool({
   name: "update_alert_rule",
+  title: "Update Alert Rule",
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [

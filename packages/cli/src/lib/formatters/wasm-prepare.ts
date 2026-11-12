@@ -6,19 +6,13 @@
  * it easy to read a warning against the wrong path.
  */
 
+import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import type {
   PrepareAction,
   PrepareCommandResult,
   PrepareResult,
 } from "../wasm/prepare.js";
-import {
-  colorTag,
-  escapeMarkdownCell,
-  escapeMarkdownInline,
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "./markdown.js";
+import { colorTag, mdKvTable, renderMarkdown } from "./markdown.js";
 
 /** What preparation did to a module, in the past tense. */
 const ACTION_LABELS: Record<PrepareAction, string> = {
@@ -40,24 +34,21 @@ function moduleSection(module: PrepareResult): string {
     ["Debug quality", module.quality],
   ];
   if (module.buildId) {
-    rows.push(["Build ID", safeCodeSpan(module.buildId)]);
+    rows.push(["Build ID", inlineCode(module.buildId)]);
   }
   if (module.companion) {
-    rows.push(["Companion", safeCodeSpan(module.companion)]);
+    rows.push(["Companion", inlineCode(module.companion)]);
   }
   if (module.warning) {
-    rows.push([
-      colorTag("yellow", "Warning"),
-      escapeMarkdownCell(module.warning),
-    ]);
+    rows.push([colorTag("yellow", "Warning"), tableCell(module.warning)]);
   }
   if (module.recommendation) {
     rows.push([
       colorTag("cyan", "Recommendation"),
-      escapeMarkdownCell(module.recommendation),
+      tableCell(module.recommendation),
     ]);
   }
-  return mdKvTable(rows, escapeMarkdownInline(module.path));
+  return mdKvTable(rows, text(module.path));
 }
 
 /**

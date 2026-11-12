@@ -5,6 +5,7 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { gradleCommand } from "./gradle.js";
 import { xcodeCommand } from "./xcode.js";
 
@@ -14,7 +15,7 @@ export const reactNativeRoute = buildRouteMap({
     xcode: xcodeCommand,
   },
   docs: {
-    brief: "Upload React Native sourcemaps from build steps",
+    brief: topLevelBrief("react-native"),
     fullDescription:
       "Integrations for uploading React Native bundles and sourcemaps from " +
       "native build steps (Gradle/Xcode).",

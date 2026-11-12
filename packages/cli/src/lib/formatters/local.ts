@@ -1,5 +1,9 @@
 /** Tail formatters for the local dev server. */
 
+import {
+  formatLocalServerUrl,
+  getLocalUiConnectionUrl,
+} from "../../commands/local/ui.js";
 import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { blue, bold, cyan, green, muted, red, yellow } from "./colors.js";
@@ -600,9 +604,7 @@ export function formatSingleSpan(
   const semanticOp = inferSemanticOp(flat);
   const op =
     semanticOp ??
-    (typeof flat["sentry.op"] === "string"
-      ? (flat["sentry.op"] as string)
-      : undefined);
+    (typeof flat["sentry.op"] === "string" ? flat["sentry.op"] : undefined);
   if (op && op !== "default" && op !== "unknown") {
     msg = `[${sanitize(op)}] ${msg}`;
   }
@@ -1209,4 +1211,40 @@ export function formatEnvelopeLines(
     return [];
   }
   return [formatFallbackLine(resolveUnparseableLabel(container))];
+}
+
+/** Human control-plane summaries add a viewer link without altering JSON data. */
+export function formatLocalControlResult(
+  data: Record<string, unknown>,
+): string {
+  const daemon =
+    data.daemon &&
+    typeof data.daemon === "object" &&
+    !Array.isArray(data.daemon)
+      ? (data.daemon as Record<string, unknown>)
+      : data;
+  const receiverUrl =
+    typeof data.streamUrl === "string"
+      ? data.streamUrl
+      : typeof daemon.host === "string" && typeof daemon.port === "number"
+        ? formatLocalServerUrl(daemon.host, daemon.port)
+        : undefined;
+  const hint = receiverUrl ? formatLocalViewerHint(receiverUrl) : undefined;
+  return JSON.stringify(data, null, 2) + (hint ? `\n\n${hint}` : "");
+}
+
+/** Point human Local command output to a credential-free receiver connection. */
+export function formatLocalViewerHint(receiverUrl: string): string | undefined {
+  const url = getLocalUiConnectionUrl(receiverUrl);
+  return url ? `View events at ${url}` : undefined;
+}
+
+/** Streaming commands cannot defer their hint until the generator returns. */
+export function printLocalViewerHint(
+  receiverUrl: string,
+  useJson: boolean,
+): void {
+  if (useJson) return;
+  const hint = formatLocalViewerHint(receiverUrl);
+  if (hint) logger.info(hint);
 }

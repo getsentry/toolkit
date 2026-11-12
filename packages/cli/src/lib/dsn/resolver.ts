@@ -6,11 +6,12 @@
  */
 
 import {
-  findProjectByDsnKey,
+  findProjectByDsn,
   listOrganizations,
   listProjects,
   resolveOrgDisplayName,
 } from "../api-client.js";
+import { sentry } from "../app-identity.js";
 import { getCachedDsn, updateCachedResolution } from "../db/dsn-cache.js";
 import { getDsnSourceDescription } from "./detector.js";
 import type {
@@ -56,11 +57,11 @@ export async function resolveProject(
   // Need to fetch from API
   // For DSNs without orgId, try to resolve by searching with the public key
   if (!dsn.orgId) {
-    const project = await findProjectByDsnKey(dsn.publicKey);
+    const project = await findProjectByDsn(dsn.raw, dsn.publicKey);
     if (!project?.organization) {
       throw new Error(
         "Cannot resolve project: DSN could not be matched to any accessible project. " +
-          "You may not have access, or specify the target explicitly: sentry <command> <org>/<project>",
+          `You may not have access, or specify the target explicitly: ${sentry`<command> <org>/<project>`}`,
       );
     }
 

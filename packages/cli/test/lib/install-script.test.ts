@@ -57,7 +57,6 @@ if [[ "$1" == "cli" && "$2" == "setup" ]]; then
 fi
 printf '%s\\n' "$@" >> "$SENTRY_TEST_DIR/post-args"
 printf '%s\\n' "$0" >> "$SENTRY_TEST_DIR/post-binary"
-record_tty 3> "$SENTRY_TEST_DIR/post-tty"
 exit "\${SENTRY_TEST_POST_EXIT:-0}"
 `;
 
@@ -624,19 +623,30 @@ process.exitCode = result.status ?? 1;
     expect(recorded("post-args")).toEqual([]);
   });
 
-  test("hands off to init instead of login when SENTRY_INIT is set", () => {
+  test("runs init after setup, which keeps the terminal, when SENTRY_INIT is set", () => {
     env.SENTRY_INIT = "1";
     env.SENTRY_TEST_POST_EXIT = "7";
     const result = runInTerminal();
     expect(result.status, result.stdout + result.stderr).toBe(7);
-    expect(recorded("setup-tty")[0]).toBe("0:false");
-    expect(recorded("post-args")).toEqual(["init"]);
-    expect(recorded("post-tty")).toEqual([
+    expect(recorded("setup-tty")).toEqual([
       "0:true",
       "1:true",
       "2:true",
       "controlling:true",
     ]);
+    expect(recorded("post-args")).toEqual(["init"]);
+    expect(installerTempFiles()).toEqual([]);
+  });
+
+  test("runs init without a terminal when SENTRY_INIT is set", () => {
+    env.SENTRY_INIT = "1";
+    const result = spawnSync("bash", [installScript, "--version", "0.31.0"], {
+      env,
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(recorded("post-args")).toEqual(["init"]);
     expect(installerTempFiles()).toEqual([]);
   });
 

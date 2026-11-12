@@ -132,6 +132,50 @@ describe("buildCategoricalChartModel", () => {
 });
 
 describe("rasterizeChart", () => {
+  test("downsamples dense nullable buckets and keeps unmeasured columns empty", () => {
+    const model = buildChartModel(makeTimeseries())!;
+    model.series[0].values = [10, null, 20, 30, 40, 50, 60, 70, 80];
+    model.buckets = 9;
+
+    // 16px fits 8 one-pixel columns two pixels apart. Column 1 covers only
+    // the null bucket, so it stays empty and column 2 keeps bucket 2.
+    const image = rasterizeChart(model, { width: 16, height: 8 });
+    const bottomAlpha = (x: number) => image?.data[(7 * 16 + x) * 4 + 3] ?? 0;
+
+    expect(image).toBeDefined();
+    expect(bottomAlpha(0)).toBe(255);
+    expect(bottomAlpha(2)).toBe(0);
+    expect(bottomAlpha(4)).toBe(255);
+  });
+
+  test("keeps downsampled stacks with complementary gaps within the scale", () => {
+    // Each bucket has one measured series, so every bucket total is 10.
+    const alternating = (offset: number) =>
+      Array.from({ length: 18 }, (_, i) => ({
+        timestamp: i,
+        value: i % 2 === offset ? 10 : null,
+      }));
+    const model = buildChartModel(
+      makeTimeseries({
+        series: [
+          { label: "alpha", values: alternating(0) },
+          { label: "beta", values: alternating(1) },
+        ],
+      }),
+    )!;
+
+    // 16px fits 8 columns, so each column averages about two buckets.
+    const image = rasterizeChart(model, { width: 16, height: 8 });
+    const pixel = (y: number) => [
+      ...(image?.data.slice(y * 16 * 4, y * 16 * 4 + 4) ?? []),
+    ];
+
+    // Both series stay visible: alpha at the bottom, beta stacked on top.
+    expect(pixel(7)[3]).toBe(255);
+    expect(pixel(0)[3]).toBe(255);
+    expect(pixel(0)).not.toEqual(pixel(7));
+  });
+
   test("returns a canvas at the requested resolution", () => {
     const model = buildChartModel(makeTimeseries());
     const img = rasterizeChart(model!, { width: 64, height: 32 });

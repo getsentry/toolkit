@@ -3,7 +3,7 @@
  *
  * Tests for the sentry cli command group.
  *
- * Progress messages go through consola (→ process.stderr). Final results are
+ * Progress messages go through the logger (→ process.stderr). Final results are
  * returned as structured data and rendered to stdout by the output system.
  * Tests capture both stderr (progress) and stdout (results) to verify behavior.
  */
@@ -16,7 +16,7 @@ import { extractInputUrl } from "../../src/lib/fetch-input.js";
 
 /**
  * Create a mock context with a process.stderr.write spy for capturing
- * consola output, plus stdout capture for structured output.
+ * logger output, plus stdout capture for structured output.
  */
 function createMockContext(overrides: Partial<{ execPath: string }> = {}): {
   context: Record<string, unknown>;
@@ -29,12 +29,12 @@ function createMockContext(overrides: Partial<{ execPath: string }> = {}): {
   const stdoutChunks: string[] = [];
   const errors: string[] = [];
 
-  // Capture consola output (routed to process.stderr)
+  // Capture logger output (routed to process.stderr)
   const origWrite = process.stderr.write.bind(process.stderr);
-  process.stderr.write = ((chunk: string | Uint8Array) => {
+  process.stderr.write = (chunk: string | Uint8Array) => {
     stderrChunks.push(String(chunk));
     return true;
-  }) as typeof process.stderr.write;
+  };
 
   const context = {
     process: { execPath: overrides.execPath ?? "/test/path/sentry" },
@@ -124,11 +124,11 @@ describe("upgradeCommand.func", () => {
   // indirectly through the upgrade.ts unit tests in lib/upgrade.test.ts.
 
   test("shows installation info with specified method", async () => {
-    globalThis.fetch = (async () =>
+    globalThis.fetch = async () =>
       new Response(JSON.stringify([{ tag_name: "cli@1.0.0" }]), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })) as typeof fetch;
+      });
 
     const func = await upgradeCommand.loader();
     const { context, getStdout, restore } = createMockContext();
@@ -146,11 +146,11 @@ describe("upgradeCommand.func", () => {
 
   test("check mode shows update available", async () => {
     // Curl uses the Toolkit GitHub release list with product-prefixed tags.
-    globalThis.fetch = (async () =>
+    globalThis.fetch = async () =>
       new Response(JSON.stringify([{ tag_name: "cli@99.0.0" }]), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })) as typeof fetch;
+      });
 
     const func = await upgradeCommand.loader();
     const { context, getStdout, restore } = createMockContext();
@@ -165,7 +165,7 @@ describe("upgradeCommand.func", () => {
   });
 
   test("check mode with version shows versioned command", async () => {
-    globalThis.fetch = (async (url) => {
+    globalThis.fetch = async (url) => {
       const response = extractInputUrl(url).includes(
         "/releases/tags/cli%402.0.0",
       )
@@ -175,7 +175,7 @@ describe("upgradeCommand.func", () => {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
-    }) as typeof fetch;
+    };
 
     const func = await upgradeCommand.loader();
     const { context, getStdout, restore } = createMockContext();
@@ -195,11 +195,11 @@ describe("upgradeCommand.func", () => {
   });
 
   test("check mode compares the current version with a stable target", async () => {
-    globalThis.fetch = (async () =>
+    globalThis.fetch = async () =>
       new Response(JSON.stringify([{ tag_name: "cli@1.0.0" }]), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })) as typeof fetch;
+      });
 
     const func = await upgradeCommand.loader();
     const { context, getStdout, restore } = createMockContext();
@@ -215,10 +215,10 @@ describe("upgradeCommand.func", () => {
 
   test("throws UpgradeError when specified version does not exist", async () => {
     let callCount = 0;
-    globalThis.fetch = (async () => {
+    globalThis.fetch = async () => {
       callCount += 1;
       return new Response("Not Found", { status: 404 });
-    }) as typeof fetch;
+    };
 
     const func = await upgradeCommand.loader();
     const { context, restore } = createMockContext();

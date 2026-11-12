@@ -16,18 +16,26 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // Controllable git-helper mocks. `setCommitsAuto` calls these at runtime to
 // build the `refs` array sent to Sentry.
-const { mockGetRepositoryName } = vi.hoisted(() => ({
+const { mockGetRepositoryName, mockIsInsideGitWorkTree } = vi.hoisted(() => ({
   mockGetRepositoryName: vi.fn((): string | null => "getsentry/cli"),
+  mockIsInsideGitWorkTree: vi.fn(() => true),
 }));
 
-vi.mock("../../../src/lib/git.js", () => ({
+vi.mock("../../../src/lib/git.js", async (importOriginal) => ({
+  normalizeSha: (
+    await importOriginal<typeof import("../../../src/lib/git.js")>()
+  ).normalizeSha,
+  isSameRepository: (
+    await importOriginal<typeof import("../../../src/lib/git.js")>()
+  ).isSameRepository,
+  parseRemoteUrl: (
+    await importOriginal<typeof import("../../../src/lib/git.js")>()
+  ).parseRemoteUrl,
   getRepositoryName: mockGetRepositoryName,
   getHeadCommit: () => "abc123def456789012345678901234567890abcd",
-  isInsideGitWorkTree: () => true,
+  isInsideGitWorkTree: mockIsInsideGitWorkTree,
   isShallowRepository: () => false,
   getCommitLog: () => [],
-  getUncommittedFiles: () => [],
-  parseRemoteUrl: (url: string) => url,
 }));
 
 // Dynamic import: must run AFTER vi.mock() so setCommitsAuto picks up
@@ -36,6 +44,8 @@ const {
   createRelease,
   createReleaseDeploy,
   deleteRelease,
+  correctRefRepositories,
+  explainSetCommitsError,
   getRelease,
   listReleaseDeploys,
   listReleasesPaginated,
@@ -46,9 +56,17 @@ const {
 } = await import("../../../src/lib/api/releases.js");
 
 import { setAuthToken } from "../../../src/lib/db/auth.js";
+import { CONFIG_DIR_ENV_VAR } from "../../../src/lib/db/index.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
+import { withEnv } from "../../../src/lib/env.js";
 import { classifySilenced } from "../../../src/lib/error-reporting.js";
-import { EXIT, isUserError } from "../../../src/lib/errors.js";
+import {
+  ApiError,
+  EXIT,
+  isUserError,
+  ResolutionError,
+  ValidationError,
+} from "../../../src/lib/errors.js";
 import type { SentryDeploy, SentryRelease } from "../../../src/types/index.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
@@ -117,7 +135,7 @@ afterEach(() => {
 describe("getRelease", () => {
   test("fetches a release by version", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.url).toContain("/releases/1.0.0/");
       return new Response(JSON.stringify(SAMPLE_RELEASE), {
         status: 200,
@@ -140,7 +158,7 @@ describe("getRelease", () => {
 describe("createRelease", () => {
   test("creates a release with version and projects", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("POST");
       const body = (await req.json()) as {
         version: string;
@@ -162,6 +180,132 @@ describe("createRelease", () => {
     expect(release.version).toBe("1.0.0");
     expect(release.projects).toHaveLength(1);
   });
+
+  test("retries a 502 and accepts the 208 for a release the first attempt created", async () => {
+    const statuses: number[] = [];
+    globalThis.fetch = mockFetch(async () => {
+      const status = statuses.length === 0 ? 502 : 208;
+      statuses.push(status);
+      return status === 502
+        ? new Response("<title>502</title>", { status })
+        : Response.json(SAMPLE_RELEASE, { status });
+    });
+
+    const release = await createRelease("test-org", { version: "1.0.0" });
+
+    expect(release.version).toBe("1.0.0");
+    expect(statuses).toEqual([502, 208]);
+  });
+
+  test("retries a 503", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("upstream connect error", { status: 503 })
+        : Response.json(SAMPLE_RELEASE, { status: 201 });
+    });
+
+    const release = await createRelease("test-org", { version: "1.0.0" });
+
+    expect(release.version).toBe("1.0.0");
+    expect(calls).toBe(2);
+  });
+
+  test("does not retry a 400", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return Response.json(
+        { projects: ["This field is required."] },
+        { status: 400 },
+      );
+    });
+
+    const error = await createRelease("test-org", { version: "1.0.0" }).catch(
+      (e: unknown) => e,
+    );
+
+    expect((error as ApiError).status).toBe(400);
+    expect(calls).toBe(1);
+  });
+
+  /** Answer the create request with a 400 and `body`. */
+  const reject400 = (body: unknown) => {
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(JSON.stringify(body), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+  };
+
+  test("names the projects Sentry rejected (CLI-2G3)", async () => {
+    reject400({ projects: ["Invalid project ids or slugs"] });
+
+    const error = await createRelease("test-org", {
+      version: "1.0.0",
+      projects: ["web", "api"],
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ResolutionError);
+    const { message } = error as ResolutionError;
+    expect(message).toContain(
+      "One of the projects 'web', 'api' was not found in organization 'test-org'.",
+    );
+    expect(message).toContain("sentry project list test-org/");
+    expect(classifySilenced(error)).toBe("user_input_error");
+  });
+
+  test("explains a release that exists for projects the token cannot access", async () => {
+    reject400({
+      projects: ["You do not have permission to one of the projects: web"],
+    });
+
+    const error = await createRelease("test-org", {
+      version: "1.0.0",
+      projects: ["api"],
+    }).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "release.projects",
+    });
+    expect((error as ValidationError).message).toContain(
+      "Release '1.0.0' already exists in organization 'test-org' for projects your auth token cannot access: web.",
+    );
+    expect(classifySilenced(error)).toBe("user_validation");
+  });
+
+  test("names a release version Sentry rejects", async () => {
+    reject400({ version: ["Release with name latest is not allowed"] });
+
+    const error = await createRelease("test-org", {
+      version: "latest",
+      projects: ["web"],
+    }).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "release.version",
+    });
+    expect((error as ValidationError).message).toContain(
+      "Sentry does not allow the release version 'latest'.",
+    );
+    expect(classifySilenced(error)).toBe("user_validation");
+  });
+
+  test("keeps other 400s as ApiError so they are captured", async () => {
+    reject400({ projects: ["This field is required."] });
+
+    const error = await createRelease("test-org", { version: "1.0.0" }).catch(
+      (e: unknown) => e,
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(classifySilenced(error)).toBeNull();
+  });
 });
 
 // =============================================================================
@@ -172,7 +316,7 @@ describe("updateRelease", () => {
   test("updates a release with dateReleased", async () => {
     const updated = { ...SAMPLE_RELEASE, dateReleased: "2025-06-15T00:00:00Z" };
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("PUT");
       expect(req.url).toContain("/releases/1.0.0/");
       const body = (await req.json()) as { dateReleased: string };
@@ -189,6 +333,55 @@ describe("updateRelease", () => {
 
     expect(release.dateReleased).toBe("2025-06-15T00:00:00Z");
   });
+
+  test("retries a 503 on a metadata update", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("busy", { status: 503 })
+        : Response.json(SAMPLE_RELEASE);
+    });
+
+    await updateRelease("test-org", "1.0.0", {
+      dateReleased: "2025-06-15T00:00:00Z",
+    });
+
+    expect(calls).toBe(2);
+  });
+
+  test("does not retry a 404", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return Response.json(
+        { detail: "The requested resource does not exist" },
+        { status: 404 },
+      );
+    });
+
+    const error = await updateRelease("test-org", "1.0.0", {
+      dateReleased: "2025-06-15T00:00:00Z",
+    }).catch((e: unknown) => e);
+
+    expect((error as ApiError).status).toBe(404);
+    expect(calls).toBe(1);
+  });
+
+  test("does not retry a 503 when setting commits", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return new Response("busy", { status: 503 });
+    });
+
+    const error = await setCommitsLocal("test-org", "1.0.0", [
+      { id: "abc123" },
+    ]).catch((e: unknown) => e);
+
+    expect((error as ApiError).status).toBe(503);
+    expect(calls).toBe(1);
+  });
 });
 
 // =============================================================================
@@ -198,7 +391,7 @@ describe("updateRelease", () => {
 describe("deleteRelease", () => {
   test("deletes a release", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("DELETE");
       expect(req.url).toContain("/releases/1.0.0/");
       return new Response(null, { status: 204 });
@@ -216,7 +409,7 @@ describe("deleteRelease", () => {
 describe("listReleaseDeploys", () => {
   test("returns deploys for a release", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.url).toContain("/releases/1.0.0/deploys/");
       return new Response(JSON.stringify([SAMPLE_DEPLOY]), {
         status: 200,
@@ -239,7 +432,7 @@ describe("listReleaseDeploys", () => {
 describe("createReleaseDeploy", () => {
   test("creates a deploy for a release", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("POST");
       expect(req.url).toContain("/releases/1.0.0/deploys/");
       const body = (await req.json()) as { environment: string };
@@ -256,6 +449,21 @@ describe("createReleaseDeploy", () => {
 
     expect(deploy.environment).toBe("production");
     expect(deploy.id).toBe("42");
+  });
+
+  test("does not retry a 503, since a resend would record a second deploy", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return new Response("busy", { status: 503 });
+    });
+
+    const error = await createReleaseDeploy("test-org", "1.0.0", {
+      environment: "production",
+    }).catch((e: unknown) => e);
+
+    expect((error as ApiError).status).toBe(503);
+    expect(calls).toBe(1);
   });
 });
 
@@ -277,6 +485,7 @@ describe("setCommitsAuto", () => {
     // can override via mockGetRepositoryName.mockReturnValueOnce(null) or
     // mockReturnValue("...").
     mockGetRepositoryName.mockReturnValue("getsentry/cli");
+    mockIsInsideGitWorkTree.mockReturnValue(true);
   });
 
   test("lists repos, discovers HEAD, fetches previous commit, and sends refs", async () => {
@@ -284,7 +493,7 @@ describe("setCommitsAuto", () => {
     const requests: { method: string; url: string }[] = [];
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       requests.push({ method: req.method, url: req.url });
 
       // List org repositories (SDK uses /repos/ endpoint)
@@ -338,6 +547,58 @@ describe("setCommitsAuto", () => {
     expect(release.commitCount).toBe(5);
   });
 
+  test("fetches the previous release commit concurrently with the repository lookup", async () => {
+    const withCommits = { ...SAMPLE_RELEASE, commitCount: 2 };
+    let releaseRepos: (() => void) | undefined;
+    const reposGate = new Promise<void>((resolve) => {
+      releaseRepos = resolve;
+    });
+    let previousRequestedBeforeReposResolved = false;
+    let reposResolved = false;
+
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+
+      if (req.url.includes("/repos/")) {
+        await reposGate;
+        reposResolved = true;
+        return new Response(JSON.stringify([SAMPLE_REPO]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (req.url.includes("/previous-with-commits/")) {
+        previousRequestedBeforeReposResolved = !reposResolved;
+        // Unblock the repository lookup only once the previous-release
+        // request is in flight; a sequential implementation would deadlock.
+        releaseRepos?.();
+        return new Response(
+          JSON.stringify({
+            lastCommit: { id: "prev000000000000000000000000000000000000" },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const body = (await req.json()) as {
+        refs: Array<{ previousCommit?: string }>;
+      };
+      expect(body.refs[0]?.previousCommit).toBe(
+        "prev000000000000000000000000000000000000",
+      );
+      return new Response(JSON.stringify(withCommits), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const release = await setCommitsAuto("test-org", "1.0.0", "/tmp");
+
+    expect(previousRequestedBeforeReposResolved).toBe(true);
+    expect(release.commitCount).toBe(2);
+  });
+
   test("throws ApiError when org has no repositories", async () => {
     globalThis.fetch = mockFetch(
       async () =>
@@ -353,7 +614,28 @@ describe("setCommitsAuto", () => {
       name: "ApiError",
       status: 404,
       message: expect.stringMatching(/No repository integrations/),
+      endpoint: "organizations/test-org/repos/",
+      detail: expect.stringMatching(
+        /Connect GitHub, GitLab, Bitbucket, or Azure DevOps.*\/settings\/integrations\/\?category=source%20code%20management[\s\S]*--local/,
+      ),
     });
+  });
+
+  test("leaves --local out of the no-integration error outside a git checkout", async () => {
+    mockIsInsideGitWorkTree.mockReturnValue(false);
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    const error = await setCommitsAuto("test-org", "1.0.0", "/tmp").catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).detail).not.toContain("--local");
   });
 
   test.each([
@@ -365,7 +647,7 @@ describe("setCommitsAuto", () => {
     async ({ body, status }) => {
       const requests: { method: string; pathname: string }[] = [];
       globalThis.fetch = mockFetch(async (input, init) => {
-        const request = new Request(input!, init);
+        const request = new Request(input, init);
         requests.push({
           method: request.method,
           pathname: new URL(request.url).pathname,
@@ -388,18 +670,36 @@ describe("setCommitsAuto", () => {
       });
       expect(isUserError(error)).toBe(false);
       expect(classifySilenced(error)).toBeNull();
-      expect(requests).toEqual([
+      // The previous-release lookup runs concurrently with the repository
+      // lookup, so only assert on the repository request and that the
+      // release was never updated.
+      expect(
+        requests.filter(({ pathname }) => pathname.endsWith("/repos/")),
+      ).toEqual([
         { method: "GET", pathname: "/api/0/organizations/test-org/repos/" },
       ]);
+      expect(requests.some(({ method }) => method === "PUT")).toBe(false);
     },
   );
 
   test("throws ValidationError when the name filter matches nothing but the org has repos", async () => {
-    const otherRepo = { ...SAMPLE_REPO, name: "getsentry/sentry" };
+    const otherRepo = {
+      ...SAMPLE_REPO,
+      name: "getsentry/sentry",
+      url: "https://github.com/getsentry/sentry",
+    };
     const repoQueries: (string | null)[] = [];
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const params = new URL(new Request(input!, init).url).searchParams;
+      const url = new URL(new Request(input, init).url);
+      if (!url.pathname.endsWith("/repos/")) {
+        // Concurrent previous-release lookup
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const params = url.searchParams;
       repoQueries.push(params.get("query"));
       const repos = params.get("query") ? [] : [otherRepo];
       return new Response(JSON.stringify(repos), {
@@ -411,11 +711,17 @@ describe("setCommitsAuto", () => {
     await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
       /No Sentry repository matching/,
     );
-    expect(repoQueries).toEqual(["getsentry/cli", null]);
+    // Full path first, then the last segment (GitLab display names), then
+    // the unfiltered "does the org have any repositories" check.
+    expect(repoQueries).toEqual(["getsentry/cli", "cli", null]);
   });
 
   test("throws ValidationError when no repo matches local remote", async () => {
-    const otherRepo = { ...SAMPLE_REPO, name: "getsentry/sentry" };
+    const otherRepo = {
+      ...SAMPLE_REPO,
+      name: "getsentry/sentry",
+      url: "https://github.com/getsentry/sentry",
+    };
     globalThis.fetch = mockFetch(
       async () =>
         new Response(JSON.stringify([otherRepo]), {
@@ -431,11 +737,16 @@ describe("setCommitsAuto", () => {
 
   test("paginates through multiple pages to find matching repo", async () => {
     const withCommits = { ...SAMPLE_RELEASE, commitCount: 3 };
-    const otherRepo = { ...SAMPLE_REPO, id: "2", name: "getsentry/sentry" };
+    const otherRepo = {
+      ...SAMPLE_REPO,
+      id: "2",
+      name: "getsentry/sentry",
+      url: "https://github.com/getsentry/sentry",
+    };
     let repoRequestCount = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
 
       if (req.url.includes("/repos/")) {
         repoRequestCount += 1;
@@ -479,25 +790,330 @@ describe("setCommitsAuto", () => {
 
   test("throws an actionable ValidationError when no git remote is configured", async () => {
     mockGetRepositoryName.mockReturnValue(null);
+    mockIsInsideGitWorkTree.mockReturnValueOnce(false);
 
     // A missing 'origin' remote (e.g. a fresh `git init`) is an expected
     // precondition, not a crash. It must surface as a CliError (exit 21,
     // rendered via format() — no stack trace) with actionable guidance, and
     // keep field "repository" so default mode can fall back to local git.
-    await expect(
+    // An empty env keeps the CI runner's own variables out of the lookup.
+    const error = await withEnv({}, () =>
       setCommitsAuto("test-org", "1.0.0", "/tmp"),
-    ).rejects.toMatchObject({
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
       name: "ValidationError",
       field: "repository",
       exitCode: 21,
     });
+    expect((error as Error).message).toMatch(
+      /no 'origin' git remote and no CI repository variables/,
+    );
+    const message = (error as Error).message;
+    expect(message).toContain(
+      "sentry release set-commits test-org/1.0.0 --commit owner/repo@<commit-sha>",
+    );
+    // Without .git, adding a remote or reading local history cannot help.
+    expect(message).not.toMatch(/--local|git remote add/);
+    expect(message).toMatch(/Docker builds often exclude .git/);
+  });
 
-    await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /Could not determine the repository from the local git remote/,
+  test("suggests adding a remote in a git checkout without one", async () => {
+    mockGetRepositoryName.mockReturnValue(null);
+
+    const error = await withEnv({}, () =>
+      setCommitsAuto("test-org", "1.0.0", "/tmp"),
+    ).catch((caught: unknown) => caught);
+
+    const message = (error as Error).message;
+    expect(message).toContain("git remote add origin <url>");
+    expect(message).toContain(
+      "sentry release set-commits test-org/1.0.0 --local",
     );
-    await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /--local/,
+    expect(message).not.toMatch(/Docker/);
+  });
+
+  test("skips Vercel preview builds and says why", async () => {
+    mockGetRepositoryName.mockReturnValue(null);
+    // The bundler plugins skip commit association on previews on purpose,
+    // so --auto must not pick up VERCEL_GIT_* there.
+    const error = await withEnv(
+      {
+        VERCEL: "1",
+        VERCEL_TARGET_ENV: "preview",
+        VERCEL_GIT_REPO_OWNER: "getsentry",
+        VERCEL_GIT_REPO_SLUG: "cli",
+        VERCEL_GIT_COMMIT_SHA: "1234567890abcdef1234567890abcdef12345678",
+      },
+      () => setCommitsAuto("test-org", "1.0.0", "/tmp"),
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "repository",
+    });
+    expect((error as Error).message).toMatch(
+      /Vercel builds have no .git directory/,
     );
+  });
+
+  test("uses the CI repository and commit when there is no git remote", async () => {
+    mockGetRepositoryName.mockReturnValue(null);
+    const ciSha = "1234567890abcdef1234567890abcdef12345678";
+    const repoQueries: (string | null)[] = [];
+    let sentRefs: unknown;
+
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      if (req.url.includes("/repos/")) {
+        repoQueries.push(new URL(req.url).searchParams.get("query"));
+        return new Response(JSON.stringify([SAMPLE_REPO]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (req.url.includes("/previous-with-commits/")) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      sentRefs = ((await req.json()) as { refs: unknown }).refs;
+      return new Response(JSON.stringify(SAMPLE_RELEASE), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    // A Docker build without .git still gets the CI variables.
+    await withEnv(
+      {
+        // Keep the test database; leave out the runner's own CI variables.
+        [CONFIG_DIR_ENV_VAR]: process.env[CONFIG_DIR_ENV_VAR],
+        SENTRY_CLI_NO_TELEMETRY: "1",
+        GITHUB_REPOSITORY: "getsentry/cli",
+        GITHUB_SHA: ciSha,
+      },
+      () => setCommitsAuto("test-org", "1.0.0", "/tmp"),
+    );
+
+    expect(repoQueries).toEqual(["getsentry/cli"]);
+    expect(sentRefs).toEqual([{ repository: "getsentry/cli", commit: ciSha }]);
+  });
+
+  // Sentry names GitLab repositories by their display path; the remote has
+  // the slugs, which GitLab derives from the display names.
+  test.each([
+    {
+      remote: "acme/web/storefront",
+      name: "Acme Corp / Web / Storefront",
+      queries: ["acme/web/storefront", "storefront"],
+    },
+    {
+      remote: "acme/web/my-store_front",
+      name: "Acme Corp / Web / My Store Front",
+      queries: ["acme/web/my-store_front", "my-store_front", "my store front"],
+    },
+  ])(
+    "matches GitLab repository '$name' by its URL path",
+    async ({ remote, name, queries }) => {
+      mockGetRepositoryName.mockReturnValue(remote);
+      const gitlabRepo = {
+        ...SAMPLE_REPO,
+        name,
+        url: `https://gitlab.com/${remote}`,
+        provider: { id: "integrations:gitlab", name: "GitLab" },
+      };
+      const repoQueries: (string | null)[] = [];
+      let sentRefs: unknown;
+
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const req = new Request(input, init);
+        if (req.url.includes("/repos/")) {
+          const query = new URL(req.url).searchParams.get("query");
+          repoQueries.push(query);
+          // The server filters with a case-insensitive "name contains".
+          const matches =
+            query &&
+            gitlabRepo.name.toLowerCase().includes(query.toLowerCase());
+          return new Response(JSON.stringify(matches ? [gitlabRepo] : []), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (req.url.includes("/previous-with-commits/")) {
+          return new Response(JSON.stringify({}), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        sentRefs = ((await req.json()) as { refs: unknown }).refs;
+        return new Response(JSON.stringify(SAMPLE_RELEASE), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      await setCommitsAuto("test-org", "1.0.0", "/tmp");
+
+      expect(repoQueries).toEqual(queries);
+      expect(sentRefs).toEqual([
+        {
+          repository: name,
+          commit: "abc123def456789012345678901234567890abcd",
+        },
+      ]);
+    },
+  );
+
+  test("suggests similar repositories and the settings page when nothing matches", async () => {
+    const renamed = {
+      ...SAMPLE_REPO,
+      name: "getsentry/cli-legacy",
+      url: "https://github.com/getsentry/cli-legacy",
+    };
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      if (!url.pathname.endsWith("/repos/")) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const repos = url.searchParams.get("query") === "cli" ? [renamed] : [];
+      return new Response(JSON.stringify(repos), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const error = await setCommitsAuto("test-org", "1.0.0", "/tmp").catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "repository",
+    });
+    const message = (error as Error).message;
+    expect(message).toMatch(
+      /No Sentry repository matching 'getsentry\/cli' \(from the 'origin' git remote\)/,
+    );
+    expect(message).toMatch(
+      /similarly named repositories: getsentry\/cli-legacy/,
+    );
+    expect(message).toContain(
+      "sentry release set-commits test-org/1.0.0 --commit 'getsentry/cli-legacy@abc123def456789012345678901234567890abcd'",
+    );
+    expect(message).toMatch(/settings\/repos\//);
+  });
+  // Sentry names Azure DevOps repositories by the bare repository name; the
+  // Azure Pipelines URL has `org/project/_git/repo`.
+  test("matches an Azure Repos repository from Azure Pipelines by its URL path", async () => {
+    mockGetRepositoryName.mockReturnValue(null);
+    const ciSha = "1234567890abcdef1234567890abcdef12345678";
+    const repoUrl = "https://dev.azure.com/acme/web/_git/storefront";
+    const azureRepo = {
+      ...SAMPLE_REPO,
+      name: "storefront",
+      url: repoUrl,
+      provider: { id: "integrations:vsts", name: "Azure DevOps" },
+    };
+    const repoQueries: (string | null)[] = [];
+    let sentRefs: unknown;
+
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      if (req.url.includes("/repos/")) {
+        const query = new URL(req.url).searchParams.get("query") ?? "";
+        repoQueries.push(query);
+        const matches = azureRepo.name.includes(query.toLowerCase());
+        return new Response(JSON.stringify(matches ? [azureRepo] : []), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (req.url.includes("/previous-with-commits/")) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      sentRefs = ((await req.json()) as { refs: unknown }).refs;
+      return new Response(JSON.stringify(SAMPLE_RELEASE), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await withEnv(
+      {
+        [CONFIG_DIR_ENV_VAR]: process.env[CONFIG_DIR_ENV_VAR],
+        SENTRY_CLI_NO_TELEMETRY: "1",
+        BUILD_REPOSITORY_URI: repoUrl,
+        BUILD_SOURCEVERSION: ciSha,
+      },
+      () => setCommitsAuto("test-org", "1.0.0", "/tmp"),
+    );
+
+    expect(repoQueries).toEqual(["acme/web/_git/storefront", "storefront"]);
+    expect(sentRefs).toEqual([{ repository: "storefront", commit: ciSha }]);
+  });
+
+  test.each([
+    {
+      case: "skips a display name whose URL points to another project",
+      hits: [
+        {
+          name: "Acme / Web",
+          url: "https://gitlab.com/acme-archive/acme/web",
+        },
+        { name: "Acme Corp / Web", url: "https://gitlab.com/acme/web" },
+      ],
+      expected: "Acme Corp / Web",
+    },
+    {
+      case: "matches a display name when the repository has no URL",
+      hits: [{ name: "Acme / Web", url: null }],
+      expected: "Acme / Web",
+    },
+  ])("$case", async ({ hits, expected }) => {
+    mockGetRepositoryName.mockReturnValue("acme/web");
+    let sentRefs: unknown;
+
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      if (req.url.includes("/repos/")) {
+        const query = new URL(req.url).searchParams.get("query") ?? "";
+        const repos = hits
+          .filter((hit) => hit.name.toLowerCase().includes(query))
+          .map((hit) => ({ ...SAMPLE_REPO, ...hit }));
+        return new Response(JSON.stringify(repos), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (req.url.includes("/previous-with-commits/")) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      sentRefs = ((await req.json()) as { refs: unknown }).refs;
+      return new Response(JSON.stringify(SAMPLE_RELEASE), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await setCommitsAuto("test-org", "1.0.0", "/tmp");
+
+    expect(sentRefs).toEqual([
+      {
+        repository: expected,
+        commit: "abc123def456789012345678901234567890abcd",
+      },
+    ]);
   });
 });
 
@@ -529,7 +1145,7 @@ describe("setCommitsWithRefs", () => {
   test("keeps a slash in a release version within the org release endpoint", async () => {
     const requestPaths: string[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {
-      const request = new Request(input!, init);
+      const request = new Request(input, init);
       requestPaths.push(new URL(request.url).pathname);
       return new Response(JSON.stringify(SAMPLE_RELEASE), {
         status: 200,
@@ -544,6 +1160,262 @@ describe("setCommitsWithRefs", () => {
   });
 });
 
+describe("explainSetCommitsError", () => {
+  const REFS = [
+    {
+      repository: "AutonomousBusinessUnits/platform",
+      commit: "def456",
+      previousCommit: "abc123",
+    },
+  ];
+  /** The server's 400 for a ref whose repository the org doesn't have. */
+  const invalidRepoError = (name: string) =>
+    new ApiError(
+      "API request failed: 400 Bad Request",
+      400,
+      JSON.stringify({ refs: [`Invalid repository names: ${name}`] }),
+      "organizations/test-org/releases/1.0.0/",
+    );
+  const repo = (name: string, url?: string) => ({
+    id: name,
+    name,
+    url,
+    provider: { id: "integrations:github", name: "GitHub" },
+    status: "active",
+  });
+  /** Answer every repository search with `repos`. */
+  const reposResponse = (repos: unknown[]) =>
+    mockFetch(
+      async () =>
+        new Response(JSON.stringify(repos), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+  test.each([
+    new ApiError("API request failed: 400 Bad Request", 400, "Invalid SHA"),
+    new ApiError("API request failed: 500", 500, "Invalid repository names: x"),
+    new Error("boom"),
+  ])("returns other errors unchanged (%s)", async (error) => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock;
+
+    expect(await explainSetCommitsError("test-org", "1.0.0", REFS, error)).toBe(
+      error,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("names the repository Sentry has when only the case differs", async () => {
+    globalThis.fetch = reposResponse([
+      repo(
+        "autonomousbusinessunits/platform",
+        "https://github.com/autonomousbusinessunits/platform",
+      ),
+    ]);
+
+    const error = await explainSetCommitsError(
+      "test-org",
+      "1.0.0",
+      REFS,
+      invalidRepoError("AutonomousBusinessUnits/platform"),
+    );
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "commit.repository",
+    });
+    const { message } = error as Error;
+    expect(message).toContain(
+      "has no repository named 'AutonomousBusinessUnits/platform'",
+    );
+    expect(message).toContain(
+      "sentry release set-commits test-org/1.0.0 --commit 'autonomousbusinessunits/platform@abc123..def456'",
+    );
+  });
+
+  test("links the integration directory when the org has no repositories", async () => {
+    globalThis.fetch = reposResponse([]);
+
+    const error = await explainSetCommitsError(
+      "test-org",
+      "1.0.0",
+      REFS,
+      invalidRepoError("AutonomousBusinessUnits/platform"),
+    );
+
+    expect(error).toMatchObject({ field: "commit.repository" });
+    const { message } = error as Error;
+    expect(message).toContain("It has no repositories yet");
+    expect(message).toMatch(
+      /\/settings\/integrations\/\?category=source%20code%20management/,
+    );
+  });
+
+  test("suggests similar repositories and links the repository settings", async () => {
+    globalThis.fetch = reposResponse([repo("AutonomousBusinessUnits/web")]);
+
+    const error = await explainSetCommitsError(
+      "test-org",
+      "1.0.0",
+      REFS,
+      invalidRepoError("AutonomousBusinessUnits/platform"),
+    );
+
+    const { message } = error as Error;
+    expect(message).toContain(
+      "It has similarly named repositories: AutonomousBusinessUnits/web.",
+    );
+    expect(message).toContain(
+      "--commit 'AutonomousBusinessUnits/web@abc123..def456'",
+    );
+    expect(message).toContain("sentry repo list test-org/");
+    expect(message).toMatch(/\/settings\/repos\//);
+  });
+
+  test("still links the repository settings when the lookup fails", async () => {
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(JSON.stringify({ detail: "boom" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    const error = await explainSetCommitsError(
+      "test-org",
+      "1.0.0",
+      REFS,
+      invalidRepoError("AutonomousBusinessUnits/platform"),
+    );
+
+    expect(error).toMatchObject({ field: "commit.repository" });
+    expect((error as Error).message).toMatch(/\/settings\/repos\//);
+  });
+});
+
+describe("correctRefRepositories", () => {
+  const REFS = [
+    {
+      repository: "AutonomousBusinessUnits/platform",
+      commit: "def456",
+      previousCommit: "abc123",
+    },
+  ];
+  const invalidRepoError = new ApiError(
+    "API request failed: 400 Bad Request",
+    400,
+    JSON.stringify({
+      refs: ["Invalid repository names: AutonomousBusinessUnits/platform"],
+    }),
+    "organizations/test-org/releases/1.0.0/",
+  );
+  const reposResponse = (repos: unknown[]) =>
+    mockFetch(
+      async () =>
+        new Response(JSON.stringify(repos), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+  const repo = (name: string) => ({
+    id: name,
+    name,
+    url: `https://github.com/${name}`,
+    provider: { id: "integrations:github", name: "GitHub" },
+    status: "active",
+  });
+
+  test("uses Sentry's name when only the case differs", async () => {
+    globalThis.fetch = reposResponse([
+      repo("autonomousbusinessunits/platform"),
+    ]);
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    try {
+      expect(
+        await correctRefRepositories("test-org", REFS, invalidRepoError),
+      ).toEqual([
+        {
+          repository: "autonomousbusinessunits/platform",
+          commit: "def456",
+          previousCommit: "abc123",
+        },
+      ]);
+      expect(stderr.mock.calls.join("")).toContain(
+        "Using 'autonomousbusinessunits/platform'",
+      );
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  test("keeps the error when Sentry has no matching repository", async () => {
+    globalThis.fetch = reposResponse([repo("AutonomousBusinessUnits/web")]);
+
+    expect(
+      await correctRefRepositories("test-org", REFS, invalidRepoError),
+    ).toBeUndefined();
+  });
+
+  test("warns about no replacement when a later name has no match", async () => {
+    const refs = [
+      ...REFS,
+      { repository: "AutonomousBusinessUnits/missing", commit: "fed654" },
+    ];
+    const error = new ApiError(
+      "API request failed: 400 Bad Request",
+      400,
+      JSON.stringify({
+        refs: [
+          "Invalid repository names: AutonomousBusinessUnits/platform,AutonomousBusinessUnits/missing",
+        ],
+      }),
+      "organizations/test-org/releases/1.0.0/",
+    );
+    globalThis.fetch = reposResponse([
+      repo("autonomousbusinessunits/platform"),
+    ]);
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    try {
+      expect(
+        await correctRefRepositories("test-org", refs, error),
+      ).toBeUndefined();
+      expect(stderr.mock.calls.join("")).not.toContain("Using '");
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  test("ignores other errors without looking up repositories", async () => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock;
+
+    expect(
+      await correctRefRepositories(
+        "test-org",
+        REFS,
+        new ApiError("API request failed: 400 Bad Request", 400, "Invalid SHA"),
+      ),
+    ).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("keeps the error when the lookup fails", async () => {
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(JSON.stringify({ detail: "boom" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    expect(
+      await correctRefRepositories("test-org", REFS, invalidRepoError),
+    ).toBeUndefined();
+  });
+});
+
 // =============================================================================
 // setCommitsLocal
 // =============================================================================
@@ -552,7 +1424,7 @@ describe("setCommitsLocal", () => {
   test("sends explicit commits to the API", async () => {
     const withCommits = { ...SAMPLE_RELEASE, commitCount: 2 };
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("PUT");
       const body = (await req.json()) as {
         commits: Array<{ id: string; message: string }>;
@@ -586,7 +1458,7 @@ describe("setCommitsLocal", () => {
 describe("listReleasesPaginated", () => {
   test("returns a page of releases with cursor", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.url).toContain("/releases/");
       return new Response(JSON.stringify([SAMPLE_RELEASE]), {
         status: 200,
@@ -624,7 +1496,7 @@ describe("listReleasesPaginated", () => {
 
   test("passes query and sort options", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       const url = new URL(req.url);
       expect(url.searchParams.get("query")).toBe("1.0");
       expect(url.searchParams.get("sort")).toBe("date");
@@ -647,7 +1519,7 @@ describe("listReleasesPaginated", () => {
     async (sort) => {
       let flatten: string | null = null;
       globalThis.fetch = mockFetch(async (input, init) => {
-        const url = new URL(new Request(input!, init).url);
+        const url = new URL(new Request(input, init).url);
         flatten = url.searchParams.get("flatten");
         // Sentry rejects session sorts unless the results are flattened.
         if (flatten !== "1") {
@@ -675,7 +1547,7 @@ describe("listReleasesPaginated", () => {
   test("does not flatten date-sorted results", async () => {
     let flatten: string | null = "unset";
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       flatten = url.searchParams.get("flatten");
       return new Response(JSON.stringify([]), {
         status: 200,

@@ -1,16 +1,20 @@
+import { logger, metrics } from "@sentry/core";
 import { isAggregateFieldOrEquation } from "@sentry/toolkit-core/events-fields";
 import { getSortField } from "@sentry/toolkit-core/events-sort";
 import type { z } from "zod";
 import type { CrossEventQueries, SentryApiService } from "../../../api-client";
 import {
   ApiAuthenticationError,
+  ApiError,
   type SearchAgentQuerySchema,
 } from "../../../api-client/index";
 import { logWarn } from "../../../telem/logging";
 import {
+  type EventsApiDataset,
   normalizeEventsDataset,
   type PublicEventsDataset,
 } from "../../../utils/events-datasets";
+import type { ExploreMode } from "../../../utils/url-utils";
 import { RECOMMENDED_FIELDS } from "./config";
 
 export const SEER_SEARCH_AGENT_POLLING_INTERVAL = 1000; // 1 second
@@ -19,9 +23,13 @@ export const SEER_SEARCH_AGENT_TIMEOUT = 60 * 1000; // 1 minute
 // Sentry's sentinel for all projects the user can access.
 const ALL_ACCESSIBLE_PROJECTS = -1;
 
-// Gradual rollout flag for Seer translation in search_events. The search agent
+// Gradual rollout flag for Seer translation in the search tools. The search agent
 // endpoints themselves are ungated; `hideAiFeatures` is checked separately.
 const SEER_TRANSLATE_FEATURE = "mcp-search-events-seer-translate";
+// Sentry requires this flag for the search agent's `Issues` strategy.
+const SEER_ISSUES_SEARCH_FEATURE = "gen-ai-issues-search";
+
+const SEER_EXPLANATION = "Translated by Seer's search agent.";
 
 const SEER_STRATEGIES = {
   errors: "Errors",
@@ -50,28 +58,102 @@ export interface SeerSearchTranslation {
   explanation: string;
   // Correctness warnings must be shown even when explanations are disabled.
   warning?: string;
+  // Identifies the run in the assisted query outcome metric.
+  runId: string;
+  mode: ExploreMode;
+  organizationFeatures: string[];
 }
 
-async function hasSeerSearchAgentAccess(
+function extractErrorReason(err: Error): string {
+  if (err instanceof ApiError && err.detail) {
+    return err.detail;
+  }
+  return err.message;
+}
+
+// Seer doesn't return results, so the caller reports whether the translated
+// query found anything. Mirrors `trackAiQueryOutcome` in Sentry's frontend
+// (`static/app/components/searchQueryBuilder/askSeerCombobox/utils.ts`), which
+// reports the same metric with an `assisted_query.search_bar.*` referrer.
+export function trackAiQueryOutcome({
+  dataset,
+  mode,
+  organization,
+  resultCount,
+  runId,
+  error = false,
+}: {
+  dataset: EventsApiDataset;
+  mode: ExploreMode;
+  organization: { slug: string; features: string[] };
+  resultCount: number;
+  runId: string;
+  error?: string | boolean | Error;
+}): void {
+  const outcome = error
+    ? "error_on_load"
+    : resultCount > 0
+      ? "has_results"
+      : "empty_results";
+  const errorReason =
+    typeof error === "string"
+      ? error
+      : error instanceof Error
+        ? extractErrorReason(error)
+        : undefined;
+
+  const referrer = `assisted_query.mcp.${dataset === "spans" ? "traces" : dataset}`;
+  // Seer runs are stored as conversations in the `sentry` org.
+  const conversationUrl = `https://sentry.io/organizations/sentry/explore/agents/conversations/${encodeURIComponent(runId)}/`;
+  const codeMode = organization.features.includes(
+    "seer-assisted-query-codemode",
+  );
+  const crossEventEnabled = organization.features.includes(
+    "seer-assisted-query-cross-event-explorer",
+  );
+
+  const attributes = {
+    dataset,
+    mode,
+    org_slug: organization.slug,
+    referrer,
+    run_id: runId,
+    conversation_url: conversationUrl,
+    outcome,
+    error_reason: errorReason,
+    code_mode: codeMode,
+    cross_event_enabled: crossEventEnabled,
+  };
+
+  logger.info("assisted_query.outcome", {
+    ...attributes,
+    result_count: resultCount,
+  });
+  metrics.distribution("assisted_query.outcome", resultCount, { attributes });
+}
+
+// Returns the org's features when Seer translation is enabled, otherwise null.
+async function getSeerSearchAgentFeatures(
   apiService: SentryApiService,
   organizationSlug: string,
-): Promise<boolean> {
+): Promise<string[] | null> {
   // Sentry omits `features` unless explicitly requested.
   const organization = await apiService.getOrganization(organizationSlug, {
     includeFeatureFlags: true,
     detailed: false,
   });
   if (organization.hideAiFeatures) {
-    return false;
+    return null;
   }
   const features = organization.features ?? [];
-  return features.includes(SEER_TRANSLATE_FEATURE);
+  return features.includes(SEER_TRANSLATE_FEATURE) ? features : null;
 }
 
 function toSearchTranslation(
   result: z.output<typeof SearchAgentQuerySchema>,
   dataset: SeerSearchDataset,
   suggestedProjectIds: number[],
+  run: { runId: string; organizationFeatures: string[] },
 ): SeerSearchTranslation {
   const aggregates = result.visualization.flatMap((chart) => chart.y_axes);
   const fields =
@@ -139,7 +221,7 @@ function toSearchTranslation(
     .filter(([, query]) => query)
     .map(([type, query]) => `${type} \`${query}\``);
 
-  let explanation = "Translated by Seer's search agent.";
+  let explanation = SEER_EXPLANATION;
   let warning: string | undefined;
   if (crossEventFilters.length > 0) {
     if (timeSeries) {
@@ -160,31 +242,54 @@ function toSearchTranslation(
     suggestedProjectIds,
     explanation,
     warning,
+    runId: run.runId,
+    mode: result.mode === "aggregates" ? "aggregate" : "samples",
+    organizationFeatures: run.organizationFeatures,
   };
 }
 
+type SearchAgentStrategy =
+  | (typeof SEER_STRATEGIES)[SeerSearchDataset]
+  | "Issues";
+
+interface SearchAgentRun {
+  result: z.output<typeof SearchAgentQuerySchema>;
+  projectIds: number[];
+  runId: string;
+  organizationFeatures: string[];
+}
+
 /**
- * Translates a natural language query with Seer's search agent.
+ * Starts a search agent run and polls it until it finishes.
  *
  * Returns null when Seer is unavailable for the organization, cannot translate
- * the query, or does not finish in time, so the caller can fall back to the
- * embedded agent or direct query syntax.
+ * the query, or does not finish in time.
  */
-export async function translateWithSeer({
+async function runSearchAgent({
   apiService,
   organizationSlug,
   projectId,
-  dataset,
+  strategy,
   query,
+  requiredFeature,
 }: {
   apiService: SentryApiService;
   organizationSlug: string;
   projectId?: string;
-  dataset: SeerSearchDataset;
+  strategy: SearchAgentStrategy;
   query: string;
-}): Promise<SeerSearchTranslation | null> {
+  // A strategy-specific flag that Sentry also checks before starting the run.
+  requiredFeature?: string;
+}): Promise<SearchAgentRun | null> {
   try {
-    if (!(await hasSeerSearchAgentAccess(apiService, organizationSlug))) {
+    const organizationFeatures = await getSeerSearchAgentFeatures(
+      apiService,
+      organizationSlug,
+    );
+    if (
+      !organizationFeatures ||
+      (requiredFeature && !organizationFeatures.includes(requiredFeature))
+    ) {
       return null;
     }
 
@@ -192,7 +297,7 @@ export async function translateWithSeer({
       organizationSlug,
       projectIds: [projectId ? Number(projectId) : ALL_ACCESSIBLE_PROJECTS],
       naturalLanguageQuery: query,
-      strategy: SEER_STRATEGIES[dataset],
+      strategy,
     });
 
     const deadline = Date.now() + SEER_SEARCH_AGENT_TIMEOUT;
@@ -207,15 +312,12 @@ export async function translateWithSeer({
         if (!result) {
           return null;
         }
-        // Seer can suggest broadening a project-scoped search, e.g. to other
-        // services in the same trace. With all projects requested there is
-        // nothing to add.
-        const suggestedProjectIds = projectId
-          ? (session.final_response?.project_ids ?? []).filter(
-              (id) => id !== Number(projectId),
-            )
-          : [];
-        return toSearchTranslation(result, dataset, suggestedProjectIds);
+        return {
+          result,
+          projectIds: session.final_response?.project_ids ?? [],
+          runId: run.sentry_run_id,
+          organizationFeatures,
+        };
       }
       if (session?.status === "error") {
         return null;
@@ -238,4 +340,91 @@ export async function translateWithSeer({
     logWarn(error, { extra: { organizationSlug } });
     return null;
   }
+}
+
+/**
+ * Translates a natural language query with Seer's search agent.
+ *
+ * Returns null when Seer is unavailable for the organization, cannot translate
+ * the query, or does not finish in time, so the caller can fall back to the
+ * embedded agent or direct query syntax.
+ */
+export async function translateWithSeer({
+  apiService,
+  organizationSlug,
+  projectId,
+  dataset,
+  query,
+}: {
+  apiService: SentryApiService;
+  organizationSlug: string;
+  projectId?: string;
+  dataset: SeerSearchDataset;
+  query: string;
+}): Promise<SeerSearchTranslation | null> {
+  const run = await runSearchAgent({
+    apiService,
+    organizationSlug,
+    projectId,
+    strategy: SEER_STRATEGIES[dataset],
+    query,
+  });
+  if (!run) {
+    return null;
+  }
+  // Seer can suggest broadening a project-scoped search, e.g. to other
+  // services in the same trace. With all projects requested there is nothing
+  // to add.
+  const suggestedProjectIds = projectId
+    ? run.projectIds.filter((id) => id !== Number(projectId))
+    : [];
+  return toSearchTranslation(run.result, dataset, suggestedProjectIds, run);
+}
+
+export interface SeerIssueSearchTranslation {
+  query: string;
+  // Empty when Seer returned no sort.
+  sort: string;
+  // Empty unless the user asked for a time period.
+  statsPeriod: string;
+  explanation: string;
+}
+
+/**
+ * Translates a natural language issue search with Seer's `Issues` strategy.
+ *
+ * Sentry gates that strategy on `gen-ai-issues-search` on top of the shared
+ * Seer translation checks. Returns null when any of them fail, so the caller
+ * can fall back to the embedded agent or direct query syntax.
+ */
+export async function translateIssuesWithSeer({
+  apiService,
+  organizationSlug,
+  projectId,
+  query,
+}: {
+  apiService: SentryApiService;
+  organizationSlug: string;
+  projectId?: string;
+  query: string;
+}): Promise<SeerIssueSearchTranslation | null> {
+  const run = await runSearchAgent({
+    apiService,
+    organizationSlug,
+    projectId,
+    strategy: "Issues",
+    query,
+    requiredFeature: SEER_ISSUES_SEARCH_FEATURE,
+  });
+  // search_issues only takes a relative period, so an absolute range would be
+  // dropped silently. Fall back instead of searching the wrong window.
+  if (!run || run.result.start || run.result.end) {
+    return null;
+  }
+  return {
+    query: run.result.query,
+    sort: run.result.sort.trim(),
+    statsPeriod: run.result.stats_period,
+    explanation: SEER_EXPLANATION,
+  };
 }

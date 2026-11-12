@@ -2,7 +2,7 @@ import { z } from "zod";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import { ALL_SKILLS } from "../../skills";
-import { LIB_VERSION } from "../../version";
+import { getServerVersion } from "../../version";
 
 export const getSentryMcpInfoOutputSchema = z.object({
   version: z.string().describe("The Sentry MCP server version."),
@@ -10,6 +10,7 @@ export const getSentryMcpInfoOutputSchema = z.object({
 
 export default defineTool({
   name: "get_sentry_mcp_info",
+  title: "Get Sentry MCP Info",
   description: [
     "Get information about the running Sentry MCP server.",
     "",
@@ -28,7 +29,7 @@ export default defineTool({
   },
   async handler() {
     return structuredResult({
-      version: LIB_VERSION,
+      version: getServerVersion(),
     });
   },
 });

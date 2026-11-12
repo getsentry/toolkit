@@ -1,9 +1,10 @@
+import { aiItems } from "./inspection.ts";
 import {
   DEFAULT_MAX_ENVELOPES,
   isValidMaxEnvelopes,
 } from "../../../../packages/cli/src/commands/local/retention-limits.ts";
 import type { LocalFeedItem } from "./spotlight.ts";
-import { isAiEvent, isErrorEvent } from "./workspace.ts";
+import { isErrorEvent } from "./workspace.ts";
 
 export type LocalTelemetrySnapshot = {
   items: LocalFeedItem[];
@@ -64,7 +65,7 @@ function buildSnapshot(
     sdks: items.filter(
       (item) => item.type === "client_report" || item.type === "session",
     ),
-    ai: items.filter(isAiEvent),
+    ai: aiItems(items),
   };
 }
 

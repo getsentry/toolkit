@@ -8,6 +8,7 @@
 
 import type { SentryContext } from "../context.js";
 import { getCurrentUser } from "../lib/api/users.js";
+import { sentry } from "../lib/app-identity.js";
 import { buildCommand } from "../lib/command.js";
 import { DEFAULT_SENTRY_URL } from "../lib/constants.js";
 import { isAuthenticated } from "../lib/db/auth.js";
@@ -19,6 +20,7 @@ import {
 import { colorTag, renderMarkdown } from "../lib/formatters/markdown.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { logger } from "../lib/logger.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("info");
 
@@ -111,13 +113,29 @@ function formatInfo(data: InfoStatus): string {
 
 export const infoCommand = buildCommand({
   docs: {
-    brief: "Print configuration and verify authentication",
+    brief: topLevelBrief("info"),
     fullDescription:
       "Print the resolved Sentry server URL and default organization/project, " +
       "and verify authentication against the server.\n\n" +
       "Use `--config-status-json` for a machine-readable status dump (for " +
       "external tooling); it always exits 0. Use `--no-defaults` to verify " +
       "only authentication, without requiring a default org/project.",
+    examples: [
+      {
+        description: "Print the resolved config and verify authentication",
+        run: "info",
+      },
+      {
+        description:
+          "Verify only authentication (don't require a default org/project)",
+        run: "info --no-defaults",
+      },
+      {
+        description:
+          "Machine-readable status for external tooling (always exits 0)",
+        run: "info --config-status-json",
+      },
+    ],
   },
   // Reports auth status (including "Unauthorized") — must run without auth.
   auth: false,
@@ -162,8 +180,8 @@ export const infoCommand = buildCommand({
       this.process.exitCode = 1;
       return {
         hint: failed
-          ? "Not authenticated. Run `sentry auth login`."
-          : "No default organization/project. Run `sentry init` or set defaults.",
+          ? `Not authenticated. Run \`${sentry`auth login`}\`.`
+          : `No default organization/project. Set them with \`${sentry`cli defaults org <org>`}\` and \`${sentry`cli defaults project <project>`}\`.`,
       };
     }
     return { hint: "Configuration verified." };

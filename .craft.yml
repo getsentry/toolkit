@@ -1,15 +1,38 @@
-minVersion: "2.33.0"
+minVersion: "3.11.0"
 workspaces:
   packages/cli:
     changelog:
       policy: auto
-      # The CLI release also ships the documentation workspace.
+      # The CLI release also ships the documentation workspace and
+      # @sentry/mcp-server.
       includePaths:
         - apps/cli-docs
+        - packages/mcp-server
+      aiSummary:
+        llm:
+          model: gpt-5.6-luna-utility
+        levels: [release, category, scope]
+        minItems: 0
+        # Summarizing every scope and category of a month of changes takes
+        # longer than Craft's 120-second default.
+        timeout: 600
+        style: Keep it concise and friendly for developers; avoid hype.
     versioning:
       policy: auto
-    preReleaseCommand: bash -c 'cd packages/cli && node --experimental-strip-types script/bump-version.ts --pre'
-    postReleaseCommand: bash -c 'cd packages/cli && node --experimental-strip-types script/bump-version.ts --post'
+      # The npm targets bump only packages/cli/package.json. These files ship
+      # with every CLI release and carry its version too. Craft writes them for
+      # the release and again for the next -dev version (postReleaseBump).
+      files:
+        # Published at the CLI's version; its bundle script fails on a mismatch.
+        - path: packages/mcp-server/package.json
+        # The plugin's version stays a plain release version, even on -dev builds.
+        - path: packages/cli/plugins/sentry-cli/.claude-plugin/plugin.json
+          stripPrerelease: true
+        # Skill frontmatter. The skill generator embeds the version too, but it
+        # needs a gitignored API schema that Craft's checkout doesn't have.
+        - path: packages/cli/plugins/sentry-cli/skills/sentry-cli/SKILL.md
+        - path: packages/cli/plugins/sentry-cli/skills/sentry-cli/references/*.md
+    postReleaseBump: true
     releaseBranchPrefix: release/cli
     artifactProvider:
       name: github
@@ -18,10 +41,20 @@ workspaces:
           Build:
             - "/^sentry-.*$/"
             - "npm-package"
+            - "mcp-server-npm-package"
             - "vercel"
+            - "install-scripts"
     targets:
       - name: npm
         includeNames: '/^sentry-\d.*\.tgz$/'
+      # The standalone MCP server, published at the CLI's version.
+      - name: npm
+        id: "@sentry/mcp-server"
+        includeNames: '/^sentry-mcp-server-\d.*\.tgz$/'
+      # Lists that npm package in the MCP Registry. After the npm targets: the
+      # registry checks that npm serves the version.
+      - name: mcp-registry
+        manifest: server.json
       - name: github
         tagPrefix: "cli@"
       - name: vercel
@@ -75,6 +108,9 @@ workspaces:
 
             def install
               bin.install Dir["sentry-*"].first => "sentry"
+              # The release asset is a bare gzip, so the unpacked binary has no
+              # exec bit. Homebrew's cleaner only fixes that after `install`.
+              chmod 0755, bin/"sentry"
               # Homebrew-managed completion dirs survive the build sandbox and
               # are cleaned up by `brew uninstall`. Writing into $HOME from
               # post_install does not work: it runs under a throwaway HOME.
@@ -97,16 +133,14 @@ workspaces:
               assert_match version.to_s, shell_output("#{bin}/sentry --version").chomp
             end
           end
-  packages/mcp-server:
-    changelogPolicy: none
-    preReleaseCommand: >-
-      bash -c 'set -e; for package in packages/mcp-* packages/smoke-tests; do
-      (cd "$package" && npm version "$CRAFT_NEW_VERSION" --no-git-tag-version);
-      done'
-    releaseBranchPrefix: release/mcp
+  # No preReleaseCommand: Craft bumps package.json through the npm target.
+  packages/logger:
+    changelog:
+      policy: auto
+    releaseBranchPrefix: "release/{{workspaceName}}"
     targets:
       - name: github
-        includeNames: '/^sentry-mcp-server-\d.*\.tgz$/'
+        tagPrefix: "{{workspaceName}}@"
+        includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
       - name: npm
-        id: "@sentry/mcp-server"
-        includeNames: '/^sentry-mcp-server-\d.*\.tgz$/'
+        includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'

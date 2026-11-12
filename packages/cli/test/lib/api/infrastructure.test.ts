@@ -12,8 +12,9 @@ import {
   unwrapPaginatedResult,
   unwrapResult,
 } from "../../../src/lib/api/infrastructure.js";
-import { setAuthToken } from "../../../src/lib/db/auth.js";
+import { resetAuthTokenCache, setAuthToken } from "../../../src/lib/db/auth.js";
 import { ApiError, HostScopeError } from "../../../src/lib/errors.js";
+import { OAUTH_SCOPES } from "../../../src/lib/oauth.js";
 import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
 describe("SDK error compatibility", () => {
@@ -165,11 +166,112 @@ describe("throwApiError", () => {
       expect(error).toBeInstanceOf(ApiError);
       const apiError = error as ApiError;
       expect(apiError.detail).toContain("fetch failed");
-      expect(apiError.detail).toContain("Unable to reach Sentry API");
+      expect(apiError.detail).toContain("Unable to reach Sentry at");
       expect(apiError.detail).toContain(
-        "Check your internet connection and try again",
+        "Check your network connection and try again",
       );
+      expect(apiError.cause).toBeInstanceOf(TypeError);
     }
+  });
+
+  describe("network failure guidance", () => {
+    useTestConfigDir("api-network-guidance-");
+    useEnvSandbox([
+      "SENTRY_URL",
+      "SENTRY_HOST",
+      "SENTRY_AUTH_TOKEN",
+      "SENTRY_TOKEN",
+      "SENTRY_FORCE_ENV_TOKEN",
+      "HTTPS_PROXY",
+      "https_proxy",
+      "HTTP_PROXY",
+      "http_proxy",
+    ]);
+
+    function fetchFailed(code: string, message: string): TypeError {
+      const cause = Object.assign(new Error(message), { code });
+      return new TypeError("fetch failed", { cause });
+    }
+
+    function detailFor(error: unknown): string {
+      try {
+        throwApiError(error, undefined, "Failed to create release");
+      } catch (thrown) {
+        return (thrown as ApiError).detail ?? "";
+      }
+      throw new Error("expected throwApiError to throw");
+    }
+
+    test("self-hosted ECONNREFUSED names the URL, errno, and next step", () => {
+      process.env.SENTRY_URL = "https://sentry.example.com";
+      const detail = detailFor(
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
+      );
+      expect(detail).toContain(
+        "Unable to reach Sentry at https://sentry.example.com",
+      );
+      expect(detail).toContain("connect ECONNREFUSED 10.0.0.1:443");
+      expect(detail).toContain("The server refused the connection");
+      expect(detail).toContain("SENTRY_URL");
+      expect(detail).not.toContain("Check Sentry's status");
+    });
+
+    test("names SENTRY_HOST as the override when it is the one set", () => {
+      process.env.SENTRY_HOST = "https://sentry.example.com";
+      process.env.SENTRY_URL = "https://other.example.com";
+      const detail = detailFor(
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
+      );
+      expect(detail).toContain(
+        "Unable to reach Sentry at https://sentry.example.com",
+      );
+      expect(detail).toContain("This URL comes from SENTRY_HOST");
+    });
+
+    test("a self-hosted login without SENTRY_URL names its own server", () => {
+      setAuthToken("self-hosted-token", undefined, undefined, {
+        host: "https://sentry.example.com",
+        newAccount: true,
+      });
+      const detail = detailFor(
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
+      );
+      expect(detail).toContain(
+        "Unable to reach Sentry at https://sentry.example.com",
+      );
+      expect(detail).toContain("sentry auth login --url");
+      expect(detail).not.toContain("Check Sentry's status");
+    });
+
+    test("a proxy variable does not replace the errno hint (fetch ignores it)", () => {
+      process.env.SENTRY_URL = "https://sentry.example.com";
+      process.env.HTTPS_PROXY = "http://user:secret@proxy.internal:3128";
+      const detail = detailFor(
+        fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
+      );
+      expect(detail).toContain("The server refused the connection");
+      expect(detail).not.toContain("proxy");
+      expect(detail).not.toContain("secret");
+    });
+
+    test("a cause without an errno still replaces 'fetch failed'", () => {
+      process.env.SENTRY_URL = "https://sentry.example.com:9";
+      const detail = detailFor(
+        new TypeError("fetch failed", { cause: new Error("bad port") }),
+      );
+      expect(detail).toContain(": bad port");
+      expect(detail).toContain("Check your network connection");
+    });
+
+    test("SaaS DNS failure points at DNS and `sentry status`", () => {
+      const detail = detailFor(
+        fetchFailed("ENOTFOUND", "getaddrinfo ENOTFOUND us.sentry.io"),
+      );
+      expect(detail).toContain("getaddrinfo ENOTFOUND us.sentry.io");
+      expect(detail).toContain("hostname could not be resolved");
+      expect(detail).toContain("Check Sentry's status with: sentry status");
+      expect(detail).not.toContain("Check your network connection");
+    });
   });
 
   test("network failure with non-Error produces readable message", () => {
@@ -203,6 +305,52 @@ describe("throwApiError", () => {
       expect(apiError.status).toBe(400);
       expect(apiError.detail).toBe("Invalid query syntax");
     }
+  });
+
+  test("HTTP error keeps the body's code", () => {
+    const mockResponse = new Response("", {
+      status: 400,
+      statusText: "Bad Request",
+    });
+
+    expect(() =>
+      throwApiError(
+        { detail: "Invalid query syntax", code: "invalid_search_query" },
+        mockResponse,
+        "Failed to list events",
+      ),
+    ).toThrow(
+      expect.objectContaining({ status: 400, code: "invalid_search_query" }),
+    );
+  });
+
+  test("HTTP error keeps the function and argument the body rejected", () => {
+    const mockResponse = new Response("", {
+      status: 400,
+      statusText: "Bad Request",
+    });
+
+    expect(() =>
+      throwApiError(
+        {
+          detail: "cart.total is invalid for parameter 1 in p75.",
+          code: "invalid_function_argument",
+          function: "p75",
+          argument: "cart.total",
+          hint: "Use cart.amount instead of cart.total.",
+        },
+        mockResponse,
+        "Failed to list events",
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        functionArgument: {
+          function: "p75",
+          argument: "cart.total",
+          hint: "Use cart.amount instead of cart.total.",
+        },
+      }),
+    );
   });
 
   test("HTTP error without detail uses stringified error", () => {
@@ -506,8 +654,11 @@ describe("throwApiError", () => {
   });
 
   describe("401 enrichment", () => {
-    // Test preload sets SENTRY_AUTH_TOKEN, so isEnvTokenActive() returns true
-    // by default in these tests.
+    // A personal env token: the preload's `sntrys_` token gets org advice.
+    useEnvSandbox(["SENTRY_AUTH_TOKEN"]);
+    beforeEach(() => {
+      process.env.SENTRY_AUTH_TOKEN = "sntryu_test-token-for-unit-tests";
+    });
 
     test("uses 'not recognized or has been revoked' for invalid token", () => {
       const mockResponse = new Response("", {
@@ -669,6 +820,151 @@ describe("throwApiError", () => {
 // isTextualContentType + rawApiRequest binary handling (getsentry/cli#1303)
 // ---------------------------------------------------------------------------
 
+describe("org auth token org mismatch", () => {
+  useTestConfigDir("api-org-mismatch-");
+  useEnvSandbox([
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN",
+  ]);
+
+  /** The detail of a denial for `path`, sent with an org auth token for `tokenOrg`. */
+  function detailFor(
+    tokenOrg: string,
+    status: 401 | 403,
+    path: string,
+    detail = "Denied",
+  ): string | undefined {
+    const claim = Buffer.from(
+      JSON.stringify({ iat: 1, url: "https://sentry.io", org: tokenOrg }),
+    ).toString("base64");
+    process.env.SENTRY_AUTH_TOKEN = `sntrys_${claim}_secret`;
+    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    resetAuthTokenCache();
+    const body = { detail };
+    const response = Response.json(body, { status });
+    // SDK requests carry the request URL on the response.
+    Object.defineProperty(response, "url", {
+      value: `https://us.sentry.io/api/0/${path}`,
+    });
+    try {
+      throwApiError(body, response, "Failed");
+    } catch (error) {
+      return (error as ApiError).detail;
+    }
+    throw new Error("expected throwApiError to throw");
+  }
+
+  test.each([
+    [403, "organizations/target-org/releases/", "Denied"],
+    [401, "projects/target-org/web/releases/", "Invalid org token"],
+  ] as const)("names both orgs on a %i", (status, path, detail) => {
+    expect(detailFor("token-org", status, path, detail)).toContain(
+      "This org auth token belongs to organization 'token-org', but the request is for 'target-org'.",
+    );
+  });
+
+  test.each([
+    ["token-org", "organizations/12345/releases/"],
+    ["Token-Org", "organizations/token-org/releases/"],
+  ])("skips the hint for a %s token on %s", (tokenOrg, path) => {
+    expect(detailFor(tokenOrg, 403, path)).not.toContain(
+      "belongs to organization",
+    );
+  });
+});
+
+describe("403 scope challenge guidance", () => {
+  useTestConfigDir("api-denial-");
+  useEnvSandbox([
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN",
+  ]);
+
+  const ORG_TOKEN = `sntrys_${Buffer.from(JSON.stringify({ iat: 1, url: "https://sentry.io", org: "acme" })).toString("base64")}_secret`;
+
+  /** The detail of a 403 sent with `credential`, with an optional challenge. */
+  function detailFor(
+    credential: "personal" | "org" | "login",
+    scopes?: string,
+  ): string | undefined {
+    if (credential === "login") {
+      setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
+    } else {
+      process.env.SENTRY_AUTH_TOKEN =
+        credential === "org" ? ORG_TOKEN : "sntryu_example";
+      process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    }
+    resetAuthTokenCache();
+    const body = { detail: "Denied" };
+    const headers: Record<string, string> = scopes
+      ? {
+          "WWW-Authenticate": `Bearer error="insufficient_scope", scope="${scopes}"`,
+        }
+      : {};
+    const response = Response.json(body, { status: 403, headers });
+    try {
+      throwApiError(body, response, "Request failed");
+    } catch (error) {
+      return (error as ApiError).detail;
+    }
+    throw new Error("expected throwApiError to throw");
+  }
+
+  test.each([
+    [
+      "personal",
+      "org:admin org:ci org:read",
+      "Your SENTRY_AUTH_TOKEN token lacks the scope this request needs. Any one of these works: org:admin, org:ci, org:read.",
+    ],
+    ["personal", "org:admin org:ci org:read", "An org auth token has org:ci."],
+    ["org", "org:admin org:billing", "Org auth tokens only have org:ci."],
+    ["login", "org:admin org:read", "auth login --force"],
+    [
+      "login",
+      "org:admin org:billing org:write",
+      `auth refresh --scope ${[...OAUTH_SCOPES, "org:write"].join(",")}`,
+    ],
+  ] as const)("%s token, accepted %s: %s", (credential, scopes, expected) => {
+    expect(detailFor(credential, scopes)).toContain(expected);
+  });
+
+  test("keeps the generic hint for a 403 with no challenge", () => {
+    expect(detailFor("personal")).toContain("may lack the required scope");
+  });
+});
+
+describe("401 guidance", () => {
+  useTestConfigDir("api-401-");
+  useEnvSandbox(["SENTRY_AUTH_TOKEN"]);
+
+  test.each([
+    [
+      "sntrys_malformed",
+      false,
+      "Invalid org token",
+      "organization's Settings > Auth Tokens.",
+    ],
+    ["sntryu_example", true, "Invalid token", "Re-authenticate with:"],
+  ])(
+    "%s, stored login %s: %s gets %j",
+    (envToken, storedLogin, detail, advice) => {
+      process.env.SENTRY_AUTH_TOKEN = envToken;
+      if (storedLogin) {
+        setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
+      }
+      resetAuthTokenCache();
+      const body = { detail };
+      expect(() =>
+        throwApiError(body, Response.json(body, { status: 401 }), "Failed"),
+      ).toThrow(
+        expect.objectContaining({ detail: expect.stringContaining(advice) }),
+      );
+    },
+  );
+});
+
 describe("isTextualContentType", () => {
   test.each([
     [null, true],
@@ -723,7 +1019,7 @@ describe("rawApiRequest binary handling", () => {
       host: "https://sentry.io",
     });
     const fetchSpy = vi.fn();
-    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    globalThis.fetch = fetchSpy;
 
     await expect(
       rawApiRequest("organizations/", {
@@ -738,12 +1034,12 @@ describe("rawApiRequest binary handling", () => {
       host: "https://sentry.example.com",
     });
     globalThis.fetch = mockFetch(async (input, init) => {
-      expect(input).toBe(
+      const request = new Request(input, init);
+      expect(request.url).toBe(
         "https://sentry.example.com/sentry/api/0/organizations/acme/?cursor=a%3Ab",
       );
-      expect(new Headers(init?.headers).get("Authorization")).toBe(
-        "Bearer valid-token",
-      );
+      expect(request.headers.get("Authorization")).toBe("Bearer valid-token");
+      expect(request.headers.get("Content-Type")).toBe("application/custom");
       return new Response("{}", {
         headers: { "content-type": "application/json" },
       });
@@ -752,6 +1048,7 @@ describe("rawApiRequest binary handling", () => {
     await rawApiRequest("/organizations/acme/", {
       baseUrl: "https://sentry.example.com/sentry",
       params: { cursor: "a:b" },
+      headers: { "content-type": "application/custom" },
     });
   });
 
@@ -778,11 +1075,11 @@ describe("rawApiRequest binary handling", () => {
     expect(result.status).toBe(200);
     expect(result.body).toBeInstanceOf(Uint8Array);
     const body = result.body as Uint8Array;
-    expect(Array.from(body.slice(0, 8))).toEqual([
+    expect([...body.subarray(0, 8)]).toEqual([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]);
     // Must NOT contain the UTF-8 replacement sequence EF BF BD
-    expect(Array.from(body.slice(0, 3))).not.toEqual([0xef, 0xbf, 0xbd]);
+    expect([...body.subarray(0, 3)]).not.toEqual([0xef, 0xbf, 0xbd]);
     expect(body).toEqual(pngBytes);
   });
 
@@ -874,6 +1171,7 @@ describe("paginate", () => {
     expect(spy).toHaveBeenCalledWith(25, undefined);
   });
 
+  // Raw server cursors, e.g. from an older CLI or an API response.
   test("forwards initial cursor", async () => {
     const spy = vi.fn().mockResolvedValue({ data: [] });
     await paginate({ cursor: "abc", limit: 5 }, spy);
@@ -888,45 +1186,158 @@ describe("paginate", () => {
     expect(spy).toHaveBeenCalledWith(5, undefined);
   });
 
-  test("accumulates across pages when limit exceeds cap", async () => {
-    const spy = vi.fn((perPage: number, cursor: string | undefined) => {
-      const offset = cursor ? Number(cursor) : 0;
-      const data = Array.from({ length: perPage }, (_, i) => offset + i);
-      return Promise.resolve({
-        data,
-        nextCursor: String(offset + perPage),
+  test.each([
+    { limit: 101, perPage: 51 },
+    { limit: 150, perPage: 75 },
+    { limit: 200, perPage: 100 },
+    { limit: 201, perPage: 67 },
+    { limit: 250, perPage: 84 },
+    { limit: 1000, perPage: 100 },
+  ])(
+    "splits --limit $limit evenly into pages of $perPage",
+    async ({ limit, perPage }) => {
+      const spy = vi.fn().mockResolvedValue({ data: [] });
+      await paginate({ limit }, spy);
+      expect(spy).toHaveBeenCalledWith(perPage, undefined);
+    },
+  );
+
+  // Cursor continuity across servers and limits is covered by
+  // test/lib/paginate.property.test.ts; these pin the request sequence.
+  describe("resumes mid-page across -c next", () => {
+    /** Pages `rows` like Sentry, with `<value>:<offset>:0` cursors. */
+    function server(cursorFor: (perPage: number, offset: number) => string) {
+      return vi.fn((perPage: number, cursor: string | undefined) => {
+        const [value = 0, page = 0] = (cursor ?? "0:0:0")
+          .split(":")
+          .map(Number);
+        const offset = value ? value * page : page;
+        const data = Array.from({ length: perPage }, (_, i) => offset + i);
+        return Promise.resolve({
+          data,
+          nextCursor: cursorFor(perPage, offset),
+        });
       });
+    }
+
+    test("with the page size of a page-number cursor", async () => {
+      const spy = server(
+        (perPage, offset) => `${perPage}:${offset / perPage + 1}:0`,
+      );
+
+      const first = await paginate({ limit: 250 }, spy);
+      expect(first.data).toEqual(Array.from({ length: 250 }, (_, i) => i));
+      // Page 84:2 was partly returned: 82 (0b1010010) rows to skip, in binary
+      // in is_prev with `_0` for 1 and `0` for 0.
+      expect(first.nextCursor).toBe("84:2:0_00_000_00");
+      const second = await paginate(
+        { limit: 10, cursor: first.nextCursor },
+        spy,
+      );
+      expect(second.data).toEqual(
+        Array.from({ length: 10 }, (_, i) => 250 + i),
+      );
+
+      expect(spy.mock.calls).toEqual([
+        [84, undefined],
+        [84, "84:1:0"],
+        [84, "84:2:0"],
+        [84, "84:2:0"],
+        [84, "84:3:0"],
+      ]);
     });
 
-    const result = await paginate({ limit: 150 }, spy);
-    expect(result.data).toEqual(Array.from({ length: 150 }, (_, i) => i));
-    expect(spy.mock.calls.map(([perPage]) => perPage)).toEqual([
-      API_MAX_PER_PAGE,
-      50,
-    ]);
-    expect(result.nextCursor).toBe("150");
+    test("fetching the skipped rows in the same request otherwise", async () => {
+      const spy = server((perPage, offset) => `0:${offset + perPage}:0`);
+
+      const first = await paginate({ limit: 250 }, spy);
+      expect(first.nextCursor).toBe("0:168:0_00_000_00");
+      const second = await paginate(
+        { limit: 10, cursor: first.nextCursor },
+        spy,
+      );
+      expect(second.data).toEqual(
+        Array.from({ length: 10 }, (_, i) => 250 + i),
+      );
+      expect(second.nextCursor).toBe("0:260:0");
+
+      expect(spy.mock.calls.slice(3)).toEqual([[92, "0:168:0"]]);
+    });
+
+    test("from the first page", async () => {
+      const spy = server((perPage, offset) => `0:${offset + perPage}:0`);
+
+      const first = await paginate({ limit: 3 }, (perPage, cursor) =>
+        spy(perPage + 2, cursor),
+      );
+      expect(first.nextCursor).toBe("0:0:0_0_0");
+      const second = await paginate(
+        { limit: 2, cursor: first.nextCursor },
+        spy,
+      );
+      expect(second.data).toEqual([3, 4]);
+      expect(spy.mock.calls.at(-1)).toEqual([5, undefined]);
+    });
   });
 
-  test("drops nextCursor when a page exceeds the remaining budget", async () => {
+  test("returns page-boundary cursors unchanged", async () => {
     const spy = vi
       .fn()
-      .mockResolvedValueOnce({
-        data: Array.from({ length: 100 }, (_, i) => i),
-        nextCursor: "c1",
-      })
-      .mockResolvedValueOnce({
-        data: Array.from({ length: 100 }, (_, i) => 100 + i),
-        nextCursor: "c2",
-      });
-
-    const result = await paginate({ limit: 150 }, spy);
-    expect(result.data).toHaveLength(150);
-    expect(result.nextCursor).toBeUndefined();
-    expect(spy.mock.calls.map(([perPage]) => perPage)).toEqual([
-      API_MAX_PER_PAGE,
-      50,
-    ]);
+      .mockResolvedValue({ data: [1, 2], nextCursor: "2:1:0" });
+    expect(await paginate({ limit: 2 }, spy)).toEqual({
+      data: [1, 2],
+      nextCursor: "2:1:0",
+    });
   });
+
+  test("returns no cursor once the server is exhausted", async () => {
+    const spy = vi.fn().mockResolvedValue({ data: [1, 2] });
+    expect(await paginate({ limit: 5 }, spy)).toEqual({ data: [1, 2] });
+  });
+
+  // A pasted page-number cursor is only valid with the page size it encodes.
+  test.each([
+    { cursor: "100:2:0", perPage: 100 },
+    { cursor: "25:4:0", perPage: 25 },
+    { cursor: "0:200:0", perPage: 67 },
+    { cursor: "1735689600000:0:0", perPage: 67 },
+    { cursor: "abc", perPage: 67 },
+  ])(
+    "resumes the raw cursor $cursor with pages of $perPage",
+    async ({ cursor, perPage }) => {
+      const spy = vi.fn().mockResolvedValue({ data: [] });
+      await paginate({ limit: 201, cursor }, spy);
+      expect(spy.mock.calls).toEqual([[perPage, cursor]]);
+    },
+  );
+
+  // Every CLI version must be able to send a returned cursor to the API.
+  test.each(["token", "100:3:1"])(
+    "refetches the page of the cursor %s, which cannot carry a skip",
+    async (cursor) => {
+      const spy = vi
+        .fn()
+        .mockResolvedValue({ data: [1, 2, 3], nextCursor: "x" });
+      const first = await paginate({ limit: 2, cursor }, spy);
+      expect(first.nextCursor).toBe(cursor);
+    },
+  );
+
+  // Nightly builds returned cli1~<perPage>~<skip>~<server cursor> cursors.
+  test("resumes a nightly cli1~ cursor", async () => {
+    const spy = vi.fn().mockResolvedValue({ data: [] });
+    await paginate({ limit: 5, cursor: "cli1~84~2~84:2:0" }, spy);
+    expect(spy.mock.calls).toEqual([[84, "84:2:0"]]);
+  });
+
+  test.each(["cli1~0~0~abc", "cli1~101~0~abc", "cli1~10~-1~abc", "cli1~x~0~"])(
+    "restarts from the first page on the unreadable cursor %s",
+    async (cursor) => {
+      const spy = vi.fn().mockResolvedValue({ data: [] });
+      await paginate({ limit: 5, cursor }, spy);
+      expect(spy.mock.calls).toEqual([[5, undefined]]);
+    },
+  );
 });
 
 describe("fetchAllPages", () => {

@@ -6,6 +6,7 @@ import {
   ensureIssueWithinProjectConstraint,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamIssueShortId,
   ParamIssueUrl,
@@ -14,38 +15,41 @@ import {
 } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import {
-  formatActor,
-  formatDate,
-  formatId,
-  readString,
-} from "./support/api-formatting";
+import { formatDate, formatId, readString } from "./support/api-formatting";
+import { formatActivityAuthor } from "./support/activity-formatting";
 
-function formatComment(comment: IssueComment): string {
-  const actor = comment.user ? formatActor(comment.user) : "current user";
-  const text = comment.data ? readString(comment.data, "text") : null;
+export const addIssueNoteOutputSchema = z.object({
+  organizationSlug: z.string(),
+  issueId: z.string(),
+  issueUrl: z.string(),
+  note: z.object({
+    id: z.string(),
+    type: z.string(),
+    author: z.string(),
+    dateCreated: z.string().nullable(),
+    text: z.string().nullable(),
+  }),
+});
 
-  return [
-    `**Comment ID**: ${formatId(comment.id)}`,
-    `**Type**: ${comment.type ?? "note"}`,
-    `**Author**: ${actor}`,
-    formatDate(comment.dateCreated)
-      ? `**Created**: ${formatDate(comment.dateCreated)}`
-      : null,
-    text ? `**Text**: ${text}` : null,
-  ]
-    .filter((line): line is string => Boolean(line))
-    .join("\n");
+function mapNote(comment: IssueComment) {
+  return {
+    id: formatId(comment.commentId ?? comment.id),
+    type: comment.type ?? "note",
+    author: formatActivityAuthor(comment, "current user"),
+    dateCreated: formatDate(comment.dateCreated),
+    text: comment.data ? readString(comment.data, "text") : null,
+  };
 }
 
 export default defineTool({
   name: "add_issue_note",
+  title: "Add Issue Note",
   skills: ["triage"],
   requiredScopes: ["event:write"],
   description: [
-    "Add a human-visible comment to a Sentry issue's activity feed.",
+    "Add a comment to a Sentry issue's activity feed.",
     "",
-    "Use this tool when the user explicitly asks to leave a note/comment, or when a triage workflow needs to record a user-approved explanation.",
+    "Use this tool to record findings, context, or decisions on an issue.",
     "",
     "<examples>",
     "add_issue_note(organizationSlug='my-organization', issueId='PROJECT-123', text='Investigating with the payments team.')",
@@ -74,6 +78,7 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
+  outputSchema: addIssueNoteOutputSchema,
   async handler(params, context: ServerContext) {
     const parsed = parseIssueParams({
       issueUrl: params.issueUrl,
@@ -103,14 +108,11 @@ export default defineTool({
       text: params.text,
     });
 
-    return [
-      `# Added Note to Issue ${parsed.issueId} in **${parsed.organizationSlug}**`,
-      "",
-      formatComment(comment),
-      "",
-      "## Response Notes",
-      "",
-      "- The note is visible in the issue activity feed.",
-    ].join("\n");
+    return structuredResult({
+      organizationSlug: parsed.organizationSlug,
+      issueId: parsed.issueId,
+      issueUrl: apiService.getIssueUrl(parsed.organizationSlug, parsed.issueId),
+      note: mapNote(comment),
+    });
   },
 });

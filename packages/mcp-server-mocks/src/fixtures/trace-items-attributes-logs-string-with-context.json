@@ -85,11 +85,13 @@
   {
     "key": "custom.service",
     "name": "custom.service",
+    "attributeSource": { "source_type": "user" },
     "context": {}
   },
   {
     "key": "custom.component",
     "name": "custom.component",
+    "attributeSource": { "source_type": "user" },
     "context": {}
   },
   {

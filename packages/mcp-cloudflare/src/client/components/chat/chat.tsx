@@ -117,15 +117,14 @@ export function Chat({ isOpen, onClose, onLogout }: ChatProps) {
       const definitionsByName = new Map(
         TOOL_DEFINITIONS.map((t) => [t.name, t]),
       );
-      const detailed = metadata.tools
-        .slice()
+      const detailed = [...metadata.tools]
         .sort((a, b) => a.localeCompare(b))
         .map((name) => {
           const def = definitionsByName.get(name);
           return {
             name,
             description: def ? def.description.split("\n")[0] : "",
-          } as { name: string; description: string };
+          };
         });
 
       content =

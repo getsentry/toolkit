@@ -11,11 +11,14 @@ import {
   isTracemetricsAggregate,
   parseFunction,
 } from "@sentry/toolkit-core/events-fields";
+import { vListOrganizationEventsTimeseriesResponse } from "@sentry/api/valibot";
 import {
   array,
   boolean,
+  description,
   getDotPath,
   type InferOutput,
+  literal,
   looseObject,
   nullable,
   nullish,
@@ -23,16 +26,23 @@ import {
   object,
   optional,
   picklist,
+  pipe,
   record,
   safeParse,
   string,
-  tuple,
   union,
   unknown,
+  variant,
 } from "valibot";
 
+import type { EventsDataset } from "../lib/datasets.js";
 import { ValidationError } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
+import type {
+  DashboardListItemSchema,
+  DashboardWidgetChangeOutputSchema,
+  DashboardWidgetDeleteOutputSchema,
+} from "../output-schemas/dashboard.js";
 
 // ---------------------------------------------------------------------------
 // Widget type and display type enums
@@ -96,6 +106,14 @@ export const DashboardWidgetQuerySchema = looseObject({
   conditions: optional(string()),
   columns: optional(array(string())),
   aggregates: optional(array(string())),
+  transformations: optional(
+    pipe(
+      record(string(), array(string())),
+      description(
+        "Saved transformations in application order, keyed by zero-based aggregate position",
+      ),
+    ),
+  ),
   fieldAliases: optional(array(string())),
   orderby: optional(string()),
   fields: optional(array(string())),
@@ -117,7 +135,7 @@ export const DashboardWidgetLayoutSchema = looseObject({
 export const DashboardWidgetSchema = looseObject({
   id: optional(string()),
   title: string(),
-  displayType: string(),
+  displayType: nullable(string()),
   widgetType: optional(string()),
   interval: optional(string()),
   queries: optional(array(DashboardWidgetQuerySchema)),
@@ -126,20 +144,6 @@ export const DashboardWidgetSchema = looseObject({
   limit: optional(nullable(number())),
   dashboardId: optional(string()),
   dateCreated: optional(string()),
-});
-
-/** Schema for dashboard list items (lightweight, from GET /dashboards/) */
-export const DashboardListItemSchema = looseObject({
-  id: string(),
-  title: string(),
-  dateCreated: optional(string()),
-  createdBy: optional(
-    object({
-      name: optional(string()),
-      email: optional(string()),
-    }),
-  ),
-  widgetDisplay: optional(array(string())),
 });
 
 /** Schema for full dashboard detail (from GET /dashboards/{id}/) */
@@ -294,6 +298,20 @@ export const ERROR_AGGREGATE_FUNCTIONS = [
 
 export type ErrorAggregateFunction = (typeof ERROR_AGGREGATE_FUNCTIONS)[number];
 
+/**
+ * The aggregate functions {@link validateAggregateNames} accepts on a widget
+ * dataset: none on `tracemetrics`, whose aggregates name a metric instead
+ * (`aggregation(value,metric_name,metric_type,unit)`).
+ */
+export function aggregateFunctionsOf(dataset?: string): readonly string[] {
+  if (dataset === "tracemetrics") {
+    return [];
+  }
+  return dataset === "error-events"
+    ? ERROR_AGGREGATE_FUNCTIONS
+    : SPAN_AGGREGATE_FUNCTIONS;
+}
+
 /** Valibot schema for validating a span aggregate function name */
 export const SpanAggregateFunctionSchema = picklist(SPAN_AGGREGATE_FUNCTIONS);
 
@@ -430,10 +448,7 @@ export function validateAggregateNames(
     return;
   }
 
-  const validFunctions: readonly string[] =
-    dataset === "error-events"
-      ? ERROR_AGGREGATE_FUNCTIONS
-      : SPAN_AGGREGATE_FUNCTIONS;
+  const validFunctions = aggregateFunctionsOf(dataset);
 
   for (const agg of aggregates) {
     const fn = extractFunctionName(agg);
@@ -486,7 +501,8 @@ export function prepareWidgetQueries(
 ): DashboardWidget {
   let widget = inputWidget;
   // Clamp to per-display-type limit maximums
-  const maxLimit = MAX_LIMITS[widget.displayType];
+  const maxLimit =
+    widget.displayType === null ? undefined : MAX_LIMITS[widget.displayType];
   if (
     maxLimit !== undefined &&
     widget.limit !== undefined &&
@@ -521,6 +537,17 @@ export function prepareWidgetQueries(
 /** Sentry dashboard grid column count */
 export const GRID_COLUMNS = 6;
 
+/** The values `--col` accepts: each 0-based grid column. */
+export const GRID_COLUMN_POSITIONS = Array.from(
+  { length: GRID_COLUMNS },
+  (_, column) => String(column),
+);
+
+/** The values `--width` accepts: 1 to {@link GRID_COLUMNS} columns. */
+export const GRID_WIDTHS = Array.from({ length: GRID_COLUMNS }, (_, column) =>
+  String(column + 1),
+);
+
 /**
  * Controls how the auto-placer positions new widgets in the grid.
  *
@@ -529,7 +556,10 @@ export const GRID_COLUMNS = 6;
  * - `dense` — First-fit packing: scan top-to-bottom, left-to-right
  *   and place in the first available gap. Produces compact layouts.
  */
-export type WidgetLayoutMode = "sequential" | "dense";
+export type WidgetLayoutMode = (typeof WIDGET_LAYOUT_MODES)[number];
+
+/** The {@link WidgetLayoutMode} values, which `--layout` accepts. */
+export const WIDGET_LAYOUT_MODES = ["sequential", "dense"] as const;
 
 /** Default widget dimensions by displayType */
 const DEFAULT_WIDGET_SIZE: Partial<
@@ -785,8 +815,17 @@ export function validateWidgetLayout(
 // ---------------------------------------------------------------------------
 
 /** Extract only the query fields the PUT API accepts */
-function cleanQuery(q: DashboardWidgetQuery): DashboardWidgetQuery {
+function cleanQuery(
+  q: DashboardWidgetQuery,
+  widgetId: string | undefined,
+): DashboardWidgetQuery {
   return {
+    // Sentry preserves omitted pipelines by ID even when the feature is disabled.
+    ...(widgetId !== undefined && q.id !== undefined
+      ? { id: q.id }
+      : q.transformations !== undefined
+        ? { transformations: q.transformations }
+        : {}),
     name: q.name ?? "",
     conditions: q.conditions ?? "",
     columns: q.columns ?? [],
@@ -798,12 +837,9 @@ function cleanQuery(q: DashboardWidgetQuery): DashboardWidgetQuery {
 }
 
 /**
- * Strip server-generated and passthrough fields from a widget for PUT requests.
- *
- * Uses an allowlist approach: only includes fields the dashboard PUT API
- * accepts. The GET response includes many extra fields (description, thresholds,
- * interval, axisRange, datasetSource, etc.) that cause silent failures if
- * sent back in PUT.
+ * Prepare a widget for PUT while retaining existing widget and query identities.
+ * Existing queries omit pipelines so Sentry preserves their stored configuration.
+ * New queries include pipelines verbatim, keyed by aggregate position.
  *
  * @param widget - Widget object from GET response
  * @returns Widget safe for PUT (only API-accepted fields)
@@ -812,10 +848,13 @@ export function stripWidgetServerFields(
   widget: DashboardWidget,
 ): DashboardWidget {
   const cleaned: DashboardWidget = {
+    ...(widget.id !== undefined && { id: widget.id }),
     title: widget.title,
     displayType: widget.displayType,
     ...(widget.widgetType && { widgetType: widget.widgetType }),
-    ...(widget.queries && { queries: widget.queries.map(cleanQuery) }),
+    ...(widget.queries && {
+      queries: widget.queries.map((query) => cleanQuery(query, widget.id)),
+    }),
     ...(widget.limit !== undefined &&
       widget.limit !== null && { limit: widget.limit }),
   };
@@ -836,8 +875,7 @@ export function stripWidgetServerFields(
 
 /**
  * Prepare a full dashboard for PUT update.
- * Strips server-generated fields from all widgets while preserving
- * widgetType, displayType, and layout.
+ * Retains widget and query identities so Sentry updates existing records.
  *
  * @param dashboard - Dashboard detail from GET response
  * @returns Object with title and cleaned widgets, ready for PUT body
@@ -861,43 +899,56 @@ export function prepareDashboardForUpdate(dashboard: DashboardDetail): {
 // ---------------------------------------------------------------------------
 // Widget data query types
 //
-// Types for responses from the events-stats and events API endpoints
+// Types for responses from the events-timeseries and events API endpoints
 // used to fetch actual widget data for dashboard rendering.
 // ---------------------------------------------------------------------------
 
-/**
- * Single data point from the events-stats API.
- * Format: [timestamp_epoch_seconds, [{count: value}]]
- */
-export const EventsStatsDataPointSchema = tuple([
-  number(),
-  array(object({ count: number() })),
-]);
-
-export type EventsStatsDataPoint = InferOutput<
-  typeof EventsStatsDataPointSchema
->;
+const sdkTimeseriesResponse = vListOrganizationEventsTimeseriesResponse.entries;
+const sdkTimeseriesSeries = sdkTimeseriesResponse.timeSeries.item.entries;
+const sdkTimeseriesRow = sdkTimeseriesSeries.values.item.entries;
 
 /**
- * A single time-series from events-stats.
+ * Single bucket from the events-timeseries API.
  *
- * In simple queries this is the top-level response.
- * In grouped queries (`topEvents > 0`) each group key maps to one of these.
+ * Built from the `@sentry/api` schema. `timestamp` is epoch milliseconds and
+ * `value` is null for empty buckets.
  */
-export const EventsStatsSeriesSchema = looseObject({
-  data: array(EventsStatsDataPointSchema),
-  order: optional(number()),
-  start: optional(union([string(), number()])),
-  end: optional(union([string(), number()])),
-  meta: optional(
-    looseObject({
-      fields: optional(record(string(), string())),
-      units: optional(record(string(), nullable(string()))),
-    }),
-  ),
+const EventsTimeseriesRowSchema = object({
+  ...sdkTimeseriesRow,
+  // The spec says `number | null`, but the errors dataset returns a string
+  // for string-typed aggregates (for example `max()` over a measurement no
+  // event carries), which arrives as "".
+  value: nullable(union([number(), string()])),
 });
 
-export type EventsStatsSeries = InferOutput<typeof EventsStatsSeriesSchema>;
+/**
+ * A single series from `GET /organizations/{org}/events-timeseries/`.
+ *
+ * Ungrouped queries return one series per `yAxis`. Grouped queries
+ * (`topEvents > 0`) return one series per group per `yAxis`, with the
+ * group identified by `groupBy` and the catch-all group by `meta.isOther`.
+ */
+const EventsTimeseriesSeriesSchema = object({
+  ...sdkTimeseriesSeries,
+  values: array(EventsTimeseriesRowSchema),
+  // The spec marks `groupBy` optional only, but the "Other" series sends
+  // `groupBy: null`.
+  groupBy: nullish(sdkTimeseriesSeries.groupBy.wrapped),
+});
+
+export type EventsTimeseriesSeries = InferOutput<
+  typeof EventsTimeseriesSeriesSchema
+>;
+
+/** Top-level response from the events-timeseries API. */
+export const EventsTimeseriesResponseSchema = object({
+  ...sdkTimeseriesResponse,
+  timeSeries: array(EventsTimeseriesSeriesSchema),
+});
+
+export type EventsTimeseriesResponse = InferOutput<
+  typeof EventsTimeseriesResponseSchema
+>;
 
 /**
  * Response from `GET /organizations/{org}/events/` (table format).
@@ -920,48 +971,82 @@ export type EventsTableResponse = InferOutput<typeof EventsTableResponseSchema>;
 // Widget data result types — discriminated union for all widget outputs
 // ---------------------------------------------------------------------------
 
+/** The `type` of a widget data result, with its description. */
+function resultKind<const T extends string>(kind: T) {
+  return pipe(literal(kind), description(`Result kind: ${kind}`));
+}
+
+const resultUnit = optional(pipe(nullable(string()), description("Unit")));
+
 /** Time-series data for chart widgets (line, area, bar) */
-export type TimeseriesResult = {
-  type: "timeseries";
-  series: {
-    label: string;
-    values: { timestamp: number; value: number }[];
-    unit?: string | null;
-  }[];
-};
+export const TimeseriesResultSchema = object({
+  type: resultKind("timeseries"),
+  series: pipe(
+    array(
+      object({
+        label: pipe(string(), description("Series label")),
+        values: array(
+          object({
+            timestamp: number(),
+            value: pipe(
+              nullable(number()),
+              description("Bucket value, or null when nothing was measured"),
+            ),
+          }),
+        ),
+        unit: resultUnit,
+      }),
+    ),
+    description("Series, one per aggregate or group"),
+  ),
+});
 
 /** Tabular data for table and top_n widgets */
-export type TableResult = {
-  type: "table";
-  columns: { name: string; type?: string; unit?: string | null }[];
-  rows: Record<string, unknown>[];
-};
+export const TableResultSchema = object({
+  type: resultKind("table"),
+  columns: pipe(
+    array(
+      object({
+        name: string(),
+        type: optional(string()),
+        unit: resultUnit,
+      }),
+    ),
+    description("Table columns"),
+  ),
+  rows: pipe(array(record(string(), unknown())), description("Table rows")),
+});
 
 /** Single scalar value for big_number widgets */
-export type ScalarResult = {
-  type: "scalar";
-  value: number;
-  previousValue?: number;
-  unit?: string | null;
-};
+export const ScalarResultSchema = object({
+  type: resultKind("scalar"),
+  value: pipe(
+    nullable(number()),
+    description("Current value, or null when nothing was measured"),
+  ),
+  previousValue: optional(
+    pipe(number(), description("Value of the previous period")),
+  ),
+  unit: resultUnit,
+});
 
 /** Markdown text content for text widgets (no API query — content from widget.description) */
-export type TextResult = {
-  type: "text";
-  content: string;
-};
+export const TextResultSchema = object({
+  type: resultKind("text"),
+  content: pipe(string(), description("Markdown content")),
+});
 
 /** Widget type not supported for data fetching */
-export type UnsupportedResult = {
-  type: "unsupported";
-  reason: string;
-};
+export const UnsupportedResultSchema = object({
+  type: resultKind("unsupported"),
+  reason: pipe(string(), description("Why the widget has no data")),
+});
 
 /** Widget query failed */
-export type ErrorResult = {
-  type: "error";
-  message: string;
-};
+export const ErrorResultSchema = object({
+  type: resultKind("error"),
+  message: pipe(string(), description("Query error")),
+});
 
 /**
  * Result of querying a widget's data.
@@ -974,13 +1059,25 @@ export type ErrorResult = {
  * - `unsupported` → placeholder message
  * - `error` → error message
  */
-export type WidgetDataResult =
-  | TimeseriesResult
-  | TableResult
-  | ScalarResult
-  | TextResult
-  | UnsupportedResult
-  | ErrorResult;
+export const WidgetDataResultSchema = pipe(
+  variant("type", [
+    TimeseriesResultSchema,
+    TableResultSchema,
+    ScalarResultSchema,
+    TextResultSchema,
+    UnsupportedResultSchema,
+    ErrorResultSchema,
+  ]),
+  description("Widget query result"),
+);
+
+export type TimeseriesResult = InferOutput<typeof TimeseriesResultSchema>;
+export type TableResult = InferOutput<typeof TableResultSchema>;
+export type ScalarResult = InferOutput<typeof ScalarResultSchema>;
+export type TextResult = InferOutput<typeof TextResultSchema>;
+export type UnsupportedResult = InferOutput<typeof UnsupportedResultSchema>;
+export type ErrorResult = InferOutput<typeof ErrorResultSchema>;
+export type WidgetDataResult = InferOutput<typeof WidgetDataResultSchema>;
 
 // ---------------------------------------------------------------------------
 // Dataset mapping
@@ -992,7 +1089,7 @@ export type WidgetDataResult =
  * Widget types that don't map to a dataset (issue, preprod-app-size, etc.)
  * return null and are rendered as "unsupported".
  */
-const WIDGET_TYPE_TO_DATASET: Record<string, string> = {
+const WIDGET_TYPE_TO_DATASET: Partial<Record<string, EventsDataset>> = {
   spans: "spans",
   "error-events": "errors",
   logs: "logs",
@@ -1007,14 +1104,14 @@ const WIDGET_TYPE_TO_DATASET: Record<string, string> = {
  */
 export function mapWidgetTypeToDataset(
   widgetType: string | undefined,
-): string | null {
+): EventsDataset | null {
   if (!widgetType) {
     return null;
   }
   return WIDGET_TYPE_TO_DATASET[widgetType] ?? null;
 }
 
-/** Display types that use time-series data (events-stats endpoint) */
+/** Display types that use time-series data (events-timeseries endpoint) */
 export const TIMESERIES_DISPLAY_TYPES = new Set([
   "line",
   "area",
@@ -1050,3 +1147,13 @@ export const DashboardRevisionSchema = looseObject({
 });
 
 export type DashboardRevision = InferOutput<typeof DashboardRevisionSchema>;
+
+/** JSON output of `dashboard widget add` and `dashboard widget edit`. */
+export type DashboardWidgetChangeOutput = InferOutput<
+  typeof DashboardWidgetChangeOutputSchema
+>;
+
+/** JSON output of `dashboard widget delete`. */
+export type DashboardWidgetDeleteOutput = InferOutput<
+  typeof DashboardWidgetDeleteOutputSchema
+>;

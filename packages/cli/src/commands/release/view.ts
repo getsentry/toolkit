@@ -5,18 +5,15 @@
  * health and adoption metrics when available.
  */
 
+import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { getRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
 import {
   colorTag,
-  escapeMarkdownCell,
-  escapeMarkdownInline,
   mdKvTable,
   mdTableHeader,
   renderMarkdown,
-  safeCodeSpan,
 } from "../../lib/formatters/markdown.js";
 import { fmtCount, fmtPct } from "../../lib/formatters/numbers.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -27,9 +24,11 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import type { SentryRelease } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { SentryReleaseSchema } from "../../generated/output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release view [<org>/]<version>";
+const usageHint = () => sentry`release view [<org>/]<version>`;
 
 /** Wrap a plain "—" in muted color for consistent table styling. */
 function mutedIfDash(value: string): string {
@@ -82,7 +81,7 @@ function formatProjectHealthTable(release: SentryRelease): string {
   for (const project of projects) {
     const h = project.healthData;
     const cells = [
-      escapeMarkdownCell(project.slug),
+      tableCell(project.slug),
       mutedIfDash(fmtPct(h?.adoption)),
       fmtCrashFree(h?.crashFreeUsers),
       fmtCrashFree(h?.crashFreeSessions),
@@ -98,15 +97,13 @@ function formatProjectHealthTable(release: SentryRelease): string {
 function formatReleaseDetails(release: SentryRelease): string {
   const lines: string[] = [];
 
-  lines.push(
-    `## Release ${escapeMarkdownInline(release.shortVersion || release.version)}`,
-  );
+  lines.push(`## Release ${text(release.shortVersion || release.version)}`);
   lines.push("");
 
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   if (release.shortVersion && release.shortVersion !== release.version) {
-    kvRows.push(["Short Version", safeCodeSpan(release.shortVersion)]);
+    kvRows.push(["Short Version", inlineCode(release.shortVersion)]);
   }
   kvRows.push([
     "Status",
@@ -162,25 +159,38 @@ export const viewCommand = buildCommand({
     brief: "View release details with health metrics",
     fullDescription:
       "Show detailed information about a Sentry release, including\n" +
-      "per-project adoption and crash-free metrics.\n\n" +
-      "Examples:\n" +
-      "  sentry release view 1.0.0\n" +
-      "  sentry release view my-org/1.0.0\n" +
-      '  sentry release view "sentry-cli@0.24.0"\n' +
-      "  sentry release view 1.0.0 --json",
+      "per-project adoption and crash-free metrics.",
+    examples: [
+      {
+        description: "View release details",
+        run: "release view 1.0.0",
+      },
+      {
+        description: "View a release in an explicit organization",
+        run: "release view my-org/1.0.0",
+      },
+      {
+        description: "View a release whose version contains a package name",
+        run: 'release view "sentry-cli@0.24.0"',
+      },
+      {
+        description: "Output as JSON",
+        run: "release view 1.0.0 --json",
+      },
+    ],
   },
   output: {
     human: formatReleaseDetails,
+    schema: SentryReleaseSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version to view",
-          parse: parseOrgTarget,
-        },
+        releaseParameter(
+          usageHint,
+          "[<org>/]<version> - Release version to view",
+        ),
       ],
     },
     flags: {
@@ -195,16 +205,10 @@ export const viewCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string,
+    target: ReleaseTarget,
   ) {
     applyFreshFlag(flags);
-    const { cwd } = this;
-
-    const { version, org, detectedFrom } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+    const { version, org, detectedFrom } = await target.resolved;
 
     const release = await getRelease(org, version, {
       health: true,

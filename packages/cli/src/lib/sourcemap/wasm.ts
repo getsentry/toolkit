@@ -17,7 +17,7 @@
  */
 
 import { readFile, stat } from "node:fs/promises";
-import { relative, resolve as resolvePath } from "node:path";
+import { resolve as resolvePath } from "node:path";
 import type ignore from "ignore";
 import { logger } from "../logger.js";
 import { walkFiles } from "../scan/index.js";
@@ -30,7 +30,12 @@ import {
 import { isDebugCompanionPath } from "../wasm/prepare.js";
 import { ensureBuildIdOnDisk } from "../wasm/stamp.js";
 import { setSourcemapDebugId } from "./debug-id.js";
-import { type DiscoveryDiagnostic, SOURCEMAP_SKIP_DIRS } from "./inject.js";
+import {
+  type DiscoveryDiagnostic,
+  type PathFilter,
+  relativePosix,
+  SOURCEMAP_SKIP_DIRS,
+} from "./inject.js";
 
 const log = logger.withTag("sourcemap.wasm");
 
@@ -69,10 +74,25 @@ export type WasmSyncResult = {
    * stamp a module that had no `build_id`, so the id is not yet decided.
    */
   debugId?: string;
-  /** Whether the map was rewritten. */
+  /** Whether the map was rewritten (in a dry run: would be). */
   mapWritten: boolean;
-  /** Whether the module was given a `build_id` it did not have. */
+  /**
+   * Whether the module was given a `build_id` it did not have (in a dry run:
+   * would be).
+   */
   moduleStamped: boolean;
+};
+
+/**
+ * Which modules discovery considers, mirroring the JS discovery settings so
+ * `--ignore`, `--ignore-file`, and a glob upload target narrow wasm the same
+ * way they narrow JS.
+ */
+export type WasmDiscoveryOptions = {
+  /** Gitignore-style matcher built from `--ignore` / `--ignore-file`. */
+  ignoreMatcher?: ReturnType<typeof ignore>;
+  /** Glob filter from a `sourcemap upload` target. */
+  include?: PathFilter;
 };
 
 /** Whether reconciling a pair is allowed to write. */
@@ -104,16 +124,18 @@ export async function syncWasmSourcemap(
   const bytes = await readFile(wasmPath);
   const existing = buildIdFromSections(parseSections(bytes));
   const buildId = await ensureBuildIdOnDisk(wasmPath, bytes, existing, options);
-  const moduleStamped = !existing && buildId !== null;
+  // Reported the same way in a dry run, as `injected` is for JS: the flags
+  // say what a real run does, so a preview counts the files it would touch.
+  const moduleStamped = !existing;
 
   const debugId = buildId
     ? debugIdFromBuildId(formatBuildId(buildId))
     : undefined;
   if (!debugId) {
     // Either a dry run left the module unstamped, or its `build_id` is too
-    // short to form a UUID. Neither is worth failing the run over — the map
-    // simply keeps whatever it had.
-    return { wasmPath, mapPath, mapWritten: false, moduleStamped };
+    // short to form a UUID. Neither is worth failing the run over. A real run
+    // would write the minted id onto the map; a short id leaves it alone.
+    return { wasmPath, mapPath, mapWritten: moduleStamped, moduleStamped };
   }
 
   const stamp = await setSourcemapDebugId(mapPath, debugId, {
@@ -129,7 +151,7 @@ export async function syncWasmSourcemap(
     wasmPath,
     mapPath,
     debugId,
-    mapWritten: stamp.written,
+    mapWritten: stamp.changed,
     moduleStamped,
   };
 }
@@ -164,18 +186,23 @@ export async function syncWasmPairs(
  * `debug-files wasm-upload`, uploaded through the debug-file pipeline instead.
  *
  * @param dir - Directory to scan
- * @param ignoreMatcher - Optional gitignore-style matcher, as for JS discovery
+ * @param options - Ignore matcher and glob filter, as for JS discovery
  * @returns One entry per module that has a companion map
  */
 export async function discoverWasmPairs(
   dir: string,
-  ignoreMatcher?: ReturnType<typeof ignore>,
+  options: WasmDiscoveryOptions = {},
 ): Promise<WasmPair[]> {
   const absDir = resolvePath(dir);
   const pairs: WasmPair[] = [];
-  for await (const wasmPath of walkWasmModules(absDir, ignoreMatcher)) {
+  for await (const wasmPath of walkWasmModules(absDir, options)) {
     const mapPath = `${wasmPath}.map`;
-    if (await hasCompanionMap(mapPath)) {
+    // A JS pair is kept when either file matches the glob; so is a wasm pair.
+    const included =
+      !options.include ||
+      options.include(relativePosix(absDir, wasmPath)) ||
+      options.include(relativePosix(absDir, mapPath));
+    if (included && (await hasCompanionMap(mapPath))) {
       pairs.push({ wasmPath, mapPath });
     }
   }
@@ -192,22 +219,37 @@ export async function discoverWasmPairs(
  * independently of modules, so a map left behind by a missing module is still
  * recognised as wasm.
  *
+ * Narrowed by the glob target only, exactly as `diagnoseEmptyDiscovery` is:
+ * the `.wasm.map` count is subtracted from the JS tally, so both walks must
+ * see the same files.
+ *
  * @param dir - Directory to scan
  * @param js - The diagnostic from `diagnoseEmptyDiscovery`
+ * @param options - The glob filter the JS diagnostic used
  * @returns The diagnostic with wasm counts filled in
  */
 export async function addWasmDiscoveryCounts(
   dir: string,
   js: DiscoveryDiagnostic,
+  options: Pick<WasmDiscoveryOptions, "include"> = {},
 ): Promise<DiscoveryDiagnostic> {
   const absDir = resolvePath(dir);
   let wasmFiles = 0;
   let wasmMaps = 0;
   for await (const path of walkWasmModules(
     absDir,
-    undefined,
+    options,
     WASM_DIAGNOSTIC_EXTENSIONS,
   )) {
+    const rel = relativePosix(absDir, path);
+    const isMap = path.endsWith(".map");
+    if (
+      options.include &&
+      !options.include(rel) &&
+      !(isMap && options.include(rel.slice(0, -".map".length)))
+    ) {
+      continue;
+    }
     // The widened extension set also yields JS `.map` files; those stay in the
     // JS tally.
     if (path.endsWith(".wasm.map")) {
@@ -236,14 +278,15 @@ export async function addWasmDiscoveryCounts(
  */
 async function* walkWasmModules(
   absDir: string,
-  ignoreMatcher?: ReturnType<typeof ignore>,
+  { ignoreMatcher, include }: WasmDiscoveryOptions,
   extensions: ReadonlySet<string> = WASM_EXTENSIONS,
 ): AsyncGenerator<string> {
   for await (const entry of walkFiles({
     cwd: absDir,
     extensions,
     alwaysSkipDirs: SOURCEMAP_SKIP_DIRS,
-    hidden: false,
+    // A glob target can name hidden directories (`.next/static/**`).
+    hidden: include !== undefined,
     respectGitignore: false,
     maxFileSize: Number.POSITIVE_INFINITY,
   })) {
@@ -251,11 +294,8 @@ async function* walkWasmModules(
     if (isDebugCompanionPath(wasmPath)) {
       continue;
     }
-    if (ignoreMatcher) {
-      const rel = relative(absDir, wasmPath).replaceAll("\\", "/");
-      if (ignoreMatcher.ignores(rel)) {
-        continue;
-      }
+    if (ignoreMatcher?.ignores(relativePosix(absDir, wasmPath))) {
+      continue;
     }
     yield wasmPath;
   }

@@ -17,6 +17,7 @@ paths = [
 
 [[skills]]
 name = "mcp-audit"
+incremental = true
 paths = [
   "docs/contributing/adding-tools.md",
   "docs/contributing/tool-responses.md",
@@ -26,9 +27,9 @@ paths = [
   "packages/mcp-core/src/skillDefinitions.json",
   "packages/mcp-core/src/toolDefinitions.json",
   "packages/mcp-core/src/tools/**",
-  "packages/mcp-server/src/auth/**",
-  "packages/mcp-server/src/index.ts",
-  "packages/mcp-server/src/transports/**",
+  "packages/mcp-core/src/transports/**",
+  "packages/cli/src/lib/mcp.ts",
+  "packages/cli/src/lib/mcp/**",
   "packages/mcp-cloudflare/src/server/app.ts",
   "packages/mcp-cloudflare/src/server/index.ts",
   "packages/mcp-cloudflare/src/server/authorization-server-metadata.ts",
@@ -49,6 +50,7 @@ actions = ["opened", "synchronize", "reopened"]
 
 [[skills]]
 name = "code-review"
+incremental = true
 
 [[skills.triggers]]
 type = "pull_request"

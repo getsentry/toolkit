@@ -16,8 +16,7 @@ const MAX_STEPS = 5;
 
 /**
  * Match the temperature used by all server-side workflow agents
- * (getsentry/cli-init-api/apps/server/src/mastra/agents/default-options.ts). Determinism makes
- * results stable for the CF Cache key by sorted-libs hash.
+ * (getsentry/cli-init-api/apps/server/src/mastra/agents/default-options.ts).
  */
 const TEMPERATURE = 0;
 
@@ -151,8 +150,8 @@ function createFeaturesAgent(
 /**
  * Resolve lib slugs to canonical Sentry feature slugs.
  *
- * Caches results in the CF Cache API by sorted-libs key (1h TTL) so
- * repeat wizard runs for the same platform combo skip the LLM call.
+ * Runs discovery on every call. Feature results are not cached because
+ * incomplete discoveries could hide supported features on later runs.
  *
  * Falls back to FALLBACK_FEATURES on any error so the wizard never
  * sees an empty list.

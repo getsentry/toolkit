@@ -1,18 +1,21 @@
 import type { SentryContext } from "../../../context.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
+import { sentry } from "../../../lib/app-identity.js";
 import { openInBrowser } from "../../../lib/browser.js";
 import { buildCommand } from "../../../lib/command.js";
 import { ContextError } from "../../../lib/errors.js";
+import { filterFieldsIfSet } from "../../../lib/formatters/json.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { resolveProjectBoundTargets } from "../../../lib/resolve-target.js";
 import { buildIssueAlertsUrl } from "../../../lib/sentry-web-urls.js";
+import type { AlertRuleArgument } from "../arguments.js";
 import {
   type IssueRuleResolution,
-  parseIssueRuleArg,
+  issueRuleParameter,
   resolveIssueAlertRule,
 } from "./rule-resolve.js";
 
-const USAGE_HINT = "sentry alert issues view <org>/<project>/<rule-id-or-name>";
+const usageHint = () =>
+  sentry`alert issues view <org>/<project>/<rule-id-or-name>`;
 
 type ViewFlags = {
   readonly web: boolean;
@@ -42,30 +45,40 @@ function formatIssueAlertView(data: IssueRuleResolution): string {
 export const viewCommand = buildCommand({
   docs: {
     brief: "View an issue alert rule",
-    fullDescription:
-      "View a single issue alert rule by ID or name.\n\n" +
-      "Examples:\n" +
-      "  sentry alert issues view 12345\n" +
-      "  sentry alert issues view my-org/my-project/12345\n" +
-      "  sentry alert issues view my-org/my-project/'Error Spike'",
+    fullDescription: "View a single issue alert rule by ID or name.",
+    examples: [
+      {
+        description:
+          "View an issue alert rule by ID (organization and project auto-detected)",
+        run: "alert issues view 12345",
+      },
+      {
+        description: "View by ID in an explicit project",
+        run: "alert issues view my-org/my-project/12345",
+      },
+      {
+        description: "View by name",
+        run: "alert issues view my-org/my-project/'Error Spike'",
+      },
+    ],
   },
   output: {
     human: formatIssueAlertView,
-    jsonTransform: (data: IssueAlertViewResult) => ({
-      ...data.rule,
-      org: data.target.org,
-      project: data.target.project,
-    }),
+    jsonTransform: (data: IssueAlertViewResult, fields?: string[]) =>
+      filterFieldsIfSet(
+        {
+          ...data.rule,
+          org: data.target.org,
+          project: data.target.project,
+        },
+        fields,
+      ),
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/project/rule-id-or-name",
-          brief: "Issue alert rule ID or name",
-          parse: String,
-        },
+        issueRuleParameter(usageHint, "Issue alert rule ID or name"),
       ],
     },
     flags: {
@@ -77,10 +90,13 @@ export const viewCommand = buildCommand({
     },
     aliases: { w: "web" },
   },
-  async *func(this: SentryContext, flags: ViewFlags, arg: string) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    ruleArg: AlertRuleArgument,
+  ) {
     const { cwd } = this;
-    const { ref, targetArg } = parseIssueRuleArg(arg, USAGE_HINT);
-    const parsed = parseOrgProjectArg(targetArg);
+    const { ref, target: parsed } = await ruleArg.resolved;
 
     if (flags.web && parsed.type === "explicit") {
       await openInBrowser(
@@ -92,10 +108,10 @@ export const viewCommand = buildCommand({
 
     const { targets } = await resolveProjectBoundTargets(parsed, {
       cwd,
-      usageHint: "sentry alert issues view <org>/<project>/<rule-id-or-name>",
+      usageHint: sentry`alert issues view <org>/<project>/<rule-id-or-name>`,
     });
     if (targets.length === 0) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
 
     if (flags.web) {
@@ -108,7 +124,7 @@ export const viewCommand = buildCommand({
       return;
     }
 
-    const result = await resolveIssueAlertRule(targets, ref, USAGE_HINT);
+    const result = await resolveIssueAlertRule(targets, ref, usageHint());
     yield new CommandOutput(result);
   },
 });

@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-monitor
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Sentry cron monitors
 requires:
   bins: ["sentry"]
@@ -15,6 +15,12 @@ Work with Sentry cron monitors
 
 Wrap a command with cron monitor check-ins
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<monitor-slug command...>` | Monitor slug followed by the command to run |
+
 **Flags:**
 - `--dsn <value> - DSN to send check-ins to (overrides SENTRY_DSN env var)`
 - `-e, --environment <value> - Environment of the monitor - (default: "production")`
@@ -25,9 +31,28 @@ Wrap a command with cron monitor check-ins
 - `--failure-issue-threshold <value> - Consecutive failures before an issue is created (requires --schedule)`
 - `--recovery-threshold <value> - Consecutive successes before an issue is resolved (requires --schedule)`
 
+**Examples:**
+
+```bash
+# Wrap a command with cron monitor check-ins (DSN-based)
+SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 sentry monitor run nightly-job -- python manage.py cron
+
+# The -- separator is optional when the command has no flags
+sentry monitor run nightly-job npm run task
+
+# Create or update the monitor on the first check-in
+sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh
+```
+
 ### `sentry monitor list [<org/project>]`
 
 List cron monitors
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
 
 **Flags:**
 - `-n, --limit <value> - Maximum number of monitors to list - (default: "25")`
@@ -46,25 +71,25 @@ List cron monitors
 | `config` | object | Schedule configuration |
 | `dateCreated` | string | Creation date (ISO 8601) |
 | `project` | object | Owning project |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 
 ```bash
-# Wrap a command with cron monitor check-ins (DSN-based)
-SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 \
-  sentry monitor run nightly-job -- python manage.py cron
+# List monitors (organization auto-detected)
+sentry monitor list
 
-# The -- separator is optional when the command has no flags
-sentry monitor run nightly-job npm run task
-
-# Create/update the monitor on the first check-in via --schedule (crontab)
-sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh
-
-# List cron monitors in an org
+# List cron monitors in an organization
 sentry monitor list my-org/
 
-# Paginate through monitors
+# Fetch the next page
 sentry monitor list my-org/ -c next
+
+# Only monitors whose slug or name matches a glob
+sentry monitor list 'my-org/nightly-*'
+
+# Monitors named like 'nightly' (fuzzy when nothing matches exactly)
+sentry monitor list my-org/nigthly
 
 # Output as JSON
 sentry monitor list --json

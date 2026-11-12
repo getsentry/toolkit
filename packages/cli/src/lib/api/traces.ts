@@ -4,6 +4,17 @@
  * Functions for retrieving detailed traces, listing transactions, and listing spans.
  */
 
+import {
+  getOrganizationTrace,
+  getOrganizationTraceMeta,
+  type ListOrganizationTraceItemAttributesData,
+  type ListOrganizationTraceItemAttributesQueryAttributeType,
+  type ListOrganizationTraceItemAttributesQueryDataset,
+  type ListOrganizationTraceItemAttributesResponse,
+  listOrganizationEvents,
+  listOrganizationTraceItemAttributes,
+  retrieveProjectTraceItem,
+} from "@sentry/api";
 import pLimit from "p-limit";
 
 import {
@@ -25,14 +36,17 @@ export type { TraceItemAttribute, TraceItemDetail } from "../../types/index.js";
 
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import { isAllDigits } from "../utils.js";
 
 import {
-  API_MAX_PER_PAGE,
-  apiRequestToRegion,
+  getOrgSdkConfig,
   type PaginatedResponse,
   paginate,
-  parseLinkHeader,
+  unwrapPaginatedResult,
+  unwrapResult,
+  unwrapValidatedResult,
+  validateResponse,
 } from "./infrastructure.js";
 
 const log = logger.withTag("api.traces");
@@ -102,8 +116,6 @@ export const TRACE_LOOKUP_FALLBACK_STATS_PERIOD = "90d";
 type GetDetailedTraceOptions = {
   /** Extra attribute names to include on each span */
   additionalAttributes?: string[];
-  /** Numeric project ID to filter spans. Omit or -1 for all projects. */
-  projectId?: number;
   /**
    * Unix timestamp (seconds) of a known event in this trace.
    * The backend then searches ±1.5 days around it and does not widen.
@@ -119,29 +131,26 @@ async function requestTrace(
   traceId: string,
   params: GetDetailedTraceOptions & { statsPeriod?: string },
 ): Promise<TraceSpan[]> {
-  const { data } = await apiRequestToRegion<TraceSpan[]>(
-    regionUrl,
-    `/organizations/${orgSlug}/trace/${traceId}/`,
-    {
-      params: {
-        timestamp: params.timestamp,
-        statsPeriod: params.statsPeriod,
-        limit: 10_000,
-        project: params.projectId ?? -1,
-        additional_attributes: params.additionalAttributes,
-      },
+  const result = await getOrganizationTrace({
+    ...getSdkClientConfig(regionUrl),
+    path: { organization_id_or_slug: orgSlug, trace_id: traceId },
+    query: {
+      timestamp:
+        params.timestamp === undefined ? undefined : String(params.timestamp),
+      statsPeriod: params.statsPeriod,
+      additional_attributes: params.additionalAttributes,
     },
-  );
+  });
+  const data = unwrapResult<TraceSpan[]>(result, "Failed to get trace");
   return data.map(normalizeTraceSpan);
 }
 
 /**
  * Get detailed trace with nested children structure.
- * This is an internal endpoint not covered by the public API.
  * Uses region-aware routing for multi-region support.
  *
- * When `projectId` is provided, the API returns only spans belonging to that
- * project. Pass `-1` (or omit) to fetch spans from all projects.
+ * The endpoint always returns spans from every project in the trace; it
+ * ignores the `project` and `limit` params.
  *
  * Time window (matches the Sentry UI):
  * - Known event `timestamp` → one query around that instant (no retry).
@@ -149,7 +158,7 @@ async function requestTrace(
  *
  * @param orgSlug - Organization slug
  * @param traceId - The trace ID (from event.contexts.trace.trace_id)
- * @param options - Optional timestamp, additional attributes, and project filter
+ * @param options - Optional timestamp and additional attributes
  * @returns Array of root spans with nested children
  */
 export async function getDetailedTrace(
@@ -158,10 +167,7 @@ export async function getDetailedTrace(
   options: GetDetailedTraceOptions = {},
 ): Promise<TraceSpan[]> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  const shared = {
-    additionalAttributes: options.additionalAttributes,
-    projectId: options.projectId,
-  };
+  const shared = { additionalAttributes: options.additionalAttributes };
   const timestamp =
     options.timestamp !== undefined && Number.isFinite(options.timestamp)
       ? options.timestamp
@@ -197,11 +203,9 @@ type GetTraceItemDetailOptions = {
 };
 
 /**
- * Fetch full attribute details for a single trace item via the experimental
- * /projects/{org}/{project}/trace-items/{itemId}/ endpoint.
- *
- * This endpoint is not yet in @sentry/api (getsentry/sentry-api-schema) because
- * it is marked EXPERIMENTAL in Sentry. Both span and log detail views use it.
+ * Fetch full attribute details for a single trace item via
+ * `GET /projects/{org}/{project}/trace-items/{itemId}/`, which Sentry
+ * publishes as experimental. Both span and log detail views use it.
  *
  * @param orgSlug - Organization slug
  * @param projectSlug - Project slug
@@ -214,16 +218,21 @@ export async function getTraceItemDetail(
   itemId: string,
   { traceId, itemType }: GetTraceItemDetailOptions,
 ): Promise<TraceItemDetail> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion<TraceItemDetail>(
-    regionUrl,
-    `/projects/${orgSlug}/${projectSlug}/trace-items/${itemId}/`,
-    {
-      params: { trace_id: traceId, item_type: itemType },
-      schema: TraceItemDetailSchema,
+  const result = await retrieveProjectTraceItem({
+    ...getOrgSdkConfig(),
+    path: {
+      organization_id_or_slug: orgSlug,
+      project_id_or_slug: projectSlug,
+      item_id: itemId,
     },
+    query: { trace_id: traceId, item_type: itemType },
+  });
+  return unwrapValidatedResult(
+    result,
+    "Failed to get trace item details",
+    TraceItemDetailSchema,
+    `/projects/${orgSlug}/${projectSlug}/trace-items/${itemId}/`,
   );
-  return data;
 }
 
 /**
@@ -246,6 +255,122 @@ export function getSpanDetails(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Trace item attribute discovery
+// ---------------------------------------------------------------------------
+
+type TraceItemAttributesQuery = NonNullable<
+  ListOrganizationTraceItemAttributesData["query"]
+>;
+
+/** Trace item dataset accepted by the attributes endpoint (e.g. "spans", "logs"). */
+export type TraceItemAttributeDataset =
+  ListOrganizationTraceItemAttributesQueryDataset;
+
+/** Attribute value type the attributes endpoint can filter on. */
+export type TraceItemAttributeValueType =
+  ListOrganizationTraceItemAttributesQueryAttributeType;
+
+/**
+ * An attribute key available on a trace item dataset (name, type, and whether
+ * it is Sentry-defined or user-defined). This describes a key, not to be confused
+ * with {@link TraceItemAttribute}, which is a key/value pair
+ */
+export type TraceItemAttributeDefinition =
+  ListOrganizationTraceItemAttributesResponse[number];
+
+/** Metadata returned for an attribute when `context` is requested. */
+export type TraceItemAttributeContext = NonNullable<
+  TraceItemAttributeDefinition["context"]
+>;
+
+/** Options for {@link listTraceItemAttributes} */
+export type ListTraceItemAttributesOptions = {
+  /** Dataset to list attribute keys for */
+  dataset: TraceItemAttributeDataset;
+  /** Project IDs or slugs to scope to (omit for all accessible projects) */
+  project?: Array<number | string>;
+  /** Environment names to scope to */
+  environment?: string[];
+  /** Only return attributes of these value types (filtered server-side) */
+  attributeTypes?: TraceItemAttributeValueType[];
+  /** Only return attribute names containing this substring (case-sensitive) */
+  substringMatch?: string;
+  /**
+   * Sentry search query. The result is limited to keys that co-occur
+   * with all of those keys. `has:<key>` filters express this exactly.
+   */
+  query?: string;
+  /** Relative time window, e.g. "24h" or "14d" (overrides start/end) */
+  statsPeriod?: string;
+  /** Absolute window start (ISO-8601) */
+  start?: string;
+  /** Absolute window end (ISO-8601) */
+  end?: string;
+  /**
+   * Page size, sent as `per_page` Applied per attribute type, so total
+   * results can exceed this value
+   */
+  perPage?: number;
+  /**
+   * Include each attribute's `context` metadata (description, examples,
+   * deprecation)
+   */
+  context?: boolean;
+  /** Pagination cursor from a previous page's `nextCursor` */
+  cursor?: string;
+  /** Aborts the request, including its retries */
+  signal?: AbortSignal;
+};
+
+/**
+ * List the attribute keys available on a trace item dataset via
+ * `GET /organizations/{org}/trace-items/attributes/`.
+ *
+ * Empty filters are omitted rather than sent as empty params, and the
+ * next-page cursor is parsed from the Link header.
+ *
+ * Use {@link getTraceItemDetail} for the values on a specific item.
+ *
+ * @param orgSlug - Organization slug
+ * @param options - Dataset plus optional project, type, substring, query, and time filters
+ * @returns Attribute definitions and an optional next-page cursor
+ */
+export async function listTraceItemAttributes(
+  orgSlug: string,
+  options: ListTraceItemAttributesOptions,
+): Promise<PaginatedResponse<TraceItemAttributeDefinition[]>> {
+  const config = getOrgSdkConfig();
+  // `per_page` is accepted by the endpoint's paginator but missing from the
+  // SDK's generated query type, so widen the type rather than cast the call.
+  const query: TraceItemAttributesQuery & { per_page?: number } = {
+    dataset: options.dataset,
+    project: options.project?.length ? options.project : undefined,
+    environment: options.environment?.length ? options.environment : undefined,
+    attributeType: options.attributeTypes?.length
+      ? options.attributeTypes
+      : undefined,
+    substringMatch: options.substringMatch || undefined,
+    query: options.query || undefined,
+    statsPeriod: options.statsPeriod,
+    start: options.start,
+    end: options.end,
+    expand: options.context ? ["context"] : undefined,
+    per_page: options.perPage,
+    cursor: options.cursor,
+  };
+  const result = await listOrganizationTraceItemAttributes({
+    ...config,
+    path: { organization_id_or_slug: orgSlug },
+    query,
+    signal: options.signal,
+  });
+  return unwrapPaginatedResult<TraceItemAttributeDefinition[]>(
+    result,
+    `Failed to list ${options.dataset} attributes`,
+  );
+}
+
 /**
  * Fetch high-level metadata for a trace.
  *
@@ -258,17 +383,18 @@ export async function getTraceMeta(
   traceId: string,
   statsPeriod = "14d",
 ): Promise<TraceMeta> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-
-  const { data } = await apiRequestToRegion<TraceMeta>(
-    regionUrl,
+  const config = getOrgSdkConfig();
+  const result = await getOrganizationTraceMeta({
+    ...config,
+    path: { organization_id_or_slug: orgSlug, trace_id: traceId },
+    query: { statsPeriod },
+  });
+  return unwrapValidatedResult<TraceMeta>(
+    result,
+    "Failed to get trace metadata",
+    TraceMetaSchema,
     `/organizations/${orgSlug}/trace-meta/${traceId}/`,
-    {
-      params: { statsPeriod },
-      schema: TraceMetaSchema,
-    },
   );
-  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -440,7 +566,6 @@ type ListTransactionsOptions = {
  * multi-page (auto-paginating) fetches.
  */
 async function fetchTransactionsPage(
-  regionUrl: string,
   orgSlug: string,
   projectSlug: string,
   options: ListTransactionsOptions,
@@ -458,38 +583,40 @@ async function fetchTransactionsPage(
     .filter(Boolean)
     .join(" ");
 
-  const { data: response, headers } =
-    await apiRequestToRegion<TransactionsResponse>(
-      regionUrl,
-      `/organizations/${orgSlug}/events/`,
-      {
-        params: {
-          dataset: "spans",
-          field: TRANSACTION_FIELDS,
-          project:
-            numericProjectId === undefined
-              ? undefined
-              : String(numericProjectId),
-          // Convert empty string to undefined so ky omits the param entirely;
-          // sending `query=` causes the Sentry API to behave differently than
-          // omitting the parameter.
-          query: fullQuery || undefined,
-          per_page: perPage,
-          statsPeriod:
-            options.start || options.end
-              ? undefined
-              : (options.statsPeriod ?? "7d"),
-          start: options.start,
-          end: options.end,
-          sort: options.sort === "duration" ? "-span.duration" : "-timestamp",
-          cursor: options.cursor,
-        },
-        schema: TransactionsResponseSchema,
-      },
-    );
-
-  const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
-  return { data: response.data, nextCursor };
+  const result = await listOrganizationEvents({
+    ...getOrgSdkConfig(),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      dataset: "spans",
+      field: TRANSACTION_FIELDS,
+      project:
+        numericProjectId === undefined ? undefined : [String(numericProjectId)],
+      // Convert empty string to undefined so the param is omitted entirely;
+      // sending `query=` causes the Sentry API to behave differently than
+      // omitting the parameter.
+      query: fullQuery || undefined,
+      per_page: perPage,
+      statsPeriod:
+        options.start || options.end
+          ? undefined
+          : (options.statsPeriod ?? "7d"),
+      start: options.start,
+      end: options.end,
+      sort: options.sort === "duration" ? "-span.duration" : "-timestamp",
+      cursor: options.cursor,
+    },
+  });
+  const page = unwrapPaginatedResult<unknown>(
+    result,
+    "Failed to list transactions",
+  );
+  const response: TransactionsResponse = validateResponse(
+    TransactionsResponseSchema,
+    page.data,
+    `/organizations/${orgSlug}/events/`,
+    page.response?.status ?? 0,
+  );
+  return { data: response.data, nextCursor: page.nextCursor };
 }
 
 /**
@@ -514,10 +641,8 @@ export async function listTransactions(
   projectSlug: string,
   options: ListTransactionsOptions = {},
 ): Promise<PaginatedResponse<TransactionListItem[]>> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
   return await paginate(options, (perPage, cursor) =>
     fetchTransactionsPage(
-      regionUrl,
       orgSlug,
       projectSlug,
       { ...options, cursor },
@@ -578,7 +703,6 @@ type ListSpansOptions = {
  * multi-page (auto-paginating) fetches.
  */
 async function fetchSpansPage(
-  regionUrl: string,
   orgSlug: string,
   projectSlug: string,
   options: ListSpansOptions,
@@ -596,7 +720,7 @@ async function fetchSpansPage(
   const fullQuery = [projectFilter, options.query].filter(Boolean).join(" ");
 
   const fields = options.extraFields?.length
-    ? SPAN_FIELDS.concat(options.extraFields)
+    ? [...SPAN_FIELDS, ...options.extraFields]
     : SPAN_FIELDS;
 
   let projectParam: string | undefined;
@@ -606,31 +730,33 @@ async function fetchSpansPage(
     projectParam = String(numericProjectId);
   }
 
-  const { data: response, headers } = await apiRequestToRegion<SpansResponse>(
-    regionUrl,
-    `/organizations/${orgSlug}/events/`,
-    {
-      params: {
-        dataset: "spans",
-        field: fields,
-        project: projectParam,
-        query: fullQuery || undefined,
-        per_page: perPage,
-        statsPeriod:
-          options.start || options.end
-            ? undefined
-            : (options.statsPeriod ?? "7d"),
-        start: options.start,
-        end: options.end,
-        sort: options.sort === "duration" ? "-span.duration" : "-timestamp",
-        cursor: options.cursor,
-      },
-      schema: SpansResponseSchema,
+  const result = await listOrganizationEvents({
+    ...getOrgSdkConfig(),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      dataset: "spans",
+      field: fields,
+      project: projectParam === undefined ? undefined : [projectParam],
+      query: fullQuery || undefined,
+      per_page: perPage,
+      statsPeriod:
+        options.start || options.end
+          ? undefined
+          : (options.statsPeriod ?? "7d"),
+      start: options.start,
+      end: options.end,
+      sort: options.sort === "duration" ? "-span.duration" : "-timestamp",
+      cursor: options.cursor,
     },
+  });
+  const page = unwrapPaginatedResult<unknown>(result, "Failed to list spans");
+  const response: SpansResponse = validateResponse(
+    SpansResponseSchema,
+    page.data,
+    `/organizations/${orgSlug}/events/`,
+    page.response?.status ?? 0,
   );
-
-  const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
-  return { data: response.data, nextCursor };
+  return { data: response.data, nextCursor: page.nextCursor };
 }
 
 /**
@@ -650,14 +776,7 @@ export async function listSpans(
   projectSlug: string,
   options: ListSpansOptions = {},
 ): Promise<PaginatedResponse<SpanListItem[]>> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
   return await paginate(options, (perPage, cursor) =>
-    fetchSpansPage(
-      regionUrl,
-      orgSlug,
-      projectSlug,
-      { ...options, cursor },
-      perPage,
-    ),
+    fetchSpansPage(orgSlug, projectSlug, { ...options, cursor }, perPage),
   );
 }

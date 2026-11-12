@@ -1,5 +1,6 @@
 /**
- * Tests for the traces API helpers (getDetailedTrace, listTransactions, listSpans).
+ * Tests for the traces API helpers (getDetailedTrace, getTraceMeta,
+ * listTransactions, listSpans).
  *
  * Verifies URL construction, query parameter encoding, schema validation,
  * pagination cursor extraction, auto-pagination, and the 14d→90d empty-trace retry.
@@ -10,6 +11,7 @@ import {
   fetchMultiSpanDetails,
   getDetailedTrace,
   getSpanDetails,
+  getTraceMeta,
   listSpans,
   listTransactions,
 } from "../../../src/lib/api/traces.js";
@@ -38,7 +40,7 @@ describe("listTransactions", () => {
 
   function mockOk(body: unknown, headers: Record<string, string> = {}) {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       capturedMethod = req.method;
       return new Response(JSON.stringify(body), {
@@ -59,10 +61,10 @@ describe("listTransactions", () => {
     let callIndex = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
 
-      const resp = responses[callIndex]!;
+      const resp = responses[callIndex];
       callIndex += 1;
 
       return new Response(JSON.stringify(resp.body), {
@@ -113,28 +115,6 @@ describe("listTransactions", () => {
 
     expect(capturedUrl).toContain("dataset=spans");
     expect(decodeURIComponent(capturedUrl)).toContain("is_transaction:true");
-  });
-
-  test("uses the remaining item budget for the final page", async () => {
-    const { getCapturedUrls } = mockSequential([
-      {
-        body: { data: makeTxnRows(100), meta: TX_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeTxnRows(50), meta: TX_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
-        },
-      },
-    ]);
-
-    await listTransactions("my-org", "my-project", { limit: 150 });
-
-    expect(getCapturedUrls()[0]).toContain("per_page=100");
-    expect(getCapturedUrls()[1]).toContain("per_page=50");
   });
 
   test("sends sort=-timestamp by default", async () => {
@@ -206,7 +186,7 @@ describe("listTransactions", () => {
         },
       },
       {
-        body: { data: makeTxnRows(50), meta: TX_META },
+        body: { data: makeTxnRows(100), meta: TX_META },
         headers: {
           Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
         },
@@ -214,36 +194,12 @@ describe("listTransactions", () => {
     ]);
 
     const result = await listTransactions("my-org", "my-project", {
-      limit: 150,
+      limit: 200,
     });
 
-    expect(result.data).toHaveLength(150);
+    expect(result.data).toHaveLength(200);
     expect(result.nextCursor).toBeUndefined();
     expect(getCapturedUrls()).toHaveLength(2);
-  });
-
-  test("trims results and drops nextCursor when overshoot", async () => {
-    mockSequential([
-      {
-        body: { data: makeTxnRows(100), meta: TX_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeTxnRows(100), meta: TX_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:200:0"`,
-        },
-      },
-    ]);
-
-    const result = await listTransactions("my-org", "my-project", {
-      limit: 120,
-    });
-
-    expect(result.data).toHaveLength(120);
-    expect(result.nextCursor).toBeUndefined();
   });
 
   test("single-page fast path for limit <= 100", async () => {
@@ -309,7 +265,7 @@ describe("listTransactions", () => {
       limit: 10,
     });
 
-    expect(result.nextCursor).toBe(cursor);
+    expect(result.nextCursor).toContain(cursor);
   });
 
   test("returns undefined nextCursor when results=false", async () => {
@@ -349,7 +305,7 @@ describe("listSpans", () => {
 
   function mockOk(body: unknown, headers: Record<string, string> = {}) {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       capturedMethod = req.method;
       return new Response(JSON.stringify(body), {
@@ -366,10 +322,10 @@ describe("listSpans", () => {
     let callIndex = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
 
-      const resp = responses[callIndex]!;
+      const resp = responses[callIndex];
       callIndex += 1;
 
       return new Response(JSON.stringify(resp.body), {
@@ -427,28 +383,6 @@ describe("listSpans", () => {
     expect(capturedUrl).toContain("dataset=spans");
   });
 
-  test("uses the remaining item budget for the final page", async () => {
-    const { getCapturedUrls } = mockSequential([
-      {
-        body: { data: makeSpanRows(100), meta: SPAN_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeSpanRows(50), meta: SPAN_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
-        },
-      },
-    ]);
-
-    await listSpans("my-org", "my-project", { limit: 150 });
-
-    expect(getCapturedUrls()[0]).toContain("per_page=100");
-    expect(getCapturedUrls()[1]).toContain("per_page=50");
-  });
-
   test("sends sort=-timestamp by default", async () => {
     mockOk({ data: [], meta: SPAN_META });
 
@@ -495,40 +429,18 @@ describe("listSpans", () => {
         },
       },
       {
-        body: { data: makeSpanRows(50), meta: SPAN_META },
+        body: { data: makeSpanRows(100), meta: SPAN_META },
         headers: {
           Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="false"; cursor=""`,
         },
       },
     ]);
 
-    const result = await listSpans("my-org", "my-project", { limit: 150 });
+    const result = await listSpans("my-org", "my-project", { limit: 200 });
 
-    expect(result.data).toHaveLength(150);
+    expect(result.data).toHaveLength(200);
     expect(result.nextCursor).toBeUndefined();
     expect(getCapturedUrls()).toHaveLength(2);
-  });
-
-  test("trims results when overshoot", async () => {
-    mockSequential([
-      {
-        body: { data: makeSpanRows(100), meta: SPAN_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:100:0"`,
-        },
-      },
-      {
-        body: { data: makeSpanRows(100), meta: SPAN_META },
-        headers: {
-          Link: `<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="0:200:0"`,
-        },
-      },
-    ]);
-
-    const result = await listSpans("my-org", "my-project", { limit: 120 });
-
-    expect(result.data).toHaveLength(120);
-    expect(result.nextCursor).toBeUndefined();
   });
 
   test("single-page fast path for limit <= 100", async () => {
@@ -639,7 +551,7 @@ describe("listSpans", () => {
 
     const result = await listSpans("my-org", "my-project", { limit: 10 });
 
-    expect(result.nextCursor).toBe(cursor);
+    expect(result.nextCursor).toContain(cursor);
   });
 
   test("returns undefined nextCursor when results=false", async () => {
@@ -679,7 +591,7 @@ describe("getSpanDetails", () => {
 
   function mockOk(body: unknown) {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       const url = new URL(capturedUrl);
       url.searchParams.forEach((v, k) => {
@@ -777,7 +689,7 @@ describe("fetchMultiSpanDetails", () => {
 
   function mockOk() {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       requestedUrls.push(req.url);
       return new Response(
         JSON.stringify({
@@ -868,7 +780,7 @@ describe("getDetailedTrace", () => {
     let callIndex = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
       const body = bodies[callIndex] ?? [];
       callIndex += 1;
@@ -889,13 +801,13 @@ describe("getDetailedTrace", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0]!.span_id).toBe("span-1");
+    expect(result[0].span_id).toBe("span-1");
     expect(getCapturedUrls()).toHaveLength(1);
-    const url = new URL(getCapturedUrls()[0]!);
+    const url = new URL(getCapturedUrls()[0]);
     expect(url.searchParams.get("timestamp")).toBe("1700000000");
     expect(url.searchParams.get("statsPeriod")).toBeNull();
-    expect(url.searchParams.get("limit")).toBe("10000");
-    expect(url.searchParams.get("project")).toBe("-1");
+    expect(url.searchParams.has("limit")).toBe(false);
+    expect(url.searchParams.has("project")).toBe(false);
   });
 
   test("queries 14d and does not retry when spans are returned", async () => {
@@ -905,7 +817,7 @@ describe("getDetailedTrace", () => {
 
     expect(result).toHaveLength(1);
     expect(getCapturedUrls()).toHaveLength(1);
-    const url = new URL(getCapturedUrls()[0]!);
+    const url = new URL(getCapturedUrls()[0]);
     expect(url.searchParams.get("statsPeriod")).toBe("14d");
     expect(url.searchParams.get("timestamp")).toBeNull();
   });
@@ -916,19 +828,19 @@ describe("getDetailedTrace", () => {
     const result = await getDetailedTrace("my-org", "abc123def456");
 
     expect(result).toHaveLength(1);
-    expect(result[0]!.span_id).toBe("span-1");
+    expect(result[0].span_id).toBe("span-1");
     expect(getCapturedUrls()).toHaveLength(2);
-    expect(new URL(getCapturedUrls()[0]!).searchParams.get("statsPeriod")).toBe(
+    expect(new URL(getCapturedUrls()[0]).searchParams.get("statsPeriod")).toBe(
       "14d",
     );
-    expect(new URL(getCapturedUrls()[1]!).searchParams.get("statsPeriod")).toBe(
+    expect(new URL(getCapturedUrls()[1]).searchParams.get("statsPeriod")).toBe(
       "90d",
     );
     expect(
-      new URL(getCapturedUrls()[0]!).searchParams.get("timestamp"),
+      new URL(getCapturedUrls()[0]).searchParams.get("timestamp"),
     ).toBeNull();
     expect(
-      new URL(getCapturedUrls()[1]!).searchParams.get("timestamp"),
+      new URL(getCapturedUrls()[1]).searchParams.get("timestamp"),
     ).toBeNull();
   });
 
@@ -941,29 +853,74 @@ describe("getDetailedTrace", () => {
 
     expect(result).toHaveLength(0);
     expect(getCapturedUrls()).toHaveLength(1);
-    expect(new URL(getCapturedUrls()[0]!).searchParams.get("timestamp")).toBe(
+    expect(new URL(getCapturedUrls()[0]).searchParams.get("timestamp")).toBe(
       "1700000000",
     );
     expect(
-      new URL(getCapturedUrls()[0]!).searchParams.get("statsPeriod"),
+      new URL(getCapturedUrls()[0]).searchParams.get("statsPeriod"),
     ).toBeNull();
   });
 
-  test("forwards project and additional attributes on both lookups", async () => {
+  test("forwards additional attributes on both lookups", async () => {
     const { getCapturedUrls } = mockSequential([[], [SPAN]]);
 
     await getDetailedTrace("my-org", "abc123def456", {
-      projectId: 42,
       additionalAttributes: ["gen_ai.request.model"],
     });
 
     expect(getCapturedUrls()).toHaveLength(2);
     for (const raw of getCapturedUrls()) {
       const url = new URL(raw);
-      expect(url.searchParams.get("project")).toBe("42");
       expect(url.searchParams.getAll("additional_attributes")).toEqual([
         "gen_ai.request.model",
       ]);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getTraceMeta
+// ---------------------------------------------------------------------------
+
+describe("getTraceMeta", () => {
+  useTestConfigDir("traces-meta-test-");
+
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("accepts spans counted under a null transaction.event_id", async () => {
+    const transactionChildCountMap = [
+      {
+        "transaction.event_id": "0daf40dc453a429c8c57e4c215c4e82c",
+        "count()": 10,
+      },
+      { "transaction.event_id": null, "count()": 15 },
+    ];
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            errorsCount: 2,
+            logsCount: 3,
+            metricsCount: 0,
+            performanceIssuesCount: 1,
+            spansCount: 25,
+            transactionChildCountMap,
+            spansCountMap: { "http.client": 25 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+
+    const meta = await getTraceMeta("my-org", "abc123def456");
+
+    expect(meta.transactionChildCountMap).toEqual(transactionChildCountMap);
   });
 });

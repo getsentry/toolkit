@@ -10,8 +10,8 @@
  *    names for known agent executables. Runs as a non-blocking background
  *    task so it never delays CLI startup.
  *
- * To add a new agent, add entries to {@link ENV_VAR_AGENTS} and/or
- * {@link PROCESS_NAME_AGENTS}.
+ * To add a new agent, add it to {@link AGENT_DISPLAY_NAMES}, then add entries
+ * to {@link ENV_VAR_AGENTS} and/or {@link PROCESS_NAME_AGENTS}.
  */
 
 import { execFile } from "node:child_process";
@@ -32,10 +32,41 @@ export type AgentInfo = {
 };
 
 /**
+ * Canonical agent name → display name, in documentation order.
+ *
+ * This is the list of agents the CLI can detect: {@link KnownAgent} is derived
+ * from its keys, and the detection tables below only accept known agents, so
+ * TypeScript rejects a detectable agent with no display name. The
+ * agentic-usage docs list is generated from it.
+ */
+export const AGENT_DISPLAY_NAMES = {
+  claude: "Claude Code",
+  cowork: "Claude Cowork",
+  cursor: "Cursor",
+  windsurf: "Windsurf",
+  "github-copilot": "GitHub Copilot",
+  gemini: "Gemini CLI",
+  codex: "OpenAI Codex",
+  antigravity: "Antigravity",
+  goose: "Goose",
+  amp: "Amp",
+  augment: "Augment",
+  opencode: "OpenCode",
+  cline: "Cline",
+  grok: "Grok",
+  kimi: "Kimi",
+  junie: "Junie",
+  openclaw: "OpenClaw",
+} as const satisfies Record<string, string>;
+
+/** Canonical name of an agent the CLI can detect. */
+export type KnownAgent = keyof typeof AGENT_DISPLAY_NAMES;
+
+/**
  * Canonical name aliases — maps alternative agent identifiers to their
  * canonical family name. Checked after lowercasing.
  */
-export const AGENT_ALIASES = new Map<string, string>([
+export const AGENT_ALIASES = new Map<string, KnownAgent>([
   ["claude-code", "claude"],
   ["claudecode", "claude"],
   ["claude_code", "claude"],
@@ -123,7 +154,7 @@ export function normalizeAgent(raw: string): AgentInfo | undefined {
  * Env var → agent name. Checked in insertion order — first match wins.
  * Each env var maps directly to the agent that sets it.
  */
-export const ENV_VAR_AGENTS = new Map<string, string>([
+export const ENV_VAR_AGENTS = new Map<string, KnownAgent>([
   // Cursor
   ["CURSOR_TRACE_ID", "cursor"],
   ["CURSOR_AGENT", "cursor"],
@@ -170,7 +201,7 @@ export const ENV_VAR_AGENTS = new Map<string, string>([
  * Process executable basename (lowercase) → agent name.
  * Used when scanning the parent process tree as a fallback.
  */
-export const PROCESS_NAME_AGENTS = new Map<string, string>([
+export const PROCESS_NAME_AGENTS = new Map<string, KnownAgent>([
   ["cursor", "cursor"],
   ["claude", "claude"],
   ["goose", "goose"],
@@ -250,7 +281,7 @@ export function detectAgent(): AgentInfo | undefined {
   // The role marker also exists outside agent execution; only this value
   // identifies an agent. Check before the map to retain Cursor's priority.
   if (env.CURSOR_EXTENSION_HOST_ROLE === "agent-exec") {
-    return normalizeAgent("cursor");
+    return normalizeAgent("cursor" satisfies KnownAgent);
   }
 
   // 2. Table-driven env var check (Map iteration preserves insertion order).
@@ -263,7 +294,8 @@ export function detectAgent(): AgentInfo | undefined {
 
   // 3. Claude Code / Cowork — requires branching logic, so not in the map
   if (env.CLAUDECODE || env.CLAUDE_CODE) {
-    return normalizeAgent(env.CLAUDE_CODE_IS_COWORK ? "cowork" : "claude");
+    const agent: KnownAgent = env.CLAUDE_CODE_IS_COWORK ? "cowork" : "claude";
+    return normalizeAgent(agent);
   }
 
   // 4. Lowest priority: generic AGENT fallback

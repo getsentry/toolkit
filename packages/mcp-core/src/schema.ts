@@ -9,10 +9,20 @@ import { z } from "zod";
 import { SENTRY_GUIDES } from "./constants";
 import { validateResourceId, validateSlug } from "./utils/slug-validation";
 
+/** Recovery hint for a missing organization the server could not default. */
+export const MISSING_ORGANIZATION_SLUG_HINT =
+  "Required. Call `find_organizations()` to list your organizations, then retry with `organizationSlug` set to one of their slugs.";
+
 // Sentry slug lookups can be exact and case-sensitive on legacy instances.
 // Preserve caller casing for resource slugs; only trim and validate shape.
 export const ParamOrganizationSlug = z
-  .string()
+  .string({
+    // Tool registration makes a required slug optional and defaults it
+    // (see applyDefaultOrganization), but a null slug, or one inside a nested
+    // schema, still fails here, and this is the recovery hint it gets.
+    error: (issue) =>
+      issue.input == null ? MISSING_ORGANIZATION_SLUG_HINT : undefined,
+  })
   .trim()
   .superRefine(validateSlug)
   .describe(
@@ -56,11 +66,26 @@ export const ParamCursor = z
     "Pagination cursor from a previous call's nextCursor. Reuse it with the same filters and scope to fetch the next page.",
   );
 
+// Shared by every read tool that calls the Sentry API, so keep it short: it
+// ships in the schema of each one.
+export const ParamFresh = z
+  .boolean()
+  .optional()
+  .describe("Bypass cached reads.");
+
 export const ParamIssueShortId = z
   .string()
   .toUpperCase()
   .trim()
   .describe("The Issue ID. e.g. `PROJECT-1Z43`");
+
+export const ParamPackageNames = z
+  .array(z.string().min(1).max(256))
+  .min(1)
+  .max(10)
+  .describe(
+    "Exact, case-sensitive package names recorded with a specific event (1–10 names, up to 256 characters each). Requires an event lookup. Only selected package versions are added; versions longer than 256 characters are truncated.",
+  );
 
 export const ParamIssueUrl = z
   .string()
@@ -109,12 +134,26 @@ export const ParamSpanId = z
     "The span ID within a trace. Use this with a trace resource to focus on a specific span.",
   );
 
+// Platform names agents sent in production that Sentry rejects with
+// `{"platform":["Invalid platform"]}`, mapped to the ID Sentry accepts. Every
+// value must be in GETTING_STARTED_DOCS_PLATFORMS in getsentry/sentry
+// src/sentry/models/project.py (checked against master on 2026-11-04).
+const PLATFORM_ALIASES: ReadonlyMap<string, string> = new Map([
+  ["react", "javascript-react"],
+  ["cocoa", "apple"],
+  ["cocoa-ios", "apple-ios"],
+  ["csharp", "dotnet"],
+  ["javascript-cloudflare", "node-cloudflare-workers"],
+  ["javascript-cloudflare-workers", "node-cloudflare-workers"],
+]);
+
 export const ParamPlatform = z
   .string()
   .toLowerCase()
   .trim()
+  .overwrite((platform) => PLATFORM_ALIASES.get(platform) ?? platform)
   .describe(
-    "The platform for the project. e.g., python, javascript, react, etc.",
+    "The Sentry platform ID for the project, e.g. javascript-react, javascript-nextjs, node, python-django, apple-ios, android, dotnet. Omit if unsure.",
   );
 
 export const ParamTransaction = z
@@ -142,11 +181,11 @@ export const ParamPeriod = z
   .string()
   .trim()
   .regex(
-    /^\d+[hdw]$/,
-    "Period must be a relative time window like `24h`, `7d`, `14d`, `30d`, or `90d`.",
+    /^\d+[mhdw]$/,
+    "Period must be a relative time window like `30m` (minutes), `1h`, `24h`, `7d`, or `90d`.",
   )
   .describe(
-    "Relative time window, such as `24h`, `7d`, `14d`, `30d`, or `90d`. Controls which records fall within the search window.",
+    "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window.",
   );
 
 /**
@@ -176,6 +215,12 @@ export const ParamIssueStatus = z
     "The new status for the issue. Valid values are 'resolved', 'resolvedInNextRelease', 'unresolved', and 'ignored'.",
   );
 
+export const ParamIssuePriority = z
+  .enum(["low", "medium", "high"])
+  .describe(
+    "The new priority for the issue. Setting it manually stops Sentry from changing it automatically.",
+  );
+
 export const ParamIssueIgnoreMode = z
   .enum([
     "untilEscalating",
@@ -194,7 +239,7 @@ export const ParamAssignedTo = z
   .min(1)
   .nullable()
   .describe(
-    "The assignee in format 'user:ID' or 'team:ID_OR_SLUG' where ID is numeric. Pass null to unassign the issue. Example: 'user:123456', 'team:789', or 'team:my-team-slug'. Use `execute_sentry_tool(name='whoami', arguments={})` to find your user ID.",
+    "The assignee in format 'user:ID' or 'team:ID_OR_SLUG' where ID is numeric. Pass null to unassign the issue. Example: 'user:123456', 'team:789', or 'team:my-team-slug'. Use the `whoami` tool to find your user ID.",
   );
 
 export const ParamIgnoreDurationMinutes = z
@@ -237,6 +282,30 @@ export const ParamIgnoreUserWindowMinutes = z
   .max(7 * 24 * 60)
   .describe(
     "Optional time window in minutes for ignoreUserCount. If omitted, Sentry counts all future affected users.",
+  );
+
+export const ParamInRelease = z
+  .string()
+  .trim()
+  .min(1)
+  .describe(
+    "Release version to resolve the issue in, such as a version returned by find_releases. Requires status='resolved'. Events from newer releases reopen the issue as a regression; events from older releases do not.",
+  );
+
+export const ParamInCommit = z
+  .string()
+  .trim()
+  .min(1)
+  .describe(
+    "SHA of the commit that fixes the issue. Requires status='resolved' and inCommitRepository. The commit must already be known to Sentry.",
+  );
+
+export const ParamInCommitRepository = z
+  .string()
+  .trim()
+  .min(1)
+  .describe(
+    "Name of the repository that contains inCommit, as it appears in Sentry (for example 'getsentry/sentry').",
   );
 
 export const ParamReason = z

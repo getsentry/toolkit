@@ -37,8 +37,8 @@ import {
 } from "./errors.js";
 import { logger } from "./logger.js";
 import { normalizeHttpOrigin } from "./sentry-urls.js";
-import { withHttpSpan } from "./telemetry.js";
-import { getActiveTokenHost } from "./token-host.js";
+import { getActiveTokenHost, isLoginTrustAnchorFor } from "./token-host.js";
+import { getLoginCommand } from "./app-identity.js";
 
 /**
  * Get the Sentry instance URL for OAuth endpoints.
@@ -271,106 +271,103 @@ function assertRefreshHostTrusted(refreshUrl: string): string {
  *
  * @param scope - Space-joined scope string to request. Defaults to the full
  *   {@link SCOPES} set. Use {@link resolveOAuthScopeString} to build it.
+ * @param loginHint - Email of the account expected to approve the request
  */
-function requestDeviceCode(scope: string = SCOPES) {
+async function requestDeviceCode(scope: string = SCOPES, loginHint?: string) {
   const clientId = getClientId();
-  return withHttpSpan("POST", "/oauth/device/code/", async () => {
-    const response = await fetchWithConnectionError(
-      `${getSentryUrl()}/oauth/device/code/`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: deviceCodeRequestBody(clientId, scope),
-      },
+  const response = await fetchWithConnectionError(
+    `${getSentryUrl()}/oauth/device/code/`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: deviceCodeRequestBody(clientId, scope, loginHint),
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new ApiError(
+      "Failed to initiate device flow",
+      response.status,
+      errorText,
+      "/oauth/device/code/",
     );
+  }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new ApiError(
-        "Failed to initiate device flow",
-        response.status,
-        errorText,
-        "/oauth/device/code/",
-      );
-    }
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch (parseError) {
+    logger.debug("Non-JSON response from device code endpoint", parseError);
+    throw new ApiError(
+      "Invalid response from device authorization endpoint",
+      response.status,
+      "The server returned a non-JSON response body.",
+      "/oauth/device/code/",
+    );
+  }
 
-    let data: unknown;
-    try {
-      data = await response.json();
-    } catch (parseError) {
-      logger.debug("Non-JSON response from device code endpoint", parseError);
-      throw new ApiError(
-        "Invalid response from device authorization endpoint",
-        response.status,
-        "The server returned a non-JSON response body.",
-        "/oauth/device/code/",
-      );
-    }
+  const result = safeParse(DeviceCodeResponseSchema, data);
+  if (!result.success) {
+    throw new ApiError(
+      "Invalid response from device authorization endpoint",
+      response.status,
+      result.issues.map((i) => i.message).join(", "),
+      "/oauth/device/code/",
+    );
+  }
 
-    const result = safeParse(DeviceCodeResponseSchema, data);
-    if (!result.success) {
-      throw new ApiError(
-        "Invalid response from device authorization endpoint",
-        response.status,
-        result.issues.map((i) => i.message).join(", "),
-        "/oauth/device/code/",
-      );
-    }
-
-    return result.output;
-  });
+  return result.output;
 }
 
 /**
  * Poll Sentry's token endpoint for the access token
  */
-function pollForToken(deviceCode: string): Promise<TokenResponse> {
-  return withHttpSpan("POST", "/oauth/token/", async () => {
-    const response = await fetchWithConnectionError(
-      `${getSentryUrl()}/oauth/token/`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: deviceTokenRequestBody(getClientId(), deviceCode),
-      },
-    );
+async function pollForToken(deviceCode: string): Promise<TokenResponse> {
+  const response = await fetchWithConnectionError(
+    `${getSentryUrl()}/oauth/token/`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: deviceTokenRequestBody(getClientId(), deviceCode),
+    },
+  );
 
-    let data: unknown;
-    try {
-      data = await response.json();
-    } catch (parseError) {
-      logger.debug("Non-JSON response from token endpoint", parseError);
-      throw new ApiError(
-        "Unexpected response from token endpoint",
-        response.status,
-        "The server returned a non-JSON response body (possible proxy or CDN issue).",
-        "/oauth/token/",
-      );
-    }
-
-    // Try to parse as success response first
-    const tokenResult = safeParse(TokenResponseSchema, data);
-    if (tokenResult.success) {
-      return tokenResult.output;
-    }
-
-    // Try to parse as error response
-    const errorResult = safeParse(TokenErrorResponseSchema, data);
-    if (errorResult.success) {
-      throw new DeviceFlowError(
-        errorResult.output.error,
-        errorResult.output.error_description,
-      );
-    }
-
-    // If neither schema matches, throw a generic error
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch (parseError) {
+    logger.debug("Non-JSON response from token endpoint", parseError);
     throw new ApiError(
       "Unexpected response from token endpoint",
       response.status,
-      JSON.stringify(data),
+      "The server returned a non-JSON response body (possible proxy or CDN issue).",
       "/oauth/token/",
     );
-  });
+  }
+
+  // Try to parse as success response first
+  const tokenResult = safeParse(TokenResponseSchema, data);
+  if (tokenResult.success) {
+    return tokenResult.output;
+  }
+
+  // Try to parse as error response
+  const errorResult = safeParse(TokenErrorResponseSchema, data);
+  if (errorResult.success) {
+    throw new DeviceFlowError(
+      errorResult.output.error,
+      errorResult.output.error_description,
+    );
+  }
+
+  // If neither schema matches, throw a generic error
+  throw new ApiError(
+    "Unexpected response from token endpoint",
+    response.status,
+    JSON.stringify(data),
+    "/oauth/token/",
+  );
 }
 
 type PollResult =
@@ -400,7 +397,7 @@ async function attemptPoll(
       case "expired":
         return {
           status: "error",
-          message: "Device code expired. Please run 'sentry auth login' again.",
+          message: `Device code expired. Please run '${getLoginCommand()}' again.`,
         };
       case "denied":
         return {
@@ -423,6 +420,8 @@ async function attemptPoll(
  * @param timeout - Maximum time to wait for authorization in ms (default: 10 minutes)
  * @param scope - Space-joined scope string to request. Defaults to the full
  *   {@link SCOPES} set. Build it via {@link resolveOAuthScopeString}.
+ * @param loginHint - Email of the account expected to approve the request.
+ *   Sentry refuses approval from any other signed-in user.
  * @returns The token response containing access_token and metadata
  * @throws {ApiError} When unable to connect to Sentry or API returns an error
  * @throws {DeviceFlowError} When authorization fails, is denied, or times out
@@ -431,6 +430,7 @@ export async function performDeviceFlow(
   callbacks: DeviceFlowCallbacks,
   timeout = 600_000, // 10 minutes default (matches Sentry's expires_in)
   scope: string = SCOPES,
+  loginHint?: string,
 ): Promise<TokenResponse> {
   // Step 1: Request device code
   const {
@@ -440,7 +440,7 @@ export async function performDeviceFlow(
     verification_uri_complete,
     interval,
     expires_in,
-  } = await requestDeviceCode(scope);
+  } = await requestDeviceCode(scope, loginHint);
 
   // Notify caller of the user code
   await callbacks.onUserCode(
@@ -541,80 +541,128 @@ export async function setApiToken(
 }
 
 /** Refresh an access token using a refresh token. */
-export function refreshAccessToken(
+export async function refreshAccessToken(
   refreshToken: string,
   options: { credentialHost: string },
 ): Promise<TokenResponse> {
   const clientId = getClientId();
   const credentialHost = assertRefreshHostTrusted(options.credentialHost);
 
-  return withHttpSpan("POST", "/oauth/token/", async () => {
-    const response = await fetchWithConnectionError(
-      `${credentialHost}/oauth/token/`,
-      {
-        method: "POST",
-        // Never replay a refresh credential to a server-selected destination.
-        redirect: "error",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: clientId,
-          grant_type: "refresh_token",
-          refresh_token: refreshToken,
-        }),
-      },
-      true,
-    );
+  const response = await fetchWithConnectionError(
+    `${credentialHost}/oauth/token/`,
+    {
+      method: "POST",
+      // Never replay a refresh credential to a server-selected destination.
+      redirect: "error",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      }),
+    },
+    true,
+  );
 
-    if (!response.ok) {
-      let rejected = false;
-      try {
-        const errorResult = safeParse(
-          TokenErrorResponseSchema,
-          await response.json(),
-        );
-        rejected =
-          errorResult.success && errorResult.output.error === "invalid_grant";
-      } catch (error) {
-        logger.debug("Failed to parse token refresh error response", error);
-      }
-      if (rejected) {
-        throw new AuthError(
-          "expired",
-          "Session expired because the refresh credential was rejected. Run 'sentry auth login' to re-authenticate.",
-        );
-      }
-      throw new ApiError(
-        "Token refresh failed",
-        response.status,
-        "The refresh endpoint returned an unexpected failure.",
-        "/oauth/token/",
-      );
-    }
-
-    let data: unknown;
+  if (!response.ok) {
+    let rejected = false;
     try {
-      data = await response.json();
-    } catch (parseError) {
-      logger.debug("Non-JSON response from token refresh endpoint", parseError);
-      throw new ApiError(
-        "Unexpected response from token refresh endpoint",
-        response.status,
-        "The server returned a non-JSON response body (possible proxy or CDN issue).",
-        "/oauth/token/",
+      const errorResult = safeParse(
+        TokenErrorResponseSchema,
+        await response.json(),
+      );
+      rejected =
+        errorResult.success && errorResult.output.error === "invalid_grant";
+    } catch (error) {
+      logger.debug("Failed to parse token refresh error response", error);
+    }
+    if (rejected) {
+      throw new AuthError(
+        "expired",
+        `Session expired because the refresh credential was rejected. Run '${getLoginCommand()}' to re-authenticate.`,
       );
     }
+    throw new ApiError(
+      "Token refresh failed",
+      response.status,
+      "The refresh endpoint returned an unexpected failure.",
+      "/oauth/token/",
+    );
+  }
 
-    const result = safeParse(TokenResponseSchema, data);
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch (parseError) {
+    logger.debug("Non-JSON response from token refresh endpoint", parseError);
+    throw new ApiError(
+      "Unexpected response from token refresh endpoint",
+      response.status,
+      "The server returned a non-JSON response body (possible proxy or CDN issue).",
+      "/oauth/token/",
+    );
+  }
 
-    if (!result.success) {
-      throw new ApiError(
-        "Invalid response from token refresh endpoint",
-        response.status,
-        result.issues.map((i) => i.message).join(", "),
-        "/oauth/token/",
-      );
-    }
+  const result = safeParse(TokenResponseSchema, data);
 
-    return result.output;
-  });
+  if (!result.success) {
+    throw new ApiError(
+      "Invalid response from token refresh endpoint",
+      response.status,
+      result.issues.map((i) => i.message).join(", "),
+      "/oauth/token/",
+    );
+  }
+
+  return result.output;
+}
+
+/** Exchange a single-use setup credential without retries or redirects. */
+export async function exchangeSetupCode(
+  code: string,
+  host: string,
+): Promise<TokenResponse> {
+  const response = await fetchWithConnectionError(
+    host + "/oauth/token/",
+    {
+      method: "POST",
+      redirect: "error",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:sentry:params:oauth:grant-type:setup_code",
+        client_id: getClientId(),
+        setup_code: code,
+      }),
+    },
+    isLoginTrustAnchorFor(host) || undefined,
+  );
+
+  if (!response.ok) {
+    throw new AuthError(
+      "invalid",
+      "Setup-code authentication failed. Generate a new setup code in Sentry and try again.",
+    );
+  }
+
+  let data: unknown;
+
+  try {
+    data = await response.json();
+  } catch {
+    throw new AuthError(
+      "invalid",
+      "The setup endpoint returned an invalid token response. Generate a new setup code in Sentry.",
+    );
+  }
+
+  const result = safeParse(TokenResponseSchema, data);
+
+  if (!result.success) {
+    throw new AuthError(
+      "invalid",
+      "The setup endpoint returned an invalid token response. Generate a new setup code in Sentry.",
+    );
+  }
+
+  return result.output;
 }

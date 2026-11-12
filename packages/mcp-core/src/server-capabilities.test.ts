@@ -1,10 +1,12 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpHandler } from "@modelcontextprotocol/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { buildServer } from "./server";
+import { buildServerInstructions } from "./server-instructions";
 import type { ToolConfig } from "./tools/types";
 import type { ServerContext } from "./types";
+import { LIB_VERSION, setServerVersion } from "./version";
 
 const context: ServerContext = {
   accessToken: "test-token",
@@ -16,6 +18,7 @@ const context: ServerContext = {
 const tools: Record<string, ToolConfig> = {
   static_tool: {
     name: "static_tool",
+    title: "Static Tool",
     description: "A tool fixed for the lifetime of the server",
     inputSchema: {},
     skills: ["inspect"],
@@ -80,11 +83,27 @@ describe("static tool catalog capabilities", () => {
     }
   });
 
+  it("returns server instructions from server/discover", async () => {
+    const handler = createMcpHandler(() => buildServer({ context, tools }), {
+      keepAliveMs: 0,
+    });
+    try {
+      const discovery = await handler.fetch(modernRequest("server/discover"));
+      expect(discovery.status).toBe(200);
+      expect(await discovery.json()).toMatchObject({
+        result: {
+          instructions: buildServerInstructions(new Set(["static_tool"])),
+        },
+      });
+    } finally {
+      await handler.close();
+    }
+  });
+
   it("does not advertise or acknowledge modern tool-list subscriptions", async () => {
-    const handler = createMcpHandler(
-      () => buildServer({ context, tools, sdkVersion: "v2" }),
-      { keepAliveMs: 0 },
-    );
+    const handler = createMcpHandler(() => buildServer({ context, tools }), {
+      keepAliveMs: 0,
+    });
     try {
       const discovery = await handler.fetch(modernRequest("server/discover"));
       expect(discovery.status).toBe(200);
@@ -127,5 +146,35 @@ describe("static tool catalog capabilities", () => {
     } finally {
       await handler.close();
     }
+  });
+});
+
+describe("serverInfo version", () => {
+  async function initializeVersion(serverContext: ServerContext) {
+    const server = buildServer({ context: serverContext, tools });
+    const client = new Client({ name: "version-test", version: "1.0.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      return client.getServerVersion()?.version;
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  }
+
+  afterEach(() => {
+    setServerVersion(undefined);
+  });
+
+  it("reports the host's version when it sets one", async () => {
+    setServerVersion("0.48.0-test");
+    expect(await initializeVersion(context)).toBe("0.48.0-test");
+  });
+
+  it("falls back to mcp-core's version", async () => {
+    expect(await initializeVersion(context)).toBe(LIB_VERSION);
   });
 });

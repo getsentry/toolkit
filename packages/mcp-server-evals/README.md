@@ -10,7 +10,7 @@ Evaluation helpers and a local mock stdio runner used when developing and valida
 
 ### Scopes policy
 
-The mock stdio script grants only the high-level admin scopes that imply all lower permissions via the hierarchy defined in `packages/mcp-server/src/permissions.ts`:
+The mock stdio script grants only the high-level admin scopes that imply all lower permissions via the hierarchy defined in `packages/mcp-core/src/permissions.ts`:
 
 - `org:admin`, `project:admin`, `team:admin`, `member:admin`, `event:admin`
 - Plus special non-hierarchical scope: `project:releases`

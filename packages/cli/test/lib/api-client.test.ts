@@ -225,7 +225,9 @@ describe("401 retry behavior", () => {
     expect(oauthRequests).toHaveLength(1);
   });
 
-  test("preserves a final-attempt 401 without refreshing the token", async () => {
+  test("refreshes a 401 that arrives after the retries are spent", async () => {
+    // The refresh replay is outside the retry budget, so a 401 on the last
+    // retry still refreshes once.
     const requests: RequestLog[] = [];
     const body = { detail: "Unauthorized" };
     globalThis.fetch = createMockFetch(requests, (_req, requestCount) =>
@@ -236,8 +238,17 @@ describe("401 retry behavior", () => {
 
     expect(result.status).toBe(401);
     expect(result.body).toEqual(body);
-    expect(requests).toHaveLength(3);
-    expect(requests.filter((r) => r.url.includes("/oauth/token/"))).toEqual([]);
+    const apiRequests = requests.filter((r) =>
+      r.url.includes("/test-endpoint"),
+    );
+    expect(apiRequests).toHaveLength(4);
+    expect(apiRequests[3]).toMatchObject({
+      authorization: "Bearer refreshed-token",
+      isRetry: true,
+    });
+    expect(
+      requests.filter((r) => r.url.includes("/oauth/token/")),
+    ).toHaveLength(1);
   });
 
   test("does not retry for manual API tokens (no refresh token)", async () => {
@@ -614,16 +625,6 @@ describe("findProjectsBySlug", () => {
       requests.push(req);
       const url = req.url;
 
-      // Regions endpoint - return single region to simplify test
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
       // Organizations list
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
         return new Response(
@@ -679,16 +680,6 @@ describe("findProjectsBySlug", () => {
       const req = new Request(input, init);
       const url = req.url;
 
-      // Regions endpoint
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
       // Organizations list
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
         return new Response(
@@ -715,16 +706,6 @@ describe("findProjectsBySlug", () => {
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
-
-      // Regions endpoint
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
 
       // Organizations list
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
@@ -773,16 +754,6 @@ describe("findProjectsBySlug", () => {
       const req = new Request(input, init);
       const url = req.url;
 
-      // Regions endpoint
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
       // Organizations list
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
         return new Response(
@@ -823,15 +794,6 @@ describe("findProjectsBySlug", () => {
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
-
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
 
       if (url.includes("/organizations/") && !url.includes("/projects/")) {
         return new Response(
@@ -946,15 +908,6 @@ describe("resolveEventInOrg", () => {
       const req = new Request(input, init);
       const url = req.url;
 
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
       if (url.includes("/eventids/abc123def456/")) {
         return new Response(
           JSON.stringify({
@@ -984,19 +937,7 @@ describe("resolveEventInOrg", () => {
   test("returns null when event not found in org", async () => {
     const { resolveEventInOrg } = await import("../../src/lib/api-client.js");
 
-    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const req = new Request(input, init);
-      const url = req.url;
-
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
+    globalThis.fetch = async () => {
       return new Response(JSON.stringify({ detail: "Not Found" }), {
         status: 404,
         headers: { "Content-Type": "application/json" },
@@ -1042,15 +983,6 @@ describe("findEventAcrossOrgs", () => {
       const req = new Request(input, init);
       const url = req.url;
 
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
       if (url.includes("/organizations/") && !url.includes("/eventids/")) {
         return new Response(
           JSON.stringify([
@@ -1092,15 +1024,6 @@ describe("findEventAcrossOrgs", () => {
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
-
-      if (url.includes("/users/me/regions/")) {
-        return new Response(
-          JSON.stringify({
-            regions: [{ name: "us", url: "https://us.sentry.io" }],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
 
       if (url.includes("/organizations/") && !url.includes("/eventids/")) {
         return new Response(
@@ -1489,10 +1412,12 @@ describe("listTransactions", () => {
       return new Response(JSON.stringify({}), { status: 200 });
     };
 
-    const result = await listTransactions("my-org", "my-project");
+    const result = await listTransactions("my-org", "my-project", {
+      limit: 1,
+    });
     expect(Array.isArray(result.data)).toBe(true);
     expect(result.data).toHaveLength(1);
-    expect(result.nextCursor).toBe("1735689600:0:0");
+    expect(result.nextCursor).toContain("1735689600:0:0");
   });
 
   test("returns no nextCursor when link header has results=false", async () => {
@@ -1882,16 +1807,15 @@ describe("getLogs", () => {
 
     const result = await getLogs("my-org", "my-project", ids);
 
-    // Should have made 2 separate requests
-    expect(capturedUrls).toHaveLength(2);
-
-    // First batch: 100 IDs
-    const url1 = new URL(capturedUrls[0]);
-    expect(url1.searchParams.get("per_page")).toBe(String(API_MAX_PER_PAGE));
-
-    // Second batch: 50 IDs
-    const url2 = new URL(capturedUrls[1]);
-    expect(url2.searchParams.get("per_page")).toBe("50");
+    // One request of 100 IDs and one of 50. The batches run in parallel, so
+    // they can reach fetch in either order.
+    const perPage = capturedUrls.map((url) =>
+      new URL(url).searchParams.get("per_page"),
+    );
+    expect(perPage).toHaveLength(2);
+    expect(perPage).toEqual(
+      expect.arrayContaining([String(API_MAX_PER_PAGE), "50"]),
+    );
 
     // Results from both batches should be flattened
     expect(result).toHaveLength(2);

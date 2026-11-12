@@ -1,0 +1,3 @@
+{"event_id": "9dd5c245c456bb1da2b82673d5b3a9d4", "sent_at": "2024-10-27T03:33:20Z", "sdk": {"name": "sentry.javascript.node", "version": "10.0.0"}}
+{"type": "feedback", "length": 291}
+{"timestamp":1730000002.1,"contexts":{"feedback":{"message":"The checkout button did not complete my order.","name":"Example User","contact_email":"user@example.com","url":"http://localhost:3000/checkout","source":"feedback_widget","associated_event_id":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}}}

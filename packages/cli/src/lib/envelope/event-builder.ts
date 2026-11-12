@@ -31,7 +31,12 @@ export type SendEventFlags = {
   "no-environ"?: boolean;
 };
 
-const KNOWN_USER_FIELDS = new Set(["id", "email", "ip_address", "username"]);
+export const KNOWN_USER_FIELDS = new Set([
+  "id",
+  "email",
+  "ip_address",
+  "username",
+]);
 
 /**
  * Parse a single KEY:VALUE (or KEY=VALUE) string, splitting on the first
@@ -203,7 +208,7 @@ export async function buildEventFromFlags(
         ? {
             message: flags.message.join("\n"),
             ...(flags["message-arg"]?.length
-              ? { params: flags["message-arg"] as unknown[] }
+              ? { params: flags["message-arg"] }
               : {}),
           }
         : undefined,

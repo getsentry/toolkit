@@ -2,13 +2,13 @@
  * Tests for createProjectWithDsn — verifies project and DSN caches are
  * seeded after project creation.
  *
- * Issue #745: After `sentry project create` or `sentry init`, resolved
- * project info wasn't saved to the local DB, forcing the next command to
- * re-scan files and hit the API.
+ * Issue #745: After `sentry project create`, resolved project info wasn't
+ * saved to the local DB, forcing the next command to re-scan files and hit
+ * the API.
  */
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   createProjectWithDsn,
@@ -145,7 +145,7 @@ function mockCreateAndKeysFlow(options?: {
 }): typeof fetch {
   let callIndex = 0;
   return mockFetch(async (input, init) => {
-    const req = new Request(input!, init);
+    const req = new Request(input, init);
     callIndex += 1;
 
     // First call: POST to create the project
@@ -256,7 +256,7 @@ describe("createProjectWithDsn", () => {
         });
       }
 
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       if (callIndex === 2) {
         return new Response(JSON.stringify([SAMPLE_KEY]), {
           status: 200,

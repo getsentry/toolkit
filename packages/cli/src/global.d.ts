@@ -47,3 +47,8 @@ declare module "*/generated/api-schema.json" {
   const endpoints: unknown;
   export default endpoints;
 }
+
+declare module "*/generated/idempotent-operations.json" {
+  const operations: unknown;
+  export default operations;
+}

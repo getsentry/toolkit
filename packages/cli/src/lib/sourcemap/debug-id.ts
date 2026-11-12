@@ -49,9 +49,19 @@ const EXISTING_DEBUGID_RE = new RegExp(
 /** A complete debug ID string in either accepted UUID form. */
 const DEBUGID_RE = new RegExp(`^(?:${DEBUGID_PATTERN})$`);
 
-/** Indexed registry writes emitted by Sentry's bundler plugins and legacy CLI. */
+/**
+ * Global registries the Sentry SDK reads debug IDs from: Sentry's own, and
+ * the native one Turbopack writes when `turbopack.debugIds` is enabled.
+ */
+const DEBUGID_REGISTRY = "(?:_sentryDebugIds|_debugIds)";
+
+/**
+ * Indexed registry writes emitted by Sentry's bundler plugins, the legacy CLI
+ * (`e._sentryDebugIds[n]="<id>"`), and Turbopack, which initializes the
+ * registry inline: `(e._debugIds|| (e._debugIds={}))[n]="<id>"`.
+ */
 const DEBUGID_REGISTRATION_RE = new RegExp(
-  `(?:\\.\\s*_sentryDebugIds|\\[\\s*["']_sentryDebugIds["']\\s*\\])\\s*\\[\\s*[$\\w]+\\s*\\]\\s*=\\s*(["'])(${DEBUGID_PATTERN})\\1`,
+  `(?:\\.\\s*${DEBUGID_REGISTRY}|\\[\\s*["']${DEBUGID_REGISTRY}["']\\s*\\])(?:\\s*=\\s*\\{\\s*\\}\\s*\\)\\s*\\))?\\s*\\[\\s*[$\\w]+\\s*\\]\\s*=\\s*(["'])(${DEBUGID_PATTERN})\\1`,
   "g",
 );
 
@@ -84,7 +94,8 @@ export function readJsDebugId(js: string): string | undefined {
 }
 
 /**
- * Recognize a Sentry runtime snippet registering the selected debug ID.
+ * Recognize a runtime snippet registering the selected debug ID, from Sentry
+ * or Turbopack.
  * SDK registry reads and ECMA-426 comments alone do not register a bundle.
  * Match the writer rather than the identifier marker, which the legacy CLI
  * does not emit. This recognizes emitted snippets, not arbitrary JavaScript.
@@ -120,8 +131,8 @@ export function readSourcemapDebugId(map: unknown): string | undefined {
 
 /** Outcome of stamping a debug ID onto a standalone sourcemap. */
 export type SourcemapStampResult = {
-  /** Whether the map was rewritten on disk. */
-  written: boolean;
+  /** Whether the map was rewritten on disk (in a dry run: would be). */
+  changed: boolean;
   /** The debug ID the map carried before, when it carried a different one. */
   replaced?: string;
 };
@@ -141,7 +152,7 @@ export type SourcemapStampResult = {
  * @param mapPath - Path to the `.map` file
  * @param debugId - The debug ID to write
  * @param options.dryRun - Report what would change without writing
- * @returns Whether the map was written, and the id it replaced
+ * @returns Whether the map changes, and the id it replaced
  */
 export async function setSourcemapDebugId(
   mapPath: string,
@@ -151,14 +162,13 @@ export async function setSourcemapDebugId(
   const map = JSON.parse(await readFile(mapPath, "utf-8")) as SourcemapJson;
   const existing = readSourcemapDebugId(map);
   if (existing === debugId) {
-    return { written: false };
+    return { changed: false };
   }
-  if (options.dryRun) {
-    return { written: false, replaced: existing };
+  if (!options.dryRun) {
+    mutateSourcemap(map, debugId, {});
+    await writeFile(mapPath, JSON.stringify(map));
   }
-  mutateSourcemap(map, debugId, {});
-  await writeFile(mapPath, JSON.stringify(map));
-  return { written: true, replaced: existing };
+  return { changed: true, replaced: existing };
 }
 
 /**
@@ -371,9 +381,71 @@ export async function injectDebugId(
 type SourcemapJson = {
   mappings?: string;
   sources?: (string | null)[];
+  sections?: IndexMapSection[];
   debug_id?: string;
   debugId?: string;
 };
+
+/** A section of an ECMA-426 index map, which Turbopack emits. */
+type IndexMapSection = {
+  offset?: { line?: unknown };
+  map?: SourcemapJson;
+};
+
+/**
+ * Insert an empty line into VLQ `mappings` before line `line` (0-based); each
+ * `;` ends a generated line. Scans only up to the insertion point instead of
+ * splitting every line, since `line` is at most the 2 header lines and
+ * mappings for large bundles run to many megabytes.
+ */
+function insertMappingsLine(mappings: string, line: number): string {
+  let at = 0;
+  for (let i = 0; i < line; i++) {
+    const next = mappings.indexOf(";", at);
+    if (next === -1) {
+      return `${mappings};`;
+    }
+    at = next + 1;
+  }
+  return `${mappings.slice(0, at)};${mappings.slice(at)}`;
+}
+
+/**
+ * Insert an unmapped generated line at `line` (0-based), so mappings at and
+ * after it describe code one line lower.
+ *
+ * Regular maps get an empty `mappings` line. Index maps shift every section
+ * starting at or after `line`; the section spanning `line` (when a hashbang or
+ * Bun pragma kept the insertion below its start) gets the line inserted into
+ * its own map.
+ */
+function insertGeneratedLine(map: SourcemapJson, line: number): void {
+  if (typeof map.mappings === "string") {
+    map.mappings = insertMappingsLine(map.mappings, line);
+    return;
+  }
+  if (!Array.isArray(map.sections)) {
+    return;
+  }
+  // Sections are ordered, so the last one starting above `line` spans it.
+  let spanning: { map: SourcemapJson; start: number } | undefined;
+  for (const section of map.sections) {
+    const start = section?.offset?.line;
+    if (typeof start !== "number") {
+      continue;
+    }
+    if (start >= line) {
+      section.offset = { ...section.offset, line: start + 1 };
+    } else if (typeof section.map === "object" && section.map !== null) {
+      spanning = { map: section.map, start };
+    } else {
+      spanning = undefined;
+    }
+  }
+  if (spanning) {
+    insertGeneratedLine(spanning.map, line - spanning.start);
+  }
+}
 
 /**
  * Mutate a parsed sourcemap in place to carry a debug ID.
@@ -381,9 +453,9 @@ type SourcemapJson = {
  * - Normalizes Windows backslashes in `sources` to forward slashes so
  *   uploaded paths are platform-consistent (esbuild/Bun on Windows emit
  *   `"src\\bin.ts"`). No-op on Linux/macOS.
- * - When `snippetLine` is set, inserts an empty line into `mappings` at that
- *   index to account for the injected IIFE snippet line (each `;` is a VLQ
- *   line boundary). Header lines kept above the snippet keep their mappings.
+ * - When `snippetLine` is set, inserts an unmapped generated line at that
+ *   index to account for the injected IIFE snippet line, in regular and index
+ *   maps. Header lines kept above the snippet keep their mappings.
  * - Sets both `debug_id` and `debugId` fields.
  *
  * @param map - The parsed sourcemap object (mutated in place)
@@ -398,10 +470,8 @@ function mutateSourcemap(
   if (map.sources) {
     map.sources = map.sources.map((s) => (s ? s.replaceAll("\\", "/") : s));
   }
-  if (options.snippetLine !== undefined && typeof map.mappings === "string") {
-    const lines = map.mappings.split(";");
-    lines.splice(options.snippetLine, 0, "");
-    map.mappings = lines.join(";");
+  if (options.snippetLine !== undefined) {
+    insertGeneratedLine(map, options.snippetLine);
   }
   map.debug_id = debugId;
   map.debugId = debugId;

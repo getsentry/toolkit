@@ -84,7 +84,7 @@ describe("EventCommandDialog", () => {
     );
 
     expect(
-      screen.getByRole("dialog", { name: "Search Local events" }),
+      screen.getByRole("dialog", { name: "Search this session" }),
     ).not.toBeNull();
     expect(screen.getByRole("option", { name: "Traces" })).not.toBeNull();
   });
@@ -127,6 +127,7 @@ describe("EventCommandDialog", () => {
   });
 
   test("offers the current-view filter when a search query is present", () => {
+    const onFilterView = vi.fn();
     render(
       <EventCommandDialog
         enabled
@@ -134,6 +135,8 @@ describe("EventCommandDialog", () => {
         navigation={navigation}
         open
         query="users"
+        onFilterView={onFilterView}
+        currentViewLabel="Logs"
         onNavigate={vi.fn()}
         onOpenChange={vi.fn()}
         onQueryChange={vi.fn()}
@@ -141,9 +144,14 @@ describe("EventCommandDialog", () => {
       />,
     );
 
-    expect(screen.getByText("Filter current view")).not.toBeNull();
+    expect(screen.getByText("Filter Logs")).not.toBeNull();
     expect(
-      screen.getByRole("option", { name: /Filter current view for “users”/ }),
+      screen.getByRole("option", { name: /Filter Logs for “users”/ }),
     ).not.toBeNull();
+    expect(onFilterView).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("option", { name: /Filter Logs for “users”/ }),
+    );
+    expect(onFilterView).toHaveBeenCalledWith("users");
   });
 });
