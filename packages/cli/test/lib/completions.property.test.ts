@@ -278,7 +278,7 @@ describe("property: flag names", () => {
   test("hidden flags are excluded", () => {
     for (const command of Object.values(generatedTargets.commands)) {
       // The global --log-level is hidden; the parser still accepts it
-      expect(command.flagNames ?? {}).not.toHaveProperty("--log-level");
+      expect(command.flagNames).not.toHaveProperty("--log-level");
     }
   });
 });
@@ -544,7 +544,7 @@ describe("complete.ts: generated completion targets", () => {
   });
 
   test("project create completes name:platform specs", () => {
-    expect(generatedTargets.commands["project create"]?.positionals).toEqual([
+    expect(generatedTargets.commands["project create"].positionals).toEqual([
       PROJECT_SPEC_TARGET,
     ]);
   });

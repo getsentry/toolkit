@@ -84,6 +84,12 @@
       }
     },
     {
+      "files": ["packages/cli/test/**/*.{ts,tsx}"],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
       "files": [
         "packages/cli/src/**/*.{ts,tsx}",
         "packages/cli/test/**/*.{ts,tsx}"

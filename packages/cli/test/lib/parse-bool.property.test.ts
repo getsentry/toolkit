@@ -140,9 +140,7 @@ describe("property: parseBoolValue", () => {
       property(string(), (input) => {
         // Should never throw, always returns boolean | null
         const result = parseBoolValue(input);
-        expect(result === true || result === false || result === null).toBe(
-          true,
-        );
+        expect([true, false, null]).toContain(result);
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
