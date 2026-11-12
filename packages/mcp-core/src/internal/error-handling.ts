@@ -7,6 +7,7 @@ import {
 import {
   ApiError,
   ApiClientError,
+  ApiPermissionError,
   ApiRateLimitError,
   ApiServerError,
   isApiAuthenticationErrorDeep,
@@ -68,6 +69,27 @@ export function isApiClientError(error: unknown): error is ApiClientError {
  */
 export function isApiServerError(error: unknown): error is ApiServerError {
   return error instanceof ApiServerError;
+}
+
+/**
+ * The 403 from a token that lacks every scope the endpoint accepts, found on
+ * `error` or within the first few levels of its `cause`, since tools may
+ * rewrap API errors.
+ */
+export function findInsufficientScopeError(
+  error: unknown,
+): ApiPermissionError | undefined {
+  let current = error;
+  for (let depth = 0; depth < 5 && current instanceof Error; depth++) {
+    if (
+      current instanceof ApiPermissionError &&
+      current.isInsufficientScopeError()
+    ) {
+      return current;
+    }
+    current = current.cause;
+  }
+  return undefined;
 }
 
 /**
@@ -185,6 +207,18 @@ export async function formatErrorForUser(
   error: unknown,
   options?: { transport?: TransportType },
 ): Promise<string> {
+  // Checked before input errors: a missing scope can arrive wrapped in one,
+  // and its "try again" advice would send the agent into retries that cannot
+  // succeed with the same token.
+  const insufficientScopeError = findInsufficientScopeError(error);
+  if (insufficientScopeError) {
+    return [
+      "**Missing Permission**",
+      insufficientScopeError.toUserMessage(),
+      "Reconnect Sentry with a token or authorization that includes one of these scopes, then try again.",
+    ].join("\n\n");
+  }
+
   if (isUserInputError(error)) {
     return [
       "**Input Error**",
