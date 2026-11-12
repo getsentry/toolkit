@@ -23,6 +23,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
+import { replaceFile } from "../replace-file.js";
 import { isLikelyBinary } from "../scan/binary.js";
 import {
   type DecodedInlineMap,
@@ -138,6 +139,20 @@ export type SourcemapStampResult = {
 };
 
 /**
+ * Read and parse a standalone sourcemap.
+ *
+ * Some toolchains save maps with a BOM, which `JSON.parse` rejects.
+ *
+ * @throws {SyntaxError} When the file is not JSON
+ */
+export async function readSourcemapFile(
+  mapPath: string,
+): Promise<SourcemapJson> {
+  const text = (await readFile(mapPath, "utf-8")).replace(/^\uFEFF/, "");
+  return JSON.parse(text) as SourcemapJson;
+}
+
+/**
  * Set a debug ID on a sourcemap file, leaving everything else alone.
  *
  * Unlike {@link injectDebugId} this touches no host file, so it suits maps
@@ -159,14 +174,14 @@ export async function setSourcemapDebugId(
   debugId: string,
   options: { dryRun?: boolean } = {},
 ): Promise<SourcemapStampResult> {
-  const map = JSON.parse(await readFile(mapPath, "utf-8")) as SourcemapJson;
+  const map = await readSourcemapFile(mapPath);
   const existing = readSourcemapDebugId(map);
   if (existing === debugId) {
     return { changed: false };
   }
   if (!options.dryRun) {
     mutateSourcemap(map, debugId, {});
-    await writeFile(mapPath, JSON.stringify(map));
+    await replaceFile(mapPath, JSON.stringify(map));
   }
   return { changed: true, replaced: existing };
 }

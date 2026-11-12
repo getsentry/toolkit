@@ -21,7 +21,11 @@ import { resolve as resolvePath } from "node:path";
 import type ignore from "ignore";
 import { logger } from "../logger.js";
 import { walkFiles } from "../scan/index.js";
-import { parseSections } from "../wasm/binary.js";
+import {
+  BUILD_ID_SECTION,
+  parseSections,
+  WasmParseError,
+} from "../wasm/binary.js";
 import {
   buildIdFromSections,
   debugIdFromBuildId,
@@ -29,7 +33,7 @@ import {
 } from "../wasm/build-id.js";
 import { isDebugCompanionPath } from "../wasm/prepare.js";
 import { ensureBuildIdOnDisk } from "../wasm/stamp.js";
-import { setSourcemapDebugId } from "./debug-id.js";
+import { readSourcemapFile, setSourcemapDebugId } from "./debug-id.js";
 import {
   type DiscoveryDiagnostic,
   type PathFilter,
@@ -81,6 +85,11 @@ export type WasmSyncResult = {
    * would be).
    */
   moduleStamped: boolean;
+  /**
+   * Why the pair was left alone, when it was. A skipped pair has no debug ID,
+   * wrote nothing, and is not uploaded.
+   */
+  skipped?: string;
 };
 
 /**
@@ -107,7 +116,9 @@ export type WasmSyncOptions = {
  * Reads the module's `build_id`, stamping a fresh one when it has none, then
  * writes that id onto the map. Idempotent: a map already carrying the id is
  * left byte-identical, and a module that already has a `build_id` is never
- * rewritten.
+ * rewritten. A pair that can't be handled (not a module, a map that isn't
+ * JSON, an unreadable `build_id`, files it can't write) is skipped with a
+ * warning instead of failing the run.
  *
  * @param pair - The module and its companion map
  * @param options - Stamping options
@@ -117,12 +128,64 @@ export async function syncWasmSourcemap(
   pair: WasmPair,
   options: WasmSyncOptions = {},
 ): Promise<WasmSyncResult> {
+  try {
+    return await reconcilePair(pair, options);
+  } catch (error) {
+    const reason = skipReason(error);
+    if (!reason) {
+      throw error;
+    }
+    return skip(pair, reason);
+  }
+}
+
+/** Errors that mean "this pair can't be handled", not "the CLI is broken". */
+const UNWRITABLE_CODES = new Set(["EACCES", "EPERM", "EROFS"]);
+
+/**
+ * Describe an error that should skip one pair rather than abort the run.
+ *
+ * A build directory can hold a `.wasm` that isn't one (a saved error page) or
+ * a map that isn't JSON. The JS path skips such files with a warning, so the
+ * wasm path does too instead of failing after the JS files were rewritten.
+ */
+function skipReason(error: unknown): string | undefined {
+  if (error instanceof WasmParseError) {
+    return `not a valid wasm module: ${error.message}`;
+  }
+  if (error instanceof SyntaxError) {
+    return `sourcemap is not valid JSON: ${error.message}`;
+  }
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  if (code && UNWRITABLE_CODES.has(code)) {
+    return `cannot write files (${code})`;
+  }
+}
+
+/** Warn about a pair and report it as untouched. */
+function skip(pair: WasmPair, reason: string): WasmSyncResult {
+  log.warn(`Skipping ${pair.wasmPath}: ${reason}`);
+  return { ...pair, mapWritten: false, moduleStamped: false, skipped: reason };
+}
+
+async function reconcilePair(
+  pair: WasmPair,
+  options: WasmSyncOptions,
+): Promise<WasmSyncResult> {
   const { wasmPath, mapPath } = pair;
 
   // One read serves both the lookup and the stamp. Reading the id first also
   // spares an already-stamped module the full re-encode `stampBuildId` does.
   const bytes = await readFile(wasmPath);
-  const existing = buildIdFromSections(parseSections(bytes));
+  const sections = parseSections(bytes);
+  const existing = buildIdFromSections(sections);
+  if (!existing && sections.some((s) => s.name === BUILD_ID_SECTION)) {
+    // Stamping would append a second `build_id`, and readers disagree on
+    // which one wins (symbolic takes the last, `@sentry/wasm` the first).
+    return skip(pair, "its build_id section is malformed");
+  }
+  // Fail on a broken map before stamping, so a skipped pair wrote nothing.
+  await readSourcemapFile(mapPath);
   const buildId = await ensureBuildIdOnDisk(wasmPath, bytes, existing, options);
   // Reported the same way in a dry run, as `injected` is for JS: the flags
   // say what a real run does, so a preview counts the files it would touch.
@@ -132,9 +195,13 @@ export async function syncWasmSourcemap(
     ? debugIdFromBuildId(formatBuildId(buildId))
     : undefined;
   if (!debugId) {
-    // Either a dry run left the module unstamped, or its `build_id` is too
-    // short to form a UUID. Neither is worth failing the run over. A real run
-    // would write the minted id onto the map; a short id leaves it alone.
+    if (buildId) {
+      log.warn(
+        `${wasmPath} has a ${buildId.length}-byte build_id, too short for a debug ID, so its sourcemap gets none`,
+      );
+    }
+    // Otherwise a dry run left the module unstamped; a real run would write
+    // the minted id onto the map.
     return { wasmPath, mapPath, mapWritten: moduleStamped, moduleStamped };
   }
 

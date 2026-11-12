@@ -529,9 +529,10 @@ export const uploadCommand = buildCommand({
     // `--no-rewrite` runs the wasm sync read-only: nothing is stamped and no
     // map is rewritten, but a `build_id` already on disk still identifies the
     // pair, so it rides along on the manifest entries.
-    const wasmResults = await syncWasmPairs(wasmPairs, {
-      dryRun: flags["no-rewrite"],
-    });
+    // Skipped pairs were already warned about and are left out of the upload.
+    const wasmResults = (
+      await syncWasmPairs(wasmPairs, { dryRun: flags["no-rewrite"] })
+    ).filter((result) => !result.skipped);
 
     const urlPrefix = flags["url-prefix"] ?? "~/";
 

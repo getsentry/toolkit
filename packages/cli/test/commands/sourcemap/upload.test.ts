@@ -1128,6 +1128,34 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     }
   });
 
+  test("a .wasm that is not a module is skipped; the JS pair still uploads", async () => {
+    await writeFile(join(dir, "app.js"), "console.log(1)\n");
+    await writeFile(
+      join(dir, "app.js.map"),
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
+    );
+    await writeFile(join(dir, "broken.wasm"), "<html>Not Found</html>");
+    await writeFile(
+      join(dir, "broken.wasm.map"),
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
+    );
+
+    const uploadSpy = vi
+      .spyOn(sourcemapsApi, "uploadSourcemaps")
+      .mockResolvedValue(undefined);
+    try {
+      const ctx = makeContext();
+      await func.call(ctx, {}, dir);
+      const files = uploadSpy.mock.calls[0]?.[0]?.files ?? [];
+      expect(files.map((f) => f.url).sort()).toEqual([
+        "~/app.js",
+        "~/app.js.map",
+      ]);
+    } finally {
+      uploadSpy.mockRestore();
+    }
+  });
+
   test("DWARF companions are not uploaded as sourcemap artifacts", async () => {
     await writeWasmPair(dir, "app", WASM_DEBUG_ID);
     await writeWasmPair(dir, "app.debug", WASM_DEBUG_ID);

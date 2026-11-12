@@ -85,6 +85,112 @@ async function readModuleDebugId(path: string): Promise<string | undefined> {
 }
 
 describe("syncWasmSourcemap", () => {
+  /** Write a module whose `build_id` section holds exactly `body`. */
+  async function writeWasmWithBuildIdBody(name: string, body: string) {
+    const path = join(dir, name);
+    await writeFile(
+      path,
+      wasmModule([
+        customSection("name", fromHex("00")),
+        customSection("build_id", fromHex(body)),
+      ]),
+    );
+    return path;
+  }
+
+  /** Count the `build_id` sections in a module on disk. */
+  async function countBuildIdSections(path: string): Promise<number> {
+    return parseSections(await readFile(path)).filter(
+      (s) => s.name === "build_id",
+    ).length;
+  }
+
+  test("adopts a legacy bare 16-byte build_id instead of stamping a second", async () => {
+    const wasmPath = await writeWasmWithBuildIdBody(
+      "legacy.wasm",
+      "90f5be01270255a18255e7c3e501bc25",
+    );
+    const before = await readFile(wasmPath);
+    const mapPath = await writeMap("legacy.wasm.map");
+
+    const result = await syncWasmSourcemap({ wasmPath, mapPath });
+
+    expect(result.moduleStamped).toBe(false);
+    expect(result.debugId).toBe("90f5be01-2702-55a1-8255-e7c3e501bc25");
+    expect(await readFile(wasmPath)).toEqual(before);
+    expect(await countBuildIdSections(wasmPath)).toBe(1);
+  });
+
+  test("skips a module whose build_id section is malformed", async () => {
+    // Declares 32 bytes but holds 2: unreadable, yet present.
+    const wasmPath = await writeWasmWithBuildIdBody("bad-id.wasm", "200102");
+    const before = await readFile(wasmPath);
+    const mapPath = await writeMap("bad-id.wasm.map");
+    const mapBefore = await readFile(mapPath);
+
+    const result = await syncWasmSourcemap({ wasmPath, mapPath });
+
+    expect(result.skipped).toMatch(/build_id section is malformed/);
+    expect(result.debugId).toBeUndefined();
+    expect(await readFile(wasmPath)).toEqual(before);
+    expect(await readFile(mapPath)).toEqual(mapBefore);
+  });
+
+  test("skips a .wasm file that is not a module", async () => {
+    const wasmPath = join(dir, "404.wasm");
+    await writeFile(wasmPath, "<html>Not Found</html>");
+    const mapPath = await writeMap("404.wasm.map");
+    const mapBefore = await readFile(mapPath);
+
+    const result = await syncWasmSourcemap({ wasmPath, mapPath });
+
+    expect(result.skipped).toMatch(/not a valid wasm module/);
+    expect(await readFile(mapPath)).toEqual(mapBefore);
+  });
+
+  test("skips a map that is not JSON without stamping the module", async () => {
+    const wasmPath = await writeWasm("app.wasm");
+    const before = await readFile(wasmPath);
+    const mapPath = join(dir, "app.wasm.map");
+    await writeFile(mapPath, "not json");
+
+    const result = await syncWasmSourcemap({ wasmPath, mapPath });
+
+    expect(result.skipped).toMatch(/not valid JSON/);
+    expect(result.moduleStamped).toBe(false);
+    expect(await readFile(wasmPath)).toEqual(before);
+  });
+
+  test("reads a map saved with a BOM", async () => {
+    const wasmPath = await writeWasm("app.wasm", FIXED_UUID);
+    const mapPath = join(dir, "app.wasm.map");
+    await writeFile(
+      mapPath,
+      `\uFEFF${JSON.stringify({ version: 3, mappings: "" })}`,
+    );
+
+    const result = await syncWasmSourcemap({ wasmPath, mapPath });
+
+    expect(result.skipped).toBeUndefined();
+    expect((await readMap(mapPath)).debug_id).toBe(FIXED_UUID);
+  });
+
+  test("leaves the map alone when the build_id is too short for a debug ID", async () => {
+    const wasmPath = await writeWasmWithBuildIdBody(
+      "short.wasm",
+      "080102030405060708",
+    );
+    const mapPath = await writeMap("short.wasm.map");
+    const mapBefore = await readFile(mapPath);
+
+    const result = await syncWasmSourcemap({ wasmPath, mapPath });
+
+    expect(result.debugId).toBeUndefined();
+    expect(result.moduleStamped).toBe(false);
+    expect(result.mapWritten).toBe(false);
+    expect(await readFile(mapPath)).toEqual(mapBefore);
+  });
+
   test("stamps the map with the id the module already carries", async () => {
     const wasmPath = await writeWasm("app.wasm", FIXED_UUID);
     const before = await readFile(wasmPath);

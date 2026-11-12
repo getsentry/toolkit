@@ -8,7 +8,7 @@
  * nothing.
  */
 
-import { writeFile } from "node:fs/promises";
+import { replaceFile } from "../replace-file.js";
 import { type SplitWasmResult, splitWasm } from "./split.js";
 
 /** How to stamp a module that carries no build id yet. */
@@ -66,6 +66,6 @@ export async function ensureBuildIdOnDisk(
     return null;
   }
   const stamped = stampBuildId(bytes, options.buildId);
-  await writeFile(path, stamped.module);
+  await replaceFile(path, stamped.module);
   return stamped.buildId;
 }

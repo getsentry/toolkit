@@ -74,9 +74,17 @@ function formatInjectResult(data: InjectCommandResult): string {
   if (data.wasm.length > 0) {
     lines.push("");
     for (const pair of data.wasm) {
+      if (pair.skipped) {
+        lines.push(
+          `✗ ${pair.wasmPath} → ${colorTag("muted", `skipped: ${pair.skipped}`)}`,
+        );
+        continue;
+      }
       const status = wasmChanged(pair) ? "✓" : "–";
-      // A dry run over an unstamped module cannot know the id it would mint.
-      const debugId = pair.debugId ?? "(pending)";
+      // A dry run over an unstamped module cannot know the id it would mint;
+      // a module whose build_id is too short never gets one.
+      const debugId =
+        pair.debugId ?? (pair.moduleStamped ? "(pending)" : "(none)");
       lines.push(`${status} ${pair.wasmPath} → ${colorTag("muted", debugId)}`);
     }
   }
