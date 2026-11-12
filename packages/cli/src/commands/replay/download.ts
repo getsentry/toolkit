@@ -263,22 +263,10 @@ async function downloadVideo(
   const clipsDir = `${output.slice(0, output.length - extname(output).length)}-clips`;
   const ffmpeg = whichSync("ffmpeg");
 
-  if (!ffmpeg) {
-    // Replace clips from an earlier run, as the mp4 output would be.
-    await rm(clipsDir, { recursive: true, force: true });
-    await mkdir(clipsDir, { recursive: true });
-    const files = await saveClips(clipsDir, options);
-    const listPath = join(clipsDir, CONCAT_LIST_FILE);
-    log.warn(
-      `ffmpeg was not found on your PATH, so the ${files.length} video clips were saved separately in ${clipsDir}. ` +
-        `Install ffmpeg and rerun to get one mp4, or join them with: ffmpeg -f concat -i ${listPath} -c copy ${output}`,
-    );
-    return videoResult(options, files, "clips", clipsDir);
-  }
-
   await mkdir(dirname(output), { recursive: true });
-  // Download next to the output so a failed join can rename the clips into
-  // place without crossing filesystems.
+  // Download next to the output so the clips can be renamed into place
+  // without crossing filesystems. Clips from an earlier run are only
+  // replaced once every new clip is on disk.
   const workDir = await mkdtemp(
     join(dirname(output), `.${basename(clipsDir)}-`),
   );
@@ -289,6 +277,17 @@ async function downloadVideo(
     await rm(workDir, { recursive: true, force: true });
     throw error;
   }
+
+  if (!ffmpeg) {
+    const kept = await keepClips(workDir, clipsDir);
+    const listPath = join(kept, CONCAT_LIST_FILE);
+    log.warn(
+      `ffmpeg was not found on your PATH, so the ${files.length} video clips were saved separately in ${kept}. ` +
+        `Install ffmpeg and rerun to get one mp4, or join them with: ffmpeg -f concat -i ${listPath} -c copy ${output}`,
+    );
+    return videoResult(options, files, "clips", kept);
+  }
+
   try {
     await joinClips({
       ffmpeg,

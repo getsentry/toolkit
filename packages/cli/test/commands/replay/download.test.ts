@@ -446,6 +446,24 @@ describe("replay download", () => {
       expect(JSON.parse(harness.output())).toMatchObject({ clipCount: 1 });
     });
 
+    test("keeps clips from an earlier run when a rerun fails", async () => {
+      vi.mocked(which.whichSync).mockReturnValue(null);
+      const clipsDir = join(tmpDir, `${REPLAY_ID}-clips`);
+      await mkdir(clipsDir);
+      await writeFile(join(clipsDir, "clip-00000.mp4"), "earlier");
+      clipSpy.mockRejectedValue(new ApiError("Server error", 500));
+      const func = await downloadCommand.loader();
+
+      await expect(
+        func.call(createContext().context, { fresh: false }, REPLAY_ID),
+      ).rejects.toThrow(ApiError);
+
+      expect(await readdir(tmpDir)).toEqual([`${REPLAY_ID}-clips`]);
+      expect(await readFile(join(clipsDir, "clip-00000.mp4"), "utf8")).toBe(
+        "earlier",
+      );
+    });
+
     test("rejects a replay whose clips are all missing", async () => {
       clipSpy.mockRejectedValue(new ApiError("Not found", 404));
       const func = await downloadCommand.loader();
