@@ -390,7 +390,7 @@ describe("analyze_issue_with_seer", () => {
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
-            run_id: autofixStateFixture.autofix.run_id,
+            run_id: 123,
           });
         },
       ),
@@ -426,9 +426,7 @@ describe("analyze_issue_with_seer", () => {
 
     expect(requestBody).toEqual({ user_context: "Focus on memory leaks" });
     expect(result).toContain("Starting new analysis...");
-    expect(result).toContain(
-      `Analysis started with Run ID: ${autofixStateFixture.autofix.run_id}`,
-    );
+    expect(result).toContain("Analysis started with Run ID: 123");
     expect(result).toContain("## Analysis Complete");
   });
 
@@ -505,13 +503,17 @@ describe("analyze_issue_with_seer", () => {
   const RESTART_URL =
     "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-RESTART/autofix/";
 
-  function failedRun(runId: number, failureReason?: string) {
+  function failedRun(
+    runId: number,
+    failureReason?: string,
+    blocks: JsonBodyType[] = [],
+  ) {
     return {
       autofix: {
         run_id: runId,
         status: "error",
         failure_reason: failureReason,
-        blocks: [],
+        blocks,
       },
     };
   }
@@ -586,23 +588,26 @@ describe("analyze_issue_with_seer", () => {
     },
   );
 
-  it("keeps polling until the new run replaces the failed one", async () => {
-    const { result } = await analyzeWithStates([
-      failedRun(456, "out_of_credits"),
-      // Sentry can still return the old run right after the POST.
-      failedRun(456, "out_of_credits"),
-      failedRun(456, "out_of_credits"),
-      completedRun(789),
-    ]);
-
-    expect(result).toContain("## Analysis Complete");
-    expect(result).toContain('<seer_analysis run_id="789" step="root_cause">');
-    expect(result).not.toContain("## Analysis Failed");
-  });
-
-  it("explains why a restart did not start when Sentry answers 402", async () => {
+  it("keeps the failed run's partial analysis when a restart gets a 402", async () => {
     const { result, postCallCount } = await analyzeWithStates(
-      [failedRun(456, "out_of_credits")],
+      [
+        failedRun(456, "out_of_credits", [
+          {
+            id: "block-1",
+            artifacts: [
+              {
+                key: "root_cause",
+                reason: "Root cause analysis completed",
+                data: {
+                  one_line_description: "The request used the wrong bottle ID.",
+                  five_whys: [],
+                  reproduction_steps: [],
+                },
+              },
+            ],
+          },
+        ]),
+      ],
       () =>
         HttpResponse.json(
           {
@@ -619,6 +624,11 @@ describe("analyze_issue_with_seer", () => {
     expect(result).toContain(
       "Your organization does not have enough credits to start an Autofix run.",
     );
+    expect(result).toContain(
+      "The previous analysis (Run ID: 456) failed before it finished. Its partial results:",
+    );
+    expect(result).toContain('<seer_analysis run_id="456" step="root_cause">');
+    expect(result).toContain("The request used the wrong bottle ID.");
   });
 
   it("explains a run that stopped because the org ran out of credits", async () => {
