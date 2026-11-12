@@ -17,6 +17,7 @@ import {
   vi,
 } from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
+import { createResilientDatabase } from "../../src/lib/db/resilient.js";
 import { Database } from "../../src/lib/db/sqlite.js";
 import {
   ApiError,
@@ -25,7 +26,6 @@ import {
   OutputError,
 } from "../../src/lib/errors.js";
 import {
-  createTracedDatabase,
   getSentryTracePropagationTargets,
   initSentry,
   isEbadfError,
@@ -36,6 +36,7 @@ import {
   setCommandSpanName,
   setFlagContext,
   setOrgProjectContext,
+  traceDbQuery,
   withDbSpan,
   withFsSpan,
   withSerializeSpan,
@@ -1010,13 +1011,16 @@ describe("withTracingSpan", () => {
   });
 });
 
-describe("createTracedDatabase", () => {
+describe("traceDbQuery", () => {
+  const traceQueries = (db: Database): Database =>
+    createResilientDatabase(db, traceDbQuery);
+
   test("wraps database and traces query().get()", () => {
     const db = new Database(":memory:");
     db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
     db.exec("INSERT INTO test (id, name) VALUES (1, 'Alice')");
 
-    const tracedDb = createTracedDatabase(db);
+    const tracedDb = traceQueries(db);
     const row = tracedDb.query("SELECT * FROM test WHERE id = ?").get(1) as {
       id: number;
       name: string;
@@ -1031,7 +1035,7 @@ describe("createTracedDatabase", () => {
     db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
     db.exec("INSERT INTO test (id, name) VALUES (1, 'Alice'), (2, 'Bob')");
 
-    const tracedDb = createTracedDatabase(db);
+    const tracedDb = traceQueries(db);
     const rows = tracedDb.query("SELECT * FROM test ORDER BY id").all() as {
       id: number;
       name: string;
@@ -1048,7 +1052,7 @@ describe("createTracedDatabase", () => {
     const db = new Database(":memory:");
     db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
 
-    const tracedDb = createTracedDatabase(db);
+    const tracedDb = traceQueries(db);
     tracedDb.query("INSERT INTO test (id, name) VALUES (?, ?)").run(1, "Alice");
 
     const row = db.query("SELECT * FROM test WHERE id = 1").get() as {
@@ -1061,7 +1065,7 @@ describe("createTracedDatabase", () => {
 
   test("passes through non-query methods like exec", () => {
     const db = new Database(":memory:");
-    const tracedDb = createTracedDatabase(db);
+    const tracedDb = traceQueries(db);
 
     // exec should work without tracing (passes through proxy)
     tracedDb.exec("CREATE TABLE test (id INTEGER)");
@@ -1074,7 +1078,7 @@ describe("createTracedDatabase", () => {
 
   test("passes through close method", () => {
     const db = new Database(":memory:");
-    const tracedDb = createTracedDatabase(db);
+    const tracedDb = traceQueries(db);
 
     // Should not throw
     expect(() => tracedDb.close()).not.toThrow();
@@ -1082,7 +1086,7 @@ describe("createTracedDatabase", () => {
 
   test("propagates errors from queries", () => {
     const db = new Database(":memory:");
-    const tracedDb = createTracedDatabase(db);
+    const tracedDb = traceQueries(db);
 
     expect(() => {
       tracedDb.query("SELECT * FROM nonexistent_table").get();
@@ -1094,7 +1098,7 @@ describe("createTracedDatabase", () => {
   test("statement non-execution methods pass through", () => {
     const db = new Database(":memory:");
     db.exec("CREATE TABLE test (id INTEGER, name TEXT)");
-    const tracedDb = createTracedDatabase(db);
+    const tracedDb = traceQueries(db);
 
     const stmt = tracedDb.query("SELECT * FROM test WHERE id = ?");
 
@@ -1110,7 +1114,7 @@ describe("createTracedDatabase", () => {
   test("statement methods are properly bound for native calls", () => {
     const db = new Database(":memory:");
     db.exec("CREATE TABLE test (id INTEGER, name TEXT)");
-    const tracedDb = createTracedDatabase(db);
+    const tracedDb = traceQueries(db);
 
     const stmt = tracedDb.query("SELECT * FROM test WHERE id = ?");
 

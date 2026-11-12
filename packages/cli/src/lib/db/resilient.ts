@@ -7,8 +7,8 @@
  *
  * This module must stay free of `@sentry/node` so it also applies when
  * telemetry is off (including the shell-completion fast path). Telemetry adds
- * query spans by passing a {@link QueryRunner} (see `createTracedDatabase` in
- * `telemetry.ts`).
+ * query spans through the {@link QueryRunner} that `db/index.ts` passes (see
+ * `traceDbQuery` in `telemetry.ts`).
  */
 
 import { chmodSync, statSync } from "node:fs";

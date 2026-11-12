@@ -5,15 +5,12 @@
  */
 
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
-import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DB_FILENAME, resolveConfigDir } from "../config-dir.js";
 import { getEnv, isPersistenceDisabled } from "../env.js";
 import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
-
-const _require = createRequire(import.meta.url);
 
 const log = logger.withTag("db");
 
@@ -22,6 +19,7 @@ import { nullDatabase, readOnlyView } from "./read-only.js";
 import {
   createResilientDatabase,
   isReadonlyHandlingSilenced,
+  type QueryRunner,
 } from "./resilient.js";
 import { initSchema, runMigrations } from "./schema.js";
 import { Database, type DatabaseHandle } from "./sqlite.js";
@@ -245,12 +243,7 @@ function openDatabase(dbPath: string): Database {
       migrateFromJson(rawDb);
     }
 
-    // Both wrappers repair schema errors and skip read-only writes; the traced
-    // one also adds query spans when telemetry is on.
-    return (
-      lazyTelemetry()?.createTracedDatabase(rawDb) ??
-      createResilientDatabase(rawDb)
-    );
+    return createResilientDatabase(rawDb, runQuery);
   } catch (error) {
     // Clean up on initialization failure to prevent connection leak
     rawDb.close();
@@ -259,38 +252,49 @@ function openDatabase(dbPath: string): Database {
   }
 }
 
-/**
- * `true` in the `complete.cjs` bundle of the npm package and the standalone
- * binary (defined in `script/bundle.ts` and `script/build.ts`), so esbuild
- * drops the telemetry `require` below from that bundle. Undefined when running from source.
- */
-declare const SENTRY_CLI_COMPLETION_BUILD: boolean | undefined;
+/** The spans and metrics `telemetry.ts` gives the database modules. */
+export type DbTelemetry = {
+  traceQuery: QueryRunner;
+  withDbSpan: <T>(operation: string, fn: () => T) => T;
+  recordCacheHit: (cacheName: string, hit: boolean) => void;
+};
 
 /**
- * The telemetry module, required lazily so the database modules never import
- * `@sentry/node` (~100ms). `undefined` when telemetry is off: the `__complete`
- * fast path sets `SENTRY_CLI_NO_TELEMETRY=1` and never loads it.
+ * Set by `telemetry.ts` when it loads, so the database modules never import
+ * `@sentry/node` (~100ms) and the shell-completion fast path runs without it.
+ * A lazy `require` of telemetry from here would load a second, CommonJS copy
+ * of its module graph when running from source under tsx.
  */
-function lazyTelemetry(): typeof import("../telemetry.js") | undefined {
-  if (
-    (typeof SENTRY_CLI_COMPLETION_BUILD !== "undefined" &&
-      SENTRY_CLI_COMPLETION_BUILD) ||
-    getEnv().SENTRY_CLI_NO_TELEMETRY === "1"
-  ) {
-    return;
-  }
-  return _require("../telemetry.js") as typeof import("../telemetry.js");
+let telemetry: DbTelemetry | undefined;
+
+/** Give the database modules telemetry's spans and metrics. */
+export function setDbTelemetry(hooks: DbTelemetry): void {
+  telemetry = hooks;
 }
+
+/** Telemetry's hooks, unless this invocation turned telemetry off. */
+function activeTelemetry(): DbTelemetry | undefined {
+  return getEnv().SENTRY_CLI_NO_TELEMETRY === "1" ? undefined : telemetry;
+}
+
+/**
+ * Looked up per query, so a connection opened before telemetry loaded is
+ * traced too.
+ */
+const runQuery: QueryRunner = (sql, execute) => {
+  const hooks = activeTelemetry();
+  return hooks ? hooks.traceQuery(sql, execute) : execute();
+};
 
 /** Run a database operation in a `db.operation` span (telemetry's `withDbSpan`). */
 export function withDbSpan<T>(operation: string, fn: () => T): T {
-  const telemetry = lazyTelemetry();
-  return telemetry ? telemetry.withDbSpan(operation, fn) : fn();
+  const hooks = activeTelemetry();
+  return hooks ? hooks.withDbSpan(operation, fn) : fn();
 }
 
 /** Record a cache hit or miss (telemetry's `recordCacheHit`). */
 export function recordCacheHit(cacheName: string, hit: boolean): void {
-  lazyTelemetry()?.recordCacheHit(cacheName, hit);
+  activeTelemetry()?.recordCacheHit(cacheName, hit);
 }
 
 /** Close the database connection (used for testing). */

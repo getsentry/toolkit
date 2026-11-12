@@ -166,8 +166,8 @@ const commonDefine: Record<string, string> = {
   // Tree-shakes the SDK's runtime module hooks, which can't instrument a
   // bundle and would hook the host app in library mode.
   __SENTRY_CHANNEL_INJECTION__: "false",
-  // `true` only in `dist/complete.cjs`: drops the lazy telemetry `require`
-  // (and `@sentry/node`) from `src/lib/db/index.ts` there.
+  // `true` only in `dist/complete.cjs`: drops `@clack/prompts` from
+  // `src/lib/prompt.ts` there.
   SENTRY_CLI_COMPLETION_BUILD: "false",
 };
 

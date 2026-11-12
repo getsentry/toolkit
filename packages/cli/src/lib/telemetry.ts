@@ -26,8 +26,7 @@ import {
 } from "./constants.js";
 import { getCustomCaCerts } from "./custom-ca.js";
 import { getOnOffPreference } from "./db/defaults.js";
-import { createResilientDatabase } from "./db/resilient.js";
-import type { Database } from "./db/sqlite.js";
+import { setDbTelemetry } from "./db/index.js";
 import {
   type AgentInfo,
   detectAgent,
@@ -1154,8 +1153,8 @@ export function withTracingSpan<T>(
  * preserves the sync nature of the callback.
  *
  * Use this for grouping logical operations (e.g., "clearAuth" which runs
- * multiple queries). Individual SQL queries are automatically traced when
- * using a database wrapped with `createTracedDatabase`.
+ * multiple queries). Individual SQL queries get their own spans from
+ * {@link traceDbQuery}.
  *
  * @param operation - Name of the operation (e.g., "getAuthToken", "setDefaults")
  * @param fn - The function that performs the database operation
@@ -1174,39 +1173,25 @@ export function withDbSpan<T>(operation: string, fn: () => T): T {
 }
 
 /**
- * Wrap a SQLite Database to trace every query, on top of the schema
- * auto-repair and read-only handling from {@link createResilientDatabase}.
- *
- * Each get/run/all/values call gets a span named after the SQL query.
- *
- * @param db - The SQLite Database to wrap
- * @returns A proxied Database with automatic query tracing
- *
- * @example
- * ```ts
- * const db = new Database(":memory:");
- * const tracedDb = createTracedDatabase(db);
- *
- * // This query execution is automatically traced with the SQL as span name
- * tracedDb.query("SELECT * FROM users WHERE id = ?").get(1);
- * ```
+ * Run one SQLite statement in a span named after the SQL query. The database
+ * modules call it for every get/run/all/values once telemetry has loaded.
  */
-export function createTracedDatabase(db: Database): Database {
-  return createResilientDatabase(db, (sql, execute) =>
-    Sentry.startSpan(
-      {
-        name: sql,
-        op: "db",
-        attributes: {
-          "db.system": "sqlite",
-          "db.statement": sql,
-        },
-        onlyIfParent: true,
+export function traceDbQuery<T>(sql: string, execute: () => T): T {
+  return Sentry.startSpan(
+    {
+      name: sql,
+      op: "db",
+      attributes: {
+        "db.system": "sqlite",
+        "db.statement": sql,
       },
-      execute,
-    ),
+      onlyIfParent: true,
+    },
+    execute,
   );
 }
+
+setDbTelemetry({ traceQuery: traceDbQuery, withDbSpan, recordCacheHit });
 
 /**
  * Wrap a serialization/formatting operation with a span for tracing.

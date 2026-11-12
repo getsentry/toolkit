@@ -220,9 +220,8 @@ async function bundleJs(): Promise<Bundle | undefined> {
       lazyRequireImporters: REQUIRE_ALIAS_FILTER,
       options: BUNDLE_OPTIONS,
     });
-    // Completion runs with telemetry off: `SENTRY_CLI_COMPLETION_BUILD`
-    // drops the lazy telemetry `require` (and `@sentry/node`) from
-    // `src/lib/db/index.ts`.
+    // `SENTRY_CLI_COMPLETION_BUILD` drops `@clack/prompts` from
+    // `src/lib/prompt.ts`.
     await esbuild({
       ...BUNDLE_OPTIONS,
       entryPoints: ["./src/complete-bin.ts"],

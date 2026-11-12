@@ -13,7 +13,7 @@ import type { Plugin } from "esbuild";
  * `formatters/highlight` loads cli-highlight only on the first code block.
  */
 export const REQUIRE_ALIAS_FILTER =
-  /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
+  /(?:db[\\/](?:schema|sqlite)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 
 /** Transform _require() → require() so esbuild resolves lazy relative requires. */
