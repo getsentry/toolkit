@@ -177,6 +177,7 @@ export function extractCommandCatalog(
     if (!isCommand(command)) continue;
     const info = buildCommandInfo(
       command,
+      // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a command path, not a hint.
       `sentry ${segments.join(" ")}`,
       apiAccessByCommand,
     );
