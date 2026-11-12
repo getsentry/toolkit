@@ -80,8 +80,10 @@ describe("snapshots upload", () => {
     uploadOptionsSpy = vi
       .spyOn(preprod, "fetchSnapshotsUploadOptions")
       .mockResolvedValue(UPLOAD_OPTIONS);
-    existsSpy = vi.spyOn(objectstore, "objectExists").mockResolvedValue(false);
-    putSpy = vi.spyOn(objectstore, "putObject").mockResolvedValue(undefined);
+    existsSpy = vi
+      .spyOn(objectstore, "findExistingObjects")
+      .mockResolvedValue(new Set());
+    putSpy = vi.spyOn(objectstore, "putObjects").mockResolvedValue(undefined);
     createSpy = vi.spyOn(preprod, "createPreprodSnapshot").mockResolvedValue({
       artifactId: "snap-1",
       imageCount: 2,
@@ -93,6 +95,13 @@ describe("snapshots upload", () => {
     vi.restoreAllMocks();
     await rm(tmpDir, { recursive: true, force: true });
   });
+
+  /** Object keys passed to `putObjects` across all calls. */
+  function uploadedKeys(): string[] {
+    return putSpy.mock.calls.flatMap(([, uploads]) =>
+      (uploads as objectstore.ObjectUpload[]).map((u) => u.key),
+    );
+  }
 
   /** Write a folder with two PNGs (one nested) + a sidecar; returns its path. */
   async function writeShots(): Promise<string> {
@@ -115,8 +124,9 @@ describe("snapshots upload", () => {
 
       await func.call(harness.context, { "app-id": "com.example.app" }, dir);
 
-      // Two images uploaded (none pre-existing).
-      expect(putSpy).toHaveBeenCalledTimes(2);
+      // Two images uploaded in one call (none pre-existing).
+      expect(putSpy).toHaveBeenCalledTimes(1);
+      expect(uploadedKeys()).toHaveLength(2);
       expect(createSpy).toHaveBeenCalledTimes(1);
 
       const [, , manifest] = createSpy.mock.calls[0] as [
@@ -139,13 +149,19 @@ describe("snapshots upload", () => {
 
       // The objectstore key is `{orgId}/{projectId}/{sha256}` from the scope.
       const hash = images["a.png"].content_hash as string;
-      const key = putSpy.mock.calls.find(([, k]) =>
-        (k as string).endsWith(hash),
-      )?.[1] as string;
+      const key = uploadedKeys().find((k) => k.endsWith(hash)) as string;
       expect(key).toMatch(/^1\/2\/[0-9a-f]{64}$/);
-      expect(key.endsWith(hash)).toBe(true);
-      expect(existsSpy).toHaveBeenCalledWith(config, key);
-      expect(putSpy).toHaveBeenCalledWith(config, key, expect.any(Uint8Array));
+      expect(existsSpy).toHaveBeenCalledTimes(1);
+      expect(existsSpy).toHaveBeenCalledWith(
+        config,
+        expect.arrayContaining([key]),
+      );
+      expect(putSpy).toHaveBeenCalledWith(
+        config,
+        expect.arrayContaining([
+          { key, path: expect.stringMatching(/a\.png$/) },
+        ]),
+      );
     },
   );
 
@@ -200,20 +216,23 @@ describe("snapshots upload", () => {
 
     await func.call(harness.context, { "app-id": "app" }, "shots");
 
-    expect(putSpy).toHaveBeenCalledTimes(2);
+    expect(uploadedKeys()).toHaveLength(2);
     expect(createSpy).toHaveBeenCalledTimes(1);
   });
 
   test("skips objects already present in objectstore", async () => {
     const dir = await writeShots();
     // First image already exists, second does not.
-    existsSpy.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    existsSpy.mockImplementation(
+      async (_config: unknown, requested: string[]) => new Set([requested[0]]),
+    );
     const harness = createContext();
     const func = await uploadCommand.loader();
 
     await func.call(harness.context, { "app-id": "app" }, dir);
 
-    expect(putSpy).toHaveBeenCalledTimes(1);
+    const [, keys] = existsSpy.mock.calls[0] as [unknown, string[]];
+    expect(uploadedKeys()).toEqual([keys[1]]);
   });
 
   test("reports no images and creates nothing for an empty folder", async () => {

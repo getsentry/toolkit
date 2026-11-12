@@ -13,15 +13,27 @@ import {
   type CreateSnapshotResponse,
   createPreprodSnapshot,
   fetchSnapshotsUploadOptions,
+  type SnapshotManifest,
 } from "../../lib/api/preprod-artifacts.js";
 import {
   collectVcsMetadata,
-  isCi,
+  VCS_PROVIDERS,
   type VcsFlags,
   type VcsInfo,
   vcsInfoToBody,
 } from "../../lib/build/vcs.js";
+import { isCi } from "../../lib/ci.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  choiceParser,
+  parseDirectoryPath,
+  parseFilePath,
+  parseGitCommit,
+  parseGitRepo,
+  parseText,
+  parseVcsRef,
+  textParser,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -31,9 +43,9 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import {
+  findExistingObjects,
   type ObjectstoreConfig,
-  objectExists,
-  putObject,
+  putObjects,
 } from "../../lib/objectstore.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
 import {
@@ -43,13 +55,11 @@ import {
   splitAndTrim,
   validateImageSizes,
 } from "../../lib/snapshots/images.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("snapshots.upload");
 
-const USAGE_HINT = "sentry snapshots upload <path> --app-id <id>";
-
-/** Concurrency for objectstore HEAD/PUT requests. */
-const UPLOAD_CONCURRENCY = 8;
+const usageHint = () => sentry`snapshots upload <path> --app-id <id>`;
 
 /** Flags accepted by `snapshots upload`. */
 type UploadFlags = {
@@ -193,19 +203,11 @@ async function resolveSelective(
   return { selective, allImageNames };
 }
 
-/** Run `fn` over `items` with bounded concurrency. */
-async function runPooled<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  for (let i = 0; i < items.length; i += limit) {
-    await Promise.all(items.slice(i, i + limit).map(fn));
-  }
-}
+/** Manifest entries keyed by relative image path. */
+type ManifestImages = SnapshotManifest["images"];
 
 /** A per-image manifest metadata entry (width/height override sidecar). */
-function imageMetadata(image: CollectedImage): Record<string, unknown> {
+function imageMetadata(image: CollectedImage): ManifestImages[string] {
   return {
     ...image.sidecar,
     content_hash: image.hash,
@@ -217,7 +219,7 @@ function imageMetadata(image: CollectedImage): Record<string, unknown> {
 /** Result of uploading images to objectstore. */
 type UploadImagesResult = {
   /** Manifest entries keyed by relative image path. */
-  entries: Record<string, Record<string, unknown>>;
+  entries: ManifestImages;
   /** Number of images newly uploaded. */
   uploaded: number;
   /** Number of images skipped (already present). */
@@ -247,7 +249,7 @@ async function uploadImages(
     );
   }
 
-  const entries: Record<string, Record<string, unknown>> = {};
+  const entries: ManifestImages = {};
   const prepared: { path: string; key: string }[] = [];
   const duplicates: string[] = [];
   for (const image of images) {
@@ -265,17 +267,15 @@ async function uploadImages(
     log.warn(`Duplicate paths encountered, skipping: ${duplicates.join(", ")}`);
   }
 
-  // HEAD to find objects already present, then PUT only the missing ones.
-  const existing = new Set<string>();
-  await runPooled(prepared, UPLOAD_CONCURRENCY, async (item) => {
-    if (await objectExists(config, item.key)) {
-      existing.add(item.key);
-    }
-  });
+  // Batched HEADs find objects already present, then only the missing ones are
+  // uploaded. Batching keeps the request count low enough to stay under the
+  // Sentry proxy's per-request rate limit.
+  const existing = await findExistingObjects(
+    config,
+    prepared.map((item) => item.key),
+  );
   const missing = prepared.filter((item) => !existing.has(item.key));
-  await runPooled(missing, UPLOAD_CONCURRENCY, async (item) => {
-    await putObject(config, item.key, await readFile(item.path));
-  });
+  await putObjects(config, missing);
 
   return {
     entries,
@@ -287,7 +287,7 @@ async function uploadImages(
 /** Inputs for {@link buildManifest}. */
 type ManifestOptions = {
   appId: string;
-  entries: Record<string, Record<string, unknown>>;
+  entries: ManifestImages;
   diffThreshold?: number;
   selective: boolean;
   allImageNames?: string[];
@@ -295,8 +295,8 @@ type ManifestOptions = {
 };
 
 /** Build the snapshot manifest body (VcsInfo flattened at the top level). */
-function buildManifest(opts: ManifestOptions): Record<string, unknown> {
-  const manifest: Record<string, unknown> = {
+function buildManifest(opts: ManifestOptions): SnapshotManifest {
+  const manifest: SnapshotManifest = {
     app_id: opts.appId,
     images: opts.entries,
     ...vcsInfoToBody(opts.vcs),
@@ -340,11 +340,22 @@ export const uploadCommand = buildCommand({
       "Each image (PNG/JPEG) is hashed and uploaded to Sentry's object store " +
       "(images already present are skipped), then a manifest is created. " +
       "Companion `<image>.json` sidecar files add per-image metadata. " +
-      "This feature only works with Sentry SaaS.\n\n" +
-      "Usage:\n" +
-      "  sentry snapshots upload ./screenshots --app-id com.example.app\n" +
-      "  sentry snapshots upload ./shots --app-id my-app --diff-threshold 0.01\n" +
-      "  sentry snapshots upload ./shots --app-id my-app --selective",
+      "This feature only works with Sentry SaaS.",
+    examples: [
+      {
+        description: "Upload a folder of screenshots as a snapshot for an app",
+        run: "snapshots upload ./screenshots --app-id com.example.app",
+      },
+      {
+        description:
+          "Upload only a subset of images (removals/renames not inferred on PRs)",
+        run: "snapshots upload ./screenshots --app-id my-app --selective",
+      },
+      {
+        description: "Only flag images that differ by more than 1%",
+        run: "snapshots upload ./screenshots --app-id my-app --diff-threshold 0.01",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,
@@ -355,7 +366,7 @@ export const uploadCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the folder containing images to upload",
-          parse: String,
+          parse: parseDirectoryPath,
           placeholder: "path",
         },
       ],
@@ -363,12 +374,12 @@ export const uploadCommand = buildCommand({
     flags: {
       "app-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "The application identifier",
       },
       "diff-threshold": {
         kind: "parsed",
-        parse: parseDiffThreshold,
+        parse: textParser(parseDiffThreshold),
         brief:
           "Only report an image as changed when its difference exceeds this fraction (0.0–1.0, e.g. 0.01 = 1%)",
         optional: true,
@@ -381,66 +392,66 @@ export const uploadCommand = buildCommand({
       },
       "all-image-file-names": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Comma-separated list of all image names in the full suite (for selective uploads; implies --selective)",
         optional: true,
       },
       "all-image-file-names-file": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Path to a file listing all image names, one per line (for selective uploads; implies --selective)",
         optional: true,
       },
       "head-sha": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitCommit,
         brief: "VCS commit SHA (defaults to the current commit)",
         optional: true,
       },
       "base-sha": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitCommit,
         brief:
           "VCS base commit SHA (defaults to the merge-base with the base ref)",
         optional: true,
       },
       "vcs-provider": {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(VCS_PROVIDERS),
         brief: "VCS provider (defaults to the current remote's provider)",
         optional: true,
       },
       "head-repo-name": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRepo,
         brief:
           "Head repository name, e.g. owner/repo (defaults to the current)",
         optional: true,
       },
       "base-repo-name": {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRepo,
         brief: "Base repository name, e.g. owner/repo (for forks)",
         optional: true,
       },
       "head-ref": {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief: "Head branch/reference (defaults to the current branch)",
         optional: true,
       },
       "base-ref": {
         kind: "parsed",
-        parse: String,
+        parse: parseVcsRef,
         brief:
           "Base branch/reference (defaults to the merge-base tracking ref)",
         optional: true,
       },
       "pr-number": {
         kind: "parsed",
-        parse: parsePrNumber,
+        parse: textParser(parsePrNumber),
         brief:
           "Pull request number (auto-detected in pull_request GitHub Actions runs)",
         optional: true,
@@ -468,10 +479,10 @@ export const uploadCommand = buildCommand({
 
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 
@@ -492,7 +503,7 @@ export const uploadCommand = buildCommand({
     const { selective, allImageNames } = await resolveSelective(flags, images);
     // A complete name list makes zero uploaded images a valid all-unchanged run.
     if (images.length === 0 && allImageNames === undefined) {
-      yield new CommandOutput<SnapshotUploadResult>({
+      yield new CommandOutput({
         imagesFound: 0,
         uploaded: 0,
         skipped: 0,
@@ -522,7 +533,7 @@ export const uploadCommand = buildCommand({
     });
     const snapshot = await createPreprodSnapshot(org, project, manifest);
 
-    yield new CommandOutput<SnapshotUploadResult>({
+    yield new CommandOutput({
       imagesFound: images.length,
       uploaded,
       skipped,

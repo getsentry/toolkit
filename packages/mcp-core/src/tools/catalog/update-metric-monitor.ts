@@ -17,6 +17,7 @@ import {
 
 export default defineTool({
   name: "update_metric_monitor",
+  title: "Update Metric Monitor",
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [

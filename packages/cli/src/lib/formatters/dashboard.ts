@@ -12,12 +12,11 @@ import chalk from "chalk";
 import stringWidth from "string-width";
 import wrapAnsi from "wrap-ansi";
 
+import type { InferOutput } from "valibot";
 import type {
-  DashboardWidgetQuery,
   ScalarResult,
   TableResult,
   TimeseriesResult,
-  WidgetDataResult,
 } from "../../types/dashboard.js";
 import { stringifyUnknown } from "../errors.js";
 import { encodeImageToKitty } from "../kitty-image.js";
@@ -29,12 +28,14 @@ import {
   graphicsCellSize,
   selectGraphicsFormat,
   terminalPixelWidth,
+  tmuxKittyPlacement,
 } from "../sixel.js";
 import { SERIES_PALETTE } from "./chart-core.js";
 import { COLORS, muted, terminalLink } from "./colors.js";
 import { renderMarkdown } from "./markdown.js";
 import type { HumanRenderer } from "./output.js";
 import { isPlainOutput } from "./plain-detect.js";
+import { formatDashboardSavedTransformations } from "./saved-transformations.js";
 import { renderDashboardAsSixel } from "./sixel-dashboard.js";
 import { downsample, sparkline } from "./sparkline.js";
 
@@ -42,33 +43,22 @@ import { downsample, sparkline } from "./sparkline.js";
 // Data type yielded by dashboard view command
 // ---------------------------------------------------------------------------
 
-/** Full dashboard state with resolved widget data, yielded as CommandOutput. */
-export type DashboardViewData = {
-  id: string;
-  title: string;
-  period: string;
-  fetchedAt: string;
-  url: string;
-  dateCreated?: string;
-  environment?: string[];
+/**
+ * Full dashboard state with resolved widget data, yielded as CommandOutput:
+ * the JSON output ({@link DashboardViewOutputSchema}) plus the human-only
+ * rendering options the command strips from it (`jsonExclude`).
+ */
+export type DashboardViewData = InferOutput<
+  typeof DashboardViewOutputSchema
+> & {
   /** Renderer selected by --renderer; omitted for API/JSON output. */
   rendererPreference?: GraphicsRendererPreference;
   /** Whether the default high-DPI graphics width cap should apply. */
   graphicsCap?: boolean;
-  widgets: DashboardViewWidget[];
 };
 
 /** A widget with its resolved data result */
-export type DashboardViewWidget = {
-  title: string;
-  displayType: string;
-  widgetType?: string;
-  /** Markdown content for text widgets (from API passthrough field) */
-  description?: string;
-  layout?: { x: number; y: number; w: number; h: number };
-  queries?: DashboardWidgetQuery[];
-  data: WidgetDataResult;
-};
+export type DashboardViewWidget = DashboardViewData["widgets"][number];
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -364,6 +354,7 @@ import {
   formatCompactWithUnit,
   formatWithUnit,
 } from "./numbers.js";
+import type { DashboardViewOutputSchema } from "../../output-schemas/dashboard.js";
 
 /**
  * Format a value as a short Y-axis tick label (max ~4 chars).
@@ -503,6 +494,16 @@ function noDataLine(): string {
   return isPlainOutput() ? "(no data)" : muted("(no data)");
 }
 
+/** The last measured value of a series, or null when nothing was measured. */
+function latestMeasured(values: (number | null)[]): number | null {
+  return values.findLast((v) => v !== null) ?? null;
+}
+
+/** Format a value with its unit, or a dash when nothing was measured. */
+function formatMeasured(value: number | null, unit?: string | null): string {
+  return value === null ? "—" : formatWithUnit(value, unit);
+}
+
 /**
  * Render timeseries content as sparklines (no title/border).
  * Labels and sparklines are constrained to fit within the inner width.
@@ -523,8 +524,7 @@ function renderTimeseriesContent(
   for (const s of data.series) {
     const values = s.values.map((v) => v.value);
     const graph = sparkline(values, sparkWidth);
-    const latest = values.length > 0 ? (values.at(-1) ?? 0) : 0;
-    const formatted = formatWithUnit(latest, s.unit);
+    const formatted = formatMeasured(latestMeasured(values), s.unit);
     const label =
       s.label.length > maxLabelLen
         ? `${s.label.slice(0, maxLabelLen - 1)}…`
@@ -635,7 +635,7 @@ function renderVerticalBarsContent(
 
   let items: BarItem[] = data.series.map((s) => ({
     label: s.label,
-    total: s.values.reduce((sum, v) => sum + v.value, 0),
+    total: s.values.reduce((sum, v) => sum + (v.value ?? 0), 0),
     unit: s.unit,
   }));
   items = sortBarItems(items);
@@ -962,6 +962,9 @@ function renderBigNumberContent(
   opts: { innerWidth: number; contentHeight: number },
 ): string[] {
   const { innerWidth, contentHeight } = opts;
+  if (data.value === null) {
+    return centerVertically([noDataLine()], contentHeight);
+  }
   const formatted = formatBigNumberValue(data.value);
 
   if (!isPlainOutput()) {
@@ -1034,7 +1037,7 @@ function renderTimeseriesBarsContent(
 
   // Header: series label + latest value
   const headerLabel = label.length > 20 ? `${label.slice(0, 18)}…` : label;
-  const valStr = formatWithUnit(latest, unit);
+  const valStr = formatMeasured(latest, unit);
   const headerLine = isPlainOutput()
     ? `${headerLabel}  ${valStr}`
     : `${chalk.hex(COLORS.cyan)(headerLabel)}  ${chalk.bold(valStr)}`;
@@ -1052,11 +1055,13 @@ function renderTimeseriesBarsContent(
   const sampledTs = downsampleTimestamps(timestamps, maxBars);
 
   if (isMulti) {
-    // Stacked multi-color bars: downsample each series independently
+    // Stacked multi-color bars: downsample each series independently. An
+    // unmeasured bucket adds nothing to the stack; averaging only measured
+    // buckets could push a column past the summed maxVal.
     const stackedSeries = data.series.map((s) => ({
       label: s.label,
       values: downsample(
-        s.values.map((v) => v.value),
+        s.values.map((v) => v.value ?? 0),
         maxBars,
       ),
     }));
@@ -1107,11 +1112,13 @@ function renderTimeseriesBarsContent(
  */
 /** Aggregated timeseries result with timestamps preserved. */
 type AggregatedTimeseries = {
-  values: number[];
+  /** Per-bucket values; null where nothing was measured. */
+  values: (number | null)[];
   timestamps: number[];
   label: string;
   unit?: string | null;
-  latest: number;
+  /** Last measured value, or null when nothing was measured. */
+  latest: number | null;
   maxVal: number;
 };
 
@@ -1120,7 +1127,7 @@ function aggregateTimeseriesValues(
 ): AggregatedTimeseries {
   const first = data.series[0];
   if (!first || first.values.length === 0) {
-    return { values: [], timestamps: [], label: "", latest: 0, maxVal: 1 };
+    return { values: [], timestamps: [], label: "", latest: null, maxVal: 1 };
   }
 
   const timestamps = first.values.map((v) => v.timestamp);
@@ -1133,20 +1140,21 @@ function aggregateTimeseriesValues(
       timestamps,
       label: first.label,
       unit: first.unit,
-      latest: values.at(-1) ?? 0,
-      maxVal: Math.max(...values, 1),
+      latest: latestMeasured(values),
+      maxVal: Math.max(...values.filter((v) => v !== null), 1),
     };
   }
 
-  // Multiple series — sum per time bucket
+  // Multiple series — sum per time bucket. A bucket stays null when no
+  // series measured anything in it.
   const bucketCount = first.values.length;
   // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
-  const summed = new Array<number>(bucketCount).fill(0);
+  const summed = new Array<number | null>(bucketCount).fill(null);
   for (const s of data.series) {
     for (let i = 0; i < s.values.length; i += 1) {
-      const point = s.values[i];
-      if (point) {
-        summed[i] = (summed[i] ?? 0) + point.value;
+      const value = s.values[i]?.value;
+      if (value !== null && value !== undefined) {
+        summed[i] = (summed[i] ?? 0) + value;
       }
     }
   }
@@ -1156,8 +1164,8 @@ function aggregateTimeseriesValues(
     timestamps,
     label,
     unit: first.unit,
-    latest: summed.at(-1) ?? 0,
-    maxVal: Math.max(...summed, 1),
+    latest: latestMeasured(summed),
+    maxVal: Math.max(...summed.filter((v) => v !== null), 1),
   };
 }
 
@@ -1192,7 +1200,7 @@ function buildTimeseriesBarColumn(
 
 /** Render time-series bar rows with smooth fractional block tops and Y-axis. */
 function renderTimeBarRows(
-  sampled: number[],
+  sampled: (number | null)[],
   opts: {
     maxVal: number;
     barHeight: number;
@@ -1216,8 +1224,9 @@ function renderTimeBarRows(
   );
   const barRemainder = chartWidth - barWidth * sampled.length;
 
-  // Pre-compute fractional heights for each column
-  const heights = sampled.map((v) => (v / maxVal) * barHeight);
+  // Pre-compute fractional heights for each column; unmeasured buckets
+  // draw no bar.
+  const heights = sampled.map((v) => ((v ?? 0) / maxVal) * barHeight);
 
   for (let row = barHeight; row >= 1; row -= 1) {
     const yAxis = buildYAxisSegment({
@@ -1537,9 +1546,18 @@ function renderTextContent(content: string, innerWidth: number): string[] {
   return wrapped.split("\n");
 }
 
-/** Render placeholder content for unsupported/error widgets (no title/border). */
-function renderPlaceholderContent(message: string): string[] {
-  return [isPlainOutput() ? `(${message})` : muted(`(${message})`)];
+/**
+ * Render placeholder content for unsupported/error widgets (no title/border).
+ * Wraps to the widget width so long API details stay readable.
+ */
+function renderPlaceholderContent(
+  message: string,
+  innerWidth: number,
+): string[] {
+  const lines = wrapAnsi(`(${message})`, innerWidth, { hard: true }).split(
+    "\n",
+  );
+  return isPlainOutput() ? lines : lines.map((line) => muted(line));
 }
 
 // ---------------------------------------------------------------------------
@@ -1618,10 +1636,11 @@ function renderHeatmapContent(
   // Downsample every series to that bucket count; pad shorter series so every
   // row has exactly `bucketCount` cells (downsample returns early for short input).
   const rows = series.map((s) => {
+    // Unmeasured cells take the lowest intensity, which renders blank.
     const ds = downsample(
       s.values.map((v) => v.value),
       bucketCount,
-    );
+    ).map((v) => v ?? 0);
     return ds.length < bucketCount
       ? // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
         [...ds, ...new Array(bucketCount - ds.length).fill(0)]
@@ -1716,13 +1735,16 @@ function renderContentLines(opts: {
       return renderTextContent(data.content, innerWidth);
 
     case "unsupported":
-      return renderPlaceholderContent(data.reason);
+      return renderPlaceholderContent(data.reason, innerWidth);
 
     case "error":
-      return renderPlaceholderContent(`query failed: ${data.message}`);
+      return renderPlaceholderContent(
+        `query failed: ${data.message}`,
+        innerWidth,
+      );
 
     default:
-      return renderPlaceholderContent("unknown widget data type");
+      return renderPlaceholderContent("unknown widget data type", innerWidth);
   }
 }
 
@@ -2016,6 +2038,11 @@ export function formatDashboardWithData(data: DashboardViewData): string {
     lines.push(...renderGrid(data.widgets, termWidth));
   }
 
+  const transformations = formatDashboardSavedTransformations(data.widgets);
+  if (transformations) {
+    lines.push("", renderMarkdown(transformations));
+  }
+
   lines.push("");
   return lines.join("\n");
 }
@@ -2157,7 +2184,13 @@ function renderCompleteDashboardAsGraphics(
     },
     encodeImage:
       format === "kitty"
-        ? (image) => encodeImageToKitty(image, image.width, true)
+        ? (image) =>
+            encodeImageToKitty(
+              image,
+              image.width,
+              true,
+              tmuxKittyPlacement(graphicsColumns),
+            )
         : undefined,
   });
   if (!("output" in graphics)) {

@@ -7,7 +7,11 @@ export type LocalWorkspaceRouteState = {
   workspaceView: WorkspaceView;
   navigateToWorkspace: (view: WorkspaceView) => void;
   navigateToCommandEvent: (view: WorkspaceView, eventId: string) => void;
-  navigateToCommandTrace: (view: WorkspaceView, traceId: string) => void;
+  navigateToCommandTrace: (
+    view: WorkspaceView,
+    traceId: string,
+    spanId?: string,
+  ) => void;
 };
 
 export const LocalWorkspaceRouteContext =

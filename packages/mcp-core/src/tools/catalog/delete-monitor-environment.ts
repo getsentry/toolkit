@@ -20,6 +20,7 @@ export const deleteMonitorEnvironmentOutputSchema = z.object({
 
 export default defineTool({
   name: "delete_monitor_environment",
+  title: "Delete Cron Monitor Environment",
   skills: ["project-management"],
   requiredScopes: ["project:write"],
   description: [

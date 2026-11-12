@@ -1,160 +1,174 @@
-import { ChevronDown, Moon, Sun, Trash2, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
-import { useTheme } from "next-themes";
+import {
+  ChevronDown,
+  Radio,
+  Settings,
+  Trash2,
+  Eraser,
+  X,
+  Unplug,
+  type LucideIcon,
+} from "lucide-react";
+import { useRef, useState } from "react";
 import type { ConnectionPresentation } from "@/lib/presentation.ts";
+import { Button } from "./ui/button.tsx";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx";
 
 type ReceiverControlsProps = {
-  compact?: boolean;
   connection: ConnectionPresentation;
   retainedItemCount: number;
   onClear: () => void;
+  onDeleteCapturedEvents?: (trigger: HTMLButtonElement) => void;
+  onDisconnect?: () => void;
+  isClearing?: boolean;
+  onOpenSettings?: (trigger: HTMLButtonElement) => void;
   onCloseSession?: () => void;
+  isClosingSession?: boolean;
+  onAddReceiver?: (trigger: HTMLButtonElement) => void;
   showStatusRole?: boolean;
 };
+type ReceiverAction = {
+  label: string;
+  Icon: LucideIcon;
+  onClick?: () => void;
+  onOpenDialog?: (trigger: HTMLButtonElement) => void;
+  disabled?: boolean;
+  destructive?: boolean;
+};
 
-/** Status and viewer-only actions kept together without exposing receiver mutations. */
+/** Mobile receiver actions share the desktop dialogs and their focus behavior. */
 export function ReceiverControls({
-  compact = false,
   connection,
   retainedItemCount,
   onClear,
+  onDeleteCapturedEvents,
+  onDisconnect,
+  isClearing = false,
+  onOpenSettings,
   onCloseSession,
+  isClosingSession = false,
+  onAddReceiver,
   showStatusRole = true,
 }: ReceiverControlsProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const menuId = useId();
-  const rootRef = useRef<HTMLDivElement>(null);
-  const { resolvedTheme, setTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
-
-  useEffect(() => {
-    const closeOnOutsidePointer = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", closeOnOutsidePointer);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("mousedown", closeOnOutsidePointer);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, []);
-
-  const dotClassName =
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const openingDialog = useRef(false);
+  const actions: ReceiverAction[] = [
+    ...(onAddReceiver
+      ? [
+          {
+            label: "Switch receiver",
+            Icon: Radio,
+            onOpenDialog: onAddReceiver,
+          },
+        ]
+      : []),
+    ...(onOpenSettings
+      ? [
+          {
+            label: "Settings",
+            Icon: Settings,
+            onOpenDialog: onOpenSettings,
+          },
+        ]
+      : []),
+    {
+      label: "Clear view",
+      Icon: Eraser,
+      onClick: onClear,
+      disabled: retainedItemCount === 0 || isClearing,
+    },
+    ...(onDeleteCapturedEvents
+      ? [
+          {
+            label: "Delete captured events",
+            Icon: Trash2,
+            destructive: true,
+            disabled: isClearing,
+            onOpenDialog: onDeleteCapturedEvents,
+          },
+        ]
+      : []),
+    ...(onCloseSession
+      ? [
+          {
+            label: "Stop capture",
+            Icon: X,
+            onClick: onCloseSession,
+            disabled: isClosingSession || isClearing,
+            destructive: true,
+          },
+        ]
+      : []),
+    ...(onDisconnect
+      ? [{ label: "Disconnect viewer", Icon: Unplug, onClick: onDisconnect }]
+      : []),
+  ];
+  const dotClass =
     connection.tone === "success"
-      ? "bg-emerald-500 shadow-[0_0_10px_oklch(0.72_0.19_160)]"
+      ? "bg-emerald-500"
       : connection.tone === "warning"
         ? "bg-amber-500"
         : "bg-muted-foreground";
-
   return (
-    <div
-      ref={rootRef}
-      className={`relative ${compact ? "flex justify-center" : "flex shrink-0"}`}
-    >
-      {compact ? (
-        <button
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          ref={triggerRef}
           type="button"
-          aria-label="Receiver options"
-          aria-expanded={isOpen}
-          aria-controls={menuId}
+          variant="outline"
+          aria-label="Capture actions"
           title={connection.label}
-          className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={() => setIsOpen((open) => !open)}
+          className="h-8 gap-2 px-2.5"
         >
-          <span
-            {...(showStatusRole ? { role: "status" } : {})}
-            aria-label={connection.label}
-            className="flex size-4 items-center justify-center"
-          >
-            <span className={`size-2 rounded-full ${dotClassName}`} />
-            {showStatusRole ? (
-              <span className="sr-only">{connection.label}</span>
-            ) : null}
-          </span>
-        </button>
-      ) : (
-        <div className="flex h-8 items-center overflow-hidden rounded-md border border-border bg-background shadow-xs">
-          <span
-            {...(showStatusRole ? { role: "status" } : {})}
-            aria-label={connection.label}
-            title={connection.label}
-            className="flex h-full items-center gap-2 px-2.5"
-          >
-            <span className={`size-2 rounded-full ${dotClassName}`} />
-            <span className="hidden text-xs font-medium text-muted-foreground sm:inline">
-              {connection.label.replace(" to local receiver", "")}
-            </span>
-            {showStatusRole ? (
-              <span className="sr-only">{connection.label}</span>
-            ) : null}
-          </span>
-          <button
-            type="button"
-            aria-label="Receiver options"
-            aria-expanded={isOpen}
-            aria-controls={menuId}
-            className="flex h-full w-8 items-center justify-center border-l border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-            onClick={() => setIsOpen((open) => !open)}
-          >
-            <ChevronDown
-              className={`size-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`}
+          {showStatusRole ? (
+            <span
+              role="status"
+              aria-label={connection.label}
+              className={`size-2 rounded-full ${dotClass}`}
             />
-          </button>
-        </div>
-      )}
-      {isOpen ? (
-        <div
-          id={menuId}
-          aria-label="Receiver options"
-          className={`absolute z-10 w-48 border border-border bg-background p-1 text-foreground shadow-lg ${
-            compact ? "bottom-10 left-0" : "top-10 right-0"
-          }`}
-        >
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-2 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-            onClick={() => {
-              setTheme(isDark ? "light" : "dark");
-              setIsOpen(false);
-            }}
-          >
-            {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
-            Use {isDark ? "light" : "dark"} mode
-          </button>
-          <button
-            type="button"
-            disabled={retainedItemCount === 0}
-            className="flex w-full items-center gap-2 px-2 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-            onClick={() => {
-              onClear();
-              setIsOpen(false);
-            }}
-          >
-            <Trash2 className="size-4" />
-            Clear all events
-          </button>
-          {onCloseSession ? (
-            <button
+          ) : null}
+          <span>Capture actions</span>
+          <ChevronDown
+            className="size-3.5 text-muted-foreground"
+            aria-hidden="true"
+          />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        aria-label="Capture actions"
+        collisionPadding={12}
+        className="w-56 max-w-[calc(100vw-1.5rem)] p-1"
+        onCloseAutoFocus={(event) => {
+          // The destination dialog owns focus when an action opens one.
+          if (openingDialog.current) event.preventDefault();
+          openingDialog.current = false;
+        }}
+      >
+        {actions.map(
+          ({ label, Icon, onClick, disabled, destructive, onOpenDialog }) => (
+            <Button
+              key={label}
               type="button"
-              className="flex w-full items-center gap-2 px-2 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+              variant="ghost"
+              disabled={disabled}
+              className={`h-9 w-full justify-start px-2 text-sm ${destructive ? "text-destructive hover:bg-destructive/10" : ""}`}
               onClick={() => {
-                onCloseSession();
-                setIsOpen(false);
+                openingDialog.current = Boolean(onOpenDialog);
+                setOpen(false);
+                if (onOpenDialog && triggerRef.current) {
+                  onOpenDialog(triggerRef.current);
+                } else {
+                  onClick?.();
+                }
               }}
             >
-              <X className="size-4" />
-              Close session
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+              <Icon className="size-4" aria-hidden="true" />
+              {label}
+            </Button>
+          ),
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }

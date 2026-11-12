@@ -22,6 +22,7 @@ import {
   array,
   boolean,
   type InferOutput,
+  looseObject,
   nullish,
   number,
   object,
@@ -31,6 +32,7 @@ import {
   string,
   tuple,
   union,
+  unknown,
 } from "valibot";
 import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
@@ -72,6 +74,21 @@ const ChoicesResponseSchema = object({
 type Choice = InferOutput<typeof ChoiceSchema>;
 type Field = InferOutput<typeof FieldSchema>;
 type LinkForm = InferOutput<typeof LinkFormSchema>;
+
+/**
+ * Sentry App components, with each app's `schema` left unchecked.
+ *
+ * `@sentry/api` types `schema` as the UI element union Sentry checks apps
+ * against when they are saved. One installed app whose stored schema doesn't
+ * match it would fail the whole page and hide every other app's form, so only
+ * the selected app's link form is checked, against {@link LinkFormSchema}.
+ */
+const ComponentsSchema = array(
+  object({
+    ...vListOrganizationSentryAppComponentsResponse.item.entries,
+    schema: looseObject({ link: optional(unknown()) }),
+  }),
+);
 
 /** Inputs for a read-only preflight of the app's existing-issue link action. */
 export type ResolveAppIssueLinkOptions = {
@@ -296,7 +313,7 @@ async function getLinkForm(
       });
       return unwrapPaginatedResult(result, "Failed to list app components");
     },
-    vListOrganizationSentryAppComponentsResponse,
+    ComponentsSchema,
     "listing Sentry App components",
   );
   const matches = components.filter(
@@ -318,8 +335,13 @@ async function getLinkForm(
       JSON.stringify(component.error),
     );
   }
-  // App-defined form schemas are intentionally untyped in the API contract.
-  const form = safeParse(LinkFormSchema, component.schema.link);
+  // ComponentsSchema leaves each app's schema unchecked, so validate only
+  // this app's link form here.
+  const { schema } = component;
+  const form = safeParse(
+    LinkFormSchema,
+    schema.type === "issue-link" ? schema.link : undefined,
+  );
   if (!form.success) {
     throw new ValidationError(
       `App ${installation.app.slug} does not expose a supported issue-link form`,

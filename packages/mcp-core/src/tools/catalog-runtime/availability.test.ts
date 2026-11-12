@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { getClient } from "@sentry/core";
+import { describe, expect, it, vi } from "vitest";
 import type { Skill } from "../../skills";
 import { getServerContext } from "../../test-setup";
 import type { ServerContext } from "../../types";
@@ -7,12 +8,18 @@ import catalogTools from "../catalog";
 import createProject from "../catalog/create-project";
 import removeTeamFromProject from "../catalog/remove-team-from-project";
 import updateProject from "../catalog/update-project";
+import { EXPOSE_ALL_TOOLS } from "../exposure";
 import {
   getFilteredInputSchema,
   getToolsForMcpRegistration,
   getSearchableTools,
   prepareToolParams,
 } from "./availability";
+
+vi.mock("@sentry/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@sentry/core")>();
+  return { ...actual, getClient: vi.fn(actual.getClient) };
+});
 
 function getProjectManagementContext(
   constraints: Partial<ServerContext["constraints"]> = {},
@@ -33,7 +40,7 @@ function getSearchableToolNames(context: ServerContext): string[] {
 }
 
 describe("catalog availability", () => {
-  it("keeps project-management tools skill-gated and catalog-only", () => {
+  it("keeps project-management tools skill-gated and direct only with EXPOSE_ALL_TOOLS", () => {
     const inspectContext = getServerContext({
       grantedSkills: new Set<Skill>(["inspect"]),
     });
@@ -56,14 +63,17 @@ describe("catalog availability", () => {
       useDefaultSurfacePolicy: true,
     }).map(({ tool }) => tool.name);
 
-    expect(directToolNames).not.toEqual(
-      expect.arrayContaining([
-        "create_project",
-        "update_project",
-        "add_team_to_project",
-        "remove_team_from_project",
-      ]),
-    );
+    const projectManagementToolNames = expect.arrayContaining([
+      "create_project",
+      "update_project",
+      "add_team_to_project",
+      "remove_team_from_project",
+    ]);
+    if (EXPOSE_ALL_TOOLS) {
+      expect(directToolNames).toEqual(projectManagementToolNames);
+    } else {
+      expect(directToolNames).not.toEqual(projectManagementToolNames);
+    }
     expect(getSearchableToolNames(projectManagementContext)).toEqual(
       expect.arrayContaining([
         "create_project",
@@ -71,6 +81,24 @@ describe("catalog availability", () => {
         "add_team_to_project",
         "remove_team_from_project",
       ]),
+    );
+  });
+
+  it("shows submit_feedback_to_sentry_team only when Sentry telemetry has a DSN", () => {
+    const context = getServerContext({
+      grantedSkills: new Set<Skill>(["inspect"]),
+    });
+
+    vi.mocked(getClient).mockReturnValueOnce(undefined);
+    expect(getSearchableToolNames(context)).not.toContain(
+      "submit_feedback_to_sentry_team",
+    );
+
+    vi.mocked(getClient).mockReturnValueOnce({
+      getDsn: () => ({ host: "o1.ingest.sentry.io" }),
+    } as unknown as ReturnType<typeof getClient>);
+    expect(getSearchableToolNames(context)).toContain(
+      "submit_feedback_to_sentry_team",
     );
   });
 

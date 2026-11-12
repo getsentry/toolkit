@@ -13,6 +13,7 @@ import {
 } from "./retention-buffer.js";
 import { DEFAULT_MAX_ENVELOPES } from "./retention-limits.js";
 import { uuidv7 } from "uuidv7";
+import type { LocalSessionEvent } from "./viewer-protocol.js";
 
 /** Retained sessions remain queryable for three hours after closing. */
 export const SESSION_RETENTION_MS = 3 * 60 * 60 * 1000;
@@ -64,6 +65,11 @@ export type LocalSessionStore = {
   setMaxEnvelopes: (reference: string, value: number) => LocalSession;
   getRetention: (reference: string) => LocalRetentionBuffer;
   close: (reference: string) => LocalSession;
+  reset: (reference: string) => void;
+  subscribe: (
+    reference: string,
+    listener: (event: LocalSessionEvent) => void,
+  ) => () => void;
   getCapabilities: (reference: string) => {
     ingest: string;
     stream: string;
@@ -86,14 +92,31 @@ function toPublicSession(session: StoredSession): LocalSession {
   return publicSession;
 }
 
-/** Build a session store with injectable time for deterministic lifecycle tests. */
+/**
+ * Build a session store with injectable time for deterministic lifecycle tests.
+ *
+ * @param onChange - Called with every session after one is created, closed,
+ *   or expires; not on activity, which every ingested envelope records
+ */
 export function createLocalSessionStore({
   now = Date.now,
+  onChange,
 }: {
   now?: () => number;
+  onChange?: (sessions: LocalSession[]) => void;
 } = {}): LocalSessionStore {
   const sessions = new Map<string, StoredSession>();
   const clientSessions = new Map<string, string>();
+  const listeners = new Map<string, Set<(event: LocalSessionEvent) => void>>();
+  const notify = (id: string, event: LocalSessionEvent) => {
+    for (const listener of listeners.get(id) ?? []) listener(event);
+  };
+
+  const list = () =>
+    Array.from(sessions.values(), toPublicSession).sort(
+      (left, right) => right.lastActivityAt - left.lastActivityAt,
+    );
+  const changed = () => onChange?.(list());
 
   const resolveStored = (reference: string): StoredSession => {
     const byId = sessions.get(reference);
@@ -154,6 +177,7 @@ export function createLocalSessionStore({
       if (clientId) {
         clientSessions.set(clientId, session.id);
       }
+      changed();
       return toPublicSession(session);
     },
     getRetention(reference) {
@@ -165,15 +189,39 @@ export function createLocalSessionStore({
       return toPublicSession(update(session, { maxEnvelopes: value }));
     },
     close(reference) {
-      const timestamp = now();
       const session = resolveStored(reference);
-      return toPublicSession(
-        update(session, {
-          state: "retained",
-          lastActivityAt: timestamp,
-          expiresAt: timestamp + SESSION_RETENTION_MS,
+      if (session.state === "retained") return toPublicSession(session);
+      const timestamp = now();
+      const closed = update(session, {
+        state: "retained",
+        lastActivityAt: timestamp,
+        expiresAt: timestamp + SESSION_RETENTION_MS,
+      });
+      notify(session.id, { state: "retained", expiresAt: closed.expiresAt });
+      changed();
+      return toPublicSession(closed);
+    },
+    reset(reference) {
+      const session = resolveStored(reference);
+      session.buffer.clear();
+      notify(session.id, {
+        state: session.state,
+        action: "reset",
+        ...(session.expiresAt !== undefined && {
+          expiresAt: session.expiresAt,
         }),
-      );
+      });
+    },
+    subscribe(reference, listener) {
+      const session = resolveStored(reference);
+      let subscriptions = listeners.get(session.id);
+      if (!subscriptions)
+        listeners.set(session.id, (subscriptions = new Set()));
+      subscriptions.add(listener);
+      return () => {
+        subscriptions.delete(listener);
+        if (subscriptions.size === 0) listeners.delete(session.id);
+      };
     },
     getBuffer(reference) {
       return resolveStored(reference).buffer;
@@ -185,11 +233,7 @@ export function createLocalSessionStore({
         stream: session.streamCapability,
       };
     },
-    list() {
-      return [...sessions.values()]
-        .map(toPublicSession)
-        .sort((left, right) => right.lastActivityAt - left.lastActivityAt);
-    },
+    list,
     pruneExpired() {
       const timestamp = now();
       const expired = [...sessions.values()]
@@ -206,21 +250,17 @@ export function createLocalSessionStore({
           clientSessions.delete(session.clientId);
         }
         sessions.delete(id);
+        listeners.delete(id);
+      }
+      if (expired.length > 0) {
+        changed();
       }
       return expired;
     },
     recordActivity(reference) {
-      const timestamp = now();
       const session = resolveStored(reference);
-      return toPublicSession(
-        update(session, {
-          lastActivityAt: timestamp,
-          expiresAt:
-            session.state === "retained"
-              ? timestamp + SESSION_RETENTION_MS
-              : undefined,
-        }),
-      );
+      if (session.state === "retained") return toPublicSession(session);
+      return toPublicSession(update(session, { lastActivityAt: now() }));
     },
     resolve(reference) {
       return toPublicSession(resolveStored(reference));

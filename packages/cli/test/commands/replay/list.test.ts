@@ -99,6 +99,7 @@ describe("listCommand.func", () => {
         stdout: { write: stdoutWrite },
         stderr: { write: vi.fn(() => true) },
         cwd: "/tmp",
+        commandPrefix: ["sentry", "replay", "list"],
       },
       stdoutWrite,
     };
@@ -106,7 +107,7 @@ describe("listCommand.func", () => {
 
   beforeEach(() => {
     listReplaysSpy = vi.spyOn(apiClient, "listReplays");
-    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalFromArg");
+    resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalTarget");
     resolveCursorSpy = vi.spyOn(paginationDb, "resolveCursor").mockReturnValue({
       cursor: undefined,
       direction: "next" as const,
@@ -261,6 +262,7 @@ describe("listCommand.func", () => {
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
     expect(output).toContain("Recent replays in test-org/cli:");
     expect(output).toContain("Test User");
+    expect(output).toContain("346789a703f6454384f1de473b8b9fcc");
     expect(output).toContain("Showing 1 replay.");
     expect(output).toContain("sentry replay view test-org/");
   });

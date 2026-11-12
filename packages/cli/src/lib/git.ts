@@ -1,8 +1,8 @@
 /**
  * Centralized git helpers
  *
- * Low-level git primitives used across the CLI: release management,
- * init wizard pre-flight checks, and version detection.
+ * Low-level git primitives used across the CLI: release management
+ * and version detection.
  *
  * Uses `execFileSync` (no shell) from `node:child_process` instead of
  * `Bun.spawnSync` because this module is also used by the npm/Node
@@ -13,6 +13,7 @@
 
 import { execFileSync } from "node:child_process";
 
+import { sentry } from "./app-identity.js";
 import { ValidationError, validationError } from "./errors.js";
 
 /** `execFileSync` failure shape when git exits non-zero. */
@@ -100,34 +101,22 @@ export function isInsideGitWorkTree(cwd?: string): boolean {
   }
 }
 
-/**
- * Get the list of uncommitted or untracked files.
- *
- * Returns each line from `git status --porcelain=v1` prefixed with `- `.
- * Empty array if the working tree is clean or not a git repo.
- *
- * @param cwd - Working directory
- * @returns Array of formatted status lines (e.g., `["- M src/index.ts", "- ?? new-file.ts"]`)
- */
-export function getUncommittedFiles(cwd?: string): string[] {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    const raw = git(["status", "--porcelain=v1"], cwd);
-    if (!raw) {
-      return [];
-    }
-    return raw
-      .split("\n")
-      .filter((line) => line.length > 0)
-      .map((line) => `- ${line}`);
-  } catch {
-    return [];
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Commit info
 // ---------------------------------------------------------------------------
+
+/** A 40-character lowercase hex SHA-1. */
+export const SHA1_RE = /^[0-9a-f]{40}$/;
+
+/**
+ * Normalize an already-trusted SHA (from git, a CI variable, or an event
+ * payload): lowercase and accept only a valid 40-char hex SHA-1, else
+ * undefined.
+ */
+export function normalizeSha(sha: string | undefined): string | undefined {
+  const trimmed = sha?.trim().toLowerCase();
+  return trimmed && SHA1_RE.test(trimmed) ? trimmed : undefined;
+}
 
 /**
  * Get the HEAD commit SHA.
@@ -197,7 +186,7 @@ export function getCommitLog(
   if (from?.startsWith("-")) {
     throw validationError(
       `--from must be a git ref, not a CLI flag (received '${from}').`,
-      ["sentry release set-commits 1.0.0 --from v0.9.0"],
+      [sentry`release set-commits 1.0.0 --from v0.9.0`],
       "from",
       "Git refs cannot start with '-'. Tokens like '--format=x' are CLI flags, not refs — use a tag or commit (e.g. v0.9.0).",
     );
@@ -233,7 +222,7 @@ export function getCommitLog(
         `Unknown git ref '${from}': not found in this repository.`,
         [
           `git rev-parse ${from}`,
-          "sentry release set-commits <org>/<version> --from v0.9.0",
+          sentry`release set-commits <org>/<version> --from v0.9.0`,
         ],
         "from",
         "Range is always <ref>..HEAD — checkout the current release tag first.",
@@ -395,6 +384,40 @@ export function parseRemoteUrl(url: string): string | undefined {
   return;
 }
 
+/** Spaces around `/` in GitLab display names (`Group / Project`). */
+const REPO_SEPARATOR_RE = /\s*\/\s*/g;
+
+/** Lowercase a repository path and drop the spaces of GitLab display names. */
+function normalizeRepoPath(path: string): string {
+  return path.replace(REPO_SEPARATOR_RE, "/").toLowerCase();
+}
+
+/**
+ * Whether a Sentry repository is the repository at `path` (`owner/repo`, as
+ * {@link parseRemoteUrl} returns it).
+ *
+ * GitHub and Bitbucket repositories are named `owner/repo`, so the name
+ * matches. GitLab names are display names (`Group / Project`) and Azure
+ * DevOps names leave out `org/project/_git/`, so for those the path of the
+ * repository URL has to match, like the reference sentry-cli. A normalized
+ * display name only counts when there is no URL to check, since another
+ * group can have a project with the same display path.
+ */
+export function isSameRepository(
+  repo: { name: string; url: string | null },
+  path: string,
+): boolean {
+  const localPath = normalizeRepoPath(path);
+  if (repo.name.toLowerCase() === localPath) {
+    return true;
+  }
+  const urlPath = repo.url ? parseRemoteUrl(repo.url) : undefined;
+  if (urlPath !== undefined) {
+    return urlPath.toLowerCase() === localPath;
+  }
+  return normalizeRepoPath(repo.name) === localPath;
+}
+
 /**
  * Infer the repository name from local git remotes.
  *
@@ -442,4 +465,136 @@ export function inferDefaultBranch(remote: string, cwd?: string): string {
   } catch {
     return "main";
   }
+}
+
+// ---------------------------------------------------------------------------
+// Shell completion
+// ---------------------------------------------------------------------------
+
+/** A ref or commit offered by shell completion. */
+export type GitCompletion = {
+  /** What the shell inserts: a ref name or a full commit SHA */
+  name: string;
+  /** Subject line of the commit it points at */
+  subject: string;
+};
+
+/**
+ * Field separator of `--format` output, NUL, which refs and SHAs cannot
+ * contain. Written `%00` (`for-each-ref`) or `%x00` (`log`) in the format,
+ * since an argument cannot hold a NUL byte.
+ */
+const FIELD_SEPARATOR = "\u0000";
+
+/**
+ * Run git for shell completion, which suggests nothing outside a work tree
+ * or when git is missing rather than failing.
+ *
+ * @returns The output lines, split into their {@link FIELD_SEPARATOR} fields
+ */
+function gitLines(args: string[], cwd?: string): string[][] {
+  let output: string;
+  try {
+    output = git(args, cwd);
+  } catch (error) {
+    if (error instanceof Error) {
+      // Not a repository, or git is missing: there is nothing to complete
+      return [];
+    }
+    throw error;
+  }
+  return output
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => line.split(FIELD_SEPARATOR));
+}
+
+/**
+ * `for-each-ref` of `patterns`, most recently committed first, each by the
+ * `name` format atom (`%(refname:short)`, …).
+ */
+function forEachRef(
+  name: string,
+  patterns: string[],
+  cwd?: string,
+): GitCompletion[] {
+  return gitLines(
+    [
+      "for-each-ref",
+      "--sort=-committerdate",
+      `--format=%(refname)%00${name}%00%(subject)`,
+      ...patterns,
+    ],
+    cwd,
+  ).flatMap(([ref = "", short, subject = ""]) =>
+    // `refs/remotes/origin/HEAD` names whichever branch the remote's HEAD
+    // points at
+    short && !ref.endsWith("/HEAD") ? [{ name: short, subject }] : [],
+  );
+}
+
+/**
+ * Branches, tags, and remote-tracking branches as git resolves them
+ * locally (`main`, `v1.2.0`, `origin/main`), most recent first: the refs
+ * a local range such as `<ref>..HEAD` can start from.
+ *
+ * @param cwd - Working directory
+ */
+export function listLocalRefs(cwd?: string): GitCompletion[] {
+  return forEachRef(
+    "%(refname:short)",
+    ["refs/heads", "refs/tags", "refs/remotes"],
+    cwd,
+  );
+}
+
+/**
+ * Branch and tag names as the hosting provider knows them, for flags that
+ * send a ref to Sentry: local branches, remote-tracking branches without
+ * their remote (`origin/main` → `main`), then tags. Each name once.
+ *
+ * @param cwd - Working directory
+ */
+export function listVcsRefs(cwd?: string): GitCompletion[] {
+  const refs = [
+    ...forEachRef("%(refname:lstrip=2)", ["refs/heads"], cwd),
+    ...forEachRef("%(refname:lstrip=3)", ["refs/remotes"], cwd),
+    ...forEachRef("%(refname:lstrip=2)", ["refs/tags"], cwd),
+  ];
+  const seen = new Set<string>();
+  return refs.filter(({ name }) => !seen.has(name) && seen.add(name));
+}
+
+/** Most recent commits of `HEAD` offered for completion. */
+const MAX_COMPLETED_COMMITS = 50;
+
+/**
+ * The latest commits of `HEAD` by full SHA, newest first.
+ *
+ * @param cwd - Working directory
+ */
+export function listRecentCommits(cwd?: string): GitCompletion[] {
+  return gitLines(
+    ["log", `--max-count=${MAX_COMPLETED_COMMITS}`, "--format=%H%x00%s"],
+    cwd,
+  ).flatMap(([sha, subject = ""]) => (sha ? [{ name: sha, subject }] : []));
+}
+
+/**
+ * The `owner/repo` names of every remote, with the remote they belong to.
+ *
+ * @param cwd - Working directory
+ * @returns Each name once, in `git remote -v` order
+ */
+export function listRemoteRepositories(cwd?: string): GitCompletion[] {
+  const seen = new Set<string>();
+  return gitLines(["remote", "-v"], cwd).flatMap(([line = ""]) => {
+    const [remote, url] = line.split(/\s+/);
+    const name = url ? parseRemoteUrl(url) : undefined;
+    if (!(remote && name) || seen.has(name)) {
+      return [];
+    }
+    seen.add(name);
+    return [{ name, subject: remote }];
+  });
 }

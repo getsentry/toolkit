@@ -10,9 +10,9 @@ import { existsSync, unlinkSync } from "node:fs";
 import { chmod, copyFile, mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isatty } from "node:tty";
-import { captureException } from "@sentry/node-core/light";
 import type { SentryContext } from "../../context.js";
 import { installAgentSkills } from "../../lib/agent-skills.js";
+import { sentry } from "../../lib/app-identity.js";
 import { assertAutoLoginHostTrusted } from "../../lib/auto-auth.js";
 import {
   determineInstallDir,
@@ -28,8 +28,13 @@ import {
   type CompletionLocation,
   installCompletions,
 } from "../../lib/completions.js";
+import {
+  SETUP_REFRESH_AFTER_MS,
+  warmAttributeCompletions,
+  warmCachesAfterLogin,
+} from "../../lib/completion-warmup.js";
 import { CLI_VERSION } from "../../lib/constants.js";
-import { getAuthConfig } from "../../lib/db/auth.js";
+import { getAuthConfig, hasStoredAuthCredentials } from "../../lib/db/auth.js";
 import {
   getOnOffPreference,
   setOnOffPreference,
@@ -50,6 +55,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { runInteractiveLogin } from "../../lib/interactive-login.js";
 import { interactivePromptsAllowed } from "../../lib/interactive-prompts.js";
 import { logger } from "../../lib/logger.js";
+import { bootstrapAuthentication } from "../../lib/setup-code.js";
 import {
   addToFpath,
   addToGitHubPath,
@@ -62,6 +68,7 @@ import {
   type ShellInfo,
 } from "../../lib/shell.js";
 import { addToWindowsUserPath } from "../../lib/windows-path.js";
+import { reportCliError } from "../../lib/error-reporting.js";
 
 type SetupFlags = {
   readonly install: boolean;
@@ -476,8 +483,9 @@ function printWelcomeMessage(
   emit(`Installed sentry v${version} to ${binaryPath}`);
   emit("");
   emit("Get started:");
-  emit("  sentry auth     Authenticate with Sentry");
-  emit("  sentry --help   See all available commands");
+  emit(`  ${sentry`auth`}     Authenticate with Sentry`);
+  emit(`  ${sentry`mcp`}      Run the Sentry MCP server for your AI agent`);
+  emit(`  ${sentry`--help`}   See all available commands`);
   emit("");
   emit("https://cli.sentry.dev");
 }
@@ -502,7 +510,7 @@ async function bestEffort(
     await fn();
   } catch (error) {
     warn(stepName, error);
-    captureException(error, {
+    reportCliError(error, {
       level: "warning",
       tags: { "setup.step": stepName },
     });
@@ -622,20 +630,40 @@ export const setupCommand = buildCommand({
       "Sets up shell integration for the Sentry CLI:\n\n" +
       "- Adds binary directory to PATH (if not already in PATH): the shell\n" +
       "  config file, or the user PATH on Windows\n" +
-      "- Installs shell completions (bash, zsh, fish)\n" +
+      "- Installs shell completions (bash, zsh, fish) and, when logged in,\n" +
+      "  fetches the attribute keys that field completion offers\n" +
       "- Installs agent skills for detected AI coding assistants\n" +
       "- Records installation metadata for upgrades\n\n" +
       "With --install, also handles binary placement from a temporary\n" +
       "download location (used by the install script and upgrade command).\n\n" +
       "This command is called automatically by the install script,\n" +
-      "but can also be run manually after downloading the binary.\n\n" +
-      "Examples:\n" +
-      "  sentry cli setup                    # Auto-detect and configure\n" +
-      "  sentry cli setup --method curl      # Record install method\n" +
-      "  sentry cli setup --install          # Place binary and configure\n" +
-      "  sentry cli setup --no-modify-path   # Skip PATH modification\n" +
-      "  sentry cli setup --no-completions   # Skip shell completions\n" +
-      "  sentry cli setup --no-agent-skills  # Skip agent skill installation",
+      "but can also be run manually after downloading the binary.",
+    examples: [
+      {
+        description: "Run full setup (PATH, completions, agent skills)",
+        run: "cli setup",
+      },
+      {
+        description: "Record the install method",
+        run: "cli setup --method curl",
+      },
+      {
+        description: "Place the binary and configure the shell",
+        run: "cli setup --install",
+      },
+      {
+        description: "Skip PATH modification",
+        run: "cli setup --no-modify-path",
+      },
+      {
+        description: "Skip shell completions",
+        run: "cli setup --no-completions",
+      },
+      {
+        description: "Skip agent skill installation",
+        run: "cli setup --no-agent-skills",
+      },
+    ],
   },
   parameters: {
     flags: {
@@ -764,6 +792,14 @@ export const setupCommand = buildCommand({
       warn,
     });
 
+    if (getEnv().SENTRY_SETUP_CODE && !hasStoredAuthCredentials()) {
+      await bootstrapAuthentication();
+      emit("Authenticated with Sentry using the setup code.");
+      if (!flags["no-completions"]) {
+        await warmCachesAfterLogin();
+      }
+    }
+
     if (flags["ensure-auth-scopes"]) {
       await bestEffort(
         "Authorization",
@@ -782,7 +818,7 @@ export const setupCommand = buildCommand({
       printWelcomeMessage(emit, CLI_VERSION, binaryPath);
     }
 
-    yield new CommandOutput<SetupResult>({
+    yield new CommandOutput({
       messages,
       warnings,
       freshInstall,
@@ -790,12 +826,21 @@ export const setupCommand = buildCommand({
       version: CLI_VERSION,
     });
 
+    // 6. Fetch attribute keys for field completion, the only reader of that
+    // cache, unless they were fetched recently. Best-effort, silent, and
+    // capped at about a second; skipped without a stored login.
+    if (!flags["no-completions"]) {
+      await warmAttributeCompletions({
+        refreshAfterMs: SETUP_REFRESH_AFTER_MS,
+      });
+    }
+
     if (
       !freshInstall ||
       flags.method !== "curl" ||
       flags.quiet ||
       flags["ensure-auth-scopes"] ||
-      getEnv().SENTRY_INIT === "1" ||
+      Boolean(getEnv().SENTRY_SETUP_CODE) ||
       !(interactivePromptsAllowed() && isatty(0) && isatty(1) && isatty(2))
     ) {
       return;
@@ -815,8 +860,12 @@ export const setupCommand = buildCommand({
         const result = await runInteractiveLogin();
         if (result) {
           log.success("Authenticated with Sentry.");
+          // The warm-up above ran before this login stored a token.
+          if (!flags["no-completions"]) {
+            await warmCachesAfterLogin();
+          }
         } else {
-          log.info("Run 'sentry auth login' to authenticate later.");
+          log.info(`Run '${sentry`auth login`}' to authenticate later.`);
         }
       },
       warn,

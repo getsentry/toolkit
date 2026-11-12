@@ -10,10 +10,13 @@ import {
   listMetricAlertsPaginated,
   type MetricAlertRule,
 } from "../../../lib/api-client.js";
+import { type LazyCommand, sentry } from "../../../lib/app-identity.js";
+import { ORG_TARGET } from "../../../lib/completion-target.js";
 import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
 import { logger } from "../../../lib/logger.js";
 import { countChar, isAllDigits } from "../../../lib/utils.js";
+import { alertRuleParameter } from "../arguments.js";
 
 const log = logger.withTag("alert.metrics");
 
@@ -65,6 +68,20 @@ export function parseMetricRuleArg(
   return { ref, targetArg: targetPart ? `${targetPart}/` : undefined };
 }
 
+/**
+ * The `<org>/<rule-id-or-name>` parameter of a metric alert command,
+ * parsed with {@link parseMetricRuleArg} before the command runs.
+ */
+export function metricRuleParameter(usageHint: LazyCommand, brief: string) {
+  return alertRuleParameter({
+    placeholder: "org/rule-id-or-name",
+    brief,
+    kind: ORG_TARGET,
+    split: parseMetricRuleArg,
+    usageHint,
+  });
+}
+
 export async function listAllMetricRulesForOrg(
   orgSlug: string,
 ): Promise<MetricAlertRule[]> {
@@ -113,7 +130,7 @@ export async function resolveMetricAlertRule(
     if (hits.length > 1) {
       throw new ValidationError(
         `Alert rule ID '${ref}' matched multiple organizations.\n` +
-          "Use an explicit target: sentry alert metrics <command> <org>/<rule-id>",
+          `Use an explicit target: ${sentry`alert metrics <command> <org>/<rule-id>`}`,
       );
     }
     throw new ResolutionError(
@@ -147,7 +164,7 @@ export async function resolveMetricAlertRule(
   if (hits.length > 1) {
     throw new ValidationError(
       `Alert rule name '${ref}' matched multiple organizations.\n` +
-        "Use an explicit target: sentry alert metrics <command> <org>/<rule-id-or-name>",
+        `Use an explicit target: ${sentry`alert metrics <command> <org>/<rule-id-or-name>`}`,
     );
   }
 

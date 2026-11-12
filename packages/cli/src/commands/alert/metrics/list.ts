@@ -10,15 +10,20 @@
  * - project-search → find project across orgs, use its org
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../../context.js";
 import type { MetricAlertRule } from "../../../lib/api/alerts.js";
-import { MAX_PAGINATION_PAGES } from "../../../lib/api/infrastructure.js";
+import { paginate } from "../../../lib/api/infrastructure.js";
+import { listMetricAlertsPaginated } from "../../../lib/api-client.js";
 import {
-  API_MAX_PER_PAGE,
-  listMetricAlertsPaginated,
-} from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
+  type ParsedOrgProject,
+  parseCursorFlag,
+} from "../../../lib/arg-parsing.js";
 import { openInBrowser } from "../../../lib/browser.js";
+import {
+  ORG_PROJECT_TARGET,
+  parseText,
+} from "../../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildMultiOrgContextKey,
@@ -32,10 +37,7 @@ import {
   ValidationError,
   withAuthGuard,
 } from "../../../lib/errors.js";
-import {
-  colorTag,
-  escapeMarkdownCell,
-} from "../../../lib/formatters/markdown.js";
+import { colorTag } from "../../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../../lib/formatters/table.js";
 import {
@@ -44,7 +46,6 @@ import {
   LIST_BASE_ALIASES,
   LIST_MAX_LIMIT,
   paginationHint,
-  parseCursorFlag,
   targetPatternExplanation,
 } from "../../../lib/list-command.js";
 import { logger } from "../../../lib/logger.js";
@@ -65,6 +66,10 @@ import {
   resolveProjectBoundTargets,
 } from "../../../lib/resolve-target.js";
 import { buildMetricAlertsUrl } from "../../../lib/sentry-web-urls.js";
+import {
+  type ListCommandTarget,
+  listTarget,
+} from "../../../lib/target-positional.js";
 import type { Writer } from "../../../types/index.js";
 import {
   assertAlertListLimit,
@@ -73,11 +78,12 @@ import {
   throwAlertListFetchFailure,
 } from "../list-utils.js";
 import { metricAlertStatusLabel } from "./status.js";
+import { sentry } from "../../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "alert-metrics-list";
 
-const USAGE_HINT = "sentry alert metrics list <org>/";
+const usageHint = () => sentry`alert metrics list <org>/`;
 
 const METRIC_ALERT_TARGET_POSITIONAL = {
   kind: "tuple" as const,
@@ -85,7 +91,7 @@ const METRIC_ALERT_TARGET_POSITIONAL = {
     {
       placeholder: "target",
       brief: "<org>/, <org>/<project> (project ignored), or <project> (search)",
-      parse: String,
+      parse: listTarget(ORG_PROJECT_TARGET),
       optional: true as const,
     },
   ],
@@ -129,7 +135,7 @@ type MetricAlertListResult = ListResult<MetricAlertRule> & {
 const metricAlertListMeta: ListCommandMeta = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "metric alert rules",
-  commandPrefix: "sentry alert metrics list",
+  commandPrefix: () => sentry`alert metrics list`,
 };
 
 // Fetch helpers
@@ -143,39 +149,12 @@ async function fetchRulesForOrg(
   options: { limit: number; startCursor?: string },
 ): Promise<FetchResult> {
   const result = await withAuthGuard(async () => {
-    const rules: MetricAlertRule[] = [];
-    let serverCursor = options.startCursor;
-
-    for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-      const { data, nextCursor } = await listMetricAlertsPaginated(orgSlug, {
-        perPage: Math.min(options.limit - rules.length, API_MAX_PER_PAGE),
-        cursor: serverCursor,
-      });
-
-      for (const rule of data) {
-        rules.push(rule);
-        if (rules.length >= options.limit) {
-          return {
-            orgSlug,
-            rules,
-            hasMore: !!nextCursor,
-            nextCursor: nextCursor ?? undefined,
-          };
-        }
-      }
-
-      if (!nextCursor) {
-        return { orgSlug, rules, hasMore: false };
-      }
-      serverCursor = nextCursor;
-    }
-
-    return {
-      orgSlug,
-      rules,
-      hasMore: !!serverCursor,
-      nextCursor: serverCursor,
-    };
+    const { data: rules, nextCursor } = await paginate(
+      { limit: options.limit, cursor: options.startCursor },
+      (perPage, cursor) =>
+        listMetricAlertsPaginated(orgSlug, { perPage, cursor }),
+    );
+    return { orgSlug, rules, hasMore: !!nextCursor, nextCursor };
   });
 
   if (!result.ok) {
@@ -191,7 +170,7 @@ async function fetchRulesForOrg(
 // Mode handlers
 
 type ResolvedOrgsOptions = {
-  parsed: ReturnType<typeof parseOrgProjectArg>;
+  parsed: ParsedOrgProject;
   flags: ListFlags;
   cwd: string;
   projectSearchResolution?: ProjectSearchTargetResolution;
@@ -206,7 +185,7 @@ type ResolvedOrgsOptions = {
  * detection / cross-org project search) to discover the org(s).
  */
 async function resolveOrgs(
-  parsed: ReturnType<typeof parseOrgProjectArg>,
+  parsed: ParsedOrgProject,
   cwd: string,
   projectSearchResolution?: ProjectSearchTargetResolution,
 ): Promise<{ orgs: string[]; footer?: string }> {
@@ -215,7 +194,7 @@ async function resolveOrgs(
   }
   const { targets, footer } = await resolveProjectBoundTargets(parsed, {
     cwd,
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
     projectSearchResolution,
   });
   return {
@@ -225,7 +204,7 @@ async function resolveOrgs(
 }
 
 async function resolveWebUrl(
-  parsed: ReturnType<typeof parseOrgProjectArg>,
+  parsed: ParsedOrgProject,
   cwd: string,
 ): Promise<string> {
   let projectSearchResolution: ProjectSearchTargetResolution | undefined;
@@ -247,7 +226,7 @@ async function resolveWebUrl(
   const { orgs } = await resolveOrgs(parsed, cwd, projectSearchResolution);
   const uniqueOrgs = [...new Set(orgs)];
   if (uniqueOrgs.length === 0) {
-    throw new ContextError("Organization", USAGE_HINT);
+    throw new ContextError("Organization", usageHint());
   }
   if (uniqueOrgs.length !== 1) {
     throw new ValidationError(
@@ -276,7 +255,7 @@ async function handleResolvedOrgs(
   );
 
   if (resolved.length === 0) {
-    throw new ContextError("Organization", USAGE_HINT);
+    throw new ContextError("Organization", usageHint());
   }
 
   const uniqueOrgs = [...new Set(resolved)];
@@ -485,7 +464,7 @@ function formatMetricAlertListHuman(result: MetricAlertListResult): string {
 
   const tableRows: Row[] = rows.map(({ rule: r, orgSlug }) => ({
     id: r.id,
-    name: escapeMarkdownCell(r.name ?? "(untitled)"),
+    name: tableCell(r.name ?? "(untitled)"),
     ...(isMultiOrg && { org: orgSlug }),
     aggregate: r.aggregate,
     dataset: r.dataset,
@@ -527,14 +506,23 @@ export const listCommand = buildListCommand("alert metrics", {
     fullDescription:
       "List metric alert rules for one or more Sentry organizations.\n\n" +
       "Metric alerts trigger notifications when a metric query crosses a threshold.\n\n" +
-      "Target patterns:\n" +
-      "  sentry alert metrics list                     # auto-detect from DSN or config\n" +
-      "  sentry alert metrics list <org>/              # explicit org (paginated)\n" +
-      "  sentry alert metrics list <org>/<project>     # explicit org (project ignored)\n" +
-      "  sentry alert metrics list <project>           # find project across all orgs\n\n" +
       `${targetPatternExplanation()}\n\n` +
       "Metric alert rules are org-scoped; the project part is ignored when provided.\n\n" +
       "Use --cursor / -c next / -c prev to paginate through larger result sets.",
+    examples: [
+      {
+        description: "List metric alert rules (organization auto-detected)",
+        run: "alert metrics list",
+      },
+      {
+        description: "List metric alert rules for an organization",
+        run: "alert metrics list my-org/",
+      },
+      {
+        description: "Fetch the next page",
+        run: "alert metrics list my-org/ -c next",
+      },
+    ],
   },
   output: {
     human: formatMetricAlertListHuman,
@@ -551,7 +539,7 @@ export const listCommand = buildListCommand("alert metrics", {
       limit: buildListLimitFlag("metric alert rules"),
       query: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Filter rules by name",
         optional: true,
       },
@@ -565,9 +553,13 @@ export const listCommand = buildListCommand("alert metrics", {
     },
     aliases: { ...LIST_BASE_ALIASES, w: "web", q: "query" },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: ListCommandTarget,
+  ) {
     const { cwd } = this;
-    const parsed = parseOrgProjectArg(target);
+    const { parsed } = await target.resolved;
     assertAlertListLimit(flags.limit);
 
     if (flags.web) {

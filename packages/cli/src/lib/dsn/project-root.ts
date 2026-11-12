@@ -14,7 +14,7 @@
  */
 
 import { opendir, readFile, stat } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import pLimit from "p-limit";
 import picomatch from "picomatch";
@@ -425,6 +425,31 @@ export function isHomeOrAncestor(dir: string): boolean {
 }
 
 /**
+ * Shared system temp roots. Other processes mount private FUSE filesystems
+ * directly under these (AppImage `/tmp/.mount_*`, FreeRDP clipboard dirs),
+ * and stale mounts fail `readdir` with ENOTCONN — so a temp root is never
+ * a project directory worth scanning. Subdirectories are still scanned.
+ */
+function isSharedTempRoot(dir: string): boolean {
+  const resolvedDir = resolve(dir);
+  return [tmpdir(), "/tmp", "/var/tmp", "/private/tmp"].some(
+    (root) => resolve(root) === resolvedDir,
+  );
+}
+
+/**
+ * True when a downward DSN scan from `projectRoot` must be skipped: the
+ * root is `$HOME`, an ancestor of it, or a shared temp root. Applies to
+ * every root-detection reason — a stray `~/package.json` (language marker)
+ * or a dotfiles `~/.git` makes `$HOME` the "project root" just like the
+ * no-marker fallback does, and scanning from there walks into `~/Library`,
+ * cloud-storage mounts, and credential dirs.
+ */
+export function shouldSkipDownwardScan(projectRoot: string): boolean {
+  return isHomeOrAncestor(projectRoot) || isSharedTempRoot(projectRoot);
+}
+
+/**
  * Process one directory level during the walk-up search
  */
 async function processDirectoryLevel(
@@ -589,7 +614,7 @@ async function walkUpDirectories(
   }
 
   // Populate sentryclirc cache from accumulated data
-  setSentryCliRcCache(resolvedStart, rcConfig);
+  await finalizeSentryCliRc(resolvedStart, rcConfig);
 
   // Determine project root from candidates (priority order)
   const selected = selectProjectRoot(

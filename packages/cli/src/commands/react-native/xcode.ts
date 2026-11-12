@@ -26,7 +26,12 @@ import {
   resolveUploadWait,
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
-import { buildCommand } from "../../lib/command.js";
+import { buildCommand, numberParser } from "../../lib/command.js";
+import {
+  parseFilePath,
+  parseText,
+  parseUrl,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -41,10 +46,11 @@ import {
   resolveReleaseAndDist,
 } from "../../lib/react-native/xcode-env.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("react-native.xcode");
 
-const USAGE_HINT = "sentry react-native xcode";
+const usageHint = () => sentry`react-native xcode`;
 const DEFAULT_PACKAGER_URL = "http://127.0.0.1:8081/";
 const DEFAULT_BUILD_SCRIPT =
   "../node_modules/react-native/scripts/react-native-xcode.sh";
@@ -300,10 +306,10 @@ async function uploadPair(
 }> {
   const resolved = await resolveOrgAndProject({
     cwd: ctx.cwd,
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
   });
   if (!resolved) {
-    throw new ContextError("Organization and project", USAGE_HINT);
+    throw new ContextError("Organization and project", usageHint());
   }
   const { org, project } = resolved;
 
@@ -432,6 +438,13 @@ export const xcodeCommand = buildCommand({
       "app Info.plist (unless `--no-auto-release`); outside an Xcode build the " +
       "release is discovered via `xcodebuild`. Use `--wait`/`--wait-for` to " +
       "block until the server finishes processing the upload.",
+    examples: [
+      {
+        description:
+          "Run as the Xcode build phase (usually added automatically to your build script)",
+        run: "react-native xcode",
+      },
+    ],
   },
   auth: false,
   output: {
@@ -451,19 +464,19 @@ export const xcodeCommand = buildCommand({
       },
       "fetch-from": {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: `Packager URL to fetch from (default: ${DEFAULT_PACKAGER_URL})`,
         optional: true,
       },
       "build-script": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to the react-native-xcode.sh build script",
         optional: true,
       },
       dist: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         variadic: true,
         brief: "Distribution(s) to publish (repeatable)",
         optional: true,
@@ -475,7 +488,7 @@ export const xcodeCommand = buildCommand({
       },
       "wait-for": {
         kind: "parsed",
-        parse: Number,
+        parse: numberParser,
         brief: "Wait for processing, but at most this many seconds",
         optional: true,
       },
@@ -496,7 +509,7 @@ export const xcodeCommand = buildCommand({
       parameter: {
         placeholder: "script-arg",
         brief: "Extra arguments passed to the build script",
-        parse: String,
+        parse: parseText,
       },
     },
   },
@@ -526,7 +539,7 @@ export const xcodeCommand = buildCommand({
       if (prep.exitCode !== undefined) {
         this.process.exitCode = prep.exitCode;
       }
-      yield new CommandOutput<XcodeResult>(prep.result);
+      yield new CommandOutput(prep.result);
       return { hint: prep.hint };
     }
 
@@ -538,7 +551,7 @@ export const xcodeCommand = buildCommand({
       flags,
     );
 
-    yield new CommandOutput<XcodeResult>({
+    yield new CommandOutput({
       mode,
       bundle: pair.bundle,
       sourcemap: pair.sourcemap,

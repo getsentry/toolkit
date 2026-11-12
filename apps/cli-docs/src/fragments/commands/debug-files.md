@@ -1,71 +1,5 @@
 
 
-
-## Examples
-
-```bash
-# Inspect a debug information file (auto-detects the format)
-sentry debug-files check ./libexample.so
-sentry debug-files check MyApp.dSYM/Contents/Resources/DWARF/MyApp
-sentry debug-files check ./app.pdb --json
-
-# List the source files a debug file references (and whether they're available)
-sentry debug-files print-sources ./libexample.so
-sentry debug-files print-sources ./app.pdb --json
-
-# Locate debug files for one or more debug identifiers on disk
-sentry debug-files find <debug-id>
-sentry debug-files find <debug-id> --type dsym --path ./build
-sentry debug-files find <debug-id> --no-cwd --no-well-known -p /symbols --json
-
-# Bundle a debug file's referenced source files (run on the build machine)
-sentry debug-files bundle-sources ./libexample.so
-sentry debug-files bundle-sources ./app.pdb --output ./app.src.zip
-
-# Bundle JVM sources with a debug ID
-sentry debug-files bundle-jvm --output ./out --debug-id <uuid> ./src
-
-# Exclude additional directories
-sentry debug-files bundle-jvm --output ./out --debug-id <uuid> --exclude generated --exclude build-tools ./src
-
-# Output as JSON
-sentry debug-files bundle-jvm --output ./out --debug-id <uuid> --json ./src
-
-# Upload debug information files (scans directories recursively)
-sentry debug-files upload ./build
-sentry debug-files upload ./libexample.so --include-sources
-
-# .zip archives are scanned in place; use --no-zips to skip them
-sentry debug-files upload ./symbols.zip
-sentry debug-files upload ./build --no-zips
-
-# Restrict by type or debug id, and wait for server-side processing
-sentry debug-files upload ./dsyms --type dsym --wait
-sentry debug-files upload ./build --id <debug-id> --require-all
-
-# Unity: upload IL2CPP line mappings (optionally with referenced C# sources)
-sentry debug-files upload ./build --il2cpp-mapping
-sentry debug-files upload ./build --il2cpp-mapping --include-sources
-
-# Preview what would be uploaded without uploading (no credentials needed)
-sentry debug-files upload ./build --no-upload
-
-# Split WebAssembly debug info and upload it (scans directories recursively)
-sentry debug-files wasm-upload ./dist
-
-# Preview the split without writing or uploading anything
-sentry debug-files wasm-upload ./dist --dry-run
-
-# Split only, keeping the companions local
-sentry debug-files wasm-upload ./dist --no-upload
-
-# Write companions elsewhere; modules are still stripped in place
-sentry debug-files wasm-upload ./dist --out-dir ./symbols
-
-# Fail the build if any module was compiled without DWARF
-sentry debug-files wasm-upload ./dist --require-dwarf
-```
-
 ## Notes on `wasm-upload`
 
 - For each module carrying inline DWARF it injects a `build_id` (if absent),
@@ -140,6 +74,10 @@ sentry debug-files wasm-upload ./dist --require-dwarf
   files. Combine with `--include-sources` to also bundle the referenced C#
   source files.
 - Upload a JVM bundle separately via `sentry debug-files upload --type jvm`.
+- Compiled shaders (`.dxil` files from an Unreal Engine cook) are uploaded as
+  `dxil` debug files, which let Sentry name the shader that caused a GPU crash.
+  If the Sentry Unreal plugin wrote a `sentry-shader-manifest.tsv` next to them,
+  the shader hash and group from that manifest are uploaded as well.
 - Supported JVM source file extensions: `.java`, `.kt`, `.scala`, `.sc`,
   `.groovy`, `.gvy`, `.gy`, `.gsh`, `.clj`, `.cljc`
 - Build output directories (`build/`, `target/`, `out/`, `bin/`) are

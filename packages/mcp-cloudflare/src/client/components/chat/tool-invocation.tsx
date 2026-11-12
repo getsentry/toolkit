@@ -12,11 +12,7 @@ function getTokenCount(content: ToolMessage[]): number {
   }, 0);
 }
 
-export function ToolInvocation({
-  tool,
-  messageId,
-  index,
-}: ToolInvocationProps) {
+export function ToolInvocation({ tool }: ToolInvocationProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (

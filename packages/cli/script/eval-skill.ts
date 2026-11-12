@@ -41,6 +41,7 @@ import type {
   ModelResult,
   TestCase,
 } from "../test/skill-eval/helpers/types.js";
+import { logger } from "../src/lib/logger.js";
 
 const SKILL_PATH = "plugins/sentry-cli/skills/sentry-cli/SKILL.md";
 const RESULTS_PATH = "test/skill-eval/results.json";
@@ -60,13 +61,12 @@ async function evalModel(
   skillContent: string,
   testCases: TestCase[],
 ): Promise<ModelResult> {
-  console.log(`\nEvaluating: ${model}`);
-  console.log("─".repeat(40));
+  logger.start(`Evaluating: ${model}`);
 
   const results: CaseResult[] = [];
 
   for (const testCase of testCases) {
-    process.stdout.write(`  ${testCase.id}... `);
+    logger.start(`${testCase.id}...`);
 
     const plan = await generatePlan(
       client,
@@ -78,7 +78,9 @@ async function evalModel(
     results.push(result);
 
     const icon = result.passed ? "✓" : "✗";
-    console.log(`${icon} (${(result.score * 100).toFixed(0)}%)`);
+    logger.log(
+      `  ${testCase.id}: ${icon} (${(result.score * 100).toFixed(0)}%)`,
+    );
   }
 
   const totalPassed = results.filter((r) => r.passed).length;
@@ -96,13 +98,13 @@ async function evalModel(
 async function main(): Promise<void> {
   const provider = resolveEvalProvider();
   if (!provider) {
-    console.error(
-      "Error: an eval provider credential is required for the skill eval.",
+    logger.error(
+      [
+        "An eval provider credential is required for the skill eval.",
+        "Set OPENROUTER_API_KEY (preferred) or ANTHROPIC_API_KEY, e.g.:",
+        "  export OPENROUTER_API_KEY=<your-key>",
+      ].join("\n"),
     );
-    console.error(
-      "Set OPENROUTER_API_KEY (preferred) or ANTHROPIC_API_KEY, e.g.:",
-    );
-    console.error("  export OPENROUTER_API_KEY=<your-key>");
     process.exit(1);
   }
 
@@ -113,13 +115,15 @@ async function main(): Promise<void> {
     ? Number.parseFloat(process.env.EVAL_THRESHOLD)
     : DEFAULT_THRESHOLD;
 
-  console.log(
-    `Skill eval: ${testCases.length} cases × ${client.agentModels.length} models`,
+  logger.info(
+    [
+      `Skill eval: ${testCases.length} cases × ${client.agentModels.length} models`,
+      `Provider: ${provider.provider}`,
+      `Agent models: ${client.agentModels.join(", ")}`,
+      `Judge model: ${client.judgeModel}`,
+      `Threshold: ${(threshold * 100).toFixed(0)}%`,
+    ].join("\n"),
   );
-  console.log(`Provider: ${provider.provider}`);
-  console.log(`Agent models: ${client.agentModels.join(", ")}`);
-  console.log(`Judge model: ${client.judgeModel}`);
-  console.log(`Threshold: ${(threshold * 100).toFixed(0)}%`);
 
   // Extract skill version from YAML frontmatter
   const versionMatch = skillContent.match(VERSION_RE);
@@ -145,6 +149,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("Fatal error:", err);
+  logger.error("Fatal error:", err);
   process.exit(1);
 });

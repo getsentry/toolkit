@@ -294,6 +294,7 @@ describe("listCommand.func", () => {
         stdout: { write: stdoutWrite },
         stderr: { write: vi.fn(() => true) },
         cwd: "/tmp",
+        commandPrefix: ["sentry", "trace", "list"],
       },
       stdoutWrite,
     };

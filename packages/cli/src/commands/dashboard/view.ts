@@ -7,10 +7,9 @@
 
 import type { SentryContext } from "../../context.js";
 import { getDashboard, queryAllWidgets } from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { textParser } from "../../lib/completion-target.js";
 import type { DashboardViewData } from "../../lib/formatters/dashboard.js";
 import { createDashboardViewRenderer } from "../../lib/formatters/dashboard.js";
 import { ClearScreen, CommandOutput } from "../../lib/formatters/output.js";
@@ -36,12 +35,10 @@ import type {
   DashboardWidget,
   WidgetDataResult,
 } from "../../types/dashboard.js";
-import {
-  withDashboardErrors,
-  parseDashboardPositionalArgs,
-  resolveDashboardId,
-  resolveOrgFromTarget,
-} from "./resolve.js";
+import { type DashboardArguments, dashboardArguments } from "./arguments.js";
+import { withDashboardErrors } from "./resolve.js";
+import { DashboardViewOutputSchema } from "../../generated/output-schemas/dashboard.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Default auto-refresh interval in seconds */
 const DEFAULT_REFRESH_INTERVAL = 60;
@@ -168,33 +165,61 @@ export const viewCommand = buildCommand({
       "View a Sentry dashboard with rendered widget data.\n\n" +
       "Fetches actual data for each widget and displays sparkline charts,\n" +
       "tables, and big numbers in the terminal.\n\n" +
-      "The dashboard can be specified by numeric ID or title.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard view 12345\n" +
-      "  sentry dashboard view 'My Dashboard'\n" +
-      "  sentry dashboard view my-org 12345\n" +
-      "  sentry dashboard view my-org 'My Dashboard'\n" +
-      "  sentry dashboard view my-org/my-project 12345\n" +
-      "  sentry dashboard view 12345 --json\n" +
-      "  sentry dashboard view 12345 --period 7d\n" +
-      "  sentry dashboard view 12345 --renderer sixel\n" +
-      "  sentry dashboard view 12345 -r\n" +
-      "  sentry dashboard view 12345 -r 30\n" +
-      "  sentry dashboard view 12345 --web",
+      "The dashboard can be specified by numeric ID or title.",
+    examples: [
+      {
+        description: "View a dashboard by title",
+        run: "dashboard view 'Frontend Performance'",
+      },
+      {
+        description: "View a dashboard by ID",
+        run: "dashboard view 12345",
+      },
+      {
+        description: "View by ID in an explicit organization",
+        run: "dashboard view my-org/12345",
+      },
+      {
+        description: "Include project context in the same argument",
+        run: "dashboard view my-org/my-project/12345",
+      },
+      {
+        description:
+          "Pass the organization separately, e.g. for titles that contain a slash",
+        run: 'dashboard view my-org/ "incidents/2026"',
+      },
+      {
+        description: "Override the time period",
+        run: "dashboard view 12345 --period 7d",
+      },
+      {
+        description: "Render charts with sixel graphics",
+        run: "dashboard view 12345 --renderer sixel",
+      },
+      {
+        description: "Auto-refresh every 30 seconds",
+        run: "dashboard view 'Backend Performance' --refresh 30",
+      },
+      {
+        description: "Output as JSON",
+        run: "dashboard view 12345 --json",
+      },
+      {
+        description: "Open in the browser",
+        run: "dashboard view 12345 -w",
+      },
+    ],
   },
   output: {
     human: createDashboardViewRenderer,
     jsonExclude: ["rendererPreference", "graphicsCap"],
+    schema: DashboardViewOutputSchema,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/dashboard",
-        brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: dashboardArguments({
+      placeholder: "org/project/dashboard",
+      usageHint: () => sentry`dashboard view <org>/ <id>`,
+    }),
     flags: {
       web: {
         kind: "boolean",
@@ -204,7 +229,7 @@ export const viewCommand = buildCommand({
       fresh: FRESH_FLAG,
       refresh: {
         kind: "parsed",
-        parse: parseRefresh,
+        parse: textParser(parseRefresh),
         brief: "Auto-refresh interval in seconds (default: 60, min: 10)",
         optional: true,
         inferEmpty: true,
@@ -218,8 +243,7 @@ export const viewCommand = buildCommand({
       renderer: {
         kind: "enum",
         values: ["auto", "kitty", "sixel"],
-        brief:
-          "Graphics renderer (defaults to auto; falls back to auto when unavailable)",
+        brief: "Graphics renderer (falls back to auto when unavailable)",
         default: "auto",
       },
       "no-graphics-cap": {
@@ -236,18 +260,13 @@ export const viewCommand = buildCommand({
       t: "period",
     },
   },
-  async *func(this: SentryContext, flags: ViewFlags, ...args: string[]) {
+  async *func(
+    this: SentryContext,
+    flags: ViewFlags,
+    target: DashboardArguments,
+  ) {
     applyFreshFlag(flags);
-    const { cwd } = this;
-
-    const { dashboardRef, targetArg } = parseDashboardPositionalArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard view <org>/ <id>",
-    );
-    const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
+    const { orgSlug, dashboardId } = await target.resolved;
     const url = buildDashboardUrl(orgSlug, dashboardId);
 
     if (flags.web) {

@@ -18,7 +18,7 @@ import { homedir } from "node:os";
 import type { Span } from "@sentry/core";
 import type { Writer } from "../types/index.js";
 import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
-import { withEnv } from "./env.js";
+import { NO_PERSISTENCE_ENV_VAR, withInvocation } from "./env.js";
 import { stringifyUnknown } from "./errors.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
 
@@ -31,14 +31,18 @@ function hasStreamingFlag(args: string[]): boolean {
 }
 
 /**
- * Build an isolated env from options, inheriting the consumer's process.env.
- * Sets auth token, host URL, default org/project, and output format.
+ * Build an isolated env from options, starting from `options.env` or the
+ * consumer's process.env. Sets auth token, host URL, default org/project,
+ * output format, and the no-persistence flag.
  */
 function buildIsolatedEnv(
   options?: SentryOptions,
   jsonByDefault = true,
 ): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  const env: NodeJS.ProcessEnv = { ...(options?.env ?? process.env) };
+  if (options?.persist !== true) {
+    env[NO_PERSISTENCE_ENV_VAR] = "1";
+  }
   if (options?.token) {
     env.SENTRY_AUTH_TOKEN = options.token;
     env.SENTRY_FORCE_ENV_TOKEN = "1";
@@ -99,7 +103,8 @@ async function resolveCommand(path: string[]): Promise<ResolvedCommand> {
   const key = path.join(".");
   let cached = commandCache.get(key);
   if (!cached) {
-    const { routes } = await import("../app.js");
+    const { loadSdkApp } = await import("../sdk-app.js");
+    const { routes } = await loadSdkApp(path);
     // Walk route tree: routes → sub-route → command
     // oxlint-disable-next-line typescript/no-explicit-any -- Stricli's RoutingTarget union requires runtime duck-typing
     let target: any = routes;
@@ -204,7 +209,7 @@ const ANSI_RE = /\x1b\[[0-9;]*m/g;
 async function flushTelemetry(): Promise<void> {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    const Sentry = await import("@sentry/node-core/light");
+    const Sentry = await import("@sentry/node");
     const client = Sentry.getClient();
     if (client) {
       await client.flush(3000);
@@ -263,28 +268,28 @@ function concatChunksToBytes(chunks: Array<string | Uint8Array>): Uint8Array {
  * Parse captured output: prefer zero-copy object, then JSON, then raw string.
  * @internal Exported for testing
  */
-export function parseOutput<T>(
+export function parseOutput(
   capturedResult: unknown,
   stdoutChunks: Array<string | Uint8Array>,
-): T {
+): unknown {
   if (capturedResult !== undefined) {
-    return capturedResult as T;
+    return capturedResult;
   }
   // Binary output (e.g. `sentry api` attachment downloads) must be returned
   // byte-faithfully. If any chunk is a Uint8Array, joining as strings would
   // stringify it to comma-separated decimals — return raw bytes instead.
   if (stdoutChunks.some((c) => c instanceof Uint8Array)) {
-    return concatChunksToBytes(stdoutChunks) as T;
+    return concatChunksToBytes(stdoutChunks);
   }
   const stdoutStr = stdoutChunks.join("");
   if (!stdoutStr.trim()) {
-    return undefined as T;
+    return undefined;
   }
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    return JSON.parse(stdoutStr) as T;
+    return JSON.parse(stdoutStr);
   } catch {
-    return stdoutStr.trim() as T;
+    return stdoutStr.trim();
   }
 }
 
@@ -409,7 +414,7 @@ async function executeWithCapture<T>(
 ): Promise<T> {
   const env = buildIsolatedEnv(options);
   const cwd = options?.cwd ?? process.cwd();
-  return await withEnv(env, async () => {
+  return await withInvocation(env, async () => {
     const { withCustomHeadersOverride } = await import("./custom-headers.js");
     return await withCustomHeadersOverride(options?.headers, async () => {
       const captureCtx = await buildCaptureContext(env, cwd);
@@ -445,10 +450,10 @@ async function executeWithCapture<T>(
         );
       }
 
-      return parseOutput<T>(
+      return parseOutput(
         captureCtx.getCapturedResult(),
         captureCtx.stdoutChunks,
-      );
+      ) as T;
     });
   });
 }
@@ -487,7 +492,7 @@ function executeWithStream<T>(
 
   // Fire-and-forget — command runs in background
   const env = buildIsolatedEnv(options);
-  const invocation = withEnv(env, async () => {
+  const invocation = withInvocation(env, async () => {
     const cwd = options?.cwd ?? process.cwd();
 
     let captureCtx: CaptureContext | undefined;
@@ -521,7 +526,7 @@ function executeWithStream<T>(
           // dropped when the channel closes. No streaming-capable command emits
           // binary today, but this keeps the streaming path faithful to the
           // capture path (see parseOutput) if one ever does.
-          const trailing = parseOutput<T>(undefined, captureCtx.stdoutChunks);
+          const trailing = parseOutput(undefined, captureCtx.stdoutChunks) as T;
           if (trailing !== undefined) {
             channel.push(trailing);
           }
@@ -564,6 +569,11 @@ export function buildInvoker(options?: SentryOptions) {
     positionalArgs: string[],
     meta?: { streaming?: boolean },
   ): Promise<T> | AsyncIterable<T> {
+    // Usage hints read the command path Stricli's forCommand would set
+    const direct = {
+      commandPrefix: ["sentry", ...commandPath],
+      directInvoke: true,
+    };
     if (meta?.streaming) {
       return executeWithStream<T>(options, async (ctx, span) => {
         const { handler, flagDefs } = await resolveCommand(commandPath);
@@ -573,7 +583,7 @@ export function buildInvoker(options?: SentryOptions) {
         }
         const resolvedFlags = applyFlagDefaults(flags, flagDefs);
         await handler.call(
-          ctx.context,
+          { ...ctx.context, ...direct },
           { ...resolvedFlags, json: true },
           ...positionalArgs,
         );
@@ -588,7 +598,7 @@ export function buildInvoker(options?: SentryOptions) {
       }
       const resolvedFlags = applyFlagDefaults(flags, flagDefs);
       await handler.call(
-        ctx.context,
+        { ...ctx.context, ...direct },
         { ...resolvedFlags, json: true },
         ...positionalArgs,
       );
@@ -614,7 +624,8 @@ export function buildRunner(options?: SentryOptions) {
     if (hasStreamingFlag(args)) {
       return executeWithStream<unknown>(options, async (ctx, span) => {
         const { run: stricliRun } = await import("@stricli/core");
-        const { app } = await import("../app.js");
+        const { loadSdkApp } = await import("../sdk-app.js");
+        const { app } = await loadSdkApp(args);
         const { buildContext } = await import("../context.js");
         // oxlint-disable-next-line typescript/no-explicit-any -- fakeProcess duck-types the process interface
         const process_ = ctx.context.process as any;
@@ -624,7 +635,8 @@ export function buildRunner(options?: SentryOptions) {
 
     return executeWithCapture<unknown>(options, async (ctx, span) => {
       const { run: stricliRun } = await import("@stricli/core");
-      const { app } = await import("../app.js");
+      const { loadSdkApp } = await import("../sdk-app.js");
+      const { app } = await loadSdkApp(args);
       const { buildContext } = await import("../context.js");
       // oxlint-disable-next-line typescript/no-explicit-any -- fakeProcess duck-types the process interface
       const process_ = ctx.context.process as any;

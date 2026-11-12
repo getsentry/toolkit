@@ -17,17 +17,30 @@ import {
   getProductTrials,
   startProductTrial,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { detectSwappedTrialArgs } from "../../lib/arg-parsing.js";
 import { openBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
+import { ORG_TARGET } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { success } from "../../lib/formatters/colors.js";
-import { CommandOutput } from "../../lib/formatters/output.js";
+import {
+  CommandOutput,
+  type CommandYield,
+} from "../../lib/formatters/output.js";
 import { logger as log } from "../../lib/logger.js";
+import { prompt } from "../../lib/prompt.js";
+import {
+  type BoundArguments,
+  boundArguments,
+} from "../../lib/positional-parse.js";
 import { generateQRCode } from "../../lib/qrcode.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
 import { buildBillingUrl } from "../../lib/sentry-web-urls.js";
+import {
+  type OrgInput,
+  parseOrgInput,
+  resolveOrgInput,
+} from "../../lib/target-positional.js";
 import {
   findAvailableTrial,
   getDisplayNameForTrialName,
@@ -49,98 +62,151 @@ function isValidTrialArg(name: string): boolean {
   return name === "plan" || isTrialName(name);
 }
 
+const USAGE = "<name> [<org>]";
+const usageHint = () => sentry`trial start ${USAGE}`;
+
+/** Parsed `trial start` arguments. */
+export type TrialStartInput = {
+  /** Trial name, or "plan" for the plan-level trial */
+  readonly name: string;
+  /** The org to start the trial for */
+  readonly org: OrgInput;
+  /** Warning for reversed arguments, if any */
+  readonly warning?: string;
+};
+
+/** A trial name and the org to start it for. */
+export type ResolvedTrialStart = {
+  readonly name: string;
+  readonly org: string;
+};
+
+/**
+ * Data `trial start` yields: the plan trial's URL and QR code first, then
+ * the started trial.
+ */
+type TrialStartOutput = {
+  name?: string;
+  category?: string;
+  organization?: string;
+  lengthDays?: number | null;
+  started?: boolean;
+  url?: string;
+  qr?: string;
+  opened?: boolean;
+};
+
+/** The arguments of `trial start`. */
+export type TrialStartArguments = BoundArguments<
+  TrialStartInput,
+  ResolvedTrialStart
+>;
+
 /**
  * Parse the positional args for `trial start`, handling swapped order.
+ * Has no side effects.
  *
  * Expected: `<name> [org]`
  * Also accepted: `<org> <name>` (detected and auto-corrected)
  *
- * @returns Parsed name and optional org, plus any warning message
+ * @throws {ContextError} When no trial name is given
+ * @throws {ValidationError} When there are more than two arguments, the
+ *   trial name is unknown, or the org is malformed
  */
-function parseTrialStartArgs(
-  first: string,
-  second?: string,
-): { name: string; org?: string; warning?: string } {
-  if (!second) {
-    // Single arg — must be a trial name
-    return { name: first };
+export function parseTrialStartArguments(
+  args: readonly string[],
+): TrialStartInput {
+  const [first, second, ...extra] = args;
+  if (first === undefined) {
+    throw new ContextError("Trial name", usageHint(), [
+      `Valid trial names: ${NAMES_LIST}`,
+    ]);
+  }
+  if (extra.length > 0) {
+    throw new ValidationError(
+      `Too many arguments: ${extra.join(" ")}. Expected: ${usageHint()}`,
+      "positional",
+    );
   }
 
   // Two args — check for swapped order (includes "plan" pseudo-trial)
-  const swapped = detectSwappedTrialArgs(first, second, isValidTrialArg);
-  if (swapped) {
-    return { name: swapped.name, org: swapped.org, warning: swapped.warning };
+  const swapped =
+    second === undefined
+      ? null
+      : detectSwappedTrialArgs(first, second, isValidTrialArg);
+  const name = swapped ? swapped.name : first;
+  const org = swapped ? swapped.org : second;
+
+  // Validate trial name — "plan" is a special pseudo-name
+  if (!isValidTrialArg(name)) {
+    throw new ValidationError(
+      `Unknown trial name: '${name}'. Valid names: ${NAMES_LIST}`,
+      "name",
+    );
   }
 
-  // Normal order: first=name, second=org
-  return { name: first, org: second };
+  return {
+    name,
+    org: parseOrgInput(org, usageHint()),
+    ...(swapped && { warning: swapped.warning }),
+  };
 }
 
 export const startCommand = buildCommand({
+  destructive: true,
   docs: {
     brief: "Start a product trial",
+    customUsage: [USAGE],
     fullDescription:
       "Start a product trial for an organization.\n\n" +
       `Valid trial names: ${NAMES_LIST}\n\n` +
-      "Use 'plan' to start a Business plan trial (opens billing page).\n\n" +
-      "Examples:\n" +
-      "  sentry trial start seer\n" +
-      "  sentry trial start seer my-org\n" +
-      "  sentry trial start replays\n" +
-      "  sentry trial start plan\n" +
-      "  sentry trial start --json seer",
+      "Use 'plan' to start a Business plan trial (opens billing page).",
+    examples: [
+      { description: "Start a Seer trial", run: "trial start seer" },
+      {
+        description: "Start a trial for a specific organization",
+        run: "trial start replays my-org",
+      },
+      {
+        description: "Start a Business plan trial (opens the browser)",
+        run: "trial start plan",
+      },
+      {
+        description: "Output the result as JSON",
+        run: "trial start --json seer",
+      },
+    ],
   },
   output: { human: formatStartResult },
   parameters: {
-    positional: {
-      kind: "tuple" as const,
-      parameters: [
-        {
-          placeholder: "name",
-          brief: `Trial name (${NAMES_LIST})`,
-          parse: String,
-        },
-        {
-          placeholder: "org",
-          brief: "Organization slug (auto-detected if omitted)",
-          parse: parseOrgTarget,
-          optional: true as const,
-        },
-      ],
-    },
+    positional: boundArguments({
+      placeholder: "name",
+      brief: `Trial name (${NAMES_LIST}) and organization slug (auto-detected if omitted)`,
+      kind: ORG_TARGET,
+      parse: parseTrialStartArguments,
+      resolve: async (
+        input,
+        context: SentryContext,
+      ): Promise<ResolvedTrialStart> => {
+        if (input.warning) {
+          log.withTag("trial").warn(input.warning);
+        }
+        const { org } = await resolveOrgInput(
+          input.org,
+          context.cwd,
+          sentry`trial start <name> <org>`,
+        );
+        return { name: input.name, org };
+      },
+    }),
   },
   async *func(
     this: SentryContext,
     flags: { json?: boolean },
-    first: string,
-    second?: string,
+    target: TrialStartArguments,
   ) {
-    const logger = log.withTag("trial");
-    const parsed = parseTrialStartArgs(first, second);
-
-    if (parsed.warning) {
-      logger.warn(parsed.warning);
-    }
-
-    // Validate trial name — "plan" is a special pseudo-name
-    if (parsed.name !== "plan" && !isTrialName(parsed.name)) {
-      throw new ValidationError(
-        `Unknown trial name: '${parsed.name}'. Valid names: ${NAMES_LIST}`,
-        "name",
-      );
-    }
-
-    // Resolve organization
-    const resolved = await resolveOrg({
-      org: parsed.org,
-      cwd: this.cwd,
-    });
-
-    if (!resolved) {
-      throw new ContextError("Organization", "sentry trial start <name> <org>");
-    }
-
-    const orgSlug = resolved.org;
+    const parsed = await target.resolved;
+    const orgSlug = parsed.org;
 
     // Plan trial: no API to start it — open billing page instead
     if (parsed.name === "plan") {
@@ -184,7 +250,7 @@ async function promptOpenBrowser(url: string): Promise<boolean> {
 
   // Prompt to open browser if interactive TTY (stdin for input, stderr for display)
   if (isatty(0) && isatty(2)) {
-    const confirmed = await logger.prompt("Open in browser?", {
+    const confirmed = await prompt("Open in browser?", {
       type: "confirm",
       initial: true,
     });
@@ -218,7 +284,7 @@ async function promptOpenBrowser(url: string): Promise<boolean> {
 async function* handlePlanTrial(
   orgSlug: string,
   json: boolean,
-): AsyncGenerator<unknown, void, undefined> {
+): AsyncGenerator<CommandYield<TrialStartOutput>, void, undefined> {
   const logger = log.withTag("trial");
 
   // Check if plan trial is actually available
@@ -267,16 +333,7 @@ async function* handlePlanTrial(
 }
 
 /** Format start result as human-readable output */
-function formatStartResult(data: {
-  name?: string;
-  category?: string;
-  organization?: string;
-  lengthDays?: number | null;
-  started?: boolean;
-  url?: string;
-  qr?: string;
-  opened?: boolean;
-}): string {
+function formatStartResult(data: TrialStartOutput): string {
   // Intermediate URL + QR code yield for plan trials
   if (data.url && data.qr && !data.category) {
     return `\n  ${data.url}\n\n${data.qr}`;

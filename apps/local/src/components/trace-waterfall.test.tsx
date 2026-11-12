@@ -97,3 +97,42 @@ test("renders a deeply nested valid span chain without overflowing the stack", (
     markup.indexOf(`deep-${count - 1}`),
   );
 });
+
+test("span descriptions are keyboard-selectable and expose selected state", () => {
+  const [trace] = buildTraceGroups(
+    decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "transaction" },
+            {
+              transaction: "GET /orders",
+              start_timestamp: 1,
+              timestamp: 2,
+              contexts: { trace: { trace_id: "trace", span_id: "root" } },
+            },
+          ],
+        ],
+      ]),
+      "select",
+    ),
+  );
+  if (!trace) throw new Error("Expected trace");
+  let selected: string | undefined;
+  render(
+    <TraceWaterfall
+      trace={trace}
+      selectedSpanId="root"
+      onSelectSpan={(spanId) => {
+        selected = spanId;
+      }}
+    />,
+  );
+  const button = screen.getByRole("button", {
+    name: "Inspect span GET /orders",
+  });
+  expect(button.getAttribute("aria-pressed")).toBe("true");
+  button.click();
+  expect(selected).toBe("root");
+});

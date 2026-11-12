@@ -52,4 +52,28 @@ describe("useWorkspaceQueryState", () => {
       }),
     );
   });
+  test("tracks a selected span in history and clears it on other selections", async () => {
+    const onUrlUpdate = vi.fn();
+    const { result } = renderHook(() => useWorkspaceQueryState(), {
+      wrapper: withNuqsTestingAdapter({ hasMemory: true, onUrlUpdate }),
+    });
+    await act(() => result.current.selectSpan("trace-1", "span-2"));
+    expect(result.current).toMatchObject({
+      traceId: "trace-1",
+      spanId: "span-2",
+    });
+    expect(onUrlUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({ history: "push" }),
+        queryString: "?trace=trace-1&span=span-2",
+      }),
+    );
+    await act(() => result.current.clearSpan());
+    expect(result.current.spanId).toBeNull();
+    expect(result.current.traceId).toBe("trace-1");
+    await act(() => result.current.selectSpan("trace-1", "span-2"));
+    await act(() => result.current.selectEvent("event-1"));
+    expect(result.current.spanId).toBeNull();
+    expect(result.current.traceId).toBeNull();
+  });
 });

@@ -2,6 +2,7 @@ import { getColumnsAndAggregates } from "@sentry/toolkit-core/events-fields";
 import { getActiveSpan } from "@sentry/core";
 import { ensureSortInFields } from "@sentry/toolkit-core/events-sort";
 import { z } from "zod";
+import { ApiValidationError } from "../../../api-client";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import { UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
@@ -18,6 +19,7 @@ import { scrubSensitiveText } from "../../../telem/sentry";
 import type { Scope } from "../../../permissions";
 import type { Skill } from "../../../skills";
 import type { ServerContext } from "../../../types";
+import type { StructuredToolOutput } from "../../types";
 import {
   isMetricsDataset,
   normalizeEventsDataset,
@@ -34,6 +36,8 @@ import {
   RECOMMENDED_FIELDS,
   TRACE_METRICS_SAMPLE_IDENTITY_FIELDS,
 } from "./config";
+import { buildDroppedEventsNote } from "./dropped-events-note";
+import { getFieldRecoveryHints } from "./field-hints";
 import {
   formatErrorResults,
   formatLogResults,
@@ -43,14 +47,29 @@ import {
   formatTraceMetricsResults,
 } from "./formatters";
 import {
+  buildStructuredReplayResults,
   DEFAULT_REPLAY_SORT,
   DEFAULT_REPLAY_STATS_PERIOD,
   formatReplayResults,
   isValidReplaySort,
+  type SearchReplaysStructuredContent,
 } from "./replays";
-import { isSeerSearchDataset, translateWithSeer } from "./seer";
+import {
+  buildStructuredEventsResult,
+  buildStructuredTimeSeriesResult,
+  type DatasetSearchStructuredContent,
+  type SearchEventsStructuredContent,
+  type StructuredSearchDataset,
+} from "./structured";
+import {
+  isSeerSearchDataset,
+  type SeerSearchTranslation,
+  trackAiQueryOutcome,
+  translateWithSeer,
+} from "./seer";
 import {
   formatEventsValidationResults,
+  formatUntranslatedQueryNote,
   isAggregateQuery,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
@@ -69,6 +88,14 @@ type SearchEventsAgentResult = z.output<typeof searchEventsAgentOutputSchema>;
 
 function defaultSortForDataset(dataset: PublicEventsDataset | "replays") {
   return dataset === "replays" ? DEFAULT_REPLAY_SORT : DEFAULT_EVENTS_SORT;
+}
+
+function untranslatedQuerySyntaxExample(
+  dataset: PublicEventsDataset | "replays",
+): string {
+  if (dataset === "errors") return "level:error";
+  if (dataset === "logs") return "severity:error";
+  return "environment:production";
 }
 
 function defaultFieldsForDataset(dataset: PublicEventsDataset): string[] {
@@ -121,10 +148,14 @@ function buildRequestFields(
   dataset: PublicEventsDataset | "replays",
   fields: string[],
 ): string[] {
-  return dataset !== "replays" &&
-    isMetricsDataset(dataset) &&
-    !isAggregateQuery(fields)
-    ? Array.from(new Set([...fields, ...TRACE_METRICS_SAMPLE_IDENTITY_FIELDS]))
+  if (dataset === "replays" || isAggregateQuery(fields)) {
+    return fields;
+  }
+  if (dataset === "logs") {
+    return [...new Set([...fields, "id"])];
+  }
+  return isMetricsDataset(dataset)
+    ? [...new Set([...fields, ...TRACE_METRICS_SAMPLE_IDENTITY_FIELDS])]
     : fields;
 }
 
@@ -134,6 +165,10 @@ function isTraceItemDataset(dataset: PublicEventsDataset | "replays"): boolean {
 
 function hasFields(fields?: string[] | null): fields is string[] {
   return Array.isArray(fields) && fields.length > 0;
+}
+
+function appendHints(message: string, hints: readonly string[]): string {
+  return hints.length > 0 ? `${message}\n\n${hints.join("\n")}` : message;
 }
 
 function formatSearchValue(value: string): string {
@@ -152,10 +187,7 @@ function formatEnvironmentFilter(
     return undefined;
   }
   if (environments.length === 1) {
-    const environmentValue = environments[0];
-    return environmentValue === undefined
-      ? undefined
-      : `environment:${formatSearchValue(environmentValue)}`;
+    return `environment:${formatSearchValue(environments[0])}`;
   }
   return `environment:[${environments.map(formatSearchValue).join(",")}]`;
 }
@@ -393,14 +425,32 @@ export interface SearchEventsParams {
   includeExplanation: boolean;
 }
 
-export interface RunSearchEventsOptions {
+export interface MarkdownSearchEventsOptions {
   /**
    * Keep the caller's dataset even when the embedded agent suggests another.
    * Dataset-specific tools (search_logs, search_traces, ...) set this so a
    * search never returns rows from a different dataset than the tool name.
    */
   lockDataset?: boolean;
+  output?: "markdown";
 }
+
+/**
+ * Returns the payload a dataset tool declares as its `outputSchema` instead
+ * of markdown. That schema is per dataset, so the dataset must be locked.
+ */
+export interface StructuredSearchEventsOptions {
+  lockDataset: true;
+  output: "structured";
+}
+
+export type RunSearchEventsOptions =
+  | MarkdownSearchEventsOptions
+  | StructuredSearchEventsOptions;
+
+type StructuredSearchEventsOutput =
+  | StructuredToolOutput<SearchEventsStructuredContent>
+  | StructuredToolOutput<SearchReplaysStructuredContent>;
 
 const searchLimitParam = z
   .number()
@@ -596,12 +646,89 @@ export function logSearchEventsError(
 /**
  * Shared handler for search_events and the dataset-specific search tools.
  */
+interface SeerOutcomeState {
+  translation: SeerSearchTranslation | null;
+  tracked: boolean;
+}
+
+// Only Seer's translations are tracked, not the embedded agent's, and at most
+// once per run.
+function trackSeerOutcome(
+  state: SeerOutcomeState,
+  params: SearchEventsParams,
+  resultCount: number,
+  error: unknown = false,
+): void {
+  if (
+    !state.translation ||
+    state.tracked ||
+    !isSeerSearchDataset(params.dataset)
+  ) {
+    return;
+  }
+  state.tracked = true;
+  trackAiQueryOutcome({
+    dataset: normalizeEventsDataset(params.dataset),
+    mode: state.translation.mode,
+    organization: {
+      slug: params.organizationSlug,
+      features: state.translation.organizationFeatures,
+    },
+    resultCount,
+    runId: state.translation.runId,
+    error:
+      typeof error === "boolean" ||
+      typeof error === "string" ||
+      error instanceof Error
+        ? error
+        : true,
+  });
+}
+
+export function runSearchEvents(
+  params: SearchEventsParams,
+  context: ServerContext,
+  options?: MarkdownSearchEventsOptions,
+): Promise<string>;
+export function runSearchEvents(
+  params: SearchEventsParams & { dataset: "replays" },
+  context: ServerContext,
+  options: StructuredSearchEventsOptions,
+): Promise<StructuredToolOutput<SearchReplaysStructuredContent>>;
+/**
+ * Unchecked narrowing: the builders return the shared payload with loose
+ * row links, and this overload asserts the links match `TDataset`'s output
+ * schema. That holds because structured runs lock the dataset and each row's
+ * links come from that dataset's `defineDatasetConfig`.
+ */
+export function runSearchEvents<TDataset extends StructuredSearchDataset>(
+  params: SearchEventsParams & { dataset: TDataset },
+  context: ServerContext,
+  options: StructuredSearchEventsOptions,
+): Promise<StructuredToolOutput<DatasetSearchStructuredContent<TDataset>>>;
 export async function runSearchEvents(
   params: SearchEventsParams,
   context: ServerContext,
   options: RunSearchEventsOptions = {},
-): Promise<string> {
+): Promise<string | StructuredSearchEventsOutput> {
+  // Any failure after Seer translates the query counts as `error_on_load`.
+  const seerOutcome: SeerOutcomeState = { translation: null, tracked: false };
+  try {
+    return await executeSearchEvents(params, context, options, seerOutcome);
+  } catch (error) {
+    trackSeerOutcome(seerOutcome, params, 0, error);
+    throw error;
+  }
+}
+
+async function executeSearchEvents(
+  params: SearchEventsParams,
+  context: ServerContext,
+  options: RunSearchEventsOptions,
+  seerOutcome: SeerOutcomeState,
+): Promise<string | StructuredSearchEventsOutput> {
   const lockDataset = options.lockDataset === true;
+  const structured = options.output === "structured";
   const apiService = apiServiceFromContext(context, {
     regionUrl: params.regionUrl ?? undefined,
   });
@@ -636,6 +763,8 @@ export async function runSearchEvents(
   let explanation: string | undefined;
   let environment: string | string[] | null | undefined = params.environment;
   let timeSeries: { yAxis: string; interval: string | null } | null = null;
+  // Set only when the query ran as-is; shown when it then matches nothing.
+  let untranslatedQueryNote: string | null = null;
 
   const explicitSort = params.sort?.trim() || undefined;
   const hasExplicitDataset = params.dataset !== undefined;
@@ -676,6 +805,7 @@ export async function runSearchEvents(
           query: params.query,
         })
       : null;
+  seerOutcome.translation = seerTranslation;
   if (seerTranslation && !projectId) {
     projectId = "-1";
   }
@@ -764,7 +894,7 @@ export async function runSearchEvents(
     // Time series requests use yAxis/interval, so sort is not required.
     if (
       !timeSeries &&
-      !parsed.sort?.trim() &&
+      !parsed.sort.trim() &&
       !(shouldTrustExplicitSearchParams && hasExplicitSort)
     ) {
       throw new UserInputError(
@@ -795,7 +925,7 @@ export async function runSearchEvents(
     sortParam =
       shouldTrustExplicitSearchParams && explicitSort
         ? explicitSort
-        : parsed.sort?.trim() || defaultSortForDataset(dataset);
+        : parsed.sort.trim() || defaultSortForDataset(dataset);
     explanation = parsed.explanation;
     environment = params.environment ?? parsed.environment;
 
@@ -825,6 +955,14 @@ export async function runSearchEvents(
       dataset === "replays"
         ? []
         : (params.fields ?? defaultFieldsForDataset(dataset));
+    const untranslatedNote = formatUntranslatedQueryNote(
+      params.query,
+      untranslatedQuerySyntaxExample(dataset),
+      dataset,
+    );
+    untranslatedQueryNote = untranslatedNote
+      ? `**Note:** ${untranslatedNote}`
+      : null;
   }
 
   // Flag any requested environment that doesn't exist (checking both the
@@ -849,15 +987,19 @@ export async function runSearchEvents(
     suggestedProjectIds.length > 0
       ? `**Note:** Seer suggested also searching project IDs ${suggestedProjectIds.join(", ")}, for example other services in the same trace. Omit \`projectSlug\` to search all accessible projects.`
       : "";
-  const leadingNote = [
+  const leadingNotes = [
     seerTranslation?.warning,
     environmentNote,
     projectSuggestionNote,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-  const withLeadingNote = (text: string): string =>
-    leadingNote ? `${leadingNote}\n\n${text}` : text;
+  ].filter((note): note is string => Boolean(note));
+  const notesFor = (resultCount: number): string[] =>
+    resultCount === 0 && untranslatedQueryNote
+      ? [...leadingNotes, untranslatedQueryNote]
+      : leadingNotes;
+  const withLeadingNote = (text: string, resultCount: number): string => {
+    const leadingNote = notesFor(resultCount).join("\n\n");
+    return leadingNote ? `${leadingNote}\n\n${text}` : text;
+  };
 
   if (dataset === "replays") {
     const replaySort = sortParam || DEFAULT_REPLAY_SORT;
@@ -903,7 +1045,7 @@ export async function runSearchEvents(
       replays.length,
     );
 
-    const replayOutput = formatReplayResults({
+    const replayParams = {
       replays,
       inputQuery: params.query || sentryQuery || "recent replays",
       includeExplanation: params.includeExplanation,
@@ -925,8 +1067,14 @@ export async function runSearchEvents(
       experimentalMode: context.experimentalMode ?? false,
       availableToolNames: context.availableToolNames,
       directToolNames: context.directToolNames,
-    });
-    return withLeadingNote(replayOutput);
+    };
+    if (structured) {
+      return buildStructuredReplayResults({
+        ...replayParams,
+        notes: notesFor(replays.length),
+      });
+    }
+    return withLeadingNote(formatReplayResults(replayParams), replays.length);
   }
 
   if (timeSeries) {
@@ -939,15 +1087,35 @@ export async function runSearchEvents(
     // request shape — fields + orderby — which is not what a timeseries
     // sends (yAxis + interval, no fields/sort). events-timeseries validates
     // the query server-side, so a bad query still surfaces as an API error.
-    const series = await apiService.getEventsTimeSeries({
-      organizationSlug,
-      query: timeSeriesQuery,
-      yAxis: timeSeries.yAxis,
-      interval: timeSeries.interval ?? undefined,
-      projectId,
-      dataset,
-      ...timeParams,
-    });
+    // Fetch drops for the same window in parallel with the series: wall-clock
+    // cost is max(series, drops), not the sum. The note is appended only when
+    // unintentional drops are material.
+    const [series, droppedEventsNote] = await Promise.all([
+      apiService.getEventsTimeSeries({
+        organizationSlug,
+        query: timeSeriesQuery,
+        yAxis: timeSeries.yAxis,
+        interval: timeSeries.interval ?? undefined,
+        projectId,
+        dataset,
+        ...timeParams,
+      }),
+      buildDroppedEventsNote({
+        apiService,
+        organizationSlug,
+        projectId,
+        dataset: dataset,
+        interval: timeSeries.interval,
+        timeParams,
+        toolAvailable:
+          context.availableToolNames?.has("find_dropped_events") ?? false,
+      }),
+    ]);
+    // A series always has buckets, so count the ones with data.
+    const pointsWithData = series.timeSeries
+      .flatMap((s) => s.values)
+      .filter((point) => point.value != null && point.value !== 0).length;
+    trackSeerOutcome(seerOutcome, params, pointsWithData);
     const statsUrl = apiService.getEventsExplorerUrl(
       organizationSlug,
       timeSeriesQuery,
@@ -961,17 +1129,38 @@ export async function runSearchEvents(
       timeParams.start,
       timeParams.end,
     );
-    return withLeadingNote(
-      formatTimeSeriesResults({
+    if (structured) {
+      return buildStructuredTimeSeriesResult({
+        dataset,
         series,
         yAxis: timeSeries.yAxis,
         interval: timeSeries.interval,
         inputQuery: params.query || timeSeriesQuery,
         includeExplanation: params.includeExplanation,
         explanation,
+        query: timeSeriesQuery,
         timeRange: timeParams,
         url: statsUrl,
-      }),
+        notes: droppedEventsNote
+          ? [...notesFor(pointsWithData), droppedEventsNote]
+          : notesFor(pointsWithData),
+      });
+    }
+    const timeSeriesOutput = formatTimeSeriesResults({
+      series,
+      yAxis: timeSeries.yAxis,
+      interval: timeSeries.interval,
+      inputQuery: params.query || timeSeriesQuery,
+      includeExplanation: params.includeExplanation,
+      explanation,
+      timeRange: timeParams,
+      url: statsUrl,
+    });
+    return withLeadingNote(
+      droppedEventsNote
+        ? `${timeSeriesOutput}\n\n${droppedEventsNote}`
+        : timeSeriesOutput,
+      pointsWithData,
     );
   }
 
@@ -1011,7 +1200,15 @@ export async function runSearchEvents(
     const formatted = formatEventsValidationResults(lastValidation);
     throw new UserInputError(
       formatted
-        ? `Search validation failed:\n${formatted}`
+        ? appendHints(
+            `Search validation failed:\n${formatted}`,
+            getFieldRecoveryHints({
+              dataset,
+              fields: requestFields,
+              sort: sortParam,
+              detail: formatted,
+            }),
+          )
         : "Search validation failed.",
     );
   }
@@ -1023,17 +1220,38 @@ export async function runSearchEvents(
     environment,
   );
 
-  const eventsResponse = await apiService.searchEvents({
-    organizationSlug,
-    query: sentryQuery,
-    fields: finalRequestFields,
-    limit: params.limit,
-    projectId,
-    dataset,
-    sort: sortParam,
-    crossEventQueries: seerTranslation?.crossEventQueries,
-    ...timeParams,
-  });
+  let eventsResponse: Awaited<ReturnType<typeof apiService.searchEvents>>;
+  try {
+    eventsResponse = await apiService.searchEvents({
+      organizationSlug,
+      query: sentryQuery,
+      fields: finalRequestFields,
+      limit: params.limit,
+      projectId,
+      dataset,
+      sort: sortParam,
+      crossEventQueries: seerTranslation?.crossEventQueries,
+      ...timeParams,
+    });
+  } catch (error) {
+    // The validate endpoint misses some errors-dataset rejections, such as
+    // `first_seen()` and sorting by `issue`, so check the final API error too.
+    if (!(error instanceof ApiValidationError)) {
+      throw error;
+    }
+    const hints = getFieldRecoveryHints({
+      dataset,
+      fields: finalRequestFields,
+      sort: sortParam,
+      detail: error.message,
+    });
+    if (hints.length === 0) {
+      throw error;
+    }
+    throw new UserInputError(appendHints(error.toUserMessage(), hints), {
+      cause: error,
+    });
+  }
 
   const { columns: groupByFields, aggregates: aggregateFunctions } =
     getColumnsAndAggregates(fields);
@@ -1064,6 +1282,7 @@ export async function runSearchEvents(
     "gen_ai.tool.call.result.count",
     eventData.length,
   );
+  trackSeerOutcome(seerOutcome, params, eventData.length);
 
   const conversationId = extractConversationIdFromSearchQuery(sentryQuery);
   const explorerUrl = conversationId
@@ -1105,16 +1324,48 @@ export async function runSearchEvents(
     directToolNames: context.directToolNames,
   };
 
+  if (structured) {
+    return buildStructuredEventsResult({
+      dataset,
+      eventData,
+      inputQuery: formatParams.inputQuery,
+      includeExplanation: params.includeExplanation,
+      explanation,
+      explorerUrl,
+      sentryQuery,
+      fields,
+      requestFields: finalRequestFields,
+      executedSearch: formatParams.executedSearch,
+      notes: notesFor(eventData.length),
+      session: {
+        apiService,
+        organizationSlug,
+        experimentalMode: formatParams.experimentalMode,
+        availableToolNames: context.availableToolNames,
+        directToolNames: context.directToolNames,
+      },
+    });
+  }
+
   switch (dataset) {
     case "errors":
-      return withLeadingNote(formatErrorResults(formatParams));
+      return withLeadingNote(
+        formatErrorResults(formatParams),
+        eventData.length,
+      );
     case "logs":
-      return withLeadingNote(formatLogResults(formatParams));
+      return withLeadingNote(formatLogResults(formatParams), eventData.length);
     case "spans":
-      return withLeadingNote(formatSpanResults(formatParams));
+      return withLeadingNote(formatSpanResults(formatParams), eventData.length);
     case "profiles":
-      return withLeadingNote(formatProfileResults(formatParams));
+      return withLeadingNote(
+        formatProfileResults(formatParams),
+        eventData.length,
+      );
     default:
-      return withLeadingNote(formatTraceMetricsResults(formatParams));
+      return withLeadingNote(
+        formatTraceMetricsResults(formatParams),
+        eventData.length,
+      );
   }
 }

@@ -4,24 +4,22 @@
  * Restore a dashboard to a previous revision.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { restoreDashboardRevision } from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
-import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
+import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { withProgress } from "../../lib/polling.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
-import type { DashboardDetail } from "../../types/dashboard.js";
-import {
-  withDashboardErrors,
-  parseDashboardPositionalArgs,
-  resolveDashboardId,
-  resolveOrgFromTarget,
-} from "./resolve.js";
+import { DashboardRestoreOutputSchema } from "../../generated/output-schemas/dashboard.js";
+import type { DashboardRestoreOutput } from "../../output-schemas/dashboard.js";
+import { type DashboardArguments, dashboardArguments } from "./arguments.js";
+import { withDashboardErrors } from "./resolve.js";
+import { sentry } from "../../lib/app-identity.js";
 
 type RestoreFlags = {
   readonly revision: string;
@@ -29,11 +27,7 @@ type RestoreFlags = {
   readonly fields?: string[];
 };
 
-type RestoreResult = {
-  dashboard: DashboardDetail;
-  orgSlug: string;
-  revisionId: string;
-};
+type RestoreResult = DashboardRestoreOutput;
 
 function formatRestoreHuman(result: RestoreResult): string {
   const d = result.dashboard;
@@ -42,11 +36,11 @@ function formatRestoreHuman(result: RestoreResult): string {
   const created = formatRelativeTime(d.dateCreated);
 
   return (
-    `Restored dashboard **${escapeMarkdownCell(d.title)}** to revision ${result.revisionId}.\n\n` +
+    `Restored dashboard **${tableCell(d.title)}** to revision ${result.revisionId}.\n\n` +
     "| Field | Value |\n" +
     "|-------|-------|\n" +
     `| ID | ${d.id} |\n` +
-    `| Title | ${escapeMarkdownCell(d.title)} |\n` +
+    `| Title | ${tableCell(d.title)} |\n` +
     `| Widgets | ${widgetCount} |\n` +
     `| Created | ${created} |\n` +
     `| URL | ${colorTag("muted", url)} |`
@@ -58,29 +52,39 @@ export const restoreCommand = buildCommand({
     brief: "Restore a dashboard revision",
     fullDescription:
       "Restore a Sentry dashboard to a previous revision.\n\n" +
-      "Use `sentry dashboard revisions` to list available revisions first.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard restore 12345 --revision 42\n" +
-      "  sentry dashboard restore my-org 12345 --revision 42\n" +
-      "  sentry dashboard restore 'My Dashboard' --revision 42\n" +
-      "  sentry dashboard restore 12345 --revision 42 --json",
+      "Use `sentry dashboard revisions` to list available revisions first.",
+    examples: [
+      {
+        description: "Restore by dashboard title and revision number",
+        run: "dashboard restore 'Frontend Performance' --revision 3",
+      },
+      {
+        description: "Restore by dashboard ID",
+        run: "dashboard restore 12345 --revision 42",
+      },
+      {
+        description: "Pass the organization explicitly",
+        run: "dashboard restore my-org/ 12345 --revision 42",
+      },
+      {
+        description: "Output the restored dashboard as JSON",
+        run: "dashboard restore 12345 --revision 42 --json",
+      },
+    ],
   },
   output: {
     human: formatRestoreHuman,
+    schema: DashboardRestoreOutputSchema,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/dashboard",
-        brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: dashboardArguments({
+      placeholder: "org/dashboard",
+      usageHint: () => sentry`dashboard restore <org>/ <id> --revision <rev>`,
+    }),
     flags: {
       revision: {
         kind: "parsed",
-        parse: (value: string) => {
+        parse: textParser((value: string) => {
           const revision = value.trim();
           if (!revision) {
             throw new ValidationError(
@@ -89,23 +93,18 @@ export const restoreCommand = buildCommand({
             );
           }
           return revision;
-        },
+        }),
         brief: "Revision ID to restore",
       },
     },
     aliases: { r: "revision" },
   },
-  async *func(this: SentryContext, flags: RestoreFlags, ...args: string[]) {
-    const { cwd } = this;
-
-    const { dashboardRef, targetArg } = parseDashboardPositionalArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard restore <org>/ <id> --revision <rev>",
-    );
-    const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
+  async *func(
+    this: SentryContext,
+    flags: RestoreFlags,
+    target: DashboardArguments,
+  ) {
+    const { orgSlug, dashboardId } = await target.resolved;
 
     const dashboard = await withDashboardErrors(
       {

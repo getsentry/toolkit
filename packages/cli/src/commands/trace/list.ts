@@ -6,8 +6,9 @@
 
 import type { SentryContext } from "../../context.js";
 import { listTransactions } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
+import { choiceParser, textParser } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -26,25 +27,26 @@ import {
   LIST_MIN_LIMIT,
   LIST_PERIOD_FLAG,
   PERIOD_ALIASES,
+  PROJECT_TARGET_BRIEF,
   paginationHint,
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
-import {
-  resolveLogProjectId,
-  resolveProjectBoundFromArg,
-} from "../../lib/resolve-target.js";
+import { resolveLogProjectId } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
+import {
+  type ProjectBoundTarget,
+  projectBoundTarget,
+} from "../../lib/target-positional.js";
 import {
   appendPeriodHint,
   serializeTimeRange,
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  type TransactionListItem,
-  TransactionListItemSchema,
-} from "../../types/index.js";
+import type { TransactionListItem } from "../../types/index.js";
+import { TransactionListItemSchema } from "../../generated/output-schemas/trace.js";
 
 type ListFlags = {
   readonly limit: number;
@@ -83,9 +85,6 @@ type TraceListResult = {
 /** Accepted values for the --sort flag */
 const VALID_SORT_VALUES: SortValue[] = ["date", "duration"];
 
-/** Command name used in resolver error messages */
-const COMMAND_NAME = "trace list";
-
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "trace-list";
 
@@ -112,7 +111,7 @@ function nextPageHint(
   project: string,
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
-  return appendTraceFlags(`sentry trace list ${org}/${project} -c next`, flags);
+  return appendTraceFlags(sentry`trace list ${org}/${project} -c next`, flags);
 }
 
 /** Build the CLI hint for fetching the previous page, preserving active flags. */
@@ -121,7 +120,7 @@ function prevPageHint(
   project: string,
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
-  return appendTraceFlags(`sentry trace list ${org}/${project} -c prev`, flags);
+  return appendTraceFlags(sentry`trace list ${org}/${project} -c prev`, flags);
 }
 
 /**
@@ -174,13 +173,13 @@ function formatTraceListHuman(result: TraceListResult): string {
 function jsonTransformTraceList(
   result: TraceListResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<TransactionListItem> {
   const items =
     fields && fields.length > 0
       ? result.traces.map((t) => filterFields(t, fields))
       : result.traces;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<TransactionListItem> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: !!result.hasPrev,
@@ -200,18 +199,31 @@ export const listCommand = buildListCommand("trace", {
     brief: "List recent traces in a project",
     fullDescription:
       "List recent traces from Sentry projects.\n\n" +
-      "Target patterns:\n" +
-      "  sentry trace list               # auto-detect from DSN or config\n" +
-      "  sentry trace list <org>/<proj>  # explicit org and project\n" +
-      "  sentry trace list <project>     # find project across all orgs\n\n" +
       `${TARGET_PATTERN_NOTE}\n\n` +
-      "Examples:\n" +
-      "  sentry trace list                     # List last 10 traces\n" +
-      "  sentry trace list --limit 50          # Show more traces\n" +
-      "  sentry trace list --sort duration     # Sort by slowest first\n" +
-      "  sentry trace list --period 24h        # Last 24 hours only\n" +
-      '  sentry trace list -q "transaction:GET /api/users"  # Filter by transaction\n\n' +
       "Alias: `sentry traces` → `sentry trace list`",
+    examples: [
+      { description: "List recent traces", run: "trace list" },
+      {
+        description: "Show more traces",
+        run: "trace list --limit 50",
+      },
+      {
+        description: "Sort by slowest first",
+        run: "trace list --sort duration",
+      },
+      {
+        description: "Filter by transaction name in the last 24 hours",
+        run: 'trace list -q "transaction:GET /api/users" --period 24h',
+      },
+      {
+        description: "Fetch the next page",
+        run: "trace list my-org/backend -c next",
+      },
+      {
+        description: "Find a project across organizations",
+        run: "trace list backend",
+      },
+    ],
   },
   output: {
     human: formatTraceListHuman,
@@ -224,8 +236,8 @@ export const listCommand = buildListCommand("trace", {
       parameters: [
         {
           placeholder: "org/project",
-          brief: "<org>/<project> or <project> (search)",
-          parse: parseOrgProjectTarget,
+          brief: PROJECT_TARGET_BRIEF,
+          parse: projectBoundTarget,
           optional: true,
         },
       ],
@@ -233,7 +245,7 @@ export const listCommand = buildListCommand("trace", {
     flags: {
       limit: {
         kind: "parsed",
-        parse: parseLimit,
+        parse: textParser(parseLimit),
         brief: `Number of traces (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
         default: String(LIST_DEFAULT_LIMIT),
       },
@@ -245,7 +257,7 @@ export const listCommand = buildListCommand("trace", {
       },
       sort: {
         kind: "parsed",
-        parse: parseSort,
+        parse: choiceParser(VALID_SORT_VALUES, parseSort),
         brief: "Sort by: date, duration",
         default: "date" as const,
       },
@@ -258,17 +270,16 @@ export const listCommand = buildListCommand("trace", {
       s: "sort",
     },
   },
-  async *func(this: SentryContext, flags: ListFlags, target?: string) {
-    const { cwd } = this;
+  async *func(
+    this: SentryContext,
+    flags: ListFlags,
+    target: ProjectBoundTarget,
+  ) {
     const timeRange = flags.period;
     const { query } = flags;
 
     // Resolve org/project from positional arg, config, or DSN auto-detection
-    const { org, project } = await resolveProjectBoundFromArg(
-      target,
-      cwd,
-      COMMAND_NAME,
-    );
+    const { org, project } = await target.resolved;
     // Resolve slug → numeric ID so the Events query scopes via the `project`
     // param. `project:<slug>` only matches actively-selected projects and can
     // otherwise 400 with "not actively selected" (#1317).
@@ -324,7 +335,7 @@ export const listCommand = buildListCommand("trace", {
       const countText = `Showing ${traces.length} trace${traces.length === 1 ? "" : "s"}.`;
       hint = nav
         ? `${countText} ${nav}`
-        : `${countText} Use 'sentry trace view <TRACE_ID>' to view the full span tree.`;
+        : `${countText} Use '${sentry`trace view <TRACE_ID>`}' to view the full span tree.`;
     }
 
     yield new CommandOutput({

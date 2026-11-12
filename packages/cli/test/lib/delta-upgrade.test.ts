@@ -219,7 +219,8 @@ describe("extractStableChain", () => {
    * Converts each char to its hex code to produce valid [0-9a-f]+ output.
    */
   function versionToHex(version: string): string {
-    return Array.from(version)
+    return version
+      .split("")
       .map((c) => c.charCodeAt(0).toString(16).padStart(2, "0"))
       .join("");
   }
@@ -810,7 +811,7 @@ describe("validateChainStep", () => {
 function mockFetch(
   fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
-  globalThis.fetch = fn as typeof globalThis.fetch;
+  globalThis.fetch = fn;
 }
 
 /** Store original fetch for restoration */
@@ -908,7 +909,7 @@ describe("downloadStablePatch", () => {
 
     mockFetch(async (url) => {
       expect(extractInputUrl(url)).toBe("https://example.com/patch.bin");
-      return new Response(patchData.buffer as ArrayBuffer, {
+      return new Response(patchData.buffer, {
         status: 200,
       });
     });
@@ -943,7 +944,8 @@ describe("resolveStableChain", () => {
    * Reuses the same approach as the extractStableChain tests above.
    */
   function versionHex(version: string): string {
-    return Array.from(version)
+    return version
+      .split("")
       .map((c) => c.charCodeAt(0).toString(16).padStart(2, "0"))
       .join("");
   }

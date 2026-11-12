@@ -79,12 +79,6 @@ export default defineConfig({
     testTimeout: 15_000,
     isolate: true,
     pool: "forks",
-    poolOptions: {
-      forks: {
-        execArgv: [],
-        env: { UV_USE_IO_URING: "0" },
-      },
-    },
     include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
     exclude: ["**/node_modules/**", "**/dist/**"],
     coverage: {
@@ -96,7 +90,7 @@ export default defineConfig({
         // vi.spyOn. Without inlining, ESM namespace objects are frozen
         // and spyOn throws "Cannot redefine property".
         inline: [
-          "@sentry/node-core",
+          "@sentry/node",
           "@sentry/core",
           "@clack/prompts",
           "node:child_process",

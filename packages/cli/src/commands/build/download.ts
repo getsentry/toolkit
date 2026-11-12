@@ -17,13 +17,15 @@ import {
   toBinaryDownloadUrl,
 } from "../../lib/api/preprod-artifacts.js";
 import { buildCommand } from "../../lib/command.js";
+import { parseFilePath, parseText } from "../../lib/completion-target.js";
 import { ContextError, ResolutionError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { resolveOrgRegion } from "../../lib/region.js";
 import { resolveOrg } from "../../lib/resolve-target.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry build download <build-id>";
+const usageHint = () => sentry`build download <build-id>`;
 
 /** Structured result for `build download`. */
 type BuildDownloadResult = {
@@ -55,10 +57,21 @@ export const downloadCommand = buildCommand({
       "Download a mobile build artifact (APK or IPA) previously uploaded to " +
       "Sentry's preprod system for size analysis. The build is resolved by " +
       "ID within the organization; the artifact is streamed to a local file.\n\n" +
-      "This feature only works with Sentry SaaS.\n\n" +
-      "Usage:\n" +
-      "  sentry build download 1234567890\n" +
-      "  sentry build download 1234567890 --output ./app.ipa",
+      "This feature only works with Sentry SaaS.",
+    examples: [
+      {
+        description: "Download a build artifact by ID",
+        run: "build download 1234567890",
+      },
+      {
+        description: "Download to a specific path",
+        run: "build download 1234567890 --output ./app.ipa",
+      },
+      {
+        description: "Output the result as JSON",
+        run: "build download 1234567890 --json",
+      },
+    ],
   },
   output: {
     human: formatDownloadResult,
@@ -69,7 +82,7 @@ export const downloadCommand = buildCommand({
       parameters: [
         {
           brief: "ID of the build to download",
-          parse: String,
+          parse: parseText,
           placeholder: "build-id",
         },
       ],
@@ -77,7 +90,7 @@ export const downloadCommand = buildCommand({
     flags: {
       output: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Output path (default: preprod_artifact_<build-id>.<ext> in the current directory)",
         optional: true,
@@ -94,7 +107,7 @@ export const downloadCommand = buildCommand({
   ) {
     const resolved = await resolveOrg({ cwd: this.cwd });
     if (!resolved) {
-      throw new ContextError("Organization", USAGE_HINT);
+      throw new ContextError("Organization", usageHint());
     }
     const { org } = resolved;
 
@@ -103,7 +116,7 @@ export const downloadCommand = buildCommand({
       throw new ResolutionError(
         `Build ${buildId}`,
         "is not installable",
-        USAGE_HINT,
+        usageHint(),
         [
           "The build may still be processing, or it has no downloadable artifact.",
         ],
@@ -120,7 +133,7 @@ export const downloadCommand = buildCommand({
     const regionUrl = await resolveOrgRegion(org);
     await downloadBuildArtifact(regionUrl, url, output);
 
-    yield new CommandOutput<BuildDownloadResult>({
+    yield new CommandOutput({
       buildId,
       org,
       output,

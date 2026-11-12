@@ -11,7 +11,7 @@ import { formatIssueDetails, muted } from "../../lib/formatters/index.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import type { SentryIssue } from "../../types/index.js";
-import { issueIdPositional, resolveIssue } from "./utils.js";
+import { type IssueTarget, issuePositional } from "./positional.js";
 
 const log = logger.withTag("issue.unresolve");
 
@@ -30,32 +30,40 @@ export const unresolveCommand = buildCommand({
   docs: {
     brief: "Reopen a resolved issue",
     fullDescription:
-      "Mark an issue as unresolved. Inverse of `sentry issue resolve`.\n\n" +
-      "Examples:\n" +
-      "  sentry issue unresolve CLI-12Z\n" +
-      "  sentry issue reopen CLI-12Z\n" +
-      "  sentry issue unresolve my-org/CLI-AB",
+      "Mark an issue as unresolved. Inverse of `sentry issue resolve`.",
+    examples: [
+      {
+        description: "Reopen a resolved issue",
+        run: "issue unresolve CLI-G5",
+      },
+      {
+        description: "`reopen` is an alias for `unresolve`",
+        run: "issue reopen CLI-G5",
+      },
+      {
+        description: "Reopen an issue in an explicit organization",
+        run: "issue unresolve my-org/CLI-G5",
+      },
+    ],
   },
   output: {
     human: formatUnresolved,
   },
   parameters: {
-    positional: issueIdPositional,
+    positional: issuePositional({ command: COMMAND }),
   },
-  async *func(this: SentryContext, _flags: UnresolveFlags, issueArg: string) {
-    const { cwd } = this;
-
-    const { org, issue } = await resolveIssue({
-      issueArg,
-      cwd,
-      command: COMMAND,
-    });
+  async *func(
+    this: SentryContext,
+    _flags: UnresolveFlags,
+    target: IssueTarget,
+  ) {
+    const { org, issue } = await target.resolved;
 
     const updated = await updateIssueStatus(issue.id, "unresolved", {
       orgSlug: org,
     });
 
     log.debug(`Reopened ${updated.shortId}`);
-    yield new CommandOutput<SentryIssue>(updated);
+    yield new CommandOutput(updated);
   },
 });

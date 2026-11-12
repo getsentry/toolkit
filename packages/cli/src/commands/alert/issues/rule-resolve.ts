@@ -10,11 +10,14 @@ import {
   isNotFoundApiError,
   listIssueAlertsPaginated,
 } from "../../../lib/api-client.js";
+import { type LazyCommand, sentry } from "../../../lib/app-identity.js";
+import { ORG_PROJECT_TARGET } from "../../../lib/completion-target.js";
 import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
 import { logger } from "../../../lib/logger.js";
 import type { ResolvedTarget } from "../../../lib/resolve-target.js";
 import { countChar, isAllDigits } from "../../../lib/utils.js";
+import { alertRuleParameter } from "../arguments.js";
 
 const log = logger.withTag("alert.issues");
 
@@ -67,6 +70,20 @@ export function parseIssueRuleArg(
   return { ref, targetArg: targetPart || undefined };
 }
 
+/**
+ * The `<org>/<project>/<rule-id-or-name>` parameter of an issue alert
+ * command, parsed with {@link parseIssueRuleArg} before the command runs.
+ */
+export function issueRuleParameter(usageHint: LazyCommand, brief: string) {
+  return alertRuleParameter({
+    placeholder: "org/project/rule-id-or-name",
+    brief,
+    kind: ORG_PROJECT_TARGET,
+    split: parseIssueRuleArg,
+    usageHint,
+  });
+}
+
 /** List all issue alert rules for a project (paginated). */
 export async function listAllIssueRulesForTarget(
   target: ResolvedTarget,
@@ -117,7 +134,7 @@ export async function resolveIssueAlertRule(
     if (hits.length > 1) {
       throw new ValidationError(
         `Alert rule ID '${ref}' matched multiple projects.\n` +
-          "Use an explicit target: sentry alert issues <command> <org>/<project>/<rule-id>",
+          `Use an explicit target: ${sentry`alert issues <command> <org>/<project>/<rule-id>`}`,
       );
     }
     throw new ResolutionError(
@@ -151,7 +168,7 @@ export async function resolveIssueAlertRule(
   if (hits.length > 1) {
     throw new ValidationError(
       `Alert rule name '${ref}' matched multiple projects.\n` +
-        "Use an explicit target: sentry alert issues <command> <org>/<project>/<rule-id-or-name>",
+        `Use an explicit target: ${sentry`alert issues <command> <org>/<project>/<rule-id-or-name>`}`,
     );
   }
 

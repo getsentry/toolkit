@@ -10,8 +10,11 @@ Toolkit contains the Sentry CLI, the Sentry MCP server, and shared code. Product
 
 ## Constraints
 
-- **MCP tool count**: Target ≤20, hard limit 25 (AI agents have limited tool slots).
+- **MCP tool count**: `EXPOSE_ALL_TOOLS` lists every tool and relies on harness tool search. The gateway surface it falls back to (`TOP_LEVEL_TOOL_NAMES`) targets ≤20, hard limit 25.
 - **Quality gate**: `pnpm run tsc && pnpm run lint && pnpm run test` must pass before committing.
+- **Dependency direction**: `sentry` (cli) → `@sentry/mcp-core` → `@sentry/toolkit-core`, and `@sentry/mcp-cloudflare` → `@sentry/mcp-core`; never the reverse. mcp-core and toolkit-core never import the CLI. Inject CLI-only capabilities (SQLite cache, local-file DSN detection, file uploads) through interfaces defined in mcp-core or toolkit-core. `pnpm run lint` enforces this; see docs/architecture/overview.md#package-dependency-direction.
+- **Lint rules**: Write new lint rules for Oxlint: a built-in rule in `.oxlintrc.json`, or a custom rule in `packages/cli/lint-rules/cli-oxlint-plugin.js`. Do not add ast-grep rules. See docs/contributing/coding-guidelines.md#formatting-and-linting.
+- **Package CI**: Put checks for one workspace package in its `package.json` scripts and `sentryCi`, which `test.yml` runs per project. Do not add a workflow for them. See docs/operations/github-actions.md#package-ci-checks.
 
 ## Repository Structure
 
@@ -19,9 +22,13 @@ Toolkit contains the Sentry CLI, the Sentry MCP server, and shared code. Product
 toolkit/
 ├── apps/
 │   ├── cli-docs/            # CLI documentation site and generated command pages
+│   ├── docs-mcp/            # Private Docs MCP Worker
+│   ├── games-api/           # Public Worker for the sentry games leaderboard
 │   └── local/               # Sentry Local browser viewer
 ├── packages/
 │   ├── cli/                 # Sentry CLI (see packages/cli/AGENTS.md)
+│   ├── codemod-cli3to4/     # @getsentry/cli3to4 codemod: CLI v3 → v4 (Codemod Registry)
+│   ├── logger/              # Structured logger (@sentry/logger on npm)
 │   ├── toolkit-core/        # Shared CLI/MCP primitives
 │   ├── mcp-core/            # Core MCP implementation (private)
 │   ├── mcp-server/          # stdio transport (@sentry/mcp-server on npm)
@@ -37,6 +44,7 @@ toolkit/
 - docs/README.md — Toolkit documentation index
 - docs/cli/README.md — CLI guides and the published CLI site
 - docs/mcp/README.md — MCP guides across its packages
+- docs/mcp/harnesses.md — First-class agent harnesses and native tool search support
 - packages/cli/AGENTS.md — CLI-specific rules
 
 **Read before MCP tool changes:**
@@ -69,10 +77,10 @@ toolkit/
 
 - docs/architecture/overview.md — MCP system design
 - docs/operations/security.md — Authentication and security patterns
-- docs/operations/stdio-auth.md — Device code flow, token caching, client ID architecture
+- docs/operations/stdio-auth.md — stdio auth: shared CLI login and static tokens
 - docs/operations/oauth-signout-playbook.md — Remote OAuth diagnostic runbook
 - docs/operations/embedded-agents.md — LLM provider configuration for AI-powered tools
-- docs/operations/github-actions.md — MCP deployment workflows
+- docs/operations/github-actions.md — CI matrix, `package.json#sentryCi`, and MCP deployment workflows
 - docs/operations/logging.md — Logging guidance
 - docs/operations/monitoring.md — Monitoring guidance
 - docs/operations/token-cost-tracking.md — Tool definition token cost tracking
@@ -97,7 +105,7 @@ toolkit/
 
 **MCP releases:**
 
-- docs/releases/stdio.md — npm package release
+- docs/releases/stdio.md — `@sentry/mcp-server` release and the MCP registry
 - docs/releases/cloudflare.md — Cloudflare deployment
 
 ## Commands

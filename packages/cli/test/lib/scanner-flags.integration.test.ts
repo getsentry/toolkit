@@ -20,8 +20,10 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { run } from "@stricli/core";
-import { describe, expect, test } from "vitest";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as Sentry from "@sentry/node";
+import { ExitCode, run } from "@stricli/core";
+import { describe, expect, test, vi } from "vitest";
 import { app } from "../../src/app.js";
 import type { SentryContext } from "../../src/context.js";
 import { CLI_VERSION } from "../../src/lib/constants.js";
@@ -92,7 +94,7 @@ describe("agent-conversation view required target", () => {
   test("rejects missing target at the parser before authentication", async () => {
     const { stderr, exitCode } = await runApp(["agent-conversation", "view"]);
     expect(exitCode).not.toBe(0);
-    expect(stderr).toContain("Expected argument");
+    expect(stderr).toContain("Conversation ID is required");
     expect(stderr).not.toMatch(/not authenticated|log in|authorization/i);
   });
 });
@@ -315,5 +317,50 @@ describe("--help --json renders structured help via renderHelp hook", () => {
     const parsed = JSON.parse(stdout);
     expect(parsed).toHaveProperty("error");
     expect(parsed.error).toContain("nope");
+  });
+});
+
+describe("arguments that fail to parse", () => {
+  // Stricli parses flags and positionals before the command runs; any parse
+  // failure, including a CliError from our parsers, exits InvalidArgument.
+
+  test("an invalid flag value", async () => {
+    const { stderr, exitCode } = await runApp([
+      "issue",
+      "list",
+      "--period",
+      "bogus",
+    ]);
+    expect(exitCode).toBe(ExitCode.InvalidArgument);
+    expect(stderr).toContain('Failed to parse "bogus" for period');
+  });
+
+  test("is reported to Sentry for UX research", async () => {
+    const messageSpy = vi.spyOn(Sentry, "captureEvent");
+    try {
+      await runApp(["issue", "list", "--period", "bogus"]);
+      expect(messageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "invalid_argument",
+          contexts: {
+            invalid_argument: expect.objectContaining({
+              cause_class: "ValidationError",
+              message: expect.stringContaining(
+                'Failed to parse "bogus" for period',
+              ),
+            }),
+          },
+        }),
+      );
+    } finally {
+      messageSpy.mockRestore();
+    }
+  });
+
+  test("an invalid org/project target", async () => {
+    const { stderr, exitCode } = await runApp(["trace", "list", "@latest"]);
+    expect(exitCode).toBe(ExitCode.InvalidArgument);
+    expect(stderr).toContain('Failed to parse "@latest"');
+    expect(stderr).toContain("is an issue selector");
   });
 });

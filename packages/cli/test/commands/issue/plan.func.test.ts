@@ -23,11 +23,13 @@ import { planCommand } from "../../../src/commands/issue/plan.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
 import { triggerSolutionPlanning } from "../../../src/lib/api-client.js";
-import { CliError } from "../../../src/lib/errors.js";
+import { ApiError, CliError } from "../../../src/lib/errors.js";
 import { logger } from "../../../src/lib/logger.js";
+import { prompt } from "../../../src/lib/prompt.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
 
 vi.mock("node:tty", () => ({ isatty: vi.fn() }));
+vi.mock("../../../src/lib/prompt.js", () => ({ prompt: vi.fn() }));
 
 vi.mock("../../../src/lib/api-client.js", () => ({
   triggerSolutionPlanning: vi.fn(async () => ({})),
@@ -77,11 +79,10 @@ describe("issue plan waiting-for-user-response", () => {
     vi.clearAllMocks();
     resolveSpy = vi.spyOn(issueUtils, "resolveOrgAndIssueId");
     analyzeSpy = vi.spyOn(issueUtils, "ensureRootCauseAnalysis");
-    promptSpy = vi.fn();
-    // The command prompts through a tagged logger, so intercept withTag.
+    promptSpy = vi.mocked(prompt);
+    promptSpy.mockReset();
     vi.spyOn(logger, "withTag").mockReturnValue({
       info: vi.fn(),
-      prompt: promptSpy,
     } as unknown as ReturnType<typeof logger.withTag>);
     resolveSpy.mockResolvedValue({ org: "test-org", issueId: "1" });
   });
@@ -130,7 +131,7 @@ describe("issue plan waiting-for-user-response", () => {
   test("throws when the user cancels the prompt", async () => {
     vi.mocked(isatty).mockReturnValue(true);
     analyzeSpy.mockResolvedValue(waitingState([sampleCause(0, "A cause")]));
-    // consola returns a cancel symbol (non-boolean) when cancelled.
+    // The prompt returns a cancel symbol (non-boolean) when cancelled.
     promptSpy.mockResolvedValue(Symbol("clack:cancel"));
 
     await expect(runPlan(createMockContext())).rejects.toBeInstanceOf(CliError);
@@ -174,7 +175,7 @@ describe("issue plan after solution planning", () => {
           solution: [{ title: "Fix it", code_snippet_and_analysis: "do x" }],
         },
       ],
-    } as AutofixState);
+    });
 
     await runPlan(createMockContext());
 
@@ -188,6 +189,38 @@ describe("issue plan after solution planning", () => {
     await expect(runPlan(createMockContext())).rejects.toThrow(
       /Plan creation failed/,
     );
+  });
+
+  test("throws out_of_credits when planning stopped for credits", async () => {
+    pollSpy.mockResolvedValue({
+      status: "ERROR",
+      failure_reason: "out_of_credits",
+      run_id: 42,
+      steps: [],
+    });
+
+    await expect(runPlan(createMockContext())).rejects.toMatchObject({
+      reason: "out_of_credits",
+      orgSlug: "test-org",
+    });
+  });
+
+  test("throws out_of_credits when Sentry refuses planning with a 402", async () => {
+    vi.mocked(triggerSolutionPlanning).mockRejectedValueOnce(
+      new ApiError(
+        "Failed to start solution planning: 402 Payment Required",
+        402,
+        "Your organization does not have enough credits to continue your Autofix run.",
+        undefined,
+        { code: "seer_out_of_credits" },
+      ),
+    );
+
+    await expect(runPlan(createMockContext())).rejects.toMatchObject({
+      reason: "out_of_credits",
+      orgSlug: "test-org",
+    });
+    expect(pollSpy).not.toHaveBeenCalled();
   });
 
   test("throws when planning ends in CANCELLED", async () => {
@@ -221,7 +254,7 @@ describe("issue plan after solution planning", () => {
           solution: [{ title: "Fix it", code_snippet_and_analysis: "do x" }],
         },
       ],
-    } as AutofixState);
+    });
 
     const context = createMockContext();
     await runPlan(context);

@@ -16,6 +16,8 @@ describe("homepage-content", () => {
       expect(text).toContain("{projectSlug}");
       expect(text).toContain("claude mcp add");
       expect(text).toContain("?experimental=1");
+      expect(text).toContain("claude mcp add sentry -- sentry mcp");
+      expect(text).toContain("sentry mcp my-org/my-project");
     });
   });
 

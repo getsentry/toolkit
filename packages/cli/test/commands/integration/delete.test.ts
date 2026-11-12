@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   deleteCommand,
-  parseIntegrationArg,
+  parseIntegrationArguments,
 } from "../../../src/commands/integration/delete.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -77,18 +77,41 @@ function output(write: ReturnType<typeof vi.fn>): string {
   return write.mock.calls.map((c) => c[0]).join("");
 }
 
-describe("parseIntegrationArg", () => {
-  test("parses org/id and bare id", () => {
-    expect(parseIntegrationArg("my-org/42")).toEqual({
-      id: "42",
-      orgSlug: "my-org",
-    });
-    expect(parseIntegrationArg("42")).toEqual({ id: "42" });
+describe("parseIntegrationArguments", () => {
+  test.each([
+    [["42"], { id: "42", org: {}, warnings: [] }],
+    [["my-org/42"], { id: "42", org: { org: "my-org" }, warnings: [] }],
+    [["my-org", "42"], { id: "42", org: { org: "my-org" }, warnings: [] }],
+    // A leading slash names no org, as before
+    [["/42"], { id: "42", org: {}, warnings: [] }],
+  ])("parses %j", (args, expected) => {
+    expect(parseIntegrationArguments(args)).toEqual(expected);
   });
 
-  test("rejects empty and non-numeric IDs", () => {
-    expect(() => parseIntegrationArg("")).toThrow(ContextError);
-    expect(() => parseIntegrationArg("my-org/github")).toThrow(ValidationError);
+  test("rejects a missing ID", () => {
+    expect(() => parseIntegrationArguments([])).toThrow(ContextError);
+    expect(() => parseIntegrationArguments([""])).toThrow(ContextError);
+  });
+
+  test("rejects non-numeric IDs", () => {
+    expect(() => parseIntegrationArguments(["my-org/github"])).toThrow(
+      "Use the numeric ID from 'sentry integration list'",
+    );
+    expect(() => parseIntegrationArguments(["github"])).toThrow(
+      ValidationError,
+    );
+  });
+
+  test("rejects a project, which integrations do not have", () => {
+    expect(() => parseIntegrationArguments(["my-org/web/42"])).toThrow(
+      "this takes no project",
+    );
+  });
+
+  test("rejects more than one ID instead of removing just one", () => {
+    expect(() => parseIntegrationArguments(["42", "43"])).toThrow(
+      "Remove one integration at a time",
+    );
   });
 });
 

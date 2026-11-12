@@ -294,7 +294,7 @@ export const BASE_COMMON_FIELDS = {
 };
 
 // Known numeric fields for each dataset
-export const NUMERIC_FIELDS: Record<string, Set<string>> = {
+export const NUMERIC_FIELDS: Partial<Record<string, Set<string>>> = {
   spans: new Set([
     "span.duration",
     "span.self_time",
@@ -433,6 +433,8 @@ export const DATASET_FIELDS = {
     "count_if(field,equals,value)":
       "Errors-only conditional count, e.g. count_if(error.handled,equals,false). Spans, logs, and metrics use count_if(`filter`) instead",
     "last_seen()": "Most recent timestamp of the group",
+    "min(timestamp)":
+      "Earliest timestamp of the group (there is no first_seen() function)",
     "eps()": "Events per second rate",
     "epm()": "Events per minute rate",
   },

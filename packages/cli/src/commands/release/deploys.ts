@@ -7,14 +7,15 @@
 import type { SentryContext } from "../../context.js";
 import { listReleaseDeploys } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import type { SentryDeploy } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { SentryDeploySchema } from "../../generated/output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release deploys [<org>/]<version>";
+const usageHint = () => sentry`release deploys [<org>/]<version>`;
 
 const DEPLOY_COLUMNS: Column<SentryDeploy>[] = [
   { header: "ENVIRONMENT", value: (d) => d.environment },
@@ -35,40 +36,40 @@ function formatDeployList(deploys: SentryDeploy[]): string {
 export const deploysCommand = buildCommand({
   docs: {
     brief: "List deploys for a release",
-    fullDescription:
-      "List all deploys recorded for a specific release.\n\n" +
-      "Examples:\n" +
-      "  sentry release deploys 1.0.0\n" +
-      "  sentry release deploys my-org/1.0.0\n" +
-      "  sentry release deploys 1.0.0 --json",
+    fullDescription: "List all deploys recorded for a specific release.",
+    examples: [
+      {
+        description: "List deploys for a release",
+        run: "release deploys 1.0.0",
+      },
+      {
+        description: "List deploys for a release in an explicit organization",
+        run: "release deploys my-org/1.0.0",
+      },
+      {
+        description: "Output as JSON",
+        run: "release deploys 1.0.0 --json",
+      },
+    ],
   },
   output: {
     human: formatDeployList,
+    schema: SentryDeploySchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version",
-          parse: parseOrgTarget,
-        },
+        releaseParameter(usageHint, "[<org>/]<version> - Release version"),
       ],
     },
   },
   async *func(
     this: SentryContext,
     _flags: { readonly json: boolean; readonly fields?: string[] },
-    target: string,
+    target: ReleaseTarget,
   ) {
-    const { cwd } = this;
-
-    const { version, org } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+    const { version, org } = await target.resolved;
 
     const deploys = await listReleaseDeploys(org, version);
     yield new CommandOutput(deploys);

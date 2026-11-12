@@ -13,8 +13,8 @@ import type {
   DetectedDsn,
   ResolvedProjectInfo,
 } from "../dsn/types.js";
-import { recordCacheHit } from "../telemetry.js";
-import { getDatabase, maybeCleanupCaches } from "./index.js";
+import { invocationState } from "../env.js";
+import { getDatabase, maybeCleanupCaches, recordCacheHit } from "./index.js";
 import { safeParseJson } from "./json.js";
 import { runUpsert, touchCacheEntry } from "./utils.js";
 
@@ -22,18 +22,18 @@ import { runUpsert, touchCacheEntry } from "./utils.js";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Module-level flag to disable DSN cache reads.
- * When true, getCachedDsn() and getCachedDetection() return undefined.
+ * Per-invocation flag to disable DSN cache reads (`--fresh`).
+ * When set, getCachedDsn() and getCachedDetection() return undefined.
  * Cache writes still proceed so the re-scanned result gets stored.
  */
-let dsnCacheDisabled = false;
+const dsnCacheState = invocationState(() => ({ readDisabled: false }));
 
 /**
  * Disable DSN cache reads for this invocation.
  * Called when `--fresh` is set to force a full re-scan.
  */
 export function disableDsnCache(): void {
-  dsnCacheDisabled = true;
+  dsnCacheState().readDisabled = true;
 }
 
 /**
@@ -42,7 +42,7 @@ export function disableDsnCache(): void {
  * leaking into subsequent tests.
  */
 export function enableDsnCache(): void {
-  dsnCacheDisabled = false;
+  dsnCacheState().readDisabled = false;
 }
 
 /** Row type matching the dsn_cache table schema (including v4 columns) */
@@ -133,7 +133,7 @@ function rowToCachedDsnEntry(row: DsnCacheRow): CachedDsnEntry {
 }
 
 export function getCachedDsn(directory: string): CachedDsnEntry | undefined {
-  if (dsnCacheDisabled) {
+  if (dsnCacheState().readDisabled) {
     return;
   }
 
@@ -351,7 +351,7 @@ function isArray(value: unknown): value is DetectedDsn[] {
 export async function getCachedDetection(
   projectRoot: string,
 ): Promise<CachedDetection | undefined> {
-  if (dsnCacheDisabled) {
+  if (dsnCacheState().readDisabled) {
     return;
   }
 

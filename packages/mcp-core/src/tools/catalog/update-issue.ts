@@ -1,4 +1,10 @@
-import type { Issue } from "../../api-client/types";
+import { z } from "zod";
+import type {
+  AssignedTo,
+  Issue,
+  IssueActivityList,
+  IssueResolutionDetails,
+} from "../../api-client/types";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -7,6 +13,7 @@ import {
   assertIssueWithinProjectConstraint,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamAssignedTo,
   ParamIgnoreCount,
@@ -14,7 +21,11 @@ import {
   ParamIgnoreUserCount,
   ParamIgnoreUserWindowMinutes,
   ParamIgnoreWindowMinutes,
+  ParamInCommit,
+  ParamInCommitRepository,
+  ParamInRelease,
   ParamIssueIgnoreMode,
+  ParamIssuePriority,
   ParamIssueShortId,
   ParamIssueStatus,
   ParamIssueUrl,
@@ -22,6 +33,7 @@ import {
   ParamReason,
   ParamRegionUrl,
 } from "../../schema";
+import { ApiClientError, ApiValidationError } from "@sentry/api/client";
 import { logIssue } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
@@ -60,6 +72,8 @@ type IgnoreState = {
 type IssueStatusDisplay =
   | "resolved"
   | "resolvedInNextRelease"
+  | "resolvedInRelease"
+  | "resolvedInCommit"
   | "unresolved"
   | "ignored"
   | (string & {});
@@ -155,6 +169,22 @@ function getStatusDetailString(
   return undefined;
 }
 
+/** SHA of the commit an issue is resolved in, from the serialized commit. */
+function getResolvedCommitId(
+  statusDetails: Record<string, unknown>,
+  key: "inCommit" | "commit" = "inCommit",
+): string | undefined {
+  const commit = statusDetails[key];
+  if (commit && typeof commit === "object" && !Array.isArray(commit)) {
+    const id = (commit as Record<string, unknown>).id;
+    if (typeof id === "string" && id.length > 0) {
+      return id;
+    }
+  }
+
+  return undefined;
+}
+
 function formatIgnoreUntil(ignoreUntil: string): string {
   const date = new Date(ignoreUntil);
   if (Number.isNaN(date.getTime())) {
@@ -167,11 +197,169 @@ function formatIgnoreUntil(ignoreUntil: string): string {
 function getIssueStatusDisplay(issue: Issue): IssueStatusDisplay {
   const statusDetails = getIssueStatusDetails(issue);
 
-  if (issue.status === "resolved" && statusDetails.inNextRelease === true) {
-    return "resolvedInNextRelease";
+  if (issue.status === "resolved") {
+    if (statusDetails.inNextRelease === true) {
+      return "resolvedInNextRelease";
+    }
+    if (getStatusDetailString(statusDetails, "inRelease")) {
+      return "resolvedInRelease";
+    }
+    if (getResolvedCommitId(statusDetails)) {
+      return "resolvedInCommit";
+    }
   }
 
   return issue.status;
+}
+
+type ResolutionParams = {
+  status?: string;
+  inRelease?: string;
+  inCommit?: string;
+  inCommitRepository?: string;
+};
+
+function buildResolution(
+  params: ResolutionParams,
+): IssueResolutionDetails | undefined {
+  if (
+    params.inCommitRepository !== undefined &&
+    params.inCommit === undefined
+  ) {
+    throw new UserInputError("`inCommitRepository` requires `inCommit`");
+  }
+
+  if (params.inRelease === undefined && params.inCommit === undefined) {
+    return undefined;
+  }
+
+  if (params.status !== "resolved") {
+    throw new UserInputError(
+      "`inRelease` and `inCommit` can only be used when `status` is `resolved`",
+    );
+  }
+
+  if (params.inRelease !== undefined && params.inCommit !== undefined) {
+    throw new UserInputError("Choose only one of `inRelease` or `inCommit`");
+  }
+
+  if (params.inRelease !== undefined) {
+    return { inRelease: params.inRelease };
+  }
+
+  if (params.inCommitRepository === undefined) {
+    throw new UserInputError("`inCommit` requires `inCommitRepository`");
+  }
+
+  return {
+    inCommit: {
+      commit: params.inCommit!,
+      repository: params.inCommitRepository,
+    },
+  };
+}
+
+function isResolutionAlreadySet(
+  issue: Issue,
+  resolution: IssueResolutionDetails,
+): boolean {
+  if (issue.status !== "resolved") {
+    return false;
+  }
+
+  const statusDetails = getIssueStatusDetails(issue);
+
+  if ("inRelease" in resolution) {
+    return (
+      getStatusDetailString(statusDetails, "inRelease") === resolution.inRelease
+    );
+  }
+
+  return (
+    getResolvedCommitId(statusDetails)?.toLowerCase() ===
+    resolution.inCommit.commit.toLowerCase()
+  );
+}
+
+/**
+ * Sentry reports a commit resolution as `inRelease` once a release contains
+ * the commit, so the issue details no longer name the commit. The newest
+ * resolve activity still does.
+ */
+async function isLatestResolutionCommit(
+  apiService: {
+    getIssueActivity: (params: {
+      organizationSlug: string;
+      issueId: string;
+    }) => Promise<IssueActivityList>;
+  },
+  organizationSlug: string,
+  issueId: string,
+  commit: string,
+): Promise<boolean> {
+  const activity = await apiService.getIssueActivity({
+    organizationSlug,
+    issueId,
+  });
+  const latestResolution = activity.find((item) =>
+    item.type?.startsWith("set_resolved"),
+  );
+
+  return (
+    latestResolution?.type === "set_resolved_in_commit" &&
+    getResolvedCommitId(
+      latestResolution.data ?? {},
+      "commit",
+    )?.toLowerCase() === commit.toLowerCase()
+  );
+}
+
+function isStatusAlreadySet(
+  issue: Issue,
+  status: string | undefined,
+  resolution: IssueResolutionDetails | undefined,
+): boolean {
+  if (status === undefined || status === "ignored") {
+    return false;
+  }
+
+  if (resolution) {
+    return isResolutionAlreadySet(issue, resolution);
+  }
+
+  const currentStatus = getIssueStatusDisplay(issue);
+
+  // A plain resolve is satisfied by any resolution except next release,
+  // which stays pending until a new release exists.
+  if (status === "resolved") {
+    return (
+      currentStatus === "resolved" ||
+      currentStatus === "resolvedInRelease" ||
+      currentStatus === "resolvedInCommit"
+    );
+  }
+
+  return currentStatus === status;
+}
+
+function getResolvedEffect(
+  issue: Issue,
+  statusDisplay: IssueStatusDisplay,
+): string | null {
+  const statusDetails = getIssueStatusDetails(issue);
+
+  switch (statusDisplay) {
+    case "resolved":
+      return "The issue is now marked as resolved and will no longer generate alerts";
+    case "resolvedInNextRelease":
+      return "The issue is now marked as resolved in the upcoming release";
+    case "resolvedInRelease":
+      return `The issue is now marked as resolved in release ${getStatusDetailString(statusDetails, "inRelease")}. Events from newer releases will reopen it as a regression`;
+    case "resolvedInCommit":
+      return `The issue is now marked as resolved in commit ${getResolvedCommitId(statusDetails)}. It will be resolved in the first release that contains this commit`;
+    default:
+      return null;
+  }
 }
 
 function getIgnoreStateFromUpdate(
@@ -311,32 +499,58 @@ function getIgnoreState(
   };
 }
 
-function buildNoChangesOutput(params: {
-  issue: Issue;
-  organizationSlug: string;
-  ignoreState: IgnoreState | null;
-  issueUrl: string;
-}): string {
-  const { issue, organizationSlug, ignoreState, issueUrl } = params;
-  let output = `# Issue ${issue.shortId} Already Matches Requested State in **${organizationSlug}**\n\n`;
-  output += `**Issue**: ${issue.title}\n`;
-  output += `**URL**: ${issueUrl}\n\n`;
+const valueChangeSchema = z.object({ from: z.string(), to: z.string() });
 
-  output += "## Changes Made\n\n";
-  output += "No changes were needed.\n";
+export const updateIssueOutputSchema = z.object({
+  organizationSlug: z.string(),
+  issueId: z.string(),
+  title: z.string(),
+  issueUrl: z.string(),
+  updated: z
+    .boolean()
+    .describe(
+      "Whether issue state changed. A posted reason comment is reported in reasonComment, not here.",
+    ),
+  changes: z.object({
+    status: valueChangeSchema.nullable(),
+    ignoreBehavior: z
+      .object({ from: z.string().nullable(), to: z.string() })
+      .nullable(),
+    assignedTo: valueChangeSchema.nullable(),
+    priority: valueChangeSchema.nullable(),
+  }),
+  current: z.object({
+    status: z.string(),
+    ignoreBehavior: z.string().nullable(),
+    assignedTo: z.string(),
+    priority: z.string().nullable(),
+  }),
+  effect: z
+    .string()
+    .nullable()
+    .describe("What the new status means for the issue, when it changed."),
+  reasonComment: z
+    .object({
+      status: z.enum(["posted", "already_present", "not_posted"]),
+      text: z.string(),
+      error: z.string().nullable(),
+    })
+    .nullable()
+    .describe("Null when no reason was given."),
+});
 
-  output += "\n## Current Status\n\n";
-  output += `**Status**: ${getIssueStatusDisplay(issue)}\n`;
-  if (ignoreState) {
-    output += `**Ignore Behavior**: ${ignoreState.behavior}\n`;
-  }
-  output += `**Assigned To**: ${formatAssignedTo(issue.assignedTo ?? null)}\n`;
+type UpdateIssueOutput = z.infer<typeof updateIssueOutputSchema>;
 
-  output += "\n## Response Notes\n\n";
-  output += "- The issue already matched the requested state.\n";
-  output += `- Full issue details: \`get_sentry_resource(resourceType="issue", organizationSlug="${organizationSlug}", resourceId="${issue.shortId}")\`\n`;
-
-  return output;
+function getCurrentState(
+  issue: Issue,
+  ignoreState: IgnoreState | null,
+): UpdateIssueOutput["current"] {
+  return {
+    status: getIssueStatusDisplay(issue),
+    ignoreBehavior: ignoreState?.behavior ?? null,
+    assignedTo: formatAssignedTo(issue.assignedTo ?? null),
+    priority: issue.priority ?? null,
+  };
 }
 
 function isAssigneeAlreadySet(
@@ -574,9 +788,22 @@ function buildIgnoreUpdate(
 }
 
 type ReasonCommentResult =
-  | { posted: true }
+  | { posted: true; duplicate?: boolean }
   | { posted: false; skipped: true }
   | { posted: false; error: string };
+
+/**
+ * Sentry rejects a note whose text the same user already posted on the issue.
+ * That happens when a client retries `update_issue` with the same `reason`;
+ * the comment already exists, so the desired outcome is already achieved.
+ */
+function isDuplicateCommentError(error: unknown): boolean {
+  return (
+    error instanceof ApiValidationError &&
+    error.status === 400 &&
+    error.message.toLowerCase().includes("already posted that comment")
+  );
+}
 
 async function tryPostReasonComment(
   apiService: {
@@ -601,7 +828,12 @@ async function tryPostReasonComment(
     });
     return { posted: true };
   } catch (error) {
-    logIssue(error);
+    if (isDuplicateCommentError(error)) {
+      return { posted: true, duplicate: true };
+    }
+    if (!(error instanceof ApiClientError)) {
+      logIssue(error);
+    }
     return {
       posted: false,
       error: error instanceof Error ? error.message : String(error),
@@ -609,54 +841,59 @@ async function tryPostReasonComment(
   }
 }
 
-function formatReasonCommentLine(
+function getReasonComment(
   reason: string | undefined,
   result: ReasonCommentResult,
-): string {
-  if (!reason || ("skipped" in result && result.skipped)) {
-    return "";
+): UpdateIssueOutput["reasonComment"] {
+  if (!reason || "skipped" in result) {
+    return null;
   }
   if (result.posted) {
-    return `- **Comment posted**: "${reason}"\n`;
+    return {
+      status: result.duplicate ? "already_present" : "posted",
+      text: reason,
+      error: null,
+    };
   }
-  if ("error" in result) {
-    return `- **Comment not posted**: ${result.error}\n`;
+  return {
+    status: "not_posted",
+    text: reason,
+    error: "error" in result ? result.error : null,
+  };
+}
+
+/**
+ * Identifies an assignee by actor so two users with the same display name
+ * still count as different assignees.
+ */
+function getAssigneeKey(assignedTo: AssignedTo): string {
+  if (assignedTo && typeof assignedTo === "object") {
+    return `${assignedTo.type}:${assignedTo.id}`;
   }
-  return "";
+  return `name:${formatAssignedTo(assignedTo)}`;
 }
 
 export default defineTool({
   name: "update_issue",
+  title: "Update Issue",
   skills: ["triage"], // Only available in triage skill
   requiredScopes: ["event:write"],
   description: [
-    "Update a Sentry issue's status or assignment.",
-    "",
-    "Use this to resolve, reopen, assign, unassign, or ignore an issue.",
+    "Update a Sentry issue's status, assignment, or priority.",
     "",
     "<examples>",
     "```",
     "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='resolved')",
     "update_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo='user:123456')",
-    "update_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo=null)",
-    "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored')",
     "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='forever')",
-    "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='untilOccurrenceCount', ignoreCount=100, ignoreWindowMinutes=60)",
-    "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', reason='Ignoring because this is expected noise from the staging deploy')",
     "```",
     "</examples>",
     "",
     "<hints>",
     "- Provide `issueUrl` or `organizationSlug` + `issueId`.",
-    "- At least one of `status` or `assignedTo` is required.",
-    "- Omit `assignedTo` to leave assignment unchanged. Pass `null` to unassign; otherwise use `user:ID` or `team:ID_OR_SLUG`.",
-    "- Use `execute_sentry_tool(name='whoami', arguments={})` to find your user ID for self-assignment.",
-    "- Status values: `resolved`, `resolvedInNextRelease`, `unresolved`, `ignored`.",
+    "- At least one of `status`, `assignedTo`, or `priority` is required.",
     "- `status='ignored'` defaults to `ignoreMode='untilEscalating'`.",
-    "- Ignore modes: `untilEscalating`, `forever`, `forDuration`, `untilOccurrenceCount`, `untilUserCount`.",
-    "- Matching ignore inputs are `ignoreDurationMinutes`, `ignoreCount` + optional `ignoreWindowMinutes`, or `ignoreUserCount` + optional `ignoreUserWindowMinutes`.",
-    "- To switch an already ignored issue between `untilEscalating`, `forever`, and condition-based ignore modes, first set `status='unresolved'`, then ignore it again with the new rule.",
-    "- `reason` is optional. When provided, it will be posted as a comment on the issue's activity feed explaining why the action was taken.",
+    "- To switch an already ignored issue between `untilEscalating`, `forever`, and condition-based ignore modes, first set `status='unresolved'`, then ignore it again.",
     "</hints>",
   ].join("\n"),
   inputSchema: {
@@ -666,12 +903,16 @@ export default defineTool({
     issueUrl: ParamIssueUrl.optional(),
     status: ParamIssueStatus.optional(),
     assignedTo: ParamAssignedTo.optional(),
+    priority: ParamIssuePriority.optional(),
     ignoreMode: ParamIssueIgnoreMode.optional(),
     ignoreDurationMinutes: ParamIgnoreDurationMinutes.optional(),
     ignoreCount: ParamIgnoreCount.optional(),
     ignoreWindowMinutes: ParamIgnoreWindowMinutes.optional(),
     ignoreUserCount: ParamIgnoreUserCount.optional(),
     ignoreUserWindowMinutes: ParamIgnoreUserWindowMinutes.optional(),
+    inRelease: ParamInRelease.optional(),
+    inCommit: ParamInCommit.optional(),
+    inCommitRepository: ParamInCommitRepository.optional(),
     reason: ParamReason.optional(),
   },
   annotations: {
@@ -680,6 +921,7 @@ export default defineTool({
     idempotentHint: false,
     openWorldHint: true,
   },
+  outputSchema: updateIssueOutputSchema,
   async handler(params, context: ServerContext) {
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
@@ -699,11 +941,17 @@ export default defineTool({
     }
 
     // Validate that at least one update parameter is provided
-    if (params.status === undefined && params.assignedTo === undefined) {
+    if (
+      params.status === undefined &&
+      params.assignedTo === undefined &&
+      params.priority === undefined
+    ) {
       throw new UserInputError(
-        "At least one of `status` or `assignedTo` must be provided to update the issue",
+        "At least one of `status`, `assignedTo`, or `priority` must be provided to update the issue",
       );
     }
+
+    const resolution = buildResolution(params);
 
     const { organizationSlug: orgSlug, issueId: parsedIssueId } =
       parseIssueParams({
@@ -717,7 +965,7 @@ export default defineTool({
     // Get current issue details first
     const currentIssue = await apiService.getIssue({
       organizationSlug: orgSlug,
-      issueId: parsedIssueId!,
+      issueId: parsedIssueId,
     });
     assertIssueWithinProjectConstraint({
       issue: currentIssue,
@@ -739,15 +987,39 @@ export default defineTool({
       currentIgnoreState,
       ignoreUpdate,
     );
-    const statusAlreadySet =
-      params.status !== undefined &&
-      params.status !== "ignored" &&
-      getIssueStatusDisplay(currentIssue) === params.status;
+    let statusAlreadySet = isStatusAlreadySet(
+      currentIssue,
+      params.status,
+      resolution,
+    );
+    if (
+      !statusAlreadySet &&
+      resolution &&
+      "inCommit" in resolution &&
+      getIssueStatusDisplay(currentIssue) === "resolvedInRelease"
+    ) {
+      statusAlreadySet = await isLatestResolutionCommit(
+        apiService,
+        orgSlug,
+        parsedIssueId,
+        resolution.inCommit.commit,
+      );
+    }
+
+    // Sentry leaves an already resolved issue as it is, so a different release
+    // or commit resolution would silently do nothing.
+    if (resolution && !statusAlreadySet && currentIssue.status === "resolved") {
+      throw new UserInputError(
+        `The issue is already resolved (\`${getIssueStatusDisplay(currentIssue)}\`). To resolve it in a different release or commit, first set \`status\` to \`unresolved\`, then resolve it again.`,
+      );
+    }
 
     let updateStatus = statusAlreadySet ? undefined : params.status;
     const updateAssignedTo = assignmentAlreadySet
       ? undefined
       : params.assignedTo;
+    const updatePriority =
+      params.priority === currentIssue.priority ? undefined : params.priority;
     let updateIgnore = ignoreUpdate;
 
     if (currentIssue.status === "ignored" && params.status === "ignored") {
@@ -776,31 +1048,42 @@ export default defineTool({
     if (
       updateStatus === undefined &&
       updateAssignedTo === undefined &&
+      updatePriority === undefined &&
       updateIgnore === undefined
     ) {
       const commentResult = await tryPostReasonComment(
         apiService,
         orgSlug,
-        parsedIssueId!,
+        parsedIssueId,
         params.reason,
       );
 
-      return (
-        buildNoChangesOutput({
-          issue: currentIssue,
-          organizationSlug: orgSlug,
-          ignoreState: currentIgnoreState,
-          issueUrl: requestedIssueUrl,
-        }) + formatReasonCommentLine(params.reason, commentResult)
-      );
+      return structuredResult({
+        organizationSlug: orgSlug,
+        issueId: currentIssue.shortId,
+        title: currentIssue.title,
+        issueUrl: requestedIssueUrl,
+        updated: false,
+        changes: {
+          status: null,
+          ignoreBehavior: null,
+          assignedTo: null,
+          priority: null,
+        },
+        current: getCurrentState(currentIssue, currentIgnoreState),
+        effect: null,
+        reasonComment: getReasonComment(params.reason, commentResult),
+      } satisfies UpdateIssueOutput);
     }
 
     // Update the issue
     const updatedIssue = await apiService.updateIssue({
       organizationSlug: orgSlug,
-      issueId: parsedIssueId!,
+      issueId: parsedIssueId,
       status: updateStatus,
+      statusDetails: updateStatus === undefined ? undefined : resolution,
       assignedTo: updateAssignedTo,
+      priority: updatePriority,
       substatus: updateIgnore?.substatus,
       ignoreDuration: updateIgnore?.ignoreDuration,
       ignoreCount: updateIgnore?.ignoreCount,
@@ -812,7 +1095,7 @@ export default defineTool({
     const commentResult = await tryPostReasonComment(
       apiService,
       orgSlug,
-      parsedIssueId!,
+      parsedIssueId,
       params.reason,
     );
 
@@ -821,72 +1104,71 @@ export default defineTool({
     const updatedStatusDisplay = getIssueStatusDisplay(updatedIssue);
     const statusChanged = currentStatusDisplay !== updatedStatusDisplay;
     const assignmentChanged =
-      formatAssignedTo(currentIssue.assignedTo ?? null) !==
-      formatAssignedTo(updatedIssue.assignedTo ?? null);
+      getAssigneeKey(currentIssue.assignedTo ?? null) !==
+      getAssigneeKey(updatedIssue.assignedTo ?? null);
     const ignoreBehaviorChanged =
       currentIgnoreState?.behavior !== updatedIgnoreState?.behavior;
 
-    let output = `# Issue ${updatedIssue.shortId} Updated in **${orgSlug}**\n\n`;
-    output += `**Issue**: ${updatedIssue.title}\n`;
-    output += `**URL**: ${apiService.getIssueUrl(orgSlug, updatedIssue.shortId)}\n\n`;
-
-    // Show what changed
-    output += "## Changes Made\n\n";
-
-    if (statusChanged) {
-      output += `**Status**: ${currentStatusDisplay} → **${updatedStatusDisplay}**\n`;
-    }
-
-    if (
-      updatedIgnoreState &&
+    const showIgnoreChange =
+      updatedIgnoreState !== null &&
       (statusChanged || ignoreBehaviorChanged) &&
-      (ignoreBehaviorChanged || params.status === "ignored")
-    ) {
-      if (currentIgnoreState && ignoreBehaviorChanged) {
-        output += `**Ignore Behavior**: ${currentIgnoreState.behavior} → **${updatedIgnoreState.behavior}**\n`;
-      } else {
-        output += `**Ignore Behavior**: **${updatedIgnoreState.behavior}**\n`;
-      }
-    }
+      (ignoreBehaviorChanged || params.status === "ignored");
 
-    if (updateAssignedTo !== undefined && assignmentChanged) {
-      const oldAssignee = formatAssignedTo(currentIssue.assignedTo ?? null);
-      const newAssignee =
-        params.assignedTo === "me"
-          ? "You"
-          : formatAssignedTo(updatedIssue.assignedTo ?? null);
-      output += `**Assigned To**: ${oldAssignee} → **${newAssignee}**\n`;
-    }
-
-    output += "\n## Current Status\n\n";
-    output += `**Status**: ${updatedStatusDisplay}\n`;
-    if (updatedIgnoreState) {
-      output += `**Ignore Behavior**: ${updatedIgnoreState.behavior}\n`;
-    }
-    const currentAssignee = formatAssignedTo(updatedIssue.assignedTo ?? null);
-    output += `**Assigned To**: ${currentAssignee}\n`;
-
-    output += "\n## Response Notes\n\n";
-    output += `- The issue has been updated in Sentry.\n`;
-    output += `- Full issue details: \`get_sentry_resource(resourceType="issue", organizationSlug="${orgSlug}", resourceId="${updatedIssue.shortId}")\`\n`;
-
-    if (statusChanged && updatedStatusDisplay === "resolved") {
-      output += `- The issue is now marked as resolved and will no longer generate alerts\n`;
-    } else if (
-      statusChanged &&
-      updatedStatusDisplay === "resolvedInNextRelease"
-    ) {
-      output += `- The issue is now marked as resolved in the upcoming release\n`;
-    } else if (
+    let effect = statusChanged
+      ? getResolvedEffect(updatedIssue, updatedStatusDisplay)
+      : null;
+    if (
+      effect === null &&
       updatedIgnoreState &&
       params.status === "ignored" &&
       (statusChanged || ignoreBehaviorChanged)
     ) {
-      output += `- ${updatedIgnoreState.message}\n`;
+      effect = updatedIgnoreState.message;
     }
 
-    output += formatReasonCommentLine(params.reason, commentResult);
+    const changes: UpdateIssueOutput["changes"] = {
+      status: statusChanged
+        ? { from: currentStatusDisplay, to: updatedStatusDisplay }
+        : null,
+      ignoreBehavior: showIgnoreChange
+        ? {
+            from:
+              currentIgnoreState && ignoreBehaviorChanged
+                ? currentIgnoreState.behavior
+                : null,
+            to: updatedIgnoreState.behavior,
+          }
+        : null,
+      assignedTo:
+        updateAssignedTo !== undefined && assignmentChanged
+          ? {
+              from: formatAssignedTo(currentIssue.assignedTo ?? null),
+              to:
+                params.assignedTo === "me"
+                  ? "You"
+                  : formatAssignedTo(updatedIssue.assignedTo ?? null),
+            }
+          : null,
+      priority:
+        updatePriority !== undefined &&
+        currentIssue.priority !== updatedIssue.priority
+          ? {
+              from: currentIssue.priority ?? "none",
+              to: updatedIssue.priority ?? "none",
+            }
+          : null,
+    };
 
-    return output;
+    return structuredResult({
+      organizationSlug: orgSlug,
+      issueId: updatedIssue.shortId,
+      title: updatedIssue.title,
+      issueUrl: apiService.getIssueUrl(orgSlug, updatedIssue.shortId),
+      updated: Object.values(changes).some(Boolean),
+      changes,
+      current: getCurrentState(updatedIssue, updatedIgnoreState),
+      effect,
+      reasonComment: getReasonComment(params.reason, commentResult),
+    } satisfies UpdateIssueOutput);
   },
 });

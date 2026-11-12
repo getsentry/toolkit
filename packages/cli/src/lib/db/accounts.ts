@@ -9,7 +9,10 @@
 
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { uuidv7 } from "uuidv7";
+import type { InferOutput } from "valibot";
+import type { AccountSummarySchema } from "../../output-schemas/account.js";
 import { normalizeUrl } from "../constants.js";
+import { ValidationError } from "../errors.js";
 import { fuzzyMatch } from "../fuzzy.js";
 import { normalizeHttpOrigin } from "../sentry-urls.js";
 import { storedCredentialIdentity } from "./identity-hash.js";
@@ -34,31 +37,19 @@ export type AccountRow = {
   last_used_at: number;
 };
 
-/** Public, secret-free view of a stored account. */
-export type AccountSummary = {
-  id: string;
-  active: boolean;
-  host: string | undefined;
-  userId: string | undefined;
-  email: string | undefined;
-  username: string | undefined;
-  name: string | undefined;
-  /** Whether the stored credential can still be used (or refreshed). */
-  usable: boolean;
-  expiresAt: number | undefined;
-  /**
-   * Set for the virtual account of an env token (`SENTRY_AUTH_TOKEN` or
-   * `SENTRY_TOKEN`), which is never stored: the variable providing it.
-   */
-  envVar?: string;
-};
+/**
+ * Public, secret-free view of a stored account. Type-only import of the
+ * schema: the `__complete` fast path loads this module and must not load
+ * valibot.
+ */
+export type AccountSummary = InferOutput<typeof AccountSummarySchema>;
 
 /** Prefix of an env token's virtual account id, e.g. `env:SENTRY_AUTH_TOKEN`. */
 export const ENV_ACCOUNT_ID_PREFIX = "env:";
 
 /**
  * Secret-free summary of an env token's virtual account on `host`, with the
- * token's user when known (from `/auth/`). Never active: `sentry auth
+ * token's user when known (from `/users/me/`). Never active: `sentry auth
  * switch` only selects stored accounts.
  */
 export function toEnvAccountSummary(
@@ -248,6 +239,55 @@ export function splitAccountSelector(
   const who = trimmed.slice(0, colon);
   const server = normalizeHttpOrigin(normalizeUrl(trimmed.slice(colon + 1)));
   return who && server ? { who, server } : undefined;
+}
+
+/**
+ * Parse the optional `email` argument of `sentry auth login`: an email, or
+ * `<email>:<server>` (the notation `sentry org list` shows, e.g.
+ * `jane@acme.com:sentry.acme.com`) to also pick the server like `--url`.
+ * Returns the trimmed argument; {@link splitLoginTarget} splits it.
+ *
+ * @throws {ValidationError} when the value is not an email address, or the
+ *   server part is not a valid URL
+ */
+export function parseLoginEmail(raw: string): string {
+  const target = raw.trim();
+  splitLoginTarget(target, raw);
+  return target;
+}
+
+/**
+ * Split a `sentry auth login` target into its email and, for
+ * `<email>:<server>`, the server's normalized origin. Uses the same
+ * {@link splitAccountSelector} as `--account`, plus an email check.
+ *
+ * @throws {ValidationError} when either part is invalid
+ */
+export function splitLoginTarget(
+  target: string,
+  raw = target,
+): { email: string; url?: string } {
+  const parts = splitAccountSelector(target);
+  if (!(parts && isEmailAddress(parts.who))) {
+    throw new ValidationError(
+      `Expected an email address, or <email>:<server> with a valid server, to log in as; got '${raw}'.`,
+      "email",
+    );
+  }
+  return parts.server
+    ? { email: parts.who, url: parts.server }
+    : { email: parts.who };
+}
+
+/** One `@` with text on both sides, and no whitespace. */
+function isEmailAddress(value: string): boolean {
+  const at = value.indexOf("@");
+  return (
+    at > 0 &&
+    at < value.length - 1 &&
+    value.indexOf("@", at + 1) === -1 &&
+    !/\s/.test(value)
+  );
 }
 
 /**

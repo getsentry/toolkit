@@ -5,6 +5,8 @@ export type ExceptionFrame = {
   line?: number;
   column?: number;
   source?: string;
+  variables?: Record<string, unknown>;
+  editorPath?: string;
 };
 
 export type EventException = {
@@ -57,7 +59,21 @@ export function getEventExceptions(payload: unknown): EventException[] {
                 text(frame.abs_path) ??
                 text(frame.module);
               const name = text(frame.function);
-              const source = text(frame.context_line);
+              const line = text(frame.context_line);
+              const before = Array.isArray(frame.pre_context)
+                ? frame.pre_context.filter(
+                    (value): value is string => typeof value === "string",
+                  )
+                : [];
+              const after = Array.isArray(frame.post_context)
+                ? frame.post_context.filter(
+                    (value): value is string => typeof value === "string",
+                  )
+                : [];
+              const source =
+                before.length || after.length
+                  ? [...before, line ?? "", ...after].join("\n")
+                  : line;
               if (!filename && !name && !source) return [];
               return [
                 {
@@ -66,6 +82,12 @@ export function getEventExceptions(payload: unknown): EventException[] {
                   line: coordinate(frame.lineno),
                   column: coordinate(frame.colno),
                   source,
+                  ...(record(frame.vars)
+                    ? { variables: record(frame.vars) }
+                    : {}),
+                  ...(text(frame.abs_path) && frame.abs_path !== filename
+                    ? { editorPath: text(frame.abs_path) }
+                    : {}),
                 },
               ];
             })

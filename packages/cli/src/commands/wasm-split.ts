@@ -18,11 +18,18 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import type { SentryContext } from "../context.js";
+import { sentry } from "../lib/app-identity.js";
 import { buildCommand } from "../lib/command.js";
+import {
+  parseFilePath,
+  parseText,
+  parseUrl,
+} from "../lib/completion-target.js";
 import { ValidationError } from "../lib/errors.js";
 import { CommandOutput } from "../lib/formatters/output.js";
 import { formatBuildId, uuidToBytes } from "../lib/wasm/build-id.js";
 import { splitWasm } from "../lib/wasm/split.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 /** Flags accepted by `sentry wasm-split`. */
 type WasmSplitFlags = {
@@ -50,7 +57,7 @@ type WasmSplitResult = {
 
 export const wasmSplitCommand = buildCommand({
   docs: {
-    brief: "Add build ids to WebAssembly modules and split out debug data",
+    brief: topLevelBrief("wasm-split"),
     fullDescription:
       "Add a build id to a WebAssembly module and optionally split its debug " +
       "data into a companion file. Sentry matches a wasm stack frame to its " +
@@ -63,11 +70,34 @@ export const wasmSplitCommand = buildCommand({
       "The debug companion is a complete copy of the module, captured before " +
       "stripping. DWARF offsets are relative to the code section, so a " +
       "companion missing it cannot be symbolicated.\n\n" +
-      "This is a drop-in replacement for Symbolicator's `wasm-split` binary.\n\n" +
-      "Usage:\n" +
-      "  sentry wasm-split app.wasm\n" +
-      "  sentry wasm-split app.wasm -d app.debug.wasm --strip\n" +
-      "  BUILD_ID=$(sentry wasm-split app.wasm)",
+      "This is a drop-in replacement for Symbolicator's `wasm-split` binary.",
+    examples: [
+      {
+        description: "Add a build ID to a module in place and print it",
+        run: "wasm-split app.wasm",
+      },
+      {
+        description: "Capture the build ID for a later upload",
+        run: {
+          prefix: "BUILD_ID=$(",
+          args: "wasm-split app.wasm",
+          suffix: ")",
+        },
+      },
+      {
+        description:
+          "Split debug data into a companion and ship a stripped binary",
+        run: "wasm-split app.wasm --debug-out app.debug.wasm --strip",
+      },
+      {
+        description: "Also drop function names from the shipped binary",
+        run: "wasm-split app.wasm -d app.debug.wasm --strip --strip-names",
+      },
+      {
+        description: "Point browsers at a companion served from a CDN",
+        run: "wasm-split app.wasm -o dist/app.wasm -d dist/app.debug.wasm --strip --external-dwarf-url https://cdn.example.com/debug/app.debug.wasm",
+      },
+    ],
   },
   // Purely local file operation — no Sentry API calls, no auth needed.
   auth: false,
@@ -82,7 +112,7 @@ export const wasmSplitCommand = buildCommand({
       parameters: [
         {
           brief: "Path to the wasm file",
-          parse: String,
+          parse: parseFilePath,
           placeholder: "input",
         },
       ],
@@ -90,13 +120,13 @@ export const wasmSplitCommand = buildCommand({
     flags: {
       out: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to the output wasm file (default: modify input in place)",
         optional: true,
       },
       "debug-out": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Path to the output debug wasm file (default: debug data stays in the input)",
         optional: true,
@@ -121,13 +151,13 @@ export const wasmSplitCommand = buildCommand({
       },
       "build-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Explicit build id to use, as a UUID",
         optional: true,
       },
       "external-dwarf-url": {
         kind: "parsed",
-        parse: String,
+        parse: parseUrl,
         brief: "URL for browsers to fetch the separate DWARF debug symbol file",
         optional: true,
       },
@@ -141,7 +171,7 @@ export const wasmSplitCommand = buildCommand({
   async *func(this: SentryContext, flags: WasmSplitFlags, input: string) {
     if (!input?.trim()) {
       throw new ValidationError(
-        "Wasm file path is required: sentry wasm-split <input>",
+        `Wasm file path is required: ${sentry`wasm-split <input>`}`,
         "input",
       );
     }
@@ -176,7 +206,7 @@ export const wasmSplitCommand = buildCommand({
       return {};
     }
 
-    yield new CommandOutput<WasmSplitResult>({
+    yield new CommandOutput({
       buildId: formatBuildId(result.buildId),
       input,
       ...(result.moduleChanged ? { output } : {}),

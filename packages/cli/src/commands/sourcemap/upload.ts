@@ -17,6 +17,13 @@ import {
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
 import { buildCommand } from "../../lib/command.js";
+import {
+  choiceListParser,
+  parseDirectoryPath,
+  parseFilePath,
+  parseRelease,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -25,11 +32,14 @@ import { buildIgnoreMatcher } from "../../lib/scan/index.js";
 import {
   assertDirectoryReadable,
   buildEmptyDiscoveryError,
+  DEFAULT_EXTENSIONS,
   diagnoseEmptyDiscovery,
   discoverFilePairs,
-  type InjectResult,
   injectDirectory,
+  type InjectResult,
+  resolveUploadTarget,
 } from "../../lib/sourcemap/inject.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Result type for the upload command. */
 type UploadCommandResult = {
@@ -65,7 +75,7 @@ function formatUploadResult(data: UploadCommandResult): string {
   return renderMarkdown(mdKvTable(rows));
 }
 
-const USAGE_HINT = "sentry sourcemap upload <directory>";
+const usageHint = () => sentry`sourcemap upload <directory>`;
 
 /**
  * Compute the longest common directory prefix across a list of paths.
@@ -213,15 +223,41 @@ export const uploadCommand = buildCommand({
       "Exits with an error if zero JS + sourcemap pairs are discovered " +
       "(typical cause: bundler not emitting .map files). Pass " +
       "--allow-empty to suppress this check for directories that may " +
-      "legitimately be empty.\n\n" +
-      "Usage:\n" +
-      "  sentry sourcemap upload ./dist\n" +
-      "  sentry sourcemap upload ./dist --release 1.0.0\n" +
-      "  sentry sourcemap upload ./dist --release 1.0.0 --dist 12345\n" +
-      "  sentry sourcemap upload ./dist --url-prefix '~/static/js/'\n" +
-      "  sentry sourcemap upload ./dist --no-rewrite\n" +
-      "  sentry sourcemap upload ./dist --ext .js,.mjs\n" +
-      "  sentry sourcemap upload ./maybe-empty --allow-empty",
+      "legitimately be empty.",
+    examples: [
+      {
+        description: "Upload sourcemaps from dist/",
+        run: "sourcemap upload ./dist",
+      },
+      {
+        description: "Upload only the files a glob matches",
+        run: "sourcemap upload '.next/static/**'",
+      },
+      {
+        description: "Associate with a release",
+        run: "sourcemap upload ./dist --release 1.0.0",
+      },
+      {
+        description: "Set a custom URL prefix",
+        run: "sourcemap upload ./dist --url-prefix '~/static/js/'",
+      },
+      {
+        description: "Don't fail when no sourcemaps are found",
+        run: "sourcemap upload ./dist --allow-empty",
+      },
+      {
+        description: "Set a release and distribution",
+        run: "sourcemap upload ./dist --release 1.0.0 --dist 12345",
+      },
+      {
+        description: "Upload without rewriting sourcemaps",
+        run: "sourcemap upload ./dist --no-rewrite",
+      },
+      {
+        description: "Only upload some extensions",
+        run: "sourcemap upload ./dist --ext .js,.mjs",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,
@@ -231,8 +267,8 @@ export const uploadCommand = buildCommand({
       kind: "tuple",
       parameters: [
         {
-          brief: "Directory containing sourcemaps",
-          parse: String,
+          brief: "Directory containing sourcemaps, or a glob like 'dist/**'",
+          parse: parseDirectoryPath,
           placeholder: "directory",
         },
       ],
@@ -240,46 +276,46 @@ export const uploadCommand = buildCommand({
     flags: {
       release: {
         kind: "parsed",
-        parse: String,
+        parse: parseRelease,
         brief: "Release version to associate with the upload",
         optional: true,
       },
       dist: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Distribution identifier to disambiguate builds within a release",
         optional: true,
       },
       "url-prefix": {
         kind: "parsed",
-        parse: String,
-        brief: "URL prefix for uploaded files (default: ~/)",
+        parse: parseText,
+        brief: "URL prefix for uploaded files",
         optional: true,
         default: "~/",
       },
       ext: {
         kind: "parsed",
-        parse: String,
+        parse: choiceListParser([...DEFAULT_EXTENSIONS]),
         brief:
           "Comma-separated file extensions to process (default: .js,.cjs,.mjs)",
         optional: true,
       },
       ignore: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Comma-separated glob patterns to exclude (gitignore-style)",
         optional: true,
       },
       "ignore-file": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Path to a file with gitignore-style patterns to exclude",
         optional: true,
       },
       "strip-prefix": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Strip a prefix from uploaded file paths (e.g. 'build/')",
         optional: true,
       },
@@ -325,7 +361,8 @@ export const uploadCommand = buildCommand({
     // Validate the directory and discover pairs read-only first so we
     // don't write debug IDs when the upload won't proceed (empty dir,
     // typoed path, missing credentials).
-    await assertDirectoryReadable(dir);
+    const target = await resolveUploadTarget(dir);
+    await assertDirectoryReadable(target.dir);
 
     const extensions = flags.ext?.split(",").map((e) => e.trim());
     const extSet = extensions
@@ -340,17 +377,25 @@ export const uploadCommand = buildCommand({
       flags["ignore-file"],
     );
 
-    const pairs = await discoverFilePairs(dir, extSet, ignoreMatcher);
+    const pairs = await discoverFilePairs(
+      target.dir,
+      extSet,
+      ignoreMatcher,
+      target.include,
+    );
 
     if (pairs.length === 0) {
       if (!flags["allow-empty"]) {
-        const diag = await diagnoseEmptyDiscovery(dir, { extensions });
+        const diag = await diagnoseEmptyDiscovery(target.dir, {
+          extensions,
+          include: target.include,
+        });
         throw buildEmptyDiscoveryError(dir, diag);
       }
       // --allow-empty: nothing to upload, so don't require Sentry
       // credentials. This makes the flag actually usable in the
       // library-only / conditional-release-skip cases the docs name.
-      yield new CommandOutput<UploadCommandResult>({
+      yield new CommandOutput({
         release: flags.release,
         dist: flags.dist,
         filesUploaded: 0,
@@ -371,10 +416,10 @@ export const uploadCommand = buildCommand({
 
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 
@@ -386,15 +431,16 @@ export const uploadCommand = buildCommand({
           injected: false,
           debugId: "",
         }))
-      : await injectDirectory(dir, {
+      : await injectDirectory(target.dir, {
           extensions,
           ignoreMatcher,
+          include: target.include,
         });
 
     const urlPrefix = flags["url-prefix"] ?? "~/";
 
     // Build artifact file list with paths relative to the upload directory
-    const resolvedDir = resolve(dir);
+    const resolvedDir = resolve(target.dir);
     // Normalize --strip-prefix to end with "/" so it strips at directory
     // boundaries. Without this, "build" would strip from "build/app.js"
     // leaving "/app.js" instead of "app.js".
@@ -438,7 +484,7 @@ export const uploadCommand = buildCommand({
       (f) => f.type === "minified_source",
     ).length;
 
-    yield new CommandOutput<UploadCommandResult>({
+    yield new CommandOutput({
       org,
       project,
       release: flags.release,

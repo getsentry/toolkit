@@ -9,14 +9,15 @@
  * No PII is collected. Opt-out via SENTRY_CLI_NO_TELEMETRY=1 environment variable.
  */
 
-import { chmodSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
+import type { Metric } from "@sentry/core";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
+import * as Sentry from "@sentry/node";
 
 const _require = createRequire(import.meta.url);
 
 import { isMusl } from "./binary.js";
+import { isCi } from "./ci.js";
 import {
   CLI_VERSION,
   getCliEnvironment,
@@ -25,7 +26,8 @@ import {
 } from "./constants.js";
 import { getCustomCaCerts } from "./custom-ca.js";
 import { getOnOffPreference } from "./db/defaults.js";
-import { isReadonlyError, tryRepairAndRetry } from "./db/schema.js";
+import { createResilientDatabase } from "./db/resilient.js";
+import type { Database } from "./db/sqlite.js";
 import {
   type AgentInfo,
   detectAgent,
@@ -39,10 +41,20 @@ import {
 } from "./error-reporting.js";
 import { ApiError, isUserError } from "./errors.js";
 import { attachSentryReporter, logger } from "./logger.js";
+import { sentryReporter } from "@sentry/logger";
+import {
+  SNAKE_SCORE_HANDLE_ATTRIBUTE,
+  SNAKE_SCORE_METRIC,
+} from "@sentry/toolkit-core/games";
 import { getSentryBaseUrl, isSentrySaasUrl } from "./sentry-urls.js";
 import { redactTelemetryEnvelope } from "./telemetry/credential-redaction.js";
+import { clearStoredEnvelopes } from "./telemetry/offline-store.js";
+import {
+  makeStoringTransport,
+  STORED_ENVELOPES_PER_RUN,
+  type StoringTransport,
+} from "./telemetry/offline-transport.js";
 import { makeCompressedTransport } from "./telemetry/zstd-transport.js";
-import { getRealUsername } from "./utils.js";
 
 export type { Span } from "@sentry/core";
 
@@ -72,7 +84,7 @@ async function initTelemetryContext(): Promise<void> {
   } catch (error) {
     // Context initialization is not critical - continue without it
     // But capture the error for debugging
-    Sentry.captureException(error);
+    reportCliError(error);
   }
 }
 
@@ -159,6 +171,32 @@ export function isTelemetryEnabled(): boolean {
 }
 
 /**
+ * Attributes a Snake score metric may carry. Everything else the SDK adds
+ * (user.*, replay ids, ...) is dropped so a score cannot be linked to a user.
+ */
+const SNAKE_SCORE_ATTRIBUTE_ALLOWLIST = new Set([
+  SNAKE_SCORE_HANDLE_ATTRIBUTE,
+  "sentry.release",
+  "sentry.environment",
+  "sentry.sdk.name",
+  "sentry.sdk.version",
+]);
+
+/** `beforeSendMetric` hook: allowlist attributes for anonymous game scores, pass other metrics through. */
+export function scrubAnonymousMetric(metric: Metric): Metric {
+  if (metric.name !== SNAKE_SCORE_METRIC) {
+    return metric;
+  }
+  const attributes: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metric.attributes ?? {})) {
+    if (SNAKE_SCORE_ATTRIBUTE_ALLOWLIST.has(key)) {
+      attributes[key] = value;
+    }
+  }
+  return { ...metric, attributes };
+}
+
+/**
  * Wrap CLI execution with telemetry tracking.
  *
  * Creates a Sentry span for the command execution and captures exceptions.
@@ -183,8 +221,17 @@ export async function withTelemetry<T>(
   const enabled = isTelemetryEnabled();
   const client = initSentry(enabled, options);
   if (!client?.getOptions().enabled) {
+    // Opting out also discards telemetry stored by earlier runs. Library mode
+    // never touches the store: it belongs to the CLI, not the host.
+    if (!(enabled || options?.libraryMode)) {
+      clearStoredEnvelopes();
+    }
     return await callback(undefined);
   }
+
+  // Retry telemetry that earlier runs failed to send. The sends run in the
+  // background; the exit flush in createBeforeExitHandler waits for them.
+  storingTransport?.sendStored(STORED_ENVELOPES_PER_RUN);
 
   // Initialize user and instance context
   await initTelemetryContext();
@@ -266,14 +313,19 @@ export async function withTelemetry<T>(
  * and flushing pending events. Includes a re-entry guard since flush is async
  * and causes beforeExit to re-fire when complete.
  *
- * @param client - The Sentry client to flush
+ * It closes the client rather than only flushing it. The SDK flushes metrics
+ * and client reports on every `beforeExit`; when ingest is slow or
+ * unreachable, each failed send becomes a client report, and the runtime
+ * metrics timer keeps adding data, so the next `beforeExit` sends again and
+ * the process never exits (#1956). Closing removes those listeners and
+ * disables the client after this last flush.
+ *
+ * @param client - The Sentry client to close
  * @returns A handler function for process.on("beforeExit")
  *
  * @internal Exported for testing
  */
-export function createBeforeExitHandler(
-  client: Sentry.LightNodeClient,
-): () => void {
+export function createBeforeExitHandler(client: Sentry.NodeClient): () => void {
   let isFlushing = false;
   return () => {
     if (isFlushing) {
@@ -286,11 +338,11 @@ export function createBeforeExitHandler(
       Sentry.endSession();
     }
 
-    // Flush pending events before exit. Convert PromiseLike to Promise
-    // for proper error handling. The async work causes beforeExit to
+    // Flush pending events, then disable the client. Convert PromiseLike to
+    // Promise for proper error handling. The async work causes beforeExit to
     // re-fire when complete, which the isFlushing guard handles.
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-    Promise.resolve(client.flush(3000)).catch(() => {
+    Promise.resolve(client.close(3000)).catch(() => {
       // Ignore flush errors — telemetry should never block CLI exit
     });
   };
@@ -334,9 +386,9 @@ export function isEpipeError(event: Sentry.ErrorEvent): boolean {
 /**
  * Detect EBADF (bad file descriptor) errors in Sentry events.
  *
- * These occur when the init wizard's stdin reopen (`stdin-reopen.ts`) queues
- * reads on a destroyed file descriptor. Same class of OS-level noise as EPIPE
- * — not actionable, just different fd numbers producing duplicate issues.
+ * These occur when a read is queued on a terminal file descriptor that was
+ * already closed. Same class of OS-level noise as EPIPE — not actionable,
+ * just different fd numbers producing duplicate issues.
  *
  * @internal Exported for testing
  */
@@ -384,15 +436,22 @@ export function isUserApiError(error: unknown): boolean {
 /**
  * Record a client API error as span attributes for Discover queryability.
  *
- * Sets `api_error.status`, `api_error.message`, and optionally `api_error.detail`
- * on the span. Must be called before `span.end()`.
+ * Sets `api_error.status`, `api_error.message`, and either
+ * `api_error.denial_reason` (401/403) or `api_error.detail` on the span. Must
+ * be called before `span.end()`.
+ *
+ * A 401/403 detail is the CLI's own guidance, which can name organizations,
+ * and Sentry's data scrubbing replaces most of them with `[Filtered]`. The
+ * denial reason is a fixed category that tells those failures apart instead.
  *
  * @internal Exported for testing
  */
 export function recordApiErrorOnSpan(span: Span, error: ApiError): void {
   span.setAttribute("api_error.status", error.status);
   span.setAttribute("api_error.message", error.message);
-  if (error.detail) {
+  if (error.denialReason) {
+    span.setAttribute("api_error.denial_reason", error.denialReason);
+  } else if (error.detail) {
     span.setAttribute("api_error.detail", error.detail);
   }
 }
@@ -425,7 +484,14 @@ const LIBRARY_EXCLUDED_INTEGRATIONS = new Set([
   "NodeFetch", // diagnostics_channel + trace headers
   "FunctionToString", // wraps Function.prototype.toString
   "ChildProcess", // monitors child processes
+  "WorkerThreads", // diagnostics_channel on the host's worker threads
   "NodeRuntimeMetrics", // runtime metrics timer would keep host event loop alive
+  // Framework error handlers subscribe to the host's framework channels
+  "Express",
+  "Fastify",
+  "Hapi",
+  "Hono",
+  "Koa",
 ]);
 
 /**
@@ -449,6 +515,21 @@ const hasGetSystemErrorMap = (() => {
 
 /** Current beforeExit handler, tracked so it can be replaced on re-init */
 let currentBeforeExitHandler: (() => void) | null = null;
+
+/** Transport of the current client, unless library mode left the store out. */
+let storingTransport: StoringTransport | undefined;
+
+let manualHttpTracing = false;
+
+/**
+ * Whether API requests need CLI-made `http.client` spans and trace headers.
+ * Library mode excludes the SDK's Http/NodeFetch integrations because they
+ * would also trace the host's requests, and Bun's fetch doesn't fire the
+ * undici diagnostics channels they listen on.
+ */
+export function isManualHttpTracing(): boolean {
+  return manualHttpTracing;
+}
 
 /** Match all SaaS regional URLs (us.sentry.io, de.sentry.io, o1234.ingest.us.sentry.io, etc.) */
 const SENTRY_SAAS_SUBDOMAIN_RE = /^https:\/\/[^/]*\.sentry\.io(\/|$)/;
@@ -524,9 +605,11 @@ function setAgentTags(info: AgentInfo): void {
 export function initSentry(
   enabled: boolean,
   options?: { libraryMode?: boolean },
-): Sentry.LightNodeClient | undefined {
+): Sentry.NodeClient | undefined {
   const libraryMode = options?.libraryMode ?? false;
   const environment = getCliEnvironment();
+  manualHttpTracing =
+    libraryMode || typeof process.versions.bun !== "undefined";
 
   /**
    * Ensure frame paths are absolute so Sentry's symbolicator can match them.
@@ -591,12 +674,31 @@ export function initSentry(
   const client = Sentry.init({
     dsn: SENTRY_CLI_DSN,
     enabled,
+    // The tracing integrations instrument database, framework, and AI
+    // libraries through diagnostics channels, which in library mode belong
+    // to the host application.
+    ...(libraryMode && {
+      defaultIntegrations: Sentry.getDefaultIntegrationsWithoutPerformance(),
+    }),
+    // Keep v10's transaction model: dashboards and alerts rely on scope tags
+    // on transactions, and beforeSendTransaction scrubs server_name.
+    traceLifecycle: "static",
+    // Shipped bundles strip these hooks via the `__SENTRY_CHANNEL_INJECTION__`
+    // build define; this keeps unbundled runs (dev, tests) consistent.
+    enableRuntimeChannelInjection: false,
     // Compress outgoing envelopes with zstd (level 3) instead of gzip —
     // smaller payloads, faster compress/decompress on both sides.
     // Automatic gzip fallback when running on Node < 22.15, where
     // `node:zlib`'s zstd support is unavailable.
+    // Outside library mode, envelopes that fail to send are stored for the
+    // next run (telemetry/offline-transport.ts). Library mode must not write
+    // the host's disk or add work to its process.
     transport: (transportOptions) => {
-      const transport = makeCompressedTransport(transportOptions);
+      storingTransport = libraryMode
+        ? undefined
+        : makeStoringTransport(transportOptions);
+      const transport =
+        storingTransport ?? makeCompressedTransport(transportOptions);
       return {
         // The SDK adds log scope attributes after beforeSendLog and skips
         // beforeSend for internal errors. Redact at the final delivery boundary.
@@ -608,8 +710,7 @@ export function initSentry(
     // The zstd-transport reads `caCerts` and passes it as `ca:` to
     // `http.request()`, and the SDK's fallback `makeNodeTransport` does the same.
     transportOptions: { caCerts: getCustomCaCerts() },
-    // Keep default integrations but filter out ones that add overhead without benefit.
-    // Important: Don't use defaultIntegrations: false as it may break debug ID support.
+    // Filter out default integrations that add overhead without benefit.
     // NodeSystemError is excluded on runtimes missing util.getSystemErrorMap (Bun) — CLI-K1.
     // Library mode uses the extended exclusion set to avoid polluting the host process.
     integrations: (defaults) => {
@@ -643,10 +744,9 @@ export function initSentry(
       return filtered;
     },
     environment,
-    // Enable Sentry structured logs for non-exception telemetry (e.g., unexpected input warnings).
-    // Disabled when telemetry is off or in library mode — the SDK registers
-    // beforeExit handlers for log flushing that keep the event loop alive.
-    enableLogs: enabled && !libraryMode,
+    // v11 removed `enableLogs` and always captures `Sentry.logger.*` calls.
+    // Library mode never sent logs in v10, so keep dropping them there.
+    ...(libraryMode && { beforeSendLog: () => null }),
     // Disable client reports when telemetry is off or in library mode — the SDK
     // registers a setInterval + beforeExit handler that keep the event loop alive.
     ...((libraryMode || !enabled) && { sendClientReports: false }),
@@ -656,6 +756,8 @@ export function initSentry(
     release: CLI_VERSION,
     // Propagate traces to Sentry API for distributed tracing
     tracePropagationTargets: getSentryTracePropagationTargets(),
+
+    beforeSendMetric: scrubAnonymousMetric,
 
     beforeSendTransaction: (event) => {
       // Remove server_name which may contain hostname (PII)
@@ -673,9 +775,9 @@ export function initSentry(
         return null;
       }
 
-      // EBADF errors come from the init wizard's stdin reopen queuing reads
-      // on a destroyed fd. Same class of OS-level noise as EPIPE — different
-      // fd numbers just produce duplicate issues. Not actionable — drop them.
+      // EBADF errors come from reads queued on a closed terminal fd. Same
+      // class of OS-level noise as EPIPE — different fd numbers just produce
+      // duplicate issues. Not actionable — drop them.
       if (isEbadfError(event)) {
         return null;
       }
@@ -694,6 +796,14 @@ export function initSentry(
     },
   });
 
+  // v11 attaches the client to the current scope before switching to the
+  // AsyncLocalStorage context strategy. When init runs inside a still-pending
+  // pre-init span (as in the CLI's middleware chain), that scope is lost in
+  // the switch and every later capture finds no client.
+  if (client) {
+    Sentry.setCurrentClient(client);
+  }
+
   // Always remove our own previous handler on re-init.
   if (currentBeforeExitHandler) {
     process.removeListener("beforeExit", currentBeforeExitHandler);
@@ -704,15 +814,15 @@ export function initSentry(
     const isBun = typeof process.versions.bun !== "undefined";
     const runtime = isBun ? "bun" : "node";
 
-    // LightNodeClient hardcodes runtime to { name: 'node' }. Override it so
-    // events carry the correct runtime when running as a compiled Bun binary.
+    // NodeClient defaults runtime to { name: 'node' }. Override it so
+    // events carry the correct runtime when the npm package runs under Bun.
     const opts = client.getOptions();
     opts.runtime = {
       name: runtime,
       version: isBun ? process.versions.bun : process.version,
     };
 
-    // Tag whether running as bun binary or node (npm package).
+    // Tag whether running under Bun or Node.
     // Kept alongside the SDK's promoted 'runtime' tag for explicit signaling
     // and backward compatibility with existing dashboards/alerts.
     Sentry.setTag("cli.runtime", runtime);
@@ -720,7 +830,10 @@ export function initSentry(
     // Tag whether targeting self-hosted Sentry (not SaaS)
     Sentry.setTag("is_self_hosted", !isSentrySaasUrl(getSentryBaseUrl()));
 
-    // Tag whether running in an interactive terminal or agent/CI environment
+    // CI and agent identity are independent: an agent can run inside CI.
+    Sentry.setTag("is_ci", isCi(getEnv()));
+
+    // Tag whether stdout is a terminal, independently of CI or agent detection.
     Sentry.setTag("is_tty", !!process.stdout.isTTY);
 
     // Tag the C library variant on Linux (musl vs glibc).
@@ -745,8 +858,8 @@ export function initSentry(
         });
     }
 
-    // Wire up consola → Sentry log forwarding now that the client is active
-    attachSentryReporter();
+    // Wire up logger → Sentry log forwarding now that the client is active
+    attachSentryReporter(sentryReporter(Sentry.logger));
 
     // End healthy sessions and flush events when the event loop drains.
     // The SDK's processSessionIntegration starts a session during init and
@@ -810,7 +923,7 @@ export function setOrgProjectContext(orgs: string[], projects: string[]): void {
  * Flag names whose values must never be sent to telemetry.
  * Values for these flags are replaced with "[REDACTED]" regardless of content.
  */
-const SENSITIVE_FLAGS = new Set(["token"]);
+const SENSITIVE_FLAGS = new Set(["token", "access-token"]);
 
 /**
  * Convert a flag value to a telemetry tag string.
@@ -934,73 +1047,6 @@ export function recordCacheHit(cacheName: string, hit: boolean): void {
   });
 }
 
-export type WizardPromptKind = "select" | "multiselect" | "confirm" | "welcome";
-
-type WizardPromptTelemetry = {
-  setActiveStep(stepId: string, active: boolean): void;
-  tracePrompt<T>(kind: WizardPromptKind, prompt: () => Promise<T>): Promise<T>;
-};
-
-/**
- * Track time spent waiting for human input during `sentry init`.
- *
- * Prompt spans make user think-time visible in the trace instead of folding it
- * into the top-level `sentry.init` duration. The measurement is accumulated on
- * the root span so a run can be compared both with and without user wait time.
- */
-export function createWizardPromptTelemetry(): WizardPromptTelemetry {
-  let activeStepId: string | undefined;
-  let totalWaitMs = 0;
-
-  return {
-    setActiveStep(stepId, active) {
-      if (active) {
-        activeStepId = stepId;
-      } else if (activeStepId === stepId) {
-        activeStepId = undefined;
-      }
-    },
-    tracePrompt(kind, prompt) {
-      const stepId = activeStepId;
-      return withTracingSpan(
-        `wizard.prompt.${kind}`,
-        "ui.prompt",
-        async (span) => {
-          const startedAt = performance.now();
-          try {
-            return await prompt();
-          } finally {
-            const waitMs = Math.max(0, performance.now() - startedAt);
-            totalWaitMs += waitMs;
-
-            span.setAttributes({
-              "wizard.user_wait_ms": waitMs,
-              "wizard.user_wait_total_ms": totalWaitMs,
-            });
-            Sentry.setMeasurement(
-              "wizard.user_wait_ms",
-              totalWaitMs,
-              "millisecond",
-              Sentry.getRootSpan(span),
-            );
-            Sentry.metrics.distribution("wizard.user_wait_ms", waitMs, {
-              attributes: {
-                prompt_kind: kind,
-                ...(stepId ? { workflow_step: stepId } : {}),
-              },
-            });
-          }
-        },
-        {
-          "wizard.prompt.kind": kind,
-          "wizard.prompt.phase": stepId ? "workflow" : "preflight",
-          ...(stepId ? { "wizard.step.id": stepId } : {}),
-        },
-      );
-    },
-  };
-}
-
 /**
  * Wrap an operation with a Sentry span for tracing.
  *
@@ -1009,7 +1055,7 @@ export function createWizardPromptTelemetry(): WizardPromptTelemetry {
  * to OK on success or Error on failure.
  *
  * Use this generic helper for custom operations, or use the specialized
- * helpers (withHttpSpan, withDbSpan, withFsSpan, withSerializeSpan) for
+ * helpers (withDbSpan, withFsSpan, withSerializeSpan) for
  * common operation types.
  *
  * @param name - Span name (e.g., "scanDirectory", "findProjectRoot")
@@ -1101,28 +1147,6 @@ export function withTracingSpan<T>(
 }
 
 /**
- * Wrap an HTTP request with a span for tracing.
- *
- * Creates a child span under the current active span to track
- * HTTP request duration and status.
- *
- * @param method - HTTP method (GET, POST, etc.)
- * @param url - Request URL or path
- * @param fn - The async function that performs the HTTP request
- * @returns The result of the function
- */
-export function withHttpSpan<T>(
-  method: string,
-  url: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  return withTracing(`${method} ${url}`, "http.client", fn, {
-    "http.request.method": method,
-    "url.path": url,
-  });
-}
-
-/**
  * Wrap a database operation with a span for tracing.
  *
  * Creates a child span under the current active span to track
@@ -1149,262 +1173,11 @@ export function withDbSpan<T>(operation: string, fn: () => T): T {
   );
 }
 
-/** Intentional no-op used as a self-replacement target for one-shot functions. */
-// intentional noop
-const noop = (): void => {};
-
-/** Resolves the database path, falling back to a default if the import fails. */
-function resolveDbPath(): string {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    const { getDbPath } = _require("./db/index.js") as {
-      getDbPath: () => string;
-    };
-    return getDbPath();
-  } catch {
-    return "~/.sentry/cli.db";
-  }
-}
-
 /**
- * Print a one-time warning to stderr when the local database is read-only.
- * Replaces itself with a noop after the first call so subsequent invocations
- * are free. Assigned via `let` so the binding can be swapped.
+ * Wrap a SQLite Database to trace every query, on top of the schema
+ * auto-repair and read-only handling from {@link createResilientDatabase}.
  *
- * Uses lazy require for db/index.js to avoid a circular dependency
- * (db/index.ts imports createTracedDatabase from this module).
- */
-let warnReadonlyDatabaseOnce = (): void => {
-  warnReadonlyDatabaseOnce = noop;
-
-  const dbPath = resolveDbPath();
-  process.stderr.write(
-    `\nWarning: Sentry CLI local database is read-only. Caching and preferences won't persist.\n` +
-      `  Path: ${dbPath}\n` +
-      "  Fix:  sentry cli fix\n\n",
-  );
-};
-
-/** Whether we already attempted a permission repair this process. */
-let repairAttempted = false;
-
-/**
- * Attempt to repair database file permissions so future commands can write.
- *
- * SQLite caches the readonly state at connection open time, so even after a
- * successful chmod the *current* connection remains readonly. This function
- * repairs permissions for the NEXT command and prints a differentiated message.
- * If the repair fails (e.g., file owned by another user) we fall through to
- * {@link warnReadonlyDatabaseOnce} which tells the user to run `sentry cli fix`.
- *
- * Replaces itself with a noop after the first call via the `repairAttempted`
- * guard so we only try once per process.
- */
-/**
- * Chmod a path, ignoring ENOENT (file doesn't exist yet).
- * Re-throws any other error so permission failures aren't silently masked.
- */
-function chmodIfExists(filePath: string, mode: number): void {
-  try {
-    chmodSync(filePath, mode);
-  } catch (error: unknown) {
-    if (
-      error instanceof Error &&
-      (error as NodeJS.ErrnoException).code === "ENOENT"
-    ) {
-      return;
-    }
-    throw error;
-  }
-}
-
-/**
- * Check whether the file at `filePath` is owned by root (uid 0).
- * Returns false if the file doesn't exist, can't be stat'd, or if running on
- * Windows where `fs.stat().uid` always returns 0 regardless of ownership.
- */
-function isOwnedByRoot(filePath: string): boolean {
-  // Windows fs.stat() always reports uid 0 — skip the check entirely.
-  if (process.platform === "win32") {
-    return false;
-  }
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    return statSync(filePath).uid === 0;
-  } catch {
-    return false;
-  }
-}
-
-function tryRepairReadonly(): boolean {
-  if (repairAttempted) {
-    return false;
-  }
-  repairAttempted = true;
-
-  const dbPath = resolveDbPath();
-  const { dirname } = _require("node:path") as {
-    dirname: (p: string) => string;
-  };
-  const configDir = dirname(dbPath);
-
-  // If the config dir or DB file is root-owned, chmod won't help.
-  // Emit an actionable message telling the user to run sudo chown.
-  if (isOwnedByRoot(configDir) || isOwnedByRoot(dbPath)) {
-    const username = getRealUsername();
-    // Disable the generic warning — we're emitting a better one here.
-    warnReadonlyDatabaseOnce = noop;
-    process.stderr.write(
-      "\nWarning: Sentry CLI config directory is owned by root.\n" +
-        `  Path:  ${configDir}\n` +
-        `  Fix:   sudo chown -R ${username} "${configDir}"\n` +
-        "  Or:    sudo sentry cli fix\n\n",
-    );
-    return false;
-  }
-
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    // Repair config directory (needs rwx for WAL/SHM creation)
-    chmodSync(configDir, 0o700);
-
-    // Repair database file and journal files
-    chmodSync(dbPath, 0o600);
-    chmodIfExists(`${dbPath}-wal`, 0o600);
-    chmodIfExists(`${dbPath}-shm`, 0o600);
-
-    // Disable the fallback warning — repair succeeded
-    warnReadonlyDatabaseOnce = noop;
-
-    process.stderr.write(
-      "\nNote: Database permissions were auto-repaired. Caching will resume on next command.\n\n",
-    );
-    return true;
-  } catch {
-    // chmod failed — fall through so warnReadonlyDatabaseOnce fires
-    return false;
-  }
-}
-
-/**
- * Reset all readonly-related state (for testing).
- * @internal
- */
-export function resetReadonlyWarning(): void {
-  repairAttempted = false;
-  warnReadonlyDatabaseOnce = (): void => {
-    warnReadonlyDatabaseOnce = noop;
-
-    const dbPath = resolveDbPath();
-    process.stderr.write(
-      `\nWarning: Sentry CLI local database is read-only. Caching and preferences won't persist.\n` +
-        `  Path: ${dbPath}\n` +
-        "  Fix:  sentry cli fix\n\n",
-    );
-  };
-}
-
-/** Methods on SQLite Statement that execute queries and should be traced */
-const TRACED_STATEMENT_METHODS = ["get", "run", "all", "values"] as const;
-
-/**
- * Handle a readonly database error by attempting auto-repair and returning a
- * type-appropriate no-op value. Returns `undefined` for run/get (void / no-row)
- * and `[]` for all/values (empty result set).
- *
- * First tries to repair file permissions via {@link tryRepairReadonly}. If that
- * fails (or was already attempted), falls back to a one-shot warning directing
- * the user to `sentry cli fix`.
- */
-function handleReadonlyError(method: string | symbol): unknown {
-  if (!tryRepairReadonly()) {
-    warnReadonlyDatabaseOnce();
-  }
-  if (method === "all" || method === "values") {
-    return [];
-  }
-  return;
-}
-
-/**
- * Wrap a SQLite Statement to automatically trace query execution.
- *
- * Intercepts get/run/all/values methods and wraps them with Sentry spans
- * that include the SQL query as both the span name and db.statement attribute.
- *
- * @param stmt - The SQLite Statement to wrap
- * @param sql - The SQL query string (parameterized)
- * @returns A proxied Statement with automatic tracing
- *
- * @internal Used by createTracedDatabase
- */
-function createTracedStatement<T>(stmt: T, sql: string): T {
-  return new Proxy(stmt as object, {
-    get(target, prop) {
-      const value = Reflect.get(target, prop);
-
-      // Non-function properties pass through directly
-      if (typeof value !== "function") {
-        return value;
-      }
-
-      // Non-traced methods get bound to preserve 'this' context for native methods
-      if (
-        !TRACED_STATEMENT_METHODS.includes(
-          prop as (typeof TRACED_STATEMENT_METHODS)[number],
-        )
-      ) {
-        return value.bind(target);
-      }
-
-      // Traced methods get wrapped with Sentry span and auto-repair
-      return (...args: unknown[]) =>
-        Sentry.startSpan(
-          {
-            name: sql,
-            op: "db",
-            attributes: {
-              "db.system": "sqlite",
-              "db.statement": sql,
-            },
-            onlyIfParent: true,
-          },
-          () => {
-            const execute = () =>
-              (value as (...a: unknown[]) => unknown).apply(target, args);
-
-            try {
-              return execute();
-            } catch (error) {
-              // Attempt auto-repair for schema errors
-              const repairResult = tryRepairAndRetry(execute, error);
-              if (repairResult.attempted) {
-                return repairResult.result;
-              }
-
-              // Handle readonly database gracefully: warn once, skip the write.
-              // The CLI still works — reads succeed, only caching/persistence is lost.
-              if (isReadonlyError(error)) {
-                return handleReadonlyError(prop);
-              }
-
-              // Re-throw if repair didn't help or wasn't applicable
-              throw error;
-            }
-          },
-        );
-    },
-  }) as T;
-}
-
-/** Minimal interface for a database with a query method */
-type QueryableDatabase = { query: (sql: string) => unknown };
-
-/**
- * Wrap a SQLite Database to automatically trace all queries.
- *
- * Intercepts the query() method and wraps returned Statements with
- * createTracedStatement, which traces get/run/all/values calls.
+ * Each get/run/all/values call gets a span named after the SQL query.
  *
  * @param db - The SQLite Database to wrap
  * @returns A proxied Database with automatic query tracing
@@ -1418,40 +1191,21 @@ type QueryableDatabase = { query: (sql: string) => unknown };
  * tracedDb.query("SELECT * FROM users WHERE id = ?").get(1);
  * ```
  */
-export function createTracedDatabase<T extends QueryableDatabase>(db: T): T {
-  const originalQuery = db.query.bind(db) as (sql: string) => unknown;
-
-  return new Proxy(db as object, {
-    get(target, prop) {
-      if (prop === "query") {
-        return (sql: string) => {
-          // Try to prepare the statement, with auto-repair on schema errors
-          const prepareStatement = () => originalQuery(sql);
-
-          let stmt: unknown;
-          try {
-            stmt = prepareStatement();
-          } catch (error) {
-            // Attempt auto-repair for schema errors during statement preparation
-            const repairResult = tryRepairAndRetry(prepareStatement, error);
-            if (repairResult.attempted) {
-              stmt = repairResult.result;
-            } else {
-              throw error;
-            }
-          }
-
-          return createTracedStatement(stmt, sql);
-        };
-      }
-      const value = Reflect.get(target, prop);
-      // Bind methods to preserve 'this' context for native methods with private fields
-      if (typeof value === "function") {
-        return value.bind(target);
-      }
-      return value;
-    },
-  }) as T;
+export function createTracedDatabase(db: Database): Database {
+  return createResilientDatabase(db, (sql, execute) =>
+    Sentry.startSpan(
+      {
+        name: sql,
+        op: "db",
+        attributes: {
+          "db.system": "sqlite",
+          "db.statement": sql,
+        },
+        onlyIfParent: true,
+      },
+      execute,
+    ),
+  );
 }
 
 /**

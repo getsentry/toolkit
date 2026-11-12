@@ -7,7 +7,8 @@
 import { mkdirSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, beforeEach } from "vitest";
+import { ArgumentParseError } from "@stricli/core";
+import { afterEach, beforeEach, expect } from "vitest";
 import {
   resetAccountSelection,
   resetAuthRowCache,
@@ -86,7 +87,7 @@ type FetchMockFn =
  * @returns Properly typed fetch function
  */
 export function mockFetch(fn: FetchMockFn): typeof fetch {
-  return fn as unknown as typeof fetch;
+  return fn;
 }
 
 /**
@@ -290,7 +291,7 @@ export function installFetchMock(
   const fallbackStatus = fallback?.status ?? 404;
   const fallbackBody = fallback?.body ?? { detail: "Not found" };
 
-  globalThis.fetch = (async (
+  globalThis.fetch = async (
     input: RequestInfo | URL,
     init?: RequestInit,
     // test mock router requires branching for method/URL/body matching
@@ -341,7 +342,7 @@ export function installFetchMock(
       status: fallbackStatus,
       headers: { "Content-Type": "application/json" },
     });
-  }) as typeof fetch;
+  };
 
   return {
     calls,
@@ -369,4 +370,14 @@ export function envWithoutAgent(): NodeJS.ProcessEnv {
   return Object.fromEntries(
     Object.entries(process.env).filter(([key]) => !agentKeys.has(key)),
   );
+}
+
+/**
+ * The error a command's positionals failed to parse with: arguments parse
+ * before `func` runs, so it reaches the caller wrapped in Stricli's
+ * ArgumentParseError. For `.catch()` on a command call.
+ */
+export function parseFailure(error: unknown): Error {
+  expect(error).toBeInstanceOf(ArgumentParseError);
+  return (error as ArgumentParseError).exception as Error;
 }

@@ -18,6 +18,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { basename, relative, resolve, sep } from "node:path";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   type ChunkServerOptions,
   getChunkUploadOptions,
@@ -26,7 +27,12 @@ import {
   type DebugFileUpload,
   uploadDebugFiles,
 } from "../../lib/api/debug-files.js";
-import { buildCommand } from "../../lib/command.js";
+import { buildCommand, numberParser } from "../../lib/command.js";
+import {
+  parseDirectoryPath,
+  parseFilePath,
+  parseText,
+} from "../../lib/completion-target.js";
 import { createSourceBundle } from "../../lib/dif/index.js";
 import { scanPaths } from "../../lib/dif/scan.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
@@ -52,7 +58,7 @@ import { resolveWaitMode, type WaitFlags } from "./wait.js";
 
 const log = logger.withTag("debug-files.wasm-upload");
 
-const USAGE_HINT = "sentry debug-files wasm-upload <path>...";
+const usageHint = () => sentry`debug-files wasm-upload <path>...`;
 
 /** Where an upload goes: the org/project pair and its chunk-upload options. */
 type UploadTarget = {
@@ -67,9 +73,9 @@ type UploadTarget = {
  * @throws {ContextError} If no org/project can be resolved.
  */
 async function resolveUploadTarget(cwd: string): Promise<UploadTarget> {
-  const resolved = await resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
+  const resolved = await resolveOrgAndProject({ cwd, usageHint: usageHint() });
   if (!resolved) {
-    throw new ContextError("Organization and project", USAGE_HINT);
+    throw new ContextError("Organization and project", usageHint());
   }
   return {
     org: resolved.org,
@@ -361,16 +367,43 @@ export const wasmUploadCommand = buildCommand({
       "--build-id names one module and is rejected for a directory or for " +
       "several paths. Every module that needs stamping would take the id, and " +
       "modules sharing one cannot be told apart when Sentry looks for their " +
-      "debug files.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files wasm-upload ./dist\n" +
-      "  sentry debug-files wasm-upload ./app.wasm --no-upload\n" +
-      "  sentry debug-files wasm-upload ./app.wasm --build-id <UUID>\n" +
-      "  sentry debug-files wasm-upload ./dist --dry-run\n" +
-      "  sentry debug-files wasm-upload ./dist --require-dwarf\n" +
-      "  sentry debug-files wasm-upload ./dist --out-dir ./symbols\n" +
-      "  sentry debug-files wasm-upload ./dist --include-sources\n" +
-      "  sentry debug-files wasm-upload ./dist --ignore 'vendor/**'",
+      "debug files.",
+    examples: [
+      {
+        description:
+          "Split WebAssembly debug info and upload it (scans directories recursively)",
+        run: "debug-files wasm-upload ./dist",
+      },
+      {
+        description: "Preview the split without writing or uploading anything",
+        run: "debug-files wasm-upload ./dist --dry-run",
+      },
+      {
+        description: "Split only, keeping the companions local",
+        run: "debug-files wasm-upload ./app.wasm --no-upload",
+      },
+      {
+        description: "Use an explicit build id for a single module",
+        run: "debug-files wasm-upload ./app.wasm --build-id <uuid>",
+      },
+      {
+        description:
+          "Write companions elsewhere; modules are still stripped in place",
+        run: "debug-files wasm-upload ./dist --out-dir ./symbols",
+      },
+      {
+        description: "Fail the build if any module was compiled without DWARF",
+        run: "debug-files wasm-upload ./dist --require-dwarf",
+      },
+      {
+        description: "Also upload a source bundle for each companion",
+        run: "debug-files wasm-upload ./dist --include-sources",
+      },
+      {
+        description: "Skip vendored modules",
+        run: "debug-files wasm-upload ./dist --ignore 'vendor/**'",
+      },
+    ],
   },
   output: {
     human: formatPrepareResult,
@@ -380,7 +413,7 @@ export const wasmUploadCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "WebAssembly files or directories to scan",
-        parse: String,
+        parse: parseFilePath,
         placeholder: "path",
       },
     },
@@ -405,7 +438,7 @@ export const wasmUploadCommand = buildCommand({
       },
       "out-dir": {
         kind: "parsed",
-        parse: String,
+        parse: parseDirectoryPath,
         brief:
           "Directory for *.debug.wasm companions (modules are stripped in place)",
         optional: true,
@@ -419,7 +452,7 @@ export const wasmUploadCommand = buildCommand({
       },
       "build-id": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief:
           "Use this UUID as the build id instead of a random one (one .wasm file only)",
         optional: true,
@@ -432,14 +465,14 @@ export const wasmUploadCommand = buildCommand({
       },
       ignore: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Skip files and folders matching this glob (repeatable)",
         optional: true,
         variadic: true,
       },
       "ignore-file": {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief: "Skip files and folders listed in this ignore file",
         optional: true,
       },
@@ -451,7 +484,7 @@ export const wasmUploadCommand = buildCommand({
       },
       "wait-for": {
         kind: "parsed",
-        parse: Number,
+        parse: numberParser,
         brief: "Wait up to this many seconds for server-side processing",
         optional: true,
       },
@@ -459,7 +492,7 @@ export const wasmUploadCommand = buildCommand({
   },
   async *func(this: SentryContext, flags: PrepareFlags, ...paths: string[]) {
     if (paths.length === 0) {
-      throw new ContextError("WebAssembly path(s)", USAGE_HINT, []);
+      throw new ContextError("WebAssembly path(s)", usageHint(), []);
     }
     const { wait, maxWaitMs } = resolveWaitMode(flags);
     const buildId = resolveBuildId(flags["build-id"]);
@@ -489,7 +522,7 @@ export const wasmUploadCommand = buildCommand({
       log.warn("No WebAssembly modules found.");
       return yield* reportWithoutUpload({
         results: [],
-        hint: `No .wasm modules found. Try: ${USAGE_HINT}`,
+        hint: `No .wasm modules found. Try: ${usageHint()}`,
       });
     }
 
@@ -558,7 +591,7 @@ export const wasmUploadCommand = buildCommand({
 
     if (!target) {
       // Unreachable: the target is resolved whenever an upload will run.
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
 
     return yield* reportUpload(setExitCode, {

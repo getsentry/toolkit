@@ -7,7 +7,8 @@ const packageVersion =
 
 export default defineConfig({
   entry: ["src/**/*.ts", "!src/**/*.test.ts"],
-  format: ["cjs", "esm"], // Build for commonJS and ESmodules
+  // ESM only: the package is private and every export points at .js.
+  format: ["esm"],
   dts: true, // Generate declaration file (.d.ts)
   sourcemap: true,
   clean: true,
@@ -18,8 +19,6 @@ export default defineConfig({
     "@sentry/mcp-server-mocks",
   ],
   env: {
-    DEFAULT_SENTRY_DSN:
-      "https://d0805acebb937435abcb5958da99cdab@o1.ingest.us.sentry.io/4509062593708032",
     SENTRY_ENVIRONMENT: "stdio",
     SENTRY_RELEASE: packageVersion,
     npm_package_version: packageVersion,

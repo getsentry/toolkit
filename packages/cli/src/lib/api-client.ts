@@ -13,6 +13,7 @@
  * - repositories: repository listing
  * - integrations: installed integration listing and removal
  * - issues: issue listing, lookup, status updates
+ * - issue-tags: issue tag distributions
  * - events: event retrieval and resolution
  * - replays: replay listing and detail lookup
  * - traces: trace details and transactions
@@ -52,6 +53,10 @@ export {
   restoreDashboardRevision,
   updateDashboard,
 } from "./api/dashboards.js";
+export {
+  type DroppedEventsOptions,
+  getDroppedEvents,
+} from "./api/dropped-events.js";
 export { isNotFoundApiError } from "./api/error-guards.js";
 export {
   findEventAcrossOrgs,
@@ -62,8 +67,16 @@ export {
   type ResolvedEvent,
   resolveEventInOrg,
 } from "./api/events.js";
-export type { MetricMeta } from "./api/explore.js";
-export { queryEvents, queryMetricsMeta } from "./api/explore.js";
+export type {
+  EventsTimeSeriesResponse,
+  ExploreTimeSeriesQueryOptions,
+  MetricMeta,
+} from "./api/explore.js";
+export {
+  queryEvents,
+  queryEventsTimeSeries,
+  queryMetricsMeta,
+} from "./api/explore.js";
 export {
   buildFeedbackQuery,
   type FeedbackPage,
@@ -80,15 +93,21 @@ export {
   appendSearchParams,
   autoPaginate,
   buildSearchParams,
+  consumeCursorPage,
+  decodePageCursor,
   isTextualContentType,
   ORG_FANOUT_CONCURRENCY,
+  type CursorPosition,
   type PaginatedResponse,
   parseLinkHeader,
+  type PreparedRawApiRequest,
+  prepareRawApiRequest,
   rawApiRequest,
 } from "./api/infrastructure.js";
+export { getIssueTag } from "./api/issue-tags.js";
 export {
   buildIssueListCollapse,
-  getIssue,
+  findIssueInOrgs,
   getIssueByShortId,
   getIssueInOrg,
   getSharedIssue,
@@ -120,8 +139,8 @@ export {
 } from "./api/logs.js";
 export { listMonitors, listMonitorsPaginated } from "./api/monitors.js";
 export {
+  checkTokenAccess,
   getOrganization,
-  getUserRegions,
   listOrganizations,
   listOrganizationsPage,
   listOrganizationsUncached,
@@ -132,7 +151,7 @@ export {
   createProjectWithAutoTeam,
   createProjectWithDsn,
   deleteProject,
-  findProjectByDsnKey,
+  findProjectByDsn,
   findProjectsByPattern,
   findProjectsBySlug,
   getProject,
@@ -145,12 +164,15 @@ export {
   type ProjectSearchResult,
   type ProjectWithOrg,
   resolveOrgDisplayName,
+  searchProjects,
   tryGetPrimaryDsn,
 } from "./api/projects.js";
 export {
+  correctRefRepositories,
   createRelease,
   createReleaseDeploy,
   deleteRelease,
+  explainSetCommitsError,
   getRelease,
   type ListReleasesOptions,
   listProjectEnvironments,
@@ -165,6 +187,7 @@ export {
   updateRelease,
 } from "./api/releases.js";
 export {
+  findTraceReplay,
   getReplay,
   getReplayRecordingSegments,
   isReplaySortValue,
@@ -182,6 +205,11 @@ export {
   listIntegrations,
   listIntegrationsPaginated,
 } from "./api/integrations.js";
+export {
+  createOrgAuthToken,
+  deleteOrgAuthToken,
+  listOrgAuthTokens,
+} from "./api/org-auth-tokens.js";
 export {
   listAllRepositories,
   listRepositories,
@@ -202,7 +230,12 @@ export {
 } from "./api/teams.js";
 export type {
   FetchMultiSpanDetailsOptions,
+  ListTraceItemAttributesOptions,
   TraceItemAttribute,
+  TraceItemAttributeContext,
+  TraceItemAttributeDataset,
+  TraceItemAttributeDefinition,
+  TraceItemAttributeValueType,
   TraceItemDetail,
 } from "./api/traces.js";
 export {
@@ -212,6 +245,7 @@ export {
   getSpanDetails,
   getTraceMeta,
   listSpans,
+  listTraceItemAttributes,
   listTransactions,
   normalizeTraceSpan,
   REDUNDANT_DETAIL_ATTRS,

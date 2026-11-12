@@ -5,6 +5,8 @@
  * for LLM consumption. Handles stacktraces, event details, issue summaries,
  * and contextual information with consistent formatting patterns.
  */
+import type { IssueEventDetailsResponse } from "@sentry/api";
+import { codeBlock, inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { z } from "zod";
 import type {
   DefaultEventSchema,
@@ -30,6 +32,7 @@ import type {
   TraceSpan,
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
+import { selectEventPackages } from "./event-packages";
 import { formatUnknown } from "./unknown-formatting";
 import {
   type CodeLocation,
@@ -44,6 +47,7 @@ import {
   getAutofixArtifactSummaries,
   getStatusDisplayName,
   isTerminalStatus,
+  SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE,
 } from "./tool-helpers/seer";
 import { formatToolCallInstruction } from "./tool-helpers/tool-call-formatting";
 import { isPlainObject } from "./type-guards";
@@ -233,11 +237,7 @@ export function formatEventOutput(
   },
 ) {
   let output = "";
-  const eventUser = (
-    event as Event & {
-      user?: z.infer<typeof EventSchema>["user"];
-    }
-  ).user;
+  const eventUser = event.user;
   const eventWithReplayMetadataStripped = options?.replaySummary
     ? stripReplayMetadata(event)
     : event;
@@ -253,16 +253,6 @@ export function formatEventOutput(
       availableToolNames: options.replaySummary.availableToolNames,
       directToolNames: options.replaySummary.directToolNames,
     });
-  }
-
-  // Check if entries exist (may be undefined for unsupported event types)
-  if (!eventToRender.entries || !Array.isArray(eventToRender.entries)) {
-    // For unsupported event types, just show tags and contexts
-    output += formatEventUser(eventUser);
-    output += formatTags(eventToRender.tags);
-    output += formatContext(eventToRender.context);
-    output += formatContexts(eventToRender.contexts);
-    return output;
   }
 
   // Look for the primary error information
@@ -415,32 +405,24 @@ function formatExceptionInterfaceOutput(
     // Add language-specific chain indicator for multiple exceptions
     if (isChained && index > 0) {
       parts.push("");
-      parts.push(
-        getExceptionChainMessage(
-          event.platform || null,
-          index,
-          exceptions.length,
-        ),
-      );
+      parts.push(getExceptionChainMessage(event.platform || null, index));
       parts.push("");
     }
 
     // Use the actual exception type and value as the heading
     const exceptionTitle = `${exception.type}${exception.value ? `: ${exception.value}` : ""}`;
 
-    parts.push(index === 0 ? "### Error" : `### ${exceptionTitle}`);
+    parts.push(index === 0 ? "### Error" : `### ${text(exceptionTitle)}`);
     parts.push("");
 
     // Add the error details in a code block for the first exception
     // to maintain backward compatibility
     if (index === 0) {
-      parts.push("```");
-      parts.push(exceptionTitle);
-      parts.push("```");
+      parts.push(codeBlock(exceptionTitle));
       parts.push("");
     }
 
-    if (!exception.stacktrace || !exception.stacktrace.frames) {
+    if (!exception.stacktrace) {
       parts.push("**Stacktrace:**");
       parts.push("```");
       parts.push("No stacktrace available");
@@ -468,17 +450,17 @@ function formatExceptionInterfaceOutput(
       parts.push("**Stacktrace:**");
     }
 
-    parts.push("```");
     parts.push(
-      frames
-        .map((frame) => {
-          const header = formatFrameHeader(frame, undefined, event.platform);
-          const context = renderInlineContext(frame);
-          return `${header}${context}`;
-        })
-        .join("\n"),
+      codeBlock(
+        frames
+          .map((frame) => {
+            const header = formatFrameHeader(frame, undefined, event.platform);
+            const context = renderInlineContext(frame);
+            return `${header}${context}`;
+          })
+          .join("\n"),
+      ),
     );
-    parts.push("```");
   });
 
   parts.push("");
@@ -493,7 +475,6 @@ function formatExceptionInterfaceOutput(
 function getExceptionChainMessage(
   platform: string | null,
   index: number,
-  totalExceptions: number,
 ): string {
   // Default message for unknown platforms
   const defaultMessage =
@@ -569,9 +550,7 @@ function formatCspInterfaceOutput(event: Event, data: any) {
   if (data.original_policy) {
     parts.push("");
     parts.push("**Original Policy:**");
-    parts.push("```");
-    parts.push(data.original_policy);
-    parts.push("```");
+    parts.push(codeBlock(data.original_policy));
   }
 
   parts.push("");
@@ -598,7 +577,7 @@ function formatMessageInterfaceOutput(
     return "";
   }
   const message = data.formatted || data.message || "";
-  return `### Error\n\n${"```"}\n${message}\n${"```"}\n\n`;
+  return `### Error\n\n${codeBlock(message)}\n\n`;
 }
 
 function formatThreadsInterfaceOutput(
@@ -637,17 +616,17 @@ function formatThreadsInterfaceOutput(
     parts.push("**Stacktrace:**");
   }
 
-  parts.push("```");
   parts.push(
-    frames
-      .map((frame) => {
-        const header = formatFrameHeader(frame, undefined, event.platform);
-        const context = renderInlineContext(frame);
-        return `${header}${context}`;
-      })
-      .join("\n"),
+    codeBlock(
+      frames
+        .map((frame) => {
+          const header = formatFrameHeader(frame, undefined, event.platform);
+          const context = renderInlineContext(frame);
+          return `${header}${context}`;
+        })
+        .join("\n"),
+    ),
   );
-  parts.push("```");
   parts.push("");
 
   return parts.join("\n");
@@ -693,7 +672,7 @@ function formatThreadTable(
     "| Thread ID | Name | State | Flags | Frames |",
     "| --- | --- | --- | --- | ---: |",
     ...threads.map((thread) => {
-      const frameCount = thread.stacktrace?.frames?.length ?? 0;
+      const frameCount = thread.stacktrace?.frames.length ?? 0;
       return `| ${getThreadDisplayValue(thread.id)} | ${getThreadDisplayValue(thread.name)} | ${getThreadDisplayValue(thread.state)} | ${getThreadFlags(thread)} | ${frameCount} |`;
     }),
   ];
@@ -768,17 +747,17 @@ export function formatThreadStacktraceOutput({
     parts.push("**Full Stacktrace:**");
   }
 
-  parts.push("```");
   parts.push(
-    frames
-      .map((frame) => {
-        const header = formatFrameHeader(frame, undefined, event.platform);
-        const context = renderInlineContext(frame);
-        return `${header}${context}`;
-      })
-      .join("\n"),
+    codeBlock(
+      frames
+        .map((frame) => {
+          const header = formatFrameHeader(frame, undefined, event.platform);
+          const context = renderInlineContext(frame);
+          return `${header}${context}`;
+        })
+        .join("\n"),
+    ),
   );
-  parts.push("```");
   parts.push("");
 
   return parts.join("\n");
@@ -1086,7 +1065,7 @@ function buildTraceSpanTree(
     if (spanId && spanId.length > 0) {
       spanMap.set(spanId, span);
     }
-    for (const child of span.children ?? []) {
+    for (const child of span.children) {
       if (isTraceSpan(child)) {
         indexSpan(child);
       }
@@ -1177,7 +1156,7 @@ function convertTraceSpanToPerformanceSpan(
     level,
   };
 
-  for (const child of span.children ?? []) {
+  for (const child of span.children) {
     if (!isTraceSpan(child)) {
       continue;
     }
@@ -1276,8 +1255,8 @@ function renderPerformanceSpanTree(spans: PerformanceSpan[]): string[] {
   function renderSpan(span: PerformanceSpan, prefix = "", isLast = true): void {
     const connector = prefix === "" ? "" : isLast ? "└─ " : "├─ ";
 
-    const displayName = span.description?.trim() || span.op || "unnamed";
-    const spanId = span.span_id ?? "unknown";
+    const displayName = span.description.trim() || span.op || "unnamed";
+    const spanId = span.span_id;
     const durationDisplay =
       span.duration > 0 ? `${Math.round(span.duration)}ms` : "unknown";
 
@@ -1465,7 +1444,7 @@ function formatN1QueryEvidence(
   // Format parent span info if available
   if (evidenceData.parentSpan) {
     parts.push("**Parent Operation:**");
-    parts.push(`${evidenceData.parentSpan}`);
+    parts.push(evidenceData.parentSpan);
     parts.push("");
   }
 
@@ -1487,9 +1466,7 @@ function formatN1QueryEvidence(
 
     // Show the query pattern - if single line, render as SQL block; if multiple, as list
     if (repeatingLines.length === 1) {
-      parts.push("```sql");
-      parts.push(repeatingLines[0]);
-      parts.push("```");
+      parts.push(codeBlock(repeatingLines[0], "sql"));
       parts.push("");
     } else {
       parts.push("**Repeated operations:**");
@@ -1515,9 +1492,7 @@ function formatN1QueryEvidence(
   if (traceLines.length > 0) {
     parts.push(`### Span Tree (Limited to ${MAX_SPANS_IN_TREE} spans)`);
     parts.push("");
-    parts.push("```");
-    parts.push(...traceLines);
-    parts.push("```");
+    parts.push(codeBlock(traceLines.join("\n")));
     parts.push("");
   } else {
     const spanTree = isValidSpanArray(spansData)
@@ -1527,14 +1502,12 @@ function formatN1QueryEvidence(
     if (spanTree.length > 0) {
       parts.push(`### Span Tree (Limited to ${MAX_SPANS_IN_TREE} spans)`);
       parts.push("");
-      parts.push("```");
-      parts.push(...renderPerformanceSpanTree(spanTree));
-      parts.push("```");
+      parts.push(codeBlock(renderPerformanceSpanTree(spanTree).join("\n")));
       parts.push("");
     } else if (isValidSpanArray(spansData)) {
       // Only show offender summaries if we have spans data but couldn't build a tree
       const offenderSummaries = buildOffenderSummaries(
-        spansData as RawSpan[],
+        spansData,
         offenderSpanIds,
       );
 
@@ -1560,16 +1533,13 @@ function formatN1QueryEvidence(
  * This is lower priority as the generic evidenceDisplay fields usually
  * provide sufficient information for slow query issues.
  */
-function formatSlowDbQueryEvidence(
-  evidenceData: SlowDbEvidenceData,
-  spansData: unknown,
-): string {
+function formatSlowDbQueryEvidence(evidenceData: SlowDbEvidenceData): string {
   const parts: string[] = [];
 
   // Show parent span if available (generic field that applies to slow queries)
   if (evidenceData.parentSpan) {
     parts.push("**Parent Operation:**");
-    parts.push(`${evidenceData.parentSpan}`);
+    parts.push(evidenceData.parentSpan);
     parts.push("");
   }
 
@@ -1639,7 +1609,7 @@ function formatPerformanceIssueOutput(
       }
 
       case KNOWN_PERFORMANCE_ISSUE_TYPES.SLOW_DB_QUERY: {
-        const result = formatSlowDbQueryEvidence(evidenceData, spansData);
+        const result = formatSlowDbQueryEvidence(evidenceData);
         if (result) parts.push(result);
         break;
       }
@@ -1691,36 +1661,168 @@ function formatPrimitive(value: unknown): string | undefined {
   return isPrimitive(value) ? String(value) : undefined;
 }
 
+const METRIC_ISSUE_OCCURRENCE_TYPE = 8001;
+
+type MetricIssueEvidenceData = Extract<
+  NonNullable<IssueEventDetailsResponse["occurrence"]>,
+  { type: typeof METRIC_ISSUE_OCCURRENCE_TYPE }
+>["evidenceData"];
+type MetricIssueDataSource = MetricIssueEvidenceData["dataSources"][number];
+type MetricIssueSnubaQuery = MetricIssueDataSource["queryObj"]["snubaQuery"];
+type MetricIssueCondition = MetricIssueEvidenceData["conditions"][number];
+
 /**
- * Extracts the Snuba query from metric alert evidence data.
+ * Keys come from the generated `@sentry/api` metric occurrence type, so a
+ * renamed or misspelled evidence key fails tsc. Values stay `unknown`: the
+ * event is parsed with a loose Zod schema and older events can omit fields.
  */
-function getMetricAlertSnubaQuery(
-  evidenceData: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  const dataSources = evidenceData.data_sources;
+type Unverified<T> = { readonly [K in keyof T]?: unknown };
+
+function asUnverified<T>(value: unknown): Unverified<T> | undefined {
+  return isPlainObject(value) ? value : undefined;
+}
+
+type MetricAlertQuery = {
+  dataset?: string;
+  aggregate?: string;
+  query?: string;
+  timeWindowSeconds?: number;
+  environment?: string;
+  eventTypes: string[];
+};
+
+type MetricAlertContext = {
+  evidenceData: Unverified<MetricIssueEvidenceData>;
+  query?: MetricAlertQuery;
+  monitorId?: string;
+  alertRuleId?: string;
+};
+
+/**
+ * Reads metric alert evidence from a metric issue event. The event API
+ * camelCases occurrence payloads recursively, so evidence keys arrive as
+ * `dataSources[].queryObj.snubaQuery`, `detectorId`, and `alertId`.
+ */
+function getMetricAlertContext(event: Event): MetricAlertContext | undefined {
+  if (event.type !== "generic") {
+    return undefined;
+  }
+  const occurrence = (event as GenericEvent).occurrence;
+  const evidenceData = asUnverified<MetricIssueEvidenceData>(
+    occurrence?.evidenceData,
+  );
+  if (occurrence?.type !== METRIC_ISSUE_OCCURRENCE_TYPE || !evidenceData) {
+    return undefined;
+  }
+
+  return {
+    evidenceData,
+    query: getMetricAlertQuery(evidenceData),
+    monitorId: formatPrimitive(evidenceData.detectorId),
+    alertRuleId: formatPrimitive(evidenceData.alertId),
+  };
+}
+
+function getMetricAlertQuery(
+  evidenceData: Unverified<MetricIssueEvidenceData>,
+): MetricAlertQuery | undefined {
+  const dataSources = evidenceData.dataSources;
   if (!Array.isArray(dataSources)) {
     return undefined;
   }
 
   for (const dataSource of dataSources) {
-    if (!isPlainObject(dataSource)) {
+    const queryObj = asUnverified<MetricIssueDataSource["queryObj"]>(
+      asUnverified<MetricIssueDataSource>(dataSource)?.queryObj,
+    );
+    const snubaQuery = asUnverified<MetricIssueSnubaQuery>(
+      queryObj?.snubaQuery,
+    );
+    if (!snubaQuery) {
       continue;
     }
-    const queryObj = dataSource.query_obj;
-    if (!isPlainObject(queryObj)) {
-      continue;
-    }
-    const snubaQuery = queryObj.snuba_query;
-    if (isPlainObject(snubaQuery)) {
-      return snubaQuery;
-    }
+    const timeWindow = snubaQuery.timeWindow;
+    return {
+      dataset: formatPrimitive(snubaQuery.dataset),
+      aggregate: formatPrimitive(snubaQuery.aggregate),
+      query: formatPrimitive(snubaQuery.query)?.trim() || undefined,
+      timeWindowSeconds:
+        typeof timeWindow === "number" ? timeWindow : undefined,
+      environment: formatPrimitive(snubaQuery.environment),
+      eventTypes: Array.isArray(snubaQuery.eventTypes)
+        ? snubaQuery.eventTypes.filter(
+            (eventType): eventType is string => typeof eventType === "string",
+          )
+        : [],
+    };
   }
 
   return undefined;
 }
 
+type MetricAlertDatasetKind = "errors" | "logs" | "spans" | "metrics";
+
+/** Mirrors the Sentry UI's backend dataset -> detector dataset mapping. */
+function getMetricAlertDatasetKind(
+  query: MetricAlertQuery,
+): MetricAlertDatasetKind | undefined {
+  if (query.dataset === "events") {
+    return "errors";
+  }
+  if (query.dataset === "events_analytics_platform") {
+    if (query.eventTypes.includes("trace_item_log")) {
+      return "logs";
+    }
+    if (query.eventTypes.includes("trace_item_metric")) {
+      return "metrics";
+    }
+    return "spans";
+  }
+  return undefined;
+}
+
+const METRIC_ALERT_SEARCH_TOOLS: Record<
+  MetricAlertDatasetKind,
+  { toolName: string; label: string }
+> = {
+  errors: { toolName: "search_errors", label: "Errors" },
+  logs: { toolName: "search_logs", label: "Logs" },
+  spans: { toolName: "search_traces", label: "Spans" },
+  metrics: { toolName: "search_metrics", label: "Application metrics" },
+};
+
+/** Returns the window the monitor aggregated over for this occurrence. */
+function getMetricAlertEvaluatedWindow(
+  event: Event,
+  query: MetricAlertQuery | undefined,
+): { start: Date; end: Date } | undefined {
+  const dateCreated = (event as GenericEvent).dateCreated;
+  if (!dateCreated || query?.timeWindowSeconds == null) {
+    return undefined;
+  }
+  const end = new Date(dateCreated);
+  if (Number.isNaN(end.getTime())) {
+    return undefined;
+  }
+  return {
+    start: new Date(end.getTime() - query.timeWindowSeconds * 1000),
+    end,
+  };
+}
+
+function formatSearchFilterValue(value: string): string {
+  return /[\s"(),:]/.test(value) ? JSON.stringify(value) : value;
+}
+
+/** Smallest relative search period that reaches back to `start`. */
+function formatPeriodSince(start: Date, now: number): string {
+  const elapsedMs = Math.max(now - start.getTime(), 0);
+  const hours = Math.max(Math.ceil(elapsedMs / 3_600_000), 1);
+  return hours <= 48 ? `${hours}h` : `${Math.ceil(hours / 24)}d`;
+}
+
 function formatMetricAlertCondition(
-  condition: Record<string, unknown>,
+  condition: Unverified<MetricIssueCondition>,
 ): string | undefined {
   const comparison = condition.comparison;
   const formattedComparison = formatPrimitive(comparison);
@@ -1763,32 +1865,46 @@ function formatMetricAlertValue(value: unknown): string | undefined {
 }
 
 function formatMetricAlertDetails(
-  evidenceData: Record<string, unknown>,
+  event: Event,
+  context: MetricAlertContext,
 ): string {
+  const { evidenceData, query } = context;
   const parts: string[] = ["### Metric Alert Details", ""];
 
-  const snubaQuery = getMetricAlertSnubaQuery(evidenceData);
-  if (snubaQuery) {
-    if (snubaQuery.dataset != null) {
-      parts.push(`**Dataset**: ${formatUnknown(snubaQuery.dataset)}`);
+  if (context.monitorId) {
+    parts.push(`**Monitor ID**: ${context.monitorId}`);
+  }
+  if (context.alertRuleId) {
+    parts.push(`**Alert Rule ID**: ${context.alertRuleId}`);
+  }
+
+  if (query) {
+    const datasetKind = getMetricAlertDatasetKind(query);
+    const dataset = datasetKind
+      ? METRIC_ALERT_SEARCH_TOOLS[datasetKind].label
+      : query.dataset && inlineCode(query.dataset);
+    if (dataset) {
+      parts.push(`**Dataset**: ${dataset}`);
     }
-    if (snubaQuery.aggregate != null) {
-      parts.push(`**Aggregate**: ${formatUnknown(snubaQuery.aggregate)}`);
+    if (query.aggregate) {
+      parts.push(`**Aggregate**: ${inlineCode(query.aggregate)}`);
     }
-    const query =
-      snubaQuery.query != null ? formatUnknown(snubaQuery.query) : "";
-    if (query.length > 0) {
-      parts.push(`**Query**: \`${query}\``);
+    if (query.query) {
+      parts.push(`**Query**: ${inlineCode(query.query)}`);
     }
-    if (snubaQuery.time_window != null) {
-      parts.push(
-        `**Interval**: ${formatUnknown(snubaQuery.time_window)} second(s)`,
-      );
+    if (query.timeWindowSeconds != null) {
+      parts.push(`**Interval**: ${query.timeWindowSeconds} second(s)`);
     }
-    if (snubaQuery.environment != null) {
-      parts.push(`**Environment**: ${formatUnknown(snubaQuery.environment)}`);
+    if (query.environment) {
+      parts.push(`**Environment**: ${inlineCode(query.environment)}`);
     }
-    parts.push("");
+  }
+
+  const evaluatedWindow = getMetricAlertEvaluatedWindow(event, query);
+  if (evaluatedWindow) {
+    parts.push(
+      `**Evaluated Window**: ${evaluatedWindow.start.toISOString()} to ${evaluatedWindow.end.toISOString()}`,
+    );
   }
 
   const formattedValue = formatMetricAlertValue(evidenceData.value);
@@ -1807,12 +1923,93 @@ function formatMetricAlertDetails(
     }
   }
 
-  if (evidenceData.alert_id != null) {
-    parts.push(`**Alert Rule ID**: ${formatUnknown(evidenceData.alert_id)}`);
-  }
-
   parts.push("");
   return `${parts.join("\n")}\n`;
+}
+
+/**
+ * Follow-up notes for metric issues: the monitor configuration and a search
+ * call that reproduces the monitor query over the evaluated window.
+ */
+function buildMetricAlertResponseNotes({
+  organizationSlug,
+  issue,
+  event,
+  context,
+  experimentalMode,
+  availableToolNames,
+  directToolNames,
+}: {
+  organizationSlug: string;
+  issue: Issue;
+  event: Event;
+  context: MetricAlertContext;
+  experimentalMode: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
+}): string[] {
+  const notes: string[] = [];
+
+  if (context.monitorId) {
+    const monitorInstruction = formatToolCallInstruction({
+      toolName: "get_metric_monitor_details",
+      arguments: { organizationSlug, monitorId: context.monitorId },
+      showArguments: true,
+      experimentalMode,
+      availableToolNames,
+      directToolNames,
+      fallbackInstruction: "",
+    });
+    if (monitorInstruction) {
+      notes.push(
+        `Metric Monitor configuration and connected Alerts: ${monitorInstruction}`,
+      );
+    }
+  }
+
+  const query = context.query;
+  const datasetKind = query ? getMetricAlertDatasetKind(query) : undefined;
+  const evaluatedWindow = getMetricAlertEvaluatedWindow(event, query);
+  if (!query || !datasetKind || !evaluatedWindow) {
+    return notes;
+  }
+
+  const { toolName, label } = METRIC_ALERT_SEARCH_TOOLS[datasetKind];
+  // Sentry search binds implicit AND tighter than OR, so group an OR query
+  // before appending the environment filter.
+  const monitorQuery =
+    query.query && query.environment && /\bOR\b/.test(query.query)
+      ? `(${query.query})`
+      : query.query;
+  const searchQuery = [
+    monitorQuery,
+    query.environment
+      ? `environment:${formatSearchFilterValue(query.environment)}`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const searchInstruction = formatToolCallInstruction({
+    toolName,
+    arguments: {
+      organizationSlug,
+      projectSlug: issue.project.slug,
+      ...(searchQuery ? { query: searchQuery } : {}),
+      period: formatPeriodSince(evaluatedWindow.start, Date.now()),
+    },
+    showArguments: true,
+    experimentalMode,
+    availableToolNames,
+    directToolNames,
+    fallbackInstruction: "",
+  });
+  if (searchInstruction) {
+    notes.push(
+      `${label} matched by the monitor query: ${searchInstruction}, then focus on ${evaluatedWindow.start.toISOString()} to ${evaluatedWindow.end.toISOString()}`,
+    );
+  }
+
+  return notes;
 }
 
 /**
@@ -1835,10 +2032,12 @@ function formatGenericEventOutput(event: Event): string {
     return "";
   }
 
-  const evidenceData = occurrence.evidenceData;
-  if (occurrence.type === 8001 && evidenceData) {
-    return formatMetricAlertDetails(evidenceData);
+  const metricAlertContext = getMetricAlertContext(event);
+  if (metricAlertContext) {
+    return formatMetricAlertDetails(event, metricAlertContext);
   }
+
+  const evidenceData = occurrence.evidenceData;
 
   // Add a section header for performance regression details
   if (evidenceData) {
@@ -1851,7 +2050,7 @@ function formatGenericEventOutput(event: Event): string {
     for (const display of occurrence.evidenceDisplay) {
       if (display.important) {
         parts.push(`**${display.name}:**`);
-        parts.push(`${display.value}`);
+        parts.push(display.value);
         parts.push("");
       }
     }
@@ -1865,7 +2064,11 @@ function formatTags(tags: z.infer<typeof EventSchema>["tags"]) {
     return "";
   }
   return `### Tags\n\n${tags
-    .map((tag) => `**${tag.key}**: ${tag.value}`)
+    .map(
+      // A code span cannot be empty, so a null or empty value gets a placeholder.
+      (tag) =>
+        `**${text(tag.key)}**: ${tag.value ? inlineCode(tag.value) : "(empty)"}`,
+    )
     .join("\n")}\n\n`;
 }
 
@@ -1924,7 +2127,7 @@ function formatContexts(contexts: z.infer<typeof EventSchema>["contexts"]) {
   )
     .map(
       ([name, data]) =>
-        `**${name}**\n${Object.entries(data)
+        `**${name}**\n${Object.entries(data ?? {})
           .filter(([key, _]) => key !== "type")
           .map(([key, value]) => {
             return `${key}: ${JSON.stringify(value, undefined, 2)}`;
@@ -1974,12 +2177,46 @@ function formatSeerSummary(autofixState: AutofixRunState | undefined): string {
   if (autofix.status === "error") {
     parts.push("");
     parts.push("**Status:** Analysis failed.");
+    if (autofix.failure_reason === "out_of_credits") {
+      parts.push(SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE);
+    }
   } else if (autofix.status === "awaiting_user_input") {
     parts.push("");
     parts.push("**Status:** Analysis paused - additional information needed.");
   }
 
   return `${parts.join("\n")}\n\n`;
+}
+
+function formatEventPackages(event: Event, packageNames: string[]): string {
+  const selection = selectEventPackages(event.packages, packageNames);
+  if (!selection) {
+    return "";
+  }
+  let output = "\n### Selected Package Versions\n\n";
+  if (!selection.metadataAvailable) {
+    return `${output}Package metadata is unavailable for this event.\n\n`;
+  }
+
+  for (const entry of selection.packages) {
+    let value: string;
+    switch (entry.status) {
+      case "recorded":
+        value = inlineCode(entry.version);
+        if (entry.truncated) {
+          value += " (truncated)";
+        }
+        break;
+      case "not_listed":
+        value = "Not listed in this event's package metadata";
+        break;
+      case "version_not_recorded":
+        value = "Version not recorded";
+        break;
+    }
+    output += `- ${inlineCode(entry.name)}: ${value}\n`;
+  }
+  return `${output}\n`;
 }
 
 /** Projects the suspect commit consistently for structured and markdown issue details. */
@@ -2006,6 +2243,7 @@ export function getSuspectCommit(committers: CommitterList | undefined) {
  * @returns Formatted markdown string with complete issue information
  */
 export function formatIssueOutput({
+  packageNames,
   organizationSlug,
   issue,
   event,
@@ -2021,6 +2259,7 @@ export function formatIssueOutput({
   availableToolNames,
   directToolNames,
 }: {
+  packageNames?: string[];
   organizationSlug: string;
   issue: Issue;
   event: Event;
@@ -2043,19 +2282,19 @@ export function formatIssueOutput({
   if (isPerformanceIssue && issue.metadata) {
     // For performance issues, use metadata for better context
     const issueTitle = issue.metadata.title || issue.title;
-    output += `**Description**: ${issueTitle}\n`;
+    output += `**Description**: ${text(issueTitle)}\n`;
 
     if (issue.metadata.location) {
-      output += `**Location**: ${issue.metadata.location}\n`;
+      output += `**Location**: ${text(issue.metadata.location)}\n`;
     }
     if (issue.metadata.value) {
-      output += `**Query Pattern**: \`${issue.metadata.value}\`\n`;
+      output += `**Query Pattern**: ${inlineCode(issue.metadata.value)}\n`;
     }
   } else {
     // For regular errors and other issues
-    output += `**Description**: ${issue.title}\n`;
+    output += `**Description**: ${text(issue.title)}\n`;
     if (issue.culprit) {
-      output += `**Culprit**: ${issue.culprit}\n`;
+      output += `**Culprit**: ${text(issue.culprit)}\n`;
     }
   }
 
@@ -2077,11 +2316,11 @@ export function formatIssueOutput({
   // Add assignee information if assigned
   if (issue.assignedTo) {
     if (typeof issue.assignedTo === "string") {
-      output += `**Assigned To**: ${issue.assignedTo}\n`;
+      output += `**Assigned To**: ${text(issue.assignedTo)}\n`;
     } else {
       const assignee = issue.assignedTo;
       const type = assignee.type === "team" ? "Team" : "User";
-      output += `**Assigned To**: ${assignee.name} (${type})\n`;
+      output += `**Assigned To**: ${text(assignee.name)} (${type})\n`;
     }
   }
 
@@ -2099,7 +2338,7 @@ export function formatIssueOutput({
   }
 
   output += `**Platform**: ${issue.platform}\n`;
-  output += `**Project**: ${issue.project.name}\n`;
+  output += `**Project**: ${text(issue.project.name)}\n`;
   output += `**URL**: ${apiService.getIssueUrl(organizationSlug, issue.shortId)}\n`;
   output += "\n";
 
@@ -2171,6 +2410,10 @@ export function formatIssueOutput({
         .join("");
     }
 
+    if (packageNames?.length) {
+      output += formatEventPackages(event, packageNames);
+    }
+
     // For unsupported event types, return early without trying to render event details
     return output;
   }
@@ -2211,6 +2454,10 @@ export function formatIssueOutput({
       directToolNames,
     },
   });
+
+  if (packageNames?.length) {
+    output += formatEventPackages(event, packageNames);
+  }
 
   // Add Seer context if available
   if (autofixState) {
@@ -2274,9 +2521,26 @@ export function buildIssueResponseNotes({
   notes.push(
     `Commit message issue reference: \`Fixes ${commitIssueReference}\` automatically closes the issue when the commit is merged.`,
   );
-  notes.push(
-    "The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.",
-  );
+  // Metric issues have no stacktrace, and their trace context belongs to the
+  // monitor evaluation rather than the data that breached the threshold.
+  const metricAlertContext = getMetricAlertContext(event);
+  if (metricAlertContext) {
+    notes.push(
+      ...buildMetricAlertResponseNotes({
+        organizationSlug,
+        issue,
+        event,
+        context: metricAlertContext,
+        experimentalMode: experimentalMode ?? false,
+        availableToolNames,
+        directToolNames,
+      }),
+    );
+  } else {
+    notes.push(
+      "The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.",
+    );
+  }
   if (aiConversations && aiConversations.length > 0) {
     notes.push(
       ...buildAIConversationResponseNotes({
@@ -2301,7 +2565,7 @@ export function buildIssueResponseNotes({
     fallbackInstruction: "Issue event search is not available in this session",
   });
   notes.push(`Issue event search: ${issueEventSearchInstruction}`);
-  const hasMultipleThreads = event.entries?.some((entry) => {
+  const hasMultipleThreads = event.entries.some((entry) => {
     if (entry.type !== "threads") {
       return false;
     }
@@ -2328,7 +2592,7 @@ export function buildIssueResponseNotes({
       notes.push(`Thread stacktrace lookup: ${stacktraceInstruction}`);
     }
   }
-  if (traceId) {
+  if (traceId && !metricAlertContext) {
     const traceDetailsInstruction = formatToolCallInstruction({
       toolName: "get_sentry_resource",
       arguments: {
@@ -2524,9 +2788,7 @@ function formatIssueReplayOutput({
 }
 
 export function getReplayIdFromEvent(event: Event): string | null {
-  const replayContext = event.contexts?.replay as
-    | Record<string, unknown>
-    | undefined;
+  const replayContext = event.contexts?.replay;
   const replayContextId =
     typeof replayContext?.replay_id === "string"
       ? replayContext.replay_id

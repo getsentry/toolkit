@@ -1,0 +1,3 @@
+{"event_id": "b738e253681bd7b552a2beec92fc38bf", "sent_at": "2024-10-27T03:33:20Z", "sdk": {"name": "sentry.javascript.node", "version": "10.0.0"}}
+{"type": "log", "length": 495}
+{"items":[{"timestamp":1730000000.5,"body":"Loaded two orders","level":"info","trace_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","span_id":"2222222222222222","attributes":{"sentry.logger.name":{"type":"string","value":"orders"},"order.count":{"type":"integer","value":2}}},{"timestamp":1730000001.8,"body":"Payment validation failed","level":"error","trace_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","span_id":"2222222222222222","attributes":{"sentry.logger.name":{"type":"string","value":"payments"}}}]}

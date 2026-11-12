@@ -4,15 +4,23 @@
  * Associate commits with a release using auto-discovery or local git history.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import {
+  correctRefRepositories,
+  explainSetCommitsError,
   NO_REPO_INTEGRATIONS_MESSAGE,
   setCommitsAuto,
   setCommitsLocal,
   setCommitsWithRefs,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
+import {
+  parseFilePath,
+  parseGitRef,
+  parseRepoCommitList,
+} from "../../lib/completion-target.js";
 import { getDatabase } from "../../lib/db/index.js";
 import { clearMetadata, getMetadata, setMetadata } from "../../lib/db/utils.js";
 import {
@@ -20,25 +28,22 @@ import {
   ValidationError,
   validationError,
 } from "../../lib/errors.js";
-import {
-  escapeMarkdownInline,
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "../../lib/formatters/markdown.js";
+import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   getCommitLog,
   getRepositoryName,
+  isInsideGitWorkTree,
   isShallowRepository,
 } from "../../lib/git.js";
 import { logger } from "../../lib/logger.js";
 import type { SentryRelease } from "../../types/index.js";
-import { resolveReleaseTarget } from "./parse.js";
+import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { SentryReleaseSchema } from "../../generated/output-schemas/release.js";
 
 const log = logger.withTag("release.set-commits");
 
-const USAGE_HINT = "sentry release set-commits [<org>/]<version>";
+const usageHint = () => sentry`release set-commits [<org>/]<version>`;
 
 /** Diagnostic note shared by --from validation errors. */
 const FROM_RANGE_NOTE =
@@ -62,6 +67,17 @@ function setCommitsFromLocal(
   options: { depth?: number; paths?: string[]; from?: string },
 ): Promise<SentryRelease> {
   const { depth, paths, from } = options;
+  if (!isInsideGitWorkTree(cwd)) {
+    throw validationError(
+      `Cannot read local commits: ${cwd} is not a git checkout.`,
+      [
+        sentry`release set-commits ${org}/${version} --commit owner/repo@<commit-sha>`,
+        sentry`release set-commits ${org}/${version} --auto`,
+      ],
+      "local",
+      "--local reads git history, so it needs the .git directory. Builds that exclude it (Docker, Vercel) can pass the commit with --commit.",
+    );
+  }
   const shallow = isShallowRepository(cwd);
   if (shallow) {
     log.warn(
@@ -195,8 +211,13 @@ async function setCommitsDefault(
       return await setCommitsFromLocal(org, version, cwd, { depth });
     }
     if (error instanceof ValidationError && error.field === "repository") {
+      // Without a git checkout there is no local history to fall back to,
+      // and the auto-discovery error says how to recover.
+      if (!isInsideGitWorkTree(cwd)) {
+        throw error;
+      }
       log.warn(
-        `Auto-discovery failed: ${error.message}. ` +
+        `Auto-discovery failed: ${error.message}\n\n` +
           "Falling back to local git history.",
       );
       return await setCommitsFromLocal(org, version, cwd, { depth });
@@ -223,8 +244,8 @@ function parseCommitRefs(
       throw validationError(
         `Invalid commit format '${trimmed}'. Expected REPO@SHA or REPO@PREV..SHA.`,
         [
-          "sentry release set-commits 1.0.0 --commit owner/repo@abc123",
-          "sentry release set-commits 1.0.0 --commit owner/repo@prev..abc123",
+          sentry`release set-commits 1.0.0 --commit owner/repo@abc123`,
+          sentry`release set-commits 1.0.0 --commit owner/repo@prev..abc123`,
         ],
         "commit",
       );
@@ -274,7 +295,7 @@ function parseLocalScope(flags: {
   if (flags.path !== undefined && paths.length === 0) {
     throw validationError(
       "--path requires at least one non-empty path.",
-      ["sentry release set-commits 1.0.0 --path apps/mobile,packages/shared"],
+      [sentry`release set-commits 1.0.0 --path apps/mobile,packages/shared`],
       "path",
     );
   }
@@ -283,12 +304,12 @@ function parseLocalScope(flags: {
       "--path cannot be combined with --auto or --commit. Those modes expand commit ranges on the server; --path filters local git history only.",
       flags.commit
         ? [
-            "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
-            "sentry release set-commits 1.0.0 --local --path apps/mobile",
+            sentry`release set-commits 1.0.0 --from v0.9.0 --path apps/mobile`,
+            sentry`release set-commits 1.0.0 --local --path apps/mobile`,
           ]
         : [
-            "sentry release set-commits 1.0.0 --local --path apps/mobile",
-            "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
+            sentry`release set-commits 1.0.0 --local --path apps/mobile`,
+            sentry`release set-commits 1.0.0 --from v0.9.0 --path apps/mobile`,
           ],
       "path",
     );
@@ -298,7 +319,7 @@ function parseLocalScope(flags: {
   if (flags.from !== undefined && !from) {
     throw validationError(
       "--from requires a non-empty git ref (tag, branch, or commit).",
-      ["sentry release set-commits 1.0.0 --from v0.9.0"],
+      [sentry`release set-commits 1.0.0 --from v0.9.0`],
       "from",
       FROM_RANGE_NOTE,
     );
@@ -310,8 +331,8 @@ function parseLocalScope(flags: {
     throw validationError(
       `--from must be a git ref, not a CLI flag (received '${from}').`,
       [
-        "sentry release set-commits 1.0.0 --from v0.9.0",
-        "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
+        sentry`release set-commits 1.0.0 --from v0.9.0`,
+        sentry`release set-commits 1.0.0 --from v0.9.0 --path apps/mobile`,
       ],
       "from",
       FROM_DASHED_REF_NOTE,
@@ -321,8 +342,8 @@ function parseLocalScope(flags: {
     throw validationError(
       "--from cannot be combined with --auto or --commit. Those modes expand commit ranges on the server; --from reads local git history.",
       [
-        "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
-        "sentry release set-commits 1.0.0 --local --initial-depth 50",
+        sentry`release set-commits 1.0.0 --from v0.9.0 --path apps/mobile`,
+        sentry`release set-commits 1.0.0 --local --initial-depth 50`,
       ],
       "from",
       FROM_RANGE_NOTE,
@@ -334,10 +355,10 @@ function parseLocalScope(flags: {
 
 function formatCommitsSet(release: SentryRelease): string {
   const lines: string[] = [];
-  lines.push(`## Commits Set: ${escapeMarkdownInline(release.version)}`);
+  lines.push(`## Commits Set: ${text(release.version)}`);
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   kvRows.push(["Commits", String(release.commitCount ?? 0)]);
   lines.push(mdKvTable(kvRows));
   return renderMarkdown(lines.join("\n"));
@@ -349,7 +370,8 @@ export const setCommitsCommand = buildCommand({
     fullDescription:
       "Associate commits with a release.\n\n" +
       "Use --auto to let Sentry discover commits via your repository integration\n" +
-      "(requires a local git checkout — matches the origin remote against Sentry repos),\n" +
+      "(matches the origin remote against Sentry repos; without a git checkout it\n" +
+      "uses the repository and commit from CI variables such as GITHUB_REPOSITORY),\n" +
       "or --local to read commits from the local git history.\n" +
       "With no flag, tries --auto first and falls back to --local on failure.\n\n" +
       "For monorepos, --path restricts commits to one or more subtrees\n" +
@@ -360,36 +382,54 @@ export const setCommitsCommand = buildCommand({
       "whole range (--initial-depth does not apply), and combines with --path to\n" +
       "scope a monorepo release to the files that changed since the last release.\n" +
       "Like --path, it cannot be combined with --auto or --commit. Requires a\n" +
-      "full (non-shallow) checkout spanning the range.\n\n" +
-      "Examples:\n" +
-      "  sentry release set-commits 1.0.0 --auto\n" +
-      "  sentry release set-commits my-org/1.0.0 --local\n" +
-      "  sentry release set-commits 1.0.0 --local --initial-depth 50\n" +
-      "  sentry release set-commits 1.0.0 --path apps/mobile,packages/shared-ui\n" +
-      "  sentry release set-commits 1.0.0 --from v0.9.0\n" +
-      "  sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile,apps/shared\n" +
-      "  sentry release set-commits 1.0.0 --commit owner/repo@abc123..def456\n" +
-      "  sentry release set-commits 1.0.0 --clear",
+      "full (non-shallow) checkout spanning the range.",
+    examples: [
+      {
+        description: "Associate commits using the repository integration",
+        run: "release set-commits 1.0.0 --auto",
+      },
+      {
+        description: "Set commits from local git history",
+        run: "release set-commits my-org/1.0.0 --local",
+      },
+      {
+        description: "Read up to 50 local commits",
+        run: "release set-commits 1.0.0 --local --initial-depth 50",
+      },
+      {
+        description: "Only include commits that touch specific paths",
+        run: "release set-commits 1.0.0 --path apps/mobile,packages/shared-ui",
+      },
+      {
+        description: "Read local commits since a previous release tag",
+        run: "release set-commits 1.0.0 --from v0.9.0",
+      },
+      {
+        description: "Set an explicit commit range",
+        run: "release set-commits 1.0.0 --commit owner/repo@abc123..def456",
+      },
+      {
+        description: "Clear the release's commits",
+        run: "release set-commits 1.0.0 --clear",
+      },
+    ],
   },
   output: {
     human: formatCommitsSet,
+    schema: SentryReleaseSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        {
-          placeholder: "org/version",
-          brief: "[<org>/]<version> - Release version",
-          parse: parseOrgTarget,
-        },
+        releaseParameter(usageHint, "[<org>/]<version> - Release version"),
       ],
     },
     flags: {
       auto: {
         kind: "boolean",
         brief:
-          "Auto-discover commits via repository integration (needs local git checkout)",
+          "Auto-discover commits via repository integration (needs a git checkout or CI repository variables)",
         default: false,
       },
       local: {
@@ -404,21 +444,21 @@ export const setCommitsCommand = buildCommand({
       },
       commit: {
         kind: "parsed",
-        parse: String,
+        parse: parseRepoCommitList,
         brief:
           "Explicit commit as REPO@SHA or REPO@PREV..SHA (comma-separated)",
         optional: true,
       },
       path: {
         kind: "parsed",
-        parse: String,
+        parse: parseFilePath,
         brief:
           "Filter commits to these paths (comma-separated). Implies --local.",
         optional: true,
       },
       from: {
         kind: "parsed",
-        parse: String,
+        parse: parseGitRef,
         brief:
           "Read the local range <ref>..HEAD (e.g. previous release tag). Implies --local.",
         optional: true,
@@ -444,15 +484,11 @@ export const setCommitsCommand = buildCommand({
       readonly json: boolean;
       readonly fields?: string[];
     },
-    target: string,
+    target: ReleaseTarget,
   ) {
     const { cwd } = this;
 
-    const { version, org } = await resolveReleaseTarget(
-      target,
-      USAGE_HINT,
-      cwd,
-    );
+    const { version, org } = await target.resolved;
 
     // Clear mode: remove all commits regardless of other flags.
     // The server only clears commits when it receives an explicitly-empty
@@ -471,9 +507,9 @@ export const setCommitsCommand = buildCommand({
       throw validationError(
         "Only one of --auto, --local, or --commit can be used at a time.",
         [
-          "sentry release set-commits 1.0.0 --auto",
-          "sentry release set-commits 1.0.0 --from v0.9.0 --path apps/mobile",
-          "sentry release set-commits 1.0.0 --commit owner/repo@abc123..def456",
+          sentry`release set-commits 1.0.0 --auto`,
+          sentry`release set-commits 1.0.0 --from v0.9.0 --path apps/mobile`,
+          sentry`release set-commits 1.0.0 --commit owner/repo@abc123..def456`,
         ],
         "commit",
       );
@@ -486,7 +522,18 @@ export const setCommitsCommand = buildCommand({
     // Explicit --commit mode: parse REPO@SHA or REPO@PREV..SHA pairs as refs
     if (flags.commit) {
       const refs = parseCommitRefs(flags.commit);
-      const release = await setCommitsWithRefs(org, version, refs);
+      let release: SentryRelease;
+      try {
+        release = await setCommitsWithRefs(org, version, refs);
+      } catch (error) {
+        // Retry once with Sentry's names when they only differ in case or
+        // form; otherwise explain how to fix the repository.
+        const corrected = await correctRefRepositories(org, refs, error);
+        if (!corrected) {
+          throw await explainSetCommitsError(org, version, refs, error);
+        }
+        release = await setCommitsWithRefs(org, version, corrected);
+      }
       yield new CommandOutput(release);
       return;
     }

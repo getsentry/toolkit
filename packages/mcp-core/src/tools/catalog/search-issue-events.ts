@@ -14,9 +14,12 @@ import {
 } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import { formatErrorResults } from "../support/search-events/formatters";
 import { searchIssueEventsAgent } from "../support/search-issue-events/agent";
 import { RECOMMENDED_FIELDS } from "../support/search-issue-events/config";
+import {
+  buildIssueEventResults,
+  searchIssueEventsOutputSchema,
+} from "../support/search-issue-events/results";
 import { parseIssueParams } from "../support/search-issue-events/utils";
 
 function buildIssueEventSearchRepairPrompt(params: {
@@ -44,12 +47,13 @@ function buildIssueEventSearchRepairPrompt(params: {
 
 export default defineTool({
   name: "search_issue_events",
+  title: "Search Issue Events",
   skills: ["inspect", "triage"], // Available in inspect and triage skills
   requiredScopes: ["event:read"],
   description: [
     "Search and filter events within a specific issue.",
     "",
-    "Provide `query` as natural language or Sentry event search syntax. When an embedded agent is configured, it fixes filters, fields, sort, and time range before running.",
+    "Provide `query` as natural language or Sentry event search syntax. When an embedded agent is configured, it fixes filters and time range before running. Results are always newest first; fields and sort only shape the Sentry link.",
     "",
     "The tool automatically constrains results to the specified issue.",
     "",
@@ -99,7 +103,7 @@ export default defineTool({
       .string()
       .optional()
       .describe(
-        "Sort field (prefix with - for descending). Default: -timestamp",
+        "Sort for the Sentry link (prefix with - for descending). Results are always newest first. Default: -timestamp",
       ),
     period: ParamPeriod.optional(),
 
@@ -127,6 +131,7 @@ export default defineTool({
         "Include explanation of how the query was translated or repaired",
       ),
   },
+  outputSchema: searchIssueEventsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -217,7 +222,7 @@ export default defineTool({
       sortParam = parsed.sort;
       explanation = parsed.explanation;
 
-      const requestedFields = parsed.fields || [];
+      const requestedFields = parsed.fields;
       fields =
         requestedFields.length > 0 ? requestedFields : RECOMMENDED_FIELDS;
 
@@ -239,7 +244,6 @@ export default defineTool({
       issueId,
       query,
       limit: params.limit,
-      sort: sortParam,
       ...timeParams,
     });
 
@@ -286,16 +290,20 @@ export default defineTool({
       ? `Events in issue ${issueId}: ${params.query}`
       : `Events in issue ${issueId}`;
 
-    return formatErrorResults({
-      eventData: eventsResponse,
-      inputQuery: naturalLanguageContext,
-      includeExplanation: params.includeExplanation,
-      apiService,
+    return buildIssueEventResults({
+      events: eventsResponse,
       organizationSlug,
+      issueId,
+      issueUrl: apiService.getIssueUrl(organizationSlug, issueId),
       explorerUrl,
-      sentryQuery: explorerQuery,
-      fields,
-      explanation,
+      inputQuery: naturalLanguageContext,
+      query,
+      timeRange: timeParams,
+      sort: sortParam,
+      explanation: params.includeExplanation ? explanation : undefined,
+      experimentalMode: context.experimentalMode ?? false,
+      availableToolNames: context.availableToolNames,
+      directToolNames: context.directToolNames,
     });
   },
 });

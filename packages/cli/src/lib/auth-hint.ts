@@ -23,8 +23,6 @@
  *   is wrong, just a helpful breadcrumb).
  */
 
-// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node-core/light";
 import {
   getActiveEnvVarName,
   getRawEnvToken,
@@ -34,6 +32,7 @@ import {
 import { getUserInfo } from "./db/user.js";
 import { logger } from "./logger.js";
 import { getRcInjectedTokenSource } from "./sentryclirc.js";
+import { reportCliError } from "./error-reporting.js";
 
 const log = logger.withTag("auth");
 
@@ -73,7 +72,7 @@ export function maybeWarnEnvTokenIgnored(): void {
   try {
     hasStored = hasStoredAuthCredentials();
   } catch (error) {
-    Sentry.captureException(error);
+    reportCliError(error);
   }
   if (!hasStored) {
     return;
@@ -121,7 +120,7 @@ function resolveStoredUserLabel(): string {
     // DB read failure for the user-info cache is non-fatal — fall back
     // to the neutral label — but still surface the error to Sentry so
     // we can diagnose persistent cache-read failures.
-    Sentry.captureException(error);
+    reportCliError(error);
     return "stored OAuth user";
   }
 }

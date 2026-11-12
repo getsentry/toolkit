@@ -98,7 +98,7 @@ function makeSpanArb(): import("fast-check").Arbitrary<TraceSpan> {
       constantFrom("http.server", "browser", "celery_task"),
       { nil: undefined },
     ),
-  }) as unknown as import("fast-check").Arbitrary<TraceSpan>;
+  });
 }
 
 /** Generate a list of flat TraceSpans (1-10) */

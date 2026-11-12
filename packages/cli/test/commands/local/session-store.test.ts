@@ -128,7 +128,40 @@ describe("LocalSessionStore", () => {
     expect(() => store.resolve(session.id)).toThrow(/not found/i);
   });
 
-  test("refreshes the retention deadline when a retained session receives activity", () => {
+  test("reports the sessions after each create, close, and expiry, not on activity or reset", () => {
+    let now = 1000;
+    const onChange = vi.fn();
+    const store = createLocalSessionStore({ now: () => now, onChange });
+    const session = store.create({ label: "web", cwd: "/work/web" });
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: session.id, state: "open" }),
+    ]);
+    store.create({ clientId: "retry", label: "api", cwd: "/work/api" });
+    store.create({ clientId: "retry", label: "api", cwd: "/work/api" });
+    expect(onChange).toHaveBeenCalledTimes(2);
+
+    store.recordActivity(session.id);
+    store.reset(session.id);
+    expect(onChange).toHaveBeenCalledTimes(2);
+
+    store.close(session.id);
+    store.close(session.id);
+    expect(onChange).toHaveBeenCalledTimes(3);
+    expect(onChange.mock.lastCall?.[0]).toContainEqual(
+      expect.objectContaining({ id: session.id, state: "retained" }),
+    );
+
+    expect(store.pruneExpired()).toEqual([]);
+    expect(onChange).toHaveBeenCalledTimes(3);
+    now += 3 * 60 * 60 * 1000;
+    expect(store.pruneExpired()).toEqual([session.id]);
+    expect(onChange).toHaveBeenCalledTimes(4);
+    expect(onChange.mock.lastCall?.[0]).toEqual([
+      expect.objectContaining({ label: "api" }),
+    ]);
+  });
+
+  test("does not extend the expiry of a closed session after activity", () => {
     let now = 1000;
     const store = createLocalSessionStore({ now: () => now });
     const session = store.create({ label: "web", cwd: "/work/web" });
@@ -138,7 +171,35 @@ describe("LocalSessionStore", () => {
     store.recordActivity(session.id);
     now += 2 * 60 * 60 * 1000;
 
-    expect(store.pruneExpired()).toEqual([]);
-    expect(store.resolve(session.id).state).toBe("retained");
+    expect(store.pruneExpired()).toEqual([session.id]);
+    expect(() => store.resolve(session.id)).toThrow(/not found/i);
+  });
+
+  test("lifecycle notifications carry the frozen deadline through close and reset", () => {
+    let now = 1000;
+    const store = createLocalSessionStore({ now: () => now });
+    const session = store.create({ label: "web", cwd: "/work/web" });
+    const listener = vi.fn();
+    const unsubscribe = store.subscribe(session.id, listener);
+    store.reset(session.id);
+    expect(listener).toHaveBeenLastCalledWith({
+      state: "open",
+      action: "reset",
+    });
+    const closed = store.close(session.id);
+    expect(listener).toHaveBeenLastCalledWith({
+      state: "retained",
+      expiresAt: closed.expiresAt,
+    });
+    now += 60_000;
+    expect(store.close(session.id).expiresAt).toBe(closed.expiresAt);
+    store.reset(session.id);
+    expect(listener).toHaveBeenLastCalledWith({
+      state: "retained",
+      action: "reset",
+      expiresAt: closed.expiresAt,
+    });
+    expect(store.resolve(session.id).expiresAt).toBe(closed.expiresAt);
+    unsubscribe();
   });
 });

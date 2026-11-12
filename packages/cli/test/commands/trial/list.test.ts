@@ -53,6 +53,7 @@ function createMockContext(cwd = "/tmp") {
       stdout: { write: stdoutWrite },
       stderr: { write: stderrWrite },
       cwd,
+      commandPrefix: ["sentry", "trial", "list"],
     },
     stdoutWrite,
     stderrWrite,
@@ -63,7 +64,7 @@ function createMockContext(cwd = "/tmp") {
 function daysFromNow(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0]!;
+  return d.toISOString().split("T")[0];
 }
 
 /**

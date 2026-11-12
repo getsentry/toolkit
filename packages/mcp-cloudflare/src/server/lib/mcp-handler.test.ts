@@ -21,6 +21,10 @@ vi.mock("@sentry/cloudflare", async (importOriginal) => ({
   setUser: sentrySetUser,
 }));
 
+import {
+  MAX_MCP_REQUEST_BODY_BYTES,
+  MAX_TOOL_INPUT_ELEMENTS,
+} from "@sentry/toolkit-core/mcp-limits";
 import mcpHandler, { handleSentryBearerMcpRequest } from "./mcp-handler";
 import {
   OAUTH_GRANT_AGE_BUCKET_ATTRIBUTE,
@@ -58,7 +62,7 @@ function createMcpContext(
       ...DEFAULT_OAUTH_PROPS,
       ...props,
     },
-  } as ExecutionContext & { props: OAuthProps };
+  };
 }
 
 function createMcpRequest(
@@ -294,7 +298,8 @@ describe("MCP Handler", () => {
       const toolNames = body.result?.tools.map((tool) => tool.name) ?? [];
 
       expect(toolNames).toContain("search_traces");
-      expect(toolNames).not.toContain("search_docs");
+      expect(toolNames).toContain("search_docs");
+      expect(toolNames).not.toContain("update_issue");
     });
 
     it("applies the authenticated MCP rate limit per user", async () => {
@@ -356,11 +361,8 @@ describe("MCP Handler", () => {
       const request = createMcpRequest(
         "tools/call",
         {
-          name: "execute_sentry_tool",
-          arguments: {
-            name: "whoami",
-            arguments: {},
-          },
+          name: "whoami",
+          arguments: {},
         },
         { headers: { "X-Sentry-Utm-Source": "plugin" } },
       );
@@ -403,7 +405,7 @@ describe("MCP Handler", () => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(structuredContent, null, 2),
+              text: JSON.stringify(structuredContent),
             },
           ],
           structuredContent,
@@ -580,7 +582,7 @@ describe("MCP Handler", () => {
             : null,
         ),
         put: vi.fn(),
-      } as unknown as KVNamespace;
+      };
       const ctx = createMcpContext({
         accessToken: "test-current-user-token",
         grantedSkills: ["inspect"],
@@ -592,11 +594,8 @@ describe("MCP Handler", () => {
       const request = createMcpRequest(
         "tools/call",
         {
-          name: "execute_sentry_tool",
-          arguments: {
-            name: "get_profile_details",
-            arguments: { profileId },
-          },
+          name: "get_profile_details",
+          arguments: { profileId },
         },
         { path: "/mcp/test-org/test-project" },
       );
@@ -634,13 +633,10 @@ describe("MCP Handler", () => {
         ]);
         expect(env.MCP_CACHE.put).not.toHaveBeenCalled();
         expect(apiFetch).toHaveBeenCalledOnce();
-        expect(apiFetch).toHaveBeenCalledWith(
-          profileUrl,
-          expect.objectContaining({
-            headers: expect.objectContaining({
-              Authorization: `Bearer ${ctx.props.accessToken}`,
-            }),
-          }),
+        const [url, init] = apiFetch.mock.calls[0] ?? [];
+        expect(url).toBe(profileUrl);
+        expect(new Headers(init?.headers).get("Authorization")).toBe(
+          `Bearer ${ctx.props.accessToken}`,
         );
       } finally {
         apiFetch.mockRestore();
@@ -660,7 +656,7 @@ describe("MCP Handler", () => {
           await writeReady;
           stored = JSON.parse(value);
         }),
-      } as unknown as KVNamespace;
+      };
       const ctx = Object.assign(createExecutionContext(), {
         props: { ...DEFAULT_OAUTH_PROPS },
       });
@@ -889,38 +885,130 @@ describe("MCP Handler", () => {
       }>(response);
       const toolNames = body.result?.tools.map((tool) => tool.name) ?? [];
 
-      expect(toolNames).toContain("search_sentry_tools");
-      expect(toolNames).not.toContain("search_docs");
-      expect(toolNames).not.toContain("get_doc");
+      expect(toolNames).toContain("search_docs");
+      expect(toolNames).toContain("get_doc");
       expect(toolNames).not.toContain("get_issue_details");
+      expect(toolNames).not.toContain("search_sentry_tools");
+    });
+  });
 
-      const searchRequest = createMcpRequest("tools/call", {
-        name: "search_sentry_tools",
+  describe("request limits", () => {
+    function createDirectContext(): ExecutionContext {
+      return {
+        waitUntil: vi.fn(),
+        passThroughOnException: vi.fn(),
+      } as unknown as ExecutionContext;
+    }
+
+    function callPaddedTool(padding: string): Request {
+      return createMcpRequest("tools/call", {
+        name: "get_sentry_mcp_info",
+        arguments: {},
+        _meta: { padding },
+      });
+    }
+
+    it("accepts a tool call whose body is just under the size limit", async () => {
+      const emptyBodyBytes = (await callPaddedTool("").text()).length;
+      const request = callPaddedTool(
+        "a".repeat(MAX_MCP_REQUEST_BODY_BYTES - emptyBodyBytes),
+      );
+
+      const response = await handleSentryBearerMcpRequest(
+        request,
+        createTestEnv(),
+        createDirectContext(),
+        "sntryu_test-token",
+      );
+
+      expect(response.status).toBe(200);
+      const body = await parseSSEResponse<{
+        result?: { isError?: boolean };
+      }>(response);
+      expect(body.result).toBeDefined();
+      expect(body.result?.isError).toBeFalsy();
+    });
+
+    it("rejects a body over the size limit with a declared Content-Length", async () => {
+      const request = callPaddedTool("a".repeat(MAX_MCP_REQUEST_BODY_BYTES));
+
+      const response = await handleSentryBearerMcpRequest(
+        request,
+        createTestEnv(),
+        createDirectContext(),
+        "sntryu_test-token",
+      );
+
+      expect(response.status).toBe(413);
+      expect(await response.json()).toEqual({
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: `Payload Too Large: Request body must not exceed ${MAX_MCP_REQUEST_BODY_BYTES} bytes`,
+        },
+        id: null,
+      });
+    });
+
+    it("rejects a streamed body over the size limit without Content-Length", async () => {
+      const chunk = new TextEncoder().encode("a".repeat(64 * 1024));
+      let sent = 0;
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent > MAX_MCP_REQUEST_BODY_BYTES) {
+            controller.close();
+            return;
+          }
+          sent += chunk.byteLength;
+          controller.enqueue(chunk);
+        },
+      });
+      const request = new Request("http://localhost/mcp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+          Host: "localhost",
+        },
+        body: stream,
+      });
+      expect(request.headers.get("content-length")).toBeNull();
+
+      const response = await handleSentryBearerMcpRequest(
+        request,
+        createTestEnv(),
+        createDirectContext(),
+        "sntryu_test-token",
+      );
+
+      expect(response.status).toBe(413);
+    });
+
+    it("rejects tool arguments over the element limit before running the tool", async () => {
+      const request = createMcpRequest("tools/call", {
+        name: "search_errors",
         arguments: {
-          query: "documentation",
-          limit: 10,
+          organizationSlug: "sentry-mcp-evals",
+          query: "errors",
+          fields: Array.from({ length: MAX_TOOL_INPUT_ELEMENTS }, () => "id"),
         },
       });
 
-      const searchResponse = await mcpHandler.fetch!(
-        searchRequest,
+      const response = await handleSentryBearerMcpRequest(
+        request,
         createTestEnv(),
-        ctx,
+        createDirectContext(),
+        "sntryu_test-token",
       );
 
-      expect(searchResponse.status).toBe(200);
-      const searchBody = await parseSSEResponse<{
-        result?: {
-          structuredContent?: { results?: Array<{ name: string }> };
-        };
-      }>(searchResponse);
-      const catalogToolNames =
-        searchBody.result?.structuredContent?.results?.map(
-          (tool) => tool.name,
-        ) ?? [];
-
-      expect(catalogToolNames).toContain("search_docs");
-      expect(catalogToolNames).toContain("get_doc");
+      expect(response.status).toBe(200);
+      const body = await parseSSEResponse<{
+        result?: { isError?: boolean; content?: Array<{ text?: string }> };
+      }>(response);
+      expect(body.result?.isError).toBe(true);
+      expect(body.result?.content?.[0]?.text).toBe(
+        `Invalid arguments for tool search_errors: arguments contain more than the maximum of ${MAX_TOOL_INPUT_ELEMENTS} elements`,
+      );
     });
   });
 });

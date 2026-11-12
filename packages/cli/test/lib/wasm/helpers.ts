@@ -38,9 +38,7 @@ export function fromHex(hex: string): Uint8Array {
 
 /** Render bytes as lowercase hex. */
 export function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 /** Join byte ranges into one buffer. */
@@ -74,7 +72,7 @@ export function leb128(value: number, padTo = 0): Uint8Array {
     bytes.push(0x00);
   }
   for (let index = 0; index < bytes.length - 1; index++) {
-    bytes[index] = (bytes[index] as number) | 0x80;
+    bytes[index] = bytes[index] | 0x80;
   }
   return Uint8Array.from(bytes);
 }

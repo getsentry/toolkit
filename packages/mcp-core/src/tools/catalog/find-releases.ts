@@ -45,10 +45,11 @@ export const findReleasesOutputSchema = z.object({
 
 export default defineTool({
   name: "find_releases",
+  title: "Find Releases",
   skills: ["inspect"], // Only available in inspect skill
   requiredScopes: ["project:read"],
   description: [
-    "Find releases in Sentry.",
+    "List or search releases (deployed versions) in a Sentry organization or project.",
     "",
     "Use this tool when you need to:",
     "- Find recent releases in a Sentry organization",

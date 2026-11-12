@@ -7,6 +7,7 @@ import {
 import {
   ApiError,
   ApiClientError,
+  ApiRateLimitError,
   ApiServerError,
   isApiAuthenticationErrorDeep,
 } from "../api-client";
@@ -274,6 +275,17 @@ export async function formatErrorForUser(
     return [
       "**Authorization Expired**",
       "Sentry rejected the stored access token for this session. Please re-authorize to continue.",
+    ].join("\n\n");
+  }
+
+  // A 429 isn't an input problem either. Tell the agent when to come back and
+  // that parallel tool calls are what usually trips the per-second limit.
+  if (error instanceof ApiRateLimitError) {
+    return [
+      "**Rate Limited**",
+      "The Sentry API is rate limiting these requests. Short waits are already retried automatically.",
+      error.toUserMessage(),
+      "Call Sentry tools one at a time instead of in parallel, and don't repeat this call before then.",
     ].join("\n\n");
   }
 

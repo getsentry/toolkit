@@ -30,11 +30,23 @@ product-specific implementation patterns.
 - Root, MCP, and CLI files use Oxlint and Oxfmt. The CLI-specific rules live in
   `packages/cli/lint-rules/cli-oxlint-plugin.js`, with inline Oxlint suppressions
   for intentional exceptions.
+- Write new lint rules for Oxlint: turn on a built-in rule in `.oxlintrc.json`
+  (for example `no-restricted-imports`), or add a custom rule to the Oxlint JS
+  plugin above and register it in `.oxlintrc.json`. Do not add new ast-grep
+  rules; the few left in `ast-grep-rules/` predate this.
 - Oxlint runs type-aware (`options.typeAware` in `.oxlintrc.json`, backed by
   `oxlint-tsgolint`). `typescript/return-await` (`always`) is on repo-wide:
   write `return await` in async functions so callers stay in async stack
   traces. Type-aware correctness rules that still have a backlog are turned
   off at the root; #1573 tracks enabling them.
+- Copy and combine iterables with spread: `[...set]`, `[...a, ...b]`,
+  `[...path, key]`. `unicorn/prefer-spread` enforces this repo-wide and
+  autofixes `Array.from(x)` and `.slice()`. Spread rejects non-iterables at
+  compile time and at runtime, where `Array.from` accepts any `{ length }`
+  object. Keep `Array.from` for array-likes and `Array.from({ length: n }, fn)`.
+  To walk a string's UTF-16 code units, use `split("")`. Spread a string only
+  when you mean code points, and suppress `typescript/no-misused-spread` with
+  the reason.
 - Don't pass an async callback to `.catch()`. Use `try`/`await`/`catch`, or a
   wrapper such as `withDashboardErrors(ctx, fn)`. The `no-async-catch-callback`
   ast-grep rule enforces this.

@@ -331,6 +331,31 @@ describe("recoverHexId decision tree", () => {
     expect(r.kind === "fuzzy" && r.prefix).toBe("05d6975ab9bb");
   });
 
+  test.each([
+    ["trace-05d6975ab9bb", "05d6975ab9bb", undefined],
+    ["span-05d6975a...00000000", "05d6975a", "00000000"],
+  ])(
+    "fuzzy-looks up a prefixed partial ID %j",
+    async (input, prefix, suffix) => {
+      const fullId = `05d6975ab9bb${"0".repeat(20)}`;
+      stubAdapter("event", async () => [fullId]);
+      const r = await recoverHexId(input, "event", CLEAN_CTX);
+      expect(r).toMatchObject({ kind: "fuzzy", id: fullId, prefix });
+      expect(r.kind === "fuzzy" && r.suffix).toBe(suffix);
+    },
+  );
+
+  test("a prefixed slug is still a slug", async () => {
+    let called = false;
+    stubAdapter("event", async () => {
+      called = true;
+      return [];
+    });
+    const r = await recoverHexId("span-my-app", "event", CLEAN_CTX);
+    expect(r).toMatchObject({ kind: "failed", reason: "looks-like-slug" });
+    expect(called).toBe(false);
+  });
+
   test("fuzzy with multiple matches returns multiple-matches", async () => {
     const id1 = `05d6975ab9bb${"0".repeat(20)}`;
     const id2 = `05d6975ab9bb${"1".repeat(20)}`;

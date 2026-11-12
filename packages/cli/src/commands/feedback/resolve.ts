@@ -3,13 +3,13 @@
  */
 
 import type { SentryContext } from "../../context.js";
-import { updateIssueStatus } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { formatResolvedFeedback } from "../../lib/formatters/feedback.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { disableResponseCache } from "../../lib/response-cache.js";
-import { SentryFeedbackSchema } from "../../types/index.js";
-import { feedbackIdPositional, resolveFeedback } from "./utils.js";
+import { type FeedbackTarget, feedbackPositional } from "./positional.js";
+import { updateFeedbackStatus } from "./utils.js";
+import { SentryFeedbackSchema } from "../../generated/output-schemas/feedback.js";
 
 export const resolveCommand = buildCommand({
   docs: {
@@ -17,31 +17,38 @@ export const resolveCommand = buildCommand({
     fullDescription:
       "Resolve a User Feedback item immediately.\n\n" +
       "Accepts the same IDs and URLs as sentry feedback view. Use @latest to resolve the most recently active unresolved Feedback.\n\n" +
-      "The resolved issue must have issue.category:feedback. Other issue categories are rejected before any changes are made.\n\n" +
-      "Examples:\n" +
-      "  sentry feedback resolve FRONTEND-2SDJ\n" +
-      "  sentry feedback resolve my-org/FRONTEND-2SDJ\n" +
-      "  sentry feedback resolve my-org/@latest",
+      "The resolved issue must have issue.category:feedback. Other issue categories are rejected before any changes are made.",
+    examples: [
+      {
+        description: "Resolve a Feedback item (organization auto-detected)",
+        run: "feedback resolve FRONTEND-2SDJ",
+      },
+      {
+        description: "Resolve a Feedback item in an explicit organization",
+        run: "feedback resolve my-org/FRONTEND-2SDJ",
+      },
+      {
+        description: "Resolve the most recently active unresolved Feedback",
+        run: "feedback resolve my-org/@latest",
+      },
+      {
+        description: "Return selected fields from the updated Feedback",
+        run: "feedback resolve my-org/FRONTEND-2SDJ --json --fields id,shortId,status",
+      },
+    ],
   },
   output: {
     human: formatResolvedFeedback,
     schema: SentryFeedbackSchema,
   },
   parameters: {
-    positional: feedbackIdPositional,
+    positional: feedbackPositional("resolve"),
   },
-  async *func(this: SentryContext, _flags, feedbackArg: string) {
+  async *func(this: SentryContext, _flags, target: FeedbackTarget) {
     // A cached inbox could select Feedback that has already been resolved elsewhere.
     disableResponseCache();
-    const { org, feedback } = await resolveFeedback(
-      feedbackArg,
-      this.cwd,
-      "resolve",
+    yield new CommandOutput(
+      await updateFeedbackStatus(await target.resolved, "resolved"),
     );
-    const updated = await updateIssueStatus(feedback.id, "resolved", {
-      orgSlug: org,
-    });
-
-    yield new CommandOutput(updated);
   },
 });

@@ -22,6 +22,10 @@ import {
 } from "@sentry/mcp-core/skills";
 import { logWarn } from "@sentry/mcp-core/telem/logging";
 import type { ServerContext } from "@sentry/mcp-core/types";
+import {
+  MAX_MCP_REQUEST_BODY_BYTES,
+  boundMcpRequestBody,
+} from "@sentry/toolkit-core/mcp-limits";
 import { createMcpHandler } from "agents/mcp/server";
 import { annotateResponseMetric } from "../metrics";
 import {
@@ -344,7 +348,7 @@ async function handleAuthenticatedMcpRequest(
   }
 
   if (auth.kind === "oauth") {
-    const grantedSkills = Array.from(auth.grantedSkills).sort((a, b) =>
+    const grantedSkills = [...auth.grantedSkills].sort((a, b) =>
       a.localeCompare(b),
     );
     for (const skill of grantedSkills) {
@@ -457,6 +461,14 @@ async function handleAuthenticatedMcpRequest(
       auth.kind === "oauth" ? auth.onUpstreamUnauthorized : undefined,
   };
 
+  // `createMcpHandler` from agents only forwards `maxRequestBodySize` to the
+  // SDK v2 lane. Its legacy-request classification and legacy compatibility
+  // lane still read up to the SDK's 4 MiB default, so bound every lane here.
+  const boundedRequest = await boundMcpRequestBody(request);
+  if (boundedRequest instanceof Response) {
+    return boundedRequest;
+  }
+
   // The modern handler requires a factory and creates a fresh SDK v2 server
   // for every request. Context remains request-scoped through tool closures.
   return await createMcpHandler(
@@ -464,15 +476,15 @@ async function handleAuthenticatedMcpRequest(
       buildServer({
         context: serverContext,
         experimentalMode: isExperimentalMode,
-        sdkVersion: "v2",
       }),
     {
       route: url.pathname,
       // The Agents handler rejects browser Origins by default except localhost.
       // Permit only the hostname serving this authenticated endpoint.
       allowedOriginHostnames: [url.hostname],
+      maxRequestBodySize: MAX_MCP_REQUEST_BODY_BYTES,
     },
-  )(request, env, ctx);
+  )(boundedRequest, env, ctx);
 }
 
 /**
@@ -560,7 +572,7 @@ const mcpHandler: ExportedHandler<Env> = {
       );
     }
 
-    const grantedSkills = (rawProps.grantedSkills as string[]).map((skill) =>
+    const grantedSkills = rawProps.grantedSkills.map((skill) =>
       skill === "preprod" ? "inspect" : skill,
     );
     const { valid: validSkills, invalid: invalidSkills } =

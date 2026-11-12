@@ -24,7 +24,7 @@ describe("checkRateLimit", () => {
   it("allows request when rate limit not exceeded", async () => {
     mockRateLimiter = {
       limit: vi.fn().mockResolvedValue({ success: true }),
-    } as unknown as RateLimit;
+    };
 
     const result = await checkRateLimit("192.168.1.1", mockRateLimiter, {
       keyPrefix: "test",
@@ -41,7 +41,7 @@ describe("checkRateLimit", () => {
   it("denies request when rate limit exceeded", async () => {
     mockRateLimiter = {
       limit: vi.fn().mockResolvedValue({ success: false }),
-    } as unknown as RateLimit;
+    };
 
     const result = await checkRateLimit("192.168.1.1", mockRateLimiter, {
       keyPrefix: "test",
@@ -55,7 +55,7 @@ describe("checkRateLimit", () => {
   it("uses hashed identifier for privacy", async () => {
     mockRateLimiter = {
       limit: vi.fn().mockResolvedValue({ success: true }),
-    } as unknown as RateLimit;
+    };
 
     await checkRateLimit("192.168.1.1", mockRateLimiter, {
       keyPrefix: "test",
@@ -75,7 +75,7 @@ describe("checkRateLimit", () => {
   it("uses consistent hash for same identifier", async () => {
     mockRateLimiter = {
       limit: vi.fn().mockResolvedValue({ success: true }),
-    } as unknown as RateLimit;
+    };
 
     await checkRateLimit("192.168.1.1", mockRateLimiter, {
       keyPrefix: "test",
@@ -101,7 +101,7 @@ describe("checkRateLimit", () => {
   it("uses different keys for different identifiers", async () => {
     mockRateLimiter = {
       limit: vi.fn().mockResolvedValue({ success: true }),
-    } as unknown as RateLimit;
+    };
 
     await checkRateLimit("192.168.1.1", mockRateLimiter, {
       keyPrefix: "test",
@@ -127,7 +127,7 @@ describe("checkRateLimit", () => {
   it("includes key prefix in rate limit key", async () => {
     mockRateLimiter = {
       limit: vi.fn().mockResolvedValue({ success: true }),
-    } as unknown as RateLimit;
+    };
 
     await checkRateLimit("192.168.1.1", mockRateLimiter, {
       keyPrefix: "mcp:ip",
@@ -142,7 +142,7 @@ describe("checkRateLimit", () => {
   it("allows request when rate limiter throws error", async () => {
     mockRateLimiter = {
       limit: vi.fn().mockRejectedValue(new Error("Rate limiter service error")),
-    } as unknown as RateLimit;
+    };
 
     const result = await checkRateLimit("192.168.1.1", mockRateLimiter, {
       keyPrefix: "test",

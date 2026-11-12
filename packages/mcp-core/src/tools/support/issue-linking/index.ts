@@ -23,9 +23,11 @@ function parseUrl(value: string): URL {
       !["https:", "http:"].includes(url.protocol) ||
       url.username ||
       url.password ||
-      Array.from(value).some(
-        (character) => character.charCodeAt(0) <= 32 || character === "\\",
-      )
+      value
+        .split("")
+        .some(
+          (character) => character.charCodeAt(0) <= 32 || character === "\\",
+        )
     ) {
       throw new Error("Invalid URL");
     }
@@ -84,7 +86,7 @@ function nativeIdentity(
         /^\/([^/]+\/[^/]+)\/(issues|pull)\/(\d+)(?:\/(files|changes|commits|checks))?$/,
       );
       if (!match || (match[2] === "issues" && match[4])) return undefined;
-      return `${url.origin}/${match[1]!.toLowerCase()}#${match[3]}`;
+      return `${url.origin}/${match[1].toLowerCase()}#${match[3]}`;
     }
     case "gitlab": {
       const match = path.match(/^\/(.+?)(?:\/-)?\/issues\/(\d+)$/);
@@ -145,7 +147,7 @@ function matchesIntegration(url: URL, integration: IssueIntegration): boolean {
   const provider = integration.provider.key;
   const domain = integrationDomain(integration);
   const path = pathOf(url);
-  const owner = path.split("/")[1];
+  const owner = path.split("/").at(1);
 
   switch (provider) {
     case "github":
@@ -163,7 +165,7 @@ function matchesIntegration(url: URL, integration: IssueIntegration): boolean {
       // Older personal installations store only the username as domainName.
       const installedOwner =
         domain?.host === "bitbucket.org"
-          ? pathOf(domain).split("/")[1]
+          ? pathOf(domain).split("/").at(1)
           : integration.name;
       return owner?.toLowerCase() === installedOwner?.toLowerCase();
     }
@@ -260,7 +262,7 @@ export async function linkExternalIssue(
       `Multiple installed issue integrations match this URL. Provide integrationId to select one: ${describeIntegrations(candidates)}.`,
     );
   }
-  const integration = candidates[0]!;
+  const integration = candidates[0];
   const { issue, changed } = await apiService.linkNativeExternalIssue({
     ...params,
     integrationId: String(integration.id),
@@ -314,7 +316,7 @@ export async function unlinkExternalIssue(
       `Multiple linked issues match this URL. Provide integrationId to select one: ${describeIntegrations(matches.map(({ integration }) => integration))}.`,
     );
   }
-  const match = matches[0];
+  const match = matches.at(0);
   if (!match) {
     // Custom Apps can own any URL, including one with a native provider shape.
     if (!params.integrationId) return await unlinkAppIssue(apiService, params);

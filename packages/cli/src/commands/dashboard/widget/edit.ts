@@ -6,17 +6,25 @@
 
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../../lib/arg-parsing.js";
+import { sentry } from "../../../lib/app-identity.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
+import {
+  aggregateShorthandParser,
+  choiceParser,
+  fieldParser,
+  parseText,
+} from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetEdited } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
-  type DashboardDetail,
   type DashboardWidget,
   type DashboardWidgetQuery,
+  DISPLAY_TYPES,
   FALLBACK_LAYOUT,
+  GRID_COLUMN_POSITIONS,
+  GRID_WIDTHS,
   parseAggregate,
   parseSortExpression,
   parseWidgetInput,
@@ -24,20 +32,22 @@ import {
   prepareWidgetQueries,
   validateAggregateNames,
   validateWidgetLayout,
+  WIDGET_TYPES,
   type WidgetLayoutFlags,
+  type DashboardWidgetChangeOutput,
 } from "../../../types/dashboard.js";
+import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import {
   applyGroupLimitAutoDefault,
   withDashboardErrors,
   normalizeDataset,
-  parseDashboardPositionalArgs,
-  resolveDashboardId,
-  resolveOrgFromTarget,
   resolveWidgetIndex,
   validateSortReferencesAggregate,
   validateWidgetEnums,
+  WIDGET_FIELD_COMPLETION,
   type WidgetQueryFlags,
 } from "../resolve.js";
+import { DashboardWidgetChangeOutputSchema } from "../../../generated/output-schemas/dashboard.js";
 
 type EditFlags = WidgetQueryFlags &
   WidgetLayoutFlags & {
@@ -48,16 +58,10 @@ type EditFlags = WidgetQueryFlags &
     readonly fields?: string[];
   };
 
-type EditResult = {
-  dashboard: DashboardDetail;
-  widget: DashboardWidget;
-  url: string;
-};
-
 /** Merge query-level flags over existing widget query */
 function mergeQueries(
   flags: EditFlags,
-  existingQuery: DashboardWidgetQuery | undefined,
+  existingQueries: DashboardWidgetQuery[] | undefined,
 ): DashboardWidgetQuery[] | undefined {
   const hasChanges =
     flags.query || flags.where !== undefined || flags["group-by"] || flags.sort;
@@ -68,6 +72,7 @@ function mergeQueries(
 
   // Destructure to omit stale `fields` — prepareWidgetQueries will
   // recompute it from the updated aggregates/columns.
+  const [existingQuery, ...remainingQueries] = existingQueries ?? [];
   const { fields: _staleFields, ...base } = existingQuery ?? {};
   return [
     {
@@ -77,6 +82,7 @@ function mergeQueries(
       ...(flags["group-by"] && { columns: flags["group-by"] }),
       ...(flags.sort && { orderby: parseSortExpression(flags.sort) }),
     },
+    ...remainingQueries,
   ];
 }
 
@@ -121,7 +127,7 @@ function validateEnumsAndAggregates(
   }
 
   if (flags.display || flags.dataset) {
-    const effectiveDisplay = flags.display ?? existing.displayType;
+    const effectiveDisplay = flags.display ?? existing.displayType ?? undefined;
     const effectiveDataset = flags.dataset ?? existing.widgetType;
     validateWidgetEnums(effectiveDisplay, effectiveDataset);
   }
@@ -155,7 +161,7 @@ function buildReplacement(
   flags: EditFlags,
   existing: DashboardWidget,
 ): DashboardWidget {
-  const mergedQueries = mergeQueries(flags, existing.queries?.[0]);
+  const mergedQueries = mergeQueries(flags, existing.queries);
   const baseLimit = flags.limit !== undefined ? flags.limit : existing.limit;
   const columns =
     mergedQueries?.[0]?.columns ?? existing.queries?.[0]?.columns ?? [];
@@ -168,9 +174,20 @@ function buildReplacement(
   validateEnumsAndAggregates(flags, existing, mergedQueries);
   validateQueryConstraints(flags, existing, mergedQueries);
 
+  // Sentry returns null for a display type it doesn't recognize, and it
+  // won't accept null back.
+  const displayType = flags.display ?? existing.displayType;
+  if (displayType === null) {
+    throw new ValidationError(
+      "This widget has no display type Sentry recognizes. Pass --display to set one.",
+      "display",
+    );
+  }
+
   const raw: Record<string, unknown> = {
+    ...(existing.id !== undefined && { id: existing.id }),
     title: flags["new-title"] ?? existing.title,
-    displayType: flags.display ?? existing.displayType,
+    displayType,
     queries: mergedQueries ?? existing.queries,
     layout: mergeLayout(flags, existing),
   };
@@ -197,25 +214,36 @@ export const editCommand = buildCommand({
       "Identify the widget by --index (0-based) or --title.\n" +
       "Only provided flags are changed — omitted values are preserved.\n\n" +
       "Layout flags (--col/-x, --row/-y, --width, --height) control widget position\n" +
-      "and size in the 6-column dashboard grid.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard widget edit 12345 --title 'Error Rate' --display bar\n" +
-      "  sentry dashboard widget edit 'My Dashboard' --index 0 --query p95:span.duration\n" +
-      "  sentry dashboard widget edit 12345 --title 'Old Name' --new-title 'New Name'\n" +
-      "  sentry dashboard widget edit 12345 --index 0 --col 0 --row 0 --width 6 --height 2",
+      "and size in the 6-column dashboard grid.",
+    examples: [
+      {
+        description: "Change a widget's display type",
+        run: "dashboard widget edit 12345 --title 'Error Rate' --display bar",
+      },
+      {
+        description: "Change the query of a widget selected by index",
+        run: "dashboard widget edit 'My Dashboard' --index 0 --query p95:span.duration",
+      },
+      {
+        description: "Rename a widget",
+        run: "dashboard widget edit 12345 --title 'Old Name' --new-title 'New Name'",
+      },
+      {
+        description: "Move and resize a widget",
+        run: "dashboard widget edit 12345 --index 0 --col 0 --row 0 --width 6 --height 2",
+      },
+    ],
   },
   output: {
     human: formatWidgetEdited,
+    schema: DashboardWidgetChangeOutputSchema,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/project/dashboard",
-        brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: String,
-      },
-    },
+    positional: dashboardArguments({
+      placeholder: "org/project/dashboard",
+      usageHint: () =>
+        sentry`dashboard widget edit <org>/ <dashboard> --title <name> --display <type>`,
+    }),
     flags: {
       index: {
         kind: "parsed",
@@ -225,53 +253,53 @@ export const editCommand = buildCommand({
       },
       title: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Widget title to match",
         optional: true,
       },
       "new-title": {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "New widget title",
         optional: true,
       },
       display: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(DISPLAY_TYPES),
         brief:
           "Display type (big_number, line, area, bar, table, stacked_area, top_n, text, categorical_bar, details, wheel, rage_and_dead_clicks, server_tree, agents_traces_table)",
         optional: true,
       },
       dataset: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(WIDGET_TYPES),
         brief:
           "Widget dataset (default: spans). Accepts canonical names and API synonyms: spans, error-events/errors, tracemetrics/metrics, logs, issue",
         optional: true,
       },
       query: {
         kind: "parsed",
-        parse: String,
+        parse: aggregateShorthandParser(WIDGET_FIELD_COMPLETION),
         brief: "Aggregate expression (e.g. count, p95:span.duration)",
         variadic: true,
         optional: true,
       },
       where: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Search conditions filter (e.g. is:unresolved)",
         optional: true,
       },
       "group-by": {
         kind: "parsed",
-        parse: String,
+        parse: fieldParser(WIDGET_FIELD_COMPLETION),
         brief: "Group-by column (repeatable)",
         variadic: true,
         optional: true,
       },
       sort: {
         kind: "parsed",
-        parse: String,
+        parse: aggregateShorthandParser(WIDGET_FIELD_COMPLETION),
         brief: "Order by (prefix - for desc, e.g. -count)",
         optional: true,
       },
@@ -283,7 +311,7 @@ export const editCommand = buildCommand({
       },
       col: {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(GRID_COLUMN_POSITIONS, numberParser),
         brief: "Grid column position (0-based, 0–5)",
         optional: true,
       },
@@ -295,7 +323,7 @@ export const editCommand = buildCommand({
       },
       width: {
         kind: "parsed",
-        parse: numberParser,
+        parse: choiceParser(GRID_WIDTHS, numberParser),
         brief: "Widget width in grid columns (1–6)",
         optional: true,
       },
@@ -319,14 +347,16 @@ export const editCommand = buildCommand({
       y: "row",
     },
   },
-  async *func(this: SentryContext, flags: EditFlags, ...args: string[]) {
-    const { cwd } = this;
-
+  async *func(
+    this: SentryContext,
+    flags: EditFlags,
+    target: DashboardArguments,
+  ) {
     if (flags.index === undefined && !flags.title) {
       throw new ValidationError(
         "Specify --index or --title to identify the widget to edit.\n\n" +
           "Example:\n" +
-          "  sentry dashboard widget edit <dashboard> --title 'My Widget' --display bar",
+          `  ${sentry`dashboard widget edit <dashboard> --title 'My Widget' --display bar`}`,
         "index",
       );
     }
@@ -345,14 +375,7 @@ export const editCommand = buildCommand({
 
     validateWidgetEnums(normalizedFlags.display, normalizedFlags.dataset);
 
-    const { dashboardRef, targetArg } = parseDashboardPositionalArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard widget edit <org>/ <dashboard> --title <name> --display <type>",
-    );
-    const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
+    const { orgSlug, dashboardId } = await target.resolved;
 
     // GET current dashboard → find widget → merge changes → PUT
     const current = await withDashboardErrors(
@@ -400,11 +423,18 @@ export const editCommand = buildCommand({
     );
     const url = buildDashboardUrl(orgSlug, dashboardId);
 
+    // The request omits saved transformations so Sentry keeps them; report
+    // the saved widget so its output includes them.
+    const saved =
+      replacement.id === undefined
+        ? undefined
+        : updated.widgets?.find((widget) => widget.id === replacement.id);
+
     yield new CommandOutput({
       dashboard: updated,
-      widget: replacement,
+      widget: saved ?? replacement,
       url,
-    } as EditResult);
+    } satisfies DashboardWidgetChangeOutput);
     return { hint: `Dashboard: ${url}` };
   },
 });

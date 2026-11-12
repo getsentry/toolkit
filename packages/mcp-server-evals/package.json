@@ -17,9 +17,7 @@
   "dependencies": {
     "@ai-sdk/mcp": "catalog:",
     "@ai-sdk/openai": "catalog:",
-    "@modelcontextprotocol/sdk": "catalog:",
     "@sentry/mcp-core": "workspace:*",
-    "@sentry/mcp-server": "workspace:*",
     "@sentry/mcp-server-mocks": "workspace:*",
     "@sentry/mcp-server-tsconfig": "workspace:*",
     "ai": "catalog:",
@@ -29,5 +27,8 @@
     "vitest": "catalog:",
     "vitest-evals": "catalog:",
     "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sentry/roach": "catalog:"
   }
 }

@@ -6,9 +6,11 @@
  * identities and pagination hints.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import { validateLimit } from "../../lib/arg-parsing.js";
+import { textParser } from "../../lib/completion-target.js";
 import { filterFields } from "../../lib/formatters/json.js";
-import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
+import { colorTag } from "../../lib/formatters/markdown.js";
 import { type Column, formatTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import {
@@ -19,6 +21,7 @@ import {
   LIST_PERIOD_FLAG,
   PERIOD_ALIASES,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
 import { appendPeriodHint, type TimeRange } from "../../lib/time-range.js";
 import type { IssueEvent } from "../../types/index.js";
@@ -81,7 +84,7 @@ function getUserLabel(event: IssueEvent): string {
     event.user.username ??
     event.user.ip_address ??
     event.user.id;
-  return label ? escapeMarkdownCell(label) : colorTag("muted", "—");
+  return label ? tableCell(label) : colorTag("muted", "—");
 }
 
 /**
@@ -104,12 +107,12 @@ export const EVENT_COLUMNS: Column<IssueEvent>[] = [
   },
   {
     header: "TITLE",
-    value: (e) => escapeMarkdownCell(e.title),
+    value: (e) => tableCell(e.title),
     truncate: true,
   },
   {
     header: "PLATFORM",
-    value: (e) => escapeMarkdownCell(e.platform ?? "—"),
+    value: (e) => tableCell(e.platform ?? "—"),
   },
   {
     header: "USER",
@@ -152,13 +155,13 @@ export function formatEventsHuman(result: EventsResult): string {
 export function jsonTransformEvents(
   result: EventsResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<IssueEvent> {
   const items =
     fields && fields.length > 0
       ? result.events.map((e) => filterFields(e, fields))
       : result.events;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<IssueEvent> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: result.hasPrev,
@@ -208,7 +211,7 @@ export function parseLimit(value: string): number {
 export const EVENTS_FLAGS = {
   limit: {
     kind: "parsed",
-    parse: parseLimit,
+    parse: textParser(parseLimit),
     brief: `Number of events (${LIST_MIN_LIMIT}-${LIST_MAX_LIMIT})`,
     default: String(LIST_DEFAULT_LIMIT),
   },

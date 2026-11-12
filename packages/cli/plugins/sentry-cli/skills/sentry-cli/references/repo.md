@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-repo
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Sentry repositories
 requires:
   bins: ["sentry"]
@@ -14,6 +14,12 @@ Work with Sentry repositories
 ### `sentry repo list [<org/project>]`
 
 List repositories
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (all), &lt;org&gt;/&lt;name&gt; or &lt;name&gt; (a project, else matching names), or a name glob (&lt;org&gt;/web-*) |
 
 **Flags:**
 - `-n, --limit <value> - Maximum number of repositories to list - (default: "25")`
@@ -33,15 +39,25 @@ List repositories
 | `integrationId` | string | Integration ID |
 | `externalSlug` | string \| null | External slug (e.g. org/repo) |
 | `externalId` | string \| null | External ID |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 
 ```bash
-# List repositories (auto-detect org)
+# List repositories (organization auto-detected)
 sentry repo list
 
-# List repos in a specific org with pagination
+# List repositories in an organization
+sentry repo list my-org/
+
+# Fetch the next page
 sentry repo list my-org/ -c next
+
+# Only repositories whose name matches a glob
+sentry repo list 'my-org/getsentry/*'
+
+# Repositories named like 'sentry-python' (fuzzy when nothing matches exactly)
+sentry repo list my-org/sentry-pyhton
 
 # Output as JSON
 sentry repo list --json

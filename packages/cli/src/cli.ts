@@ -1,92 +1,46 @@
 /**
- * CLI runner with fast-path dispatch.
+ * CLI runner: every command goes through the full CLI with telemetry,
+ * middleware, and error recovery. Shell completion (`__complete`) never gets
+ * here: the bin entry points run `lib/complete.ts` without loading this module.
  *
- * Shell completion (`__complete`) is dispatched before any heavy imports
- * to avoid loading `@sentry/node-core` (~280ms). All other commands go through
- * the full CLI with telemetry, middleware, and error recovery.
+ * The runner does not know which commands exist: each binary passes a
+ * {@link CliEntry} that loads its own application. `sentry` (`bin.ts`,
+ * `index.ts`) runs every command; `@sentry/mcp-server` (`mcp-server.ts`) runs
+ * `mcp`, `auth`, `cli defaults`, `cli fix`, and `help`, so its bundle leaves
+ * the rest out.
  *
  * Extracted from `bin.ts` so the logic is testable and reusable without
  * top-level side effects. `bin.ts` remains a thin wrapper that registers
  * stream error handlers and calls `startCli()`.
  */
 
+import { sentry } from "./lib/app-identity.js";
+import type { CliApplication } from "./lib/application.js";
 import { redactCredentialText } from "./lib/credential-redaction.js";
-import { getEnv } from "./lib/env.js";
 import { CliError, formatError } from "./lib/errors.js";
 import { buildTopLevelFlags } from "./lib/global-flags.js";
+import { preloadProjectContext } from "./lib/project-context.js";
+import type { CliRoutes } from "./lib/route-registry.js";
 import { initTimezone } from "./lib/timezone.js";
 
-/**
- * Preload project context: walk up from `cwd` once, finding both the
- * project root (for DSN detection) and `.sentryclirc` config (for
- * org/project defaults and env shim). Caches both results so later calls
- * to `findProjectRoot` and `loadSentryCliRc` are cache hits.
- */
-async function preloadProjectContext(cwd: string): Promise<void> {
-  // Snapshot env-token host BEFORE anything mutates env.SENTRY_HOST/URL
-  // (the .sentryclirc shim or the default-URL fallback below). Pins the
-  // env-token's trust scope to the user's shell, not a repo-local file.
-  // Dynamic import: env-token-host chains into db/auth → telemetry → @sentry/node-core
-  const { captureEnvTokenHost } = await import("./lib/env-token-host.js");
-  captureEnvTokenHost();
-
-  // Dynamic import keeps the heavy DSN/DB modules out of the completion fast-path
-  const [{ findProjectRoot }, { setCachedProjectRoot }] = await Promise.all([
-    import("./lib/dsn/project-root.js"),
-    import("./lib/db/project-root-cache.js"),
-  ]);
-
-  const result = await findProjectRoot(cwd);
-  await setCachedProjectRoot(cwd, {
-    projectRoot: result.projectRoot,
-    reason: result.reason,
-  });
-
-  // Apply .sentryclirc env shim (token + URL). The URL trust check is
-  // deferred to buildCommand's wrapper where commands can opt out via
-  // skipRcUrlCheck (used by auth login/logout).
-  // Dynamic import: sentryclirc chains into db/index → sqlite, logger → consola
-  const { applySentryCliRcEnvShim } = await import("./lib/sentryclirc.js");
-  await applySentryCliRcEnvShim(cwd);
-
-  // Apply persistent URL default (lower priority than env vars and .sentryclirc).
-  const env = getEnv();
-  if (!(env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim())) {
-    // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-    try {
-      const { getDefaultUrl } = await import("./lib/db/defaults.js");
-      const url = getDefaultUrl();
-      if (url) {
-        env.SENTRY_URL = url;
-        const { markPersistedDefaultUrl } = await import("./lib/constants.js");
-        markPersistedDefaultUrl(url);
-      }
-    } catch {
-      // DB not available — skip
-    }
-  }
-}
-
-/**
- * Fast-path: shell completion.
- *
- * Dispatched before importing the full CLI to avoid loading @sentry/node-core,
- * @stricli/core, and other heavy dependencies. Only loads the lightweight
- * completion engine and SQLite cache modules.
- */
-export async function runCompletion(completionArgs: string[]): Promise<void> {
-  // Disable telemetry so db/index.ts skips the @sentry/node-core lazy-require (~280ms)
-  getEnv().SENTRY_CLI_NO_TELEMETRY = "1";
-  const { handleComplete } = await import("./lib/complete.js");
-  handleComplete(completionArgs);
-}
+/** What a binary runs: its application. */
+export type CliEntry = {
+  /**
+   * Load the application for the CLI arguments, which may leave out the
+   * commands they don't run. Loading it registers its routes.
+   */
+  readonly loadApp: (args: readonly string[]) => Promise<{
+    app: CliApplication;
+    routes: CliRoutes;
+  }>;
+};
 
 /**
  * Flags whose values must never be sent to telemetry.
  * Superset of `SENSITIVE_FLAGS` in `telemetry.ts` — includes `auth-token`
  * because raw argv may use either form before Stricli parses to camelCase.
  */
-const SENSITIVE_ARGV_FLAGS = new Set(["token", "auth-token"]);
+const SENSITIVE_ARGV_FLAGS = new Set(["token", "auth-token", "access-token"]);
 
 /**
  * Check whether an argv token is a sensitive flag that needs value redaction.
@@ -204,7 +158,7 @@ async function recoverUnknownCommandHelp(
     const { warning } = await import("./lib/formatters/colors.js");
     process.stderr.write(
       warning(
-        `Tip: use --help for help (e.g., sentry ${groupArgs.join(" ")} --help)\n`,
+        `Tip: use --help for help (e.g., ${sentry`${groupArgs.join(" ")} --help`})\n`,
       ),
     );
     await executor(["help", ...groupArgs]);
@@ -231,12 +185,7 @@ type ErrorMiddleware = (
   retryArgs: string[],
 ) => Promise<void>;
 
-/**
- * Return MCP's arguments when it is the command after leading global flags.
- *
- * MCP owns stdout for JSON-RPC, so CLI-level output flags are deliberately
- * ignored before it starts. Flags after `mcp` belong to the MCP server.
- */
+/** Index of the first token after a leading global flag, if `index` is one. */
 function skipLeadingGlobalFlag(
   cliArgs: readonly string[],
   index: number,
@@ -256,72 +205,125 @@ function skipLeadingGlobalFlag(
     : index + 2;
 }
 
-export function getMcpArgs(cliArgs: readonly string[]): string[] | undefined {
+/**
+ * Whether `cliArgs` runs the `mcp` command: `mcp` after any leading global
+ * flags, or no command at all when `mcp` is the default (`@sentry/mcp-server`).
+ * There, a first word that names no route is `mcp`'s `<org>/<project>` target:
+ * Stricli routes it to the default command. Route names win over a target.
+ *
+ * The stdio server owns stdout for JSON-RPC and reports its own telemetry, so
+ * the runner starts it without the CLI's telemetry, recovery middleware, and
+ * update check.
+ */
+export function isMcpInvocation(
+  routes: CliRoutes,
+  cliArgs: readonly string[],
+): boolean {
+  const mcp = routes.getRoutingTargetForInput("mcp");
+  if (!mcp) {
+    return false;
+  }
+  const isDefault = routes.getDefaultCommand() === mcp;
   for (let index = 0; index < cliArgs.length;) {
     const token = cliArgs[index] ?? "";
-    if (token === "--") {
-      return;
-    }
     if (!token.startsWith("-")) {
-      return token === "mcp" ? cliArgs.slice(index + 1) : undefined;
+      return (
+        token === "mcp" ||
+        (isDefault && !routes.getRoutingTargetForInput(token))
+      );
     }
-
     const nextIndex = skipLeadingGlobalFlag(cliArgs, index);
     if (nextIndex === undefined) {
-      return;
+      // `--` or a flag that only a command takes: the default command's.
+      return isDefault;
     }
     index = nextIndex;
   }
-
-  return;
+  return isDefault;
 }
 
-/** Run MCP and return whether the current invocation was handled by it. */
-export async function runMcpCommand(cliArgs: string[]): Promise<boolean> {
-  const mcpArgs = getMcpArgs(cliArgs);
-  if (!mcpArgs) {
-    return false;
+/**
+ * Global output flags that `mcp` does not declare: it has no `output` config,
+ * so `buildCommand` does not inject them, and stdout carries JSON-RPC.
+ */
+const MCP_IGNORED_OUTPUT_FLAGS = new Set(["--json", "--no-json", "--fields"]);
+
+/**
+ * Drop global output flags placed before the command, so `sentry --json mcp`
+ * starts the server instead of failing to parse. Flags after `mcp` belong to
+ * the server and are kept.
+ */
+function dropLeadingOutputFlags(cliArgs: readonly string[]): string[] {
+  const kept: string[] = [];
+  let index = 0;
+  while (index < cliArgs.length) {
+    const token = cliArgs[index] ?? "";
+    const nextIndex = token.startsWith("-")
+      ? skipLeadingGlobalFlag(cliArgs, index)
+      : undefined;
+    if (nextIndex === undefined) {
+      break;
+    }
+    if (!MCP_IGNORED_OUTPUT_FLAGS.has(token.split("=", 1)[0] ?? token)) {
+      kept.push(...cliArgs.slice(index, nextIndex));
+    }
+    index = nextIndex;
   }
+  return [...kept, ...cliArgs.slice(index)];
+}
 
-  const [{ startMcpServer }, { getExitCode }] = await Promise.all([
-    import("./lib/mcp.js"),
-    import("./lib/errors.js"),
-  ]);
-
+/**
+ * Run the stdio MCP server. The `mcp` command resolves once the client
+ * disconnects, so the teardown below never runs under a live server.
+ */
+async function runMcpServer(
+  app: CliApplication,
+  cliArgs: string[],
+): Promise<void> {
+  const { run } = await import("@stricli/core");
+  const { buildContext } = await import("./context.js");
+  const { getExitCode } = await import("./lib/errors.js");
+  const { error } = await import("./lib/formatters/colors.js");
+  const { splitInlineFlagValues } = await import("./lib/mcp/args.js");
+  const { getEnvLogLevel, setLogLevel } = await import("./lib/logger.js");
+  // The server's startup warnings go through the logger, so apply
+  // SENTRY_LOG_LEVEL here as runCli does; --log-level still wins.
+  const envLogLevel = getEnvLogLevel();
+  if (envLogLevel !== null) {
+    setLogLevel(envLogLevel);
+  }
   try {
-    await startMcpServer(mcpArgs);
-  } catch (mcpError) {
-    process.stderr.write(`${formatError(mcpError)}\n`);
-    process.exitCode = getExitCode(mcpError);
-    // MCP setup errors are terminal, unlike a running stdio server. Clean up
-    // network resources only on this error path so successful servers retain
-    // their dispatcher and are not force-exited on macOS.
-    const [{ scheduleForceExit }, { closeGlobalDispatcher }] =
-      await Promise.all([
-        import("./lib/force-exit.js"),
-        import("./lib/close-dispatcher.js"),
-      ]);
-    scheduleForceExit();
+    await run(
+      app,
+      splitInlineFlagValues(dropLeadingOutputFlags(cliArgs)),
+      buildContext(process),
+    );
+  } catch (err) {
+    // Auth errors escape Stricli for the CLI's login middleware, which the
+    // server does not use: it runs its own login fallback in a terminal.
+    process.stderr.write(`${error("Error:")} ${formatError(err)}\n`);
+    process.exitCode = getExitCode(err);
+  } finally {
+    const { closeGlobalDispatcher } = await import("./lib/close-dispatcher.js");
     await closeGlobalDispatcher();
   }
-
-  return true;
 }
 
 /**
  * Full CLI execution with telemetry, middleware, and error recovery.
- *
- * All heavy imports are loaded here (not at module top level) so the
- * `__complete` fast-path can skip them entirely.
  */
-export async function runCli(cliArgs: string[]): Promise<void> {
-  if (await runMcpCommand(cliArgs)) {
+export async function runCli(
+  cliArgs: string[],
+  entry: CliEntry,
+): Promise<void> {
+  const { app, routes } = await entry.loadApp(cliArgs);
+  if (isMcpInvocation(routes, cliArgs)) {
+    await runMcpServer(app, cliArgs);
     return;
   }
 
   const { isatty } = await import("node:tty");
   const { ExitCode, run } = await import("@stricli/core");
-  const { app } = await import("./app.js");
   const { buildContext } = await import("./context.js");
   const { AuthError, OutputError, getExitCode } =
     await import("./lib/errors.js");
@@ -329,7 +331,7 @@ export async function runCli(cliArgs: string[]): Promise<void> {
   const { runInteractiveLogin } = await import("./lib/interactive-login.js");
   const { recoverWithAutoLogin } = await import("./lib/auto-auth.js");
   const { getEnvLogLevel, setLogLevel } = await import("./lib/logger.js");
-  const { scheduleForceExit } = await import("./lib/force-exit.js");
+  const { reportLingeringHandles } = await import("./lib/lingering-handles.js");
   const { closeGlobalDispatcher } = await import("./lib/close-dispatcher.js");
   const { isTrialEligible, promptAndStartTrial } =
     await import("./lib/seer-trial.js");
@@ -453,10 +455,11 @@ export async function runCli(cliArgs: string[]): Promise<void> {
   async function promptImportConsent(): Promise<
     "accepted" | "declined" | "cancelled"
   > {
-    const { logger: logModule } = await import("./lib/logger.js");
-    const confirmed = await logModule
-      .withTag("import")
-      .prompt("Import from .sentryclirc?", { type: "confirm", initial: true });
+    const { prompt } = await import("./lib/prompt.js");
+    const confirmed = await prompt("Import from .sentryclirc?", {
+      type: "confirm",
+      initial: true,
+    });
     if (confirmed === true) {
       return "accepted";
     }
@@ -624,28 +627,30 @@ export async function runCli(cliArgs: string[]): Promise<void> {
    * fuzzy matches and extracts org/project context from the raw argv.
    */
   async function reportUnknownCommand(argv: string[]): Promise<void> {
-    const Sentry = await import("@sentry/node-core/light");
+    const Sentry = await import("@sentry/node");
     const { resolveCommandPath } = await import("./lib/introspect.js");
-    const { routes } = await import("./app.js");
     const { getDefaultOrganization } = await import("./lib/db/defaults.js");
 
+    // Redact first: a sensitive flag's value would otherwise survive as a
+    // path segment or the trailing argv token.
+    const safeArgv = redactArgv(argv);
+
     // Strip flags so resolveCommandPath only sees command path segments
-    const pathSegments = argv.filter((t) => !t.startsWith("-"));
+    const pathSegments = safeArgv.filter((t) => !t.startsWith("-"));
     const resolved = resolveCommandPath(
       routes as unknown as Parameters<typeof resolveCommandPath>[0],
       pathSegments,
     );
     const unknownToken =
-      resolved?.kind === "unresolved" ? resolved.input : (argv.at(-1) ?? "");
+      resolved?.kind === "unresolved"
+        ? resolved.input
+        : (safeArgv.at(-1) ?? "");
     const suggestions =
       resolved?.kind === "unresolved" ? resolved.suggestions : [];
 
     // Extract org/project from argv, fall back to default org from SQLite
-    const fromArgv = extractOrgProjectFromArgv(argv);
+    const fromArgv = extractOrgProjectFromArgv(safeArgv);
     const org = fromArgv.org ?? getDefaultOrganization() ?? undefined;
-
-    // Redact sensitive flags (e.g., --token) before sending to Sentry
-    const safeArgv = redactArgv(argv);
 
     Sentry.setTag("command", "unknown");
     if (org) {
@@ -658,14 +663,16 @@ export async function runCli(cliArgs: string[]): Promise<void> {
       argv: safeArgv,
       unknown_token: unknownToken,
       suggestions,
-      arg_count: argv.length,
+      arg_count: safeArgv.length,
       org: org ?? null,
       project: fromArgv.project ?? null,
     });
     // Fixed message string so all unknown commands group into one Sentry
     // issue. The per-event detail (which token, suggestions) lives in the
     // structured context above and is queryable via Discover.
-    Sentry.captureMessage("unknown_command", "info");
+    // captureEvent, not captureMessage: with `attachStacktrace` on,
+    // captureMessage adds a synthetic exception that marks the session errored.
+    Sentry.captureEvent({ message: "unknown_command", level: "info" });
   }
 
   /** Build the command executor by composing error-recovery middlewares. */
@@ -724,13 +731,11 @@ export async function runCli(cliArgs: string[]): Promise<void> {
   } finally {
     // Abort any pending version check to allow clean exit
     abortPendingVersionCheck();
-    // Arm the backstop first so it fires regardless of what the dispatcher
-    // teardown does. The unref'd timer only triggers if the loop is still
-    // referenced after a drained command, so it's a no-op on clean exits
-    // (a libuv refcount quirk on macOS keeps it worthwhile — see #1237).
-    scheduleForceExit();
-    // Release undici's pooled keep-alive sockets so the event loop can drain
-    // on its own — the root-cause fix. Never rejects (see close-dispatcher.ts).
+    // At debug level, name whatever still holds the event loop open once
+    // the command is done (see lingering-handles.ts and #1956).
+    reportLingeringHandles();
+    // Release undici's pooled sockets so the event loop can drain on its
+    // own. Never rejects (see close-dispatcher.ts).
     await closeGlobalDispatcher();
   }
 
@@ -746,24 +751,16 @@ export async function runCli(cliArgs: string[]): Promise<void> {
 /**
  * Top-level CLI dispatch.
  *
- * Reads `process.argv`, dispatches to the completion fast-path or the full
- * CLI runner, and handles fatal errors. Called from `bin.ts`.
+ * Reads `process.argv`, runs the full CLI, and handles fatal errors.
+ * Called from `bin.ts`.
  */
-export async function startCli(): Promise<void> {
+export async function startCli(entry: CliEntry): Promise<void> {
   const args = process.argv.slice(2);
 
   // Repair the timezone before anything formats a Date. SEA binaries can fall
   // back to UTC when they cannot resolve the OS zone, which made log
   // timestamps (and all other Date output) appear in the wrong timezone.
   initTimezone();
-
-  // Completions are a fast-path (~1ms) — skip .sentryclirc I/O.
-  if (args[0] === "__complete") {
-    return await runCompletion(args.slice(1)).catch(() => {
-      // Completions should never crash — silently return no results
-      process.exitCode = 0;
-    });
-  }
 
   // Walk up from CWD once to find project root AND .sentryclirc config.
   // Caches both so later findProjectRoot / loadSentryCliRc calls are hits.
@@ -781,7 +778,7 @@ export async function startCli(): Promise<void> {
     // Gracefully degrade: project context is optional.
   }
 
-  return await runCli(args).catch((err) => {
+  return await runCli(args, entry).catch((err) => {
     process.stderr.write(`Fatal: ${redactCredentialText(String(err))}\n`);
     process.exitCode = 1;
   });

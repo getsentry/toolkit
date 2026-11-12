@@ -12,6 +12,9 @@ export function isPublicSentryHost(host: string): boolean {
   return isSentryHost(host) && !host.endsWith(".my.sentry.io");
 }
 
+// The Explore page's `mode` URL parameter.
+export type ExploreMode = "aggregate" | "samples";
+
 export interface TraceMetricIdentifier {
   name: string;
   type: string;
@@ -56,9 +59,9 @@ function deriveSelectedFields(
     return fields;
   }
 
-  return Array.from(
-    new Set([...(groupByFields ?? []), ...(aggregateFunctions ?? [])]),
-  );
+  return [
+    ...new Set([...(groupByFields ?? []), ...(aggregateFunctions ?? [])]),
+  ];
 }
 
 function getSentryWebBaseUrl(
@@ -106,8 +109,8 @@ function extractTraceMetricFromAggregate(
   }
 
   return normalizeTraceMetric({
-    name: args[1]!,
-    type: args[2]!,
+    name: args[1],
+    type: args[2],
     unit: args[3],
   });
 }
@@ -153,7 +156,7 @@ function dedupeTraceMetrics(
 function buildMetricQueryState(params: {
   metric: TraceMetricIdentifier;
   query: string;
-  mode: "aggregate" | "samples";
+  mode: ExploreMode;
   yAxes: string[];
   groupByFields?: string[];
   aggregateSortBys?: Array<{ field: string; kind: "asc" | "desc" }>;
@@ -588,6 +591,21 @@ export function getTraceUrl(
   );
 }
 
+export function getLogUrl(
+  host: string,
+  organizationSlug: string,
+  logId: string,
+  protocol: SentryProtocol = "https",
+): string {
+  const urlParams = new URLSearchParams({ project: "-1", logsPinned: logId });
+  return getSentryWebBaseUrl(
+    host,
+    organizationSlug,
+    `/explore/logs/?${urlParams.toString()}`,
+    protocol,
+  );
+}
+
 /**
  * Generates a Sentry replay URL.
  * @param host The Sentry host (may include regional subdomain for API access)
@@ -656,7 +674,7 @@ export function extractConversationIdFromSearchQuery(
     return undefined;
   }
 
-  const conversationId = matches[0][1] ?? matches[0][2];
+  const conversationId = matches[0].at(1) ?? matches[0][2];
   if (conversationId.startsWith("[")) {
     return undefined;
   }

@@ -1,31 +1,47 @@
 /**
- * Sentry Explore/Discover API — aggregate event queries.
+ * Sentry Explore/Discover API — tabular and time-series event queries.
  *
- * Wraps `GET /organizations/{org}/events/` with user-specified fields, dataset,
- * query, sort, and time range. This is the same endpoint used by the Sentry
- * Explore UI for arbitrary event queries with aggregation support.
+ * Wraps the `events/` and `events-timeseries/` endpoints used by the Sentry
+ * Explore UI, with user-specified aggregates, datasets, filters, and time ranges.
  */
+
+import {
+  listOrganizationEvents,
+  listOrganizationEventsTimeseries,
+  type OrganizationEventsTimeseriesResponse,
+} from "@sentry/api";
 
 import type { EventsTableResponse } from "../../types/dashboard.js";
 import { EventsTableResponseSchema } from "../../types/dashboard.js";
+import type { EventsDataset } from "../datasets.js";
 import { stringifyUnknown } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import {
   API_MAX_PER_PAGE,
-  apiRequestToRegion,
+  getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
-  parseLinkHeader,
+  paginate,
+  unwrapPaginatedResult,
+  unwrapResult,
+  validateResponse,
 } from "./infrastructure.js";
 
 /** Options for querying the Explore/Events endpoint. */
 export type ExploreQueryOptions = {
   /** Fields to request — columns, aggregates, or equations */
   fields: string[];
-  /** Dataset to query: errors, spans, tracemetrics, logs, replays */
-  dataset?: string;
+  /** Dataset to query. Defaults to `errors`. */
+  dataset?: EventsDataset;
   /** Sentry search query filter */
   query?: string;
+  /**
+   * Numeric project ID, sent as the `project` param. `project:<slug>` in
+   * `query` only matches projects the requester is a member of, so a valid
+   * slug can 400 with "not actively selected" (#1317).
+   */
+  projectId?: number;
   /**
    * Sort field. Prefix with `-` for descending.
    * Every Events dataset accepts it as long as the sort column is in
@@ -46,6 +62,69 @@ export type ExploreQueryOptions = {
   end?: string;
 };
 
+/** Options for an ungrouped time series, with environment filters in `query`. */
+export type ExploreTimeSeriesQueryOptions = Pick<
+  ExploreQueryOptions,
+  "fields" | "dataset" | "query" | "projectId" | "statsPeriod" | "start" | "end"
+> & {
+  /** Bucket width as a duration, such as `5m`. Must be valid for the requested range. */
+  interval: string;
+};
+
+type SdkTimeSeries = OrganizationEventsTimeseriesResponse["timeSeries"][number];
+
+/**
+ * The SDK response with the backend's string-valued aggregates preserved.
+ * `max(timestamp)` returns an ISO date and `latest_event()` an event ID;
+ * neither is represented by the SDK's numeric bucket type.
+ */
+export type EventsTimeSeriesResponse = Omit<
+  OrganizationEventsTimeseriesResponse,
+  "timeSeries"
+> & {
+  /** One series per aggregate, including bucket accuracy and completeness metadata. */
+  timeSeries: (Omit<SdkTimeSeries, "values"> & {
+    /** Buckets retain API timestamps in milliseconds and null values for missing data. */
+    values: (Omit<SdkTimeSeries["values"][number], "value"> & {
+      /** Aggregate result, without coercion of strings or missing values. */
+      value: number | string | null;
+    })[];
+  })[];
+};
+
+/**
+ * Query aggregate values over time without grouping or pagination.
+ *
+ * Returns the complete API response, including sampling and ingestion metadata.
+ */
+export async function queryEventsTimeSeries(
+  orgSlug: string,
+  options: ExploreTimeSeriesQueryOptions,
+): Promise<EventsTimeSeriesResponse> {
+  const result = await listOrganizationEventsTimeseries({
+    ...getOrgSdkConfig(),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      dataset: options.dataset ?? "errors",
+      yAxis: options.fields,
+      query: options.query || undefined,
+      project:
+        options.projectId === undefined ? undefined : [options.projectId],
+      interval: options.interval,
+      statsPeriod:
+        options.start || options.end
+          ? undefined
+          : (options.statsPeriod ?? "24h"),
+      start: options.start,
+      end: options.end,
+    },
+  });
+  return unwrapResult<EventsTimeSeriesResponse>(
+    result,
+    "Failed to query events time series",
+  );
+}
+
 /**
  * Fetch a single page of events from the Explore/Events endpoint.
  *
@@ -64,30 +143,34 @@ async function fetchEventsPage(
   options: ExploreQueryOptions,
   perPage: number,
 ): Promise<PaginatedResponse<EventsTableResponse>> {
-  const { data, headers } = await apiRequestToRegion<EventsTableResponse>(
-    regionUrl,
-    `/organizations/${orgSlug}/events/`,
-    {
-      params: {
-        dataset: options.dataset ?? "errors",
-        field: options.fields,
-        query: options.query || undefined,
-        sort: options.sort || undefined,
-        per_page: perPage,
-        statsPeriod:
-          options.start || options.end
-            ? undefined
-            : (options.statsPeriod ?? "24h"),
-        start: options.start,
-        end: options.end,
-        cursor: options.cursor,
-      },
-      schema: EventsTableResponseSchema,
+  const result = await listOrganizationEvents({
+    ...getSdkClientConfig(regionUrl),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      dataset: options.dataset ?? "errors",
+      field: options.fields,
+      query: options.query || undefined,
+      project:
+        options.projectId === undefined ? undefined : [options.projectId],
+      sort: options.sort || undefined,
+      per_page: perPage,
+      statsPeriod:
+        options.start || options.end
+          ? undefined
+          : (options.statsPeriod ?? "24h"),
+      start: options.start,
+      end: options.end,
+      cursor: options.cursor,
     },
+  });
+  const page = unwrapPaginatedResult<unknown>(result, "Failed to query events");
+  const data: EventsTableResponse = validateResponse(
+    EventsTableResponseSchema,
+    page.data,
+    `/organizations/${orgSlug}/events/`,
+    page.response?.status ?? 0,
   );
-
-  const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
-  return { data, nextCursor };
+  return { data, nextCursor: page.nextCursor };
 }
 
 /** Metric metadata returned by {@link queryMetricsMeta}. */
@@ -113,15 +196,21 @@ export async function queryMetricsMeta(
     start?: string;
     end?: string;
     project?: string;
+    /** Numeric ID for `project`; when set, replaces the `project:<slug>` filter. */
+    projectId?: number;
   },
 ): Promise<MetricMeta[]> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  const query = options?.project ? `project:${options.project}` : undefined;
+  const query =
+    options?.project && options.projectId === undefined
+      ? `project:${options.project}`
+      : undefined;
 
   const baseOptions: ExploreQueryOptions = {
     fields: ["metric.name", "metric.type", "metric.unit"],
     dataset: "tracemetrics",
     query,
+    projectId: options?.projectId,
     statsPeriod:
       options?.start || options?.end
         ? undefined
@@ -163,9 +252,8 @@ export async function queryMetricsMeta(
  * query, sort, and time range. Supports all standard Sentry Explore fields
  * including aggregates like `count()`, `count_unique(user)`, `p50(span.duration)`.
  *
- * When `limit` exceeds {@link API_MAX_PER_PAGE}, transparently fetches multiple
- * pages using cursor-based pagination (bounded by {@link MAX_PAGINATION_PAGES}).
- * Meta is taken from the first page — it is identical across pages.
+ * Limits above one page are fetched with {@link paginate}. Meta is taken from
+ * the first page — it is identical across pages.
  *
  * @param orgSlug - Organization slug
  * @param options - Query options
@@ -176,52 +264,21 @@ export async function queryEvents(
   options: ExploreQueryOptions,
 ): Promise<PaginatedResponse<EventsTableResponse>> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  const limit = options.limit ?? 25;
-  const perPage = Math.min(limit, API_MAX_PER_PAGE);
-
-  // Fast path: single-page fetch when limit fits in one API page
-  if (limit <= API_MAX_PER_PAGE) {
-    return await fetchEventsPage(regionUrl, orgSlug, options, perPage);
-  }
-
-  // Multi-page: accumulate rows across pages up to the requested limit
-  const allRows: Record<string, unknown>[] = [];
-  let meta: EventsTableResponse["meta"] | undefined;
-  let cursor: string | undefined = options.cursor;
-
-  for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
-    const result = await fetchEventsPage(
-      regionUrl,
-      orgSlug,
-      { ...options, cursor },
-      perPage,
-    );
-
-    if (page === 0) {
-      meta = result.data.meta;
-    }
-
-    allRows.push(...result.data.data);
-
-    // Stop when we've reached the requested limit or there are no more pages
-    if (allRows.length >= limit || !result.nextCursor) {
-      // Overshot — trim and drop nextCursor (cursor would skip items)
-      if (allRows.length > limit) {
-        return {
-          data: { data: allRows.slice(0, limit), meta },
-        };
-      }
-      return {
-        data: { data: allRows, meta },
-        nextCursor: result.nextCursor,
-      };
-    }
-
-    cursor = result.nextCursor;
-  }
-
-  // Safety limit reached — return what we have, no nextCursor
-  return {
-    data: { data: allRows.slice(0, limit), meta },
-  };
+  let meta: EventsTableResponse["meta"];
+  const { data, nextCursor } = await paginate(
+    options,
+    async (perPage, cursor) => {
+      const page = await fetchEventsPage(
+        regionUrl,
+        orgSlug,
+        { ...options, cursor },
+        perPage,
+      );
+      // Meta is identical across pages; keep the first page's.
+      meta ??= page.data.meta;
+      return { data: page.data.data, nextCursor: page.nextCursor };
+    },
+    25,
+  );
+  return { data: { data, meta }, nextCursor };
 }

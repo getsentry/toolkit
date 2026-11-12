@@ -38,7 +38,7 @@ function createPreMigrationDatabase(db: Database): void {
     if (preMigrationTables.includes(tableName)) {
       statements.push(generatePreMigrationTableDDL(tableName));
     } else {
-      statements.push(EXPECTED_TABLES[tableName] as string);
+      statements.push(EXPECTED_TABLES[tableName]);
     }
   }
 
@@ -61,7 +61,7 @@ function createDatabaseWithMissingTables(
 
   for (const tableName of Object.keys(EXPECTED_TABLES)) {
     if (missingTables.includes(tableName)) continue;
-    statements.push(EXPECTED_TABLES[tableName] as string);
+    statements.push(EXPECTED_TABLES[tableName]);
   }
 
   db.exec(statements.join(";\n"));
@@ -88,7 +88,7 @@ function createContext() {
     },
     stderr: {
       write: vi.fn((_s: string) => {
-        /* consola routes here — not used for structured output */
+        /* the logger routes here — not used for structured output */
       }),
     },
     process: { exitCode: 0 },

@@ -15,6 +15,7 @@ import {
   isReadonlyError,
   repairSchema,
   runMigrations,
+  TABLE_SCHEMAS,
   tableExists,
 } from "../../../src/lib/db/schema.js";
 import { Database } from "../../../src/lib/db/sqlite.js";
@@ -31,7 +32,7 @@ function createDatabaseWithMissingTables(
   const statements: string[] = [];
   for (const tableName of Object.keys(EXPECTED_TABLES)) {
     if (missingTables.includes(tableName)) continue;
-    statements.push(EXPECTED_TABLES[tableName] as string);
+    statements.push(EXPECTED_TABLES[tableName]);
   }
   db.exec(statements.join(";\n"));
   db.query("INSERT INTO schema_version (version) VALUES (?)").run(
@@ -52,7 +53,7 @@ function createPreMigrationDatabase(
     if (preMigrationTables.includes(tableName)) {
       statements.push(generatePreMigrationTableDDL(tableName));
     } else {
-      statements.push(EXPECTED_TABLES[tableName] as string);
+      statements.push(EXPECTED_TABLES[tableName]);
     }
   }
   db.exec(statements.join(";\n"));
@@ -237,6 +238,30 @@ describe("EXPECTED_TABLES", () => {
     for (const table of expectedTableNames) {
       expect(EXPECTED_TABLES).toHaveProperty(table);
     }
+  });
+});
+
+describe("TABLE_SCHEMAS persistence", () => {
+  // Tables without `persistent: true` are caches that repair and downgrade
+  // may drop. Listing them here makes adding a table a deliberate choice.
+  test("only known cache tables are droppable", () => {
+    const cacheTables = Object.entries(TABLE_SCHEMAS)
+      .filter(([, schema]) => !schema.persistent)
+      .map(([name]) => name)
+      .sort();
+
+    expect(cacheTables).toEqual([
+      "completion_cache",
+      "dsn_cache",
+      "issue_org_cache",
+      "org_regions",
+      "pagination_cursors",
+      "project_aliases",
+      "project_cache",
+      "project_root_cache",
+      "repo_cache",
+      "telemetry_envelope_queue",
+    ]);
   });
 });
 

@@ -8,14 +8,13 @@
 
 import type { SentryContext } from "../../context.js";
 import { getCustomerTrialInfo } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgTarget } from "../../lib/completion-target.js";
-import { ContextError } from "../../lib/errors.js";
 import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../lib/formatters/table.js";
 import { withProgress } from "../../lib/polling.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
+import { type OrgTarget, orgTarget } from "../../lib/target-positional.js";
 import {
   daysRemainingFromDate,
   getDaysRemaining,
@@ -24,40 +23,19 @@ import {
   getTrialStatus,
   type TrialStatus,
 } from "../../lib/trials.js";
-import {
-  type CustomerTrialInfo,
-  ProductTrialSchema,
-  type Writer,
-} from "../../types/index.js";
+import type { CustomerTrialInfo, Writer } from "../../types/index.js";
+import { TrialListEntrySchema } from "../../generated/output-schemas/trial.js";
+import type { TrialListEntryOutput } from "../../output-schemas/trial.js";
 
 type ListFlags = {
   readonly json: boolean;
   readonly fields?: string[];
 };
 
-/**
- * Enriched trial entry for display.
- * Adds derived fields (name, displayName, status, daysRemaining) to the raw API data.
- */
-type TrialListEntry = {
-  /** CLI-friendly name (e.g., "seer") or "plan" for plan-level trials */
-  name: string;
+/** A trial for display: the JSON fields plus its human-only display name. */
+type TrialListEntry = TrialListEntryOutput & {
   /** Human-readable product name (e.g., "Seer") or plan upgrade name */
   displayName: string;
-  /** API category name (e.g., "seerUsers"), or "plan" for plan-level trials */
-  category: string;
-  /** Derived status */
-  status: TrialStatus;
-  /** Days remaining for active trials, null otherwise */
-  daysRemaining: number | null;
-  /** Raw isStarted flag from API */
-  isStarted: boolean;
-  /** Trial length in days, null if not set */
-  lengthDays: number | null;
-  /** ISO date string when trial started, null if not started */
-  startDate: string | null;
-  /** ISO date string when trial ends, null if not started */
-  endDate: string | null;
 };
 
 /** Status display labels with color indicators */
@@ -203,16 +181,23 @@ export const listCommand = buildCommand({
     fullDescription:
       "List product trials for an organization, including available,\n" +
       "active, and expired trials.\n\n" +
-      "Examples:\n" +
-      "  sentry trial list\n" +
-      "  sentry trial list my-org\n" +
-      "  sentry trial list --json\n\n" +
       "Alias: `sentry trials` → `sentry trial list`",
+    examples: [
+      {
+        description: "List all trials for the current organization",
+        run: "trial list",
+      },
+      {
+        description: "List trials for a specific organization",
+        run: "trial list my-org",
+      },
+      { description: "Output as JSON", run: "trial list --json" },
+    ],
   },
   output: {
     human: formatTrialListHuman,
     jsonExclude: ["displayName"],
-    schema: ProductTrialSchema,
+    schema: TrialListEntrySchema,
   },
   parameters: {
     positional: {
@@ -221,21 +206,14 @@ export const listCommand = buildCommand({
         {
           placeholder: "org",
           brief: "Organization slug (auto-detected if omitted)",
-          parse: parseOrgTarget,
+          parse: orgTarget,
           optional: true as const,
         },
       ],
     },
   },
-  async *func(this: SentryContext, flags: ListFlags, org?: string) {
-    const resolved = await resolveOrg({
-      org,
-      cwd: this.cwd,
-    });
-
-    if (!resolved) {
-      throw new ContextError("Organization", "sentry trial list <org>");
-    }
+  async *func(this: SentryContext, flags: ListFlags, target: OrgTarget) {
+    const resolved = await target.resolved;
 
     const info = await withProgress(
       { message: "Fetching trials...", json: flags.json },
@@ -268,11 +246,11 @@ export const listCommand = buildCommand({
       (e) => e.status === "available" && e.category !== "plan",
     );
     if (hasAvailableProduct) {
-      hints.push("Tip: Use 'sentry trial start <name>' to start a trial");
+      hints.push(`Tip: Use '${sentry`trial start <name>`}' to start a trial`);
     }
     if (planEntry?.status === "available") {
       hints.push(
-        "Tip: Use 'sentry trial start plan' to start a Business plan trial",
+        `Tip: Use '${sentry`trial start plan`}' to start a Business plan trial`,
       );
     }
 

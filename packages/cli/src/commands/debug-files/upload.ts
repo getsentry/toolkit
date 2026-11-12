@@ -35,7 +35,7 @@ import {
   type DebugFileUploadResult,
   uploadDebugFiles,
 } from "../../lib/api/debug-files.js";
-import { buildCommand } from "../../lib/command.js";
+import { buildCommand, numberParser } from "../../lib/command.js";
 import {
   createIl2cppLineMapping,
   createSourceBundle,
@@ -46,7 +46,13 @@ import {
   type PreparedDif,
   prepareDifs,
   scanPaths,
+  VALID_DIF_TYPES,
 } from "../../lib/dif/scan.js";
+import {
+  choiceParser,
+  parseFilePath,
+  parseText,
+} from "../../lib/completion-target.js";
 import { ContextError } from "../../lib/errors.js";
 import {
   colorTag,
@@ -56,12 +62,13 @@ import {
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
+import { sentry } from "../../lib/app-identity.js";
 import { readSourceFile } from "./read-file.js";
 import { resolveWaitMode, type WaitFlags } from "./wait.js";
 
 const log = logger.withTag("debug-files.upload");
 
-const USAGE_HINT = "sentry debug-files upload <path>...";
+const usageHint = () => sentry`debug-files upload <path>...`;
 
 /** Relative path to Xcode's DerivedData folder under the user's home dir. */
 const DERIVED_DATA_SUBPATH = "Library/Developer/Xcode/DerivedData";
@@ -233,6 +240,8 @@ function buildDifList(
     difs.push({
       name: basename(file.path),
       debugId: file.debugId,
+      ...(file.codeId ? { codeId: file.codeId } : {}),
+      ...(file.shaderGroup ? { shaderGroup: file.shaderGroup } : {}),
       content: file.content,
     });
 
@@ -320,7 +329,7 @@ function* doDryRun(
   },
 ) {
   const { difs, missingIds, requireAll, oversizedCount } = params;
-  yield new CommandOutput<DebugFilesUploadResult>({
+  yield new CommandOutput({
     uploaded: false,
     files: difs.map((d) => ({ name: d.name, debugId: d.debugId })),
     filesUploaded: 0,
@@ -342,7 +351,7 @@ function* doDryRun(
     hint:
       oversizedCount > 0
         ? `${oversizedCount} file(s) would be skipped for exceeding the maximum file size.`
-        : `No debug information files found. Try: ${USAGE_HINT}`,
+        : `No debug information files found. Try: ${usageHint()}`,
   };
 }
 
@@ -360,7 +369,7 @@ function* doNothingToUpload(
   },
 ) {
   const { missingIds, requireAll, oversizedCount, maxFileSize } = params;
-  yield new CommandOutput<DebugFilesUploadResult>({
+  yield new CommandOutput({
     uploaded: false,
     files: [],
     filesUploaded: 0,
@@ -381,7 +390,9 @@ function* doNothingToUpload(
     };
   }
   log.warn("No debug information files found.");
-  return { hint: `No debug information files found. Try: ${USAGE_HINT}` };
+  return {
+    hint: `No debug information files found. Try: ${usageHint()}`,
+  };
 }
 
 /**
@@ -416,7 +427,7 @@ async function* doUpload(
     (r) => r.state === "error" || r.state === "not_found",
   );
 
-  yield new CommandOutput<DebugFilesUploadResult>({
+  yield new CommandOutput({
     org: params.org,
     project: params.project,
     uploaded: true,
@@ -485,13 +496,13 @@ export const uploadCommand = buildCommand({
     fullDescription:
       "Scan files and directories for native debug information files and " +
       "upload them to Sentry using the chunk-upload protocol. Supports " +
-      "Mach-O/dSYM, ELF, PE/PDB, Portable PDB, WebAssembly, Breakpad, and " +
-      "source bundles. Directories are scanned recursively.\n\n" +
+      "Mach-O/dSYM, ELF, PE/PDB, Portable PDB, WebAssembly, Breakpad, source " +
+      "bundles, and DXIL shader binaries. Directories are scanned recursively.\n\n" +
       "Org/project are auto-detected from DSN, env vars, or config defaults.\n\n" +
       "Filters:\n" +
       "  --type     Only upload files of the given type (repeatable):\n" +
       "             dsym, elf, pe, pdb, portablepdb, wasm, breakpad,\n" +
-      "             sourcebundle, jvm\n" +
+      "             sourcebundle, jvm, dxil\n" +
       "  --id       Only upload the object with the given debug id (repeatable)\n" +
       "  --no-debug / --no-unwind / --no-sources   Drop files whose only\n" +
       "             useful feature is the named one\n" +
@@ -505,17 +516,53 @@ export const uploadCommand = buildCommand({
       "from each file's referenced generated C++ sources and uploaded as " +
       "separate il2cpp debug files; combine with --include-sources to also " +
       "bundle the referenced C# source files.\n\n" +
-      "Usage:\n" +
-      "  sentry debug-files upload ./build\n" +
-      "  sentry debug-files upload ./symbols.zip\n" +
-      "  sentry debug-files upload ./libexample.so --include-sources\n" +
-      "  sentry debug-files upload ./dsyms --type dsym --wait\n" +
-      "  sentry debug-files upload ./build --il2cpp-mapping --include-sources\n" +
-      "  sentry debug-files upload --derived-data --no-upload\n" +
-      "  sentry debug-files upload ./build --no-zips --no-upload\n\n" +
       "BCSymbolMap resolution (legacy --symbol-maps) is not supported: it " +
       "only applies to Apple Bitcode, which Apple has deprecated. Use the " +
       "legacy Rust sentry-cli if you still need it.",
+    examples: [
+      {
+        description:
+          "Upload debug information files (scans directories recursively)",
+        run: "debug-files upload ./build",
+      },
+      {
+        description: "Attach a source bundle to each file",
+        run: "debug-files upload ./libexample.so --include-sources",
+      },
+      {
+        description: "Scan a .zip archive in place",
+        run: "debug-files upload ./symbols.zip",
+      },
+      {
+        description: "Skip .zip archives",
+        run: "debug-files upload ./build --no-zips",
+      },
+      {
+        description: "Upload only dSYMs and wait for server-side processing",
+        run: "debug-files upload ./dsyms --type dsym --wait",
+      },
+      {
+        description: "Fail unless the requested debug ID is found",
+        run: "debug-files upload ./build --id <debug-id> --require-all",
+      },
+      {
+        description: "Unity: upload IL2CPP line mappings",
+        run: "debug-files upload ./build --il2cpp-mapping",
+      },
+      {
+        description:
+          "Unity: upload IL2CPP line mappings with referenced C# sources",
+        run: "debug-files upload ./build --il2cpp-mapping --include-sources",
+      },
+      {
+        description: "Preview what would be uploaded (no credentials needed)",
+        run: "debug-files upload ./build --no-upload",
+      },
+      {
+        description: "Scan Xcode's DerivedData without uploading",
+        run: "debug-files upload --derived-data --no-upload",
+      },
+    ],
   },
   output: {
     human: formatUploadResult,
@@ -525,23 +572,23 @@ export const uploadCommand = buildCommand({
       kind: "array",
       parameter: {
         brief: "Files or directories to scan for debug information files",
-        parse: String,
+        parse: parseFilePath,
         placeholder: "path",
       },
     },
     flags: {
       type: {
         kind: "parsed",
-        parse: String,
+        parse: choiceParser(VALID_DIF_TYPES),
         brief:
           "Only upload files of this type (repeatable): dsym, elf, pe, pdb, " +
-          "portablepdb, wasm, breakpad, sourcebundle, jvm",
+          "portablepdb, wasm, breakpad, sourcebundle, jvm, dxil",
         optional: true,
         variadic: true,
       },
       id: {
         kind: "parsed",
-        parse: String,
+        parse: parseText,
         brief: "Only upload the object with this debug id (repeatable)",
         optional: true,
         variadic: true,
@@ -609,7 +656,7 @@ export const uploadCommand = buildCommand({
       },
       "wait-for": {
         kind: "parsed",
-        parse: Number,
+        parse: numberParser,
         brief: "Wait up to this many seconds for server-side processing",
         optional: true,
       },
@@ -621,7 +668,7 @@ export const uploadCommand = buildCommand({
   async *func(this: SentryContext, flags: UploadFlags, ...paths: string[]) {
     const scanTargets = collectScanPaths(paths, Boolean(flags["derived-data"]));
     if (scanTargets.length === 0) {
-      throw new ContextError("Debug file path(s)", USAGE_HINT, []);
+      throw new ContextError("Debug file path(s)", usageHint(), []);
     }
     const { wait, maxWaitMs } = resolveWaitMode(flags);
     const requireAll = Boolean(flags["require-all"]);
@@ -647,10 +694,10 @@ export const uploadCommand = buildCommand({
     if (!flags["no-upload"]) {
       resolved = await resolveOrgAndProject({
         cwd: this.cwd,
-        usageHint: USAGE_HINT,
+        usageHint: usageHint(),
       });
       if (!resolved) {
-        throw new ContextError("Organization and project", USAGE_HINT);
+        throw new ContextError("Organization and project", usageHint());
       }
       serverOptions = await getChunkUploadOptions(resolved.org);
       if (serverOptions.maxFileSize && serverOptions.maxFileSize > 0) {
@@ -694,7 +741,7 @@ export const uploadCommand = buildCommand({
     // `resolved` is guaranteed set here: the non-dry-run branch above resolved
     // it or threw.
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
 
     return yield* doUpload(setExitCode, {

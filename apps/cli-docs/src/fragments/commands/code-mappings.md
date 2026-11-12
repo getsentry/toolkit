@@ -1,22 +1,5 @@
 
 
-
-## Examples
-
-```bash
-# Upload code mappings from a JSON file
-sentry code-mappings upload mappings.json
-
-# Specify repository explicitly
-sentry code-mappings upload mappings.json --repo owner/repo
-
-# Specify repository and default branch
-sentry code-mappings upload mappings.json --repo owner/repo --default-branch develop
-
-# Output as JSON
-sentry code-mappings upload mappings.json --json
-```
-
 ## Input Format
 
 The JSON file must contain an array of objects with `stackRoot` and `sourceRoot`:

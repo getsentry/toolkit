@@ -10,6 +10,8 @@ you are working on:
   MCP-specific tests and specs.
 - [Docs MCP](../apps/docs-mcp/README.md) — the independent private documentation
   Worker, local development, and deployment ownership.
+- [Games API](../apps/games-api/README.md) — the public Worker behind the hidden
+  `sentry games leaderboard` command, and its deployment ownership.
 
 The published CLI site lives in `apps/cli-docs/` because CLI releases build
 and package it from that workspace. The contributor index here links to its
@@ -29,7 +31,9 @@ directories below; the MCP index explains which guides apply to that product.
 
 For package-specific rules, see the root [AGENTS.md](../AGENTS.md) and the
 [CLI AGENTS.md](../packages/cli/AGENTS.md). `packages/toolkit-core/` contains
-shared primitives used by both products.
+shared primitives used by both products. `packages/logger/` is the structured
+logger the CLI uses, published to npm as `@sentry/logger`; see its
+[README](../packages/logger/README.md).
 
 ## Ownership
 

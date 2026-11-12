@@ -41,11 +41,45 @@ claude plugin install sentry-mcp@sentry-mcp-experimental
 
 ### Stdio vs Remote
 
-While this repository is focused on acting as an MCP service, we also support a `stdio` transport. This is still a work in progress, but is the easiest way to adapt run the MCP against a self-hosted Sentry install.
+While this repository is focused on acting as an MCP service, we also support a `stdio` transport. It is the easiest way to run the MCP server against a self-hosted Sentry install.
 
 **Note:** The AI-powered search tools (`search_errors`, `search_traces`, `search_logs`, `search_issues`, etc.) require an LLM provider (OpenAI, Azure OpenAI, Anthropic, or OpenRouter). These tools use natural language processing to translate queries into Sentry's query syntax. Without a configured provider, these specific tools will be unavailable, but all other tools will function normally.
 
-To utilize the `stdio` transport, you'll need to create an User Auth Token in Sentry with the necessary scopes. As of writing this is:
+#### Sentry CLI (recommended)
+
+Run the stdio server with the [Sentry CLI](https://cli.sentry.dev)'s `sentry mcp` command. It uses your CLI login, so the MCP config needs no token:
+
+```shell
+curl https://cli.sentry.dev/install -fsS | bash
+sentry auth login
+claude mcp add sentry -- sentry mcp
+```
+
+The CLI also installs with `brew install getsentry/tools/sentry`,
+`npm install -g sentry`, or `irm https://cli.sentry.dev/install.ps1 | iex` on
+Windows. See the [CLI installation guide](https://cli.sentry.dev/getting-started/).
+
+Other clients take the same command:
+
+```json
+{
+  "mcpServers": {
+    "sentry": {
+      "command": "sentry",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Pass `<org>/` or `<org>/<project>` to limit every call to one organization or
+project (`sentry mcp acme/`, `sentry mcp acme/web`), and `--experimental` for
+forward-looking tool variants. Run `sentry mcp --help` for every flag and
+environment variable, or see the [`sentry mcp` docs](https://cli.sentry.dev/commands/mcp/).
+`SENTRY_AUTH_TOKEN`, when set, wins over the stored login. See
+[docs/operations/stdio-auth.md](docs/operations/stdio-auth.md).
+
+To use a token, create a User Auth Token in Sentry with the necessary scopes. As of writing this is:
 
 ```
 org:read
@@ -56,37 +90,51 @@ team:write
 event:write
 ```
 
-Launch the transport:
-
-```shell
-npx @sentry/mcp-server@latest --access-token=sentry-user-token
-```
-
-Need to connect to a self-hosted deployment? Add <code>--host</code> (hostname
-only, e.g. <code>--host=sentry.example.com</code>) when you run the command.
-For isolated internal deployments that only expose plain HTTP, also add
-<code>--insecure-http</code>.
+Need to connect to a self-hosted deployment? Log in to it with
+`sentry auth login --url https://sentry.example.com`, then set
+<code>SENTRY_HOST</code> (e.g. <code>SENTRY_HOST=sentry.example.com</code>)
+in the MCP server's environment, which also scopes
+<code>SENTRY_AUTH_TOKEN</code> to that server. For isolated internal
+deployments that only expose plain HTTP, use an <code>http://</code>
+<code>SENTRY_URL</code> instead. See the
+[CLI self-hosted guide](https://cli.sentry.dev/self-hosted/).
 
 Seer is not part of self-hosted Sentry, so the `seer` skill is left out of the
-default skill set whenever `--host` points at a non-`sentry.io` host. If your
+default skill set whenever the host is not `sentry.io`. If your
 self-hosted deployment does run Seer, opt back in explicitly:
 
 ```shell
-npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.example.com --skills=inspect,seer
+SENTRY_HOST=sentry.example.com sentry mcp --skills=inspect,seer
 ```
 
 You can also disable any other skill to prevent unsupported tools from being
 exposed:
 
 ```shell
-npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.example.com --disable-skills=project-management
+SENTRY_HOST=sentry.example.com sentry mcp --disable-skills=project-management
 ```
 
 For self-hosted instances without TLS:
 
 ```shell
-npx @sentry/mcp-server@latest --access-token=TOKEN --host=sentry.internal:9000 --insecure-http
+SENTRY_URL=http://sentry.internal:9000 sentry mcp
 ```
+
+#### Legacy: npx @sentry/mcp-server
+
+[`@sentry/mcp-server`](https://www.npmjs.com/package/@sentry/mcp-server) still
+ships the same server, bundled without the rest of the CLI, for clients that
+launch it through npx. It shares the CLI's login and takes the same flags and
+environment variables:
+
+```shell
+npx @sentry/mcp-server@latest auth login   # once, to sign in
+npx @sentry/mcp-server@latest              # uses that login
+SENTRY_AUTH_TOKEN=sentry-user-token npx @sentry/mcp-server@latest
+```
+
+`--access-token` / `SENTRY_ACCESS_TOKEN` from older releases still work but are
+deprecated: they act as `SENTRY_AUTH_TOKEN` and print a warning on stderr.
 
 #### Remote with an Explicit Sentry Token
 
@@ -118,7 +166,7 @@ tools with `?skills=inspect,triage` or `?disable-skills=seer`.
 #### Environment Variables
 
 ```shell
-SENTRY_ACCESS_TOKEN=         # Required: Your Sentry auth token
+SENTRY_AUTH_TOKEN=           # Optional after `auth login`; wins over a stored login
 
 # LLM Provider Configuration (required for AI-powered search tools)
 EMBEDDED_AGENT_PROVIDER=     # Required when multiple provider keys are set: 'openai', 'azure-openai', 'anthropic', or 'openrouter'
@@ -142,10 +190,9 @@ MCP_DISABLE_SKILLS=          # Disable specific skills (comma-separated, e.g. 'p
 {
   "mcpServers": {
     "sentry": {
-      "command": "npx",
-      "args": ["@sentry/mcp-server"],
+      "command": "sentry",
+      "args": ["mcp"],
       "env": {
-        "SENTRY_ACCESS_TOKEN": "your-token",
         "EMBEDDED_AGENT_PROVIDER": "openai",
         "OPENAI_API_KEY": "sk-..."
       }
@@ -165,10 +212,9 @@ self-hosted deployment that does run Seer, opt in with `MCP_SKILLS`:
 {
   "mcpServers": {
     "sentry": {
-      "command": "npx",
-      "args": ["@sentry/mcp-server"],
+      "command": "sentry",
+      "args": ["mcp"],
       "env": {
-        "SENTRY_ACCESS_TOKEN": "your-token",
         "SENTRY_HOST": "sentry.example.com",
         "MCP_SKILLS": "inspect,seer"
       }
@@ -176,6 +222,15 @@ self-hosted deployment that does run Seer, opt in with `MCP_SKILLS`:
   }
 }
 ```
+
+### Rate Limits
+
+Tool calls are subject to the Sentry API's rate limits. The MCP server retries
+rate-limited requests, and transient Sentry server errors on read requests,
+after a short wait. When a limit lasts longer, the tool returns a **Rate
+Limited** message that says when to try again. Agents hit the per-second
+limits most often by running many Sentry tool calls in parallel, so run them
+one at a time if you see this message.
 
 ### MCP Inspector
 

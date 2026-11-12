@@ -11,11 +11,12 @@ import {
   buildMetricAlertsUrl as buildMetricAlertsUrlPure,
   buildOrgSettingsUrl as buildOrgSettingsUrlPure,
   buildOrgUrl as buildOrgUrlPure,
-  buildProjectIssuesUrl as buildProjectIssuesUrlPure,
   buildProjectUrl as buildProjectUrlPure,
   buildReleaseUrl as buildReleaseUrlPure,
   buildReplayUrl as buildReplayUrlPure,
+  buildRepositorySettingsUrl as buildRepositorySettingsUrlPure,
   buildSeerSettingsUrl as buildSeerSettingsUrlPure,
+  buildSourceCodeIntegrationsUrl as buildSourceCodeIntegrationsUrlPure,
   buildTraceUrl as buildTraceUrlPure,
   getOrgBaseUrl as getOrgBaseUrlPure,
   getSentryBaseUrl as getSentryBaseUrlPure,
@@ -55,19 +56,20 @@ export function buildEventSearchUrl(orgSlug: string, eventId: string): string {
   return render(() => buildEventSearchUrlPure(orgSlug, eventId));
 }
 
-export function buildProjectIssuesUrl(
-  orgSlug: string,
-  projectId?: string,
-): string {
-  return render(() => buildProjectIssuesUrlPure(orgSlug, projectId));
-}
-
 export function buildOrgSettingsUrl(orgSlug: string, hash?: string): string {
   return render(() => buildOrgSettingsUrlPure(orgSlug, hash));
 }
 
 export function buildSeerSettingsUrl(orgSlug: string): string {
   return render(() => buildSeerSettingsUrlPure(orgSlug));
+}
+
+export function buildRepositorySettingsUrl(orgSlug: string): string {
+  return render(() => buildRepositorySettingsUrlPure(orgSlug));
+}
+
+export function buildSourceCodeIntegrationsUrl(orgSlug: string): string {
+  return render(() => buildSourceCodeIntegrationsUrlPure(orgSlug));
 }
 
 export function buildBillingUrl(orgSlug: string, product?: string): string {

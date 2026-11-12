@@ -13,7 +13,8 @@
  */
 
 import { ValidationError } from "../errors.js";
-import { CURSOR_KEYWORDS } from "../list-command.js";
+import { CURSOR_KEYWORDS } from "../arg-parsing.js";
+import { isPersistenceDisabled } from "../env.js";
 import type { ResolvedTarget } from "../resolve-target.js";
 import { getApiBaseUrl } from "../sentry-client.js";
 import { getDatabase } from "./index.js";
@@ -39,14 +40,14 @@ type PaginationCursorRow = {
  * Pagination state for a (command, context) pair.
  *
  * The `stack` array contains one entry per visited page:
- * - `stack[0]` = `""` (first page, no cursor)
+ * - `stack[0]` = `""` (first page) or an explicit cursor that began the walk
  * - `stack[1]` = cursor for page 2
  * - `stack[N]` = cursor for page N+1
  *
  * `index` is the page the user is currently viewing (0-based).
  */
 export type PaginationState = {
-  /** Array of page-start cursors. Index 0 is always `""` (first page). */
+  /** Page-start cursors; index 0 is the first visited page, normally `""`. */
   stack: string[];
   /** Index of the currently viewed page (0-based). */
   index: number;
@@ -182,12 +183,20 @@ export function resolveCursor(
     return { cursor: cursorFlag, direction: "next" };
   }
 
-  const state = getPaginationState(commandKey, contextKey);
-
   // "first" — jump to the beginning regardless of state
   if (cursorFlag === "first") {
     return { cursor: undefined, direction: "first" };
   }
+
+  // "next" and "prev" read the stored cursor stack, which isn't written
+  if (isPersistenceDisabled()) {
+    throw new ValidationError(
+      `--cursor ${cursorFlag} needs saved pagination state, which SDK calls only keep with persist: true. Pass the nextCursor from the previous result instead.`,
+      "cursor",
+    );
+  }
+
+  const state = getPaginationState(commandKey, contextKey);
 
   // "next" / "last" — advance one page
   if (cursorFlag === "next" || cursorFlag === "last") {
@@ -239,18 +248,22 @@ export function resolveCursor(
  * @param contextKey - Serialized query context
  * @param direction - Which direction the user navigated
  * @param nextCursor - Cursor for the page after the one just displayed (undefined if last page)
+ * @param currentCursor - Exact cursor used for this page, including any bookmark;
+ *   `""` means the first page. Omit to retain the existing stack entry.
  */
 export function advancePaginationState(
   commandKey: string,
   contextKey: string,
   direction: CursorDirection,
   nextCursor: string | undefined,
+  currentCursor?: string,
 ): void {
   const state = getPaginationState(commandKey, contextKey);
 
   if (!state) {
     // First page ever — initialise the stack
-    const stack = nextCursor ? ["", nextCursor] : [""];
+    const first = currentCursor ?? "";
+    const stack = nextCursor ? [first, nextCursor] : [first];
     savePaginationState(commandKey, contextKey, { stack, index: 0 });
     return;
   }
@@ -260,6 +273,9 @@ export function advancePaginationState(
       const newIndex = state.index + 1;
       // Truncate anything beyond the new position (back-then-forward scenario)
       const stack = state.stack.slice(0, newIndex + 1);
+      if (currentCursor !== undefined) {
+        stack[newIndex] = currentCursor;
+      }
       if (nextCursor) {
         stack[newIndex + 1] = nextCursor;
       }
@@ -274,6 +290,9 @@ export function advancePaginationState(
       const newIndex = Math.max(0, state.index - 1);
       // Refresh the "next" entry from this position in case data shifted
       const stack = [...state.stack];
+      if (currentCursor !== undefined) {
+        stack[newIndex] = currentCursor;
+      }
       if (nextCursor) {
         stack[newIndex + 1] = nextCursor;
       }
@@ -286,7 +305,8 @@ export function advancePaginationState(
     }
 
     case "first": {
-      const stack = nextCursor ? ["", nextCursor] : [""];
+      const first = currentCursor ?? "";
+      const stack = nextCursor ? [first, nextCursor] : [first];
       savePaginationState(commandKey, contextKey, { stack, index: 0 });
       break;
     }
@@ -498,7 +518,7 @@ export function buildMultiTargetContextKey(
     ? escapeContextKeyValue(filters.query)
     : undefined;
   return (
-    `${base}` +
+    base +
     (escapedSort ? `|sort:${escapedSort}` : "") +
     `|period:${escapedPeriod}` +
     (escapedQuery ? `|q:${escapedQuery}` : "") +

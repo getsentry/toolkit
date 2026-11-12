@@ -14,6 +14,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { buildCommand } from "../../lib/command.js";
+import { choiceParser } from "../../lib/completion-target.js";
 import { getCompletionScript } from "../../lib/completions.js";
 import { ValidationError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -26,10 +27,26 @@ export const completionCommand = buildCommand({
     fullDescription:
       "Print the shell completion script for the given shell to stdout.\n\n" +
       "Supported shells: bash, zsh, fish.\n" +
-      "When no shell is given, it is detected from the $SHELL environment variable.\n\n" +
-      "Examples:\n" +
-      "  sentry cli completion zsh > ~/.local/share/zsh/site-functions/_sentry\n" +
-      '  eval "$(sentry cli completion bash)"',
+      "When no shell is given, it is detected from the $SHELL environment variable.",
+    examples: [
+      {
+        description:
+          "Print completions for your current shell (auto-detected from $SHELL)",
+        run: "cli completion",
+      },
+      {
+        description: "Install zsh completions",
+        run: "cli completion zsh > ~/.local/share/zsh/site-functions/_sentry",
+      },
+      {
+        description: "Load bash completions into the current shell",
+        run: { prefix: 'eval "$(', args: "cli completion bash", suffix: ')"' },
+      },
+      {
+        description: "Install fish completions",
+        run: "cli completion fish > ~/.config/fish/completions/sentry.fish",
+      },
+    ],
   },
   output: {
     human: (script: string) => script,
@@ -42,7 +59,7 @@ export const completionCommand = buildCommand({
         {
           placeholder: "shell",
           brief: "Shell to generate completions for (bash, zsh, or fish)",
-          parse: String,
+          parse: choiceParser(["bash", "zsh", "fish"]),
           optional: true,
         },
       ],
@@ -66,6 +83,6 @@ export const completionCommand = buildCommand({
       );
     }
 
-    yield new CommandOutput<string>(script);
+    yield new CommandOutput(script);
   },
 });

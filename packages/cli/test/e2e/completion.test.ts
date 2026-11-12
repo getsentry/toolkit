@@ -2,7 +2,7 @@
  * Completion Latency E2E Tests
  *
  * Spawns the actual CLI binary with `__complete` args and measures
- * wall-clock latency. The completion fast-path skips @sentry/node-core,
+ * wall-clock latency. The completion fast-path skips @sentry/node,
  * Stricli, and middleware — these tests catch regressions that would
  * re-introduce heavy imports into the completion path.
  *

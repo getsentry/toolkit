@@ -4,15 +4,12 @@
  * List revision history for a Sentry dashboard with cursor-based pagination.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
-import { MAX_PAGINATION_PAGES } from "../../lib/api/infrastructure.js";
-import {
-  API_MAX_PER_PAGE,
-  listDashboardRevisionsPaginated,
-} from "../../lib/api-client.js";
-import { parseOrgProjectArg } from "../../lib/arg-parsing.js";
+import { paginate } from "../../lib/api/infrastructure.js";
+import { listDashboardRevisionsPaginated } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
-import { parseOrgProjectTarget } from "../../lib/completion-target.js";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -20,7 +17,7 @@ import {
   resolveCursor,
 } from "../../lib/db/pagination.js";
 import { filterFields } from "../../lib/formatters/json.js";
-import { colorTag, escapeMarkdownCell } from "../../lib/formatters/markdown.js";
+import { colorTag } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../lib/formatters/table.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
@@ -29,16 +26,14 @@ import {
   LIST_CURSOR_FLAG,
   paginationHint,
 } from "../../lib/list-command.js";
+import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { DashboardRevision } from "../../types/dashboard.js";
 import type { Writer } from "../../types/index.js";
-import {
-  withDashboardErrors,
-  parseDashboardPositionalArgs,
-  resolveDashboardId,
-  resolveOrgFromTarget,
-} from "./resolve.js";
+import { type DashboardArguments, dashboardArguments } from "./arguments.js";
+import { withDashboardErrors } from "./resolve.js";
+import { DashboardRevisionSchema } from "../../generated/output-schemas/dashboard.js";
 
 const PAGINATION_KEY = "dashboard-revisions";
 
@@ -72,11 +67,11 @@ function formatRevisionsHuman(result: RevisionsResult): string {
 
   const rows: RevisionRow[] = result.revisions.map((r) => ({
     id: r.id,
-    title: escapeMarkdownCell(r.title),
-    author: escapeMarkdownCell(
+    title: tableCell(r.title),
+    author: tableCell(
       r.createdBy?.name ?? r.createdBy?.email ?? r.createdBy?.id ?? "—",
     ),
-    created: `${escapeMarkdownCell(formatRelativeTime(r.dateCreated))}\n${colorTag("muted", r.dateCreated)}`,
+    created: `${tableCell(formatRelativeTime(r.dateCreated))}\n${colorTag("muted", r.dateCreated)}`,
   }));
 
   const columns: Column<RevisionRow>[] = [
@@ -96,13 +91,13 @@ function formatRevisionsHuman(result: RevisionsResult): string {
 function jsonTransformRevisions(
   result: RevisionsResult,
   fields?: string[],
-): unknown {
+): ListEnvelope<DashboardRevision> {
   const items =
     fields && fields.length > 0
       ? result.revisions.map((r) => filterFields(r, fields))
       : result.revisions;
 
-  const envelope: Record<string, unknown> = {
+  const envelope: ListEnvelope<DashboardRevision> = {
     data: items,
     hasMore: result.hasMore,
     hasPrev: !!result.hasPrev,
@@ -119,44 +114,52 @@ export const revisionsCommand = buildCommand({
     fullDescription:
       "List revision history for a Sentry dashboard.\n\n" +
       "Shows saved revisions with their IDs, titles, authors, and timestamps.\n" +
-      "Use `sentry dashboard restore` to revert to a previous revision.\n\n" +
-      "Examples:\n" +
-      "  sentry dashboard revisions 12345\n" +
-      "  sentry dashboard revisions 'My Dashboard'\n" +
-      "  sentry dashboard revisions my-org 12345\n" +
-      "  sentry dashboard revisions my-org 12345 --json\n" +
-      "  sentry dashboard revisions my-org 12345 -c next",
+      "Use `sentry dashboard restore` to revert to a previous revision.",
+    examples: [
+      {
+        description: "List revisions by dashboard title",
+        run: "dashboard revisions 'Frontend Performance'",
+      },
+      {
+        description: "List revisions by dashboard ID",
+        run: "dashboard revisions 12345",
+      },
+      {
+        description: "Pass the organization explicitly",
+        run: "dashboard revisions my-org/ 12345",
+      },
+      {
+        description: "Fetch the next page",
+        run: "dashboard revisions my-org/ 12345 -c next",
+      },
+      {
+        description: "Output as JSON",
+        run: "dashboard revisions my-org/ 12345 --json",
+      },
+    ],
   },
   output: {
     human: formatRevisionsHuman,
     jsonTransform: jsonTransformRevisions,
+    schema: DashboardRevisionSchema,
   },
   parameters: {
-    positional: {
-      kind: "array",
-      parameter: {
-        placeholder: "org/dashboard",
-        brief: "[<org/project>] <dashboard-id-or-title>",
-        parse: parseOrgProjectTarget,
-      },
-    },
+    positional: dashboardArguments({
+      placeholder: "org/dashboard",
+      usageHint: () => sentry`dashboard revisions <org>/ <id>`,
+    }),
     flags: {
       limit: buildListLimitFlag("revisions"),
       cursor: LIST_CURSOR_FLAG,
     },
     aliases: { n: "limit", c: "cursor" },
   },
-  async *func(this: SentryContext, flags: RevisionsFlags, ...args: string[]) {
-    const { cwd } = this;
-
-    const { dashboardRef, targetArg } = parseDashboardPositionalArgs(args);
-    const parsed = parseOrgProjectArg(targetArg);
-    const orgSlug = await resolveOrgFromTarget(
-      parsed,
-      cwd,
-      "sentry dashboard revisions <org>/ <id>",
-    );
-    const dashboardId = await resolveDashboardId(orgSlug, dashboardRef);
+  async *func(
+    this: SentryContext,
+    flags: RevisionsFlags,
+    target: DashboardArguments,
+  ) {
+    const { orgSlug, dashboardId } = await target.resolved;
 
     const contextKey = buildPaginationContextKey(
       "dashboard-revisions",
@@ -169,11 +172,7 @@ export const revisionsCommand = buildCommand({
       contextKey,
     );
 
-    const results: DashboardRevision[] = [];
-    let cursor = rawCursor;
-    let nextCursor: string | undefined;
-
-    await withDashboardErrors(
+    const { data: revisions, nextCursor } = await withDashboardErrors(
       {
         orgSlug,
         dashboardId,
@@ -182,50 +181,29 @@ export const revisionsCommand = buildCommand({
       () =>
         withProgress(
           { message: "Fetching revisions...", json: flags.json },
-          async () => {
-            for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
-              const { data, nextCursor: nc } =
-                await listDashboardRevisionsPaginated(orgSlug, dashboardId, {
-                  // Ask only for the remaining budget so the last page's
-                  // cursor points at the first row we did not return.
-                  perPage: Math.min(
-                    flags.limit - results.length,
-                    API_MAX_PER_PAGE,
-                  ),
-                  cursor,
-                });
-              results.push(...data);
-              nextCursor = nc;
-              if (results.length >= flags.limit || !nc) {
-                break;
-              }
-              cursor = nc;
-            }
-          },
+          () =>
+            paginate(
+              { limit: flags.limit, cursor: rawCursor },
+              (perPage, pageCursor) =>
+                listDashboardRevisionsPaginated(orgSlug, dashboardId, {
+                  perPage,
+                  cursor: pageCursor,
+                }),
+            ),
         ),
     );
+    const hasMore = nextCursor !== undefined;
 
-    const trimmed = results.slice(0, flags.limit);
-    // A page larger than requested would make the server cursor skip the
-    // trimmed rows, so drop it (same as autoPaginate).
-    const cursorToStore = results.length > flags.limit ? undefined : nextCursor;
-    const hasMore = cursorToStore !== undefined;
-
-    advancePaginationState(
-      PAGINATION_KEY,
-      contextKey,
-      direction,
-      cursorToStore,
-    );
+    advancePaginationState(PAGINATION_KEY, contextKey, direction, nextCursor);
     const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
 
     const outputData: RevisionsResult = {
-      revisions: trimmed,
+      revisions,
       orgSlug,
       dashboardId,
       hasMore,
       hasPrev: hasPrev || undefined,
-      nextCursor: cursorToStore,
+      nextCursor,
     };
     yield new CommandOutput(outputData);
 
@@ -233,19 +211,19 @@ export const revisionsCommand = buildCommand({
     const nav = paginationHint({
       hasPrev: !!hasPrev,
       hasMore,
-      prevHint: `sentry dashboard revisions ${orgSlug}/ ${dashboardId} -c prev`,
-      nextHint: `sentry dashboard revisions ${orgSlug}/ ${dashboardId} -c next`,
+      prevHint: sentry`dashboard revisions ${orgSlug}/ ${dashboardId} -c prev`,
+      nextHint: sentry`dashboard revisions ${orgSlug}/ ${dashboardId} -c next`,
     });
     const navStr = nav ? ` ${nav}` : "";
 
-    if (trimmed.length === 0) {
+    if (revisions.length === 0) {
       return { hint: nav ? `No revisions found.${navStr}` : undefined };
     }
 
     return {
       hint:
-        `Showing ${trimmed.length} revision(s) for dashboard ${dashboardId}.${navStr}\n` +
-        `Restore: sentry dashboard restore ${orgSlug}/ ${dashboardId} --revision <revision-id>\n` +
+        `Showing ${revisions.length} revision(s) for dashboard ${dashboardId}.${navStr}\n` +
+        `Restore: ${sentry`dashboard restore ${orgSlug}/ ${dashboardId} --revision <revision-id>`}\n` +
         `Dashboard: ${url}`,
     };
   },
