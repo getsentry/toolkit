@@ -5,7 +5,8 @@
  * `sentry cli upgrade` performs before installing an older CLI.
  */
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import { setAppIdentity } from "../../../src/lib/app-identity.js";
 import { listAccounts } from "../../../src/lib/db/accounts.js";
 import {
   getAuthConfig,
@@ -36,6 +37,7 @@ useEnvSandbox([
   "SENTRY_CLI_NO_AUTO_REPAIR",
   "SENTRY_HOST",
   "SENTRY_URL",
+  "npm_command",
 ]);
 
 const HOST = "https://sentry.io";
@@ -129,6 +131,23 @@ describe("database written by a newer CLI", () => {
     expect(result.failed).toEqual([]);
     expect(storedVersion()).toBe(CURRENT_SCHEMA_VERSION);
     expect(getSchemaIssues(getRawDatabase())).toEqual([]);
+  });
+
+  test("@sentry/mcp-server's mismatch warning names its own cli fix", () => {
+    writeAsNewerCli();
+    process.env.SENTRY_CLI_NO_AUTO_REPAIR = "1";
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
+    try {
+      reopen();
+      const output = stderr.mock.calls.map((call) => String(call[0])).join("");
+      expect(output).toContain("Run `sentry-mcp cli fix` to adapt it.");
+    } finally {
+      setAppIdentity({ name: "sentry", packageName: "sentry" });
+      stderr.mockRestore();
+    }
   });
 });
 
@@ -234,7 +253,7 @@ describe("prepareDatabaseForDowngrade", () => {
     const db = getRawDatabase();
     prepareDatabaseForDowngrade(db);
     // An older CLI between schema 16 and this one migrates forward on setup.
-    db.exec(EXPECTED_TABLES.org_regions as string);
+    db.exec(EXPECTED_TABLES.org_regions);
     db.query("UPDATE schema_version SET version = ?").run(
       CURRENT_SCHEMA_VERSION - 1,
     );

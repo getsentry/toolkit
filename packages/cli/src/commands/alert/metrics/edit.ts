@@ -46,9 +46,10 @@ import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
 import type { MetricAlertEditOutput } from "../../../output-schemas/alert.js";
 import { MetricAlertEditOutputSchema } from "../../../generated/output-schemas/alert.js";
+import { sentry } from "../../../lib/app-identity.js";
 
-const USAGE_HINT =
-  "sentry alert metrics edit <org>/<rule-id-or-name> --name <n> | --status active|disabled";
+const usageHint = () =>
+  sentry`alert metrics edit <org>/<rule-id-or-name> --name <n> | --status active|disabled`;
 
 type EditFlags = {
   readonly name?: string;
@@ -191,21 +192,19 @@ export const editCommand = buildCommand({
     examples: [
       {
         description: "Rename a metric alert rule",
-        command: "sentry alert metrics edit my-org/12345 --name 'Error budget'",
+        run: "alert metrics edit my-org/12345 --name 'Error budget'",
       },
       {
         description: "Disable a rule",
-        command: "sentry alert metrics edit my-org/12345 --status disabled",
+        run: "alert metrics edit my-org/12345 --status disabled",
       },
       {
         description: "Change the query and time window",
-        command:
-          'sentry alert metrics edit my-org/12345 --query "environment:prod event.type:error" --time-window 15',
+        run: 'alert metrics edit my-org/12345 --query "environment:prod event.type:error" --time-window 15',
       },
       {
         description: "Switch the dataset",
-        command:
-          "sentry alert metrics edit my-org/12345 --time-window 15 --dataset spans",
+        run: "alert metrics edit my-org/12345 --time-window 15 --dataset spans",
       },
     ],
   },
@@ -217,7 +216,7 @@ export const editCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        metricRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
+        metricRuleParameter(usageHint, "Rule id or name (same as view)"),
       ],
     },
     flags: {
@@ -310,7 +309,7 @@ export const editCommand = buildCommand({
     const { orgSlug, rule } = await resolveMetricAlertRule(
       orgSlugs,
       ref,
-      USAGE_HINT,
+      usageHint(),
     );
     const body = {
       ...(await getMetricAlertRuleDocument(orgSlug, rule.id)),
@@ -327,7 +326,7 @@ export const editCommand = buildCommand({
       org: orgSlug,
       id: stringifyUnknown(updated.id ?? rule.id),
       // The detectors endpoint returns `enabled` rather than `status`.
-      status: updated.enabled === false ? "disabled" : "active",
+      status: !updated.enabled ? "disabled" : "active",
     } satisfies MetricAlertEditOutput);
   },
 });

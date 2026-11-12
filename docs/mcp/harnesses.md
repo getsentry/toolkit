@@ -54,6 +54,17 @@ search/execute pattern.
 | Pi                     | Yes, Code Mode  | `codemode` exposure by default; `deferred` adds `tool_search`    | On per server       | Per-server `exposure`                                          |
 | VS Code + Copilot Chat | Partial         | "Tool search tool" with `defer_loading` or Responses API search  | On                  | Claude newer than 4.5 and GPT-5.4+ only; other models load all |
 
+### Server Instructions
+
+Harnesses that defer tools still load the server `instructions` at session
+start, so that text is how the model learns when to search for Sentry tools.
+`buildServerInstructions` in `packages/mcp-core/src/server-instructions.ts`
+writes them from the registered tools: one line on when to use Sentry, plus
+routing rules that name a tool only when the session registered it. Every line
+must change what the model does; leave out product description and anything a
+tool description covers. Keep them under 1,500 characters; Claude Code cuts
+server instructions at 4,096.
+
 ### Tier 1 Details
 
 **Codex (CLI and desktop).** Since CLI 0.143.0 (2026-07-08), every MCP tool is
@@ -144,6 +155,7 @@ returns the top 5 matches.
 ## References
 
 - Direct surface policy: `packages/mcp-core/src/tools/surfaces.ts`
+- Server instructions: `packages/mcp-core/src/server-instructions.ts`
 - Catalog wrappers: `packages/mcp-core/src/tools/special/`
 - Codex: [MCP docs](https://developers.openai.com/codex/mcp),
   [rust-v0.143.0](https://github.com/openai/codex/releases/tag/rust-v0.143.0),

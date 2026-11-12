@@ -30,7 +30,7 @@ import {
   buildOrgSettingsUrl,
   buildSeerSettingsUrl,
 } from "./sentry-urls.js";
-import { getLoginCommand, getUrlLoginCommand } from "./app-identity.js";
+import { getLoginCommand, getUrlLoginCommand, sentry } from "./app-identity.js";
 
 // ---------------------------------------------------------------------------
 // Exit code constants
@@ -83,6 +83,8 @@ export const EXIT = {
   SEER_NO_BUDGET: 41,
   /** AI features disabled by org admin */
   SEER_AI_DISABLED: 42,
+  /** Organization is out of Seer credits */
+  SEER_OUT_OF_CREDITS: 43,
 
   // 50–59: Operations
   /** CLI upgrade failed */
@@ -93,14 +95,8 @@ export const EXIT = {
   // 60–69: Command-specific
   /** Command produced output but should exit non-zero */
   OUTPUT_ERROR: 60,
-  /** Init wizard error (generic) */
-  WIZARD: 61,
-  /** Init wizard: dependency installation failed */
-  WIZARD_DEPS: 62,
-  /** Init wizard: codemod plan or apply failed */
-  WIZARD_CODEMOD: 63,
-  /** Init wizard: user stopped after verification */
-  WIZARD_VERIFY: 64,
+  /** `sentry local run --verify` received no events from the SDK */
+  VERIFY_FAILED: 64,
 } as const;
 
 /**
@@ -177,6 +173,32 @@ export type FunctionArgument = {
 };
 
 /**
+ * Why Sentry refused a request with a 401 or 403, as far as the CLI can tell.
+ *
+ * Recorded on spans and the `cli.error.silenced` metric, so each value is a
+ * fixed category: never a slug, token, URL, or text from the server. Avoid
+ * words such as "auth" and "token" in new values; Sentry's data scrubbing
+ * replaces values that contain them with `[Filtered]`.
+ *
+ * - `org_mismatch`: an org auth token for another organization
+ * - `insufficient_scope`: the token lacks every scope the endpoint accepts
+ * - `member_policy`: an org setting blocks members from the action
+ * - `seat_limit`: the member is disabled because the org is over its limit
+ * - `access_denied`: a 403 that names no missing scope
+ * - `expired`: Sentry says the credential expired
+ * - `unrecognized`: Sentry does not know the credential (revoked, mistyped,
+ *   or created on another server)
+ */
+export type ApiDenialReason =
+  | "org_mismatch"
+  | "insufficient_scope"
+  | "member_policy"
+  | "seat_limit"
+  | "access_denied"
+  | "expired"
+  | "unrecognized";
+
+/**
  * API request errors from Sentry.
  *
  * @param message - Error summary
@@ -210,6 +232,9 @@ export class ApiError extends CliError {
    */
   readonly enriched403: boolean;
 
+  /** Set with the 401/403 enrichment in `infrastructure.ts`. */
+  readonly denialReason?: ApiDenialReason;
+
   constructor(
     message: string,
     status: number,
@@ -219,10 +244,12 @@ export class ApiError extends CliError {
       enriched403 = false,
       code,
       functionArgument,
+      denialReason,
     }: {
       enriched403?: boolean;
       code?: string;
       functionArgument?: FunctionArgument;
+      denialReason?: ApiDenialReason;
     } = {},
   ) {
     super(message, EXIT.API);
@@ -233,6 +260,7 @@ export class ApiError extends CliError {
     this.enriched403 = enriched403;
     this.code = code;
     this.functionArgument = functionArgument;
+    this.denialReason = denialReason;
   }
 
   override format(): string {
@@ -376,18 +404,21 @@ export class OutputError extends CliError {
   }
 }
 
-const DEFAULT_CONTEXT_ALTERNATIVES = [
-  "Run from a directory with a Sentry DSN in source code or .env files",
-  "Set SENTRY_ORG and SENTRY_PROJECT (or SENTRY_DSN) environment variables",
-  "Run 'sentry org list' to find your organization slug",
-  "Run 'sentry project list <org>/' to find project slugs",
-] as const;
+/** Ways to provide context when auto-detection found none. */
+function defaultContextAlternatives(): string[] {
+  return [
+    "Run from a directory with a Sentry DSN in source code or .env files",
+    "Set SENTRY_ORG and SENTRY_PROJECT (or SENTRY_DSN) environment variables",
+    `Run '${sentry`org list`}' to find your organization slug`,
+    `Run '${sentry`project list <org>/`}' to find project slugs`,
+  ];
+}
 
 /**
  * Build the formatted context error message with usage hints.
  *
  * @param resource - What is required (e.g., "Organization", "Trace ID and span ID")
- * @param command - Single-line CLI usage example (e.g., "sentry org view <org-slug>")
+ * @param command - Single-line CLI usage example (e.g., sentry`org view <org-slug>`)
  * @param alternatives - Alternative ways to provide the context
  * @param note - Optional informational context (e.g., "Found 2 DSN(s) that could not be resolved").
  *   Rendered as a separate "Note:" section after alternatives. Use this for diagnostic
@@ -472,7 +503,7 @@ function buildResolutionMessage(
  *
  * @param resource - What is required (e.g., "Organization", "Organization and project").
  *   Use " and " to join compound resources — triggers plural grammar ("are required").
- * @param command - **Single-line** CLI usage example (e.g., "sentry org view <org-slug>").
+ * @param command - **Single-line** CLI usage example (e.g., sentry`org view <org-slug>`).
  *   Must not contain newlines — multi-line messages indicate a resolution failure
  *   that should use {@link ResolutionError}.
  * @param alternatives - Alternative ways to resolve (defaults to DSN/project detection hints).
@@ -495,9 +526,7 @@ export class ContextError extends CliError {
   ) {
     // When alternatives is omitted, auto-detection was tried and failed
     const isAutoDetect = alternatives === undefined;
-    const resolvedAlternatives = alternatives ?? [
-      ...DEFAULT_CONTEXT_ALTERNATIVES,
-    ];
+    const resolvedAlternatives = alternatives ?? defaultContextAlternatives();
 
     // Include full formatted message so it's shown even when caught by external handlers
     super(
@@ -578,6 +607,33 @@ export class ResolutionError extends CliError {
   override format(): string {
     return this.message;
   }
+}
+
+/**
+ * {@link ResolutionError} for project slugs that Sentry rejected for an org
+ * without saying which one (release create, artifact bundle assemble).
+ *
+ * @param org - Organization slug
+ * @param projects - The project slugs that were sent
+ * @param extraSuggestions - More bullets shown under "Or:"
+ */
+export function projectsNotFoundError(
+  org: string,
+  projects: string[],
+  extraSuggestions: string[] = [],
+): ResolutionError {
+  const quoted = projects.map((p) => `'${p}'`).join(", ");
+  return new ResolutionError(
+    projects.length === 1
+      ? `Project ${quoted}`
+      : `One of the projects ${quoted}`,
+    `was not found in organization '${org}'`,
+    sentry`project list ${org}/`,
+    [
+      "Check the slug passed with --project (or the bundler plugin's `project` option)",
+      ...extraSuggestions,
+    ],
+  );
 }
 
 /**
@@ -705,7 +761,11 @@ export class UpgradeTransportError extends UpgradeError {
 
 // Seer Errors
 
-export type SeerErrorReason = "not_enabled" | "no_budget" | "ai_disabled";
+export type SeerErrorReason =
+  | "not_enabled"
+  | "no_budget"
+  | "ai_disabled"
+  | "out_of_credits";
 
 /**
  * Seer-specific errors with actionable suggestions.
@@ -722,11 +782,13 @@ export class SeerError extends CliError {
       not_enabled: "Seer is not enabled for this organization.",
       no_budget: "Seer requires a paid plan.",
       ai_disabled: "AI features are disabled for this organization.",
+      out_of_credits: "Your organization is out of Seer credits.",
     };
     const exitCodes: Record<SeerErrorReason, number> = {
       not_enabled: EXIT.SEER_NOT_ENABLED,
       no_budget: EXIT.SEER_NO_BUDGET,
       ai_disabled: EXIT.SEER_AI_DISABLED,
+      out_of_credits: EXIT.SEER_OUT_OF_CREDITS,
     };
     super(messages[reason], exitCodes[reason]);
     this.name = "SeerError";
@@ -741,8 +803,8 @@ export class SeerError extends CliError {
     // where the prompt can't fire — hence the direct command suggestion
     // (CLI-1D/BW/98, 237 users combined).
     const trialHint = this.orgSlug
-      ? `\n\nStart a free trial:\n  sentry trial start seer ${this.orgSlug}`
-      : "\n\nYou may be eligible for a free trial:\n  sentry trial list";
+      ? `\n\nStart a free trial:\n  ${sentry`trial start seer ${this.orgSlug}`}`
+      : `\n\nYou may be eligible for a free trial:\n  ${sentry`trial list`}`;
 
     // When org slug is known, provide direct URLs to settings
     if (this.orgSlug) {
@@ -751,6 +813,10 @@ export class SeerError extends CliError {
         no_budget: `To use Seer features, upgrade your plan:\n  ${buildBillingUrl(this.orgSlug, "seer")}${trialHint}`,
         // ai_disabled is an admin decision — don't suggest trial
         ai_disabled: `To enable AI features:\n  ${buildOrgSettingsUrl(this.orgSlug, "hideAiFeatures")}`,
+        // out_of_credits orgs already have Seer, so a trial is not the fix.
+        // Sentry doesn't say whether auto-reload is off or has run through its
+        // top-ups, so the advice covers both.
+        out_of_credits: `Someone with billing access can adjust Seer spend and auto-reload in Sentry:\n  ${buildBillingUrl(this.orgSlug, "seer")}`,
       };
       return `${this.message}\n\n${suggestions[this.reason]}`;
     }
@@ -762,6 +828,9 @@ export class SeerError extends CliError {
       // ai_disabled is an admin decision — don't suggest trial
       ai_disabled:
         "To enable AI features, check the 'Hide AI Features' setting in your organization settings.",
+      // out_of_credits orgs already have Seer, so a trial is not the fix
+      out_of_credits:
+        "Someone with billing access can adjust Seer spend and auto-reload in your organization's billing settings.",
     };
     return `${this.message}\n\n${fallbackSuggestions[this.reason]}`;
   }
@@ -791,24 +860,6 @@ export class TimeoutError extends CliError {
       msg += `\n\n${this.hint}`;
     }
     return msg;
-  }
-}
-
-/**
- * Error thrown by the init wizard when it has already displayed
- * the error via clack UI. The `rendered` flag tells the framework
- * error handler to skip its own formatting.
- */
-export class WizardError extends CliError {
-  readonly rendered: boolean;
-
-  constructor(
-    message: string,
-    options?: { rendered?: boolean; exitCode?: number },
-  ) {
-    super(message, options?.exitCode ?? EXIT.WIZARD);
-    this.name = "WizardError";
-    this.rendered = options?.rendered ?? true;
   }
 }
 
@@ -1060,8 +1111,7 @@ export function isUserError(error: unknown): boolean {
     error instanceof ValidationError ||
     error instanceof DeviceFlowError ||
     error instanceof SeerError ||
-    error instanceof OutputError ||
-    error instanceof WizardError
+    error instanceof OutputError
   ) {
     return true;
   }

@@ -9,14 +9,17 @@
  * login (`sentry auth login`) but reject personal and org auth tokens.
  */
 
+import {
+  createOrganizationAuthToken,
+  deleteOrganizationAuthToken,
+  listOrganizationAuthTokens,
+} from "@sentry/api";
 import { array } from "valibot";
 
 import { type OrgAuthToken, OrgAuthTokenSchema } from "../../types/index.js";
 import { getControlSiloUrl } from "../sentry-client.js";
-import {
-  apiRequestToRegion,
-  apiRequestToRegionNoContent,
-} from "./infrastructure.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
+import { unwrapResult, unwrapValidatedResult } from "./infrastructure.js";
 
 function tokensPath(orgSlug: string): string {
   return `/organizations/${encodeURIComponent(orgSlug)}/org-auth-tokens/`;
@@ -34,12 +37,16 @@ function tokensPath(orgSlug: string): string {
 export async function listOrgAuthTokens(
   orgSlug: string,
 ): Promise<OrgAuthToken[]> {
-  const { data } = await apiRequestToRegion(
-    getControlSiloUrl(),
+  const result = await listOrganizationAuthTokens({
+    ...getSdkClientConfig(getControlSiloUrl()),
+    path: { organization_id_or_slug: orgSlug },
+  });
+  return unwrapValidatedResult(
+    result,
+    "Failed to list org auth tokens",
+    array(OrgAuthTokenSchema),
     tokensPath(orgSlug),
-    { schema: array(OrgAuthTokenSchema) },
   );
-  return data;
 }
 
 /**
@@ -56,12 +63,17 @@ export async function createOrgAuthToken(
   orgSlug: string,
   name: string,
 ): Promise<OrgAuthToken> {
-  const { data } = await apiRequestToRegion(
-    getControlSiloUrl(),
+  const result = await createOrganizationAuthToken({
+    ...getSdkClientConfig(getControlSiloUrl()),
+    path: { organization_id_or_slug: orgSlug },
+    body: { name },
+  });
+  return unwrapValidatedResult(
+    result,
+    "Failed to create org auth token",
+    OrgAuthTokenSchema,
     tokensPath(orgSlug),
-    { method: "POST", body: { name }, schema: OrgAuthTokenSchema },
   );
-  return data;
 }
 
 /**
@@ -74,9 +86,13 @@ export async function deleteOrgAuthToken(
   orgSlug: string,
   tokenId: string,
 ): Promise<void> {
-  await apiRequestToRegionNoContent(
-    getControlSiloUrl(),
-    `${tokensPath(orgSlug)}${encodeURIComponent(tokenId)}/`,
-    { method: "DELETE" },
-  );
+  const result = await deleteOrganizationAuthToken({
+    ...getSdkClientConfig(getControlSiloUrl()),
+    path: {
+      organization_id_or_slug: orgSlug,
+      // Sentry returns IDs as numeric strings; the path carries them as-is.
+      token_id: tokenId as unknown as number,
+    },
+  });
+  unwrapResult(result, "Failed to revoke org auth token");
 }

@@ -208,7 +208,6 @@ describe("fetch-utils", () => {
 
     it("caps delay at 30 seconds", async () => {
       const fn = vi.fn();
-      const callCount = 0;
 
       // Mock function that fails many times
       for (let i = 0; i < 10; i++) {

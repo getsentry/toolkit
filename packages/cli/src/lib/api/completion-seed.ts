@@ -52,7 +52,6 @@ import {
 } from "../db/completion-cache.js";
 import { reportCliError } from "../error-reporting.js";
 import { logger } from "../logger.js";
-import { parseSentryUrl } from "../sentry-url-parser.js";
 import { isAllDigits } from "../utils.js";
 
 const log = logger.withTag("completion-seed");
@@ -72,8 +71,6 @@ type CompletionSource = {
   query?: Readonly<Record<string, string>>;
   /** Entities in the parsed JSON body, in display order. */
   extract: (body: unknown) => CompletionEntity[];
-  /** Organization of a body whose path names none (unscoped endpoints). */
-  org?: (body: unknown) => string | undefined;
 };
 
 /** Read a string property of an untyped JSON value. */
@@ -235,12 +232,6 @@ function tagKeyEntities(body: unknown): CompletionEntity[] {
   return Array.isArray(tags) ? fieldEntities("key", "name")(tags) : [];
 }
 
-/** The organization of an issue, from its permalink. */
-function permalinkOrg(body: unknown): string | undefined {
-  const permalink = stringField(body, "permalink");
-  return permalink ? parseSentryUrl(permalink)?.org : undefined;
-}
-
 /** Public DSNs of client keys, described by the key name. */
 function dsnEntities(body: unknown): CompletionEntity[] {
   return items(body).flatMap((key) => {
@@ -331,21 +322,6 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
           ? (body as { group?: unknown }).group
           : undefined,
       ),
-  },
-  {
-    // The deprecated unscoped lookup (`getIssue`, `updateIssueStatus`
-    // without an org) is not in `@sentry/api`. Its path names no org, so
-    // the org comes from the issue's permalink.
-    kind: "issue",
-    url: "/api/0/issues/{issue_id}/",
-    extract: issueEntities,
-    org: permalinkOrg,
-  },
-  {
-    kind: "tag-key",
-    url: "/api/0/issues/{issue_id}/",
-    extract: tagKeyEntities,
-    org: permalinkOrg,
   },
   {
     kind: "dashboard",
@@ -544,8 +520,7 @@ async function seedFromBody(
     log.debug(`Not seeding completions from '${url}'`, error);
     return;
   }
-  for (const { source, orgSlug: pathOrg } of matches) {
-    const orgSlug = pathOrg ?? source.org?.(body);
+  for (const { source, orgSlug } of matches) {
     if (!orgSlug) {
       log.debug(
         `Not seeding ${source.kind} completions without an org: '${url}'`,

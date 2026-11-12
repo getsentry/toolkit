@@ -10,6 +10,7 @@ import {
   promptForAccount,
   resolveAccountSelector,
 } from "../../lib/account-selection.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   ACCOUNT_SERVER_TARGET,
@@ -29,14 +30,9 @@ import {
   setActiveAccount,
 } from "../../lib/db/auth.js";
 import { AuthError, ResolutionError } from "../../lib/errors.js";
-import {
-  type AccountSwitchResult,
-  formatAccountSwitch,
-} from "../../lib/formatters/accounts.js";
+import { formatAccountSwitch } from "../../lib/formatters/accounts.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { parseLoginUrl } from "./login.js";
-
-const COMMAND = "sentry auth switch";
 
 type SwitchFlags = {
   readonly url?: string;
@@ -47,8 +43,9 @@ async function pickAccount(
   accounts: AccountSummary[],
   url: string | undefined,
 ): Promise<AccountSummary | undefined> {
+  const command = sentry`auth switch`;
   if (selector !== undefined) {
-    return resolveAccountSelector(selector, COMMAND, { url, fuzzy: true });
+    return resolveAccountSelector(selector, command, { url, fuzzy: true });
   }
   const candidates = url
     ? accounts.filter((a) => isAccountOnServer(a, url))
@@ -57,8 +54,8 @@ async function pickAccount(
     throw new ResolutionError(
       `Account on '${url}'`,
       "not found",
-      `${COMMAND} [account] --url <server>`,
-      ["Run 'sentry auth list' to see stored accounts"],
+      `${command} [account] --url <server>`,
+      [`Run '${sentry`auth list`}' to see stored accounts`],
     );
   }
   const [only] = candidates;
@@ -68,7 +65,7 @@ async function pickAccount(
   return await promptForAccount(
     candidates,
     "Switch to which account?",
-    COMMAND,
+    command,
   );
 }
 
@@ -90,17 +87,16 @@ export const switchCommand = buildCommand({
     examples: [
       {
         description: "Pick the active account from a searchable list",
-        command: "sentry auth switch",
+        run: "auth switch",
       },
       {
         description: "Switch to a specific account",
-        command: "sentry auth switch jane@example.com",
+        run: "auth switch jane@example.com",
       },
       {
         description:
           "Pick the account on one server when the same email is stored twice",
-        command:
-          "sentry auth switch jane@example.com --url https://sentry.example.com",
+        run: "auth switch jane@example.com --url https://sentry.example.com",
       },
     ],
   },
@@ -153,7 +149,7 @@ export const switchCommand = buildCommand({
 
     if (!target.usable) {
       return {
-        hint: "This account's session has ended. Run 'sentry auth login' to log in again.",
+        hint: `This account's session has ended. Run '${sentry`auth login`}' to log in again.`,
       };
     }
     if (getAuthConfig()?.source.startsWith("env:")) {

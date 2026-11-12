@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { listIssueEvents } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import {
   advancePaginationState,
@@ -13,7 +14,7 @@ import {
   hasPreviousPage,
   resolveCursor,
 } from "../../lib/db/pagination.js";
-import { ContextError, toSearchQueryError } from "../../lib/errors.js";
+import { toSearchQueryError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { buildListCommand, paginationHint } from "../../lib/list-command.js";
 import { withProgress } from "../../lib/polling.js";
@@ -30,7 +31,6 @@ import {
   jsonTransformEvents,
 } from "../event/shared-events.js";
 import { type IssueTarget, issuePositional } from "./positional.js";
-import { buildCommandHint } from "./utils.js";
 import { IssueEventSchema } from "../../generated/output-schemas/event.js";
 
 // ---------------------------------------------------------------------------
@@ -52,7 +52,7 @@ function nextPageHint(
   issueArg: string,
   flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
-  return appendEventsFlags(`sentry issue events ${issueArg} -c next`, flags);
+  return appendEventsFlags(sentry`issue events ${issueArg} -c next`, flags);
 }
 
 /** Build the CLI hint for fetching the previous page, preserving active flags. */
@@ -60,7 +60,7 @@ function prevPageHint(
   issueArg: string,
   flags: Pick<EventsFlags, "query" | "full" | "period">,
 ): string {
-  return appendEventsFlags(`sentry issue events ${issueArg} -c prev`, flags);
+  return appendEventsFlags(sentry`issue events ${issueArg} -c prev`, flags);
 }
 
 // ---------------------------------------------------------------------------
@@ -81,31 +81,31 @@ export const eventsCommand = buildListCommand("issue", {
     examples: [
       {
         description: "List recent events for an issue",
-        command: "sentry issue events FRONT-ABC",
+        run: "issue events FRONT-ABC",
       },
       {
         description: "List events for the most recent issue",
-        command: "sentry issue events @latest --limit 50",
+        run: "issue events @latest --limit 50",
       },
       {
         description: "Filter events by search query",
-        command: 'sentry issue events FRONT-ABC --query "browser:Chrome"',
+        run: 'issue events FRONT-ABC --query "browser:Chrome"',
       },
       {
         description: "Show full event details",
-        command: "sentry issue events FRONT-ABC --full",
+        run: "issue events FRONT-ABC --full",
       },
       {
         description: "Limit results and filter by time period",
-        command: "sentry issue events FRONT-ABC --limit 50 --period 24h",
+        run: "issue events FRONT-ABC --limit 50 --period 24h",
       },
       {
         description: "Fetch the next page",
-        command: "sentry issue events FRONT-ABC -c next",
+        run: "issue events FRONT-ABC -c next",
       },
       {
         description: "Output as JSON",
-        command: "sentry issue events FRONT-ABC --json",
+        run: "issue events FRONT-ABC --json",
       },
     ],
   },
@@ -125,14 +125,6 @@ export const eventsCommand = buildListCommand("issue", {
 
     // Resolve issue using shared resolution logic (supports @latest, short IDs, etc.)
     const { org, issue } = await target.resolved;
-
-    // Org is required for region-routed events endpoint
-    if (!org) {
-      throw new ContextError(
-        "Organization",
-        buildCommandHint(COMMAND_NAME, issueArg),
-      );
-    }
 
     // Build context key for pagination (keyed by issue ID + query-varying params)
     const contextKey = buildPaginationContextKey(
@@ -184,7 +176,7 @@ export const eventsCommand = buildListCommand("issue", {
       const countText = `Showing ${events.length} event${events.length === 1 ? "" : "s"}.`;
       hint = nav
         ? `${countText} ${nav}`
-        : `${countText} Use 'sentry event view <EVENT_ID>' to view full event details.`;
+        : `${countText} Use '${sentry`event view <EVENT_ID>`}' to view full event details.`;
     }
 
     yield new CommandOutput({

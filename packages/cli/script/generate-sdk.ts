@@ -37,6 +37,7 @@ import {
   typeRef,
   withJsDoc,
 } from "./ts-codegen.js";
+import { logger } from "../src/lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -167,7 +168,7 @@ function extractSdkFlags(command: Command): SdkFlagInfo[] {
 
   const flags: SdkFlagInfo[] = [];
 
-  for (const [name, def] of Object.entries(flagDefs) as [string, FlagDef][]) {
+  for (const [name, def] of Object.entries(flagDefs)) {
     if (INTERNAL_FLAGS.has(name)) {
       continue;
     }
@@ -756,7 +757,7 @@ function createSdkMethodsFunction(root: NamespaceNode): ts.FunctionDeclaration {
 /** Write `src/sdk.generated.ts` and `src/sdk.generated.d.cts`. */
 export async function emit(): Promise<void> {
   const allCommands = discoverCommands(routes as unknown as RouteMap, []);
-  console.log(`Discovered ${allCommands.length} commands`);
+  logger.info(`Discovered ${allCommands.length} commands`);
 
   const paramTypes: ts.Statement[] = [];
   const returnTypes: ts.Statement[] = [];
@@ -839,11 +840,11 @@ export async function emit(): Promise<void> {
 
   const outPath = "./src/sdk.generated.ts";
   await writeFile(outPath, output);
-  console.log(`Generated ${outPath}`);
+  logger.success(`Generated ${outPath}`);
 
   // Standalone type declarations (.d.cts) for the npm bundle: only the shared type
   // exports — no runtime imports or implementations.
   const dtsPath = "./src/sdk.generated.d.cts";
   await writeFile(dtsPath, [...header, ...sharedTypes].join("\n"));
-  console.log(`Generated ${dtsPath}`);
+  logger.success(`Generated ${dtsPath}`);
 }

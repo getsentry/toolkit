@@ -75,7 +75,7 @@ describe("find_monitors", () => {
   });
 
   it("filters by projectSlug instead of numeric project for project slugs", async () => {
-    let requestUrl: string | null = null;
+    let requestUrl: string | undefined;
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/monitors/",
@@ -99,14 +99,14 @@ describe("find_monitors", () => {
       context,
     );
 
-    expect(requestUrl).not.toBeNull();
+    expect(requestUrl).toBeDefined();
     const params = new URL(requestUrl ?? "").searchParams;
     expect(params.get("projectSlug")).toBe("backend");
     expect(params.get("project")).toBeNull();
   });
 
   it("sends monitor list filters to Sentry", async () => {
-    let requestUrl: string | null = null;
+    let requestUrl: string | undefined;
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/monitors/",
@@ -130,7 +130,7 @@ describe("find_monitors", () => {
       context,
     );
 
-    expect(requestUrl).not.toBeNull();
+    expect(requestUrl).toBeDefined();
     const params = new URL(requestUrl ?? "").searchParams;
     expect(params.get("projectSlug")).toBe("backend");
     expect(params.get("environment")).toBe("production");
@@ -140,7 +140,7 @@ describe("find_monitors", () => {
   });
 
   it("uses the active project constraint as the monitor list project", async () => {
-    let requestUrl: string | null = null;
+    let requestUrl: string | undefined;
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/monitors/",
@@ -170,7 +170,7 @@ describe("find_monitors", () => {
       },
     );
 
-    expect(requestUrl).not.toBeNull();
+    expect(requestUrl).toBeDefined();
     const params = new URL(requestUrl ?? "").searchParams;
     expect(params.get("projectSlug")).toBe("backend");
   });

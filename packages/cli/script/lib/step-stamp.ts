@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
+import { logger } from "../../src/lib/logger.js";
 
 const STAMPS_PATH = "src/generated/.stamps.json";
 
@@ -93,7 +94,7 @@ export async function runUnlessUnchanged(
     last?.inputs === inputs &&
     last.outputs === (await digest(files.outputs))
   ) {
-    console.log(`Skipped ${name}: inputs and outputs unchanged`);
+    logger.info(`Skipped ${name}: inputs and outputs unchanged`);
     return;
   }
 

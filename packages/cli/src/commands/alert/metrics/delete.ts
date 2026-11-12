@@ -19,8 +19,9 @@ import type { AlertRuleArgument } from "../arguments.js";
 import { metricRuleParameter, resolveMetricAlertRule } from "./rule-resolve.js";
 import type { MetricAlertDeleteOutput } from "../../../output-schemas/alert.js";
 import { MetricAlertDeleteOutputSchema } from "../../../generated/output-schemas/alert.js";
+import { sentry } from "../../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry alert metrics delete <org>/<rule-id-or-name>";
+const usageHint = () => sentry`alert metrics delete <org>/<rule-id-or-name>`;
 
 type DeleteFlags = {
   readonly yes: boolean;
@@ -46,11 +47,11 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Delete a metric alert rule (prompts for confirmation)",
-        command: "sentry alert metrics delete my-org/12345",
+        run: "alert metrics delete my-org/12345",
       },
       {
         description: "Delete a rule selected by name without prompting",
-        command: "sentry alert metrics delete my-org/'P95 alert' --yes",
+        run: "alert metrics delete my-org/'P95 alert' --yes",
       },
     ],
   },
@@ -62,7 +63,7 @@ export const deleteCommand = buildDeleteCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        metricRuleParameter(USAGE_HINT, "Rule id or name (same as view)"),
+        metricRuleParameter(usageHint, "Rule id or name (same as view)"),
       ],
     },
   },
@@ -73,14 +74,14 @@ export const deleteCommand = buildDeleteCommand({
   ) {
     const { cwd } = this;
     const { ref, target } = await ruleArg.resolved;
-    requireExplicitTarget(target, "Metric alert target", USAGE_HINT);
+    requireExplicitTarget(target, "Metric alert target", usageHint());
     const org = await resolveOrgOnlyTarget(target, cwd, "alert metrics delete");
     const orgSlugs = [org];
 
     const { orgSlug, rule } = await resolveMetricAlertRule(
       orgSlugs,
       ref,
-      USAGE_HINT,
+      usageHint(),
     );
     const key = `${orgSlug}/${rule.id}`;
     const name = rule.name;

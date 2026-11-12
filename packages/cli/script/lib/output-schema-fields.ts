@@ -53,6 +53,7 @@ const VALIBOT_TYPE_MAP: Record<string, string> = {
   boolean: "boolean",
   object: "object",
   loose_object: "object",
+  strict_object: "object",
   array: "array",
   record: "object",
   null: "null",
@@ -203,7 +204,7 @@ export function extractSchemaFieldPaths(schema: GenericSchema): string[] {
       }
     }
   };
-  visit(schema as unknown as ValibotSchemaNode, "");
+  visit(schema, "");
   return [...paths];
 }
 

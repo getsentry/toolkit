@@ -6,6 +6,7 @@
 
 import { parseFunction } from "@sentry/toolkit-core/events-fields";
 import { getSortField } from "@sentry/toolkit-core/events-sort";
+import { sentry } from "./app-identity.js";
 import { ApiError, type FunctionArgument, validationError } from "./errors.js";
 
 /** User-authored expressions and the request they contributed to. */
@@ -63,7 +64,7 @@ function recoveryHint(
   }
 
   if (detail === `Unknown function ${parsed.name}`) {
-    return "Aggregate functions depend on the dataset. Check the function name and selected dataset; sentry explore --help includes usage examples.";
+    return `Aggregate functions depend on the dataset. Check the function name and selected dataset; ${sentry`explore --help`} includes usage examples.`;
   }
 
   if (
@@ -79,7 +80,7 @@ function recoveryHint(
   const { argument } = rejected;
   const problem = `${parsed.name}() does not accept ${argument} on dataset "${dataset}": it may not exist there, or may not have the type ${parsed.name}() needs.`;
   return ATTRIBUTE_DATASETS.has(dataset)
-    ? `${problem} Reference a numeric custom attribute with its type, e.g. tags[${argument},number]; to check the key and its type, run: sentry attribute list <org>/ ${argument} --dataset ${dataset}`
+    ? `${problem} Reference a numeric custom attribute with its type, e.g. tags[${argument},number]; to check the key and its type, run: ${sentry`attribute list <org>/ ${argument} --dataset ${dataset}`}`
     : `${problem} Check the column name and its type.`;
 }
 

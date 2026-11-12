@@ -1115,7 +1115,7 @@ describe("viewCommand.func", () => {
     title: "Error: test",
     metadata: {},
     contexts: {},
-  } as unknown as SentryEvent;
+  };
   const attachment = {
     id: "attachment-1",
     event_id: VALID_EVENT_ID,
@@ -1317,7 +1317,7 @@ describe("viewCommand.func", () => {
       .mockResolvedValue(sampleEvent);
     getIssueInOrgSpy.mockResolvedValue({
       project: { slug: "auto-project" },
-    } as never);
+    });
     getSpanTreeLinesSpy.mockResolvedValue({
       lines: [],
       spans: null,
@@ -1464,7 +1464,7 @@ describe("viewCommand.func", () => {
   test("a selector fails when no unresolved issue matches", async () => {
     const listIssuesSpy = vi
       .spyOn(apiClient, "listIssuesPaginated")
-      .mockResolvedValue({ data: [] } as never);
+      .mockResolvedValue({ data: [] });
     const getLatestEventSpy = vi.spyOn(apiClient, "getLatestEvent");
 
     const { context } = createMockContext();
@@ -1596,7 +1596,7 @@ describe("fetchEventWithContext", () => {
     tags: [],
     dateCreated: "2026-01-01T00:00:00Z",
     dateReceived: "2026-01-01T00:00:00Z",
-  } as unknown as SentryEvent;
+  };
 
   afterEach(() => {
     vi.restoreAllMocks();

@@ -9,18 +9,6 @@ import {
 } from "../../../errors";
 import { logIssue, logWarn } from "../../../telem/logging";
 
-/**
- * Standard response schema for all embedded agent tools.
- * Tools return either an error message or the result data, never both.
- */
-const AgentToolResponseSchema = z.object({
-  error: z
-    .string()
-    .optional()
-    .describe("Error message if the operation failed"),
-  result: z.unknown().optional().describe("The successful result data"),
-});
-
 export type AgentToolResponse<T = unknown> = {
   error?: string;
   result?: T;

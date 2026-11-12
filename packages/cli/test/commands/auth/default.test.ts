@@ -77,7 +77,7 @@ describe("authDefaultCommand", () => {
 
     try {
       const func = await authDefaultCommand.loader();
-      await func.call(context as never, {
+      await func.call(context, {
         timeout: 900,
         force: false,
         "read-only": false,
@@ -128,7 +128,7 @@ describe("authDefaultCommand", () => {
 
     try {
       const func = await authDefaultCommand.loader();
-      await func.call(context as never, {
+      await func.call(context, {
         timeout: 900,
         force: false,
         "read-only": false,

@@ -8,7 +8,8 @@
  * once and runs every requested step in two phases:
  *
  * 1. Steps the route tree depends on: the API schema, the grammar parsers,
- *    the output-schema field data that commands import, and the banner.
+ *    the output-schema field data that commands import, the banner, and
+ *    the `sentry init` guide.
  *    They are independent of each other and run concurrently; the grammar
  *    compiles in a child process. Nothing in this phase may load the route
  *    tree. A step that lists its `files` is skipped when their content
@@ -140,6 +141,13 @@ function bannerFiles(): StepFiles {
   };
 }
 
+function initGuideFiles(): StepFiles {
+  return {
+    inputs: ["init.md", "script/generate-init-guide.ts"],
+    outputs: ["src/generated/init-guide.ts"],
+  };
+}
+
 /**
  * Phase 1: steps whose outputs the route tree imports. `output-schemas`
  * has no `files`: it loads `src/output-schemas/` and everything that
@@ -164,6 +172,11 @@ const PRE_TREE_STEPS: readonly Step[] = [
     name: "banner",
     load: () => import("./generate-banner-image.js"),
     files: bannerFiles,
+  },
+  {
+    name: "init-guide",
+    load: () => import("./generate-init-guide.js"),
+    files: initGuideFiles,
   },
 ];
 

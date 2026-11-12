@@ -26,7 +26,7 @@ function makeRepo(name: string): SentryRepository {
     provider: { id: "integrations:github", name: "GitHub" },
     status: "active",
     externalSlug: name,
-  } as SentryRepository;
+  };
 }
 
 afterEach(() => {

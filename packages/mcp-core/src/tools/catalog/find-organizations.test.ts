@@ -212,7 +212,7 @@ describe("find_organizations", () => {
 
     /** Each token's org pages; a cursor names the page after the first. */
     function mockAccountOrganizations(
-      pages: Record<string, Record<string, string[]>>,
+      pages: Partial<Record<string, Partial<Record<string, string[]>>>>,
       next: Record<string, Record<string, string>> = {},
     ) {
       const requests: Array<{ token: string; cursor: string | null }> = [];

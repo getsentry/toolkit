@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
+import { sentry } from "../../../lib/app-identity.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
   aggregateShorthandParser,
@@ -60,7 +61,7 @@ type EditFlags = WidgetQueryFlags &
 /** Merge query-level flags over existing widget query */
 function mergeQueries(
   flags: EditFlags,
-  existingQuery: DashboardWidgetQuery | undefined,
+  existingQueries: DashboardWidgetQuery[] | undefined,
 ): DashboardWidgetQuery[] | undefined {
   const hasChanges =
     flags.query || flags.where !== undefined || flags["group-by"] || flags.sort;
@@ -71,6 +72,7 @@ function mergeQueries(
 
   // Destructure to omit stale `fields` — prepareWidgetQueries will
   // recompute it from the updated aggregates/columns.
+  const [existingQuery, ...remainingQueries] = existingQueries ?? [];
   const { fields: _staleFields, ...base } = existingQuery ?? {};
   return [
     {
@@ -80,6 +82,7 @@ function mergeQueries(
       ...(flags["group-by"] && { columns: flags["group-by"] }),
       ...(flags.sort && { orderby: parseSortExpression(flags.sort) }),
     },
+    ...remainingQueries,
   ];
 }
 
@@ -158,7 +161,7 @@ function buildReplacement(
   flags: EditFlags,
   existing: DashboardWidget,
 ): DashboardWidget {
-  const mergedQueries = mergeQueries(flags, existing.queries?.[0]);
+  const mergedQueries = mergeQueries(flags, existing.queries);
   const baseLimit = flags.limit !== undefined ? flags.limit : existing.limit;
   const columns =
     mergedQueries?.[0]?.columns ?? existing.queries?.[0]?.columns ?? [];
@@ -182,6 +185,7 @@ function buildReplacement(
   }
 
   const raw: Record<string, unknown> = {
+    ...(existing.id !== undefined && { id: existing.id }),
     title: flags["new-title"] ?? existing.title,
     displayType,
     queries: mergedQueries ?? existing.queries,
@@ -214,23 +218,19 @@ export const editCommand = buildCommand({
     examples: [
       {
         description: "Change a widget's display type",
-        command:
-          "sentry dashboard widget edit 12345 --title 'Error Rate' --display bar",
+        run: "dashboard widget edit 12345 --title 'Error Rate' --display bar",
       },
       {
         description: "Change the query of a widget selected by index",
-        command:
-          "sentry dashboard widget edit 'My Dashboard' --index 0 --query p95:span.duration",
+        run: "dashboard widget edit 'My Dashboard' --index 0 --query p95:span.duration",
       },
       {
         description: "Rename a widget",
-        command:
-          "sentry dashboard widget edit 12345 --title 'Old Name' --new-title 'New Name'",
+        run: "dashboard widget edit 12345 --title 'Old Name' --new-title 'New Name'",
       },
       {
         description: "Move and resize a widget",
-        command:
-          "sentry dashboard widget edit 12345 --index 0 --col 0 --row 0 --width 6 --height 2",
+        run: "dashboard widget edit 12345 --index 0 --col 0 --row 0 --width 6 --height 2",
       },
     ],
   },
@@ -241,8 +241,8 @@ export const editCommand = buildCommand({
   parameters: {
     positional: dashboardArguments({
       placeholder: "org/project/dashboard",
-      usageHint:
-        "sentry dashboard widget edit <org>/ <dashboard> --title <name> --display <type>",
+      usageHint: () =>
+        sentry`dashboard widget edit <org>/ <dashboard> --title <name> --display <type>`,
     }),
     flags: {
       index: {
@@ -356,7 +356,7 @@ export const editCommand = buildCommand({
       throw new ValidationError(
         "Specify --index or --title to identify the widget to edit.\n\n" +
           "Example:\n" +
-          "  sentry dashboard widget edit <dashboard> --title 'My Widget' --display bar",
+          `  ${sentry`dashboard widget edit <dashboard> --title 'My Widget' --display bar`}`,
         "index",
       );
     }
@@ -423,9 +423,16 @@ export const editCommand = buildCommand({
     );
     const url = buildDashboardUrl(orgSlug, dashboardId);
 
+    // The request omits saved transformations so Sentry keeps them; report
+    // the saved widget so its output includes them.
+    const saved =
+      replacement.id === undefined
+        ? undefined
+        : updated.widgets?.find((widget) => widget.id === replacement.id);
+
     yield new CommandOutput({
       dashboard: updated,
-      widget: replacement,
+      widget: saved ?? replacement,
       url,
     } satisfies DashboardWidgetChangeOutput);
     return { hint: `Dashboard: ${url}` };

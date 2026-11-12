@@ -39,6 +39,7 @@ const DOCS_OUTPUTS = [
   "src/generated/skill-content.ts",
   "src/generated/completion-targets.json",
   "src/generated/top-level-routes.json",
+  "src/generated/init-guide.ts",
 ];
 
 const STUBS = new Map(ROUTE_TREE_STUBS);
@@ -62,6 +63,7 @@ function isGenerated(path) {
 }
 
 function run(script) {
+  // oxlint-disable-next-line no-console -- plain Node: this runs before tsx, so it cannot load the TypeScript logger.
   console.error(`Missing generated files; running \`pnpm run ${script}\`...`);
   // Send generator output to stderr: `pnpm run cli mcp` serves JSON-RPC on
   // stdout, so nothing else may write there.

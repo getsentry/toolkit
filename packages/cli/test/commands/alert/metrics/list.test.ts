@@ -325,7 +325,7 @@ describe("alert metrics list pagination", () => {
         /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
-        const org = projectMatch[1] as string;
+        const org = projectMatch[1];
         return Response.json({
           id: `${org}-id`,
           slug: "myproj",
@@ -424,7 +424,7 @@ describe("alert metrics list pagination", () => {
         /\/api\/0\/organizations\/([^/]+)\/detectors\//,
       );
       if (alertMatch) {
-        return Response.json([rule(alertMatch[1] as string)]);
+        return Response.json([rule(alertMatch[1])]);
       }
       if (url.pathname === "/api/0/organizations/") {
         return Response.json([
@@ -436,7 +436,7 @@ describe("alert metrics list pagination", () => {
         /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
-        const org = projectMatch[1] as string;
+        const org = projectMatch[1];
         return Response.json({
           id: `${org}-id`,
           slug: "myproj",
@@ -481,7 +481,7 @@ describe("alert metrics list pagination", () => {
         /\/api\/0\/organizations\/([^/]+)\/detectors\//,
       );
       if (alertMatch) {
-        const org = alertMatch[1] as string;
+        const org = alertMatch[1];
         if (org === "org-two") {
           return new Response(JSON.stringify({ detail: "boom" }), {
             status: 500,
@@ -505,7 +505,7 @@ describe("alert metrics list pagination", () => {
         /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
-        const org = projectMatch[1] as string;
+        const org = projectMatch[1];
         return Response.json({
           id: `${org}-id`,
           slug: "myproj",
@@ -594,7 +594,7 @@ describe("alert metrics list pagination", () => {
         /\/api\/0\/organizations\/([^/]+)\/detectors\//,
       );
       if (alertMatch) {
-        const org = alertMatch[1] as string;
+        const org = alertMatch[1];
         const perPage = Number(url.searchParams.get("per_page"));
         perPageByOrg.set(org, perPage);
         return new Response(
@@ -623,7 +623,7 @@ describe("alert metrics list pagination", () => {
         /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
-        const org = projectMatch[1] as string;
+        const org = projectMatch[1];
         return Response.json({
           id: `${org}-id`,
           slug: "myproj",

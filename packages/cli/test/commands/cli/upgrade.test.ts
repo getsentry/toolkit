@@ -81,7 +81,7 @@ let originalFetch: typeof globalThis.fetch;
 function mockFetch(
   fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
-  globalThis.fetch = fn as typeof globalThis.fetch;
+  globalThis.fetch = fn;
 }
 
 /**
@@ -123,17 +123,17 @@ function createMockContext(
 
   // Capture logger output (routed to process.stderr)
   const origStderrWrite = process.stderr.write.bind(process.stderr);
-  process.stderr.write = ((chunk: string | Uint8Array) => {
+  process.stderr.write = (chunk: string | Uint8Array) => {
     stderrChunks.push(String(chunk));
     return true;
-  }) as typeof process.stderr.write;
+  };
 
   // Capture spinner output (routed to process.stdout)
   const origStdoutWrite = process.stdout.write.bind(process.stdout);
-  process.stdout.write = ((chunk: string | Uint8Array) => {
+  process.stdout.write = (chunk: string | Uint8Array) => {
     stdoutChunks.push(String(chunk));
     return true;
-  }) as typeof process.stdout.write;
+  };
 
   const stdoutWriter = {
     write: (s: string) => {
@@ -879,7 +879,7 @@ function fakeChildProcess(exitCode: number): child_process.ChildProcess {
   const emitter = new EventEmitter();
   // Emit "close" asynchronously so the caller can attach listeners first
   queueMicrotask(() => emitter.emit("close", exitCode));
-  return emitter as unknown as child_process.ChildProcess;
+  return emitter;
 }
 
 /**

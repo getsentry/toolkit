@@ -7,6 +7,10 @@
     "node": ">=22.13"
   },
   "exports": {
+    "./dashboard-transformations": {
+      "types": "./src/dashboard-transformations.ts",
+      "default": "./src/dashboard-transformations.ts"
+    },
     "./events-fields": {
       "types": "./src/events-fields.ts",
       "default": "./src/events-fields.ts"

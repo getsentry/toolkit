@@ -43,6 +43,7 @@ export const getIssueTagValuesOutputSchema = z.object({
 
 export default defineTool({
   name: "get_issue_tag_values",
+  title: "Get Issue Tag Values",
   skills: ["inspect"], // Available in inspect skill for understanding issue distribution
   requiredScopes: ["event:read"],
   description: [
@@ -125,7 +126,7 @@ export default defineTool({
     await ensureIssueWithinProjectConstraint({
       apiService,
       organizationSlug: orgSlug,
-      issueId: parsedIssueId!,
+      issueId: parsedIssueId,
       projectSlug: context.constraints.projectSlug,
     });
 
@@ -134,7 +135,7 @@ export default defineTool({
     try {
       tagValues = await apiService.getIssueTagValues({
         organizationSlug: orgSlug,
-        issueId: parsedIssueId!,
+        issueId: parsedIssueId,
         tagKey: params.tagKey,
       });
     } catch (error) {
@@ -142,7 +143,7 @@ export default defineTool({
         throw await explainTagValuesNotFound({
           apiService,
           organizationSlug: orgSlug,
-          issueId: parsedIssueId!,
+          issueId: parsedIssueId,
           tagKey: params.tagKey,
           error,
         });

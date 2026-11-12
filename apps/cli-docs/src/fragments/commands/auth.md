@@ -43,8 +43,10 @@ server has none); accounts on other servers are never replaced.
 Use `sentry auth list` to show stored accounts and `sentry auth switch` to
 change the active one.
 
-Sentry approves a device-flow login as whoever is signed in to the browser, so
-`sentry auth login <email>` checks the approved account and refuses (saving
+`sentry auth login <email>` asks Sentry to accept approval only from that
+account; the browser page asks you to switch if you're signed in as someone
+else. Servers that don't support this approve as whoever is signed in to the
+browser, so the CLI also checks the approved account and refuses (saving
 nothing) if it belongs to someone else.
 
 Select an account by email, username, user ID, or account ID (from
@@ -62,7 +64,10 @@ that fits what they target, without changing the active account:
   account's organization list (cached at login and by `sentry org list`,
   which lists every stored account's organizations) but another stored
   account has used it, that account is used. This includes `oNNNN` IDs from
-  DSNs.
+  DSNs, and the organization in a `sentry api` path such as
+  `organizations/acme-corp/issues/`, even when that account is on another
+  server. A full URL passed to `sentry api`, or an explicit server, keeps
+  the request on that server.
 - **Server** — `SENTRY_HOST`/`SENTRY_URL`, `.sentryclirc`, or a pasted Sentry
   URL for another account's server (for example a self-hosted issue link) uses
   the account stored for that server.

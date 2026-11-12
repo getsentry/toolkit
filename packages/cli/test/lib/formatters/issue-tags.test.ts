@@ -43,7 +43,7 @@ describe("formatIssueTags", () => {
 
   test("distinguishes empty values from unknown values and preserves literal tag text", () => {
     const tag = distribution();
-    const value = tag.topValues![0]!;
+    const value = tag.topValues![0];
     tag.topValues = [
       { ...value, value: "" },
       { ...value, value: null },

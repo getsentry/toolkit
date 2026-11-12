@@ -67,7 +67,7 @@ toolkit/
 │       │   │   ├── debug-files/ # bundle-jvm, bundle-sources, check, find, print-sources, upload
 │       │   │   ├── docs/        # list, query
 │       │   │   ├── dsn/         # list
-│       │   │   ├── event/       # list, send, view
+│       │   │   ├── event/       # analytics, list, send, view
 │       │   │   ├── feedback/    # list, resolve, spam, unresolve, view
 │       │   │   ├── integration/ # delete, list
 │       │   │   ├── issue/       # archive, events, explain, link, list, merge, plan, resolve, tags, unlink, unresolve, view
@@ -94,7 +94,7 @@ toolkit/
 │       │   │   ├── explore.ts   # Query aggregate event data (Explore)
 │       │   │   ├── help.ts      # Help command
 │       │   │   ├── info.ts      # Print configuration and verify authentication
-│       │   │   ├── init.ts      # Initialize Sentry in your project (experimental)
+│       │   │   ├── init.ts      # Print instructions for a coding agent to set up Sentry
 │       │   │   ├── mcp.ts       # Start a local Sentry MCP server
 │       │   │   ├── schema.ts    # Browse the Sentry API schema
 │       │   │   └── wasm-split.ts# Add build ids to WebAssembly modules and split out debug data

@@ -5,7 +5,11 @@ import {
   object,
   optional,
   pipe,
+  record,
+  strictObject,
   string,
+  union,
+  unknown,
 } from "valibot";
 import { describe, expect, test } from "vitest";
 import {
@@ -32,6 +36,20 @@ describe("extractSchemaFields", () => {
       description: "First line. Second paragraph wraps.",
       optional: true,
     });
+  });
+
+  test("reports strict objects as objects", () => {
+    // `@sentry/api` 1.52.0 emits `strictObject` for objects whose spec sets
+    // `additionalProperties: false`, often as one member of a union.
+    const [field] = extractSchemaFields(
+      object({
+        config: union([
+          record(string(), unknown()),
+          strictObject({ frequency: optional(string()) }),
+        ]),
+      }),
+    );
+    expect(field?.type).toBe("object");
   });
 
   test("prefers a description the CLI adds over the API's", () => {

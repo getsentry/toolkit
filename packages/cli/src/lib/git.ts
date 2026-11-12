@@ -1,8 +1,8 @@
 /**
  * Centralized git helpers
  *
- * Low-level git primitives used across the CLI: release management,
- * init wizard pre-flight checks, and version detection.
+ * Low-level git primitives used across the CLI: release management
+ * and version detection.
  *
  * Uses `execFileSync` (no shell) from `node:child_process` instead of
  * `Bun.spawnSync` because this module is also used by the npm/Node
@@ -13,6 +13,7 @@
 
 import { execFileSync } from "node:child_process";
 
+import { sentry } from "./app-identity.js";
 import { ValidationError, validationError } from "./errors.js";
 
 /** `execFileSync` failure shape when git exits non-zero. */
@@ -97,31 +98,6 @@ export function isInsideGitWorkTree(cwd?: string): boolean {
     return true;
   } catch {
     return false;
-  }
-}
-
-/**
- * Get the list of uncommitted or untracked files.
- *
- * Returns each line from `git status --porcelain=v1` prefixed with `- `.
- * Empty array if the working tree is clean or not a git repo.
- *
- * @param cwd - Working directory
- * @returns Array of formatted status lines (e.g., `["- M src/index.ts", "- ?? new-file.ts"]`)
- */
-export function getUncommittedFiles(cwd?: string): string[] {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    const raw = git(["status", "--porcelain=v1"], cwd);
-    if (!raw) {
-      return [];
-    }
-    return raw
-      .split("\n")
-      .filter((line) => line.length > 0)
-      .map((line) => `- ${line}`);
-  } catch {
-    return [];
   }
 }
 
@@ -210,7 +186,7 @@ export function getCommitLog(
   if (from?.startsWith("-")) {
     throw validationError(
       `--from must be a git ref, not a CLI flag (received '${from}').`,
-      ["sentry release set-commits 1.0.0 --from v0.9.0"],
+      [sentry`release set-commits 1.0.0 --from v0.9.0`],
       "from",
       "Git refs cannot start with '-'. Tokens like '--format=x' are CLI flags, not refs — use a tag or commit (e.g. v0.9.0).",
     );
@@ -246,7 +222,7 @@ export function getCommitLog(
         `Unknown git ref '${from}': not found in this repository.`,
         [
           `git rev-parse ${from}`,
-          "sentry release set-commits <org>/<version> --from v0.9.0",
+          sentry`release set-commits <org>/<version> --from v0.9.0`,
         ],
         "from",
         "Range is always <ref>..HEAD — checkout the current release tag first.",

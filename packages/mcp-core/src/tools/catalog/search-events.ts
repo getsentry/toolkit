@@ -13,6 +13,7 @@ import {
 export default defineTool({
   ...searchToolBase("search_events"),
   name: "search_events",
+  title: "Search Events",
   includeInSkillDefinitions: false,
   deprecated: {
     replacedBy: [
