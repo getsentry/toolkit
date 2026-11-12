@@ -341,6 +341,14 @@ it sends is safe to resend even though Sentry does not mark the whole
 endpoint, such as chunk uploads or a release create without commits; check
 the handler in Sentry's source first.
 
+Node 26's `fetch` (undici 8) uses HTTP/2 when the server offers it, so
+parallel requests to one origin share one connection. Sentry's edge resets
+concurrent upload streams on one connection with `ENHANCE_YOUR_CALM`, so the
+CLI's chunk uploads (`packages/cli/src/lib/api/chunk-upload.ts`) send their
+parallel requests over HTTP/1.1, one connection each, through a dispatcher
+from `packages/cli/src/lib/http1-dispatcher.ts`. Use the same dispatcher for
+any new code that uploads large bodies in parallel.
+
 ## Best Practices
 
 1. **Always use context helper** when in tools/prompts
