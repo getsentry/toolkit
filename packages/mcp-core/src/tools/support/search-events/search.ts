@@ -73,6 +73,7 @@ import {
   isAggregateQuery,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
+  normalizeNumericIssueFilters,
   readRegexFilterValue,
   recordEventsSearchValidationTelemetry,
   validateEventsSearch,
@@ -963,6 +964,11 @@ async function executeSearchEvents(
     untranslatedQueryNote = untranslatedNote
       ? `**Note:** ${untranslatedNote}`
       : null;
+  }
+
+  // The errors dataset only resolves short IDs under `issue:`.
+  if (dataset === "errors") {
+    sentryQuery = normalizeNumericIssueFilters(sentryQuery);
   }
 
   // Flag any requested environment that doesn't exist (checking both the
