@@ -53,7 +53,7 @@ export default defineTool({
     "",
     "This tool automatically:",
     "1. Checks if analysis already exists (instant results)",
-    "2. Starts new AI analysis if none exists or the last one failed (~2-5 minutes)",
+    "2. Starts new AI analysis if needed (~2-5 minutes)",
     "3. Returns complete fix recommendations",
     "",
     "<examples>",
@@ -75,7 +75,7 @@ export default defineTool({
     "- Seer Autofix does not support metric alert issues (issueCategory: metric); use get_issue_details and search_metrics or search_traces instead",
     "- If the user provides an issueUrl, extract it and use that parameter alone",
     "- The analysis includes actual code snippets and fixes, not just error descriptions",
-    "- Results are cached - subsequent calls return instantly, except that a failed analysis is retried",
+    "- Results are cached - subsequent calls return instantly",
     "</hints>",
   ].join("\n"),
   inputSchema: {
