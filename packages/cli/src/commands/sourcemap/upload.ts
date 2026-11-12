@@ -39,6 +39,12 @@ import {
   type InjectResult,
   resolveUploadTarget,
 } from "../../lib/sourcemap/inject.js";
+import {
+  addWasmDiscoveryCounts,
+  discoverWasmPairs,
+  syncWasmPairs,
+  type WasmSyncResult,
+} from "../../lib/sourcemap/wasm.js";
 import { sentry } from "../../lib/app-identity.js";
 
 /** Result type for the upload command. */
@@ -128,10 +134,42 @@ type ArtifactContext = {
   noRewrite: boolean;
 };
 
-/** Compute a JS file's URL-space relative path (post-strip, forward slashes). */
-function jsRelativePath(jsPath: string, ctx: ArtifactContext): string {
-  const rel = relative(ctx.resolvedDir, jsPath).replaceAll("\\", "/");
+/** Compute a file's URL-space relative path (post-strip, forward slashes). */
+function urlRelativePath(path: string, ctx: ArtifactContext): string {
+  const rel = relative(ctx.resolvedDir, path).replaceAll("\\", "/");
   return ctx.pathPrefixToStrip ? stripPrefix(rel, ctx.pathPrefixToStrip) : rel;
+}
+
+/**
+ * Build the artifact pair for a wasm module and its sourcemap.
+ *
+ * Structurally the same as the external-map JS case — the module takes the
+ * `minified_source` slot — but the debug ID comes off the module's `build_id`
+ * rather than from hashing content, and the module is uploaded as the bytes on
+ * disk with no injected snippet.
+ */
+function buildWasmArtifactPair(
+  result: WasmSyncResult,
+  ctx: ArtifactContext,
+): ArtifactFile[] {
+  const wasmRelative = urlRelativePath(result.wasmPath, ctx);
+  const mapRelative = urlRelativePath(result.mapPath, ctx);
+  const debugIdField = result.debugId ? { debugId: result.debugId } : {};
+  return [
+    {
+      path: result.wasmPath,
+      ...debugIdField,
+      type: "minified_source",
+      url: `${ctx.urlPrefix}${wasmRelative}`,
+      sourcemapFilename: posixRelative(posixDirname(wasmRelative), mapRelative),
+    },
+    {
+      path: result.mapPath,
+      ...debugIdField,
+      type: "source_map",
+      url: `${ctx.urlPrefix}${mapRelative}`,
+    },
+  ];
 }
 
 /**
@@ -143,7 +181,7 @@ function buildArtifactPair(
   ctx: ArtifactContext,
 ): ArtifactFile[] {
   const { jsPath, map, debugId } = result;
-  const jsRelative = jsRelativePath(jsPath, ctx);
+  const jsRelative = urlRelativePath(jsPath, ctx);
   const debugIdField = debugId ? { debugId } : {};
 
   if (map.kind === "inline") {
@@ -212,6 +250,47 @@ function buildArtifactPair(
   ];
 }
 
+/**
+ * Resolve the directory prefix to strip from every uploaded URL.
+ *
+ * `--strip-prefix` is taken verbatim, normalized to end at a directory
+ * boundary; `--strip-common-prefix` derives one from the discovered paths.
+ * Wasm pairs contribute both of their paths — a wasm-only upload should strip
+ * its own common directory just as a JS one does.
+ */
+function resolvePathPrefixToStrip(
+  discovered: {
+    resolvedDir: string;
+    results: InjectResult[];
+    wasmResults: WasmSyncResult[];
+  },
+  flags: { "strip-prefix"?: string; "strip-common-prefix"?: boolean },
+): string {
+  if (!flags["strip-common-prefix"]) {
+    // Normalize --strip-prefix to end with "/" so it strips at directory
+    // boundaries. Without this, "build" would strip from "build/app.js"
+    // leaving "/app.js" instead of "app.js".
+    const explicit = flags["strip-prefix"] ?? "";
+    if (explicit && !explicit.endsWith("/")) {
+      return `${explicit}/`;
+    }
+    return explicit;
+  }
+  const { resolvedDir, results, wasmResults } = discovered;
+  const toRelative = (path: string) =>
+    relative(resolvedDir, path).replaceAll("\\", "/");
+  // Only the JS path participates for inline maps (no standalone .map file).
+  const allRelative = results.flatMap((r) =>
+    r.mapPath
+      ? [toRelative(r.jsPath), toRelative(r.mapPath)]
+      : [toRelative(r.jsPath)],
+  );
+  for (const wasm of wasmResults) {
+    allRelative.push(toRelative(wasm.wasmPath), toRelative(wasm.mapPath));
+  }
+  return computeCommonPrefix(allRelative);
+}
+
 export const uploadCommand = buildCommand({
   docs: {
     brief: "Upload sourcemaps to Sentry",
@@ -219,6 +298,8 @@ export const uploadCommand = buildCommand({
       "Upload JavaScript sourcemaps and source files to Sentry using " +
       "debug-ID-based matching.\n\n" +
       "Automatically injects missing debug IDs and runtime registration snippets, preserving existing IDs.\n" +
+      "WebAssembly pairs (app.wasm + app.wasm.map) upload alongside, keyed by " +
+      "the module's build_id.\n" +
       "Org/project are auto-detected from DSN, env vars, or config defaults.\n\n" +
       "Exits with an error if zero JS + sourcemap pairs are discovered " +
       "(typical cause: bundler not emitting .map files). Pass " +
@@ -383,13 +464,21 @@ export const uploadCommand = buildCommand({
       ignoreMatcher,
       target.include,
     );
+    const wasmPairs = await discoverWasmPairs(target.dir, {
+      ignoreMatcher,
+      include: target.include,
+    });
 
-    if (pairs.length === 0) {
+    if (pairs.length === 0 && wasmPairs.length === 0) {
       if (!flags["allow-empty"]) {
-        const diag = await diagnoseEmptyDiscovery(target.dir, {
-          extensions,
-          include: target.include,
-        });
+        const diag = await addWasmDiscoveryCounts(
+          target.dir,
+          await diagnoseEmptyDiscovery(target.dir, {
+            extensions,
+            include: target.include,
+          }),
+          { include: target.include },
+        );
         throw buildEmptyDiscoveryError(dir, diag);
       }
       // --allow-empty: nothing to upload, so don't require Sentry
@@ -437,37 +526,33 @@ export const uploadCommand = buildCommand({
           include: target.include,
         });
 
+    // `--no-rewrite` runs the wasm sync read-only: nothing is stamped and no
+    // map is rewritten, but a `build_id` already on disk still identifies the
+    // pair, so it rides along on the manifest entries.
+    // Skipped pairs were already warned about and are left out of the upload.
+    const wasmResults = (
+      await syncWasmPairs(wasmPairs, { dryRun: flags["no-rewrite"] })
+    ).filter((result) => !result.skipped);
+
     const urlPrefix = flags["url-prefix"] ?? "~/";
 
     // Build artifact file list with paths relative to the upload directory
     const resolvedDir = resolve(target.dir);
-    // Normalize --strip-prefix to end with "/" so it strips at directory
-    // boundaries. Without this, "build" would strip from "build/app.js"
-    // leaving "/app.js" instead of "app.js".
-    let pathPrefixToStrip = flags["strip-prefix"] ?? "";
-    if (pathPrefixToStrip && !pathPrefixToStrip.endsWith("/")) {
-      pathPrefixToStrip = `${pathPrefixToStrip}/`;
-    }
-    if (flags["strip-common-prefix"]) {
-      // Only the JS path participates for inline maps (no standalone .map file).
-      const allRelative = results.flatMap((r) => {
-        const rels = [relative(resolvedDir, r.jsPath).replaceAll("\\", "/")];
-        if (r.mapPath) {
-          rels.push(relative(resolvedDir, r.mapPath).replaceAll("\\", "/"));
-        }
-        return rels;
-      });
-      pathPrefixToStrip = computeCommonPrefix(allRelative);
-    }
-
-    const artifactFiles: ArtifactFile[] = results.flatMap((result) =>
-      buildArtifactPair(result, {
-        resolvedDir,
-        urlPrefix,
-        pathPrefixToStrip,
-        noRewrite: flags["no-rewrite"] ?? false,
-      }),
-    );
+    const artifactCtx: ArtifactContext = {
+      resolvedDir,
+      urlPrefix,
+      pathPrefixToStrip: resolvePathPrefixToStrip(
+        { resolvedDir, results, wasmResults },
+        flags,
+      ),
+      noRewrite: flags["no-rewrite"] ?? false,
+    };
+    const artifactFiles: ArtifactFile[] = [
+      ...results.flatMap((result) => buildArtifactPair(result, artifactCtx)),
+      ...wasmResults.flatMap((result) =>
+        buildWasmArtifactPair(result, artifactCtx),
+      ),
+    ];
 
     await uploadSourcemaps({
       org,

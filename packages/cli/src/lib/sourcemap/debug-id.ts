@@ -23,6 +23,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
+import { replaceFile } from "../replace-file.js";
 import { isLikelyBinary } from "../scan/binary.js";
 import {
   type DecodedInlineMap,
@@ -127,6 +128,62 @@ export function readSourcemapDebugId(map: unknown): string | undefined {
   }
   const { debug_id: snake, debugId: camel } = map as SourcemapJson;
   return normalizeDebugId(snake) ?? normalizeDebugId(camel);
+}
+
+/** Outcome of stamping a debug ID onto a standalone sourcemap. */
+export type SourcemapStampResult = {
+  /** Whether the map was rewritten on disk (in a dry run: would be). */
+  changed: boolean;
+  /** The debug ID the map carried before, when it carried a different one. */
+  replaced?: string;
+};
+
+/**
+ * Read and parse a standalone sourcemap.
+ *
+ * Some toolchains save maps with a BOM, which `JSON.parse` rejects.
+ *
+ * @throws {SyntaxError} When the file is not JSON
+ */
+export async function readSourcemapFile(
+  mapPath: string,
+): Promise<SourcemapJson> {
+  const text = (await readFile(mapPath, "utf-8")).replace(/^\uFEFF/, "");
+  return JSON.parse(text) as SourcemapJson;
+}
+
+/**
+ * Set a debug ID on a sourcemap file, leaving everything else alone.
+ *
+ * Unlike {@link injectDebugId} this touches no host file, so it suits maps
+ * whose companion artifact is not JavaScript — a wasm module carries its own
+ * id in a custom section and must never be rewritten as text. The map itself is
+ * edited by {@link mutateSourcemap}, so it gains the id under both field
+ * spellings exactly as an injected map does, with no `mappings` offset:
+ * `mappings` only shifts when injection prepends a runtime snippet line.
+ *
+ * Idempotent: a map already carrying `debugId` is left byte-identical.
+ *
+ * @param mapPath - Path to the `.map` file
+ * @param debugId - The debug ID to write
+ * @param options.dryRun - Report what would change without writing
+ * @returns Whether the map changes, and the id it replaced
+ */
+export async function setSourcemapDebugId(
+  mapPath: string,
+  debugId: string,
+  options: { dryRun?: boolean } = {},
+): Promise<SourcemapStampResult> {
+  const map = await readSourcemapFile(mapPath);
+  const existing = readSourcemapDebugId(map);
+  if (existing === debugId) {
+    return { changed: false };
+  }
+  if (!options.dryRun) {
+    mutateSourcemap(map, debugId, {});
+    await replaceFile(mapPath, JSON.stringify(map));
+  }
+  return { changed: true, replaced: existing };
 }
 
 /**
