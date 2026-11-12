@@ -99,10 +99,6 @@ const ClientRegistrationResponseSchema = z.object({
   client_id_issued_at: z.number().optional(),
 });
 
-type ClientRegistrationResponse = z.infer<
-  typeof ClientRegistrationResponseSchema
->;
-
 // Get or register OAuth client with the MCP server
 export async function getOrRegisterChatClient(
   env: Env,

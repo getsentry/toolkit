@@ -181,6 +181,91 @@ describe("search_events", () => {
         grantedSkills: new Set(),
         constraints: {},
         sentryHost: "sentry.io",
+        availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
+      },
+    );
+
+    expect(result).toContain("No results found");
+    // The query was not rewritten, so an empty result is not a translation bug.
+    expect(result).not.toContain("submit_feedback_to_sentry_team");
+  });
+
+  it("suggests feedback when the agent rewrote the query and nothing matched", async () => {
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+        HttpResponse.json({ data: [] }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "level:error",
+        fields: null,
+        sort: null,
+        period: "24h",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+        availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
+      },
+    );
+
+    expect(result).toContain("No results found");
+    expect(result).toContain(
+      "report it to the Sentry MCP team with `submit_feedback_to_sentry_team`",
+    );
+  });
+
+  it("rewrites numeric issue IDs to issue.id for the errors dataset", async () => {
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse("errors", "issue:7844703743 level:error"),
+    );
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          const url = new URL(request.url);
+          expect(url.searchParams.get("dataset")).toBe("errors");
+          expect(url.searchParams.get("query")).toBe(
+            "issue.id:7844703743 level:error",
+          );
+          return HttpResponse.json({ data: [] });
+        },
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "issue:7844703743 level:error",
+        fields: null,
+        sort: null,
+        period: "24h",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
       },
     );
 

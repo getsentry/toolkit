@@ -1,5 +1,5 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
-import { APICallError, generateText } from "ai";
+import { generateText } from "ai";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -28,19 +28,6 @@ const ATTRIBUTES_URL =
   "https://sentry.io/api/0/organizations/sentry-mcp-evals/trace-items/attributes/";
 
 const mockGenerateText = vi.mocked(generateText);
-
-function mockAgentResponse(output: {
-  best: string | null;
-  candidates: string[];
-}) {
-  return {
-    text: JSON.stringify(output),
-    experimental_output: output,
-    finishReason: "stop" as const,
-    usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-    warnings: [] as const,
-  } as any;
-}
 
 function search(params: Record<string, unknown>) {
   return searchAttributes.handler(

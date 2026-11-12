@@ -66,6 +66,22 @@ describe("submit_feedback_to_sentry_team", () => {
     );
   });
 
+  // MCP-SERVER-GNZ logged a skipped step ("No fue necesario; se omite.") and
+  // MCP-SERVER-GP0 announced a shell task ("checking for running Podman
+  // containers") that never needed Sentry. Neither reported a problem, and
+  // no word list catches them, so the description has to rule them out.
+  it("tells agents to call it only for Sentry MCP problems", () => {
+    const { description } = submitFeedbackToSentryTeam;
+
+    expect(description).not.toContain("after you finish or give up");
+    expect(description).toContain(
+      "Call it only when a Sentry MCP tool was missing, failed, or got in the way",
+    );
+    expect(description).toContain(
+      "Skip it if the task went fine, was skipped, or did not need Sentry.",
+    );
+  });
+
   // MCP-SERVER-GNB, GMP and GK1 were filler-only reports from three clients.
   it.each(["placeholder", "N/A", "noop", " ... "])(
     "rejects the placeholder description %j",
