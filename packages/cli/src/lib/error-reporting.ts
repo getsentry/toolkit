@@ -294,13 +294,18 @@ const ENDPOINT_PATTERNS: [RegExp, string][] = [
   [/\/teams\/[^/]+\/[^/]+/, "/teams/{org}/{team}"],
   [/\/dashboards\/[^/]+/, "/dashboards/{id}"],
   [/\/customers\/[^/]+/, "/customers/{org}"],
+  [/\/shortids\/[^/]+/, "/shortids/{id}"],
+  [/\/monitors\/[^/]+/, "/monitors/{monitor}"],
 ];
 
 /**
  * Strip remaining bare numeric segments (e.g. /12345/) but preserve
- * the API version prefix /0/ which is always the second segment.
+ * the API version in /api/0/, which may follow an install prefix.
  */
-const BARE_NUMERIC_SEGMENT_RE = /(?<=\/api\/0\/.*)\/\d+(?=\/|$)/g;
+const BARE_NUMERIC_SEGMENT_RE = /(?<!\/api)\/\d+(?=\/|$)/g;
+
+/** Scheme and host of an absolute URL. */
+const URL_ORIGIN_RE = /^[a-z][a-z\d+.-]*:\/\/[^/?#]*/i;
 
 /**
  * Normalize an API endpoint path by parameterizing variable segments.
@@ -309,15 +314,23 @@ const BARE_NUMERIC_SEGMENT_RE = /(?<=\/api\/0\/.*)\/\d+(?=\/|$)/g;
  * entity identifiers with placeholders so that server-side fingerprint
  * rules can sub-group `ApiError` by endpoint shape rather than exact path.
  *
+ * Accepts a path with or without a leading slash, or a full URL, whose
+ * origin is kept. Drops the query string and fragment.
+ *
  * `"/api/0/projects/my-org/my-project/events/abc123/"` →
  * `"/api/0/projects/{org}/{project}/events/{id}/"`
  */
 export function normalizeEndpoint(endpoint: string): string {
-  let result = endpoint;
+  const origin = URL_ORIGIN_RE.exec(endpoint)?.[0] ?? "";
+  const path = endpoint.slice(origin.length).split(/[?#]/, 1)[0] ?? "";
+  // The patterns match on a leading slash, which relative paths lack.
+  const hasLeadingSlash = origin !== "" || path.startsWith("/");
+  let result = path.startsWith("/") ? path : `/${path}`;
   for (const [pattern, replacement] of ENDPOINT_PATTERNS) {
     result = result.replace(pattern, replacement);
   }
-  return result.replace(BARE_NUMERIC_SEGMENT_RE, "/{id}");
+  result = result.replace(BARE_NUMERIC_SEGMENT_RE, "/{id}");
+  return origin + (hasLeadingSlash ? result : result.slice(1));
 }
 
 /**
@@ -464,7 +477,7 @@ function setCliErrorContext(scope: Sentry.Scope, error: unknown): void {
   if (error instanceof ApiError) {
     scope.setContext("api_error", {
       status: error.status,
-      endpoint: error.endpoint,
+      endpoint: error.endpoint && normalizeEndpoint(error.endpoint),
       detail: error.detail,
     });
   } else if (error instanceof ContextError) {

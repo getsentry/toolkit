@@ -209,6 +209,36 @@ describe("normalizeEndpoint", () => {
   test("leaves paths without variable segments unchanged", () => {
     expect(normalizeEndpoint("/api/0/auth/")).toBe("/api/0/auth/");
   });
+
+  test.each([
+    ["organizations/my-org/releases/", "organizations/{org}/releases/"],
+    [
+      "projects/my-org/my-project/issues/?query=is:unresolved",
+      "projects/{org}/{project}/issues/",
+    ],
+    [
+      "https://sentry.example.com/api/0/organizations/my-org/events/?field=title",
+      "https://sentry.example.com/api/0/organizations/{org}/events/",
+    ],
+    [
+      "https://sentry.example.com/sentry/api/0/organizations/my-org/",
+      "https://sentry.example.com/sentry/api/0/organizations/{org}/",
+    ],
+    [
+      "/organizations/my-org/shortids/MY-PROJECT-1A/",
+      "/organizations/{org}/shortids/{id}/",
+    ],
+    [
+      "organizations/my-org/monitors/my-monitor/",
+      "organizations/{org}/monitors/{monitor}/",
+    ],
+    [
+      "organizations/my-org/alert-rules/123/",
+      "organizations/{org}/alert-rules/{id}/",
+    ],
+  ])("templates %s", (endpoint, expected) => {
+    expect(normalizeEndpoint(endpoint)).toBe(expected);
+  });
 });
 
 // ---------------------------------------------------------------------------
