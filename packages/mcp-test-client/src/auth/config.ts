@@ -13,7 +13,7 @@ export interface OAuthClientConfig {
 }
 
 export interface ClientConfigFile {
-  oauthClients: Record<string, OAuthClientConfig>;
+  oauthClients: Partial<Record<string, OAuthClientConfig>>;
 }
 
 export class ConfigManager {
@@ -196,6 +196,7 @@ export class ConfigManager {
     const config = await this.loadConfig();
 
     for (const [host, clientConfig] of Object.entries(config.oauthClients)) {
+      if (!clientConfig) continue;
       config.oauthClients[host] = {
         ...clientConfig,
         accessToken: undefined,
@@ -211,6 +212,8 @@ export class ConfigManager {
    */
   async listOAuthClients(): Promise<OAuthClientConfig[]> {
     const config = await this.loadConfig();
-    return Object.values(config.oauthClients);
+    return Object.values(config.oauthClients).filter(
+      (clientConfig) => clientConfig !== undefined,
+    );
   }
 }

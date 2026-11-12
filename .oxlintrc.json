@@ -85,6 +85,25 @@
     },
     {
       "files": [
+        "apps/docs-mcp/**/*.{ts,tsx,js,mjs,cjs}",
+        "apps/games-api/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/codemod-cli3to4/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/logger/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/mcp-cloudflare/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/mcp-server/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/mcp-server-evals/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/mcp-server-mocks/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/mcp-test-client/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/smoke-tests/**/*.{ts,tsx,js,mjs,cjs}",
+        "packages/toolkit-core/**/*.{ts,tsx,js,mjs,cjs}",
+        "scripts/**/*.{js,mjs,cjs}"
+      ],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
+      "files": [
         "packages/cli/src/**/*.{ts,tsx}",
         "packages/cli/test/**/*.{ts,tsx}"
       ],

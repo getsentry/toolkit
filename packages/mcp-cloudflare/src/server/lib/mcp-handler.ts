@@ -319,8 +319,8 @@ async function handleAuthenticatedMcpRequest(
   }
 
   const { groups } = result.pathname;
-  const organizationSlug = groups?.org || null;
-  const projectSlug = groups?.project || null;
+  const organizationSlug = groups.org || null;
+  const projectSlug = groups.project || null;
 
   // Check for experimental mode query parameter
   const isExperimentalMode = url.searchParams.get("experimental") === "1";

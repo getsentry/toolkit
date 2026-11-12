@@ -70,8 +70,10 @@ export function usePersistedChat(isAuthenticated: boolean) {
 
   // Validate a message to ensure it won't cause conversion errors
   const isValidMessage = useCallback((msg: UIMessage): boolean => {
-    // UIMessage always has parts array in AI SDK 6+
-    if (!msg.parts || !Array.isArray(msg.parts) || msg.parts.length === 0) {
+    // Persisted messages come from localStorage, and migrateMessage passes
+    // unrecognized shapes through, so parts may be missing despite the type.
+    const parts: unknown = msg.parts;
+    if (!Array.isArray(parts) || parts.length === 0) {
       return false;
     }
 

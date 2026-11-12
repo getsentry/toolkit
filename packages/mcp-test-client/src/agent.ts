@@ -167,7 +167,7 @@ export async function runAgent(
               streamError = error;
             },
             onStepFinish: ({ toolCalls, toolResults }) => {
-              if (toolCalls && toolCalls.length > 0) {
+              if (toolCalls.length > 0) {
                 // End current streaming if active
                 if (isStreaming) {
                   logStreamEnd();
@@ -177,7 +177,7 @@ export async function runAgent(
                 // Show tool calls with their results
                 for (let i = 0; i < toolCalls.length; i++) {
                   const toolCall = toolCalls[i];
-                  const toolResult = toolResults?.[i];
+                  const toolResult = toolResults.at(i);
 
                   logTool(toolCall.toolName, toolCall.input);
 
