@@ -629,7 +629,7 @@ describe("analyze_issue_with_seer", () => {
 
     expect(result).toContain("## Analysis Failed");
     expect(result).toContain(
-      "Your organization does not have enough credits to continue your Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry, then run the analysis again to start a new run.",
+      "Your organization does not have enough credits to continue your Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
     );
   });
 

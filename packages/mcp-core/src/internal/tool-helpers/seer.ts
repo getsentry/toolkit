@@ -90,7 +90,7 @@ export const SEER_START_OUT_OF_CREDITS_MESSAGE =
   "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.";
 
 export const SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE =
-  "Your organization does not have enough credits to continue your Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry, then run the analysis again to start a new run.";
+  "Your organization does not have enough credits to continue your Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.";
 
 const SEER_NO_QUOTA_MESSAGE =
   "Your organization does not have enough Seer quota to start an Autofix run.";
