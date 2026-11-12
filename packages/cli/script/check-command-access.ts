@@ -14,6 +14,7 @@ import {
   commandAccessProblems,
 } from "./lib/command-access.js";
 import { analyzeCliSources } from "./lib/source-api-usage.js";
+import { logger } from "../src/lib/logger.js";
 
 const { analysis } = await analyzeCliSources();
 
@@ -40,15 +41,16 @@ const problems = [...commands].flatMap(([command, path]) =>
 );
 
 if (problems.length === 0) {
-  console.log(
-    `✓ All ${commands.size} commands declare an exposure and a permission class that matches their requests`,
+  logger.success(
+    `All ${commands.size} commands declare an exposure and a permission class that matches their requests`,
   );
 } else {
-  console.error(
-    `✗ ${problems.length} command access problem(s):\n\n${problems.map((problem) => `  ${problem}`).join("\n")}`,
-  );
-  console.error(
-    "\n  See script/lib/command-access.ts for when a command declares `permission`.",
+  logger.error(
+    [
+      `${problems.length} command access problem(s):\n`,
+      ...problems.map((problem) => `  ${problem}`),
+      "\n  See script/lib/command-access.ts for when a command declares `permission`.",
+    ].join("\n"),
   );
   process.exitCode = 1;
 }

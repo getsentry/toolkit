@@ -3,6 +3,7 @@
 import { looseObject, safeParse, string } from "valibot";
 import type { BootstrapResult } from "../output-schemas/auth.js";
 import { pointDefaultUrlAtAccount } from "./account-selection.js";
+import { sentry } from "./app-identity.js";
 import { normalizeAuthToken } from "./auth-header.js";
 import {
   getAccountIdToReplace,
@@ -98,7 +99,7 @@ export async function bootstrapAuthentication(
     !options.force
   ) {
     throw new ValidationError(
-      "A stored login already exists. To replace it, run:\nSENTRY_SETUP_CODE='<setup-code>' sentry auth bootstrap --force",
+      `A stored login already exists. To replace it, run:\nSENTRY_SETUP_CODE='<setup-code>' ${sentry`auth bootstrap --force`}`,
       "force",
     );
   }

@@ -238,17 +238,16 @@ export const diffCommand = buildCommand({
     examples: [
       {
         description: "Compare two directories of snapshot images locally",
-        command: "sentry snapshots diff ./baseline ./head",
+        run: "snapshots diff ./baseline ./head",
       },
       {
         description:
           "Exit non-zero if any images changed, with a custom threshold",
-        command:
-          "sentry snapshots diff ./baseline ./head --fail-on-diff --threshold 0.02",
+        run: "snapshots diff ./baseline ./head --fail-on-diff --threshold 0.02",
       },
       {
         description: "Write diff masks to a directory",
-        command: "sentry snapshots diff ./baseline ./head --output ./diffs/",
+        run: "snapshots diff ./baseline ./head --output ./diffs/",
       },
     ],
   },

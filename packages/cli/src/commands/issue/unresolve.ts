@@ -35,15 +35,15 @@ export const unresolveCommand = buildCommand({
     examples: [
       {
         description: "Reopen a resolved issue",
-        command: "sentry issue unresolve CLI-G5",
+        run: "issue unresolve CLI-G5",
       },
       {
         description: "`reopen` is an alias for `unresolve`",
-        command: "sentry issue reopen CLI-G5",
+        run: "issue reopen CLI-G5",
       },
       {
         description: "Reopen an issue in an explicit organization",
-        command: "sentry issue unresolve my-org/CLI-G5",
+        run: "issue unresolve my-org/CLI-G5",
       },
     ],
   },

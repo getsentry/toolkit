@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { getLatestEvent, listReplayIdsForIssue } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { issueSelectorHelp, spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
@@ -38,7 +39,7 @@ import { IssueViewOutputSchema } from "../../generated/output-schemas/issue.js";
 const log = logger.withTag("issue.view");
 
 /** Usage hint for a missing issue */
-const USAGE_HINT = "sentry issue view <issue> [<issue>...]";
+const usageHint = () => sentry`issue view <issue> [<issue>...]`;
 
 /** Maximum browser tabs opened without an explicit safety override. */
 export const MAX_WEB_ISSUES = 5;
@@ -337,59 +338,54 @@ export const viewCommand = buildCommand({
       "In multi-project mode (after 'issue list'), use alias-suffix format (e.g., 'f-g' " +
       "where 'f' is the project alias shown in the list).",
     examples: [
-      { description: "View an issue", command: "sentry issue view FRONT-ABC" },
+      { description: "View an issue", run: "issue view FRONT-ABC" },
       {
         description: "View the most recent issue",
-        command: "sentry issue view @latest",
+        run: "issue view @latest",
       },
       {
         description: "View several issues (space-separated, not commas)",
-        command: "sentry issue view FRONT-ABC BACK-2",
+        run: "issue view FRONT-ABC BACK-2",
       },
       {
         description: "Select an organization explicitly",
-        command: "sentry issue view my-org/FRONT-ABC",
+        run: "issue view my-org/FRONT-ABC",
       },
       {
         description:
           'Use a GitHub-style identifier (the "#" replaces the final slash)',
-        command: "sentry issue view my-org/my-project#FRONT-ABC",
+        run: "issue view my-org/my-project#FRONT-ABC",
       },
       {
         description: "Open issues in the browser (up to 5 tabs by default)",
-        command: "sentry issue view FRONT-ABC BACK-2 -w",
+        run: "issue view FRONT-ABC BACK-2 -w",
       },
       {
         description: "Allow more than 5 browser tabs",
-        command:
-          "sentry issue view FRONT-ABC BACK-2 API-3 WEB-4 IOS-5 OPS-6 -w --force",
+        run: "issue view FRONT-ABC BACK-2 API-3 WEB-4 IOS-5 OPS-6 -w --force",
       },
       {
         description:
           "Full JSON (issue fields + latest event + trace/replay context)",
-        command: "sentry issue view FRONT-ABC --json",
+        run: "issue view FRONT-ABC --json",
       },
       {
         description: "Select top-level fields to keep output small",
-        command:
-          "sentry issue view FRONT-ABC --json --fields shortId,title,culprit,count,userCount,permalink",
+        run: "issue view FRONT-ABC --json --fields shortId,title,culprit,count,userCount,permalink",
       },
       {
         description:
           "Select fields from the latest event instead of the whole event",
-        command:
-          "sentry issue view FRONT-ABC --json --fields event.id,event.title,event.dateCreated",
+        run: "issue view FRONT-ABC --json --fields event.id,event.title,event.dateCreated",
       },
       {
         description: "Extract the request URL and method from the latest event",
-        command:
-          "sentry issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == \"request\") | .data | {url, method}'",
+        run: "issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == \"request\") | .data | {url, method}'",
       },
       {
         description:
           "Extract the exception type and value from the latest event",
-        command:
-          "sentry issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == \"exception\") | .data.values[0] | {type, value}'",
+        run: "issue view FRONT-ABC --json | jq '.event.entries[] | select(.type == \"exception\") | .data.values[0] | {type, value}'",
       },
     ],
   },
@@ -401,7 +397,7 @@ export const viewCommand = buildCommand({
   parameters: {
     positional: issuesPositional({
       brief: "One or more issue IDs",
-      usageHint: USAGE_HINT,
+      usageHint: usageHint,
       distinct: true,
     }),
     flags: {
@@ -444,7 +440,7 @@ export const viewCommand = buildCommand({
       requestedCount: issueArgs.length,
     });
     return {
-      hint: `Tip: Use 'sentry issue explain ${primaryArg}' for AI root cause analysis`,
+      hint: `Tip: Use '${sentry`issue explain ${primaryArg}`}' for AI root cause analysis`,
     };
   },
 });

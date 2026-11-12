@@ -468,7 +468,7 @@ describe("viewCommand.func", () => {
 });
 
 describe("replayArguments", () => {
-  const positional = replayArguments("view", "sentry replay view <id>");
+  const positional = replayArguments("view", () => "sentry replay view <id>");
   const context = { cwd: "/tmp" };
   const parse = (raw: string[]) =>
     applyBoundPositionals(raw, positional, context)[0] as ReplayArguments;

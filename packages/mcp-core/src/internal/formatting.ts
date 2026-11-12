@@ -47,6 +47,7 @@ import {
   getAutofixArtifactSummaries,
   getStatusDisplayName,
   isTerminalStatus,
+  SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE,
 } from "./tool-helpers/seer";
 import { formatToolCallInstruction } from "./tool-helpers/tool-call-formatting";
 import { isPlainObject } from "./type-guards";
@@ -236,11 +237,7 @@ export function formatEventOutput(
   },
 ) {
   let output = "";
-  const eventUser = (
-    event as Event & {
-      user?: z.infer<typeof EventSchema>["user"];
-    }
-  ).user;
+  const eventUser = event.user;
   const eventWithReplayMetadataStripped = options?.replaySummary
     ? stripReplayMetadata(event)
     : event;
@@ -256,16 +253,6 @@ export function formatEventOutput(
       availableToolNames: options.replaySummary.availableToolNames,
       directToolNames: options.replaySummary.directToolNames,
     });
-  }
-
-  // Check if entries exist (may be undefined for unsupported event types)
-  if (!eventToRender.entries || !Array.isArray(eventToRender.entries)) {
-    // For unsupported event types, just show tags and contexts
-    output += formatEventUser(eventUser);
-    output += formatTags(eventToRender.tags);
-    output += formatContext(eventToRender.context);
-    output += formatContexts(eventToRender.contexts);
-    return output;
   }
 
   // Look for the primary error information
@@ -418,13 +405,7 @@ function formatExceptionInterfaceOutput(
     // Add language-specific chain indicator for multiple exceptions
     if (isChained && index > 0) {
       parts.push("");
-      parts.push(
-        getExceptionChainMessage(
-          event.platform || null,
-          index,
-          exceptions.length,
-        ),
-      );
+      parts.push(getExceptionChainMessage(event.platform || null, index));
       parts.push("");
     }
 
@@ -441,7 +422,7 @@ function formatExceptionInterfaceOutput(
       parts.push("");
     }
 
-    if (!exception.stacktrace || !exception.stacktrace.frames) {
+    if (!exception.stacktrace) {
       parts.push("**Stacktrace:**");
       parts.push("```");
       parts.push("No stacktrace available");
@@ -494,7 +475,6 @@ function formatExceptionInterfaceOutput(
 function getExceptionChainMessage(
   platform: string | null,
   index: number,
-  totalExceptions: number,
 ): string {
   // Default message for unknown platforms
   const defaultMessage =
@@ -692,115 +672,17 @@ function formatThreadTable(
     "| Thread ID | Name | State | Flags | Frames |",
     "| --- | --- | --- | --- | ---: |",
     ...threads.map((thread) => {
-      const frameCount = thread.stacktrace?.frames?.length ?? 0;
+      const frameCount = thread.stacktrace?.frames.length ?? 0;
       return `| ${getThreadDisplayValue(thread.id)} | ${getThreadDisplayValue(thread.name)} | ${getThreadDisplayValue(thread.state)} | ${getThreadFlags(thread)} | ${frameCount} |`;
     }),
   ];
 }
 
-export function formatAvailableThreadList(
-  threads: z.infer<typeof ThreadEntrySchema>[],
-): string {
-  return [
-    "## Available Threads",
-    "",
-    ...formatThreadTable(threads),
-    "",
-    "Pass `thread` as a numeric Thread ID or exact thread Name.",
-  ].join("\n");
-}
-
-function parseThreadsEntryData(
+export function parseThreadsEntryData(
   data: unknown,
 ): z.infer<typeof ThreadsEntrySchema> | undefined {
   const result = ThreadsEntrySchema.safeParse(data);
   return result.success ? result.data : undefined;
-}
-
-/**
- * Formats the selected thread stacktrace using the same frame rendering
- * conventions as issue event details.
- */
-export function formatThreadStacktraceOutput({
-  event,
-  thread,
-  selectionReason,
-}: {
-  event: Event;
-  thread: z.infer<typeof ThreadEntrySchema>;
-  selectionReason: string;
-}): string {
-  const parts: string[] = [];
-
-  parts.push("## Selected Thread");
-  parts.push("");
-  parts.push(`**Selection**: ${selectionReason}`);
-  parts.push(`**Thread ID**: ${getThreadDisplayValue(thread.id)}`);
-  parts.push(`**Name**: ${getThreadDisplayValue(thread.name)}`);
-  parts.push(`**State**: ${getThreadDisplayValue(thread.state)}`);
-  parts.push(`**Crashed**: ${getThreadDisplayValue(thread.crashed)}`);
-  parts.push(`**Current**: ${getThreadDisplayValue(thread.current)}`);
-  parts.push("");
-
-  const frames = thread.stacktrace?.frames;
-  if (!frames || frames.length === 0) {
-    parts.push("No stacktrace is available for the selected thread.");
-    parts.push("");
-    return parts.join("\n");
-  }
-
-  parts.push("## Stacktrace");
-  parts.push("");
-  const framesOmitted = formatFramesOmitted(thread.stacktrace?.framesOmitted);
-  if (framesOmitted) {
-    parts.push(`**Frames Omitted**: ${framesOmitted}`);
-    parts.push("");
-  }
-
-  const relevantFrame = findMostRelevantInAppFrame(frames);
-  if (relevantFrame && (relevantFrame.context?.length || relevantFrame.vars)) {
-    parts.push(renderEnhancedFrame(relevantFrame, event));
-    parts.push("");
-    parts.push("**Full Stacktrace:**");
-    parts.push("────────────────");
-  } else {
-    parts.push("**Full Stacktrace:**");
-  }
-
-  parts.push(
-    codeBlock(
-      frames
-        .map((frame) => {
-          const header = formatFrameHeader(frame, undefined, event.platform);
-          const context = renderInlineContext(frame);
-          return `${header}${context}`;
-        })
-        .join("\n"),
-    ),
-  );
-  parts.push("");
-
-  return parts.join("\n");
-}
-
-function formatFramesOmitted(
-  framesOmitted: unknown[] | null | undefined,
-): string | null {
-  if (!framesOmitted?.length) {
-    return null;
-  }
-
-  const [firstOmitted, lastOmitted] = framesOmitted;
-  if (
-    typeof firstOmitted === "number" &&
-    typeof lastOmitted === "number" &&
-    Number.isFinite(firstOmitted) &&
-    Number.isFinite(lastOmitted)
-  ) {
-    return String(Math.max(0, lastOmitted - firstOmitted));
-  }
-
-  return null;
 }
 
 /**
@@ -930,7 +812,7 @@ const MAX_SPANS_IN_TREE = 10;
 /**
  * Safely parse a number from a string, returning a default if invalid
  */
-function safeParseInt(value: unknown, defaultValue: number): number {
+export function safeParseInt(value: unknown, defaultValue: number): number {
   if (typeof value === "number") return value;
   if (typeof value === "string") {
     const parsed = Number.parseInt(value, 10);
@@ -943,11 +825,11 @@ function safeParseInt(value: unknown, defaultValue: number): number {
  * Simplified span structure for rendering span trees in performance issues.
  * This is a subset of the full span data focused on visualization needs.
  */
-interface PerformanceSpan {
-  span_id: string;
-  op: string; // Operation type (e.g., "db.query", "http.client")
-  description: string; // Human-readable description of what the span did
-  duration: number; // Duration in milliseconds
+export interface PerformanceSpan {
+  span_id: string | null;
+  op: string | null; // Operation type (e.g., "db.query", "http.client")
+  description: string | null; // Human-readable description of what the span did
+  duration: number | null; // Duration in milliseconds, null when not recorded
   is_n1_query: boolean; // Whether this span is part of the N+1 pattern
   children: PerformanceSpan[];
   level: number; // Nesting level for tree rendering
@@ -963,7 +845,7 @@ interface RawSpan {
   duration?: number;
 }
 
-interface N1EvidenceData {
+export interface N1EvidenceData {
   parentSpan?: string;
   parentSpanIds?: string[];
   repeatingSpansCompact?: string[];
@@ -997,7 +879,7 @@ function getSpanIdentifier(span: RawSpan): string | undefined {
   return undefined;
 }
 
-function getSpanDurationMs(span: RawSpan): number {
+function getSpanDurationMs(span: RawSpan): number | null {
   if (
     typeof span.timestamp === "number" &&
     typeof span.start_timestamp === "number"
@@ -1010,10 +892,10 @@ function getSpanDurationMs(span: RawSpan): number {
 
   // Trace APIs expose `duration` in milliseconds. Preserve fractional values.
   if (typeof span.duration === "number" && Number.isFinite(span.duration)) {
-    return span.duration >= 0 ? span.duration : 0;
+    return span.duration >= 0 ? span.duration : null;
   }
 
-  return 0;
+  return null;
 }
 
 function normalizeIdArray(values: unknown): string[] {
@@ -1034,7 +916,7 @@ function isValidSpanArray(value: unknown): value is RawSpan[] {
  * Get the repeating span descriptions from evidence data.
  * Prefers repeatingSpansCompact (more concise) over repeatingSpans (verbose).
  */
-function getRepeatingSpanLines(evidenceData: N1EvidenceData): string[] {
+export function getRepeatingSpanLines(evidenceData: N1EvidenceData): string[] {
   // Try compact version first (preferred for display)
   if (
     Array.isArray(evidenceData.repeatingSpansCompact) &&
@@ -1069,12 +951,12 @@ function isTraceSpan(node: unknown): node is TraceSpan {
   );
 }
 
-function buildTraceSpanTree(
+function selectTraceSpanRoots(
   trace: Trace,
   parentSpanIds: string[],
   offenderSpanIds: string[],
   maxSpans: number,
-): string[] {
+): PerformanceSpan[] {
   const offenderSet = new Set(offenderSpanIds);
   const spanMap = new Map<string, TraceSpan>();
 
@@ -1085,7 +967,7 @@ function buildTraceSpanTree(
     if (spanId && spanId.length > 0) {
       spanMap.set(spanId, span);
     }
-    for (const child of span.children ?? []) {
+    for (const child of span.children) {
       if (isTraceSpan(child)) {
         indexSpan(child);
       }
@@ -1143,11 +1025,59 @@ function buildTraceSpanTree(
     }
   }
 
-  if (roots.length === 0) {
-    return [];
-  }
+  return roots;
+}
 
-  return renderPerformanceSpanTree(roots);
+/**
+ * The spans an N+1 issue points at, as a tree of at most MAX_SPANS_IN_TREE
+ * spans: from the full trace when it was fetched, otherwise from the event's
+ * own spans, otherwise the offending spans alone.
+ */
+export function selectN1EvidenceSpans(
+  evidenceData: N1EvidenceData,
+  spansData: unknown,
+  performanceTrace?: Trace,
+): PerformanceSpan[] {
+  const parentSpanIds = normalizeIdArray(evidenceData.parentSpanIds);
+  const offenderSpanIds = normalizeIdArray(evidenceData.offenderSpanIds);
+  const traceRoots = performanceTrace
+    ? selectTraceSpanRoots(
+        performanceTrace,
+        parentSpanIds,
+        offenderSpanIds,
+        MAX_SPANS_IN_TREE,
+      )
+    : [];
+  if (traceRoots.length > 0 || !isValidSpanArray(spansData)) {
+    return traceRoots;
+  }
+  const spanTree = selectN1QuerySpans(
+    spansData,
+    evidenceData,
+    MAX_SPANS_IN_TREE,
+  );
+  if (spanTree.length > 0) {
+    return spanTree;
+  }
+  const spansById = new Map<string, RawSpan>();
+  for (const span of spansData) {
+    const identifier = getSpanIdentifier(span);
+    if (identifier) {
+      spansById.set(identifier, span);
+    }
+  }
+  return offenderSpanIds.slice(0, MAX_SPANS_IN_TREE).map((offenderId) => {
+    const span = spansById.get(offenderId);
+    return {
+      span_id: offenderId,
+      op: span?.op || null,
+      description: span?.description || null,
+      duration: span ? getSpanDurationMs(span) : null,
+      is_n1_query: true,
+      children: [],
+      level: 0,
+    };
+  });
 }
 
 function convertTraceSpanToPerformanceSpan(
@@ -1168,7 +1098,7 @@ function convertTraceSpanToPerformanceSpan(
 
   const performanceSpan: PerformanceSpan = {
     span_id: spanId,
-    op: span.op || "unknown",
+    op: span.op || null,
     description: formatTraceSpanDescription(span),
     duration: getTraceSpanDurationMs(span),
     is_n1_query: offenderSet.has(spanId),
@@ -1176,7 +1106,7 @@ function convertTraceSpanToPerformanceSpan(
     level,
   };
 
-  for (const child of span.children ?? []) {
+  for (const child of span.children) {
     if (!isTraceSpan(child)) {
       continue;
     }
@@ -1200,7 +1130,7 @@ function convertTraceSpanToPerformanceSpan(
   return performanceSpan;
 }
 
-function formatTraceSpanDescription(span: TraceSpan): string {
+function formatTraceSpanDescription(span: TraceSpan): string | null {
   if (span.name && span.name.trim().length > 0) {
     return span.name.trim();
   }
@@ -1210,10 +1140,10 @@ function formatTraceSpanDescription(span: TraceSpan): string {
   if (span.op && span.op.trim().length > 0) {
     return span.op.trim();
   }
-  return "unnamed";
+  return null;
 }
 
-function getTraceSpanDurationMs(span: TraceSpan): number {
+function getTraceSpanDurationMs(span: TraceSpan): number | null {
   if (typeof span.duration === "number" && span.duration >= 0) {
     return span.duration;
   }
@@ -1227,7 +1157,7 @@ function getTraceSpanDurationMs(span: TraceSpan): number {
       return deltaSeconds * 1000;
     }
   }
-  return 0;
+  return null;
 }
 
 function buildOffenderSummaries(
@@ -1252,7 +1182,8 @@ function buildOffenderSummaries(
     if (span) {
       const description = span.description || span.op || `Span ${offenderId}`;
       const duration = getSpanDurationMs(span);
-      const durationLabel = duration > 0 ? ` (${Math.round(duration)}ms)` : "";
+      const durationLabel =
+        duration != null && duration > 0 ? ` (${Math.round(duration)}ms)` : "";
       summaries.push(`${description}${durationLabel} [${offenderId}] [N+1]`);
     } else {
       summaries.push(`Span ${offenderId} [N+1]`);
@@ -1278,7 +1209,9 @@ function renderPerformanceSpanTree(spans: PerformanceSpan[]): string[] {
     const displayName = span.description?.trim() || span.op || "unnamed";
     const spanId = span.span_id ?? "unknown";
     const durationDisplay =
-      span.duration > 0 ? `${Math.round(span.duration)}ms` : "unknown";
+      span.duration != null && span.duration > 0
+        ? `${Math.round(span.duration)}ms`
+        : "unknown";
 
     // Full span ID goes last so human-readable parts read first.
     const metadataParts: string[] = [];
@@ -1330,10 +1263,9 @@ function selectN1QuerySpans(
 
     if (parent) {
       parentSpan = {
-        span_id: getSpanIdentifier(parent) ?? "unknown",
-        op: parent.op || "unknown",
-        description:
-          parent.description || evidence.parentSpan || "Parent Operation",
+        span_id: getSpanIdentifier(parent) ?? null,
+        op: parent.op || null,
+        description: parent.description || evidence.parentSpan || null,
         duration: getSpanDurationMs(parent),
         is_n1_query: false,
         children: [],
@@ -1355,9 +1287,9 @@ function selectN1QuerySpans(
 
     for (const span of offenderSpans) {
       const perfSpan: PerformanceSpan = {
-        span_id: getSpanIdentifier(span) ?? "unknown",
-        op: span.op || "db.query",
-        description: span.description || "Database Query",
+        span_id: getSpanIdentifier(span) ?? null,
+        op: span.op || null,
+        description: span.description || null,
         duration: getSpanDurationMs(span),
         is_n1_query: true,
         children: [],
@@ -1398,7 +1330,7 @@ function selectN1QuerySpans(
  * - File I/O issues
  * - Consecutive queries
  */
-const KNOWN_PERFORMANCE_ISSUE_TYPES = {
+export const KNOWN_PERFORMANCE_ISSUE_TYPES = {
   N_PLUS_ONE_DB_QUERIES: "performance_n_plus_one_db_queries",
   N_PLUS_ONE_API_CALLS: "performance_n_plus_one_api_calls",
   SLOW_DB_QUERY: "performance_slow_db_query",
@@ -1421,7 +1353,7 @@ const KNOWN_PERFORMANCE_ISSUE_TYPES = {
  * Range: 1xxx = transaction-based performance issues
  *        2xxx = profile-based performance issues
  */
-const OCCURRENCE_TYPE_TO_ISSUE_TYPE: Record<number, string> = {
+export const OCCURRENCE_TYPE_TO_ISSUE_TYPE: Record<number, string> = {
   1001: KNOWN_PERFORMANCE_ISSUE_TYPES.SLOW_DB_QUERY,
   1004: KNOWN_PERFORMANCE_ISSUE_TYPES.RENDER_BLOCKING_ASSET,
   1006: KNOWN_PERFORMANCE_ISSUE_TYPES.N_PLUS_ONE_DB_QUERIES,
@@ -1464,7 +1396,7 @@ function formatN1QueryEvidence(
   // Format parent span info if available
   if (evidenceData.parentSpan) {
     parts.push("**Parent Operation:**");
-    parts.push(`${evidenceData.parentSpan}`);
+    parts.push(evidenceData.parentSpan);
     parts.push("");
   }
 
@@ -1501,11 +1433,13 @@ function formatN1QueryEvidence(
   const offenderSpanIds = normalizeIdArray(evidenceData.offenderSpanIds);
 
   const traceLines = performanceTrace
-    ? buildTraceSpanTree(
-        performanceTrace,
-        parentSpanIds,
-        offenderSpanIds,
-        MAX_SPANS_IN_TREE,
+    ? renderPerformanceSpanTree(
+        selectTraceSpanRoots(
+          performanceTrace,
+          parentSpanIds,
+          offenderSpanIds,
+          MAX_SPANS_IN_TREE,
+        ),
       )
     : [];
 
@@ -1527,7 +1461,7 @@ function formatN1QueryEvidence(
     } else if (isValidSpanArray(spansData)) {
       // Only show offender summaries if we have spans data but couldn't build a tree
       const offenderSummaries = buildOffenderSummaries(
-        spansData as RawSpan[],
+        spansData,
         offenderSpanIds,
       );
 
@@ -1553,16 +1487,13 @@ function formatN1QueryEvidence(
  * This is lower priority as the generic evidenceDisplay fields usually
  * provide sufficient information for slow query issues.
  */
-function formatSlowDbQueryEvidence(
-  evidenceData: SlowDbEvidenceData,
-  spansData: unknown,
-): string {
+function formatSlowDbQueryEvidence(evidenceData: SlowDbEvidenceData): string {
   const parts: string[] = [];
 
   // Show parent span if available (generic field that applies to slow queries)
   if (evidenceData.parentSpan) {
     parts.push("**Parent Operation:**");
-    parts.push(`${evidenceData.parentSpan}`);
+    parts.push(evidenceData.parentSpan);
     parts.push("");
   }
 
@@ -1632,7 +1563,7 @@ function formatPerformanceIssueOutput(
       }
 
       case KNOWN_PERFORMANCE_ISSUE_TYPES.SLOW_DB_QUERY: {
-        const result = formatSlowDbQueryEvidence(evidenceData, spansData);
+        const result = formatSlowDbQueryEvidence(evidenceData);
         if (result) parts.push(result);
         break;
       }
@@ -1692,7 +1623,8 @@ type MetricIssueEvidenceData = Extract<
 >["evidenceData"];
 type MetricIssueDataSource = MetricIssueEvidenceData["dataSources"][number];
 type MetricIssueSnubaQuery = MetricIssueDataSource["queryObj"]["snubaQuery"];
-type MetricIssueCondition = MetricIssueEvidenceData["conditions"][number];
+export type MetricIssueCondition =
+  MetricIssueEvidenceData["conditions"][number];
 
 /**
  * Keys come from the generated `@sentry/api` metric occurrence type, so a
@@ -1702,7 +1634,7 @@ type MetricIssueCondition = MetricIssueEvidenceData["conditions"][number];
 type Unverified<T> = { readonly [K in keyof T]?: unknown };
 
 function asUnverified<T>(value: unknown): Unverified<T> | undefined {
-  return isPlainObject(value) ? (value as Unverified<T>) : undefined;
+  return isPlainObject(value) ? value : undefined;
 }
 
 type MetricAlertQuery = {
@@ -1714,7 +1646,7 @@ type MetricAlertQuery = {
   eventTypes: string[];
 };
 
-type MetricAlertContext = {
+export type MetricAlertContext = {
   evidenceData: Unverified<MetricIssueEvidenceData>;
   query?: MetricAlertQuery;
   monitorId?: string;
@@ -1726,7 +1658,9 @@ type MetricAlertContext = {
  * camelCases occurrence payloads recursively, so evidence keys arrive as
  * `dataSources[].queryObj.snubaQuery`, `detectorId`, and `alertId`.
  */
-function getMetricAlertContext(event: Event): MetricAlertContext | undefined {
+export function getMetricAlertContext(
+  event: Event,
+): MetricAlertContext | undefined {
   if (event.type !== "generic") {
     return undefined;
   }
@@ -1786,7 +1720,7 @@ function getMetricAlertQuery(
 type MetricAlertDatasetKind = "errors" | "logs" | "spans" | "metrics";
 
 /** Mirrors the Sentry UI's backend dataset -> detector dataset mapping. */
-function getMetricAlertDatasetKind(
+export function getMetricAlertDatasetKind(
   query: MetricAlertQuery,
 ): MetricAlertDatasetKind | undefined {
   if (query.dataset === "events") {
@@ -1815,7 +1749,7 @@ const METRIC_ALERT_SEARCH_TOOLS: Record<
 };
 
 /** Returns the window the monitor aggregated over for this occurrence. */
-function getMetricAlertEvaluatedWindow(
+export function getMetricAlertEvaluatedWindow(
   event: Event,
   query: MetricAlertQuery | undefined,
 ): { start: Date; end: Date } | undefined {
@@ -1844,7 +1778,7 @@ function formatPeriodSince(start: Date, now: number): string {
   return hours <= 48 ? `${hours}h` : `${Math.ceil(hours / 24)}d`;
 }
 
-function formatMetricAlertCondition(
+export function formatMetricAlertCondition(
   condition: Unverified<MetricIssueCondition>,
 ): string | undefined {
   const comparison = condition.comparison;
@@ -1874,7 +1808,7 @@ function formatMetricAlertCondition(
   return formattedComparison;
 }
 
-function formatMetricAlertValue(value: unknown): string | undefined {
+export function formatMetricAlertValue(value: unknown): string | undefined {
   const formattedValue = formatPrimitive(value);
   if (formattedValue) {
     return formattedValue;
@@ -1950,10 +1884,75 @@ function formatMetricAlertDetails(
   return `${parts.join("\n")}\n`;
 }
 
+type MetricAlertFollowUpCalls = {
+  monitor?: { toolName: string; arguments: Record<string, string> };
+  search?: {
+    toolName: string;
+    arguments: Record<string, string>;
+    label: string;
+    window: { start: Date; end: Date };
+  };
+};
+
 /**
- * Follow-up notes for metric issues: the monitor configuration and a search
+ * Follow-up calls for metric issues: the monitor configuration and a search
  * call that reproduces the monitor query over the evaluated window.
  */
+export function getMetricAlertFollowUpCalls({
+  organizationSlug,
+  issue,
+  event,
+  context,
+}: {
+  organizationSlug: string;
+  issue: Issue;
+  event: Event;
+  context: MetricAlertContext;
+}): MetricAlertFollowUpCalls {
+  const calls: MetricAlertFollowUpCalls = {};
+  if (context.monitorId) {
+    calls.monitor = {
+      toolName: "get_metric_monitor_details",
+      arguments: { organizationSlug, monitorId: context.monitorId },
+    };
+  }
+
+  const query = context.query;
+  const datasetKind = query ? getMetricAlertDatasetKind(query) : undefined;
+  const evaluatedWindow = getMetricAlertEvaluatedWindow(event, query);
+  if (!query || !datasetKind || !evaluatedWindow) {
+    return calls;
+  }
+
+  const { toolName, label } = METRIC_ALERT_SEARCH_TOOLS[datasetKind];
+  // Sentry search binds implicit AND tighter than OR, so group an OR query
+  // before appending the environment filter.
+  const monitorQuery =
+    query.query && query.environment && /\bOR\b/.test(query.query)
+      ? `(${query.query})`
+      : query.query;
+  const searchQuery = [
+    monitorQuery,
+    query.environment
+      ? `environment:${formatSearchFilterValue(query.environment)}`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  calls.search = {
+    toolName,
+    arguments: {
+      organizationSlug,
+      projectSlug: issue.project.slug,
+      ...(searchQuery ? { query: searchQuery } : {}),
+      period: formatPeriodSince(evaluatedWindow.start, Date.now()),
+    },
+    label,
+    window: evaluatedWindow,
+  };
+  return calls;
+}
+
 function buildMetricAlertResponseNotes({
   organizationSlug,
   issue,
@@ -1972,11 +1971,16 @@ function buildMetricAlertResponseNotes({
   directToolNames?: ReadonlySet<string>;
 }): string[] {
   const notes: string[] = [];
+  const calls = getMetricAlertFollowUpCalls({
+    organizationSlug,
+    issue,
+    event,
+    context,
+  });
 
-  if (context.monitorId) {
+  if (calls.monitor) {
     const monitorInstruction = formatToolCallInstruction({
-      toolName: "get_metric_monitor_details",
-      arguments: { organizationSlug, monitorId: context.monitorId },
+      ...calls.monitor,
       showArguments: true,
       experimentalMode,
       availableToolNames,
@@ -1990,46 +1994,21 @@ function buildMetricAlertResponseNotes({
     }
   }
 
-  const query = context.query;
-  const datasetKind = query ? getMetricAlertDatasetKind(query) : undefined;
-  const evaluatedWindow = getMetricAlertEvaluatedWindow(event, query);
-  if (!query || !datasetKind || !evaluatedWindow) {
-    return notes;
-  }
-
-  const { toolName, label } = METRIC_ALERT_SEARCH_TOOLS[datasetKind];
-  // Sentry search binds implicit AND tighter than OR, so group an OR query
-  // before appending the environment filter.
-  const monitorQuery =
-    query.query && query.environment && /\bOR\b/.test(query.query)
-      ? `(${query.query})`
-      : query.query;
-  const searchQuery = [
-    monitorQuery,
-    query.environment
-      ? `environment:${formatSearchFilterValue(query.environment)}`
-      : undefined,
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const searchInstruction = formatToolCallInstruction({
-    toolName,
-    arguments: {
-      organizationSlug,
-      projectSlug: issue.project.slug,
-      ...(searchQuery ? { query: searchQuery } : {}),
-      period: formatPeriodSince(evaluatedWindow.start, Date.now()),
-    },
-    showArguments: true,
-    experimentalMode,
-    availableToolNames,
-    directToolNames,
-    fallbackInstruction: "",
-  });
-  if (searchInstruction) {
-    notes.push(
-      `${label} matched by the monitor query: ${searchInstruction}, then focus on ${evaluatedWindow.start.toISOString()} to ${evaluatedWindow.end.toISOString()}`,
-    );
+  if (calls.search) {
+    const searchInstruction = formatToolCallInstruction({
+      toolName: calls.search.toolName,
+      arguments: calls.search.arguments,
+      showArguments: true,
+      experimentalMode,
+      availableToolNames,
+      directToolNames,
+      fallbackInstruction: "",
+    });
+    if (searchInstruction) {
+      notes.push(
+        `${calls.search.label} matched by the monitor query: ${searchInstruction}, then focus on ${calls.search.window.start.toISOString()} to ${calls.search.window.end.toISOString()}`,
+      );
+    }
   }
 
   return notes;
@@ -2073,7 +2052,7 @@ function formatGenericEventOutput(event: Event): string {
     for (const display of occurrence.evidenceDisplay) {
       if (display.important) {
         parts.push(`**${display.name}:**`);
-        parts.push(`${display.value}`);
+        parts.push(display.value);
         parts.push("");
       }
     }
@@ -2150,7 +2129,7 @@ function formatContexts(contexts: z.infer<typeof EventSchema>["contexts"]) {
   )
     .map(
       ([name, data]) =>
-        `**${name}**\n${Object.entries(data)
+        `**${name}**\n${Object.entries(data ?? {})
           .filter(([key, _]) => key !== "type")
           .map(([key, value]) => {
             return `${key}: ${JSON.stringify(value, undefined, 2)}`;
@@ -2200,6 +2179,9 @@ function formatSeerSummary(autofixState: AutofixRunState | undefined): string {
   if (autofix.status === "error") {
     parts.push("");
     parts.push("**Status:** Analysis failed.");
+    if (autofix.failure_reason === "out_of_credits") {
+      parts.push(SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE);
+    }
   } else if (autofix.status === "awaiting_user_input") {
     parts.push("");
     parts.push("**Status:** Analysis paused - additional information needed.");
@@ -2253,6 +2235,30 @@ export function getSuspectCommit(committers: CommitterList | undefined) {
     author: committer.author?.name ?? committer.author?.email,
     suspectCommitType: commit.suspectCommitType,
   };
+}
+
+/** Reports an event type this server cannot render yet, so support can be added. */
+export function reportUnsupportedEventType({
+  organizationSlug,
+  issue,
+  event,
+}: {
+  organizationSlug: string;
+  issue: Issue;
+  event: Event;
+}): string | undefined {
+  return logIssue(`Unsupported event type encountered: ${String(event.type)}`, {
+    contexts: {
+      event: {
+        event_id: event.id,
+        event_type: event.type,
+        issue_id: issue.id,
+        issue_short_id: issue.shortId,
+        organization_slug: organizationSlug,
+        project_slug: issue.project.slug,
+      },
+    },
+  });
 }
 
 /**
@@ -2389,22 +2395,11 @@ export function formatIssueOutput({
   // But in practice we may have other types returned as UnknownEvent
   const eventType = event.type;
   if (!isSupportedEventType(event)) {
-    // Log to Sentry for tracking new/unknown event types
-    const sentryEventId = logIssue(
-      `Unsupported event type encountered: ${String(eventType)}`,
-      {
-        contexts: {
-          event: {
-            event_id: event.id,
-            event_type: eventType,
-            issue_id: issue.id,
-            issue_short_id: issue.shortId,
-            organization_slug: organizationSlug,
-            project_slug: issue.project.slug,
-          },
-        },
-      },
-    );
+    const sentryEventId = reportUnsupportedEventType({
+      organizationSlug,
+      issue,
+      event,
+    });
 
     output += `⚠️  **Warning**: Unsupported event type "${String(eventType)}"\n\n`;
     output += "This event type is not yet fully supported by the MCP server. ";
@@ -2585,7 +2580,7 @@ export function buildIssueResponseNotes({
     fallbackInstruction: "Issue event search is not available in this session",
   });
   notes.push(`Issue event search: ${issueEventSearchInstruction}`);
-  const hasMultipleThreads = event.entries?.some((entry) => {
+  const hasMultipleThreads = event.entries.some((entry) => {
     if (entry.type !== "threads") {
       return false;
     }
@@ -2808,9 +2803,7 @@ function formatIssueReplayOutput({
 }
 
 export function getReplayIdFromEvent(event: Event): string | null {
-  const replayContext = event.contexts?.replay as
-    | Record<string, unknown>
-    | undefined;
+  const replayContext = event.contexts?.replay;
   const replayContextId =
     typeof replayContext?.replay_id === "string"
       ? replayContext.replay_id

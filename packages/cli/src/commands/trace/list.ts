@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { listTransactions } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import { choiceParser, textParser } from "../../lib/completion-target.js";
 import {
@@ -110,7 +111,7 @@ function nextPageHint(
   project: string,
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
-  return appendTraceFlags(`sentry trace list ${org}/${project} -c next`, flags);
+  return appendTraceFlags(sentry`trace list ${org}/${project} -c next`, flags);
 }
 
 /** Build the CLI hint for fetching the previous page, preserving active flags. */
@@ -119,7 +120,7 @@ function prevPageHint(
   project: string,
   flags: Pick<ListFlags, "sort" | "query" | "period">,
 ): string {
-  return appendTraceFlags(`sentry trace list ${org}/${project} -c prev`, flags);
+  return appendTraceFlags(sentry`trace list ${org}/${project} -c prev`, flags);
 }
 
 /**
@@ -202,27 +203,26 @@ export const listCommand = buildListCommand("trace", {
       `${TARGET_PATTERN_NOTE}\n\n` +
       "Alias: `sentry traces` → `sentry trace list`",
     examples: [
-      { description: "List recent traces", command: "sentry trace list" },
+      { description: "List recent traces", run: "trace list" },
       {
         description: "Show more traces",
-        command: "sentry trace list --limit 50",
+        run: "trace list --limit 50",
       },
       {
         description: "Sort by slowest first",
-        command: "sentry trace list --sort duration",
+        run: "trace list --sort duration",
       },
       {
         description: "Filter by transaction name in the last 24 hours",
-        command:
-          'sentry trace list -q "transaction:GET /api/users" --period 24h',
+        run: 'trace list -q "transaction:GET /api/users" --period 24h',
       },
       {
         description: "Fetch the next page",
-        command: "sentry trace list my-org/backend -c next",
+        run: "trace list my-org/backend -c next",
       },
       {
         description: "Find a project across organizations",
-        command: "sentry trace list backend",
+        run: "trace list backend",
       },
     ],
   },
@@ -336,7 +336,7 @@ export const listCommand = buildListCommand("trace", {
       const countText = `Showing ${traces.length} trace${traces.length === 1 ? "" : "s"}.`;
       hint = nav
         ? `${countText} ${nav}`
-        : `${countText} Use 'sentry trace view <TRACE_ID>' to view the full span tree.`;
+        : `${countText} Use '${sentry`trace view <TRACE_ID>`}' to view the full span tree.`;
     }
 
     yield new CommandOutput({

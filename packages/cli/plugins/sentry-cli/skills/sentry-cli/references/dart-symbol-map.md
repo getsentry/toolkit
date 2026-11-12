@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-dart-symbol-map
-version: 0.49.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Dart/Flutter symbol maps
 requires:
   bins: ["sentry"]

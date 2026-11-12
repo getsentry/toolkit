@@ -116,8 +116,8 @@ describe("property: assignDefaultLayout", () => {
       property(array(widgetArb, { minLength: 2, maxLength: 20 }), (widgets) => {
         const placed = buildPlacedSequence(widgets, "sequential");
         for (let i = 1; i < placed.length; i++) {
-          expect(placed[i]!.layout!.y).toBeGreaterThanOrEqual(
-            placed[i - 1]!.layout!.y,
+          expect(placed[i].layout!.y).toBeGreaterThanOrEqual(
+            placed[i - 1].layout!.y,
           );
         }
       }),

@@ -24,7 +24,6 @@ vi.mock("@sentry/cloudflare", () => ({
 
 import {
   OAUTH_GRANT_AGE_BUCKET_ATTRIBUTE,
-  OAUTH_GRANT_SHAPE_ATTRIBUTE,
   OAUTH_REFRESH_OUTCOME_ATTRIBUTE,
   OAUTH_UPSTREAM_EXPIRES_IN_BUCKET_ATTRIBUTE,
 } from "./telemetry";
@@ -61,7 +60,7 @@ function createRefreshOptions(
       accessToken: "old-access-token",
       refreshToken: "old-refresh-token",
       ...propsOverrides,
-    } as WorkerProps,
+    },
   };
 }
 

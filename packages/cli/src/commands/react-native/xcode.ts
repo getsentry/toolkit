@@ -46,10 +46,11 @@ import {
   resolveReleaseAndDist,
 } from "../../lib/react-native/xcode-env.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("react-native.xcode");
 
-const USAGE_HINT = "sentry react-native xcode";
+const usageHint = () => sentry`react-native xcode`;
 const DEFAULT_PACKAGER_URL = "http://127.0.0.1:8081/";
 const DEFAULT_BUILD_SCRIPT =
   "../node_modules/react-native/scripts/react-native-xcode.sh";
@@ -305,10 +306,10 @@ async function uploadPair(
 }> {
   const resolved = await resolveOrgAndProject({
     cwd: ctx.cwd,
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
   });
   if (!resolved) {
-    throw new ContextError("Organization and project", USAGE_HINT);
+    throw new ContextError("Organization and project", usageHint());
   }
   const { org, project } = resolved;
 
@@ -442,7 +443,7 @@ export const xcodeCommand = buildCommand({
       {
         description:
           "Run as the Xcode build phase (usually added automatically to your build script)",
-        command: "sentry react-native xcode",
+        run: "react-native xcode",
       },
     ],
   },

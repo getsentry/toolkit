@@ -13,6 +13,7 @@
 
 import { execFileSync } from "node:child_process";
 
+import { sentry } from "./app-identity.js";
 import { ValidationError, validationError } from "./errors.js";
 
 /** `execFileSync` failure shape when git exits non-zero. */
@@ -185,7 +186,7 @@ export function getCommitLog(
   if (from?.startsWith("-")) {
     throw validationError(
       `--from must be a git ref, not a CLI flag (received '${from}').`,
-      ["sentry release set-commits 1.0.0 --from v0.9.0"],
+      [sentry`release set-commits 1.0.0 --from v0.9.0`],
       "from",
       "Git refs cannot start with '-'. Tokens like '--format=x' are CLI flags, not refs — use a tag or commit (e.g. v0.9.0).",
     );
@@ -221,7 +222,7 @@ export function getCommitLog(
         `Unknown git ref '${from}': not found in this repository.`,
         [
           `git rev-parse ${from}`,
-          "sentry release set-commits <org>/<version> --from v0.9.0",
+          sentry`release set-commits <org>/<version> --from v0.9.0`,
         ],
         "from",
         "Range is always <ref>..HEAD — checkout the current release tag first.",

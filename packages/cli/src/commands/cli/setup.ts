@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { isatty } from "node:tty";
 import type { SentryContext } from "../../context.js";
 import { installAgentSkills } from "../../lib/agent-skills.js";
+import { sentry } from "../../lib/app-identity.js";
 import { assertAutoLoginHostTrusted } from "../../lib/auto-auth.js";
 import {
   determineInstallDir,
@@ -482,8 +483,9 @@ function printWelcomeMessage(
   emit(`Installed sentry v${version} to ${binaryPath}`);
   emit("");
   emit("Get started:");
-  emit("  sentry auth     Authenticate with Sentry");
-  emit("  sentry --help   See all available commands");
+  emit(`  ${sentry`auth`}     Authenticate with Sentry`);
+  emit(`  ${sentry`mcp`}      Run the Sentry MCP server for your AI agent`);
+  emit(`  ${sentry`--help`}   See all available commands`);
   emit("");
   emit("https://cli.sentry.dev");
 }
@@ -640,27 +642,27 @@ export const setupCommand = buildCommand({
     examples: [
       {
         description: "Run full setup (PATH, completions, agent skills)",
-        command: "sentry cli setup",
+        run: "cli setup",
       },
       {
         description: "Record the install method",
-        command: "sentry cli setup --method curl",
+        run: "cli setup --method curl",
       },
       {
         description: "Place the binary and configure the shell",
-        command: "sentry cli setup --install",
+        run: "cli setup --install",
       },
       {
         description: "Skip PATH modification",
-        command: "sentry cli setup --no-modify-path",
+        run: "cli setup --no-modify-path",
       },
       {
         description: "Skip shell completions",
-        command: "sentry cli setup --no-completions",
+        run: "cli setup --no-completions",
       },
       {
         description: "Skip agent skill installation",
-        command: "sentry cli setup --no-agent-skills",
+        run: "cli setup --no-agent-skills",
       },
     ],
   },
@@ -864,7 +866,7 @@ export const setupCommand = buildCommand({
             await warmCachesAfterLogin();
           }
         } else {
-          log.info("Run 'sentry auth login' to authenticate later.");
+          log.info(`Run '${sentry`auth login`}' to authenticate later.`);
         }
       },
       warn,

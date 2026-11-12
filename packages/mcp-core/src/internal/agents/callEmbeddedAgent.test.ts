@@ -447,7 +447,7 @@ describe("callEmbeddedAgent", () => {
     vi.mocked(getAgentProvider).mockReturnValue({
       type: "openrouter",
       label: "OpenRouter",
-      getModel: () => "mocked-model" as never,
+      getModel: () => "mocked-model",
       getProviderOptions: () => {
         throw configError;
       },

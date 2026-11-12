@@ -27,8 +27,12 @@ const linkForm = {
 
 function mockDiscovery({
   slug = "linear",
-  form = linkForm as Record<string, unknown>,
-  links = [] as (typeof association)[],
+  form = linkForm,
+  links = [],
+}: {
+  slug?: string;
+  form?: Record<string, unknown>;
+  links?: (typeof association)[];
 } = {}) {
   mswServer.use(
     http.get(`${base}/organizations/example/sentry-app-installations/`, () =>

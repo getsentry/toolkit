@@ -35,11 +35,12 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOrg } from "../../lib/resolve-target.js";
 import { extractZipStream } from "../../lib/snapshots/archive.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("snapshots.download");
 
-const USAGE_HINT =
-  "sentry snapshots download --app-id <app> | --snapshot-id <id>";
+const usageHint = () =>
+  sentry`snapshots download --app-id <app> | --snapshot-id <id>`;
 const DEFAULT_OUTPUT = "./snapshots-base/";
 
 /** Flags accepted by `snapshots download`. */
@@ -97,7 +98,7 @@ function validateSnapshotFlags(flags: DownloadFlags): void {
     );
   }
   if (!(appId || snapshotId)) {
-    throw new ContextError("Snapshot", USAGE_HINT, []);
+    throw new ContextError("Snapshot", usageHint(), []);
   }
 }
 
@@ -140,7 +141,7 @@ async function resolveSnapshotId(
     throw new ResolutionError(
       `Baseline snapshot for app '${appId}'${branchMsg}`,
       "not found",
-      USAGE_HINT,
+      usageHint(),
       ["No baseline snapshot exists for this app yet."],
     );
   }
@@ -164,17 +165,16 @@ export const downloadCommand = buildCommand({
     examples: [
       {
         description: "Download a specific baseline snapshot by ID",
-        command: "sentry snapshots download --snapshot-id 1234567890",
+        run: "snapshots download --snapshot-id 1234567890",
       },
       {
         description:
           "Download the latest baseline for an app, filtered by branch",
-        command: "sentry snapshots download --app-id my-app --branch main",
+        run: "snapshots download --app-id my-app --branch main",
       },
       {
         description: "Extract images to a specific directory",
-        command:
-          "sentry snapshots download --app-id my-app --output ./baseline/",
+        run: "snapshots download --app-id my-app --output ./baseline/",
       },
     ],
   },
@@ -219,7 +219,7 @@ export const downloadCommand = buildCommand({
 
     const resolved = await resolveOrg({ cwd: this.cwd });
     if (!resolved) {
-      throw new ContextError("Organization", USAGE_HINT);
+      throw new ContextError("Organization", usageHint());
     }
     const { org } = resolved;
     const project = resolveOptionalProject(this.env);

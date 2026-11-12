@@ -93,10 +93,7 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
     // Intercept fetch to assert no outbound requests on the attacker path.
     fetchCalls = [];
     originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (
-      input: RequestInfo | URL,
-      init?: RequestInit,
-    ) => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const headers = new Headers(
         init?.headers ?? (input instanceof Request ? input.headers : undefined),
       );
@@ -105,7 +102,7 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
         authorization: headers.get("Authorization"),
       });
       throw new Error("test: unexpected fetch");
-    }) as typeof fetch;
+    };
   });
 
   afterEach(async () => {

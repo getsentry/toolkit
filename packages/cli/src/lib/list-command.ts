@@ -16,6 +16,7 @@
 import type { Aliases, Command, CommandContext } from "@stricli/core";
 import type { GenericSchema } from "valibot";
 import type { SentryContext } from "../context.js";
+import { sentry } from "./app-identity.js";
 import { type ListTargetOptions, parseCursorFlag } from "./arg-parsing.js";
 import type { CommandExposure } from "./command-access.js";
 import {
@@ -475,7 +476,7 @@ export function interceptSubcommand(
   }
   stderr.write(
     warning(
-      `Tip: "${target.trim()}" is a subcommand. Running: sentry ${routeName} ${target.trim()}\n`,
+      `Tip: "${target.trim()}" is a subcommand. Running: ${sentry`${routeName} ${target.trim()}`}\n`,
     ),
   );
   return;
@@ -547,7 +548,7 @@ export function buildListCommand<
   const originalFunc = builderArgs.func;
 
   // Auto-inject common flags and aliases into parameters
-  const params = (builderArgs.parameters ?? {}) as Record<string, unknown>;
+  const params = builderArgs.parameters ?? {};
   const existingFlags = (params.flags ?? {}) as Record<string, unknown>;
   const existingAliases = (params.aliases ?? {}) as Record<string, string>;
 

@@ -3,6 +3,108 @@
 Entries through 0.45.0 come from the [original CLI changelog at its 0.45.0 tag](https://github.com/getsentry/cli/blob/0.45.0/CHANGELOG.md).
 
 <!-- Craft generates notes for each CLI release. -->
+## 0.49.0
+
+New CLI, MCP, search, profiling, and evaluation capabilities, paired with safer persistence, diagnostics, and workflow tooling, improve testing, setup, and development.
+
+### New Features ✨
+
+CLI, MCP, search, profiling, and evaluation updates add structured outputs, safer persistence, replayable testing, and clearer setup guidance.
+
+#### Cli
+
+CLI updates add the sentry\`…\` tag for command hints, linting, and correct npx prefixes; runtime-data hints still use asInvocationCommand(command). SDK calls now write no local state by default while retaining reads and separate telemetry opt-outs; callers needing persistence must use the prior package behavior rather than assuming it. Installer guidance now mentions sentry mcp. Dashboard charts use events-timeseries responses. sentry init prints an agent setup guide instead of running the remote Mastra wizard.
+
+- Build command hints with a sentry`…` tag and lint them by @BYK with @sentry-junior in [#2071](https://github.com/getsentry/toolkit/pull/2071)
+- Make SDK calls write no local state by default by @BYK with @sentry-junior in [#2074](https://github.com/getsentry/toolkit/pull/2074)
+- Mention sentry mcp in installer Get started output by @dcramer with @sentry-junior in [#2052](https://github.com/getsentry/toolkit/pull/2052)
+- Migrate dashboard chart widgets to events-timeseries by @edwardgou-sentry in [#1901](https://github.com/getsentry/toolkit/pull/1901)
+- Make `sentry init` print an agent setup guide by @betegon and @claude in [#1856](https://github.com/getsentry/toolkit/pull/1856)
+
+#### Mcp
+
+MCP search tools increasingly return structured JSON with declared output schemas instead of markdown, including errors, logs, traces, metrics, profiles, and replays, with selected fields, links, notes, and suggested actions. search\_issues can translate queries through Seer when the required rollout and feature flags allow it, while fallback paths remain unchanged. Token-cost reporting now includes output schemas.
+
+- Translate search_issues queries with Seer's Issues strategy by @claude with @sentry-junior in [#2059](https://github.com/getsentry/toolkit/pull/2059)
+- Count outputSchema in the token cost report by @dcramer with @sentry-junior in [#2045](https://github.com/getsentry/toolkit/pull/2045)
+- Return structured output from search_replays by @dcramer with @sentry-junior in [#2025](https://github.com/getsentry/toolkit/pull/2025)
+- Return structured output from search_profiles by @dcramer with @sentry-junior in [#2012](https://github.com/getsentry/toolkit/pull/2012)
+- Return structured output from search_metrics by @dcramer with @sentry-junior in [#2010](https://github.com/getsentry/toolkit/pull/2010)
+- Return structured output from search_traces by @dcramer with @sentry-junior in [#2008](https://github.com/getsentry/toolkit/pull/2008)
+- Return structured output from search_logs by @dcramer with @sentry-junior in [#2006](https://github.com/getsentry/toolkit/pull/2006)
+- Return structured output from search_errors by @dcramer with @sentry-junior in [#1987](https://github.com/getsentry/toolkit/pull/1987)
+
+#### Tools
+
+Search results now return structured output with mapped hits, limited snippets, and conditional get\_doc suggestions; get\_doc remains markdown. Tool schemas now type-check handler results and reject missing or mistyped fields. get\_profile and get\_profile\_details expose structured profile data, nullable fields, indexed shared frames, balanced time estimates, and conditional follow-up actions while filtering raw profile data.
+
+- Return structured output from search_docs by @dcramer with @sentry-junior in [#2040](https://github.com/getsentry/toolkit/pull/2040)
+- Type handler results from outputSchema by @dcramer with @sentry-junior in [#2035](https://github.com/getsentry/toolkit/pull/2035)
+- Add outputSchema to get_profile_details by @dcramer with @sentry-junior in [#2024](https://github.com/getsentry/toolkit/pull/2024)
+- Add outputSchema to get_profile by @dcramer with @sentry-junior in [#2023](https://github.com/getsentry/toolkit/pull/2023)
+
+#### Other
+
+- (evals) Record and replay eval model calls with Roach by @dcramer with @sentry-junior in [#1972](https://github.com/getsentry/toolkit/pull/1972)
+- (server) Send compact JSON as structured tool result text by @dcramer with @sentry-junior in [#2046](https://github.com/getsentry/toolkit/pull/2046)
+
+### Bug Fixes 🐛
+
+CLI and MCP fixes improve installation, database fallback, query diagnostics, scope errors, documentation guidance, option warnings, and provider identity.
+
+#### Cli
+
+Homebrew installations now set the CLI binary executable before completions. API calls send only supported parameters and use updated SDK errors. Database access falls back to in-memory storage when cli.db cannot open, while WASM handles WAL databases when safe. Snapshot uploads batch object-store requests. MCP adds working cli defaults and cli fix commands, uses invocation-aware hints, and hides deprecated --access-token from help.
+
+- Make the Homebrew binary executable before generating completions by @BYK with @sentry-junior in [#2077](https://github.com/getsentry/toolkit/pull/2077)
+- Send the API params the endpoints accept by @BYK with @sentry-junior in [#2075](https://github.com/getsentry/toolkit/pull/2075)
+- Use an in-memory database when cli.db won't open by @BYK with @sentry-junior in [#2070](https://github.com/getsentry/toolkit/pull/2070)
+- Read a WAL-mode database on the WASM SQLite driver by @BYK with @sentry-junior in [#2069](https://github.com/getsentry/toolkit/pull/2069)
+- Batch objectstore requests in snapshots upload by @jamieQ and @BYK with @sentry-junior in [#2062](https://github.com/getsentry/toolkit/pull/2062)
+- Name a working ca-cert command in @sentry/mcp-server by @dcramer with @sentry-junior in [#2054](https://github.com/getsentry/toolkit/pull/2054)
+- Hide deprecated --access-token from sentry mcp help by @dcramer with @sentry-junior in [#2057](https://github.com/getsentry/toolkit/pull/2057)
+
+#### Mcp
+
+MCP search now explains when untranslated multi-word queries return no results and suggests Sentry syntax. Startup validates missing organization or project scopes, reporting 404 resolution errors with exit code 23 while preserving other startup behavior. get\_doc reports missing and soft-404 pages as errors and directs callers to search\_docs. The CLI warns when --disable-skills removes no tools. streamText restores the sentry-mcp User-Agent for OpenAI, Anthropic, OpenRouter, and Azure OpenAI providers.
+
+- Note untranslated natural-language searches that find nothing by @claude with @sentry-junior in [#2053](https://github.com/getsentry/toolkit/pull/2053)
+- Fail at startup when the org or project scope does not exist by @dcramer with @sentry-junior in [#2056](https://github.com/getsentry/toolkit/pull/2056)
+- Return an error when get_doc finds no page by @dcramer with @sentry-junior in [#2051](https://github.com/getsentry/toolkit/pull/2051)
+- Warn when --disable-skills removes no tools by @dcramer with @sentry-junior in [#2055](https://github.com/getsentry/toolkit/pull/2055)
+- Restore sentry-mcp User-Agent on streamText provider calls by @dcramer with @sentry-junior in [#2011](https://github.com/getsentry/toolkit/pull/2011)
+
+### Internal Changes 🔧
+
+API and logging updates support cleaner tooling, while registry metadata, release automation, and incremental reviews improve development workflows.
+
+#### Cli
+
+The CLI is moving generated API operations onto @​sentry/api 1.46.0, including updated issue, dashboard, explore, conversation, and trace calls. Packages using @​sentry/logger now prohibit console calls and route messages through the logger, keeping data on stdout available for JSON and MCP stdio while honoring SENTRY\_LOG\_LEVEL and --log-level.
+
+- Bump @sentry/api to 1.46.0 and move unblocked call sites by @sentry-junior in [#2078](https://github.com/getsentry/toolkit/pull/2078)
+- Move API calls with generated operations onto @sentry/api by @BYK with @sentry-junior in [#2073](https://github.com/getsentry/toolkit/pull/2073)
+- Ban console calls in every package that uses @sentry/logger by @BYK with @sentry-junior in [#2072](https://github.com/getsentry/toolkit/pull/2072)
+
+#### Mcp
+
+mcp-core now shares organization and project constraint lookup and classification between hosted and stdio callers while preserving their policies and hosts. Metadata tests validate tool outputs, schemas, server information, environment declarations, and registry fields. The MCP Registry manifest now points to getsentry/toolkit, makes SENTRY\_AUTH\_TOKEN optional, and publishes corrected host, URL, branding, and icon metadata.
+
+- Share the org/project constraint lookup in mcp-core by @BYK with @sentry-junior in [#2060](https://github.com/getsentry/toolkit/pull/2060)
+- Lint the metadata clients receive from the server by @dcramer with @sentry-junior in [#2039](https://github.com/getsentry/toolkit/pull/2039)
+- Update the MCP Registry manifest by @dcramer with @sentry-junior in [#1986](https://github.com/getsentry/toolkit/pull/1986)
+
+#### Release
+
+Craft AI changelog summaries receive a 600-second timeout and require Craft 3.11.0, preventing large release preparations from stopping at the previous limit. Release workflows now support auto and pre bump modes, default to auto, and accept an optional exact version that overrides bump.
+
+- Give Craft AI summaries 10 minutes by @BYK with @sentry-junior in [#2029](https://github.com/getsentry/toolkit/pull/2029)
+- Add auto, pre, and exact version inputs by @BYK with @sentry-junior in [#2005](https://github.com/getsentry/toolkit/pull/2005)
+
+#### Other
+
+- (warden) Enable incremental review by @Jeffreyhung with @sentry-junior in [#2032](https://github.com/getsentry/toolkit/pull/2032)
+
 ## 0.48.0
 
 ### New Features ✨

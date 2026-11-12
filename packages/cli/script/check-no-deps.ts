@@ -16,6 +16,7 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { logger } from "../src/lib/logger.js";
 
 const pkg: { dependencies?: Record<string, string> } = JSON.parse(
   await readFile("package.json", "utf-8"),
@@ -24,21 +25,19 @@ const pkg: { dependencies?: Record<string, string> } = JSON.parse(
 const deps = Object.keys(pkg.dependencies ?? {});
 
 if (deps.length === 0) {
-  console.log("✓ No runtime dependencies in package.json");
+  logger.success("No runtime dependencies in package.json");
   process.exit(0);
 }
 
-console.error("✗ Found runtime dependencies in package.json:");
-console.error("");
-for (const dep of deps) {
-  console.error(`  - ${dep}: ${pkg.dependencies?.[dep]}`);
-}
-console.error("");
-console.error(
-  "All packages must be in devDependencies and bundled at build time.",
-);
-console.error(
-  "Move these to devDependencies: pnpm remove <pkg> && pnpm add -D <pkg>",
+logger.error(
+  [
+    "Found runtime dependencies in package.json:",
+    "",
+    ...deps.map((dep) => `  - ${dep}: ${pkg.dependencies?.[dep]}`),
+    "",
+    "All packages must be in devDependencies and bundled at build time.",
+    "Move these to devDependencies: pnpm remove <pkg> && pnpm add -D <pkg>",
+  ].join("\n"),
 );
 
 process.exit(1);

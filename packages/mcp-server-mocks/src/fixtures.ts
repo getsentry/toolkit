@@ -61,7 +61,7 @@ function deepMerge<T>(target: T, source: DeepPartial<T>): T {
   if (isObject(target) && isObject(source)) {
     for (const key of Object.keys(source)) {
       const sourceValue = (source as any)[key];
-      const targetValue = (output as any)[key];
+      const targetValue = output[key];
 
       if (
         isObject(sourceValue) &&

@@ -23,6 +23,7 @@ import {
 import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
 import type { SentryRepository } from "../../types/index.js";
 import { RepositoryListItemSchema } from "../../generated/output-schemas/repo.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "repo-list";
@@ -47,7 +48,7 @@ const repoListConfig: OrgListConfig<
 > = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "repositories",
-  commandPrefix: "sentry repo list",
+  commandPrefix: () => sentry`repo list`,
   listForOrg: (org) => listRepositories(org),
   listPaginated: (org, opts) => listRepositoriesPaginated(org, opts),
   withOrg: (repo, orgSlug) => ({ ...repo, orgSlug }),
@@ -72,26 +73,26 @@ const docs: OrgListCommandDocs = {
   examples: [
     {
       description: "List repositories (organization auto-detected)",
-      command: "sentry repo list",
+      run: "repo list",
     },
     {
       description: "List repositories in an organization",
-      command: "sentry repo list my-org/",
+      run: "repo list my-org/",
     },
     {
       description: "Fetch the next page",
-      command: "sentry repo list my-org/ -c next",
+      run: "repo list my-org/ -c next",
     },
     {
       description: "Only repositories whose name matches a glob",
-      command: "sentry repo list 'my-org/getsentry/*'",
+      run: "repo list 'my-org/getsentry/*'",
     },
     {
       description:
         "Repositories named like 'sentry-python' (fuzzy when nothing matches exactly)",
-      command: "sentry repo list my-org/sentry-pyhton",
+      run: "repo list my-org/sentry-pyhton",
     },
-    { description: "Output as JSON", command: "sentry repo list --json" },
+    { description: "Output as JSON", run: "repo list --json" },
   ],
 };
 

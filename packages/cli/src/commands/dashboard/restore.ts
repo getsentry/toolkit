@@ -19,6 +19,7 @@ import { DashboardRestoreOutputSchema } from "../../generated/output-schemas/das
 import type { DashboardRestoreOutput } from "../../output-schemas/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "./arguments.js";
 import { withDashboardErrors } from "./resolve.js";
+import { sentry } from "../../lib/app-identity.js";
 
 type RestoreFlags = {
   readonly revision: string;
@@ -56,19 +57,19 @@ export const restoreCommand = buildCommand({
     examples: [
       {
         description: "Restore by dashboard title and revision number",
-        command: "sentry dashboard restore 'Frontend Performance' --revision 3",
+        run: "dashboard restore 'Frontend Performance' --revision 3",
       },
       {
         description: "Restore by dashboard ID",
-        command: "sentry dashboard restore 12345 --revision 42",
+        run: "dashboard restore 12345 --revision 42",
       },
       {
         description: "Pass the organization explicitly",
-        command: "sentry dashboard restore my-org/ 12345 --revision 42",
+        run: "dashboard restore my-org/ 12345 --revision 42",
       },
       {
         description: "Output the restored dashboard as JSON",
-        command: "sentry dashboard restore 12345 --revision 42 --json",
+        run: "dashboard restore 12345 --revision 42 --json",
       },
     ],
   },
@@ -79,7 +80,7 @@ export const restoreCommand = buildCommand({
   parameters: {
     positional: dashboardArguments({
       placeholder: "org/dashboard",
-      usageHint: "sentry dashboard restore <org>/ <id> --revision <rev>",
+      usageHint: () => sentry`dashboard restore <org>/ <id> --revision <rev>`,
     }),
     flags: {
       revision: {

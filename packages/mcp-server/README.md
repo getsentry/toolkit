@@ -3,6 +3,21 @@
 The Sentry MCP server for stdio clients, as a single file with no runtime
 dependencies. Works with sentry.io and self-hosted Sentry.
 
+> **Prefer `sentry mcp`.** The [Sentry CLI](https://cli.sentry.dev) runs the
+> same server as `sentry mcp`, using your CLI login, so the MCP config needs
+> no token:
+>
+> ```shell
+> curl https://cli.sentry.dev/install -fsS | bash
+> sentry auth login
+> claude mcp add sentry -- sentry mcp
+> ```
+>
+> Other clients take `{"command": "sentry", "args": ["mcp"]}`. See the
+> [`sentry mcp` docs](https://cli.sentry.dev/commands/mcp/) and
+> <https://mcp.sentry.dev/?transport=cli>. This package remains for clients
+> that launch the server through npx.
+
 ```json
 {
   "command": "npx",
@@ -35,6 +50,9 @@ Requires Node.js 22.15 or later.
 - Each server process uses one account. The package runs the CLI's own
   `auth` commands, so `npx -y @sentry/mcp-server auth status|list|switch|logout`
   manages the same login.
+- `npx -y @sentry/mcp-server cli defaults` and `cli fix` are the CLI's own
+  commands too: they set the defaults (such as `ca-cert` for a corporate TLS
+  proxy) and repair the local database the server shares with the CLI.
 
 ## Options
 
@@ -48,7 +66,7 @@ variables. For self-hosted Sentry, set `SENTRY_HOST` / `SENTRY_URL` (with
 ## Development
 
 The source lives in `packages/cli`: `packages/cli/src/mcp-server.ts` runs the
-CLI's runner with an application of three commands, `mcp`, `auth`, and
-`help` (`packages/cli/src/mcp-server-app.ts`). `pnpm run bundle` builds
-`dist/sentry-mcp.cjs` from it, and `pnpm run test:bundle` smoke-tests the
-result.
+CLI's runner with an application of four commands, `mcp`, `auth`, `cli`
+(`defaults` and `fix` only), and `help` (`packages/cli/src/mcp-server-app.ts`).
+`pnpm run bundle` builds `dist/sentry-mcp.cjs` from it, and
+`pnpm run test:bundle` smoke-tests the result.

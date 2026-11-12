@@ -169,7 +169,7 @@ describe("source API usage", () => {
     const analysis = analyzeSourceApiUsage(sources, [
       ...operations,
       {
-        ...operations[0]!,
+        ...operations[0],
         functionName: "anotherEvents",
         path: "/api/0/organizations/{org}/events/",
       },

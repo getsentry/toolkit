@@ -20,8 +20,9 @@ import type { SentryRelease, WithOutputFields } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 import { ReleaseFinalizeOutputSchema } from "../../generated/output-schemas/release.js";
 import type { ReleaseFinalizeOutputFields } from "../../output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release finalize [<org>/]<version>";
+const usageHint = () => sentry`release finalize [<org>/]<version>`;
 
 /** JSON output: the finalized release, or the `--dry-run` preview. */
 type FinalizeOutput = WithOutputFields<
@@ -54,20 +55,19 @@ export const finalizeCommand = buildCommand({
     examples: [
       {
         description: "Finalize a release",
-        command: "sentry release finalize 1.0.0",
+        run: "release finalize 1.0.0",
       },
       {
         description: "Finalize a release in an explicit organization",
-        command: "sentry release finalize my-org/1.0.0",
+        run: "release finalize my-org/1.0.0",
       },
       {
         description: "Set a custom release timestamp",
-        command:
-          "sentry release finalize 1.0.0 --released 2025-01-01T00:00:00Z",
+        run: "release finalize 1.0.0 --released 2025-01-01T00:00:00Z",
       },
       {
         description: "Preview without finalizing",
-        command: "sentry release finalize 1.0.0 --dry-run",
+        run: "release finalize 1.0.0 --dry-run",
       },
     ],
   },
@@ -80,7 +80,7 @@ export const finalizeCommand = buildCommand({
       kind: "tuple",
       parameters: [
         releaseParameter(
-          USAGE_HINT,
+          usageHint,
           "[<org>/]<version> - Release version to finalize",
         ),
       ],

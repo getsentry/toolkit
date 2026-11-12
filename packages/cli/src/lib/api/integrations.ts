@@ -48,7 +48,7 @@ export async function listIntegrationsPaginated(
   orgSlug: string,
   options: { cursor?: string; perPage?: number } = {},
 ): Promise<PaginatedResponse<SentryIntegration[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationIntegrations({
     ...config,
@@ -100,7 +100,7 @@ export async function getIntegration(
   orgSlug: string,
   integrationId: string,
 ): Promise<SentryIntegration> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await getOrganizationIntegration({
     ...config,
@@ -127,7 +127,7 @@ export async function deleteIntegration(
   orgSlug: string,
   integrationId: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await deleteOrganizationIntegration({
     ...config,

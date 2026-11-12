@@ -97,27 +97,27 @@ export const mcpCommand = buildCommand({
     examples: [
       {
         description: "Start the server with the current CLI login",
-        command: "sentry mcp",
+        run: "mcp",
       },
       {
         description: "Limit every call to one organization",
-        command: "sentry mcp acme/",
+        run: "mcp acme/",
       },
       {
         description: "Limit calls to one project",
-        command: "sentry mcp acme/web",
+        run: "mcp acme/web",
       },
       {
         description: "Grant every skill, including seer on self-hosted",
-        command: "sentry mcp --all-skills",
+        run: "mcp --all-skills",
       },
       {
         description: "Grant only some skills",
-        command: "sentry mcp --skills inspect,triage",
+        run: "mcp --skills inspect,triage",
       },
       {
         description: "Pick the LLM provider for AI-powered search",
-        command: "sentry mcp --agent-provider anthropic",
+        run: "mcp --agent-provider anthropic",
       },
     ],
   },
@@ -135,7 +135,7 @@ export const mcpCommand = buildCommand({
       ],
     },
     flags: {
-      "access-token": stringFlag("Deprecated: set SENTRY_AUTH_TOKEN instead"),
+      "access-token": deprecatedStringFlag("SENTRY_AUTH_TOKEN"),
       host: deprecatedStringFlag("SENTRY_HOST"),
       url: deprecatedStringFlag("SENTRY_URL"),
       "insecure-http": deprecatedBooleanFlag("an http:// SENTRY_URL"),

@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../context.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   type AuthConfig,
@@ -101,7 +102,7 @@ export type AuthStatusData = {
      * organization it can access use it even when stored OAuth is in effect.
      */
     host?: string;
-    /** The token's user, from `/auth/` (not for organization auth tokens) */
+    /** The token's user, from `/users/me/` (not for organization auth tokens) */
     user?: { name?: string; email?: string; username?: string };
   };
 };
@@ -204,11 +205,11 @@ export const statusCommand = buildCommand({
     examples: [
       {
         description: "Check authentication status",
-        command: "sentry auth status",
+        run: "auth status",
       },
       {
         description: "Include the raw token",
-        command: "sentry auth status --show-token",
+        run: "auth status --show-token",
       },
     ],
   },
@@ -282,8 +283,8 @@ export const statusCommand = buildCommand({
         classifySentryToken(effectiveToken) === "org-auth-token";
       return {
         hint: isOrgToken
-          ? "Run `sentry auth whoami` to see which organization this token belongs to"
-          : "Run `sentry auth whoami` to see which user this token belongs to",
+          ? `Run \`${sentry`auth whoami`}\` to see which organization this token belongs to`
+          : `Run \`${sentry`auth whoami`}\` to see which user this token belongs to`,
       };
     }
   },

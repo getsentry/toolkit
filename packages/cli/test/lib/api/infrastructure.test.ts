@@ -12,8 +12,9 @@ import {
   unwrapPaginatedResult,
   unwrapResult,
 } from "../../../src/lib/api/infrastructure.js";
-import { setAuthToken } from "../../../src/lib/db/auth.js";
+import { resetAuthTokenCache, setAuthToken } from "../../../src/lib/db/auth.js";
 import { ApiError, HostScopeError } from "../../../src/lib/errors.js";
+import { OAUTH_SCOPES } from "../../../src/lib/oauth.js";
 import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 
 describe("SDK error compatibility", () => {
@@ -653,8 +654,11 @@ describe("throwApiError", () => {
   });
 
   describe("401 enrichment", () => {
-    // Test preload sets SENTRY_AUTH_TOKEN, so isEnvTokenActive() returns true
-    // by default in these tests.
+    // A personal env token: the preload's `sntrys_` token gets org advice.
+    useEnvSandbox(["SENTRY_AUTH_TOKEN"]);
+    beforeEach(() => {
+      process.env.SENTRY_AUTH_TOKEN = "sntryu_test-token-for-unit-tests";
+    });
 
     test("uses 'not recognized or has been revoked' for invalid token", () => {
       const mockResponse = new Response("", {
@@ -816,6 +820,151 @@ describe("throwApiError", () => {
 // isTextualContentType + rawApiRequest binary handling (getsentry/cli#1303)
 // ---------------------------------------------------------------------------
 
+describe("org auth token org mismatch", () => {
+  useTestConfigDir("api-org-mismatch-");
+  useEnvSandbox([
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN",
+  ]);
+
+  /** The detail of a denial for `path`, sent with an org auth token for `tokenOrg`. */
+  function detailFor(
+    tokenOrg: string,
+    status: 401 | 403,
+    path: string,
+    detail = "Denied",
+  ): string | undefined {
+    const claim = Buffer.from(
+      JSON.stringify({ iat: 1, url: "https://sentry.io", org: tokenOrg }),
+    ).toString("base64");
+    process.env.SENTRY_AUTH_TOKEN = `sntrys_${claim}_secret`;
+    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    resetAuthTokenCache();
+    const body = { detail };
+    const response = Response.json(body, { status });
+    // SDK requests carry the request URL on the response.
+    Object.defineProperty(response, "url", {
+      value: `https://us.sentry.io/api/0/${path}`,
+    });
+    try {
+      throwApiError(body, response, "Failed");
+    } catch (error) {
+      return (error as ApiError).detail;
+    }
+    throw new Error("expected throwApiError to throw");
+  }
+
+  test.each([
+    [403, "organizations/target-org/releases/", "Denied"],
+    [401, "projects/target-org/web/releases/", "Invalid org token"],
+  ] as const)("names both orgs on a %i", (status, path, detail) => {
+    expect(detailFor("token-org", status, path, detail)).toContain(
+      "This org auth token belongs to organization 'token-org', but the request is for 'target-org'.",
+    );
+  });
+
+  test.each([
+    ["token-org", "organizations/12345/releases/"],
+    ["Token-Org", "organizations/token-org/releases/"],
+  ])("skips the hint for a %s token on %s", (tokenOrg, path) => {
+    expect(detailFor(tokenOrg, 403, path)).not.toContain(
+      "belongs to organization",
+    );
+  });
+});
+
+describe("403 scope challenge guidance", () => {
+  useTestConfigDir("api-denial-");
+  useEnvSandbox([
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_TOKEN",
+    "SENTRY_FORCE_ENV_TOKEN",
+  ]);
+
+  const ORG_TOKEN = `sntrys_${Buffer.from(JSON.stringify({ iat: 1, url: "https://sentry.io", org: "acme" })).toString("base64")}_secret`;
+
+  /** The detail of a 403 sent with `credential`, with an optional challenge. */
+  function detailFor(
+    credential: "personal" | "org" | "login",
+    scopes?: string,
+  ): string | undefined {
+    if (credential === "login") {
+      setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
+    } else {
+      process.env.SENTRY_AUTH_TOKEN =
+        credential === "org" ? ORG_TOKEN : "sntryu_example";
+      process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    }
+    resetAuthTokenCache();
+    const body = { detail: "Denied" };
+    const headers: Record<string, string> = scopes
+      ? {
+          "WWW-Authenticate": `Bearer error="insufficient_scope", scope="${scopes}"`,
+        }
+      : {};
+    const response = Response.json(body, { status: 403, headers });
+    try {
+      throwApiError(body, response, "Request failed");
+    } catch (error) {
+      return (error as ApiError).detail;
+    }
+    throw new Error("expected throwApiError to throw");
+  }
+
+  test.each([
+    [
+      "personal",
+      "org:admin org:ci org:read",
+      "Your SENTRY_AUTH_TOKEN token lacks the scope this request needs. Any one of these works: org:admin, org:ci, org:read.",
+    ],
+    ["personal", "org:admin org:ci org:read", "An org auth token has org:ci."],
+    ["org", "org:admin org:billing", "Org auth tokens only have org:ci."],
+    ["login", "org:admin org:read", "auth login --force"],
+    [
+      "login",
+      "org:admin org:billing org:write",
+      `auth refresh --scope ${[...OAUTH_SCOPES, "org:write"].join(",")}`,
+    ],
+  ] as const)("%s token, accepted %s: %s", (credential, scopes, expected) => {
+    expect(detailFor(credential, scopes)).toContain(expected);
+  });
+
+  test("keeps the generic hint for a 403 with no challenge", () => {
+    expect(detailFor("personal")).toContain("may lack the required scope");
+  });
+});
+
+describe("401 guidance", () => {
+  useTestConfigDir("api-401-");
+  useEnvSandbox(["SENTRY_AUTH_TOKEN"]);
+
+  test.each([
+    [
+      "sntrys_malformed",
+      false,
+      "Invalid org token",
+      "organization's Settings > Auth Tokens.",
+    ],
+    ["sntryu_example", true, "Invalid token", "Re-authenticate with:"],
+  ])(
+    "%s, stored login %s: %s gets %j",
+    (envToken, storedLogin, detail, advice) => {
+      process.env.SENTRY_AUTH_TOKEN = envToken;
+      if (storedLogin) {
+        setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
+      }
+      resetAuthTokenCache();
+      const body = { detail };
+      expect(() =>
+        throwApiError(body, Response.json(body, { status: 401 }), "Failed"),
+      ).toThrow(
+        expect.objectContaining({ detail: expect.stringContaining(advice) }),
+      );
+    },
+  );
+});
+
 describe("isTextualContentType", () => {
   test.each([
     [null, true],
@@ -870,7 +1019,7 @@ describe("rawApiRequest binary handling", () => {
       host: "https://sentry.io",
     });
     const fetchSpy = vi.fn();
-    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    globalThis.fetch = fetchSpy;
 
     await expect(
       rawApiRequest("organizations/", {

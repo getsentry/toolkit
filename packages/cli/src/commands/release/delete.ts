@@ -22,8 +22,9 @@ import { buildReleaseUrl } from "../../lib/sentry-web-urls.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 import { ReleaseDeleteOutputSchema } from "../../generated/output-schemas/release.js";
 import type { ReleaseDeleteOutput } from "../../output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release delete [<org>/]<version>";
+const usageHint = () => sentry`release delete [<org>/]<version>`;
 
 type DeleteResult = ReleaseDeleteOutput;
 
@@ -84,15 +85,15 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Delete a release (prompts for confirmation)",
-        command: "sentry release delete my-org/1.0.0",
+        run: "release delete my-org/1.0.0",
       },
       {
         description: "Skip confirmation",
-        command: "sentry release delete my-org/1.0.0 --yes",
+        run: "release delete my-org/1.0.0 --yes",
       },
       {
         description: "Preview without deleting",
-        command: "sentry release delete my-org/1.0.0 --dry-run",
+        run: "release delete my-org/1.0.0 --dry-run",
       },
     ],
   },
@@ -105,7 +106,7 @@ export const deleteCommand = buildDeleteCommand({
       kind: "tuple",
       parameters: [
         releaseParameter(
-          USAGE_HINT,
+          usageHint,
           "[<org>/]<version> - Release version to delete",
         ),
       ],

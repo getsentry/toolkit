@@ -29,11 +29,12 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
 import { injectDebugId } from "../../lib/sourcemap/debug-id.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("react-native.gradle");
 
-const USAGE_HINT =
-  "sentry react-native gradle --sourcemap <path> --bundle <path>";
+const usageHint = () =>
+  sentry`react-native gradle --sourcemap <path> --bundle <path>`;
 
 /** Little-endian magic (0xFB0BD1E5) that starts an indexed RAM bundle. */
 const RAM_BUNDLE_MAGIC = [0xe5, 0xd1, 0x0b, 0xfb];
@@ -140,13 +141,11 @@ export const gradleCommand = buildCommand({
       {
         description:
           "Upload a bundle and sourcemap by debug ID (called by the Gradle plugin)",
-        command:
-          "sentry react-native gradle --bundle index.android.bundle --sourcemap index.android.bundle.map",
+        run: "react-native gradle --bundle index.android.bundle --sourcemap index.android.bundle.map",
       },
       {
         description: "Also associate with a release and distribution",
-        command:
-          "sentry react-native gradle --bundle index.android.bundle --sourcemap index.android.bundle.map --release com.example.app@1.0.0 --dist 1000",
+        run: "react-native gradle --bundle index.android.bundle --sourcemap index.android.bundle.map --release com.example.app@1.0.0 --dist 1000",
       },
     ],
   },
@@ -200,10 +199,10 @@ export const gradleCommand = buildCommand({
 
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 
