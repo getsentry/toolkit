@@ -841,6 +841,8 @@ async function executeSearchEvents(
     environmentNames.map((name) => name.toLowerCase()),
   );
 
+  // True only when Seer or the embedded agent actually rewrote the query.
+  let queryTranslated = Boolean(seerTranslation);
   if (seerTranslation) {
     dataset = inputDataset;
     sentryQuery = seerTranslation.query;
@@ -853,8 +855,12 @@ async function executeSearchEvents(
     explanation = seerTranslation.explanation;
     timeSeries = seerTranslation.timeSeries;
   } else if (willRunAgent) {
+    queryTranslated = true;
     const parsed = await withProviderFallback<SearchEventsAgentResult>({
       operation: "search_events.rewrite",
+      onFallback: () => {
+        queryTranslated = false;
+      },
       fallback: () => ({
         dataset: inputDataset,
         query: params.query ?? "",
@@ -1002,7 +1008,7 @@ async function executeSearchEvents(
   // An empty result after Seer or the embedded agent translated the query may
   // be a bad translation. An unknown environment already explains it.
   const emptyTranslationFeedbackNote =
-    (seerTranslation || willRunAgent) && !environmentNote
+    queryTranslated && !environmentNote
       ? formatFeedbackSuggestion({
           condition:
             "If this stays empty after you broaden the query and you expected matching data",

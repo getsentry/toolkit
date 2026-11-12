@@ -181,10 +181,52 @@ describe("search_events", () => {
         grantedSkills: new Set(),
         constraints: {},
         sentryHost: "sentry.io",
+        availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
+        directToolNames: new Set(["submit_feedback_to_sentry_team"]),
       },
     );
 
     expect(result).toContain("No results found");
+    // The query was not rewritten, so an empty result is not a translation bug.
+    expect(result).not.toContain("submit_feedback_to_sentry_team");
+  });
+
+  it("suggests feedback when the agent rewrote the query and nothing matched", async () => {
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+        HttpResponse.json({ data: [] }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "level:error",
+        fields: null,
+        sort: null,
+        period: "24h",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+        availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
+        directToolNames: new Set(["submit_feedback_to_sentry_team"]),
+      },
+    );
+
+    expect(result).toContain("No results found");
+    expect(result).toContain(
+      "use the Sentry tool `submit_feedback_to_sentry_team` with kind='broken'",
+    );
   });
 
   it("rewrites numeric issue IDs to issue.id for the errors dataset", async () => {
