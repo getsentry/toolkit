@@ -35,6 +35,7 @@ import {
   hasPreviousPage,
   resolveCursor,
 } from "../lib/db/pagination.js";
+import { normalizeEndpoint as templateEndpoint } from "../lib/error-reporting.js";
 import {
   OutputError,
   stringifyUnknown,
@@ -1463,7 +1464,7 @@ function recordApiErrorAttributes(
   const span = Sentry.getActiveSpan();
   if (span) {
     span.setAttribute("api_error.status", status);
-    span.setAttribute("api_error.endpoint", endpoint);
+    span.setAttribute("api_error.endpoint", templateEndpoint(endpoint));
     span.setAttribute("api_error.method", method);
   }
 }
