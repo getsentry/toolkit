@@ -6,7 +6,14 @@
  * For mobile replays, the ffmpeg lookup and the ffmpeg join are spied.
  */
 
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ArgumentParseError } from "@stricli/core";
@@ -394,6 +401,31 @@ describe("replay download", () => {
       ).rejects.toThrow(/ffmpeg could not join.*Invalid data found/s);
 
       expect(await readdir(tmpDir)).toEqual([`${REPLAY_ID}-clips`]);
+    });
+
+    test("replaces clips from an earlier run", async () => {
+      const clipsDir = join(tmpDir, `${REPLAY_ID}-clips`);
+      await mkdir(clipsDir);
+      await writeFile(join(clipsDir, "clip-00009.mp4"), "stale");
+      joinSpy.mockRejectedValue(new Error("Command failed"));
+      const func = await downloadCommand.loader();
+
+      await expect(
+        func.call(createContext().context, { fresh: false }, REPLAY_ID),
+      ).rejects.toThrow(/ffmpeg could not join/);
+
+      expect(await readdir(tmpDir)).toEqual([`${REPLAY_ID}-clips`]);
+      expect((await readdir(clipsDir)).sort()).toEqual([
+        "clip-00000.mp4",
+        "clip-00001.mp4",
+        "clips.txt",
+      ]);
+
+      vi.mocked(which.whichSync).mockReturnValue(null);
+      await writeFile(join(clipsDir, "clip-00009.mp4"), "stale");
+      await func.call(createContext().context, { fresh: false }, REPLAY_ID);
+
+      expect(await readdir(clipsDir)).not.toContain("clip-00009.mp4");
     });
 
     test("skips clips with no stored video", async () => {

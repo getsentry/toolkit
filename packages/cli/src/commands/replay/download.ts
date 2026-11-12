@@ -264,6 +264,8 @@ async function downloadVideo(
   const ffmpeg = whichSync("ffmpeg");
 
   if (!ffmpeg) {
+    // Replace clips from an earlier run, as the mp4 output would be.
+    await rm(clipsDir, { recursive: true, force: true });
     await mkdir(clipsDir, { recursive: true });
     const files = await saveClips(clipsDir, options);
     const listPath = join(clipsDir, CONCAT_LIST_FILE);
@@ -365,9 +367,13 @@ async function saveClips(
   return files;
 }
 
-/** Move clips out of the temporary directory so the user keeps them. */
+/**
+ * Move clips out of the temporary directory so the user keeps them, replacing
+ * clips from an earlier run.
+ */
 async function keepClips(workDir: string, clipsDir: string): Promise<string> {
   try {
+    await rm(clipsDir, { recursive: true, force: true });
     await rename(workDir, clipsDir);
     return clipsDir;
   } catch (error) {
