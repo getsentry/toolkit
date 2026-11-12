@@ -43,7 +43,12 @@ import {
   record,
   string,
 } from "valibot";
-import { ApiError, projectsNotFoundError } from "../errors.js";
+import {
+  ApiError,
+  AssemblyError,
+  ChunkUploadOptionsError,
+  projectsNotFoundError,
+} from "../errors.js";
 import { logger } from "../logger.js";
 import { getSdkConfig } from "../sentry-client.js";
 import {
@@ -171,16 +176,27 @@ export async function getChunkUploadOptions(
   orgSlug: string,
 ): Promise<ChunkServerOptions> {
   const config = getOrgSdkConfig();
+  const endpoint = `organizations/${orgSlug}/chunk-upload/`;
   const result = await getOrganizationChunkUploadOptions({
     ...config,
     path: { organization_id_or_slug: orgSlug },
   });
+  // A 5xx left after retries means the server or its proxy is down; its body
+  // is usually a proxy's HTML error page, so name the cause instead.
+  const status = result.response?.status ?? 0;
+  if ("error" in result && status >= 500) {
+    throw new ChunkUploadOptionsError(
+      status,
+      result.response?.statusText ?? "",
+      endpoint,
+    );
+  }
   // The schema also reads `maxWait`, which the generated type lacks.
   const data = unwrapValidatedResult(
     result,
     "Failed to get chunk upload options",
     ChunkServerOptionsSchema,
-    `organizations/${orgSlug}/chunk-upload/`,
+    endpoint,
   );
 
   // Self-hosted Sentry instances may return a chunk-upload URL that embeds
@@ -722,12 +738,7 @@ export async function pollAssembly(params: {
     }
 
     if (pollResult.state === "error") {
-      throw new ApiError(
-        `${entityName} assembly failed`,
-        500,
-        pollResult.detail ?? "Unknown error",
-        endpoint,
-      );
+      throw new AssemblyError(entityName, pollResult.detail, endpoint);
     }
     // "not_found", "assembling", or ("created" while waiting) — keep polling
   }

@@ -255,3 +255,51 @@ describe("pollAssembly: waitForOk", () => {
     expect(assemble).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("server-side upload failures", () => {
+  const assembleEndpoint = "organizations/my-org/artifactbundle/assemble/";
+
+  test.each([
+    {
+      name: "an assembly error names the server failure and its 10-minute cache",
+      run: () =>
+        pollAssembly({
+          assemble: async () => ({
+            state: "error",
+            detail: "Not all chunks available for assembling",
+          }),
+          endpoint: assembleEndpoint,
+          entityName: "Artifact bundle",
+        }),
+      expected: [
+        "Artifact bundle assembly failed on the Sentry server",
+        `  Endpoint: ${assembleEndpoint}`,
+        "  Not all chunks available for assembling",
+        "  Sentry keeps this result for about 10 minutes. Retry after that, or upload a changed bundle.",
+      ],
+    },
+    {
+      name: "a 502 from the upload options names the unreachable server, not the proxy's HTML page",
+      run: () => {
+        globalThis.fetch = mockFetch(
+          async () =>
+            new Response("<!DOCTYPE html><title>502: Bad gateway</title>", {
+              status: 502,
+              statusText: "Bad Gateway",
+              headers: { "Content-Type": "text/html" },
+            }),
+        );
+        return getChunkUploadOptions("my-org");
+      },
+      expected: [
+        "Failed to get chunk upload options: 502 Bad Gateway",
+        "  Endpoint: organizations/my-org/chunk-upload/",
+        "  The Sentry server, or a proxy in front of it, returned a server error. Check that Sentry is up and reachable, then retry.",
+      ],
+    },
+  ])("$name", async ({ run, expected }) => {
+    const error = await run().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).format()).toBe(expected.join("\n"));
+  });
+});

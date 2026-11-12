@@ -306,6 +306,55 @@ export class RateLimitError extends ApiError {
   }
 }
 
+/**
+ * The Sentry server failed to assemble uploaded chunks: the assemble endpoint
+ * answered `state: "error"`. Sentry caches that state per bundle checksum for
+ * 10 minutes, so sending the same bundle again in that window returns the
+ * same error. Its own class so it groups apart from HTTP 500s and so
+ * self-hosted occurrences can be silenced (see `classifySilenced`).
+ *
+ * @param entityName - What failed to assemble, e.g. "Artifact bundle"
+ * @param serverDetail - The assemble response's `detail`
+ * @param endpoint - The assemble endpoint path
+ */
+export class AssemblyError extends ApiError {
+  constructor(
+    entityName: string,
+    serverDetail: string | null | undefined,
+    endpoint: string,
+  ) {
+    super(
+      `${entityName} assembly failed on the Sentry server`,
+      500,
+      `${serverDetail ?? "The server sent no detail."}\n  Sentry keeps this result for about 10 minutes. Retry after that, or upload a changed bundle.`,
+      endpoint,
+    );
+    this.name = "AssemblyError";
+  }
+}
+
+/**
+ * The chunk-upload options request failed with a 5xx after retries: the
+ * Sentry server, or a proxy in front of it, is down or unreachable. Its own
+ * class so it groups apart from failed chunk uploads, which share the
+ * `ApiError` status and command fingerprint.
+ *
+ * @param status - HTTP status of the last attempt
+ * @param statusText - HTTP status text of the last attempt
+ * @param endpoint - The chunk-upload options endpoint path
+ */
+export class ChunkUploadOptionsError extends ApiError {
+  constructor(status: number, statusText: string, endpoint: string) {
+    super(
+      `Failed to get chunk upload options: ${status} ${statusText}`,
+      status,
+      "The Sentry server, or a proxy in front of it, returned a server error. Check that Sentry is up and reachable, then retry.",
+      endpoint,
+    );
+    this.name = "ChunkUploadOptionsError";
+  }
+}
+
 export type AuthErrorReason = "not_authenticated" | "expired" | "invalid";
 
 /** Options for AuthError */

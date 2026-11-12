@@ -24,6 +24,7 @@ import {
 } from "../../src/lib/error-reporting.js";
 import {
   ApiError,
+  AssemblyError,
   AuthError,
   CliError,
   ConfigError,
@@ -460,6 +461,23 @@ describe("classifySilenced", () => {
       expect(classifySilenced(new ApiError("Server error", 500))).toBeNull();
     });
   });
+
+  test.each([
+    ["silences", "https://sentry.example.com", "assembly_failed_self_hosted"],
+    ["does NOT silence", "https://sentry.io", null],
+  ])(
+    "%s a server-side assembly failure on %s (CLI-36Z)",
+    (_label, url, expected) => {
+      withSentryUrl(url, () => {
+        const error = new AssemblyError(
+          "Artifact bundle",
+          "Not all chunks available for assembling",
+          "organizations/my-org/artifactbundle/assemble/",
+        );
+        expect(classifySilenced(error)).toBe(expected);
+      });
+    },
+  );
 });
 
 /**
