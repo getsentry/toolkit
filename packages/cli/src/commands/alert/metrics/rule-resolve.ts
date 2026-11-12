@@ -10,6 +10,7 @@ import {
   listMetricAlertsPaginated,
   type MetricAlertRule,
 } from "../../../lib/api-client.js";
+import { type LazyCommand, sentry } from "../../../lib/app-identity.js";
 import { ORG_TARGET } from "../../../lib/completion-target.js";
 import { ResolutionError, ValidationError } from "../../../lib/errors.js";
 import { fuzzyMatch } from "../../../lib/fuzzy.js";
@@ -71,7 +72,7 @@ export function parseMetricRuleArg(
  * The `<org>/<rule-id-or-name>` parameter of a metric alert command,
  * parsed with {@link parseMetricRuleArg} before the command runs.
  */
-export function metricRuleParameter(usageHint: string, brief: string) {
+export function metricRuleParameter(usageHint: LazyCommand, brief: string) {
   return alertRuleParameter({
     placeholder: "org/rule-id-or-name",
     brief,
@@ -129,7 +130,7 @@ export async function resolveMetricAlertRule(
     if (hits.length > 1) {
       throw new ValidationError(
         `Alert rule ID '${ref}' matched multiple organizations.\n` +
-          "Use an explicit target: sentry alert metrics <command> <org>/<rule-id>",
+          `Use an explicit target: ${sentry`alert metrics <command> <org>/<rule-id>`}`,
       );
     }
     throw new ResolutionError(
@@ -163,7 +164,7 @@ export async function resolveMetricAlertRule(
   if (hits.length > 1) {
     throw new ValidationError(
       `Alert rule name '${ref}' matched multiple organizations.\n` +
-        "Use an explicit target: sentry alert metrics <command> <org>/<rule-id-or-name>",
+        `Use an explicit target: ${sentry`alert metrics <command> <org>/<rule-id-or-name>`}`,
     );
   }
 

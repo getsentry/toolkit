@@ -6,7 +6,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -189,12 +189,20 @@ describe("npm bundle", () => {
   }, 15_000);
 
   test("__complete runs from dist/complete.cjs without loading the CLI", async () => {
-    // Print the modules the run loaded, so the test sees what a TAB press pays for
+    // Print the JavaScript files the run read, so the test sees what a TAB
+    // press pays for. `dist/bin.cjs` reads its chunks with readFileSync.
     const { stdout, stderr, exitCode } = await spawnCollect(
       "node",
       [
         "-e",
-        `process.on("exit", () => process.stderr.write(JSON.stringify(Object.keys(require.cache))));
+        `const fs = require("node:fs");
+        const readFileSync = fs.readFileSync;
+        const read = [];
+        fs.readFileSync = function (path, ...rest) {
+          if (typeof path === "string" && /\\.[cm]?js$/.test(path)) read.push(path);
+          return readFileSync.call(this, path, ...rest);
+        };
+        process.on("exit", () => process.stderr.write(JSON.stringify(read)));
         process.argv.splice(1, 0, ${JSON.stringify(BUNDLE_BIN_PATH)});
         require(process.argv[1]);`,
         "__complete",
@@ -212,13 +220,54 @@ describe("npm bundle", () => {
       basename(path),
     );
     expect(loaded).toContain("complete.cjs");
-    expect(loaded).not.toContain("index.cjs");
+    expect(loaded).not.toContain("cli.cjs");
+    expect(loaded.filter((name) => name.startsWith("chunk-"))).toEqual([]);
   }, 15_000);
 
-  test("Ink sidecar can be imported and exports mountApp", async () => {
+  test("a command loads only its own chunks", async () => {
+    // `dist/bin.cjs` runs `cli.cjs`, whose commands are chunks of their own
+    const { stdout, stderr, exitCode } = await spawnCollect(
+      "node",
+      [
+        "-e",
+        `const fs = require("node:fs");
+        const readFileSync = fs.readFileSync;
+        const read = new Set();
+        fs.readFileSync = function (path, ...rest) {
+          if (typeof path === "string" && /\\.[cm]?js$/.test(path)) read.add(path);
+          return readFileSync.call(this, path, ...rest);
+        };
+        process.on("exit", () => process.stderr.write("\\n" + JSON.stringify([...read])));
+        process.argv.splice(1, 0, ${JSON.stringify(BUNDLE_BIN_PATH)});
+        require(process.argv[1]);`,
+        "issue",
+        "list",
+        "--help",
+      ],
+      { cwd: ROOT_DIR, env: { ...process.env, SENTRY_CLI_NO_TELEMETRY: "1" } },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("sentry issue list");
+    const read = JSON.parse(
+      stderr.slice(stderr.lastIndexOf("\n") + 1),
+    ) as string[];
+    const chunks = readdirSync(join(ROOT_DIR, "dist")).filter(
+      (name) => name.startsWith("chunk-") && name.endsWith(".cjs"),
+    );
+    const readChunks = read.filter((path) =>
+      basename(path).startsWith("chunk-"),
+    );
+    expect(read.map((path) => basename(path))).toContain("cli.cjs");
+    expect(readChunks.length).toBeGreaterThan(0);
+    // Not every command: well under half of the CLI's chunks
+    expect(readChunks.length).toBeLessThan(chunks.length / 2);
+  }, 15_000);
+
+  test("Ink sidecar can be imported and exports mountSelectPrompt", async () => {
     // The Ink sidecar (dist/ink-app.js) is a pre-bundled self-contained ESM
     // module that ships with the npm package. Verify it exists, can be imported
-    // by Node, and exports mountApp as a function. This catches sidecar
+    // by Node, and exports mountSelectPrompt as a function. This catches sidecar
     // bundling/resolution bugs — the exact class of bug where `with { type: "file" }`
     // crashed in tsx dev mode.
     //
@@ -229,9 +278,9 @@ describe("npm bundle", () => {
     const { stdout, stderr, exitCode } = await spawnCollect("node", [
       "--input-type=module",
       "-e",
-      `import { mountApp } from ${JSON.stringify(pathToFileURL(INK_APP_PATH).href)};\n` +
-        'if (typeof mountApp !== "function") {\n' +
-        '  process.stderr.write("mountApp is " + typeof mountApp + ", expected function");\n' +
+      `import { mountSelectPrompt } from ${JSON.stringify(pathToFileURL(INK_APP_PATH).href)};\n` +
+        'if (typeof mountSelectPrompt !== "function") {\n' +
+        '  process.stderr.write("mountSelectPrompt is " + typeof mountSelectPrompt + ", expected function");\n' +
         "  process.exit(1);\n" +
         "}",
     ]);

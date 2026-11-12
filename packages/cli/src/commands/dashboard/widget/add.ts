@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
+import { sentry } from "../../../lib/app-identity.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
   aggregateShorthandParser,
@@ -25,9 +26,6 @@ import {
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
 import {
   assignDefaultLayout,
-  type DashboardDetail,
-  type DashboardWidget,
-  DashboardWidgetChangeOutputSchema,
   DEFAULT_WIDGET_TYPE,
   DISPLAY_TYPES,
   FALLBACK_LAYOUT,
@@ -39,6 +37,7 @@ import {
   WIDGET_TYPES,
   type WidgetLayoutFlags,
   type WidgetLayoutMode,
+  type DashboardWidgetChangeOutput,
 } from "../../../types/dashboard.js";
 import {
   type DashboardInput,
@@ -54,6 +53,7 @@ import {
   WIDGET_FIELD_COMPLETION,
   type WidgetQueryFlags,
 } from "../resolve.js";
+import { DashboardWidgetChangeOutputSchema } from "../../../generated/output-schemas/dashboard.js";
 
 /** What `--query`, `--sort`, and `--group-by` complete: a spans widget's by default. */
 const FIELD_COMPLETION: DatasetCompletion = {
@@ -69,14 +69,8 @@ type AddFlags = WidgetQueryFlags &
     readonly fields?: string[];
   };
 
-type AddResult = {
-  dashboard: DashboardDetail;
-  widget: DashboardWidget;
-  url: string;
-};
-
-const USAGE_HINT =
-  "sentry dashboard widget add <org>/ <dashboard> <title> --display <type>";
+const usageHint = () =>
+  sentry`dashboard widget add <org>/ <dashboard> <title> --display <type>`;
 
 /** `widget add` arguments: the dashboard, then the widget title. */
 type WidgetAddInput = DashboardInput & { readonly title: string };
@@ -96,14 +90,14 @@ function parseAddPositionalArgs(args: readonly string[]): {
     throw new ValidationError(
       "Widget title is required as a positional argument.\n\n" +
         "Example:\n" +
-        '  sentry dashboard widget add <dashboard> "My Widget" --display line --query count',
+        `  ${sentry`dashboard widget add <dashboard> "My Widget" --display line --query count`}`,
       "title",
     );
   }
   if (args.length > 3) {
     throw new ValidationError(
       `Too many positional arguments (got ${args.length}, expected at most 3).\n\n` +
-        "Usage: sentry dashboard widget add [<org/project>] <dashboard> <title>",
+        `Usage: ${sentry`dashboard widget add [<org/project>] <dashboard> <title>`}`,
       "positional",
     );
   }
@@ -131,43 +125,35 @@ export const addCommand = buildCommand({
     examples: [
       {
         description: "Add a counter widget",
-        command:
-          "sentry dashboard widget add 'My Dashboard' \"Error Count\" --display big_number --query count",
+        run: "dashboard widget add 'My Dashboard' \"Error Count\" --display big_number --query count",
       },
       {
         description: "Use a dashboard ID in an explicit organization",
-        command:
-          'sentry dashboard widget add my-org/12345 "Error Count" --display big_number --query count',
+        run: 'dashboard widget add my-org/12345 "Error Count" --display big_number --query count',
       },
       {
         description: "Line chart with group-by",
-        command:
-          "sentry dashboard widget add 'My Dashboard' \"Errors by Browser\" --display line --query count --group-by browser.name",
+        run: "dashboard widget add 'My Dashboard' \"Errors by Browser\" --display line --query count --group-by browser.name",
       },
       {
         description: "Table with multiple aggregates, sorted descending",
-        command:
-          "sentry dashboard widget add 'My Dashboard' \"Top Endpoints\" --display table --query count --query p95:span.duration --group-by transaction --sort -count --limit 10",
+        run: "dashboard widget add 'My Dashboard' \"Top Endpoints\" --display table --query count --query p95:span.duration --group-by transaction --sort -count --limit 10",
       },
       {
         description: "Bar chart with a search filter",
-        command:
-          'sentry dashboard widget add \'My Dashboard\' "Slow Requests" --display bar --query p95:span.duration --where "span.op:http.client" --group-by span.description',
+        run: 'dashboard widget add \'My Dashboard\' "Slow Requests" --display bar --query p95:span.duration --where "span.op:http.client" --group-by span.description',
       },
       {
         description: "P95 latency KPI",
-        command:
-          "sentry dashboard widget add 'My Dashboard' \"P95\" --display big_number --query p95:span.duration",
+        run: "dashboard widget add 'My Dashboard' \"P95\" --display big_number --query p95:span.duration",
       },
       {
         description: "Throughput KPI",
-        command:
-          "sentry dashboard widget add 'My Dashboard' \"Throughput\" --display big_number --query epm",
+        run: "dashboard widget add 'My Dashboard' \"Throughput\" --display big_number --query epm",
       },
       {
         description: "Custom metric percentiles from the tracemetrics dataset",
-        command:
-          'sentry dashboard widget add \'My Dashboard\' "Latency" --display line --dataset tracemetrics --query "p50(value,completion.duration_ms,distribution,none)" --query "p90(value,completion.duration_ms,distribution,none)"',
+        run: 'dashboard widget add \'My Dashboard\' "Latency" --display line --dataset tracemetrics --query "p50(value,completion.duration_ms,distribution,none)" --query "p90(value,completion.duration_ms,distribution,none)"',
       },
     ],
   },
@@ -182,10 +168,10 @@ export const addCommand = buildCommand({
       kind: DASHBOARD_TARGET,
       parse: (args): WidgetAddInput => {
         const { dashboardArgs, title } = parseAddPositionalArgs(args);
-        return { ...parseDashboardInput(dashboardArgs, USAGE_HINT), title };
+        return { ...parseDashboardInput(dashboardArgs, usageHint()), title };
       },
       resolve: (input: WidgetAddInput, context: SentryContext) =>
-        resolveDashboardInput(input, context.cwd, USAGE_HINT),
+        resolveDashboardInput(input, context.cwd, usageHint()),
     }),
     flags: {
       display: {
@@ -380,7 +366,7 @@ export const addCommand = buildCommand({
       dashboard: updated,
       widget: newWidget,
       url,
-    } as AddResult);
+    } satisfies DashboardWidgetChangeOutput);
     return { hint: `Dashboard: ${url}` };
   },
 });

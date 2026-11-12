@@ -10,6 +10,7 @@ import {
 
 export default defineTool({
   name: "link_issue",
+  title: "Link Issue",
   skills: ["triage"],
   requiredScopes: ["event:write", "org:read"],
   description: [

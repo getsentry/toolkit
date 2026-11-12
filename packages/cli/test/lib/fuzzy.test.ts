@@ -187,10 +187,78 @@ describe("fuzzyMatch: search mode", () => {
     ).toEqual(expected.slice(0, 2));
   });
 
-  test("keeps typo prefixes anchored to the beginning of a candidate", () => {
+  test("matches typos at word starts, but not mid-word", () => {
     expect(
-      fuzzyMatch("frone", ["team-frontend-web"], { mode: "search" }),
-    ).toEqual([]);
+      fuzzyMatch("fornt", ["team-frontend-web", "storefront"], {
+        mode: "search",
+      }),
+    ).toEqual(["team-frontend-web"]);
+  });
+
+  test("matches a typo across words of a slug", () => {
+    expect(
+      fuzzyMatch("sentyr-javascrpt", ["sentry-javascript", "sentry-java"], {
+        mode: "search",
+      }),
+    ).toEqual(["sentry-javascript"]);
+  });
+
+  test("matches two extra letters in a longer typo", () => {
+    expect(
+      fuzzyMatch("chheckkout", ["checkout-service-api"], { mode: "search" }),
+    ).toEqual(["checkout-service-api"]);
+  });
+
+  test("falls back to full-name typos past the search typo limit", () => {
+    expect(fuzzyMatch("committers", ["commits"], { mode: "search" })).toEqual([
+      "commits",
+    ]);
+  });
+
+  test("needs four characters for a typo", () => {
+    expect(fuzzyMatch("isu", ["sui"], { mode: "search" })).toEqual([]);
+  });
+
+  test("treats a camelCase capital as a word start", () => {
+    expect(fuzzyMatch("curnet", ["getCurrentHub"], { mode: "search" })).toEqual(
+      ["getCurrentHub"],
+    );
+    expect(
+      fuzzyMatch("iss", ["isolationscope", "isolationScope"], {
+        mode: "search",
+      }),
+    ).toEqual(["isolationScope", "isolationscope"]);
+  });
+
+  test("matches a query that was lowercased before the call", () => {
+    // "İ".toLowerCase() is "i" plus a combining dot, two code units.
+    expect(
+      fuzzyMatch("İs".toLowerCase(), ["İstanbul"], { mode: "search" }),
+    ).toEqual(["İstanbul"]);
+    expect(
+      fuzzyMatch("iss", ["İsolationscope", "İsolationScope"], {
+        mode: "search",
+      }),
+    ).toEqual(["İsolationScope", "İsolationscope"]);
+  });
+
+  test("ranks a tight scatter over a typo over a loose scatter", () => {
+    expect(
+      fuzzyMatch(
+        "bategon",
+        ["bar-saturated-energy-gold-on", "betegon", "bat-egon"],
+        { mode: "search" },
+      ),
+    ).toEqual(["bat-egon", "betegon", "bar-saturated-energy-gold-on"]);
+  });
+
+  test("matches letters in order but apart, after contains matches", () => {
+    expect(fuzzyMatch("fw", ["frontend-web"])).toEqual([]);
+    expect(
+      fuzzyMatch("fw", ["frontend-web", "team-fw", "web-front"], {
+        mode: "search",
+      }),
+    ).toEqual(["team-fw", "frontend-web"]);
   });
 });
 

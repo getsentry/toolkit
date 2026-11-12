@@ -9,6 +9,7 @@ import {
 
 export default defineTool({
   name: "unlink_issue",
+  title: "Unlink Issue",
   skills: ["triage"],
   requiredScopes: ["event:write", "org:read"],
   description: [

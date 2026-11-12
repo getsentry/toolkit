@@ -6,7 +6,6 @@
  */
 
 import { inlineCode } from "@sentry/toolkit-core/markdown";
-import { description, looseObject, optional, pipe, string } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { createReleaseDeploy } from "../../lib/api-client.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
@@ -20,28 +19,32 @@ import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import {
-  DryRunOutputField,
-  type SentryDeploy,
-  SentryDeploySchema,
-} from "../../types/index.js";
+import type { SentryDeploy, WithOutputFields } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { ReleaseDeployOutputSchema } from "../../generated/output-schemas/release.js";
+import type { ReleaseDeployOutputFields } from "../../output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT =
-  "sentry release deploy [<org>/]<version> <environment> [name]";
+const usageHint = () =>
+  sentry`release deploy [<org>/]<version> <environment> [name]`;
 
-function formatDeployCreated(data: Record<string, unknown>): string {
-  if (data.dryRun) {
+/** JSON output: the created deploy, or the `--dry-run` preview. */
+type DeployOutput = WithOutputFields<
+  SentryDeploy,
+  typeof ReleaseDeployOutputFields
+>;
+
+function formatDeployCreated(deploy: DeployOutput): string {
+  if (deploy.dryRun) {
     return renderMarkdown(
-      `Would create deploy for ${inlineCode(String(data.environment))} environment (dry run)`,
+      `Would create deploy for ${inlineCode(deploy.environment)} environment (dry run)`,
     );
   }
-  const deploy = data as unknown as SentryDeploy;
   const lines: string[] = [];
   lines.push("## Deploy Created");
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["ID", deploy.id]);
+  kvRows.push(["ID", deploy.id ?? "—"]);
   kvRows.push(["Environment", inlineCode(deploy.environment)]);
   kvRows.push(["Name", deploy.name || "—"]);
   kvRows.push(["URL", deploy.url || "—"]);
@@ -73,7 +76,7 @@ function parseDeployArgs(
   name?: string,
 ): { environment: string; name?: string } {
   if (!environment) {
-    throw new ContextError("Environment", USAGE_HINT, []);
+    throw new ContextError("Environment", usageHint(), []);
   }
   return { environment, name: name || undefined };
 }
@@ -86,43 +89,35 @@ export const deployCommand = buildCommand({
     examples: [
       {
         description: "Create a deploy",
-        command: "sentry release deploy 1.0.0 production",
+        run: "release deploy 1.0.0 production",
       },
       {
         description: "Create a named deploy in an explicit organization",
-        command: 'sentry release deploy my-org/1.0.0 staging "Deploy #42"',
+        run: 'release deploy my-org/1.0.0 staging "Deploy #42"',
       },
       {
         description: "Attach a deploy URL",
-        command:
-          "sentry release deploy 1.0.0 production --url https://example.com",
+        run: "release deploy 1.0.0 production --url https://example.com",
       },
       {
         description: "Record a deploy duration in seconds",
-        command: "sentry release deploy 1.0.0 production --time 120",
+        run: "release deploy 1.0.0 production --time 120",
       },
       {
         description: "Preview without creating",
-        command: "sentry release deploy 1.0.0 production --dry-run",
+        run: "release deploy 1.0.0 production --dry-run",
       },
     ],
   },
   output: {
     human: formatDeployCreated,
-    schema: looseObject({
-      ...SentryDeploySchema.entries,
-      id: optional(SentryDeploySchema.entries.id),
-      dryRun: DryRunOutputField,
-      version: optional(
-        pipe(string(), description("Release version (--dry-run)")),
-      ),
-    }),
+    schema: ReleaseDeployOutputSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
-        releaseParameter(USAGE_HINT, "[<org>/]<version> - Release version"),
+        releaseParameter(usageHint, "[<org>/]<version> - Release version"),
         {
           placeholder: "environment",
           brief: "Deploy environment (e.g. production)",

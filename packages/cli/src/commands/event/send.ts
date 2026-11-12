@@ -11,6 +11,7 @@
 import type { DsnComponents, Event } from "@sentry/core";
 import { createEventEnvelope, makeDsn, serializeEnvelope } from "@sentry/core";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   buildEventFromFlags,
@@ -155,53 +156,48 @@ built entirely from the file contents.
     examples: [
       {
         description: "Send an error event (default level)",
-        command: 'sentry event send -m "Something went wrong"',
+        run: 'event send -m "Something went wrong"',
       },
       {
         description: "Specify level, release, and environment",
-        command:
-          'sentry event send -m "Deploy check" -l info -r 1.0.0 -E production',
+        run: 'event send -m "Deploy check" -l info -r 1.0.0 -E production',
       },
       {
         description: "Add tags and extra data",
-        command:
-          'sentry event send -m "Payment failed" --tag env:prod --tag region:us-east --extra amount:99.99',
+        run: 'event send -m "Payment failed" --tag env:prod --tag region:us-east --extra amount:99.99',
       },
       {
         description: "Set user context",
-        command:
-          'sentry event send -m "Login error" --user id:42 --user email:alice@example.com',
+        run: 'event send -m "Login error" --user id:42 --user email:alice@example.com',
       },
       {
         description: "Custom fingerprint to group related events together",
-        command:
-          'sentry event send -m "DB timeout" --fingerprint db-timeout --fingerprint {{ default }}',
+        run: 'event send -m "DB timeout" --fingerprint db-timeout --fingerprint {{ default }}',
       },
       {
         description: "Send a serialized Sentry Event object",
-        command: "sentry event send ./crash.json",
+        run: "event send ./crash.json",
       },
       {
         description: "Send without re-parsing (raw mode)",
-        command: "sentry event send --raw ./crash.json",
+        run: "event send --raw ./crash.json",
       },
       {
         description: "Send a pre-built envelope",
-        command: "sentry event send --raw ./captured.envelope",
+        run: "event send --raw ./captured.envelope",
       },
       {
         description: "Send with an explicit DSN",
-        command:
-          'sentry event send "https://key@o123.ingest.us.sentry.io/456" -m "Test"',
+        run: 'event send "https://key@o123.ingest.us.sentry.io/456" -m "Test"',
       },
       {
         description:
           "Send to a project (logged-in session; the CLI fetches its sole active DSN)",
-        command: 'sentry event send my-project -m "Test"',
+        run: 'event send my-project -m "Test"',
       },
       {
         description: "Send to an org/project target",
-        command: 'sentry event send my-org/my-project -m "Test"',
+        run: 'event send my-org/my-project -m "Test"',
       },
     ],
   },
@@ -370,7 +366,7 @@ built entirely from the file contents.
           dsnComponents,
         );
         await sendEnvelopeRequest(dsn, body);
-        yield new CommandOutput<SendEventResult>({ eventId, file });
+        yield new CommandOutput({ eventId, file });
       }
     } else {
       if (flags.raw) {
@@ -382,7 +378,7 @@ built entirely from the file contents.
       if (!flags.message?.length) {
         throw new ConfigError(
           "Provide a message via -m/--message or a JSON event file as a positional argument.",
-          "sentry event send -m 'My message'",
+          sentry`event send -m 'My message'`,
         );
       }
       const event = await buildEventFromFlags(flags);
@@ -397,7 +393,7 @@ built entirely from the file contents.
         );
       }
       await sendEnvelopeRequest(dsn, body);
-      yield new CommandOutput<SendEventResult>({
+      yield new CommandOutput({
         eventId: event.event_id ?? "",
       });
     }

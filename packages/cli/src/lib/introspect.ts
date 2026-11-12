@@ -21,10 +21,7 @@ import {
   getCompletionTarget,
 } from "./completion-target.js";
 import type { ApiReference, CommandApiReference } from "./api-schema.js";
-import {
-  extractSchemaFields,
-  type SchemaFieldInfo,
-} from "./formatters/output.js";
+import type { SchemaFieldInfo } from "./formatters/output.js";
 import { fuzzyMatch } from "./fuzzy.js";
 
 // ---------------------------------------------------------------------------
@@ -61,11 +58,11 @@ export type Command = {
     aliases?: Record<string, string>;
   };
   /**
-   * JSON output schema attached by `buildCommand` when `output.schema` is set.
-   * Non-standard property — Stricli doesn't know about it, but introspection
-   * reads it to populate {@link CommandInfo.jsonFields}.
+   * JSON output fields attached by `buildCommand` when `output.schema` is
+   * set. Non-standard property — Stricli doesn't know about it, but
+   * introspection reads it to populate {@link CommandInfo.jsonFields}.
    */
-  __jsonSchema?: import("valibot").GenericSchema;
+  __jsonFields?: readonly SchemaFieldInfo[];
   /**
    * Primary Stricli custom usage line, retained by `buildCommand` for
    * introspection because Stricli does not expose it on the built command.
@@ -310,9 +307,6 @@ export function extractFlags(
  * @param path - Full command path (e.g. "sentry issue list")
  */
 export function buildCommandInfo(cmd: Command, path: string): CommandInfo {
-  const jsonFields = cmd.__jsonSchema
-    ? extractSchemaFields(cmd.__jsonSchema)
-    : undefined;
   const positionals = extractPositionals(cmd.parameters.positional);
   const [positional] = positionals;
   if (cmd.__primaryUsage && positional && positionals.length === 1) {
@@ -330,9 +324,9 @@ export function buildCommandInfo(cmd: Command, path: string): CommandInfo {
     aliases: cmd.parameters.aliases ?? {},
     examples: (cmd.__examples ?? []).map(
       (example) =>
-        `# ${example.description}\n${exampleSteps(example).join("\n")}`,
+        `# ${example.description}\n${exampleSteps(example, "sentry").join("\n")}`,
     ),
-    jsonFields: jsonFields?.length ? jsonFields : undefined,
+    jsonFields: cmd.__jsonFields?.length ? [...cmd.__jsonFields] : undefined,
     ...(cmd.__destructive ? { destructive: true as const } : {}),
   };
 }
@@ -356,6 +350,7 @@ export function extractRouteGroupCommands(
 
     const subTarget = subEntry.target;
     if (isCommand(subTarget)) {
+      // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a command path, not a hint.
       const path = `sentry ${routeName} ${subEntry.name.original}`;
       commands.push(buildCommandInfo(subTarget, path));
     } else if (isRouteMap(subTarget)) {
@@ -391,6 +386,7 @@ export function extractAllRoutes(routeMap: RouteMap): RouteInfo[] {
         commands: extractRouteGroupCommands(target, routeName),
       });
     } else if (isCommand(target)) {
+      // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a command path, not a hint.
       const path = `sentry ${routeName}`;
       result.push({
         name: routeName,
@@ -702,6 +698,7 @@ export function resolveCommandPath(
   if (isCommand(target)) {
     return {
       kind: "command",
+      // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a command path, not a hint.
       info: buildCommandInfo(target, `sentry ${name}`),
     };
   }

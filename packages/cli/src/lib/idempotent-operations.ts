@@ -9,10 +9,7 @@
  * request.
  */
 
-import {
-  createIdempotentOperationMatcher,
-  type IdempotentOperation,
-} from "@sentry/toolkit-core/api-client/idempotent-operations";
+import { createIdempotentOperationMatcher } from "@sentry/api/client";
 import generated from "../generated/idempotent-operations.json";
 
 /**
@@ -22,5 +19,5 @@ import generated from "../generated/idempotent-operations.json";
  * @param url - Absolute request URL
  */
 export const isIdempotentOperation = createIdempotentOperationMatcher(
-  () => generated as IdempotentOperation[],
+  () => generated,
 );

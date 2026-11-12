@@ -22,6 +22,7 @@ export const findUptimeMonitorsOutputSchema = z.object({
 
 export default defineTool({
   name: "find_uptime_monitors",
+  title: "Find Uptime Monitors",
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [

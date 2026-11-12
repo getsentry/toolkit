@@ -1,4 +1,4 @@
-import { describeEval } from "vitest-evals";
+import { describeEval } from "vitest-evals/legacy";
 import { NoOpTaskRunner, ToolPredictionScorer } from "./utils";
 
 describeEval("list-organizations", {

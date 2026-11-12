@@ -32,7 +32,7 @@ function createDatabaseWithMissingTables(
   const statements: string[] = [];
   for (const tableName of Object.keys(EXPECTED_TABLES)) {
     if (missingTables.includes(tableName)) continue;
-    statements.push(EXPECTED_TABLES[tableName] as string);
+    statements.push(EXPECTED_TABLES[tableName]);
   }
   db.exec(statements.join(";\n"));
   db.query("INSERT INTO schema_version (version) VALUES (?)").run(
@@ -53,7 +53,7 @@ function createPreMigrationDatabase(
     if (preMigrationTables.includes(tableName)) {
       statements.push(generatePreMigrationTableDDL(tableName));
     } else {
-      statements.push(EXPECTED_TABLES[tableName] as string);
+      statements.push(EXPECTED_TABLES[tableName]);
     }
   }
   db.exec(statements.join(";\n"));
@@ -260,6 +260,7 @@ describe("TABLE_SCHEMAS persistence", () => {
       "project_cache",
       "project_root_cache",
       "repo_cache",
+      "telemetry_envelope_queue",
     ]);
   });
 });

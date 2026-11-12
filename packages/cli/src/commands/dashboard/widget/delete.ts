@@ -10,32 +10,20 @@
  * shows which widget would be removed without modifying the dashboard.
  */
 
-import {
-  boolean,
-  description,
-  looseObject,
-  number,
-  optional,
-  pipe,
-  string,
-} from "valibot";
 import type { SentryContext } from "../../../context.js";
 import { getDashboard, updateDashboard } from "../../../lib/api-client.js";
 import { numberParser } from "../../../lib/command.js";
 import { parseText } from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetDeleted } from "../../../lib/formatters/human.js";
-import { filterFieldsIfSet } from "../../../lib/formatters/json.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { buildDeleteCommand } from "../../../lib/mutate-command.js";
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
-import {
-  type DashboardDetail,
-  prepareDashboardForUpdate,
-} from "../../../types/dashboard.js";
-import { DryRunOutputField } from "../../../types/index.js";
+import { prepareDashboardForUpdate } from "../../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import { withDashboardErrors, resolveWidgetIndex } from "../resolve.js";
+import { DashboardWidgetDeleteOutputSchema } from "../../../generated/output-schemas/dashboard.js";
+import { sentry } from "../../../lib/app-identity.js";
 
 type DeleteFlags = {
   readonly index?: number;
@@ -45,29 +33,6 @@ type DeleteFlags = {
   readonly "dry-run": boolean;
   readonly json: boolean;
   readonly fields?: string[];
-};
-
-/** `--fields` / skill-reference schema for the JSON output. */
-const WidgetDeleteOutputSchema = looseObject({
-  dryRun: DryRunOutputField,
-  deleted: optional(
-    pipe(boolean(), description("True when the widget was deleted")),
-  ),
-  widgetTitle: pipe(string(), description("Title of the deleted widget")),
-  widgetCount: pipe(
-    number(),
-    description(
-      "Dashboard widget count after the delete (before it, with --dry-run)",
-    ),
-  ),
-  url: pipe(string(), description("Dashboard URL")),
-});
-
-type DeleteResult = {
-  dashboard: DashboardDetail;
-  widgetTitle: string;
-  url: string;
-  dryRun?: boolean;
 };
 
 export const deleteCommand = buildDeleteCommand(
@@ -81,38 +46,27 @@ export const deleteCommand = buildDeleteCommand(
       examples: [
         {
           description: "Delete a widget by title",
-          command:
-            "sentry dashboard widget delete 'My Dashboard' --title 'Error Rate'",
+          run: "dashboard widget delete 'My Dashboard' --title 'Error Rate'",
         },
         {
           description: "Delete a widget by index",
-          command: "sentry dashboard widget delete 12345 --index 0",
+          run: "dashboard widget delete 12345 --index 0",
         },
         {
           description: "Preview the deletion",
-          command: "sentry dashboard widget delete 12345 --index 0 --dry-run",
+          run: "dashboard widget delete 12345 --index 0 --dry-run",
         },
       ],
     },
     output: {
       human: formatWidgetDeleted,
-      schema: WidgetDeleteOutputSchema,
-      jsonTransform: (result: DeleteResult, fields?: string[]) =>
-        filterFieldsIfSet(
-          {
-            ...(result.dryRun ? { dryRun: true } : { deleted: true }),
-            widgetTitle: result.widgetTitle,
-            widgetCount: result.dashboard.widgets?.length ?? 0,
-            url: result.url,
-          },
-          fields,
-        ),
+      schema: DashboardWidgetDeleteOutputSchema,
     },
     parameters: {
       positional: dashboardArguments({
         placeholder: "org/project/dashboard",
-        usageHint:
-          "sentry dashboard widget delete <org>/ <id> (--index <n> | --title <name>)",
+        usageHint: () =>
+          sentry`dashboard widget delete <org>/ <id> (--index <n> | --title <name>)`,
       }),
       flags: {
         index: {
@@ -156,17 +110,17 @@ export const deleteCommand = buildDeleteCommand(
       const widgets = current.widgets ?? [];
 
       const widgetIndex = resolveWidgetIndex(widgets, flags.index, flags.title);
-      const widgetTitle = widgets[widgetIndex]?.title;
+      const widgetTitle = widgets[widgetIndex]?.title ?? "";
       const url = buildDashboardUrl(orgSlug, dashboardId);
 
       // Dry-run mode: show what would be removed without removing it
       if (flags["dry-run"]) {
         yield new CommandOutput({
-          dashboard: current,
-          widgetTitle,
-          url,
           dryRun: true,
-        } as DeleteResult);
+          widgetTitle,
+          widgetCount: widgets.length,
+          url,
+        });
         return { hint: `Dashboard: ${url}` };
       }
 
@@ -184,10 +138,11 @@ export const deleteCommand = buildDeleteCommand(
       );
 
       yield new CommandOutput({
-        dashboard: updated,
+        deleted: true,
         widgetTitle,
+        widgetCount: updated.widgets?.length ?? 0,
         url,
-      } as DeleteResult);
+      });
       return { hint: `Dashboard: ${url}` };
     },
   },

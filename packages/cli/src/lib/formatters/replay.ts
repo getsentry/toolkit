@@ -7,12 +7,14 @@
 import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import type { ListProjectReplayRecordingSegmentsResponse } from "@sentry/api";
 
+import type { InferOutput } from "valibot";
 import type {
   ReplayActivityEvent,
   ReplayDetails,
   ReplayRelatedIssue,
   ReplayRelatedTrace,
 } from "../../types/index.js";
+import { sentry } from "../app-identity.js";
 import { getReplayUserLabel } from "../replay-search.js";
 import { buildReplayUrl } from "../sentry-web-urls.js";
 import { mdKvTable, renderMarkdown } from "./markdown.js";
@@ -20,14 +22,14 @@ import {
   formatDurationCompactMs,
   formatDurationVerbose,
 } from "./time-utils.js";
+import type { ReplayViewOutputFields } from "../../output-schemas/replay.js";
 
-/** Data bag assembled by replay view before rendering. */
-export type ReplayViewData = {
-  org: string;
+/**
+ * Data bag assembled by replay view before rendering: the replay plus the
+ * fields JSON output adds to it ({@link ReplayViewOutputFields}).
+ */
+export type ReplayViewData = InferOutput<typeof ReplayViewOutputFields> & {
   replay: ReplayDetails;
-  activity: ReplayActivityEvent[];
-  relatedIssues: ReplayRelatedIssue[];
-  relatedTraces: ReplayRelatedTrace[];
 };
 
 type MarkdownRow = [string, string];
@@ -513,7 +515,7 @@ function formatRelatedIssueLine(
     return `- Event \`${issue.eventId}\``;
   }
 
-  return `- \`${issue.shortId}\`: ${text(issue.title)} (view: \`sentry issue view ${org}/${issue.shortId}\`)`;
+  return `- \`${issue.shortId}\`: ${text(issue.title)} (view: \`${sentry`issue view ${org}/${issue.shortId}`}\`)`;
 }
 
 function buildRelatedTraceStats(trace: ReplayRelatedTrace): string[] {
@@ -540,7 +542,7 @@ function formatRelatedTraceLine(
 ): string {
   const stats = buildRelatedTraceStats(trace);
   const suffix = stats.length > 0 ? ` (${stats.join(", ")})` : "";
-  return `- Trace \`${trace.traceId}\`${suffix} (view: \`sentry trace view ${org}/${trace.traceId}\`)`;
+  return `- Trace \`${trace.traceId}\`${suffix} (view: \`${sentry`trace view ${org}/${trace.traceId}`}\`)`;
 }
 
 function pushRelatedSection(
@@ -593,12 +595,12 @@ export function formatReplayDetails(data: ReplayViewData): string {
 export function replayHint(data: ReplayViewData): string | undefined {
   const traceId = data.replay.trace_ids?.[0];
   if (traceId) {
-    return `Related trace: sentry trace view ${data.org}/${traceId}`;
+    return `Related trace: ${sentry`trace view ${data.org}/${traceId}`}`;
   }
 
   const issue = data.relatedIssues[0];
   if (issue?.shortId) {
-    return `Related issue: sentry issue view ${data.org}/${issue.shortId}`;
+    return `Related issue: ${sentry`issue view ${data.org}/${issue.shortId}`}`;
   }
 
   return;

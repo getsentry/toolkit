@@ -22,10 +22,11 @@ import { resolveAlertRuleConnections } from "../support/alert-rule-connections";
 
 export default defineTool({
   name: "create_alert_rule",
+  title: "Create Alert Rule",
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [
-    "Create a Sentry Alert (workflow) with notification actions and explicit sources.",
+    "Create a Sentry Alert (workflow) that sends notifications, such as Slack, email or PagerDuty, when its issue or monitor sources trigger.",
     "Use get_alert_options for available actions, integrations, conditions, and sources. All notification providers use their native config and data fields.",
     "To copy an Alert, read get_alert_rule(kind='issue') and pass its configuration here; component IDs are discarded while integration and destination IDs are retained. New trigger groups require logicType='any-short'.",
     "To reuse an existing Alert across projects, use update_alert_rule instead.",

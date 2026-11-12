@@ -67,7 +67,7 @@ describe("listReplays", () => {
     let capturedUrl = "";
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       const data = Array.from({ length: 25 }, () => replayRow());
       return new Response(JSON.stringify({ data }), {
@@ -104,7 +104,7 @@ describe("listReplays", () => {
     let capturedUrl = "";
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       return new Response(JSON.stringify({ data: [replayRow()] }), {
         status: 200,
@@ -133,7 +133,7 @@ describe("listReplays", () => {
     let callIndex = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
 
       const body =
@@ -191,7 +191,7 @@ describe("getReplay", () => {
     let capturedUrl = "";
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       return new Response(JSON.stringify({ data: replayRow() }), {
         status: 200,
@@ -270,7 +270,7 @@ describe("resolveReplay", () => {
     const capturedUrls: string[] = [];
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
       return jsonResponse({ data: replayRow() });
     });
@@ -288,7 +288,7 @@ describe("resolveReplay", () => {
     const capturedUrls: string[] = [];
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
       const url = new URL(req.url);
 
@@ -311,7 +311,7 @@ describe("resolveReplay", () => {
     expect(replay.id).toBe(REPLAY_ID);
     expect(capturedUrls).toHaveLength(3);
 
-    const listUrl = new URL(capturedUrls[1]!);
+    const listUrl = new URL(capturedUrls[1]);
     expect(listUrl.pathname).toContain(
       "/api/0/organizations/test-org/replays/",
     );
@@ -327,7 +327,7 @@ describe("resolveReplay", () => {
     const capturedUrls: string[] = [];
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
       const url = new URL(req.url);
 
@@ -346,7 +346,7 @@ describe("resolveReplay", () => {
       detail: "Replay not found",
     });
 
-    const listUrl = new URL(capturedUrls[1]!);
+    const listUrl = new URL(capturedUrls[1]);
     expect(listUrl.searchParams.get("query")).toBe(`trace:${TRACE_ID}`);
     expect(listUrl.searchParams.get("project")).toBe("-1");
     expect(listUrl.searchParams.get("projectSlug")).toBeNull();
@@ -356,7 +356,7 @@ describe("resolveReplay", () => {
     const capturedUrls: string[] = [];
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
       return jsonResponse({ detail: "Bad Request" }, 400);
     });
@@ -387,7 +387,7 @@ describe("getReplayRecordingSegments", () => {
     let capturedUrl = "";
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       return recordingSegmentsResponse([[{ timestamp: 1 }]]);
     });
@@ -422,7 +422,7 @@ describe("getReplayRecordingSegments", () => {
     let callIndex = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
 
       const body =
@@ -445,11 +445,11 @@ describe("getReplayRecordingSegments", () => {
     expect(segments).toHaveLength(101);
     expect(capturedUrls).toHaveLength(2);
 
-    const firstUrl = new URL(capturedUrls[0]!);
+    const firstUrl = new URL(capturedUrls[0]);
     expect(firstUrl.searchParams.get("per_page")).toBe("100");
     expect(firstUrl.searchParams.get("cursor")).toBeNull();
 
-    const secondUrl = new URL(capturedUrls[1]!);
+    const secondUrl = new URL(capturedUrls[1]);
     expect(secondUrl.searchParams.get("cursor")).toBe("0:100:0");
     expect(secondUrl.searchParams.get("per_page")).toBe("100");
   });
@@ -460,7 +460,7 @@ describe("getReplayRecordingSegments", () => {
     let callIndex = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
 
       const nextCursor = `0:${(callIndex + 1) * 100}:0`;
@@ -507,7 +507,7 @@ describe("listReplayIdsForIssue", () => {
     let capturedUrl = "";
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       return new Response(
         JSON.stringify({
@@ -531,7 +531,7 @@ describe("listReplayIdsForIssue", () => {
     );
     expect(url.searchParams.get("returnIds")).toBe("true");
     expect(url.searchParams.get("query")).toBe("issue.id:[12345]");
-    expect(url.searchParams.get("data_source")).toBe("events");
+    expect(url.searchParams.get("data_source")).toBe("errors");
     expect(url.searchParams.get("statsPeriod")).toBe("90d");
     expect(url.searchParams.getAll("project")).toEqual(["-1"]);
     expect(replayIds).toEqual([

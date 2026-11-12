@@ -1,8 +1,8 @@
 /**
  * Centralized git helpers
  *
- * Low-level git primitives used across the CLI: release management,
- * init wizard pre-flight checks, and version detection.
+ * Low-level git primitives used across the CLI: release management
+ * and version detection.
  *
  * Uses `execFileSync` (no shell) from `node:child_process` instead of
  * `Bun.spawnSync` because this module is also used by the npm/Node
@@ -13,6 +13,7 @@
 
 import { execFileSync } from "node:child_process";
 
+import { sentry } from "./app-identity.js";
 import { ValidationError, validationError } from "./errors.js";
 
 /** `execFileSync` failure shape when git exits non-zero. */
@@ -100,34 +101,22 @@ export function isInsideGitWorkTree(cwd?: string): boolean {
   }
 }
 
-/**
- * Get the list of uncommitted or untracked files.
- *
- * Returns each line from `git status --porcelain=v1` prefixed with `- `.
- * Empty array if the working tree is clean or not a git repo.
- *
- * @param cwd - Working directory
- * @returns Array of formatted status lines (e.g., `["- M src/index.ts", "- ?? new-file.ts"]`)
- */
-export function getUncommittedFiles(cwd?: string): string[] {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    const raw = git(["status", "--porcelain=v1"], cwd);
-    if (!raw) {
-      return [];
-    }
-    return raw
-      .split("\n")
-      .filter((line) => line.length > 0)
-      .map((line) => `- ${line}`);
-  } catch {
-    return [];
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Commit info
 // ---------------------------------------------------------------------------
+
+/** A 40-character lowercase hex SHA-1. */
+export const SHA1_RE = /^[0-9a-f]{40}$/;
+
+/**
+ * Normalize an already-trusted SHA (from git, a CI variable, or an event
+ * payload): lowercase and accept only a valid 40-char hex SHA-1, else
+ * undefined.
+ */
+export function normalizeSha(sha: string | undefined): string | undefined {
+  const trimmed = sha?.trim().toLowerCase();
+  return trimmed && SHA1_RE.test(trimmed) ? trimmed : undefined;
+}
 
 /**
  * Get the HEAD commit SHA.
@@ -197,7 +186,7 @@ export function getCommitLog(
   if (from?.startsWith("-")) {
     throw validationError(
       `--from must be a git ref, not a CLI flag (received '${from}').`,
-      ["sentry release set-commits 1.0.0 --from v0.9.0"],
+      [sentry`release set-commits 1.0.0 --from v0.9.0`],
       "from",
       "Git refs cannot start with '-'. Tokens like '--format=x' are CLI flags, not refs — use a tag or commit (e.g. v0.9.0).",
     );
@@ -233,7 +222,7 @@ export function getCommitLog(
         `Unknown git ref '${from}': not found in this repository.`,
         [
           `git rev-parse ${from}`,
-          "sentry release set-commits <org>/<version> --from v0.9.0",
+          sentry`release set-commits <org>/<version> --from v0.9.0`,
         ],
         "from",
         "Range is always <ref>..HEAD — checkout the current release tag first.",
@@ -393,6 +382,40 @@ export function parseRemoteUrl(url: string): string | undefined {
   }
 
   return;
+}
+
+/** Spaces around `/` in GitLab display names (`Group / Project`). */
+const REPO_SEPARATOR_RE = /\s*\/\s*/g;
+
+/** Lowercase a repository path and drop the spaces of GitLab display names. */
+function normalizeRepoPath(path: string): string {
+  return path.replace(REPO_SEPARATOR_RE, "/").toLowerCase();
+}
+
+/**
+ * Whether a Sentry repository is the repository at `path` (`owner/repo`, as
+ * {@link parseRemoteUrl} returns it).
+ *
+ * GitHub and Bitbucket repositories are named `owner/repo`, so the name
+ * matches. GitLab names are display names (`Group / Project`) and Azure
+ * DevOps names leave out `org/project/_git/`, so for those the path of the
+ * repository URL has to match, like the reference sentry-cli. A normalized
+ * display name only counts when there is no URL to check, since another
+ * group can have a project with the same display path.
+ */
+export function isSameRepository(
+  repo: { name: string; url: string | null },
+  path: string,
+): boolean {
+  const localPath = normalizeRepoPath(path);
+  if (repo.name.toLowerCase() === localPath) {
+    return true;
+  }
+  const urlPath = repo.url ? parseRemoteUrl(repo.url) : undefined;
+  if (urlPath !== undefined) {
+    return urlPath.toLowerCase() === localPath;
+  }
+  return normalizeRepoPath(repo.name) === localPath;
 }
 
 /**

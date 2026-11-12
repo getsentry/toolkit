@@ -10,6 +10,7 @@
  * names: each word is an issue.
  */
 
+import { sentry } from "./app-identity.js";
 import { firstNonBlankLine, splitNewlineArg } from "./arg-parsing.js";
 import { ValidationError } from "./errors.js";
 import { ID_KINDS, parseIdArguments } from "./id-arguments.js";
@@ -61,7 +62,7 @@ export function parseIssueArgument(arg: string): IssueArgument {
   // One token: an identifier (validated below, for its own messages) or a
   // name
   const { ids, name } = parseIdArguments([input], ID_KINDS.issue, {
-    usageHint: "sentry issue <command> <issue>",
+    usageHint: sentry`issue <command> <issue>`,
     validate: false,
   });
   if (name !== undefined) {

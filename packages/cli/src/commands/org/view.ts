@@ -17,7 +17,7 @@ import {
 } from "../../lib/list-command.js";
 import { buildOrgUrl } from "../../lib/sentry-web-urls.js";
 import { type OrgTarget, orgTarget } from "../../lib/target-positional.js";
-import { SentryOrganizationSchema } from "../../types/index.js";
+import { SentryOrganizationSchema } from "../../generated/output-schemas/org.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -38,11 +38,11 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View organization details",
-        command: "sentry org view my-org",
+        run: "org view my-org",
       },
       {
         description: "Open in the browser",
-        command: "sentry org view my-org -w",
+        run: "org view my-org -w",
       },
     ],
   },

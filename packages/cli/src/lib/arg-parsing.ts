@@ -8,6 +8,7 @@
 
 import { parse as parseTarget } from "../generated/org-project-target-grammar.js";
 import type { LogSortDirection } from "./api/logs.js";
+import { sentry } from "./app-identity.js";
 import { ContextError, ValidationError, validationError } from "./errors.js";
 import { validateResourceId } from "./input-validation.js";
 import { isGlobFilter } from "./list-filter.js";
@@ -223,10 +224,10 @@ export function rejectIssueCommandTokenWithNumericSuffix(
     `"${arg}" looks like a command token plus a suffix, not an issue short ID.\n` +
       `  Parsed as project '${normalizedProject}' + suffix '${suffix}', but '${normalizedProject}' is an issue command name.`,
     [
-      "sentry issue view PROJECT-1",
-      "sentry issue explain PROJECT-1",
-      "sentry issue explain 123456789",
-      "sentry issue explain my-org/project/PROJECT-G",
+      sentry`issue view PROJECT-1`,
+      sentry`issue explain PROJECT-1`,
+      sentry`issue explain 123456789`,
+      sentry`issue explain my-org/project/PROJECT-G`,
     ],
     "issue",
   );
@@ -314,53 +315,6 @@ function matchesIssueShortIdIgnoreCase(str: string): boolean {
 /** True when a segment contains at least one letter and one digit (e.g. `1b`, not `2` or `app`). */
 function isAlphanumericSegment(segment: string): boolean {
   return HAS_DIGIT_RE.test(segment) && HAS_LETTER_ASCII_RE.test(segment);
-}
-
-// ---------------------------------------------------------------------------
-// Path detection
-// ---------------------------------------------------------------------------
-
-/**
- * Check if a string looks like a filesystem path rather than a slug/identifier.
- *
- * Uses purely syntactic checks — no filesystem I/O. Detects:
- * - `.` (current directory)
- * - `./foo`, `../foo` (relative paths)
- * - `/foo` (absolute paths)
- * - `~` or `~/foo` (home directory paths)
- *
- * Bare names like `my-org` or `my-project` never match, which is what makes
- * this useful for disambiguating positional arguments that could be either
- * a filesystem path or an org/project target.
- *
- * Note: `~` is only matched as `~` alone or `~/...`, not `~foo`. This avoids
- * false positives on slugs that happen to start with tilde (valid in Sentry slugs).
- * Shell expansion of `~/foo` happens before the CLI sees the argument, so a literal
- * `~/foo` reaching this function means the shell didn't expand it (e.g., it was quoted).
- *
- * @param arg - CLI argument string to check
- * @returns true if the string looks like a filesystem path
- *
- * @example
- * looksLikePath(".")           // true
- * looksLikePath("./subdir")    // true
- * looksLikePath("../parent")   // true
- * looksLikePath("/absolute")   // true
- * looksLikePath("~/home")      // true
- * looksLikePath("~")           // true
- * looksLikePath("~foo")        // false (could be a slug)
- * looksLikePath("my-project")  // false
- * looksLikePath("acme/app")    // false
- */
-export function looksLikePath(arg: string): boolean {
-  return (
-    arg === "." ||
-    arg === "~" ||
-    arg.startsWith("./") ||
-    arg.startsWith("../") ||
-    arg.startsWith("/") ||
-    arg.startsWith("~/")
-  );
 }
 
 // Argument swap detection for view commands
@@ -724,7 +678,7 @@ function rejectAtSelector(value: string, label: string): void {
     const article = "aeiouAEIOU".includes(label.charAt(0)) ? "an" : "a";
     throw new ValidationError(
       `'${value}' is an issue selector, not ${article} ${label}.\n` +
-        `  Use: sentry issue view ${value}`,
+        `  Use: ${sentry`issue view ${value}`}`,
       label,
     );
   }

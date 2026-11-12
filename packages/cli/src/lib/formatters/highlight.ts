@@ -28,7 +28,27 @@ const _require = createRequire(import.meta.url);
 
 type CliHighlight = typeof import("cli-highlight");
 
-let cliHighlight: CliHighlight["highlight"] | undefined;
+let cliHighlight: CliHighlight | undefined;
+
+/** Load `cli-highlight` on first use, or return undefined when compiled out. */
+function loadCliHighlight(): CliHighlight | undefined {
+  if (
+    typeof __SENTRY_CLI_SYNTAX_HIGHLIGHT__ === "undefined" ||
+    __SENTRY_CLI_SYNTAX_HIGHLIGHT__
+  ) {
+    cliHighlight ??= _require("cli-highlight") as CliHighlight;
+    return cliHighlight;
+  }
+  return;
+}
+
+/**
+ * Whether `highlightCode` can highlight `language`. False when highlighting
+ * is compiled out.
+ */
+export function supportsHighlightLanguage(language: string): boolean {
+  return loadCliHighlight()?.supportsLanguage(language) ?? false;
+}
 
 /**
  * Syntax-highlight a code block. Falls back to uniform yellow if the
@@ -37,12 +57,9 @@ let cliHighlight: CliHighlight["highlight"] | undefined;
 export function highlightCode(code: string, language?: string): string {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    if (
-      typeof __SENTRY_CLI_SYNTAX_HIGHLIGHT__ === "undefined" ||
-      __SENTRY_CLI_SYNTAX_HIGHLIGHT__
-    ) {
-      cliHighlight ??= (_require("cli-highlight") as CliHighlight).highlight;
-      return cliHighlight(code, { language, ignoreIllegals: true });
+    const highlighter = loadCliHighlight();
+    if (highlighter) {
+      return highlighter.highlight(code, { language, ignoreIllegals: true });
     }
   } catch {
     // Fall through to the uniform color below.

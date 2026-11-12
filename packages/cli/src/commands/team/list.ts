@@ -21,14 +21,16 @@ import {
   buildOrgListCommand,
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
-import type { OrgListConfig } from "../../lib/org-list.js";
-import { type SentryTeam, SentryTeamSchema } from "../../types/index.js";
+import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
+import type { SentryTeam } from "../../types/index.js";
+import { TeamListItemSchema } from "../../generated/output-schemas/team.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "team-list";
 
 /** Team with its organization context for display */
-type TeamWithOrg = SentryTeam & { orgSlug?: string };
+type TeamWithOrg = WithOrg<SentryTeam>;
 
 /** Column definitions for the team table. */
 const TEAM_COLUMNS: Column<TeamWithOrg>[] = [
@@ -43,10 +45,14 @@ const TEAM_COLUMNS: Column<TeamWithOrg>[] = [
 ];
 
 /** Shared config that plugs into the org-list framework. */
-const teamListConfig: OrgListConfig<SentryTeam, TeamWithOrg> = {
+const teamListConfig: OrgListConfig<
+  SentryTeam,
+  TeamWithOrg,
+  typeof TeamListItemSchema
+> = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "teams",
-  commandPrefix: "sentry team list",
+  commandPrefix: () => sentry`team list`,
   listForOrg: (org) => listTeams(org),
   listPaginated: (org, opts) => listTeamsPaginated(org, opts),
   withOrg: (team, orgSlug) => ({ ...team, orgSlug }),
@@ -54,7 +60,7 @@ const teamListConfig: OrgListConfig<SentryTeam, TeamWithOrg> = {
   searchesNames: true,
   displayTable: (teams: TeamWithOrg[]) => formatTable(teams, TEAM_COLUMNS),
   listForProject: (org, project) => listProjectTeams(org, project),
-  schema: SentryTeamSchema,
+  schema: TeamListItemSchema,
 };
 
 const docs: OrgListCommandDocs = {
@@ -66,26 +72,26 @@ const docs: OrgListCommandDocs = {
   examples: [
     {
       description: "List teams (organization auto-detected)",
-      command: "sentry team list",
+      run: "team list",
     },
     {
       description: "List teams in an organization",
-      command: "sentry team list my-org/",
+      run: "team list my-org/",
     },
     {
       description: "Fetch the next page",
-      command: "sentry team list my-org/ -c next",
+      run: "team list my-org/ -c next",
     },
     {
       description: "Only teams whose slug or name matches a glob",
-      command: "sentry team list 'my-org/back*'",
+      run: "team list 'my-org/back*'",
     },
     {
       description:
         "Teams named like 'backend' when no such project exists (fuzzy)",
-      command: "sentry team list my-org/backnd",
+      run: "team list my-org/backnd",
     },
-    { description: "Output as JSON", command: "sentry team list --json" },
+    { description: "Output as JSON", run: "team list --json" },
   ],
 };
 

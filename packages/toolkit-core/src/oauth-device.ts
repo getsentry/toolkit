@@ -1,9 +1,20 @@
-/** RFC 8628 device-authorization request bodies shared by CLI and MCP. */
+/**
+ * RFC 8628 device-authorization request bodies shared by CLI and MCP.
+ *
+ * `loginHint` is the email of the account expected to approve the request.
+ * Sentry refuses approval from any other signed-in user; servers that predate
+ * the parameter ignore it.
+ */
 export function deviceCodeRequestBody(
   clientId: string,
   scope: string,
+  loginHint?: string,
 ): URLSearchParams {
-  return new URLSearchParams({ client_id: clientId, scope });
+  const body = new URLSearchParams({ client_id: clientId, scope });
+  if (loginHint) {
+    body.set("login_hint", loginHint);
+  }
+  return body;
 }
 
 export function deviceTokenRequestBody(

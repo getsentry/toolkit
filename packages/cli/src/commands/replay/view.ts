@@ -12,6 +12,7 @@ import {
   listIssuesPaginated,
   resolveReplay,
 } from "../../lib/api-client.js";
+import { type LazyCommand, sentry } from "../../lib/app-identity.js";
 import {
   type ParsedOrgProject,
   parseOrgProjectInput,
@@ -51,7 +52,7 @@ import type {
   ReplayRelatedIssue,
   ReplayRelatedTrace,
 } from "../../types/index.js";
-import { ReplayViewOutputSchema } from "../../types/index.js";
+import { ReplayViewOutputSchema } from "../../generated/output-schemas/replay.js";
 
 type ViewFlags = {
   readonly json: boolean;
@@ -60,8 +61,8 @@ type ViewFlags = {
   readonly fields?: string[];
 };
 
-const USAGE_HINT =
-  "sentry replay view [<org>/<project>/]<replay-id> | <replay-url>";
+const viewUsageHint = () =>
+  sentry`replay view [<org>/<project>/]<replay-id> | <replay-url>`;
 const MAX_ACTIVITY_EVENTS = 6;
 const MAX_RELATED_ERRORS = 3;
 const MAX_RELATED_TRACES = 2;
@@ -78,7 +79,7 @@ const log = logger.withTag("replay.view");
  */
 export function parseReplayArguments(
   args: readonly string[],
-  usageHint = USAGE_HINT,
+  usageHint = viewUsageHint(),
 ): ReplayArgumentsInput {
   const { target, id, baseUrl, warnings } = parseIdArgument(
     args,
@@ -121,14 +122,14 @@ export type ReplayArguments = BoundArguments<
  */
 export function replayArguments(
   command: "view" | "download",
-  usageHint: string,
+  usageHint: LazyCommand,
 ) {
   const commandLog = logger.withTag(`replay.${command}`);
   return boundArguments({
     placeholder: "replay-id-or-url",
     brief: "[<org>/<project>] <replay-id or trace-id> or <replay-url>",
     kind: ORG_PROJECT_TARGET,
-    parse: (raw) => parseReplayArguments(raw, usageHint),
+    parse: (raw) => parseReplayArguments(raw, usageHint()),
     resolve: async (
       input,
       context: SentryContext,
@@ -182,9 +183,9 @@ export async function validateReplayProjectScope(
     throw new ResolutionError(
       `Replay '${replayId}'`,
       "has no project association",
-      `sentry replay ${command} ${org}/${project}/${replayId}`,
+      sentry`replay ${command} ${org}/${project}/${replayId}`,
       [
-        `Use the org-scoped replay instead: sentry replay ${command} ${org}/${replayId}`,
+        `Use the org-scoped replay instead: ${sentry`replay ${command} ${org}/${replayId}`}`,
       ],
     );
   }
@@ -194,9 +195,9 @@ export async function validateReplayProjectScope(
     throw new ResolutionError(
       `Replay '${replayId}'`,
       `is not in project '${project}'`,
-      `sentry replay ${command} ${org}/${project}/${replayId}`,
+      sentry`replay ${command} ${org}/${project}/${replayId}`,
       [
-        `Use the org-scoped replay instead: sentry replay ${command} ${org}/${replayId}`,
+        `Use the org-scoped replay instead: ${sentry`replay ${command} ${org}/${replayId}`}`,
       ],
     );
   }
@@ -274,10 +275,10 @@ function fetchRelatedReplayTraces(
         const meta = await getTraceMeta(org, traceId);
         return {
           traceId,
-          errorCount: meta.errors,
-          logCount: meta.logs,
-          performanceIssueCount: meta.performance_issues,
-          spanCount: meta.span_count,
+          errorCount: meta.errorsCount,
+          logCount: meta.logsCount,
+          performanceIssueCount: meta.performanceIssuesCount,
+          spanCount: meta.spansCount,
         };
       } catch (error) {
         log.debug(`Failed to fetch trace meta for ${traceId}`, error);
@@ -323,44 +324,35 @@ export const viewCommand = buildCommand({
       {
         description:
           "View a replay by ID (organization and project auto-detected)",
-        command: "sentry replay view 346789a703f6454384f1de473b8b9fcc",
+        run: "replay view 346789a703f6454384f1de473b8b9fcc",
       },
       {
         description: "View a replay in an explicit organization",
-        command: "sentry replay view my-org/346789a703f6454384f1de473b8b9fcc",
+        run: "replay view my-org/346789a703f6454384f1de473b8b9fcc",
       },
       {
         description: "View a replay with explicit org/project context",
-        command:
-          "sentry replay view my-org/frontend/346789a703f6454384f1de473b8b9fcc",
+        run: "replay view my-org/frontend/346789a703f6454384f1de473b8b9fcc",
       },
       {
         description: "View a replay from its URL",
-        command:
-          "sentry replay view https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/",
+        run: "replay view https://sentry.io/organizations/my-org/explore/replays/346789a703f6454384f1de473b8b9fcc/",
       },
       {
         description: "View the replay linked to a trace",
-        command:
-          "sentry replay view my-org/frontend/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        run: "replay view my-org/frontend/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       },
       {
         description: "Open a replay in the browser",
-        command:
-          "sentry replay view my-org/346789a703f6454384f1de473b8b9fcc --web",
+        run: "replay view my-org/346789a703f6454384f1de473b8b9fcc --web",
       },
     ],
   },
   output: {
     human: formatReplayDetails,
     jsonTransform: (data: ReplayViewData, fields?: string[]) => {
-      const result: Record<string, unknown> = {
-        ...data.replay,
-        org: data.org,
-        activity: data.activity,
-        relatedIssues: data.relatedIssues,
-        relatedTraces: data.relatedTraces,
-      };
+      const { replay, ...outputFields } = data;
+      const result = { ...replay, ...outputFields };
       return fields && fields.length > 0
         ? filterFields(result, fields)
         : result;
@@ -368,7 +360,7 @@ export const viewCommand = buildCommand({
     schema: ReplayViewOutputSchema,
   },
   parameters: {
-    positional: replayArguments("view", USAGE_HINT),
+    positional: replayArguments("view", viewUsageHint),
     flags: {
       web: {
         kind: "boolean",
@@ -395,7 +387,7 @@ export const viewCommand = buildCommand({
         throw new ResolutionError(
           `Replay '${replayId}'`,
           "not found",
-          `sentry replay view ${resolved.org}/${replayId}`,
+          sentry`replay view ${resolved.org}/${replayId}`,
           [
             "Check that you are querying the right organization",
             "The replay may be past your retention window",

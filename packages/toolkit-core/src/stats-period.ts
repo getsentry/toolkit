@@ -15,35 +15,28 @@ export const STATS_PERIOD_UNIT_SECONDS: Readonly<Record<string, number>> = {
 export const ONE_DAY_SECONDS = 86_400;
 
 const STATS_PERIOD_PATTERN = /^(\d+)([smhdw])$/;
+const STATS_INTERVAL_PATTERN = /^(\d+)([smhdw]?)$/;
 
 /** Parse a stats period string into seconds, or `undefined` if it is not one. */
 export function statsPeriodToSeconds(period: string): number | undefined {
-  const match = STATS_PERIOD_PATTERN.exec(period);
-  const unitSeconds = match?.[2]
-    ? STATS_PERIOD_UNIT_SECONDS[match[2]]
+  return parseSeconds(STATS_PERIOD_PATTERN, period);
+}
+
+/**
+ * Parse a stats `interval` the way Sentry does (`^(\d+)([hdmsw]?)$`): a bare
+ * number is seconds. Returns `undefined` if it is not an interval.
+ */
+export function statsIntervalToSeconds(interval: string): number | undefined {
+  return parseSeconds(STATS_INTERVAL_PATTERN, interval);
+}
+
+function parseSeconds(pattern: RegExp, value: string): number | undefined {
+  const match = pattern.exec(value);
+  const unitSeconds = match
+    ? STATS_PERIOD_UNIT_SECONDS[match[2] || "s"]
     : undefined;
   if (!match || unitSeconds === undefined) {
     return undefined;
   }
   return Number(match[1]) * unitSeconds;
 }
-
-/**
- * Standard bucket sizes from one minute to one day, ascending. Each is a whole
- * number of minutes that divides one day, which is what Sentry's outcomes and
- * sessions stats endpoints require (`sessions_v2.get_constrained_date_range`).
- */
-export const MINUTE_STATS_INTERVALS = [
-  "1m",
-  "5m",
-  "10m",
-  "15m",
-  "30m",
-  "1h",
-  "2h",
-  "3h",
-  "4h",
-  "6h",
-  "12h",
-  "1d",
-] as const;

@@ -13,10 +13,7 @@ import { VSCodeInstructions } from "./instructions/vscode";
 import { WarpInstructions } from "./instructions/warp";
 import { ZedInstructions } from "./instructions/zed";
 
-const mcpServerName = import.meta.env.DEV ? "sentry-dev" : "sentry";
-
 export default function RemoteSetup() {
-  const endpoint = new URL("/mcp", window.location.href).href;
   return (
     <>
       <Prose className="mb-6">

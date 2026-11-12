@@ -6,6 +6,7 @@
 
 import type { SentryContext } from "../../../context.js";
 import { createMetricAlertRule } from "../../../lib/api-client.js";
+import { sentry } from "../../../lib/app-identity.js";
 import type { ParsedOrgProject } from "../../../lib/arg-parsing.js";
 import { buildCommand, numberParser } from "../../../lib/command.js";
 import {
@@ -42,7 +43,11 @@ import {
   validateMetricTimeWindow,
 } from "../mutation-utils.js";
 import { metricAlertStatusLabel } from "./status.js";
-import { MetricAlertCreateOutputSchema } from "../output-schemas.js";
+import type {
+  MetricAlertCreateBody,
+  MetricAlertCreateOutput,
+} from "../../../output-schemas/alert.js";
+import { MetricAlertCreateOutputSchema } from "../../../generated/output-schemas/alert.js";
 
 type CreateFlags = {
   readonly name: string;
@@ -60,16 +65,7 @@ type CreateFlags = {
   readonly fields?: string[];
 };
 
-type CreateResult = {
-  org: string;
-  id?: string;
-  name: string;
-  status?: "active" | "disabled";
-  dryRun?: boolean;
-  body?: Record<string, unknown>;
-};
-
-function formatCreated(result: CreateResult): string {
+function formatCreated(result: MetricAlertCreateOutput): string {
   if (result.dryRun) {
     return `Would create metric alert rule '${result.name}' in ${result.org}.`;
   }
@@ -84,7 +80,7 @@ function resolveMetricCreateOrg(
     parsed,
     cwd,
     "alert metrics create",
-    "sentry alert metrics create <org>/",
+    sentry`alert metrics create <org>/`,
   );
 }
 
@@ -106,14 +102,12 @@ export const createCommand = buildCommand({
     examples: [
       {
         description: "Alert when P95 span duration goes above 500ms",
-        command:
-          "sentry alert metrics create my-org/ --name 'P95 latency' --project my-project --query 'environment:prod' --aggregate 'p95(span.duration)' --dataset spans --time-window 5 --trigger '{\"alertThreshold\":500}'",
+        run: "alert metrics create my-org/ --name 'P95 latency' --project my-project --query 'environment:prod' --aggregate 'p95(span.duration)' --dataset spans --time-window 5 --trigger '{\"alertThreshold\":500}'",
       },
       {
         description:
           "Preview an alert on any matching log line that notifies through an existing alert",
-        command:
-          "sentry alert metrics create my-org/ --name 'AI chat failures' --project my-project --query 'action:ai.chat result:error' --aggregate 'count()' --dataset logs --time-window 5 --trigger '{\"alertThreshold\":0,\"resolveThreshold\":0}' --workflow 12345 --dry-run",
+        run: "alert metrics create my-org/ --name 'AI chat failures' --project my-project --query 'action:ai.chat result:error' --aggregate 'count()' --dataset logs --time-window 5 --trigger '{\"alertThreshold\":0,\"resolveThreshold\":0}' --workflow 12345 --dry-run",
       },
     ],
   },
@@ -236,7 +230,7 @@ export const createCommand = buildCommand({
 
     const orgSlug = await target.resolved;
 
-    const body: Record<string, unknown> = {
+    const body: MetricAlertCreateBody = {
       name: flags.name,
       query,
       aggregate: flags.aggregate,
@@ -264,7 +258,7 @@ export const createCommand = buildCommand({
         name: flags.name,
         dryRun: true,
         body,
-      } satisfies CreateResult);
+      } satisfies MetricAlertCreateOutput);
       return { hint: "Dry run - no metric alert rule was created." };
     }
 
@@ -274,6 +268,6 @@ export const createCommand = buildCommand({
       id: stringifyUnknown(created.id ?? ""),
       name: stringifyUnknown(created.name ?? flags.name),
       status: metricAlertStatusLabel(created.status),
-    } satisfies CreateResult);
+    } satisfies MetricAlertCreateOutput);
   },
 });

@@ -528,12 +528,20 @@ export function getUsableStoredTokenHost(): string | undefined {
   }
 }
 
+// Every memo is per invocation env as well as per selection: the selection
+// key doesn't name the config dir, so SDK calls with different config dirs
+// would otherwise read each other's stored login.
 const authCacheState = {
   tokens: new WeakMap<
     NodeJS.ProcessEnv,
     Map<string, { value: string | undefined }>
   >(),
   fingerprints: new WeakMap<NodeJS.ProcessEnv, Map<string, string>>(),
+  authRows: new WeakMap<
+    NodeJS.ProcessEnv,
+    Map<string, { value: AuthRow | undefined }>
+  >(),
+  hasStoredCreds: new WeakMap<NodeJS.ProcessEnv, Map<string, boolean>>(),
 };
 
 /** The per-env, per-selection memo map in `store`, created on first use. */
@@ -605,31 +613,27 @@ export function resetAuthTokenCache(): void {
   authCacheState.tokens = new WeakMap();
 }
 
-/** Memoized results for {@link hasStoredAuthCredentials}, by selection. */
-const cachedHasStoredCreds = new Map<string, boolean>();
-
-/** Memoized effective auth rows for {@link refreshToken}, by selection. */
-const cachedAuthRows = new Map<string, { value: AuthRow | undefined }>();
-
+/** The effective auth row for {@link refreshToken}, memoized per selection. */
 function getCachedAuthRow(): AuthRow | undefined {
+  const memo = memoFor(authCacheState.authRows);
   const key = selectionKey();
-  const cached = cachedAuthRows.get(key);
+  const cached = memo.get(key);
   if (cached !== undefined) {
     return cached.value;
   }
   const row = getAuthRow();
-  cachedAuthRows.set(key, { value: row });
+  memo.set(key, { value: row });
   return row;
 }
 
 /** Reset the memoized auth row. Tests only — call between auth-state mutations. */
 export function resetAuthRowCache(): void {
-  cachedAuthRows.clear();
+  authCacheState.authRows = new WeakMap();
 }
 
 /** Reset the memoized stored-credentials flag. Tests only — call between auth-state mutations. */
 export function resetHasStoredCredsCache(): void {
-  cachedHasStoredCreds.clear();
+  authCacheState.hasStoredCreds = new WeakMap();
 }
 
 /**
@@ -996,8 +1000,16 @@ function followDefaultAccountHost(host: string): void {
  *
  * An env token that knows the org wins over every stored account, the
  * active one included (see {@link getEnvAccount}).
+ *
+ * `server` limits candidates (the env token included) to that server, for a
+ * request whose URL is already built: switching servers would send it to
+ * the wrong one.
  */
-export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
+export function selectAccountForOrg(
+  orgSlug: string,
+  orgId?: string,
+  options: { server?: string } = {},
+): void {
   if (isEnvTokenForced()) {
     return;
   }
@@ -1006,13 +1018,13 @@ export function selectAccountForOrg(orgSlug: string, orgId?: string): void {
     return;
   }
   try {
-    if (selectEnvAccountForOrg(orgSlug, orgId)) {
+    if (selectEnvAccountForOrg(orgSlug, orgId, options.server)) {
       return;
     }
     const current = getAuthRow();
     const pick = findAccountForOrg(orgSlug, orgId, {
       current,
-      host: getExplicitServerUrl(),
+      host: getExplicitServerUrl() ?? options.server,
     });
     if (!pick?.host || pick.account_id === current?.account_id) {
       return;
@@ -1079,16 +1091,21 @@ export function findAccountForOrg(
 /**
  * Use the env token for the rest of this invocation when its org cache
  * shows it knows the org on its current server, and that server is the
- * explicit one, if any. The
- * env token wins over stored accounts that know the org too.
+ * explicit one and `server`, when set. The env token wins over stored
+ * accounts that know the org too.
  *
  * @returns whether the env token was chosen
  */
-function selectEnvAccountForOrg(orgSlug: string, orgId?: string): boolean {
+function selectEnvAccountForOrg(
+  orgSlug: string,
+  orgId: string | undefined,
+  server: string | undefined,
+): boolean {
   const envAccount = getEnvAccountInScope();
   if (
     !(
       envAccount &&
+      (!server || isSameServer(envAccount.host, server)) &&
       hasCachedOrgForIdentity(
         envAccount.identity,
         envAccount.host,
@@ -1414,7 +1431,7 @@ export function getActiveAuthHost(): string | undefined {
  * - A non-expired token, or
  * - An expired token with a refresh token (will be refreshed on next use)
  *
- * Memoized within the process. Reset on {@link setAuthToken} and
+ * Memoized per invocation env. Reset on {@link setAuthToken} and
  * {@link clearAuth} mutations. Tests call {@link resetHasStoredCredsCache}
  * between cases.
  *
@@ -1422,8 +1439,9 @@ export function getActiveAuthHost(): string | undefined {
  * when an env token is present.
  */
 export function hasStoredAuthCredentials(): boolean {
+  const memo = memoFor(authCacheState.hasStoredCreds);
   const key = selectionKey();
-  const cached = cachedHasStoredCreds.get(key);
+  const cached = memo.get(key);
   if (cached !== undefined) {
     return cached;
   }
@@ -1438,7 +1456,7 @@ export function hasStoredAuthCredentials(): boolean {
       result = !!row.refresh_token;
     }
   }
-  cachedHasStoredCreds.set(key, result);
+  memo.set(key, result);
   return result;
 }
 

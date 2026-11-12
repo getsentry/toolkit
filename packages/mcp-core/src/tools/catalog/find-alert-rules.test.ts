@@ -75,7 +75,7 @@ function useAlertRuleHandlers() {
 describe("find_alert_rules", () => {
   it("serializes project-scoped issue and metric searches", async () => {
     useAlertRuleHandlers();
-    let issueRequestUrl: string | null = null;
+    let issueRequestUrl: string | undefined;
     const metricRequestUrls: string[] = [];
     mswServer.use(
       http.get(
@@ -162,7 +162,7 @@ describe("find_alert_rules", () => {
   });
 
   it("resolves project redirects before listing metric alerts", async () => {
-    let metricRequestUrl: string | null = null;
+    let metricRequestUrl: string | undefined;
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/projects/sentry-mcp-evals/legacy-cloudflare-mcp/",
@@ -182,7 +182,7 @@ describe("find_alert_rules", () => {
       context,
     );
 
-    expect(metricRequestUrl).not.toBeNull();
+    expect(metricRequestUrl).toBeDefined();
     expect(new URL(metricRequestUrl ?? "").searchParams.get("project")).toBe(
       project.id,
     );

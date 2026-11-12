@@ -22,13 +22,15 @@ export const findDsnsOutputSchema = z.object({
 
 export default defineTool({
   name: "find_dsns",
+  title: "Find DSNs",
   skills: ["project-management"], // DSN management is part of project setup
   requiredScopes: ["project:read"],
   description: [
-    "List all Sentry DSNs for a specific project.",
+    "List the DSNs (client keys) for a Sentry project: the SENTRY_DSN an SDK uses to send events.",
     "",
     "Use this tool when you need to:",
     "- Retrieve a SENTRY_DSN for a specific project",
+    "- Configure a Sentry SDK for an existing project",
     "",
     "<hints>",
     "- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.",

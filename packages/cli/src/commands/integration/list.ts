@@ -15,17 +15,16 @@ import {
   buildOrgListCommand,
   type OrgListCommandDocs,
 } from "../../lib/list-command.js";
-import type { OrgListConfig } from "../../lib/org-list.js";
-import {
-  type SentryIntegration,
-  SentryIntegrationSchema,
-} from "../../types/index.js";
+import type { OrgListConfig, WithOrg } from "../../lib/org-list.js";
+import type { SentryIntegration } from "../../types/index.js";
+import { IntegrationListItemSchema } from "../../generated/output-schemas/integration.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "integration-list";
 
 /** Integration with its organization context for display */
-type IntegrationWithOrg = SentryIntegration & { orgSlug?: string };
+type IntegrationWithOrg = WithOrg<SentryIntegration>;
 
 /** Column definitions for the integration table. */
 const INTEGRATION_COLUMNS: Column<IntegrationWithOrg>[] = [
@@ -40,11 +39,12 @@ const INTEGRATION_COLUMNS: Column<IntegrationWithOrg>[] = [
 /** Shared config that plugs into the org-list framework. */
 const integrationListConfig: OrgListConfig<
   SentryIntegration,
-  IntegrationWithOrg
+  IntegrationWithOrg,
+  typeof IntegrationListItemSchema
 > = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "integrations",
-  commandPrefix: "sentry integration list",
+  commandPrefix: () => sentry`integration list`,
   listForOrg: (org) => listIntegrations(org),
   listPaginated: (org, opts) => listIntegrationsPaginated(org, opts),
   withOrg: (integration, orgSlug) => ({ ...integration, orgSlug }),
@@ -53,7 +53,7 @@ const integrationListConfig: OrgListConfig<
   namesOf: (integration) => [integration.name, integration.provider.name],
   displayTable: (integrations: IntegrationWithOrg[]) =>
     formatTable(integrations, INTEGRATION_COLUMNS),
-  schema: SentryIntegrationSchema,
+  schema: IntegrationListItemSchema,
 };
 
 const docs: OrgListCommandDocs = {
@@ -66,28 +66,28 @@ const docs: OrgListCommandDocs = {
   examples: [
     {
       description: "List installed integrations (auto-detect org)",
-      command: "sentry integration list",
+      run: "integration list",
     },
     {
       description: "List integrations in a specific org",
-      command: "sentry integration list my-org/",
+      run: "integration list my-org/",
     },
     {
       description: "Fetch the next page",
-      command: "sentry integration list my-org/ -c next",
+      run: "integration list my-org/ -c next",
     },
     {
       description: "Only integrations whose name or provider matches a glob",
-      command: "sentry integration list 'my-org/git*'",
+      run: "integration list 'my-org/git*'",
     },
     {
       description:
         "Integrations named like 'GitHub' (fuzzy when nothing matches exactly)",
-      command: "sentry integration list my-org/githb",
+      run: "integration list my-org/githb",
     },
     {
       description: "Output as JSON",
-      command: "sentry integration list --json",
+      run: "integration list --json",
     },
   ],
 };

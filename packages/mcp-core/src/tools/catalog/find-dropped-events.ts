@@ -1,7 +1,6 @@
 import {
-  MINUTE_STATS_INTERVALS,
   ONE_DAY_SECONDS,
-  statsPeriodToSeconds,
+  statsIntervalToSeconds,
 } from "@sentry/toolkit-core/stats-period";
 import { z } from "zod";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
@@ -25,62 +24,15 @@ const DROP_OUTCOMES = [
   "cardinality_limited",
 ] as const;
 
-// The outcomes query behind events-dropped allows at most this many buckets.
-const MAX_BUCKETS = 1000;
-
-function getRangeSeconds(params: {
-  statsPeriod: string | null;
-  start: string | null;
-  end: string | null;
-}): number | undefined {
-  if (params.start && params.end) {
-    const rangeMs = Date.parse(params.end) - Date.parse(params.start);
-    return rangeMs > 0 ? rangeMs / 1000 : undefined;
+// Sentry's Outcomes query (`get_constrained_date_range` in
+// src/sentry/snuba/sessions_v2.py) rejects a bucket that is not a whole number
+// of minutes, is longer than one day, or does not divide one day evenly.
+function isSupportedInterval(value: string): boolean {
+  const seconds = statsIntervalToSeconds(value);
+  if (seconds === undefined) {
+    return false;
   }
-  return params.statsPeriod
-    ? statsPeriodToSeconds(params.statsPeriod)
-    : undefined;
-}
-
-/**
- * Pick the interval to send: the requested one when Sentry accepts it,
- * otherwise the smallest accepted interval at least as large, with a note.
- */
-export function resolveDroppedEventsInterval(
-  interval: string | null,
-  rangeSeconds: number | undefined,
-): { interval?: string; intervalNote?: string } {
-  if (!interval) {
-    return {};
-  }
-  const requestedSeconds = statsPeriodToSeconds(interval);
-  if (requestedSeconds === undefined) {
-    return {
-      intervalNote: `Ignored interval '${interval}' because it is not a duration such as '1h'; Sentry picked the interval for the range.`,
-    };
-  }
-  const fitsRange = (seconds: number) =>
-    rangeSeconds === undefined || rangeSeconds / seconds <= MAX_BUCKETS;
-  if (
-    requestedSeconds % 60 === 0 &&
-    ONE_DAY_SECONDS % requestedSeconds === 0 &&
-    fitsRange(requestedSeconds)
-  ) {
-    return { interval };
-  }
-  const candidates = MINUTE_STATS_INTERVALS.map((value) => ({
-    value,
-    seconds: statsPeriodToSeconds(value)!,
-  }));
-  const chosen =
-    candidates.find(
-      ({ seconds }) => seconds >= requestedSeconds && fitsRange(seconds),
-    ) ?? candidates[candidates.length - 1];
-
-  return {
-    interval: chosen.value,
-    intervalNote: `Used interval '${chosen.value}' instead of '${interval}': Sentry needs whole-minute buckets that divide one day, with at most ${MAX_BUCKETS} buckets in the time range.`,
-  };
+  return seconds > 0 && seconds % 60 === 0 && ONE_DAY_SECONDS % seconds === 0;
 }
 
 const droppedBucketSchema = z.object({
@@ -96,16 +48,13 @@ const droppedBucketSchema = z.object({
 export const findDroppedEventsOutputSchema = z.object({
   dataset: z.string(),
   interval: z.number(),
-  intervalNote: z
-    .string()
-    .optional()
-    .describe("Set when the requested interval was replaced or ignored."),
   droppedEvents: z.array(droppedBucketSchema),
   acceptedEvents: z.array(droppedBucketSchema),
 });
 
 export default defineTool({
   name: "find_dropped_events",
+  title: "Find Dropped Events",
   skills: ["inspect"],
   requiredScopes: ["event:read"],
   description: [
@@ -128,7 +77,7 @@ export default defineTool({
     "",
     "<examples>",
     "find_dropped_events(organizationSlug='my-org', dataset='spans', projectSlug='my-project')",
-    "find_dropped_events(organizationSlug='my-org', dataset='logs', statsPeriod='30d')",
+    "find_dropped_events(organizationSlug='my-org', dataset='logs', statsPeriod='30d', interval='1d')",
     "find_dropped_events(organizationSlug='my-org', dataset='errors', outcome='rate_limited')",
     "</examples>",
     "",
@@ -171,8 +120,12 @@ export default defineTool({
     interval: z
       .string()
       .trim()
+      .refine(isSupportedInterval, {
+        message:
+          "Must be at most '1d' and divide one day evenly, e.g. '1h', '6h', or '1d', with the range split into at most 1000 buckets. For a total over a longer range, use '1d' and sum the buckets, or omit interval to let Sentry pick.",
+      })
       .describe(
-        "Bucket size from '1m' to '1d', e.g. '1h'. Omit to let Sentry pick for the range.",
+        "Bucket size, at most '1d' and dividing one day evenly, e.g. '1h', '1d'. Use '1d' and sum the buckets for longer ranges. Omit to let Sentry pick for the range.",
       )
       .nullable()
       .default(null),
@@ -218,16 +171,11 @@ export default defineTool({
       projectId = String(project.id);
     }
 
-    const { interval, intervalNote } = resolveDroppedEventsInterval(
-      params.interval,
-      getRangeSeconds(params),
-    );
-
     const response = await apiService.getDroppedEvents({
       organizationSlug,
       dataset: params.dataset,
       projectId,
-      interval,
+      interval: params.interval ?? undefined,
       statsPeriod: params.statsPeriod ?? undefined,
       start: params.start ?? undefined,
       end: params.end ?? undefined,
@@ -256,7 +204,6 @@ export default defineTool({
     return structuredResult({
       dataset: response.meta.dataset,
       interval: response.meta.interval,
-      ...(intervalNote ? { intervalNote } : {}),
       droppedEvents: response.droppedEvents.map(toBucket),
       acceptedEvents: response.acceptedEvents.map(toBucket),
     });

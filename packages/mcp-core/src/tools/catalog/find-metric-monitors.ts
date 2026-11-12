@@ -23,6 +23,7 @@ export const findMetricMonitorsOutputSchema = z.object({
 
 export default defineTool({
   name: "find_metric_monitors",
+  title: "Find Metric Monitors",
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [

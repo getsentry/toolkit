@@ -128,8 +128,8 @@ This opens the MCP Inspector at `http://localhost:6274`
 
 ```json
 {
-  "command": "npx",
-  "args": ["@sentry/mcp-server@latest"],
+  "command": "sentry",
+  "args": ["mcp"],
   "env": {
     "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
     "SENTRY_HOST": "sentry.example.com"
@@ -141,8 +141,8 @@ This opens the MCP Inspector at `http://localhost:6274`
 
 ```json
 {
-  "command": "npx",
-  "args": ["@sentry/mcp-server@latest"],
+  "command": "sentry",
+  "args": ["mcp"],
   "env": {
     "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
     "SENTRY_URL": "http://sentry.internal:9000"
@@ -158,14 +158,14 @@ This opens the MCP Inspector at `http://localhost:6274`
 **Basic workflow:**
 
 1. **List Tools** - Verify expected tools appear
-2. **Call a tool** - Start with `execute_sentry_tool` using `name="whoami"` and `arguments={}`
+2. **Call a tool** - Start with `whoami`
 3. **Test with parameters** - Try `find_organizations()`
 4. **Test complex operations** - Try `search_errors(query="errors in the last hour")`
 
 **Example test sequence:**
 
 ```
-1. execute_sentry_tool(name="whoami", arguments={})
+1. whoami()
 2. find_organizations()
 3. find_projects(organizationSlug="your-org")
 4. search_errors(
@@ -222,7 +222,7 @@ $ pnpm -w run cli --access-token=YOUR_TOKEN "list all available tools"
   ⎿  Tools available
 
 ● Here are the available tools:
-  1. execute_sentry_tool
+  1. whoami
   2. find_organizations
   3. find_projects
   [...]
@@ -233,7 +233,7 @@ $ pnpm -w run cli --access-token=YOUR_TOKEN "who am I?"
 ● Connected to MCP server (stdio)
   ⎿  Tools available
 
-● execute_sentry_tool(name="whoami", arguments={})
+● whoami()
   ⎿  You are authenticated as: user@example.com
 ```
 
@@ -257,7 +257,7 @@ pnpm -w run cli --transport stdio --access-token=test-fake-token-12345 "who am I
 ● Connected to MCP server (stdio)
   ⎿  Tools available
 
-● execute_sentry_tool(name="whoami", arguments={})
+● whoami()
   ⎿  **Input Error**
       API error (400): Bad Request
 ```
@@ -286,14 +286,14 @@ Create or edit `.cursor/config.json`:
 {
   "mcpServers": {
     "sentry": {
-      "command": "npx",
-      "args": ["@sentry/mcp-server@latest"]
+      "command": "sentry",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-This uses your CLI login (`npx @sentry/mcp-server@latest auth login`).
+This uses your CLI login (`sentry auth login`).
 
 **2. Or Use a Token:**
 
@@ -309,8 +309,8 @@ Update config:
 {
   "mcpServers": {
     "sentry": {
-      "command": "npx",
-      "args": ["@sentry/mcp-server@latest"],
+      "command": "sentry",
+      "args": ["mcp"],
       "env": {
         "SENTRY_AUTH_TOKEN": "${SENTRY_AUTH_TOKEN}"
       }
@@ -341,8 +341,8 @@ Add to `.vscode/settings.json`:
 {
   "mcp.servers": {
     "sentry": {
-      "command": "npx",
-      "args": ["@sentry/mcp-server@latest"],
+      "command": "sentry",
+      "args": ["mcp"],
       "env": {
         "SENTRY_AUTH_TOKEN": "YOUR_TOKEN"
       }
@@ -385,14 +385,15 @@ my-org/my-project                 # Limit calls to this project
 --agent-provider=openai           # openai, azure-openai, or anthropic
 --openai-base-url=URL             # Custom OpenAI endpoint
 
-# Sentry reporting
---sentry-dsn=DSN                  # Custom Sentry DSN for telemetry
---sentry-dsn=                     # Disable telemetry
-
 # Help
 --help                            # Show all options
 --version, -v                     # Show version (-v alone; elsewhere it is --verbose)
 ```
+
+A tool stays enabled while any granted skill lists it. When a disabled skill
+removes no tools for that reason, for example `--disable-skills=docs` while
+`inspect` still grants `search_docs` and `get_doc`, the server prints a warning
+to stderr that names the tools that stay enabled.
 
 ### Environment Variables
 
@@ -411,8 +412,8 @@ MCP_DISABLE_SKILLS=seer
 # AI features
 OPENAI_API_KEY=your-key                  # For AI-powered search tools like search_errors/search_traces/search_issues
 
-# Sentry reporting
-SENTRY_DSN=your-dsn
+# Telemetry (always sent to the Sentry CLI's project)
+SENTRY_CLI_NO_TELEMETRY=1                # Turn it off (DO_NOT_TRACK=1 works too)
 ```
 
 **Priority:** Command-line flags override environment variables.
@@ -463,7 +464,7 @@ OPENAI_API_KEY=your-key pnpm --silent --dir packages/cli run cli mcp
 
 **Cause:** No CLI login and no `SENTRY_AUTH_TOKEN`.
 
-**Solution:** Run `npx @sentry/mcp-server@latest auth login` (from source:
+**Solution:** Run `sentry auth login` (from source:
 `pnpm --silent --dir packages/cli run cli auth login`), or set
 `SENTRY_AUTH_TOKEN` in the client's `env`. MCP clients do not give the server a
 TTY, so log in from a terminal first.

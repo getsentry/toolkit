@@ -3,6 +3,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/server";
 import { type Span, setUser, startSpan } from "@sentry/core";
 import {
+  createDefaultEvent,
   eventFixture,
   issueFixture,
   mswServer,
@@ -24,10 +25,15 @@ import {
   getStructuredContent,
   getTextContent,
 } from "./test-utils/structured-content";
+import type { GetIssueDetailsPayload } from "./tools/catalog/get-issue-details";
 import { createExecuteTool } from "./tools/special/execute-tool";
 import type { ToolConfig } from "./tools/types";
 import type { CredentialRouter, ServerContext } from "./types";
 import { LIB_VERSION } from "./version";
+
+// These tests cover the search_sentry_tools/execute_sentry_tool gateway
+// surface. server.all-tools.test.ts covers the default EXPOSE_ALL_TOOLS surface.
+vi.mock("./tools/exposure", () => ({ EXPOSE_ALL_TOOLS: false }));
 
 // Mock the Sentry core module
 vi.mock("@sentry/core", () => ({
@@ -142,14 +148,16 @@ describe("buildServer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     startedSpans = [];
-    vi.mocked(startSpan).mockImplementation((<T>(
-      _options: Parameters<typeof startSpan>[0],
-      callback: (span: Span) => T,
-    ) => {
-      const span = createMockSpan();
-      startedSpans.push(span);
-      return callback(span as unknown as Span);
-    }) as typeof startSpan);
+    vi.mocked(startSpan).mockImplementation(
+      <T>(
+        _options: Parameters<typeof startSpan>[0],
+        callback: (span: Span) => T,
+      ) => {
+        const span = createMockSpan();
+        startedSpans.push(span);
+        return callback(span as unknown as Span);
+      },
+    );
   });
 
   const baseContext: ServerContext = {
@@ -167,6 +175,7 @@ describe("buildServer", () => {
     options: Partial<ToolConfig> = {},
   ): ToolConfig => ({
     name,
+    title: `${name} title`,
     description: `${name} description`,
     inputSchema: {},
     skills: ["inspect"],
@@ -496,13 +505,38 @@ describe("buildServer", () => {
 
     expect(registeredTools.v2_tool).toBeDefined();
     await expect(
-      registeredTools.v2_tool?.handler({ value: "ok" }),
+      registeredTools.v2_tool.handler({ value: "ok" }),
     ).resolves.toMatchObject({
       content: [{ type: "text", text: "v2:ok" }],
     });
   });
 
-  it("explains how to recover a missing organizationSlug", async () => {
+  it("defaults a missing organizationSlug to the only organization", async () => {
+    const server = buildServer({ context: baseContext });
+
+    const result = await callRegisteredTool(server, "search_issues", {
+      query: "is:unresolved",
+      period: "1h",
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(getTextContent(result)).toContain(
+      "https://sentry-mcp-evals.sentry.io/issues/",
+    );
+  });
+
+  it("lists the organizations when a missing organizationSlug is ambiguous", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/",
+        () =>
+          HttpResponse.json([
+            { id: "1", slug: "org-a", name: "A" },
+            { id: "2", slug: "org-b", name: "B" },
+          ]),
+        { once: true },
+      ),
+    );
     const server = buildServer({ context: baseContext });
 
     const result = await callRegisteredTool(server, "search_issues", {
@@ -512,8 +546,10 @@ describe("buildServer", () => {
 
     expect(result).toMatchObject({ isError: true });
     const text = getTextContent(result);
-    expect(text).toContain("Required. Call `find_organizations()`");
-    expect(text).not.toContain("period");
+    expect(text).toContain(
+      "`search_issues(organizationSlug='org-a', period='1h')`",
+    );
+    expect(text).toContain("Other available organizations: org-b");
   });
 
   it("caps tool input elements", async () => {
@@ -602,7 +638,7 @@ describe("buildServer", () => {
       );
 
       const text = getTextContent(result);
-      expect(text).toContain(`[console] ${replacedText}...`);
+      expect(text).toContain(`"message":"${replacedText}..."`);
       expect(text.isWellFormed()).toBe(true);
     });
 
@@ -685,9 +721,11 @@ describe("buildServer", () => {
           "status": "ok",
         }
       `);
-      expect(getTextContent(result)).toBe(
-        getGeneratedTextFromStructuredContent(result),
-      );
+      const text = getTextContent(result);
+      // Compact JSON: indentation costs tokens for clients that send the
+      // text to a model.
+      expect(text).toBe('{"status":"ok","count":2}');
+      expect(JSON.parse(text)).toEqual(payload);
     });
 
     it("sets user ID and IP address together for tool calls", async () => {
@@ -721,12 +759,38 @@ describe("buildServer", () => {
         }
       )._registeredTools;
 
-      await registeredTools.example_tool?.handler({}, {});
+      await registeredTools.example_tool.handler({}, {});
 
       expect(setUser).toHaveBeenCalledWith({
         id: "user-123",
         ip_address: "192.0.2.1",
       });
+    });
+  });
+
+  describe("experimental output schema", () => {
+    const createServer = (experimentalMode: boolean) =>
+      buildServer({
+        context: baseContext,
+        experimentalMode,
+        tools: {
+          graduating_tool: createMockTool("graduating_tool", {
+            experimentalOutputSchema: z.object({ status: z.string() }),
+          }),
+        },
+      });
+
+    it("advertises the schema to experimental sessions", async () => {
+      const [tool] = await listRegisteredTools(createServer(true));
+      expect(tool.outputSchema).toMatchObject({
+        type: "object",
+        properties: { status: { type: "string" } },
+      });
+    });
+
+    it("keeps it from stable sessions, which still get markdown", async () => {
+      const [tool] = await listRegisteredTools(createServer(false));
+      expect(tool.outputSchema).toBeUndefined();
     });
   });
 
@@ -1059,12 +1123,12 @@ describe("buildServer", () => {
         }),
       );
       expect(
-        dynamicDescription.mock.calls[0]![0].availableToolNames?.has(
+        dynamicDescription.mock.calls[0][0].availableToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
       expect(
-        dynamicDescription.mock.calls[0]![0].directToolNames?.has(
+        dynamicDescription.mock.calls[0][0].directToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
@@ -1489,8 +1553,8 @@ describe("buildServer", () => {
       );
       expect(getTextContent(result)).not.toContain("# Tool Search Results");
       expect(getTextContent(result)).not.toContain("```json");
-      expect(firstResult?.name).toBe("get_replay_details");
-      expect(Object.keys(firstResult ?? {}).sort()).toEqual([
+      expect(firstResult.name).toBe("get_replay_details");
+      expect(Object.keys(firstResult).sort()).toEqual([
         "annotations",
         "description",
         "inputSchema",
@@ -1499,7 +1563,7 @@ describe("buildServer", () => {
       expect(firstResult).not.toHaveProperty("requiredSkills");
       expect(firstResult).not.toHaveProperty("requiredScopes");
       expect(firstResult).not.toHaveProperty("skills");
-      expect(firstResult?.inputSchema.properties).not.toHaveProperty(
+      expect(firstResult.inputSchema.properties).not.toHaveProperty(
         "organizationSlug",
       );
     });
@@ -1868,6 +1932,80 @@ describe("buildServer", () => {
       );
     });
 
+    it.each([
+      ["toolName", "arguments"],
+      ["tool", "params"],
+      ["tool_name", "args"],
+    ])(
+      "execute_sentry_tool accepts %s and %s aliases",
+      async (nameKey, argumentsKey) => {
+        const server = buildServer({
+          context: baseContext,
+        });
+
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          [nameKey]: "get_issue_details",
+          [argumentsKey]: {
+            organizationSlug: "sentry-mcp-evals",
+            issueId: "CLOUDFLARE-MCP-41",
+          },
+        });
+
+        expect(getTextContent(result)).toContain(
+          "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
+        );
+      },
+    );
+
+    it("execute_sentry_tool explains a missing name", async () => {
+      const server = buildServer({
+        context: baseContext,
+      });
+
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        arguments: {},
+      });
+
+      expect(result).toMatchObject({ isError: true });
+      expect(getTextContent(result)).toContain(
+        "Missing `name`. Pass the tool to run as `name`",
+      );
+    });
+
+    it("execute_sentry_tool runs search_sentry_tools", async () => {
+      const server = buildServer({
+        context: baseContext,
+      });
+
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "search_sentry_tools",
+        arguments: { query: "issue details" },
+      });
+
+      const payload = getStructuredContent<{
+        results: Array<{ name: string }>;
+      }>(result);
+      expect(payload.results.map((tool) => tool.name)).toContain(
+        "get_issue_details",
+      );
+    });
+
+    it("execute_sentry_tool does not run itself", async () => {
+      const server = buildServer({
+        context: baseContext,
+      });
+
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "execute_sentry_tool",
+        arguments: { name: "whoami" },
+      });
+
+      expect(result).toMatchObject({ isError: true });
+      expect(getTextContent(result)).toContain(
+        'Tool "execute_sentry_tool" is not available in this session',
+      );
+    });
+
     it("execute_sentry_tool dispatches to a catalog-only tool", async () => {
       const server = buildServer({
         context: baseContext,
@@ -1933,6 +2071,75 @@ describe("buildServer", () => {
       },
     );
 
+    it.each(["get_sentry_resource", "get_issue_details"])(
+      "dispatches package selection through %s",
+      async (toolName) => {
+        const eventId = "7ca573c0f4814912aaa9bdc77d1a7d51";
+        mswServer.use(
+          http.get(
+            `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+            () =>
+              HttpResponse.json({
+                ...createDefaultEvent({ id: eventId, contexts: {} }),
+                packages: { example: "1.2.3", unrelated: "9.9.9" },
+                formatted: {
+                  format: "json",
+                  content: JSON.stringify({ message: "Synthetic event" }),
+                },
+              }),
+          ),
+        );
+        const server = buildServer({
+          experimentalMode: true,
+          context: {
+            ...baseContext,
+            constraints: {
+              organizationSlug: "sentry-mcp-evals",
+              projectSlug: "CLOUDFLARE-MCP",
+            },
+          },
+        });
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          name: toolName,
+          arguments: {
+            ...(toolName === "get_sentry_resource"
+              ? { resourceType: "event", resourceId: eventId }
+              : { eventId }),
+            packageNames: ["example"],
+          },
+        });
+        const payload = getStructuredContent<GetIssueDetailsPayload>(result);
+        expect(payload.event.packageVersions).toEqual({
+          metadataAvailable: true,
+          packages: [
+            {
+              name: "example",
+              status: "recorded",
+              version: "1.2.3",
+              truncated: false,
+            },
+          ],
+        });
+        expect(JSON.parse(getTextContent(result))).toEqual(payload);
+        expect(result.isError).not.toBe(true);
+        expect(getTextContent(result)).not.toContain("unrelated");
+      },
+    );
+
+    it("rejects excessive package selection at the MCP boundary", async () => {
+      const result = await callRegisteredTool(
+        buildServer({ context: baseContext }),
+        "get_sentry_resource",
+        {
+          resourceType: "event",
+          resourceId: "7ca573c0f4814912aaa9bdc77d1a7d51",
+          organizationSlug: "sentry-mcp-evals",
+          packageNames: Array.from({ length: 11 }, (_, i) => `package${i}`),
+        },
+      );
+      expect(result.isError).toBe(true);
+    });
+
     it("execute_sentry_tool dispatches to catalog-only event stacktrace", async () => {
       const server = buildServer({
         context: baseContext,
@@ -1949,9 +2156,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Event Stacktrace in **sentry-mcp-evals**",
-      );
+      expect(result.structuredContent).toMatchObject({
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+      });
     });
 
     it("execute_sentry_tool dispatches to catalog-only issue user reports", async () => {
@@ -1970,9 +2178,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Issue User Reports for Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(result.structuredContent).toMatchObject({
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+      });
     });
 
     it("discovers and dispatches issue linking with injected constraints", async () => {
@@ -2193,10 +2402,9 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Updated DSN in **sentry-mcp-evals/cloudflare-mcp**",
-      );
-      expect(getTextContent(result)).toContain("**Rate Limit**: Disabled");
+      expect(getStructuredContent(result)).toMatchObject({
+        dsn: { id: "d20df0a1ab5031c7f3c7edca9c02814d", rateLimit: null },
+      });
     });
 
     it.each([
@@ -2828,9 +3036,9 @@ describe("buildServer", () => {
         expect.any(Function),
       );
       const span = startedSpans[0];
-      expect(span?.setStatus).toHaveBeenCalledWith({ code: 2 });
+      expect(span.setStatus).toHaveBeenCalledWith({ code: 2 });
       // Expected validation failures mark the span failed without recording an exception.
-      expect(span?.recordException).not.toHaveBeenCalled();
+      expect(span.recordException).not.toHaveBeenCalled();
     });
 
     it("execute_sentry_tool injects constrained arguments for catalog-only tools", async () => {
@@ -2913,12 +3121,13 @@ describe("buildServer", () => {
       }>(result);
       const replayTool = payload.results[0];
 
-      expect(replayTool?.name).toBe("get_replay_details");
+      expect(replayTool.name).toBe("get_replay_details");
       expect(
-        Object.keys(replayTool?.inputSchema.properties ?? {}).sort(),
+        Object.keys(replayTool.inputSchema.properties ?? {}).sort(),
       ).toEqual([
         "categories",
         "endOffsetSeconds",
+        "fresh",
         "limit",
         "regionUrl",
         "replayId",

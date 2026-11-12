@@ -1,5 +1,6 @@
 [mcp_servers.sentry]
-url = "https://mcp.sentry.dev/mcp/sentry/mcp-server?experimental=1"
+command = "sentry"
+args = ["mcp", "sentry/mcp-server", "--experimental"]
 
 [mcp_servers.sentry-dev]
 url = "http://localhost:5173/mcp/sentry/mcp-server?experimental=1"
