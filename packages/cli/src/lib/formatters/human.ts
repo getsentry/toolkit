@@ -1215,17 +1215,23 @@ function buildRequestMarkdown(requestEntry: RequestEntry): string {
   const method = data.method || "GET";
   lines.push(`\`${method} ${data.url}\``);
 
-  if (data.headers) {
-    const headerEntries = Array.isArray(data.headers)
-      ? data.headers
-      : Object.entries(data.headers);
-    for (const [key, value] of headerEntries) {
-      if (key.toLowerCase() === "user-agent") {
-        const truncatedUA =
-          value.length > 100 ? `${value.slice(0, 97)}...` : value;
-        lines.push(`**User-Agent:** ${truncatedUA}`);
-        break;
-      }
+  const headers = data.headers ?? {};
+  const headerEntries = Array.isArray(headers)
+    ? headers
+    : Object.entries(headers);
+  for (const header of headerEntries) {
+    if (!Array.isArray(header)) {
+      continue;
+    }
+    const [key, value] = header;
+    if (typeof key !== "string" || typeof value !== "string") {
+      continue;
+    }
+    if (key.toLowerCase() === "user-agent") {
+      const truncatedUA =
+        value.length > 100 ? `${value.slice(0, 97)}...` : value;
+      lines.push(`**User-Agent:** ${truncatedUA}`);
+      break;
     }
   }
 
