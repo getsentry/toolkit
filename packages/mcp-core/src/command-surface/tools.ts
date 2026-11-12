@@ -27,6 +27,7 @@ import {
   refusedFlagReason,
 } from "./commands";
 import {
+  CURSOR_KEYWORDS,
   prepareCommandCall,
   type SessionPolicy,
   unavailableReason,
@@ -75,6 +76,10 @@ function annotationsFor(
 }
 
 const PIPE = / \| /;
+/** Examples that page with a keyword the command surface refuses. */
+const CURSOR_EXAMPLE = new RegExp(
+  `--cursor[ =](${[...CURSOR_KEYWORDS].join("|")})\\b`,
+);
 
 /**
  * The command's examples an agent can follow: none that pipe output to
@@ -88,7 +93,8 @@ function usableExamples(entry: CommandCatalogEntry): string[] {
   return entry.examples.filter(
     (example) =>
       !PIPE.test(example) &&
-      !refused.some((name) => example.includes(`--${name}`)),
+      !refused.some((name) => example.includes(`--${name}`)) &&
+      !CURSOR_EXAMPLE.test(example),
   );
 }
 

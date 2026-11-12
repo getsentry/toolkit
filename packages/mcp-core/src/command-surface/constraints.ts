@@ -169,6 +169,17 @@ function pinTarget(
       return value;
     }
   }
+  // `/<project>` is the CLI's spelling of `<project>`.
+  if (kind === "org/project" && /^\/[^/]+$/.test(value)) {
+    return pinTarget(
+      entry,
+      value.slice(1),
+      kind,
+      catalogTitle,
+      leading,
+      session,
+    );
+  }
   // `target` is `<org>/`, `<org>/<project>`, or `<project>`.
   const title = catalogTitle === "target" ? "org/project" : catalogTitle;
   const segments = value.split("/");

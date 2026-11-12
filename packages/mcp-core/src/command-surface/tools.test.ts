@@ -132,6 +132,12 @@ describe("command tools: listing", () => {
     expect(description).not.toContain("| jq");
   });
 
+  it("leaves out examples that page with a cursor keyword", () => {
+    const description = setup().tools.sentry_api.description;
+    expect(description).toContain("Examples, in CLI form:");
+    expect(description).not.toMatch(/--cursor (next|prev)\b/);
+  });
+
   it("gives sentry api the hints of its session", () => {
     expect(setup().tools.sentry_api.annotations).toMatchObject({
       readOnlyHint: false,
@@ -288,12 +294,15 @@ describe("command tools: arguments", () => {
   });
 
   it.each(["next", "prev", "last", "previous"])(
-    "refuses the stored-cursor keyword %s when hosted",
+    "refuses the stored-cursor keyword %s",
     async (cursor) => {
-      const { call } = setup({ runtime: "hosted" });
-      await expect(call("issue list", { flags: { cursor } })).rejects.toThrow(
-        "Pass the nextCursor value",
-      );
+      for (const runtime of ["stdio", "hosted"] as const) {
+        const { call, calls } = setup({ runtime });
+        await expect(call("issue list", { flags: { cursor } })).rejects.toThrow(
+          "Pass the nextCursor value",
+        );
+        expect(calls).toEqual([]);
+      }
     },
   );
 
@@ -337,10 +346,17 @@ describe("command tools: session constraints", () => {
     const { call, calls } = setup();
     await call("issue list", { positional: ["web"] }, org);
     await call("attribute list", { positional: ["web"] }, org);
+    await call("issue list", { positional: ["/web"] }, org);
+    await call("issue list", { positional: ["/web"] }, project);
     expect(calls.map((c) => c.positional)).toEqual([
       ["acme/web"],
       ["acme/web"],
+      ["acme/web"],
+      ["acme/web"],
     ]);
+    await expect(
+      call("issue list", { positional: ["/api"] }, project),
+    ).rejects.toThrow("outside");
   });
 
   it("pins every project of an organization to the session's project", async () => {

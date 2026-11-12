@@ -23,9 +23,10 @@ import { validateJsonSchema } from "./validate";
 
 /**
  * Pagination keywords that need the CLI's stored cursor stack, with their
- * aliases (`last`, `previous`).
+ * aliases (`last`, `previous`). Neither server keeps that stack: the CLI SDK
+ * writes no local state by default.
  */
-const CURSOR_KEYWORDS = new Set(["next", "prev", "last", "previous"]);
+export const CURSOR_KEYWORDS = new Set(["next", "prev", "last", "previous"]);
 
 export type SessionPolicy = {
   runtime: CommandRuntime;
@@ -178,11 +179,7 @@ export function prepareCommandCall({
   }
 
   const cursor = flags.cursor;
-  if (
-    policy.runtime === "hosted" &&
-    typeof cursor === "string" &&
-    CURSOR_KEYWORDS.has(cursor)
-  ) {
+  if (typeof cursor === "string" && CURSOR_KEYWORDS.has(cursor)) {
     throw new UserInputError(
       `The cursor keyword "${cursor}" needs stored pagination state, which this server does not keep. Pass the nextCursor value from the previous result instead.`,
     );
