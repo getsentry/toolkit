@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Check `sentry …` examples in hand-written docs against the live route tree.
  *
@@ -23,7 +22,7 @@
  * command pages are not scanned: their examples are checked at the source.
  *
  * Usage:
- *   tsx script/check-doc-examples.ts
+ *   pnpm ts script/check-doc-examples.ts
  *
  * Exit codes:
  *   0 - All examples are valid

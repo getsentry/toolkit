@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsdown",
-    "start": "tsx src/index.ts",
+    "start": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs src/index.ts",
     "test-client": "node dist/index.js",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
@@ -32,7 +32,6 @@
   },
   "devDependencies": {
     "tsdown": "catalog:",
-    "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

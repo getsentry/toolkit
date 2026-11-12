@@ -141,10 +141,15 @@ Top-level layout:
   (`src/bin.ts`) as code-split CommonJS chunks for both: every `import()` and
   every lazy `_require()` (telemetry, syntax highlighting, the field-list
   parser) starts a chunk, so a command loads only its own code. From source,
-  `pnpm run cli` and `pnpm run dev` run `node --import tsx/esm`, not the `tsx`
-  command: its CommonJS hook compiles a lazily required source module into a
-  second, CommonJS copy of its graph, which can't load packages that export
-  only to `import` (`test/script/dev-runner.test.ts`). The
+  `pnpm run cli`, `pnpm run dev`, and the `script/` tools (`pnpm ts`) run
+  Node's own type stripping (`--experimental-strip-types`); the repository
+  does not use tsx. A lazily required source module must resolve to the copy
+  the ESM graph already loaded (`test/script/dev-runner.test.ts`). So `src/`
+  and `script/` must stay erasable TypeScript (`erasableSyntaxOnly`: no
+  enums, namespaces, or parameter properties) with no `using` declarations
+  (Node 22 can't parse them, so free handles in `finally`), JSON imports need
+  `with { type: "json" }`, and there is no JSX.
+  `script/require-shim.mjs` resolves the `.js` specifiers of `.ts` files. The
   completion engine (`src/complete-bin.ts`) is one file of its own. The main
   script runs one of them through `src/lib/chunk-loader.ts`, which reads the
   chunks from files next to it (npm) or from SEA assets (binary) and keeps a V8
@@ -825,7 +830,7 @@ Use `"date"` for timestamp-based sort (not `"time"`). Export sort types from the
 
 All command docs and skill files are generated via `pnpm run generate:docs`. This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
 
-- **One process**: the `generate:*` scripts (except `generate:grammar`, a plain Node script) call `script/generate.ts`, which runs the requested steps in one process so the route tree loads once. Phase 1 writes what the tree imports (API schema, grammars, output-schema field data, banner, the `sentry init` guide), runs those steps concurrently, and must not load the tree; its steps must not read each other's outputs. Phase 2 stubs the generated files the tree imports (`script/lib/route-tree-stubs.ts`), then runs each step's exported `emit()`. Scripts that load the tree without generating, such as `check-fragments`, leave those stubs behind, so `ensure-generated.mjs` treats a file that still holds its stub (`script/lib/route-tree-stub-files.mjs`) as missing. Phase-2 modules may import the tree statically, because the runner imports them only after the stubs exist. A new generator exports `emit()` and gets a step in `script/generate.ts`, with no stub code of its own. A phase-2 step may also declare `prepare`, which the runner calls as the run begins: `command-api` uses it to parse `src/` in a worker thread (`script/lib/command-api-analysis.ts`) during phase 1 and the tree load. The worker reads the API schema once the `schema` step finishes, and `command-api` runs last because its `emit` waits for that worker. In `package.json`, call the runner (`tsx script/generate.ts <steps>`) rather than chaining `pnpm run generate:*`. `docs` names every step but `sdk`, including `schema`, so callers need not run `generate:schema` first.
+- **One process**: the `generate:*` scripts (except `generate:grammar`, a plain Node script) call `script/generate.ts`, which runs the requested steps in one process so the route tree loads once. Phase 1 writes what the tree imports (API schema, grammars, output-schema field data, banner, the `sentry init` guide), runs those steps concurrently, and must not load the tree; its steps must not read each other's outputs. Phase 2 stubs the generated files the tree imports (`script/lib/route-tree-stubs.ts`), then runs each step's exported `emit()`. Scripts that load the tree without generating, such as `check-fragments`, leave those stubs behind, so `ensure-generated.mjs` treats a file that still holds its stub (`script/lib/route-tree-stub-files.mjs`) as missing. Phase-2 modules may import the tree statically, because the runner imports them only after the stubs exist. A new generator exports `emit()` and gets a step in `script/generate.ts`, with no stub code of its own. A phase-2 step may also declare `prepare`, which the runner calls as the run begins: `command-api` uses it to parse `src/` in a worker thread (`script/lib/command-api-analysis.ts`) during phase 1 and the tree load. The worker reads the API schema once the `schema` step finishes, and `command-api` runs last because its `emit` waits for that worker. In `package.json`, call the runner (`node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts <steps>`) rather than chaining `pnpm run generate:*`. `docs` names every step but `sdk`, including `schema`, so callers need not run `generate:schema` first.
 - **Skipped steps**: a phase-1 step with `files` in `script/generate.ts` runs only when the content hash of its inputs or outputs differs from its entry in `src/generated/.stamps.json` (`script/lib/step-stamp.ts`). When such a step starts reading a new file or package, add it to that step's inputs. `output-schemas` and the phase-2 steps have no stamp: their inputs are the source they import, which is no short list.
 
 - **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).

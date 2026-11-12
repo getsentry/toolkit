@@ -99,7 +99,7 @@ export default defineConfig({
   plugins: [lazyRequireToImportPlugin(), jsToTsResolvePlugin()],
   resolve: {
     // Allow .js imports to resolve to .ts files (ESM convention used throughout)
-    extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
+    extensions: [".ts", ".js", ".json"],
     conditions: ["import", "module", "default"],
   },
   test: {
@@ -107,7 +107,7 @@ export default defineConfig({
     testTimeout: 15_000,
     isolate: true,
     pool: "forks",
-    include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
+    include: ["test/**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**"],
     coverage: {
       reporter: ["lcov"],
