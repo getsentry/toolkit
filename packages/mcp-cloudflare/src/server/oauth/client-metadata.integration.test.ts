@@ -1,6 +1,6 @@
 import { createExecutionContext, env } from "cloudflare:test";
 import { getOAuthApi } from "@cloudflare/workers-oauth-provider";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SCOPES } from "../../constants";
 import { createPkcePair, PKCE_CODE_CHALLENGE } from "../../test-utils/pkce";
 import app from "../app";
@@ -116,6 +116,48 @@ async function exchangeCode(
 }
 
 describe("pre-registered client metadata integration", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([undefined, ""])(
+    "rejects an incomplete authorization link before fetching metadata: redirect_uri=%j",
+    async (redirectUri) => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const response = await handler.fetch!(
+        createAuthorizationRequest(`${CODEX_CLIENT_ID}?other-client=1`, {
+          redirect_uri: redirectUri,
+        }),
+        workerEnv,
+        createExecutionContext(),
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get("Location")).toBeNull();
+      expect(await response.text()).toContain(
+        "authorization link is incomplete",
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("preserves the missing client ID error for an incomplete authorization link", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const response = await handler.fetch!(
+      createAuthorizationRequest(CODEX_CLIENT_ID, {
+        client_id: undefined,
+        redirect_uri: undefined,
+      }),
+      workerEnv,
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Location")).toBeNull();
+    expect(await response.text()).toBe("client_id is required");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("authorizes Codex and exchanges and refreshes tokens when upstream metadata is blocked", async () => {
     // The network mock returns 403: a fresh provider without pre-registration
     // cannot resolve this client, so an existing cache cannot hide the outage.
@@ -193,6 +235,17 @@ describe("pre-registered client metadata integration", () => {
 
   it("still fetches unregistered CIMD URLs and rejects an upstream 403", async () => {
     const clientId = `${CODEX_CLIENT_ID}?other-client=1`;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const authorizationResponse = await handler.fetch!(
+      createAuthorizationRequest(clientId),
+      workerEnv,
+      createExecutionContext(),
+    );
+    expect(authorizationResponse.status).toBe(500);
+    expect(authorizationResponse.headers.get("Location")).toBeNull();
+    expect(await authorizationResponse.text()).toBe("Internal Server Error");
+    expect(fetchSpy).toHaveBeenCalled();
 
     await expect(
       createOAuthApi().parseAuthRequest(createAuthorizationRequest(clientId)),
