@@ -335,7 +335,7 @@ describe("search_attributes", () => {
         .toMatchInlineSnapshot(`
         "# Span Attributes Matching "shopping cart size" in **sentry-mcp-evals** (last 14d)
 
-        None of the 37 span attributes seen in the last 14d match this query.
+        None of the span attributes searched match this query.
 
         ## Response Notes
 
@@ -446,6 +446,28 @@ describe("search_attributes", () => {
         expect(output).toContain("## Best Match: `app.string_0001`");
       },
     );
+
+    it("lists the narrowed attributes with a note when the shortlist agent fails", async () => {
+      serveAttributes((substring) =>
+        substring === null
+          ? [...FULL_PAGE, userAttribute("span.op")]
+          : [userAttribute("payment.processor")],
+      );
+      mockGenerateText
+        .mockResolvedValueOnce(mockAgentResponse({ hints: ["payment"] }))
+        .mockRejectedValueOnce(providerError());
+
+      const output = await search({
+        query: "payment provider",
+        dataset: "spans",
+      });
+
+      expect(output.split("\n")[0]).toBe(
+        "The AI provider couldn't match `query` right now, so these are the attributes with names related to it, plus Sentry's common search fields.",
+      );
+      // Only the recommended key and the hint match are left, recommended first.
+      expect(tableKeys(output)).toEqual(["span.op", "payment.processor"]);
+    });
 
     it("skips hint searches that fail and reports only server errors", async () => {
       const logIssue = vi.spyOn(logging, "logIssue").mockReturnValue(undefined);

@@ -91,6 +91,9 @@ export async function runSearchAttributes(
 
   let rows = await fetchRows();
   const totalFetchedAttributes = rows.length;
+  // Set once the hint searches replace rows with a smaller set related to the
+  // query, so the list fallback can say what it's showing.
+  let narrowedByHints = false;
 
   const listAttributes = (importantInfo?: string[], notes?: string[]) =>
     formatListResult({
@@ -144,17 +147,14 @@ export async function runSearchAttributes(
     // If there are results from the hints, use that + recommended keys
     // otherwise it defaults to the original exhaustive list
     const hintRows = await Promise.all(keyHints.map(searchHint));
-    if (
-      hintRows.length > 0 &&
-      // as long as one of the hint calls have values we should use that
-      hintRows.reduce((acc, hintRow) => hintRow.length > 0 || acc, false)
-    ) {
-      let recommendedRows: TraceItemAttribute[] = [];
-      const recommendedKeys = getRecommendedKeysByDataset(params.dataset);
-      recommendedRows = rows.filter((attribute) =>
+    // as long as one of the hint calls have values we should use that
+    if (hintRows.some((r) => r.length > 0)) {
+      const recommendedKeys = getRecommendedKeysByDataset(dataset);
+      const recommendedRows = rows.filter((attribute) =>
         recommendedKeys.has(attribute.key),
       );
       rows = mergeByKey([recommendedRows, ...hintRows]);
+      narrowedByHints = true;
     }
   }
 
@@ -175,7 +175,9 @@ export async function runSearchAttributes(
 
   if (!matches) {
     return listAttributes([
-      "The AI provider couldn't match `query` right now, so these are the dataset's attributes instead.",
+      narrowedByHints
+        ? "The AI provider couldn't match `query` right now, so these are the attributes with names related to it, plus Sentry's common search fields."
+        : "The AI provider couldn't match `query` right now, so these are the dataset's attributes instead.",
     ]);
   }
 

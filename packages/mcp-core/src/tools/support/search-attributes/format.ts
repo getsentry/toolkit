@@ -105,7 +105,8 @@ export function formatFindResult({
   const { best, candidates } = matches;
   if (!best && candidates.length === 0) {
     lines.push(
-      `None of the ${totalAttributes} ${labels.title.toLowerCase()} seen in the last ${period} match this query.`,
+      // No count: the shortlist may have searched only part of what was seen.
+      `None of the ${labels.title.toLowerCase()} searched match this query.`,
       "",
       "## Response Notes",
       "",
