@@ -593,7 +593,7 @@ export function formatReplayDetails(data: ReplayViewData): string {
 
 /** Build a contextual hint pointing the user to a related trace or issue. */
 export function replayHint(data: ReplayViewData): string | undefined {
-  const traceId = data.replay.trace_ids?.[0];
+  const traceId = data.replay.trace_ids[0];
   if (traceId) {
     return `Related trace: ${sentry`trace view ${data.org}/${traceId}`}`;
   }

@@ -127,7 +127,7 @@ const DERIVED_REPLAY_FIELDS: Record<string, DerivedReplayField> = {
   count_screens: { root: "count_urls", resolve: (replay) => replay.count_urls },
   count_traces: {
     root: "trace_ids",
-    resolve: (replay) => replay.trace_ids?.length,
+    resolve: (replay) => replay.trace_ids.length,
   },
   device: { root: "device", resolve: (replay) => replay.device?.name },
   error_id: {

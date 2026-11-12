@@ -59,7 +59,8 @@ const ALIASES: Record<string, ExploreDataset> = {
  * User-facing name for an API dataset, e.g. `tracemetrics` to `metrics`.
  */
 export function datasetDisplayName(dataset: string): string {
-  return DISPLAY_NAMES[dataset as ExploreDataset] ?? dataset;
+  const names: Partial<Record<string, string>> = DISPLAY_NAMES;
+  return names[dataset] ?? dataset;
 }
 
 /**

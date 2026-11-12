@@ -169,7 +169,7 @@ export const wasmSplitCommand = buildCommand({
     },
   },
   async *func(this: SentryContext, flags: WasmSplitFlags, input: string) {
-    if (!input?.trim()) {
+    if (!input.trim()) {
       throw new ValidationError(
         `Wasm file path is required: ${sentry`wasm-split <input>`}`,
         "input",

@@ -470,7 +470,8 @@ export type LogEntry = {
   level?: string;
   body?: string;
   timestamp?: number;
-  attributes?: Record<string, { value?: unknown }>;
+  /** Parsed from an SDK envelope, so an attribute may be `null`. */
+  attributes?: Record<string, { value?: unknown } | null | undefined>;
 };
 
 /**
@@ -497,6 +498,18 @@ function extractLogTraceId(logEntry: LogEntry): string | undefined {
   return;
 }
 
+/** Whether a log attribute is user-supplied and carries a value. */
+function isShownLogAttribute(
+  entry: [string, { value?: unknown } | null | undefined],
+): entry is [string, { value: unknown }] {
+  const [key, attribute] = entry;
+  return (
+    isUserLogAttribute(key) &&
+    attribute?.value !== null &&
+    attribute?.value !== undefined
+  );
+}
+
 /**
  * Format one log entry into a colored tail line.
  *
@@ -511,14 +524,7 @@ export function formatSingleLog(logEntry: LogEntry, source: string): string {
 
   if (logEntry.attributes) {
     const attrs = Object.entries(logEntry.attributes)
-      .filter(
-        ([k, v]) =>
-          isUserLogAttribute(k) &&
-          v !== null &&
-          v !== undefined &&
-          v.value !== null &&
-          v.value !== undefined,
-      )
+      .filter(isShownLogAttribute)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => muted(`[${sanitize(k)}=${sanitize(String(v.value))}]`));
     if (attrs.length > 0) {
@@ -570,7 +576,10 @@ export type StreamedSpan = {
  * `Record<string, unknown>` compatible with the semantic display pipeline.
  */
 function flattenSpanAttributes(
-  attrs: Record<string, { type?: string; value?: unknown }> | undefined,
+  /** Parsed from an SDK envelope, so an attribute may be `null`. */
+  attrs:
+    | Record<string, { type?: string; value?: unknown } | null | undefined>
+    | undefined,
 ): Record<string, unknown> {
   if (!attrs) {
     return {};
@@ -911,12 +920,7 @@ function formatLogJson(
         attributes: entry.attributes
           ? Object.fromEntries(
               Object.entries(entry.attributes)
-                .filter(
-                  ([k, v]) =>
-                    isUserLogAttribute(k) &&
-                    v?.value !== null &&
-                    v?.value !== undefined,
-                )
+                .filter(isShownLogAttribute)
                 .map(([k, v]) => [
                   stripBidi(k),
                   typeof v.value === "string" ? stripBidi(v.value) : v.value,

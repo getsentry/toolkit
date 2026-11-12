@@ -154,7 +154,7 @@ function formatTrialListHuman(entries: TrialListEntry[]): string {
           ? `${t.displayName} ${colorTag("muted", `(${t.name})`)}`
           : t.displayName,
     },
-    { header: "STATUS", value: (t) => STATUS_LABELS[t.status] ?? t.status },
+    { header: "STATUS", value: (t) => STATUS_LABELS[t.status] },
     {
       header: "DAYS LEFT",
       value: (t) => {

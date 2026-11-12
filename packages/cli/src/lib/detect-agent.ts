@@ -373,7 +373,7 @@ export async function getProcessInfoFromOS(
         { timeout: 500 },
       );
       const match = result.trim().match(PS_PPID_COMM_RE);
-      if (match?.[1] && match?.[2]) {
+      if (match?.[1] && match[2]) {
         return { name: basename(match[2].trim()), ppid: Number(match[1]) };
       }
     } catch (error) {

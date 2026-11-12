@@ -463,9 +463,12 @@ async function* generateFollowLogs<T extends LogLike>(
     config.onInitialLogs?.(initialLogs);
 
     // Poll loop — exits when SIGINT fires
-    while (!controller.signal.aborted) {
+    // Read through a function: the signal flips during the await, which
+    // control-flow narrowing cannot see.
+    const isAborted = () => controller.signal.aborted;
+    while (!isAborted()) {
       await abortableSleep(pollIntervalMs, controller.signal);
-      if (controller.signal.aborted) {
+      if (isAborted()) {
         break;
       }
 
@@ -927,8 +930,9 @@ export const listCommand = buildListCommand(
           const generator = generateFollowLogs({
             flags,
             onDiagnostic: (msg) => logger.warn(msg),
-            abortSignal: (this.process as { abortSignal?: AbortSignal })
-              ?.abortSignal,
+            abortSignal: (
+              this.process as { abortSignal?: AbortSignal } | undefined
+            )?.abortSignal,
             fetch: (statsPeriod) =>
               listTraceLogs(org, traceId, {
                 query: traceQuery,
@@ -1000,8 +1004,9 @@ export const listCommand = buildListCommand(
           const generator = generateFollowLogs({
             flags,
             onDiagnostic: (msg) => logger.warn(msg),
-            abortSignal: (this.process as { abortSignal?: AbortSignal })
-              ?.abortSignal,
+            abortSignal: (
+              this.process as { abortSignal?: AbortSignal } | undefined
+            )?.abortSignal,
             fetch: (statsPeriod, afterTimestamp) =>
               listLogs(org, project, {
                 query: flags.query,

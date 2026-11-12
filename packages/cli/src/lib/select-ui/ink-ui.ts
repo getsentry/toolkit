@@ -147,7 +147,9 @@ export async function selectWithFilter(
   const app = await loadInkApp();
   const freshStdin = openFreshTtyForInk();
   const stdin = freshStdin ?? process.stdin;
-  const wasRaw = stdin.isRaw ?? false;
+  // A piped process.stdin is no TTY: it has no `isRaw` or `setRawMode`.
+  const rawMode: Partial<Pick<ReadStream, "isRaw" | "setRawMode">> = stdin;
+  const wasRaw = rawMode.isRaw ?? false;
   let instance: InkInstance | undefined;
   let resolveSelection!: (value: string | null) => void;
   const selection = new Promise<string | null>((resolve) => {
@@ -176,7 +178,7 @@ export async function selectWithFilter(
         await instance?.waitUntilExit();
       } finally {
         try {
-          stdin.setRawMode?.(wasRaw);
+          rawMode.setRawMode?.(wasRaw);
         } finally {
           if (freshStdin) {
             try {

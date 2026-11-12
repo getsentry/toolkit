@@ -238,9 +238,7 @@ export const createCommand = buildCommand({
       timeWindow: flags["time-window"],
       triggers,
     };
-    if (projects && projects.length > 0) {
-      body.projects = projects;
-    }
+    body.projects = projects;
     if (flags.environment !== undefined) {
       body.environment = flags.environment;
     }

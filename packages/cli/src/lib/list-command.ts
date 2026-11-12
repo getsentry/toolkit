@@ -437,7 +437,7 @@ function getSubcommandsForRoute(routeName: string): Set<string> {
     byRoute = new Map();
     for (const entry of routes.getAllEntries()) {
       const target = entry.target as unknown as Record<string, unknown>;
-      if (typeof target?.getAllEntries === "function") {
+      if (typeof target.getAllEntries === "function") {
         byRoute.set(
           entry.name.original,
           collectChildNames(

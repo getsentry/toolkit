@@ -43,7 +43,7 @@ import {
   type DashboardListArguments,
   dashboardListArguments,
 } from "./arguments.js";
-import { withDashboardErrors } from "./resolve.js";
+import { titleOf, withDashboardErrors } from "./resolve.js";
 import { DashboardListItemSchema } from "../../generated/output-schemas/dashboard.js";
 
 /** Command key for pagination cursor storage */
@@ -157,7 +157,7 @@ function formatDashboardListHuman(result: DashboardListResult): string {
     const url = buildDashboardUrl(result.orgSlug, d.id);
     return {
       id: d.id,
-      title: `${tableCell(d.title ?? "(untitled)")}\n${colorTag("muted", url)}`,
+      title: `${tableCell(titleOf(d) ?? "(untitled)")}\n${colorTag("muted", url)}`,
       widgets: String(d.widgetDisplay?.length ?? 0),
     };
   });
@@ -253,7 +253,7 @@ function processPage(
 
   for (let i = startIdx; i < data.length; i++) {
     const item = data[i] as DashboardListItem;
-    if (!opts.glob || opts.glob((item.title ?? "").toLowerCase())) {
+    if (!opts.glob || opts.glob((titleOf(item) ?? "").toLowerCase())) {
       results.push(item);
       if (results.length >= opts.limit) {
         return {
@@ -307,7 +307,7 @@ async function fetchDashboards(
     // Collect all titles for fuzzy suggestions when filtering matches nothing
     if (opts.glob) {
       for (const item of data) {
-        allTitles.push(item.title ?? "(untitled)");
+        allTitles.push(titleOf(item) ?? "(untitled)");
       }
     }
 

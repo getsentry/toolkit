@@ -56,7 +56,8 @@ export async function extractZipStream(
   mkdirSync(root, { recursive: true });
 
   let written = 0;
-  let failure: Error | null = null;
+  // Widened: set in callbacks, which control-flow narrowing cannot see.
+  let failure = null as Error | null;
   let completed = false;
   const writes: Promise<void>[] = [];
   const openStreams: ReturnType<typeof createWriteStream>[] = [];

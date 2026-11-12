@@ -419,7 +419,7 @@ export function getAuthConfig(): AuthConfig | undefined {
     }
 
     return {
-      token: row.token ?? undefined,
+      token: row.token,
       refreshToken: row.refresh_token ?? undefined,
       expiresAt: row.expires_at ?? undefined,
       issuedAt: row.issued_at ?? undefined,
@@ -711,7 +711,7 @@ export function setAuthToken(
     // SENTRY_HOST or `.sentryclirc` says. With none there, a new account.
     // Re-authorizing a specific account targets exactly that account.
     const existing = reauthorizeId
-      ? findAccountToReauthorize(reauthorizeId, options?.host)
+      ? findAccountToReauthorize(reauthorizeId, options.host)
       : options?.newAccount
         ? undefined
         : findAccountToReplace(options?.host);
