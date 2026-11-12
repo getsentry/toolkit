@@ -187,9 +187,54 @@ describe("search_events", () => {
     expect(result).toContain("No results found");
   });
 
-  it("sends numeric issue IDs from the agent as issue.id on the errors dataset", async () => {
-    // MCP-SERVER-GP2: the agent turned "issue IDs 7768113107, 7768562918"
-    // into `issue:[...]`, which Sentry rejects with "Issue IDs do not exist".
+  it("rewrites numeric issue IDs to issue.id for the errors dataset", async () => {
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse("errors", "issue:7844703743 level:error"),
+    );
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          const url = new URL(request.url);
+          expect(url.searchParams.get("dataset")).toBe("errors");
+          expect(url.searchParams.get("query")).toBe(
+            "issue.id:7844703743 level:error",
+          );
+          return HttpResponse.json({ data: [] });
+        },
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "issue:7844703743 level:error",
+        fields: null,
+        sort: null,
+        period: "24h",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(result).toContain("No results found");
+  });
+
+  it("sends an agent-written numeric issue ID list as issue.id to validate and events", async () => {
+    // MCP-SERVER-GP2: from a natural-language request, the agent wrote
+    // `issue:[<numeric ids>]`, which Sentry rejects with "Issue IDs do not exist".
     mockGenerateText.mockResolvedValue(
       mockAIResponse(
         "errors",

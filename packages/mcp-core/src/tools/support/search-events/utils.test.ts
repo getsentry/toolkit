@@ -13,7 +13,7 @@ import {
   formatKnownUserValue,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
-  rewriteNumericIssueFilters,
+  normalizeNumericIssueFilters,
 } from "./utils";
 
 describe("validateSearch tool contract", () => {
@@ -275,6 +275,31 @@ describe("formatEventValue", () => {
 });
 
 describe("search query helpers", () => {
+  it("rewrites numeric issue filters to issue.id", () => {
+    expect(normalizeNumericIssueFilters("issue:123 level:error")).toBe(
+      "issue.id:123 level:error",
+    );
+    expect(normalizeNumericIssueFilters('!issue:"123"')).toBe(
+      '!issue.id:"123"',
+    );
+    expect(normalizeNumericIssueFilters("(issue:[1, 2] OR level:fatal)")).toBe(
+      "(issue.id:[1, 2] OR level:fatal)",
+    );
+  });
+
+  it("leaves short IDs and quoted text unchanged", () => {
+    for (const query of [
+      "issue:PROJ-123",
+      "issue:[PROJ-1,123]",
+      "issue:123abc",
+      "issue.id:123",
+      "tags[issue]:123",
+      'message:"see issue:123"',
+    ]) {
+      expect(normalizeNumericIssueFilters(query)).toBe(query);
+    }
+  });
+
   it("should detect structured Sentry search syntax", () => {
     expect(looksLikeSentrySearchSyntax("vpn connections from China")).toBe(
       false,
@@ -679,35 +704,6 @@ describe("search query helpers", () => {
         "logs",
       ),
     ).toBe(true);
-  });
-});
-
-describe("rewriteNumericIssueFilters", () => {
-  it("rewrites issue: filters with only numeric group IDs to issue.id:", () => {
-    expect(
-      rewriteNumericIssueFilters(
-        "issue:[7768113107,7768562918] timestamp:>=2026-10-29T14:00:13Z",
-      ),
-    ).toBe("issue.id:[7768113107,7768562918] timestamp:>=2026-10-29T14:00:13Z");
-    expect(rewriteNumericIssueFilters("!issue:123 level:error")).toBe(
-      "!issue.id:123 level:error",
-    );
-    expect(rewriteNumericIssueFilters('(issue:"1" OR issue:2)')).toBe(
-      '(issue.id:"1" OR issue.id:2)',
-    );
-  });
-
-  it("keeps short IDs, mixed lists, and other keys unchanged", () => {
-    for (const query of [
-      "issue:PROJ-1",
-      "issue:[PROJ-1,2]",
-      "issue:unknown",
-      "issue.id:123",
-      "message:issue:123",
-      "",
-    ]) {
-      expect(rewriteNumericIssueFilters(query)).toBe(query);
-    }
   });
 });
 

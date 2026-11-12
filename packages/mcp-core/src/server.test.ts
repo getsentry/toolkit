@@ -768,6 +768,32 @@ describe("buildServer", () => {
     });
   });
 
+  describe("experimental output schema", () => {
+    const createServer = (experimentalMode: boolean) =>
+      buildServer({
+        context: baseContext,
+        experimentalMode,
+        tools: {
+          graduating_tool: createMockTool("graduating_tool", {
+            experimentalOutputSchema: z.object({ status: z.string() }),
+          }),
+        },
+      });
+
+    it("advertises the schema to experimental sessions", async () => {
+      const [tool] = await listRegisteredTools(createServer(true));
+      expect(tool.outputSchema).toMatchObject({
+        type: "object",
+        properties: { status: { type: "string" } },
+      });
+    });
+
+    it("keeps it from stable sessions, which still get markdown", async () => {
+      const [tool] = await listRegisteredTools(createServer(false));
+      expect(tool.outputSchema).toBeUndefined();
+    });
+  });
+
   describe("experimental tool filtering", () => {
     // Note: Experimental filtering is applied consistently to both default and custom tools.
     // Tools marked with `experimental: true` are only shown when `experimentalMode: true`.
@@ -2130,9 +2156,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Event Stacktrace in **sentry-mcp-evals**",
-      );
+      expect(result.structuredContent).toMatchObject({
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+      });
     });
 
     it("execute_sentry_tool dispatches to catalog-only issue user reports", async () => {

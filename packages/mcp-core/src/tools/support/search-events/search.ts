@@ -73,9 +73,9 @@ import {
   isAggregateQuery,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
+  normalizeNumericIssueFilters,
   readRegexFilterValue,
   recordEventsSearchValidationTelemetry,
-  rewriteNumericIssueFilters,
   validateEventsSearch,
 } from "./utils";
 
@@ -966,8 +966,9 @@ async function executeSearchEvents(
       : null;
   }
 
+  // The errors dataset only resolves short IDs under `issue:`.
   if (dataset === "errors") {
-    sentryQuery = rewriteNumericIssueFilters(sentryQuery);
+    sentryQuery = normalizeNumericIssueFilters(sentryQuery);
   }
 
   // Flag any requested environment that doesn't exist (checking both the

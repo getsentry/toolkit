@@ -226,45 +226,6 @@ export function looksLikeSentrySearchSyntax(
 }
 
 /**
- * Rewrite errors `issue:` filters whose values are all numeric group IDs to
- * `issue.id:`.
- *
- * Sentry resolves `issue:` values as qualified short IDs (`PROJ-123`) and
- * rejects numeric group IDs with "Issue IDs do not exist", but issue URLs and
- * `get_sentry_resource` hand agents numeric IDs. Lists that mix short and
- * numeric IDs stay unchanged, since `issue.id:` takes only numbers.
- */
-export function rewriteNumericIssueFilters(query: string): string {
-  const tokens = parseSearch(query);
-  if (!tokens) {
-    return query;
-  }
-
-  const numericIssueKeys: FilterToken["key"][] = [];
-  for (const filter of filterTokens(tokens)) {
-    if (filter.key.type !== Token.KEY_SIMPLE || filter.key.value !== "issue") {
-      continue;
-    }
-    const values =
-      filter.value.type === Token.VALUE_TEXT
-        ? [filter.value.value]
-        : filter.value.type === Token.VALUE_TEXT_LIST
-          ? filter.value.items.map((item) => item.value?.value ?? "")
-          : [];
-    if (values.length > 0 && values.every((value) => /^\d+$/.test(value))) {
-      numericIssueKeys.push(filter.key);
-    }
-  }
-
-  // Rewrite from the end so earlier offsets stay valid.
-  let rewritten = query;
-  for (const key of numericIssueKeys.reverse()) {
-    rewritten = `${rewritten.slice(0, key.location.start.offset)}issue.id${rewritten.slice(key.location.end.offset)}`;
-  }
-  return rewritten;
-}
-
-/**
  * Note for an untranslated query that ran as literal text and matched nothing.
  *
  * Only multi-word queries without Sentry filters or quotes get the note, so
@@ -353,6 +314,29 @@ function maskQuotedRegions(query: string): string {
   }
 
   return out;
+}
+
+// `issue:` followed by a numeric ID or an all-numeric list, e.g. `issue:123`,
+// `!issue:"123"`, or `issue:[123, 456]`. Matches only the key, at a token start.
+const NUMERIC_ISSUE_FILTER_PATTERN =
+  /(?<=(?:^|[\s(])!?)issue:(?=(?:"?\d+"?|\[\s*"?\d+"?(?:\s*,\s*"?\d+"?)*\s*\])(?=[\s)]|$))/g;
+
+/**
+ * Rewrite `issue:<numeric id>` filters to `issue.id:<numeric id>`.
+ *
+ * The errors dataset resolves `issue:` values as short IDs (`PROJECT-123`) and
+ * rejects numeric group IDs with "Issue IDs do not exist". Other tools, such as
+ * get_sentry_resource, return and accept numeric IDs, so normalize them here.
+ */
+export function normalizeNumericIssueFilters(query: string): string {
+  const masked = maskQuotedRegions(query);
+  let result = "";
+  let lastIndex = 0;
+  for (const match of masked.matchAll(NUMERIC_ISSUE_FILTER_PATTERN)) {
+    result += `${query.slice(lastIndex, match.index)}issue.id:`;
+    lastIndex = match.index + match[0].length;
+  }
+  return lastIndex === 0 ? query : result + query.slice(lastIndex);
 }
 
 type SearchFilterOccurrence = {
