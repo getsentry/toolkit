@@ -316,10 +316,19 @@ describe("discoverWasmPairs", () => {
   });
 
   test("skips DWARF companions written by debug-files wasm-upload", async () => {
-    await writeWasm("app.debug.wasm", FIXED_UUID);
-    await writeMap("app.debug.wasm.map");
+    const companion = "app.00000000000040008000000000000000.debug.wasm";
+    await writeWasm(companion, FIXED_UUID);
+    await writeMap(`${companion}.map`);
 
     expect(await discoverWasmPairs(dir)).toEqual([]);
+  });
+
+  test("pairs a debug build named app.debug.wasm with its map", async () => {
+    // Only the <stem>.<build_id>.debug.wasm name marks a companion.
+    const wasmPath = await writeWasm("app.debug.wasm", FIXED_UUID);
+    const mapPath = await writeMap("app.debug.wasm.map");
+
+    expect(await discoverWasmPairs(dir)).toEqual([{ wasmPath, mapPath }]);
   });
 
   test("skips a module with no map beside it", async () => {

@@ -1158,7 +1158,11 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
 
   test("DWARF companions are not uploaded as sourcemap artifacts", async () => {
     await writeWasmPair(dir, "app", WASM_DEBUG_ID);
-    await writeWasmPair(dir, "app.debug", WASM_DEBUG_ID);
+    await writeWasmPair(
+      dir,
+      "app.00000000000040008000000000000000.debug",
+      WASM_DEBUG_ID,
+    );
 
     const uploadSpy = vi
       .spyOn(sourcemapsApi, "uploadSourcemaps")
