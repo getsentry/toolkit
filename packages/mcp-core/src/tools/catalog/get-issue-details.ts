@@ -114,6 +114,12 @@ export const getIssueDetailsOutputSchema = z.object({
       status: z.string().nullable(),
       rootCause: z.string().nullable(),
       solution: z.string().nullable(),
+      failureReason: z
+        .string()
+        .nullable()
+        .describe(
+          'Why the Seer run failed, when Sentry can explain it. "out_of_credits": the organization ran out of Seer credits, so someone with billing access must adjust Seer spend and auto-reload in Sentry before the run can continue.',
+        ),
     })
     .nullable(),
   codeLocation: z
@@ -217,6 +223,19 @@ function issueDetailsResult(
   return structuredResult(buildIssueDetailsPayload(args));
 }
 
+/**
+ * The failure reason the markdown summary explains: only out-of-credits, and only once the run
+ * has errored. Other reasons are Seer internals with no guidance to give.
+ */
+function getSeerFailureReason(
+  autofix: NonNullable<AutofixRunState["autofix"]>,
+): string | null {
+  return autofix.status === "error" &&
+    autofix.failure_reason === "out_of_credits"
+    ? "out_of_credits"
+    : null;
+}
+
 function buildIssueDetailsPayload({
   packageNames,
   organizationSlug,
@@ -291,6 +310,7 @@ function buildIssueDetailsPayload({
           status: nonEmptyString(getStatusDisplayName(autofix.status)),
           rootCause: nonEmptyString(summaries?.rootCause),
           solution: nonEmptyString(summaries?.solution),
+          failureReason: getSeerFailureReason(autofix),
         }
       : null,
     codeLocation: codeLocation
