@@ -28,6 +28,7 @@ import {
   optedOut,
   parseSixelCaps,
   parseTmuxInfo,
+  kittyQueryCleanup,
   probeQueries,
   readReply,
   selectGraphicsFormat,
@@ -271,23 +272,11 @@ describe("parseTmuxInfo", () => {
 });
 
 describe("probeQueries", () => {
-  test("outside tmux, sends the kitty query directly with DA1 last", () => {
+  test("outside tmux, sends the kitty query between cursor reports with DA1 last", () => {
     const { query, sentinels } = probeQueries(undefined);
-    expect(query.startsWith(`${ESC}[16t${ESC}_G`)).toBe(true);
-    expect(query.endsWith(`${ESC}[c`)).toBe(true);
+    expect(query.startsWith(`${ESC}[16t${ESC}[6n${ESC}_G`)).toBe(true);
+    expect(query.endsWith(`${ESC}[6n${ESC}[c`)).toBe(true);
     expect(sentinels).toBe(1);
-  });
-
-  test("in Terminal.app, never sends the kitty query", () => {
-    // Terminal.app prints the APC body instead of ignoring it.
-    const { query, sentinels } = probeQueries(undefined, "Apple_Terminal");
-    expect(query).toBe(`${ESC}[16t${ESC}[c`);
-    expect(sentinels).toBe(1);
-  });
-
-  test("in other terminals, still sends the kitty query", () => {
-    const { query } = probeQueries(undefined, "ghostty");
-    expect(query).toContain(`${ESC}_G`);
   });
 
   test("inside tmux without passthrough, never sends the kitty query", () => {
@@ -309,6 +298,38 @@ describe("probeQueries", () => {
     expect(passthrough.startsWith(`${ESC}Ptmux;${ESC}${ESC}_G`)).toBe(true);
     expect(passthrough.endsWith(`${ESC}${ESC}[c${ESC}\\`)).toBe(true);
     expect(sentinels).toBe(2);
+  });
+});
+
+describe("kittyQueryCleanup", () => {
+  const da = `${ESC}[?1;2c`;
+
+  test("does nothing when the cursor did not move", () => {
+    // The terminal ignored the query, or answered it without drawing.
+    expect(kittyQueryCleanup(`${ESC}[12;1R${ESC}[12;1R${da}`)).toBe("");
+    expect(
+      kittyQueryCleanup(
+        `${ESC}[12;1R${ESC}_Gi=4271;OK${ESC}\\${ESC}[12;1R${da}`,
+      ),
+    ).toBe("");
+  });
+
+  test("erases the printed query on the same line", () => {
+    // macOS Terminal.app prints the APC body, moving the cursor right.
+    expect(kittyQueryCleanup(`${ESC}[12;1R${ESC}[12;34R${da}`)).toBe(
+      `${ESC}[12;1H${ESC}[K`,
+    );
+  });
+
+  test("clears to the end of the screen when the printed query wrapped", () => {
+    expect(kittyQueryCleanup(`${ESC}[23;10R${ESC}[24;3R${da}`)).toBe(
+      `${ESC}[23;10H${ESC}[J`,
+    );
+  });
+
+  test("does nothing without both cursor reports", () => {
+    expect(kittyQueryCleanup(da)).toBe("");
+    expect(kittyQueryCleanup(`${ESC}[12;1R${da}`)).toBe("");
   });
 });
 
