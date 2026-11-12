@@ -45,6 +45,7 @@ export const findReleasesOutputSchema = z.object({
 
 export default defineTool({
   name: "find_releases",
+  title: "Find Releases",
   skills: ["inspect"], // Only available in inspect skill
   requiredScopes: ["project:read"],
   description: [

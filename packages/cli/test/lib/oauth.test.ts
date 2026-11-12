@@ -19,6 +19,7 @@ import { SENTRY_SCOPES } from "../../src/lib/api-scope.js";
 import { ValidationError } from "../../src/lib/errors.js";
 import {
   OAUTH_SCOPES,
+  exchangeSetupCode,
   performDeviceFlow,
   resolveOAuthScopeString,
 } from "../../src/lib/oauth.js";
@@ -214,4 +215,52 @@ describe("property: resolveOAuthScopeString", () => {
       { numRuns: DEFAULT_NUM_RUNS },
     );
   });
+});
+
+describe("setup-code exchange", () => {
+  test("posts the setup grant once and refuses redirects", async () => {
+    const token = {
+      access_token: "access-token",
+      token_type: "bearer",
+      expires_in: 3600,
+      refresh_token: "refresh-token",
+    };
+    const fetch = vi.fn().mockResolvedValue(Response.json(token));
+    vi.stubGlobal("fetch", fetch);
+    expect(
+      await exchangeSetupCode("private-code", "https://sentry.example.com"),
+    ).toEqual(token);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe("https://sentry.example.com/oauth/token/");
+    expect(init.redirect).toBe("error");
+    expect(init.body.get("grant_type")).toBe(
+      "urn:sentry:params:oauth:grant-type:setup_code",
+    );
+    expect(init.body.get("setup_code")).toBe("private-code");
+    expect(init.body.get("client_id")).toBeTruthy();
+  });
+
+  test.each([
+    Response.json({ error: "private-code" }, { status: 400 }),
+    Response.json({ access_token: 123 }),
+    new Response("private-code"),
+  ])(
+    "rejects errors and malformed responses without echoing secrets",
+    async (response) => {
+      const fetch = vi.fn().mockResolvedValue(response);
+      vi.stubGlobal("fetch", fetch);
+      await exchangeSetupCode(
+        "private-code",
+        "https://sentry.example.com",
+      ).then(
+        () => expect.unreachable("A rejected exchange must fail"),
+        (error: unknown) => {
+          expect(String(error)).toContain("Generate a new setup code");
+          expect(String(error)).not.toContain("private-code");
+        },
+      );
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
 });

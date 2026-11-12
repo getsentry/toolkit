@@ -21,20 +21,19 @@ export const spamCommand = buildCommand({
     examples: [
       {
         description: "Move a Feedback item to the spam mailbox",
-        command: "sentry feedback spam FRONTEND-2SDJ",
+        run: "feedback spam FRONTEND-2SDJ",
       },
       {
         description: "Mark as spam by numeric ID",
-        command: "sentry feedback spam 5146636313",
+        run: "feedback spam 5146636313",
       },
       {
         description: "Specify an organization explicitly",
-        command: "sentry feedback spam my-org/FRONTEND-2SDJ",
+        run: "feedback spam my-org/FRONTEND-2SDJ",
       },
       {
         description: "Return selected fields from the updated Feedback",
-        command:
-          "sentry feedback spam FRONTEND-2SDJ --json --fields id,shortId,status",
+        run: "feedback spam FRONTEND-2SDJ --json --fields id,shortId,status",
       },
     ],
   },

@@ -35,7 +35,7 @@ const EXAMPLES: Record<UnnamedKind, readonly [string, string]> = {
 };
 
 const KINDS = (Object.keys(EXAMPLES) as UnnamedKind[]).map(
-  (name) => [name, ID_KINDS[name] as IdKind, ...EXAMPLES[name]] as const,
+  (name) => [name, ID_KINDS[name], ...EXAMPLES[name]] as const,
 );
 
 function parse(
@@ -172,7 +172,7 @@ describe.each(KINDS)("%s IDs", (_name, kind, id, other) => {
     const label = kind.label.charAt(0).toLowerCase() + kind.label.slice(1);
     const text = args.at(-1)?.split("/").at(-1) ?? "";
     expect(() => parse(kind, args)).toThrow(
-      `Not a ${label}: "${text}". To search, try \`${kind.search?.command} --query '${text}'\`.`,
+      `Not a ${label}: "${text}". To search, try \`${kind.search?.command()} --query '${text}'\`.`,
     );
     // Unvalidated, it stays raw for the command to recover, then validate
     expect(parse(kind, args, { validate: false }).ids).toEqual([text]);
@@ -439,7 +439,7 @@ describe("kinds with names", () => {
 });
 
 describe("org-scoped kinds without hex IDs", () => {
-  const { conversation, integration } = ID_KINDS;
+  const { conversation } = ID_KINDS;
 
   test("any word may be a conversation ID; a bad one is rejected", () => {
     expect(parse(conversation, ["acme/conv_01H"])).toEqual({
@@ -457,6 +457,7 @@ describe("org-scoped kinds without hex IDs", () => {
   });
 
   test("integration IDs are numeric", () => {
+    const { integration } = ID_KINDS;
     expect(parse(integration, ["acme", "42"])).toEqual({
       target: "acme/",
       ids: ["42"],
@@ -466,5 +467,19 @@ describe("org-scoped kinds without hex IDs", () => {
       "Use the numeric ID from 'sentry integration list'",
     );
     expect(() => parse(integration, ["acme/"])).toThrow(ContextError);
+  });
+
+  test("a token is a numeric ID or a name", () => {
+    const { token } = ID_KINDS;
+    expect(parse(token, ["acme", "42"])).toEqual({
+      target: "acme/",
+      ids: ["42"],
+      warnings: [],
+    });
+    expect(parse(token, ["CI token"])).toEqual({
+      ids: [],
+      name: "CI token",
+      warnings: [],
+    });
   });
 });

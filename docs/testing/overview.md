@@ -275,7 +275,7 @@ expect(result.timestamp).toMatchInlineSnapshot(); // ❌
 ### Eval Test Structure
 
 ```typescript
-import { describeEval } from "vitest-evals";
+import { describeEval } from "vitest-evals/legacy";
 import { TaskRunner, Factuality } from "./utils";
 
 describeEval("tool-name", {
@@ -301,6 +301,22 @@ pnpm eval
 # Run specific eval
 pnpm eval tool-name
 ```
+
+### Eval Recordings
+
+Evals send their OpenRouter calls through [Roach](https://github.com/getsentry/roach),
+which replays a recorded response when it has one. `packages/mcp-server-evals/roach.json`
+names the host and the rule. Recording and replay need Node 24.14 or later.
+
+- `ROACH_TOKEN` lets a run record calls that have no recording. The Eval
+  workflow sets it. Without it, a run only replays, and a call with no
+  recording fails its eval. A replay sends nothing upstream, so any
+  `OPENROUTER_API_KEY` value works for it.
+- `ROACH_MODE=off` sends every call live and records nothing. Use it locally
+  when you change prompts, tools, or fixtures and have no token.
+- `ROACH_MODE=record` sends every call live and replaces the recordings.
+- The Roach setup file comes before `src/setup-env.ts` in `vitest.config.ts`,
+  so MSW does not see Roach's own calls.
 
 ## Test Data Management
 

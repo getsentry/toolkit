@@ -200,6 +200,7 @@ function buildArtifact(
 
 export default defineTool({
   name: "search_agent_conversations",
+  title: "Search Agent Conversations",
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read", "project:read"],
   description: [
@@ -263,7 +264,7 @@ export default defineTool({
     if ((params.start && !params.end) || (!params.start && params.end)) {
       throw new UserInputError("`start` and `end` must be provided together.");
     }
-    const requestedPeriod = params.period ?? "30d";
+    const requestedPeriod = params.period;
 
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,

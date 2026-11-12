@@ -53,6 +53,7 @@ const VALIBOT_TYPE_MAP: Record<string, string> = {
   boolean: "boolean",
   object: "object",
   loose_object: "object",
+  strict_object: "object",
   array: "array",
   record: "object",
   null: "null",
@@ -203,7 +204,7 @@ export function extractSchemaFieldPaths(schema: GenericSchema): string[] {
       }
     }
   };
-  visit(schema as unknown as ValibotSchemaNode, "");
+  visit(schema, "");
   return [...paths];
 }
 
@@ -214,13 +215,17 @@ export function extractSchemaFieldPaths(schema: GenericSchema): string[] {
  * more wrapper schemas — e.g. `optional(nullable(pipe(string(), description(...))))`
  * places it two `.wrapped` levels down. Walk the wrapper chain until a
  * description is found.
+ *
+ * Since `@sentry/api` 1.19.0, fields spread from its schemas carry their
+ * OpenAPI description, which can span several lines. `--help` and the
+ * skill reference table show each field on one line, so collapse whitespace.
  */
 function findDescription(schema: ValibotSchemaNode): string | undefined {
   let node: ValibotSchemaNode | undefined = schema;
   while (node) {
     const description = getDescription(node as unknown as GenericSchema);
     if (description !== undefined) {
-      return description;
+      return description.replace(/\s+/g, " ").trim();
     }
     node = node.wrapped;
   }

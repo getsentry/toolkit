@@ -91,3 +91,24 @@ export function envelopeAttachments(item: LocalFeedItem): LocalFeedItem[] {
       : [],
   );
 }
+
+/**
+ * Attachments captured for an event. SDKs send them in the event's envelope or
+ * in a later envelope whose header names the event.
+ */
+export function eventAttachments(
+  event: LocalFeedItem,
+  items: readonly LocalFeedItem[],
+): LocalFeedItem[] {
+  const ids = [
+    text(event.envelopeHeader?.event_id),
+    text(record(event.payload).event_id),
+  ].filter((id): id is string => id !== undefined);
+  if (!ids.length) return [];
+  return items.filter((candidate) => {
+    const id = text(candidate.envelopeHeader?.event_id);
+    return (
+      candidate.type === "attachment" && id !== undefined && ids.includes(id)
+    );
+  });
+}

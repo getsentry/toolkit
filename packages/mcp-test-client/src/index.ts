@@ -54,7 +54,10 @@ program
     process.env.MCP_URL || "http://localhost:5173",
   )
   .option("--host <host>", "Sentry host for stdio transport")
-  .option("--sentry-dsn <dsn>", "Sentry DSN for error reporting")
+  .option(
+    "--sentry-dsn <dsn>",
+    "Sentry DSN for the test client's own error reporting (not the server's)",
+  )
   .option("--experimental", "Enable experimental tools (/mcp?experimental=1)")
   .option(
     "--stdio-bundle",
@@ -138,7 +141,6 @@ program
         connection = await connectToMCPServer({
           accessToken,
           host: sentryHost,
-          sentryDsn: sentryDsn,
           useExperimental: options.experimental,
           useBundle: options.stdioBundle,
         });

@@ -53,6 +53,10 @@ export {
   restoreDashboardRevision,
   updateDashboard,
 } from "./api/dashboards.js";
+export {
+  type DroppedEventsOptions,
+  getDroppedEvents,
+} from "./api/dropped-events.js";
 export { isNotFoundApiError } from "./api/error-guards.js";
 export {
   findEventAcrossOrgs,
@@ -103,7 +107,7 @@ export {
 export { getIssueTag } from "./api/issue-tags.js";
 export {
   buildIssueListCollapse,
-  getIssue,
+  findIssueInOrgs,
   getIssueByShortId,
   getIssueInOrg,
   getSharedIssue,
@@ -135,8 +139,8 @@ export {
 } from "./api/logs.js";
 export { listMonitors, listMonitorsPaginated } from "./api/monitors.js";
 export {
+  checkTokenAccess,
   getOrganization,
-  getUserRegions,
   listOrganizations,
   listOrganizationsPage,
   listOrganizationsUncached,
@@ -147,7 +151,7 @@ export {
   createProjectWithAutoTeam,
   createProjectWithDsn,
   deleteProject,
-  findProjectByDsnKey,
+  findProjectByDsn,
   findProjectsByPattern,
   findProjectsBySlug,
   getProject,
@@ -183,6 +187,7 @@ export {
   updateRelease,
 } from "./api/releases.js";
 export {
+  findTraceReplay,
   getReplay,
   getReplayRecordingSegments,
   isReplaySortValue,
@@ -200,6 +205,11 @@ export {
   listIntegrations,
   listIntegrationsPaginated,
 } from "./api/integrations.js";
+export {
+  createOrgAuthToken,
+  deleteOrgAuthToken,
+  listOrgAuthTokens,
+} from "./api/org-auth-tokens.js";
 export {
   listAllRepositories,
   listRepositories,

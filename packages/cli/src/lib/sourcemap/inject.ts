@@ -923,6 +923,41 @@ export async function resolveDirectorySourcemaps(
   return results;
 }
 
+/** Next.js build output: any path with a `.next` directory segment. */
+const NEXT_DIST_DIR_RE = /(?:^|\/)\.next(?:\/|$)/;
+
+/** Next.js server output, whose sourcemaps have separate switches. */
+const NEXT_SERVER_DIR_RE = /(?:^|\/)\.next\/server(?:\/|$)/;
+
+/**
+ * How to make the bundler that built `dir` emit sourcemaps.
+ *
+ * Nearly every zero-pairs report comes from `@sentry/nextjs`, which uploads
+ * `.next/server` and `.next/static/...`. The Vite and webpack settings do not
+ * apply there, so Next.js output gets its own advice (CLI-1FN).
+ */
+function sourcemapSettingHint(dir: string): string {
+  const posixDir = dir.replaceAll("\\", "/");
+  if (NEXT_SERVER_DIR_RE.test(posixDir)) {
+    return (
+      "For Next.js server output, check that next.config does not turn " +
+      "server sourcemaps off, e.g. a custom `webpack()` that sets " +
+      "`config.devtool`, or `experimental.serverSourceMaps: false`."
+    );
+  }
+  if (NEXT_DIST_DIR_RE.test(posixDir)) {
+    return (
+      "For Next.js, remove `productionBrowserSourceMaps: false` from " +
+      "next.config (`withSentryConfig` turns it on), or set " +
+      "`sourcemaps.disable: true` in `withSentryConfig` to skip the upload."
+    );
+  }
+  return (
+    "For Vite/Astro: `vite.environments.client.build.sourcemap: 'hidden'`. " +
+    "For webpack: `devtool: 'hidden-source-map'`."
+  );
+}
+
 /**
  * Build an actionable error for the zero-pairs case, tailored to
  * which side of the JS/map pairing is missing.
@@ -943,9 +978,8 @@ export function buildEmptyDiscoveryError(
   if (jsFiles > 0 && mapFiles === 0) {
     return new ValidationError(
       `Found ${jsFiles} JS file(s) in '${dir}' but no companion .map ` +
-        "files. Your bundler is not emitting sourcemaps. For Vite/Astro: " +
-        "`vite.environments.client.build.sourcemap: 'hidden'`. For webpack: " +
-        "`devtool: 'hidden-source-map'`. Pass --allow-empty to suppress.",
+        "files. Your bundler is not emitting sourcemaps. " +
+        `${sourcemapSettingHint(dir)} Pass --allow-empty to suppress.`,
       "directory",
     );
   }
@@ -959,9 +993,10 @@ export function buildEmptyDiscoveryError(
   }
   return new ValidationError(
     `Found ${jsFiles} JS and ${mapFiles} .map file(s) in '${dir}' but ` +
-      "no JS file has a matching `<name>.map` companion. Check that your " +
-      "bundler emits JS and sourcemaps with matching basenames. Pass " +
-      "--allow-empty to suppress.",
+      "no JS file has a sourcemap: none has a sibling `<name>.map` or a " +
+      "`//# sourceMappingURL=` comment pointing at a map in this " +
+      `directory. ${sourcemapSettingHint(dir)} Pass --allow-empty to ` +
+      "suppress.",
     "directory",
   );
 }

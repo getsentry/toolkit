@@ -129,10 +129,10 @@ export type {
   LogsResponse,
   Mechanism,
   MonitorConfig,
+  OrgAuthToken,
   OsContext,
   ProductTrial,
   ProjectKey,
-  Region,
   ReplayContext,
   RepositoryProvider,
   RequestEntry,
@@ -162,18 +162,18 @@ export type {
   TraceSpan,
   TransactionListItem,
   TransactionsResponse,
-  UserRegionsResponse,
 } from "./sentry.js";
 export {
   CustomerTrialInfoSchema,
   DetailedLogsResponseSchema,
   DetailedSentryLogSchema,
+  DsnLookupResponseSchema,
   type EventViewAttachment,
   ISSUE_LEVELS,
   ISSUE_STATUSES,
   LogsResponseSchema,
+  OrgAuthTokenSchema,
   ProductTrialSchema,
-  RegionSchema,
   SentryLogSchema,
   SentryUserSchema,
   SpansResponseSchema,
@@ -184,7 +184,6 @@ export {
   TraceMetaSchema,
   TransactionListItemSchema,
   TransactionsResponseSchema,
-  UserRegionsResponseSchema,
 } from "./sentry.js";
 
 export type { WithOutputFields } from "../output-schemas/output.js";

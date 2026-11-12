@@ -28,13 +28,13 @@ import { zodEnglishLocalesPlugin } from "./lib/zod-locales-plugin.js";
 import { zodV3StubPlugin } from "./lib/zod-v3-stub-plugin.js";
 import { buildCoreDeclarations, SDK_TYPES_PATH } from "./sdk-declarations.js";
 import { textImportPlugin } from "./text-import-plugin.js";
+import { logger } from "../src/lib/logger.js";
 
 const VERSION = pkg.version;
 /** Optional OAuth client ID override; unset uses the default in src/lib/oauth.ts. */
 const SENTRY_CLIENT_ID = process.env.SENTRY_CLIENT_ID;
 
-console.log(`\nBundling sentry v${VERSION} for npm`);
-console.log("=".repeat(40));
+logger.start(`Bundling sentry v${VERSION} for npm`);
 
 const IDENTIFIER_FILTER_RE = /^[A-Za-z_$][\w$]*$/;
 // Match both the prefixed and bare specifiers — bundled dependencies (e.g.
@@ -110,10 +110,10 @@ const plugins: Plugin[] = [
 ];
 
 if (process.env.SENTRY_AUTH_TOKEN) {
-  console.log("  Sentry auth token found, source maps will be uploaded");
+  logger.info("Sentry auth token found, source maps will be uploaded");
 } else {
-  console.log(
-    "  No SENTRY_AUTH_TOKEN, debug IDs will be injected but source maps will not be uploaded",
+  logger.info(
+    "No SENTRY_AUTH_TOKEN, debug IDs will be injected but source maps will not be uploaded",
   );
 }
 
@@ -145,7 +145,6 @@ const commonBuildOptions = {
     // The DIF loader resolves this .wasm at runtime (dev only); never bundle it.
     "@sentry/symbolic/symbolic_bg.wasm",
     "ink",
-    "ink-spinner",
     "react",
     "react/*",
     "react-reconciler",
@@ -241,7 +240,7 @@ const jsFiles = [...cjsFiles, ...esm.files];
 
 // Always inject debug IDs (even without auth token); upload needs a token.
 const injected = await injectDebugIds(jsFiles);
-console.log(`  Debug IDs injected into ${injected.length} files`);
+logger.log(`  Debug IDs injected into ${injected.length} files`);
 if (process.env.SENTRY_AUTH_TOKEN && injected.length > 0) {
   // Only delete .map files after a successful upload — preserving them on
   // failure allows retrying without a full rebuild.
@@ -289,14 +288,13 @@ const TYPE_DECLARATIONS = `${CORE_DECLARATIONS}\n${sdkTypes}\n`;
 await writeFile("./dist/index.d.cts", TYPE_DECLARATIONS);
 await writeFile("./dist/index.d.mts", TYPE_DECLARATIONS);
 
-console.log("  -> dist/bin.cjs (CLI main script)");
-console.log("  -> dist/index.d.cts + dist/index.d.mts (type declarations)");
+logger.log("  -> dist/bin.cjs (CLI main script)");
+logger.log("  -> dist/index.d.cts + dist/index.d.mts (type declarations)");
 
 // The `ink-app.js` sidecar (pre-bundled by text-import-plugin) ships
-// with the npm package so `npx sentry@latest init` can load the
-// interactive Ink UI on Node via dynamic import(). The sidecar is
-// self-contained ESM with all deps inlined — no runtime dependencies
-// needed.
+// with the npm package so the organization and project pickers can load
+// the Ink UI on Node via dynamic import(). The sidecar is self-contained
+// ESM with all deps inlined — no runtime dependencies needed.
 
 // Ship the DIF parser WASM as a sibling of the bundle. The runtime loads it
 // (non-SEA path) via new URL("./vendor/symbolic_bg.wasm", import.meta.url),
@@ -308,7 +306,7 @@ await copyFile(
   createRequire(import.meta.url).resolve("@sentry/symbolic/symbolic_bg.wasm"),
   "./dist/vendor/symbolic_bg.wasm",
 );
-console.log("  -> dist/vendor/symbolic_bg.wasm (DIF parser)");
+logger.log("  -> dist/vendor/symbolic_bg.wasm (DIF parser)");
 
 // Ship the Spleen glyph subset next to the npm bundle. The formatter resolves
 // it via new URL("./assets/spleen-8x16.bin", import.meta.url), relative to
@@ -318,7 +316,7 @@ await copyFile(
   "./src/lib/formatters/assets/spleen-8x16.bin",
   "./dist/assets/spleen-8x16.bin",
 );
-console.log("  -> dist/assets/spleen-8x16.bin (dashboard font)");
+logger.log("  -> dist/assets/spleen-8x16.bin (dashboard font)");
 
 // Ship the WASM SQLite driver's .wasm next to the bundle. The driver JS
 // (node-sqlite3-wasm) is a chunk in dist/ (lazy-node-sqlite3-wasm.cjs), and its
@@ -342,7 +340,7 @@ if (!existsSync(sqliteWasmSrc)) {
   );
 }
 await copyFile(sqliteWasmSrc, "./dist/node-sqlite3-wasm.wasm");
-console.log("  -> dist/node-sqlite3-wasm.wasm (WASM SQLite fallback)");
+logger.log("  -> dist/node-sqlite3-wasm.wasm (WASM SQLite fallback)");
 
 /** Total size of `files` in KB. */
 async function sizeKb(files: readonly string[]): Promise<string> {
@@ -352,12 +350,11 @@ async function sizeKb(files: readonly string[]): Promise<string> {
   return (sizes.reduce((a, b) => a + b, 0) / 1024).toFixed(1);
 }
 
-console.log(
-  `\n  -> dist/cli.cjs + dist/index.cjs: ${cjs.files.length} files (${await sizeKb(cjs.files)} KB)`,
+logger.log(
+  `  -> dist/cli.cjs + dist/index.cjs: ${cjs.files.length} files (${await sizeKb(cjs.files)} KB)`,
 );
-console.log(
+logger.log(
   `  -> dist/index.mjs: ${esm.files.length} files (${await sizeKb(esm.files)} KB)`,
 );
-console.log(`  -> dist/complete.cjs (${await sizeKb([COMPLETE_CJS])} KB)`);
-console.log(`\n${"=".repeat(40)}`);
-console.log("Bundle complete!");
+logger.log(`  -> dist/complete.cjs (${await sizeKb([COMPLETE_CJS])} KB)`);
+logger.success("Bundle complete!");

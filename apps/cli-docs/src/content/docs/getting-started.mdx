@@ -55,7 +55,7 @@ You can also set `SENTRY_INSTALL_DIR` to override the binary installation direct
 curl https://cli.sentry.dev/install -fsS | SENTRY_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
-Set `SENTRY_INIT=1` to run [`sentry init`](../commands/init/) right after installing. This requires an interactive terminal:
+Set `SENTRY_INIT=1` to run [`sentry init`](../commands/init/) right after installing, which prints the guide a coding agent follows to add Sentry to your project:
 
 ```bash
 curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
@@ -63,6 +63,24 @@ curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
 
 The installer reports its own errors to Sentry. Set `SENTRY_CLI_NO_TELEMETRY=1`
 to turn this off; the CLI honors the same variable.
+
+### Verify the Install Script
+
+Each stable release attaches `install` and `install.ps1` to its
+[GitHub release](https://github.com/getsentry/toolkit/releases), and Sentry's
+release registry lists their SHA-256 checksums. To check the script against the
+registry before you run it:
+
+```bash
+curl -fsSL https://cli.sentry.dev/install -o install
+curl -fsSL https://release-registry.services.sentry.io/apps/sentry/latest -o release.json
+expected=$(jq -er '.files.install.checksums["sha256-hex"]' release.json)
+echo "$expected  install" | sha256sum -c - && bash install
+```
+
+On macOS, use `shasum -a 256 -c -` instead of `sha256sum -c -`. During a release the
+website can update before the registry does, so retry if the checksums differ
+right after a new version ships.
 
 ### Windows (PowerShell)
 
@@ -208,6 +226,33 @@ To remove stored credentials:
 sentry auth logout
 ```
 
+## Connect an MCP Client
+
+Once you're logged in, the CLI can also run the Sentry MCP server for MCP
+clients such as Claude Code, Cursor, or VS Code. Register `sentry mcp` as a
+stdio MCP server; it uses your CLI login, so the MCP config needs no token:
+
+```bash
+claude mcp add sentry -- sentry mcp
+```
+
+Other clients take the same command:
+
+```json
+{
+  "mcpServers": {
+    "sentry": {
+      "command": "sentry",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+See the [`mcp` command](../commands/mcp/) to limit the server to an
+organization or project, and [mcp.sentry.dev](https://mcp.sentry.dev/?transport=cli)
+for setup steps for each client.
+
 ## Self-Hosted Sentry
 
 Using a self-hosted Sentry instance? Create a public OAuth application and pass
@@ -227,10 +272,11 @@ Credentials are stored in a SQLite database under `$XDG_CONFIG_HOME/sentry/` (de
 
 Once authenticated, you can start using the CLI:
 
-- [Initialize Sentry](../commands/init/) - Set up Sentry in your project with the guided wizard
+- [Initialize Sentry](../commands/init/) - Print the guide a coding agent follows to set up Sentry in your project
 - [Organization commands](../commands/org/) - List and view organizations
 - [Project commands](../commands/project/) - Manage projects
 - [Issue commands](../commands/issue/) - Track and manage issues
 - [Event commands](../commands/event/) - Inspect events
 - [API commands](../commands/api/) - Direct API access
+- [MCP server](../commands/mcp/) - Run the Sentry MCP server for MCP clients
 - [Agentic Usage](../agentic-usage/) - Enable AI coding agents to use the CLI

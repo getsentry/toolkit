@@ -200,7 +200,7 @@ describe("worker entrypoint", () => {
     );
   });
 
-  it("does not advertise RFC 9207 iss support on root authorization server metadata", async () => {
+  it("advertises prompt values but not RFC 9207 iss support on root authorization server metadata", async () => {
     mockOAuthProviderFetch.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -230,6 +230,7 @@ describe("worker entrypoint", () => {
       authorization_endpoint: "https://mcp.sentry.dev/oauth/authorize",
       token_endpoint: "https://mcp.sentry.dev/oauth/token",
       client_id_metadata_document_supported: true,
+      prompt_values_supported: ["consent", "select_account"],
     });
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
   });

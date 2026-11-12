@@ -9,23 +9,26 @@ import {
   createOrganizationRelease,
   createOrganizationReleaseDeploy,
   deleteOrganizationRelease,
+  getOrganizationPreviousReleaseWithCommits,
   getOrganizationRelease,
   listOrganizationReleaseDeploys,
   listOrganizationReleases,
   listProjectEnvironments as sdkListProjectEnvironments,
   updateOrganizationRelease,
 } from "@sentry/api";
-import { encodeApiPathSegment } from "@sentry/toolkit-core/api-path-segment";
+import { encodeApiPathSegment } from "@sentry/api/client";
 import type {
   SentryDeploy,
   SentryRelease,
   SentryRepository,
 } from "../../types/index.js";
+import { sentry } from "../app-identity.js";
 import { getCiCheckout } from "../ci.js";
 import { getEnv } from "../env.js";
 import {
   ApiError,
   buildValidationMessage,
+  projectsNotFoundError,
   ValidationError,
   validationError,
 } from "../errors.js";
@@ -36,14 +39,12 @@ import {
   isSameRepository,
 } from "../git.js";
 import { logger } from "../logger.js";
-import { resolveOrgRegion } from "../region.js";
 import {
   buildRepositorySettingsUrl,
   buildSourceCodeIntegrationsUrl,
 } from "../sentry-web-urls.js";
 import {
   API_MAX_PER_PAGE,
-  apiRequestToRegion,
   getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
@@ -99,7 +100,7 @@ export async function listReleasesPaginated(
   orgSlug: string,
   options: ListReleasesOptions = {},
 ): Promise<PaginatedResponse<SentryRelease[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationReleases({
     ...config,
@@ -196,7 +197,7 @@ export async function getRelease(
     healthStatsPeriod?: string;
   },
 ): Promise<SentryRelease> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await getOrganizationRelease({
     ...config,
@@ -242,17 +243,12 @@ export async function createRelease(
     ref?: string;
     url?: string;
     dateReleased?: string;
-    commits?: Array<{
-      id: string;
-      repository?: string;
-      message?: string;
-      author_name?: string;
-      author_email?: string;
-      timestamp?: string;
-    }>;
   },
 ): Promise<SentryRelease> {
-  const config = await getOrgSdkConfig(orgSlug);
+  // Sentry creates releases with get_or_create and answers a resend with 208,
+  // so a 5xx or network error is safe to retry. Commits stay out of the body:
+  // a resend while the first attempt still sets them returns 409.
+  const config = getOrgSdkConfig({ idempotent: true });
 
   // Cast body through unknown — the SDK's body type requires `projects: string[]`
   // as non-optional, but the API accepts it as optional at runtime.
@@ -268,7 +264,68 @@ export async function createRelease(
   if (result.data) {
     return result.data as SentryRelease;
   }
-  return unwrapResult<SentryRelease>(result, "Failed to create release");
+  try {
+    return unwrapResult<SentryRelease>(result, "Failed to create release");
+  } catch (error) {
+    throw explainCreateReleaseError(orgSlug, body, error);
+  }
+}
+
+/**
+ * 400 details from `OrganizationReleasesEndpoint.post` in Sentry:
+ * `{"projects":["Invalid project ids or slugs"]}` when a project does not
+ * exist or the auth token cannot access it, and
+ * `{"projects":["You do not have permission to one of the projects: a, b"]}`
+ * when the release already exists for projects the token cannot access.
+ */
+const INVALID_RELEASE_PROJECTS = "Invalid project ids or slugs";
+const RELEASE_PROJECT_PERMISSION_RE =
+  /You do not have permission to one of the projects: ([^"\]]*)/;
+
+/**
+ * The release serializer's 400 for a version it rejects, such as `latest` or
+ * a name with a `/` (`Release.is_valid_version`) or one over 200 characters.
+ */
+const RELEASE_VERSION_ERROR_RE = /"version":\[/;
+
+/**
+ * Turn the server's 400s for a project or version the user passed to
+ * {@link createRelease} into errors that name the value and how to fix it
+ * (CLI-2G3). Any other error, including other 400s, is returned unchanged.
+ */
+function explainCreateReleaseError(
+  orgSlug: string,
+  body: { version: string; projects?: string[] },
+  error: unknown,
+): unknown {
+  if (!(error instanceof ApiError && error.status === 400 && error.detail)) {
+    return error;
+  }
+  const { detail } = error;
+  const projects = body.projects ?? [];
+  if (detail.includes(INVALID_RELEASE_PROJECTS) && projects.length > 0) {
+    return projectsNotFoundError(orgSlug, projects, [
+      "Check that your auth token can access the project",
+    ]);
+  }
+  const denied = detail.match(RELEASE_PROJECT_PERMISSION_RE)?.[1];
+  if (denied !== undefined) {
+    return validationError(
+      `Release '${body.version}' already exists in organization '${orgSlug}' for projects your auth token cannot access: ${denied}.`,
+      [],
+      "release.projects",
+      "Use an auth token that can access those projects, or a different release version.",
+    );
+  }
+  if (RELEASE_VERSION_ERROR_RE.test(detail)) {
+    return validationError(
+      `Sentry does not allow the release version '${body.version}'.`,
+      [sentry`release propose-version`],
+      "release.version",
+      "A release version cannot be 'latest', '.' or '..', contain a slash, backslash, tab or newline, or be longer than 200 characters.",
+    );
+  }
+  return error;
 }
 
 /**
@@ -298,7 +355,11 @@ export async function updateRelease(
     }>;
   },
 ): Promise<SentryRelease> {
-  const config = await getOrgSdkConfig(orgSlug);
+  // Resending a metadata update leaves the same release: Sentry sets the
+  // fields again and records the release Activity only on the first
+  // dateReleased. A commits update can answer a resend with 409 while the
+  // first attempt still holds the commit lock, so it does not retry.
+  const config = getOrgSdkConfig({ idempotent: body.commits === undefined });
 
   const result = await updateOrganizationRelease({
     ...config,
@@ -306,9 +367,7 @@ export async function updateRelease(
       organization_id_or_slug: orgSlug,
       version,
     },
-    body: body as unknown as Parameters<
-      typeof updateOrganizationRelease
-    >[0]["body"],
+    body: body,
   });
 
   return unwrapResult<SentryRelease>(
@@ -327,7 +386,7 @@ export async function deleteRelease(
   orgSlug: string,
   version: string,
 ): Promise<void> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await deleteOrganizationRelease({
     ...config,
@@ -351,7 +410,7 @@ export async function listReleaseDeploys(
   orgSlug: string,
   version: string,
 ): Promise<SentryDeploy[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationReleaseDeploys({
     ...config,
@@ -386,7 +445,9 @@ export async function createReleaseDeploy(
     dateFinished?: string;
   },
 ): Promise<SentryDeploy> {
-  const config = await getOrgSdkConfig(orgSlug);
+  // No retry: every POST records a new deploy with its own Activity and
+  // notifications, so a resend after a lost response would duplicate them.
+  const config = getOrgSdkConfig();
 
   const result = await createOrganizationReleaseDeploy({
     ...config,
@@ -394,9 +455,7 @@ export async function createReleaseDeploy(
       organization_id_or_slug: orgSlug,
       version,
     },
-    body: body as unknown as Parameters<
-      typeof createOrganizationReleaseDeploy
-    >[0]["body"],
+    body: body,
   });
 
   return unwrapResult<SentryDeploy>(result, "Failed to create deploy");
@@ -420,16 +479,17 @@ async function getPreviousReleaseCommit(
 ): Promise<string | undefined> {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    const regionUrl = await resolveOrgRegion(orgSlug);
-    const encodedVersion = encodeURIComponent(version);
-    const { data } = await apiRequestToRegion<{
-      lastCommit?: { id: string } | null;
-    }>(
-      regionUrl,
-      `organizations/${orgSlug}/releases/${encodedVersion}/previous-with-commits/`,
-      { method: "GET" },
+    const result = await getOrganizationPreviousReleaseWithCommits({
+      ...getOrgSdkConfig(),
+      path: { organization_id_or_slug: orgSlug, version },
+    });
+    // Sentry answers `{}` when no earlier release has commits.
+    const data = unwrapResult<{ lastCommit?: { id?: unknown } | null }>(
+      result,
+      "Failed to get previous release commit",
     );
-    return data?.lastCommit?.id;
+    const id = data.lastCommit?.id;
+    return typeof id === "string" ? id : undefined;
   } catch {
     // Not critical — if we can't get the previous commit, we still send
     // refs without previousCommit. Sentry will try to determine the range
@@ -500,11 +560,11 @@ function resolveAutoCheckout(
   throw validationError(
     "Could not determine the repository: there is no 'origin' git remote and no CI repository variables (GITHUB_REPOSITORY, CI_PROJECT_PATH, VERCEL_GIT_REPO_SLUG, ...). --auto needs one of them to match a Sentry repository.",
     [
-      `sentry release set-commits ${target} --commit owner/repo@<commit-sha>`,
+      sentry`release set-commits ${target} --commit owner/repo@<commit-sha>`,
       ...(inGitCheckout
         ? [
             "git remote add origin <url>",
-            `sentry release set-commits ${target} --local`,
+            sentry`release set-commits ${target} --local`,
           ]
         : []),
     ],
@@ -603,10 +663,10 @@ function noMatchingRepositoryError(
   const examples = [
     ...suggestions.map(
       (name) =>
-        `sentry release set-commits ${target} --commit '${name}@${commit}'`,
+        sentry`release set-commits ${target} --commit '${name}@${commit}'`,
     ),
     ...(isInsideGitWorkTree(cwd)
-      ? [`sentry release set-commits ${target} --local`]
+      ? [sentry`release set-commits ${target} --local`]
       : []),
   ];
   const didYouMean =
@@ -646,9 +706,9 @@ function noRepoIntegrationError(
   cwd?: string,
 ): ApiError {
   const detail = buildValidationMessage(connectIntegrationHint(orgSlug), [
-    `sentry integration list ${orgSlug}/`,
+    sentry`integration list ${orgSlug}/`,
     ...(isInsideGitWorkTree(cwd)
-      ? [`sentry release set-commits ${orgSlug}/${version} --local`]
+      ? [sentry`release set-commits ${orgSlug}/${version} --local`]
       : []),
   ]);
   return new ApiError(
@@ -741,24 +801,24 @@ export async function setCommitsWithRefs(
   version: string,
   refs: CommitRef[],
 ): Promise<SentryRelease> {
-  const encodedOrg = encodeApiPathSegment(orgSlug);
-  if (encodedOrg === null) {
+  // The SDK percent-encodes path values but lets `.` and `..` through, which
+  // would collapse the path; reject them here.
+  if (encodeApiPathSegment(orgSlug) === null) {
     throw new ValidationError("Invalid organization slug", "organization");
   }
-  const encodedVersion = encodeApiPathSegment(version);
-  if (encodedVersion === null) {
+  if (encodeApiPathSegment(version) === null) {
     throw new ValidationError("Invalid release version", "version");
   }
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion<SentryRelease>(
-    regionUrl,
-    `organizations/${encodedOrg}/releases/${encodedVersion}/`,
-    {
-      method: "PUT",
-      body: { refs },
-    },
+  const config = getOrgSdkConfig();
+  const result = await updateOrganizationRelease({
+    ...config,
+    path: { organization_id_or_slug: orgSlug, version },
+    body: { refs },
+  });
+  return unwrapResult<SentryRelease>(
+    result,
+    `Failed to set commits on release '${version}'`,
   );
-  return data;
 }
 
 /**
@@ -880,7 +940,7 @@ export async function explainSetCommitsError(
     : (ref?.commit ?? "<commit-sha>");
   const target = `${orgSlug}/${version}`;
   const commitExample = (name: string) =>
-    `sentry release set-commits ${target} --commit '${name}@${commit}'`;
+    sentry`release set-commits ${target} --commit '${name}@${commit}'`;
   const headline = `Sentry organization '${orgSlug}' has no repository named '${repository}'.`;
 
   let match: SentryRepository | undefined;
@@ -909,7 +969,7 @@ export async function explainSetCommitsError(
   if (hasRepositories === false) {
     return validationError(
       `${headline} It has no repositories yet, so it cannot associate commits.`,
-      [`sentry integration list ${orgSlug}/`],
+      [sentry`integration list ${orgSlug}/`],
       COMMIT_REPOSITORY_FIELD,
       connectIntegrationHint(orgSlug),
     );
@@ -924,7 +984,7 @@ export async function explainSetCommitsError(
       : "";
   return validationError(
     `${headline}${didYouMean}`,
-    [...suggestions.map(commitExample), `sentry repo list ${orgSlug}/`],
+    [...suggestions.map(commitExample), sentry`repo list ${orgSlug}/`],
     COMMIT_REPOSITORY_FIELD,
     `Add the repository to Sentry through your source code integration: ${buildRepositorySettingsUrl(orgSlug)}`,
   );
@@ -974,7 +1034,7 @@ export async function listProjectEnvironments(
   orgSlug: string,
   projectSlug: string,
 ): Promise<ProjectEnvironment[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await sdkListProjectEnvironments({
     ...config,
     path: {

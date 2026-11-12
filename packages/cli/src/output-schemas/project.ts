@@ -26,37 +26,19 @@ export const SentryProjectSchema = looseObject({
   id: pipe(string(), description("Project ID")),
   slug: pipe(string(), description("Project slug")),
   name: pipe(string(), description("Project name")),
-  platform: optional(pipe(sdkProject.platform, description("Platform"))),
-  platforms: optional(
-    pipe(sdkProject.platforms, description("Platforms seen in events")),
-  ),
-  dateCreated: optional(
-    pipe(sdkProject.dateCreated, description("Creation date (ISO 8601)")),
-  ),
-  firstEvent: optional(
-    pipe(sdkProject.firstEvent, description("First event date (ISO 8601)")),
-  ),
+  platform: optional(sdkProject.platform),
+  platforms: optional(sdkProject.platforms),
+  dateCreated: optional(sdkProject.dateCreated),
+  firstEvent: optional(sdkProject.firstEvent),
   status: optional(pipe(string(), description("Project status"))),
-  isBookmarked: optional(
-    pipe(sdkProject.isBookmarked, description("Whether you bookmarked it")),
-  ),
-  isMember: optional(
-    pipe(sdkProject.isMember, description("Whether you are a member")),
-  ),
-  hasAccess: optional(
-    pipe(sdkProject.hasAccess, description("Whether you have access")),
-  ),
-  features: optional(
-    pipe(sdkProject.features, description("Enabled features")),
-  ),
-  team: optional(pipe(sdkProject.team, description("Owning team"))),
-  teams: optional(pipe(sdkProject.teams, description("Teams with access"))),
-  environments: optional(
-    pipe(sdkProject.environments, description("Environments seen")),
-  ),
-  latestRelease: optional(
-    pipe(sdkProject.latestRelease, description("Latest release")),
-  ),
+  isBookmarked: optional(sdkProject.isBookmarked),
+  isMember: optional(sdkProject.isMember),
+  hasAccess: optional(sdkProject.hasAccess),
+  features: optional(sdkProject.features),
+  team: optional(sdkProject.team),
+  teams: optional(sdkProject.teams),
+  environments: optional(sdkProject.environments),
+  latestRelease: optional(sdkProject.latestRelease),
   organization: optional(
     pipe(
       looseObject({

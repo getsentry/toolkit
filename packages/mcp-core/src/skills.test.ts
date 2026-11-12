@@ -2,12 +2,15 @@ import { describe, it, expect } from "vitest";
 import {
   SKILLS,
   ACTIVE_SKILLS,
+  ALL_SKILLS,
   DEFAULT_SKILLS,
   isValidSkill,
   parseSkills,
   isEnabledBySkills,
+  findRetainedSkillTools,
   type Skill,
 } from "./skills";
+import tools from "./tools";
 import skillDefinitions from "./skillDefinitions";
 
 function getGeneratedSkillToolNames(skillId: string) {
@@ -228,5 +231,43 @@ describe("skills module", () => {
       expect(triageDescription).not.toContain("monitors");
       expect(triageDescription).not.toContain("- monitor: <monitorSlug>");
     });
+  });
+});
+
+describe("findRetainedSkillTools", () => {
+  function grantAfterDisabling(disabled: Skill[]): Set<Skill> {
+    return new Set(ACTIVE_SKILLS.filter((skill) => !disabled.includes(skill)));
+  }
+
+  it("reports docs tools that inspect still grants", () => {
+    expect(
+      findRetainedSkillTools(tools, grantAfterDisabling(["docs"]), "docs"),
+    ).toEqual({ tools: ["get_doc", "search_docs"], grantedBy: ["inspect"] });
+  });
+
+  it("returns undefined when disabling seer removes seer-only tools", () => {
+    expect(
+      findRetainedSkillTools(tools, grantAfterDisabling(["seer"]), "seer"),
+    ).toBeUndefined();
+  });
+
+  it("returns undefined when no other granted skill keeps the tools", () => {
+    expect(
+      findRetainedSkillTools(
+        tools,
+        grantAfterDisabling(["docs", "inspect"]),
+        "docs",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("ignores foundational tools that list every skill", () => {
+    const registry = {
+      whoami: { skills: ALL_SKILLS },
+      only_triage: { skills: ["triage"] as Skill[] },
+    };
+    expect(
+      findRetainedSkillTools(registry, new Set(["inspect"]), "triage"),
+    ).toBeUndefined();
   });
 });

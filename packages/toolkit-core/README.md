@@ -3,10 +3,9 @@
 Pure protocol and hostname helpers shared by the CLI and MCP. Both product
 builds bundle this private workspace package into their artifacts.
 
-The shared code validates and formats upstream bearer tokens, assembles Sentry
-API URLs, constructs OAuth device-flow form bodies, classifies RFC 8628 polling
-responses, advances retry intervals, recognizes Sentry hostnames and
-credential-safe SaaS HTTPS origins, encodes API path identifiers, parses Events
+The shared code constructs OAuth device-flow form bodies, classifies RFC 8628
+polling responses, advances retry intervals, recognizes Sentry hostnames and
+credential-safe SaaS HTTPS origins, parses Events
 field expressions the way the Sentry frontend does, parses search queries with
 the Sentry frontend grammar, resolves Events endpoint sorts so the sort column
 is always selected, and deduplicates in-flight region lookups. Each product
@@ -20,7 +19,8 @@ The shared Sentry API client (request core, transport, retry policy,
 pagination, response cache policy, errors, and endpoint wrappers) is
 `@sentry/api/client` and `@sentry/api/client/endpoints`, published from
 [getsentry/sentry-api-schema](https://github.com/getsentry/sentry-api-schema#shared-client),
-so the CLI, the MCP, and other hosts share one copy.
+so the CLI, the MCP, and other hosts share one copy. That includes bearer token
+validation, API URL assembly, and path identifier encoding.
 
 ## Response cache codec
 

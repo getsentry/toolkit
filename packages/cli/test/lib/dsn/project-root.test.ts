@@ -34,6 +34,12 @@ import {
   isHomeOrAncestor,
   STAT_CONCURRENCY,
 } from "../../../src/lib/dsn/project-root.js";
+import { withEnv } from "../../../src/lib/env.js";
+import {
+  CONFIG_FILENAME,
+  clearSentryCliRcCache,
+  loadSentryCliRc,
+} from "../../../src/lib/sentryclirc.js";
 
 // Test directory structure helper
 function createDir(path: string): void {
@@ -347,6 +353,30 @@ describe("project-root", () => {
         // Should fall back to the starting directory
         expect(result.projectRoot).toBe(deepDir);
         expect(result.reason).toBe("fallback");
+      });
+
+      test("caches .sentryclirc with the global file applied", async () => {
+        const configDir = join(testDir, "config");
+        const workDir = join(testDir, "work");
+        createDir(configDir);
+        createDir(workDir);
+        createFile(
+          join(configDir, CONFIG_FILENAME),
+          "[defaults]\norg = global-org\n",
+        );
+        clearSentryCliRcCache();
+
+        const rc = await withEnv(
+          { ...process.env, SENTRY_CONFIG_DIR: configDir },
+          async () => {
+            const result = await findProjectRoot(workDir);
+            expect(result.reason).toBe("fallback");
+            return await loadSentryCliRc(workDir);
+          },
+        );
+        clearSentryCliRcCache();
+
+        expect(rc.org).toBe("global-org");
       });
     });
 

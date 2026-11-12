@@ -215,6 +215,12 @@ export const ParamIssueStatus = z
     "The new status for the issue. Valid values are 'resolved', 'resolvedInNextRelease', 'unresolved', and 'ignored'.",
   );
 
+export const ParamIssuePriority = z
+  .enum(["low", "medium", "high"])
+  .describe(
+    "The new priority for the issue. Setting it manually stops Sentry from changing it automatically.",
+  );
+
 export const ParamIssueIgnoreMode = z
   .enum([
     "untilEscalating",
@@ -276,6 +282,30 @@ export const ParamIgnoreUserWindowMinutes = z
   .max(7 * 24 * 60)
   .describe(
     "Optional time window in minutes for ignoreUserCount. If omitted, Sentry counts all future affected users.",
+  );
+
+export const ParamInRelease = z
+  .string()
+  .trim()
+  .min(1)
+  .describe(
+    "Release version to resolve the issue in, such as a version returned by find_releases. Requires status='resolved'. Events from newer releases reopen the issue as a regression; events from older releases do not.",
+  );
+
+export const ParamInCommit = z
+  .string()
+  .trim()
+  .min(1)
+  .describe(
+    "SHA of the commit that fixes the issue. Requires status='resolved' and inCommitRepository. The commit must already be known to Sentry.",
+  );
+
+export const ParamInCommitRepository = z
+  .string()
+  .trim()
+  .min(1)
+  .describe(
+    "Name of the repository that contains inCommit, as it appears in Sentry (for example 'getsentry/sentry').",
   );
 
 export const ParamReason = z

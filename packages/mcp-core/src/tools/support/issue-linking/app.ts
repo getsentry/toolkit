@@ -62,7 +62,7 @@ function isIssueKey(value: string, key: string): boolean {
 function choiceLabelKey(label: string | number): string {
   return String(label)
     .toUpperCase()
-    .split(/[^A-Z0-9-]+/)[0]!;
+    .split(/[^A-Z0-9-]+/)[0];
 }
 
 function parseTarget(raw: string) {
@@ -151,7 +151,7 @@ async function resolveFields(
   form: LinkForm,
   fields: Map<string, Field>,
 ): Promise<FormValues> {
-  const supplied = params.fields ?? {};
+  const supplied: Partial<FormValues> = params.fields ?? {};
   const candidates = [...fields.values()].filter((field) =>
     TARGET_FIELD.test(field.name),
   );
@@ -218,7 +218,7 @@ async function resolveFields(
               ? Object.fromEntries(
                   dependencies.map((dependency) => [
                     dependency,
-                    values[dependency]!,
+                    values[dependency],
                   ]),
                 )
               : undefined,
@@ -242,7 +242,7 @@ async function resolveFields(
           );
         }
         if (targetKey) {
-          const [selectedValue, selectedLabel] = matches[0]!;
+          const [selectedValue, selectedLabel] = matches[0];
           const valueKey = String(selectedValue).toUpperCase();
           const labelKey = choiceLabelKey(selectedLabel);
           const identifiedChoices = choices.filter(
@@ -264,7 +264,7 @@ async function resolveFields(
             );
           }
         }
-        value = matches[0]![0];
+        value = matches[0][0];
       } else {
         value ??= search;
         if (
@@ -320,7 +320,7 @@ export async function linkAppIssue(
   );
   if (installed.length !== 1)
     throw new UserInputError(`Expected one installed Sentry App '${appSlug}'.`);
-  const installation = installed[0]!;
+  const installation = installed[0];
   const matchingComponents = components.filter(
     (component) =>
       component.type === "issue-link" &&
@@ -453,7 +453,7 @@ export async function unlinkAppIssue(
     throw new UserInputError(
       "Multiple App links match this URL. Provide appSlug to select one.",
     );
-  const match = matches[0];
+  const match = matches.at(0);
   if (!match)
     return {
       url: params.externalIssueUrl,

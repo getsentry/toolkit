@@ -337,8 +337,8 @@ describe("collectGrep — truncation / limits", () => {
     // Regression for PR 791 review finding: `collectGrep` previously
     // set `truncated = true` whenever `matchesEmitted >= maxResults`,
     // so asking for `maxResults: 3` against a corpus with exactly 3
-    // matches falsely reported truncation. The fix mirrors
-    // `collectGlob`'s `+1` overshoot probe.
+    // matches falsely reported truncation. The fix probes one match
+    // past the limit.
     const { cwd, cleanup } = makeSandbox({
       "a.txt": "hit\nhit\nhit",
     });

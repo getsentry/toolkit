@@ -148,6 +148,35 @@ describe("dashboard widget edit", () => {
     );
   });
 
+  test("asks for --display when the widget's display type is null", async () => {
+    getDashboardSpy.mockResolvedValue({
+      ...sampleDashboard,
+      widgets: [{ ...sampleDashboard.widgets?.[0], displayType: null }],
+    });
+    const { context } = createMockContext();
+    const func = await editCommand.loader();
+
+    const err = await func
+      .call(context, { json: false, index: 0, "new-title": "Renamed" }, "123")
+      .catch((e: Error) => e);
+    expect(err).toBeInstanceOf(ValidationError);
+    expect(err.message).toContain("--display");
+    expect(updateDashboardSpy).not.toHaveBeenCalled();
+  });
+
+  test("sets --display on a widget whose display type is null", async () => {
+    getDashboardSpy.mockResolvedValue({
+      ...sampleDashboard,
+      widgets: [{ ...sampleDashboard.widgets?.[0], displayType: null }],
+    });
+    const { context } = createMockContext();
+    const func = await editCommand.loader();
+    await func.call(context, { json: false, index: 0, display: "line" }, "123");
+
+    const body = updateDashboardSpy.mock.calls[0]?.[2];
+    expect(body.widgets[0].displayType).toBe("line");
+  });
+
   test("edits widget by title (case-insensitive)", async () => {
     const { context } = createMockContext();
     const func = await editCommand.loader();

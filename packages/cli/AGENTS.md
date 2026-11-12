@@ -161,7 +161,7 @@ Top-level layout:
   `dashboard`, `debug-files`, `docs`, `dsn`, `event`, `feedback`, `integration`, `issue`, `local`,
   `log`, `monitor`, `org`, `platform`, `proguard`, `project`, `react-native`,
   `release`, `replay`, `repo`, `snapshots`, `sourcemap`, `span`, `status`,
-  `team`, `trace`, `trial`) plus standalone command files (`api.ts`,
+  `team`, `token`, `trace`, `trial`) plus standalone command files (`api.ts`,
   `explore.ts`, `help.ts`, `info.ts`, `init.ts`, `mcp.ts`, `schema.ts`,
   `wasm-split.ts`, plus the hidden `bash-hook.ts`, `send-event.ts`, and
   `send-envelope.ts`).
@@ -233,7 +233,7 @@ Formatting and rendering logic belongs in `src/lib/formatters/<domain>.ts`. If a
 
 Reference: `src/lib/formatters/replay.ts` (extracted from `replay/view.ts`), `src/lib/formatters/trace.ts`, `src/lib/formatters/human.ts`.
 
-Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output.
+Lint enforcement: `stderr.write()` is banned in command files (GritQL rule). Use `logger` for diagnostics and `CommandOutput` for data output. Oxlint's `no-console` bans `console.*` in every package that uses `@sentry/logger` (`packages/cli`, including `script/` and `test/`, and `packages/logger`). Scripts and test helpers import the same `logger` from `src/lib/logger.ts`. A call that must bypass the logger, such as stdout a parent process reads, gets an `oxlint-disable-next-line no-console -- <reason>` comment.
 
 ### Declaring Command Output
 
@@ -246,7 +246,7 @@ The schemas live in `src/output-schemas/<area>.ts` (one module per top-level com
 - A schema that also validates an API response at runtime (`SentryLogSchema`, `TransactionListItemSchema`, `ConversationListItemSchema`, `DashboardRevisionSchema`) stays where it is and is re-exported from its area's module.
 - `src/output-schemas/` must not import `src/generated/output-schemas/`: the generator loads the former to write the latter.
 
-- **API fields** keep their `@sentry/api` type and come from the generated `@sentry/api/valibot` schema (`vXxxResponse.entries`, wrapped in `pipe(field, description(…))` when it needs a description).
+- **API fields** keep their `@sentry/api` type and come from the generated `@sentry/api/valibot` schema (`vXxxResponse.entries`). They carry the OpenAPI description when the spec has one. Wrap a field in `pipe(field, description(…))` only when the spec has no description or its text doesn't suit CLI users; the wrapper wins.
 - **Fields the CLI adds** (target context such as `org`/`orgSlug`, flags such as `dryRun`/`deleted`, computed values such as `url`, `trace`, `period`) are written once as a valibot `object` of output fields. Spread its `entries` into the schema, and get the type with `InferOutput<typeof Fields>`, or `WithOutputFields<ApiType, typeof Fields>` (`src/output-schemas/output.ts`) when the fields sit on (or override) an API object.
 - Type the `human` formatter's parameter (and `jsonTransform`'s, when set) with the derived type. `buildCommand`, `buildListCommand`, and `buildDeleteCommand` infer the output type from `output` and check every `CommandOutput` that `func` yields against it. Annotate a yield (`new CommandOutput<Output>(…)`) only when it builds a discriminated-union literal (`kind: "endpoints"`) that would otherwise widen to `string`.
 - Without `jsonTransform`, the data (each item, for array data) must also satisfy `output.schema`: a field the schema documents but the command doesn't produce, or documents with another type, is a compile error. Keep the data typed: an API response typed `Record<string, unknown>` can't satisfy a schema built from `@sentry/api/valibot`, so type it with its `@sentry/api` response type.
@@ -508,9 +508,8 @@ takes:
 | Org, project, issue, dashboard target | the bound parsers above (`boundPositional(kind, …)`, `boundArguments({ kind, … })`, `listTargetPositional`, `issuePositional`, `releaseParameter`) | `ORG_TARGET` org slugs; `ORG_PROJECT_TARGET` `org/`, `org/project`, aliases; `ISSUE_TARGET` plus cached issue short IDs; `DASHBOARD_TARGET` cached dashboards |
 | File or directory path (`--output`, `--ignore-file`) | `parseFilePath` | entries of the partial's directory, directories with a trailing `/` |
 | Directory | `parseDirectoryPath` | directories only |
-| Target or directory (`init`) | `boundArguments({ kind: ORG_PROJECT_OR_DIRECTORY_TARGET, … })` | `org/project` targets, or directories once the word looks like a path (`./`, `/`, `~/`), so a suggestion is never read as a target |
 | Fixed values | `choiceParser(values)`, or `choiceParser(values, parse)` to keep a command's own validating parser (`choiceParser(VALID_SORT_VALUES, parseSort)`). Take the values from the module that defines them | those values; a variadic positional completes only its first word (`cli defaults <key> <value>`). Without `parse` the parser returns its input, so the command still validates it |
-| Comma-separated fixed values (`--scope`, `--features`) | `choiceListParser(values)` (or `(values, parse)`) | the next item of the list, leaving out the items already in it (`org:read,org:w` → `org:read,org:write`) |
+| Comma-separated fixed values (`--scope`) | `choiceListParser(values)` (or `(values, parse)`) | the next item of the list, leaving out the items already in it (`org:read,org:w` → `org:read,org:write`) |
 | Platform | `parsePlatform` | platform identifiers, common ones first |
 | Something that already exists in Sentry, as a flag value (`--environment`, `--release`, `--team`, `--owner`, `--integration`, `--app`, `--dsn`, `--workflow`, `--project`, `issue tags <key>`) | `parseEnvironment`, `parseEnvironmentList`, `parseRelease`, `parseTeam`, `parseOwner` (`team:<id>`), `parseIntegration`, `parseSentryApp`, `parseAppLinkField` (`name=value`), `parseDsn`, `parseWorkflowList`, `parseProjectSlug`, `parseProjectList`, `parseTagKey` | cached entities of the org the command's target names, else of every org, each once; the `*List` parsers complete the last item of a comma-separated list |
 | Field or aggregate of a dataset (`explore --field`/`--sort`, `dashboard widget --group-by`/`--query`/`--sort`, `alert metrics --aggregate`) | `fieldParser`, `fieldOrAggregateParser`, `aggregateParser` (`fn(field)`), or `aggregateShorthandParser` (`fn:field`), given a `DatasetCompletion`: what completes on each dataset (start from `DATASET_FIELDS`), the command's `--dataset` aliases, and its default dataset | the fields of the dataset the `--dataset` typed names (else the default; every dataset when there is none): cached attribute keys of spans, logs, and trace metrics, cached issue tag keys for errors, or a fixed set (replays), matched one `.` segment at a time (`span.d` finds `span.duration`, never `span.op`); then its whole aggregates (`aggregates`), and its aggregate functions as `fn()`, and `fn(field)` once a name is typed in full (`p95` → `p95(span.duration)`). Widgets take the functions of `aggregateFunctionsOf` in `types/dashboard.ts`; `alert metrics --aggregate` takes the narrower ones metric alerts accept (`METRIC_ALERT_FIELD_COMPLETION`). A word starting with `-` completes flag names, so a descending sort's `-` is typed after completing |
@@ -612,7 +611,7 @@ Split by argument type — do not mix the conventions:
   `{ multi: true }` to `parseOrgProjectArg`; never enable it for
   mutation or single-project commands.
 - **Optional flags → comma-separated (sometimes also repeatable).** Split the
-  flag value on `,`: `--features errors,tracing`, set-commits `--path a,b`,
+  flag value on `,`: set-commits `--path a,b`,
   `auth login --scope a,b`. Use `value.split(",")` (repeatable array flags:
   `flags.x.flatMap((v) => v.split(","))`).
 
@@ -822,15 +821,16 @@ Use `"date"` for timestamp-based sort (not `"time"`). Export sort types from the
 
 All command docs and skill files are generated via `pnpm run generate:docs`. This runs automatically as part of `dev`, `build`, `typecheck`, and `test` scripts.
 
-- **One process**: the `generate:*` scripts (except `generate:grammar`, a plain Node script) call `script/generate.ts`, which runs the requested steps in one process so the route tree loads once. Phase 1 writes what the tree imports (API schema, grammars, output-schema field data, banner), runs those steps concurrently, and must not load the tree; its steps must not read each other's outputs. Phase 2 stubs the generated files the tree imports (`script/lib/route-tree-stubs.ts`), then runs each step's exported `emit()`. Scripts that load the tree without generating, such as `check-fragments`, leave those stubs behind, so `ensure-generated.mjs` treats a file that still holds its stub (`script/lib/route-tree-stub-files.mjs`) as missing. Phase-2 modules may import the tree statically, because the runner imports them only after the stubs exist. A new generator exports `emit()` and gets a step in `script/generate.ts`, with no stub code of its own. A phase-2 step may also declare `prepare`, which the runner calls as the run begins: `command-api` uses it to parse `src/` in a worker thread (`script/lib/command-api-analysis.ts`) during phase 1 and the tree load. The worker reads the API schema once the `schema` step finishes, and `command-api` runs last because its `emit` waits for that worker. In `package.json`, call the runner (`tsx script/generate.ts <steps>`) rather than chaining `pnpm run generate:*`. `docs` names every step but `sdk`, including `schema`, so callers need not run `generate:schema` first.
+- **One process**: the `generate:*` scripts (except `generate:grammar`, a plain Node script) call `script/generate.ts`, which runs the requested steps in one process so the route tree loads once. Phase 1 writes what the tree imports (API schema, grammars, output-schema field data, banner, the `sentry init` guide), runs those steps concurrently, and must not load the tree; its steps must not read each other's outputs. Phase 2 stubs the generated files the tree imports (`script/lib/route-tree-stubs.ts`), then runs each step's exported `emit()`. Scripts that load the tree without generating, such as `check-fragments`, leave those stubs behind, so `ensure-generated.mjs` treats a file that still holds its stub (`script/lib/route-tree-stub-files.mjs`) as missing. Phase-2 modules may import the tree statically, because the runner imports them only after the stubs exist. A new generator exports `emit()` and gets a step in `script/generate.ts`, with no stub code of its own. A phase-2 step may also declare `prepare`, which the runner calls as the run begins: `command-api` uses it to parse `src/` in a worker thread (`script/lib/command-api-analysis.ts`) during phase 1 and the tree load. The worker reads the API schema once the `schema` step finishes, and `command-api` runs last because its `emit` waits for that worker. In `package.json`, call the runner (`tsx script/generate.ts <steps>`) rather than chaining `pnpm run generate:*`. `docs` names every step but `sdk`, including `schema`, so callers need not run `generate:schema` first.
 - **Skipped steps**: a phase-1 step with `files` in `script/generate.ts` runs only when the content hash of its inputs or outputs differs from its entry in `src/generated/.stamps.json` (`script/lib/step-stamp.ts`). When such a step starts reading a new file or package, add it to that step's inputs. `output-schemas` and the phase-2 steps have no stamp: their inputs are the source they import, which is no short list.
 
 - **Command docs** (`apps/cli-docs/src/content/docs/commands/*.md`) and the configuration page (`apps/cli-docs/src/content/docs/configuration.md`) are **gitignored** and generated from CLI metadata + hand-written fragments in `apps/cli-docs/src/fragments/` (paths live in `script/paths.ts`).
 - **Skill files** (`plugins/sentry-cli/skills/sentry-cli/`) are **committed** (consumed by external plugin systems) and auto-committed by CI when stale.
-- **Examples belong to the command**: add them to `docs.examples` (`{ description, command }[]`, see `src/commands/agent-conversation/list.ts`). They render in `--help`, the generated docs, and the skill references. Don't hand-write examples in `fullDescription` (an `Examples:` block, or indented `sentry …` lines under any label) or an Examples heading in a fragment; the `sentry-cli/no-examples-in-full-description` lint rule and `pnpm run check:fragments` reject both.
+- **Hints name the running program**: the same code runs as `sentry`, `npx sentry`, and `sentry-mcp`, so write a hint's command with the `` sentry`…` `` tag from `src/lib/app-identity.ts`, without the program name (`` sentry`issue list ${org}/` ``), inside the function that builds the hint. The tag inserts interpolated values as they are and nothing rewrites a hint later, so errors such as `ContextError` print usage lines as given. Keep a command in a constant or table as a `LazyCommand`, `` const usageHint = () => sentry`issue view <id>` ``, and call it where the hint is shown: the entry point registers the program only after the command modules load (`test/lib/app-identity-import.test.ts` checks that no hint is built at import). Command help prose (`docs`, `fullDescription`, `brief`) stays `sentry …`; `docs.examples` steps leave the program out. Lint (`sentry-cli/no-hardcoded-sentry-command`) flags a bare `sentry <route>` (routes come from `src/command-manifest.ts`), and `pnpm run check:doc-examples` checks each tag's command and flags against the route tree.
+- **Examples belong to the command**: add them to `docs.examples` (`{ description, run }[]`, see `src/commands/agent-conversation/list.ts`). Write each step without the program name, as `run: "issue list my-org/"`; `--help` adds the running program and the generated docs and skill references add `sentry`. A step inside other shell text keeps that text around it, as `{ prefix: "sudo ", args: "cli fix" }`. They render in `--help`, the generated docs, and the skill references. Don't hand-write examples in `fullDescription` (an `Examples:` block, or indented `sentry …` lines under any label) or an Examples heading in a fragment; the `sentry-cli/no-examples-in-full-description` lint rule and `pnpm run check:fragments` reject both.
 - **Target syntax belongs to the positional**: describe accepted target forms in the positional `brief` (use `ORG_ALL_TARGET_BRIEF` or `PROJECT_TARGET_BRIEF` from `src/lib/list-command.ts` for `[<org>/][<project>]` targets), not in a `Target patterns:` block. The brief renders in `--help`, the generated docs, and the skill references.
 - Use fragments in `apps/cli-docs/src/fragments/commands/` only for prose the command metadata can't carry: guides, permissions, caveats.
-- `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. Multi-step workflows belong in `docs.examples` too: pass `command` an array of steps (see `release create` and `local run`), and every step is checked and shown in `--help`, the docs, and the skill. Reserve `<!-- allow-commands: <reason> -->` (on the line directly above the block) for sample output and guides that interleave non-`sentry` commands.
+- `pnpm run check:fragments` also rejects any shell code block in a fragment that runs a `sentry` command, whatever its heading. Multi-step workflows belong in `docs.examples` too: pass `run` an array of steps (see `release create` and `local run`), and every step is checked and shown in `--help`, the docs, and the skill. Reserve `<!-- allow-commands: <reason> -->` (on the line directly above the block) for sample output and guides that interleave non-`sentry` commands.
 - `pnpm run check:fragments` validates fragment ↔ route consistency.
 - Positional `placeholder` values must be descriptive: `"org/project/trace-id"` not `"args"`.
 - Don't restate a value flag's `default` in its `brief`; help and docs already show it (`test/lib/flag-briefs.test.ts`).
@@ -907,10 +907,9 @@ CliError (base, exitCode=1)
 ├── ResolutionError (exitCode=23 — value provided but not found)
 ├── ValidationError (exitCode=21 — input validation)
 ├── DeviceFlowError (exitCode=51 — OAuth flow)
-├── SeerError (exitCode=40–42 by reason — 'not_enabled' | 'no_budget' | 'ai_disabled')
+├── SeerError (exitCode=40–43 by reason — 'not_enabled' | 'no_budget' | 'ai_disabled' | 'out_of_credits')
 ├── TimeoutError (exitCode=31 — operation timed out)
-├── UpgradeError (exitCode=50 — upgrade failures)
-└── WizardError (exitCode=61–64 by workflow step — init wizard error)
+└── UpgradeError (exitCode=50 — upgrade failures)
 ```
 
 > Exit code ranges: 1x=auth, 2x=input/config, 3x=API/network, 4x=feature/billing,
@@ -987,6 +986,22 @@ can only shrink, the same ratchet the old JSON baseline provided, with no
 separate script or baseline file to maintain. Fix a grandfathered catch by
 adding logging/re-throwing and deleting its suppression line; only add a new
 suppression for a genuinely intentional silent catch, with a real reason.
+
+Report errors to Sentry with `reportCliError(error, { tags, extra, level })`
+from `src/lib/error-reporting.ts`, never `captureException` directly. A raw
+capture skips the 4xx/network silencing and the `api_error` context, so user
+errors pile into one issue with no detail (CLI-10). The
+`no-raw-capture-exception` CLI Oxlint rule enforces this.
+
+### Process Exit
+
+Do not end the CLI with `process.exit()`, including forced-exit timers. A
+forced exit drops pending telemetry and piped output. When a process stays
+alive after its command, release the handle that keeps the event loop alive
+(`close-dispatcher.ts` is the example), or fix the dependency that owns it.
+The `no-process-exit` CLI Oxlint rule enforces this. Only signal, fatal error,
+and broken stream handlers exit directly, each with a disable comment that
+says why.
 
 ### Auto-Recovery for Wrong Entity Types
 
@@ -1079,9 +1094,7 @@ Commands select a capability wrapper instead of performing API lookups:
   that returned 404.
 
 Do not call `findProjectsBySlug()` or implement org fallback directly in a
-command. `sentry init` is the intentional not-found exception: it calls the
-classifier with fuzzy recovery disabled, then treats `not-found` as a new
-project name. Issue-short-ID recovery in `commands/issue/utils.ts` is not CLI
+command. Issue-short-ID recovery in `commands/issue/utils.ts` is not CLI
 target resolution and may perform its own project lookup. The
 `no-direct-target-resolution` CLI Oxlint rule enforces this command-layer
 boundary.

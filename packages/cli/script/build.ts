@@ -54,6 +54,7 @@ import { buildSplitBundle } from "./lib/split-bundle.js";
 import { zodEnglishLocalesPlugin } from "./lib/zod-locales-plugin.js";
 import { zodV3StubPlugin } from "./lib/zod-v3-stub-plugin.js";
 import { textImportPlugin } from "./text-import-plugin.js";
+import { logger } from "../src/lib/logger.js";
 
 const gzipAsync = promisify(gzip);
 
@@ -144,7 +145,6 @@ const BUNDLE_OPTIONS = {
   // external avoids pulling CJS React wrappers into the bundle.
   external: [
     "ink",
-    "ink-spinner",
     "react",
     "react/*",
     "react-reconciler",
@@ -210,7 +210,7 @@ type Bundle = {
  * This runs once and is shared by all compile targets.
  */
 async function bundleJs(): Promise<Bundle | undefined> {
-  console.log("  Step 1: Bundling TypeScript → JS + sourcemaps...");
+  logger.start("Step 1: Bundling TypeScript → JS + sourcemaps...");
 
   try {
     const cli = await buildSplitBundle({
@@ -232,16 +232,13 @@ async function bundleJs(): Promise<Bundle | undefined> {
       define: { ...BUNDLE_OPTIONS.define, SENTRY_CLI_COMPLETION_BUILD: "true" },
     });
 
-    console.log(
-      `    -> ${BUILD_DIR}/${basename(cli.entries.cli)}: ${cli.files.length} chunks (${await sizeMb(cli.files)} MB)`,
+    logger.log(
+      `  -> ${BUILD_DIR}/${basename(cli.entries.cli)}: ${cli.files.length} chunks (${await sizeMb(cli.files)} MB)`,
     );
-    console.log(`    -> ${COMPLETE_JS} (${await sizeMb([COMPLETE_JS])} MB)`);
+    logger.log(`  -> ${COMPLETE_JS} (${await sizeMb([COMPLETE_JS])} MB)`);
     return { files: [...cli.files, COMPLETE_JS], cli: cli.entries.cli };
   } catch (error) {
-    console.error("  Failed to bundle JS:");
-    console.error(
-      `    ${error instanceof Error ? error.message : String(error)}`,
-    );
+    logger.error("Failed to bundle JS:", error);
     return;
   }
 }
@@ -264,13 +261,10 @@ async function bundleSeaMain(bundle: Bundle): Promise<boolean> {
       assetDir: BUILD_DIR,
       target: BUNDLE_OPTIONS.target,
     });
-    console.log(`    -> ${SEA_MAIN_JS} (SEA main script)`);
+    logger.log(`  -> ${SEA_MAIN_JS} (SEA main script)`);
     return true;
   } catch (error) {
-    console.error("  Failed to bundle the SEA main script:");
-    console.error(
-      `    ${error instanceof Error ? error.message : String(error)}`,
-    );
+    logger.error("Failed to bundle the SEA main script:", error);
     return false;
   }
 }
@@ -286,7 +280,7 @@ async function uploadSourcemapsToSentry(
     return;
   }
   if (!process.env.SENTRY_AUTH_TOKEN) {
-    console.log("  No SENTRY_AUTH_TOKEN, skipping sourcemap upload");
+    logger.info("No SENTRY_AUTH_TOKEN, skipping sourcemap upload");
     return;
   }
   await uploadChunkSourcemaps(injected, {
@@ -310,10 +304,9 @@ async function compileAllTargets(
   // node:sea.getAsset() under the same keys.
   const assets = [...bundle.files];
 
-  // Add ink sidecar as asset if it exists (pre-bundled by text-import-plugin)
-  // The text-import-plugin pre-bundles the Ink sidecar into BUILD_DIR.
-  // Pass it to fossilize as a SEA asset so it's available at runtime
-  // via node:sea.getAsset(INK_SIDECAR_ASSET_KEY).
+  // text-import-plugin pre-bundles the Ink picker sidecar into BUILD_DIR.
+  // Pass it to fossilize as a SEA asset; `ink-ui.ts` reads it back with
+  // node:sea.getAsset("dist-build/ink-app.js").
   const INK_SIDECAR = `${BUILD_DIR}/ink-app.js`;
   if (existsSync(INK_SIDECAR)) {
     assets.push(INK_SIDECAR);
@@ -368,8 +361,8 @@ async function compileAllTargets(
     assets.push(CAR_EXTRACT);
   }
 
-  console.log(
-    `  Step 2: Compiling ${platforms.length} target(s) (Node SEA via fossilize)...`,
+  logger.start(
+    `Step 2: Compiling ${platforms.length} target(s) (Node SEA via fossilize)...`,
   );
 
   // Call fossilize's API rather than its CLI: the build embeds hundreds of
@@ -402,10 +395,7 @@ async function compileAllTargets(
       SEA_MAIN_JS,
     );
   } catch (error) {
-    console.error("  Fossilize compilation failed:");
-    console.error(
-      `    ${error instanceof Error ? error.message : String(error)}`,
-    );
+    logger.error("Fossilize compilation failed:", error);
     return { successes: 0, failures: targets.length };
   }
 
@@ -417,9 +407,7 @@ async function compileAllTargets(
       await postProcessTarget(target);
       successes += 1;
     } catch (error) {
-      console.error(
-        `  Post-processing ${getPackageName(target)} failed: ${String(error)}`,
-      );
+      logger.error(`Post-processing ${getPackageName(target)} failed:`, error);
       failures += 1;
     }
   }
@@ -451,7 +439,7 @@ async function postProcessTarget(target: BuildTarget): Promise<void> {
     throw new Error(`Expected output not found: ${outfile}`);
   }
 
-  console.log(`    -> ${outfile}`);
+  logger.log(`  -> ${outfile}`);
 
   // On main and release branches (RELEASE_BUILD=1), create gzip-compressed
   // copies for release downloads / GHCR nightly (~70% smaller with hole-punch).
@@ -463,7 +451,7 @@ async function postProcessTarget(target: BuildTarget): Promise<void> {
       (1 - compressed.byteLength / binary.byteLength) *
       100
     ).toFixed(0);
-    console.log(`    -> ${outfile}.gz (${ratio}% smaller)`);
+    logger.log(`  -> ${outfile}.gz (${ratio}% smaller)`);
   }
 }
 
@@ -486,8 +474,7 @@ async function build(): Promise<void> {
   const targetIndex = args.indexOf("--target");
   const targetArg = targetIndex !== -1 ? args[targetIndex + 1] : null;
 
-  console.log(`\nSentry CLI Build v${VERSION}`);
-  console.log("=".repeat(40));
+  logger.info(`Sentry CLI Build v${VERSION}`);
 
   // Determine targets
   let targets: BuildTarget[];
@@ -496,31 +483,28 @@ async function build(): Promise<void> {
     // Explicit target specified (for cross-compilation)
     const target = parseTarget(targetArg);
     if (!target) {
-      console.error(`Invalid target: ${targetArg}`);
-      console.error(
-        `Valid targets: ${ALL_TARGETS.map((t) => `${t.os === "win32" ? "windows" : t.os}-${t.arch}`).join(", ")}`,
+      logger.error(
+        `Invalid target: ${targetArg}\nValid targets: ${ALL_TARGETS.map((t) => `${t.os === "win32" ? "windows" : t.os}-${t.arch}`).join(", ")}`,
       );
       process.exit(1);
     }
     targets = [target];
-    console.log(`\nBuilding for target: ${getPackageName(target)}`);
+    logger.info(`Building for target: ${getPackageName(target)}`);
   } else if (singleBuild) {
     const currentTarget = ALL_TARGETS.find(
       (t) => t.os === process.platform && t.arch === process.arch,
     );
     if (!currentTarget) {
-      console.error(
-        `Unsupported platform: ${process.platform}-${process.arch}`,
-      );
+      logger.error(`Unsupported platform: ${process.platform}-${process.arch}`);
       process.exit(1);
     }
     targets = [currentTarget];
-    console.log(
-      `\nBuilding for current platform: ${getPackageName(currentTarget)}`,
+    logger.info(
+      `Building for current platform: ${getPackageName(currentTarget)}`,
     );
   } else {
     targets = ALL_TARGETS;
-    console.log(`\nBuilding for ${targets.length} targets`);
+    logger.info(`Building for ${targets.length} targets`);
   }
 
   // Clean and recreate output directory (esbuild requires it to exist).
@@ -529,8 +513,6 @@ async function build(): Promise<void> {
   await rm(BUILD_DIR, { recursive: true, force: true });
   mkdirSync("dist-bin", { recursive: true });
 
-  console.log("");
-
   // Step 1: Bundle TS → JS + sourcemaps (shared by all targets)
   const bundle = await bundleJs();
   if (!bundle) {
@@ -538,15 +520,13 @@ async function build(): Promise<void> {
   }
 
   // Inject debug IDs into the chunks and sourcemaps (non-fatal on failure).
-  console.log("  Injecting debug IDs...");
+  logger.start("Injecting debug IDs...");
   const injected = await injectDebugIds(bundle.files);
-  console.log(`    -> Debug IDs injected into ${injected.length} files`);
+  logger.log(`  -> Debug IDs injected into ${injected.length} files`);
 
   if (!(await bundleSeaMain(bundle))) {
     process.exit(1);
   }
-
-  console.log("");
 
   // Step 2: Compile JS → native SEA binary for all targets at once
   const { successes: successCount, failures: failCount } =
@@ -559,12 +539,12 @@ async function build(): Promise<void> {
   // await rm(BUILD_DIR, { recursive: true, force: true });
 
   // Summary
-  console.log(`\n${"=".repeat(40)}`);
-  console.log(`Build complete: ${successCount} succeeded, ${failCount} failed`);
-
+  const summary = `Build complete: ${successCount} succeeded, ${failCount} failed`;
   if (failCount > 0) {
+    logger.error(summary);
     process.exit(1);
   }
+  logger.success(summary);
 }
 
 await build();

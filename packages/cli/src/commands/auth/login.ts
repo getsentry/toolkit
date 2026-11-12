@@ -2,7 +2,8 @@ import { isatty } from "node:tty";
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import type { SentryContext } from "../../context.js";
 import { pointDefaultUrlAtAccount } from "../../lib/account-selection.js";
-import { getCurrentUser, getUserRegions } from "../../lib/api-client.js";
+import { checkTokenAccess, getCurrentUser } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { normalizeAuthToken } from "../../lib/auth-header.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
 import {
@@ -131,8 +132,8 @@ function resolveLoginScope(flags: LoginFlags): string | undefined {
         `${conflicting} cannot be used with --token — OAuth scope is fixed when the token is issued, so the CLI cannot narrow an existing token's permissions.`,
         "",
         "To restrict OAuth scopes, drop --token and use the device flow:",
-        "  sentry auth login --read-only",
-        "  sentry auth login --scope project:read --scope org:read",
+        `  ${sentry`auth login --read-only`}`,
+        `  ${sentry`auth login --scope project:read --scope org:read`}`,
         "",
         "Or create a scoped User Auth Token in Sentry (Account → Auth Tokens) and pass it without --read-only/--scope.",
       ].join("\n"),
@@ -304,8 +305,8 @@ export function rcTokenHint(
     : ` --url ${effectiveHost}`;
   return (
     `Found a token in .sentryclirc (${rcConfig.sources.token}). ` +
-    "To import it: sentry cli import | " +
-    `To pass it directly: sentry auth login --token <token>${urlHint}`
+    `To import it: ${sentry`cli import`} | ` +
+    `To pass it directly: ${sentry`auth login --token <token>${urlHint}`}`
   );
 }
 
@@ -328,7 +329,7 @@ function persistLoginUrlAsDefault(
     pointDefaultUrlAtAccount(effectiveHost);
   } catch {
     log.debug(
-      `Could not persist default URL to DB; host is recorded on the stored token. Set SENTRY_HOST or run 'sentry cli defaults url ${effectiveHost}' if subsequent commands route incorrectly.`,
+      `Could not persist default URL to DB; host is recorded on the stored token. Set SENTRY_HOST or run '${sentry`cli defaults url ${effectiveHost}`}' if subsequent commands route incorrectly.`,
     );
   }
 }
@@ -390,7 +391,7 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     // Non-interactive (piped, CI): print message and block
     if (!isatty(0)) {
       log.info(
-        "You are already authenticated. Use 'sentry auth login <email>' to add another account, " +
+        `You are already authenticated. Use '${sentry`auth login <email>`}' to add another account, ` +
           "or '--force' to replace the current login.",
       );
       return false;
@@ -401,7 +402,7 @@ async function handleExistingAuth(force: boolean): Promise<boolean> {
     const identity = userInfo ? formatUserIdentity(userInfo) : "current user";
     const confirmed = await prompt(
       `Already authenticated as ${identity}. Add another account? ` +
-        "(The current account stays saved; see 'sentry auth list'. Use --force to replace it.)",
+        `(The current account stays saved; see '${sentry`auth list`}'. Use --force to replace it.)`,
       { type: "confirm", initial: false },
     );
 
@@ -431,7 +432,7 @@ async function discardTokenLogin(
 
 /**
  * Handle a failure while validating a user-supplied `--token` via
- * {@link getUserRegions}. A 401/403 means the token itself is rejected (invalid
+ * {@link checkTokenAccess}. A 401/403 means the token itself is rejected (invalid
  * or insufficiently scoped) — remove the account it was stored as, restore the
  * previously active account, and raise a user-facing {@link AuthError}.
  * Any other failure (network, 5xx, parse) is NOT a token problem, so the
@@ -497,47 +498,45 @@ export const loginCommand = buildCommand({
       "replaces the stored login for that server (accounts on other servers\n" +
       "are kept). Pass an email (or <email>:<server>, as 'sentry org list'\n" +
       "shows it) to add or log in again to that account without prompting:\n" +
-      "Sentry approves the request as whoever is signed in to the browser,\n" +
-      "so a login approved as another user is refused and nothing is saved.",
+      "Sentry only accepts approval from that account, and a login approved\n" +
+      "as another user is refused and nothing is saved.",
     examples: [
       {
         description: "Log in with OAuth (device flow)",
-        command: "sentry auth login",
+        run: "auth login",
       },
       {
         description: "Log in with an API token",
-        command: "sentry auth login --token YOUR_SENTRY_API_TOKEN",
+        run: "auth login --token YOUR_SENTRY_API_TOKEN",
       },
       {
         description: "Request only read-only scopes",
-        command: "sentry auth login --read-only",
+        run: "auth login --read-only",
       },
       {
         description: "Request specific scopes (repeatable or comma-separated)",
-        command: "sentry auth login --scope project:read --scope org:read",
+        run: "auth login --scope project:read --scope org:read",
       },
       {
         description: "Log in to a self-hosted instance",
-        command: "sentry auth login --url https://sentry.example.com",
+        run: "auth login --url https://sentry.example.com",
       },
       {
         description: "Log in to a self-hosted instance with a token",
-        command:
-          "sentry auth login --token YOUR_TOKEN --url https://sentry.example.com",
+        run: "auth login --token YOUR_TOKEN --url https://sentry.example.com",
       },
       {
         description:
           "Add (or log in again to) a specific account without prompting",
-        command: "sentry auth login jane@example.com",
+        run: "auth login jane@example.com",
       },
       {
         description: "Add an account on a specific server",
-        command:
-          "sentry auth login jane@example.com --url https://sentry.example.com",
+        run: "auth login jane@example.com --url https://sentry.example.com",
       },
       {
         description: "Same as --url, using the account notation",
-        command: "sentry auth login jane@example.com:sentry.example.com",
+        run: "auth login jane@example.com:sentry.example.com",
       },
     ],
   },
@@ -651,8 +650,8 @@ export const loginCommand = buildCommand({
     const newAccount = email !== undefined || !flags.force;
 
     if (token !== undefined) {
-      // Save token first (with host scope), then validate by fetching user
-      // regions. It is always stored as its own account so a rejected token
+      // Save token first (with host scope), then validate it by listing
+      // orgs. It is always stored as its own account so a rejected token
       // never touches the stored ones; with `--force` the stored login for
       // this server (never another server's) is replaced only once the new
       // token checks out.
@@ -666,7 +665,7 @@ export const loginCommand = buildCommand({
       });
 
       try {
-        await getUserRegions();
+        await checkTokenAccess();
       } catch (error) {
         await handleTokenValidationError(error, accountId, previousAccountId);
       }

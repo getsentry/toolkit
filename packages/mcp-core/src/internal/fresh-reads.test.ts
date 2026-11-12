@@ -10,6 +10,7 @@ function probeTool() {
   const calls: { params: Record<string, unknown>; fresh: boolean }[] = [];
   const tool = withFreshReadInput({
     name: "probe",
+    title: "Probe",
     description: "Probe",
     inputSchema: { id: z.string() },
     skills: ["inspect"],
@@ -36,7 +37,7 @@ describe("withFreshReadInput", () => {
 
     for (const args of [{ id: "a", fresh: true }, { id: "b" }]) {
       await tool.handler(
-        prepareToolParams({ tool, params: args, context }) as never,
+        prepareToolParams({ tool, params: args, context }),
         context,
       );
     }

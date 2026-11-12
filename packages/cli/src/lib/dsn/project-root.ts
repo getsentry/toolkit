@@ -614,7 +614,7 @@ async function walkUpDirectories(
   }
 
   // Populate sentryclirc cache from accumulated data
-  setSentryCliRcCache(resolvedStart, rcConfig);
+  await finalizeSentryCliRc(resolvedStart, rcConfig);
 
   // Determine project root from candidates (priority order)
   const selected = selectProjectRoot(

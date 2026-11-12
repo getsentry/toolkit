@@ -52,6 +52,7 @@ When the CLI needs to determine your org and project, it checks these sources in
 4. **Persistent defaults** — set via `sentry cli defaults`
 5. **DSN auto-detection** — scans source code and `.env` files
 6. **Directory name inference** — matches your directory name against project slugs
+7. **Your account** — when you can reach exactly one organization, it is used. Commands that need a project also need that organization to have exactly one project
 
 The first source that provides both org and project wins. For org-only commands, only the org is needed.
 
@@ -90,6 +91,16 @@ export SENTRY_DISABLE_TIPS=1   # per-session, overrides the stored preference
 ```
 
 Only the tips are removed. Pagination hints, dry-run and cancellation notices, and the cache-age footer (`cached · 3m ago · use -f to refresh`) are still shown.
+
+## Telemetry
+
+The CLI sends usage data and error reports about itself to Sentry. To opt out, set `SENTRY_CLI_NO_TELEMETRY=1` or `DO_NOT_TRACK=1`, or run `sentry cli defaults telemetry off`.
+
+When telemetry can't be sent, for example while offline or when a firewall blocks Sentry, the CLI keeps it in its local database and sends up to 10 stored envelopes on each later run. The cache holds at most 100 envelopes and 4 MiB, compressed. When it's full, the oldest usage data goes first, then the oldest error reports. It discards error reports after 30 days and everything else after 4 days. Metrics, such as timings, aren't cached: when they can't be sent, they're dropped.
+
+After the first failed send, the CLI stops sending for 5 minutes, so an unreachable Sentry delays a command's exit by about 3 seconds at most. Long-running commands, such as `sentry mcp` and `sentry local`, then try one send every 5 minutes, and send up to 10 stored envelopes once one succeeds.
+
+Opting out deletes the cache on the next run. The library (`createSentrySDK`) never caches telemetry.
 
 ## Global Options
 

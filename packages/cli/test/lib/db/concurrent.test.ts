@@ -10,6 +10,7 @@
 
 import { spawn } from "node:child_process";
 import { join } from "node:path";
+import { createEnvelope } from "@sentry/core";
 import { beforeEach, describe, expect, test } from "vitest";
 
 function noop(): void {
@@ -22,6 +23,7 @@ import {
   closeDatabase,
 } from "../../../src/lib/db/index.js";
 import { getCachedProject } from "../../../src/lib/db/project-cache.js";
+import { createEnvelopeStore } from "../../../src/lib/telemetry/offline-store.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 const WORKER_SCRIPT = join(import.meta.dirname, "concurrent-worker.ts");
@@ -193,6 +195,29 @@ describe("concurrent database access", () => {
         expect(cached?.dsn).toBe(`https://key${w}${i}@sentry.io/${w}${i}`);
       }
     }
+  });
+
+  test("processes claiming stored telemetry never get the same envelope", async () => {
+    const store = createEnvelopeStore();
+    const ids = Array.from({ length: 60 }, (_, i) => `event-${i}`);
+    for (const id of ids) {
+      await store.push(
+        createEnvelope({ event_id: id }, [
+          [{ type: "event" }, { event_id: id }],
+        ] as never),
+      );
+    }
+    closeDatabase();
+
+    const results = await spawnWorkersConcurrently(
+      getConfigDir(),
+      4,
+      "claim-envelopes",
+    );
+
+    expect(results.filter((r) => !r.success)).toHaveLength(0);
+    const claimed = results.flatMap((r) => r.data as string[]);
+    expect(claimed.sort()).toEqual([...ids].sort());
   });
 
   test("handles contention without SQLITE_BUSY errors", async () => {

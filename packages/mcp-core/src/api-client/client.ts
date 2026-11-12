@@ -15,25 +15,21 @@ import {
   listProjectEventAttachments,
   parseSentryLinkHeader,
 } from "@sentry/api";
-import { sentryBearerHeader } from "@sentry/toolkit-core/auth-token";
 import { operations } from "@sentry/api/operations";
 import {
-  ApiError,
   ApiNotFoundError,
   apiPath,
-  ApiRateLimitError,
   type ApiTarget,
   ApiValidationError,
-  applyStatsMixinTimeParams,
   applyTimeParams,
   createApiClientCore,
   createApiError,
   createApiTransport,
   createIdempotentOperationMatcher,
-  parseStatsPeriod,
   readJsonResponse,
   type RetryPolicy,
   selectIdempotentWrites,
+  sentryBearerHeader,
 } from "@sentry/api/client";
 import {
   addProjectTeam,
@@ -99,7 +95,6 @@ import {
   isProfilesDataset,
   normalizeEventsDataset,
 } from "../utils/events-datasets";
-import { isNumericId } from "../utils/slug-validation";
 import {
   type DashboardUrlOptions,
   getAIConversationsUrl as getAIConversationsUrlUtil,
@@ -121,7 +116,7 @@ import {
   isPublicSentryHost,
   type TraceMetricIdentifier,
 } from "../utils/url-utils";
-import { USER_AGENT } from "../version";
+import { getUserAgent } from "../version";
 import {
   AgenticOnboardingRunSchema,
   AIConversationDetailsResponseSchema,
@@ -190,7 +185,7 @@ import {
   TeamSchema,
   TraceMetaSchema,
   TraceSchema,
-  TransactionProfileSchema,
+  TransactionProfileResponseSchema,
   UptimeCheckListSchema,
   UptimeMonitorListSchema,
   UptimeMonitorSchema,
@@ -232,6 +227,7 @@ import type {
   IssueCommentList,
   IssueIntegrationList,
   IssueList,
+  IssueResolutionDetails,
   IssueTagKeyList,
   IssueTagValues,
   MetricAlertRule,
@@ -264,6 +260,7 @@ import type {
   Trace,
   TraceMeta,
   TransactionProfile,
+  LegacySpeedscopeProfile,
   UptimeCheckList,
   UptimeMonitor,
   UptimeMonitorList,
@@ -686,7 +683,7 @@ export class SentryApiService {
 
   /** Headers for every request after `Content-Type`. */
   private requestHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { "User-Agent": USER_AGENT };
+    const headers: Record<string, string> = { "User-Agent": getUserAgent() };
     if (this.accessToken !== null) {
       const authorization = sentryBearerHeader(this.accessToken);
       if (authorization === null) {
@@ -1020,7 +1017,6 @@ export class SentryApiService {
       start,
       end,
       aggregateFunctions,
-      groupByFields,
     } = params;
 
     const urlParams = new URLSearchParams();
@@ -3260,7 +3256,7 @@ export class SentryApiService {
       query: {
         limit,
         sort: sortBy,
-        statsPeriod: statsPeriod ?? DEFAULT_SEARCH_ISSUES_PERIOD,
+        statsPeriod,
         // Always send `query`, even empty: Sentry applies `is:unresolved`
         // only when the parameter is missing.
         query: query ?? "",
@@ -4121,17 +4117,21 @@ export class SentryApiService {
       ignoreWindow,
       ignoreUserCount,
       ignoreUserWindow,
+      statusDetails,
+      priority,
     }: {
       organizationSlug: string;
       issueId: string;
       status?: string;
       assignedTo?: string | null;
+      priority?: string;
       substatus?: string;
       ignoreDuration?: number;
       ignoreCount?: number;
       ignoreWindow?: number;
       ignoreUserCount?: number;
       ignoreUserWindow?: number;
+      statusDetails?: IssueResolutionDetails;
     },
     opts?: RequestOptions,
   ): Promise<Issue> {
@@ -4144,8 +4144,12 @@ export class SentryApiService {
       ignoreWindow?: number;
       ignoreUserCount?: number;
       ignoreUserWindow?: number;
+      statusDetails?: IssueResolutionDetails;
+      priority?: string;
     } = {};
     if (status !== undefined) updateData.status = status;
+    if (priority !== undefined) updateData.priority = priority;
+    if (statusDetails !== undefined) updateData.statusDetails = statusDetails;
     if (assignedTo !== undefined) updateData.assignedTo = assignedTo ?? "";
     if (substatus !== undefined) updateData.substatus = substatus;
     if (ignoreDuration !== undefined)
@@ -5007,11 +5011,13 @@ export class SentryApiService {
       profileId: string;
     },
     opts?: RequestOptions,
-  ): Promise<TransactionProfile> {
+  ): Promise<TransactionProfile | LegacySpeedscopeProfile> {
+    // Legacy (e.g. Android) profiles are returned as speedscope output even
+    // when `format=sample` is requested, so they have no `profile` key.
     return await getTransactionProfile(
       this.target(opts?.host),
       params,
-      TransactionProfileSchema,
+      TransactionProfileResponseSchema,
     );
   }
 

@@ -43,13 +43,13 @@ export const listCommand = buildCommand({
     examples: [
       {
         description: "List all valid Sentry platform identifiers",
-        command: "sentry platform list",
+        run: "platform list",
       },
       {
         description: "Filter by substring",
-        command: "sentry platform list --search python",
+        run: "platform list --search python",
       },
-      { description: "Output as JSON", command: "sentry platform list --json" },
+      { description: "Output as JSON", run: "platform list --json" },
     ],
   },
   output: {

@@ -8,6 +8,7 @@
 
 import { readFile } from "node:fs/promises";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseFilePath } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
@@ -32,12 +33,11 @@ export const uuidCommand = buildCommand({
     examples: [
       {
         description: "Compute the UUID for a ProGuard/R8 mapping file",
-        command:
-          "sentry proguard uuid ./app/build/outputs/mapping/release/mapping.txt",
+        run: "proguard uuid ./app/build/outputs/mapping/release/mapping.txt",
       },
       {
         description: "Output as JSON (includes the file path)",
-        command: "sentry proguard uuid mapping.txt --json",
+        run: "proguard uuid mapping.txt --json",
       },
     ],
   },
@@ -70,7 +70,7 @@ export const uuidCommand = buildCommand({
     if (!path?.trim()) {
       throw new ContextError(
         "Mapping file path",
-        "sentry proguard uuid <path>",
+        sentry`proguard uuid <path>`,
         [],
       );
     }

@@ -801,32 +801,6 @@ describe("getCompletions: paths", () => {
     ]);
   });
 
-  test("init completes targets, or directories once the word looks like a path", async () => {
-    await seedOrgs([{ slug: "acme", name: "Acme Inc" }]);
-    expect(await values(["init"], "ac")).toEqual(["acme/"]);
-    expect(await values(["init"], `${dir}/`)).toEqual([
-      `${dir}/dist/`,
-      `${dir}/out/`,
-    ]);
-    // Bare names would be read as a target, so a path keeps its prefix
-    const cwd = process.cwd();
-    process.chdir(dir);
-    try {
-      expect(await values(["init", "acme/"], ".")).toEqual([
-        "./dist/",
-        "./out/",
-      ]);
-      // After a target, only a directory can follow
-      expect(await values(["init", "acme/"], "d")).toEqual(["./dist/"]);
-      // After a directory, only a target can follow; after both, nothing
-      expect(await values(["init", "./dist"], "ac")).toEqual(["acme/"]);
-      expect(await values(["init", "./dist"], "./")).toEqual([]);
-      expect(await values(["init", "acme/", "./dist"], "")).toEqual([]);
-    } finally {
-      process.chdir(cwd);
-    }
-  });
-
   test("a partial in a missing directory completes nothing", async () => {
     expect(await values(["wasm-split"], `${dir}/missing/a`)).toEqual([]);
   });

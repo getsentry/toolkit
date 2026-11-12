@@ -222,36 +222,6 @@ describe("mergeCommand.func()", () => {
     expect(mergeSpy).not.toHaveBeenCalled();
   });
 
-  test("rejects issues where org could not be determined", async () => {
-    // One issue resolves without org (e.g. bare numeric ID, no DSN match),
-    // the other has a known org — without the guard, the merge would
-    // silently proceed to the known org and fail with a confusing API error.
-    resolveIssueSpy.mockImplementation(
-      byText(({ issueArg }: { issueArg: string }) => {
-        if (issueArg === "CLI-A") {
-          return Promise.resolve({
-            org: "my-org",
-            issue: makeMockIssue({ shortId: "CLI-A", id: "10A" }),
-          });
-        }
-        return Promise.resolve({
-          org: undefined,
-          issue: makeMockIssue({ shortId: "NO-ORG", id: "999" }),
-        });
-      }),
-    );
-
-    const { context } = createMockContext();
-    const func = await mergeCommand.loader();
-    const err = await func
-      .call(context, { json: false }, "CLI-A", "999")
-      .catch((e: Error) => e);
-
-    expect(err.message).toContain("Could not determine the organization");
-    expect(err.message).toContain("NO-ORG");
-    expect(mergeSpy).not.toHaveBeenCalled();
-  });
-
   test("rejects cross-org merges with a friendly message", async () => {
     resolveIssueSpy.mockImplementation(
       byText(({ issueArg }: { issueArg: string }) =>

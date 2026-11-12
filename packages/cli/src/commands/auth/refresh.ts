@@ -11,6 +11,7 @@
  */
 
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { choiceListParser } from "../../lib/completion-target.js";
 import {
@@ -106,23 +107,23 @@ session (similar to \`gh auth refresh -s <scope>\`).
       {
         description:
           "Refresh the OAuth access token when it is close to expiring",
-        command: "sentry auth refresh",
+        run: "auth refresh",
       },
       {
         description: "Refresh even if the token is still valid",
-        command: "sentry auth refresh --force",
+        run: "auth refresh --force",
       },
       {
         description: "Re-authenticate with specific scopes",
-        command: "sentry auth refresh --scope project:read --scope org:read",
+        run: "auth refresh --scope project:read --scope org:read",
       },
       {
         description: "Re-authenticate with read-only scopes",
-        command: "sentry auth refresh --read-only",
+        run: "auth refresh --read-only",
       },
       {
         description: "Output the refresh result as JSON",
-        command: "sentry auth refresh --json",
+        run: "auth refresh --json",
       },
     ],
   },
@@ -193,7 +194,7 @@ session (similar to \`gh auth refresh -s <scope>\`).
       throw new AuthError(
         "invalid",
         "No refresh token available. You may be using a manual API token.\n" +
-          "Run 'sentry auth login' to authenticate with OAuth and enable auto-refresh.",
+          `Run '${sentry`auth login`}' to authenticate with OAuth and enable auto-refresh.`,
       );
     }
 

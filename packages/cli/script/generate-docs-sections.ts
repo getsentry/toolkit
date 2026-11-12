@@ -53,6 +53,7 @@ import {
 import { parseIssueArgument } from "../src/lib/issue-arguments.js";
 import { OAUTH_SCOPES } from "../src/lib/oauth.js";
 import { TEXT_EXTENSIONS } from "../src/lib/scan/constants.js";
+import { logger } from "../src/lib/logger.js";
 
 const pkg = JSON.parse(await readFile("package.json", "utf-8"));
 const TARGET_GRAMMAR = "grammar/org-project-target.pegjs";
@@ -344,7 +345,7 @@ function extractNodeVersion(): string {
  */
 function extractDevNodeVersion(): string {
   const constraint: string | undefined =
-    (pkg as any).devEngines?.runtime?.version ?? pkg.engines?.node;
+    pkg.devEngines?.runtime?.version ?? pkg.engines?.node;
   if (!constraint) {
     throw new Error("Missing devEngines.runtime.version and engines.node");
   }
@@ -923,7 +924,7 @@ function commandAt(path: string[]): Command {
  */
 function sdkRunStatement(path: string[], variable: string): string {
   for (const example of commandAt(path).__examples ?? []) {
-    const steps = exampleSteps(example);
+    const steps = exampleSteps(example, "sentry");
     const commands = steps.length === 1 ? shellCommands(steps[0] ?? "") : [];
     const words = commands.length === 1 ? (commands[0] ?? []) : [];
     if (words[0] === "sentry" && words.some((w) => w.startsWith("-"))) {
@@ -1140,26 +1141,26 @@ export async function emit({ check }: { check: boolean }): Promise<void> {
 
     if (updated !== original) {
       if (check) {
-        console.error(`STALE: ${section.filePath} [${section.sectionName}]`);
+        logger.error(`STALE: ${section.filePath} [${section.sectionName}]`);
         staleCount += 1;
       } else {
         await writeFile(section.filePath, updated);
-        console.log(`Updated: ${section.filePath} [${section.sectionName}]`);
+        logger.info(`Updated: ${section.filePath} [${section.sectionName}]`);
       }
     } else {
-      console.log(`Up to date: ${section.filePath} [${section.sectionName}]`);
+      logger.info(`Up to date: ${section.filePath} [${section.sectionName}]`);
     }
   }
 
   if (check && staleCount > 0) {
-    console.error(
-      `\n${staleCount} section(s) are stale. Run: pnpm run generate:docs`,
+    logger.error(
+      `${staleCount} section(s) are stale. Run: pnpm run generate:docs`,
     );
     process.exitCode = 1;
     return;
   }
 
   if (!check) {
-    console.log("All docs sections generated.");
+    logger.success("All docs sections generated.");
   }
 }
