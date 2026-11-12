@@ -56,6 +56,7 @@ type ReplayRecording =
   | {
       status: "loaded";
       events: ReplayTimelineEvent[];
+      videoClipCount: number;
       segmentsRead: number;
       truncated: boolean;
     };
@@ -162,6 +163,21 @@ export const getReplayDetailsOutputSchema = z.object({
         .describe("Later activity is missing past `segmentsRead`."),
     }),
   ]),
+  video: z
+    .object({
+      clips: z
+        .number()
+        .describe("Clips in the segments read, one per recording segment."),
+      downloadCommand: z
+        .string()
+        .describe(
+          "Sentry CLI command that saves the video as one mp4, joining the clips with ffmpeg when it is installed.",
+        ),
+    })
+    .nullable()
+    .describe(
+      "Screen video of a mobile replay. Null for web replays or when the recording is unavailable. This tool does not return the video: to watch it, run `downloadCommand` in a shell where the Sentry CLI is logged in (`npx sentry` runs it without installing).",
+    ),
   related: z.object({
     issues: z
       .array(
@@ -212,6 +228,7 @@ export default defineTool({
     "<hints>",
     "- Offsets are seconds from the replay start; negative offsets count back from the end, so startOffsetSeconds=-10 shows the last 10 seconds",
     "- `timeline.recorded` counts every recorded event by category, so you can see what to ask for next",
+    "- Mobile replays are recorded as video; `video.downloadCommand` is a Sentry CLI command that downloads it as one mp4 file",
     "</hints>",
   ].join("\n"),
   inputSchema: {
@@ -323,6 +340,13 @@ export default defineTool({
       recording.status === "unavailable"
         ? { status: "unavailable" as const, reason: recording.reason }
         : buildTimeline({ replay, recording, timelineRequest });
+    const video =
+      recording.status === "loaded" && recording.videoClipCount > 0
+        ? {
+            clips: recording.videoClipCount,
+            downloadCommand: `sentry replay download ${resolved.organizationSlug}/${replay.id}`,
+          }
+        : null;
     const related = {
       issues: relatedIssues.map(({ eventId, issue }) => ({
         eventId,
@@ -344,6 +368,7 @@ export default defineTool({
           apiService.getReplayUrl(resolved.organizationSlug, replay.id),
       }),
       timeline,
+      video,
       related,
       // Replay URLs also reach this handler through get_sentry_resource, so
       // only suggest calls that are reachable in the session.
@@ -461,6 +486,7 @@ async function fetchReplayRecording({
     return {
       status: "loaded",
       events: builder.build(),
+      videoClipCount: builder.videoClipCount(),
       segmentsRead,
       truncated,
     };
