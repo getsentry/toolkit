@@ -12,7 +12,11 @@ import {
   generateKeyHintsAgent,
   shortlistAttributesAgent,
 } from "./agent";
-import { formatFindResult, formatListResult } from "./format";
+import {
+  formatFindResult,
+  formatListResult,
+  getRecommendedKeysByDataset,
+} from "./format";
 
 export const SEARCH_ATTRIBUTES_DATASETS = ["spans", "logs", "metrics"] as const;
 
@@ -135,9 +139,25 @@ export async function runSearchAttributes(
         }
         return [];
       });
+
+    // If there are results from the hints, use that + recommended keys
+    // otherwise it defaults to the original exhaustive list
     const hintRows = await Promise.all(keyHints.map(searchHint));
-    rows = mergeByKey([rows, ...hintRows]);
+    if (
+      hintRows.length > 0 &&
+      // as long as one of the hint calls have values we should use that
+      hintRows.reduce((acc, hintRow) => hintRow.length > 0 || acc, false)
+    ) {
+      let recommendedRows: TraceItemAttribute[] = [];
+      const recommendedKeys = getRecommendedKeysByDataset(params.dataset);
+      recommendedRows = rows.filter((attribute) =>
+        recommendedKeys.has(attribute.key),
+      );
+      rows = mergeByKey([recommendedRows, ...hintRows]);
+    }
   }
+
+  console.log(rows);
 
   const matches =
     rows.length === 0

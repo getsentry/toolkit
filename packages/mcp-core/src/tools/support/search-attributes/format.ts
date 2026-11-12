@@ -192,15 +192,19 @@ function sortAttributes(
   attributes: TraceItemAttribute[],
   dataset: SearchAttributesDataset,
 ): TraceItemAttribute[] {
-  const recommended = new Set([
-    ...RECOMMENDED_FIELDS[normalizeEventsDataset(dataset)].basic,
-    ...Object.keys(DATASET_FIELDS[normalizeEventsDataset(dataset)]),
-    ...Object.keys(BASE_COMMON_FIELDS),
-  ]);
+  const recommended = getRecommendedKeysByDataset(dataset);
   const group = ({ key }: TraceItemAttribute) => (recommended.has(key) ? 0 : 1);
   return [...attributes].sort(
     (a, b) => group(a) - group(b) || a.key.localeCompare(b.key),
   );
+}
+
+export function getRecommendedKeysByDataset(dataset: SearchAttributesDataset) {
+  return new Set([
+    ...RECOMMENDED_FIELDS[normalizeEventsDataset(dataset)].basic,
+    ...Object.keys(DATASET_FIELDS[normalizeEventsDataset(dataset)]),
+    ...Object.keys(BASE_COMMON_FIELDS),
+  ]);
 }
 
 /** Blank when there's no description */
