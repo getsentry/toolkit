@@ -56,7 +56,7 @@ describe("find_uptime_monitors", () => {
   });
 
   it("resolves projectSlug to project id query param", async () => {
-    let requestUrl: string | null = null;
+    let requestUrl: string | undefined;
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/uptime/",
@@ -80,7 +80,7 @@ describe("find_uptime_monitors", () => {
       context,
     );
 
-    expect(requestUrl).not.toBeNull();
+    expect(requestUrl).toBeDefined();
     const params = new URL(requestUrl ?? "").searchParams;
     expect(params.get("project")).toBe("4509109104082945");
     expect(params.get("environment")).toBe("production");

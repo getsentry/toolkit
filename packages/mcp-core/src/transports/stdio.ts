@@ -63,9 +63,9 @@ export type StdioConnection = {
  * Context is already captured in tool handler closures by `buildServer()`;
  * it is only read here for telemetry attributes.
  */
-export async function startStdio<Context extends StdioServerContext>(
+export async function startStdio(
   server: McpServer,
-  context: Context,
+  context: StdioServerContext,
 ): Promise<StdioConnection> {
   const transport = new StdioServerTransport();
   await startNewTrace(async () => {

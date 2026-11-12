@@ -69,8 +69,8 @@ async function runViaApp(
 ): Promise<{ stderr: string; exitCode: number | undefined }> {
   let stderr = "";
   const context: SentryContext = {
-    process: { ...process, exitCode: undefined } as typeof process,
-    env: {} as NodeJS.ProcessEnv,
+    process: { ...process, exitCode: undefined },
+    env: {},
     cwd: tmpDir,
     homeDir: tmpDir,
     configDir: tmpDir,
@@ -299,7 +299,7 @@ describe("build upload", () => {
         "archive.xcarchive/dSYMs/Framework.dSYM/Contents/symbols"
       ],
     ).toEqual(strToU8("framework symbols"));
-    expect(existsSync(uploads[0]!.path)).toBe(false);
+    expect(existsSync(uploads[0].path)).toBe(false);
   });
 
   test.each(["apk", "aab", "xcarchive"])(

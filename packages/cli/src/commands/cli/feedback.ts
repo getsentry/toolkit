@@ -38,11 +38,11 @@ export const feedbackCommand = buildCommand({
     examples: [
       {
         description: "Send positive feedback",
-        command: "sentry cli feedback i love this tool",
+        run: "cli feedback i love this tool",
       },
       {
         description: "Report an issue",
-        command: "sentry cli feedback the issue view is confusing",
+        run: "cli feedback the issue view is confusing",
       },
     ],
   },

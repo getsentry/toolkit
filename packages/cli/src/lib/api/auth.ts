@@ -1,7 +1,9 @@
+import { retrieveApiIndex } from "@sentry/api";
 import { array, nullable, object, string } from "valibot";
 
 import { getControlSiloUrl } from "../sentry-client.js";
-import { apiRequestToRegion } from "./infrastructure.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
+import { unwrapValidatedResult } from "./infrastructure.js";
 
 const AuthStatusSchema = object({
   auth: nullable(
@@ -14,8 +16,14 @@ const AuthStatusSchema = object({
 export async function getCurrentAuthScopes(): Promise<
   readonly string[] | null
 > {
-  const { data } = await apiRequestToRegion(getControlSiloUrl(), "", {
-    schema: AuthStatusSchema,
+  const result = await retrieveApiIndex({
+    ...getSdkClientConfig(getControlSiloUrl()),
   });
+  const data = unwrapValidatedResult(
+    result,
+    "Failed to read token scopes",
+    AuthStatusSchema,
+    "/",
+  );
   return data.auth?.scopes ?? null;
 }

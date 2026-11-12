@@ -62,7 +62,7 @@ function createMcpContext(
       ...DEFAULT_OAUTH_PROPS,
       ...props,
     },
-  } as ExecutionContext & { props: OAuthProps };
+  };
 }
 
 function createMcpRequest(
@@ -405,7 +405,7 @@ describe("MCP Handler", () => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(structuredContent, null, 2),
+              text: JSON.stringify(structuredContent),
             },
           ],
           structuredContent,
@@ -582,7 +582,7 @@ describe("MCP Handler", () => {
             : null,
         ),
         put: vi.fn(),
-      } as unknown as KVNamespace;
+      };
       const ctx = createMcpContext({
         accessToken: "test-current-user-token",
         grantedSkills: ["inspect"],
@@ -656,7 +656,7 @@ describe("MCP Handler", () => {
           await writeReady;
           stored = JSON.parse(value);
         }),
-      } as unknown as KVNamespace;
+      };
       const ctx = Object.assign(createExecutionContext(), {
         props: { ...DEFAULT_OAUTH_PROPS },
       });

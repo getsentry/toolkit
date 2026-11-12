@@ -5,6 +5,7 @@ import {
   runSearchEvents,
   searchToolBase,
 } from "../support/search-events/search";
+import { searchReplaysOutputSchema } from "../support/search-events/replays";
 
 export default defineTool({
   ...searchToolBase("search_replays"),
@@ -27,9 +28,11 @@ export default defineTool({
     "</hints>",
   ].join("\n"),
   inputSchema: buildReplaySearchInputSchema(),
+  outputSchema: searchReplaysOutputSchema,
   async handler(params, context: ServerContext) {
     return await runSearchEvents({ ...params, dataset: "replays" }, context, {
       lockDataset: true,
+      output: "structured",
     });
   },
 });

@@ -13,7 +13,7 @@ import { logIssue, logWarn } from "@sentry/mcp-core/telem/logging";
 import type { z } from "zod";
 import type { WorkerProps } from "../types";
 import { setSentryUserFromRequest } from "../utils/sentry-user";
-import { TokenResponseSchema } from "./constants";
+import { SUPPORTED_PROMPT_VALUES, TokenResponseSchema } from "./constants";
 import {
   getClientRegistrationMethodTelemetry,
   getOAuthGrantLifecycleTelemetry,
@@ -285,8 +285,30 @@ function parseUpstreamOAuthError(
   }
 }
 
+// `login` is honored on a best-effort basis but not advertised: Sentry shows
+// the signed-in account with Switch account, it does not force re-authentication.
+const ACCOUNT_PROMPT_VALUES = new Set<string>([
+  ...SUPPORTED_PROMPT_VALUES,
+  "login",
+]);
+
+/**
+ * Whether a client's space-delimited OIDC `prompt` asks to show the account or
+ * consent step instead of reusing the current Sentry session silently.
+ */
+export function promptRequestsAccountSelection(
+  prompt: string | null | undefined,
+): boolean {
+  return (prompt ?? "")
+    .split(" ")
+    .some((value) => ACCOUNT_PROMPT_VALUES.has(value));
+}
+
 /**
  * Constructs an authorization URL for Sentry.
+ *
+ * `force_prompt` makes Sentry show its consent step, with the signed-in user
+ * and Switch account, even when this user already approved the app.
  */
 export function getUpstreamAuthorizeUrl({
   upstream_url,
@@ -294,12 +316,14 @@ export function getUpstreamAuthorizeUrl({
   scope,
   redirect_uri,
   state,
+  force_prompt = false,
 }: {
   upstream_url: string;
   client_id: string;
   scope: string;
   redirect_uri: string;
   state?: string;
+  force_prompt?: boolean;
 }) {
   const upstream = new URL(upstream_url);
   upstream.searchParams.set("client_id", client_id);
@@ -307,6 +331,7 @@ export function getUpstreamAuthorizeUrl({
   upstream.searchParams.set("scope", scope);
   if (state) upstream.searchParams.set("state", state);
   upstream.searchParams.set("response_type", "code");
+  if (force_prompt) upstream.searchParams.set("force_prompt", "1");
   return upstream.href;
 }
 
@@ -464,9 +489,10 @@ function recordTokenExchangeOutcome(
   });
 }
 
-function buildSuccessfulTokenExchangeResult<
-  TProps extends Record<string, unknown>,
->(props: TProps, accessTokenTTL: number): TokenExchangeCallbackResult {
+function buildSuccessfulTokenExchangeResult(
+  props: Record<string, unknown>,
+  accessTokenTTL: number,
+): TokenExchangeCallbackResult {
   return {
     newProps: props,
     accessTokenTTL,

@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-monitor
-version: 0.49.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Sentry cron monitors
 requires:
   bins: ["sentry"]

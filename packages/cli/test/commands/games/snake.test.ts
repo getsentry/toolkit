@@ -17,7 +17,7 @@ function createContext(isTTY: boolean) {
 
 async function run(isTTY: boolean): Promise<void> {
   const func = await snakeCommand.loader();
-  await func.call(createContext(isTTY) as never, {});
+  await func.call(createContext(isTTY), {});
 }
 
 describe("games snake", () => {

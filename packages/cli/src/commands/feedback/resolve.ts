@@ -22,20 +22,19 @@ export const resolveCommand = buildCommand({
     examples: [
       {
         description: "Resolve a Feedback item (organization auto-detected)",
-        command: "sentry feedback resolve FRONTEND-2SDJ",
+        run: "feedback resolve FRONTEND-2SDJ",
       },
       {
         description: "Resolve a Feedback item in an explicit organization",
-        command: "sentry feedback resolve my-org/FRONTEND-2SDJ",
+        run: "feedback resolve my-org/FRONTEND-2SDJ",
       },
       {
         description: "Resolve the most recently active unresolved Feedback",
-        command: "sentry feedback resolve my-org/@latest",
+        run: "feedback resolve my-org/@latest",
       },
       {
         description: "Return selected fields from the updated Feedback",
-        command:
-          "sentry feedback resolve my-org/FRONTEND-2SDJ --json --fields id,shortId,status",
+        run: "feedback resolve my-org/FRONTEND-2SDJ --json --fields id,shortId,status",
       },
     ],
   },

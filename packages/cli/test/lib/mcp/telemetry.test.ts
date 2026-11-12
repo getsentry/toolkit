@@ -35,6 +35,7 @@ const config: McpServerConfig = {
   agentProviderFromFlag: false,
   experimental: false,
   finalSkills: new Set(),
+  disabledSkills: [],
 };
 
 /** The options the server passed to `Sentry.init`. */
@@ -97,7 +98,7 @@ function buildTransport(options: NodeOptions, url: string) {
   if (!options.transport) {
     throw new Error("Sentry.init got no transport");
   }
-  return options.transport({ url, recordDroppedEvent: noop } as never);
+  return options.transport({ url, recordDroppedEvent: noop });
 }
 
 describe("initMcpTelemetry", () => {

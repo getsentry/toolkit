@@ -8,7 +8,12 @@
 import {
   createOrganizationDashboard,
   getOrganizationDashboard,
+  listOrganizationDashboardRevisions,
   listOrganizationDashboards,
+  type ListOrganizationEventsTimeseriesData,
+  listOrganizationEvents,
+  listOrganizationEventsTimeseries,
+  restoreOrganizationDashboardRevision,
   updateOrganizationDashboard,
 } from "@sentry/api";
 import { resolveEventsSort } from "@sentry/toolkit-core/events-sort";
@@ -36,19 +41,20 @@ import {
   type TimeseriesResult,
   type WidgetDataResult,
 } from "../../types/dashboard.js";
+import type { EventsDataset } from "../datasets.js";
 import { reportCliError } from "../error-reporting.js";
 import { ApiError, stringifyUnknown } from "../errors.js";
 
-import { resolveOrgRegion } from "../region.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 
 import {
-  apiRequestToRegion,
   getOrgSdkConfig,
   ORG_FANOUT_CONCURRENCY,
   type PaginatedResponse,
-  parseLinkHeader,
   unwrapPaginatedResult,
   unwrapResult,
+  unwrapValidatedResult,
+  validateResponse,
 } from "./infrastructure.js";
 
 /**
@@ -65,7 +71,7 @@ export async function listDashboardsPaginated(
   orgSlug: string,
   options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<DashboardListItem[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationDashboards({
     ...config,
@@ -90,7 +96,7 @@ export async function getDashboard(
   orgSlug: string,
   dashboardId: string,
 ): Promise<DashboardDetail> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await getOrganizationDashboard({
     ...config,
@@ -117,7 +123,7 @@ export async function createDashboard(
   orgSlug: string,
   body: { title: string; widgets?: DashboardWidget[]; projects?: number[] },
 ): Promise<DashboardDetail> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await createOrganizationDashboard({
     ...config,
@@ -150,7 +156,7 @@ export async function updateDashboard(
     period?: string | null;
   },
 ): Promise<DashboardDetail> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await updateOrganizationDashboard({
     ...config,
@@ -186,29 +192,26 @@ export async function listDashboardRevisionsPaginated(
   dashboardId: string,
   options: { perPage?: number; cursor?: string } = {},
 ): Promise<PaginatedResponse<DashboardRevision[]>> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const params: Record<string, string | number | undefined> = {
-    per_page: options.perPage,
-    cursor: options.cursor,
-  };
-
-  const { data, headers } = await apiRequestToRegion<DashboardRevision[]>(
-    regionUrl,
+  const config = getOrgSdkConfig();
+  const result = await listOrganizationDashboardRevisions({
+    ...config,
+    path: {
+      organization_id_or_slug: orgSlug,
+      dashboard_id: dashboardId as unknown as number,
+    },
+    query: { per_page: options.perPage, cursor: options.cursor },
+  });
+  const { response, ...page } = unwrapPaginatedResult<unknown>(
+    result,
+    `Failed to list revisions for dashboard '${dashboardId}'`,
+  );
+  const data = validateResponse(
+    array(DashboardRevisionSchema),
+    page.data,
     `/organizations/${orgSlug}/dashboards/${dashboardId}/revisions/`,
-    { params, schema: array(DashboardRevisionSchema) },
+    response?.status ?? 0,
   );
-
-  const { nextCursor, prevCursor } = parseLinkHeader(
-    headers.get("link") ?? null,
-  );
-  const out: PaginatedResponse<DashboardRevision[]> = { data };
-  if (nextCursor !== undefined) {
-    out.nextCursor = nextCursor;
-  }
-  if (prevCursor !== undefined) {
-    out.prevCursor = prevCursor;
-  }
-  return out;
+  return { ...page, data };
 }
 
 /**
@@ -224,14 +227,21 @@ export async function restoreDashboardRevision(
   dashboardId: string,
   revisionId: string,
 ): Promise<DashboardDetail> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const encodedRevisionId = encodeURIComponent(revisionId);
-  const { data } = await apiRequestToRegion<DashboardDetail>(
-    regionUrl,
-    `/organizations/${orgSlug}/dashboards/${dashboardId}/revisions/${encodedRevisionId}/restore/`,
-    { method: "POST", schema: DashboardDetailSchema },
+  const config = getOrgSdkConfig();
+  const result = await restoreOrganizationDashboardRevision({
+    ...config,
+    path: {
+      organization_id_or_slug: orgSlug,
+      dashboard_id: dashboardId as unknown as number,
+      revision_id: revisionId as unknown as number,
+    },
+  });
+  return unwrapValidatedResult(
+    result,
+    `Failed to restore revision '${revisionId}' of dashboard '${dashboardId}'`,
+    DashboardDetailSchema,
+    `/organizations/${orgSlug}/dashboards/${dashboardId}/revisions/${revisionId}/restore/`,
   );
-  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -391,20 +401,22 @@ function timeseriesLabel(
 }
 
 /**
- * Coerce a bucket value to a number for the renderers.
+ * Read an aggregate value as a number, or null when nothing was measured.
  *
- * Empty buckets arrive as null, and string-typed aggregates on the errors
- * dataset arrive as strings (empty when no event carries the field).
+ * Empty buckets and aggregates over no data arrive as null, and string-typed
+ * aggregates on the errors dataset arrive as strings (empty when no event
+ * carries the field). Null, missing, empty, and non-numeric values all become
+ * null so they stay distinct from a measured zero.
  */
-function bucketValue(value: number | string | null): number {
+function measuredValue(value: unknown): number | null {
   if (typeof value === "number") {
-    return value;
+    return Number.isFinite(value) ? value : null;
   }
-  if (value === null || value === "") {
-    return 0;
+  if (typeof value !== "string" || value.trim() === "") {
+    return null;
   }
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /** Sort key for a series: explicit order first, "Other" after everything. */
@@ -420,8 +432,8 @@ function seriesSortKey(series: EventsTimeseriesSeries): number {
  *
  * The response is `{ timeSeries: [...] }` with one entry per y-axis (and per
  * group when `topEvents` is set). Timestamps are converted from epoch
- * milliseconds to seconds and null or string buckets become numbers so the
- * renderers see the same shape they always have.
+ * milliseconds to seconds, string buckets become numbers, and buckets without
+ * a measurement stay null.
  *
  * @param response - Validated events-timeseries response
  * @param yAxis - The aggregate function name(s) that were requested
@@ -442,7 +454,7 @@ function parseEventsTimeseriesResponse(
       label: timeseriesLabel(s, multipleAxes),
       values: s.values.map(({ timestamp, value }) => ({
         timestamp: Math.floor(timestamp / 1000),
-        value: bucketValue(value),
+        value: measuredValue(value),
       })),
       unit: s.meta.valueUnit ?? null,
     })),
@@ -462,12 +474,15 @@ function buildTopEventsParams(
   columns: string[],
   aggregates: string[],
   orderby: string | undefined,
-): Record<string, string | string[] | number | undefined> {
+): Pick<
+  EventsTimeseriesQuery,
+  "groupBy" | "sort" | "topEvents" | "excludeOther"
+> {
   const { fields, sort } = resolveEventsSort({
     fields: [...columns, ...aggregates],
     sort: orderby,
   });
-  const params: Record<string, string | string[] | number | undefined> = {
+  const params: ReturnType<typeof buildTopEventsParams> = {
     groupBy: fields,
     sort,
     topEvents: widget.limit ?? 5,
@@ -506,13 +521,19 @@ type WidgetQueryParams = {
   options?: WidgetQueryOptions;
 };
 
+type EventsTimeseriesQuery = ListOrganizationEventsTimeseriesData["query"];
+
+/** Widget query params once the widget's type has resolved to a dataset. */
+type DatasetWidgetQueryParams = WidgetQueryParams & { dataset: EventsDataset };
+
 async function queryWidgetTimeseries(
-  params: WidgetQueryParams,
+  params: DatasetWidgetQueryParams,
 ): Promise<TimeseriesResult> {
   const {
     regionUrl,
     orgSlug,
     widget,
+    dataset,
     statsPeriod,
     start,
     end,
@@ -524,32 +545,30 @@ async function queryWidgetTimeseries(
   for (const query of widget.queries ?? []) {
     const aggregates = query.aggregates ?? [];
     const columns = query.columns ?? [];
-    const dataset = mapWidgetTypeToDataset(widget.widgetType);
 
-    const reqParams: Record<string, string | string[] | number | undefined> = {
-      yAxis: aggregates,
-      query: query.conditions || undefined,
-      dataset: dataset ?? undefined,
-      statsPeriod,
-      start,
-      end,
-      interval: computeOptimalInterval(statsPeriod, widget, periodSeconds),
-      environment: options.environment,
-      project: options.project?.map(String),
-    };
-
-    // Group-by columns enable topEvents mode
-    if (columns.length > 0) {
-      Object.assign(
-        reqParams,
-        buildTopEventsParams(widget, columns, aggregates, query.orderby),
-      );
-    }
-
-    const { data } = await apiRequestToRegion<EventsTimeseriesResponse>(
-      regionUrl,
+    const result = await listOrganizationEventsTimeseries({
+      ...getSdkClientConfig(regionUrl),
+      path: { organization_id_or_slug: orgSlug },
+      query: {
+        yAxis: aggregates,
+        query: query.conditions || undefined,
+        dataset,
+        statsPeriod,
+        start,
+        end,
+        interval: computeOptimalInterval(statsPeriod, widget, periodSeconds),
+        environment: options.environment,
+        project: options.project,
+        // Group-by columns enable topEvents mode
+        ...(columns.length > 0 &&
+          buildTopEventsParams(widget, columns, aggregates, query.orderby)),
+      },
+    });
+    const data = unwrapValidatedResult(
+      result,
+      "Failed to query widget data",
+      EventsTimeseriesResponseSchema,
       `/organizations/${orgSlug}/events-timeseries/`,
-      { params: reqParams, schema: EventsTimeseriesResponseSchema },
     );
 
     const parsed = parseEventsTimeseriesResponse(data, aggregates);
@@ -572,12 +591,13 @@ async function queryWidgetTimeseries(
  * @param options - Additional query options
  */
 async function queryWidgetTable(
-  params: WidgetQueryParams,
+  params: DatasetWidgetQueryParams,
 ): Promise<TableResult> {
   const {
     regionUrl,
     orgSlug,
     widget,
+    dataset,
     statsPeriod,
     start,
     end,
@@ -588,27 +608,29 @@ async function queryWidgetTable(
     ...(query?.columns ?? []),
     ...(query?.aggregates ?? []),
   ];
-  const dataset = mapWidgetTypeToDataset(widget.widgetType);
   const request = resolveEventsSort({ fields, sort: query?.orderby });
 
-  const { data } = await apiRequestToRegion(
-    regionUrl,
-    `/organizations/${orgSlug}/events/`,
-    {
-      params: {
-        field: request.fields,
-        query: query?.conditions || undefined,
-        dataset: dataset ?? undefined,
-        statsPeriod,
-        start,
-        end,
-        sort: request.sort,
-        per_page: widget.limit ?? 10,
-        environment: options.environment,
-        project: options.project?.map(String),
-      },
-      schema: EventsTableResponseSchema,
+  const result = await listOrganizationEvents({
+    ...getSdkClientConfig(regionUrl),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      field: request.fields,
+      query: query?.conditions || undefined,
+      dataset,
+      statsPeriod,
+      start,
+      end,
+      sort: request.sort,
+      per_page: widget.limit ?? 10,
+      environment: options.environment,
+      project: options.project,
     },
+  });
+  const data = unwrapValidatedResult(
+    result,
+    "Failed to query widget data",
+    EventsTableResponseSchema,
+    `/organizations/${orgSlug}/events/`,
   );
 
   const meta = data.meta;
@@ -666,28 +688,28 @@ async function queryWidgetData(
   try {
     // Chart types → timeseries
     if (TIMESERIES_DISPLAY_TYPES.has(displayType)) {
-      return await queryWidgetTimeseries(params);
+      return await queryWidgetTimeseries({ ...params, dataset });
     }
 
     // big_number → single scalar value
     if (widget.displayType === "big_number") {
       const tableResult = await queryWidgetTable({
         ...params,
+        dataset,
         widget: { ...widget, limit: 1 },
       });
       const row = tableResult.rows[0];
       const firstColumn = tableResult.columns[0];
-      const value = row && firstColumn ? Number(row[firstColumn.name] ?? 0) : 0;
       return {
         type: "scalar",
-        value: Number.isFinite(value) ? value : 0,
+        value: firstColumn ? measuredValue(row?.[firstColumn.name]) : null,
         unit: firstColumn?.unit,
       } satisfies ScalarResult;
     }
 
     // Table types → tabular
     if (TABLE_DISPLAY_TYPES.has(displayType)) {
-      return await queryWidgetTable(params);
+      return await queryWidgetTable({ ...params, dataset });
     }
 
     return {

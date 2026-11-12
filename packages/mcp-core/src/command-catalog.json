@@ -473,6 +473,9 @@
         },
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "resolveOrganizationDsn"
         }
       ]
     },
@@ -601,6 +604,9 @@
         },
         {
           "fn": "listOrganizationWorkflows"
+        },
+        {
+          "fn": "resolveOrganizationDsn"
         }
       ]
     },
@@ -687,7 +693,7 @@
               },
               "fields": {
                 "type": "string",
-                "description": "Comma-separated fields to include in JSON output (dot.notation supported). Available: id, name, organizationId, createdBy, dateCreated, dateUpdated, triggers, actionFilters, environment, config, detectorIds, enabled, lastTriggered, owner, org, project, status"
+                "description": "Comma-separated fields to include in JSON output (dot.notation supported). Available: id, name, type, organizationId, createdBy, dateCreated, dateUpdated, triggers, actionFilters, environment, config, detectorIds, enabled, lastTriggered, owner, org, project, status"
               }
             },
             "additionalProperties": false
@@ -735,63 +741,81 @@
           "optional": false
         },
         {
+          "name": "type",
+          "type": "string",
+          "description": "Type of the workflow, such as alert",
+          "optional": false
+        },
+        {
           "name": "organizationId",
           "type": "string",
+          "description": "ID of the organization the workflow belongs to",
           "optional": false
         },
         {
           "name": "createdBy",
           "type": "string | null",
+          "description": "ID of the user who created the workflow",
           "optional": false
         },
         {
           "name": "dateCreated",
           "type": "string",
+          "description": "When the workflow was created (ISO 8601)",
           "optional": false
         },
         {
           "name": "dateUpdated",
           "type": "string",
+          "description": "When the workflow was last updated (ISO 8601)",
           "optional": false
         },
         {
           "name": "triggers",
           "type": "object | null",
+          "description": "Conditions on which the workflow triggers",
           "optional": false
         },
         {
           "name": "actionFilters",
           "type": "array | null",
+          "description": "Filters to run before actions fire, each with the actions to fire",
           "optional": false
         },
         {
           "name": "environment",
           "type": "string | null",
+          "description": "Name of the environment the workflow is limited to. Null for all environments",
           "optional": false
         },
         {
           "name": "config",
           "type": "object",
+          "description": "Configuration of the workflow, such as frequency in minutes",
           "optional": false
         },
         {
           "name": "detectorIds",
           "type": "array | null",
+          "description": "IDs of the monitors connected to the workflow",
           "optional": false
         },
         {
           "name": "enabled",
           "type": "boolean",
+          "description": "Whether the workflow is enabled",
           "optional": false
         },
         {
           "name": "lastTriggered",
           "type": "string | null",
+          "description": "When the workflow last fired (ISO 8601)",
           "optional": false
         },
         {
           "name": "owner",
           "type": "string | null",
+          "description": "Team or user that owns the workflow, such as user:123 or team:456",
           "optional": false
         },
         {
@@ -831,6 +855,9 @@
         },
         {
           "fn": "listOrganizationWorkflows"
+        },
+        {
+          "fn": "resolveOrganizationDsn"
         },
         {
           "fn": "updateOrganizationWorkflow"
@@ -935,6 +962,9 @@
         },
         {
           "fn": "listOrganizationWorkflows"
+        },
+        {
+          "fn": "resolveOrganizationDsn"
         }
       ]
     },
@@ -1012,6 +1042,9 @@
         },
         {
           "fn": "listOrganizationWorkflows"
+        },
+        {
+          "fn": "resolveOrganizationDsn"
         }
       ]
     },
@@ -1490,21 +1523,25 @@
         {
           "name": "owner",
           "type": "object | null",
+          "description": "Team or user that owns the monitor",
           "optional": true
         },
         {
           "name": "createdBy",
           "type": "string | null",
+          "description": "ID of the user who created the monitor",
           "optional": true
         },
         {
           "name": "latestGroup",
           "type": "object | null",
+          "description": "Latest issue the monitor created",
           "optional": true
         },
         {
           "name": "description",
           "type": "string | null",
+          "description": "Description of the monitor",
           "optional": true
         },
         {
@@ -1516,6 +1553,7 @@
         {
           "name": "projectId",
           "type": "string | null",
+          "description": "ID of the project the monitor belongs to",
           "optional": false
         },
         {
@@ -1527,41 +1565,49 @@
         {
           "name": "type",
           "type": "string",
+          "description": "Type of the monitor, such as metric_issue or error",
           "optional": false
         },
         {
           "name": "workflowIds",
           "type": "array | null",
+          "description": "IDs of the alerts connected to the monitor",
           "optional": false
         },
         {
           "name": "dateCreated",
           "type": "string",
+          "description": "When the monitor was created (ISO 8601)",
           "optional": false
         },
         {
           "name": "dateUpdated",
           "type": "string",
+          "description": "When the monitor was last updated (ISO 8601)",
           "optional": false
         },
         {
           "name": "dataSources",
           "type": "array | null",
+          "description": "Data sources the monitor evaluates, such as a query subscription",
           "optional": false
         },
         {
           "name": "conditionGroup",
           "type": "object | null",
+          "description": "Conditions that decide the monitor's status",
           "optional": false
         },
         {
           "name": "config",
           "type": "object",
+          "description": "Configuration of the monitor, which depends on its type",
           "optional": false
         },
         {
           "name": "enabled",
           "type": "boolean",
+          "description": "Whether the monitor is enabled",
           "optional": false
         },
         {
@@ -1699,6 +1745,9 @@
         },
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "resolveOrganizationDsn"
         }
       ]
     },
@@ -1929,7 +1978,11 @@
         "# Preview the request without sending it\nsentry api organizations/ --dry-run",
         "# Save a binary response, such as an event attachment, to a file\nsentry api \"https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1\" > screenshot.png"
       ],
-      "apiOperations": []
+      "apiOperations": [
+        {
+          "fn": "getOrganization"
+        }
+      ]
     },
     {
       "path": "sentry attribute list",
@@ -2158,7 +2211,11 @@
           "optional": true
         }
       ],
-      "apiOperations": []
+      "apiOperations": [
+        {
+          "fn": "retrieveUserDetails"
+        }
+      ]
     },
     {
       "path": "sentry auth status",
@@ -2208,6 +2265,9 @@
       "apiOperations": [
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "retrieveUserDetails"
         }
       ]
     },
@@ -2250,7 +2310,11 @@
       "examples": [
         "# Show the current user\nsentry auth whoami"
       ],
-      "apiOperations": []
+      "apiOperations": [
+        {
+          "fn": "retrieveUserDetails"
+        }
+      ]
     },
     {
       "path": "sentry build download",
@@ -2462,6 +2526,9 @@
         "# Attach explicit git metadata\nsentry build upload ./app.aab --head-sha \"$GIT_SHA\" --pr-number 42 --base-ref main"
       ],
       "apiOperations": [
+        {
+          "fn": "assembleProjectPreprodArtifact"
+        },
         {
           "fn": "getOrganization"
         },
@@ -3049,6 +3116,9 @@
         },
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "resolveOrganizationDsn"
         }
       ]
     },
@@ -3270,6 +3340,9 @@
         },
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "restoreOrganizationDashboardRevision"
         }
       ]
     },
@@ -3371,6 +3444,9 @@
         },
         {
           "fn": "getProject"
+        },
+        {
+          "fn": "listOrganizationDashboardRevisions"
         },
         {
           "fn": "listOrganizationDashboards"
@@ -4585,6 +4661,9 @@
       ],
       "apiOperations": [
         {
+          "fn": "assembleProjectDebugFiles"
+        },
+        {
           "fn": "getOrganization"
         },
         {
@@ -4795,6 +4874,9 @@
         },
         {
           "fn": "listProjectKeys"
+        },
+        {
+          "fn": "resolveOrganizationDsn"
         }
       ]
     },
@@ -5126,6 +5208,9 @@
           "fn": "getOrganizationIssue"
         },
         {
+          "fn": "getOrganizationSharedIssue"
+        },
+        {
           "fn": "getProject"
         },
         {
@@ -5378,7 +5463,7 @@
               },
               "fields": {
                 "type": "string",
-                "description": "Comma-separated fields to include in JSON output (dot.notation supported). Available: id, groupID, eventID, projectID, message, title, location, user, tags, platform, dateReceived, contexts, size, entries, dist, sdk, context, packages, type, metadata, errors, occurrence, _meta, crashFile, culprit, dateCreated, fingerprints, groupingConfig, startTimestamp, endTimestamp, measurements, breakdowns, release, userReport, sdkUpdates, resolvedWith, nextEventID, previousEventID, formatted, trace, attachments"
+                "description": "Comma-separated fields to include in JSON output (dot.notation supported). Available: id, groupID, eventID, projectID, message, title, location, platform, dateReceived, size, entries, dist, packages, type, metadata, occurrence, _meta, user, tags, contexts, sdk, context, errors, crashFile, culprit, dateCreated, fingerprints, groupingConfig, startTimestamp, endTimestamp, measurements, breakdowns, release, userReport, sdkUpdates, resolvedWith, nextEventID, previousEventID, formatted, trace, attachments"
               }
             },
             "additionalProperties": false
@@ -5411,11 +5496,13 @@
         {
           "name": "id",
           "type": "string",
+          "description": "ID of the event",
           "optional": true
         },
         {
           "name": "groupID",
           "type": "string | null",
+          "description": "ID of the issue the event belongs to",
           "optional": true
         },
         {
@@ -5427,176 +5514,211 @@
         {
           "name": "projectID",
           "type": "string",
+          "description": "ID of the project the event belongs to",
           "optional": true
         },
         {
           "name": "message",
           "type": "string | null",
+          "description": "Event message",
           "optional": true
         },
         {
           "name": "title",
           "type": "string",
+          "description": "Event title",
           "optional": true
         },
         {
           "name": "location",
           "type": "string | null",
-          "optional": true
-        },
-        {
-          "name": "user",
-          "type": "object | null",
-          "optional": true
-        },
-        {
-          "name": "tags",
-          "type": "array",
+          "description": "Source location of the event, such as a file and line",
           "optional": true
         },
         {
           "name": "platform",
           "type": "string | null",
+          "description": "Platform of the event, such as python or javascript",
           "optional": true
         },
         {
           "name": "dateReceived",
           "type": "string | null",
-          "optional": true
-        },
-        {
-          "name": "contexts",
-          "type": "object | null",
+          "description": "When Sentry received the event (ISO 8601)",
           "optional": true
         },
         {
           "name": "size",
           "type": "number | null",
+          "description": "Size of the event payload in bytes",
           "optional": true
         },
         {
           "name": "entries",
           "type": "array",
+          "description": "Event interfaces, such as exception, breadcrumbs and request, each with a type and data",
           "optional": true
         },
         {
           "name": "dist",
           "type": "string | null",
-          "optional": true
-        },
-        {
-          "name": "sdk",
-          "type": "object | null",
-          "optional": true
-        },
-        {
-          "name": "context",
-          "type": "object | null",
+          "description": "Distribution of the release the event was sent with",
           "optional": true
         },
         {
           "name": "packages",
           "type": "object",
+          "description": "Modules loaded when the event occurred, keyed by module name with their versions",
           "optional": true
         },
         {
           "name": "type",
           "type": "string",
+          "description": "Event type, such as error, default or transaction",
           "optional": true
         },
         {
           "name": "metadata",
           "type": "object",
-          "optional": true
-        },
-        {
-          "name": "errors",
-          "type": "array",
+          "description": "Event metadata",
           "optional": true
         },
         {
           "name": "occurrence",
-          "type": "object | null",
+          "type": "object | unknown | null",
+          "description": "Issue occurrence data for events in non-error issues, such as performance issues. Null otherwise",
           "optional": true
         },
         {
           "name": "_meta",
           "type": "object",
+          "description": "Metadata about changes Sentry made to the event's fields, such as data scrubbing or trimming",
+          "optional": true
+        },
+        {
+          "name": "user",
+          "type": "object | null",
+          "description": "User context of the event",
+          "optional": true
+        },
+        {
+          "name": "tags",
+          "type": "array",
+          "description": "Tags attached to the event",
+          "optional": true
+        },
+        {
+          "name": "contexts",
+          "type": "object | null",
+          "description": "Contexts of the event, such as device, os, browser and runtime, keyed by alias",
+          "optional": true
+        },
+        {
+          "name": "sdk",
+          "type": "object | null",
+          "description": "SDK that sent the event",
+          "optional": true
+        },
+        {
+          "name": "context",
+          "type": "object | null",
+          "description": "Additional data sent with the event in its extra field",
+          "optional": true
+        },
+        {
+          "name": "errors",
+          "type": "array",
+          "description": "Errors Sentry found while processing the event",
           "optional": true
         },
         {
           "name": "crashFile",
           "type": "string | null",
+          "description": "Crash report attachment of the event, if any",
           "optional": true
         },
         {
           "name": "culprit",
           "type": "string | null",
+          "description": "Function or module that caused the event",
           "optional": true
         },
         {
           "name": "dateCreated",
           "type": "string",
+          "description": "When the event occurred (ISO 8601)",
           "optional": true
         },
         {
           "name": "fingerprints",
           "type": "array",
+          "description": "Grouping hashes calculated for the event",
           "optional": true
         },
         {
           "name": "groupingConfig",
           "type": "object",
+          "description": "Grouping configuration used to group the event",
           "optional": true
         },
         {
           "name": "startTimestamp",
           "type": "number",
+          "description": "When the transaction started, as a Unix timestamp in seconds",
           "optional": true
         },
         {
           "name": "endTimestamp",
           "type": "number",
+          "description": "When the transaction ended, as a Unix timestamp in seconds",
           "optional": true
         },
         {
           "name": "measurements",
           "type": "object | null",
+          "description": "Measurements recorded for the transaction, such as web vitals, keyed by name",
           "optional": true
         },
         {
           "name": "breakdowns",
           "type": "object | null",
+          "description": "Span operation breakdowns for the transaction, keyed by breakdown name",
           "optional": true
         },
         {
           "name": "release",
           "type": "object | null",
+          "description": "Release the event was sent with. Null when the event has no release",
           "optional": true
         },
         {
           "name": "userReport",
           "type": "object | null",
+          "description": "User feedback submitted for the event. Null when there's none",
           "optional": true
         },
         {
           "name": "sdkUpdates",
           "type": "array",
+          "description": "Suggested updates for the SDK that sent the event",
           "optional": true
         },
         {
           "name": "resolvedWith",
           "type": "array",
+          "description": "How the event's stack frames were resolved during processing, such as which source map lookup method was used",
           "optional": true
         },
         {
           "name": "nextEventID",
           "type": "string | null",
+          "description": "ID of the next event in the issue. Null for the latest event or when adjacentEvents is collapsed",
           "optional": true
         },
         {
           "name": "previousEventID",
           "type": "string | null",
+          "description": "ID of the previous event in the issue. Null for the first event or when adjacentEvents is collapsed",
           "optional": true
         },
         {
@@ -6313,6 +6435,9 @@
           "fn": "getOrganizationIssue"
         },
         {
+          "fn": "getOrganizationSharedIssue"
+        },
+        {
           "fn": "getProject"
         },
         {
@@ -6533,6 +6658,9 @@
         },
         {
           "fn": "getOrganizationIssue"
+        },
+        {
+          "fn": "getOrganizationSharedIssue"
         },
         {
           "fn": "getProject"
@@ -6756,6 +6884,9 @@
         },
         {
           "fn": "getOrganizationIssue"
+        },
+        {
+          "fn": "getOrganizationSharedIssue"
         },
         {
           "fn": "getProject"
@@ -7023,6 +7154,9 @@
           "fn": "getOrganizationReplayCount"
         },
         {
+          "fn": "getOrganizationSharedIssue"
+        },
+        {
           "fn": "getProject"
         },
         {
@@ -7131,7 +7265,11 @@
         "# Verify only authentication (don't require a default org/project)\nsentry info --no-defaults",
         "# Machine-readable status for external tooling (always exits 0)\nsentry info --config-status-json"
       ],
-      "apiOperations": []
+      "apiOperations": [
+        {
+          "fn": "retrieveUserDetails"
+        }
+      ]
     },
     {
       "path": "sentry init",
@@ -7252,6 +7390,9 @@
         },
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "retrieveApiIndex"
         }
       ]
     },
@@ -7461,6 +7602,9 @@
         },
         {
           "fn": "getOrganizationIssue"
+        },
+        {
+          "fn": "getOrganizationSharedIssue"
         },
         {
           "fn": "getProject"
@@ -7677,6 +7821,9 @@
           "fn": "getOrganizationIssue"
         },
         {
+          "fn": "getOrganizationSharedIssue"
+        },
+        {
           "fn": "getProject"
         },
         {
@@ -7766,6 +7913,9 @@
         },
         {
           "fn": "getOrganizationIssueAutofixState"
+        },
+        {
+          "fn": "getOrganizationSharedIssue"
         },
         {
           "fn": "getProject"
@@ -7882,6 +8032,9 @@
         },
         {
           "fn": "getOrganizationIssue"
+        },
+        {
+          "fn": "getOrganizationSharedIssue"
         },
         {
           "fn": "getProject"
@@ -8148,6 +8301,9 @@
           "fn": "getOrganizationIssue"
         },
         {
+          "fn": "getOrganizationSharedIssue"
+        },
+        {
           "fn": "getProject"
         },
         {
@@ -8158,6 +8314,9 @@
         },
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "resolveOrganizationDsn"
         },
         {
           "fn": "resolveOrganizationShortId"
@@ -8225,6 +8384,9 @@
           "fn": "getOrganizationIssue"
         },
         {
+          "fn": "getOrganizationSharedIssue"
+        },
+        {
           "fn": "getProject"
         },
         {
@@ -8238,6 +8400,9 @@
         },
         {
           "fn": "resolveOrganizationShortId"
+        },
+        {
+          "fn": "updateOrganizationIssues"
         }
       ]
     },
@@ -8315,6 +8480,9 @@
         },
         {
           "fn": "getOrganizationIssueAutofixState"
+        },
+        {
+          "fn": "getOrganizationSharedIssue"
         },
         {
           "fn": "getProject"
@@ -8409,6 +8577,9 @@
         },
         {
           "fn": "getOrganizationIssue"
+        },
+        {
+          "fn": "getOrganizationSharedIssue"
         },
         {
           "fn": "getProject"
@@ -8508,6 +8679,7 @@
         {
           "name": "uniqueValues",
           "type": "number | null",
+          "description": "Number of distinct values seen for the tag key",
           "optional": true
         },
         {
@@ -8525,11 +8697,13 @@
         {
           "name": "key",
           "type": "string",
+          "description": "Tag key, with the `sentry:` prefix removed from built-in keys",
           "optional": false
         },
         {
           "name": "name",
           "type": "string",
+          "description": "Display label of the tag key",
           "optional": false
         }
       ],
@@ -8542,6 +8716,9 @@
         },
         {
           "fn": "getOrganizationIssueTag"
+        },
+        {
+          "fn": "getOrganizationSharedIssue"
         },
         {
           "fn": "getProject"
@@ -8660,6 +8837,9 @@
           "fn": "getOrganizationIssue"
         },
         {
+          "fn": "getOrganizationSharedIssue"
+        },
+        {
           "fn": "getProject"
         },
         {
@@ -8742,6 +8922,9 @@
         },
         {
           "fn": "getOrganizationIssue"
+        },
+        {
+          "fn": "getOrganizationSharedIssue"
         },
         {
           "fn": "getProject"
@@ -8998,6 +9181,9 @@
           "fn": "getOrganizationReplayCount"
         },
         {
+          "fn": "getOrganizationSharedIssue"
+        },
+        {
           "fn": "getOrganizationTrace"
         },
         {
@@ -9162,6 +9348,9 @@
         },
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "listOrganizationTraceLogs"
         }
       ]
     },
@@ -9246,6 +9435,9 @@
         },
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "retrieveProjectTraceItem"
         }
       ]
     },
@@ -9558,6 +9750,9 @@
       "apiOperations": [
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "retrieveUserDetails"
         }
       ]
     },
@@ -10273,6 +10468,9 @@
         },
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "resolveOrganizationDsn"
         }
       ]
     },
@@ -10462,6 +10660,9 @@
         },
         {
           "fn": "listProjectKeys"
+        },
+        {
+          "fn": "resolveOrganizationDsn"
         }
       ]
     },
@@ -10757,7 +10958,7 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open or archived)",
+          "description": "Release status",
           "optional": true
         },
         {
@@ -10847,7 +11048,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage of the release in each project",
+          "description": "Adoption stage of the release in each project, keyed by project slug",
           "optional": true
         },
         {
@@ -10987,7 +11188,7 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open or archived)",
+          "description": "Release status",
           "optional": true
         },
         {
@@ -11077,7 +11278,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage of the release in each project",
+          "description": "Adoption stage of the release in each project, keyed by project slug",
           "optional": true
         },
         {
@@ -11566,7 +11767,7 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open or archived)",
+          "description": "Release status",
           "optional": true
         },
         {
@@ -11656,7 +11857,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage of the release in each project",
+          "description": "Adoption stage of the release in each project, keyed by project slug",
           "optional": true
         },
         {
@@ -11831,7 +12032,7 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open or archived)",
+          "description": "Release status",
           "optional": true
         },
         {
@@ -11921,7 +12122,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage of the release in each project",
+          "description": "Adoption stage of the release in each project, keyed by project slug",
           "optional": true
         },
         {
@@ -11955,6 +12156,9 @@
         },
         {
           "fn": "listProjectEnvironments"
+        },
+        {
+          "fn": "resolveOrganizationDsn"
         }
       ]
     },
@@ -12083,7 +12287,7 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open or archived)",
+          "description": "Release status",
           "optional": true
         },
         {
@@ -12173,7 +12377,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage of the release in each project",
+          "description": "Adoption stage of the release in each project, keyed by project slug",
           "optional": true
         },
         {
@@ -12326,7 +12530,7 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open or archived)",
+          "description": "Release status",
           "optional": true
         },
         {
@@ -12416,13 +12620,16 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage of the release in each project",
+          "description": "Adoption stage of the release in each project, keyed by project slug",
           "optional": true
         }
       ],
       "apiOperations": [
         {
           "fn": "getOrganization"
+        },
+        {
+          "fn": "getOrganizationPreviousReleaseWithCommits"
         },
         {
           "fn": "listOrganizationRepos"
@@ -12523,7 +12730,7 @@
         {
           "name": "status",
           "type": "string",
-          "description": "Release status (open or archived)",
+          "description": "Release status",
           "optional": true
         },
         {
@@ -12613,7 +12820,7 @@
         {
           "name": "adoptionStages",
           "type": "object | null",
-          "description": "Adoption stage of the release in each project",
+          "description": "Adoption stage of the release in each project, keyed by project slug",
           "optional": true
         }
       ],
@@ -13502,6 +13709,7 @@
                 "ServiceProviderConfig",
                 "Users",
                 "actions",
+                "archive",
                 "assemble",
                 "attachments",
                 "attributes",
@@ -13526,6 +13734,7 @@
                 "delete",
                 "deploys",
                 "detectors",
+                "dsn-lookup",
                 "dsyms",
                 "environments",
                 "eventids",
@@ -13556,8 +13765,10 @@
                 "metrics",
                 "models",
                 "monitors",
+                "org-auth-tokens",
                 "organizations",
                 "ownership",
+                "previous-with-commits",
                 "profiles",
                 "project-keys",
                 "projects",
@@ -13570,6 +13781,8 @@
                 "replays",
                 "repo",
                 "repos",
+                "restore",
+                "revisions",
                 "saved",
                 "sentry-app-components",
                 "sentry-app-installations",
@@ -13593,7 +13806,10 @@
                 "tags",
                 "teams",
                 "trace",
+                "trace-items",
+                "trace-logs",
                 "trace-meta",
+                "unknown",
                 "user-feedback",
                 "user-teams",
                 "users",
@@ -13812,7 +14028,13 @@
           "fn": "getOrganizationPreprodArtifactSnapshotLatestBase"
         },
         {
+          "fn": "getOrganizationPreprodSnapshotArchiveStatus"
+        },
+        {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "startOrganizationPreprodSnapshotArchive"
         }
       ]
     },
@@ -14521,6 +14743,9 @@
         },
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "retrieveProjectTraceItem"
         }
       ]
     },
@@ -14765,7 +14990,13 @@
       ],
       "apiOperations": [
         {
+          "fn": "createOrganizationAuthToken"
+        },
+        {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "retrieveApiIndex"
         }
       ]
     },
@@ -14834,7 +15065,16 @@
       ],
       "apiOperations": [
         {
+          "fn": "deleteOrganizationAuthToken"
+        },
+        {
+          "fn": "listOrganizationAuthTokens"
+        },
+        {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "retrieveApiIndex"
         }
       ]
     },
@@ -14940,7 +15180,13 @@
       ],
       "apiOperations": [
         {
+          "fn": "listOrganizationAuthTokens"
+        },
+        {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "retrieveApiIndex"
         }
       ]
     },
@@ -15196,6 +15442,9 @@
         },
         {
           "fn": "listOrganizations"
+        },
+        {
+          "fn": "listOrganizationTraceLogs"
         }
       ]
     },
@@ -15313,6 +15562,9 @@
         },
         {
           "fn": "resolveOrganizationShortId"
+        },
+        {
+          "fn": "retrieveProjectTraceItem"
         }
       ]
     },

@@ -15,6 +15,7 @@ import type { ApiReference } from "../src/lib/api-schema.js";
 import type { ApiAccess } from "../src/lib/command-access.js";
 import { extractCommandCatalog } from "../src/lib/command-catalog.js";
 import type { RouteMap } from "../src/lib/introspect.js";
+import { logger } from "../src/lib/logger.js";
 
 const COMMAND_CATALOG_PATH = "../mcp-core/src/command-catalog.json";
 
@@ -40,19 +41,19 @@ export async function emit({ check }: { check: boolean }): Promise<void> {
       () => "",
     );
     if (current !== content) {
-      console.error(
-        `✗ ${COMMAND_CATALOG_PATH} is stale. Run \`pnpm run generate:command-catalog\` in packages/cli and commit the result.`,
+      logger.error(
+        `${COMMAND_CATALOG_PATH} is stale. Run \`pnpm run generate:command-catalog\` in packages/cli and commit the result.`,
       );
       process.exitCode = 1;
     } else {
-      console.log(
-        `✓ ${COMMAND_CATALOG_PATH} is up to date (${catalog.commands.length} commands)`,
+      logger.success(
+        `${COMMAND_CATALOG_PATH} is up to date (${catalog.commands.length} commands)`,
       );
     }
     return;
   }
   await writeFile(COMMAND_CATALOG_PATH, content);
-  console.log(
+  logger.success(
     `Generated ${COMMAND_CATALOG_PATH} (${catalog.commands.length} commands)`,
   );
 }

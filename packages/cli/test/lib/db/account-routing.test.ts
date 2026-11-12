@@ -467,16 +467,38 @@ describe("requests whose path names an organization", () => {
 
   test("use the account that knows the org, like `sentry api`", async () => {
     login("work-token", SAAS, "work");
-    seeOrg("work-org", SAAS);
+    seeOrg("team-org", SAAS);
     const personal = login("personal-token", SAAS, "personal");
     seeOrgList(SAAS, ["personal-org"]);
 
-    await rawApiRequest("organizations/work-org/issues/");
+    await rawApiRequest("organizations/team-org/issues/");
     await rawApiRequest("projects/personal-org/web/");
 
-    // One invocation never mixes accounts.
-    expect(sent).toEqual(["Bearer work-token", "Bearer work-token"]);
+    // One invocation never mixes accounts, so the work account looks up
+    // personal-org's region before the request.
+    expect(sent).toEqual([
+      "Bearer work-token",
+      "Bearer work-token",
+      "Bearer work-token",
+    ]);
+    expect(urls).toEqual([
+      `${SAAS}/api/0/organizations/team-org/issues/`,
+      `${SAAS}/api/0/organizations/personal-org/`,
+      `${SAAS}/api/0/projects/personal-org/web/`,
+    ]);
     expect(getActiveAccountId()).toBe(personal);
+  });
+
+  test("go to the org's region, like typed commands", async () => {
+    login("saas-token", SAAS, "saas");
+    seeOrg("us-org", SAAS, "https://us.sentry.io");
+
+    await rawApiRequest("organizations/us-org/issues/?query=is:unresolved");
+
+    expect(sent).toEqual(["Bearer saas-token"]);
+    expect(urls).toEqual([
+      "https://us.sentry.io/api/0/organizations/us-org/issues/?query=is:unresolved",
+    ]);
   });
 
   test("leave unscoped requests on the active account", async () => {
@@ -512,8 +534,12 @@ describe("requests whose path names an organization", () => {
 
     await rawApiRequest("organizations/acme-org/");
 
-    expect(sent).toEqual(["Bearer saas-token"]);
-    expect(urls).toEqual([`${SAAS}/api/0/organizations/acme-org/`]);
+    // The region lookup and the request itself both stay on SaaS.
+    expect(sent).toEqual(["Bearer saas-token", "Bearer saas-token"]);
+    expect(urls).toEqual([
+      `${SAAS}/api/0/organizations/acme-org/`,
+      `${SAAS}/api/0/organizations/acme-org/`,
+    ]);
   });
 
   test("only consider accounts on an absolute URL's server", async () => {

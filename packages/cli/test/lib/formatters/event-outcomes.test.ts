@@ -118,7 +118,7 @@ describe("summarizeEventOutcomes", () => {
       events: 10,
       tags: [],
     });
-    expect(rows[1]!.outcome).toBe("rate_limited");
+    expect(rows[1].outcome).toBe("rate_limited");
   });
 
   test("defaults tags to [] when an older server omits them", () => {
@@ -137,7 +137,7 @@ describe("summarizeEventOutcomes", () => {
 
     const rows = summarizeEventOutcomes(response);
 
-    expect(rows[0]!.tags).toEqual([]);
+    expect(rows[0].tags).toEqual([]);
     expect(formatEventOutcomes(rows)).toContain("—");
   });
 });

@@ -5,6 +5,7 @@
  */
 
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import { listAccounts } from "../../lib/db/accounts.js";
 import {
@@ -38,7 +39,7 @@ export const listCommand = buildCommand({
     examples: [
       {
         description: "Show stored accounts (* marks the active one)",
-        command: "sentry auth list",
+        run: "auth list",
       },
     ],
   },
@@ -65,11 +66,17 @@ export const listCommand = buildCommand({
       };
     }
     if (stored.length > 1) {
-      return { hint: "Switch accounts with 'sentry auth switch <email>'." };
+      return {
+        hint: `Switch accounts with '${sentry`auth switch <email>`}'.`,
+      };
     }
     if (stored.length === 0) {
-      return { hint: "Log in with 'sentry auth login'." };
+      return {
+        hint: `Log in with '${sentry`auth login`}'.`,
+      };
     }
-    return { hint: "Add another account with 'sentry auth login'." };
+    return {
+      hint: `Add another account with '${sentry`auth login`}'.`,
+    };
   },
 });

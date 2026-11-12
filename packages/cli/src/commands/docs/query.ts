@@ -37,19 +37,19 @@ export const queryCommand = buildCommand({
     examples: [
       {
         description: "Ask a documentation question",
-        command: 'sentry docs "How do I configure tracing in Next.js?"',
+        run: 'docs "How do I configure tracing in Next.js?"',
       },
       {
         description: "Use the explicit subcommand",
-        command: 'sentry docs query "How do I upload source maps?"',
+        run: 'docs query "How do I upload source maps?"',
       },
       {
         description: "Use the search alias",
-        command: 'sentry docs search "How does session replay mask text?"',
+        run: 'docs search "How does session replay mask text?"',
       },
       {
         description: "Output the answer as JSON",
-        command: 'sentry docs "How do I configure tracing?" --json',
+        run: 'docs "How do I configure tracing?" --json',
       },
     ],
   },

@@ -39,6 +39,8 @@ export type EnvVarEntry = {
  * install → display → logging/telemetry → cache/pagination → database.
  * The generator preserves this order in the output.
  */
+// Reference text for the env var docs page, which documents the `sentry` CLI.
+/* oxlint-disable sentry-cli/no-hardcoded-sentry-command */
 export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
   // -- Auth --
   {
@@ -315,6 +317,7 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     example: "1",
   },
 ];
+/* oxlint-enable sentry-cli/no-hardcoded-sentry-command */
 
 /**
  * Subset of env vars surfaced in the branded `sentry --help` output and in

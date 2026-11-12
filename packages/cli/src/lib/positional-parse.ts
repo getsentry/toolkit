@@ -33,6 +33,7 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
+import type { SentryContext } from "../context.js";
 import {
   type CompletionTarget,
   withCompletionTarget,
@@ -143,14 +144,14 @@ export type BoundArguments<T, R> = BoundPositional<T, R, readonly string[]>;
  * @param options.resolve - Resolves the parsed value; gets the command
  *   context and the raw arguments
  */
-export function boundArguments<T, R, C>(options: {
+export function boundArguments<T, R>(options: {
   readonly placeholder: string;
   readonly brief: string;
   readonly kind?: CompletionTarget;
   readonly parse: (raw: readonly string[]) => T;
   readonly resolve: (
     value: T,
-    context: C,
+    context: SentryContext,
     raw: readonly string[],
   ) => Promise<R>;
 }): {
@@ -187,7 +188,7 @@ export function boundArguments<T, R, C>(options: {
       );
     }
     return new BoundPositional(raw, parsed, (value: T) =>
-      options.resolve(value, this as C, raw),
+      options.resolve(value, this as SentryContext, raw),
     );
   });
   return positional;
@@ -205,7 +206,7 @@ export function skipLeadingArgument<P>(
 ): P {
   const parseAll =
     typeof positional === "object" && positional !== null
-      ? argumentParsers.get(positional as object)
+      ? argumentParsers.get(positional)
       : undefined;
   if (!parseAll) {
     return positional;

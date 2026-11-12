@@ -57,7 +57,7 @@ function findApiCallError(error: unknown): APICallError | undefined {
     return findApiCallError(error.lastError);
   }
   if (error && typeof error === "object" && "cause" in error && error.cause) {
-    return findApiCallError((error as { cause: unknown }).cause);
+    return findApiCallError(error.cause);
   }
   return undefined;
 }

@@ -145,6 +145,10 @@
       "types": "./dist/utils/url-utils.d.ts",
       "default": "./dist/utils/url-utils.js"
     },
+    "./constraint-lookup": {
+      "types": "./dist/constraint-lookup.d.ts",
+      "default": "./dist/constraint-lookup.js"
+    },
     "./scopes": {
       "types": "./dist/scopes.d.ts",
       "default": "./dist/scopes.js"

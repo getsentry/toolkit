@@ -30,11 +30,13 @@
   {
     "key": "custom.duration",
     "name": "custom.duration",
+    "attributeSource": { "source_type": "user" },
     "context": {}
   },
   {
     "key": "custom.bytes",
     "name": "custom.bytes",
+    "attributeSource": { "source_type": "user" },
     "context": {}
   },
   {

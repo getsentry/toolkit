@@ -128,8 +128,8 @@ This opens the MCP Inspector at `http://localhost:6274`
 
 ```json
 {
-  "command": "npx",
-  "args": ["@sentry/mcp-server@latest"],
+  "command": "sentry",
+  "args": ["mcp"],
   "env": {
     "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
     "SENTRY_HOST": "sentry.example.com"
@@ -141,8 +141,8 @@ This opens the MCP Inspector at `http://localhost:6274`
 
 ```json
 {
-  "command": "npx",
-  "args": ["@sentry/mcp-server@latest"],
+  "command": "sentry",
+  "args": ["mcp"],
   "env": {
     "SENTRY_AUTH_TOKEN": "YOUR_TOKEN",
     "SENTRY_URL": "http://sentry.internal:9000"
@@ -286,14 +286,14 @@ Create or edit `.cursor/config.json`:
 {
   "mcpServers": {
     "sentry": {
-      "command": "npx",
-      "args": ["@sentry/mcp-server@latest"]
+      "command": "sentry",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-This uses your CLI login (`npx @sentry/mcp-server@latest auth login`).
+This uses your CLI login (`sentry auth login`).
 
 **2. Or Use a Token:**
 
@@ -309,8 +309,8 @@ Update config:
 {
   "mcpServers": {
     "sentry": {
-      "command": "npx",
-      "args": ["@sentry/mcp-server@latest"],
+      "command": "sentry",
+      "args": ["mcp"],
       "env": {
         "SENTRY_AUTH_TOKEN": "${SENTRY_AUTH_TOKEN}"
       }
@@ -341,8 +341,8 @@ Add to `.vscode/settings.json`:
 {
   "mcp.servers": {
     "sentry": {
-      "command": "npx",
-      "args": ["@sentry/mcp-server@latest"],
+      "command": "sentry",
+      "args": ["mcp"],
       "env": {
         "SENTRY_AUTH_TOKEN": "YOUR_TOKEN"
       }
@@ -389,6 +389,11 @@ my-org/my-project                 # Limit calls to this project
 --help                            # Show all options
 --version, -v                     # Show version (-v alone; elsewhere it is --verbose)
 ```
+
+A tool stays enabled while any granted skill lists it. When a disabled skill
+removes no tools for that reason, for example `--disable-skills=docs` while
+`inspect` still grants `search_docs` and `get_doc`, the server prints a warning
+to stderr that names the tools that stay enabled.
 
 ### Environment Variables
 
@@ -459,7 +464,7 @@ OPENAI_API_KEY=your-key pnpm --silent --dir packages/cli run cli mcp
 
 **Cause:** No CLI login and no `SENTRY_AUTH_TOKEN`.
 
-**Solution:** Run `npx @sentry/mcp-server@latest auth login` (from source:
+**Solution:** Run `sentry auth login` (from source:
 `pnpm --silent --dir packages/cli run cli auth login`), or set
 `SENTRY_AUTH_TOKEN` in the client's `env`. MCP clients do not give the server a
 TTY, so log in from a terminal first.

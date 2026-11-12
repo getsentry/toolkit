@@ -49,7 +49,7 @@ function json(body: unknown, headers: Record<string, string> = {}): Response {
 /** Serve `replies` in order, recording each request's `If-None-Match`. */
 function mockApi(...replies: Response[]): Seen[] {
   const seen: Seen[] = [];
-  globalThis.fetch = (async (
+  globalThis.fetch = async (
     input: Request | string | URL,
     init?: RequestInit,
   ) => {
@@ -62,7 +62,7 @@ function mockApi(...replies: Response[]): Seen[] {
       throw new Error("Unexpected request");
     }
     return reply;
-  }) as typeof fetch;
+  };
   return seen;
 }
 

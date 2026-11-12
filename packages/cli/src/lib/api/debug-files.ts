@@ -18,7 +18,6 @@
  *    collecting `error` details so the caller can report and exit non-zero.
  */
 
-import { type InferOutput, record, string } from "valibot";
 import { ApiError, ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
@@ -26,18 +25,18 @@ import {
   ASSEMBLE_MAX_WAIT_MS,
   ASSEMBLE_POLL_INTERVAL_MS,
   type AssembleResponse,
-  AssembleResponseSchema,
+  assembleDebugFiles,
   type ChunkInfo,
   type ChunkPayload,
   type ChunkServerOptions,
   DEFAULT_MAX_DIF_SIZE,
+  type DifAssembleResponse,
   getChunkUploadOptions,
   hashBuffer,
   pickUploadEncoding,
   type UploadEncoding,
   uploadChunkPayloads,
 } from "./chunk-upload.js";
-import { apiRequestToRegion } from "./infrastructure.js";
 
 const log = logger.withTag("api.debug-files");
 
@@ -104,16 +103,6 @@ export type DebugFileUploadResult = {
   /** Server-provided detail/error message, if any. */
   detail: string | null;
 };
-
-// ── Schemas ─────────────────────────────────────────────────────────
-
-/**
- * DIF assemble response — keyed by overall checksum, each value has the same
- * shape as the standard assemble response.
- */
-const DifAssembleResponseSchema = record(string(), AssembleResponseSchema);
-
-type DifAssembleResponse = InferOutput<typeof DifAssembleResponseSchema>;
 
 // ── Internal types ──────────────────────────────────────────────────
 
@@ -315,22 +304,13 @@ async function uploadMissing(params: {
 
 /** POST one assemble request per batch and merge the keyed responses. */
 async function postAssemble(
-  regionUrl: string,
-  endpoint: string,
-  bodies: readonly unknown[],
+  org: string,
+  project: string,
+  bodies: readonly Record<string, AssembleFileEntry>[],
 ): Promise<DifAssembleResponse> {
   const merged: DifAssembleResponse = {};
   for (const body of bodies) {
-    const { data } = await apiRequestToRegion<DifAssembleResponse>(
-      regionUrl,
-      endpoint,
-      {
-        method: "POST",
-        body,
-        schema: DifAssembleResponseSchema,
-      },
-    );
-    Object.assign(merged, data);
+    Object.assign(merged, await assembleDebugFiles(org, project, body));
   }
   return merged;
 }
@@ -503,7 +483,7 @@ export async function uploadDebugFiles(
   const effectiveMaxWaitMs = wait
     ? clampMaxWait(maxWaitMs, serverOptions.maxWait ?? 0)
     : maxWaitMs;
-  let response = await postAssemble(regionUrl, endpoint, bodies);
+  let response = await postAssemble(org, project, bodies);
   let evaluation = evaluateAssembly(response, chunked, wait);
   if (evaluation.missingChecksums.size > 0) {
     await uploadMissing({
@@ -515,7 +495,7 @@ export async function uploadDebugFiles(
     });
     // The server only starts assembling once it is asked again with the
     // chunks in place, so re-assemble right after delivering them.
-    response = await postAssemble(regionUrl, endpoint, bodies);
+    response = await postAssemble(org, project, bodies);
     evaluation = evaluateAssembly(response, chunked, wait);
   }
 
@@ -541,7 +521,7 @@ export async function uploadDebugFiles(
     }
 
     await new Promise((r) => setTimeout(r, ASSEMBLE_POLL_INTERVAL_MS));
-    response = await postAssemble(regionUrl, endpoint, bodies);
+    response = await postAssemble(org, project, bodies);
     evaluation = evaluateAssembly(response, chunked, wait);
     await uploadMissing({
       chunked,

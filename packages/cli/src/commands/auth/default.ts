@@ -179,7 +179,7 @@ export const authDefaultCommand = buildCommand({
   async *func(this: SentryContext, flags: AuthDefaultFlags) {
     const target = resolveAuthDefaultTarget(flags);
     const command = target === "login" ? loginCommand : statusCommand;
-    const raw = getRawFunc(command as Command<SentryContext>);
+    const raw = getRawFunc(command);
     const generator = raw.call(
       this,
       flags as unknown as Record<string, unknown>,

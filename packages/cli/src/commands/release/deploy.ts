@@ -23,9 +23,10 @@ import type { SentryDeploy, WithOutputFields } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 import { ReleaseDeployOutputSchema } from "../../generated/output-schemas/release.js";
 import type { ReleaseDeployOutputFields } from "../../output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT =
-  "sentry release deploy [<org>/]<version> <environment> [name]";
+const usageHint = () =>
+  sentry`release deploy [<org>/]<version> <environment> [name]`;
 
 /** JSON output: the created deploy, or the `--dry-run` preview. */
 type DeployOutput = WithOutputFields<
@@ -75,7 +76,7 @@ function parseDeployArgs(
   name?: string,
 ): { environment: string; name?: string } {
   if (!environment) {
-    throw new ContextError("Environment", USAGE_HINT, []);
+    throw new ContextError("Environment", usageHint(), []);
   }
   return { environment, name: name || undefined };
 }
@@ -89,24 +90,23 @@ export const deployCommand = buildCommand({
     examples: [
       {
         description: "Create a deploy",
-        command: "sentry release deploy 1.0.0 production",
+        run: "release deploy 1.0.0 production",
       },
       {
         description: "Create a named deploy in an explicit organization",
-        command: 'sentry release deploy my-org/1.0.0 staging "Deploy #42"',
+        run: 'release deploy my-org/1.0.0 staging "Deploy #42"',
       },
       {
         description: "Attach a deploy URL",
-        command:
-          "sentry release deploy 1.0.0 production --url https://example.com",
+        run: "release deploy 1.0.0 production --url https://example.com",
       },
       {
         description: "Record a deploy duration in seconds",
-        command: "sentry release deploy 1.0.0 production --time 120",
+        run: "release deploy 1.0.0 production --time 120",
       },
       {
         description: "Preview without creating",
-        command: "sentry release deploy 1.0.0 production --dry-run",
+        run: "release deploy 1.0.0 production --dry-run",
       },
     ],
   },
@@ -118,7 +118,7 @@ export const deployCommand = buildCommand({
     positional: {
       kind: "tuple",
       parameters: [
-        releaseParameter(USAGE_HINT, "[<org>/]<version> - Release version"),
+        releaseParameter(usageHint, "[<org>/]<version> - Release version"),
         {
           placeholder: "environment",
           brief: "Deploy environment (e.g. production)",

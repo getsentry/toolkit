@@ -58,12 +58,21 @@ function command(
     exposure?: "exposed" | "stdio-only" | "hidden";
     permission?: DeclaredPermission;
     destructive?: boolean;
+    methodFlag?: boolean;
   } = {},
 ): Command {
+  const { methodFlag, ...declared } = access;
   return buildCommand({
     exposure: "exposed",
-    ...access,
+    ...declared,
     docs: { brief: "Planted command" },
+    parameters: methodFlag
+      ? {
+          flags: {
+            method: { kind: "parsed", parse: String, brief: "HTTP method" },
+          },
+        }
+      : {},
     auth: false,
     async *func() {
       yield;
@@ -106,16 +115,28 @@ describe("command access check", () => {
       'sends POST requests outside the Sentry API; declare `permission: "read"` or `"write"`',
     ]);
     expect(problems("send", { permission: "write" })).toEqual([]);
-    expect(problems("send", { permission: "method" })).toEqual([
-      'declares `permission: "method"`, but it sends POST requests outside the Sentry API; declare `permission: "read"` or `"write"`',
-    ]);
     expect(problems("unanalyzed")).toEqual([
       "has no source export the API analysis can follow; declare `permission`",
     ]);
     expect(problems("unanalyzed", { exposure: "hidden" })).toEqual([]);
-    expect(problems("local", { permission: "method" })).toEqual([]);
+    expect(
+      problems("local", { permission: "method", methodFlag: true }),
+    ).toEqual([]);
+    expect(
+      problems("list", { permission: "method", methodFlag: true }),
+    ).toEqual([]);
     expect(problems("list", { permission: "method" })).toEqual([
-      'declares `permission: "method"`, but its Sentry API requests are read-only',
+      'declares `permission: "method"`, but has no `--method` flag to take the class from',
+    ]);
+    expect(
+      problems("send", { permission: "method", methodFlag: true }),
+    ).toEqual([
+      'declares `permission: "method"`, but it sends POST requests outside the Sentry API; declare `permission: "read"` or `"write"`',
+    ]);
+    expect(
+      problems("edit", { permission: "method", methodFlag: true }),
+    ).toEqual([
+      'declares `permission: "method"`, but it sends PUT Sentry API requests',
     ]);
   });
 

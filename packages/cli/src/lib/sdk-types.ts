@@ -64,6 +64,25 @@ export type SentryOptions = {
    * Sentry client the host application set up (the MCP server's).
    */
   telemetry?: boolean;
+
+  /**
+   * Environment variables each invocation starts from, before the options
+   * above are applied. Defaults to `process.env`. Pass `{}` on a server whose
+   * `process.env` holds its own settings (such as a `SENTRY_DSN`) that must not
+   * change how commands resolve their target.
+   */
+  env?: Readonly<Record<string, string | undefined>>;
+
+  /**
+   * Write local state, as the CLI does (default `false`). When off, calls
+   * still read what the CLI stored in `cli.db` (logins, defaults, cached
+   * lookups) and `.sentryclirc` files, but write nothing: no `cli.db` writes
+   * (and no `cli.db` is created), no response cache, and no version check.
+   * List commands then reject `cursor: "next"` and `"prev"`; pass the
+   * `nextCursor` of the previous result instead.
+   */
+  persist?: boolean;
+
   /**
    * Abort signal for cancelling streaming commands.
    * When aborted, streaming iterables stop on the next poll cycle.

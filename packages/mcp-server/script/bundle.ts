@@ -3,11 +3,12 @@
  * Bundle the CLI's `src/mcp-server.ts` into this package's `dist/sentry-mcp.cjs`.
  *
  * The entry runs the CLI's own runner (`cli.ts`) with a smaller route map:
- * `mcp` (the default command), `auth`, and `help`. So the package ships the
- * same server and the same `auth` commands as the CLI, but none of the other
- * commands. The build fails if anything on {@link FORBIDDEN_INPUTS} reaches
- * the bundle or the output grows past {@link MAX_BUNDLE_BYTES}, so CLI-only
- * code cannot creep in through a new import.
+ * `mcp` (the default command), `auth`, `cli` (`defaults` and `fix` only), and
+ * `help`. So the package ships the same server, `auth`, `cli defaults`, and
+ * `cli fix` commands as the CLI, but none of the other commands. The build
+ * fails if anything on {@link FORBIDDEN_INPUTS} reaches the bundle or the
+ * output grows past {@link MAX_BUNDLE_BYTES}, so CLI-only code cannot creep
+ * in through a new import.
  */
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -31,17 +32,18 @@ const MAX_BUNDLE_BYTES = 3.75 * 1024 * 1024;
 
 /**
  * Inputs that serve the CLI but not this package: commands other than `mcp`,
- * `auth`, and `help` (flag completion reads `local/loopback.ts`, a leaf module
- * of host constants), agent skills, shell completions, syntax highlighting,
- * the Ink select picker, terminal images (the kitty/sixel help banner and
- * dashboards, and `pngjs`), build/sourcemap/debug-file processing, the
- * SQLite WASM fallback for Node.js < 22.15, Zod 3, and MCP SDK v1.
+ * `auth`, `cli defaults`, `cli fix`, and `help` (flag completion reads
+ * `local/loopback.ts`, a leaf module of host constants), agent skills, shell
+ * completions, syntax highlighting, the Ink select picker, terminal images
+ * (the kitty/sixel help banner and dashboards, and `pngjs`),
+ * build/sourcemap/debug-file processing, the SQLite WASM fallback for
+ * Node.js < 22.15, Zod 3, and MCP SDK v1.
  *
  * `jpeg-js` is not on the list: mcp-core's snapshot and attachment tools
  * decode and encode JPEGs with it (`internal/blob-utils.ts`).
  */
 const FORBIDDEN_INPUTS: ReadonlyArray<RegExp> = [
-  /[\\/]packages[\\/]cli[\\/]src[\\/](?:app\.ts$|commands[\\/](?!auth[\\/]|help\.ts$|mcp\.ts$|local[\\/]loopback\.ts$))/,
+  /[\\/]packages[\\/]cli[\\/]src[\\/](?:app\.ts$|commands[\\/](?!auth[\\/]|cli[\\/](?:defaults|fix)\.ts$|help\.ts$|mcp\.ts$|local[\\/]loopback\.ts$))/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:agent-skills|complete|completions)\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/]mcp[\\/]command-surface\.ts$/,
   /[\\/]packages[\\/]cli[\\/]src[\\/]lib[\\/](?:sixel|sixel-image|kitty-image|formatters[\\/]sixel-dashboard)\.ts$/,

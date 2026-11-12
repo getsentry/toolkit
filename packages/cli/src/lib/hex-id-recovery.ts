@@ -26,8 +26,8 @@
 
 import { addBreadcrumb } from "@sentry/node";
 
-import type { SpanListItem } from "../types/index.js";
 import { listLogs, listSpans, queryEvents } from "./api-client.js";
+import { type LazyCommand, sentry } from "./app-identity.js";
 import {
   type ParsedOrgProject,
   ProjectSpecificationType,
@@ -184,12 +184,12 @@ const URL_FRAGMENT_PREFIXES = ["span-", "txn-", "event-", "trace-"] as const;
 const OVER_NESTED_MIN_SEGMENTS = 4;
 
 /** Per-command slug redirect hints (used by the `looks-like-slug` branch). */
-const SLUG_REDIRECT_COMMAND: Record<HexEntityType, string> = {
-  event: "sentry issue list",
-  trace: "sentry trace list",
-  log: "sentry log list",
+const SLUG_REDIRECT_COMMAND: Record<HexEntityType, LazyCommand | undefined> = {
+  event: () => sentry`issue list`,
+  trace: () => sentry`trace list`,
+  log: () => sentry`log list`,
   // Spans are trace-scoped — a slug-only input can't map to a list command.
-  span: "",
+  span: undefined,
 };
 
 // ---------------------------------------------------------------------------
@@ -518,7 +518,7 @@ const traceAdapter: FuzzyLookupAdapter = async (ctx) => {
     statsPeriod: ctx.period ?? SCAN_PERIODS.trace,
     sort: "date",
   });
-  return (data as SpanListItem[]).map((s) => s.trace);
+  return data.map((s) => s.trace);
 };
 
 const logAdapter: FuzzyLookupAdapter = async (ctx) => {
@@ -543,7 +543,7 @@ const spanAdapter: FuzzyLookupAdapter = async (ctx) => {
     statsPeriod: ctx.period ?? SCAN_PERIODS.span,
     sort: "date",
   });
-  return (data as SpanListItem[]).map((s) => s.id);
+  return data.map((s) => s.id);
 };
 
 /** Registry of adapters by entity type. Mutable so tests can stub. */
@@ -570,7 +570,7 @@ async function findTraceBySpanId(
     query: `id:${spanId}`,
     statsPeriod: ctx.period ?? SCAN_PERIODS.span,
   });
-  return (data as SpanListItem[])[0]?.trace ?? null;
+  return data[0]?.trace ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -589,7 +589,7 @@ function buildSlugHint(
   const orgPart = org ? `${org}/` : "<org>/";
   const cmd = SLUG_REDIRECT_COMMAND[entityType];
   if (cmd) {
-    return `'${input}' looks like a project slug, not a ${entityType} ID. Try: ${cmd} ${orgPart}${input}`;
+    return `'${input}' looks like a project slug, not a ${entityType} ID. Try: ${cmd()} ${orgPart}${input}`;
   }
   return `'${input}' looks like a project slug, not a ${entityType} ID. Spans are identified by 16 hex chars within a trace.`;
 }
@@ -628,7 +628,7 @@ function buildNoMatchHint(
     return (
       `No event matched this prefix in the last ${window}. ` +
       "Sentry cannot search by a partial event ID — pass the full " +
-      "32-character ID printed by `sentry event list`."
+      `32-character ID printed by \`${sentry`event list`}\`.`
     );
   }
   return (

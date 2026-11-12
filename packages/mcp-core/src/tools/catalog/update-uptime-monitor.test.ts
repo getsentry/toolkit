@@ -1,6 +1,8 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { ApiValidationError } from "../../api-client/index.js";
+import { UserInputError } from "../../errors.js";
 import {
   assertStructuredOnlyResult,
   getStructuredContent,
@@ -62,6 +64,66 @@ describe("update_uptime_monitor", () => {
     `);
   });
 
+  it("explains how to get a seat when enabling fails", async () => {
+    mswServer.use(
+      http.put(
+        "https://sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/uptime/4509100000001001/",
+        () =>
+          HttpResponse.json(
+            {
+              status: [
+                "You don't have enough pay-as-you-go available to create a new seat",
+              ],
+            },
+            { status: 400 },
+          ),
+      ),
+    );
+
+    const error = await updateUptimeMonitor
+      .handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          projectSlug: "cloudflare-mcp",
+          uptimeMonitorId: "4509100000001001",
+          status: "active",
+        },
+        context,
+      )
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(UserInputError);
+    expect((error as Error).message).toContain(
+      "You don't have enough pay-as-you-go available to create a new seat",
+    );
+    expect((error as Error).message).toContain("Do not retry");
+  });
+
+  it("does not treat other validation errors as seat errors", async () => {
+    mswServer.use(
+      http.put(
+        "https://sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/uptime/4509100000001001/",
+        () => HttpResponse.json({ url: ["Invalid URL"] }, { status: 400 }),
+      ),
+    );
+
+    const error = await updateUptimeMonitor
+      .handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          projectSlug: "cloudflare-mcp",
+          uptimeMonitorId: "4509100000001001",
+          status: "active",
+        },
+        context,
+      )
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiValidationError);
+  });
+
   it("clears owner when null is provided", async () => {
     let requestBody: Record<string, unknown> | null = null;
     mswServer.use(
@@ -107,7 +169,7 @@ describe("update_uptime_monitor", () => {
     expect(requestBody).toEqual({ owner: null });
     assertStructuredOnlyResult(result);
     expect(
-      (getStructuredContent(result) as { monitor: { owner?: string } }).monitor
+      getStructuredContent<{ monitor: { owner?: string } }>(result).monitor
         .owner,
     ).toBeUndefined();
   });

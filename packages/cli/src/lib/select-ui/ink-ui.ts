@@ -66,8 +66,7 @@ async function loadInkApp(): Promise<typeof import("./ink-app.js")> {
   let isSea = false;
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
-    // oxlint-disable-next-line typescript/no-explicit-any -- node:sea types not yet in @types/node
-    const sea = _require("node:sea") as any;
+    const sea = _require("node:sea");
     isSea = sea.isSea?.() === true;
   } catch {
     // node:sea not available (older Node or non-SEA context)
@@ -76,8 +75,7 @@ async function loadInkApp(): Promise<typeof import("./ink-app.js")> {
   if (isSea) {
     // Extract the embedded sidecar to a temp file and import it.
     // The asset key matches what fossilize registered via --assets.
-    // oxlint-disable-next-line typescript/no-explicit-any -- node:sea types not yet in @types/node
-    const sea = _require("node:sea") as any;
+    const sea = _require("node:sea");
     const { writeFileSync, mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const tmpDir = mkdtempSync(join(tmpdir(), "sentry-ink-"));

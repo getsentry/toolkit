@@ -81,7 +81,7 @@ function naiveGrep(
   for (const [path, content] of layout) {
     const lines = content.split("\n");
     for (let i = 0; i < lines.length; i += 1) {
-      const line = lines[i] as string;
+      const line = lines[i];
       if (regex.test(line)) {
         out.push({ path, lineNum: i + 1, line });
       }

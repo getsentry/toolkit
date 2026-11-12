@@ -6,6 +6,7 @@ import {
   ensureIssueWithinProjectConstraint,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamIssueShortId,
   ParamIssueUrl,
@@ -17,21 +18,27 @@ import type { ServerContext } from "../../types";
 import { formatDate, formatId, readString } from "./support/api-formatting";
 import { formatActivityAuthor } from "./support/activity-formatting";
 
-function formatComment(comment: IssueComment): string {
-  const actor = formatActivityAuthor(comment, "current user");
-  const text = comment.data ? readString(comment.data, "text") : null;
+export const addIssueNoteOutputSchema = z.object({
+  organizationSlug: z.string(),
+  issueId: z.string(),
+  issueUrl: z.string(),
+  note: z.object({
+    id: z.string(),
+    type: z.string(),
+    author: z.string(),
+    dateCreated: z.string().nullable(),
+    text: z.string().nullable(),
+  }),
+});
 
-  return [
-    `**Comment ID**: ${formatId(comment.commentId ?? comment.id)}`,
-    `**Type**: ${comment.type ?? "note"}`,
-    `**Author**: ${actor}`,
-    formatDate(comment.dateCreated)
-      ? `**Created**: ${formatDate(comment.dateCreated)}`
-      : null,
-    text ? `**Text**: ${text}` : null,
-  ]
-    .filter((line): line is string => Boolean(line))
-    .join("\n");
+function mapNote(comment: IssueComment) {
+  return {
+    id: formatId(comment.commentId ?? comment.id),
+    type: comment.type ?? "note",
+    author: formatActivityAuthor(comment, "current user"),
+    dateCreated: formatDate(comment.dateCreated),
+    text: comment.data ? readString(comment.data, "text") : null,
+  };
 }
 
 export default defineTool({
@@ -71,6 +78,7 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
+  outputSchema: addIssueNoteOutputSchema,
   async handler(params, context: ServerContext) {
     const parsed = parseIssueParams({
       issueUrl: params.issueUrl,
@@ -100,14 +108,11 @@ export default defineTool({
       text: params.text,
     });
 
-    return [
-      `# Added Note to Issue ${parsed.issueId} in **${parsed.organizationSlug}**`,
-      "",
-      formatComment(comment),
-      "",
-      "## Response Notes",
-      "",
-      "- The note is visible in the issue activity feed.",
-    ].join("\n");
+    return structuredResult({
+      organizationSlug: parsed.organizationSlug,
+      issueId: parsed.issueId,
+      issueUrl: apiService.getIssueUrl(parsed.organizationSlug, parsed.issueId),
+      note: mapNote(comment),
+    });
   },
 });

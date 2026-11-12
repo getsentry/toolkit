@@ -81,9 +81,6 @@ const traceIdArb = stringMatching(/^[a-f0-9]{32}$/);
 /** Valid dashboard IDs (numeric strings) */
 const dashboardIdArb = stringMatching(/^[1-9][0-9]{0,8}$/);
 
-/** Valid project IDs (numeric strings, same shape as other Sentry IDs) */
-const projectIdArb = stringMatching(/^[1-9][0-9]{0,8}$/);
-
 /** Common Sentry regions */
 const sentryRegionArb = constantFrom("us", "de", "eu", "staging");
 

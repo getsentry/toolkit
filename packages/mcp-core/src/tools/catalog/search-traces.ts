@@ -5,6 +5,9 @@ import {
   runSearchEvents,
   searchToolBase,
 } from "../support/search-events/search";
+import { buildSearchEventsOutputSchema } from "../support/search-events/structured";
+
+export const searchTracesOutputSchema = buildSearchEventsOutputSchema("spans");
 
 export default defineTool({
   ...searchToolBase("search_traces"),
@@ -33,9 +36,11 @@ export default defineTool({
     "</hints>",
   ].join("\n"),
   inputSchema: buildDatasetSearchInputSchema(),
+  outputSchema: searchTracesOutputSchema,
   async handler(params, context: ServerContext) {
     return await runSearchEvents({ ...params, dataset: "spans" }, context, {
       lockDataset: true,
+      output: "structured",
     });
   },
 });

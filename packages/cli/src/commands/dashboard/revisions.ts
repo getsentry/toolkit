@@ -8,6 +8,7 @@ import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { paginate } from "../../lib/api/infrastructure.js";
 import { listDashboardRevisionsPaginated } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   advancePaginationState,
@@ -118,23 +119,23 @@ export const revisionsCommand = buildCommand({
     examples: [
       {
         description: "List revisions by dashboard title",
-        command: "sentry dashboard revisions 'Frontend Performance'",
+        run: "dashboard revisions 'Frontend Performance'",
       },
       {
         description: "List revisions by dashboard ID",
-        command: "sentry dashboard revisions 12345",
+        run: "dashboard revisions 12345",
       },
       {
         description: "Pass the organization explicitly",
-        command: "sentry dashboard revisions my-org/ 12345",
+        run: "dashboard revisions my-org/ 12345",
       },
       {
         description: "Fetch the next page",
-        command: "sentry dashboard revisions my-org/ 12345 -c next",
+        run: "dashboard revisions my-org/ 12345 -c next",
       },
       {
         description: "Output as JSON",
-        command: "sentry dashboard revisions my-org/ 12345 --json",
+        run: "dashboard revisions my-org/ 12345 --json",
       },
     ],
   },
@@ -146,7 +147,7 @@ export const revisionsCommand = buildCommand({
   parameters: {
     positional: dashboardArguments({
       placeholder: "org/dashboard",
-      usageHint: "sentry dashboard revisions <org>/ <id>",
+      usageHint: () => sentry`dashboard revisions <org>/ <id>`,
     }),
     flags: {
       limit: buildListLimitFlag("revisions"),
@@ -211,8 +212,8 @@ export const revisionsCommand = buildCommand({
     const nav = paginationHint({
       hasPrev: !!hasPrev,
       hasMore,
-      prevHint: `sentry dashboard revisions ${orgSlug}/ ${dashboardId} -c prev`,
-      nextHint: `sentry dashboard revisions ${orgSlug}/ ${dashboardId} -c next`,
+      prevHint: sentry`dashboard revisions ${orgSlug}/ ${dashboardId} -c prev`,
+      nextHint: sentry`dashboard revisions ${orgSlug}/ ${dashboardId} -c next`,
     });
     const navStr = nav ? ` ${nav}` : "";
 
@@ -223,7 +224,7 @@ export const revisionsCommand = buildCommand({
     return {
       hint:
         `Showing ${revisions.length} revision(s) for dashboard ${dashboardId}.${navStr}\n` +
-        `Restore: sentry dashboard restore ${orgSlug}/ ${dashboardId} --revision <revision-id>\n` +
+        `Restore: ${sentry`dashboard restore ${orgSlug}/ ${dashboardId} --revision <revision-id>`}\n` +
         `Dashboard: ${url}`,
     };
   },

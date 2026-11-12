@@ -86,16 +86,15 @@ export const proposeVersionCommand = buildCommand({
     examples: [
       {
         description: "Propose a version from git HEAD",
-        command: "sentry release propose-version",
+        run: "release propose-version",
       },
       {
         description: "Output as JSON",
-        command: "sentry release propose-version --json",
+        run: "release propose-version --json",
       },
       {
         description: "Create a release named after the proposed version",
-        command:
-          'sentry release create "$(sentry release propose-version --json | jq -r .version)"',
+        run: 'release create "$(sentry release propose-version --json | jq -r .version)"',
       },
     ],
   },

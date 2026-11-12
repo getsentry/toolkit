@@ -108,16 +108,18 @@ export default defineTool({
 
 **REQUIRED**: Every tool sets `title`, a short Title Case display name such as
 `"Search Issues"`. The server exports it as the MCP tool `title`, which clients
-show instead of the snake_case `name`. Titles must be unique across tools;
-`tools.test.ts` enforces this. Deprecated aliases add a ` (Deprecated)`
-suffix, for example `"Search AI Conversations (Deprecated)"`.
+show instead of the snake_case `name`. Titles must be unique across tools; the
+[metadata linter](tool-responses.md#metadata-linter) enforces this for listed
+tools, and `tools.test.ts` for tools that never appear in tools/list. Deprecated
+aliases add a ` (Deprecated)` suffix, for example
+`"Search AI Conversations (Deprecated)"`.
 
 ### Safety Annotations
 
 **REQUIRED**: Every tool must declare `readOnlyHint`, `destructiveHint`, and
 `openWorldHint` explicitly (each `true` or `false`, never omitted). This is
-enforced at compile time (the `annotations` type requires them) and by
-`tools.test.ts`, because filters and confirmation gates depend on these hints;
+enforced at compile time (the `annotations` type requires them) and by the
+[metadata linter](tool-responses.md#metadata-linter), because filters and confirmation gates depend on these hints;
 an absent hint is a silent gap. Read-only tools must set `destructiveHint: false`
 (not leave it undefined).
 
@@ -341,6 +343,7 @@ pnpm eval your-tool
 - [ ] Unit tests with snapshots
 - [ ] Mock responses
 - [ ] 1-2 eval tests (if critical)
+- [ ] `outputSchema` declared, or a reasoned skip entry in the [metadata linter](tool-responses.md#metadata-linter)
 - [ ] Run quality checks
 
 ## Agent-in-Tool Pattern
