@@ -28,10 +28,12 @@ export type SnakeTerminal = {
     NodeJS.ReadStream,
     "off" | "on" | "pause" | "resume" | "setEncoding" | "setRawMode"
   >;
-  readonly output: Pick<
-    NodeJS.WriteStream,
-    "columns" | "off" | "on" | "rows" | "write"
-  >;
+  readonly output: Pick<NodeJS.WriteStream, "off" | "on" | "write"> & {
+    /** Undefined when the output is not a TTY. */
+    readonly columns?: number;
+    /** Undefined when the output is not a TTY. */
+    readonly rows?: number;
+  };
 };
 
 export type SnakeOptions = {
@@ -204,8 +206,8 @@ export function playSnake(
   { input, output }: SnakeTerminal,
   { color, onGameOver }: SnakeOptions,
 ): Promise<void> {
-  const columns = () => output.columns || DEFAULT_COLUMNS;
-  const rows = () => output.rows || DEFAULT_ROWS;
+  const columns = () => output.columns ?? DEFAULT_COLUMNS;
+  const rows = () => output.rows ?? DEFAULT_ROWS;
   const boardSize = () => snakeBoardSize(columns(), rows());
   const fits = () => snakeFrameFits(state, columns(), rows());
   const start = boardSize();
