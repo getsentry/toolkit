@@ -56,6 +56,9 @@ const CSI_RE = /^\u001b\[[0-?]*[ -/]*[@-~]/;
 /** An SS3 sequence, which some terminals send for arrow keys. */
 // oxlint-disable-next-line no-control-regex -- parses terminal escape sequences
 const SS3_RE = /^\u001bO./;
+/** The start of a CSI or SS3 sequence whose final byte hasn't arrived. */
+// oxlint-disable-next-line no-control-regex -- parses terminal escape sequences
+const ESCAPE_PREFIX_RE = /^\u001b(?:\[[0-?]*[ -/]*|O)?$/;
 // oxlint-disable-next-line no-control-regex -- splits typed text from control keys
 const PRINTABLE_RUN_RE = /^[^\u0000-\u001f\u007f]+/;
 
@@ -109,9 +112,10 @@ export function getOptionWindow(
  *
  * Bracketed paste becomes one text key, so a pasted newline never confirms.
  * Escape sequences the picker doesn't use (other CSI keys, Alt+key) are
- * dropped. A chunk that ends in a bare Esc keeps it pending, because the
- * rest of an arrow key's sequence can arrive in the next chunk; `flush()`
- * turns a pending Esc into the Esc key.
+ * dropped. A chunk that ends partway through an escape sequence (a bare Esc,
+ * `Esc [`, `Esc O`, or part of the paste end marker) keeps that part
+ * pending, because the rest can arrive in the next chunk. `flush()` turns a
+ * pending bare Esc into the Esc key and drops any other pending prefix.
  */
 export function createKeyParser(): {
   push: (chunk: string) => PickerKey[];
@@ -137,12 +141,15 @@ export function createKeyParser(): {
     while (input) {
       if (pasting) {
         const end = input.indexOf(PASTE_END);
-        addText(
-          sanitizeSelectFilterInput(end === -1 ? input : input.slice(0, end)),
-        );
         if (end === -1) {
+          const held = partialPasteEndLength(input);
+          addText(
+            sanitizeSelectFilterInput(input.slice(0, input.length - held)),
+          );
+          pending = input.slice(input.length - held);
           break;
         }
+        addText(sanitizeSelectFilterInput(input.slice(0, end)));
         pasting = false;
         input = input.slice(end + PASTE_END.length);
         continue;
@@ -152,8 +159,8 @@ export function createKeyParser(): {
         input = input.slice(PASTE_START.length);
         continue;
       }
-      if (input === ESC) {
-        pending = ESC;
+      if (ESCAPE_PREFIX_RE.test(input)) {
+        pending = input;
         break;
       }
       const sequence = CSI_RE.exec(input)?.[0] ?? SS3_RE.exec(input)?.[0];
@@ -201,14 +208,24 @@ export function createKeyParser(): {
   return {
     push,
     flush: () => {
-      if (!pending) {
-        return [];
-      }
+      const flushed = pending;
       pending = "";
-      return [{ name: "escape" }];
+      return flushed === ESC ? [{ name: "escape" }] : [];
     },
-    hasPendingEscape: () => pending !== "",
+    // Inside a paste, the held part of the end marker waits for the next
+    // chunk; there is no key to time out to.
+    hasPendingEscape: () => pending !== "" && !pasting,
   };
+}
+
+/** Length of the longest suffix of `input` that starts the paste end marker. */
+function partialPasteEndLength(input: string): number {
+  for (let length = PASTE_END.length - 1; length > 0; length--) {
+    if (input.endsWith(PASTE_END.slice(0, length))) {
+      return length;
+    }
+  }
+  return 0;
 }
 
 /**
@@ -491,6 +508,12 @@ type PickerOutput = {
 export type MountedPicker = { close: () => void };
 
 const HIDE_CURSOR = `${ESC}[?25l`;
+/**
+ * Bracketed paste wraps pasted text in markers, so a newline in a pasted
+ * name (clipboards often end in one) filters instead of confirming.
+ */
+const ENABLE_BRACKETED_PASTE = `${ESC}[?2004h`;
+const DISABLE_BRACKETED_PASTE = `${ESC}[?2004l`;
 const SHOW_CURSOR = `${ESC}[?25h`;
 const ERASE_DOWN = `${ESC}[J`;
 
@@ -558,7 +581,7 @@ export function mountSelectPrompt(
     }
   };
 
-  output.write(HIDE_CURSOR);
+  output.write(`${HIDE_CURSOR}${ENABLE_BRACKETED_PASTE}`);
   draw();
   input.on("data", onData);
   output.on("resize", draw);
@@ -569,7 +592,7 @@ export function mountSelectPrompt(
       clearTimeout(escapeTimer);
       input.removeListener("data", onData);
       output.removeListener("resize", draw);
-      output.write(`${eraseFrame()}${SHOW_CURSOR}`);
+      output.write(`${eraseFrame()}${DISABLE_BRACKETED_PASTE}${SHOW_CURSOR}`);
       drawnLines = 0;
     },
   };

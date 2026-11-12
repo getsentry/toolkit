@@ -421,6 +421,24 @@ describe("select picker", () => {
     expect(frame).not.toContain("UNIQUE_TAIL");
   });
 
+  test("turns bracketed paste on while mounted and off on close", () => {
+    const prompt: SelectPrompt = {
+      message: "Select a project:",
+      options: [{ value: "frontend", label: "Frontend" }],
+      initialIndex: 0,
+      resolve: ignorePromptResolution,
+    };
+    const output = new CaptureStream(80);
+    const picker = mountSelectPrompt(prompt, {
+      input: new EventEmitter(),
+      output,
+    });
+    expect(output.output).toContain("\u001b[?2004h");
+    expect(output.output).not.toContain("\u001b[?2004l");
+    picker.close();
+    expect(output.output).toContain("\u001b[?2004l");
+  });
+
   test("closing erases the picker, restores the cursor, and stops reading keys", () => {
     const resolve = vi.fn();
     const prompt: SelectPrompt = {
@@ -434,7 +452,9 @@ describe("select picker", () => {
     const picker = mountSelectPrompt(prompt, { input, output });
     picker.close();
 
-    expect(output.output.endsWith(`${FRAME_START}\u001b[?25h`)).toBe(true);
+    expect(
+      output.output.endsWith(`${FRAME_START}\u001b[?2004l\u001b[?25h`),
+    ).toBe(true);
     expect(input.listenerCount("data")).toBe(0);
     expect(output.listenerCount("resize")).toBe(0);
   });
@@ -456,6 +476,41 @@ describe("createKeyParser", () => {
     expect(parser.hasPendingEscape()).toBe(true);
     expect(parser.flush()).toEqual([{ name: "escape" }]);
     expect(parser.flush()).toEqual([]);
+  });
+
+  test.each([
+    { split: "Esc", first: "\u001b", rest: "[B" },
+    { split: "Esc [", first: "\u001b[", rest: "B" },
+    { split: "Esc O", first: "\u001bO", rest: "B" },
+    { split: "Esc [ 3", first: "\u001b[3", rest: "~" },
+  ])("holds an escape sequence split after $split", ({ first, rest }) => {
+    const parser = createKeyParser();
+    expect(parser.push(`front${first}`)).toEqual([
+      { name: "text", text: "front" },
+    ]);
+    expect(parser.hasPendingEscape()).toBe(true);
+    expect(parser.push(rest)).not.toContainEqual(
+      expect.objectContaining({ name: "text" }),
+    );
+    expect(parser.hasPendingEscape()).toBe(false);
+  });
+
+  test("drops an unfinished escape sequence when flushed", () => {
+    const parser = createKeyParser();
+    expect(parser.push("\u001b[")).toEqual([]);
+    expect(parser.flush()).toEqual([]);
+    expect(parser.push("a")).toEqual([{ name: "text", text: "a" }]);
+  });
+
+  test("holds paste markers split across chunks", () => {
+    const parser = createKeyParser();
+    expect(parser.push("\u001b[20")).toEqual([]);
+    expect(parser.push("0~front\u001b[2")).toEqual([
+      { name: "text", text: "front" },
+    ]);
+    // A held part of the end marker waits for the paste to finish.
+    expect(parser.hasPendingEscape()).toBe(false);
+    expect(parser.push("01~\r")).toEqual([{ name: "enter" }]);
   });
 
   test("keeps a bracketed paste open across chunks", () => {
