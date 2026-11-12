@@ -17,6 +17,18 @@ vi.mock("../../../src/lib/sentry-client.js", () => ({
   getApiBaseUrl: () => "https://sentry.io",
 }));
 
+const http1Dispatcher = vi.hoisted(() => ({
+  destroy: () => Promise.resolve(),
+}));
+const destroyHttp1DispatcherMock = vi.hoisted(() =>
+  vi.fn(async (_dispatcher: unknown) => {}),
+);
+
+vi.mock("../../../src/lib/http1-dispatcher.js", () => ({
+  createHttp1Dispatcher: () => http1Dispatcher,
+  destroyHttp1Dispatcher: destroyHttp1DispatcherMock,
+}));
+
 import {
   batchChunkPayloads,
   CHUNK_UPLOAD_TIMEOUT_MS,
@@ -34,9 +46,6 @@ const SERVER_OPTIONS = {
   compression: [] as string[],
 };
 
-/** Where undici 8 (Node 26) registers its global dispatcher. */
-const GLOBAL_DISPATCHER_V2 = Symbol.for("undici.globalDispatcher.2");
-
 function payload(sha1: string, size: number): ChunkPayload {
   return { sha1, data: Buffer.alloc(size, 1) };
 }
@@ -44,6 +53,7 @@ function payload(sha1: string, size: number): ChunkPayload {
 afterEach(() => {
   fetchMock.mockClear();
   getSdkConfigMock.mockClear();
+  destroyHttp1DispatcherMock.mockClear();
 });
 
 describe("batchChunkPayloads", () => {
@@ -105,7 +115,7 @@ describe("uploadChunkPayloads", () => {
     expect(names.sort()).toEqual(["a", "b", "c", "d"]);
   });
 
-  test("uploads through a retrying fetch with the chunk-upload timeout", async () => {
+  test("uploads through a retrying HTTP/1.1 fetch with the chunk-upload timeout", async () => {
     await uploadChunkPayloads({
       chunks: [payload("a", 10)],
       serverOptions: SERVER_OPTIONS,
@@ -116,7 +126,9 @@ describe("uploadChunkPayloads", () => {
     expect(getSdkConfigMock).toHaveBeenCalledWith("https://us.sentry.io", {
       idempotent: true,
       timeoutMs: CHUNK_UPLOAD_TIMEOUT_MS,
+      dispatcher: http1Dispatcher,
     });
+    expect(destroyHttp1DispatcherMock).toHaveBeenCalledWith(http1Dispatcher);
   });
 
   test("gives a failed chunk upload the shared 403 guidance", async () => {
@@ -140,50 +152,6 @@ describe("uploadChunkPayloads", () => {
       enriched403: true,
       detail: expect.stringContaining("may lack the required scope"),
     });
-  });
-
-  test("sends every request over one HTTP/1.1 dispatcher and destroys it after", async () => {
-    // Node 26's fetch (undici 8) multiplexes the parallel uploads as HTTP/2
-    // streams on one connection, and Sentry's edge resets all but one with
-    // ENHANCE_YOUR_CALM. The uploads must use their own HTTP/1.1 dispatcher.
-    const created: FakeAgent[] = [];
-    class FakeAgent {
-      readonly options: unknown;
-      destroyed = false;
-      constructor(options?: unknown) {
-        this.options = options;
-        created.push(this);
-      }
-      destroy(): Promise<void> {
-        this.destroyed = true;
-        return Promise.resolve();
-      }
-    }
-    const global = globalThis as Record<PropertyKey, unknown>;
-    const original = global[GLOBAL_DISPATCHER_V2];
-    global[GLOBAL_DISPATCHER_V2] = Object.create(FakeAgent.prototype);
-    try {
-      await uploadChunkPayloads({
-        chunks: ["a", "b", "c", "d"].map((id) => payload(id, 10)),
-        serverOptions: SERVER_OPTIONS,
-        encoding: undefined,
-        regionUrl: "https://us.sentry.io",
-      });
-    } finally {
-      global[GLOBAL_DISPATCHER_V2] = original;
-    }
-
-    expect(created).toHaveLength(1);
-    const [dispatcher] = created;
-    expect(dispatcher?.options).toEqual({ allowH2: false });
-    expect(dispatcher?.destroyed).toBe(true);
-    const inits = fetchMock.mock.calls.map(
-      (call) => (call as unknown as [string, { dispatcher?: unknown }])[1],
-    );
-    expect(inits).toHaveLength(2);
-    for (const init of inits) {
-      expect(init.dispatcher).toBe(dispatcher);
-    }
   });
 
   test("names the network cause when a chunk upload gets no response", async () => {

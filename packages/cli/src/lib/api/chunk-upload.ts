@@ -47,7 +47,6 @@ import { ApiError, isNetworkError, projectsNotFoundError } from "../errors.js";
 import {
   createHttp1Dispatcher,
   destroyHttp1Dispatcher,
-  type Http1Dispatcher,
 } from "../http1-dispatcher.js";
 import { logger } from "../logger.js";
 import { getSdkConfig } from "../sentry-client.js";
@@ -387,7 +386,6 @@ export function hashBuffer(
   return { chunks, overallChecksum: overallHasher.digest("hex") };
 }
 
-/** Fetch for chunk-upload POSTs, see {@link withChunkUploadFetch}. */
 type ChunkUploadFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 /**
@@ -396,31 +394,22 @@ type ChunkUploadFetch = (url: string, init: RequestInit) => Promise<Response>;
  *
  * Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
  * explicitly: the server-provided URL need not match the catalog path, which
- * is also why the timeout is set here rather than by URL.
- *
- * Requests go over HTTP/1.1, one connection per concurrent request. Over
- * HTTP/2 (Node 26's fetch default) they would share one connection, and
- * Sentry's edge resets all but one concurrent upload stream with
- * `ENHANCE_YOUR_CALM` (see http1-dispatcher.ts). The dispatcher lives only
- * for this upload, so its sockets never outlive it.
+ * is also why the timeout is set here rather than by URL. Requests go over
+ * HTTP/1.1 (see http1-dispatcher.ts); the dispatcher lives only for this
+ * upload.
  */
-async function withChunkUploadFetch<T>(
+async function withChunkUploadFetch(
   regionUrl: string,
-  upload: (fetch: ChunkUploadFetch) => Promise<T>,
-): Promise<T> {
-  const authFetch = getSdkConfig(regionUrl, {
-    idempotent: true,
-    timeoutMs: CHUNK_UPLOAD_TIMEOUT_MS,
-  }).fetch;
+  upload: (fetch: ChunkUploadFetch) => Promise<unknown>,
+): Promise<void> {
   const dispatcher = createHttp1Dispatcher();
   try {
-    return await upload(
-      dispatcher
-        ? (url, init) =>
-            authFetch(url, { ...init, dispatcher } as RequestInit & {
-              dispatcher: Http1Dispatcher;
-            })
-        : authFetch,
+    await upload(
+      getSdkConfig(regionUrl, {
+        idempotent: true,
+        timeoutMs: CHUNK_UPLOAD_TIMEOUT_MS,
+        dispatcher,
+      }).fetch,
     );
   } finally {
     await destroyHttp1Dispatcher(dispatcher);
@@ -428,9 +417,8 @@ async function withChunkUploadFetch<T>(
 }
 
 /**
- * POST one chunk-upload request. A request that got no response surfaces as
- * an ApiError naming the network cause (for example an HTTP/2 stream reset),
- * not as a bare `TypeError: fetch failed`.
+ * POST one chunk-upload request. A request that got no response throws an
+ * ApiError that names the network cause, not a bare `TypeError`.
  */
 async function postChunks(
   authFetch: ChunkUploadFetch,

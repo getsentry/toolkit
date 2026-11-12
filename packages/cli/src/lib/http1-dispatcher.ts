@@ -1,40 +1,34 @@
 /**
  * HTTP/1.1-only dispatchers for Node's global `fetch`.
  *
- * Node 26 bundles undici 8, which negotiates HTTP/2 by default
- * (`allowH2: true`), so parallel requests to one origin share a single
- * connection as HTTP/2 streams. Sentry's edge resets concurrent upload
- * streams on one connection with `ENHANCE_YOUR_CALM`: of N parallel
- * chunk-upload requests, only the last body to finish is accepted. Uploads
- * that send large bodies in parallel use an HTTP/1.1 dispatcher instead, so
- * each request gets its own connection, as the legacy sentry-cli (curl
- * without HTTP/2) did.
+ * Node 26's fetch (undici 8) uses HTTP/2 by default, so parallel requests to
+ * one origin share one connection. Sentry's edge resets all but one of the
+ * concurrent upload streams on a connection with `ENHANCE_YOUR_CALM`, so
+ * parallel uploads use HTTP/1.1 with one connection per request, as the
+ * legacy sentry-cli did.
  *
- * The dispatcher is built from the class of the runtime's own global
- * dispatcher, so no undici dependency is bundled and the runtime's proxy
- * configuration (`EnvHttpProxyAgent` under `NODE_USE_ENV_PROXY`) still
- * applies. undici 7 and older (Node 24 and older) already default to
- * HTTP/1.1 and register only the version-1 symbol; Bun has no undici
- * dispatcher. Both get `undefined` and keep the default dispatcher.
+ * The dispatcher is an instance of the runtime's own global dispatcher class,
+ * so no undici dependency is bundled and `NODE_USE_ENV_PROXY` still applies.
+ * Older undici (Node 24 and older) already uses HTTP/1.1 and Bun has no
+ * undici dispatcher; both get `undefined`.
  */
 
 import { logger } from "./logger.js";
 
 const log = logger.withTag("http");
 
-/** undici ≥ 8 registers its global dispatcher under this symbol. */
+/** undici 8 registers its global dispatcher under this symbol. */
 const GLOBAL_DISPATCHER_V2 = Symbol.for("undici.globalDispatcher.2");
 
-/** The part of an undici dispatcher the CLI uses: fetch's `dispatcher` and teardown. */
-export type Http1Dispatcher = { destroy: () => Promise<void> };
+/** An undici dispatcher, as `fetch` accepts it. */
+export type Http1Dispatcher = NonNullable<RequestInit["dispatcher"]>;
 
 type DispatcherClass = new (options: { allowH2: false }) => Http1Dispatcher;
 
 /**
- * Create an HTTP/1.1-only dispatcher like the runtime's global one, or
- * `undefined` when the runtime's fetch does not use HTTP/2 by default (or
- * has no undici dispatcher). The caller must `destroy()` it after its
- * requests, or its keep-alive sockets hold the process open.
+ * Create an HTTP/1.1-only dispatcher, or `undefined` when the runtime's
+ * fetch does not use HTTP/2 by default. Destroy it after use, or its
+ * keep-alive sockets hold the process open.
  */
 export function createHttp1Dispatcher(): Http1Dispatcher | undefined {
   const registered = (globalThis as Record<PropertyKey, unknown>)[
@@ -53,11 +47,7 @@ export function createHttp1Dispatcher(): Http1Dispatcher | undefined {
   }
 }
 
-/**
- * Destroy a dispatcher from {@link createHttp1Dispatcher}. Never rejects:
- * it runs in a `finally`, where a teardown error would mask the upload's
- * own result.
- */
+/** Destroy a dispatcher. Never rejects, so it cannot mask the caller's result. */
 export async function destroyHttp1Dispatcher(
   dispatcher: Http1Dispatcher | undefined,
 ): Promise<void> {

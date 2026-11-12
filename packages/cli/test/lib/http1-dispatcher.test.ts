@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
   createHttp1Dispatcher,
   destroyHttp1Dispatcher,
+  type Http1Dispatcher,
 } from "../../src/lib/http1-dispatcher.js";
 
 const GLOBAL_DISPATCHER_V2 = Symbol.for("undici.globalDispatcher.2");
@@ -38,7 +39,9 @@ describe("createHttp1Dispatcher", () => {
 
     expect(dispatcher).toBeInstanceOf(FakeAgent);
     expect(dispatcher).not.toBe(registered);
-    expect((dispatcher as FakeAgent).options).toEqual({ allowH2: false });
+    expect((dispatcher as unknown as FakeAgent).options).toEqual({
+      allowH2: false,
+    });
   });
 
   test("returns undefined when no undici 8 dispatcher is registered", () => {
@@ -76,7 +79,7 @@ describe("destroyHttp1Dispatcher", () => {
     await expect(
       destroyHttp1Dispatcher({
         destroy: () => Promise.reject(new Error("socket teardown failed")),
-      }),
+      } as unknown as Http1Dispatcher),
     ).resolves.toBeUndefined();
   });
 });
