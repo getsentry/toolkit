@@ -451,6 +451,7 @@ describe("command tools: session constraints", () => {
     ["dashboard view", ["acme/api", "123"], project],
     ["dashboard revisions", ["acme/api", "123"], project],
     ["event view", ["acme/api", "abc123"], project],
+    ["event view", ["other/WEB-1", "abc123"], org],
     ["span view", ["acme/api", TRACE_ID, SPAN_ID], project],
     ["span view", [`other/api/${TRACE_ID}`, SPAN_ID], org],
   ])(
@@ -468,13 +469,14 @@ describe("command tools: session constraints", () => {
     const { call, calls } = setup();
     await call("dashboard view", { positional: ["acme/web", "123"] }, project);
     await call("event view", { positional: ["acme/web", "abc123"] }, project);
+    await call("event view", { positional: ["acme/WEB-1", "abc123"] }, project);
     await call(
       "span view",
       { positional: [`acme/web/${TRACE_ID}`, SPAN_ID] },
       project,
     );
     await call("span view", { positional: [`${TRACE_ID}/${SPAN_ID}`] }, org);
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(5);
   });
 
   it.each([

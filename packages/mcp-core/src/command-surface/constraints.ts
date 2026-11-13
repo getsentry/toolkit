@@ -20,6 +20,9 @@ const TARGET_KINDS = new Set(["org", "org/project", "dashboard", "issue"]);
 
 export const URL_PATTERN = /^https?:\/\//i;
 
+/** An issue short ID (`WEB-1`), as the CLI's `looksLikeIssueShortId` reads one. */
+const SHORT_ID_PATTERN = /^[A-Z][A-Z0-9]*(-[A-Z][A-Z0-9]*)*-[A-Z0-9]+$/;
+
 type Session = { org: string; project: string | null };
 
 function outside(
@@ -193,9 +196,13 @@ function pinTarget(
     (kind === "issue" && title.startsWith("org/project/"));
   if (leadsTarget && (leading ? segments.length >= 2 : segments.length >= 3)) {
     const [valueOrg, project] = segments;
+    // `event view <org>/<short-id> <event-id>` names an issue, not a
+    // project: short IDs are uppercase and project slugs never are.
+    const namesProject =
+      project && !(kind === "issue" && SHORT_ID_PATTERN.test(project));
     if (
       valueOrg !== session.org ||
-      (session.project && project && project !== session.project)
+      (session.project && namesProject && project !== session.project)
     ) {
       throw outside(entry, value, session);
     }
