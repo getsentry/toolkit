@@ -463,12 +463,10 @@ async function* generateFollowLogs<T extends LogLike>(
     config.onInitialLogs?.(initialLogs);
 
     // Poll loop — exits when SIGINT fires
-    // Read through a function: the signal flips during the await, which
-    // control-flow narrowing cannot see.
-    const isAborted = () => controller.signal.aborted;
-    while (!isAborted()) {
+    while (!controller.signal.aborted) {
       await abortableSleep(pollIntervalMs, controller.signal);
-      if (isAborted()) {
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- aborted by SIGINT during the await above
+      if (controller.signal.aborted) {
         break;
       }
 

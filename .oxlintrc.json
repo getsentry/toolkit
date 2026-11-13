@@ -160,7 +160,10 @@
       "rules": {
         "typescript/no-explicit-any": "error",
         "typescript/no-non-null-assertion": "error",
-        "typescript/no-unnecessary-condition": "error"
+        "typescript/no-unnecessary-condition": [
+          "error",
+          { "allowConstantLoopConditions": "only-allowed-literals" }
+        ]
       }
     },
     {
