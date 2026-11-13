@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Measure token cost of MCP tool definitions.
  *
@@ -6,8 +5,8 @@
  * in the tool definitions that would be sent to LLM clients.
  *
  * Usage:
- *   tsx measure-token-cost.ts              # Display table
- *   tsx measure-token-cost.ts -o stats.json # Write JSON to file
+ *   pnpm run measure-tokens                    # Display table
+ *   pnpm run measure-tokens -- -o stats.json   # Write JSON to file
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -39,7 +38,7 @@ function parseArgs() {
       i++; // Skip next arg
     } else if (arg === "--help" || arg === "-h") {
       console.log(`
-Usage: tsx measure-token-cost.ts [options]
+Usage: pnpm run measure-tokens -- [options]
 
 Options:
   --commands           Measure the command surface (sentry mcp --commands)
@@ -47,8 +46,8 @@ Options:
   -h, --help          Show this help message
 
 Examples:
-  tsx measure-token-cost.ts              # Display table
-  tsx measure-token-cost.ts -o stats.json # Write JSON to file
+  pnpm run measure-tokens                    # Display table
+  pnpm run measure-tokens -- -o stats.json   # Write JSON to file
 `);
       process.exit(0);
     }

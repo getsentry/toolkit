@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Verify commands that can issue DELETE retain destructive-command safeguards.
  * Uses the same source analysis as schema discovery, including private/dynamic
