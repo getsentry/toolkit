@@ -1,9 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { getActiveSpan, metrics } from "@sentry/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type SideQuestCandidate,
   buildSideQuests,
   formatSideQuests,
 } from "./side-quests";
+
+vi.mock("@sentry/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@sentry/core")>();
+  return {
+    ...actual,
+    getActiveSpan: vi.fn(),
+    metrics: { ...actual.metrics, count: vi.fn() },
+  };
+});
 
 const session = {
   experimentalMode: false,
@@ -123,6 +133,67 @@ describe("buildSideQuests", () => {
     );
 
     expect(quests?.[0]?.details).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("side quest telemetry", () => {
+  const setAttributes = vi.fn();
+
+  beforeEach(() => {
+    setAttributes.mockClear();
+    vi.mocked(metrics.count).mockClear();
+    vi.mocked(getActiveSpan).mockReturnValue({
+      setAttributes,
+    } as unknown as ReturnType<typeof getActiveSpan>);
+  });
+
+  it("marks each detected quest as shown or capped, with the counts", () => {
+    buildSideQuests(
+      null,
+      [
+        detector({ rank: 10, id: "late", tip: "Late." }),
+        detector({ rank: 0, id: "first", tip: "First." }),
+        detector(null),
+        detector({ rank: 5, id: "second", tip: "Second." }),
+      ],
+      session,
+      2,
+    );
+
+    expect(setAttributes).toHaveBeenCalledOnce();
+    expect(setAttributes).toHaveBeenCalledWith({
+      "app.side_quests.detected": 3,
+      "app.side_quests.shown": 2,
+      "app.side_quest.first": "shown",
+      "app.side_quest.second": "shown",
+      "app.side_quest.late": "capped",
+    });
+  });
+
+  it("counts each shown quest, not the capped ones", () => {
+    buildSideQuests(
+      null,
+      [
+        detector({ rank: 0, id: "first", tip: "First." }),
+        detector({ rank: 1, id: "capped", tip: "Capped." }),
+      ],
+      session,
+      1,
+    );
+
+    expect(vi.mocked(metrics.count).mock.calls).toEqual([
+      ["app.side_quest.shown", 1, { attributes: { "side_quest.id": "first" } }],
+    ]);
+  });
+
+  it("records zero counts when no detector finds anything", () => {
+    buildSideQuests(null, [detector(null)], session);
+
+    expect(setAttributes).toHaveBeenCalledWith({
+      "app.side_quests.detected": 0,
+      "app.side_quests.shown": 0,
+    });
+    expect(metrics.count).not.toHaveBeenCalled();
   });
 });
 

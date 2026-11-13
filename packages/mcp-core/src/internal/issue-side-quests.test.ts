@@ -1,7 +1,10 @@
 import { eventFixture, sourceMapDebugFixture } from "@sentry/mcp-server-mocks";
 import { describe, expect, it } from "vitest";
 import { EventSchema, SourceMapDebugSchema } from "../api-client/schema";
-import { buildIssueSideQuests } from "./issue-side-quests";
+import {
+  ISSUE_SIDE_QUEST_IDS,
+  buildIssueSideQuests,
+} from "./issue-side-quests";
 
 const session = { experimentalMode: false };
 const files = ["/a.js", "/b.js", "/c.js"];
@@ -36,6 +39,14 @@ function eventWithFourFiles() {
 }
 
 describe("buildIssueSideQuests", () => {
+  it("uses unique snake_case ids, which analytics depend on", () => {
+    const ids = Object.values(ISSUE_SIDE_QUEST_IDS);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) {
+      expect(id).toMatch(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/);
+    }
+  });
+
   it("lists each file's cause when the causes differ", () => {
     const event = eventWithFourFiles();
     const debug = SourceMapDebugSchema.parse(sourceMapDebugFixture);

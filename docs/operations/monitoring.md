@@ -185,6 +185,8 @@ These are Sentry MCP application attributes that are not part of the MCP semanti
 - `app.server.mode.experimental` - Whether experimental tools are enabled for this MCP request or stdio session
 - `app.server.distribution` - stdio only: `@sentry/mcp-server` for the npm package, `sentry mcp` for the CLI command
 - `app.consent.skill.<skill>.granted` - Per-skill boolean attributes for skills granted to the MCP request. Skill ids are normalized with `-` replaced by `_`
+- `app.side_quest.<id>` - `"shown"` or `"capped"` (detected but cut by the cap) for each side quest a tool call detected; unset when not detected. Ids are stable snake_case
+- `app.side_quests.detected`, `app.side_quests.shown` - Integer counts of side quests detected and shown; `0` when detectors ran and found none. Each shown quest also increments the `app.side_quest.shown` counter metric, tagged `side_quest.id`, which trace sampling does not drop
 - `app.upstream.host` - Upstream Sentry host configured for the server
 - `app.url.full` - MCP URL configured for stdio
 

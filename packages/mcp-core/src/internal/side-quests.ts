@@ -1,3 +1,4 @@
+import { getActiveSpan, metrics } from "@sentry/core";
 import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { z } from "zod";
 import {
@@ -80,13 +81,18 @@ export function buildSideQuests<Input>(
   session: ToolSession,
   max = MAX_SIDE_QUESTS,
 ): SideQuest[] | undefined {
-  const quests = detectors
+  const ranked = detectors
     .flatMap((detect) => {
       const candidate = detect(input);
       return candidate ? [candidate] : [];
     })
     // Array.prototype.sort is stable, so ties keep detector order
-    .sort((a, b) => a.rank - b.rank)
+    .sort((a, b) => a.rank - b.rank);
+  recordSideQuests(
+    ranked.map(({ id }) => id),
+    max,
+  );
+  const quests = ranked
     .slice(0, max)
     .map(({ id, tip, next, docs, details }) => {
       const calls = (next ?? [])
@@ -102,6 +108,29 @@ export function buildSideQuests<Input>(
       };
     });
   return quests.length > 0 ? quests : undefined;
+}
+
+/**
+ * Records which quests were detected and which the cap cut, so analytics can
+ * query them without parsing tool output: one `app.side_quest.<id>` span
+ * attribute per detected quest, the counts, and a metric per shown quest,
+ * which trace sampling does not drop. Quest ids are part of this contract.
+ */
+function recordSideQuests(ids: string[], max: number) {
+  const shown = ids.slice(0, max);
+  const attributes: Record<string, string | number> = {
+    "app.side_quests.detected": ids.length,
+    "app.side_quests.shown": shown.length,
+  };
+  ids.forEach((id, index) => {
+    attributes[`app.side_quest.${id}`] = index < max ? "shown" : "capped";
+  });
+  getActiveSpan()?.setAttributes(attributes);
+  for (const id of shown) {
+    metrics.count("app.side_quest.shown", 1, {
+      attributes: { "side_quest.id": id },
+    });
+  }
 }
 
 /** The `## Concerns Identified` markdown section, or an empty string. */
