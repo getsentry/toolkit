@@ -171,9 +171,11 @@ session. Spend those tokens only on text that changes what the model does.
   samples. The schema already shows the call shape. Keep an example only when
   it teaches a format the model cannot get from the schema, such as Sentry
   search syntax, and put it on the param.
-- Do not repeat what the server instructions say
-  (`server-instructions.ts`): org defaults, `find_organizations` lookups,
-  `get_sentry_resource` routing, and issues versus events.
+- Not every harness loads the server instructions
+  (`server-instructions.ts`), so tool and param text must work without them.
+  Keep the routing a tool needs, such as "start here for a Sentry URL", in its
+  own description as one short line. The server instructions may repeat it for
+  the harnesses that load them.
 - Do not narrate how the tool works inside, which API it calls, or that its
   output is markdown.
 - At most `MAX_TOOL_DESCRIPTION_LENGTH` (512) characters.
@@ -197,8 +199,9 @@ session. Spend those tokens only on text that changes what the model does.
   `UserInputError` over a prose rule. When the handler enforces a rule, cut
   the prose that repeats it.
 - Give each rule one home: the param for field meaning, the tool description
-  for what the tool does, the server instructions for routing across tools,
-  and response notes for follow-ups that depend on the result.
+  for what the tool does and its sibling contrast, and response notes for
+  follow-ups that depend on the result. The server instructions are the one
+  allowed second copy, because some harnesses never load them.
 
 `tool-descriptions.test.ts` enforces the limits, rejects `<examples>` and
 `<hints>`, and fails when a tool description names one of its input fields.
