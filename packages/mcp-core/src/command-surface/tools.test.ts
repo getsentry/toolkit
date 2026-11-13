@@ -112,6 +112,8 @@ describe("command tools: listing", () => {
     // Hidden and stdio-only commands are not tools.
     expect(tools.sentry_auth_login).toBeUndefined();
     expect(tools.sentry_sourcemap_upload).toBeUndefined();
+    // `--url` fetches any host, so `status show` stays off MCP.
+    expect(tools.sentry_status_show).toBeUndefined();
   });
 
   it("titles each tool from its command path", () => {
@@ -265,12 +267,6 @@ describe("command tools: arguments", () => {
       "input",
       "body.json",
       "it reads or writes a path on the local machine",
-    ],
-    [
-      "status show",
-      "url",
-      "http://169.254.169.254",
-      "it fetches a host the caller picks",
     ],
   ])("refuses %s --%s", async (command, flag, value, reason) => {
     const { call } = setup();

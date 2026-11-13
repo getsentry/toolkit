@@ -26,14 +26,6 @@ const STREAMING_FLAGS = new Set(["follow", "refresh", "watch"]);
 const BROWSER_FLAGS = new Set(["web"]);
 
 /**
- * Flags that make the command fetch a host the caller picks, by command
- * (`sentry status show --url`). Agents could probe internal hosts with them.
- */
-const HOST_FLAGS: Record<string, readonly string[]> = {
-  "sentry status show": ["url"],
-};
-
-/**
  * The skills that grant a write or destructive command, by command name
  * prefix; other writes need `project-management`.
  */
@@ -76,9 +68,6 @@ export function refusedFlagReason(
   }
   if (BROWSER_FLAGS.has(flag)) {
     return "it opens a browser";
-  }
-  if (HOST_FLAGS[entry.path]?.includes(flag)) {
-    return "it fetches a host the caller picks";
   }
   return;
 }
