@@ -26,7 +26,9 @@ export const metricMonitorReferenceFields = {
     .string()
     .trim()
     .regex(/^\d+$/)
-    .describe("Native Metric Monitor ID from find_metric_monitors."),
+    .describe(
+      "Metric Monitor ID from find_metric_monitors, not a legacy metric alert ID.",
+    ),
 };
 
 export const metricMonitorSummarySchema = z.object({

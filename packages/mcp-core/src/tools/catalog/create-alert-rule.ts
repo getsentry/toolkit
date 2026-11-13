@@ -26,17 +26,10 @@ export default defineTool({
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [
-    "Create a Sentry Alert (workflow) that sends notifications, such as Slack, email or PagerDuty, when its issue or monitor sources trigger.",
-    "Use get_alert_options for available actions, integrations, conditions, and sources. All notification providers use their native config and data fields.",
-    "To copy an Alert, read get_alert_rule(kind='issue') and pass its configuration here; component IDs are discarded while integration and destination IDs are retained. New trigger groups require logicType='any-short'.",
-    "To reuse an existing Alert across projects, use update_alert_rule instead.",
-    "Supply projectSlugs for project issue streams and/or detectorIds for individual monitors. Pass detectorIds=[] explicitly to create an Alert without sources; it will not send notifications until connected.",
-    "New Alerts default to active with a 30-minute notification interval. Use status='disabled' to configure one before enabling it.",
-    "Project-constrained sessions require sources exclusively within that project. All-project sources require Sentry's feature and org:write in addition to alerts:write.",
-    "After a timeout or error, search for the Alert before retrying: creation may already have succeeded.",
-    "<examples>",
-    "create_alert_rule(organizationSlug='my-org', name='Backend notifications', status='disabled', detectorIds=[], actionFilters=[])",
-    "</examples>",
+    "Create a Sentry Alert (notification workflow) that sends Slack, email, PagerDuty, or other notifications when its connected issue streams or monitors trigger.",
+    "get_alert_options lists valid actions, conditions, and sources; update_alert_rule adds sources to an existing Alert.",
+    "Monitors are separate tools: find_metric_monitors (metric thresholds), find_monitors (cron jobs), find_uptime_monitors (URL checks).",
+    "After a timeout or error, search for the Alert before retrying: it may already exist.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -50,12 +43,14 @@ export default defineTool({
     projectSlugs: z
       .array(ParamProjectSlug)
       .optional()
-      .describe("Projects whose issue streams should be connected."),
+      .describe(
+        "Projects whose issue streams to connect. Set this, detector IDs, or both.",
+      ),
     detectorIds: z
       .array(z.string().regex(/^\d+$/))
       .optional()
       .describe(
-        "Existing source IDs from get_alert_options. Pass [] explicitly for an Alert without sources.",
+        "Monitor source IDs from get_alert_options. Pass [] for an Alert with no sources; it sends nothing until connected. An all-project source also needs org:write.",
       ),
   },
   annotations: {
