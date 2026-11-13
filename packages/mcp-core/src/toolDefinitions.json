@@ -2079,7 +2079,7 @@
   {
     "name": "find_dashboards",
     "title": "Find Dashboards",
-    "description": "Find Sentry dashboards in an organization.\n\nUse this tool when you need to:\n- List dashboards in an organization\n- Find a dashboard ID before calling get_dashboard_details\n- Search dashboards by title\n\n<examples>\nfind_dashboards(organizationSlug='my-organization')\nfind_dashboards(organizationSlug='my-organization', titleQuery='errors')\n</examples>\n\n<hints>\n- Dashboard IDs are organization-scoped.\n- Use `get_dashboard_details` after finding the correct dashboard ID.\n</hints>",
+    "description": "List or search Sentry dashboards in an organization by title, returning dashboard IDs and titles. Open one with get_dashboard_details.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -2104,7 +2104,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Optional title substring to search for."
+              "description": "Title substring to search for."
             },
             {
               "type": "null"
@@ -2122,7 +2122,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Optional pagination cursor from a previous response. Reuse cursors only with the same search scope and project constraint."
+              "description": "Pagination cursor from a previous response with the same search."
             },
             {
               "type": "null"
@@ -2231,7 +2231,7 @@
   {
     "name": "find_dropped_events",
     "title": "Find Dropped Events",
-    "description": "Find events dropped before they were stored in Sentry — ground-truth data-fidelity information about what was and wasn't captured.\n\nEvents can be dropped client-side in the SDK (sample_rate, before_send) or\nserver-side at ingest (rate limited, over quota, filtered, invalid, abuse/spike\nprotection, cardinality limited). Accepted-only views (searches, aggregates,\ncharts) can't show this, so the data may be incomplete in ways they don't reveal\n— for example, a flat or spiky chart caused entirely by drops.\n\nUse this tool when you need to:\n- Explain why a chart is flat, lower than expected, or doesn't match what the user is sending\n- Confirm the data you need is actually in Sentry (not dropped) before trusting a query, aggregate, or dashboard\n- Attribute a volume anomaly to a specific drop reason (quota, spike protection, sampling, filters)\n- Tell the user why their data is missing and what to do about it (raise quota, fix sampling, etc.)\n\nReturns dropped event volume bucketed over time, with the drop `outcome` and `reason`\nfor each bucket, plus the accepted volume per bucket so you can compute the dropped share.\n\n<examples>\nfind_dropped_events(organizationSlug='my-org', dataset='spans', projectSlug='my-project')\nfind_dropped_events(organizationSlug='my-org', dataset='logs', statsPeriod='30d', interval='1d')\nfind_dropped_events(organizationSlug='my-org', dataset='errors', outcome='rate_limited')\n</examples>\n\n<hints>\n- This is independent of any search query — it reports drops for the whole project/time range.\n- `outcome` is the drop kind (e.g. rate_limited, filtered); `reason` is the sub-cause (e.g. key_quota, sample_rate).\n- Each bucket's `tags` classify the drop: `intentional` (user-configured, e.g. sampling or filters) vs `unintentional` (not intended, e.g. quota or abuse).\n- Pass `outcome` and/or `reason` to scope the dropped side to one classification; the accepted volume is always returned in full.\n- An empty `droppedEvents` list means no drops in the window — the data can be trusted.\n</hints>",
+    "description": "Find events Sentry dropped before storing them (SDK sampling, filters, rate limits, quota, spike protection), as dropped and accepted volume over time by outcome and reason. Each drop is tagged intentional (sampling, filters) or unintentional (quota, abuse). Use it to explain flat, low, or missing data that searches, charts, and dashboards cannot show; no drops means the data is complete.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -2255,7 +2255,7 @@
           "default": "spans",
           "type": "string",
           "enum": ["spans", "logs", "metrics", "errors"],
-          "description": "Which data type to report drops for."
+          "description": "Data type to report drops for."
         },
         "projectSlug": {
           "default": null,
@@ -2274,7 +2274,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Relative time range, e.g. '24h', '7d', '30d'. Mutually exclusive with start/end."
+              "description": "Relative time range such as 24h or 7d. Do not combine with start and end."
             },
             {
               "type": "null"
@@ -2286,7 +2286,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Absolute start (ISO 8601). Must be paired with end."
+              "description": "Absolute start, ISO 8601; requires end."
             },
             {
               "type": "null"
@@ -2298,7 +2298,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Absolute end (ISO 8601). Must be paired with start."
+              "description": "Absolute end, ISO 8601; requires start."
             },
             {
               "type": "null"
@@ -2310,7 +2310,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Bucket size, at most '1d' and dividing one day evenly, e.g. '1h', '1d'. Use '1d' and sum the buckets for longer ranges. Omit to let Sentry pick for the range."
+              "description": "Bucket size such as 1h or 1d, at most 1d. Omit to let Sentry pick."
             },
             {
               "type": "null"
@@ -2330,7 +2330,7 @@
                 "client_discard",
                 "cardinality_limited"
               ],
-              "description": "Scope the dropped side to one top-level drop classification. Accepted volume is still returned in full."
+              "description": "Only count drops of this kind; accepted volume is always returned in full."
             },
             {
               "type": "null"
@@ -2342,7 +2342,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Scope the dropped side to one reason (sub-classification within an outcome, e.g. 'spike_protection'). Combine with `outcome`."
+              "description": "Only count drops with this sub-cause of an outcome, such as key_quota, sample_rate, or spike_protection."
             },
             {
               "type": "null"
@@ -3463,7 +3463,7 @@
   {
     "name": "get_agent_conversation_details",
     "title": "Get Agent Conversation Details",
-    "description": "Fetch the chronological transcript and debugging details for one agent conversation, formerly called an AI conversation.\n\nReturns a timeline of user messages, assistant messages, and tool calls, with trace/span IDs for deeper debugging. To discover or list conversations, use search_agent_conversations.",
+    "description": "Get the transcript of one Sentry agent conversation (formerly AI conversation): user and assistant messages and tool calls in order, with trace and span IDs for debugging. To find conversations, use search_agent_conversations.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -3476,15 +3476,15 @@
           "description": "The agent conversation ID from gen_ai.conversation.id."
         },
         "project": {
-          "description": "Numeric project ID to scope the query. Falls back to context constraint or all projects.",
+          "description": "Numeric project ID to scope the lookup; omit to search all projects.",
           "type": "string"
         },
         "start": {
-          "description": "Explicit start time for the conversation lookup window.",
+          "description": "Start of the lookup window; requires end.",
           "type": "string"
         },
         "end": {
-          "description": "Explicit end time for the conversation lookup window.",
+          "description": "End of the lookup window; requires start.",
           "type": "string"
         },
         "regionUrl": {
@@ -3919,7 +3919,7 @@
   {
     "name": "get_ai_conversation_details",
     "title": "Get AI Conversation Details (Deprecated)",
-    "description": "Deprecated alias for get_agent_conversation_details.\n\nUse get_agent_conversation_details for new integrations. This alias is kept for backward compatibility.",
+    "description": "Deprecated alias for get_agent_conversation_details; use that tool instead.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -3932,15 +3932,15 @@
           "description": "The agent conversation ID from gen_ai.conversation.id."
         },
         "project": {
-          "description": "Numeric project ID to scope the query. Falls back to context constraint or all projects.",
+          "description": "Numeric project ID to scope the lookup; omit to search all projects.",
           "type": "string"
         },
         "start": {
-          "description": "Explicit start time for the conversation lookup window.",
+          "description": "Start of the lookup window; requires end.",
           "type": "string"
         },
         "end": {
-          "description": "Explicit end time for the conversation lookup window.",
+          "description": "End of the lookup window; requires start.",
           "type": "string"
         },
         "regionUrl": {
@@ -5505,7 +5505,7 @@
   {
     "name": "get_dashboard_details",
     "title": "Get Dashboard Details",
-    "description": "Get detailed information about a specific Sentry dashboard.\n\nUse this tool when you need to:\n- Inspect a dashboard's widgets and saved query definitions\n- View dashboard projects, environments, filters, layout, and widget IDs\n- Resolve a dashboard by exact title or numeric ID\n\n<examples>\nget_dashboard_details(organizationSlug='my-organization', dashboardIdOrTitle='12345')\nget_dashboard_details(organizationSlug='my-organization', dashboardIdOrTitle='Errors Overview')\n</examples>\n\n<hints>\n- Numeric dashboard IDs are resolved directly.\n- Title lookups require one exact case-insensitive match. Use `find_dashboards` first if uncertain.\n- This returns saved widget query definitions, not live widget data.\n- Saved transformations are listed per aggregate position, in application order.\n</hints>",
+    "description": "Get one Sentry dashboard by numeric ID or exact title: its widgets with saved query definitions and transformations, projects, environments, filters, and layout. Returns saved queries, not live widget data. To find a dashboard, use find_dashboards.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5528,7 +5528,7 @@
         "dashboardIdOrTitle": {
           "type": "string",
           "minLength": 1,
-          "description": "The dashboard's numeric ID or exact title."
+          "description": "The dashboard's numeric ID or exact title; a title must match exactly one dashboard, ignoring case."
         },
         "fresh": {
           "description": "Bypass cached reads.",
@@ -7891,12 +7891,12 @@
   {
     "name": "get_profile",
     "title": "Get Transaction Profile",
-    "description": "Analyze aggregated CPU profiling data (flamegraph) for a transaction to identify performance bottlenecks and detect regressions.\nFor one specific profile by ID or URL, use get_profile_details.\n\nUSE THIS TOOL WHEN:\n- User asks why a specific endpoint/transaction is slow\n- User wants to understand where CPU time is spent\n- User asks about performance bottlenecks\n- User wants to compare performance between time periods\n- User shares a Sentry profile URL\n\nRETURNS:\n- Hot paths (call stacks consuming the most CPU time); the last frame of each stack is the primary bottleneck\n- Performance percentiles (p75, p95, p99) for each function\n- User code vs library code breakdown\n- Regression analysis when comparing periods\n\n<examples>\n### Analyze from URL (with transaction name)\n```\nget_profile(\n  profileUrl='https://my-org.sentry.io/explore/profiling/profile/backend/flamegraph/?profilerId=abc123',\n  transactionName='/api/users'\n)\n```\n\n### Analyze by transaction name\n```\nget_profile(\n  organizationSlug='my-org',\n  transactionName='/api/users',\n  projectSlugOrId='backend'\n)\n```\n\n### Compare performance between periods\n```\nget_profile(\n  organizationSlug='my-org',\n  transactionName='/api/users',\n  projectSlugOrId='backend',\n  period='7d',\n  compareAgainstPeriod='14d'\n)\n```\n</examples>\n\n<hints>\n- Use `focusOnUserCode: true` (default) to filter out library code\n- High p99 relative to p75 indicates inconsistent performance\n- Use compareAgainstPeriod to detect regressions over time\n- Transaction names are case-sensitive\n- Start optimizing at the bottleneck of the top hot path; look for caching opportunities and N+1 or inefficient data access\n- For a major regression, investigate recent changes to that function\n- Without profile data, verify the exact transaction name with search_traces, try a longer period (e.g. '30d'), or check that profiling is enabled for the project. If only one comparison period has data, adjust that period or drop compareAgainstPeriod\n</hints>",
+    "description": "Analyze aggregated CPU profiles (flamegraph) for one Sentry transaction: hot paths, per-function p75/p95/p99, user versus library code, and regressions against a baseline period. For one profile by ID or URL, use get_profile_details.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "profileUrl": {
-          "description": "Sentry profile URL. If provided, organization and project are extracted from URL. transactionName is still required.",
+          "description": "Sentry profile URL; the organization and project come from it. transactionName is still required.",
           "type": "string",
           "format": "uri"
         },
@@ -7917,32 +7917,32 @@
           ]
         },
         "projectSlugOrId": {
-          "description": "Project slug or numeric ID",
+          "description": "Project slug or numeric ID; required unless profileUrl has it.",
           "type": ["string", "number"]
         },
         "transactionName": {
-          "description": "Transaction name (e.g., '/api/users', 'POST /graphql')",
+          "description": "Exact, case-sensitive transaction name, such as /api/users or POST /graphql. Required; find names with search_traces.",
           "type": "string"
         },
         "period": {
           "default": "7d",
-          "description": "Profiling time window (default: '7d'). Use '1h' for very recent profiling data.",
           "type": "string",
-          "pattern": "^\\d+[mhdw]$"
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, e.g. `30m`, `24h`, `7d`, `90d`."
         },
         "compareAgainstPeriod": {
-          "description": "Compare against this baseline profiling time window. Enables regression detection.",
+          "description": "Baseline time window to compare against, for regression detection.",
           "type": "string",
           "pattern": "^\\d+[mhdw]$"
         },
         "focusOnUserCode": {
           "default": true,
-          "description": "Show only user code (is_application: true). Set to false to include library code.",
+          "description": "Show only application code; false includes library code.",
           "type": "boolean"
         },
         "maxHotPaths": {
           "default": 10,
-          "description": "Number of hot paths to display (1-20, default: 10)",
+          "description": "Number of hot paths to show.",
           "type": "integer",
           "minimum": 1,
           "maximum": 20
@@ -8222,12 +8222,12 @@
   {
     "name": "get_profile_details",
     "title": "Get Profile Details",
-    "description": "Inspect one specific Sentry profile in detail, by profile ID, profiler ID or URL.\nFor aggregated hot paths across a transaction, use get_profile.\n\nUSE THIS TOOL WHEN:\n- User shares a transaction profile URL and wants the details\n- User has a profile ID and wants a concise summary plus raw sample structure\n- User needs to inspect a continuous profile session by profiler ID and time range\n\nRETURNS:\n- `profile.profileType`: `transaction`, `legacy`, or `continuous`\n- Transaction profile summary with profile URL, transaction, trace, release, and runtime details\n- Sample structure summaries such as frame count, sample count, stacks, and thread breakdown\n- Top frames by occurrence for a quick hotspot overview\n- Legacy profiles (for example Android) return summary metadata only, with `samples: null` and a suggested get_profile call\n\nNOTE: This tool supports two profile modes.\n- Transaction profiles: pass `profileUrl` or `organizationSlug` + `projectSlugOrId` + `profileId`\n- Continuous profiles: pass `profileUrl` or `organizationSlug` + `projectSlugOrId` + `profilerId` + `start` + `end`\n\n<examples>\n### Transaction profile URL\n```\nget_profile_details(\n  profileUrl='https://my-org.sentry.io/explore/profiling/profile/backend/cfe78a5c892d4a64a962d837673398d2/flamegraph/'\n)\n```\n\n### Transaction profile by ID\n```\nget_profile_details(\n  organizationSlug='my-org',\n  projectSlugOrId='backend',\n  profileId='cfe78a5c892d4a64a962d837673398d2'\n)\n```\n\n### Continuous profile by session\n```\nget_profile_details(\n  organizationSlug='my-org',\n  projectSlugOrId='backend',\n  profilerId='041bde57b9844e36b8b7e5734efae5f7',\n  start='2024-01-01T00:00:00Z',\n  end='2024-01-01T01:00:00Z'\n)\n```\n</examples>\n\n<hints>\n- Open `profileUrl` in Sentry for the full flamegraph, and `traceUrl` to inspect the end-to-end request\n- Use search_profiles to find similar profiles\n</hints>",
+    "description": "Inspect one Sentry profile by profile ID, profiler ID, or URL: transaction, trace, release, and runtime details, sample and thread structure, and top frames. Handles transaction and continuous profiles. For aggregated hot paths across a transaction, use get_profile.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "profileUrl": {
-          "description": "Sentry transaction profile or continuous profile URL. If provided, organization, project, and profile identifiers are extracted from the URL.",
+          "description": "Sentry transaction or continuous profile URL; the organization, project, and profile IDs come from it.",
           "type": "string",
           "format": "uri"
         },
@@ -8248,28 +8248,28 @@
           ]
         },
         "projectSlugOrId": {
-          "description": "Project slug or numeric ID",
+          "description": "Project slug or numeric ID; required without profileUrl.",
           "type": ["string", "number"]
         },
         "profileId": {
-          "description": "Transaction profile ID from a profile flamegraph URL",
+          "description": "Transaction profile ID. Do not combine with profilerId.",
           "type": "string"
         },
         "profilerId": {
-          "description": "Continuous profiler session ID",
+          "description": "Continuous profiler session ID; requires start and end.",
           "type": "string"
         },
         "start": {
-          "description": "Continuous profile start time in ISO 8601 format, for example '2024-01-01T00:00:00Z'",
+          "description": "Continuous profile window start, ISO 8601 such as 2024-01-01T00:00:00Z; only with profilerId.",
           "type": "string"
         },
         "end": {
-          "description": "Continuous profile end time in ISO 8601 format, for example '2024-01-01T01:00:00Z'",
+          "description": "Continuous profile window end, ISO 8601; only with profilerId.",
           "type": "string"
         },
         "focusOnUserCode": {
           "default": true,
-          "description": "Show only user code frames in the hotspot table. Set to false to include library frames.",
+          "description": "Show only application frames in the hotspot table; false includes library frames.",
           "type": "boolean"
         },
         "fresh": {
@@ -8880,7 +8880,7 @@
   {
     "name": "get_replay_details",
     "title": "Get Replay Details",
-    "description": "Get a Sentry replay's summary and a timeline of what the user did: page loads and navigations, clicks (including dead and rage clicks), inputs and key presses, console warnings and errors, failed requests, and feedback.\n\nUSE THIS TOOL WHEN USERS:\n- Share a replay URL\n- Ask what happened in a replay, or what a user saw and clicked\n- Need the moments before an error, a dead click, or the end of a session\n\n<examples>\nget_replay_details(replayUrl='https://my-organization.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/')\nget_replay_details(organizationSlug='my-organization', replayId='7e07485f-12f9-416b-8b14-26260799b51f', startOffsetSeconds=-10)\nget_replay_details(replayUrl='...', categories=['click', 'network'], startOffsetSeconds=60, endOffsetSeconds=90)\n</examples>\n\n<hints>\n- Offsets are seconds from the replay start; negative offsets count back from the end, so startOffsetSeconds=-10 shows the last 10 seconds\n- `timeline.recorded` counts every recorded event by category, so you can see what to ask for next\n</hints>",
+    "description": "Get a Sentry session replay's summary and a timeline of what the user did: page loads and navigations, clicks (including dead and rage clicks), inputs and key presses, console warnings and errors, failed requests, and feedback.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -8909,7 +8909,7 @@
           ]
         },
         "categories": {
-          "description": "Timeline categories to show. Default: notable events only (navigations, clicks, inputs, console warnings and errors, failed requests, feedback). Naming a category shows all of its events, such as every request for 'network' or every log level for 'console'.",
+          "description": "Timeline categories to show. Omit for notable events only; naming a category shows all its events, such as every request for network or every log level for console.",
           "anyOf": [
             {
               "minItems": 1,
@@ -8932,15 +8932,15 @@
           ]
         },
         "startOffsetSeconds": {
-          "description": "Start of the timeline window in seconds from the replay start. Negative values count back from the replay end.",
+          "description": "Window start, in seconds from the replay start; negative counts back from the end, so -10 is the last 10 seconds.",
           "type": ["number", "null"]
         },
         "endOffsetSeconds": {
-          "description": "End of the timeline window in seconds from the replay start. Negative values count back from the replay end.",
+          "description": "Window end, in seconds from the replay start; negative counts back from the end.",
           "type": ["number", "null"]
         },
         "limit": {
-          "description": "Maximum timeline events to return (1-200, default 50).",
+          "description": "Maximum timeline events to return; defaults to 50.",
           "anyOf": [
             {
               "type": "integer",
@@ -8953,7 +8953,7 @@
           ]
         },
         "skip": {
-          "description": "Number of matching timeline events to skip. Pass `timeline.nextSkip` from a previous response to continue past the limit.",
+          "description": "Matching timeline events to skip; pass timeline.nextSkip from the previous response to see more.",
           "anyOf": [
             {
               "type": "integer",
@@ -9950,7 +9950,7 @@
   {
     "name": "get_span_details",
     "title": "Get Span Details",
-    "description": "Get detailed information about a specific span within a Sentry trace.\n\nUse this tool when you need to:\n- Inspect a span when you already know its trace ID and span ID\n- Focus a trace investigation on one operation\n- Review a span's attributes, timing, errors, and child spans\n\n<examples>\nget_span_details(organizationSlug='my-organization', traceId='a4d1aae7216b47ff8117cf4e09ce9d0a', spanId='aa8e7f3384ef4ff5')\n</examples>\n\n<hints>\n- Pass traceId and spanId as separate parameters.\n- Use get_trace_details for a trace overview when no span is selected.\n- Use get_sentry_resource when starting from a Sentry trace or span URL.\n</hints>",
+    "description": "Get one span in a Sentry trace by trace ID and span ID: its attributes, timing, errors, and child spans. For a whole-trace overview, use get_trace_details.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -9994,7 +9994,7 @@
   {
     "name": "get_trace_details",
     "title": "Get Trace Details",
-    "description": "Get detailed information about a specific Sentry trace by ID.\n\nUSE THIS TOOL WHEN USERS:\n- Provide a specific trace ID (e.g., 'a4d1aae7216b47ff8117cf4e09ce9d0a')\n- Ask to 'show me trace [TRACE-ID]', 'explain trace [TRACE-ID]'\n- Want high-level overview and link to view trace details in Sentry\n- Need trace statistics and span breakdown\n- Want an overview first, then a guided pivot into additional spans or events\n\nDO NOT USE for:\n- General searching for traces (use search_traces)\n- Complete span enumeration or branch-by-branch reconstruction (use search_traces scoped to the trace)\n\nTRIGGER PATTERNS:\n- 'Show me trace abc123' → use get_trace_details\n- 'Explain trace a4d1aae7216b47ff8117cf4e09ce9d0a' → use get_trace_details\n- 'What is trace [trace-id]' → use get_trace_details\n\n<examples>\n### Get trace overview\n```\nget_trace_details(organizationSlug='my-organization', traceId='a4d1aae7216b47ff8117cf4e09ce9d0a')\n```\n\n### Focus a single span\n```\nget_trace_details(organizationSlug='my-organization', traceId='a4d1aae7216b47ff8117cf4e09ce9d0a', spanId='aa8e7f3384ef4ff5')\n```\n</examples>\n\n<hints>\n- Trace IDs are 32-character hexadecimal strings\n- This returns a condensed trace overview, not a full span dump\n- Provide `spanId` to focus on a single span within the trace\n- If the response says it shows a subset of spans, use search_traces to inspect the rest of the trace\n</hints>",
+    "description": "Get an overview of one Sentry trace by trace ID: trace statistics, a span breakdown, and a link to the trace in Sentry. Shows a condensed subset of spans, not every span; to list all spans in a trace, use search_traces.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -10020,9 +10020,9 @@
           "description": "The 32-character hex trace ID."
         },
         "spanId": {
+          "description": "A span ID in the trace to focus on; omit for the trace overview.",
           "type": "string",
-          "minLength": 1,
-          "description": "A span ID in the trace."
+          "minLength": 1
         },
         "fresh": {
           "description": "Bypass cached reads.",
@@ -10648,7 +10648,7 @@
   {
     "name": "search_agent_conversations",
     "title": "Search Agent Conversations",
-    "description": "Search Sentry Agent Conversations, formerly called AI Conversations, and return one summary row per conversation.\n\nUse this tool to find or list Agent Conversations. Results are conversation summaries, not raw span rows.\nEach row includes title (when available), USD cost, tokens, call counts, previews, and other list metadata.\nUse get_agent_conversation_details with a conversationId to fetch the transcript. Use get_sentry_resource for Sentry conversation URLs.\n\n<examples>\nsearch_agent_conversations(organizationSlug='my-org', query='failed conversations', period='7d')\nsearch_agent_conversations(organizationSlug='my-org', query='checkout', project='backend')\n</examples>",
+    "description": "Search Sentry agent conversations (formerly AI conversations): one summary row per LLM agent conversation with title, cost, tokens, call counts, and previews. For one conversation's transcript, use get_agent_conversation_details.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -10657,7 +10657,7 @@
           "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
-          "description": "Conversation query/filter string.",
+          "description": "Search filter for conversations.",
           "type": "string"
         },
         "project": {
@@ -10696,16 +10696,16 @@
         },
         "period": {
           "default": "30d",
-          "description": "Relative time range. Defaults to 30d.",
           "type": "string",
-          "pattern": "^\\d+[mhdw]$"
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, e.g. `30m`, `24h`, `7d`, `90d`."
         },
         "start": {
-          "description": "Explicit start time for the search window.",
+          "description": "Start of the search window; requires end and overrides period.",
           "type": "string"
         },
         "end": {
-          "description": "Explicit end time for the search window.",
+          "description": "End of the search window; requires start.",
           "type": "string"
         },
         "cursor": {
@@ -10876,7 +10876,7 @@
   {
     "name": "search_ai_conversations",
     "title": "Search AI Conversations (Deprecated)",
-    "description": "Deprecated alias for search_agent_conversations.\n\nUse search_agent_conversations for new integrations. This alias is kept for backward compatibility.",
+    "description": "Deprecated alias for search_agent_conversations; use that tool instead.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -10885,7 +10885,7 @@
           "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
-          "description": "Conversation query/filter string.",
+          "description": "Search filter for conversations.",
           "type": "string"
         },
         "project": {
@@ -10924,16 +10924,16 @@
         },
         "period": {
           "default": "30d",
-          "description": "Relative time range. Defaults to 30d.",
           "type": "string",
-          "pattern": "^\\d+[mhdw]$"
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, e.g. `30m`, `24h`, `7d`, `90d`."
         },
         "start": {
-          "description": "Explicit start time for the search window.",
+          "description": "Start of the search window; requires end and overrides period.",
           "type": "string"
         },
         "end": {
-          "description": "Explicit end time for the search window.",
+          "description": "End of the search window; requires start.",
           "type": "string"
         },
         "cursor": {
@@ -11331,7 +11331,7 @@
   {
     "name": "search_errors",
     "title": "Search Errors",
-    "description": "Search Sentry error events: exceptions and crashes with stack traces. Use for error counts, statistics, trends, and individual error events.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('how many errors today', 'top error types'), individual events ('latest TypeErrors in checkout'), and time series ('errors per hour last 24h').\n\nNOT for log messages, including error/warning logs (use search_logs), requests or latency (use search_traces), or grouped issue lists (use search_issues).\n\n<examples>\nsearch_errors(organizationSlug='my-org', query='how many errors today')\nsearch_errors(organizationSlug='my-org', query='most common error types in production this week')\nsearch_errors(organizationSlug='my-org', query='errors per hour last 24h')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
+    "description": "Search Sentry error events: exceptions, crashes, and stack traces, including top errors and trends over time. Returns individual events, counts, and aggregates; for grouped issue lists, use search_issues. For log lines, including error-level logs, use search_logs.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -11340,11 +11340,11 @@
           "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
-          "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
+          "description": "What to find, in natural language or Sentry search syntax. Put environment, release, and other filters here.",
           "type": "string"
         },
         "fields": {
-          "description": "Fields to return. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics.",
+          "description": "Columns to return; omit unless you need exact columns. Include aggregates such as count() or avg() for statistics.",
           "anyOf": [
             {
               "type": "array",
@@ -11358,7 +11358,7 @@
           ]
         },
         "sort": {
-          "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
+          "description": "Sort field, - prefix for descending, such as -count() for aggregates. Omit unless you need a specific order.",
           "type": ["string", "null"]
         },
         "projectSlug": {
@@ -11392,14 +11392,14 @@
         },
         "limit": {
           "default": 10,
-          "description": "Maximum number of results to return (1-100)",
+          "description": "Maximum number of results to return.",
           "type": "number",
           "minimum": 1,
           "maximum": 100
         },
         "includeExplanation": {
           "default": false,
-          "description": "Include explanation of how the query was translated or repaired",
+          "description": "Explain how the query was translated or repaired.",
           "type": "boolean"
         },
         "fresh": {
@@ -11673,16 +11673,16 @@
           "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "dataset": {
-          "description": "Initial dataset hint: errors, logs, spans, metrics, profiles, or replays. Always pass it, including for natural language queries. The agent may correct it when configured.",
+          "description": "Dataset to search. Always pass it, even for a natural language query; it may be corrected.",
           "type": "string",
           "enum": ["spans", "errors", "logs", "metrics", "profiles", "replays"]
         },
         "query": {
-          "description": "Natural language or Sentry event search query syntax.",
+          "description": "What to find, in natural language or Sentry search syntax.",
           "type": "string"
         },
         "fields": {
-          "description": "Fields to return for event datasets. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics. Leave null for dataset='replays'.",
+          "description": "Columns to return; omit for defaults. Include aggregates such as count() or avg() for statistics. Leave null for replays.",
           "anyOf": [
             {
               "type": "array",
@@ -11696,7 +11696,7 @@
           ]
         },
         "sort": {
-          "description": "Sort field (prefix with - for descending). If omitted, event datasets default to -timestamp and replays default to -started_at. Use -count() for event aggregations. For dataset='replays', use replay sorts like -started_at or -count_errors.",
+          "description": "Sort field, - prefix for descending, such as -count() for aggregates. Replays use replay sorts such as -started_at or -count_errors.",
           "type": ["string", "null"]
         },
         "projectSlug": {
@@ -11712,7 +11712,7 @@
           ]
         },
         "environment": {
-          "description": "Optional environment filter for dataset='replays'. Use a string for one environment or an array for multiple. Omit when unused. For other datasets, filter environment in the query string instead.",
+          "description": "Environment name or list of names; replays only. For other datasets, filter environment in the query.",
           "anyOf": [
             {
               "type": "string",
@@ -11747,14 +11747,14 @@
         },
         "limit": {
           "default": 10,
-          "description": "Maximum number of results to return (1-100)",
+          "description": "Maximum number of results to return.",
           "type": "number",
           "minimum": 1,
           "maximum": 100
         },
         "includeExplanation": {
           "default": false,
-          "description": "Include explanation of how the query was translated or repaired",
+          "description": "Explain how the query was translated or repaired.",
           "type": "boolean"
         },
         "fresh": {
@@ -12334,7 +12334,7 @@
   {
     "name": "search_logs",
     "title": "Search Logs",
-    "description": "Search Sentry logs: application log entries, including error- and warning-severity log messages. Use for log counts, statistics, trends, and individual log lines.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('warning logs by service'), individual entries ('error logs from the last hour'), and time series ('error logs per hour').\n\nNOT for exceptions/crashes (use search_errors). For requests or spans whose trace also has a matching log, use search_traces.\n\n<examples>\nsearch_logs(organizationSlug='my-org', query='error logs from the last hour')\nsearch_logs(organizationSlug='my-org', query='logs mentioning payment timeout in production')\nsearch_logs(organizationSlug='my-org', query='count warning logs by service over 7 days')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n- Sentry search syntax for logs includes RE2 regex filters, never quoted: `message://^Timeout after \\d+ms//`.\n</hints>",
+    "description": "Search Sentry logs: application log lines at any severity, including trends over time. Returns individual events, counts, and aggregates; for grouped issue lists, use search_issues. For exceptions and crashes, use search_errors; for requests whose trace has a matching log, use search_traces.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -12343,11 +12343,11 @@
           "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
-          "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
+          "description": "What to find, in natural language or Sentry search syntax. Put environment and release filters here. Regex filters are unquoted RE2: message://timeout \\d+ms//",
           "type": "string"
         },
         "fields": {
-          "description": "Fields to return. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics.",
+          "description": "Columns to return; omit unless you need exact columns. Include aggregates such as count() or avg() for statistics.",
           "anyOf": [
             {
               "type": "array",
@@ -12361,7 +12361,7 @@
           ]
         },
         "sort": {
-          "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
+          "description": "Sort field, - prefix for descending, such as -count() for aggregates. Omit unless you need a specific order.",
           "type": ["string", "null"]
         },
         "projectSlug": {
@@ -12395,14 +12395,14 @@
         },
         "limit": {
           "default": 10,
-          "description": "Maximum number of results to return (1-100)",
+          "description": "Maximum number of results to return.",
           "type": "number",
           "minimum": 1,
           "maximum": 100
         },
         "includeExplanation": {
           "default": false,
-          "description": "Include explanation of how the query was translated or repaired",
+          "description": "Explain how the query was translated or repaired.",
           "type": "boolean"
         },
         "fresh": {
@@ -12670,7 +12670,7 @@
   {
     "name": "search_metrics",
     "title": "Search Metrics",
-    "description": "Search Sentry metrics: counters, gauges, and distributions, as rows or aggregates. Use for metric values, percentiles, totals, and trends.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nSupports aggregations ('p95 http.request.duration by environment'), individual metric rows, and time series ('total tokens per day this week').\n\nNOT for span or request latency recorded on traces (use search_traces).\n\n<examples>\nsearch_metrics(organizationSlug='my-org', query='p95 http.request.duration grouped by environment over the last 24 hours')\nsearch_metrics(organizationSlug='my-org', query='total tokens used per day this week')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
+    "description": "Search Sentry metrics: counters, gauges, and distributions, for values, percentiles, totals, and trends over time. Returns individual events, counts, and aggregates; for grouped issue lists, use search_issues. For latency recorded on spans, use search_traces.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -12679,11 +12679,11 @@
           "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
-          "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
+          "description": "What to find, in natural language or Sentry search syntax. Put environment, release, and other filters here.",
           "type": "string"
         },
         "fields": {
-          "description": "Fields to return. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics.",
+          "description": "Columns to return; omit unless you need exact columns. Include aggregates such as count() or avg() for statistics.",
           "anyOf": [
             {
               "type": "array",
@@ -12697,7 +12697,7 @@
           ]
         },
         "sort": {
-          "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
+          "description": "Sort field, - prefix for descending, such as -count() for aggregates. Omit unless you need a specific order.",
           "type": ["string", "null"]
         },
         "projectSlug": {
@@ -12731,14 +12731,14 @@
         },
         "limit": {
           "default": 10,
-          "description": "Maximum number of results to return (1-100)",
+          "description": "Maximum number of results to return.",
           "type": "number",
           "minimum": 1,
           "maximum": 100
         },
         "includeExplanation": {
           "default": false,
-          "description": "Include explanation of how the query was translated or repaired",
+          "description": "Explain how the query was translated or repaired.",
           "type": "boolean"
         },
         "fresh": {
@@ -13003,7 +13003,7 @@
   {
     "name": "search_profiles",
     "title": "Search Profiles",
-    "description": "Search Sentry profiles: transaction and continuous profile results, profile IDs, and profiled transactions. Use to find profiles to inspect.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nUse get_profile or get_profile_details on a result for flamegraph and hotspot analysis.\n\n<examples>\nsearch_profiles(organizationSlug='my-org', query='recent profiles for the /checkout transaction')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
+    "description": "Search Sentry profiles: transaction and continuous profiles, to find profile IDs and profiled transactions. Returns individual events, counts, and aggregates; for grouped issue lists, use search_issues. Open a result with get_profile or get_profile_details for flamegraphs and hotspots.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -13012,11 +13012,11 @@
           "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
-          "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
+          "description": "What to find, in natural language or Sentry search syntax. Put environment, release, and other filters here.",
           "type": "string"
         },
         "fields": {
-          "description": "Fields to return. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics.",
+          "description": "Columns to return; omit unless you need exact columns. Include aggregates such as count() or avg() for statistics.",
           "anyOf": [
             {
               "type": "array",
@@ -13030,7 +13030,7 @@
           ]
         },
         "sort": {
-          "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
+          "description": "Sort field, - prefix for descending, such as -count() for aggregates. Omit unless you need a specific order.",
           "type": ["string", "null"]
         },
         "projectSlug": {
@@ -13064,14 +13064,14 @@
         },
         "limit": {
           "default": 10,
-          "description": "Maximum number of results to return (1-100)",
+          "description": "Maximum number of results to return.",
           "type": "number",
           "minimum": 1,
           "maximum": 100
         },
         "includeExplanation": {
           "default": false,
-          "description": "Include explanation of how the query was translated or repaired",
+          "description": "Explain how the query was translated or repaired.",
           "type": "boolean"
         },
         "fresh": {
@@ -13339,7 +13339,7 @@
   {
     "name": "search_replays",
     "title": "Search Replays",
-    "description": "Search Sentry session replays: rage clicks, dead clicks, visited pages, errors seen, and replay users.\n\n`query` is natural language (preferred) or replay search syntax; a configured agent translates it into a replay search.\n\nReturns replay lists only; count()/avg()/sum() are not supported. Use get_replay_details on a result for one replay.\n\n<examples>\nsearch_replays(organizationSlug='my-org', query='replays with rage clicks on checkout in the last day')\nsearch_replays(organizationSlug='my-org', query='count_errors:>0', sort='-count_errors')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n</hints>",
+    "description": "Search Sentry session replays by rage clicks, dead clicks, visited pages, errors seen, and users. Returns replay lists, not counts or aggregates.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -13348,11 +13348,11 @@
           "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
-          "description": "What to find, in natural language (preferred) or replay search syntax.",
+          "description": "What to find, in natural language or replay search syntax such as count_errors:>0 or url:*checkout*.",
           "type": "string"
         },
         "sort": {
-          "description": "Replay sort (prefix with - for descending): -started_at (default), -count_errors, -count_rage_clicks, or -duration.",
+          "description": "Replay sort, - prefix for descending: -started_at (default), -count_errors, -count_rage_clicks, or -duration.",
           "type": ["string", "null"]
         },
         "projectSlug": {
@@ -13368,7 +13368,7 @@
           ]
         },
         "environment": {
-          "description": "Optional environment filter. Use a string for one environment or an array for multiple. Omit when unused.",
+          "description": "Environment name or list of names.",
           "anyOf": [
             {
               "type": "string",
@@ -13403,14 +13403,14 @@
         },
         "limit": {
           "default": 10,
-          "description": "Maximum number of results to return (1-100)",
+          "description": "Maximum number of results to return.",
           "type": "number",
           "minimum": 1,
           "maximum": 100
         },
         "includeExplanation": {
           "default": false,
-          "description": "Include explanation of how the query was translated or repaired",
+          "description": "Explain how the query was translated or repaired.",
           "type": "boolean"
         },
         "fresh": {
@@ -13649,7 +13649,7 @@
   {
     "name": "search_traces",
     "title": "Search Traces",
-    "description": "Search Sentry spans and traces: requests, API/HTTP calls, endpoints, DB queries, AI/LLM calls, and other operations. Use for latency, throughput, slowness, and performance questions.\n\n`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.\n\nAlso use for spans whose trace contains a matching log, metric, or other span, e.g. 'slow checkout requests that also logged an error'.\n\nSupports aggregations ('p95 duration by span.op'), individual spans ('slowest API calls today'), and time series ('requests per minute last hour').\n\nNOT for exceptions/crashes (use search_errors), standalone log lines (use search_logs), or a single trace's span tree (use get_sentry_resource with the trace).\n\n<examples>\nsearch_traces(organizationSlug='my-org', query='slowest API calls in the last 24 hours')\nsearch_traces(organizationSlug='my-org', query='p95 duration of db spans grouped by span.op over 7 days')\nsearch_traces(organizationSlug='my-org', query='checkout requests that also have an error log')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.\n</hints>",
+    "description": "Search Sentry traces and spans: requests, endpoints, HTTP and DB calls, and AI/LLM calls, for latency, throughput, and slowness over time. Also finds spans whose trace has a matching log, metric, or span. Returns individual events, counts, and aggregates; for grouped issue lists, use search_issues. For exceptions, use search_errors; for log lines, use search_logs.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -13658,11 +13658,11 @@
           "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
-          "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
+          "description": "What to find, in natural language or Sentry search syntax. Put environment, release, and other filters here.",
           "type": "string"
         },
         "fields": {
-          "description": "Fields to return. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics.",
+          "description": "Columns to return; omit unless you need exact columns. Include aggregates such as count() or avg() for statistics.",
           "anyOf": [
             {
               "type": "array",
@@ -13676,7 +13676,7 @@
           ]
         },
         "sort": {
-          "description": "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
+          "description": "Sort field, - prefix for descending, such as -count() for aggregates. Omit unless you need a specific order.",
           "type": ["string", "null"]
         },
         "projectSlug": {
@@ -13710,14 +13710,14 @@
         },
         "limit": {
           "default": 10,
-          "description": "Maximum number of results to return (1-100)",
+          "description": "Maximum number of results to return.",
           "type": "number",
           "minimum": 1,
           "maximum": 100
         },
         "includeExplanation": {
           "default": false,
-          "description": "Include explanation of how the query was translated or repaired",
+          "description": "Explain how the query was translated or repaired.",
           "type": "boolean"
         },
         "fresh": {

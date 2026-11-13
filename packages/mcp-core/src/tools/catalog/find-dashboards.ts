@@ -226,31 +226,15 @@ export default defineTool({
   title: "Find Dashboards",
   skills: ["inspect"],
   requiredScopes: ["org:read"],
-  description: [
-    "Find Sentry dashboards in an organization.",
-    "",
-    "Use this tool when you need to:",
-    "- List dashboards in an organization",
-    "- Find a dashboard ID before calling get_dashboard_details",
-    "- Search dashboards by title",
-    "",
-    "<examples>",
-    "find_dashboards(organizationSlug='my-organization')",
-    "find_dashboards(organizationSlug='my-organization', titleQuery='errors')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Dashboard IDs are organization-scoped.",
-    "- Use `get_dashboard_details` after finding the correct dashboard ID.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "List or search Sentry dashboards in an organization by title, returning dashboard IDs and titles. Open one with get_dashboard_details.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
     titleQuery: z
       .string()
       .trim()
-      .describe("Optional title substring to search for.")
+      .describe("Title substring to search for.")
       .nullable()
       .default(null),
     sort: z
@@ -261,7 +245,7 @@ export default defineTool({
       .string()
       .trim()
       .describe(
-        "Optional pagination cursor from a previous response. Reuse cursors only with the same search scope and project constraint.",
+        "Pagination cursor from a previous response with the same search.",
       )
       .nullable()
       .default(null),

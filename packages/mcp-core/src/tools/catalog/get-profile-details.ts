@@ -186,60 +186,8 @@ export default defineTool({
   requiredCapabilities: ["profiles"],
   hideInExperimentalMode: true,
 
-  description: [
-    "Inspect one specific Sentry profile in detail, by profile ID, profiler ID or URL.",
-    "For aggregated hot paths across a transaction, use get_profile.",
-    "",
-    "USE THIS TOOL WHEN:",
-    "- User shares a transaction profile URL and wants the details",
-    "- User has a profile ID and wants a concise summary plus raw sample structure",
-    "- User needs to inspect a continuous profile session by profiler ID and time range",
-    "",
-    "RETURNS:",
-    "- `profile.profileType`: `transaction`, `legacy`, or `continuous`",
-    "- Transaction profile summary with profile URL, transaction, trace, release, and runtime details",
-    "- Sample structure summaries such as frame count, sample count, stacks, and thread breakdown",
-    "- Top frames by occurrence for a quick hotspot overview",
-    "- Legacy profiles (for example Android) return summary metadata only, with `samples: null` and a suggested get_profile call",
-    "",
-    "NOTE: This tool supports two profile modes.",
-    "- Transaction profiles: pass `profileUrl` or `organizationSlug` + `projectSlugOrId` + `profileId`",
-    "- Continuous profiles: pass `profileUrl` or `organizationSlug` + `projectSlugOrId` + `profilerId` + `start` + `end`",
-    "",
-    "<examples>",
-    "### Transaction profile URL",
-    "```",
-    "get_profile_details(",
-    "  profileUrl='https://my-org.sentry.io/explore/profiling/profile/backend/cfe78a5c892d4a64a962d837673398d2/flamegraph/'",
-    ")",
-    "```",
-    "",
-    "### Transaction profile by ID",
-    "```",
-    "get_profile_details(",
-    "  organizationSlug='my-org',",
-    "  projectSlugOrId='backend',",
-    "  profileId='cfe78a5c892d4a64a962d837673398d2'",
-    ")",
-    "```",
-    "",
-    "### Continuous profile by session",
-    "```",
-    "get_profile_details(",
-    "  organizationSlug='my-org',",
-    "  projectSlugOrId='backend',",
-    "  profilerId='041bde57b9844e36b8b7e5734efae5f7',",
-    "  start='2024-01-01T00:00:00Z',",
-    "  end='2024-01-01T01:00:00Z'",
-    ")",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Open `profileUrl` in Sentry for the full flamegraph, and `traceUrl` to inspect the end-to-end request",
-    "- Use search_profiles to find similar profiles",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Inspect one Sentry profile by profile ID, profiler ID, or URL: transaction, trace, release, and runtime details, sample and thread structure, and top frames. Handles transaction and continuous profiles. For aggregated hot paths across a transaction, use get_profile.",
 
   inputSchema: {
     profileUrl: z
@@ -247,45 +195,45 @@ export default defineTool({
       .url()
       .optional()
       .describe(
-        "Sentry transaction profile or continuous profile URL. If provided, organization, project, and profile identifiers are extracted from the URL.",
+        "Sentry transaction or continuous profile URL; the organization, project, and profile IDs come from it.",
       ),
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
     projectSlugOrId: z
       .union([z.string().trim().superRefine(validateSlugOrId), z.number()])
       .optional()
-      .describe("Project slug or numeric ID"),
+      .describe("Project slug or numeric ID; required without profileUrl."),
     profileId: z
       .string()
       .trim()
       .superRefine(validateResourceId)
       .optional()
-      .describe("Transaction profile ID from a profile flamegraph URL"),
+      .describe("Transaction profile ID. Do not combine with profilerId."),
     profilerId: z
       .string()
       .trim()
       .superRefine(validateResourceId)
       .optional()
-      .describe("Continuous profiler session ID"),
+      .describe("Continuous profiler session ID; requires start and end."),
     start: z
       .string()
       .trim()
       .optional()
       .describe(
-        "Continuous profile start time in ISO 8601 format, for example '2024-01-01T00:00:00Z'",
+        "Continuous profile window start, ISO 8601 such as 2024-01-01T00:00:00Z; only with profilerId.",
       ),
     end: z
       .string()
       .trim()
       .optional()
       .describe(
-        "Continuous profile end time in ISO 8601 format, for example '2024-01-01T01:00:00Z'",
+        "Continuous profile window end, ISO 8601; only with profilerId.",
       ),
     focusOnUserCode: z
       .boolean()
       .default(true)
       .describe(
-        "Show only user code frames in the hotspot table. Set to false to include library frames.",
+        "Show only application frames in the hotspot table; false includes library frames.",
       ),
   },
 
