@@ -14,7 +14,7 @@ const mockOAuthProvider = {
 };
 
 // Create test app with mocked environment
-function createTestApp(env: Partial<Env> = {}) {
+function createTestApp() {
   const app = new Hono<{ Bindings: Env }>();
   app.route("/oauth", oauthRoute);
   return app;
@@ -100,7 +100,7 @@ describe("oauth authorize routes", () => {
       SENTRY_CLIENT_SECRET: "test-client-secret",
       SENTRY_HOST: "sentry.io",
     };
-    app = createTestApp(testEnv);
+    app = createTestApp();
   });
 
   describe("GET /oauth/authorize", () => {

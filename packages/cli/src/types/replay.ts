@@ -9,7 +9,6 @@ import {
   nullable,
   nullish,
   number,
-  object,
   optional,
   pipe,
   record,
