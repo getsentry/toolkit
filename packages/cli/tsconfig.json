@@ -3,12 +3,12 @@
     "lib": ["ESNext"],
     "target": "ESNext",
     "module": "ESNext",
-    "jsx": "react-jsx",
     "moduleDetection": "force",
     "allowJs": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
     "noEmit": true,
     "resolveJsonModule": true,
     "strict": true,
@@ -23,6 +23,6 @@
     "noPropertyAccessFromIndexSignature": false,
     "strictNullChecks": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

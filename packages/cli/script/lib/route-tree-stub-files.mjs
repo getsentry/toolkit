@@ -3,7 +3,7 @@
  *
  * `route-tree-stubs.ts` writes these before a script loads the tree. They
  * live in plain JavaScript so `ensure-generated.mjs`, which runs without
- * tsx, can tell a stub left behind by a tree-loading script, such as
+ * the TypeScript loader, can tell a stub left behind by a tree-loading script, such as
  * `check-fragments`, from generated output, and regenerate it.
  */
 

@@ -12,7 +12,7 @@ import type {
   CommandCatalogEntry,
   JsonSchema,
 } from "@sentry/mcp-core/command-catalog";
-import generatedCommandApi from "../generated/command-api.json";
+import generatedCommandApi from "../generated/command-api.json" with { type: "json" };
 import type { ApiReference } from "./api-schema.js";
 import type { ApiAccess } from "./command-access.js";
 import { CHOICE_TARGET } from "./completion-target.js";
