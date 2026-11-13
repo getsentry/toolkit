@@ -460,6 +460,14 @@ describe("command tools: session constraints", () => {
     ["issue view", ["api-1"], project],
     ["issue merge", ["WEB-1", "API-2"], project],
     ["event view", ["acme/API-1", "abc123"], project],
+    [
+      "issue view",
+      ["JAVASCRIPT-REACT"],
+      constrained({
+        organizationSlug: "acme",
+        projectSlug: "javascript-react",
+      }),
+    ],
     ["span view", ["acme/api", TRACE_ID, SPAN_ID], project],
     ["span view", [`other/api/${TRACE_ID}`, SPAN_ID], org],
   ])(
