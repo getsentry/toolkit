@@ -1,4 +1,5 @@
 {
+  // jssg can't resolve an `extends` outside this package, so this doesn't extend the shared base.
   "compilerOptions": {
     "skipLibCheck": true,
     "module": "NodeNext",
