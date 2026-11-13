@@ -102,7 +102,8 @@ export default defineTool({
       );
     }
 
-    // Follow redirects by hand so each hop stays on the allowlist.
+    // Follow redirects by hand so each hop stays on the allowlist. A redirect
+    // off the allowed hosts is reported as a missing page.
     let response: Response;
     for (let redirects = 0; ; redirects++) {
       response = await fetchWithTimeout(
