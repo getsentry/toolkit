@@ -339,7 +339,9 @@ async function handleResolvedOrgs(
   );
   const filteredRows = flags.query
     ? allRows.filter((row) =>
-        row.rule.name.toLowerCase().includes(flags.query?.toLowerCase() ?? ""),
+        ((row.rule.name as string | null) ?? "")
+          .toLowerCase()
+          .includes(flags.query?.toLowerCase() ?? ""),
       )
     : allRows;
 

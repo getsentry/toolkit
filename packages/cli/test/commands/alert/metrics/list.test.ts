@@ -203,6 +203,34 @@ describe("alert metrics list pagination", () => {
     expect(parsed.hasMore).toBe(true);
   });
 
+  test("query filter skips rules with a null name", async () => {
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      if (req.url.includes("/organizations/test-org/detectors/")) {
+        return new Response(
+          JSON.stringify([
+            { ...detector({ id: "1", name: "" }), name: null },
+            detector({ id: "2", name: "Metric Rule Alpha" }),
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ detail: "Not found" }), {
+        status: 404,
+      });
+    });
+
+    const { context, stdout } = createContext();
+    await func.call(
+      context,
+      { web: false, fresh: false, limit: 10, json: true, query: "alpha" },
+      "test-org/",
+    );
+
+    const parsed = JSON.parse(stdout.output);
+    expect(parsed.data.map((rule: { id: string }) => rule.id)).toEqual(["2"]);
+  });
+
   test("--web with explicit org opens browser without fetching rules", async () => {
     globalThis.fetch = mockFetch(async () => {
       throw new Error("fetch should not be called for explicit --web");
