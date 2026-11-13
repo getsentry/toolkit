@@ -480,9 +480,9 @@ test.each([true, false])(
         ? [...transaction, ...segment]
         : [...segment, ...transaction],
     );
-    expect(trace?.title).toBe("GET /orders");
-    expect(trace?.spans).toHaveLength(1);
-    expect(trace?.spans[0]).toMatchObject({
+    expect(trace.title).toBe("GET /orders");
+    expect(trace.spans).toHaveLength(1);
+    expect(trace.spans[0]).toMatchObject({
       description: "GET /orders",
       operation: "http.server",
       startTimestamp: 1,
@@ -535,8 +535,8 @@ test("cycles keep every captured span reachable without changing declared parent
     pending.push(...span.children);
   }
   expect([...seen].sort()).toEqual(["a", "b", "child", "self"]);
-  expect(trace?.spans.find((span) => span.id === "a")?.parentId).toBe("b");
-  expect(trace?.spans.find((span) => span.id === "b")?.parentId).toBe("a");
+  expect(trace.spans.find((span) => span.id === "a")?.parentId).toBe("b");
+  expect(trace.spans.find((span) => span.id === "b")?.parentId).toBe("a");
 });
 
 test.each([true, false])(
@@ -707,7 +707,7 @@ test.each([true, false])(
       decode(payload, String(index)),
     );
     const [completed] = buildTraceGroups(entries);
-    expect(completed?.spans[0]).toMatchObject({
+    expect(completed.spans[0]).toMatchObject({
       description: "Chat",
       endTimestamp: 3,
       metadata: { spanStatus: "internal_error" },
@@ -721,7 +721,7 @@ test.each([true, false])(
       ...entries,
       ...decode(partial, "partial"),
     ]);
-    expect(updated?.spans[0]).toMatchObject({
+    expect(updated.spans[0]).toMatchObject({
       description: "Chat",
       operation: "gen_ai.chat",
       endTimestamp: 4,

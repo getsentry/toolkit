@@ -171,7 +171,7 @@ function traceIntervals(trace: TraceGroup): Interval[] {
       if (!heap.length) break;
       heap[0] = last;
       let index = 0;
-      while (true) {
+      for (;;) {
         const left = index * 2 + 1,
           right = left + 1;
         if (left >= heap.length) break;
