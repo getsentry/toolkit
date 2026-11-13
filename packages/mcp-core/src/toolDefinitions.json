@@ -11105,6 +11105,72 @@
     }
   },
   {
+    "name": "search_attributes",
+    "title": "Search Attributes",
+    "description": "Find span, log, or metric attribute keys in Sentry: which attributes exist, their types, short descriptions, examples, and whether they're deprecated.\n\nUse before search_traces, search_logs, or search_metrics when you don't know the exact attribute key, or to check whether an attribute is still being sent.\n\n`query` is plain English or part of a key. Omit it to list the dataset's attributes.\n\nLists the dataset's attributes seen in `period`, with Sentry's common search fields first. Searching by `query` will narrow down the search and surface the best candidates.\n\nNOT for attribute values or event data (use search_traces, search_logs, or search_metrics), or issue tag values (use get_issue_tag_values).\n\n<examples>\nsearch_attributes(organizationSlug='my-org', dataset='spans')\nsearch_attributes(organizationSlug='my-org', projectSlug='backend', dataset='logs')\nsearch_attributes(organizationSlug='my-org', dataset='metrics', period='7d')\nsearch_attributes(organizationSlug='my-org', query='HTTP status code', dataset='spans')\nsearch_attributes(organizationSlug='my-org', projectSlug='backend', query='request ID that ties log lines to a trace', dataset='logs')\nsearch_attributes(organizationSlug='my-org', query='payment provider', dataset='metrics', period='7d')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Infer dataset from the question: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions.\n- Show the user each returned attribute's type, description, examples, deprecation status and if they were added by Sentry. Don't reduce the result to a list of names.\n- Pass a returned key to the matching search tool to query its values.\n</hints>",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization's slug. You can find a existing list of organizations you have access to using the `find_organizations()` tool."
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project's slug. You can find a list of existing projects in an organization using the `find_projects()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "query": {
+          "description": "What attribute to find, in plain English or as part of a key. Omit to list the dataset's attributes.",
+          "type": "string"
+        },
+        "period": {
+          "type": "string",
+          "pattern": "^\\d+[mhdw]$",
+          "description": "Relative time window, such as `30m`, `1h`, `24h`, `7d`, or `90d`. Controls which records fall within the search window."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The region URL for the organization you're querying, if known. For Sentry's Cloud Service (sentry.io), this is typically the region-specific URL like 'https://us.sentry.io'. For self-hosted Sentry installations, this parameter is usually not needed and should be omitted. You can find the correct regionUrl from the organization details using the `find_organizations()` tool."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "description": "Maximum number of attributes to return (1-100). Defaults to 10 with a `query` and 50 when listing.",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "dataset": {
+          "description": "Which dataset's attributes to list: spans, logs, or metrics. Infer it from the question; ask the user to clarify if it cannot be inferred.",
+          "type": "string",
+          "enum": ["spans", "logs", "metrics"]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
+        }
+      },
+      "required": ["organizationSlug"]
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect"],
+    "surface": "direct"
+  },
+  {
     "name": "search_docs",
     "title": "Search Sentry Docs",
     "description": "Search Sentry documentation for SDK setup, instrumentation, and configuration guidance.\n\nUse this tool when you need to:\n- Set up Sentry SDK or framework integrations (Django, Flask, Express, Next.js, etc.)\n- Configure features like performance monitoring, error sampling, or release tracking\n- Implement custom instrumentation (spans, transactions, breadcrumbs)\n- Configure data scrubbing, filtering, or sampling rules\n\nReturns snippets only. Use the Sentry tool `get_doc` to fetch full documentation content.\n\n<examples>\n```\nsearch_docs(query='Django setup configuration SENTRY_DSN', guide='python/django')\nsearch_docs(query='source maps webpack upload', guide='javascript/nextjs')\n```\n</examples>\n\n<hints>\n- Use guide parameter to filter to specific technologies (e.g., 'javascript/nextjs')\n- Include specific feature names like 'beforeSend', 'tracesSampleRate', 'SENTRY_DSN'\n</hints>",

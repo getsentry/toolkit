@@ -11,12 +11,18 @@ import {
   SEARCH_ATTRIBUTES_DATASETS,
   runSearchAttributes,
 } from "../support/search-attributes/search";
-import { searchToolBase } from "../support/search-events/search";
+import {
+  logSearchEventsError,
+  SEARCH_EVENTS_ANNOTATIONS,
+} from "../support/search-events/search";
 
 export default defineTool({
-  ...searchToolBase("search_attributes"),
-  experimental: true,
-  includeInSkillDefinitions: false,
+  skills: ["inspect"],
+  requiredScopes: ["event:read"],
+  annotations: SEARCH_EVENTS_ANNOTATIONS,
+  onError: (error, params, context) => {
+    logSearchEventsError("searchAttributes", error, params, context);
+  },
   name: "search_attributes",
   title: "Search Attributes",
   description: [

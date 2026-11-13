@@ -5,7 +5,7 @@
     "description": "Read-only access to core Sentry data: issues, events, traces, replays, releases, cron monitors, uptime monitors, metric monitors, profiles, documentation, and project metadata",
     "defaultEnabled": true,
     "order": 1,
-    "toolCount": 48,
+    "toolCount": 49,
     "tools": [
       {
         "name": "find_alert_rules",
@@ -191,6 +191,11 @@
         "name": "search_agent_conversations",
         "description": "Search Sentry Agent Conversations, formerly called AI Conversations, and return one summary row per conversation.\n\nUse this tool to find or list Agent Conversations. Results are conversation summaries, not raw span rows.\nEach row includes title (when available), USD cost, tokens, call counts, previews, and other list metadata.\nUse get_agent_conversation_details with a conversationId to fetch the transcript. Use get_sentry_resource for Sentry conversation URLs.\n\n<examples>\nsearch_agent_conversations(organizationSlug='my-org', query='failed conversations', period='7d')\nsearch_agent_conversations(organizationSlug='my-org', query='checkout', project='backend')\n</examples>",
         "requiredScopes": ["event:read", "project:read"]
+      },
+      {
+        "name": "search_attributes",
+        "description": "Find span, log, or metric attribute keys in Sentry: which attributes exist, their types, short descriptions, examples, and whether they're deprecated.\n\nUse before search_traces, search_logs, or search_metrics when you don't know the exact attribute key, or to check whether an attribute is still being sent.\n\n`query` is plain English or part of a key. Omit it to list the dataset's attributes.\n\nLists the dataset's attributes seen in `period`, with Sentry's common search fields first. Searching by `query` will narrow down the search and surface the best candidates.\n\nNOT for attribute values or event data (use search_traces, search_logs, or search_metrics), or issue tag values (use get_issue_tag_values).\n\n<examples>\nsearch_attributes(organizationSlug='my-org', dataset='spans')\nsearch_attributes(organizationSlug='my-org', projectSlug='backend', dataset='logs')\nsearch_attributes(organizationSlug='my-org', dataset='metrics', period='7d')\nsearch_attributes(organizationSlug='my-org', query='HTTP status code', dataset='spans')\nsearch_attributes(organizationSlug='my-org', projectSlug='backend', query='request ID that ties log lines to a trace', dataset='logs')\nsearch_attributes(organizationSlug='my-org', query='payment provider', dataset='metrics', period='7d')\n</examples>\n\n<hints>\n- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.\n- Infer dataset from the question: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions.\n- Show the user each returned attribute's type, description, examples, deprecation status and if they were added by Sentry. Don't reduce the result to a list of names.\n- Pass a returned key to the matching search tool to query its values.\n</hints>",
+        "requiredScopes": ["event:read"]
       },
       {
         "name": "search_docs",
