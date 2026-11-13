@@ -25,7 +25,9 @@ export const ParamOrganizationSlug = z
   })
   .trim()
   .superRefine(validateSlug)
-  .describe("The organization slug.");
+  .describe(
+    "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash.",
+  );
 
 export const ParamTeamSlug = z
   .string()
@@ -37,7 +39,9 @@ export const ParamProjectSlug = z
   .string()
   .trim()
   .superRefine(validateSlug)
-  .describe("The project slug.");
+  .describe(
+    "The project slug. In `org/project` notation, the part after the slash.",
+  );
 
 export const ParamProjectSlugOrAll = z
   .string()
