@@ -5823,13 +5823,13 @@
   {
     "name": "get_doc",
     "title": "Get Sentry Doc",
-    "description": "Fetch the full markdown content of a Sentry documentation page.\n\nUse this tool when you need to:\n- Read the complete documentation for a specific topic\n- Get detailed implementation examples or code snippets\n- Access the full context of a documentation page\n- Extract specific sections from documentation\n\n<examples>\n### Get the Next.js integration guide\n\n```\nget_doc(path='/platforms/javascript/guides/nextjs.md')\n```\n</examples>\n\n<hints>\n- Use the path from search_docs results for accurate fetching\n- Paths should end with .md extension\n</hints>",
+    "description": "Fetch the full markdown content of a Sentry documentation page.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "path": {
           "type": "string",
-          "description": "The documentation path (e.g., '/platforms/javascript/guides/nextjs.md'). Get this from search_docs results."
+          "description": "Docs page path from search_docs, or a full docs.sentry.io page URL."
         }
       },
       "required": ["path"]
