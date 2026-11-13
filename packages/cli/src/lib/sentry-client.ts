@@ -253,10 +253,14 @@ function buildTimeoutHint(idempotent: boolean): string {
   return `The Sentry API at ${baseUrl} did not respond in time. ${retry}\n  ${check}`;
 }
 
-/** Pass custom TLS options (CA certs for corporate proxies) to each fetch. */
+/**
+ * Pass custom TLS options (CA certs for corporate proxies) and the caller's
+ * undici dispatcher, if any, to each fetch.
+ */
 async function fetchWithCustomTls(
   input: Request | string | URL,
-  init?: RequestInit,
+  init: RequestInit | undefined,
+  dispatcher: RequestInit["dispatcher"],
 ): Promise<Response> {
   // On Bun, this passes `tls: { ca }` to fetch(); on Node, the extra
   // property is harmless (Node honors NODE_EXTRA_CA_CERTS natively).
@@ -264,7 +268,11 @@ async function fetchWithCustomTls(
   if (customTls) {
     warnIfSaasWithEnvCa(extractInputUrl(input));
   }
-  return await fetch(input, { ...init, ...customTls });
+  return await fetch(input, {
+    ...init,
+    ...customTls,
+    ...(dispatcher && { dispatcher }),
+  });
 }
 
 /** Best-effort `detail` from a Sentry error body. */
@@ -347,10 +355,11 @@ function selectAccountForRequest({ url, scope }: CredentialRequest): void {
  * response cache, and the CLI's error classes. Retries, timeouts, the 401
  * refresh, and redirect validation are in `@sentry/api/client`.
  */
-function createCliTransport(
-  credential: CredentialContext | undefined,
-  timeoutMs: number | undefined,
-) {
+function createCliTransport({
+  credential,
+  timeoutMs,
+  dispatcher,
+}: AuthenticatedFetchOptions) {
   return createApiTransport<CredentialContext>({
     credentials: {
       current: async (request) => {
@@ -372,7 +381,7 @@ function createCliTransport(
     },
     retry: RETRY_POLICY,
     timeoutMs: timeoutMs ?? resolveTimeoutMs,
-    fetch: fetchWithCustomTls,
+    fetch: (input, init) => fetchWithCustomTls(input, init, dispatcher),
     userAgent: getUserAgent(),
     prepareHeaders,
     isIdempotent: isIdempotentOperation,
@@ -447,12 +456,14 @@ type AuthenticatedFetchOptions = {
    * such as chunk uploads, so no path override can match it.
    */
   timeoutMs?: number;
+  /** undici dispatcher for every request, such as one from `createHttp1Dispatcher`. */
+  dispatcher?: RequestInit["dispatcher"];
 };
 
 function createAuthenticatedFetch(
   options: AuthenticatedFetchOptions = {},
 ): (input: Request | string | URL, init?: RequestInit) => Promise<Response> {
-  const transport = createCliTransport(options.credential, options.timeoutMs);
+  const transport = createCliTransport(options);
   const authenticatedFetch = async (
     input: Request | string | URL,
     init?: RequestInit,
@@ -507,7 +518,8 @@ function getAuthenticatedFetch(
     options.validatedRedirects ||
     options.bufferResponseBody ||
     options.idempotent ||
-    options.timeoutMs !== undefined
+    options.timeoutMs !== undefined ||
+    options.dispatcher
   ) {
     return createAuthenticatedFetch(options);
   }
@@ -560,8 +572,8 @@ export function getSdkConfig(
     : regionUrl;
 
   return {
-    // SDK functions already include /api/0/ in their URL paths,
-    // so baseUrl should be the plain region URL without /api/0.
+    // The SDK adds the API base path to its operation paths, so baseUrl
+    // is the plain region URL.
     baseUrl: normalizedBase,
     fetch: getAuthenticatedFetch(options),
     throwOnError: false as const,

@@ -8,7 +8,7 @@
 import { access, readFile } from "node:fs/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
-import { parseApiPathScope } from "@sentry/api/client";
+import { API_BASE_PATH, parseApiPathScope } from "@sentry/api/client";
 import type { SentryContext } from "../context.js";
 import {
   appendSearchParams,
@@ -36,6 +36,7 @@ import {
   hasPreviousPage,
   resolveCursor,
 } from "../lib/db/pagination.js";
+import { normalizeEndpoint as templateEndpoint } from "../lib/error-reporting.js";
 import {
   OutputError,
   stringifyUnknown,
@@ -62,8 +63,9 @@ const log = logger.withTag("api");
 
 /** Strips line breaks and surrounding indentation from copy-pasted endpoints. */
 const LINE_BREAK_PATTERN = /[ \t]*[\r\n]+[ \t]*/g;
-const API_PREFIX = "/api/0";
-const API_PREFIX_WITH_SLASH = `${API_PREFIX}/`;
+const API_PREFIX_WITH_SLASH = `${API_BASE_PATH}/`;
+/** The base path as users type it, without the leading slash. */
+const BARE_API_PREFIX = API_BASE_PATH.slice(1);
 const PAGINATION_KEY = "api";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
@@ -160,10 +162,10 @@ function splitAbsoluteApiUrl(url: URL): AbsoluteApiTarget {
       strippedApiPrefix: true,
     };
   }
-  if (url.pathname.endsWith(API_PREFIX)) {
+  if (url.pathname.endsWith(API_BASE_PATH)) {
     return {
       endpoint: url.search,
-      baseUrl: `${url.origin}${url.pathname.slice(0, -API_PREFIX.length)}`,
+      baseUrl: `${url.origin}${url.pathname.slice(0, -API_BASE_PATH.length)}`,
       strippedApiPrefix: true,
     };
   }
@@ -217,12 +219,11 @@ export function normalizeEndpoint(endpoint: string): string {
     ? relativeEndpoint.slice(1)
     : relativeEndpoint;
 
-  // Strip api/0/ prefix if user accidentally included it — the base URL
-  // already includes /api/0/, so keeping it would produce a doubled path
-  // like /api/0/api/0/... (see CLI-K1).
-  // Also strip bare "api/0" to maintain idempotency.
-  if (trimmed.startsWith("api/0/") || trimmed === "api/0") {
-    trimmed = trimmed.slice(trimmed.startsWith("api/0/") ? 6 : 5);
+  // Strip the API base path if the user included it — the client adds it,
+  // so keeping it would produce a doubled path like /api/0/api/0/...
+  // (see CLI-K1). Also strip the bare base path to maintain idempotency.
+  if (hasBareApiPrefix(trimmed)) {
+    trimmed = trimmed.slice(BARE_API_PREFIX.length + 1);
   }
 
   // Split path and query string
@@ -237,6 +238,12 @@ export function normalizeEndpoint(endpoint: string): string {
   const query = trimmed.substring(queryIndex);
   const normalizedPath = path.endsWith("/") ? path : `${path}/`;
   return `${normalizedPath}${query}`;
+}
+
+function hasBareApiPrefix(endpoint: string): boolean {
+  return (
+    endpoint.startsWith(`${BARE_API_PREFIX}/`) || endpoint === BARE_API_PREFIX
+  );
 }
 
 function resolveApiTarget(endpoint: string): {
@@ -258,8 +265,7 @@ function resolveApiTarget(endpoint: string): {
     requestBaseUrl: absoluteTarget?.baseUrl,
     strippedApiPrefix:
       absoluteTarget?.strippedApiPrefix ??
-      (withoutLeadingSlash.startsWith("api/0/") ||
-        withoutLeadingSlash === "api/0"),
+      hasBareApiPrefix(withoutLeadingSlash),
   };
 }
 
@@ -1104,7 +1110,10 @@ export function formatEmptyErrorBody(
   endpoint: string | undefined,
 ): string {
   const statusLabel = [status, statusText].filter(Boolean).join(" ");
-  const request = method && endpoint ? ` — ${method} /api/0/${endpoint}` : "";
+  const request =
+    method && endpoint
+      ? ` — ${method} ${API_PREFIX_WITH_SLASH}${endpoint}`
+      : "";
   return `HTTP ${statusLabel}${request}`;
 }
 
@@ -1431,7 +1440,7 @@ function recordApiErrorAttributes(
   const span = Sentry.getActiveSpan();
   if (span) {
     span.setAttribute("api_error.status", status);
-    span.setAttribute("api_error.endpoint", endpoint);
+    span.setAttribute("api_error.endpoint", templateEndpoint(endpoint));
     span.setAttribute("api_error.method", method);
   }
 }
@@ -1568,7 +1577,7 @@ export const apiCommand = buildCommand({
     brief: topLevelBrief("api"),
     fullDescription:
       "Make a raw API request to the Sentry API. Similar to 'gh api' for GitHub. " +
-      "The endpoint is relative to /api/0/ (do not include the prefix). " +
+      `The endpoint is relative to ${API_PREFIX_WITH_SLASH} (do not include the prefix). ` +
       "Absolute HTTP(S) Sentry URLs are also accepted; their origin is " +
       "validated against your authenticated host. " +
       "Authentication is handled automatically using your stored credentials.\n\n" +
@@ -1660,7 +1669,7 @@ export const apiCommand = buildCommand({
       kind: "tuple",
       parameters: [
         {
-          brief: "API endpoint relative to /api/0/, or an absolute HTTP(S) URL",
+          brief: `API endpoint relative to ${API_PREFIX_WITH_SLASH}, or an absolute HTTP(S) URL`,
           parse: parseApiEndpoint,
           placeholder: "endpoint",
         },
@@ -1755,7 +1764,7 @@ export const apiCommand = buildCommand({
       // only surface the detail at debug level for troubleshooting
       // (getsentry/cli#785 item #11).
       log.debug(
-        "Stripped /api/0/ prefix from endpoint (auto-added by the API client)",
+        `Stripped ${API_PREFIX_WITH_SLASH} prefix from endpoint (auto-added by the API client)`,
       );
     }
     const { body, params } = await resolveBody(flags, stdin);

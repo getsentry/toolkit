@@ -92,10 +92,13 @@
       }
     },
     {
-      "files": [
-        "packages/cli/src/**/*.{ts,tsx}",
-        "packages/cli/test/**/*.{ts,tsx}"
-      ],
+      "files": ["packages/cli/test/**/*.ts"],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
+      "files": ["packages/cli/src/**/*.ts", "packages/cli/test/**/*.ts"],
       "rules": {
         "sentry-cli/no-silent-catch": "error",
         "sentry-cli/no-raw-capture-exception": "error",
@@ -149,11 +152,12 @@
     {
       "files": ["packages/cli/script/**/*.ts"],
       "rules": {
-        "sentry-cli/no-regex-markdown-parsing": "error"
+        "sentry-cli/no-regex-markdown-parsing": "error",
+        "typescript/no-unnecessary-condition": "error"
       }
     },
     {
-      "files": ["packages/cli/src/**/*.{ts,tsx}"],
+      "files": ["packages/cli/src/**/*.ts"],
       "rules": {
         "typescript/no-explicit-any": "error",
         "typescript/no-non-null-assertion": "error"
@@ -170,7 +174,7 @@
       }
     },
     {
-      "files": ["packages/cli/src/commands/**/*.{ts,tsx}"],
+      "files": ["packages/cli/src/commands/**/*.ts"],
       "rules": {
         "no-restricted-imports": [
           "error",

@@ -15,7 +15,7 @@
  * Output is a committed module (like `src/generated/skill-content.ts`) so the
  * runtime never needs to read the asset from disk.
  *
- * Usage:   tsx script/generate.ts banner
+ * Usage:   pnpm ts script/generate.ts banner
  * Output:  src/generated/banner-image.ts
  */
 

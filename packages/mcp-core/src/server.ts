@@ -559,6 +559,7 @@ function configureServer({
               text: (
                 await formatErrorForUser(error, {
                   transport: context.transport,
+                  session: contextWithToolAvailability,
                 })
               ).toWellFormed(),
             },

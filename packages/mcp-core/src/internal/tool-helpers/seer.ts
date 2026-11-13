@@ -110,6 +110,33 @@ export function getSeerPaymentRequiredMessage(responseBody: unknown): string {
   return SEER_NO_QUOTA_MESSAGE;
 }
 
+const SEER_SETUP_REQUIRED_CODES = new Set([
+  "scm_integration_required",
+  "repos_not_linked",
+]);
+
+/**
+ * Explain a 409 from starting a run when Seer is not set up for the issue's
+ * project. Returns null for any other 409, such as a run already in flight.
+ */
+export function getSeerSetupRequiredMessage(
+  responseBody: unknown,
+): string | null {
+  if (
+    !isPlainObject(responseBody) ||
+    typeof responseBody.code !== "string" ||
+    !SEER_SETUP_REQUIRED_CODES.has(responseBody.code) ||
+    typeof responseBody.detail !== "string"
+  ) {
+    return null;
+  }
+  return [
+    responseBody.detail,
+    "",
+    "Retrying won't help until someone sets this up in Sentry. Investigate without Seer by reading the issue and its events.",
+  ].join("\n");
+}
+
 /**
  * Explain why a failed run stopped, when Seer gives a reason we can explain.
  */

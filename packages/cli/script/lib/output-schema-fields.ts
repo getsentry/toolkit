@@ -101,8 +101,8 @@ function valibotTypeToString(input: ValibotSchemaNode): {
 } {
   // Resolve `pipe(...)` schemas (incl. the coercion pattern) to their output
   // schema before inspecting the type.
-  const schema = input ? unwrapPipe(input) : input;
-  if (!schema?.type) {
+  const schema = unwrapPipe(input);
+  if (!schema.type) {
     return { type: "unknown", optional: false };
   }
 

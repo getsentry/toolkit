@@ -8,22 +8,22 @@ const operations: SourceApiOperation[] = [
   {
     functionName: "listOrganizationEvents",
     method: "GET",
-    path: "/api/0/organizations/{organization_id_or_slug}/events/",
+    path: "/organizations/{organization_id_or_slug}/events/",
   },
   {
     functionName: "getOrganizationTrace",
     method: "GET",
-    path: "/api/0/organizations/{organization_id_or_slug}/trace/{trace_id}/",
+    path: "/organizations/{organization_id_or_slug}/trace/{trace_id}/",
   },
   {
     functionName: "deleteProject",
     method: "DELETE",
-    path: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/",
+    path: "/projects/{organization_id_or_slug}/{project_id_or_slug}/",
   },
   {
     functionName: "deleteOrganizationWorkflow",
     method: "DELETE",
-    path: "/api/0/organizations/{organization_id_or_slug}/workflows/{workflow_id}/",
+    path: "/organizations/{organization_id_or_slug}/workflows/{workflow_id}/",
   },
 ];
 
@@ -169,7 +169,7 @@ describe("source API usage", () => {
       {
         ...operations[0],
         functionName: "anotherEvents",
-        path: "/api/0/organizations/{org}/events/",
+        path: "/organizations/{org}/events/",
       },
     ]);
     const result = analysis.exports.get("src/commands/raw.ts")!;
