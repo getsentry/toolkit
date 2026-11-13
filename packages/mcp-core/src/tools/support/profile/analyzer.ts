@@ -112,8 +112,7 @@ export function analyzeHotPathsFromFlamegraph(
     }
   >();
 
-  for (let idx = 0; idx < profile.samples.length; idx++) {
-    const stackIndices = profile.samples[idx];
+  for (const [idx, stackIndices] of profile.samples.entries()) {
     const sampleCount = profile.sample_counts[idx] || 0;
     const duration = profile.sample_durations_ns[idx] || 0;
     const weight = profile.weights[idx] || 0;
@@ -357,7 +356,7 @@ export function compareFrameStats(
       continue; // Frame only in one dataset
     }
 
-    const currentFrame = currentFrames[indices.currentIdx];
+    const currentFrame = currentFrames[indices.currentIdx]!;
     const baselineInfo =
       baselineInfos[indices.baselineIdx] || DEFAULT_FRAME_INFO;
     const currentInfo = currentInfos[indices.currentIdx] || DEFAULT_FRAME_INFO;

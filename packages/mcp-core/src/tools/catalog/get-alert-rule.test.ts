@@ -528,7 +528,7 @@ describe("get_alert_rule", () => {
       id: `condition-${i}`,
     }));
     const actions = Array.from({ length: 6 }, (_, i) => ({
-      ...issueAlertRule.actionFilters[0].actions[0],
+      ...issueAlertRule.actionFilters[0]!.actions[0],
       id: `action-${i}`,
     }));
     const groups = Array.from({ length: 6 }, (_, i) => ({

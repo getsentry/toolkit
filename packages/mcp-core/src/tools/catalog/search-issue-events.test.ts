@@ -515,8 +515,8 @@ describe("search_issue_events", () => {
     );
 
     const [emptyUser, emptyGeo] = sc(result).events;
-    expect(emptyUser.user).toBeNull();
-    expect(emptyGeo.user).toEqual({
+    expect(emptyUser!.user).toBeNull();
+    expect(emptyGeo?.user).toEqual({
       id: "user-1",
       email: null,
       username: null,

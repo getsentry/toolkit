@@ -103,7 +103,7 @@ describe("find_alert_rules", () => {
     expect(issueParams.get("projectSlug")).toBe("cloudflare-mcp");
     expect(issueParams.get("query")).toBe('name:"*backend*"');
     expect(metricRequestUrls).toHaveLength(1);
-    const metricParams = new URL(metricRequestUrls[0]).searchParams;
+    const metricParams = new URL(metricRequestUrls[0]!).searchParams;
     expect(metricParams.get("project")).toBe(project.id);
     expect(metricParams.get("query")).toBe('name:"*backend*"');
     expect(metricParams.getAll("type")).toEqual(["metric_issue"]);
@@ -235,8 +235,8 @@ describe("find_alert_rules", () => {
     );
 
     expect(requests).toHaveLength(1);
-    expect(requests[0].searchParams.get("projectSlug")).toBeNull();
-    expect(requests[0].searchParams.get("cursor")).toBe("workflow-page-1");
+    expect(requests[0]!.searchParams.get("projectSlug")).toBeNull();
+    expect(requests[0]?.searchParams.get("cursor")).toBe("workflow-page-1");
     expect(getStructuredContent(result)).toMatchObject({
       issueRules: [{ id: "123" }],
       pagination: { issue: { nextCursor: "workflow-page-2" }, metric: null },

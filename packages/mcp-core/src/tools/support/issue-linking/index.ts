@@ -86,7 +86,7 @@ function nativeIdentity(
         /^\/([^/]+\/[^/]+)\/(issues|pull)\/(\d+)(?:\/(files|changes|commits|checks))?$/,
       );
       if (!match || (match[2] === "issues" && match[4])) return undefined;
-      return `${url.origin}/${match[1].toLowerCase()}#${match[3]}`;
+      return `${url.origin}/${match[1]!.toLowerCase()}#${match[3]}`;
     }
     case "gitlab": {
       const match = path.match(/^\/(.+?)(?:\/-)?\/issues\/(\d+)$/);
@@ -262,7 +262,7 @@ export async function linkExternalIssue(
       `Multiple installed issue integrations match this URL. Provide integrationId to select one: ${describeIntegrations(candidates)}.`,
     );
   }
-  const integration = candidates[0];
+  const integration = candidates[0]!;
   const { issue, changed } = await apiService.linkNativeExternalIssue({
     ...params,
     integrationId: String(integration.id),

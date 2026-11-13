@@ -245,9 +245,9 @@ describe("find_dashboards", () => {
     );
 
     expect(requestUrls).toHaveLength(2);
-    expect(new URL(requestUrls[0]).searchParams.get("per_page")).toBe("2");
-    expect(new URL(requestUrls[1]).searchParams.get("cursor")).toBe("2:1:0");
-    expect(new URL(requestUrls[1]).searchParams.get("per_page")).toBe("2");
+    expect(new URL(requestUrls[0]!).searchParams.get("per_page")).toBe("2");
+    expect(new URL(requestUrls[1]!).searchParams.get("cursor")).toBe("2:1:0");
+    expect(new URL(requestUrls[1]!).searchParams.get("per_page")).toBe("2");
     assertStructuredOnlyResult(result);
     const structuredContent = findDashboardsOutputSchema.parse(
       getStructuredContent(result),
@@ -316,8 +316,8 @@ describe("find_dashboards", () => {
 
     const secondResult = await search(first.nextCursor, 1);
 
-    expect(new URL(requestUrls[2]).searchParams.get("cursor")).toBe("2:1:0");
-    expect(new URL(requestUrls[2]).searchParams.get("per_page")).toBe("2");
+    expect(new URL(requestUrls[2]!).searchParams.get("cursor")).toBe("2:1:0");
+    expect(new URL(requestUrls[2]!).searchParams.get("per_page")).toBe("2");
     assertStructuredOnlyResult(secondResult);
     expect(getStructuredContent(secondResult)).toMatchObject({
       dashboards: [{ id: "304", title: "Cloudflare Throughput" }],

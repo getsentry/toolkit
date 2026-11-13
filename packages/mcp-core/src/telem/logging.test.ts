@@ -23,7 +23,7 @@ describe("logging", () => {
     expect(info).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledTimes(1);
 
-    const [payload] = error.mock.calls[0];
+    const [payload] = error.mock.calls[0]!;
     expect(typeof payload).toBe("string");
     expect(JSON.parse(payload as string)).toMatchObject({
       level: "INFO",
@@ -54,7 +54,7 @@ describe("logging", () => {
     });
 
     expect(error).toHaveBeenCalledTimes(1);
-    const [payload] = error.mock.calls[0];
+    const [payload] = error.mock.calls[0]!;
     expect(JSON.parse(payload as string)).toMatchObject({
       level: "ERROR",
       message: "issue failed",

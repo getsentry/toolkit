@@ -17,7 +17,7 @@ const server = {
 
 async function spanAttributes(context: Parameters<typeof startStdio>[1]) {
   await startStdio(server, context);
-  const [options] = vi.mocked(startSpan).mock.calls[0];
+  const [options] = vi.mocked(startSpan).mock.calls[0]!;
   return options.attributes;
 }
 

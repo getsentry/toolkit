@@ -120,9 +120,9 @@ Received: ${params.issueUrl}`,
       organizationSlug: resolveScopedOrganizationSlug({
         resourceLabel: "Issue",
         scopedOrganizationSlug: params.organizationSlug,
-        urlOrganizationSlug: orgMatch[1],
+        urlOrganizationSlug: orgMatch[1]!,
       }),
-      issueId: orgMatch[2],
+      issueId: orgMatch[2]!,
     };
   }
 

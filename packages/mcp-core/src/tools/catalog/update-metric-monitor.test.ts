@@ -189,7 +189,7 @@ describe("update_metric_monitor", () => {
         environment: null,
       };
       const source = structuredClone(metricMonitor.dataSources[0]);
-      Object.assign(source.queryObj.snubaQuery, {
+      Object.assign(source!.queryObj.snubaQuery, {
         ...query,
         timeWindow: 7200,
         query: "release:previous",

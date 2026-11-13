@@ -115,8 +115,8 @@ describe("update_alert_rule", () => {
   it("reports when Sentry saves a Slack destination without resolving its channel ID", async () => {
     const { writes } = useAlertRuleHandlers();
     const actionFilters = structuredClone(alertRule.actionFilters);
-    actionFilters[0].actions[0].config.targetDisplay = "#new-channel";
-    actionFilters[0].actions[0].config.targetIdentifier = "";
+    actionFilters[0]!.actions[0]!.config.targetDisplay = "#new-channel";
+    actionFilters[0]!.actions[0]!.config.targetIdentifier = "";
 
     await expect(updateRule({ actionFilters })).rejects.toThrow(
       "The alert was saved, but Sentry did not resolve a Slack destination.",
@@ -208,7 +208,7 @@ describe("update_alert_rule", () => {
       const actionFilters: Parameters<
         typeof updateAlertRule.handler
       >[0]["actionFilters"] = structuredClone(alertRule.actionFilters);
-      actionFilters[0].actions.push({
+      actionFilters[0]!.actions.push({
         id: "22",
         type: "email",
         integrationId: null,
@@ -220,18 +220,18 @@ describe("update_alert_rule", () => {
         },
       });
       actionFilters.push({
-        ...actionFilters[0],
+        ...actionFilters[0]!,
         id: "30",
         actions: [{ ...slackAction, id: "31" }],
       });
-      actionFilters[0].actions[0].config = {
+      actionFilters[0]!.actions[0]!.config = {
         ...slackAction.config,
         targetDisplay,
         targetIdentifier: inputId,
       };
-      actionFilters[0].actions[0].integrationId = integrationId;
+      actionFilters[0]!.actions[0]!.integrationId = integrationId;
       const savedFilters = structuredClone(actionFilters);
-      savedFilters[0].actions[0].config.targetIdentifier = "CNEW";
+      savedFilters[0]!.actions[0]!.config.targetIdentifier = "CNEW";
       mswServer.use(
         http.put(endpoint, async ({ request }) => {
           writes.push((await request.json()) as Record<string, unknown>);
@@ -245,7 +245,7 @@ describe("update_alert_rule", () => {
       const result = await updateRule({ actionFilters });
       const expectedFilters = structuredClone(actionFilters);
       const expectedConfig: Record<string, unknown> =
-        expectedFilters[0].actions[0].config;
+        expectedFilters[0]!.actions[0]!.config;
       if (expectedId === undefined) delete expectedConfig.targetIdentifier;
       else expectedConfig.targetIdentifier = expectedId;
       expect(writes).toEqual([
@@ -313,7 +313,7 @@ describe("update_alert_rule", () => {
         alertRule: { actionFilters: (typeof group)[] };
       }>(await getAlertRule.handler({ ...params, kind: "issue" }, context));
       const actionFilters = inspected.actionFilters;
-      actionFilters[0].actions[0].config = action.config;
+      actionFilters[0]!.actions[0]!.config = action.config;
       // Teams always resolves the supplied name, replacing even an old channel ID.
       const savedAction =
         type === "msteams"
@@ -391,7 +391,7 @@ describe("update_alert_rule", () => {
         {
           ...changes.actionFilters[0],
           conditions: [
-            { ...changes.actionFilters[0].conditions[0], comparison: 25 },
+            { ...changes.actionFilters[0]!.conditions[0], comparison: 25 },
           ],
         },
       ],
@@ -652,7 +652,7 @@ describe("update_alert_rule", () => {
       { ...context, constraints: { projectSlug: "cloudflare-mcp" } },
     );
 
-    expect(queries[0].searchParams.get("projectSlug")).toBe("cloudflare-mcp");
+    expect(queries[0]?.searchParams.get("projectSlug")).toBe("cloudflare-mcp");
     expect(reads).toHaveLength(1);
     expect(writes).toEqual([{ name: "Renamed alert", enabled: true }]);
   });

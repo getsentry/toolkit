@@ -184,7 +184,7 @@ function selectSentryDefaultThread(threads: Thread[]): Thread {
   return (
     sortedThreads.find((thread) => thread.crashed) ??
     sortedThreads.find((thread) => hasFrames(thread)) ??
-    sortedThreads[0]
+    sortedThreads[0]!
   );
 }
 
@@ -208,5 +208,5 @@ function selectUnique(
     return { kind: "ambiguous", message: ambiguousMessage };
   }
 
-  return { kind: "selected", thread: matches[0] };
+  return { kind: "selected", thread: matches[0]! };
 }

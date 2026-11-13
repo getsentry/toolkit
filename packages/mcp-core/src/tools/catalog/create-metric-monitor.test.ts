@@ -58,7 +58,7 @@ function create(changes: Record<string, unknown> = {}) {
 
 function savedMonitor(body: MetricMonitorCreate) {
   const source = structuredClone(metricMonitor.dataSources[0]);
-  Object.assign(source.queryObj.snubaQuery, body.dataSources[0]);
+  Object.assign(source!.queryObj.snubaQuery, body.dataSources[0]);
   return {
     ...metricMonitor,
     ...body,

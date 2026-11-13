@@ -56,7 +56,7 @@ describe("getEventForIssue context validation", () => {
       );
 
       expect(log).toHaveBeenCalledTimes(1);
-      const output = String(log.mock.calls[0][0]);
+      const output = String(log.mock.calls[0]![0]);
       const record = JSON.parse(output);
       expect(record.message).toBe("Event failed schema validation: error");
       expect(record.properties.contextType).toBe(contextType);

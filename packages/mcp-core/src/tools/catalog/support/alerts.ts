@@ -68,7 +68,7 @@ export async function resolveIssueAlertRule(
     return await apiService.getIssueAlertRule({
       organizationSlug: params.organizationSlug,
       projectSlug: params.projectSlug,
-      ruleId: matches[0].id,
+      ruleId: matches[0]!.id,
     });
   }
   if (matches.length > 1) {
@@ -124,7 +124,7 @@ export async function resolveMetricAlertRule(
           : `Metric monitor "${ruleIdOrName}" was not found. Use find_metric_monitors to find its monitor ID.`,
       );
     }
-    monitorId = matches[0].id;
+    monitorId = matches[0]!.id;
   }
   return await getMetricMonitor(apiService, {
     organizationSlug,

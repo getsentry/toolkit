@@ -278,7 +278,7 @@ function maskQuotedRegions(query: string): string {
   let escaped = false;
 
   for (let i = 0; i < query.length; i += 1) {
-    const char = query[i];
+    const char = query.charAt(i);
     if (escaped) {
       escaped = false;
       out += quote ? "x" : char;
@@ -1225,7 +1225,7 @@ function resolveAvailableFields(
       const replacementAttribute = { ...field, key: replacementKey };
       available.set(replacementKey, replacementAttribute);
       replaced.push(field);
-      fieldTypes[replacementKey] = fieldTypes[key];
+      fieldTypes[replacementKey] = fieldTypes[key]!;
       delete fieldTypes[key];
     } else if (!attributeDeprecated && !available.has(key)) {
       available.set(key, field);

@@ -340,7 +340,7 @@ export async function resolveDashboardId({
   );
 
   if (exactMatches.length === 1) {
-    return String(exactMatches[0].id);
+    return String(exactMatches[0]!.id);
   }
 
   if (exactMatches.length > 1) {

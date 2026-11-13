@@ -223,7 +223,7 @@ describe("get_issue_breadcrumbs", () => {
     );
 
     const [crumb] = getStructuredContent<BreadcrumbsOutput>(result).breadcrumbs;
-    expect(Object.keys(crumb).sort()).toEqual([
+    expect(Object.keys(crumb!).sort()).toEqual([
       "category",
       "data",
       "level",
@@ -237,9 +237,9 @@ describe("get_issue_breadcrumbs", () => {
       category: null,
       type: "default",
     });
-    expect(crumb.message).toMatch(/^line one line two x+\.\.\.$/);
-    expect((crumb.message as string).length).toBe(123);
-    expect((crumb.data as string).length).toBe(203);
+    expect(crumb?.message).toMatch(/^line one line two x+\.\.\.$/);
+    expect((crumb!.message as string).length).toBe(123);
+    expect((crumb!.data as string).length).toBe(203);
     expect(JSON.stringify(crumb)).not.toContain("must-not-leak");
   });
 });
