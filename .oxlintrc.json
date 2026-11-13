@@ -157,6 +157,12 @@
       }
     },
     {
+      "files": ["packages/mcp-test-client/**/*.{ts,tsx,js,mjs,cjs}"],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
       "files": [
         "packages/cli/src/lib/command.ts",
         "packages/cli/src/lib/route-map.ts",
