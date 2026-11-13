@@ -452,6 +452,9 @@ describe("command tools: session constraints", () => {
     ["dashboard revisions", ["acme/api", "123"], project],
     ["event view", ["acme/api", "abc123"], project],
     ["event view", ["other/WEB-1", "abc123"], org],
+    ["project create", ["other/app:python"], org],
+    ["project create", ["acme/app:python", "other/b:node"], org],
+    ["project create", ["app:python"], project],
     ["span view", ["acme/api", TRACE_ID, SPAN_ID], project],
     ["span view", [`other/api/${TRACE_ID}`, SPAN_ID], org],
   ])(
@@ -476,7 +479,9 @@ describe("command tools: session constraints", () => {
       project,
     );
     await call("span view", { positional: [`${TRACE_ID}/${SPAN_ID}`] }, org);
-    expect(calls).toHaveLength(5);
+    await call("project create", { positional: ["acme/app:python"] }, org);
+    await call("project create", { positional: ["app:python"] }, org);
+    expect(calls).toHaveLength(7);
   });
 
   it.each([

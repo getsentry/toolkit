@@ -124,7 +124,12 @@ function positionalKind(
     return kinds[index] ?? undefined;
   }
   const kind = kinds[0] ?? undefined;
-  return index === 0 || kind === "issue" || kind === "org" ? kind : undefined;
+  return index === 0 ||
+    kind === "issue" ||
+    kind === "org" ||
+    kind === "project-spec"
+    ? kind
+    : undefined;
 }
 
 /**
@@ -272,6 +277,27 @@ function pinTarget(
 }
 
 /**
+ * Check a `project create` spec, `[<org>/]<name>:<platform>`: its
+ * organization is the session's, and a project-scoped session creates no
+ * other project.
+ */
+function pinProjectSpec(
+  entry: CommandCatalogEntry,
+  value: string,
+  session: Session,
+): string {
+  const separator = value.lastIndexOf(":");
+  const name = separator === -1 ? value : value.slice(0, separator);
+  const slash = name.indexOf("/");
+  const org = slash > 0 ? name.slice(0, slash) : session.org;
+  const project = name.slice(slash + 1);
+  if (org !== session.org || (session.project && project !== session.project)) {
+    throw outside(entry, value, session);
+  }
+  return value;
+}
+
+/**
  * The organization and project a `sentry api` endpoint names, or `undefined`
  * for an endpoint not scoped to one (`issues/1/`, `organizations/`).
  */
@@ -397,6 +423,9 @@ export function pinConstraints(
       return value;
     }
     const kind = positionalKind(entry, index);
+    if (kind === "project-spec") {
+      return pinProjectSpec(entry, value, session);
+    }
     const title = positionalTitle(schema, index);
     return kind && title && TARGET_KINDS.has(kind)
       ? pinTarget(
