@@ -418,8 +418,7 @@ test("pasting a plain receiver discovers active sessions and waits for newly sta
     );
     await screen.findByRole("dialog", { name: "Settings", exact: true });
     expect(
-      ((await screen.findByLabelText("Envelope limit")) as HTMLInputElement)
-        .value,
+      (await screen.findByLabelText<HTMLInputElement>("Envelope limit")).value,
     ).toBe("500");
     expect(
       screen.getByRole("button", { name: "Apply envelope limit" }),

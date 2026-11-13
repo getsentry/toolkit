@@ -65,13 +65,9 @@ export function DetailFields({
         </tbody>
       </table>
       {copiedField ? (
-        <span
-          role="status"
-          aria-label={`${copiedField} copied`}
-          className="sr-only"
-        >
+        <output aria-label={`${copiedField} copied`} className="sr-only">
           {copiedField} copied
-        </span>
+        </output>
       ) : null}
     </>
   );

@@ -77,10 +77,9 @@ export function LocalSettings({
           <p className="text-xs text-muted-foreground">
             Applies to all captures in this viewer.
           </p>
-          <div
-            role="group"
+          <fieldset
             aria-label="Color theme"
-            className="grid grid-cols-3 gap-2"
+            className="min-w-0 grid grid-cols-3 gap-2"
           >
             {THEME_OPTIONS.map(({ value, label, Icon }) => (
               <Button
@@ -95,7 +94,7 @@ export function LocalSettings({
                 {label}
               </Button>
             ))}
-          </div>
+          </fieldset>
         </div>
         <div className="space-y-3 border-t pt-4">
           <h3 className="text-sm font-medium">History capacity</h3>

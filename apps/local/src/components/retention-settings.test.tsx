@@ -66,11 +66,9 @@ test("reports a receiver-side retention race without claiming a successful save"
   );
   await waitFor(() =>
     expect(
-      (
-        screen.getByRole("button", {
-          name: "Apply envelope limit",
-        }) as HTMLButtonElement
-      ).disabled,
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "Apply envelope limit",
+      }).disabled,
     ).toBe(false),
   );
   expect(fetch).toHaveBeenCalledWith(
@@ -79,9 +77,9 @@ test("reports a receiver-side retention race without claiming a successful save"
     ),
     expect.objectContaining({ body: '{"maxEnvelopes":8}' }),
   );
-  expect(
-    (screen.getByLabelText("Envelope limit") as HTMLInputElement).value,
-  ).toBe("8");
+  expect(screen.getByLabelText<HTMLInputElement>("Envelope limit").value).toBe(
+    "8",
+  );
   expect(screen.getByText("8 envelopes currently retained.")).not.toBeNull();
 });
 
@@ -102,11 +100,9 @@ test.each([0, 1, 8])(
       ),
     ).not.toBeNull();
     expect(
-      (
-        screen.getByRole("spinbutton", {
-          name: "Envelope limit",
-        }) as HTMLInputElement
-      ).value,
+      screen.getByRole<HTMLInputElement>("spinbutton", {
+        name: "Envelope limit",
+      }).value,
     ).toBe("500");
     expect(screen.queryByText(/displayed/)).toBeNull();
   },
