@@ -6,7 +6,8 @@ class TestResizeObserver implements ResizeObserver {
   unobserve(_target: Element) {}
 }
 
-if (!globalThis.ResizeObserver) {
+const environment: Partial<typeof globalThis> = globalThis;
+if (!environment.ResizeObserver) {
   Object.defineProperty(globalThis, "ResizeObserver", {
     configurable: true,
     value: TestResizeObserver,
@@ -14,6 +15,7 @@ if (!globalThis.ResizeObserver) {
   });
 }
 
-if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
-  Element.prototype.scrollIntoView = () => {};
+if (typeof Element !== "undefined") {
+  const elementPrototype: Partial<Element> = Element.prototype;
+  elementPrototype.scrollIntoView ??= () => {};
 }

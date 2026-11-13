@@ -136,7 +136,7 @@ async function main() {
     repeat: Number(values.repeat),
     onSent: (file, index) =>
       console.log(
-        `${index}. ${file.slice(dirname(resolve(values.fixtures ?? positionals[0] ?? defaultFixtures)).length + 1)}`,
+        `${index}. ${file.slice(dirname(resolve(values.fixtures ?? positionals.at(0) ?? defaultFixtures)).length + 1)}`,
       ),
   });
   console.log(`Sent ${count} envelope${count === 1 ? "" : "s"}.`);

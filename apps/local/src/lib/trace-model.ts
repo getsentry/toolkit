@@ -85,7 +85,7 @@ function getPayloadSpan(
     getTimestamp(event.end_timestamp) ??
     getTimestamp(item.timestamp);
   const operation = getString(trace.op) ?? item.metadata?.operation;
-  const title = item.metadata?.title?.trim();
+  const title = item.metadata?.title.trim();
   const description =
     getString(event.transaction) ??
     (title && title !== item.type ? title : undefined) ??

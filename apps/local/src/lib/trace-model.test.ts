@@ -65,9 +65,9 @@ describe("buildTraceGroups", () => {
         itemCount: 3,
         roots: [{ id: "root", children: [{ id: "query", durationMs: 125 }] }],
       });
-      expect(trace?.spans).toHaveLength(2);
-      expect(trace?.roots).toHaveLength(1);
-      expect(trace?.roots[0]?.children).toHaveLength(1);
+      expect(trace.spans).toHaveLength(2);
+      expect(trace.roots).toHaveLength(1);
+      expect(trace.roots[0]?.children).toHaveLength(1);
     },
   );
 
@@ -209,9 +209,9 @@ describe("buildTraceGroups", () => {
       durationMs: 70000000,
       itemCount: 1,
     });
-    expect(trace?.spans).toHaveLength(70001);
-    expect(trace?.roots).toHaveLength(1);
-    expect(trace?.roots[0]?.children).toHaveLength(70000);
+    expect(trace.spans).toHaveLength(70001);
+    expect(trace.roots).toHaveLength(1);
+    expect(trace.roots[0]?.children).toHaveLength(70000);
   });
 
   test("uses a transaction ID as the trace fallback used by routing", () => {
@@ -438,7 +438,7 @@ test("child spans retain their own raw payload independently of the transaction"
       "payload",
     ),
   );
-  expect(trace?.spans.find((span) => span.id === "query")?.payload).toEqual(
+  expect(trace.spans.find((span) => span.id === "query")?.payload).toEqual(
     payload,
   );
 });
@@ -480,9 +480,9 @@ test.each([true, false])(
         ? [...transaction, ...segment]
         : [...segment, ...transaction],
     );
-    expect(trace?.title).toBe("GET /orders");
-    expect(trace?.spans).toHaveLength(1);
-    expect(trace?.spans[0]).toMatchObject({
+    expect(trace.title).toBe("GET /orders");
+    expect(trace.spans).toHaveLength(1);
+    expect(trace.spans[0]).toMatchObject({
       description: "GET /orders",
       operation: "http.server",
       startTimestamp: 1,
@@ -535,8 +535,8 @@ test("cycles keep every captured span reachable without changing declared parent
     pending.push(...span.children);
   }
   expect([...seen].sort()).toEqual(["a", "b", "child", "self"]);
-  expect(trace?.spans.find((span) => span.id === "a")?.parentId).toBe("b");
-  expect(trace?.spans.find((span) => span.id === "b")?.parentId).toBe("a");
+  expect(trace.spans.find((span) => span.id === "a")?.parentId).toBe("b");
+  expect(trace.spans.find((span) => span.id === "b")?.parentId).toBe("a");
 });
 
 test.each([true, false])(
@@ -707,7 +707,7 @@ test.each([true, false])(
       decode(payload, String(index)),
     );
     const [completed] = buildTraceGroups(entries);
-    expect(completed?.spans[0]).toMatchObject({
+    expect(completed.spans[0]).toMatchObject({
       description: "Chat",
       endTimestamp: 3,
       metadata: { spanStatus: "internal_error" },
@@ -721,7 +721,7 @@ test.each([true, false])(
       ...entries,
       ...decode(partial, "partial"),
     ]);
-    expect(updated?.spans[0]).toMatchObject({
+    expect(updated.spans[0]).toMatchObject({
       description: "Chat",
       operation: "gen_ai.chat",
       endTimestamp: 4,
