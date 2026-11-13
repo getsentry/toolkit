@@ -335,8 +335,286 @@ function detectMissingUserIdentity(event: Event): PrioritizedConcern | null {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function hasFrames(stacktrace: unknown): boolean {
+  return (
+    isRecord(stacktrace) &&
+    Array.isArray(stacktrace.frames) &&
+    stacktrace.frames.length > 0
+  );
+}
+
+/**
+ * Whether any exception, thread, or top-level stacktrace on the event has
+ * frames. Native and Apple crashes keep the stack on the crashed thread, and
+ * Python logging calls with `stack_info=True` or `attach_stacktrace` put it on
+ * the current thread, so threads count too.
+ */
+export function hasStackFrames(event: Event): boolean {
+  return event.entries.some(({ type, data }) => {
+    if (!isRecord(data)) {
+      return false;
+    }
+    if (type === "stacktrace") {
+      return hasFrames(data);
+    }
+    if (type !== "exception" && type !== "threads") {
+      return false;
+    }
+    const values = Array.isArray(data.values) ? data.values : [data.value];
+    return values.some(
+      (value) => isRecord(value) && hasFrames(value.stacktrace),
+    );
+  });
+}
+
+const JS_TROUBLESHOOTING_URL =
+  "https://docs.sentry.io/platforms/javascript/troubleshooting/";
+
+/**
+ * The browser's message for an error thrown by a script from another origin.
+ * The browser SDK adds a placeholder `?` frame to these (`globalhandlers.ts`
+ * in getsentry/sentry-javascript), so they are matched even with frames.
+ */
+const SCRIPT_ERROR = /^Script error\.?$/;
+
+/**
+ * Exception values the JavaScript SDK writes when the thrown or rejected value
+ * is not an `Error` (`getNonErrorObjectExceptionValue` in
+ * `packages/browser/src/eventbuilder.ts` and `getMessageForObject` in
+ * `packages/core/src/utils/eventbuilder.ts` in getsentry/sentry-javascript;
+ * `Non-Error exception captured` is the older SDKs' wording).
+ */
+const NON_ERROR_VALUE =
+  /^(?:Non-Error (?:exception|promise rejection) captured|(?:Object|'[^']*') captured as (?:exception|promise rejection)|Event `[^`]*` (?:\(type=[^)]*\) )?captured as (?:exception|promise rejection))/;
+
+const JS_MESSAGE_FIX = {
+  capture: "Sentry.captureException(err)",
+  option: "attachStacktrace: true",
+};
+
+/**
+ * How to get a stack on a message event, by `event.platform`: the call that
+ * reports a caught error, and the option that attaches the current stack to
+ * messages. Ruby attaches the caller's stack to every message, and Java, .NET,
+ * and Dart turn the option on by default, so they are left out.
+ */
+const MESSAGE_FIX_BY_PLATFORM: ReadonlyMap<
+  string,
+  { capture: string; option: string; docsUrl: string }
+> = new Map([
+  [
+    "python",
+    {
+      capture: "sentry_sdk.capture_exception(e)",
+      option: "attach_stacktrace=True",
+      docsUrl:
+        "https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace",
+    },
+  ],
+  [
+    "javascript",
+    {
+      ...JS_MESSAGE_FIX,
+      docsUrl:
+        "https://docs.sentry.io/platforms/javascript/configuration/options/#attachStacktrace",
+    },
+  ],
+  [
+    "node",
+    {
+      ...JS_MESSAGE_FIX,
+      docsUrl:
+        "https://docs.sentry.io/platforms/javascript/guides/node/configuration/options/#attachStacktrace",
+    },
+  ],
+  [
+    "php",
+    {
+      capture: "\\Sentry\\captureException($e)",
+      option: "'attach_stacktrace' => true",
+      docsUrl:
+        "https://docs.sentry.io/platforms/php/configuration/options/#attach_stacktrace",
+    },
+  ],
+  [
+    "go",
+    {
+      capture: "sentry.CaptureException(err)",
+      option: "AttachStacktrace: true",
+      docsUrl:
+        "https://docs.sentry.io/platforms/go/configuration/options/#AttachStacktrace",
+    },
+  ],
+]);
+
+const JS_CONSOLE_FIX = `Pass the ${inlineCode("Error")} itself to ${inlineCode("console.error(...)")}, or set ${inlineCode(JS_MESSAGE_FIX.option)} in ${inlineCode("Sentry.init")}.`;
+
+/**
+ * How to log with the exception, by `event.platform`. The SDKs' logging
+ * integrations set `event.logger`, which Sentry copies to the `logger` tag:
+ * the Python logging integration to the logger name, the JavaScript
+ * `captureConsoleIntegration` to `console`, and the PHP Monolog handler to
+ * `monolog.<channel>`.
+ */
+const LOGGING_FIX_BY_PLATFORM: ReadonlyMap<
+  string,
+  { fix: string; docsUrl: string; logger?: string }
+> = new Map([
+  [
+    "python",
+    {
+      fix: `Log inside the ${inlineCode("except")} block with ${inlineCode("logger.exception(...)")}, or set ${inlineCode("attach_stacktrace=True")} in ${inlineCode("sentry_sdk.init")}.`,
+      docsUrl: "https://docs.sentry.io/platforms/python/integrations/logging/",
+    },
+  ],
+  [
+    "javascript",
+    {
+      logger: "console",
+      fix: JS_CONSOLE_FIX,
+      docsUrl:
+        "https://docs.sentry.io/platforms/javascript/configuration/integrations/captureconsole/",
+    },
+  ],
+  [
+    "node",
+    {
+      logger: "console",
+      fix: JS_CONSOLE_FIX,
+      docsUrl:
+        "https://docs.sentry.io/platforms/javascript/guides/node/configuration/integrations/captureconsole/",
+    },
+  ],
+  [
+    "php",
+    {
+      fix: `Pass the exception in the log context, as in ${inlineCode("$logger->error('...', ['exception' => $e])")}.`,
+      docsUrl: "https://docs.sentry.io/platforms/php/integrations/monolog/",
+    },
+  ],
+]);
+
+function getTag(event: Event, key: string) {
+  const value = event.tags?.find((tag) => tag.key === key)?.value;
+  return hasValue(value) ? value : null;
+}
+
+function getEventMessages(event: Event): string[] {
+  const messages: unknown[] = [event.title, event.message];
+  for (const { type, data } of event.entries) {
+    if (!isRecord(data)) {
+      continue;
+    }
+    if (type === "message") {
+      messages.push(data.formatted, data.message);
+    }
+    if (type === "exception") {
+      const values = Array.isArray(data.values) ? data.values : [data.value];
+      for (const value of values) {
+        messages.push(isRecord(value) ? value.value : null);
+      }
+    }
+  }
+  return messages.filter(
+    (message): message is string => typeof message === "string",
+  );
+}
+
+function missingStackTrace(
+  title: string,
+  message: string,
+  docsUrl: string,
+): PrioritizedConcern {
+  return {
+    priority: 5,
+    concern: {
+      code: "missing_stack_trace",
+      title,
+      message,
+      docsUrl,
+      errorTypes: [],
+      files: [],
+      fileCount: 0,
+      diagnosis: [],
+      // the missing stack is already plain in Event Details
+      caveat: null,
+    },
+  };
+}
+
+/**
+ * Suggests how to get a stack trace on an error event that has none, when the
+ * event shows the cause: a cross-origin `Script error.`, a JavaScript non-Error
+ * throw or rejection, a logging call without the exception, or a captured
+ * message, on a platform whose fix is known. An exception with no frames and no
+ * such signal gets no concern: the output already says it has no stacktrace,
+ * and the SDK attach-stacktrace options only apply to messages, so there is no
+ * fix to suggest.
+ *
+ * Only error and default (message) events are checked, as for user identity.
+ */
+function detectMissingStackTrace(event: Event): PrioritizedConcern | null {
+  if (event.type !== "error" && event.type !== "default") {
+    return null;
+  }
+  const messages = getEventMessages(event);
+  if (messages.some((message) => SCRIPT_ERROR.test(message))) {
+    return missingStackTrace(
+      "Allow cross-origin script errors",
+      `The browser hid this error's message and stack because the script came from another origin. Add ${inlineCode('crossorigin="anonymous"')} to its ${inlineCode("<script>")} tag and serve the script with an ${inlineCode("Access-Control-Allow-Origin")} header.`,
+      `${JS_TROUBLESHOOTING_URL}#cors-attributes-and-headers`,
+    );
+  }
+  if (hasStackFrames(event)) {
+    return null;
+  }
+  if (messages.some((message) => NON_ERROR_VALUE.test(message))) {
+    return missingStackTrace(
+      "Throw Error objects",
+      `The code threw or rejected with a value that is not an ${inlineCode("Error")}, so there was no stack to capture. Wrap the value in ${inlineCode("new Error(...)")} where it is thrown or rejected.`,
+      `${JS_TROUBLESHOOTING_URL}#events-with-non-error-exception`,
+    );
+  }
+  // an exception without frames, such as one that was never raised, has no
+  // signal for a fix
+  const entryTypes = new Set(event.entries.map(({ type }) => type));
+  if (entryTypes.has("exception") || !entryTypes.has("message")) {
+    return null;
+  }
+
+  const platform = event.platform ?? "";
+  const logger = getTag(event, "logger");
+  if (logger) {
+    const logging = LOGGING_FIX_BY_PLATFORM.get(platform);
+    if (!logging || (logging.logger && logging.logger !== logger)) {
+      return null;
+    }
+    // the logger name is upstream data, so it is quoted with inlineCode
+    return missingStackTrace(
+      "Log errors with their exception",
+      `This event came from the ${inlineCode(logger)} logger with no exception attached. ${logging.fix}`,
+      logging.docsUrl,
+    );
+  }
+
+  const message = MESSAGE_FIX_BY_PLATFORM.get(platform);
+  if (!message) {
+    return null;
+  }
+  return missingStackTrace(
+    "Capture errors with a stack trace",
+    `This event was captured as a message, which has no stack trace. Report caught errors with ${inlineCode(message.capture)} instead, or set ${inlineCode(message.option)} to attach the current stack to messages.`,
+    message.docsUrl,
+  );
+}
+
 const DETECTORS: readonly Detector[] = [
   detectJsSourceMapFailure,
+  detectMissingStackTrace,
   detectMissingUserIdentity,
 ];
 
