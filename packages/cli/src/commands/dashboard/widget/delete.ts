@@ -19,10 +19,7 @@ import { formatWidgetDeleted } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { buildDeleteCommand } from "../../../lib/mutate-command.js";
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
-import {
-  type DashboardWidgetDeleteOutput,
-  prepareDashboardForUpdate,
-} from "../../../types/dashboard.js";
+import { prepareDashboardForUpdate } from "../../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import { withDashboardErrors, resolveWidgetIndex } from "../resolve.js";
 import { DashboardWidgetDeleteOutputSchema } from "../../../generated/output-schemas/dashboard.js";

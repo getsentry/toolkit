@@ -27,6 +27,7 @@ import {
   type UploadProjectPreprodArtifactSnapshotData,
   uploadProjectPreprodArtifactSnapshot,
 } from "@sentry/api";
+import { API_BASE_PATH } from "@sentry/api/client";
 import {
   array,
   boolean,
@@ -614,7 +615,7 @@ export async function openSnapshotArchive(
   snapshotId: string,
 ): Promise<Response> {
   const regionUrl = stripTrailingSlashes(await resolveOrgRegion(org));
-  const url = `${regionUrl}/api/0/${snapshotArchiveEndpoint(
+  const url = `${regionUrl}${API_BASE_PATH}/${snapshotArchiveEndpoint(
     org,
     snapshotId,
   )}?download`;

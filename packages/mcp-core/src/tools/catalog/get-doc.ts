@@ -4,7 +4,6 @@ import { ApiError } from "../../api-client/index";
 import { UserInputError } from "../../errors";
 import { fetchWithTimeout } from "../../internal/fetch-utils";
 import { defineTool } from "../../internal/tool-helpers/define";
-import type { ServerContext } from "../../types";
 import { getUserAgent } from "../../version";
 
 const DOC_NOT_FOUND_MESSAGE =
@@ -54,7 +53,7 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
-  async handler(params, context: ServerContext) {
+  async handler(params) {
     const docContext = { "doc.path": params.path };
     setTags(docContext);
     setAttributes(docContext);
