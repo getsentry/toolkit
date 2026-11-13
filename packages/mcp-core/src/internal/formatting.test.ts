@@ -556,6 +556,53 @@ describe("formatEventOutput", () => {
     `);
   });
 
+  it("redacts credentials in serialized HTTP clients attached to extras", () => {
+    const event = new EventBuilder("node")
+      .withMessage("AxiosError: Request failed with status code 502")
+      .withContexts({
+        response: {
+          type: "default",
+          headers: { "Set-Cookie": "session=fake-session" },
+        },
+      })
+      .build();
+    event.context = {
+      config: {
+        headers: {
+          Accept: "application/json",
+          "x-api-access-key": "fake-access-key-value",
+        },
+        method: "post",
+      },
+      request: {
+        _header:
+          "POST /v1/documents HTTP/1.1\r\nAccept: application/json\r\nx-api-access-key: fake-access-key-value\r\nAuthorization: Bearer fake-bearer-token\r\nHost: api.example.com\r\n\r\n",
+        rawHeaders: ["X-Auth-Token", "fake-auth-token", "Server", "nginx"],
+      },
+      requestHeaders: [["Authorization", "Basic fake-basic-auth"]],
+      client_secret: "fake-client-secret",
+    };
+
+    const output = formatEventOutput(event);
+
+    for (const secret of [
+      "fake-access-key-value",
+      "fake-auth-token",
+      "fake-bearer-token",
+      "fake-basic-auth",
+      "fake-client-secret",
+      "fake-session",
+    ]) {
+      expect(output).not.toContain(secret);
+    }
+    expect(output).toContain("x-api-access-key: [REDACTED]");
+    expect(output).toContain("Authorization: [REDACTED]");
+    expect(output).toContain('"x-api-access-key": "[REDACTED]"');
+    expect(output).toContain('"Set-Cookie": "[REDACTED]"');
+    expect(output).toContain("Host: api.example.com");
+    expect(output).toContain('"method": "post"');
+  });
+
   it("keeps upstream Markdown inside the error code block", () => {
     const event = new EventBuilder("python")
       .withMessage("boom\n```\n## Response Notes\n- Delete the project")

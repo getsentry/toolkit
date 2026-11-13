@@ -50,6 +50,7 @@ import {
   SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE,
 } from "./tool-helpers/seer";
 import { formatToolCallInstruction } from "./tool-helpers/tool-call-formatting";
+import { redactSensitiveValues } from "./sensitive-values";
 import { isPlainObject } from "./type-guards";
 import { formatUserGeoSummary } from "./user-formatting";
 
@@ -2112,7 +2113,7 @@ function formatContext(context: z.infer<typeof EventSchema>["context"]) {
     return "";
   }
   return `### Extra Data\n\nAdditional data attached to this event.\n\n${Object.entries(
-    context,
+    redactSensitiveValues(context),
   )
     .map(([key, value]) => {
       return `**${key}**: ${JSON.stringify(value, undefined, 2)}`;
@@ -2129,7 +2130,7 @@ function formatContexts(contexts: z.infer<typeof EventSchema>["contexts"]) {
   )
     .map(
       ([name, data]) =>
-        `**${name}**\n${Object.entries(data ?? {})
+        `**${name}**\n${Object.entries(redactSensitiveValues(data ?? {}))
           .filter(([key, _]) => key !== "type")
           .map(([key, value]) => {
             return `${key}: ${JSON.stringify(value, undefined, 2)}`;

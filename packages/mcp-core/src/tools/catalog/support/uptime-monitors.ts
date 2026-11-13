@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { UptimeMonitor } from "../../../api-client/types";
+import {
+  REDACTED_VALUE,
+  isSensitiveHeaderName,
+} from "../../../internal/sensitive-values";
 import { formatActor } from "./api-formatting";
 
 /** Verified against UptimeSubscription.IntervalSeconds in getsentry/sentry. */
@@ -81,32 +85,6 @@ export const ParamUptimeOwner = z
   )
   .describe("Owner actor in `user:ID` or `team:ID` format.");
 
-const SENSITIVE_HEADER_NAMES = new Set([
-  "authorization",
-  "proxy-authorization",
-  "cookie",
-  "set-cookie",
-  "x-api-key",
-  "x-auth-token",
-  "x-access-token",
-  "x-csrf-token",
-  "x-sentry-auth",
-]);
-
-export function isSensitiveHeaderName(name: string): boolean {
-  const normalized = name.trim().toLowerCase();
-  if (SENSITIVE_HEADER_NAMES.has(normalized)) {
-    return true;
-  }
-  return (
-    normalized.includes("authorization") ||
-    normalized.includes("api-key") ||
-    normalized.includes("access-token") ||
-    normalized.includes("secret") ||
-    normalized.includes("password")
-  );
-}
-
 export const uptimeHeaderSchema = z.object({
   name: z.string(),
   value: z.string(),
@@ -134,7 +112,7 @@ export function toUptimeHeadersForOutput(
     }
     output.push({
       name,
-      value: isSensitiveHeaderName(name) ? "[REDACTED]" : value,
+      value: isSensitiveHeaderName(name) ? REDACTED_VALUE : value,
     });
   }
   return output;
