@@ -391,7 +391,8 @@ export async function resolveNightlyChain(opts: {
     return null;
   }
 
-  let manifests: OciManifest[];
+  // Registry JSON is not validated, so a manifest may be `null`.
+  let manifests: (OciManifest | null)[];
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     manifests = await Promise.all(
@@ -412,7 +413,7 @@ export async function resolveNightlyChain(opts: {
 
   for (const [index, manifest] of manifests.entries()) {
     const tag = chainTags[index];
-    if (!tag) {
+    if (!(manifest && tag)) {
       return null;
     }
     // Use the local validateChainStep (not binpatch's) so the rich 3-reason
