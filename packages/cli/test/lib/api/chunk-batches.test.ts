@@ -14,6 +14,19 @@ const getSdkConfigMock = vi.hoisted(() =>
 
 vi.mock("../../../src/lib/sentry-client.js", () => ({
   getSdkConfig: getSdkConfigMock,
+  getApiBaseUrl: () => "https://sentry.io",
+}));
+
+const http1Dispatcher = vi.hoisted(() => ({
+  destroy: () => Promise.resolve(),
+}));
+const destroyHttp1DispatcherMock = vi.hoisted(() =>
+  vi.fn(async (_dispatcher: unknown) => {}),
+);
+
+vi.mock("../../../src/lib/http1-dispatcher.js", () => ({
+  createHttp1Dispatcher: () => http1Dispatcher,
+  destroyHttp1Dispatcher: destroyHttp1DispatcherMock,
 }));
 
 import {
@@ -40,6 +53,7 @@ function payload(sha1: string, size: number): ChunkPayload {
 afterEach(() => {
   fetchMock.mockClear();
   getSdkConfigMock.mockClear();
+  destroyHttp1DispatcherMock.mockClear();
 });
 
 describe("batchChunkPayloads", () => {
@@ -101,7 +115,7 @@ describe("uploadChunkPayloads", () => {
     expect(names.sort()).toEqual(["a", "b", "c", "d"]);
   });
 
-  test("uploads through a retrying fetch with the chunk-upload timeout", async () => {
+  test("uploads through a retrying HTTP/1.1 fetch with the chunk-upload timeout", async () => {
     await uploadChunkPayloads({
       chunks: [payload("a", 10)],
       serverOptions: SERVER_OPTIONS,
@@ -112,7 +126,9 @@ describe("uploadChunkPayloads", () => {
     expect(getSdkConfigMock).toHaveBeenCalledWith("https://us.sentry.io", {
       idempotent: true,
       timeoutMs: CHUNK_UPLOAD_TIMEOUT_MS,
+      dispatcher: http1Dispatcher,
     });
+    expect(destroyHttp1DispatcherMock).toHaveBeenCalledWith(http1Dispatcher);
   });
 
   test("gives a failed chunk upload the shared 403 guidance", async () => {
@@ -135,6 +151,32 @@ describe("uploadChunkPayloads", () => {
       status: 403,
       enriched403: true,
       detail: expect.stringContaining("may lack the required scope"),
+    });
+  });
+
+  test("names the network cause when a chunk upload gets no response", async () => {
+    const streamReset = Object.assign(
+      new Error("Stream closed with error code NGHTTP2_ENHANCE_YOUR_CALM"),
+      { code: "ERR_HTTP2_STREAM_ERROR" },
+    );
+    fetchMock.mockRejectedValueOnce(
+      new TypeError("fetch failed", { cause: streamReset }),
+    );
+
+    await expect(
+      uploadChunkPayloads({
+        chunks: [payload("a", 10)],
+        serverOptions: SERVER_OPTIONS,
+        encoding: undefined,
+        regionUrl: "https://us.sentry.io",
+      }),
+    ).rejects.toMatchObject({
+      name: "ApiError",
+      message: "Chunk upload failed: Network error",
+      status: 0,
+      detail: expect.stringContaining(
+        "Stream closed with error code NGHTTP2_ENHANCE_YOUR_CALM",
+      ),
     });
   });
 
