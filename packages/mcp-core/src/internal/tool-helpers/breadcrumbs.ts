@@ -48,7 +48,7 @@ export async function fetchIssueBreadcrumbs(
   apiService: SentryApiService,
   organizationSlug: string,
   issueId: string,
-  eventId: string = "latest",
+  eventId = "latest",
 ): Promise<z.infer<typeof issueBreadcrumbsOutputSchema>> {
   const event = await apiService.getEventForIssue({
     organizationSlug,

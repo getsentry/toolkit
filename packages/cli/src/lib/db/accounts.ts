@@ -509,9 +509,8 @@ export function listUsableAccountRowsByRecency(): AccountRow[] {
  */
 export function listUsableAccountRowsForOrg(
   orgSlug: string,
-  orgId?: string,
+  orgId: string | null = null,
 ): AccountRow[] {
-  const id = orgId ?? null;
   return getDatabase()
     .query(
       `SELECT * FROM accounts
@@ -527,7 +526,7 @@ export function listUsableAccountRowsForOrg(
        ) AND ${USABLE_ACCOUNT_SQL}
        ${BY_RECENCY}`,
     )
-    .all(orgSlug, id, id, Date.now()) as AccountRow[];
+    .all(orgSlug, orgId, orgId, Date.now()) as AccountRow[];
 }
 
 /**

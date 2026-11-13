@@ -58,12 +58,13 @@ export interface ChatRequest {
 }
 
 // MCP types
-export interface MCPTools {
-  [toolName: string]: {
+export type MCPTools = Record<
+  string,
+  {
     description?: string;
     parameters?: unknown;
-  };
-}
+  }
+>;
 
 // Rate limiter types
 export interface RateLimitResult {

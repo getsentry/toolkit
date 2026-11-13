@@ -514,22 +514,21 @@ async function build404Error(
 function build403Error(
   ctx: DashboardErrorContext,
   org: string,
-  detail: string | undefined,
+  detail = "You do not have permission.",
 ): never {
-  const message = detail ?? "You do not have permission.";
   if (ctx.dashboardId) {
     throw new ResolutionError(
       `Dashboard ${ctx.dashboardId} in ${org}`,
       "access denied",
       sentry`dashboard list ${ctx.orgSlug ?? "<org>"}/`,
-      [message, "Check your organization membership and role"],
+      [detail, "Check your organization membership and role"],
     );
   }
   throw new ResolutionError(
     `Dashboards in ${org}`,
     "access denied",
     sentry`org list`,
-    [message, "Check your organization membership and role"],
+    [detail, "Check your organization membership and role"],
   );
 }
 

@@ -132,7 +132,8 @@ function describeCell({ context }: TraceItemAttribute): string {
       `${brief} ${context?.examples ? examples : ""}`,
       MAX_DESCRIPTION_LENGTH,
     );
-  } else return "";
+  }
+  return "";
 }
 
 function flatten(text: string | undefined): string {

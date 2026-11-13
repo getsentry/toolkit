@@ -46,6 +46,20 @@
       }
     ],
     "typescript/no-unnecessary-type-constraint": "error",
+    "prefer-const": "error",
+    "no-else-return": ["error", { "allowElseIf": false }],
+    "no-new-wrappers": "error",
+    "no-new": "error",
+    "typescript/no-inferrable-types": "error",
+    "typescript/no-empty-object-type": [
+      "error",
+      { "allowInterfaces": "always" }
+    ],
+    "typescript/consistent-indexed-object-style": "error",
+    "typescript/no-unsafe-enum-comparison": "error",
+    "unicorn/prefer-math-trunc": "error",
+    "unicorn/prefer-modern-math-apis": "error",
+    "unicorn/prefer-default-parameters": "error",
     "typescript/no-unnecessary-type-arguments": "error",
     "typescript/no-unnecessary-boolean-literal-compare": "error",
     "typescript/no-unnecessary-template-expression": "error",

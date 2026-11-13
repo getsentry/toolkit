@@ -129,8 +129,7 @@ describe("extractRepoName", () => {
 
     // The command will pass validation but fail at org/project resolution
     // since we don't have real credentials. That's expected.
-    let func: Awaited<ReturnType<typeof uploadCommand.loader>>;
-    func = await uploadCommand.loader();
+    const func = await uploadCommand.loader();
     const ctx = makeContext();
 
     // Should fail at org/project resolution, NOT at validation

@@ -1,6 +1,7 @@
-import type {
-  TokenExchangeCallbackOptions,
-  TokenExchangeCallbackResult,
+import {
+  GrantType,
+  type TokenExchangeCallbackOptions,
+  type TokenExchangeCallbackResult,
 } from "@cloudflare/workers-oauth-provider";
 import * as Sentry from "@sentry/cloudflare";
 import {
@@ -588,7 +589,7 @@ export async function tokenExchangeCallback(
   request: Request,
   clientFamily: string,
 ): Promise<TokenExchangeCallbackResult | undefined> {
-  if (options.grantType !== "refresh_token") {
+  if (options.grantType !== GrantType.REFRESH_TOKEN) {
     return undefined;
   }
 
