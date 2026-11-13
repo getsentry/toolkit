@@ -191,7 +191,8 @@ function detectJsSourceMapFailure(
   { sourceMapDebug }: ConcernContext,
 ): PrioritizedConcern | null {
   const errorTypes = new Set<string>();
-  const files = new Set<string>();
+  // each affected file with the error types reported for it
+  const files = new Map<string, Set<string>>();
   for (const error of event.errors ?? []) {
     if (!JS_SOURCE_MAP_ERRORS.has(error.type)) {
       continue;
@@ -199,7 +200,7 @@ function detectJsSourceMapFailure(
     errorTypes.add(error.type);
     const file = getErrorFile(error.data);
     if (file) {
-      files.add(file);
+      files.set(file, (files.get(file) ?? new Set()).add(error.type));
     }
   }
   if (errorTypes.size === 0) {
@@ -210,17 +211,15 @@ function detectJsSourceMapFailure(
     errorTypes.has(type),
   );
   const problems = matched.map(([, detail]) => detail.problem).join("; ");
+  const listed = new Map([...files].slice(0, MAX_FILES));
+  const listedFiles = [...listed.keys()];
   const diagnosis = sourceMapDebug
-    ? diagnoseSourceMaps({
-        event,
-        debug: sourceMapDebug,
-        files: [...files].slice(0, MAX_FILES),
-      })
+    ? diagnoseSourceMaps({ event, debug: sourceMapDebug, files: listed })
     : [];
-  // a diagnosis names the exact fix for each file; without one, the fix
-  // follows from the error types
+  // a diagnosis names the exact fix for its files; the error types' fix
+  // covers the rest, and events whose errors name no file
   const fix =
-    diagnosis.length > 0
+    countDiagnosedFiles(diagnosis) === files.size && files.size > 0
       ? ""
       : ` Fix: ${[...new Set(matched.map(([, detail]) => detail.fix))].join(" ")}`;
 
@@ -232,13 +231,17 @@ function detectJsSourceMapFailure(
       message: `Sentry could not apply source maps to this event: ${problems}.${fix} Troubleshooting: ${JS_SOURCE_MAPS_TROUBLESHOOTING_URL}`,
       docsUrl: JS_SOURCE_MAPS_DOCS_URL,
       errorTypes: matched.map(([type]) => type),
-      files: [...files].slice(0, MAX_FILES),
+      files: listedFiles,
       fileCount: files.size,
       diagnosis,
       caveat:
         "Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.",
     },
   };
+}
+
+function countDiagnosedFiles(diagnosis: Concern["diagnosis"]): number {
+  return diagnosis.reduce((count, { files }) => count + files.length, 0);
 }
 
 const DETECTORS: readonly Detector[] = [detectJsSourceMapFailure];
@@ -280,7 +283,10 @@ export function formatConcernsSection(concerns: Concern[]): string {
     for (const { problem, fix, files } of concern.diagnosis) {
       output += `  - ${files.map(inlineCode).join(", ")}: ${problem}. Fix: ${fix}\n`;
     }
-    if (concern.files.length > 0 && concern.diagnosis.length === 0) {
+    if (
+      concern.files.length > 0 &&
+      countDiagnosedFiles(concern.diagnosis) < concern.fileCount
+    ) {
       const more =
         concern.fileCount > concern.files.length
           ? ` (and ${concern.fileCount - concern.files.length} more)`

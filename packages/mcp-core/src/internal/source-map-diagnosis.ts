@@ -27,7 +27,8 @@ const SCRAPING_FAILURES: ReadonlyMap<string, string> = new Map([
 /**
  * Explains, from Sentry's source map debug check, why each affected file
  * missed its source map. Follows the order of Sentry's own debugger: debug IDs
- * first, then release artifacts, then fetching from the web.
+ * first, then release artifacts, then fetching from the web. Files the check
+ * cannot explain get no finding, so their error types' fix still applies.
  */
 export function diagnoseSourceMaps({
   event,
@@ -36,16 +37,18 @@ export function diagnoseSourceMaps({
 }: {
   event: Event;
   debug: SourceMapDebug;
-  files: string[];
+  /** Each affected file with the processing error types reported for it. */
+  files: ReadonlyMap<string, ReadonlySet<string>>;
 }): SourceMapFinding[] {
   const frames = getDebugFramesByPath(event, debug);
   const findings = new Map<string, SourceMapFinding>();
-  for (const file of files) {
+  for (const [file, errorTypes] of files) {
     const frame = frames.get(file);
-    if (!frame) {
+    const diagnosis = frame && diagnoseFrame(event, debug, frame, errorTypes);
+    if (!diagnosis) {
       continue;
     }
-    const { problem, fix } = diagnoseFrame(event, debug, frame);
+    const { problem, fix } = diagnosis;
     const key = `${problem}\n${fix}`;
     const finding = findings.get(key);
     if (finding) {
@@ -91,7 +94,8 @@ function diagnoseFrame(
   event: Event,
   debug: SourceMapDebug,
   frame: DebugFrame,
-): { problem: string; fix: string } {
+  errorTypes: ReadonlySet<string>,
+): { problem: string; fix: string } | null {
   const { debug_id_process: debugId, release_process: release } = frame;
   const scraping = frame.scraping_process;
 
@@ -107,6 +111,12 @@ function diagnoseFrame(
           ? "by fetching them"
           : null;
   if (foundBy) {
+    // with both files found, only a location error means the map doesn't fit
+    // the deployed file; other errors (missing sourcesContent, bad encoding)
+    // keep the fix for their type
+    if (!errorTypes.has("js_invalid_sourcemap_location")) {
+      return null;
+    }
     return {
       problem: `Sentry found the source file and its source map ${foundBy}, but could not apply the map to this file`,
       fix: "Make sure the map comes from the deployed file: generate source maps in the last build step that changes the files, then upload them again.",

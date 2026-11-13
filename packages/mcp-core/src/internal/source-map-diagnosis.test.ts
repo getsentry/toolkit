@@ -12,6 +12,7 @@ type DebugFrame = SourceMapDebug["exceptions"][number]["frames"][number];
 function diagnose(
   frame: Partial<DebugFrame>,
   overrides: Partial<SourceMapDebug> = {},
+  errorType = "js_no_source",
 ) {
   const debug: SourceMapDebug = {
     ...baseDebug,
@@ -20,7 +21,11 @@ function diagnose(
       frames: frames.map((base) => ({ ...base, ...frame })),
     })),
   };
-  return diagnoseSourceMaps({ event, debug, files: ["/index.js"] });
+  return diagnoseSourceMaps({
+    event,
+    debug,
+    files: new Map([["/index.js", new Set([errorType])]]),
+  });
 }
 
 const noDebugId = {
@@ -30,18 +35,19 @@ const noDebugId = {
 };
 
 describe("diagnoseSourceMaps", () => {
+  const foundByDebugId = {
+    debug_id_process: {
+      debug_id: "6f88580e-719d-56bb-81e1-afad5d3d78ac",
+      uploaded_source_file_with_correct_debug_id: true,
+      uploaded_source_map_with_correct_debug_id: true,
+    },
+  };
+
   it("says the map does not fit when Sentry found it by debug ID", () => {
     // the shape of js_invalid_sourcemap_location events in Sentry's own
     // javascript project: debug IDs uploaded, yet the location did not map
-    expect(
-      diagnose({
-        debug_id_process: {
-          debug_id: "6f88580e-719d-56bb-81e1-afad5d3d78ac",
-          uploaded_source_file_with_correct_debug_id: true,
-          uploaded_source_map_with_correct_debug_id: true,
-        },
-      }),
-    ).toMatchInlineSnapshot(`
+    expect(diagnose(foundByDebugId, {}, "js_invalid_sourcemap_location"))
+      .toMatchInlineSnapshot(`
       [
         {
           "files": [
@@ -52,6 +58,12 @@ describe("diagnoseSourceMaps", () => {
         },
       ]
     `);
+  });
+
+  it("leaves other errors on found files to their type's fix", () => {
+    expect(diagnose(foundByDebugId, {}, "js_missing_sources_content")).toEqual(
+      [],
+    );
   });
 
   it("names the missing upload for a debug ID", () => {
@@ -144,7 +156,11 @@ describe("diagnoseSourceMaps", () => {
 
   it("skips files with no frame in the event", () => {
     expect(
-      diagnoseSourceMaps({ event, debug: baseDebug, files: ["/other.js"] }),
+      diagnoseSourceMaps({
+        event,
+        debug: baseDebug,
+        files: new Map([["/other.js", new Set(["js_no_source"])]]),
+      }),
     ).toEqual([]);
   });
 });
