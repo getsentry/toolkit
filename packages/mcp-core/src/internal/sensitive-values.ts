@@ -2,21 +2,22 @@ import { isPlainObject } from "./type-guards";
 
 export const REDACTED_VALUE = "[REDACTED]";
 
-// Credential names that the name parts below don't cover.
+// Names are compared lowercased with `-`, `_`, and spaces removed, so
+// `x-api-key`, `api_key`, and `apiKey` all match. These are the credential
+// names that the name parts below don't cover.
 const SENSITIVE_HEADER_NAMES = new Set([
   "cookie",
-  "set-cookie",
-  "x-csrf-token",
-  "x-sentry-auth",
+  "setcookie",
+  "xcsrftoken",
+  "xsentryauth",
 ]);
 
 const SENSITIVE_NAME_PARTS = [
   "authorization",
-  "api-key",
   "apikey",
-  "access-key",
-  "access-token",
-  "auth-token",
+  "accesskey",
+  "accesstoken",
+  "authtoken",
   "secret",
   "password",
 ];
@@ -27,7 +28,7 @@ const HEADER_LINE_PATTERN = /^([!#$%&'*+.^`|~\w-]+)([ \t]*:[ \t]*)(.*)$/gm;
 
 /** Whether a header or field name usually holds a credential. */
 export function isSensitiveHeaderName(name: string): boolean {
-  const normalized = name.trim().toLowerCase().replaceAll("_", "-");
+  const normalized = name.toLowerCase().replace(/[\s_-]/g, "");
   if (SENSITIVE_HEADER_NAMES.has(normalized)) {
     return true;
   }

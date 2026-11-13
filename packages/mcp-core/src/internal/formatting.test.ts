@@ -576,6 +576,7 @@ describe("formatEventOutput", () => {
         },
         method: "post",
         auth: { username: "svc", password: "fake-password" },
+        accessToken: "fake-camel-token",
       },
       request: {
         _header:
@@ -597,6 +598,7 @@ describe("formatEventOutput", () => {
       "fake-session",
       "fake-cookie",
       "fake-password",
+      "fake-camel-token",
     ]) {
       expect(output).not.toContain(secret);
     }
