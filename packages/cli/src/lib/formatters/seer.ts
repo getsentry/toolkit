@@ -154,7 +154,7 @@ export type IssueExplainData = {
 function buildRootCauseMarkdown(rootCause: RootCause, index: number): string {
   const lines: string[] = [];
 
-  lines.push(`### Cause #${index}: ${text(rootCause.description ?? "")}`);
+  lines.push(`### Cause #${index}: ${text(rootCause.description)}`);
   lines.push("");
 
   if (rootCause.cause) {
