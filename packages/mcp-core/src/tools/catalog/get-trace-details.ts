@@ -285,8 +285,8 @@ function selectInterestingSpans(
       break;
     }
 
-    fakeRoot.children.push(createSelectedSpan(root, 0));
-    const selectedRoot = fakeRoot.children[fakeRoot.children.length - 1];
+    const selectedRoot = createSelectedSpan(root, 0);
+    fakeRoot.children.push(selectedRoot);
     spanCount += 1;
     enqueueSelectedChildren(
       root,
@@ -545,16 +545,14 @@ function renderSpanTree(spans: SelectedSpan[]): string[] {
     }
 
     // Render children with proper tree indentation
-    for (let i = 0; i < span.children.length; i++) {
-      const child = span.children[i];
+    for (const [i, child] of span.children.entries()) {
       const isLastChild = i === span.children.length - 1;
       const childPrefix = prefix + (isLast ? "   " : "│  ");
       renderSpan(child, childPrefix, isLastChild);
     }
   }
 
-  for (let i = 0; i < spans.length; i++) {
-    const span = spans[i];
+  for (const [i, span] of spans.entries()) {
     const isLastRoot = i === spans.length - 1;
     renderSpan(span, "", isLastRoot);
   }
@@ -607,7 +605,7 @@ function calculateOperationStats(trace: Trace): Record<
     // Only consider leaf nodes - spans that have no children
     if (span.children.length === 0) {
       // Use span.op if available, otherwise extract from span.name, fallback to "unknown"
-      const op = span.op || (span.name ? span.name.split(" ")[0] : "unknown");
+      const op = span.op || (span.name ? span.name.split(" ")[0]! : "unknown");
       const bucket = operationSpans.get(op);
       if (bucket) {
         bucket.push(span);
@@ -1205,7 +1203,7 @@ function formatAIConversationSection({
 
   const lines = ["## Agent Conversations", ""];
   if (aiConversations.length === 1) {
-    const [conversation] = aiConversations;
+    const conversation = aiConversations[0]!;
     lines.push(`**Conversation ID**: \`${conversation.conversationId}\``);
     if (conversation.spanId) {
       lines.push(`**Matching Span**: \`${conversation.spanId}\``);

@@ -370,7 +370,7 @@ function extractJsonCandidates(text: string): string[] {
   const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)\n?```/g;
   const allMatches = [...text.matchAll(codeBlockRegex)];
   for (const match of allMatches) {
-    candidates.add(match[1].trim());
+    candidates.add(match[1]!.trim());
   }
 
   // Strategy 2: Find balanced JSON objects anywhere in the text.

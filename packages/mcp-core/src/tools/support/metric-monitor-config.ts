@@ -142,7 +142,7 @@ export function toMetricMonitorUpdate(
   if (status !== undefined) body.enabled = status === "active";
   if (query !== undefined) {
     const sources = current.dataSources ?? [];
-    const existing = sources.length === 1 ? getMetricQuery(sources[0]) : null;
+    const existing = sources.length === 1 ? getMetricQuery(sources[0]!) : null;
     if (!existing) {
       throw new UserInputError(
         "This monitor's query is unavailable or has multiple sources; cannot safely update it.",

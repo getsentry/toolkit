@@ -339,8 +339,8 @@ export function getAutofixArtifactSummaries(autofix: AutofixRun): {
  * a run is processing.
  */
 export function getActiveAutofixTodo(autofix: AutofixRun): string | null {
-  for (let i = autofix.blocks.length - 1; i >= 0; i--) {
-    const todos = autofix.blocks[i].todos;
+  for (const block of autofix.blocks.toReversed()) {
+    const todos = block.todos;
     if (!todos?.length) {
       continue;
     }

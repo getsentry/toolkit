@@ -563,7 +563,7 @@ function buildMessageEvents(span: AIConversationSpan): ConversationMessage[] {
     });
   } else if (events.length > 0) {
     events[events.length - 1] = {
-      ...events[events.length - 1],
+      ...events[events.length - 1]!,
       metadata,
       genAi,
     };

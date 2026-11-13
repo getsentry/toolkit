@@ -456,7 +456,7 @@ describe("buildServer", () => {
       await callRegisteredTool(server, "boom_tool", {});
 
       expect(onError).toHaveBeenCalledTimes(1);
-      expect(onError.mock.calls[0][0]).toBeInstanceOf(UserInputError);
+      expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(UserInputError);
     });
 
     it("invokes onError when a tool fails via execute_sentry_tool", async () => {
@@ -478,7 +478,7 @@ describe("buildServer", () => {
       });
 
       expect(onError).toHaveBeenCalledTimes(1);
-      expect(onError.mock.calls[0][0]).toBeInstanceOf(UserInputError);
+      expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(UserInputError);
     });
   });
 
@@ -507,7 +507,7 @@ describe("buildServer", () => {
 
     expect(registeredTools.v2_tool).toBeDefined();
     await expect(
-      registeredTools.v2_tool.handler({ value: "ok" }),
+      registeredTools.v2_tool?.handler({ value: "ok" }),
     ).resolves.toMatchObject({
       content: [{ type: "text", text: "v2:ok" }],
     });
@@ -761,7 +761,7 @@ describe("buildServer", () => {
         }
       )._registeredTools;
 
-      await registeredTools.example_tool.handler({}, {});
+      await registeredTools.example_tool!.handler({}, {});
 
       expect(setUser).toHaveBeenCalledWith({
         id: "user-123",
@@ -784,7 +784,7 @@ describe("buildServer", () => {
 
     it("advertises the schema to experimental sessions", async () => {
       const [tool] = await listRegisteredTools(createServer(true));
-      expect(tool.outputSchema).toMatchObject({
+      expect(tool?.outputSchema).toMatchObject({
         type: "object",
         properties: { status: { type: "string" } },
       });
@@ -792,7 +792,7 @@ describe("buildServer", () => {
 
     it("keeps it from stable sessions, which still get markdown", async () => {
       const [tool] = await listRegisteredTools(createServer(false));
-      expect(tool.outputSchema).toBeUndefined();
+      expect(tool!.outputSchema).toBeUndefined();
     });
   });
 
@@ -1125,12 +1125,12 @@ describe("buildServer", () => {
         }),
       );
       expect(
-        dynamicDescription.mock.calls[0][0].availableToolNames?.has(
+        dynamicDescription.mock.calls[0]?.[0].availableToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
       expect(
-        dynamicDescription.mock.calls[0][0].directToolNames?.has(
+        dynamicDescription.mock.calls[0]?.[0].directToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
@@ -1556,8 +1556,8 @@ describe("buildServer", () => {
       );
       expect(getTextContent(result)).not.toContain("# Tool Search Results");
       expect(getTextContent(result)).not.toContain("```json");
-      expect(firstResult.name).toBe("get_replay_details");
-      expect(Object.keys(firstResult).sort()).toEqual([
+      expect(firstResult?.name).toBe("get_replay_details");
+      expect(Object.keys(firstResult!).sort()).toEqual([
         "annotations",
         "description",
         "inputSchema",
@@ -1566,7 +1566,7 @@ describe("buildServer", () => {
       expect(firstResult).not.toHaveProperty("requiredSkills");
       expect(firstResult).not.toHaveProperty("requiredScopes");
       expect(firstResult).not.toHaveProperty("skills");
-      expect(firstResult.inputSchema.properties).not.toHaveProperty(
+      expect(firstResult!.inputSchema.properties).not.toHaveProperty(
         "organizationSlug",
       );
     });
@@ -3080,9 +3080,9 @@ describe("buildServer", () => {
         expect.any(Function),
       );
       const span = startedSpans[0];
-      expect(span.setStatus).toHaveBeenCalledWith({ code: 2 });
+      expect(span?.setStatus).toHaveBeenCalledWith({ code: 2 });
       // Expected validation failures mark the span failed without recording an exception.
-      expect(span.recordException).not.toHaveBeenCalled();
+      expect(span!.recordException).not.toHaveBeenCalled();
     });
 
     it("execute_sentry_tool injects constrained arguments for catalog-only tools", async () => {
@@ -3165,9 +3165,9 @@ describe("buildServer", () => {
       }>(result);
       const replayTool = payload.results[0];
 
-      expect(replayTool.name).toBe("get_replay_details");
+      expect(replayTool?.name).toBe("get_replay_details");
       expect(
-        Object.keys(replayTool.inputSchema.properties ?? {}).sort(),
+        Object.keys(replayTool?.inputSchema.properties ?? {}).sort(),
       ).toEqual([
         "categories",
         "endOffsetSeconds",

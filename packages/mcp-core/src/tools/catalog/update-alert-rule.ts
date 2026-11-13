@@ -191,7 +191,7 @@ export default defineTool({
           `Alert rule "${ruleId}" was not found${projectSlug ? ` in project ${projectSlug}` : ""}.`,
         );
       }
-      ruleId = String(matches[0].id);
+      ruleId = String(matches[0]!.id);
     }
     const current = await apiService.getIssueAlertRule({
       organizationSlug,

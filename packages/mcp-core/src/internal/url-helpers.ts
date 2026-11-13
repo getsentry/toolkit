@@ -174,12 +174,14 @@ function extractOrganizationSlug(parsedUrl: URL, pathParts: string[]): string {
     "insights",
     "preprod",
   ];
+  const [firstPathPart, secondPathPart] = pathParts;
   if (
-    pathParts.length > 1 &&
-    !knownSegments.includes(pathParts[0]) &&
-    knownSegments.includes(pathParts[1])
+    firstPathPart !== undefined &&
+    secondPathPart !== undefined &&
+    !knownSegments.includes(firstPathPart) &&
+    knownSegments.includes(secondPathPart)
   ) {
-    return pathParts[0];
+    return firstPathPart;
   }
 
   // Check for subdomain (e.g., my-org.sentry.io)
@@ -188,8 +190,13 @@ function extractOrganizationSlug(parsedUrl: URL, pathParts: string[]): string {
   const regionPrefixes = ["us", "eu", "de", "www"];
 
   // Non-region subdomain (e.g., my-org.sentry.io or sentry.mycompany.com)
-  if (hostParts.length >= 2 && !regionPrefixes.includes(hostParts[0])) {
-    return hostParts[0];
+  const [subdomain] = hostParts;
+  if (
+    subdomain !== undefined &&
+    hostParts.length >= 2 &&
+    !regionPrefixes.includes(subdomain)
+  ) {
+    return subdomain;
   }
 
   // If we reach here with region-prefixed URL, we couldn't determine the org

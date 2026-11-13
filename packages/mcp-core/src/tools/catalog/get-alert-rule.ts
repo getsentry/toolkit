@@ -183,7 +183,7 @@ export default defineTool({
           `Multiple alert rules named "${params.ruleIdOrName}" were found: ${matches.map(describeMatch).join(", ")}. Retry with the Alert ID and kind=issue, or use get_metric_monitor_details with the monitor ID. ${LIST_HINT}`,
         );
       }
-      const [found] = matches;
+      const found = matches[0]!;
       match =
         found.kind === "issue"
           ? {

@@ -413,9 +413,7 @@ export function formatLogResults(params: FormatEventResultsParams): string {
       "sentry.item_id",
     ];
 
-    for (let i = 0; i < eventData.length; i++) {
-      const event = eventData[i];
-
+    for (const [i, event] of eventData.entries()) {
       output += `### Log ${i + 1}\n`;
 
       if (typeof event.id === "string" && event.id) {

@@ -39,7 +39,7 @@ function isSupportedInterval(value: string): boolean {
   if (!match) {
     return false;
   }
-  const seconds = Number(match[1]) * INTERVAL_UNIT_SECONDS[match[2]];
+  const seconds = Number(match[1]) * INTERVAL_UNIT_SECONDS[match[2]!]!;
   return seconds > 0 && seconds % 60 === 0 && ONE_DAY_SECONDS % seconds === 0;
 }
 

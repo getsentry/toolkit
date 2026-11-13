@@ -72,10 +72,10 @@ describe("dataset-fields agent tool", () => {
 
       expect(result.dataset).toBe("search_issues");
       expect(result.fields).toHaveLength(2); // sentry:user should be filtered out
-      expect(result.fields[0].key).toBe("level");
-      expect(result.fields[0].name).toBe("Level");
-      expect(result.fields[0].totalValues).toBe(5);
-      expect(result.fields[1].key).toBe("is");
+      expect(result.fields[0]?.key).toBe("level");
+      expect(result.fields[0]?.name).toBe("Level");
+      expect(result.fields[0]?.totalValues).toBe(5);
+      expect(result.fields[1]?.key).toBe("is");
       expect(result.commonPatterns).toContainEqual({
         pattern: "is:unresolved",
         description: "Open issues",
@@ -116,15 +116,15 @@ describe("dataset-fields agent tool", () => {
 
       expect(result.dataset).toBe("events");
       expect(result.fields).toHaveLength(2);
-      expect(result.fields[0].key).toBe("http.method");
-      expect(result.fields[0].examples).toEqual([
+      expect(result.fields[0]?.key).toBe("http.method");
+      expect(result.fields[0]?.examples).toEqual([
         "GET",
         "POST",
         "PUT",
         "DELETE",
       ]);
-      expect(result.fields[1].key).toBe("environment");
-      expect(result.fields[1].examples).toEqual([
+      expect(result.fields[1]?.key).toBe("environment");
+      expect(result.fields[1]?.examples).toEqual([
         "production",
         "staging",
         "development",
@@ -270,12 +270,12 @@ describe("dataset-fields agent tool", () => {
         "search_issues",
       );
 
-      expect(issuesResult.fields[0].examples).toEqual([
+      expect(issuesResult.fields[0]?.examples).toEqual([
         "email@example.com",
         "team-slug",
         "me",
       ]);
-      expect(issuesResult.fields[1].examples).toEqual([
+      expect(issuesResult.fields[1]?.examples).toEqual([
         "unresolved",
         "resolved",
         "ignored",
@@ -304,13 +304,13 @@ describe("dataset-fields agent tool", () => {
         "events",
       );
 
-      expect(eventsResult.fields[0].examples).toEqual([
+      expect(eventsResult.fields[0]?.examples).toEqual([
         "GET",
         "POST",
         "PUT",
         "DELETE",
       ]);
-      expect(eventsResult.fields[1].examples).toEqual([
+      expect(eventsResult.fields[1]?.examples).toEqual([
         "postgresql",
         "mysql",
         "redis",

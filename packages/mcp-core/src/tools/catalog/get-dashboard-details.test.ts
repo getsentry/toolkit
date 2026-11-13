@@ -391,7 +391,7 @@ describe("get_dashboard_details", () => {
         context,
       ),
     );
-    return dashboard.widgets[0].queries[0];
+    return dashboard.widgets[0]!.queries[0];
   }
 
   it("describes saved transformations by aggregate position", async () => {
@@ -405,7 +405,7 @@ describe("get_dashboard_details", () => {
       },
     });
 
-    expect((await getFirstQuery()).transformations).toMatchInlineSnapshot(`
+    expect((await getFirstQuery())?.transformations).toMatchInlineSnapshot(`
       [
         {
           "aggregate": "count()",
@@ -441,7 +441,7 @@ describe("get_dashboard_details", () => {
       transformations: { "3": ["fill(linear)"] },
     });
 
-    expect((await getFirstQuery()).transformations).toEqual([
+    expect((await getFirstQuery())?.transformations).toEqual([
       {
         aggregateIndex: 3,
         aggregate: null,
@@ -472,7 +472,7 @@ describe("get_dashboard_details", () => {
       ),
     );
 
-    expect((await getFirstQuery()).transformations).toBeNull();
+    expect((await getFirstQuery())!.transformations).toBeNull();
   });
 
   it("accepts widgets whose display type is null", async () => {
