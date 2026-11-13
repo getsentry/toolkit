@@ -1,3 +1,7 @@
+import type {
+  AutofixConflictResponse,
+  AutofixPaymentRequiredResponse,
+} from "@sentry/api";
 import { z } from "zod";
 import type { AutofixRunState } from "../../api-client/index";
 import type { Issue } from "../../api-client/types";
@@ -96,24 +100,53 @@ const SEER_NO_QUOTA_MESSAGE =
   "Your organization does not have enough Seer quota to start an Autofix run.";
 
 /**
+ * The message for each 402 `code` in the API schema. Keyed by the generated
+ * type, so a code added to the schema fails type-checking until it is mapped.
+ */
+const SEER_PAYMENT_REQUIRED_MESSAGES: Record<
+  AutofixPaymentRequiredResponse["code"],
+  string
+> = {
+  seer_out_of_credits: SEER_START_OUT_OF_CREDITS_MESSAGE,
+  seer_out_of_quota: SEER_NO_QUOTA_MESSAGE,
+};
+
+/**
+ * Whether each 409 `code` in the API schema means Seer setup is missing.
+ * Exhaustive for the same reason.
+ */
+const SEER_SETUP_REQUIRED_CODES: Record<
+  NonNullable<AutofixConflictResponse["code"]>,
+  boolean
+> = {
+  scm_integration_required: true,
+  repos_not_linked: true,
+  run_in_flight: false,
+};
+
+/** Look up the untrusted `code` of an error body in a map keyed by known codes. */
+function valueForCode<K extends string, V>(
+  values: Record<K, V>,
+  responseBody: unknown,
+): V | undefined {
+  if (!isPlainObject(responseBody)) return undefined;
+  const { code } = responseBody;
+  return typeof code === "string" && Object.hasOwn(values, code)
+    ? values[code as K]
+    : undefined;
+}
+
+/**
  * Explain a 402 from starting a run. Sentry tags the 402 with a `code`. Older
  * Sentry versions send the out-of-quota 402 as a bare string with no code, so
  * anything that isn't out of credits is treated as out of quota.
  */
 export function getSeerPaymentRequiredMessage(responseBody: unknown): string {
-  if (
-    isPlainObject(responseBody) &&
-    responseBody.code === "seer_out_of_credits"
-  ) {
-    return SEER_START_OUT_OF_CREDITS_MESSAGE;
-  }
-  return SEER_NO_QUOTA_MESSAGE;
+  return (
+    valueForCode(SEER_PAYMENT_REQUIRED_MESSAGES, responseBody) ??
+    SEER_NO_QUOTA_MESSAGE
+  );
 }
-
-const SEER_SETUP_REQUIRED_CODES = new Set([
-  "scm_integration_required",
-  "repos_not_linked",
-]);
 
 /**
  * Explain a 409 from starting a run when Seer is not set up for the issue's
@@ -123,9 +156,8 @@ export function getSeerSetupRequiredMessage(
   responseBody: unknown,
 ): string | null {
   if (
+    !valueForCode(SEER_SETUP_REQUIRED_CODES, responseBody) ||
     !isPlainObject(responseBody) ||
-    typeof responseBody.code !== "string" ||
-    !SEER_SETUP_REQUIRED_CODES.has(responseBody.code) ||
     typeof responseBody.detail !== "string"
   ) {
     return null;

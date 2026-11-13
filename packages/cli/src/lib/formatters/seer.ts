@@ -5,6 +5,10 @@
  * output is built as markdown and rendered via renderMarkdown().
  */
 
+import type {
+  AutofixConflictResponse,
+  AutofixPaymentRequiredResponse,
+} from "@sentry/api";
 import { text } from "@sentry/toolkit-core/markdown";
 import type {
   AutofixState,
@@ -266,20 +270,41 @@ export function jsonTransformIssueExplain(
 // Error Messages
 
 /**
- * `code` Sentry sends with a 402 when the organization is out of Seer credits.
- * Any other 402 means no budget, including one with no code from a Sentry
- * version that predates the codes.
+ * The SeerError reason for each 402 `code` in the API schema. A 402 with no
+ * code, from a Sentry version that predates the codes, means no budget.
+ * Keyed by the generated type, so a code added to the schema fails
+ * type-checking until it is mapped here.
  */
-const OUT_OF_CREDITS_CODE = "seer_out_of_credits";
+const PAYMENT_REQUIRED_REASONS: Record<
+  AutofixPaymentRequiredResponse["code"],
+  SeerErrorReason
+> = {
+  seer_out_of_credits: "out_of_credits",
+  seer_out_of_quota: "no_budget",
+};
 
 /**
- * `code`s Sentry sends with a 409 when it refuses to start a run because the
- * org has no GitHub/GitLab integration or the project has no linked repos.
+ * The SeerError reason for each 409 `code` in the API schema, or null to keep
+ * the API error (e.g. a run already in flight). Exhaustive for the same reason.
  */
-const SETUP_REQUIRED_REASONS: readonly SeerErrorReason[] = [
-  "scm_integration_required",
-  "repos_not_linked",
-];
+const CONFLICT_REASONS: Record<
+  NonNullable<AutofixConflictResponse["code"]>,
+  SeerErrorReason | null
+> = {
+  scm_integration_required: "scm_integration_required",
+  repos_not_linked: "repos_not_linked",
+  run_in_flight: null,
+};
+
+/** Look up an untrusted `code` from an error body in a map keyed by known codes. */
+function reasonForCode<K extends string, V>(
+  reasons: Record<K, V>,
+  code: string | undefined,
+): V | undefined {
+  return code !== undefined && Object.hasOwn(reasons, code)
+    ? reasons[code as K]
+    : undefined;
+}
 
 /**
  * Create a SeerError from an API error status code and detail.
@@ -298,7 +323,7 @@ export function createSeerError(
 ): SeerError | null {
   if (status === 402) {
     return new SeerError(
-      code === OUT_OF_CREDITS_CODE ? "out_of_credits" : "no_budget",
+      reasonForCode(PAYMENT_REQUIRED_REASONS, code) ?? "no_budget",
       orgSlug,
     );
   }
@@ -314,7 +339,7 @@ export function createSeerError(
     return null;
   }
   if (status === 409) {
-    const reason = SETUP_REQUIRED_REASONS.find((r) => r === code);
+    const reason = reasonForCode(CONFLICT_REASONS, code);
     // Any other 409 (e.g. a run already in flight) keeps its API detail.
     return reason ? new SeerError(reason, orgSlug) : null;
   }
