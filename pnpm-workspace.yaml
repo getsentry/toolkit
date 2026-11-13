@@ -74,7 +74,7 @@ catalog:
   commander: ^14.0.0
   dotenv: ^16.6.1
   dotenv-cli: ^8.0.0
-  hono: ^4.13.11
+  hono: ^4.13.16
   lint-staged: ^15.5.2
   lucide-react: ^0.503.0
   marked: ^15.0.12
