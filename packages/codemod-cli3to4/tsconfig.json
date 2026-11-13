@@ -1,7 +1,7 @@
 {
-  "extends": "../../tsconfig.base.json",
+  // jssg can't resolve an `extends` outside this package, so this doesn't extend the shared base.
   "compilerOptions": {
-    "target": "ESNext",
+    "skipLibCheck": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "types": ["@codemod.com/jssg-types"],
@@ -9,7 +9,13 @@
     "noEmit": true,
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
-    "noImplicitReturns": true
+    "strict": true,
+    "strictNullChecks": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUncheckedSideEffectImports": true
   },
   "exclude": ["tests"]
 }
