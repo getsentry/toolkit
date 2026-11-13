@@ -1,5 +1,3 @@
-#!/usr/bin/env tsx
-
 /**
  * Check for Stale Toolchain References
  *
@@ -14,7 +12,7 @@
  * check flag every `pnpm run` / `pnpm add` reference in dev docs.
  *
  * Usage:
- *   tsx script/check-stale-references.ts
+ *   pnpm ts script/check-stale-references.ts
  *
  * Exit codes:
  *   0 - No stale references found

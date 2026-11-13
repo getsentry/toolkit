@@ -31,15 +31,12 @@ import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { DashboardCreateOutputSchema } from "../../generated/output-schemas/dashboard.js";
-import type { DashboardCreateOutput } from "../../output-schemas/dashboard.js";
 import { withDashboardErrors } from "./resolve.js";
 
 type CreateFlags = {
   readonly json: boolean;
   readonly fields?: string[];
 };
-
-type CreateResult = DashboardCreateOutput;
 
 /** `dashboard create`'s positionals, parsed: the title and the target. */
 type CreateInput = {

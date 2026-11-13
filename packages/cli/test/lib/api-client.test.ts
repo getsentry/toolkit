@@ -937,10 +937,7 @@ describe("resolveEventInOrg", () => {
   test("returns null when event not found in org", async () => {
     const { resolveEventInOrg } = await import("../../src/lib/api-client.js");
 
-    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const req = new Request(input, init);
-      const url = req.url;
-
+    globalThis.fetch = async () => {
       return new Response(JSON.stringify({ detail: "Not Found" }), {
         status: 404,
         headers: { "Content-Type": "application/json" },

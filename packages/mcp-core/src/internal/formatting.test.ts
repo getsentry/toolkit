@@ -19,22 +19,6 @@ import {
 } from "./test-fixtures";
 
 // Helper functions to reduce duplication in event creation
-function createPythonExceptionEvent(
-  errorType: string,
-  errorMessage: string,
-  frames: any[],
-): Event {
-  return new EventBuilder("python")
-    .withException(
-      createExceptionValue({
-        type: errorType,
-        value: errorMessage,
-        stacktrace: createStackTrace(frames),
-      }),
-    )
-    .build();
-}
-
 function createSimpleExceptionEvent(
   platform: string,
   errorType: string,

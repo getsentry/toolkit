@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Check Patched Dependency Versions
  *
@@ -33,7 +32,7 @@
  *   dropped the patch.
  *
  * Usage:
- *   tsx script/check-patches.ts
+ *   pnpm ts script/check-patches.ts
  *
  * Exit codes:
  *   0 - All patch versions match (or only non-critical warnings) and all
@@ -42,8 +41,10 @@
  *       (patch did not apply to the installed package)
  */
 
+import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { resolve } from "node:path";
 import { logger } from "../src/lib/logger.js";
 
 /**
@@ -82,7 +83,33 @@ function parsePatchedDependencies(source: string): Record<string, string> {
   return patches;
 }
 
-const require_ = createRequire(import.meta.url);
+/**
+ * Resolvers rooted at this package first, then at every other workspace
+ * package, so a patch for a dependency only another package uses (such as
+ * `mcp-cloudflare`'s OAuth provider) still finds that package's copy.
+ */
+const resolvers = [
+  createRequire(import.meta.url),
+  ...["../../packages", "../../apps"].flatMap((dir) =>
+    readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => resolve(dir, entry.name, "package.json"))
+      .filter((manifest) => existsSync(manifest))
+      .map((manifest) => createRequire(manifest)),
+  ),
+];
+
+/** Resolve a package's main entry from the first workspace package that has it. */
+function resolveMainEntry(pkgName: string): string {
+  for (const resolver of resolvers) {
+    try {
+      return resolver.resolve(pkgName);
+    } catch {
+      // Not a dependency of this workspace package; try the next one.
+    }
+  }
+  throw new Error(`Cannot resolve ${pkgName}`);
+}
 
 /**
  * Resolve an installed package file to the copy THIS package actually uses.
@@ -92,7 +119,8 @@ const require_ = createRequire(import.meta.url);
  * pulled in via another dependency). A naive `node_modules/<pkg>` path may
  * point at the wrong copy. Using `require.resolve` rooted at this package
  * respects pnpm's per-package resolution and finds the patched copy the
- * `sentry` package links to.
+ * `sentry` package links to. Packages the CLI does not depend on resolve
+ * from the workspace package that does.
  *
  * We resolve the package's MAIN entry (not its `package.json`, which many
  * packages exclude from their `exports` map) and then derive the package root
@@ -116,7 +144,7 @@ function resolvePackageFile(subpath: string): string | null {
   const inner = subpath.slice(pkgName.length + 1);
   try {
     // Resolve the package's main entry to locate the exact installed copy.
-    const mainEntry = require_.resolve(pkgName);
+    const mainEntry = resolveMainEntry(pkgName);
     // The install dir is "<...>/node_modules/<pkgName>". Anchor on the last
     // "node_modules/" boundary, then take the first "<pkgName>/" after it so a
     // self-vendored nested copy can't shift the truncation point.

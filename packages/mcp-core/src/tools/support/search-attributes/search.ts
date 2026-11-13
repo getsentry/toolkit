@@ -1,4 +1,4 @@
-import type { Tag, TraceItemAttribute } from "../../../api-client";
+import type { TraceItemAttribute } from "../../../api-client";
 import { UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
 import { apiServiceFromContext } from "../../../internal/tool-helpers/api";

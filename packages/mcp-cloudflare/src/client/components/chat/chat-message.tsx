@@ -15,7 +15,6 @@ import type {
 const TextPart = memo(function TextPart({
   text,
   role,
-  messageId,
   isStreaming,
   messageData,
   onSlashCommand,
