@@ -4,7 +4,7 @@ import {
   createUnsupportedIssue,
   mswServer,
 } from "@sentry/mcp-server-mocks";
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatErrorForUser } from "../../internal/error-handling.js";
 import analyzeIssueWithSeer from "./analyze-issue-with-seer.js";
@@ -548,27 +548,59 @@ describe("analyze_issue_with_seer", () => {
     );
   });
 
-  it("explains a run that stopped because the org ran out of credits", async () => {
+  const RESTART_URL =
+    "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-RESTART/autofix/";
+
+  function failedRun(
+    runId: number,
+    failureReason?: string,
+    blocks: JsonBodyType[] = [],
+  ) {
+    return {
+      autofix: {
+        run_id: runId,
+        status: "error",
+        failure_reason: failureReason,
+        blocks,
+      },
+    };
+  }
+
+  function completedRun(runId: number) {
+    return {
+      ...autofixStateFixture,
+      autofix: { ...autofixStateFixture.autofix, run_id: runId },
+    };
+  }
+
+  /**
+   * Serves `states` to successive GETs (repeating the last one), answers the
+   * POST with `postResponse`, and counts POSTs.
+   */
+  async function analyzeWithStates(
+    states: JsonBodyType[],
+    postResponse: () => Response = () => HttpResponse.json({ run_id: 789 }),
+  ) {
+    let getCallCount = 0;
+    let postCallCount = 0;
+
     mswServer.use(
-      http.get(
-        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-CREDITS/autofix/",
-        () =>
-          HttpResponse.json({
-            autofix: {
-              run_id: 456,
-              status: "error",
-              failure_reason: "out_of_credits",
-              blocks: [],
-            },
-          }),
-      ),
+      http.get(RESTART_URL, () => {
+        const state = states[Math.min(getCallCount, states.length - 1)];
+        getCallCount++;
+        return HttpResponse.json(state);
+      }),
+      http.post(RESTART_URL, () => {
+        postCallCount++;
+        return postResponse();
+      }),
     );
 
-    const result = await analyzeIssueWithSeer.handler(
+    const promise = analyzeIssueWithSeer.handler(
       {
         organizationSlug: "sentry-mcp-evals",
         regionUrl: null,
-        issueId: "CLOUDFLARE-MCP-CREDITS",
+        issueId: "CLOUDFLARE-MCP-RESTART",
         instruction: undefined,
       },
       {
@@ -576,6 +608,81 @@ describe("analyze_issue_with_seer", () => {
         accessToken: "access-token",
         userId: "1",
       },
+    );
+
+    await vi.runAllTimersAsync();
+
+    return { result: await promise, postCallCount };
+  }
+
+  it.each([
+    ["out of credits", "out_of_credits"],
+    ["without a reason", undefined],
+  ])(
+    "starts a new run when the last one failed (%s)",
+    async (_label, failureReason) => {
+      const { result, postCallCount } = await analyzeWithStates([
+        failedRun(456, failureReason),
+        completedRun(789),
+      ]);
+
+      expect(postCallCount).toBe(1);
+      expect(result).toContain(
+        "Previous analysis (Run ID: 456) failed, starting a new one...",
+      );
+      expect(result).toContain("Analysis started with Run ID: 789");
+      expect(result).toContain("## Analysis Complete");
+      expect(result).not.toContain("## Analysis Failed");
+    },
+  );
+
+  it("keeps the failed run's partial analysis when a restart gets a 402", async () => {
+    const { result, postCallCount } = await analyzeWithStates(
+      [
+        failedRun(456, "out_of_credits", [
+          {
+            id: "block-1",
+            artifacts: [
+              {
+                key: "root_cause",
+                reason: "Root cause analysis completed",
+                data: {
+                  one_line_description: "The request used the wrong bottle ID.",
+                  five_whys: [],
+                  reproduction_steps: [],
+                },
+              },
+            ],
+          },
+        ]),
+      ],
+      () =>
+        HttpResponse.json(
+          {
+            detail:
+              "Your organization does not have enough credits to start an Autofix run.",
+            code: "seer_out_of_credits",
+          },
+          { status: 402 },
+        ),
+    );
+
+    expect(postCallCount).toBe(1);
+    expect(result).toContain("## Analysis Not Started");
+    expect(result).toContain(
+      "Your organization does not have enough credits to start an Autofix run.",
+    );
+    expect(result).toContain(
+      "The previous analysis (Run ID: 456) failed before it finished. Its partial results:",
+    );
+    expect(result).toContain('<seer_analysis run_id="456" step="root_cause">');
+    expect(result).toContain("The request used the wrong bottle ID.");
+  });
+
+  it("explains a run that stopped because the org ran out of credits", async () => {
+    const { result } = await analyzeWithStates(
+      [{ autofix: null }, failedRun(456, "out_of_credits")],
+      () => HttpResponse.json({ run_id: 456 }),
     );
 
     expect(result).toContain("## Analysis Failed");
