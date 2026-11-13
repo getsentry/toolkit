@@ -243,7 +243,7 @@ export async function runInteractiveLogin(
             userCode,
             verificationUriComplete,
             browserOpened,
-            process.stdin.isTTY ?? false,
+            Boolean(process.stdin.isTTY),
           );
           for (const line of displayLines) {
             log.log(line);

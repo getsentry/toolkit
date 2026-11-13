@@ -3,14 +3,19 @@
 import { type Envelope, normalize } from "@sentry/core";
 import { redactCredentialText } from "../credential-redaction.js";
 
+/** `JSON.stringify`, typed with the `undefined` it returns for `undefined` or a function. */
+function stringifyJson(value: unknown): string | undefined {
+  return JSON.stringify(value);
+}
+
 /** Materialize the same JSON as the SDK before redacting a detached copy. */
 function redactJson<T>(value: T): T {
   let serialized: string | undefined;
   try {
-    serialized = JSON.stringify(value);
+    serialized = stringifyJson(value);
   } catch {
     // This is the SDK's envelope serialization fallback for cycles and BigInt.
-    serialized = JSON.stringify(normalize(value));
+    serialized = stringifyJson(normalize(value));
   }
   const copy: T = JSON.parse(serialized ?? "null");
   if (typeof copy === "string") {

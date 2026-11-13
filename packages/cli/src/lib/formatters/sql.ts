@@ -52,7 +52,7 @@ function colorizeToken(token: Token): string {
   }
 
   // Token content is another token (shouldn't happen per spec but handle gracefully)
-  if (typeof token.content === "object" && token.content !== null) {
+  if (typeof token.content === "object") {
     return colorizeToken(token.content);
   }
 

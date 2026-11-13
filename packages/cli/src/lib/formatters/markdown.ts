@@ -270,10 +270,10 @@ function renderOneInline(token: Token): string {
     case "link": {
       const link = token as Tokens.Link;
       let linkText = renderInline(link.tokens);
-      let href = link.href ?? "";
+      let href = link.href;
       // GFM autolinks absorb backslash-escapes literally (\_astro → \_astro).
       // Detect autolinks via link.raw (starts with URL, not "[") and strip artifacts.
-      const raw = link.raw ?? "";
+      const raw = link.raw;
       if (raw.startsWith("http://") || raw.startsWith("https://")) {
         const stripEscapes = (s: string) =>
           s.replace(/\\([_*`[\]<>\\])/g, "$1");
@@ -297,7 +297,7 @@ function renderOneInline(token: Token): string {
       }
       return (token as Tokens.Text).text;
     case "html": {
-      const raw = (token as Tokens.HTML).raw ?? (token as Tokens.HTML).text;
+      const raw = (token as Tokens.HTML).raw;
       return renderHtmlToken(raw);
     }
     default:
@@ -324,9 +324,7 @@ function renderInline(tokens: Token[]): string {
 
     // Check for color tag open: <red>, <green>, etc.
     if (token.type === "html") {
-      const raw = (
-        (token as Tokens.HTML).raw ?? (token as Tokens.HTML).text
-      ).trim();
+      const raw = (token as Tokens.HTML).raw.trim();
       const openMatch = RE_OPEN_TAG.exec(raw);
       if (openMatch) {
         const tagName = (openMatch[1] ?? "").toLowerCase();
@@ -340,9 +338,8 @@ function renderInline(tokens: Token[]): string {
             const t = tokens[i] as Token;
             if (
               t.type === "html" &&
-              ((t as Tokens.HTML).raw ?? (t as Tokens.HTML).text)
-                .trim()
-                .toLowerCase() === closeTag.toLowerCase()
+              (t as Tokens.HTML).raw.trim().toLowerCase() ===
+                closeTag.toLowerCase()
             ) {
               i += 1; // consume close tag
               break;
@@ -528,7 +525,7 @@ function renderList(list: Tokens.List, depth = 0): string {
     if (!item) {
       continue;
     }
-    const start = Number(list.start ?? 1);
+    const start = Number(list.start);
     const bullet = list.ordered ? `${start + i}.` : "•";
     const body = item.tokens
       .map((t) => {
@@ -539,7 +536,7 @@ function renderList(list: Tokens.List, depth = 0): string {
           return renderInline((t as Tokens.Text).tokens ?? []);
         }
         if ("tokens" in t && (t as Tokens.Generic).tokens) {
-          return renderInline(((t as Tokens.Generic).tokens as Token[]) ?? []);
+          return renderInline((t as Tokens.Generic).tokens as Token[]);
         }
         return (t as { raw?: string }).raw ?? "";
       })
@@ -590,10 +587,11 @@ function renderTableToken(table: Tokens.Table): string {
  * then strips ANSI codes. This produces human-readable output rather than
  * raw CommonMark source.
  *
- * @param md - Markdown source text
+ * @param md - Markdown source text. `null` and `undefined` render as empty,
+ *   so an API field that is not validated at runtime cannot crash the lexer.
  * @returns Styled terminal string (TTY) or clean plain text (non-TTY / plain mode)
  */
-export function renderMarkdown(md: string): string {
+export function renderMarkdown(md: string | null | undefined): string {
   if (isPlainOutput()) {
     // Parse and render to get structural formatting (headings, tables, lists),
     // then strip ANSI codes. This produces human-readable output with aligned
@@ -614,10 +612,11 @@ export function renderMarkdown(md: string): string {
  * clean text. This avoids maintaining a separate regex-based stripping
  * function that would need to replicate the markdown parser's rules.
  *
- * @param md - Inline markdown text
+ * @param md - Inline markdown text. `null` and `undefined` render as empty,
+ *   as in {@link renderMarkdown}.
  * @returns Styled string (TTY) or plain text (non-TTY / plain mode)
  */
-export function renderInlineMarkdown(md: string): string {
+export function renderInlineMarkdown(md: string | null | undefined): string {
   const tokens = marked.lexer(md ?? "");
   const rendered = renderInline(tokens.flatMap(flattenInline));
   return isPlainOutput() ? stripAnsi(rendered) : rendered;

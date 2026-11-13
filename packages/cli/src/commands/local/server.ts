@@ -765,7 +765,10 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
   let retryDelay = SSE_INITIAL_RETRY_MS;
   let hasConnectedBefore = false;
 
-  while (!signal.aborted) {
+  // Read through a function: the signal flips during the await, which
+  // control-flow narrowing cannot see.
+  const isAborted = () => signal.aborted;
+  while (!isAborted()) {
     const result = await attemptSSEConnection({
       url,
       streamUrl,
@@ -780,7 +783,7 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
       },
     });
 
-    if (signal.aborted || result === "retained") {
+    if (isAborted() || result === "retained") {
       return;
     }
     // On the first attempt, both "no-connection" (HTTP error/no body) and
@@ -828,7 +831,8 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
 async function attemptSSEConnection(
   opts: ConsumeSSEOnceOptions,
 ): Promise<"no-connection" | "connected-then-lost" | "retained"> {
-  let wasConnected = false;
+  // Widened: set in a callback, which control-flow narrowing cannot see.
+  let wasConnected = false as boolean;
   const augmented = {
     ...opts,
     onConnected: () => {
@@ -909,7 +913,8 @@ async function consumeSSEOnce(
 
   const decoder = new TextDecoder();
   const state: SSEParserState = { eventType: "", dataLines: [], id: "" };
-  let retained = false;
+  // Widened: set in a callback, which control-flow narrowing cannot see.
+  let retained = false as boolean;
   const onEvent = (type: string, data: string, id: string) => {
     if (id) {
       onId(id);

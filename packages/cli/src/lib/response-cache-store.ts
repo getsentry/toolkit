@@ -189,7 +189,7 @@ function fromStored(stored: StoredEntry): ParsedEntry {
 function legacyExpiresAt(legacy: LegacyEntry): number {
   return (
     legacy.expiresAt ??
-    legacy.createdAt + FALLBACK_TTL_MS[classifyUrl(legacy.url ?? "")]
+    legacy.createdAt + FALLBACK_TTL_MS[classifyUrl(legacy.url)]
   );
 }
 
@@ -211,7 +211,9 @@ function fromLegacy(legacy: LegacyEntry): ParsedEntry {
 }
 
 function isStored(parsed: StoredEntry | LegacyEntry): parsed is StoredEntry {
-  return "v" in parsed && parsed.v === 2;
+  // Read from disk: a file written by another version may carry another `v`.
+  const version: unknown = "v" in parsed ? parsed.v : undefined;
+  return version === 2;
 }
 
 /** @throws {SyntaxError} If the file is not JSON */

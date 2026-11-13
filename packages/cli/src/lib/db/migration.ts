@@ -78,6 +78,10 @@ function deleteOldConfig(): boolean {
   }
 }
 
+/**
+ * Shape of the legacy JSON config. It is read from disk, so cache entries are
+ * `Partial`, nullable, and checked before use.
+ */
 type OldConfig = {
   auth?: {
     token?: unknown;
@@ -91,34 +95,37 @@ type OldConfig = {
   };
   projectCache?: Record<
     string,
-    {
+    Partial<{
       orgSlug: string;
       orgName: string;
       projectSlug: string;
       projectName: string;
-      cachedAt: number;
-    }
+      cachedAt: number | null;
+    }> | null
   >;
   dsnCache?: Record<
     string,
-    {
+    Partial<{
       dsn: string;
       projectId: string;
-      orgId?: string;
+      orgId: string;
       source: string;
-      sourcePath?: string;
-      resolved?: {
+      sourcePath: string;
+      resolved: {
         orgSlug: string;
         orgName: string;
         projectSlug: string;
         projectName: string;
       };
-      cachedAt: number;
-    }
+      cachedAt: number | null;
+    }> | null
   >;
   projectAliases?: {
-    aliases: Record<string, { orgSlug: string; projectSlug: string }>;
-    cachedAt: number;
+    aliases?: Record<
+      string,
+      Partial<{ orgSlug: string; projectSlug: string }> | null
+    >;
+    cachedAt?: number | null;
     dsnFingerprint?: string;
   };
 };
@@ -211,12 +218,12 @@ export function migrateFromJson(db: Database): void {
         if (
           !(
             entry?.orgSlug &&
-            entry?.orgName &&
-            entry?.projectSlug &&
-            entry?.projectName
+            entry.orgName &&
+            entry.projectSlug &&
+            entry.projectName
           ) ||
-          entry?.cachedAt === null ||
-          entry?.cachedAt === undefined
+          entry.cachedAt === null ||
+          entry.cachedAt === undefined
         ) {
           continue;
         }
@@ -244,9 +251,9 @@ export function migrateFromJson(db: Database): void {
       for (const [directory, entry] of Object.entries(oldConfig.dsnCache)) {
         // Skip malformed entries missing required fields
         if (
-          !(entry?.dsn && entry?.projectId && entry?.source) ||
-          entry?.cachedAt === null ||
-          entry?.cachedAt === undefined
+          !(entry?.dsn && entry.projectId && entry.source) ||
+          entry.cachedAt === null ||
+          entry.cachedAt === undefined
         ) {
           continue;
         }
@@ -283,7 +290,7 @@ export function migrateFromJson(db: Database): void {
           oldConfig.projectAliases.aliases,
         )) {
           // Skip malformed entries missing required fields
-          if (!(entry?.orgSlug && entry?.projectSlug)) {
+          if (!(entry?.orgSlug && entry.projectSlug)) {
             continue;
           }
           insertStmt.run(

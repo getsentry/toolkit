@@ -82,7 +82,7 @@ function startupLockPath(directory: string): string {
 function shutdownServer(server: Server): Promise<void> {
   return new Promise((resolve) => {
     server.close(() => resolve());
-    server.closeAllConnections?.();
+    server.closeAllConnections();
   });
 }
 

@@ -8,6 +8,7 @@
  */
 
 import chalk from "chalk";
+import { stdoutColumns } from "./terminal-size.js";
 
 /**
  * Full banner: Sentry arch mark + SENTRY wordmark, from the official Sentry
@@ -111,9 +112,7 @@ export function bannerLinesForWidth(columns: number): BannerLine[] {
  * (defaults to the current terminal width) so it never wraps. Returns an empty
  * string when the terminal is too narrow for even the text mark.
  */
-export function formatBanner(
-  columns: number = process.stdout.columns ?? 80,
-): string {
+export function formatBanner(columns: number = stdoutColumns(80)): string {
   return bannerLinesForWidth(columns)
     .map(({ content, color }) => chalk.hex(color)(content))
     .join("\n");
