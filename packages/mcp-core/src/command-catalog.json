@@ -14945,7 +14945,7 @@
       "path": "sentry status show",
       "brief": "Show Sentry service status",
       "permission": "read",
-      "exposure": "exposed",
+      "exposure": "stdio-only",
       "parameters": {
         "type": "object",
         "properties": {
