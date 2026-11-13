@@ -31,7 +31,7 @@ export interface CachedDocsQuery {
  */
 function getCache(): Cache | undefined {
   try {
-    return (caches as CacheStorage & { default?: Cache })?.default;
+    return (caches as CacheStorage & { default?: Cache }).default;
   } catch {
     // Cache API is unavailable outside the Worker runtime.
   }
