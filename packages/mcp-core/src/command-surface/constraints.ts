@@ -6,8 +6,8 @@
  * the default target (`SENTRY_ORG`/`SENTRY_PROJECT`), which every command
  * uses when a call names no target. This module checks the targets a call
  * does name and refuses one outside the session, or rewrites a bare project
- * into the session's organization. Opaque identifiers (numeric issue IDs,
- * short IDs) carry no organization to check here.
+ * into the session's organization. A short ID (`WEB-1`) names its project
+ * but no organization; a numeric issue ID names neither.
  */
 
 import { UserInputError } from "../errors";
@@ -165,6 +165,17 @@ function pinTarget(
 ): string {
   if (URL_PATTERN.test(value)) {
     return value;
+  }
+  // A short ID is its project's slug, uppercased, and a counter; the CLI
+  // reads one in any case (`api-1`).
+  const id = value.slice(value.lastIndexOf("/") + 1).toUpperCase();
+  if (
+    kind === "issue" &&
+    session.project &&
+    SHORT_ID_PATTERN.test(id) &&
+    id.slice(0, id.lastIndexOf("-")).toLowerCase() !== session.project
+  ) {
+    throw outside(entry, value, session);
   }
   if (kind === "issue") {
     const slashForm = issueSlashForm(value, session.org);
