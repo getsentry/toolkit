@@ -765,10 +765,7 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
   let retryDelay = SSE_INITIAL_RETRY_MS;
   let hasConnectedBefore = false;
 
-  // Read through a function: the signal flips during the await, which
-  // control-flow narrowing cannot see.
-  const isAborted = () => signal.aborted;
-  while (!isAborted()) {
+  while (!signal.aborted) {
     const result = await attemptSSEConnection({
       url,
       streamUrl,
@@ -783,7 +780,7 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
       },
     });
 
-    if (isAborted() || result === "retained") {
+    if (signal.aborted || result === "retained") {
       return;
     }
     // On the first attempt, both "no-connection" (HTTP error/no body) and

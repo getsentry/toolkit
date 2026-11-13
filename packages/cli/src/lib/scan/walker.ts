@@ -427,7 +427,7 @@ async function* walkParallel(ctx: WalkContext): AsyncGenerator<WalkEntry> {
 
   // worker lifecycle (cancelled, abort, idle-wait, error path, wake coordination) is inherently branchy
   const runWorker = async (): Promise<void> => {
-    for (;;) {
+    while (true) {
       // Outer try catches:
       //   - AbortError from `checkAborted` (crucially including the
       //     first iteration when the signal was pre-fired);
@@ -507,7 +507,7 @@ async function* walkParallel(ctx: WalkContext): AsyncGenerator<WalkEntry> {
   });
 
   try {
-    for (;;) {
+    while (true) {
       if (pending.length > 0) {
         while (pending.length > 0) {
           yield pending.shift() as WalkEntry;

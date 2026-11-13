@@ -62,9 +62,6 @@ export async function mapFilesConcurrent<TIn, TOut>(
   const limit = pLimit(opts.concurrency ?? CONCURRENCY_LIMIT);
   const results: TOut[] = [];
   const state = { earlyExit: false };
-  // Another task can set `earlyExit` during an await, which control-flow
-  // narrowing cannot see, so re-read it through a function.
-  const exited = () => state.earlyExit;
   const tasks: Promise<void>[] = [];
 
   try {
@@ -79,7 +76,7 @@ export async function mapFilesConcurrent<TIn, TOut>(
             return;
           }
           const out = await fn(item);
-          if (exited() || out === null) {
+          if (state.earlyExit || out === null) {
             return;
           }
           results.push(out);
@@ -118,9 +115,6 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
 ): AsyncGenerator<TOut> {
   const limit = pLimit(opts.concurrency ?? CONCURRENCY_LIMIT);
   const state = { earlyExit: false };
-  // Another task can set `earlyExit` during an await, which control-flow
-  // narrowing cannot see, so re-read it through a function.
-  const exited = () => state.earlyExit;
 
   // Producer-consumer buffer. Workers push into `queue`; the generator
   // drains it between awaits on `awake`. When `awake` resolves, it's
@@ -158,7 +152,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
               return;
             }
             const out = await fn(item);
-            if (exited() || out === null || out.length === 0) {
+            if (state.earlyExit || out === null || out.length === 0) {
               return;
             }
             for (const entry of out) {
@@ -178,7 +172,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
   })();
 
   try {
-    for (;;) {
+    while (true) {
       if (queue.length > 0) {
         // Drain everything already queued before we yield control,
         // so fast consumers don't spin one microtask per result.

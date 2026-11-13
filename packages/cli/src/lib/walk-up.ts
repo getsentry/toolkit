@@ -26,7 +26,7 @@ export async function* walkUpFrom(startDir: string): AsyncGenerator<string> {
   const seen = new Set<string>();
   let current = resolve(startDir);
 
-  for (;;) {
+  while (true) {
     let real: string;
     try {
       real = await realpath(current);
