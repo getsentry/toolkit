@@ -303,10 +303,6 @@ function detectMissingUserIdentity(event: Event): PrioritizedConcern | null {
     return null;
   }
 
-  const counted =
-    hasValue(user?.ip_address) || hasValue(user?.ip)
-      ? "This event identifies the user only by IP address, so Sentry counts it in Users Impacted by IP, which can merge people on a shared network or split one person across networks."
-      : "This event has no user ID, email, username, or IP address, so it does not count toward Users Impacted.";
   const setUser = event.platform
     ? SET_USER_BY_PLATFORM.get(event.platform)
     : undefined;
@@ -318,17 +314,17 @@ function detectMissingUserIdentity(event: Event): PrioritizedConcern | null {
     ? `https://docs.sentry.io/platforms/${setUser.docs}/enriching-events/identify-user/`
     : "https://docs.sentry.io/platform-redirect/?next=/enriching-events/identify-user/";
 
+  const problem =
+    hasValue(user?.ip_address) || hasValue(user?.ip)
+      ? "This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it."
+      : "This event has no user, so it doesn't count toward Users Impacted.";
+
   return {
     priority: 10,
     concern: {
       code: "missing_user_identity",
       title: "Identify users in events",
-      message: [
-        counted,
-        "You also cannot tell which signed-in users hit this issue.",
-        "If you leave user data out on purpose, ignore this.",
-        `Otherwise, call ${call} after the user signs in; an opaque internal ID is enough, so no email or other personal data is needed.`,
-      ].join(" "),
+      message: `${problem} Call ${call} after sign-in; an opaque internal ID is enough.`,
       docsUrl,
       errorTypes: [],
       files: [],

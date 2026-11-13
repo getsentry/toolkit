@@ -308,7 +308,7 @@ describe("get_issue_details", () => {
       - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
         - \`/index.js\`: The deployed file has no debug ID, and the project has no uploads with debug IDs. Fix: Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.
         - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
-      - **Identify users in events**: This event identifies the user only by IP address, so Sentry counts it in Users Impacted by IP, which can merge people on a shared network or split one person across networks. You also cannot tell which signed-in users hit this issue. If you leave user data out on purpose, ignore this. Otherwise, call \`Sentry.setUser({ id: user.id })\` after the user signs in; an opaque internal ID is enough, so no email or other personal data is needed.
+      - **Identify users in events**: This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque internal ID is enough.
         - Docs: https://docs.sentry.io/platforms/javascript/enriching-events/identify-user/
 
       ## Response Notes
@@ -472,7 +472,7 @@ describe("get_issue_details", () => {
 
       Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
 
-      - **Identify users in events**: This event has no user ID, email, username, or IP address, so it does not count toward Users Impacted. You also cannot tell which signed-in users hit this issue. If you leave user data out on purpose, ignore this. Otherwise, call \`sentry_sdk.set_user({"id": user.id})\` after the user signs in; an opaque internal ID is enough, so no email or other personal data is needed.
+      - **Identify users in events**: This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.
         - Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
 
       ## Response Notes
@@ -955,7 +955,7 @@ describe("get_issue_details", () => {
       - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
         - \`/index.js\`: The deployed file has no debug ID, and the project has no uploads with debug IDs. Fix: Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.
         - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
-      - **Identify users in events**: This event identifies the user only by IP address, so Sentry counts it in Users Impacted by IP, which can merge people on a shared network or split one person across networks. You also cannot tell which signed-in users hit this issue. If you leave user data out on purpose, ignore this. Otherwise, call \`Sentry.setUser({ id: user.id })\` after the user signs in; an opaque internal ID is enough, so no email or other personal data is needed.
+      - **Identify users in events**: This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque internal ID is enough.
         - Docs: https://docs.sentry.io/platforms/javascript/enriching-events/identify-user/
 
       ## Response Notes
@@ -1252,7 +1252,7 @@ describe("get_issue_details", () => {
       - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
         - \`/index.js\`: The deployed file has no debug ID, and the project has no uploads with debug IDs. Fix: Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.
         - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
-      - **Identify users in events**: This event identifies the user only by IP address, so Sentry counts it in Users Impacted by IP, which can merge people on a shared network or split one person across networks. You also cannot tell which signed-in users hit this issue. If you leave user data out on purpose, ignore this. Otherwise, call \`Sentry.setUser({ id: user.id })\` after the user signs in; an opaque internal ID is enough, so no email or other personal data is needed.
+      - **Identify users in events**: This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque internal ID is enough.
         - Docs: https://docs.sentry.io/platforms/javascript/enriching-events/identify-user/
 
       ## Response Notes
@@ -2954,11 +2954,12 @@ describe("selected event package versions", () => {
           {
             "caveat": null,
             "code": "missing_user_identity",
+            "diagnosis": [],
             "docsUrl": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
             "errorTypes": [],
             "fileCount": 0,
             "files": [],
-            "message": "This event has no user ID, email, username, or IP address, so it does not count toward Users Impacted. You also cannot tell which signed-in users hit this issue. If you leave user data out on purpose, ignore this. Otherwise, call \`sentry_sdk.set_user({"id": user.id})\` after the user signs in; an opaque internal ID is enough, so no email or other personal data is needed.",
+            "message": "This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.",
             "title": "Identify users in events",
           },
         ],
@@ -3218,7 +3219,7 @@ describe("selected event package versions", () => {
 
       Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
 
-      - **Identify users in events**: This event has no user ID, email, username, or IP address, so it does not count toward Users Impacted. You also cannot tell which signed-in users hit this issue. If you leave user data out on purpose, ignore this. Otherwise, call \`sentry_sdk.set_user({"id": user.id})\` after the user signs in; an opaque internal ID is enough, so no email or other personal data is needed.
+      - **Identify users in events**: This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.
         - Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
 
       ## Response Notes
@@ -3443,11 +3444,12 @@ describe("concerns identified", () => {
         {
           "caveat": null,
           "code": "missing_user_identity",
+          "diagnosis": [],
           "docsUrl": "https://docs.sentry.io/platforms/javascript/enriching-events/identify-user/",
           "errorTypes": [],
           "fileCount": 0,
           "files": [],
-          "message": "This event identifies the user only by IP address, so Sentry counts it in Users Impacted by IP, which can merge people on a shared network or split one person across networks. You also cannot tell which signed-in users hit this issue. If you leave user data out on purpose, ignore this. Otherwise, call \`Sentry.setUser({ id: user.id })\` after the user signs in; an opaque internal ID is enough, so no email or other personal data is needed.",
+          "message": "This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque internal ID is enough.",
           "title": "Identify users in events",
         },
       ]
@@ -3578,11 +3580,12 @@ describe("concerns identified", () => {
         {
           "caveat": null,
           "code": "missing_user_identity",
+          "diagnosis": [],
           "docsUrl": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
           "errorTypes": [],
           "fileCount": 0,
           "files": [],
-          "message": "This event has no user ID, email, username, or IP address, so it does not count toward Users Impacted. You also cannot tell which signed-in users hit this issue. If you leave user data out on purpose, ignore this. Otherwise, call \`sentry_sdk.set_user({"id": user.id})\` after the user signs in; an opaque internal ID is enough, so no email or other personal data is needed.",
+          "message": "This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.",
           "title": "Identify users in events",
         },
       ]

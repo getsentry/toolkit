@@ -1251,7 +1251,7 @@ describe("event package selection", () => {
 
         Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
 
-        - **Identify users in events**: This event has no user ID, email, username, or IP address, so it does not count toward Users Impacted. You also cannot tell which signed-in users hit this issue. If you leave user data out on purpose, ignore this. Otherwise, call \`sentry_sdk.set_user({"id": user.id})\` after the user signs in; an opaque internal ID is enough, so no email or other personal data is needed.
+        - **Identify users in events**: This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.
           - Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
 
         ## Response Notes
