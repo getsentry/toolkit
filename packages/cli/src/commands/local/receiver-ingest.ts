@@ -30,7 +30,7 @@ export async function readReceiverBody(
   const chunks: Uint8Array[] = [];
   let size = 0;
   try {
-    for (;;) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) return Buffer.concat(chunks, size);
       size += value.byteLength;

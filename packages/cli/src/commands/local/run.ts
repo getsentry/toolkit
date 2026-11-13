@@ -677,14 +677,6 @@ const DEFAULT_VERIFY_TIMEOUT_S = 30;
 /** Grace period before escalating SIGTERM to SIGKILL. */
 const KILL_GRACE_MS = 5000;
 
-/**
- * Whether the child is still running. A function, because `exitCode` changes
- * across awaits and control-flow narrowing cannot see that.
- */
-function isRunning(child: ChildProcess): boolean {
-  return child.exitCode === null;
-}
-
 /** Send SIGTERM, wait up to {@link KILL_GRACE_MS}, then SIGKILL if still alive. */
 async function gracefulKill(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null) {
@@ -704,7 +696,7 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
     }),
   ]);
   clearTimeout(graceTimer);
-  if (!exited && isRunning(child)) {
+  if (!exited && child.exitCode === null) {
     try {
       child.kill("SIGKILL");
     } catch (error) {
@@ -713,7 +705,7 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
     }
     // Only await close if the child hasn't exited yet — avoids hanging
     // if close fired between SIGKILL and listener attachment.
-    if (isRunning(child)) {
+    if (child.exitCode === null) {
       await new Promise<void>((r) => child.on("close", () => r()));
     }
   }
