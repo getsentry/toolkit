@@ -23,6 +23,7 @@ import { existsSync } from "node:fs";
 const SCHEMA_OUTPUTS = [
   "src/generated/api-schema.json",
   "src/generated/idempotent-operations.json",
+  "src/generated/api-path-templates.json",
 ];
 /** Produced by `generate:grammar`; imported by `src/lib/arg-parsing.ts`. */
 const GRAMMAR_OUTPUTS = [
