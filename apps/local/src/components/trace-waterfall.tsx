@@ -1,3 +1,4 @@
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- the span tree is an ARIA table laid out with CSS grid */
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
@@ -374,13 +375,10 @@ export function TraceWaterfall({
   return (
     <section aria-label="Trace waterfall" className="min-h-0 overflow-auto">
       {trace.profileSpansTruncated ? (
-        <p
-          role="status"
-          className="border-b border-border px-3 py-2 text-xs text-muted-foreground"
-        >
+        <output className="block border-b border-border px-3 py-2 text-xs text-muted-foreground">
           Showing up to 5,000 sampled function spans. Inspect the associated
           profile for all samples.
-        </p>
+        </output>
       ) : null}
       {compact ? (
         <p
@@ -451,9 +449,9 @@ export function TraceWaterfall({
             />
           </label>
           {query.trim() ? (
-            <span role="status">
+            <output>
               {matching.size} matches · branches expanded while searching
-            </span>
+            </output>
           ) : null}
         </div>
       ) : null}

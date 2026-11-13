@@ -1,15 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "strict": true,
     "target": "ES2020",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
     "jsx": "react-jsx",
     "useDefineForClassFields": true,
     "allowJs": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true,
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,

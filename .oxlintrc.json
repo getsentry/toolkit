@@ -63,6 +63,17 @@
       }
     },
     {
+      "files": ["apps/local/**/*.{ts,tsx,js,mjs,cjs}"],
+      "plugins": ["react"],
+      "rules": {
+        "react/rules-of-hooks": "error",
+        "react/only-export-components": [
+          "warn",
+          { "allowConstantExport": true }
+        ]
+      }
+    },
+    {
       "files": ["packages/mcp-cloudflare/src/client/**/*.tsx"],
       "rules": {
         "jsx-a11y/no-static-element-interactions": "off"

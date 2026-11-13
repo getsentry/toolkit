@@ -93,10 +93,10 @@ export function AttachmentDetail({
           : ` · ${byteLength.toLocaleString()} bytes`}
       </p>
       {!expanded ? null : !attachment ? (
-        <p role="status" className="text-sm text-muted-foreground">
+        <output className="block text-sm text-muted-foreground">
           This attachment could not be decoded. Its original payload is
           available in JSON.
-        </p>
+        </output>
       ) : content !== undefined ? (
         attachment.contentType.includes("json") ? (
           <JsonView code={content} />

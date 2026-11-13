@@ -1,11 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "strict": true,
     "lib": ["ES2023", "ES2024.String"],
     "allowJs": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true,
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,

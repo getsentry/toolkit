@@ -81,11 +81,11 @@ export function TraceWorkspace({
       const previous = previousSpan.current;
       previousSpan.current = undefined;
       if (previous.traceId === activeTraceId) {
-        const button = Array.from(
-          inspector.current?.querySelectorAll<HTMLButtonElement>(
+        const button = [
+          ...(inspector.current?.querySelectorAll<HTMLButtonElement>(
             "[data-span-id]",
-          ) ?? [],
-        ).find((entry) => entry.dataset.spanId === previous.spanId);
+          ) ?? []),
+        ].find((entry) => entry.dataset.spanId === previous.spanId);
         button?.focus();
       }
     }

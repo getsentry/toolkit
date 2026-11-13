@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "pnpm -w exec oxlint --report-unused-disable-directives apps/local",
     "preview": "vite preview",
     "test": "pnpm --filter sentry exec node script/ensure-generated.mjs schema grammar && vitest run",
     "test:integration": "pnpm run test src/App.integration.test.tsx",

@@ -174,7 +174,7 @@ export function generateHomepageFallbackHtml(
       } else {
         closeList();
         inCodeBlock = true;
-        codeBlockLang = fence[1].trim();
+        codeBlockLang = line.slice(3).trim();
         codeLines = [];
       }
       continue;

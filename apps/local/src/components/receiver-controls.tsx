@@ -121,8 +121,7 @@ export function ReceiverControls({
           className="h-8 gap-2 px-2.5"
         >
           {showStatusRole ? (
-            <span
-              role="status"
+            <output
               aria-label={connection.label}
               className={`size-2 rounded-full ${dotClass}`}
             />

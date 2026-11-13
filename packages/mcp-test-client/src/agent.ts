@@ -175,8 +175,7 @@ export async function runAgent(
                 }
 
                 // Show tool calls with their results
-                for (let i = 0; i < toolCalls.length; i++) {
-                  const toolCall = toolCalls[i];
+                for (const [i, toolCall] of toolCalls.entries()) {
                   const toolResult = toolResults?.[i];
 
                   logTool(toolCall.toolName, toolCall.input);

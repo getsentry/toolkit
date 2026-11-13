@@ -540,7 +540,7 @@ describe("local receiver to viewer integration", () => {
       expect(detail.textContent).not.toContain("No additional event details.");
       const frames = screen.getAllByRole("list", { name: "Stack frames" });
       expect(frames[0]?.textContent?.indexOf("submitOrder")).toBeLessThan(
-        frames[0]!.textContent!.indexOf("runMain"),
+        frames[0]!.textContent.indexOf("runMain"),
       );
       fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
       await waitFor(() =>
@@ -549,7 +549,7 @@ describe("local receiver to viewer integration", () => {
         ),
       );
       expect(
-        JSON.parse(screen.getByTestId("highlighted-json").textContent!),
+        JSON.parse(screen.getByTestId("highlighted-json").textContent),
       ).toEqual({ ...sdkException, type: "event" });
     } finally {
       cleanup();
@@ -713,7 +713,7 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(port, "GET /dock");
       await screen.findByLabelText(/^View transaction:/);
       const sidebar = screen.getByLabelText("Workspace navigation");
-      expect(sidebar.querySelector('[role="status"]')).toBeNull();
+      expect(sidebar.querySelector("output")).toBeNull();
       expect(screen.getByLabelText("Capture context").textContent).toContain(
         "Capturing",
       );
@@ -1220,12 +1220,10 @@ describe("local receiver to viewer integration", () => {
         screen.getByRole("heading", { name: "No events displayed" }),
       ).not.toBeNull();
       expect(
-        (
-          screen.getByRole("button", {
-            name: "Reconnect",
-            exact: true,
-          }) as HTMLButtonElement
-        ).disabled,
+        screen.getByRole<HTMLButtonElement>("button", {
+          name: "Reconnect",
+          exact: true,
+        }).disabled,
       ).toBe(false);
       fireEvent.click(
         screen.getByRole("button", { name: "Reconnect", exact: true }),
@@ -1299,7 +1297,7 @@ describe("local receiver to viewer integration", () => {
       screen.getByRole("button", { name: "Switch receiver", exact: true }),
     );
     expect(
-      (screen.getByLabelText("Receiver endpoint") as HTMLInputElement).value,
+      screen.getByLabelText<HTMLInputElement>("Receiver endpoint").value,
     ).toBe("http://127.0.0.1:8969/stream");
     fireEvent.click(
       screen.getByRole("button", { name: "Connect", exact: true }),
@@ -1415,7 +1413,7 @@ describe("local receiver to viewer integration", () => {
           .textContent,
       ).toContain("Connection timed out after 10 seconds");
       expect(
-        (screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement)
+        screen.getByRole<HTMLButtonElement>("button", { name: "Connect" })
           .disabled,
       ).toBe(false);
     } finally {
@@ -1790,14 +1788,14 @@ describe("local receiver to viewer integration", () => {
       );
       expect(
         (
-          (await settings.findByRole("button", {
+          await settings.findByRole<HTMLButtonElement>("button", {
             name: "Applying…",
-          })) as HTMLButtonElement
+          })
         ).disabled,
       ).toBe(true);
       // The edited input is already 2000 while the HTTP mutation is pending.
       expect(
-        (settings.getByLabelText("Envelope limit") as HTMLInputElement).value,
+        settings.getByLabelText<HTMLInputElement>("Envelope limit").value,
       ).toBe("2000");
       expect(retention.getSettings().maxEnvelopes).toBe(1000);
       // Await completion, allowing the receiver's five-second request timeout
@@ -1889,7 +1887,7 @@ describe("local receiver to viewer integration", () => {
     );
     await waitFor(() =>
       expect(
-        (screen.getByLabelText("Envelope limit") as HTMLInputElement).value,
+        screen.getByLabelText<HTMLInputElement>("Envelope limit").value,
       ).toBe("1000"),
     );
     fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
@@ -2053,7 +2051,7 @@ describe("local receiver to viewer integration", () => {
         );
       await waitFor(() =>
         expect(
-          (screen.getByLabelText("Envelope limit") as HTMLInputElement).value,
+          screen.getByLabelText<HTMLInputElement>("Envelope limit").value,
         ).toBe("1000"),
       );
       fireEvent.click(
@@ -2237,9 +2235,7 @@ describe("local receiver to viewer integration", () => {
       });
 
       const clearButton = captureAction("Delete captured events");
-      await waitFor(() =>
-        expect((clearButton as HTMLButtonElement).disabled).toBe(false),
-      );
+      await waitFor(() => expect(clearButton.disabled).toBe(false));
       fireEvent.click(clearButton);
       fireEvent.click(
         screen.getByRole("button", {

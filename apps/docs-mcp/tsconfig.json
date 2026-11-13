@@ -1,7 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "strict": true,
     "target": "ESNext",
     "lib": ["ESNext", "WebWorker"],
     "jsx": "react-jsx",
