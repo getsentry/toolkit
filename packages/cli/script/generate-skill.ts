@@ -11,7 +11,7 @@
  *   - index.json: skill discovery manifest for .well-known
  *
  * Usage:
- *   tsx script/generate-skill.ts
+ *   pnpm ts script/generate-skill.ts
  *
  * Output:
  *   plugins/sentry-cli/skills/sentry-cli/SKILL.md

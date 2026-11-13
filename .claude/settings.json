@@ -76,7 +76,7 @@
       "Bash(pnpm --filter:*)",
       "Bash(pnpm vitest:*)",
       "Bash(pnpx vitest:*)",
-      "Bash(pnpx tsx:*)",
+      "Bash(pnpm ts:*)",
       "Bash(pnpm tsc:*)",
       "Bash(pnpm exec tsc:*)",
       "Bash(pnpm run typecheck:*)",
