@@ -5,7 +5,7 @@ import {
   DATASET_FIELDS,
   RECOMMENDED_FIELDS,
 } from "../search-events/config";
-import { AttributeMatches } from "./agent";
+import { type AttributeMatches } from "./agent";
 import type { SearchAttributesDataset } from "./search";
 
 const DATASET_LABELS: Record<
