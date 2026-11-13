@@ -1029,6 +1029,28 @@ const EventTagsSchema = z.preprocess((value) => {
   });
 }, z.array(EventTagSchema));
 
+const EventProcessingErrorSchema = z.object({
+  type: z.string(),
+  message: z.string().nullish(),
+  data: z.record(z.string(), z.unknown()).nullish(),
+});
+
+/**
+ * Problems Sentry hit while processing the event, such as `js_no_source` when a
+ * source map is missing (`EventError` in getsentry/sentry
+ * `src/sentry/models/eventerror.py`). Entries without a string `type` are
+ * dropped so one malformed entry cannot fail the whole event.
+ */
+const EventProcessingErrorsSchema = z.preprocess(
+  (value) =>
+    Array.isArray(value)
+      ? value.filter(
+          (error) => EventProcessingErrorSchema.safeParse(error).success,
+        )
+      : value,
+  z.array(EventProcessingErrorSchema),
+);
+
 const BaseEventSchema = z.object({
   id: z.string(),
   packages: z.record(z.string(), z.string().nullable()).nullish(),
@@ -1112,6 +1134,7 @@ const BaseEventSchema = z.object({
     .nullable()
     .optional(),
   tags: EventTagsSchema.optional(),
+  errors: EventProcessingErrorsSchema.nullish(),
   user: z
     .object({
       display_name: z.string().nullable().optional(),

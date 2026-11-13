@@ -32,6 +32,10 @@ import type {
   TraceSpan,
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
+import {
+  buildDataQualityHints,
+  formatDataQualitySection,
+} from "./data-quality";
 import { selectEventPackages } from "./event-packages";
 import { formatUnknown } from "./unknown-formatting";
 import {
@@ -2367,6 +2371,9 @@ export function formatIssueOutput({
   output += `**Project**: ${text(issue.project.name)}\n`;
   output += `**URL**: ${apiService.getIssueUrl(organizationSlug, issue.shortId)}\n`;
   output += "\n";
+
+  // before Code Location and the stacktrace, which these hints can undermine
+  output += formatDataQualitySection(buildDataQualityHints(event));
 
   if (codeLocation) {
     output += formatCodeLocation(codeLocation);

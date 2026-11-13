@@ -135,6 +135,24 @@ omits the section. Commit lookup is optional: failures do not prevent issue
 details from loading, but unexpected server or response-validation failures
 are reported to Sentry.
 
+`get_issue_details` warns when part of the event cannot be trusted as shown.
+The hints come from `internal/data-quality.ts` and use only data already on
+the event. Markdown lists them in a `## Data Quality` section right after the
+issue header, before `Code Location` and the stacktrace that they affect; it is
+a section rather than a Response Note because it describes the data, not a
+follow-up call, and Response Notes come after the stacktrace. Structured
+responses expose the same hints as `dataQuality` (`code`, `title`, `message`,
+`docsUrl`, `errorTypes`, `files`, `fileCount`), an empty array when there are
+none. Hints are ordered by priority and capped at three. The first hint,
+`js_source_maps`, reads the JavaScript processing errors in the event's
+`errors` field (such as `js_no_source` and `js_invalid_sourcemap_location`;
+see `EventError` in getsentry/sentry `src/sentry/models/eventerror.py`). It
+dedupes them by type, lists up to three affected files, and links the
+JavaScript source maps docs. Unlike Sentry's actionable-items endpoint, it does
+not hide `js_no_source` or `js_invalid_sourcemap_location`, because they are
+the most common reason a JavaScript stacktrace still shows minified frames. To
+add a hint, add a detector to `DETECTORS` in that file.
+
 For metric issues, `Metric Alert Details` comes from the occurrence's
 `evidenceData`, which the event API returns camelCased
 (`dataSources[].queryObj.snubaQuery`, `detectorId`). It shows the Metric

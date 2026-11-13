@@ -14,6 +14,10 @@ import type {
 import { ConfigurationError, UserInputError } from "../../errors";
 import type { CodeLocation } from "../../internal/code-location";
 import {
+  buildDataQualityHints,
+  dataQualityHintSchema,
+} from "../../internal/data-quality";
+import {
   dedupeReplayIds,
   getMetricAlertContext,
   getMetricAlertFollowUpCalls,
@@ -150,6 +154,11 @@ export const getIssueDetailsOutputSchema = z.object({
       }),
     )
     .nullable(),
+  dataQuality: z
+    .array(dataQualityHintSchema)
+    .describe(
+      "Problems that make parts of the event unreliable as shown, such as missing source maps.",
+    ),
   suggestedActions: z.array(suggestedToolActionSchema),
 });
 
@@ -295,6 +304,7 @@ function buildIssueDetailsPayload({
           spanId: conversation.spanId ?? null,
         }))
       : null,
+    dataQuality: buildDataQualityHints(event),
     suggestedActions: buildIssueSuggestedActions({
       organizationSlug,
       issue,
