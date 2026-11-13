@@ -45,9 +45,6 @@ import type { OciManifest } from "../../src/lib/ghcr.js";
 import { useTestConfigDir } from "../helpers.js";
 
 const LEGACY_UPGRADE_SOURCE = UPGRADE_SOURCES[1];
-if (!LEGACY_UPGRADE_SOURCE) {
-  throw new Error("Legacy upgrade source is not configured");
-}
 
 // ---------------------------------------------------------------------------
 // Test helpers (file-scoped)

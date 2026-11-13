@@ -916,7 +916,7 @@ CliError (base, exitCode=1)
 ├── ResolutionError (exitCode=23 — value provided but not found)
 ├── ValidationError (exitCode=21 — input validation)
 ├── DeviceFlowError (exitCode=51 — OAuth flow)
-├── SeerError (exitCode=40–43 by reason — 'not_enabled' | 'no_budget' | 'ai_disabled' | 'out_of_credits')
+├── SeerError (exitCode=40–44 by reason — 'not_enabled' | 'no_budget' | 'ai_disabled' | 'out_of_credits' | 'scm_integration_required' | 'repos_not_linked')
 ├── TimeoutError (exitCode=31 — operation timed out)
 └── UpgradeError (exitCode=50 — upgrade failures)
 ```
