@@ -21,6 +21,7 @@ import { eventRoute } from "./commands/event/index.js";
 import { listCommand as eventListCommand } from "./commands/event/list.js";
 import { exploreCommand } from "./commands/explore.js";
 import { feedbackRoute } from "./commands/feedback/index.js";
+import { gamesRoute } from "./commands/games/index.js";
 import { helpCommand } from "./commands/help.js";
 import { infoCommand } from "./commands/info.js";
 import { initCommand } from "./commands/init.js";
@@ -58,6 +59,8 @@ import { listCommand as spanListCommand } from "./commands/span/list.js";
 import { statusRoute } from "./commands/status/index.js";
 import { teamRoute } from "./commands/team/index.js";
 import { listCommand as teamListCommand } from "./commands/team/list.js";
+import { tokenRoute } from "./commands/token/index.js";
+import { listCommand as tokenListCommand } from "./commands/token/list.js";
 import { traceRoute } from "./commands/trace/index.js";
 import { listCommand as traceListCommand } from "./commands/trace/list.js";
 import { trialRoute } from "./commands/trial/index.js";
@@ -94,12 +97,14 @@ export const routes = buildSentryRoutes({
   release: releaseRoute,
   repo: repoRoute,
   team: teamRoute,
+  token: tokenRoute,
   integration: integrationRoute,
   issue: issueRoute,
   event: eventRoute,
   events: eventListCommand,
   explore: exploreCommand,
   feedback: feedbackRoute,
+  games: gamesRoute,
   log: logRoute,
   mcp: mcpCommand,
   monitor: monitorRoute,
@@ -133,6 +138,7 @@ export const routes = buildSentryRoutes({
   releases: releaseListCommand,
   repos: repoListCommand,
   teams: teamListCommand,
+  tokens: tokenListCommand,
   logs: logListCommand,
   monitors: monitorListCommand,
   spans: spanListCommand,

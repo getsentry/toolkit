@@ -3,6 +3,7 @@
  */
 
 import { listFeedback, updateIssueStatus } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import type { IssueSelector } from "../../lib/arg-parsing.js";
 import {
   ApiError,
@@ -22,8 +23,8 @@ import { buildCommandHint, resolveIssue } from "../issue/utils.js";
 
 /** Result of resolving and category-checking a modern Feedback issue. */
 export type ResolvedFeedback = {
-  /** Resolved organization slug, when available. */
-  org: string | undefined;
+  /** Resolved organization slug. */
+  org: string;
   /** Category-constrained Feedback issue. */
   feedback: SentryFeedback;
 };
@@ -48,7 +49,7 @@ async function resolveFeedbackSelector(
   if (!org) {
     throw new ContextError(
       "Organization",
-      `sentry feedback ${command} <org>/@latest`,
+      sentry`feedback ${command} <org>/@latest`,
     );
   }
 
@@ -61,7 +62,7 @@ async function resolveFeedbackSelector(
     throw new ResolutionError(
       "Selector '@latest'",
       "found no unresolved User Feedback",
-      `sentry feedback list ${org}/ --status all`,
+      sentry`feedback list ${org}/ --status all`,
       ["The @latest selector only matches unresolved Feedback."],
     );
   }
@@ -102,15 +103,15 @@ export async function resolveFeedback(
       issueArg: feedbackArg,
       cwd,
       command,
-      commandBase: "sentry feedback",
+      commandBase: sentry`feedback`,
     });
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       throw new ResolutionError(
         `Feedback '${text}'`,
         "not found",
-        buildCommandHint(command, text, "sentry feedback"),
-        ["List available Feedback: sentry feedback list"],
+        buildCommandHint(command, text, sentry`feedback`),
+        [`List available Feedback: ${sentry`feedback list`}`],
       );
     }
     throw error;
@@ -121,8 +122,8 @@ export async function resolveFeedback(
     throw new ResolutionError(
       `Issue '${issue.shortId}'`,
       "is not User Feedback",
-      `sentry issue view ${org ? `${org}/` : ""}${issue.shortId}`,
-      ["Use a Feedback ID from: sentry feedback list"],
+      sentry`issue view ${org}/${issue.shortId}`,
+      [`Use a Feedback ID from: ${sentry`feedback list`}`],
     );
   }
 

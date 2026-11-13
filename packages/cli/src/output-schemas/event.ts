@@ -6,12 +6,15 @@ import {
   vEventAttachmentDetailsResponse,
   vGroupEventsResponseDict,
   vIssueEventDetailsResponse,
+  vListOrganizationEventsDroppedResponse,
 } from "@sentry/api/valibot";
 import {
   array,
   description,
+  type InferOutput,
   looseObject,
   nullable,
+  number,
   object,
   optional,
   partial,
@@ -68,6 +71,16 @@ export const EventViewOutputSchema = pipe(
   looseObject({
     ...partial(vIssueEventDetailsResponse).entries,
     eventID: pipe(string(), description("UUID-format event ID")),
+    // Overrides the API description, which is about the server's `?llmFormat`
+    // mixin. The CLI never requests that format.
+    formatted: optional(
+      pipe(
+        vIssueEventDetailsResponse.entries.formatted.wrapped,
+        description(
+          "Event rendered as Markdown, XML, or JSON; only returned for API requests with llmFormat",
+        ),
+      ),
+    ),
     ...EventViewOutputFields.entries,
   }),
   description("Event view output"),
@@ -89,55 +102,50 @@ export const IssueEventSchema = pipe(
       string(),
       description("Event type (error, default, transaction)"),
     ),
-    groupID: optional(
-      pipe(_IssueEventElement.entries.groupID, description("Group (issue) ID")),
-    ),
     eventID: pipe(string(), description("UUID-format event ID")),
-    projectID: optional(
-      pipe(_IssueEventElement.entries.projectID, description("Project ID")),
-    ),
-    message: optional(
-      pipe(_IssueEventElement.entries.message, description("Event message")),
-    ),
-    title: optional(
-      pipe(_IssueEventElement.entries.title, description("Event title")),
-    ),
-    location: optional(
-      pipe(
-        _IssueEventElement.entries.location,
-        description("Source location (file:line)"),
-      ),
-    ),
-    culprit: optional(
-      pipe(
-        _IssueEventElement.entries.culprit,
-        description("Culprit function/module"),
-      ),
-    ),
-    user: optional(
-      pipe(_IssueEventElement.entries.user, description("User context")),
-    ),
-    tags: optional(
-      pipe(_IssueEventElement.entries.tags, description("Event tags")),
-    ),
-    platform: optional(
-      pipe(
-        _IssueEventElement.entries.platform,
-        description("Platform (python, javascript, etc.)"),
-      ),
-    ),
-    dateCreated: optional(
-      pipe(
-        _IssueEventElement.entries.dateCreated,
-        description("ISO 8601 creation timestamp"),
-      ),
-    ),
-    crashFile: optional(
-      pipe(_IssueEventElement.entries.crashFile, description("Crash file URL")),
-    ),
-    metadata: optional(
-      pipe(_IssueEventElement.entries.metadata, description("Event metadata")),
-    ),
   }),
   description("Issue event (list endpoint)"),
 );
+
+const _DroppedEventsBucket =
+  vListOrganizationEventsDroppedResponse.entries.droppedEvents.item.entries;
+
+/**
+ * One (outcome, reason) slice of event volume in `event analytics`: the
+ * accepted total or one kind of drop. One JSON row each.
+ */
+export const EventOutcomeRowSchema = pipe(
+  object({
+    outcome: pipe(
+      _DroppedEventsBucket.outcome,
+      description(
+        "Outcome code: accepted, or a drop such as rate_limited or filtered",
+      ),
+    ),
+    label: pipe(string(), description("Human-readable outcome label")),
+    reason: pipe(
+      _DroppedEventsBucket.reason,
+      description(
+        "Reason within the outcome (e.g. spike_protection); accepted for accepted volume",
+      ),
+    ),
+    category: pipe(
+      _DroppedEventsBucket.category,
+      description("Data category (e.g. error, span)"),
+    ),
+    events: pipe(number(), description("Events in this slice")),
+    share: pipe(
+      number(),
+      description("Fraction of total volume (0-1), not a percentage string"),
+    ),
+    tags: pipe(
+      _DroppedEventsBucket.tags,
+      description(
+        "Drop classification: intentional or unintentional; empty for accepted",
+      ),
+    ),
+  }),
+  description("An event-outcome row: one outcome/reason slice"),
+);
+
+export type EventOutcomeRow = InferOutput<typeof EventOutcomeRowSchema>;

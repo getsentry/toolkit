@@ -5,10 +5,14 @@ import {
   runSearchEvents,
   searchToolBase,
 } from "../support/search-events/search";
+import { buildSearchEventsOutputSchema } from "../support/search-events/structured";
+
+export const searchErrorsOutputSchema = buildSearchEventsOutputSchema("errors");
 
 export default defineTool({
   ...searchToolBase("search_errors"),
   name: "search_errors",
+  title: "Search Errors",
   description: [
     "Search Sentry error events: exceptions and crashes with stack traces. Use for error counts, statistics, trends, and individual error events.",
     "",
@@ -30,9 +34,11 @@ export default defineTool({
     "</hints>",
   ].join("\n"),
   inputSchema: buildDatasetSearchInputSchema(),
+  outputSchema: searchErrorsOutputSchema,
   async handler(params, context: ServerContext) {
     return await runSearchEvents({ ...params, dataset: "errors" }, context, {
       lockDataset: true,
+      output: "structured",
     });
   },
 });

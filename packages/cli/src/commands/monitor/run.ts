@@ -44,11 +44,12 @@ import {
 } from "../../lib/completion-target.js";
 import { CliError, ConfigError, ValidationError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
+import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("monitor.run");
 
 /** Usage hint shown when no command is provided. */
-const USAGE_HINT = "sentry monitor run <monitor-slug> -- <command>";
+const usageHint = () => sentry`monitor run <monitor-slug> -- <command>`;
 
 type RunFlags = CheckInConfigFlags & {
   dsn?: string;
@@ -84,7 +85,7 @@ async function resolveCheckInDsn(
 
   throw new ConfigError(
     "No DSN found. Provide one via --dsn <dsn>, set the SENTRY_DSN environment variable, or run from a project where a DSN can be detected.",
-    USAGE_HINT,
+    usageHint(),
   );
 }
 
@@ -184,18 +185,19 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
     examples: [
       {
         description: "Wrap a command with cron monitor check-ins (DSN-based)",
-        command:
-          "SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 sentry monitor run nightly-job -- python manage.py cron",
+        run: {
+          prefix: "SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0 ",
+          args: "monitor run nightly-job -- python manage.py cron",
+        },
       },
       {
         description:
           "The -- separator is optional when the command has no flags",
-        command: "sentry monitor run nightly-job npm run task",
+        run: "monitor run nightly-job npm run task",
       },
       {
         description: "Create or update the monitor on the first check-in",
-        command:
-          'sentry monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh',
+        run: 'monitor run nightly-job -s "0 0 * * *" --max-runtime 30 --timezone UTC -- ./backup.sh',
       },
     ],
   },
@@ -283,13 +285,13 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
 
     if (!monitorSlug) {
       throw new ValidationError(
-        `No monitor slug provided. Usage: ${USAGE_HINT}`,
+        `No monitor slug provided. Usage: ${usageHint()}`,
         "monitor-slug",
       );
     }
     if (command.length === 0) {
       throw new ValidationError(
-        `No command provided. Usage: ${USAGE_HINT}`,
+        `No command provided. Usage: ${usageHint()}`,
         "command",
       );
     }
@@ -360,8 +362,7 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
               // Map signal kills to 128+N (Unix convention: e.g. 130 for
               // SIGINT, 137 for SIGKILL, 143 for SIGTERM) so CI pipelines
               // and shell scripts inspecting $? see the correct exit code.
-              const sigNum =
-                osConstants.signals[signal as keyof typeof osConstants.signals];
+              const sigNum = osConstants.signals[signal];
               resolve(128 + (sigNum ?? 1));
             } else {
               resolve(1);

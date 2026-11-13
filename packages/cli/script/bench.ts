@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Local benchmark harness for DSN detection, project-root finding, and
  * (after the `src/lib/scan/` refactor lands) the generic scanner module.
@@ -67,6 +66,7 @@ import {
   PRESETS,
   type PresetName,
 } from "../test/fixtures/bench/presets.js";
+import { logger } from "../src/lib/logger.js";
 
 /**
  * The DSN scanner's hot regex. Pinned at module scope and reused
@@ -194,7 +194,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
   const thresholdPct = Number(process.env.BENCH_THRESHOLD ?? 0.2);
 
   for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i] as string;
+    const arg = argv[i];
     const next = argv[i + 1];
     if (applyFlag(state, arg, next)) {
       i += 1;
@@ -217,12 +217,12 @@ function parseArgs(argv: readonly string[]): CliArgs {
 }
 
 function printHelp(): void {
-  console.log(
-    "Usage: pnpm run bench [-- --size small|medium|large|all] [--op NAME] [--repo PATH]",
-  );
-  console.log("                      [--runs N] [--warmup N]");
-  console.log(
-    "                      [--json] [--save-baseline] [--compare] [--regen-fixtures]",
+  logger.log(
+    [
+      "Usage: pnpm run bench [-- --size small|medium|large|all] [--op NAME] [--repo PATH]",
+      "                      [--runs N] [--warmup N]",
+      "                      [--json] [--save-baseline] [--compare] [--regen-fixtures]",
+    ].join("\n"),
   );
 }
 
@@ -476,7 +476,7 @@ async function buildOps(): Promise<OpEntry[]> {
           ".git/HEAD",
         ];
         for (let i = 0; i < 10_000; i += 1) {
-          const q = queries[i % queries.length] as string;
+          const q = queries[i % queries.length];
           stack.isIgnored(q, false);
         }
       },
@@ -530,7 +530,7 @@ async function runAll(
   const entries: BenchEntry[] = [];
   for (const fx of fixtures) {
     if (!args.json) {
-      console.log(`${fx.label}  (${fx.fileCount} files @ ${fx.rootDir})`);
+      logger.log(`${fx.label}  (${fx.fileCount} files @ ${fx.rootDir})`);
     }
     await withBenchDb(async () => {
       for (const op of ops) {
@@ -547,7 +547,7 @@ async function runAll(
           stats,
         });
         if (!args.json) {
-          console.log(
+          logger.log(
             `  ${op.label.padEnd(24)}  p50 ${stats.p50.toFixed(2)}ms  p95 ${stats.p95.toFixed(2)}ms  (${stats.runs} runs)`,
           );
         }
@@ -564,8 +564,8 @@ function compareAgainstBaseline(
 ): boolean {
   const baselinePath = ".bench/baseline.json";
   if (!existsSync(baselinePath)) {
-    console.error(
-      `✗ No baseline found at ${baselinePath}. Run with --save-baseline first.`,
+    logger.error(
+      `No baseline found at ${baselinePath}. Run with --save-baseline first.`,
     );
     return false;
   }
@@ -575,10 +575,10 @@ function compareAgainstBaseline(
   const rows = compareReports(baseline, report, thresholdPct);
   const ok = printComparison(rows, thresholdPct);
   if (!ok) {
-    console.error("✗ One or more operations regressed beyond threshold");
+    logger.error("One or more operations regressed beyond threshold");
     return false;
   }
-  console.log("✓ No regressions beyond threshold");
+  logger.success("No regressions beyond threshold");
   return true;
 }
 
@@ -587,7 +587,7 @@ async function main(): Promise<number> {
   try {
     args = parseArgs(process.argv.slice(2));
   } catch (error) {
-    console.error(`✗ ${(error as Error).message}`);
+    logger.error((error as Error).message);
     printHelp();
     return 1;
   }
@@ -602,7 +602,7 @@ async function main(): Promise<number> {
     const allOps = await buildOps();
     ops = filterOps(allOps, args.opFilter);
   } catch (error) {
-    console.error(`✗ ${(error as Error).message}`);
+    logger.error((error as Error).message);
     return 1;
   }
 
@@ -625,7 +625,7 @@ async function main(): Promise<number> {
     mkdirSync(".bench", { recursive: true });
     await writeJsonReport(report, ".bench/baseline.json");
     if (!args.json) {
-      console.log("✓ Baseline written to .bench/baseline.json");
+      logger.success("Baseline written to .bench/baseline.json");
     }
   }
 
@@ -639,6 +639,6 @@ async function main(): Promise<number> {
 main()
   .then((code) => process.exit(code))
   .catch((error) => {
-    console.error(error);
+    logger.error(error);
     process.exit(1);
   });

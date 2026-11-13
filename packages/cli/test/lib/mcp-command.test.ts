@@ -4,6 +4,7 @@ import { routes } from "../../src/app.js";
 import { type CliEntry, isMcpInvocation, runCli } from "../../src/cli.js";
 import { MCP_SKILL_NAMES } from "../../src/commands/mcp.js";
 import { ValidationError } from "../../src/lib/errors.js";
+import { logger, parseLogLevel } from "../../src/lib/logger.js";
 import { routes as mcpServerRoutes } from "../../src/mcp-server-app.js";
 import { SENTRY_CLI } from "../../src/sentry-cli.js";
 import { useTestConfigDir } from "../helpers.js";
@@ -11,7 +12,6 @@ import { useTestConfigDir } from "../helpers.js";
 const mocks = vi.hoisted(() => ({
   serveMcp: vi.fn(),
   withTelemetry: vi.fn(),
-  scheduleForceExit: vi.fn(),
   closeGlobalDispatcher: vi.fn(),
 }));
 
@@ -29,9 +29,6 @@ vi.mock("../../src/lib/telemetry.js", async (importOriginal) => {
     },
   };
 });
-vi.mock("../../src/lib/force-exit.js", () => ({
-  scheduleForceExit: () => mocks.scheduleForceExit(),
-}));
 vi.mock("../../src/lib/close-dispatcher.js", () => ({
   closeGlobalDispatcher: () => mocks.closeGlobalDispatcher(),
 }));
@@ -111,10 +108,10 @@ describe("isMcpInvocation", () => {
 });
 
 describe("@sentry/mcp-server application", () => {
-  test("has only mcp, auth, and help, with mcp as the default", () => {
+  test("has only mcp, auth, cli, and help, with mcp as the default", () => {
     expect(
       mcpServerRoutes.getAllEntries().map((entry) => entry.name.original),
-    ).toEqual(["mcp", "auth", "help"]);
+    ).toEqual(["mcp", "auth", "cli", "help"]);
     expect(mcpServerRoutes.getDefaultCommand()).toBe(
       mcpServerRoutes.getRoutingTargetForInput("mcp"),
     );
@@ -160,6 +157,24 @@ describe("running `mcp`", () => {
 
     expect(mocks.serveMcp).toHaveBeenCalledOnce();
     expect(mocks.serveMcp.mock.lastCall?.[2]).toEqual({ org: "acme" });
+  });
+
+  test("applies SENTRY_LOG_LEVEL before the server starts", async () => {
+    const originalLevel = logger.level;
+    vi.stubEnv("SENTRY_LOG_LEVEL", "error");
+    let levelAtStart: number | undefined;
+    mocks.serveMcp.mockImplementation(() => {
+      levelAtStart = logger.level;
+      return Promise.resolve();
+    });
+    try {
+      await runCli(["mcp"], SENTRY_CLI);
+    } finally {
+      vi.unstubAllEnvs();
+      logger.level = originalLevel;
+    }
+
+    expect(levelAtStart).toBe(parseLogLevel("error"));
   });
 
   test("serves through Stricli, without the CLI's telemetry", async () => {
@@ -241,13 +256,11 @@ describe("running `mcp`", () => {
 
     const running = runCli(["mcp"], SENTRY_CLI);
     await vi.waitFor(() => expect(mocks.serveMcp).toHaveBeenCalledOnce());
-    // A live stdio server must not be force-exited or lose its dispatcher.
-    expect(mocks.scheduleForceExit).not.toHaveBeenCalled();
+    // A live stdio server must not lose its dispatcher.
     expect(mocks.closeGlobalDispatcher).not.toHaveBeenCalled();
 
     finishServing();
     await running;
-    expect(mocks.scheduleForceExit).toHaveBeenCalledOnce();
     expect(mocks.closeGlobalDispatcher).toHaveBeenCalledOnce();
   });
 
@@ -275,7 +288,6 @@ describe("running `mcp`", () => {
       "--disable-skills",
       "--agent-provider",
       "--mcp-url",
-      "--sentry-dsn",
     ]) {
       expect(stdout).toContain(flag);
     }

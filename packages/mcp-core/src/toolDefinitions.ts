@@ -1,4 +1,4 @@
-import toolDefinitionsData from "./toolDefinitions.json";
+import toolDefinitionsData from "./toolDefinitions.json" with { type: "json" };
 import type { Scope } from "./permissions";
 import type { Skill } from "./skills";
 
@@ -7,6 +7,8 @@ export type ToolDefinitionSurface = "direct" | "catalog";
 
 export interface ToolDefinition {
   name: string;
+  // Human-readable display name
+  title: string;
   description: string;
   // Full JSON Schema object for parameters
   inputSchema: unknown;

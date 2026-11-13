@@ -1,9 +1,11 @@
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { formatFeedbackSuggestion } from "../../internal/tool-helpers/feedback-suggestion";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import { ALL_SKILLS } from "../../skills";
 import type { ServerContext } from "../../types";
+import type { StructuredToolOutput } from "../types";
 import type { ToolRegistry } from "../catalog-runtime/availability";
 import { searchToolCatalog } from "../catalog-runtime/search";
 
@@ -31,11 +33,14 @@ export const searchToolsOutputSchema = z.object({
       annotations: toolAnnotationsOutputSchema,
     }),
   ),
+  notes: z.array(z.string()),
 });
 
 type SearchToolsOutput = z.infer<typeof searchToolsOutputSchema>;
 
-function createSearchToolsResult(payload: SearchToolsOutput) {
+function createSearchToolsResult(
+  payload: SearchToolsOutput,
+): StructuredToolOutput<SearchToolsOutput> {
   const activeSpan = getActiveSpan();
 
   if (activeSpan) {
@@ -52,6 +57,7 @@ function createSearchToolsResult(payload: SearchToolsOutput) {
 export function createSearchToolsTool(getTools: () => ToolRegistry) {
   return defineTool({
     name: "search_sentry_tools",
+    title: "Search Sentry Tools",
     skills: ALL_SKILLS,
     requiredScopes: [],
     description: [
@@ -112,9 +118,18 @@ export function createSearchToolsTool(getTools: () => ToolRegistry) {
         limit: params.limit ?? DEFAULT_LIMIT,
       });
 
+      const feedbackSuggestion =
+        results.length === 0
+          ? formatFeedbackSuggestion(
+              "No Sentry tool matched. Try other keywords first. If no Sentry tool can do this task",
+              context,
+            )
+          : null;
+
       return createSearchToolsResult({
         query: params.query,
         results,
+        notes: feedbackSuggestion ? [feedbackSuggestion] : [],
       });
     },
   });

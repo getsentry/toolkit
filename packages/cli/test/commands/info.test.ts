@@ -64,7 +64,7 @@ describe("sentry info", () => {
       id: "1",
       email: "me@example.com",
       name: "Me",
-    } as Awaited<ReturnType<typeof users.getCurrentUser>>);
+    });
     vi.spyOn(defaults, "getDefaultOrganization").mockReturnValue("acme");
     vi.spyOn(defaults, "getDefaultProject").mockReturnValue("web");
 
@@ -103,7 +103,7 @@ describe("sentry info", () => {
     vi.spyOn(users, "getCurrentUser").mockResolvedValue({
       id: "1",
       email: "me@example.com",
-    } as Awaited<ReturnType<typeof users.getCurrentUser>>);
+    });
 
     const harness = createContext();
     const func = await infoCommand.loader();

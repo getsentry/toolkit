@@ -398,8 +398,8 @@ describe("writeIssueTable", () => {
       {
         issue: {
           ...mockIssue,
-          lastSeen: null as unknown as string,
-          firstSeen: null as unknown as string,
+          lastSeen: null,
+          firstSeen: null,
         },
         orgSlug: "test-org",
         formatOptions: { projectSlug: "dashboard" },
@@ -613,7 +613,7 @@ describe("formatProjectCreated", () => {
       name: "My Project",
       slug: "my-project",
       platform: "javascript",
-    } as ProjectCreatedResult["project"],
+    },
     orgSlug: "my-org",
     teamSlug: "my-team",
     teamSource: "explicit",
@@ -650,7 +650,7 @@ describe("formatProjectCreated", () => {
         project: {
           ...baseResult.project,
           slug: "my-project-1",
-        } as ProjectCreatedResult["project"],
+        },
         expectedSlug: "my-project",
       }),
     );
@@ -681,7 +681,7 @@ describe("formatProjectCreated", () => {
         project: {
           ...baseResult.project,
           platform: "",
-        } as ProjectCreatedResult["project"],
+        },
       }),
     );
     expect(result).toContain("javascript");

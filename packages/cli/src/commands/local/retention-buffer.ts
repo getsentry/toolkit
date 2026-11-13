@@ -1,11 +1,11 @@
 /** Raw receiver retention, indexed by delivery ID independently of decoding. */
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { uuidv7 } from "uuidv7";
 import { logger } from "../../lib/logger.js";
 import {
   prepareReceiverEnvelope,
   withReceiverBarrier,
   type ReceiverEnvelope,
+  type ReceiverBuffer,
 } from "./receiver-ingest.js";
 import { textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
@@ -15,9 +15,8 @@ import {
   MAX_ENVELOPES,
 } from "./retention-limits.js";
 
-type SpotlightBuffer = ReturnType<typeof createSpotlightBuffer>;
 type Subscriber = {
-  callback: Parameters<SpotlightBuffer["subscribe"]>[0];
+  callback: Parameters<ReceiverBuffer["subscribe"]>[0];
   position: number;
   scheduled?: NodeJS.Immediate;
 };
@@ -31,7 +30,7 @@ export type RetentionSettings = {
   retainedEnvelopes: number;
 };
 export type LocalRetentionBuffer = {
-  buffer: SpotlightBuffer;
+  buffer: ReceiverBuffer;
   getSettings: () => RetentionSettings;
   resize: (maxEnvelopes: number) => Promise<void>;
   subscribeSettings: (
@@ -39,12 +38,12 @@ export type LocalRetentionBuffer = {
   ) => () => void;
 };
 export class RetentionLimitError extends Error {
-  constructor(
-    message: string,
-    readonly status: 400 | 409 = 400,
-  ) {
+  readonly status: 400 | 409;
+
+  constructor(message: string, status: 400 | 409 = 400) {
     super(message);
     this.name = "RetentionLimitError";
+    this.status = status;
   }
 }
 export function validateMaxEnvelopes(value: unknown): asserts value is number {
@@ -102,9 +101,6 @@ export function createLocalRetentionBuffer(
   maxEnvelopes = DEFAULT_MAX_ENVELOPES,
 ): LocalRetentionBuffer {
   validateMaxEnvelopes(maxEnvelopes);
-  // Keep the existing SDK buffer shape for verify-setup and formatter callers.
-  // Only raw retention and stream cursors live here; the SDK still decodes.
-  const buffer = createSpotlightBuffer(1);
   const subscribers = new Map<string, Subscriber>();
   const entries = new Map<string, RetainedEnvelope>();
   let newest: RetainedEnvelope | undefined;
@@ -114,89 +110,95 @@ export function createLocalRetentionBuffer(
     maxEnvelopes,
     retainedEnvelopes: entries.size,
   });
-  buffer.put = (item) => {
-    const id = prepareReceiverEnvelope(item);
-    if (entries.has(id)) return;
-    // Replay pending subscription history before any entry can be evicted.
-    for (const readerId of subscribers.keys()) buffer.stream(readerId);
-    newest = { item, arrivedAt: Date.now(), position: ++position };
-    entries.set(id, newest);
-    if (entries.size > maxEnvelopes) {
-      const oldest = entries.keys().next().value;
-      if (oldest !== undefined) entries.delete(oldest);
-    }
-    for (const readerId of subscribers.keys()) buffer.stream(readerId);
-  };
-  buffer.read = (filters = { timeWindow: 60 }) => {
-    const candidates =
-      "envelopeId" in filters
-        ? [entries.get(filters.envelopeId)].filter(
-            (entry) => entry !== undefined,
-          )
-        : [...entries.values()].reverse();
-    return candidates
-      .filter((entry) => {
-        if (
-          "timeWindow" in filters &&
-          filters.timeWindow !== undefined &&
-          entry.arrivedAt <= Date.now() - filters.timeWindow * 1000
-        )
-          return false;
-        if ("filename" in filters && filters.filename) {
-          const filename = filters.filename;
-          return (
-            entry.item.getParsedEnvelope()?.envelope[1].some(([, payload]) => {
-              return hasStackFilename(payload, filename);
-            }) ?? false
-          );
-        }
-        return true;
-      })
-      .map((entry) => entry.item);
-  };
-  buffer.subscribe = (callback, lastEventId) => {
-    const id = uuidv7();
-    const subscriber: Subscriber = {
-      callback,
-      position: entries.get(lastEventId ?? "")?.position ?? 0,
-    };
-    subscribers.set(id, subscriber);
-    subscriber.scheduled = setImmediate(() => buffer.stream(id));
-    subscriber.scheduled.unref();
-    return id;
-  };
-  buffer.unsubscribe = (id) => {
-    const subscriber = subscribers.get(id);
-    if (subscriber?.scheduled) clearImmediate(subscriber.scheduled);
-    subscribers.delete(id);
-  };
-  buffer.stream = (id) => {
-    const subscriber = subscribers.get(id);
-    if (!subscriber) return;
-    if (subscriber.scheduled) {
-      clearImmediate(subscriber.scheduled);
-      subscriber.scheduled = undefined;
-    }
-    if (subscriber.position >= position) return;
-    const deliver = (entry: RetainedEnvelope) => {
-      if (entry.position <= subscriber.position) return;
-      subscriber.position = entry.position;
-      try {
-        subscriber.callback(entry.item);
-      } catch (error) {
-        logger.debug("Local receiver subscriber failed", error);
-      }
-    };
-    // Live readers need only the new entry, regardless of retention capacity.
-    if (newest?.position === subscriber.position + 1) {
-      deliver(newest);
-    } else {
-      for (const entry of entries.values()) deliver(entry);
-    }
-  };
-  buffer.clear = buffer.reset = () => {
+  const clear = () => {
     entries.clear();
     newest = undefined;
+  };
+  const buffer: ReceiverBuffer = {
+    put(item) {
+      const id = prepareReceiverEnvelope(item);
+      if (entries.has(id)) return;
+      // Replay pending subscription history before any entry can be evicted.
+      for (const readerId of subscribers.keys()) buffer.stream(readerId);
+      newest = { item, arrivedAt: Date.now(), position: ++position };
+      entries.set(id, newest);
+      if (entries.size > maxEnvelopes) {
+        const oldest = entries.keys().next().value;
+        if (oldest !== undefined) entries.delete(oldest);
+      }
+      for (const readerId of subscribers.keys()) buffer.stream(readerId);
+    },
+    read(filters = { timeWindow: 60 }) {
+      const candidates =
+        "envelopeId" in filters
+          ? [entries.get(filters.envelopeId ?? "")].filter(
+              (entry) => entry !== undefined,
+            )
+          : [...entries.values()].reverse();
+      return candidates
+        .filter((entry) => {
+          if (
+            "timeWindow" in filters &&
+            filters.timeWindow !== undefined &&
+            entry.arrivedAt <= Date.now() - filters.timeWindow * 1000
+          )
+            return false;
+          if ("filename" in filters && filters.filename) {
+            const filename = filters.filename;
+            return (
+              entry.item
+                .getParsedEnvelope()
+                ?.envelope[1].some(([, payload]) => {
+                  return hasStackFilename(payload, filename);
+                }) ?? false
+            );
+          }
+          return true;
+        })
+        .map((entry) => entry.item);
+    },
+    subscribe(callback, lastEventId) {
+      const id = uuidv7();
+      const subscriber: Subscriber = {
+        callback,
+        position: entries.get(lastEventId ?? "")?.position ?? 0,
+      };
+      subscribers.set(id, subscriber);
+      subscriber.scheduled = setImmediate(() => buffer.stream(id));
+      subscriber.scheduled.unref();
+      return id;
+    },
+    unsubscribe(id) {
+      const subscriber = subscribers.get(id);
+      if (subscriber?.scheduled) clearImmediate(subscriber.scheduled);
+      subscribers.delete(id);
+    },
+    stream(id) {
+      const subscriber = subscribers.get(id);
+      if (!subscriber) return;
+      if (subscriber.scheduled) {
+        clearImmediate(subscriber.scheduled);
+        subscriber.scheduled = undefined;
+      }
+      if (subscriber.position >= position) return;
+      const deliver = (entry: RetainedEnvelope) => {
+        if (entry.position <= subscriber.position) return;
+        subscriber.position = entry.position;
+        try {
+          subscriber.callback(entry.item);
+        } catch (error) {
+          logger.debug("Local receiver subscriber failed", error);
+        }
+      };
+      // Live readers need only the new entry, regardless of retention capacity.
+      if (newest?.position === subscriber.position + 1) {
+        deliver(newest);
+      } else {
+        for (const entry of entries.values()) deliver(entry);
+      }
+    },
+    clear,
+    reset: clear,
   };
   return {
     buffer,

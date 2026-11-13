@@ -194,8 +194,8 @@ export const MAX_FILE_SIZE = 256 * 1024;
  * box. The honest summary: **the "optimal" concurrency depends on the
  * caller's shape**, and no single default is right for every workload.
  *
- * 1. **Walker-fed streaming** (DSN scanner, init-wizard grep over a
- *    repo): the walker's serial `readdir` descent is the dominant
+ * 1. **Walker-fed streaming** (the DSN scanner's grep over a repo):
+ *    the walker's serial `readdir` descent is the dominant
  *    cost. Workers never starve; conc≥2 is enough; conc≈4-8 is best
  *    empirically. Higher values add tiny scheduling overhead without
  *    more useful work.

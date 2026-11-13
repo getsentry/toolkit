@@ -5,7 +5,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import type { ReceiverBuffer } from "./receiver-ingest.js";
 import {
   createLocalRetentionBuffer,
   type LocalRetentionBuffer,
@@ -35,7 +35,7 @@ export type LocalSession = {
 };
 
 type StoredSession = LocalSession & {
-  buffer: ReturnType<typeof createSpotlightBuffer>;
+  buffer: ReceiverBuffer;
   retention: LocalRetentionBuffer;
   ingestCapability: string;
   streamCapability: string;
@@ -74,7 +74,7 @@ export type LocalSessionStore = {
     ingest: string;
     stream: string;
   };
-  getBuffer: (reference: string) => ReturnType<typeof createSpotlightBuffer>;
+  getBuffer: (reference: string) => ReceiverBuffer;
   list: () => LocalSession[];
   pruneExpired: () => string[];
   recordActivity: (reference: string) => LocalSession;

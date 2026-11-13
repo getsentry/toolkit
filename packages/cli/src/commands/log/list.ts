@@ -6,14 +6,13 @@
  * Supports trace ID as a positional argument to filter logs by trace.
  */
 
-// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node";
 import type { SentryContext } from "../../context.js";
 import {
   type LogSortDirection,
   listLogs,
   listTraceLogs,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   buildProjectQuery,
   type ParsedOrgProject,
@@ -80,6 +79,7 @@ import {
 } from "../../lib/trace-target.js";
 import { getUpdateNotification } from "../../lib/version-check.js";
 import { SentryLogSchema } from "../../generated/output-schemas/log.js";
+import { reportCliError } from "../../lib/error-reporting.js";
 
 type ListFlags = {
   readonly limit: number;
@@ -119,7 +119,7 @@ const DEFAULT_POLL_INTERVAL = 2;
 const COMMAND_NAME = "log list";
 
 /** Usage hint for trace mode error messages */
-const TRACE_USAGE_HINT = "sentry log list [<org>/[<project>/]]<trace-id>";
+const traceUsageHint = () => sentry`log list [<org>/[<project>/]]<trace-id>`;
 
 /**
  * Parse --limit flag, delegating range validation to shared utility.
@@ -194,7 +194,7 @@ type LogListArguments = BoundArguments<LogListInput, LogListTarget>;
  * (trace mode when the arguments end in a trace ID).
  */
 function parseLogListInput(args: readonly string[]): LogListInput {
-  const input = parseDualModeInput(args, TRACE_USAGE_HINT);
+  const input = parseDualModeInput(args, traceUsageHint());
   if (input.mode === "trace") {
     return input;
   }
@@ -212,7 +212,8 @@ async function resolveLogListTarget(
     const { traceId, org } = await resolveTraceOrg(
       parsed,
       context.cwd,
-      TRACE_USAGE_HINT,
+      "log list",
+      traceUsageHint(),
     );
     return {
       mode: "trace",
@@ -412,7 +413,7 @@ async function fetchPoll<T extends LogLike>(
     if (error instanceof ValidationError) {
       throw error;
     }
-    Sentry.captureException(error);
+    reportCliError(error);
     const message = stringifyUnknown(error);
     config.onDiagnostic(`Error fetching logs: ${message}\n`);
     return;
@@ -582,7 +583,7 @@ async function executeTraceSingleFetch(
       result: { logs: [], traceId, hasMore: false },
       hint:
         `No logs found for trace ${traceId} ${periodLabel}.\n\n` +
-        "Try 'sentry trace logs' for more options (e.g., --period 30d).",
+        `Try '${sentry`trace logs`}' for more options (e.g., --period 30d).`,
     };
   }
 
@@ -593,9 +594,9 @@ async function executeTraceSingleFetch(
   // Build hint with real values for easy copy-paste
   let hint = `${countText}${tip}`;
   if (projectFilter) {
-    hint += `\nFiltered to project '${projectFilter}'. Full trace logs: sentry log list ${org}/${traceId}`;
+    hint += `\nFiltered to project '${projectFilter}'. Full trace logs: ${sentry`log list ${org}/${traceId}`}`;
   } else {
-    hint += `\nFilter by project: sentry log list ${org}/<project>/${traceId}`;
+    hint += `\nFilter by project: ${sentry`log list ${org}/<project>/${traceId}`}`;
   }
 
   return {
@@ -776,47 +777,46 @@ export const listCommand = buildListCommand(
         "Pass a 32-character trace ID instead of a project to filter by trace.\n\n" +
         "Alias: `sentry logs` → `sentry log list`",
       examples: [
-        { description: "List the last 100 logs", command: "sentry log list" },
+        { description: "List the last 100 logs", run: "log list" },
         {
           description: "Show only error logs",
-          command: "sentry log list -q 'severity:error'",
+          run: "log list -q 'severity:error'",
         },
         {
           description: "Filter by message content",
-          command: "sentry log list -q 'database'",
+          run: "log list -q 'database'",
         },
         {
           description: "Match a regular expression (key://pattern//)",
-          command: "sentry log list -q 'message://^Timeout after \\d+ms//'",
+          run: "log list -q 'message://^Timeout after \\d+ms//'",
         },
         {
           description: "Show the last 50 logs",
-          command: "sentry log list --limit 50",
+          run: "log list --limit 50",
         },
         {
           description: "List logs for a trace",
-          command: "sentry log list abc123def456abc123def456abc12345",
+          run: "log list abc123def456abc123def456abc12345",
         },
         {
           description: "Stream logs (2-second poll interval)",
-          command: "sentry log list -f",
+          run: "log list -f",
         },
         {
           description: "Stream logs (5-second poll interval)",
-          command: "sentry log list -f 5",
+          run: "log list -f 5",
         },
         {
           description: "Stream error logs from a specific project",
-          command: "sentry log list my-org/backend -f -q 'severity:error'",
+          run: "log list my-org/backend -f -q 'severity:error'",
         },
         {
           description: "Filter JSON output with jq",
-          command:
-            "sentry log list --json | jq '.data[] | select(.severity == \"error\")'",
+          run: "log list --json | jq '.data[] | select(.severity == \"error\")'",
         },
         {
           description: "Filter by trace in an explicit organization",
-          command: "sentry log list my-org/abc123def456abc123def456abc12345",
+          run: "log list my-org/abc123def456abc123def456abc12345",
         },
       ],
     },

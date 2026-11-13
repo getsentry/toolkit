@@ -45,13 +45,12 @@ The package is a single file with no runtime dependencies.
   Cloudflare worker; mcp-core no longer ships SDK v1's server. `zod/v3` is
   stubbed in this bundle and the CLI's
   (`packages/cli/script/lib/zod-v3-stub-plugin.ts`): only Zod 3 code paths in
-  `@ai-sdk/provider-utils` and `@mastra/schema-compat` use it, and everything
-  bundled builds Zod 4 schemas. Zod keeps only its English locale
+  `@ai-sdk/provider-utils` use it, and everything bundled builds Zod 4
+  schemas. Zod keeps only its English locale
   (`packages/cli/script/lib/zod-locales-plugin.ts`).
 - CLI-only code stays out: the other commands, agent skills, completions,
-  syntax highlighting, the Ink UI, and debug-file processing. Help and `auth`
-  output render code blocks without colors, and account pickers take the
-  account as an argument instead of the Ink picker. The SQLite WASM fallback
+  syntax highlighting, and debug-file processing. Help and `auth` output
+  render code blocks without colors. The SQLite WASM fallback
   is left out too, so the package needs Node.js 22.15+. The bundle script
   fails if any of these reach the output or the file grows past its size
   budget. Packages that only those code paths import resolve to empty stub
@@ -94,9 +93,18 @@ skipped. An identical active listing is a no-op, so reruns are safe. Different
 metadata for an existing version fails because registry versions are
 immutable; publish those changes with the next release.
 
+`packages/mcp-server/test/server-json.test.mjs` runs with `test:bundle` and
+checks the manifest: its name, npm package, repository, title, website, icons,
+and that its environment variables are the `SENTRY_*` variables the bundled
+`mcp --help` lists. It does not validate against the registry schema, which is
+not vendored; tests make no network requests.
+
 ## User Installation
 
-Users run the server through npx in their MCP client configuration:
+The primary way to run the stdio server is the Sentry CLI: `sentry auth login`,
+then register `sentry mcp` with the MCP client (see the
+[`sentry mcp` docs](https://cli.sentry.dev/commands/mcp/)). This package is the
+legacy option for clients that launch the server through npx:
 
 ```json
 {

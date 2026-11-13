@@ -14,6 +14,7 @@
 import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { existsSync } from "node:fs";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   type DifSourcesInfo,
@@ -27,7 +28,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { readDebugFile } from "./read-file.js";
 
-const USAGE_HINT = "sentry debug-files print-sources <path>";
+const usageHint = () => sentry`debug-files print-sources <path>`;
 
 const log = logger.withTag("debug-files.print-sources");
 
@@ -113,11 +114,11 @@ export const printSourcesCommand = buildCommand({
       {
         description:
           "List the source files a debug file references (and whether they're available)",
-        command: "sentry debug-files print-sources ./libexample.so",
+        run: "debug-files print-sources ./libexample.so",
       },
       {
         description: "Output the list as JSON",
-        command: "sentry debug-files print-sources ./app.pdb --json",
+        run: "debug-files print-sources ./app.pdb --json",
       },
     ],
   },
@@ -192,7 +193,9 @@ export const printSourcesCommand = buildCommand({
     yield new CommandOutput({ path, objects });
 
     if (objects.length === 0) {
-      return { hint: `No objects found in '${path}'. Try: ${USAGE_HINT}` };
+      return {
+        hint: `No objects found in '${path}'. Try: ${usageHint()}`,
+      };
     }
     const total = objects.reduce((sum, object) => sum + object.files.length, 0);
     if (total === 0) {
@@ -205,11 +208,11 @@ export const printSourcesCommand = buildCommand({
         };
       }
       return {
-        hint: `No referenced sources found in '${path}'. Try: ${USAGE_HINT}`,
+        hint: `No referenced sources found in '${path}'. Try: ${usageHint()}`,
       };
     }
     return {
-      hint: `Bundle these into a source bundle with: sentry debug-files bundle-sources ${path}`,
+      hint: `Bundle these into a source bundle with: ${sentry`debug-files bundle-sources ${path}`}`,
     };
   },
 });

@@ -66,7 +66,7 @@ describe("renderCommandOutput", () => {
   test("renders JSON when json=true", () => {
     const w = createTestWriter();
     const config: OutputConfig<{ id: number; name: string }> = {
-      human: (d) => `${d.name}`,
+      human: (d) => d.name,
     };
     render(w, { id: 1, name: "Alice" }, config, { json: true });
     expect(JSON.parse(w.output)).toEqual({ id: 1, name: "Alice" });

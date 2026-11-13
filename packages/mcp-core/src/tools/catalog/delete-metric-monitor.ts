@@ -11,6 +11,7 @@ import {
 
 export default defineTool({
   name: "delete_metric_monitor",
+  title: "Delete Metric Monitor",
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [

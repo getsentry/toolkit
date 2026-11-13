@@ -1,8 +1,4 @@
 import { gzipSync } from "node:zlib";
-import {
-  createSpotlightBuffer,
-  pushToSpotlightBuffer,
-} from "@spotlightjs/spotlight/sdk";
 import { describe, expect, test } from "vitest";
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
@@ -12,6 +8,7 @@ import {
   ingestReceiverEnvelope,
   receiverEnvelopeId,
   drainReceiver,
+  createReceiverEnvelope,
 } from "../../../src/commands/local/receiver-ingest.js";
 
 const envelope = '{}\n{"type":"event"}\n{"message":"received"}';
@@ -25,7 +22,7 @@ test.each([1, 2])(
     );
     expect(
       await ingestReceiverEnvelope(retention.buffer, {
-        body: Buffer.from(bodies[0]!),
+        body: Buffer.from(bodies[0]),
       }),
     ).toBe(204);
     const frames: { id?: string; data: string }[] = [];
@@ -61,20 +58,21 @@ test.each([1, 2])(
   },
 );
 
-test("adopting an indexed SDK container preserves its ID and filename index", () => {
-  const sdk = createSpotlightBuffer(3);
-  pushToSpotlightBuffer({
-    spotlightBuffer: sdk,
-    contentType: "application/x-sentry-envelope",
-    body: Buffer.from(
-      '{}\n{"type":"event"}\n{"exception":{"values":[{"stacktrace":{"frames":[{"filename":"/work/app.ts"}]}}]}}',
-    ),
-  });
-  const container = sdk.read({ all: true })[0]!;
+test("raw delivery IDs stay stable across streaming and filename lookup", () => {
+  const buffer = createLocalRetentionBuffer(3).buffer;
+  buffer.put(
+    createReceiverEnvelope({
+      contentType: "application/x-sentry-envelope",
+      body: Buffer.from(
+        '{}\n{"type":"event"}\n{"exception":{"values":[{"stacktrace":{"frames":[{"filename":"/work/app.ts"}]}}]}}',
+      ),
+    }),
+  );
+  const container = buffer.read({ all: true })[0];
   const originalId = container
     .getParsedEnvelope()!
     .envelope[0].__spotlight_envelope_id.toString();
-  expect(sdk.read({ filename: "app.ts" })).toEqual([container]);
+  expect(buffer.read({ filename: "app.ts" })).toEqual([container]);
   const frames: { id?: string }[] = [];
   buildSSEHandler({
     writeSSE: async (frame) => {
@@ -87,9 +85,9 @@ test("adopting an indexed SDK container preserves its ID and filename index", ()
       .getParsedEnvelope()!
       .envelope[0].__spotlight_envelope_id.toString(),
   ).toBe(originalId);
-  expect(frames[0]!.id).toBe(originalId);
-  expect(sdk.read({ filename: "app.ts" })).toEqual([container]);
-  expect(sdk.read({ envelopeId: originalId })).toEqual([container]);
+  expect(frames[0].id).toBe(originalId);
+  expect(buffer.read({ filename: "app.ts" })).toEqual([container]);
+  expect(buffer.read({ envelopeId: originalId })).toEqual([container]);
 });
 
 test("raw ingress assigns identity independently of an untrusted envelope header", async () => {
@@ -101,7 +99,7 @@ test("raw ingress assigns identity independently of an untrusted envelope header
   expect(await ingestReceiverEnvelope(retention.buffer, { body: raw })).toBe(
     204,
   );
-  const container = retention.buffer.read({ all: true })[0]!;
+  const container = retention.buffer.read({ all: true })[0];
   const id = receiverEnvelopeId(container);
   expect(id).not.toBe(forgedId);
   expect(
@@ -166,7 +164,7 @@ describe.each([false, true])("bounded receiver (scoped: %s)", (scoped) => {
       });
       expect(response.status).toBe(204);
       expect(fixture.buffer.read({ all: true })).toHaveLength(1);
-      expect(fixture.buffer.read({ all: true })[0]!.getContentType()).toBe(
+      expect(fixture.buffer.read({ all: true })[0].getContentType()).toBe(
         "application/x-sentry-envelope",
       );
     },
@@ -235,9 +233,9 @@ test.each([
       envelopes: { id: string }[];
     };
     expect(envelopes).toHaveLength(1);
-    expect(envelopes[0]!.id).toMatch(/^[a-f\d-]{36}$/);
+    expect(envelopes[0].id).toMatch(/^[a-f\d-]{36}$/);
     const raw = await plane.app.request(
-      `${base}/envelopes/${envelopes[0]!.id}`,
+      `${base}/envelopes/${envelopes[0].id}`,
       { headers },
     );
     expect(raw.status).toBe(200);
@@ -328,7 +326,7 @@ test("retention changes include preceding compressed admissions and preserve cur
   await expect(retention.resize(1)).rejects.toThrow(/2 retained envelopes/);
   expect(await Promise.all(writes)).toEqual([204, 204]);
   const history = retention.buffer.read({ all: true });
-  const cursor = receiverEnvelopeId(history[1]!);
+  const cursor = receiverEnvelopeId(history[1]);
   const seen: string[] = [];
   const reader = retention.buffer.subscribe(
     (item) => seen.push(item.getData().toString()),
@@ -375,12 +373,12 @@ test("raw attachments remain byte exact and malformed SSE remains inspectable wi
     attachment,
   ]);
   expect(await ingestReceiverEnvelope(retention.buffer, { body })).toBe(204);
-  expect(retention.buffer.read({ all: true })[0]!.getData()).toEqual(body);
+  expect(retention.buffer.read({ all: true })[0].getData()).toEqual(body);
   const malformed = Buffer.from("not-an-envelope");
   expect(
     await ingestReceiverEnvelope(retention.buffer, { body: malformed }),
   ).toBe(204);
-  const latest = retention.buffer.read({ all: true })[0]!;
+  const latest = retention.buffer.read({ all: true })[0];
   const frames: { id?: string; data: string }[] = [];
   const handler = buildSSEHandler({
     writeSSE: async (frame) => {
@@ -408,7 +406,7 @@ test("malformed exception metadata cannot break raw filename queries", async () 
   );
   expect(await ingestReceiverEnvelope(retention.buffer, { body })).toBe(204);
   expect(retention.buffer.read({ filename: "app.ts" })).toEqual([]);
-  expect(retention.buffer.read({ all: true })[0]!.getData()).toEqual(body);
+  expect(retention.buffer.read({ all: true })[0].getData()).toEqual(body);
 });
 
 test("SSE falls back to raw data if deeply nested decoded JSON cannot serialize", async () => {
@@ -427,7 +425,7 @@ test("SSE falls back to raw data if deeply nested decoded JSON cannot serialize"
     writeSSE: async (frame) => {
       frames.push(frame);
     },
-  })(retention.buffer.read({ all: true })[0]!);
+  })(retention.buffer.read({ all: true })[0]);
   expect(frames).toHaveLength(1);
-  expect(frames[0]!.data).toBe(raw);
+  expect(frames[0].data).toBe(raw);
 });

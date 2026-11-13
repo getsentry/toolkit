@@ -9,6 +9,7 @@ import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
+import { setServerVersion } from "../version";
 import {
   ApiClientError,
   ApiNotFoundError,
@@ -16,7 +17,7 @@ import {
   ApiRateLimitError,
   ApiServerError,
   ApiValidationError,
-} from "@sentry/toolkit-core/api-client/errors";
+} from "@sentry/api/client";
 import { z } from "zod";
 
 describe("validateEvents error bodies", () => {
@@ -1947,6 +1948,35 @@ describe("request headers", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    setServerVersion(undefined);
+  });
+
+  it("sends the host's version in the User-Agent", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "1",
+          name: "Test User",
+          email: "test@example.com",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    setServerVersion("0.48.0-test");
+
+    await new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    }).getAuthenticatedUser();
+
+    const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0];
+    expect(new Headers(requestInit.headers).get("User-Agent")).toBe(
+      "sentry-mcp/0.48.0-test (https://mcp.sentry.dev)",
+    );
   });
 
   it("should send MCP client headers when clientId and clientName are set", async () => {
@@ -2910,7 +2940,7 @@ describe("API query builders", () => {
         },
       ]);
       expect(urls).toHaveLength(1);
-      const params = new URL(urls[0]!).searchParams;
+      const params = new URL(urls[0]).searchParams;
       expect(params.get("itemType")).toBe("spans");
       expect(params.get("project")).toBe("123");
       expect(params.get("statsPeriod")).toBe("7d");
@@ -2948,7 +2978,7 @@ describe("API query builders", () => {
       });
 
       expect(urls).toHaveLength(1);
-      const params = new URL(urls[0]!).searchParams;
+      const params = new URL(urls[0]).searchParams;
       expect(params.get("itemType")).toBe("spans");
       expect(params.get("expand")).toBe("context");
     });
@@ -3584,7 +3614,7 @@ describe("API query builders", () => {
         }),
       );
       expect(result.created).toBe(1);
-      expect(result.mappings[0]!.status).toBe("created");
+      expect(result.mappings[0].status).toBe("created");
     });
 
     it("should handle updated mappings response", async () => {
@@ -3617,7 +3647,7 @@ describe("API query builders", () => {
       });
 
       expect(result.updated).toBe(1);
-      expect(result.mappings[0]!.status).toBe("updated");
+      expect(result.mappings[0].status).toBe("updated");
     });
   });
 

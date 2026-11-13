@@ -24,6 +24,7 @@ import {
   getIdentityFingerprint,
 } from "./db/auth.js";
 import { isTrustedRegionOrigin } from "./db/regions.js";
+import { invocationState } from "./env.js";
 import { HostScopeError } from "./errors.js";
 import { normalizeHttpOrigin, normalizeOrigin } from "./sentry-urls.js";
 import { parseSntrysClaim } from "./token-claims.js";
@@ -78,7 +79,7 @@ export function getActiveTokenHost(): string | undefined {
 }
 
 /**
- * Process-local login trust anchor — set by `applyLoginUrl` from `--url` or
+ * Per-invocation login trust anchor — set by `applyLoginUrl` from `--url` or
  * the boot-time env snapshot. Used by {@link isRequestOriginTrustedForCustomHeaders}
  * during the no-token bootstrap window so OAuth device-flow requests against
  * IAP-protected self-hosted instances can carry `SENTRY_CUSTOM_HEADERS`.
@@ -88,30 +89,32 @@ export function getActiveTokenHost(): string | undefined {
  * `.sentryclirc` shim does NOT register an anchor — only explicit `--url` or
  * boot-time env values do.
  */
-let loginTrustAnchor: string | undefined;
+const loginTrustState = invocationState<{ anchor: string | undefined }>(() => ({
+  anchor: undefined,
+}));
 
 /** Register an explicit login-time trust anchor. URLs are normalized. */
 export function registerLoginTrustAnchor(url: string): void {
   const origin = normalizeHttpOrigin(url);
   if (origin) {
-    loginTrustAnchor = origin;
+    loginTrustState().anchor = origin;
   }
 }
 
 /**
- * Whether the current process's login trust anchor matches `host` under the
+ * Whether the current invocation's login trust anchor matches `host` under the
  * host-scoping trust model (exact origin or SaaS equivalence). The match
  * check is load-bearing: an existence-only check would let a stale anchor
  * from a prior `auth login --url <other-host>` (in library/test mode) admit
  * a login against a different host.
  */
 export function isLoginTrustAnchorFor(host: string): boolean {
-  return isHostTrusted(host, loginTrustAnchor);
+  return isHostTrusted(host, loginTrustState().anchor);
 }
 
 /** @internal exported for testing */
 export function resetLoginTrustAnchorForTesting(): void {
-  loginTrustAnchor = undefined;
+  loginTrustState().anchor = undefined;
 }
 
 /**
@@ -223,8 +226,9 @@ export function isRequestOriginTrustedForCustomHeaders(
   if (getActiveTokenHost()) {
     return isRequestOriginTrusted(requestInput);
   }
-  if (loginTrustAnchor) {
-    return isHostTrusted(requestInput, loginTrustAnchor);
+  const { anchor } = loginTrustState();
+  if (anchor) {
+    return isHostTrusted(requestInput, anchor);
   }
   return false;
 }

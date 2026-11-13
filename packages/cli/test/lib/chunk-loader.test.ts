@@ -113,7 +113,14 @@ describe("createChunkLoader", () => {
     // `engines.node` allows Node 20, but CI and development use newer
     expect(canLoadChunks()).toBe(true);
     // Node 20 drops `import()` from scripts compiled from a code cache
-    expect(canLoadChunks("20.20.2")).toBe(false);
+    expect(canLoadChunks({ ...process.versions, node: "20.20.2" })).toBe(false);
+  });
+
+  test("does not run on Bun", () => {
+    // Bun reports Node 24 but has no `cachedDataVersionTag`
+    expect(
+      canLoadChunks({ ...process.versions, node: "24.3.0", bun: "1.3.14" }),
+    ).toBe(false);
   });
 
   test("runs a chunk with the CommonJS scope its source gives it", () => {
@@ -274,8 +281,7 @@ describe("createChunkLoader", () => {
       { "cli.cjs": "exports.os = import('node:os');" },
       undefined,
     );
-    const os = (await (exports as { os: Promise<typeof import("node:os")> })
-      .os) as typeof import("node:os");
+    const os = await (exports as { os: Promise<typeof import("node:os")> }).os;
     expect(typeof os.tmpdir).toBe("function");
   });
 

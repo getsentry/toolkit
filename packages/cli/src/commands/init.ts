@@ -1,517 +1,73 @@
 /**
  * sentry init
  *
- * Initialize Sentry in a project using the remote wizard workflow.
- * Communicates with the Mastra API via suspend/resume to perform
- * local filesystem operations and interactive prompts.
+ * Print the agent setup guide (`init.md`): the steps a coding agent follows
+ * to add Sentry to a project — install the CLI, log in, pick a Sentry
+ * project, choose features, install the SDKs with help from `sentry docs`,
+ * and check that a test error reaches Sentry. The same guide is published at
+ * https://cli.sentry.dev/get-started-with-sentry.md.
  *
- * Supports two optional positionals with smart disambiguation:
- *   sentry init                       — auto-detect everything, dir = cwd
- *   sentry init .                     — dir = cwd, auto-detect org
- *   sentry init ./subdir              — dir = subdir, auto-detect org
- *   sentry init acme/                 — explicit org, dir = cwd
- *   sentry init acme/my-app           — explicit org + project, dir = cwd
- *   sentry init my-app                — use existing or create new project
- *   sentry init acme/ ./subdir        — explicit org, dir = subdir
- *   sentry init acme/my-app ./subdir  — explicit org + project, dir = subdir
- *   sentry init ./subdir acme/        — swapped, auto-correct with warning
+ * The command makes no requests, so it runs without a login and ignores a
+ * `.sentryclirc` URL.
  */
 
-import path from "node:path";
-import { setTag } from "@sentry/node";
 import type { SentryContext } from "../context.js";
-import {
-  looksLikePath,
-  type ParsedOrgProject,
-  parseOrgProjectInput,
-} from "../lib/arg-parsing.js";
+import { INIT_GUIDE } from "../generated/init-guide.js";
+import { InitOutputSchema } from "../generated/output-schemas/init.js";
 import { buildCommand } from "../lib/command.js";
-import {
-  choiceListParser,
-  ORG_PROJECT_OR_DIRECTORY_TARGET,
-  parseTeam,
-  parseText,
-} from "../lib/completion-target.js";
-import { refreshToken } from "../lib/db/auth.js";
-import { ContextError, ValidationError } from "../lib/errors.js";
-import { warmOrgDetection } from "../lib/init/org-prefetch.js";
-import { runWizard } from "../lib/init/wizard-runner.js";
-import { validateResourceId } from "../lib/input-validation.js";
-import { logger } from "../lib/logger.js";
-import {
-  DRY_RUN_ALIASES,
-  DRY_RUN_FLAG,
-  YES_ALIASES,
-  YES_FLAG,
-} from "../lib/mutate-command.js";
-import {
-  type BoundArguments,
-  boundArguments,
-} from "../lib/positional-parse.js";
-import { classifyProjectSearchTarget } from "../lib/resolve-target.js";
-import { applySentryUrlContext } from "../lib/sentry-url-parser.js";
+import { detectAgent } from "../lib/detect-agent.js";
+import { isPlainOutput, renderMarkdown } from "../lib/formatters/markdown.js";
+import { CommandOutput } from "../lib/formatters/output.js";
+import type { InitOutput } from "../output-schemas/init.js";
 import { topLevelBrief } from "../top-level-briefs.js";
 
-const log = logger.withTag("init");
-
-const FEATURE_DELIMITER = /[,+ ]+/;
-const NON_INTERACTIVE_USAGE_HINT =
-  "sentry init --yes --features errors,tracing,replay [target] [directory]";
-
-// Only features backed by a Sentry SDK selector product are accepted here.
-// Non-selector products (source maps, metrics, attachments) are intentionally
-// not exposed via --features yet: their setup isn't fully automated — e.g.
-// source-map upload needs an auth token this wizard does not provision — so
-// accepting them would leave a half-configured integration. Re-add an alias
-// (and its SUPPORTED_FEATURE_NAMES entry) once that flow is complete.
-const FEATURE_ALIASES = {
-  errors: "errorMonitoring",
-  errorMonitoring: "errorMonitoring",
-  tracing: "performanceMonitoring",
-  performanceMonitoring: "performanceMonitoring",
-  logs: "logs",
-  replay: "sessionReplay",
-  sessionReplay: "sessionReplay",
-  profiling: "profiling",
-  crons: "crons",
-  aiMonitoring: "aiMonitoring",
-  "agent-tracing": "aiMonitoring",
-  agentTracing: "aiMonitoring",
-  "mcp-observability": "mcpObservability",
-  mcpObservability: "mcpObservability",
-} as const;
-
-const SUPPORTED_FEATURE_NAMES = [
-  "errors",
-  "tracing",
-  "logs",
-  "replay",
-  "profiling",
-  "crons",
-  "agent-tracing",
-  "mcp-observability",
-] as const;
-
-const SUPPORTED_FEATURE_TEXT = SUPPORTED_FEATURE_NAMES.join(", ");
-
 type InitFlags = {
-  readonly yes: boolean;
-  readonly "dry-run": boolean;
-  readonly features?: string[];
-  readonly team?: string;
-  readonly app?: string;
-  /**
-   * Default `true` — Ink is the default UI on both the Bun binary
-   * and the npm/Node distribution. Stricli auto-generates a negated
-   * `--no-tui` flag that flips this to `false` — that's the escape
-   * hatch users invoke when the Ink path misbehaves (e.g. on unusual
-   * terminal emulators).
-   */
-  readonly tui: boolean;
+  readonly json: boolean;
+  readonly fields?: string[];
 };
 
 /**
- * Classify and separate two optional positional args into a target and a directory.
- *
- * Uses {@link looksLikePath} to distinguish filesystem paths from org/project targets.
- * Detects swapped arguments and returns a warning when auto-correcting.
- *
- * @returns Target string (or undefined), directory string (or undefined),
- *   and the warning for swapped arguments, if any
+ * Agents get the Markdown source as written: they read it through a pipe,
+ * or through a pseudo-terminal that `detectAgent` recognizes. A person in a
+ * terminal gets it rendered.
  */
-function classifyArgs(
-  first?: string,
-  second?: string,
-): {
-  target: string | undefined;
-  directory: string | undefined;
-  warning?: string;
-} {
-  // No args — auto-detect everything
-  if (!first) {
-    return { target: undefined, directory: undefined };
-  }
-
-  const firstIsPath = looksLikePath(first);
-
-  // Single arg
-  if (!second) {
-    return firstIsPath
-      ? { target: undefined, directory: first }
-      : { target: first, directory: undefined };
-  }
-
-  const secondIsPath = looksLikePath(second);
-
-  // Two paths → error
-  if (firstIsPath && secondIsPath) {
-    throw new ValidationError(
-      [
-        `"${first}" and "${second}" are both directory paths — only one directory is allowed.`,
-        "",
-        "Provide a single directory:",
-        `  sentry init [<org>/<project>] ${first}`,
-      ].join("\n"),
-    );
-  }
-
-  // Two targets → error
-  if (!(firstIsPath || secondIsPath)) {
-    throw new ValidationError(
-      [
-        `"${first}" and "${second}" are both treated as targets — only one is allowed.`,
-        "",
-        "Pair a target with a directory path:",
-        `  sentry init ${first} ./my-project`,
-      ].join("\n"),
-    );
-  }
-
-  // (TARGET, PATH) — correct order
-  if (!firstIsPath && secondIsPath) {
-    return { target: first, directory: second };
-  }
-
-  // (PATH, TARGET) — swapped, auto-correct with warning
-  return {
-    target: second,
-    directory: first,
-    warning: `Arguments appear reversed. Interpreting as: ${second} ${first}`,
-  };
+function formatGuide(data: InitOutput): string {
+  return isPlainOutput() || detectAgent()
+    ? data.guide.trimEnd()
+    : renderMarkdown(data.guide);
 }
 
-/** `init`'s positionals, parsed: the target and the directory. */
-type InitInput = {
-  readonly target: ParsedOrgProject;
-  /** The directory as typed, relative to the cwd; `undefined` for the cwd */
-  readonly directory?: string;
-  /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
-  readonly baseUrl?: string;
-  /** Set when the arguments were swapped; `func` logs it */
-  readonly warning?: string;
-};
-
-/** `init`'s target, resolved to explicit org and project values. */
-type ResolvedInitTarget = {
-  readonly org: string | undefined;
-  readonly project: string | undefined;
-};
-
-/** `init`'s `[<target>] [<directory>]` arguments. */
-export type InitArguments = BoundArguments<InitInput, ResolvedInitTarget>;
-
-/**
- * Parse `init`'s positionals without side effects: tell the target from
- * the directory ({@link classifyArgs}), then parse and validate the target.
- *
- * @throws {ValidationError} For more than two arguments, two directories,
- *   two targets, or an invalid org or project slug
- */
-function parseInitInput(args: readonly string[]): InitInput {
-  if (args.length > 2) {
-    throw new ValidationError(
-      `Too many arguments: ${args.join(" ")}. Expected: sentry init [<target>] [<directory>]`,
-    );
-  }
-  const { target, directory, warning } = classifyArgs(args[0], args[1]);
-  const { parsed, baseUrl } = parseOrgProjectInput(target);
-  // Validate user-provided slugs before they reach API calls
-  if (parsed.type === "explicit") {
-    validateResourceId(parsed.org, "organization slug");
-    validateResourceId(parsed.project, "project name");
-  } else if (parsed.type === "org-all") {
-    validateResourceId(parsed.org, "organization slug");
-  }
-  return { target: parsed, directory, baseUrl, warning };
-}
-
-function parseFeatures(
-  features: readonly string[] | undefined,
-): string[] | undefined {
-  const requested = features
-    ?.flatMap((feature) => feature.split(FEATURE_DELIMITER))
-    .map((feature) => feature.trim())
-    .filter(Boolean);
-
-  if (!requested || requested.length === 0) {
-    return;
-  }
-
-  return requested.map(normalizeFeature);
-}
-
-function normalizeFeature(feature: string): string {
-  const normalized = FEATURE_ALIASES[feature as keyof typeof FEATURE_ALIASES];
-  if (!normalized) {
-    throw new ValidationError(
-      `Unknown init feature "${feature}". Supported features: ${SUPPORTED_FEATURE_TEXT}`,
-      "features",
-    );
-  }
-  return normalized;
-}
-
-function isNonInteractiveContext(context: unknown): boolean {
-  const { stdin, stdout } = context as {
-    stdin?: { isTTY?: boolean };
-    stdout?: { isTTY?: boolean };
-  };
-  return stdin?.isTTY !== true || stdout?.isTTY !== true;
-}
-
-function validateNonInteractiveInit(
-  context: unknown,
-  flags: InitFlags,
-  features: readonly string[] | undefined,
-): void {
-  if (!isNonInteractiveContext(context)) {
-    return;
-  }
-
-  // --dry-run implies non-interactive mode and forces yes=true in the
-  // wizard runner, so it doesn't need explicit --yes or --features.
-  if (flags["dry-run"]) {
-    return;
-  }
-
-  if (flags.yes && features && features.length > 0) {
-    return;
-  }
-
-  throw new ContextError("Yes flag and features", NON_INTERACTIVE_USAGE_HINT, [
-    "Agent/CI mode cannot ask interactive setup questions.",
-    "Pass --yes to accept non-interactive prompts.",
-    `Pass --features with one or more supported features: ${SUPPORTED_FEATURE_TEXT}.`,
-    "Run sentry init from an interactive terminal to use the wizard UI.",
-  ]);
-}
-
-/**
- * Resolve the parsed org/project target into explicit org and project values,
- * after applying a pasted URL's server.
- *
- * For `project-search` (bare slug), searches for an existing project first.
- * If not found, treats the slug as a **new project name** to create —
- * org will be resolved later by init preflight before the workflow starts.
- * If the slug matches an org name, treats it as org-only (like `slug/`).
- */
-async function resolveTarget(input: InitInput): Promise<ResolvedInitTarget> {
-  if (input.baseUrl) {
-    applySentryUrlContext(input.baseUrl);
-  }
-  const parsed = input.target;
-
-  switch (parsed.type) {
-    case "explicit":
-      return { org: parsed.org, project: parsed.project };
-    case "org-all":
-      return { org: parsed.org, project: undefined };
-    case "project-search": {
-      const resolution = await classifyProjectSearchTarget(parsed, {
-        // A miss is a new project name for init, not a fuzzy recovery.
-        fuzzy: false,
-      });
-
-      // Multiple matches — disambiguation error
-      if (resolution.kind === "projects" && resolution.projects.length > 1) {
-        const first = resolution.projects[0];
-        const orgList = resolution.projects
-          .map((p) => `  ${p.orgSlug}/${p.slug}`)
-          .join("\n");
-        throw new ValidationError(
-          `Project "${parsed.projectSlug}" exists in multiple organizations.\n\n` +
-            `Specify the organization:\n${orgList}\n\n` +
-            `Example: sentry init ${first.orgSlug}/${parsed.projectSlug}`,
-        );
-      }
-
-      // Exactly one match — use it (wizard handles existing-project flow)
-      if (resolution.kind === "projects") {
-        const match = resolution.projects[0];
-        return { org: match.orgSlug, project: match.slug };
-      }
-
-      // No project found — is the slug an org name?
-      if (resolution.kind === "organization") {
-        return { org: resolution.org, project: undefined };
-      }
-
-      // Truly not found — treat as the name for a new project to create.
-      // Org will be resolved later by init preflight before the workflow starts.
-      log.info(
-        `No existing project "${parsed.projectSlug}" found — will create a new project with this name.`,
-      );
-      return { org: undefined, project: parsed.projectSlug };
-    }
-    case "auto-detect":
-      return { org: undefined, project: undefined };
-    default: {
-      const _exhaustive: never = parsed;
-      throw new ContextError("Target", String(_exhaustive), []);
-    }
-  }
-}
-
-export const initCommand = buildCommand<
-  InitFlags,
-  [InitArguments],
-  SentryContext
->({
+export const initCommand = buildCommand({
+  auth: false,
+  skipRcUrlCheck: true,
   docs: {
     brief: topLevelBrief("init"),
-    customUsage: ["[<target>] [<directory>]"],
     fullDescription:
-      "EXPERIMENTAL: This command may modify your source files.\n\n" +
-      "Runs the Sentry setup wizard to detect your project's framework, " +
-      "install the SDK, and configure Sentry.\n\n" +
-      "Supports org/project syntax and a directory positional. Path-like\n" +
-      "arguments (starting with . / ~) are treated as the directory;\n" +
-      "everything else is treated as the target.",
+      "Print a Markdown guide that a coding agent follows to add Sentry to " +
+      "your project: install the CLI, log in, pick or create a Sentry " +
+      "project, choose features, install and configure the SDKs using " +
+      "`sentry docs`, and verify that a test error reaches Sentry. If the " +
+      "project already uses Sentry, the guide covers upgrading the SDKs and " +
+      "turning on more features instead.\n\n" +
+      "The command changes nothing and needs no login. The same guide is " +
+      "published at https://cli.sentry.dev/get-started-with-sentry.md.",
     examples: [
-      { description: "Interactive setup", command: "sentry init" },
       {
-        description: "Non-interactive agent/CI setup",
-        command: "sentry init --yes --features errors,tracing,replay",
+        description: "Print the setup guide",
+        run: "init",
       },
       {
-        description: "Dry run to preview changes",
-        command: "sentry init --dry-run",
-      },
-      { description: "Target a subdirectory", command: "sentry init ./my-app" },
-      {
-        description: "Use a specific organization (auto-detect project)",
-        command: "sentry init acme/",
-      },
-      {
-        description: "Use a specific organization and project",
-        command: "sentry init acme/my-app",
-      },
-      {
-        description: "Search for a project across organizations",
-        command: "sentry init my-app",
-      },
-      {
-        description: "Use a specific project in a subdirectory",
-        command: "sentry init acme/my-app ./my-project",
-      },
-      {
-        description: "Assign a team when creating a new project",
-        command: "sentry init acme/ --team backend",
-      },
-      {
-        description: "Enable specific features",
-        command: "sentry init --features profiling,replay",
+        description: "Print the guide as JSON",
+        run: "init --json",
       },
     ],
   },
+  output: { human: formatGuide, schema: InitOutputSchema },
   parameters: {
-    positional: boundArguments({
-      placeholder: "target/directory",
-      kind: ORG_PROJECT_OR_DIRECTORY_TARGET,
-      brief:
-        "Optional target (<org>/<project>, <org>/, or <project>) and directory (default: current directory)",
-      parse: parseInitInput,
-      resolve: resolveTarget,
-    }),
-    flags: {
-      yes: {
-        ...YES_FLAG,
-        brief:
-          "Accept non-interactive defaults (requires --features outside a TTY)",
-      },
-      "dry-run": DRY_RUN_FLAG,
-      features: {
-        kind: "parsed",
-        parse: choiceListParser(SUPPORTED_FEATURE_NAMES),
-        brief:
-          "Features to enable: errors,tracing,logs,replay,profiling,crons,agent-tracing,mcp-observability",
-        variadic: true,
-        optional: true,
-      },
-      team: {
-        kind: "parsed",
-        parse: parseTeam,
-        brief: "Team slug to create the project under",
-        optional: true,
-      },
-      app: {
-        kind: "parsed",
-        parse: parseText,
-        brief:
-          "App to initialize in a monorepo (required with --yes when multiple apps are detected)",
-        optional: true,
-      },
-      tui: {
-        kind: "boolean",
-        brief:
-          "Use the Ink-based interactive UI (default). Pass --no-tui to fall back to plain log output.",
-        default: true,
-      },
-    },
-    aliases: {
-      ...DRY_RUN_ALIASES,
-      ...YES_ALIASES,
-      t: "team",
-    },
+    flags: {},
   },
-  // oxlint-disable-next-line require-yield -- init renders through WizardUI instead of command output
-  async *func(this: SentryContext, flags: InitFlags, args: InitArguments) {
-    // 1. Positionals were classified into target vs directory before func
-    //    ran; report a swap now, as before
-    const { directory: dirArg, warning } = args.parsed;
-    if (warning) {
-      log.warn(warning);
-    }
-
-    // 2. Resolve directory
-    const targetDir = dirArg ? path.resolve(this.cwd, dirArg) : this.cwd;
-
-    // 3. Parse and validate features before any network or wizard work.
-    const featuresList = parseFeatures(flags.features);
-
-    // Non-TTY callers (CI/agents) must provide every interactive choice
-    // needed to start setup. Fail before project lookup, org prefetch, or
-    // UI creation so the error is deterministic and actionable.
-    try {
-      validateNonInteractiveInit(this, flags, featuresList);
-    } catch (err) {
-      setTag("wizard.outcome", "context_error");
-      throw err;
-    }
-
-    // 4. Resolve target → org + project
-    //    User-provided slugs were validated when the target was parsed.
-    //    For bare slugs, if no existing project is found, the slug becomes
-    //    the name for a new project (org resolved later by the wizard).
-    const { org: explicitOrg, project: explicitProject } = await args.resolved;
-
-    // Mastra requires an explicit bearer, unlike regular Sentry API requests
-    // that refresh OAuth lazily. Resolve it before opening the wizard so an
-    // AuthError can trigger auto-login without leaving a stale screen behind.
-    await refreshToken();
-
-    // 5. Start background org detection when org is not yet known.
-    //    The prefetch runs concurrently with the preamble, the wizard startup,
-    //    and all early suspend/resume rounds — by the time the wizard needs the
-    //    org (inside createSentryProject), the result is already cached.
-    if (!explicitOrg) {
-      warmOrgDetection(targetDir);
-    }
-
-    // 6. Run the wizard.
-    await runWizard({
-      directory: targetDir,
-      yes: flags.yes,
-      dryRun: flags["dry-run"],
-      features: featuresList,
-      team: flags.team,
-      app: flags.app,
-      org: explicitOrg,
-      project: explicitProject,
-      // `flags.tui` defaults to `true`. `--no-tui` (auto-generated
-      // by stricli's flag negation) flips it to `false` — that's the
-      // signal we forward to the factory as `forceLegacyUi`.
-      forceLegacyUi: flags.tui === false,
-    });
+  // Stricli requires an AsyncGenerator; the guide is static
+  async *func(this: SentryContext, _flags: InitFlags) {
+    yield new CommandOutput<InitOutput>({ guide: INIT_GUIDE });
   },
 });

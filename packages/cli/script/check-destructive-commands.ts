@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Verify commands that can issue DELETE retain destructive-command safeguards.
  * Uses the same source analysis as schema discovery, including private/dynamic
@@ -9,6 +8,7 @@ import { readFile } from "node:fs/promises";
 import { glob } from "tinyglobby";
 import { getAllEndpoints } from "../src/lib/api-schema.js";
 import { analyzeSourceApiUsage } from "./lib/source-api-usage.js";
+import { logger } from "../src/lib/logger.js";
 
 const files = await glob("src/**/*.{ts,tsx}", {
   ignore: ["src/generated/**", "**/*.test.ts"],
@@ -43,16 +43,16 @@ const deleting = analysis.commands.filter(
 const problems = deleting.filter(({ destructive }) => !destructive);
 
 if (problems.length === 0) {
-  console.log(
-    `✓ All ${deleting.length} command export(s) that send a DELETE are marked destructive`,
+  logger.success(
+    `All ${deleting.length} command export(s) that send a DELETE are marked destructive`,
   );
 } else {
-  console.error(
-    `✗ ${problems.length} command(s) send a DELETE but are not marked destructive:\n`,
-  );
-  for (const { file, name } of problems) console.error(`  ${file}#${name}`);
-  console.error(
-    "\n  Build them with buildDeleteCommand, or pass `destructive: true` to buildCommand.",
+  logger.error(
+    [
+      `${problems.length} command(s) send a DELETE but are not marked destructive:\n`,
+      ...problems.map(({ file, name }) => `  ${file}#${name}`),
+      "\n  Build them with buildDeleteCommand, or pass `destructive: true` to buildCommand.",
+    ].join("\n"),
   );
   process.exitCode = 1;
 }

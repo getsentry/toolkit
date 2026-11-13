@@ -10,7 +10,7 @@
  * for introspection and documentation generation.
  */
 
-import generatedCommandApi from "../generated/command-api.json";
+import generatedCommandApi from "../generated/command-api.json" with { type: "json" };
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
   CHOICE_TARGET,
@@ -324,7 +324,7 @@ export function buildCommandInfo(cmd: Command, path: string): CommandInfo {
     aliases: cmd.parameters.aliases ?? {},
     examples: (cmd.__examples ?? []).map(
       (example) =>
-        `# ${example.description}\n${exampleSteps(example).join("\n")}`,
+        `# ${example.description}\n${exampleSteps(example, "sentry").join("\n")}`,
     ),
     jsonFields: cmd.__jsonFields?.length ? [...cmd.__jsonFields] : undefined,
     ...(cmd.__destructive ? { destructive: true as const } : {}),
@@ -350,6 +350,7 @@ export function extractRouteGroupCommands(
 
     const subTarget = subEntry.target;
     if (isCommand(subTarget)) {
+      // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a command path, not a hint.
       const path = `sentry ${routeName} ${subEntry.name.original}`;
       commands.push(buildCommandInfo(subTarget, path));
     } else if (isRouteMap(subTarget)) {
@@ -385,6 +386,7 @@ export function extractAllRoutes(routeMap: RouteMap): RouteInfo[] {
         commands: extractRouteGroupCommands(target, routeName),
       });
     } else if (isCommand(target)) {
+      // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a command path, not a hint.
       const path = `sentry ${routeName}`;
       result.push({
         name: routeName,
@@ -696,6 +698,7 @@ export function resolveCommandPath(
   if (isCommand(target)) {
     return {
       kind: "command",
+      // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a command path, not a hint.
       info: buildCommandInfo(target, `sentry ${name}`),
     };
   }

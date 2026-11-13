@@ -36,7 +36,6 @@ vi.mock("../../../src/lib/git.js", async (importOriginal) => ({
   isInsideGitWorkTree: mockIsInsideGitWorkTree,
   isShallowRepository: () => false,
   getCommitLog: () => [],
-  getUncommittedFiles: () => [],
 }));
 
 // Dynamic import: must run AFTER vi.mock() so setCommitsAuto picks up
@@ -45,6 +44,8 @@ const {
   createRelease,
   createReleaseDeploy,
   deleteRelease,
+  correctRefRepositories,
+  explainSetCommitsError,
   getRelease,
   listReleaseDeploys,
   listReleasesPaginated,
@@ -59,7 +60,13 @@ import { CONFIG_DIR_ENV_VAR } from "../../../src/lib/db/index.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { withEnv } from "../../../src/lib/env.js";
 import { classifySilenced } from "../../../src/lib/error-reporting.js";
-import { ApiError, EXIT, isUserError } from "../../../src/lib/errors.js";
+import {
+  ApiError,
+  EXIT,
+  isUserError,
+  ResolutionError,
+  ValidationError,
+} from "../../../src/lib/errors.js";
 import type { SentryDeploy, SentryRelease } from "../../../src/types/index.js";
 import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
@@ -128,7 +135,7 @@ afterEach(() => {
 describe("getRelease", () => {
   test("fetches a release by version", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.url).toContain("/releases/1.0.0/");
       return new Response(JSON.stringify(SAMPLE_RELEASE), {
         status: 200,
@@ -151,7 +158,7 @@ describe("getRelease", () => {
 describe("createRelease", () => {
   test("creates a release with version and projects", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("POST");
       const body = (await req.json()) as {
         version: string;
@@ -173,6 +180,132 @@ describe("createRelease", () => {
     expect(release.version).toBe("1.0.0");
     expect(release.projects).toHaveLength(1);
   });
+
+  test("retries a 502 and accepts the 208 for a release the first attempt created", async () => {
+    const statuses: number[] = [];
+    globalThis.fetch = mockFetch(async () => {
+      const status = statuses.length === 0 ? 502 : 208;
+      statuses.push(status);
+      return status === 502
+        ? new Response("<title>502</title>", { status })
+        : Response.json(SAMPLE_RELEASE, { status });
+    });
+
+    const release = await createRelease("test-org", { version: "1.0.0" });
+
+    expect(release.version).toBe("1.0.0");
+    expect(statuses).toEqual([502, 208]);
+  });
+
+  test("retries a 503", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("upstream connect error", { status: 503 })
+        : Response.json(SAMPLE_RELEASE, { status: 201 });
+    });
+
+    const release = await createRelease("test-org", { version: "1.0.0" });
+
+    expect(release.version).toBe("1.0.0");
+    expect(calls).toBe(2);
+  });
+
+  test("does not retry a 400", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return Response.json(
+        { projects: ["This field is required."] },
+        { status: 400 },
+      );
+    });
+
+    const error = await createRelease("test-org", { version: "1.0.0" }).catch(
+      (e: unknown) => e,
+    );
+
+    expect((error as ApiError).status).toBe(400);
+    expect(calls).toBe(1);
+  });
+
+  /** Answer the create request with a 400 and `body`. */
+  const reject400 = (body: unknown) => {
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(JSON.stringify(body), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+  };
+
+  test("names the projects Sentry rejected (CLI-2G3)", async () => {
+    reject400({ projects: ["Invalid project ids or slugs"] });
+
+    const error = await createRelease("test-org", {
+      version: "1.0.0",
+      projects: ["web", "api"],
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ResolutionError);
+    const { message } = error as ResolutionError;
+    expect(message).toContain(
+      "One of the projects 'web', 'api' was not found in organization 'test-org'.",
+    );
+    expect(message).toContain("sentry project list test-org/");
+    expect(classifySilenced(error)).toBe("user_input_error");
+  });
+
+  test("explains a release that exists for projects the token cannot access", async () => {
+    reject400({
+      projects: ["You do not have permission to one of the projects: web"],
+    });
+
+    const error = await createRelease("test-org", {
+      version: "1.0.0",
+      projects: ["api"],
+    }).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "release.projects",
+    });
+    expect((error as ValidationError).message).toContain(
+      "Release '1.0.0' already exists in organization 'test-org' for projects your auth token cannot access: web.",
+    );
+    expect(classifySilenced(error)).toBe("user_validation");
+  });
+
+  test("names a release version Sentry rejects", async () => {
+    reject400({ version: ["Release with name latest is not allowed"] });
+
+    const error = await createRelease("test-org", {
+      version: "latest",
+      projects: ["web"],
+    }).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "release.version",
+    });
+    expect((error as ValidationError).message).toContain(
+      "Sentry does not allow the release version 'latest'.",
+    );
+    expect(classifySilenced(error)).toBe("user_validation");
+  });
+
+  test("keeps other 400s as ApiError so they are captured", async () => {
+    reject400({ projects: ["This field is required."] });
+
+    const error = await createRelease("test-org", { version: "1.0.0" }).catch(
+      (e: unknown) => e,
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(classifySilenced(error)).toBeNull();
+  });
 });
 
 // =============================================================================
@@ -183,7 +316,7 @@ describe("updateRelease", () => {
   test("updates a release with dateReleased", async () => {
     const updated = { ...SAMPLE_RELEASE, dateReleased: "2025-06-15T00:00:00Z" };
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("PUT");
       expect(req.url).toContain("/releases/1.0.0/");
       const body = (await req.json()) as { dateReleased: string };
@@ -200,6 +333,55 @@ describe("updateRelease", () => {
 
     expect(release.dateReleased).toBe("2025-06-15T00:00:00Z");
   });
+
+  test("retries a 503 on a metadata update", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("busy", { status: 503 })
+        : Response.json(SAMPLE_RELEASE);
+    });
+
+    await updateRelease("test-org", "1.0.0", {
+      dateReleased: "2025-06-15T00:00:00Z",
+    });
+
+    expect(calls).toBe(2);
+  });
+
+  test("does not retry a 404", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return Response.json(
+        { detail: "The requested resource does not exist" },
+        { status: 404 },
+      );
+    });
+
+    const error = await updateRelease("test-org", "1.0.0", {
+      dateReleased: "2025-06-15T00:00:00Z",
+    }).catch((e: unknown) => e);
+
+    expect((error as ApiError).status).toBe(404);
+    expect(calls).toBe(1);
+  });
+
+  test("does not retry a 503 when setting commits", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return new Response("busy", { status: 503 });
+    });
+
+    const error = await setCommitsLocal("test-org", "1.0.0", [
+      { id: "abc123" },
+    ]).catch((e: unknown) => e);
+
+    expect((error as ApiError).status).toBe(503);
+    expect(calls).toBe(1);
+  });
 });
 
 // =============================================================================
@@ -209,7 +391,7 @@ describe("updateRelease", () => {
 describe("deleteRelease", () => {
   test("deletes a release", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("DELETE");
       expect(req.url).toContain("/releases/1.0.0/");
       return new Response(null, { status: 204 });
@@ -227,7 +409,7 @@ describe("deleteRelease", () => {
 describe("listReleaseDeploys", () => {
   test("returns deploys for a release", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.url).toContain("/releases/1.0.0/deploys/");
       return new Response(JSON.stringify([SAMPLE_DEPLOY]), {
         status: 200,
@@ -250,7 +432,7 @@ describe("listReleaseDeploys", () => {
 describe("createReleaseDeploy", () => {
   test("creates a deploy for a release", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("POST");
       expect(req.url).toContain("/releases/1.0.0/deploys/");
       const body = (await req.json()) as { environment: string };
@@ -267,6 +449,21 @@ describe("createReleaseDeploy", () => {
 
     expect(deploy.environment).toBe("production");
     expect(deploy.id).toBe("42");
+  });
+
+  test("does not retry a 503, since a resend would record a second deploy", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async () => {
+      calls += 1;
+      return new Response("busy", { status: 503 });
+    });
+
+    const error = await createReleaseDeploy("test-org", "1.0.0", {
+      environment: "production",
+    }).catch((e: unknown) => e);
+
+    expect((error as ApiError).status).toBe(503);
+    expect(calls).toBe(1);
   });
 });
 
@@ -296,7 +493,7 @@ describe("setCommitsAuto", () => {
     const requests: { method: string; url: string }[] = [];
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       requests.push({ method: req.method, url: req.url });
 
       // List org repositories (SDK uses /repos/ endpoint)
@@ -360,7 +557,7 @@ describe("setCommitsAuto", () => {
     let reposResolved = false;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
 
       if (req.url.includes("/repos/")) {
         await reposGate;
@@ -450,7 +647,7 @@ describe("setCommitsAuto", () => {
     async ({ body, status }) => {
       const requests: { method: string; pathname: string }[] = [];
       globalThis.fetch = mockFetch(async (input, init) => {
-        const request = new Request(input!, init);
+        const request = new Request(input, init);
         requests.push({
           method: request.method,
           pathname: new URL(request.url).pathname,
@@ -494,7 +691,7 @@ describe("setCommitsAuto", () => {
     const repoQueries: (string | null)[] = [];
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       if (!url.pathname.endsWith("/repos/")) {
         // Concurrent previous-release lookup
         return new Response(JSON.stringify({}), {
@@ -549,7 +746,7 @@ describe("setCommitsAuto", () => {
     let repoRequestCount = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
 
       if (req.url.includes("/repos/")) {
         repoRequestCount += 1;
@@ -667,7 +864,7 @@ describe("setCommitsAuto", () => {
     let sentRefs: unknown;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       if (req.url.includes("/repos/")) {
         repoQueries.push(new URL(req.url).searchParams.get("query"));
         return new Response(JSON.stringify([SAMPLE_REPO]), {
@@ -731,7 +928,7 @@ describe("setCommitsAuto", () => {
       let sentRefs: unknown;
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         if (req.url.includes("/repos/")) {
           const query = new URL(req.url).searchParams.get("query");
           repoQueries.push(query);
@@ -776,7 +973,7 @@ describe("setCommitsAuto", () => {
       url: "https://github.com/getsentry/cli-legacy",
     };
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       if (!url.pathname.endsWith("/repos/")) {
         return new Response(JSON.stringify({}), {
           status: 200,
@@ -826,7 +1023,7 @@ describe("setCommitsAuto", () => {
     let sentRefs: unknown;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       if (req.url.includes("/repos/")) {
         const query = new URL(req.url).searchParams.get("query") ?? "";
         repoQueries.push(query);
@@ -885,7 +1082,7 @@ describe("setCommitsAuto", () => {
     let sentRefs: unknown;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       if (req.url.includes("/repos/")) {
         const query = new URL(req.url).searchParams.get("query") ?? "";
         const repos = hits
@@ -948,7 +1145,7 @@ describe("setCommitsWithRefs", () => {
   test("keeps a slash in a release version within the org release endpoint", async () => {
     const requestPaths: string[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {
-      const request = new Request(input!, init);
+      const request = new Request(input, init);
       requestPaths.push(new URL(request.url).pathname);
       return new Response(JSON.stringify(SAMPLE_RELEASE), {
         status: 200,
@@ -963,6 +1160,262 @@ describe("setCommitsWithRefs", () => {
   });
 });
 
+describe("explainSetCommitsError", () => {
+  const REFS = [
+    {
+      repository: "AutonomousBusinessUnits/platform",
+      commit: "def456",
+      previousCommit: "abc123",
+    },
+  ];
+  /** The server's 400 for a ref whose repository the org doesn't have. */
+  const invalidRepoError = (name: string) =>
+    new ApiError(
+      "API request failed: 400 Bad Request",
+      400,
+      JSON.stringify({ refs: [`Invalid repository names: ${name}`] }),
+      "organizations/test-org/releases/1.0.0/",
+    );
+  const repo = (name: string, url?: string) => ({
+    id: name,
+    name,
+    url,
+    provider: { id: "integrations:github", name: "GitHub" },
+    status: "active",
+  });
+  /** Answer every repository search with `repos`. */
+  const reposResponse = (repos: unknown[]) =>
+    mockFetch(
+      async () =>
+        new Response(JSON.stringify(repos), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+  test.each([
+    new ApiError("API request failed: 400 Bad Request", 400, "Invalid SHA"),
+    new ApiError("API request failed: 500", 500, "Invalid repository names: x"),
+    new Error("boom"),
+  ])("returns other errors unchanged (%s)", async (error) => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock;
+
+    expect(await explainSetCommitsError("test-org", "1.0.0", REFS, error)).toBe(
+      error,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("names the repository Sentry has when only the case differs", async () => {
+    globalThis.fetch = reposResponse([
+      repo(
+        "autonomousbusinessunits/platform",
+        "https://github.com/autonomousbusinessunits/platform",
+      ),
+    ]);
+
+    const error = await explainSetCommitsError(
+      "test-org",
+      "1.0.0",
+      REFS,
+      invalidRepoError("AutonomousBusinessUnits/platform"),
+    );
+
+    expect(error).toMatchObject({
+      name: "ValidationError",
+      field: "commit.repository",
+    });
+    const { message } = error as Error;
+    expect(message).toContain(
+      "has no repository named 'AutonomousBusinessUnits/platform'",
+    );
+    expect(message).toContain(
+      "sentry release set-commits test-org/1.0.0 --commit 'autonomousbusinessunits/platform@abc123..def456'",
+    );
+  });
+
+  test("links the integration directory when the org has no repositories", async () => {
+    globalThis.fetch = reposResponse([]);
+
+    const error = await explainSetCommitsError(
+      "test-org",
+      "1.0.0",
+      REFS,
+      invalidRepoError("AutonomousBusinessUnits/platform"),
+    );
+
+    expect(error).toMatchObject({ field: "commit.repository" });
+    const { message } = error as Error;
+    expect(message).toContain("It has no repositories yet");
+    expect(message).toMatch(
+      /\/settings\/integrations\/\?category=source%20code%20management/,
+    );
+  });
+
+  test("suggests similar repositories and links the repository settings", async () => {
+    globalThis.fetch = reposResponse([repo("AutonomousBusinessUnits/web")]);
+
+    const error = await explainSetCommitsError(
+      "test-org",
+      "1.0.0",
+      REFS,
+      invalidRepoError("AutonomousBusinessUnits/platform"),
+    );
+
+    const { message } = error as Error;
+    expect(message).toContain(
+      "It has similarly named repositories: AutonomousBusinessUnits/web.",
+    );
+    expect(message).toContain(
+      "--commit 'AutonomousBusinessUnits/web@abc123..def456'",
+    );
+    expect(message).toContain("sentry repo list test-org/");
+    expect(message).toMatch(/\/settings\/repos\//);
+  });
+
+  test("still links the repository settings when the lookup fails", async () => {
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(JSON.stringify({ detail: "boom" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    const error = await explainSetCommitsError(
+      "test-org",
+      "1.0.0",
+      REFS,
+      invalidRepoError("AutonomousBusinessUnits/platform"),
+    );
+
+    expect(error).toMatchObject({ field: "commit.repository" });
+    expect((error as Error).message).toMatch(/\/settings\/repos\//);
+  });
+});
+
+describe("correctRefRepositories", () => {
+  const REFS = [
+    {
+      repository: "AutonomousBusinessUnits/platform",
+      commit: "def456",
+      previousCommit: "abc123",
+    },
+  ];
+  const invalidRepoError = new ApiError(
+    "API request failed: 400 Bad Request",
+    400,
+    JSON.stringify({
+      refs: ["Invalid repository names: AutonomousBusinessUnits/platform"],
+    }),
+    "organizations/test-org/releases/1.0.0/",
+  );
+  const reposResponse = (repos: unknown[]) =>
+    mockFetch(
+      async () =>
+        new Response(JSON.stringify(repos), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+  const repo = (name: string) => ({
+    id: name,
+    name,
+    url: `https://github.com/${name}`,
+    provider: { id: "integrations:github", name: "GitHub" },
+    status: "active",
+  });
+
+  test("uses Sentry's name when only the case differs", async () => {
+    globalThis.fetch = reposResponse([
+      repo("autonomousbusinessunits/platform"),
+    ]);
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    try {
+      expect(
+        await correctRefRepositories("test-org", REFS, invalidRepoError),
+      ).toEqual([
+        {
+          repository: "autonomousbusinessunits/platform",
+          commit: "def456",
+          previousCommit: "abc123",
+        },
+      ]);
+      expect(stderr.mock.calls.join("")).toContain(
+        "Using 'autonomousbusinessunits/platform'",
+      );
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  test("keeps the error when Sentry has no matching repository", async () => {
+    globalThis.fetch = reposResponse([repo("AutonomousBusinessUnits/web")]);
+
+    expect(
+      await correctRefRepositories("test-org", REFS, invalidRepoError),
+    ).toBeUndefined();
+  });
+
+  test("warns about no replacement when a later name has no match", async () => {
+    const refs = [
+      ...REFS,
+      { repository: "AutonomousBusinessUnits/missing", commit: "fed654" },
+    ];
+    const error = new ApiError(
+      "API request failed: 400 Bad Request",
+      400,
+      JSON.stringify({
+        refs: [
+          "Invalid repository names: AutonomousBusinessUnits/platform,AutonomousBusinessUnits/missing",
+        ],
+      }),
+      "organizations/test-org/releases/1.0.0/",
+    );
+    globalThis.fetch = reposResponse([
+      repo("autonomousbusinessunits/platform"),
+    ]);
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    try {
+      expect(
+        await correctRefRepositories("test-org", refs, error),
+      ).toBeUndefined();
+      expect(stderr.mock.calls.join("")).not.toContain("Using '");
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  test("ignores other errors without looking up repositories", async () => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock;
+
+    expect(
+      await correctRefRepositories(
+        "test-org",
+        REFS,
+        new ApiError("API request failed: 400 Bad Request", 400, "Invalid SHA"),
+      ),
+    ).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("keeps the error when the lookup fails", async () => {
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(JSON.stringify({ detail: "boom" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    expect(
+      await correctRefRepositories("test-org", REFS, invalidRepoError),
+    ).toBeUndefined();
+  });
+});
+
 // =============================================================================
 // setCommitsLocal
 // =============================================================================
@@ -971,7 +1424,7 @@ describe("setCommitsLocal", () => {
   test("sends explicit commits to the API", async () => {
     const withCommits = { ...SAMPLE_RELEASE, commitCount: 2 };
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.method).toBe("PUT");
       const body = (await req.json()) as {
         commits: Array<{ id: string; message: string }>;
@@ -1005,7 +1458,7 @@ describe("setCommitsLocal", () => {
 describe("listReleasesPaginated", () => {
   test("returns a page of releases with cursor", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       expect(req.url).toContain("/releases/");
       return new Response(JSON.stringify([SAMPLE_RELEASE]), {
         status: 200,
@@ -1043,7 +1496,7 @@ describe("listReleasesPaginated", () => {
 
   test("passes query and sort options", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       const url = new URL(req.url);
       expect(url.searchParams.get("query")).toBe("1.0");
       expect(url.searchParams.get("sort")).toBe("date");
@@ -1066,7 +1519,7 @@ describe("listReleasesPaginated", () => {
     async (sort) => {
       let flatten: string | null = null;
       globalThis.fetch = mockFetch(async (input, init) => {
-        const url = new URL(new Request(input!, init).url);
+        const url = new URL(new Request(input, init).url);
         flatten = url.searchParams.get("flatten");
         // Sentry rejects session sorts unless the results are flattened.
         if (flatten !== "1") {
@@ -1094,7 +1547,7 @@ describe("listReleasesPaginated", () => {
   test("does not flatten date-sorted results", async () => {
     let flatten: string | null = "unset";
     globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input!, init).url);
+      const url = new URL(new Request(input, init).url);
       flatten = url.searchParams.get("flatten");
       return new Response(JSON.stringify([]), {
         status: 200,

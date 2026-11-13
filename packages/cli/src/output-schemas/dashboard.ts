@@ -8,6 +8,7 @@ import {
   description,
   type InferOutput,
   looseObject,
+  nullable,
   number,
   object,
   optional,
@@ -38,7 +39,7 @@ export const DashboardListItemSchema = looseObject({
       email: optional(string()),
     }),
   ),
-  widgetDisplay: optional(array(string())),
+  widgetDisplay: optional(array(nullable(string()))),
 });
 
 /**
@@ -65,7 +66,7 @@ export const DashboardViewOutputSchema = object({
     array(
       object({
         title: pipe(string(), description("Widget title")),
-        displayType: pipe(string(), description("Display type")),
+        displayType: pipe(nullable(string()), description("Display type")),
         widgetType: optional(pipe(string(), description("Dataset"))),
         description: optional(
           pipe(string(), description("Markdown content of a text widget")),

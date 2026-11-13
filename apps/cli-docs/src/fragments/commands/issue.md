@@ -2,7 +2,11 @@
 
 ## Context recovery
 
-If auto-detection cannot find a project, authenticated non-interactive runs show
+If auto-detection cannot find a project and your account can reach exactly one
+organization, `issue list` lists that organization's issues, the same as
+`sentry issue list <org>/`.
+
+With several organizations, authenticated non-interactive runs show
 one copyable retry example and compact lists of other available organizations
 and `org/project` targets. Choose the project that matches your task; the retry
 keeps your query, period, limit, sort, and output flags. Navigation keywords such as `--cursor next`

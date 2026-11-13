@@ -127,7 +127,7 @@ In another, run the fixture with Spotlight pointed at that receiver:
 
 ```bash
 SENTRY_SPOTLIGHT=http://localhost:8969/stream \
-  pnpm --filter sentry exec tsx test/fixtures/local-agent-server.ts
+  pnpm --filter sentry run ts test/fixtures/local-agent-server.ts
 ```
 
 Then exercise each telemetry shape:

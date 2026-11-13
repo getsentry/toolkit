@@ -19,13 +19,11 @@ import { formatWidgetDeleted } from "../../../lib/formatters/human.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { buildDeleteCommand } from "../../../lib/mutate-command.js";
 import { buildDashboardUrl } from "../../../lib/sentry-web-urls.js";
-import {
-  type DashboardWidgetDeleteOutput,
-  prepareDashboardForUpdate,
-} from "../../../types/dashboard.js";
+import { prepareDashboardForUpdate } from "../../../types/dashboard.js";
 import { type DashboardArguments, dashboardArguments } from "../arguments.js";
 import { withDashboardErrors, resolveWidgetIndex } from "../resolve.js";
 import { DashboardWidgetDeleteOutputSchema } from "../../../generated/output-schemas/dashboard.js";
+import { sentry } from "../../../lib/app-identity.js";
 
 type DeleteFlags = {
   readonly index?: number;
@@ -48,16 +46,15 @@ export const deleteCommand = buildDeleteCommand(
       examples: [
         {
           description: "Delete a widget by title",
-          command:
-            "sentry dashboard widget delete 'My Dashboard' --title 'Error Rate'",
+          run: "dashboard widget delete 'My Dashboard' --title 'Error Rate'",
         },
         {
           description: "Delete a widget by index",
-          command: "sentry dashboard widget delete 12345 --index 0",
+          run: "dashboard widget delete 12345 --index 0",
         },
         {
           description: "Preview the deletion",
-          command: "sentry dashboard widget delete 12345 --index 0 --dry-run",
+          run: "dashboard widget delete 12345 --index 0 --dry-run",
         },
       ],
     },
@@ -68,8 +65,8 @@ export const deleteCommand = buildDeleteCommand(
     parameters: {
       positional: dashboardArguments({
         placeholder: "org/project/dashboard",
-        usageHint:
-          "sentry dashboard widget delete <org>/ <id> (--index <n> | --title <name>)",
+        usageHint: () =>
+          sentry`dashboard widget delete <org>/ <id> (--index <n> | --title <name>)`,
       }),
       flags: {
         index: {

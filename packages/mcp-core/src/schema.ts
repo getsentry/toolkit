@@ -134,12 +134,26 @@ export const ParamSpanId = z
     "The span ID within a trace. Use this with a trace resource to focus on a specific span.",
   );
 
+// Platform names agents sent in production that Sentry rejects with
+// `{"platform":["Invalid platform"]}`, mapped to the ID Sentry accepts. Every
+// value must be in GETTING_STARTED_DOCS_PLATFORMS in getsentry/sentry
+// src/sentry/models/project.py (checked against master on 2026-11-04).
+const PLATFORM_ALIASES: ReadonlyMap<string, string> = new Map([
+  ["react", "javascript-react"],
+  ["cocoa", "apple"],
+  ["cocoa-ios", "apple-ios"],
+  ["csharp", "dotnet"],
+  ["javascript-cloudflare", "node-cloudflare-workers"],
+  ["javascript-cloudflare-workers", "node-cloudflare-workers"],
+]);
+
 export const ParamPlatform = z
   .string()
   .toLowerCase()
   .trim()
+  .overwrite((platform) => PLATFORM_ALIASES.get(platform) ?? platform)
   .describe(
-    "The platform for the project. e.g., python, javascript, react, etc.",
+    "The Sentry platform ID for the project, e.g. javascript-react, javascript-nextjs, node, python-django, apple-ios, android, dotnet. Omit if unsure.",
   );
 
 export const ParamTransaction = z
@@ -199,6 +213,12 @@ export const ParamIssueStatus = z
   .enum(["resolved", "resolvedInNextRelease", "unresolved", "ignored"])
   .describe(
     "The new status for the issue. Valid values are 'resolved', 'resolvedInNextRelease', 'unresolved', and 'ignored'.",
+  );
+
+export const ParamIssuePriority = z
+  .enum(["low", "medium", "high"])
+  .describe(
+    "The new priority for the issue. Setting it manually stops Sentry from changing it automatically.",
   );
 
 export const ParamIssueIgnoreMode = z
@@ -262,6 +282,30 @@ export const ParamIgnoreUserWindowMinutes = z
   .max(7 * 24 * 60)
   .describe(
     "Optional time window in minutes for ignoreUserCount. If omitted, Sentry counts all future affected users.",
+  );
+
+export const ParamInRelease = z
+  .string()
+  .trim()
+  .min(1)
+  .describe(
+    "Release version to resolve the issue in, such as a version returned by find_releases. Requires status='resolved'. Events from newer releases reopen the issue as a regression; events from older releases do not.",
+  );
+
+export const ParamInCommit = z
+  .string()
+  .trim()
+  .min(1)
+  .describe(
+    "SHA of the commit that fixes the issue. Requires status='resolved' and inCommitRepository. The commit must already be known to Sentry.",
+  );
+
+export const ParamInCommitRepository = z
+  .string()
+  .trim()
+  .min(1)
+  .describe(
+    "Name of the repository that contains inCommit, as it appears in Sentry (for example 'getsentry/sentry').",
   );
 
 export const ParamReason = z

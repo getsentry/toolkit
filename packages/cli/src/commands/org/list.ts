@@ -10,6 +10,7 @@ import type { InferOutput } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { resolveAccountSelector } from "../../lib/account-selection.js";
 import { listOrganizationsUncached } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   parseAccountSelector,
@@ -33,7 +34,7 @@ import {
 } from "../../lib/db/auth.js";
 import { fetchEnvAccountUser } from "../../lib/env-account.js";
 import { getAllOrgRegions } from "../../lib/db/regions.js";
-import { ApiError, AuthError } from "../../lib/errors.js";
+import { ApiError, AuthError, TimeoutError } from "../../lib/errors.js";
 import { formatAccountLabel } from "../../lib/formatters/accounts.js";
 import { getNestedValue } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
@@ -259,7 +260,13 @@ async function fetchOrgsAcrossAccounts(
       continue;
     }
     const error = result.reason;
-    if (!(error instanceof AuthError || error instanceof ApiError)) {
+    if (
+      !(
+        error instanceof AuthError ||
+        error instanceof ApiError ||
+        error instanceof TimeoutError
+      )
+    ) {
       throw error;
     }
     firstError ??= error;
@@ -314,11 +321,11 @@ function mergeAccountOrgs(results: AccountOrgs[]): {
  */
 function reloginCommand(account: AccountSummary): string {
   if (account.email) {
-    return `sentry auth login ${accountSelectorOf(account)}`;
+    return sentry`auth login ${accountSelectorOf(account)}`;
   }
   return account.host
-    ? `sentry auth login --url ${account.host}`
-    : "sentry auth login";
+    ? sentry`auth login --url ${account.host}`
+    : sentry`auth login`;
 }
 
 /**
@@ -345,7 +352,7 @@ function resolveAccounts(selector?: string): AccountSummary[] | undefined {
     }
     const account = resolveAccountSelector(
       selector,
-      "sentry org list --account",
+      sentry`org list --account`,
       {
         fuzzy: true,
       },
@@ -398,25 +405,25 @@ export const listCommand = buildCommand({
       "(best matches first), or as a glob like 'acme-*'.\n\n" +
       "Alias: `sentry orgs` → `sentry org list`",
     examples: [
-      { description: "List organizations", command: "sentry org list" },
+      { description: "List organizations", run: "org list" },
       {
         description:
           "Only organizations whose slug or name matches (fuzzy, best matches first)",
-        command: "sentry org list acme",
+        run: "org list acme",
       },
       {
         description: "Only organizations matching a glob",
-        command: "sentry org list 'acme-*'",
+        run: "org list 'acme-*'",
       },
       {
         description: "Only one account's organizations",
-        command: "sentry org list --account jane@acme.com",
+        run: "org list --account jane@acme.com",
       },
       {
         description: "Same email on several servers: add the server",
-        command: "sentry org list -a jane@example.com:sentry.io",
+        run: "org list -a jane@example.com:sentry.io",
       },
-      { description: "Output as JSON", command: "sentry org list --json" },
+      { description: "Output as JSON", run: "org list --json" },
     ],
   },
   output: { human: formatOrgListHuman, schema: OrgListEntrySchema },
@@ -504,10 +511,10 @@ export const listCommand = buildCommand({
       hints.push(`Showing ${flags.limit} of ${orgs.length} organizations`);
     }
     if (entries.length > 0) {
-      hints.push("Tip: Use 'sentry org view <slug>' for details");
+      hints.push(`Tip: Use '${sentry`org view <slug>`}' for details`);
     } else if (filter && merged.orgs.length > 0) {
       hints.push(
-        `None of your ${merged.orgs.length} organizations match '${filter}'. Run 'sentry org list' to see them all.`,
+        `None of your ${merged.orgs.length} organizations match '${filter}'. Run '${sentry`org list`}' to see them all.`,
       );
     }
 

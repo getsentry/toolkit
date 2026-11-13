@@ -1,3 +1,4 @@
+import { sentry } from "../../lib/app-identity.js";
 import {
   choiceParser,
   parseBindHost,
@@ -24,12 +25,12 @@ import type { Server } from "node:http";
 import { basename } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { serve } from "@hono/node-server";
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import {
   ingestReceiverEnvelope,
   readReceiverBody,
   receiverEnvelopeId,
   type ReceiverEnvelope,
+  type ReceiverBuffer,
 } from "./receiver-ingest.js";
 import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
@@ -75,7 +76,7 @@ export const DEFAULT_PORT = 8969;
  *
  * Spotlight clients (the desktop app, the browser overlay) probe `/health` and
  * treat a sidecar as present only when this exact header value comes back —
- * see `isSidecarRunning()` in `@spotlightjs/spotlight`. Without it they assume
+ * without it they assume
  * no sidecar is running, try to start their own on the same port, fail with
  * EADDRINUSE, and report "not connected" even though this server is happily
  * receiving envelopes.
@@ -255,7 +256,7 @@ export function buildSSEHandler(
 }
 
 export function buildApp(
-  spotlightBuffer: ReturnType<typeof createSpotlightBuffer>,
+  buffer: ReceiverBuffer,
   { uiActions = false, retention }: LocalReceiverOptions = {},
 ): Hono {
   const app = new Hono();
@@ -386,7 +387,7 @@ export function buildApp(
     if (!uiActions) {
       return c.body(null, 403);
     }
-    spotlightBuffer.clear();
+    buffer.clear();
     return c.body(null, 204);
   });
 
@@ -395,7 +396,7 @@ export function buildApp(
       return c.body(null, 403);
     }
     try {
-      const container = spotlightBuffer.read({
+      const container = buffer.read({
         envelopeId: c.req.param("id"),
       })[0];
       if (!container) {
@@ -428,7 +429,7 @@ export function buildApp(
     const contentEncoding = c.req.header("content-encoding");
     const userAgent = c.req.header("user-agent");
 
-    const status = await ingestReceiverEnvelope(spotlightBuffer, {
+    const status = await ingestReceiverEnvelope(buffer, {
       body,
       encoding: contentEncoding,
       contentType,
@@ -477,11 +478,11 @@ export function buildApp(
           : () => {};
       if (retention && c.req.query("retention") === "1")
         sendSettings(retention.getSettings());
-      const readerId = spotlightBuffer.subscribe(onEnvelope, lastEventId);
+      const readerId = buffer.subscribe(onEnvelope, lastEventId);
 
       await new Promise<void>((resolve) => {
         stream.onAbort(() => {
-          spotlightBuffer.unsubscribe(readerId);
+          buffer.unsubscribe(readerId);
           unsubscribeSettings();
           resolve();
         });
@@ -506,6 +507,7 @@ function waitForShutdown(server: Server): Promise<void> {
 
     function shutdown(signal: NodeJS.Signals) {
       if (shuttingDown) {
+        // oxlint-disable-next-line sentry-cli/no-process-exit -- a second SIGINT/SIGTERM during shutdown.
         process.exit(0);
       }
       shuttingDown = true;
@@ -1008,33 +1010,33 @@ export const serverCommand = buildCommand({
     examples: [
       {
         description: "Start the server and tail events",
-        command: "sentry local",
+        run: "local",
       },
-      { description: "Use a custom port", command: "sentry local --port 9000" },
+      { description: "Use a custom port", run: "local --port 9000" },
       {
         description:
           "Receive into a daemon session that outlives this terminal",
-        command: "sentry local serve --session worker",
+        run: "local serve --session worker",
       },
       {
         description: "Only show errors and logs (filter out transactions)",
-        command: "sentry local -f error -f log",
+        run: "local -f error -f log",
       },
       {
         description: "Only show AI/agent spans",
-        command: "sentry local -f ai",
+        run: "local -f ai",
       },
       {
         description: "Suppress per-envelope tail output",
-        command: "sentry local --quiet",
+        run: "local --quiet",
       },
       {
         description: "Stream NDJSON for scripts and agents",
-        command: "sentry local --format json",
+        run: "local --format json",
       },
       {
         description: "Start the server and open the Sentry Local UI",
-        command: "sentry local --open",
+        run: "local --open",
       },
     ],
   },
@@ -1120,7 +1122,7 @@ export const serverCommand = buildCommand({
       printLocalViewerHint(session.streamUrl, flags.format === "json");
       logger.info(`  Session: ${bold(session.id)} (${session.label})`);
       logger.info(
-        `  Capabilities: sentry local session view ${session.id} --json`,
+        `  Capabilities: ${sentry`local session view ${session.id} --json`}`,
       );
       logger.info("Press Ctrl-C to stop.");
       await openLocalUiIfRequested(
@@ -1231,7 +1233,7 @@ export const serverCommand = buildCommand({
       `  Set ${bold("SENTRY_SPOTLIGHT")}=${listenUrl}/stream in your app`,
     );
     logger.info(
-      `  Or run: ${bold(`sentry local run -p ${boundPort} -- <your-command>`)}`,
+      `  Or run: ${bold(sentry`local run -p ${boundPort} -- <your-command>`)}`,
     );
     if (activeFilters.size > 0) {
       logger.info(`  Filtering: ${[...activeFilters].join(", ")}`);

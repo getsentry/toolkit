@@ -12,7 +12,6 @@
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { proposeCompletions } from "@stricli/core";
@@ -278,7 +277,7 @@ describe("property: flag names", () => {
   test("hidden flags are excluded", () => {
     for (const command of Object.values(generatedTargets.commands)) {
       // The global --log-level is hidden; the parser still accepts it
-      expect(command.flagNames).not.toHaveProperty("--log-level");
+      expect(command.flagNames ?? {}).not.toHaveProperty("--log-level");
     }
   });
 });
@@ -399,10 +398,9 @@ describe(
       // A `sentry` on PATH that runs this checkout, from any directory
       const binDir = join(root, "bin");
       mkdirSync(binDir);
-      const tsx = createRequire(import.meta.url).resolve("tsx/esm");
       writeFileSync(
         join(binDir, "sentry"),
-        `#!/bin/sh\nexec "${process.execPath}" --import "${tsx}" --import "${join(cliDir, "script/require-shim.mjs")}" "${join(cliDir, "src/bin.ts")}" "$@"\n`,
+        `#!/bin/sh\nexec "${process.execPath}" --experimental-strip-types --import "${join(cliDir, "script/require-shim.mjs")}" "${join(cliDir, "src/bin.ts")}" "$@"\n`,
         { mode: 0o755 },
       );
       workDir = join(root, "work");

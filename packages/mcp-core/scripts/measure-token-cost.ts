@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Measure token cost of MCP tool definitions.
  *
@@ -6,8 +5,8 @@
  * in the tool definitions that would be sent to LLM clients.
  *
  * Usage:
- *   tsx measure-token-cost.ts              # Display table
- *   tsx measure-token-cost.ts -o stats.json # Write JSON to file
+ *   pnpm run measure-tokens                    # Display table
+ *   pnpm run measure-tokens -- -o stats.json   # Write JSON to file
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -36,15 +35,15 @@ function parseArgs() {
       i++; // Skip next arg
     } else if (arg === "--help" || arg === "-h") {
       console.log(`
-Usage: tsx measure-token-cost.ts [options]
+Usage: pnpm run measure-tokens -- [options]
 
 Options:
   -o, --output <file>  Write JSON output to file
   -h, --help          Show this help message
 
 Examples:
-  tsx measure-token-cost.ts              # Display table
-  tsx measure-token-cost.ts -o stats.json # Write JSON to file
+  pnpm run measure-tokens                    # Display table
+  pnpm run measure-tokens -- -o stats.json   # Write JSON to file
 `);
       process.exit(0);
     }
@@ -55,8 +54,10 @@ Examples:
 
 type ToolDefinition = {
   name: string;
+  title: string;
   description: string | ((context: { experimentalMode: boolean }) => string);
   inputSchema: Record<string, ZodTypeAny>;
+  outputSchema?: ZodTypeAny;
   experimental?: boolean;
   hideInExperimentalMode?: boolean;
   deprecated?: { replacedBy: readonly string[] };
@@ -74,7 +75,7 @@ type ToolDefinition = {
  */
 function formatToolsForMCP(tools: Record<string, ToolDefinition>) {
   return Object.entries(tools).map(([_key, tool]) => {
-    const inputSchema = tool.inputSchema || {};
+    const inputSchema = tool.inputSchema;
     const zodObject =
       Object.keys(inputSchema).length > 0
         ? z.object(inputSchema)
@@ -87,10 +88,16 @@ function formatToolsForMCP(tools: Record<string, ToolDefinition>) {
 
     return {
       name: tool.name,
+      title: tool.title,
       description: toolTypesModule.resolveDescription(tool.description, {
         experimentalMode: false,
       }),
       inputSchema: jsonSchema,
+      // matches @modelcontextprotocol/server's
+      // standardSchemaToJsonSchema(schema, "output") (draft-2020-12)
+      ...(tool.outputSchema && {
+        outputSchema: z.toJSONSchema(tool.outputSchema, { io: "output" }),
+      }),
       ...(tool.annotations && { annotations: tool.annotations }),
     };
   });

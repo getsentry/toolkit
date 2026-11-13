@@ -181,6 +181,91 @@ describe("search_events", () => {
         grantedSkills: new Set(),
         constraints: {},
         sentryHost: "sentry.io",
+        availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
+      },
+    );
+
+    expect(result).toContain("No results found");
+    // The query was not rewritten, so an empty result is not a translation bug.
+    expect(result).not.toContain("submit_feedback_to_sentry_team");
+  });
+
+  it("suggests feedback when the agent rewrote the query and nothing matched", async () => {
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+        HttpResponse.json({ data: [] }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "level:error",
+        fields: null,
+        sort: null,
+        period: "24h",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+        availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
+      },
+    );
+
+    expect(result).toContain("No results found");
+    expect(result).toContain(
+      "report it to the Sentry MCP team with `submit_feedback_to_sentry_team`",
+    );
+  });
+
+  it("rewrites numeric issue IDs to issue.id for the errors dataset", async () => {
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse("errors", "issue:7844703743 level:error"),
+    );
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          const url = new URL(request.url);
+          expect(url.searchParams.get("dataset")).toBe("errors");
+          expect(url.searchParams.get("query")).toBe(
+            "issue.id:7844703743 level:error",
+          );
+          return HttpResponse.json({ data: [] });
+        },
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "issue:7844703743 level:error",
+        fields: null,
+        sort: null,
+        period: "24h",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
       },
     );
 
@@ -4838,6 +4923,64 @@ describe("search_events", () => {
       await searchEvents.handler(seerParams, context);
 
       expect(mockGenerateText).toHaveBeenCalled();
+    });
+
+    describe("without an agent provider", () => {
+      const untranslatedNote =
+        "**Note:** `query` was not translated from natural language because no embedded agent or Seer translation was available, so Sentry searched for it as literal text and found nothing. Retry with Sentry search syntax, such as `environment:production`, and use `period` for the time range.";
+
+      beforeEach(() => {
+        process.env.OPENAI_API_KEY = "";
+        process.env.ANTHROPIC_API_KEY = "";
+        process.env.OPENROUTER_API_KEY = "";
+        mswServer.use(
+          mockOrganization(["mcp-search-events-seer-translate"]),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/search-agent/state/run-uuid/",
+            () => HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
+          ),
+        );
+      });
+
+      it.each([
+        ["natural language with no results", seerParams.query, [], true],
+        [
+          "natural language with results",
+          seerParams.query,
+          [{ "span.description": "GET /api/users" }],
+          false,
+        ],
+        ["Sentry syntax with no results", "span.op:http.client", [], false],
+      ])(
+        "notes an untranslated query only when it finds nothing: %s",
+        async (_name, query, data, expectNote) => {
+          const sentQueries: Array<string | null> = [];
+          mswServer.use(
+            http.get(
+              "https://sentry.io/api/0/organizations/test-org/events/",
+              ({ request }) => {
+                sentQueries.push(
+                  new URL(request.url).searchParams.get("query"),
+                );
+                return HttpResponse.json({ data });
+              },
+            ),
+          );
+
+          const result = await searchEvents.handler(
+            { ...seerParams, query },
+            context,
+          );
+
+          expect(sentQueries).toEqual([query]);
+          expect(mockGenerateText).not.toHaveBeenCalled();
+          if (expectNote) {
+            expect(result).toContain(untranslatedNote);
+          } else {
+            expect(result).not.toContain("was not translated");
+          }
+        },
+      );
     });
 
     describe("assisted query outcome", () => {

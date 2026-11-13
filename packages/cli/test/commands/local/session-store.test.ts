@@ -1,4 +1,4 @@
-import { pushToSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import { createReceiverEnvelope } from "../../../src/commands/local/receiver-ingest.js";
 import { describe, expect, test, vi } from "vitest";
 import { createLocalSessionStore } from "../../../src/commands/local/session-store.js";
 
@@ -16,13 +16,14 @@ describe("LocalSessionStore", () => {
       messages.push(container.getData().toString()),
     );
     function ingest(id: string) {
-      pushToSpotlightBuffer({
-        spotlightBuffer: buffer,
-        contentType: "application/x-sentry-envelope",
-        body: Buffer.from(
-          `{"event_id":"${id}"}\n{"type":"event"}\n{"message":"${id}"}`,
-        ),
-      });
+      buffer.put(
+        createReceiverEnvelope({
+          contentType: "application/x-sentry-envelope",
+          body: Buffer.from(
+            `{"event_id":"${id}"}\n{"type":"event"}\n{"message":"${id}"}`,
+          ),
+        }),
+      );
       buffer.stream(reader);
     }
     ingest("one");
@@ -59,11 +60,12 @@ describe("LocalSessionStore", () => {
     const buffer = store.getBuffer(session.id);
     const time = vi.spyOn(Date, "now").mockReturnValue(1000);
     try {
-      pushToSpotlightBuffer({
-        spotlightBuffer: buffer,
-        contentType: "application/x-sentry-envelope",
-        body: Buffer.from('{"event_id":"old"}\n{"type":"event"}\n{}'),
-      });
+      buffer.put(
+        createReceiverEnvelope({
+          contentType: "application/x-sentry-envelope",
+          body: Buffer.from('{"event_id":"old"}\n{"type":"event"}\n{}'),
+        }),
+      );
       time.mockReturnValue(61001);
       await store.setMaxEnvelopes(session.id, 4);
       expect(buffer.read({ timeWindow: 60 })).toHaveLength(0);

@@ -19,7 +19,7 @@ import {
   resetAuthenticatedFetch,
 } from "../../src/lib/sentry-client.js";
 import { initSentry } from "../../src/lib/telemetry.js";
-import { mockFetch, useTestConfigDir } from "../helpers.js";
+import { mockFetch, useEnvSandbox, useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("sentry-client-");
 
@@ -39,12 +39,12 @@ afterEach(() => {
 });
 
 function getAuthenticatedFetch(): typeof fetch {
-  return getSdkConfig(REGION_URL).fetch as typeof fetch;
+  return getSdkConfig(REGION_URL).fetch;
 }
 
 /** Fetch for callers that opted in to replaying writes (chunk uploads). */
 function getIdempotentFetch(): typeof fetch {
-  return getSdkConfig(REGION_URL, { idempotent: true }).fetch as typeof fetch;
+  return getSdkConfig(REGION_URL, { idempotent: true }).fetch;
 }
 
 function jsonResponse(
@@ -149,7 +149,7 @@ describe("fetchWithRetry / buildAttemptFactory", () => {
       callCount += 1;
       const body = init?.body;
       if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
-        seen.push(new TextDecoder().decode(body as ArrayBuffer));
+        seen.push(new TextDecoder().decode(body));
       } else if (typeof body === "string") {
         seen.push(body);
       } else if (body) {
@@ -201,7 +201,7 @@ describe("fetchWithRetry / buildAttemptFactory", () => {
 
     globalThis.fetch = mockFetch(async (input, init) => {
       callCount += 1;
-      const req = new Request(input as string, init);
+      const req = new Request(input, init);
       contentTypes.push(req.headers.get("content-type"));
       bodies.push(await req.text());
       if (callCount === 1) {
@@ -355,7 +355,7 @@ describe("non-idempotent requests", () => {
     setAuthToken("initial-token", 3600, "test-refresh-token");
     const seen: { auth: string | null; body: string }[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input as Request, init);
+      const req = new Request(input, init);
       if (req.url.includes("/oauth/token/")) {
         return jsonResponse({
           access_token: "refreshed-token",
@@ -503,7 +503,7 @@ describe("429 rate limiting", () => {
   test("retries a POST on 429, since the request was rejected before processing", async () => {
     const bodies: string[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {
-      bodies.push(await new Request(input as string, init).text());
+      bodies.push(await new Request(input, init).text());
       return bodies.length === 1
         ? jsonResponse(
             { detail: "slow down" },
@@ -617,10 +617,100 @@ describe("fetchWithTimeout internal timeout classification", () => {
       expect((error as TimeoutError).hint).toContain(
         "may still have been applied",
       );
+      expect((error as TimeoutError).hint).toContain(
+        "Check Sentry's status with: sentry status",
+      );
       expect(calls).toBe(1);
     } finally {
       restore();
     }
+  });
+
+  test("a caller's timeoutMs applies to every request and still retries", async () => {
+    let calls = 0;
+    globalThis.fetch = mockFetch(async (_input, init) => {
+      calls += 1;
+      return await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    });
+
+    // A path no override matches, as with the server-provided chunk URL.
+    const authFetch = getSdkConfig(REGION_URL, {
+      idempotent: true,
+      timeoutMs: 50,
+    }).fetch;
+    const error = await authFetch(`${REGION_URL}/api/0/chunk-upload/`, {
+      method: "POST",
+      body: "{}",
+    }).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(TimeoutError);
+    // RETRY_POLICY.maxRetries = 2 → attempts 0, 1, 2.
+    expect(calls).toBe(3);
+  });
+
+  describe("on a self-hosted server", () => {
+    useEnvSandbox(["SENTRY_URL", "SENTRY_HOST"]);
+
+    test("points at that server instead of the sentry.io status page", async () => {
+      setAuthToken("self-hosted-token", undefined, undefined, {
+        host: "https://sentry.example.com",
+        newAccount: true,
+      });
+      const marker = "___self-hosted-timeout-test___";
+      const restore = __injectTimeoutOverrideForTests({
+        pattern: new RegExp(`/${marker}/`),
+        timeoutMs: 50,
+      });
+
+      try {
+        globalThis.fetch = mockFetch(async (_input, init) => {
+          return await new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => reject(new DOMException("aborted", "AbortError")),
+              { once: true },
+            );
+          });
+        });
+
+        const error = await getAuthenticatedFetch()(
+          `https://sentry.example.com/${marker}/`,
+          { method: "POST", body: "{}" },
+        ).catch((err: unknown) => err);
+
+        expect(error).toBeInstanceOf(TimeoutError);
+        const hint = (error as TimeoutError).hint ?? "";
+        expect(hint).toContain(
+          "Check the server's health with: sentry status --url https://sentry.example.com",
+        );
+        expect(hint).not.toContain("status.sentry.io");
+      } finally {
+        restore();
+      }
+    });
+  });
+});
+
+describe("dispatcher option", () => {
+  test("passes the dispatcher to every fetch", async () => {
+    const dispatcher = {} as NonNullable<RequestInit["dispatcher"]>;
+    const seen: unknown[] = [];
+    globalThis.fetch = mockFetch(async (_input, init) => {
+      seen.push((init as { dispatcher?: unknown } | undefined)?.dispatcher);
+      return jsonResponse({});
+    });
+
+    await getSdkConfig(REGION_URL, { dispatcher }).fetch(
+      `${REGION_URL}/api/0/organizations/`,
+    );
+
+    expect(seen).toEqual([dispatcher]);
   });
 });
 

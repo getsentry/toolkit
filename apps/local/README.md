@@ -55,7 +55,8 @@ receiver's envelope retention limit when replaying a large corpus.
 
 - Errors include exception causes, captured source lines and local variables,
   breadcrumbs, request/context data, tags, modules, VS Code links for absolute
-  local paths, and a copyable Markdown summary for AI assistants.
+  local paths, a copyable Markdown summary for AI assistants, and the
+  attachments the SDK sent for the event (collapsed until previewed).
 - AI inspection reads standard `gen_ai.*` and Vercel AI fields from both embedded
   transaction spans and standalone spans. Prompts, responses, token usage and
   tool arguments/results appear when the SDK captured them. Child AI steps stay
@@ -81,7 +82,8 @@ receiver's envelope retention limit when replaying a large corpus.
   by session/client reports. Feedback links to associated errors in the capture.
 - Attachments show safe text/JSON/image/video previews and downloads. Captured
   HTML, SVG and code remain inert; the viewer never executes them or fetches
-  captured resource URLs.
+  captured resource URLs. Attachments inside a raw envelope stay collapsed and
+  are decoded only when you show their preview.
 
 Use severity/logger filters and sorting in event/log views. The Columns control
 chooses which metadata appears beside each message. In a trace, search spans,
@@ -99,6 +101,10 @@ Integration tests start an actual receiver, replay the bundled capture through
 HTTP/SSE, then navigate the analysis and inspector views. Replay tests cover
 binary bytes, gzip/Brotli, recursive directories, repeated passes and rejected
 requests. Unknown payloads remain inspectable as JSON.
+
+Envelope decoding and retention live directly in Local and the CLI, without a
+Spotlight package dependency. Spotlight-compatible health and envelope headers
+remain supported so existing Sentry SDK transports can keep sending captures.
 
 The receiver accepts gzip, deflate and Brotli with a 10 MiB encoded-body limit
 and a 32 MiB decoded-body limit. Missing or plain-text content types use the

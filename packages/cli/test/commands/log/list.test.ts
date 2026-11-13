@@ -734,6 +734,7 @@ describe("listCommand.func — trace mode", () => {
         traceId: TRACE_ID,
       }),
       "/tmp",
+      "log list",
       expect.any(String),
     );
   });

@@ -11,10 +11,14 @@ import {
 } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import { getAlertRuleDetails } from "../support/alert-rule-details";
+import {
+  alertRuleDetailsSchema,
+  getAlertRuleDetails,
+} from "../support/alert-rule-details";
 import {
   findExactMetricMonitorMatches,
   getMetricMonitor,
+  metricMonitorDetailsSchema,
   toMetricMonitorDetails,
 } from "../support/metric-monitors";
 import {
@@ -49,8 +53,19 @@ function describeMatch(match: AlertRuleMatch): string {
   return `${match.kind} alert ${String(match.rule.id)} (${match.rule.name})${project}`;
 }
 
+export const getAlertRuleOutputSchema = z.object({
+  alertRule: alertRuleDetailsSchema
+    .optional()
+    .describe("Set when the match is an Issue Alert."),
+  metricMonitor: metricMonitorDetailsSchema
+    .optional()
+    .describe("Set when the match is a Metric Monitor."),
+  guidance: z.string().optional(),
+});
+
 export default defineTool({
   name: "get_alert_rule",
+  title: "Get Alert Rule",
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [
@@ -89,6 +104,7 @@ export default defineTool({
         "An Alert ID or exact name. Metric references accept legacy numeric alert-rule IDs or detector:123 for canonical monitor IDs.",
       ),
   },
+  outputSchema: getAlertRuleOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,

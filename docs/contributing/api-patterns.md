@@ -49,9 +49,9 @@ tools.
 
 ### Where Endpoint Code Lives
 
-Endpoint wrappers live in the shared client,
-`packages/toolkit-core/src/api-client/endpoints/<domain>.ts`, so the CLI and
-the MCP can call the same one. A wrapper takes an `ApiTarget` (the request
+Endpoint wrappers live in the shared client, `@sentry/api/client/endpoints`
+([source](https://github.com/getsentry/sentry-api-schema/blob/main/lib/api-client/endpoints)),
+so the CLI and the MCP can call the same one. A wrapper takes an `ApiTarget` (the request
 core and the region origin), its parameters, and a response schema from the
 host, and returns what the schema parses:
 
@@ -277,37 +277,32 @@ try {
 
 See error patterns in [common-patterns.md](common-patterns.md#error-handling).
 
-`ApiError` and its subclasses live in the shared client,
-`@sentry/toolkit-core/api-client/errors`. `SentryApiService` sends requests
-through the shared request core, `@sentry/toolkit-core/api-client/core`,
-which builds them from `readErrorResponse` in
-`@sentry/toolkit-core/api-client/response`. The CLI reads raw error
-responses with the same helper and maps them to its own exit-coded
-`ApiError`. Endpoints that have moved to the shared client live in
-`@sentry/toolkit-core/api-client/endpoints/*`; `SentryApiService` calls
-them with its Zod schemas, and a malformed response throws
-`ApiResponseValidationError` from
-`@sentry/toolkit-core/api-client/validate`. See
-[`packages/toolkit-core/README.md`](../../packages/toolkit-core/README.md#api-client).
+`ApiError` and its subclasses live in the shared client, `@sentry/api/client`.
+`SentryApiService` sends requests through its request core, which builds them
+from `readErrorResponse`. The CLI reads raw error responses with the same
+helper and maps them to its own exit-coded `ApiError`. Endpoints that have
+moved to the shared client live in `@sentry/api/client/endpoints`;
+`SentryApiService` calls them with its Zod schemas, and a malformed response
+throws `ApiResponseValidationError`. See the
+[`@sentry/api` README](https://github.com/getsentry/sentry-api-schema#shared-client).
 
 ### Automatic Retries
 
 `SentryApiService` sends every request, including `@sentry/api` operations,
-through the shared transport in `@sentry/toolkit-core/api-client/transport`, which
-retries failed requests using the shared policy in
-`@sentry/toolkit-core/api-client/retry`. `SentryApiService` never retries on top, so
-a request is retried by one layer only. This page describes the
-behavior; the values live only in code, so read them there instead of copying
-them here:
+through the shared transport in `@sentry/api/client`, which retries failed
+requests using the client's shared retry policy. `SentryApiService` never
+retries on top, so a request is retried by one layer only. This page
+describes the behavior; the values live only in code, so read them there
+instead of copying them here:
 
 - Which statuses retry, and for which methods: `RETRYABLE_STATUSES` in
-  [`retry.ts`](../../packages/toolkit-core/src/api-client/retry.ts). In short, a
+  [`retry.ts`](https://github.com/getsentry/sentry-api-schema/blob/main/lib/api-client/retry.ts). In short, a
   rate-limited request retries for any method, a transient server error only
   for an idempotent one, and other errors never.
 - Which writes count as idempotent: the ones the installed `@sentry/api`
   catalog marks `idempotent`, from Sentry's `x-sentry-idempotent` extension.
   The matcher is in
-  [`idempotent-operations.ts`](../../packages/toolkit-core/src/api-client/idempotent-operations.ts);
+  [`idempotent-operations.ts`](https://github.com/getsentry/sentry-api-schema/blob/main/lib/api-client/idempotent-operations.ts);
   bumping `@sentry/api` is enough to pick up newly marked writes.
 - How many retries and how long they may wait: `REQUEST_RETRY_POLICY` in
   [`client.ts`](../../packages/mcp-core/src/api-client/client.ts).
@@ -336,11 +331,21 @@ Callers and tools need no changes: a retried request either resolves normally or
 throws the same error it would have thrown without retries.
 
 The CLI sends its requests through the shared transport in
-`@sentry/toolkit-core/api-client/transport`, configured in
+`@sentry/api/client`, configured in
 `packages/cli/src/lib/sentry-client.ts`. It follows the same shared rule; only
 the caps differ (`RETRY_POLICY`): the hosted MCP keeps its total wait short so
 a Workers request isn't held open, while the CLI can wait longer. The CLI also
-applies its own per-request timeout, which counts as a network failure.
+applies its own per-request timeout, which counts as a network failure. A CLI
+API function can pass `idempotent: true` to its SDK config when the request
+it sends is safe to resend even though Sentry does not mark the whole
+endpoint, such as chunk uploads or a release create without commits; check
+the handler in Sentry's source first.
+
+Node 26's `fetch` uses HTTP/2, and Sentry's edge resets concurrent upload
+streams on one connection with `ENHANCE_YOUR_CALM`. Code that uploads large
+bodies in parallel, such as chunk uploads, passes an HTTP/1.1 dispatcher from
+`createHttp1Dispatcher()` (`packages/cli/src/lib/http1-dispatcher.ts`) as the
+`dispatcher` option of `getSdkConfig`, and destroys it after the upload.
 
 ## Best Practices
 

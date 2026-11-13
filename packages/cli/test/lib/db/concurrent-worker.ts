@@ -1,17 +1,18 @@
-#!/usr/bin/env tsx
 /**
  * Worker script for concurrent database access tests.
  * Spawned by concurrent.test.ts to simulate multiple CLI instances.
  *
- * Usage: tsx test/lib/db/concurrent-worker.ts <config-dir> <worker-id> <operation>
+ * Usage: pnpm ts test/lib/db/concurrent-worker.ts <config-dir> <worker-id> <operation>
  *
  * Operations:
  *   write-dsn     - Write a unique DSN cache entry
  *   write-project - Write a unique project cache entry
  *   read-write    - Mixed read/write operations
+ *   claim-envelopes - Claim stored telemetry envelopes until none are left
  */
 
 import { mkdirSync } from "node:fs";
+import { logger } from "../../../src/lib/logger.js";
 
 // Set config dir from CLI arg before importing db modules
 const configDir = process.argv[2];
@@ -19,8 +20,8 @@ const workerId = process.argv[3];
 const operation = process.argv[4];
 
 if (!(configDir && workerId && operation)) {
-  console.error(
-    "Usage: tsx concurrent-worker.ts <config-dir> <worker-id> <operation>",
+  logger.error(
+    "Usage: pnpm ts concurrent-worker.ts <config-dir> <worker-id> <operation>",
   );
   process.exit(1);
 }
@@ -37,6 +38,8 @@ const { setCachedDsn, getCachedDsn } =
 const { setCachedProject, getCachedProject } =
   await import("../../../src/lib/db/project-cache.js");
 const { closeDatabase } = await import("../../../src/lib/db/index.js");
+const { createEnvelopeStore } =
+  await import("../../../src/lib/telemetry/offline-store.js");
 
 type WorkerResult = {
   workerId: string;
@@ -142,6 +145,24 @@ async function readWrite(): Promise<WorkerResult> {
   };
 }
 
+function claimEnvelopes(): WorkerResult {
+  const store = createEnvelopeStore();
+  const claimed: unknown[] = [];
+  for (;;) {
+    const batch = store.claim(3);
+    if (batch.length === 0) {
+      break;
+    }
+    claimed.push(...batch.map((envelope) => envelope[0].event_id));
+  }
+  return {
+    workerId,
+    operation: "claim-envelopes",
+    success: true,
+    data: claimed,
+  };
+}
+
 async function main(): Promise<void> {
   let result: WorkerResult;
 
@@ -155,6 +176,9 @@ async function main(): Promise<void> {
         break;
       case "read-write":
         result = await readWrite();
+        break;
+      case "claim-envelopes":
+        result = claimEnvelopes();
         break;
       default:
         result = {
@@ -179,6 +203,7 @@ async function main(): Promise<void> {
   }
 
   // Output result as JSON for parent process to parse
+  // oxlint-disable-next-line no-console -- the parent test reads the result from stdout.
   console.log(JSON.stringify(result));
 }
 

@@ -137,6 +137,7 @@ function getSchedule(monitor: Monitor) {
 
 export default defineTool({
   name: "find_monitors",
+  title: "Find Cron Monitors",
   skills: ["inspect"],
   requiredScopes: ["org:read"],
   description: [

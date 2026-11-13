@@ -100,17 +100,19 @@ const LEGACY_CACHE_FILE_SUFFIX = `-${PLATFORM}.bin`;
 const MIN_NODE_MAJOR = 22;
 
 /**
- * Whether this Node can run chunks with {@link createChunkLoader}. Without
+ * Whether this runtime can run chunks with {@link createChunkLoader}. Without
  * `USE_MAIN_CONTEXT_DEFAULT_LOADER` (Node < 20.12), a chunk could not
  * `import()` anything, and Node 20 loses it for a script compiled from a
- * code cache (`ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`). The standalone
+ * code cache (`ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`). Bun reports a new
+ * Node version but does not implement `cachedDataVersionTag`. The standalone
  * binary embeds a newer Node, so only the npm package runs without it.
  */
 export function canLoadChunks(
-  version: string = process.versions.node,
+  versions: NodeJS.ProcessVersions = process.versions,
 ): boolean {
   return (
-    Number.parseInt(version, 10) >= MIN_NODE_MAJOR &&
+    versions.bun === undefined &&
+    Number.parseInt(versions.node, 10) >= MIN_NODE_MAJOR &&
     constants?.USE_MAIN_CONTEXT_DEFAULT_LOADER !== undefined
   );
 }
@@ -122,7 +124,7 @@ function suppressLoaderWarning(): void {
     return;
   }
   loaderWarningSuppressed = true;
-  const originalEmit = process.emit.bind(process) as typeof process.emit;
+  const originalEmit = process.emit.bind(process);
   process.emit = ((event: string, ...args: unknown[]) => {
     const [warning] = args;
     if (

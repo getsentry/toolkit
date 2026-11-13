@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Generate the Graphics Banner
  *
@@ -16,7 +15,7 @@
  * Output is a committed module (like `src/generated/skill-content.ts`) so the
  * runtime never needs to read the asset from disk.
  *
- * Usage:   tsx script/generate-banner-image.ts
+ * Usage:   pnpm ts script/generate.ts banner
  * Output:  src/generated/banner-image.ts
  */
 
@@ -57,8 +56,8 @@ function gradientAt(t: number): [number, number, number] {
   const seg = clamped * (GRADIENT_ANCHORS.length - 1);
   const i = Math.min(GRADIENT_ANCHORS.length - 2, Math.floor(seg));
   const f = seg - i;
-  const a = GRADIENT_ANCHORS[i] as [number, number, number];
-  const b = GRADIENT_ANCHORS[i + 1] as [number, number, number];
+  const a = GRADIENT_ANCHORS[i];
+  const b = GRADIENT_ANCHORS[i + 1];
   return [
     Math.round(a[0] + (b[0] - a[0]) * f),
     Math.round(a[1] + (b[1] - a[1]) * f),
@@ -107,7 +106,7 @@ function encodePngBase64(mask: PNG): string {
   const model = maskModel(mask);
   const out = new PNG({ width: mask.width, height: mask.height });
   for (let y = 0; y < mask.height; y++) {
-    const [r, g, b] = palette[model.bandForRow(y)] as [number, number, number];
+    const [r, g, b] = palette[model.bandForRow(y)];
     for (let x = 0; x < mask.width; x++) {
       const i = (y * mask.width + x) * 4;
       out.data[i] = r;
@@ -119,7 +118,8 @@ function encodePngBase64(mask: PNG): string {
   return PNG.sync.write(out, { deflateLevel: 9 }).toString("base64");
 }
 
-async function main(): Promise<void> {
+/** Write `src/generated/banner-image.ts` from the banner mask. */
+export async function emit(): Promise<void> {
   const png = PNG.sync.read(readFileSync(MASK_PATH));
   const pngBase64 = encodePngBase64(png);
 
@@ -149,8 +149,3 @@ export const BANNER_IMAGE = {
     `Wrote ${OUT_PATH} (${png.width}x${png.height}, png ${pngBase64.length} base64 bytes)\n`,
   );
 }
-
-main().catch((err) => {
-  process.stderr.write(`generate-banner-image failed: ${String(err)}\n`);
-  process.exit(1);
-});

@@ -121,16 +121,6 @@ export const DESTRUCTIVE_ALIASES = {
  */
 export const DRY_RUN_ALIASES = { n: "dry-run" } as const;
 
-/**
- * Alias map for `--yes` only: `-y` → `--yes`.
- *
- * Used by non-delete commands that need only the yes flag (not force):
- * ```ts
- * aliases: { ...YES_ALIASES, t: "team" }
- * ```
- */
-export const YES_ALIASES = { y: "yes" } as const;
-
 // ---------------------------------------------------------------------------
 // Level B: shared utilities
 // ---------------------------------------------------------------------------
@@ -329,7 +319,7 @@ export function buildDeleteCommand<
   const originalFunc = builderArgs.func;
 
   // Auto-inject common flags and aliases into parameters
-  const params = (builderArgs.parameters ?? {}) as Record<string, unknown>;
+  const params = builderArgs.parameters ?? {};
   const existingFlags = (params.flags ?? {}) as Record<string, unknown>;
   const existingAliases = (params.aliases ?? {}) as Record<string, string>;
 
@@ -376,13 +366,7 @@ export function buildDeleteCommand<
   const wrappedFunc = function (this: CONTEXT, flags: FLAGS, ...args: any[]) {
     // Pre-hook: non-interactive safety guard
     if (!options?.noNonInteractiveGuard) {
-      guardNonInteractive(
-        flags as unknown as {
-          yes?: boolean;
-          force?: boolean;
-          "dry-run"?: boolean;
-        },
-      );
+      guardNonInteractive(flags);
     }
 
     return originalFunc.call(this, flags, ...(args as unknown as ARGS));

@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Generate Documentation Sections (Marker-Based)
  *
@@ -26,45 +25,36 @@
  * this script edits committed files in-place between marker pairs.
  *
  * Usage:
- *   tsx script/generate-docs-sections.ts          # Generate (write)
- *   tsx script/generate-docs-sections.ts --check   # Dry-run, exit 1 if stale
+ *   pnpm ts script/generate.ts docs-sections           # Generate (write)
+ *   pnpm ts script/generate.ts docs-sections --check   # Dry-run, exit 1 if stale
  */
 
-import { existsSync, mkdirSync } from "node:fs";
-import { access, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import peggy from "peggy";
 import { DOCS_CONTENT, DOCS_FRAGMENTS } from "./paths.js";
 import { shellCommands } from "./shell-words.js";
 
-// Bootstrap: skill-content stub (same pattern as generate-command-docs.ts)
-const SKILL_CONTENT_PATH = "src/generated/skill-content.ts";
-const SKILL_CONTENT_STUB =
-  "export const SKILL_FILES: [string, string][] = [];\n";
-const skillContentExists = await access(SKILL_CONTENT_PATH).then(
-  () => true,
-  () => false,
-);
-if (!skillContentExists) {
-  mkdirSync("src/generated", { recursive: true });
-  await writeFile(SKILL_CONTENT_PATH, SKILL_CONTENT_STUB);
-}
-
-import type { EnvVarEntry } from "../src/lib/env-registry.js";
+import { routes } from "../src/app.js";
+import { parse as parseIssueSyntax } from "../src/generated/issue-argument-grammar.js";
+import { buildOrgAwareAliases } from "../src/lib/alias.js";
+import { parseSelector } from "../src/lib/arg-parsing.js";
 import { exampleSteps } from "../src/lib/command-example.js";
-import type { Command, RouteInfo, RouteMap } from "../src/lib/introspect.js";
+import { AGENT_DISPLAY_NAMES } from "../src/lib/detect-agent.js";
+import { ENV_VAR_REGISTRY, type EnvVarEntry } from "../src/lib/env-registry.js";
+import {
+  type Command,
+  extractAllRoutes,
+  isCommand,
+  isRouteMap,
+  type RouteInfo,
+  type RouteMap,
+} from "../src/lib/introspect.js";
+import { parseIssueArgument } from "../src/lib/issue-arguments.js";
+import { OAUTH_SCOPES } from "../src/lib/oauth.js";
+import { TEXT_EXTENSIONS } from "../src/lib/scan/constants.js";
+import { logger } from "../src/lib/logger.js";
 
-const { routes } = await import("../src/app.js");
-const { extractAllRoutes, isCommand, isRouteMap } =
-  await import("../src/lib/introspect.js");
-const { OAUTH_SCOPES } = await import("../src/lib/oauth.js");
-const { ENV_VAR_REGISTRY } = await import("../src/lib/env-registry.js");
-const { AGENT_DISPLAY_NAMES } = await import("../src/lib/detect-agent.js");
-const { TEXT_EXTENSIONS } = await import("../src/lib/scan/constants.js");
-const { buildOrgAwareAliases } = await import("../src/lib/alias.js");
-const { parseIssueArgument } = await import("../src/lib/issue-arguments.js");
-const { parseSelector } = await import("../src/lib/arg-parsing.js");
-const { parse: parseIssueSyntax } =
-  await import("../src/generated/issue-argument-grammar.js");
 const pkg = JSON.parse(await readFile("package.json", "utf-8"));
 const TARGET_GRAMMAR = "grammar/org-project-target.pegjs";
 const targetGrammar = await readFile(TARGET_GRAMMAR, "utf-8");
@@ -72,7 +62,7 @@ const ISSUE_GRAMMAR = "grammar/issue-argument.pegjs";
 const issueGrammar = await readFile(ISSUE_GRAMMAR, "utf-8");
 const workspace = JSON.parse(await readFile("../../package.json", "utf-8"));
 
-const isCheck = process.argv.includes("--check");
+const routeMap = routes as unknown as RouteMap;
 
 // ---------------------------------------------------------------------------
 // Marker Replacement
@@ -350,12 +340,12 @@ function extractNodeVersion(): string {
  *
  * The published package supports a lower Node.js floor than local
  * development: consumers on older Node.js use a bundled WASM SQLite driver,
- * but contributors run the sources directly (tsx) against `node:sqlite`,
+ * but contributors run the sources directly (Node type stripping) against `node:sqlite`,
  * which requires Node.js 22.15+. This keeps the two floors independent.
  */
 function extractDevNodeVersion(): string {
   const constraint: string | undefined =
-    (pkg as any).devEngines?.runtime?.version ?? pkg.engines?.node;
+    pkg.devEngines?.runtime?.version ?? pkg.engines?.node;
   if (!constraint) {
     throw new Error("Missing devEngines.runtime.version and engines.node");
   }
@@ -934,7 +924,7 @@ function commandAt(path: string[]): Command {
  */
 function sdkRunStatement(path: string[], variable: string): string {
   for (const example of commandAt(path).__examples ?? []) {
-    const steps = exampleSteps(example);
+    const steps = exampleSteps(example, "sentry");
     const commands = steps.length === 1 ? shellCommands(steps[0] ?? "") : [];
     const words = commands.length === 1 ? (commands[0] ?? []) : [];
     if (words[0] === "sentry" && words.some((w) => w.startsWith("-"))) {
@@ -978,193 +968,199 @@ type SectionDef = {
 // Main
 // ---------------------------------------------------------------------------
 
-const routeMap = routes as unknown as RouteMap;
-const routeInfos = extractAllRoutes(routeMap);
+/**
+ * Regenerate every marker section. With `check`, write nothing and set a
+ * failing exit code when any section is stale.
+ */
+export async function emit({ check }: { check: boolean }): Promise<void> {
+  const routeInfos = extractAllRoutes(routeMap);
 
-const sections: SectionDef[] = [
-  // -- Existing sections --
-  {
-    filePath: `${DOCS_CONTENT}/contributing.md`,
-    sectionName: "project-structure",
-    generate: () => generateProjectStructure(routeInfos),
-  },
-  {
-    filePath: "DEVELOPMENT.md",
-    sectionName: "oauth-scopes",
-    generate: () => generateScopesBulletList(OAUTH_SCOPES),
-  },
-  {
-    filePath: `${DOCS_CONTENT}/self-hosted.md`,
-    sectionName: "oauth-scopes",
-    generate: () => generateScopesInline(OAUTH_SCOPES),
-  },
-  // -- Prerequisites (version numbers from package.json) --
-  {
-    filePath: "README.md",
-    sectionName: "dev-prereq",
-    generate: generateDevPrereq,
-  },
-  {
-    filePath: "README.md",
-    sectionName: "library-prereq",
-    generate: generateLibraryPrereq,
-  },
-  {
-    filePath: `${DOCS_CONTENT}/contributing.md`,
-    sectionName: "dev-prereq",
-    generate: generateDevPrereqContributing,
-  },
-  {
-    filePath: "DEVELOPMENT.md",
-    sectionName: "dev-prereq",
-    generate: generateDevPrereqDevelopment,
-  },
-  {
-    filePath: "DEVELOPMENT.md",
-    sectionName: "build-toolchain",
-    generate: generateBuildToolchain,
-  },
-  {
-    filePath: `${DOCS_CONTENT}/contributing.md`,
-    sectionName: "build-commands",
-    generate: generateBuildCommands,
-  },
-  // -- Dev scripts (README.md) --
-  {
-    filePath: "README.md",
-    sectionName: "dev-scripts",
-    generate: generateDevScripts,
-  },
-  // -- Env var tables --
-  {
-    filePath: "DEVELOPMENT.md",
-    sectionName: "dev-env-vars",
-    generate: generateDevEnvVarsTable,
-  },
-  {
-    filePath: `${DOCS_CONTENT}/self-hosted.md`,
-    sectionName: "self-hosted-env-vars",
-    generate: generateSelfHostedEnvVarsTable,
-  },
-  // -- Platform support (getting-started.mdx) --
-  {
-    filePath: `${DOCS_CONTENT}/getting-started.mdx`,
-    sectionName: "platform-support",
-    generate: generatePlatformSupport,
-    markerStyle: "mdx",
-  },
-  // -- Lists that mirror code --
-  {
-    filePath: `${DOCS_CONTENT}/agent-guidance.md`,
-    sectionName: "destructive-commands",
-    generate: () => generateDestructiveCommands(routeInfos),
-  },
-  {
-    filePath: `${DOCS_CONTENT}/agentic-usage.md`,
-    sectionName: "detected-agents",
-    generate: generateDetectedAgents,
-  },
-  {
-    filePath: `${DOCS_FRAGMENTS}/commands/index.md`,
-    sectionName: "target-syntax",
-    generate: generateTargetSyntax,
-  },
-  {
-    filePath: "CONTRIBUTING.md",
-    sectionName: "target-syntax",
-    generate: generateTargetSyntax,
-  },
-  {
-    filePath: "plugins/README.md",
-    sectionName: "skill-layout",
-    generate: generateSkillLayout,
-  },
-  {
-    filePath: `${DOCS_CONTENT}/features.md`,
-    sectionName: "dsn-extensions",
-    generate: generateDsnExtensions,
-  },
-  {
-    filePath: `${DOCS_CONTENT}/features.md`,
-    sectionName: "alias-unique-prefix",
-    generate: () =>
-      generateAliasTable(
-        "Project Slug",
-        inOrg("acme", ["frontend", "functions", "backend"]),
-        projectSlug,
-      ),
-  },
-  {
-    filePath: `${DOCS_CONTENT}/features.md`,
-    sectionName: "alias-common-prefix",
-    generate: () =>
-      generateAliasTable(
-        "Project Slug",
-        inOrg("acme", [
-          "spotlight-electron",
-          "spotlight-website",
-          "spotlight-backend",
-        ]),
-        projectSlug,
-      ),
-  },
-  {
-    filePath: `${DOCS_CONTENT}/features.md`,
-    sectionName: "alias-cross-org",
-    generate: () =>
-      generateAliasTable(
-        "Org/Project",
-        [
-          { org: "acme", project: "api" },
-          { org: "globex", project: "api" },
-        ],
-        orgProject,
-      ),
-  },
-  {
-    filePath: `${DOCS_CONTENT}/features.md`,
-    sectionName: "issue-id-formats",
-    generate: generateIssueIdFormats,
-  },
-  {
-    filePath: `${DOCS_CONTENT}/library-usage.md`,
-    sectionName: "sdk-run-examples",
-    generate: generateSdkRunExamples,
-  },
-];
+  const sections: SectionDef[] = [
+    // -- Existing sections --
+    {
+      filePath: `${DOCS_CONTENT}/contributing.md`,
+      sectionName: "project-structure",
+      generate: () => generateProjectStructure(routeInfos),
+    },
+    {
+      filePath: "DEVELOPMENT.md",
+      sectionName: "oauth-scopes",
+      generate: () => generateScopesBulletList(OAUTH_SCOPES),
+    },
+    {
+      filePath: `${DOCS_CONTENT}/self-hosted.md`,
+      sectionName: "oauth-scopes",
+      generate: () => generateScopesInline(OAUTH_SCOPES),
+    },
+    // -- Prerequisites (version numbers from package.json) --
+    {
+      filePath: "README.md",
+      sectionName: "dev-prereq",
+      generate: generateDevPrereq,
+    },
+    {
+      filePath: "README.md",
+      sectionName: "library-prereq",
+      generate: generateLibraryPrereq,
+    },
+    {
+      filePath: `${DOCS_CONTENT}/contributing.md`,
+      sectionName: "dev-prereq",
+      generate: generateDevPrereqContributing,
+    },
+    {
+      filePath: "DEVELOPMENT.md",
+      sectionName: "dev-prereq",
+      generate: generateDevPrereqDevelopment,
+    },
+    {
+      filePath: "DEVELOPMENT.md",
+      sectionName: "build-toolchain",
+      generate: generateBuildToolchain,
+    },
+    {
+      filePath: `${DOCS_CONTENT}/contributing.md`,
+      sectionName: "build-commands",
+      generate: generateBuildCommands,
+    },
+    // -- Dev scripts (README.md) --
+    {
+      filePath: "README.md",
+      sectionName: "dev-scripts",
+      generate: generateDevScripts,
+    },
+    // -- Env var tables --
+    {
+      filePath: "DEVELOPMENT.md",
+      sectionName: "dev-env-vars",
+      generate: generateDevEnvVarsTable,
+    },
+    {
+      filePath: `${DOCS_CONTENT}/self-hosted.md`,
+      sectionName: "self-hosted-env-vars",
+      generate: generateSelfHostedEnvVarsTable,
+    },
+    // -- Platform support (getting-started.mdx) --
+    {
+      filePath: `${DOCS_CONTENT}/getting-started.mdx`,
+      sectionName: "platform-support",
+      generate: generatePlatformSupport,
+      markerStyle: "mdx",
+    },
+    // -- Lists that mirror code --
+    {
+      filePath: `${DOCS_CONTENT}/agent-guidance.md`,
+      sectionName: "destructive-commands",
+      generate: () => generateDestructiveCommands(routeInfos),
+    },
+    {
+      filePath: `${DOCS_CONTENT}/agentic-usage.md`,
+      sectionName: "detected-agents",
+      generate: generateDetectedAgents,
+    },
+    {
+      filePath: `${DOCS_FRAGMENTS}/commands/index.md`,
+      sectionName: "target-syntax",
+      generate: generateTargetSyntax,
+    },
+    {
+      filePath: "CONTRIBUTING.md",
+      sectionName: "target-syntax",
+      generate: generateTargetSyntax,
+    },
+    {
+      filePath: "plugins/README.md",
+      sectionName: "skill-layout",
+      generate: generateSkillLayout,
+    },
+    {
+      filePath: `${DOCS_CONTENT}/features.md`,
+      sectionName: "dsn-extensions",
+      generate: generateDsnExtensions,
+    },
+    {
+      filePath: `${DOCS_CONTENT}/features.md`,
+      sectionName: "alias-unique-prefix",
+      generate: () =>
+        generateAliasTable(
+          "Project Slug",
+          inOrg("acme", ["frontend", "functions", "backend"]),
+          projectSlug,
+        ),
+    },
+    {
+      filePath: `${DOCS_CONTENT}/features.md`,
+      sectionName: "alias-common-prefix",
+      generate: () =>
+        generateAliasTable(
+          "Project Slug",
+          inOrg("acme", [
+            "spotlight-electron",
+            "spotlight-website",
+            "spotlight-backend",
+          ]),
+          projectSlug,
+        ),
+    },
+    {
+      filePath: `${DOCS_CONTENT}/features.md`,
+      sectionName: "alias-cross-org",
+      generate: () =>
+        generateAliasTable(
+          "Org/Project",
+          [
+            { org: "acme", project: "api" },
+            { org: "globex", project: "api" },
+          ],
+          orgProject,
+        ),
+    },
+    {
+      filePath: `${DOCS_CONTENT}/features.md`,
+      sectionName: "issue-id-formats",
+      generate: generateIssueIdFormats,
+    },
+    {
+      filePath: `${DOCS_CONTENT}/library-usage.md`,
+      sectionName: "sdk-run-examples",
+      generate: generateSdkRunExamples,
+    },
+  ];
 
-let staleCount = 0;
+  let staleCount = 0;
 
-for (const section of sections) {
-  const original = await readFile(section.filePath, "utf-8");
-  const generated = section.generate();
-  const updated = replaceMarkerSection(
-    original,
-    section.sectionName,
-    generated,
-    section.markerStyle ?? "html",
-  );
+  for (const section of sections) {
+    const original = await readFile(section.filePath, "utf-8");
+    const generated = section.generate();
+    const updated = replaceMarkerSection(
+      original,
+      section.sectionName,
+      generated,
+      section.markerStyle ?? "html",
+    );
 
-  if (updated !== original) {
-    if (isCheck) {
-      console.error(`STALE: ${section.filePath} [${section.sectionName}]`);
-      staleCount += 1;
+    if (updated !== original) {
+      if (check) {
+        logger.error(`STALE: ${section.filePath} [${section.sectionName}]`);
+        staleCount += 1;
+      } else {
+        await writeFile(section.filePath, updated);
+        logger.info(`Updated: ${section.filePath} [${section.sectionName}]`);
+      }
     } else {
-      await writeFile(section.filePath, updated);
-      console.log(`Updated: ${section.filePath} [${section.sectionName}]`);
+      logger.info(`Up to date: ${section.filePath} [${section.sectionName}]`);
     }
-  } else {
-    console.log(`Up to date: ${section.filePath} [${section.sectionName}]`);
   }
-}
 
-if (isCheck && staleCount > 0) {
-  console.error(
-    `\n${staleCount} section(s) are stale. Run: pnpm run generate:docs`,
-  );
-  process.exit(1);
-}
+  if (check && staleCount > 0) {
+    logger.error(
+      `${staleCount} section(s) are stale. Run: pnpm run generate:docs`,
+    );
+    process.exitCode = 1;
+    return;
+  }
 
-if (!isCheck) {
-  console.log("All docs sections generated.");
+  if (!check) {
+    logger.success("All docs sections generated.");
+  }
 }

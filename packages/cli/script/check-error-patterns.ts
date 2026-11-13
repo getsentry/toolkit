@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Check for Error Class Misuse Patterns
  *
@@ -17,7 +16,7 @@
  * shrink). See #1531.
  *
  * Usage:
- *   tsx script/check-error-patterns.ts   # check (fails CI on any violation)
+ *   pnpm ts script/check-error-patterns.ts   # check (fails CI on any violation)
  *
  * Exit codes:
  *   0 - No anti-patterns found
@@ -26,6 +25,7 @@
 
 import { readFile } from "node:fs/promises";
 import { glob } from "tinyglobby";
+import { logger } from "../src/lib/logger.js";
 
 export type Violation = { file: string; line: number; message: string };
 
@@ -284,23 +284,18 @@ async function main(): Promise<void> {
   const violations = await scanFiles(files);
 
   if (violations.length > 0) {
-    console.error(
-      `✗ Found ${violations.length} error class anti-pattern(s):\n`,
-    );
-    for (const v of violations) {
-      console.error(`  ${v.file}:${v.line}`);
-      console.error(`    ${v.message}\n`);
-    }
-    console.error(
-      "Fix: Use ResolutionError for resolution failures, ValidationError for input errors.",
-    );
-    console.error(
-      "See ContextError JSDoc in src/lib/errors.ts for usage guidance.\n",
+    logger.error(
+      [
+        `Found ${violations.length} error class anti-pattern(s):\n`,
+        ...violations.map((v) => `  ${v.file}:${v.line}\n    ${v.message}\n`),
+        "Fix: Use ResolutionError for resolution failures, ValidationError for input errors.",
+        "See ContextError JSDoc in src/lib/errors.ts for usage guidance.",
+      ].join("\n"),
     );
     process.exit(1);
   }
 
-  console.log("✓ No error class anti-patterns found.");
+  logger.success("No error class anti-patterns found.");
   process.exit(0);
 }
 

@@ -37,7 +37,9 @@ import {
   discoverFilePairs,
   injectDirectory,
   type InjectResult,
+  resolveUploadTarget,
 } from "../../lib/sourcemap/inject.js";
+import { sentry } from "../../lib/app-identity.js";
 
 /** Result type for the upload command. */
 type UploadCommandResult = {
@@ -73,7 +75,7 @@ function formatUploadResult(data: UploadCommandResult): string {
   return renderMarkdown(mdKvTable(rows));
 }
 
-const USAGE_HINT = "sentry sourcemap upload <directory>";
+const usageHint = () => sentry`sourcemap upload <directory>`;
 
 /**
  * Compute the longest common directory prefix across a list of paths.
@@ -225,31 +227,35 @@ export const uploadCommand = buildCommand({
     examples: [
       {
         description: "Upload sourcemaps from dist/",
-        command: "sentry sourcemap upload ./dist",
+        run: "sourcemap upload ./dist",
+      },
+      {
+        description: "Upload only the files a glob matches",
+        run: "sourcemap upload '.next/static/**'",
       },
       {
         description: "Associate with a release",
-        command: "sentry sourcemap upload ./dist --release 1.0.0",
+        run: "sourcemap upload ./dist --release 1.0.0",
       },
       {
         description: "Set a custom URL prefix",
-        command: "sentry sourcemap upload ./dist --url-prefix '~/static/js/'",
+        run: "sourcemap upload ./dist --url-prefix '~/static/js/'",
       },
       {
         description: "Don't fail when no sourcemaps are found",
-        command: "sentry sourcemap upload ./dist --allow-empty",
+        run: "sourcemap upload ./dist --allow-empty",
       },
       {
         description: "Set a release and distribution",
-        command: "sentry sourcemap upload ./dist --release 1.0.0 --dist 12345",
+        run: "sourcemap upload ./dist --release 1.0.0 --dist 12345",
       },
       {
         description: "Upload without rewriting sourcemaps",
-        command: "sentry sourcemap upload ./dist --no-rewrite",
+        run: "sourcemap upload ./dist --no-rewrite",
       },
       {
         description: "Only upload some extensions",
-        command: "sentry sourcemap upload ./dist --ext .js,.mjs",
+        run: "sourcemap upload ./dist --ext .js,.mjs",
       },
     ],
   },
@@ -261,7 +267,7 @@ export const uploadCommand = buildCommand({
       kind: "tuple",
       parameters: [
         {
-          brief: "Directory containing sourcemaps",
+          brief: "Directory containing sourcemaps, or a glob like 'dist/**'",
           parse: parseDirectoryPath,
           placeholder: "directory",
         },
@@ -355,7 +361,8 @@ export const uploadCommand = buildCommand({
     // Validate the directory and discover pairs read-only first so we
     // don't write debug IDs when the upload won't proceed (empty dir,
     // typoed path, missing credentials).
-    await assertDirectoryReadable(dir);
+    const target = await resolveUploadTarget(dir);
+    await assertDirectoryReadable(target.dir);
 
     const extensions = flags.ext?.split(",").map((e) => e.trim());
     const extSet = extensions
@@ -370,11 +377,19 @@ export const uploadCommand = buildCommand({
       flags["ignore-file"],
     );
 
-    const pairs = await discoverFilePairs(dir, extSet, ignoreMatcher);
+    const pairs = await discoverFilePairs(
+      target.dir,
+      extSet,
+      ignoreMatcher,
+      target.include,
+    );
 
     if (pairs.length === 0) {
       if (!flags["allow-empty"]) {
-        const diag = await diagnoseEmptyDiscovery(dir, { extensions });
+        const diag = await diagnoseEmptyDiscovery(target.dir, {
+          extensions,
+          include: target.include,
+        });
         throw buildEmptyDiscoveryError(dir, diag);
       }
       // --allow-empty: nothing to upload, so don't require Sentry
@@ -401,10 +416,10 @@ export const uploadCommand = buildCommand({
 
     const resolved = await resolveOrgAndProject({
       cwd: this.cwd,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
     });
     if (!resolved) {
-      throw new ContextError("Organization and project", USAGE_HINT);
+      throw new ContextError("Organization and project", usageHint());
     }
     const { org, project } = resolved;
 
@@ -416,15 +431,16 @@ export const uploadCommand = buildCommand({
           injected: false,
           debugId: "",
         }))
-      : await injectDirectory(dir, {
+      : await injectDirectory(target.dir, {
           extensions,
           ignoreMatcher,
+          include: target.include,
         });
 
     const urlPrefix = flags["url-prefix"] ?? "~/";
 
     // Build artifact file list with paths relative to the upload directory
-    const resolvedDir = resolve(dir);
+    const resolvedDir = resolve(target.dir);
     // Normalize --strip-prefix to end with "/" so it strips at directory
     // boundaries. Without this, "build" would strip from "build/app.js"
     // leaving "/app.js" instead of "app.js".

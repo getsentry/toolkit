@@ -96,7 +96,7 @@ describe("find_dashboards", () => {
   });
 
   it("filters explicit dashboard project IDs in project-constrained sessions", async () => {
-    let requestUrl: string | null = null;
+    let requestUrl: string | undefined;
     const paths: string[] = [];
     mswServer.use(
       http.get(
@@ -233,9 +233,9 @@ describe("find_dashboards", () => {
     );
 
     expect(requestUrls).toHaveLength(2);
-    expect(new URL(requestUrls[0]!).searchParams.get("per_page")).toBe("2");
-    expect(new URL(requestUrls[1]!).searchParams.get("cursor")).toBe("page-2");
-    expect(new URL(requestUrls[1]!).searchParams.get("per_page")).toBe("2");
+    expect(new URL(requestUrls[0]).searchParams.get("per_page")).toBe("2");
+    expect(new URL(requestUrls[1]).searchParams.get("cursor")).toBe("page-2");
+    expect(new URL(requestUrls[1]).searchParams.get("per_page")).toBe("2");
     assertStructuredOnlyResult(result);
     const structuredContent = findDashboardsOutputSchema.parse(
       getStructuredContent(result),
@@ -363,8 +363,8 @@ describe("find_dashboards", () => {
       projectConstrainedContext,
     );
 
-    expect(new URL(requestUrls[2]!).searchParams.get("cursor")).toBe("page-2");
-    expect(new URL(requestUrls[2]!).searchParams.get("per_page")).toBe("2");
+    expect(new URL(requestUrls[2]).searchParams.get("cursor")).toBe("page-2");
+    expect(new URL(requestUrls[2]).searchParams.get("per_page")).toBe("2");
     assertStructuredOnlyResult(secondResult);
     expect(getStructuredContent(secondResult)).toMatchObject({
       dashboards: [{ id: "304", title: "Cloudflare Throughput" }],
@@ -372,7 +372,7 @@ describe("find_dashboards", () => {
   });
 
   it("resumes a project cursor within the first API page", async () => {
-    let requestUrl: string | null = null;
+    let requestUrl: string | undefined;
     const firstPageCursor = `mcp-dashboard-project:${Buffer.from(
       JSON.stringify({
         v: 1,
@@ -514,7 +514,7 @@ describe("find_dashboards", () => {
   });
 
   it("passes search, sort, cursor, and limit query parameters", async () => {
-    let requestUrl: string | null = null;
+    let requestUrl: string | undefined;
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/",
@@ -545,5 +545,46 @@ describe("find_dashboards", () => {
     expect(searchParams.get("sort")).toBe("-dateCreated");
     expect(searchParams.get("cursor")).toBe("dashboard-cursor");
     expect(searchParams.get("per_page")).toBe("25");
+  });
+
+  it("leaves null widget display types out of widgetTypes", async () => {
+    const [dashboard] = dashboardListFixture;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/",
+        () =>
+          HttpResponse.json([
+            {
+              ...dashboard,
+              widgetDisplay: ["line", null, "line"],
+              widgetPreview: [
+                { displayType: "line", layout: null },
+                { displayType: null, layout: null },
+                { displayType: "line", layout: null },
+              ],
+            },
+          ]),
+      ),
+    );
+
+    const result = await findDashboards.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        titleQuery: null,
+        sort: "title",
+        cursor: null,
+        limit: 25,
+      },
+      context,
+    );
+
+    const structuredContent = getStructuredContent(result);
+    expect(findDashboardsOutputSchema.parse(structuredContent)).toEqual(
+      structuredContent,
+    );
+    expect(structuredContent.dashboards).toMatchObject([
+      { widgetCount: 3, widgetTypes: ["line"] },
+    ]);
   });
 });

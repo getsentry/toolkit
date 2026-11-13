@@ -62,6 +62,18 @@ export declare function createSentrySDK(options?: SentryOptions): SentrySDK & {
   run(...args: string[]): Promise<unknown> | AsyncIterable<unknown>;
 };
 
+/** The version of this \`sentry\` package. */
+export declare function getVersion(): string;
+
+/** Absolute path to this package's \`sentry\` executable (a Node.js script). */
+export declare function getPath(): string;
+
+/** v3's static \`SentryCli.getVersion()\` / \`SentryCli.getPath()\`. */
+export declare namespace createSentrySDK {
+  export function getVersion(): string;
+  export function getPath(): string;
+}
+
 export default createSentrySDK;
 `;
 }

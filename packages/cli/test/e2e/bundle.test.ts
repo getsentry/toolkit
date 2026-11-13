@@ -9,7 +9,6 @@ import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { beforeAll, describe, expect, test } from "vitest";
 import { BUNDLE_BIN_PATH, ensureBundleBuilt } from "./bundle-setup.js";
 
@@ -46,7 +45,6 @@ async function spawnCollect(
 }
 
 const ROOT_DIR = join(import.meta.dirname, "../..");
-const INK_APP_PATH = join(ROOT_DIR, "dist/ink-app.js");
 
 describe("npm bundle", () => {
   beforeAll(async () => {
@@ -262,35 +260,5 @@ describe("npm bundle", () => {
     expect(readChunks.length).toBeGreaterThan(0);
     // Not every command: well under half of the CLI's chunks
     expect(readChunks.length).toBeLessThan(chunks.length / 2);
-  }, 15_000);
-
-  test("Ink sidecar can be imported and exports mountApp", async () => {
-    // The Ink sidecar (dist/ink-app.js) is a pre-bundled self-contained ESM
-    // module that ships with the npm package. Verify it exists, can be imported
-    // by Node, and exports mountApp as a function. This catches sidecar
-    // bundling/resolution bugs — the exact class of bug where `with { type: "file" }`
-    // crashed in tsx dev mode.
-    //
-    // Run in a subprocess to avoid polluting the vitest process with
-    // React/Ink globals from the sidecar's bundled dependencies.
-    expect(existsSync(INK_APP_PATH)).toBe(true);
-
-    const { stdout, stderr, exitCode } = await spawnCollect("node", [
-      "--input-type=module",
-      "-e",
-      `import { mountApp } from ${JSON.stringify(pathToFileURL(INK_APP_PATH).href)};\n` +
-        'if (typeof mountApp !== "function") {\n' +
-        '  process.stderr.write("mountApp is " + typeof mountApp + ", expected function");\n' +
-        "  process.exit(1);\n" +
-        "}",
-    ]);
-
-    if (exitCode !== 0) {
-      const output = stdout + stderr;
-      throw new Error(
-        `Ink sidecar import failed (exit ${exitCode}): ${output}`,
-      );
-    }
-    expect(exitCode).toBe(0);
   }, 15_000);
 });

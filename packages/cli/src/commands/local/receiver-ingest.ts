@@ -1,19 +1,17 @@
 /** Bounded HTTP decoding and raw delivery identity for the Local receiver. */
 import { brotliDecompress, gunzip, inflate } from "node:zlib";
-import {
-  createSpotlightBuffer,
-  pushToSpotlightBuffer,
-} from "@spotlightjs/spotlight/sdk";
-import { uuidv7obj } from "uuidv7";
 import { logger } from "../../lib/logger.js";
-
-export type ReceiverBuffer = ReturnType<typeof createSpotlightBuffer>;
-export type ReceiverEnvelope = Parameters<ReceiverBuffer["put"]>[0];
-type ParsedEnvelope = ReturnType<ReceiverEnvelope["getParsedEnvelope"]>;
+import { createReceiverEnvelope, type ReceiverBuffer } from "./envelope.js";
+export {
+  createReceiverEnvelope,
+  prepareReceiverEnvelope,
+  receiverEnvelopeId,
+  type ReceiverBuffer,
+  type ReceiverEnvelope,
+} from "./envelope.js";
 export const MAX_DECODED_BYTES = 32 * 1024 * 1024;
 const MAX_PENDING = 64;
 const CONTENT_TYPE = "application/x-sentry-envelope";
-const identities = new WeakMap<ReceiverEnvelope, string>();
 type ReceiverState = {
   generation: number;
   queue: Promise<unknown>;
@@ -69,75 +67,6 @@ function stateFor(buffer: ReceiverBuffer): ReceiverState {
     };
   }
   return state;
-}
-
-/** Give malformed and valid containers the same stable raw identity. */
-export function prepareReceiverEnvelope(container: ReceiverEnvelope): string {
-  const existing = identities.get(container);
-  if (existing) return existing;
-  const id = uuidv7obj();
-  identities.set(container, id.toString());
-  const parse = container.getParsedEnvelope.bind(container);
-  let parsed: ParsedEnvelope = null;
-  let attempted = false;
-  container.getParsedEnvelope = () => {
-    if (!attempted) {
-      attempted = true;
-      parsed = null;
-      try {
-        const candidate = parse();
-        if (
-          candidate &&
-          typeof candidate.envelope[0] === "object" &&
-          candidate.envelope[0] !== null &&
-          !Array.isArray(candidate.envelope[0]) &&
-          candidate.envelope[1].every(
-            ([header, payload]) =>
-              header !== null &&
-              typeof header === "object" &&
-              !Array.isArray(header) &&
-              payload !== null &&
-              typeof payload === "object" &&
-              !Array.isArray(payload) &&
-              !ArrayBuffer.isView(payload),
-          )
-        ) {
-          candidate.envelope[0].__spotlight_envelope_id = id;
-          parsed = candidate;
-        }
-      } catch {
-        // Parsing never controls retention or raw lookup.
-        logger.debug(
-          "Local receiver retained an envelope that could not be decoded.",
-        );
-      }
-    }
-    return parsed;
-  };
-  return id.toString();
-}
-
-/** Preserve IDs already indexed by SDK callers; raw ingress assigns its own ID first. */
-export function receiverEnvelopeId(container: ReceiverEnvelope): string {
-  const existing = identities.get(container);
-  if (existing) return existing;
-  try {
-    // SDK buffers index their parsed UUID in filename and replay lookups. Adoption
-    // must not rewrite it. HTTP ingress and Local retention prepare raw containers
-    // before parsing, so sender-provided headers never reach this adoption path.
-    const parsedId =
-      container.getParsedEnvelope()?.envelope[0].__spotlight_envelope_id;
-    if (parsedId) {
-      const id = parsedId.toString();
-      identities.set(container, id);
-      return id;
-    }
-  } catch {
-    logger.debug(
-      "Local receiver is assigning an ID to an undecodable SDK container.",
-    );
-  }
-  return prepareReceiverEnvelope(container);
 }
 
 /** Wait only for writes and controls admitted before this call. */
@@ -209,19 +138,13 @@ export function ingestReceiverEnvelope(
       }
       if (generation !== state.generation) return 503;
       if (body.length > MAX_DECODED_BYTES) return 413;
-      // Use the existing SDK codec; capture the container before its legacy buffer
-      // indexes parsed fields so malformed input cannot poison those indexes.
-      const capture = createSpotlightBuffer(1);
-      capture.put = (container) => {
-        prepareReceiverEnvelope(container);
-        buffer.put(container);
-      };
-      pushToSpotlightBuffer({
-        spotlightBuffer: capture,
-        body,
-        contentType: CONTENT_TYPE,
-        userAgent: input.userAgent,
-      });
+      buffer.put(
+        createReceiverEnvelope({
+          body,
+          contentType: CONTENT_TYPE,
+          userAgent: input.userAgent,
+        }),
+      );
       return 204;
     },
   );

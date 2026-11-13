@@ -482,7 +482,7 @@ describe("file structure", () => {
       mockResponse(TEST_BODY),
     );
 
-    const cacheDir = join(getConfigDir(), "cache", "responses");
+    const cacheDir = join(getConfigDir(), "cache", "api-responses");
     const files = await readdir(cacheDir);
     expect(files.length).toBe(1);
     expect(files[0]).toMatch(/^[0-9a-f]{64}\.v2\.json$/);
@@ -496,11 +496,30 @@ describe("file structure", () => {
       mockResponse(TEST_BODY),
     );
 
-    const cacheDir = join(getConfigDir(), "cache", "responses");
+    const cacheDir = join(getConfigDir(), "cache", "api-responses");
     const files = await readdir(cacheDir);
     // Exactly the final .json file — the temp file was renamed into place.
     expect(files.every((f) => f.endsWith(".json"))).toBe(true);
     expect(files.some((f) => f.endsWith(".tmp"))).toBe(false);
+  });
+
+  test("deletes the directory older CLIs cached raw tokens in", async () => {
+    const legacyDir = join(getConfigDir(), "cache", "responses");
+    await mkdir(legacyDir, { recursive: true });
+    await writeFile(join(legacyDir, "entry.v2.json"), "{}");
+
+    await storeCachedResponse(
+      TEST_METHOD,
+      TEST_URL,
+      {},
+      mockResponse(TEST_BODY),
+    );
+
+    await vi.waitFor(async () => {
+      await expect(readdir(legacyDir)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    });
   });
 });
 
@@ -643,7 +662,7 @@ describe("invalidateCachedResponsesMatching with query params", () => {
 // ---------------------------------------------------------------------------
 
 describe("entry format", () => {
-  const cacheDir = () => join(getConfigDir(), "cache", "responses");
+  const cacheDir = () => join(getConfigDir(), "cache", "api-responses");
 
   test("stores a compressed body and serves it byte for byte", async () => {
     // Whitespace and key order survive, which re-serialized JSON would lose.
@@ -661,7 +680,7 @@ describe("entry format", () => {
     );
 
     const [file] = await readdir(cacheDir());
-    const raw = await readFile(join(cacheDir(), file!), "utf-8");
+    const raw = await readFile(join(cacheDir(), file), "utf-8");
     const stored = JSON.parse(raw) as { body: { encoding: string } };
     expect(["zstd", "br"]).toContain(stored.body.encoding);
     expect(raw.length).toBeLessThan(text.length);

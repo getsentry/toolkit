@@ -6,7 +6,32 @@ import {
   getHumanInterventionGuidance,
   isSeerSupportedIssue,
   getSeerUnsupportedIssueMessage,
+  getOutputForAutofixRun,
+  getAutofixArtifactSummaries,
 } from "./seer";
+import type { AutofixRunState } from "../../api-client/index";
+
+type AutofixRun = NonNullable<AutofixRunState["autofix"]>;
+
+const singleRun = {
+  run_id: 1,
+  status: "completed",
+  blocks: [
+    {
+      artifacts: [
+        {
+          key: "root_cause",
+          data: {
+            headline: "Regex rejects ids",
+            cause: "The regex is too strict.",
+          },
+          reason: "",
+        },
+      ],
+    },
+  ],
+  repo_pr_states: {},
+} as unknown as AutofixRun;
 
 describe("seer-utils", () => {
   describe("isTerminalStatus", () => {
@@ -101,6 +126,23 @@ describe("seer-utils", () => {
       expect(message).toContain("MCP-SERVER-EQE");
       expect(message).toContain("search_metrics");
       expect(message).not.toContain("Starting new analysis");
+    });
+  });
+
+  describe("single-run root cause", () => {
+    it("renders the headline and cause", () => {
+      const output = getOutputForAutofixRun(singleRun, {
+        includeProvenanceTags: false,
+      });
+      expect(output).toContain(
+        "## Root Cause Analysis\n\nRegex rejects ids\n\nThe regex is too strict.",
+      );
+    });
+
+    it("summarizes with the headline", () => {
+      expect(getAutofixArtifactSummaries(singleRun).rootCause).toBe(
+        "Regex rejects ids",
+      );
     });
   });
 });

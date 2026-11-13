@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Environment variable documentation coverage.
  *
@@ -17,7 +16,7 @@
  * INTERNAL_ENV_VARS so their exclusion is explicit and reviewable.
  *
  * Usage:
- *   tsx script/check-env-coverage.ts
+ *   pnpm ts script/check-env-coverage.ts
  *
  * Exit codes:
  *   0 - Every user-facing env var read by the CLI or an installer is documented
@@ -28,6 +27,7 @@
 import { readFile } from "node:fs/promises";
 import { glob } from "tinyglobby";
 import { ENV_VAR_REGISTRY } from "../src/lib/env-registry.js";
+import { logger } from "../src/lib/logger.js";
 
 /**
  * Well-known env vars that don't start with `SENTRY_` but are still part of the
@@ -63,6 +63,10 @@ const INTERNAL_ENV_VARS = new Map<string, string>([
   [
     "SENTRY_CLI_INTEGRATION_TEST_VERSION_OVERRIDE",
     "integration-test-only version override",
+  ],
+  [
+    "SENTRY_CLI_NO_PERSISTENCE",
+    "set by createSentrySDK() unless persist: true, for one invocation",
   ],
   ["SENTRY_RN_BUNDLE_COMMAND", "internal react-native wrapper plumbing"],
   ["SENTRY_RN_NO_DEBUG_ID", "internal react-native wrapper plumbing"],
@@ -219,15 +223,17 @@ for (const name of INTERNAL_ENV_VARS.keys()) {
 }
 
 if (errors.length > 0) {
-  console.error(`\nFound ${errors.length} env var coverage issue(s):\n`);
-  for (const err of errors) {
-    console.error(`  ✗ ${err}\n`);
-  }
+  logger.error(
+    [
+      `Found ${errors.length} env var coverage issue(s):\n`,
+      ...errors.map((err) => `  ✗ ${err}\n`),
+    ].join("\n"),
+  );
   process.exit(1);
 }
 
-console.log(
-  `✓ All ${referenced.size} user-facing env var(s) read in src/ and ` +
+logger.success(
+  `All ${referenced.size} user-facing env var(s) read in src/ and ` +
     `${installerReads.size} read by the installers are documented ` +
     `(${registryNames.size} in registry, ${INTERNAL_ENV_VARS.size} internal).`,
 );
