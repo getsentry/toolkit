@@ -160,7 +160,7 @@ export async function runSearchAttributes(
 
   const matches =
     rows.length === 0
-      ? { candidates: [] }
+      ? { candidates: [], reason: "" }
       : await withAgentFallback<AttributeMatches | null>({
           operation: "search_attributes.shortlist",
           fallback: () => null,
