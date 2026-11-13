@@ -1097,22 +1097,22 @@ function formatDetailWithSuggestions(
  * Enrich an API error from issue listing with actionable suggestions.
  *
  * Handles both 400 (query/parameter) and 403 (permission) errors.
- * Re-throws non-ApiError and unhandled statuses unchanged.
+ * Returns non-ApiError and unhandled statuses unchanged.
  */
 function enrichIssueListError(
   error: unknown,
   flags: Pick<ListFlags, "query" | "period" | "sort">,
-): never {
+): unknown {
   // A user-supplied --query the server cannot parse is a user input mistake,
   // not a CLI bug: surface it as a ValidationError. A 400 with no user --query
   // (the CLI built a bad query) falls through and stays a reported ApiError.
   const queryError = toSearchQueryError(error, flags.query);
   if (queryError !== error) {
-    throw queryError;
+    return queryError;
   }
   if (error instanceof ApiError) {
     if (error.status === 400) {
-      throw new ApiError(
+      return new ApiError(
         error.message,
         error.status,
         build400Detail(error.detail, flags),
@@ -1125,12 +1125,12 @@ function enrichIssueListError(
       const detail = error.enriched403
         ? appendProjectMembershipHint(error.detail)
         : build403Detail(error.detail);
-      throw new ApiError(error.message, error.status, detail, error.endpoint, {
+      return new ApiError(error.message, error.status, detail, error.endpoint, {
         enriched403: true,
       });
     }
   }
-  throw error;
+  return error;
 }
 
 /**

@@ -417,7 +417,7 @@ async function* grepViaWorkers(
     dispatchPromises.push(dispatchP);
   };
 
-  let producerError: unknown = null;
+  let producerError: Error | undefined;
   const recordMtimes = opts.perFile.recordMtimes;
   // walker drain + path-prefix handling + batch flush + error capture is inherently branchy
   const producer = (async () => {
@@ -451,7 +451,7 @@ async function* grepViaWorkers(
         dispatchBatch(batch, batchRel, batchMtimes);
       }
     } catch (error) {
-      producerError = error;
+      producerError = error instanceof Error ? error : new Error(String(error));
     } finally {
       walkerDone = true;
       wakeConsumer();
@@ -527,7 +527,7 @@ async function* grepViaWorkers(
     if (dispatchPromises.length > 0) {
       await Promise.allSettled(dispatchPromises);
     }
-    if (producerError !== null) {
+    if (producerError) {
       // oxlint-disable-next-line no-unsafe-finally -- re-raising walker error (e.g. AbortError) so callers see it
       throw producerError;
     }

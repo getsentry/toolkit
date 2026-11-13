@@ -14,7 +14,7 @@ import {
 } from "./db/auth.js";
 import { getOrgByNumericId, getOrgRegion, setOrgRegion } from "./db/regions.js";
 import { stripDsnOrgPrefix } from "./dsn/index.js";
-import { AuthError, withAuthGuard } from "./errors.js";
+import { AuthError, stringifyUnknown, withAuthGuard } from "./errors.js";
 import { logger } from "./logger.js";
 import {
   getApiBaseUrl,
@@ -152,8 +152,9 @@ async function resolveOrgRegionUncached(
 
     // Throw SDK errors so withAuthGuard can discriminate:
     // AuthError propagates, others fall back to default URL
-    if (response.error !== undefined) {
-      throw response.error;
+    const { error } = response;
+    if (error !== undefined) {
+      throw error instanceof Error ? error : new Error(stringifyUnknown(error));
     }
 
     // Self-hosted instances may return a relative regionUrl (e.g. "/") which

@@ -420,7 +420,7 @@ async function* walkParallel(ctx: WalkContext): AsyncGenerator<WalkEntry> {
   };
 
   let activeWorkers = 0;
-  let producerError: unknown = null;
+  let producerError: Error | undefined;
   let cancelled = false;
   const workerCount = cfg.concurrency;
   const workers: Promise<void>[] = [];
@@ -482,7 +482,8 @@ async function* walkParallel(ctx: WalkContext): AsyncGenerator<WalkEntry> {
         // reaching here is either (a) a pre-fired or mid-walk
         // `AbortError` from `checkAborted`, or (b) a genuinely
         // unexpected non-FS error.
-        producerError = error;
+        producerError =
+          error instanceof Error ? error : new Error(String(error));
         // Cascade: peers can't do useful work, so short-circuit
         // them. The consumer sees `producerError` and throws.
         cancelled = true;
@@ -515,7 +516,7 @@ async function* walkParallel(ctx: WalkContext): AsyncGenerator<WalkEntry> {
         }
         continue;
       }
-      if (producerError !== null) {
+      if (producerError) {
         throw producerError;
       }
       if (stack.length === 0 && activeWorkers === 0) {
