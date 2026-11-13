@@ -4,6 +4,7 @@ import {
   type SideQuest,
   type SideQuestCandidate,
   type SideQuestDetector,
+  MAX_DETAILS,
   buildSideQuests,
 } from "./side-quests";
 import { diagnoseSourceMaps, formatFileList } from "./source-map-diagnosis";
@@ -205,12 +206,20 @@ function detectJsSourceMapFailure({
     return quest(`${NOT_APPLIED}, ${MINIFIED}: ${only.problem}. ${only.fix}`);
   }
 
-  // causes differ by file, or some files have no diagnosis
-  const details = diagnosis.map(({ problem, fix }) => `${problem}. ${fix}`);
-  if (undiagnosed.length > 0 || unlisted > 0) {
+  // causes differ by file, or some files have no diagnosis. The remainder
+  // line takes the last slot under the details cap, so a cause past it joins
+  // the remainder instead of pushing the remainder out.
+  const hasRest = undiagnosed.length > 0 || unlisted > 0;
+  const shown = diagnosis.slice(0, hasRest ? MAX_DETAILS - 1 : MAX_DETAILS);
+  const details = shown.map(({ problem, fix }) => `${problem}. ${fix}`);
+  const restFiles = [
+    ...diagnosis.slice(shown.length).flatMap((finding) => finding.files),
+    ...undiagnosed,
+  ];
+  if (hasRest) {
     const rest =
-      undiagnosed.length > 0
-        ? formatFileList(undiagnosed, unlisted)
+      restFiles.length > 0
+        ? formatFileList(restFiles, unlisted)
         : `${unlisted} more ${unlisted === 1 ? "file" : "files"}`;
     details.push(`${rest}: ${fallback}`);
   }

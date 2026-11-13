@@ -45,7 +45,7 @@ export type SideQuestDetector<Input> = (
 
 const MAX_SIDE_QUESTS = 3;
 const MAX_NEXT = 2;
-const MAX_DETAILS = 3;
+export const MAX_DETAILS = 3;
 
 export const sideQuestsSchema = z
   .array(
