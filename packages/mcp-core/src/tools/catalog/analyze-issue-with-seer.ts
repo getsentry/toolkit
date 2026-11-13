@@ -141,8 +141,10 @@ export default defineTool({
       },
     );
 
-    // Step 2: Start analysis if none exists
-    if (!autofixState.autofix) {
+    // Step 2: Start analysis if none exists or the last one failed, so a run
+    // that stopped (e.g. out of credits) can be retried.
+    const previousRun = autofixState.autofix;
+    if (!previousRun || previousRun.status === "error") {
       let startResult: Awaited<ReturnType<typeof apiService.startAutofix>>;
       try {
         startResult = await apiService.startAutofix({
@@ -155,11 +157,21 @@ export default defineTool({
         // Seer credits or quota.
         if (error instanceof ApiError && error.status === 402) {
           output += `## Analysis Not Started\n\n${getSeerPaymentRequiredMessage(error.responseBody)}\n`;
+          // The failed run may already hold paid-for analysis, e.g. a root
+          // cause found before the org ran out of credits.
+          const previousOutput = previousRun
+            ? getOutputForAutofixRun(previousRun)
+            : "";
+          if (previousRun && previousOutput) {
+            output += `\nThe previous analysis (Run ID: ${previousRun.run_id}) failed before it finished. Its partial results:\n\n${previousOutput}`;
+          }
           return output;
         }
         throw error;
       }
-      output += `Starting new analysis...\n\n`;
+      output += previousRun
+        ? `Previous analysis (Run ID: ${previousRun.run_id}) failed, starting a new one...\n\n`
+        : `Starting new analysis...\n\n`;
       output += `Analysis started with Run ID: ${startResult.run_id}\n\n`;
 
       // Give it a moment to initialize
@@ -184,20 +196,16 @@ export default defineTool({
         },
       );
     } else {
-      output += `Found existing analysis (Run ID: ${autofixState.autofix.run_id})\n\n`;
+      output += `Found existing analysis (Run ID: ${previousRun.run_id})\n\n`;
 
-      // Check if existing analysis is already complete
-      const existingStatus = autofixState.autofix.status;
+      // Completed and waiting-for-input runs are returned as they are
+      const existingStatus = previousRun.status;
       if (isTerminalStatus(existingStatus)) {
-        // Return results immediately, no polling needed
         output += `## Analysis ${getStatusDisplayName(existingStatus)}\n\n`;
-        output += getOutputForAutofixRun(autofixState.autofix);
+        output += getOutputForAutofixRun(previousRun);
 
         if (existingStatus !== "completed") {
           output += `\n**Status**: ${existingStatus}\n`;
-          output += getFailureReasonGuidance(
-            autofixState.autofix.failure_reason,
-          );
           output += getHumanInterventionGuidance(existingStatus);
           output += "\n";
         }

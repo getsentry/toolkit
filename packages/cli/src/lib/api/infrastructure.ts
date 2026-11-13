@@ -21,17 +21,14 @@ import {
   type FetchAllPagesFailure,
   type CursorPosition,
   paginate as paginateFrom,
+  parseInsufficientScopeChallenge,
   readErrorResponse,
 } from "@sentry/api/client";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
 
-import {
-  extractRequiredScopes,
-  parseInsufficientScopeChallenge,
-  SENTRY_SCOPES,
-} from "../api-scope.js";
+import { extractRequiredScopes, SENTRY_SCOPES } from "../api-scope.js";
 import { getUrlLoginCommand, sentry } from "../app-identity.js";
 import {
   type CredentialContext,
@@ -1271,7 +1268,8 @@ export async function prepareRawApiRequest(
   const isStringBody = typeof body === "string";
   const request = await createSentryClient(config).client.prepareRequest({
     method,
-    url: buildSentryApiUrl("", appendSearchParams(endpoint, params)),
+    // Relative to the API base path, which the client adds.
+    url: `/${appendSearchParams(endpoint, params).replace(/^\/+/, "")}`,
     query,
     body,
     headers: isStringBody ? { "Content-Type": null, ...headers } : headers,

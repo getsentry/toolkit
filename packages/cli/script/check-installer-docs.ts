@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Installer documentation coverage.
  *
@@ -14,7 +13,7 @@
  * is generated from ENV_VAR_REGISTRY; check-env-coverage.ts enforces that.
  *
  * Usage:
- *   tsx script/check-installer-docs.ts
+ *   pnpm ts script/check-installer-docs.ts
  *
  * Exit codes:
  *   0 - Installer options are documented
