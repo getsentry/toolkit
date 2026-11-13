@@ -145,6 +145,14 @@ export interface ToolConfig<
    * `ToolOutputFor`.
    */
   outputSchema?: TOutputSchema;
+  /**
+   * Structured result contract advertised only to experimental sessions, for a
+   * tool whose structured payload has not graduated yet. Set it instead of
+   * `outputSchema`; the handler must return `structuredResult(...)` matching it
+   * on every experimental success path. tsc cannot check that, because stable
+   * sessions still get markdown, so the tool's tests must parse the payload.
+   */
+  experimentalOutputSchema?: ToolOutputSchema;
   annotations: {
     // readOnlyHint, destructiveHint, and openWorldHint are required so every
     // tool declares its safety posture explicitly. Filters and confirmation

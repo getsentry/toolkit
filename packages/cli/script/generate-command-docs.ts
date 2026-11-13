@@ -14,7 +14,7 @@
  * source of truth for custom content.
  *
  * Usage:
- *   tsx script/generate.ts command-docs
+ *   pnpm ts script/generate.ts command-docs
  *
  * Output:
  *   docs/src/content/docs/commands/{route}.md  (one per visible route)

@@ -1,85 +1,81 @@
 import { z } from "zod";
-import type { SentryApiService } from "../../../api-client";
-import {
-  type EventsDataset,
-  PUBLIC_EVENTS_DATASETS,
-} from "../../../utils/events-datasets";
+import { PUBLIC_EVENTS_DATASETS } from "../../../utils/events-datasets";
 import { agentTool, recordAgentToolResultCount } from "./utils";
 
 // Import all JSON files directly
-import android from "./data/android.json";
-import app from "./data/app.json";
-import artifact from "./data/artifact.json";
-import aspnetcore from "./data/aspnetcore.json";
-import aws from "./data/aws.json";
-import azure from "./data/azure.json";
-import browser from "./data/browser.json";
-import cassandra from "./data/cassandra.json";
-import cicd from "./data/cicd.json";
-import client from "./data/client.json";
-import cloud from "./data/cloud.json";
-import cloudevents from "./data/cloudevents.json";
-import cloudfoundry from "./data/cloudfoundry.json";
-import code from "./data/code.json";
-import container from "./data/container.json";
-import cpu from "./data/cpu.json";
-import cpython from "./data/cpython.json";
-import database from "./data/database.json";
-import db from "./data/db.json";
-import deployment from "./data/deployment.json";
-import destination from "./data/destination.json";
-import device from "./data/device.json";
-import disk from "./data/disk.json";
-import dns from "./data/dns.json";
-import dotnet from "./data/dotnet.json";
-import elasticsearch from "./data/elasticsearch.json";
-import enduser from "./data/enduser.json";
-import error from "./data/error.json";
-import faas from "./data/faas.json";
-import feature_flags from "./data/feature_flags.json";
-import file from "./data/file.json";
-import gcp from "./data/gcp.json";
-import gen_ai from "./data/gen_ai.json";
-import geo from "./data/geo.json";
-import go from "./data/go.json";
-import graphql from "./data/graphql.json";
-import hardware from "./data/hardware.json";
-import heroku from "./data/heroku.json";
-import host from "./data/host.json";
-import http from "./data/http.json";
-import ios from "./data/ios.json";
-import jvm from "./data/jvm.json";
-import k8s from "./data/k8s.json";
-import linux from "./data/linux.json";
-import log from "./data/log.json";
-import mcp from "./data/mcp.json";
-import messaging from "./data/messaging.json";
-import network from "./data/network.json";
-import nodejs from "./data/nodejs.json";
-import oci from "./data/oci.json";
-import opentracing from "./data/opentracing.json";
-import os from "./data/os.json";
-import otel from "./data/otel.json";
-import peer from "./data/peer.json";
-import process from "./data/process.json";
-import profile from "./data/profile.json";
-import rpc from "./data/rpc.json";
-import server from "./data/server.json";
-import service from "./data/service.json";
-import session from "./data/session.json";
-import signalr from "./data/signalr.json";
-import source from "./data/source.json";
-import system from "./data/system.json";
-import telemetry from "./data/telemetry.json";
-import test from "./data/test.json";
-import thread from "./data/thread.json";
-import tls from "./data/tls.json";
-import url from "./data/url.json";
-import user from "./data/user.json";
-import v8js from "./data/v8js.json";
-import vcs from "./data/vcs.json";
-import webengine from "./data/webengine.json";
-import zos from "./data/zos.json";
+import android from "./data/android.json" with { type: "json" };
+import app from "./data/app.json" with { type: "json" };
+import artifact from "./data/artifact.json" with { type: "json" };
+import aspnetcore from "./data/aspnetcore.json" with { type: "json" };
+import aws from "./data/aws.json" with { type: "json" };
+import azure from "./data/azure.json" with { type: "json" };
+import browser from "./data/browser.json" with { type: "json" };
+import cassandra from "./data/cassandra.json" with { type: "json" };
+import cicd from "./data/cicd.json" with { type: "json" };
+import client from "./data/client.json" with { type: "json" };
+import cloud from "./data/cloud.json" with { type: "json" };
+import cloudevents from "./data/cloudevents.json" with { type: "json" };
+import cloudfoundry from "./data/cloudfoundry.json" with { type: "json" };
+import code from "./data/code.json" with { type: "json" };
+import container from "./data/container.json" with { type: "json" };
+import cpu from "./data/cpu.json" with { type: "json" };
+import cpython from "./data/cpython.json" with { type: "json" };
+import database from "./data/database.json" with { type: "json" };
+import db from "./data/db.json" with { type: "json" };
+import deployment from "./data/deployment.json" with { type: "json" };
+import destination from "./data/destination.json" with { type: "json" };
+import device from "./data/device.json" with { type: "json" };
+import disk from "./data/disk.json" with { type: "json" };
+import dns from "./data/dns.json" with { type: "json" };
+import dotnet from "./data/dotnet.json" with { type: "json" };
+import elasticsearch from "./data/elasticsearch.json" with { type: "json" };
+import enduser from "./data/enduser.json" with { type: "json" };
+import error from "./data/error.json" with { type: "json" };
+import faas from "./data/faas.json" with { type: "json" };
+import feature_flags from "./data/feature_flags.json" with { type: "json" };
+import file from "./data/file.json" with { type: "json" };
+import gcp from "./data/gcp.json" with { type: "json" };
+import gen_ai from "./data/gen_ai.json" with { type: "json" };
+import geo from "./data/geo.json" with { type: "json" };
+import go from "./data/go.json" with { type: "json" };
+import graphql from "./data/graphql.json" with { type: "json" };
+import hardware from "./data/hardware.json" with { type: "json" };
+import heroku from "./data/heroku.json" with { type: "json" };
+import host from "./data/host.json" with { type: "json" };
+import http from "./data/http.json" with { type: "json" };
+import ios from "./data/ios.json" with { type: "json" };
+import jvm from "./data/jvm.json" with { type: "json" };
+import k8s from "./data/k8s.json" with { type: "json" };
+import linux from "./data/linux.json" with { type: "json" };
+import log from "./data/log.json" with { type: "json" };
+import mcp from "./data/mcp.json" with { type: "json" };
+import messaging from "./data/messaging.json" with { type: "json" };
+import network from "./data/network.json" with { type: "json" };
+import nodejs from "./data/nodejs.json" with { type: "json" };
+import oci from "./data/oci.json" with { type: "json" };
+import opentracing from "./data/opentracing.json" with { type: "json" };
+import os from "./data/os.json" with { type: "json" };
+import otel from "./data/otel.json" with { type: "json" };
+import peer from "./data/peer.json" with { type: "json" };
+import process from "./data/process.json" with { type: "json" };
+import profile from "./data/profile.json" with { type: "json" };
+import rpc from "./data/rpc.json" with { type: "json" };
+import server from "./data/server.json" with { type: "json" };
+import service from "./data/service.json" with { type: "json" };
+import session from "./data/session.json" with { type: "json" };
+import signalr from "./data/signalr.json" with { type: "json" };
+import source from "./data/source.json" with { type: "json" };
+import system from "./data/system.json" with { type: "json" };
+import telemetry from "./data/telemetry.json" with { type: "json" };
+import test from "./data/test.json" with { type: "json" };
+import thread from "./data/thread.json" with { type: "json" };
+import tls from "./data/tls.json" with { type: "json" };
+import url from "./data/url.json" with { type: "json" };
+import user from "./data/user.json" with { type: "json" };
+import v8js from "./data/v8js.json" with { type: "json" };
+import vcs from "./data/vcs.json" with { type: "json" };
+import webengine from "./data/webengine.json" with { type: "json" };
+import zos from "./data/zos.json" with { type: "json" };
 
 // Create the namespaceData object
 const namespaceData: Partial<Record<string, NamespaceData>> = {
@@ -178,13 +174,7 @@ interface NamespaceData {
 /**
  * Lookup OpenTelemetry semantic convention attributes for a given namespace
  */
-export async function lookupOtelSemantics(
-  namespace: string,
-  dataset: EventsDataset,
-  apiService: SentryApiService,
-  organizationSlug: string,
-  projectId?: string,
-): Promise<string> {
+export async function lookupOtelSemantics(namespace: string): Promise<string> {
   // Normalize namespace (replace - with _)
   const normalizedNamespace = namespace.replace(/-/g, "_");
 
@@ -253,14 +243,8 @@ export async function lookupOtelSemantics(
  */
 /**
  * Create a tool for looking up OpenTelemetry semantic convention attributes
- * The tool is pre-bound with the API service and organization configured for the appropriate region
  */
-export function createOtelLookupTool(options: {
-  apiService: SentryApiService;
-  organizationSlug: string;
-  projectId?: string;
-}) {
-  const { apiService, organizationSlug, projectId } = options;
+export function createOtelLookupTool() {
   return agentTool({
     description:
       "Look up OpenTelemetry semantic convention attributes for a specific namespace. OpenTelemetry attributes are universal standards that work across all datasets.",
@@ -276,14 +260,8 @@ export function createOtelLookupTool(options: {
           "REQUIRED: Dataset to check attribute availability in. The agent MUST specify this based on their chosen dataset.",
         ),
     }),
-    execute: async ({ namespace, dataset }) => {
-      return await lookupOtelSemantics(
-        namespace,
-        dataset,
-        apiService,
-        organizationSlug,
-        projectId,
-      );
+    execute: async ({ namespace }) => {
+      return await lookupOtelSemantics(namespace);
     },
   });
 }
