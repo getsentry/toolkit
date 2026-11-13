@@ -887,8 +887,10 @@ export function dataToQueryParams(
   }
 
   // JSON arrays and primitives (null, boolean, number) can't be query params.
-  // parseDataBody uses `as` to narrow JSON.parse output, but primitives slip through.
-  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+  // parseDataBody uses `as` to narrow JSON.parse output, but primitives slip
+  // through, so check the value as `unknown`.
+  const json: unknown = data;
+  if (json === null || typeof json !== "object" || Array.isArray(json)) {
     throw new ValidationError(
       "Cannot use --data with a JSON primitive or array for GET requests. " +
         "Only JSON objects and URL-encoded strings can be converted to query parameters. " +
@@ -899,7 +901,7 @@ export function dataToQueryParams(
 
   // JSON object: stringify non-string values
   const params: Record<string, string | string[]> = {};
-  for (const [key, value] of Object.entries(data)) {
+  for (const [key, value] of Object.entries(json)) {
     params[key] = typeof value === "string" ? value : JSON.stringify(value);
   }
   return params;

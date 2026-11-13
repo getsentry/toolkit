@@ -123,6 +123,13 @@ function getResolvedRegionUrl(
     : responseOrigin;
 }
 
+/** The org's region URL. Older and self-hosted servers may omit `links`. */
+function regionUrlOf(
+  organization: { links?: { regionUrl?: string } } | undefined,
+): string | undefined {
+  return organization?.links?.regionUrl;
+}
+
 /**
  * Resolve org region from SQLite cache or API.
  * Called at most once per orgSlug per process lifetime.
@@ -167,7 +174,7 @@ async function resolveOrgRegionUncached(
     const responseIdentity = rawResponse
       ? getResponseCredentialIdentity(rawResponse)
       : undefined;
-    const rawRegionUrl = response.data?.links?.regionUrl;
+    const rawRegionUrl = regionUrlOf(response.data);
     const regionUrl = getResolvedRegionUrl(
       rawRegionUrl,
       responseOrigin,

@@ -780,6 +780,7 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
       },
     });
 
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- aborted during the await above
     if (signal.aborted || result === "retained") {
       return;
     }

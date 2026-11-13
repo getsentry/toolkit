@@ -571,7 +571,7 @@ export function throwApiError(
 
   const enriched = enrichDetail(response, detail, hasUsableDetail);
   throw new ApiError(
-    `${context}: ${status} ${response.statusText ?? "Unknown"}`,
+    `${context}: ${status} ${response.statusText}`,
     status,
     enriched.detail,
     undefined,

@@ -159,7 +159,11 @@
       "files": ["packages/cli/src/**/*.ts"],
       "rules": {
         "typescript/no-explicit-any": "error",
-        "typescript/no-non-null-assertion": "error"
+        "typescript/no-non-null-assertion": "error",
+        "typescript/no-unnecessary-condition": [
+          "error",
+          { "allowConstantLoopConditions": "only-allowed-literals" }
+        ]
       }
     },
     {
