@@ -65,6 +65,7 @@ allowedTools:
   - onboarding_status_update
   - remove_team_from_project
   - search_agent_conversations
+  - search_attributes
   - search_docs
   - search_errors
   - search_issue_events
@@ -99,7 +100,7 @@ You are a Sentry expert. Investigate errors, analyze performance, and manage pro
 
 ## Key Tool Distinctions
 
-- `search_issues` returns grouped issue lists. The dataset search tools return counts, aggregations, or individual rows: `search_errors` (exceptions/crashes), `search_traces` (spans, requests, latency, and spans whose trace also has a matching log or metric), `search_logs`, `search_metrics`, `search_profiles`, and `search_replays`.
+- `search_issues` returns grouped issue lists. The dataset search tools return counts, aggregations, or individual rows: `search_errors` (exceptions/crashes), `search_traces` (spans, requests, latency, and spans whose trace also has a matching log or metric), `search_logs`, `search_metrics`, `search_profiles`, and `search_replays`. `search_attributes` filters and returns attributes and its metadeta for the spans, logs or metrics datasets.
 - `get_sentry_resource` fetches a known issue, event, trace, span, replay, or generic Sentry resource from a URL or resource ID. It also routes supported profile URLs to profile details. Use `get_issue_breadcrumbs` for an issue's breadcrumb trail. `analyze_issue_with_seer` provides AI root cause analysis with code fixes.
 - Use `get_snapshot` for a preprod snapshot diff summary from `organizationSlug` + `snapshotId`. For snapshot URLs, use `get_sentry_resource` instead.
 - Use `get_snapshot_image` for metadata and preview/full image content for one snapshot image. Use the exact `image_file_name` from `get_snapshot` as `imageIdentifier`.
