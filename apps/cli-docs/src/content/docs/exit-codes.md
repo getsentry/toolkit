@@ -40,6 +40,7 @@ react to failure categories without parsing stderr.
 | 41 | Seer No Budget | Seer requires a paid plan |
 | 42 | AI Disabled | AI features disabled by organization admin |
 | 43 | Seer Out Of Credits | Organization is out of Seer credits |
+| 44 | Seer Setup Required | Seer needs a GitHub or GitLab integration, or repositories connected to the project |
 | 50 | Upgrade Error | CLI upgrade operation failed |
 | 51 | Device Flow Error | OAuth device authorization flow failed |
 | 60 | Output Error | Command produced output but the operation failed |

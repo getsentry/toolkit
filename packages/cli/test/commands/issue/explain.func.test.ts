@@ -20,7 +20,7 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
 import { explainCommand } from "../../../src/commands/issue/explain.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
-import { ApiError, ContextError } from "../../../src/lib/errors.js";
+import { ApiError, ContextError, EXIT } from "../../../src/lib/errors.js";
 import type { IssueArgument } from "../../../src/lib/issue-arguments.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
 
@@ -50,7 +50,7 @@ function sampleState(cause: RootCause): AutofixState {
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn((_chunk: string) => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -188,6 +188,28 @@ describe("issue explain multiple IDs", () => {
     await expect(
       func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1"),
     ).rejects.toMatchObject({ reason: "out_of_credits", orgSlug: "test-org" });
+  });
+
+  test("throws repos_not_linked when Sentry refuses the analysis with a 409", async () => {
+    resolveSpy.mockResolvedValue({ org: "test-org", issueId: "1" });
+    analyzeSpy.mockRejectedValue(
+      new ApiError(
+        "Failed to start root cause analysis: 409 Conflict",
+        409,
+        "Seer Autofix requires repositories to be connected to this project before a new run can be started.",
+        undefined,
+        { code: "repos_not_linked" },
+      ),
+    );
+
+    const func = await explainCommand.loader();
+    await expect(
+      func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1"),
+    ).rejects.toMatchObject({
+      reason: "repos_not_linked",
+      orgSlug: "test-org",
+      exitCode: EXIT.SEER_SETUP_REQUIRED,
+    });
   });
 
   test("fails to parse when no issue ID is provided", async () => {

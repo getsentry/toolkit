@@ -13,6 +13,7 @@ import {
   getHumanInterventionGuidance,
   getOutputForAutofixRun,
   getSeerPaymentRequiredMessage,
+  getSeerSetupRequiredMessage,
   getSeerUnsupportedIssueMessage,
   getStatusDisplayName,
   isSeerSupportedIssue,
@@ -73,6 +74,7 @@ export default defineTool({
     "<hints>",
     "- Only use when the user explicitly requests analysis or you cannot determine the root cause from issue details alone",
     "- Seer Autofix does not support metric alert issues (issueCategory: metric); use get_issue_details and search_metrics or search_traces instead",
+    "- Starting a new analysis requires a GitHub or GitLab integration and repositories connected to the issue's project; without them the tool reports that no analysis started",
     "- If the user provides an issueUrl, extract it and use that parameter alone",
     "- The analysis includes actual code snippets and fixes, not just error descriptions",
     "- Results are cached - subsequent calls return instantly",
@@ -141,8 +143,10 @@ export default defineTool({
       },
     );
 
-    // Step 2: Start analysis if none exists
-    if (!autofixState.autofix) {
+    // Step 2: Start analysis if none exists or the last one failed, so a run
+    // that stopped (e.g. out of credits) can be retried.
+    const previousRun = autofixState.autofix;
+    if (!previousRun || previousRun.status === "error") {
       let startResult: Awaited<ReturnType<typeof apiService.startAutofix>>;
       try {
         startResult = await apiService.startAutofix({
@@ -155,11 +159,30 @@ export default defineTool({
         // Seer credits or quota.
         if (error instanceof ApiError && error.status === 402) {
           output += `## Analysis Not Started\n\n${getSeerPaymentRequiredMessage(error.responseBody)}\n`;
+          // The failed run may already hold paid-for analysis, e.g. a root
+          // cause found before the org ran out of credits.
+          const previousOutput = previousRun
+            ? getOutputForAutofixRun(previousRun)
+            : "";
+          if (previousRun && previousOutput) {
+            output += `\nThe previous analysis (Run ID: ${previousRun.run_id}) failed before it finished. Its partial results:\n\n${previousOutput}`;
+          }
           return output;
+        }
+        // Sentry answers 409 with a setup code when the org has no SCM
+        // integration or the project has no linked repositories.
+        if (error instanceof ApiError && error.status === 409) {
+          const setupMessage = getSeerSetupRequiredMessage(error.responseBody);
+          if (setupMessage) {
+            output += `## Analysis Not Started\n\n${setupMessage}\n`;
+            return output;
+          }
         }
         throw error;
       }
-      output += `Starting new analysis...\n\n`;
+      output += previousRun
+        ? `Previous analysis (Run ID: ${previousRun.run_id}) failed, starting a new one...\n\n`
+        : `Starting new analysis...\n\n`;
       output += `Analysis started with Run ID: ${startResult.run_id}\n\n`;
 
       // Give it a moment to initialize
@@ -184,20 +207,16 @@ export default defineTool({
         },
       );
     } else {
-      output += `Found existing analysis (Run ID: ${autofixState.autofix.run_id})\n\n`;
+      output += `Found existing analysis (Run ID: ${previousRun.run_id})\n\n`;
 
-      // Check if existing analysis is already complete
-      const existingStatus = autofixState.autofix.status;
+      // Completed and waiting-for-input runs are returned as they are
+      const existingStatus = previousRun.status;
       if (isTerminalStatus(existingStatus)) {
-        // Return results immediately, no polling needed
         output += `## Analysis ${getStatusDisplayName(existingStatus)}\n\n`;
-        output += getOutputForAutofixRun(autofixState.autofix);
+        output += getOutputForAutofixRun(previousRun);
 
         if (existingStatus !== "completed") {
           output += `\n**Status**: ${existingStatus}\n`;
-          output += getFailureReasonGuidance(
-            autofixState.autofix.failure_reason,
-          );
           output += getHumanInterventionGuidance(existingStatus);
           output += "\n";
         }

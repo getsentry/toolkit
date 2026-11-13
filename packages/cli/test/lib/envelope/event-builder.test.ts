@@ -185,12 +185,12 @@ describe("buildEventFromFlags", () => {
 
   test("--no-environ omits process.env from extra", async () => {
     const event = await buildEventFromFlags(flags({ "no-environ": true }));
-    expect((event.extra as Record<string, unknown>)?.environ).toBeUndefined();
+    expect(event.extra?.environ).toBeUndefined();
   });
 
   test("environ included when --no-environ not set", async () => {
     const event = await buildEventFromFlags(flags({ "no-environ": false }));
-    expect((event.extra as Record<string, unknown>)?.environ).toBeDefined();
+    expect(event.extra?.environ).toBeDefined();
   });
 
   test("--user routes known fields correctly", async () => {

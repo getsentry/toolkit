@@ -7,7 +7,11 @@ import {
   LLMProviderError,
 } from "../errors";
 import { APICallError, RetryError } from "ai";
-import { ApiRateLimitError, createApiError } from "../api-client";
+import {
+  ApiPermissionError,
+  ApiRateLimitError,
+  createApiError,
+} from "../api-client";
 
 vi.mock("../telem/logging", () => ({
   logIssue: vi.fn(() => "mock-event-id"),
@@ -242,6 +246,47 @@ describe("formatErrorForUser", () => {
         ].join("\n\n"),
       );
       expect(logIssue).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("insufficient_scope ApiPermissionError", () => {
+    const detail = "You do not have permission to perform this action.";
+    const expected = [
+      "**Missing Permission**",
+      "API error (403): You do not have permission to perform this action. The access token is missing the scope this endpoint requires; it needs one of: event:write, seer:write. Retrying with the same token will not help.",
+      "Reconnect Sentry with a token or authorization that includes one of these scopes, then try again.",
+    ].join("\n\n");
+
+    it("names the accepted scopes and says retrying won't help", async () => {
+      const error = createApiError(detail, 403, detail, { detail }, undefined, [
+        "event:write",
+        "seer:write",
+      ]);
+
+      expect(await formatErrorForUser(error, { transport: "http" })).toBe(
+        expected,
+      );
+      expect(isExpectedToolError(error)).toBe(true);
+      expect(logIssue).not.toHaveBeenCalled();
+    });
+
+    it("finds the scopes when a tool rewraps the error as an input error", async () => {
+      const cause = new ApiPermissionError(detail, detail, { detail }, [
+        "event:write",
+        "seer:write",
+      ]);
+      const error = new UserInputError(`API error (403): ${detail}`, {
+        cause,
+      });
+
+      expect(await formatErrorForUser(error)).toBe(expected);
+    });
+
+    it("keeps the input error template for a 403 without a challenge", async () => {
+      const result = await formatErrorForUser(createApiError("Forbidden", 403));
+
+      expect(result).toContain("**Input Error**");
+      expect(result).toContain("API error (403): Forbidden");
     });
   });
 
