@@ -21,15 +21,8 @@ export default defineTool({
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [
-    "Update a Sentry Metric Monitor's query, detection conditions, metadata, status or connected Alerts.",
-    "Use get_metric_monitor_details first and its native monitorId, not a legacy metric alert ID. projectSlug identifies scope; it does not move the monitor.",
-    "Omit fields to preserve them. query and config accept partial changes. conditionGroup and workflowIds replace their complete configuration; preserve IDs and entries you want to retain.",
-    "Static, Percent and Dynamic detection are supported. Windows and comparison deltas are in seconds. Percent thresholds are absolute (110 means 10% higher), not percentage changes.",
-    "Dynamic changes may require sufficient historical data. Dataset access, query and window constraints are enforced by Sentry.",
-    "workflowIds connect existing Alerts, including shared Alerts, without editing their actions or other monitors. Use update_alert_rule for notification configuration.",
-    "Requires alerts:write; reconnect OAuth if the existing token lacks it.",
-    "update_metric_monitor(organizationSlug='my-org', monitorId='12345', status='disabled')",
-    "update_metric_monitor(organizationSlug='my-org', monitorId='12345', query={query:'level:error', timeWindowSeconds:300})",
+    "Update a Sentry Metric Monitor: its query, detection mode and conditions, name, owner, status, or connected Alerts. Omitted fields stay unchanged.",
+    "Read it with get_metric_monitor_details first. Alert notification actions change with update_alert_rule. Cron jobs: find_monitors. URL checks: find_uptime_monitors.",
   ].join("\n"),
   inputSchema: {
     ...metricMonitorReferenceFields,

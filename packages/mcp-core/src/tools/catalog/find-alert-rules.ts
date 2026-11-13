@@ -22,7 +22,7 @@ import { assertProjectRefWithinConstraint } from "./support/project-constraints"
 const AlertRuleKind = z
   .enum(["all", "issue", "metric"])
   .describe(
-    "Which alert rule family to search. Use `all` to include Alerts (workflows) and Metric Monitors.",
+    "Alert family: `issue` for Alerts (workflows), `metric` for Metric Monitors.",
   );
 
 const issueAlertRuleSummarySchema = z.object({
@@ -103,25 +103,8 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [
-    "Find Sentry alert rules.",
-    "",
-    "Use this tool when you need to:",
-    "- List Alerts (workflows) for an organization or project, including Alerts without connected sources",
-    "- List Metric Monitors using compatibility references; prefer find_metric_monitors for canonical monitor IDs",
-    "- Find an alert rule ID by name before inspecting it",
-    "- Check alert conditions, queries, triggers, actions, owner, or environment",
-    "",
-    "<examples>",
-    "find_alert_rules(organizationSlug='my-org')",
-    "find_alert_rules(organizationSlug='my-org', projectSlug='backend')",
-    "find_alert_rules(organizationSlug='my-org', kind='issue', projectSlug='backend', query='critical')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Omit `projectSlug` to search organization-wide. A project filter finds connected Alerts, which may also cover other projects.",
-    "- Metric entries expose monitorId and projectId. id retains a legacy alert-rule ID when available, otherwise detector:<monitorId>. status describes enabled/disabled monitoring, not a legacy alert status.",
-    "- Issue and metric alert rules have independent pagination state. Reuse a nextCursor only with its matching kind.",
-    "</hints>",
+    "Find Sentry alert rules: Issue Alerts (notification workflows) and Metric Monitor alerts, with their conditions, actions, owner, and environment.",
+    "Metric entries carry legacy IDs; find_metric_monitors returns canonical monitor IDs. Cron and uptime monitors: find_monitors, find_uptime_monitors.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -131,14 +114,14 @@ export default defineTool({
     query: z
       .string()
       .trim()
-      .describe("Optional search query for alert rule name.")
+      .describe("Text to match in the alert rule name.")
       .nullable()
       .default(null),
     cursor: z
       .string()
       .trim()
       .describe(
-        "Optional pagination cursor from a previous Sentry API response.",
+        "Next cursor from a previous result. Issue and metric families page separately; reuse a cursor only with its own kind.",
       )
       .nullable()
       .default(null),
@@ -147,7 +130,7 @@ export default defineTool({
       .int()
       .positive()
       .max(100)
-      .describe("Maximum number of alert rules to return per alert family.")
+      .describe("Maximum rules per alert family.")
       .default(10),
   },
   annotations: {
