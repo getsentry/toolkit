@@ -1224,6 +1224,38 @@ describe("get_issue_details", () => {
     `);
   });
 
+  it("finds an eventId-only issue outside the caller's team projects", async () => {
+    // Without `project`, Sentry searches only projects on the caller's teams
+    // and returns [] when they have none, even with open membership.
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/",
+        ({ request }) => {
+          const projects = new URL(request.url).searchParams.getAll("project");
+          if (projects.length === 1 && projects[0] === "-1") {
+            return undefined;
+          }
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: undefined,
+        issueUrl: undefined,
+        eventId: "7ca573c0f4814912aaa9bdc77d1a7d51",
+        regionUrl: null,
+      },
+      baseContext,
+    );
+
+    expect(result).toContain(
+      "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
+    );
+  });
+
   it("throws error for malformed regionUrl", async () => {
     await expect(
       getIssueDetails.handler(

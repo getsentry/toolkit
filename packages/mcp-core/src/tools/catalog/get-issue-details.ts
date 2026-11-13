@@ -504,8 +504,12 @@ export default defineTool({
           issueId: params.issueId,
         });
       } else {
+        // Without `project`, Sentry searches only projects on the caller's
+        // teams, so an open-membership member with no team finds nothing.
+        // `-1` searches every project the caller can access.
         const issues = await apiService.listIssues({
           organizationSlug: orgSlug,
+          projectId: "-1",
           query: eventId,
         });
         const found = issues.at(0);
