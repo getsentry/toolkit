@@ -1,13 +1,15 @@
 import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { z } from "zod";
-import type { Event } from "../api-client/types";
+import type { Event, SourceMapDebug } from "../api-client/types";
+import { diagnoseSourceMaps } from "./source-map-diagnosis";
 
 /**
  * Concerns are problems with the project's Sentry setup, such as missing
  * source maps, that are optional to fix but would make future issues easier to
- * debug. Each comes from data already on the event; none needs an extra API
- * call. When the problem also changes how to read this event, the concern
- * carries a one-line `caveat` that renders next to the affected data.
+ * debug. Detectors read the event and the checks already fetched for it in
+ * `ConcernContext`, such as Sentry's source map debug result. When the problem
+ * also changes how to read this event, the concern carries a one-line `caveat`
+ * that renders next to the affected data.
  *
  * To add one, write a detector that returns a `Concern` or null and add it to
  * `DETECTORS`. `buildConcerns` orders them by priority and keeps the first
@@ -27,6 +29,17 @@ export const concernSchema = z.object({
     .array(z.string())
     .describe("Affected files, capped; fileCount says how many there are."),
   fileCount: z.number(),
+  diagnosis: z
+    .array(
+      z.object({
+        problem: z.string(),
+        fix: z.string(),
+        files: z.array(z.string()),
+      }),
+    )
+    .describe(
+      "Cause and fix for the affected files, from a Sentry check of this event. Empty when no check ran.",
+    ),
   caveat: z
     .string()
     .nullable()
@@ -44,7 +57,15 @@ interface PrioritizedConcern {
   concern: Concern;
 }
 
-type Detector = (event: Event) => PrioritizedConcern | null;
+/** Optional checks fetched for the event; a detector works without them. */
+export interface ConcernContext {
+  sourceMapDebug?: SourceMapDebug;
+}
+
+type Detector = (
+  event: Event,
+  context: ConcernContext,
+) => PrioritizedConcern | null;
 
 const JS_SOURCE_MAPS_DOCS_URL =
   "https://docs.sentry.io/platforms/javascript/sourcemaps/";
@@ -57,7 +78,9 @@ const UPLOAD_FIX =
 /**
  * The JavaScript processing error types in getsentry/sentry
  * `src/sentry/models/eventerror.py`, with what each one means for the user.
- * Order sets which problem is listed first.
+ * Order sets which problem is listed first. Sentry's actionable-items endpoint
+ * hides `js_no_source` and `js_invalid_sourcemap_location`; we keep them
+ * because they are the most common reason a stacktrace stays minified.
  */
 const JS_SOURCE_MAP_ERRORS: ReadonlyMap<
   string,
@@ -156,7 +179,17 @@ function getErrorFile(data: Record<string, unknown> | null | undefined) {
   return typeof file === "string" && file.length > 0 ? file : null;
 }
 
-function detectJsSourceMapFailure(event: Event): PrioritizedConcern | null {
+/** Whether Sentry reported a JavaScript source map failure for the event. */
+export function hasJsSourceMapErrors(event: Event): boolean {
+  return (event.errors ?? []).some(({ type }) =>
+    JS_SOURCE_MAP_ERRORS.has(type),
+  );
+}
+
+function detectJsSourceMapFailure(
+  event: Event,
+  { sourceMapDebug }: ConcernContext,
+): PrioritizedConcern | null {
   const errorTypes = new Set<string>();
   const files = new Set<string>();
   for (const error of event.errors ?? []) {
@@ -177,18 +210,31 @@ function detectJsSourceMapFailure(event: Event): PrioritizedConcern | null {
     errorTypes.has(type),
   );
   const problems = matched.map(([, detail]) => detail.problem).join("; ");
-  const fixes = [...new Set(matched.map(([, detail]) => detail.fix))].join(" ");
+  const diagnosis = sourceMapDebug
+    ? diagnoseSourceMaps({
+        event,
+        debug: sourceMapDebug,
+        files: [...files].slice(0, MAX_FILES),
+      })
+    : [];
+  // a diagnosis names the exact fix for each file; without one, the fix
+  // follows from the error types
+  const fix =
+    diagnosis.length > 0
+      ? ""
+      : ` Fix: ${[...new Set(matched.map(([, detail]) => detail.fix))].join(" ")}`;
 
   return {
     priority: 0,
     concern: {
       code: "js_source_maps",
       title: "Fix JavaScript source maps",
-      message: `Sentry could not apply source maps to this event: ${problems}. Fix: ${fixes} Troubleshooting: ${JS_SOURCE_MAPS_TROUBLESHOOTING_URL}`,
+      message: `Sentry could not apply source maps to this event: ${problems}.${fix} Troubleshooting: ${JS_SOURCE_MAPS_TROUBLESHOOTING_URL}`,
       docsUrl: JS_SOURCE_MAPS_DOCS_URL,
       errorTypes: matched.map(([type]) => type),
       files: [...files].slice(0, MAX_FILES),
       fileCount: files.size,
+      diagnosis,
       caveat:
         "Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.",
     },
@@ -198,9 +244,12 @@ function detectJsSourceMapFailure(event: Event): PrioritizedConcern | null {
 const DETECTORS: readonly Detector[] = [detectJsSourceMapFailure];
 
 /** The concerns an event points to, most important first. */
-export function buildConcerns(event: Event): Concern[] {
+export function buildConcerns(
+  event: Event,
+  context: ConcernContext = {},
+): Concern[] {
   return DETECTORS.flatMap((detect) => {
-    const result = detect(event);
+    const result = detect(event, context);
     return result ? [result] : [];
   })
     .sort((a, b) => a.priority - b.priority)
@@ -225,9 +274,13 @@ export function formatConcernsSection(concerns: Concern[]): string {
   output +=
     "Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.\n\n";
   for (const concern of concerns) {
-    // the message is built from constants, so it needs no escaping
+    // messages are built from constants, and the diagnosis quotes upstream
+    // values with inlineCode, so neither needs escaping here
     output += `- **${concern.title}**: ${concern.message}\n`;
-    if (concern.files.length > 0) {
+    for (const { problem, fix, files } of concern.diagnosis) {
+      output += `  - ${files.map(inlineCode).join(", ")}: ${problem}. Fix: ${fix}\n`;
+    }
+    if (concern.files.length > 0 && concern.diagnosis.length === 0) {
       const more =
         concern.fileCount > concern.files.length
           ? ` (and ${concern.fileCount - concern.files.length} more)`

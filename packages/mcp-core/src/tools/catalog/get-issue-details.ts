@@ -9,6 +9,7 @@ import type {
   Event,
   ExternalIssueList,
   Issue,
+  SourceMapDebug,
   Trace,
 } from "../../api-client/types";
 import { ConfigurationError, UserInputError } from "../../errors";
@@ -65,6 +66,7 @@ import {
   getEventTimestamp,
   issueEventSchema,
 } from "../support/issue-event-payload";
+import { maybeFetchSourceMapDebug } from "../support/source-map-debug";
 import { nonEmptyString } from "../support/structured-stacktrace";
 import type { StructuredToolOutput } from "../types";
 
@@ -218,6 +220,7 @@ function buildIssueDetailsPayload({
   aiConversations,
   codeLocation,
   committers,
+  sourceMapDebug,
   experimentalMode,
   availableToolNames,
   directToolNames,
@@ -301,7 +304,7 @@ function buildIssueDetailsPayload({
           spanId: conversation.spanId ?? null,
         }))
       : null,
-    concerns: buildConcerns(event),
+    concerns: buildConcerns(event, { sourceMapDebug }),
     suggestedActions: buildIssueSuggestedActions({
       organizationSlug,
       issue,
@@ -527,7 +530,14 @@ export default defineTool({
       });
       // For this call, we might want to provide context if it fails
       const [
-        { event, performanceTrace, aiConversations, codeLocation, committers },
+        {
+          event,
+          performanceTrace,
+          aiConversations,
+          codeLocation,
+          committers,
+          sourceMapDebug,
+        },
         { autofixState, externalIssues, relatedReplayIds },
       ] = await Promise.all([
         apiService
@@ -577,6 +587,7 @@ export default defineTool({
         aiConversations,
         codeLocation,
         committers,
+        sourceMapDebug,
         experimentalMode: context.experimentalMode,
         availableToolNames: context.availableToolNames,
         directToolNames: context.directToolNames,
@@ -627,7 +638,14 @@ export default defineTool({
     });
 
     const [
-      { event, performanceTrace, aiConversations, codeLocation, committers },
+      {
+        event,
+        performanceTrace,
+        aiConversations,
+        codeLocation,
+        committers,
+        sourceMapDebug,
+      },
       { autofixState, externalIssues, relatedReplayIds },
     ] = await Promise.all([
       apiService
@@ -664,6 +682,7 @@ export default defineTool({
       aiConversations,
       codeLocation,
       committers,
+      sourceMapDebug,
       experimentalMode: context.experimentalMode,
       availableToolNames: context.availableToolNames,
       directToolNames: context.directToolNames,
@@ -686,34 +705,52 @@ async function fetchEventEnrichment({
   aiConversations: AIConversationReference[];
   codeLocation: CodeLocation | undefined;
   committers: CommitterList | undefined;
+  sourceMapDebug: SourceMapDebug | undefined;
 }> {
-  const [performanceTrace, aiConversations, codeLocation, committers] =
-    await Promise.all([
-      maybeFetchPerformanceTrace({
-        apiService,
-        organizationSlug,
-        event,
-      }),
-      maybeFindAIConversationsForIssueEvent({
-        apiService,
-        organizationSlug,
-        event,
-      }),
-      resolveCodeLocation({
-        apiService,
-        organizationSlug,
-        projectSlug: issue.project.slug,
-        event,
-      }),
-      maybeFetchCommitters({
-        apiService,
-        organizationSlug,
-        projectSlug: issue.project.slug,
-        event,
-      }),
-    ]);
+  const [
+    performanceTrace,
+    aiConversations,
+    codeLocation,
+    committers,
+    sourceMapDebug,
+  ] = await Promise.all([
+    maybeFetchPerformanceTrace({
+      apiService,
+      organizationSlug,
+      event,
+    }),
+    maybeFindAIConversationsForIssueEvent({
+      apiService,
+      organizationSlug,
+      event,
+    }),
+    resolveCodeLocation({
+      apiService,
+      organizationSlug,
+      projectSlug: issue.project.slug,
+      event,
+    }),
+    maybeFetchCommitters({
+      apiService,
+      organizationSlug,
+      projectSlug: issue.project.slug,
+      event,
+    }),
+    maybeFetchSourceMapDebug({
+      apiService,
+      organizationSlug,
+      projectSlug: issue.project.slug,
+      event,
+    }),
+  ]);
 
-  return { performanceTrace, aiConversations, codeLocation, committers };
+  return {
+    performanceTrace,
+    aiConversations,
+    codeLocation,
+    committers,
+    sourceMapDebug,
+  };
 }
 
 /** Keeps issue details available when optional commit lookup fails, reporting unexpected failures. */

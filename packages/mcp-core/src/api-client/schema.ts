@@ -937,6 +937,7 @@ export const ExceptionInterface = z
     value: z.string().nullable(),
     module: z.string().nullable(),
     stacktrace: StacktraceSchema.nullable(),
+    rawStacktrace: StacktraceSchema.nullable(),
   })
   .partial();
 
@@ -1281,6 +1282,52 @@ export const StacktraceLinkSchema = z
     sourceUrl: z.string().nullable().optional(),
   })
   .passthrough();
+
+// Response of /projects/{org}/{project}/events/{event_id}/source-map-debug/, per
+// getsentry/sentry src/sentry/api/endpoints/source_map_debug.py. Exceptions and
+// their frames line up with the event's exception values and raw stacktrace
+// frames. Enum-like fields stay strings so new values don't fail parsing.
+const SourceMapScrapingAttemptSchema = z
+  .object({
+    status: z.string(),
+    url: z.string().nullish(),
+    reason: z.string().nullish(),
+  })
+  .nullish();
+
+const SourceMapDebugFrameSchema = z.object({
+  debug_id_process: z.object({
+    debug_id: z.string().nullable(),
+    uploaded_source_file_with_correct_debug_id: z.boolean(),
+    uploaded_source_map_with_correct_debug_id: z.boolean(),
+  }),
+  release_process: z
+    .object({
+      abs_path: z.string(),
+      matching_source_file_names: z.array(z.string()),
+      source_map_reference: z.string().nullable(),
+      source_file_lookup_result: z.string(),
+      source_map_lookup_result: z.string(),
+    })
+    .nullable(),
+  scraping_process: z
+    .object({
+      source_file: SourceMapScrapingAttemptSchema,
+      source_map: SourceMapScrapingAttemptSchema,
+    })
+    .nullish(),
+});
+
+export const SourceMapDebugSchema = z.object({
+  dist: z.string().nullable(),
+  release: z.string().nullable(),
+  exceptions: z.array(z.object({ frames: z.array(SourceMapDebugFrameSchema) })),
+  sdk_version: z.string().nullable(),
+  release_has_some_artifact: z.boolean(),
+  has_uploaded_some_artifact_with_a_debug_id: z.boolean(),
+  sdk_debug_id_support: z.string(),
+  min_debug_id_sdk_version: z.string().nullish(),
+});
 
 export const EventsResponseSchema = z.object({
   data: z.array(z.unknown()),

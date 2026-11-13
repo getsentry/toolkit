@@ -305,8 +305,8 @@ describe("get_issue_details", () => {
 
       Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
 
-      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
-        - Affected files: \`/index.js\`
+      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
+        - \`/index.js\`: The deployed file has no debug ID, and the project has no uploads with debug IDs. Fix: Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.
         - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
 
       ## Response Notes
@@ -943,8 +943,8 @@ describe("get_issue_details", () => {
 
       Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
 
-      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
-        - Affected files: \`/index.js\`
+      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
+        - \`/index.js\`: The deployed file has no debug ID, and the project has no uploads with debug IDs. Fix: Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.
         - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
 
       ## Response Notes
@@ -1238,8 +1238,8 @@ describe("get_issue_details", () => {
 
       Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
 
-      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
-        - Affected files: \`/index.js\`
+      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
+        - \`/index.js\`: The deployed file has no debug ID, and the project has no uploads with debug IDs. Fix: Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.
         - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
 
       ## Response Notes
@@ -3376,6 +3376,15 @@ describe("concerns identified", () => {
         {
           "caveat": "Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.",
           "code": "js_source_maps",
+          "diagnosis": [
+            {
+              "files": [
+                "/index.js",
+              ],
+              "fix": "Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.",
+              "problem": "The deployed file has no debug ID, and the project has no uploads with debug IDs",
+            },
+          ],
           "docsUrl": "https://docs.sentry.io/platforms/javascript/sourcemaps/",
           "errorTypes": [
             "js_no_source",
@@ -3384,7 +3393,7 @@ describe("concerns identified", () => {
           "files": [
             "/index.js",
           ],
-          "message": "Sentry could not apply source maps to this event: the source file or its source map was not found. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/",
+          "message": "Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/",
           "title": "Fix JavaScript source maps",
         },
       ]
@@ -3432,6 +3441,25 @@ describe("concerns identified", () => {
     `);
   });
 
+  it("falls back to the fix for the error types when the source map check fails", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/projects/sentry-mcp-evals/:project/events/:eventId/source-map-debug/",
+        () => HttpResponse.json({ detail: "Not found" }, { status: 404 }),
+      ),
+    );
+
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const [concern] = getStructuredContent<{
+      concerns: Array<{ message: string; diagnosis: unknown[] }>;
+    }>(result).concerns;
+
+    expect(concern.diagnosis).toEqual([]);
+    expect(concern.message).toContain(
+      "Fix: Upload source maps for this release from the same build that was deployed.",
+    );
+  });
+
   it("omits the section and caveat when the event has no source map errors", async () => {
     mockLatestEvent([
       {
@@ -3440,6 +3468,16 @@ describe("concerns identified", () => {
         data: {},
       },
     ]);
+    let checked = false;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/projects/sentry-mcp-evals/:project/events/:eventId/source-map-debug/",
+        () => {
+          checked = true;
+          return HttpResponse.json({}, { status: 500 });
+        },
+      ),
+    );
 
     const markdown = await getIssueDetails.handler(params, baseContext);
     expect(markdown).not.toContain("## Concerns Identified");
@@ -3449,5 +3487,7 @@ describe("concerns identified", () => {
     expect(
       getStructuredContent<{ concerns: unknown }>(result).concerns,
     ).toEqual([]);
+    // a healthy event needs no source map check
+    expect(checked).toBe(false);
   });
 });

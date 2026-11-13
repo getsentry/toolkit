@@ -28,6 +28,7 @@ import type {
   ExternalIssueList,
   GenericEvent,
   Issue,
+  SourceMapDebug,
   Trace,
   TraceSpan,
 } from "../api-client/types";
@@ -2286,6 +2287,7 @@ export function formatIssueOutput({
   aiConversations,
   codeLocation,
   committers,
+  sourceMapDebug,
   experimentalMode,
   availableToolNames,
   directToolNames,
@@ -2302,6 +2304,7 @@ export function formatIssueOutput({
   aiConversations?: AIConversationReference[];
   codeLocation?: CodeLocation;
   committers?: CommitterList;
+  sourceMapDebug?: SourceMapDebug;
   experimentalMode?: boolean;
   availableToolNames?: ReadonlySet<string>;
   directToolNames?: ReadonlySet<string>;
@@ -2373,7 +2376,7 @@ export function formatIssueOutput({
   output += `**URL**: ${apiService.getIssueUrl(organizationSlug, issue.shortId)}\n`;
   output += "\n";
 
-  const concerns = buildConcerns(event);
+  const concerns = buildConcerns(event, { sourceMapDebug });
   // caveats go before the first data they affect: Code Location, or else the
   // top of Event Details, above the stacktrace
   const caveats = formatConcernCaveats(concerns);
