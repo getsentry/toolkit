@@ -3,7 +3,8 @@
  * Generate the CLI discovery index from the installed SDK's operation catalog.
  *
  * Usage: tsx script/generate-api-schema.ts
- * Outputs: src/generated/api-schema.json and src/generated/idempotent-operations.json
+ * Outputs: src/generated/api-schema.json, src/generated/idempotent-operations.json
+ * and src/generated/api-path-templates.json
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -15,6 +16,7 @@ import { projectApiOperations } from "./lib/api-schema.js";
 
 const OUTPUT_PATH = "src/generated/api-schema.json";
 const IDEMPOTENT_OUTPUT_PATH = "src/generated/idempotent-operations.json";
+const PATH_TEMPLATES_OUTPUT_PATH = "src/generated/api-path-templates.json";
 const endpoints = projectApiOperations(operations);
 
 await mkdir(dirname(OUTPUT_PATH), { recursive: true });
@@ -40,4 +42,17 @@ await writeFile(
 
 console.log(
   `Generated ${IDEMPOTENT_OUTPUT_PATH} (${idempotentOperations.length} operations)`,
+);
+
+// Telemetry templates request paths against these, so it loads only the
+// paths, not the catalog.
+const pathTemplates = [...new Set(operations.map((op) => op.path))].sort();
+
+await writeFile(
+  PATH_TEMPLATES_OUTPUT_PATH,
+  JSON.stringify(pathTemplates, null, 2),
+);
+
+console.log(
+  `Generated ${PATH_TEMPLATES_OUTPUT_PATH} (${pathTemplates.length} paths)`,
 );

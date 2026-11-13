@@ -38,6 +38,8 @@ import {
   UnsatisfiedFlagError,
   UnsatisfiedPositionalError,
 } from "@stricli/core";
+import { matchApiPathTemplate } from "@sentry/toolkit-core/api-path-template";
+import apiPathTemplates from "../generated/api-path-templates.json";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
   ApiError,
@@ -212,54 +214,100 @@ function recordSilencedError(error: unknown, reason: SilenceReason): void {
 // Grouping tags
 // ---------------------------------------------------------------------------
 
-/** Endpoint normalization patterns — compiled once at module scope. */
-const ENDPOINT_PATTERNS: [RegExp, string][] = [
-  [/\/organizations\/[^/]+/, "/organizations/{org}"],
-  [/\/projects\/[^/]+\/[^/]+/, "/projects/{org}/{project}"],
-  [/\/issues\/[^/]+/, "/issues/{id}"],
-  [/\/events\/[^/]+/, "/events/{id}"],
-  [/\/groups\/[^/]+/, "/groups/{id}"],
-  [/\/releases\/[^/]+/, "/releases/{version}"],
-  [/\/teams\/[^/]+\/[^/]+/, "/teams/{org}/{team}"],
-  [/\/dashboards\/[^/]+/, "/dashboards/{id}"],
-  [/\/customers\/[^/]+/, "/customers/{org}"],
-  [/\/shortids\/[^/]+/, "/shortids/{id}"],
-  [/\/monitors\/[^/]+/, "/monitors/{monitor}"],
-];
+/** The API version prefix every OpenAPI path template starts with. */
+const API_PREFIX = "/api/0";
 
-/**
- * Strip remaining bare numeric segments (e.g. /12345/) but preserve
- * the API version in /api/0/, which may follow an install prefix.
- */
-const BARE_NUMERIC_SEGMENT_RE = /(?<!\/api)\/\d+(?=\/|$)/g;
+/** OpenAPI path templates without their trailing slash, with segment counts. */
+const PATH_TEMPLATES = (apiPathTemplates as string[]).map((path) => {
+  const template = path.replace(/\/$/, "");
+  return { template, length: template.split("/").length };
+});
+
+/** Segments the templates spell out literally, such as `issues`. */
+const LITERAL_SEGMENTS = new Set(
+  PATH_TEMPLATES.flatMap(({ template }) => template.split("/")).filter(
+    (segment) => !segment.startsWith("{"),
+  ),
+);
 
 /** Scheme and host of an absolute URL. */
 const URL_ORIGIN_RE = /^[a-z][a-z\d+.-]*:\/\/[^/?#]*/i;
 
 /**
+ * Template `apiPath` with the OpenAPI path template that matches the most of
+ * it, most specific first. Segments past that match keep their literal
+ * segments and replace every other segment with `{id}`, so a path outside
+ * the catalog leaks nothing.
+ */
+function templateApiPath(apiPath: string): string {
+  const segments = apiPath.split("/");
+  let best = {
+    template: API_PREFIX,
+    length: API_PREFIX.split("/").length,
+    literalSegments: 0,
+  };
+  for (const { template, length } of PATH_TEMPLATES) {
+    if (length > segments.length || length < best.length) {
+      continue;
+    }
+    const match = matchApiPathTemplate(
+      template,
+      segments.slice(0, length).join("/"),
+    );
+    if (
+      match &&
+      (length > best.length || match.literalSegments > best.literalSegments)
+    ) {
+      best = { template, length, literalSegments: match.literalSegments };
+    }
+  }
+  const rest = segments
+    .slice(best.length)
+    .map((segment) => (LITERAL_SEGMENTS.has(segment) ? segment : "{id}"));
+  return [best.template, ...rest].join("/");
+}
+
+/**
  * Normalize an API endpoint path by parameterizing variable segments.
  *
  * Replaces org slugs, project slugs, issue IDs, event IDs, and other
- * entity identifiers with placeholders so that server-side fingerprint
- * rules can sub-group `ApiError` by endpoint shape rather than exact path.
+ * entity identifiers with the placeholders of the `@sentry/api` OpenAPI
+ * path templates, so that server-side fingerprint rules can sub-group
+ * `ApiError` by endpoint shape rather than exact path.
  *
- * Accepts a path with or without a leading slash, or a full URL, whose
- * origin is kept. Drops the query string and fragment.
+ * Accepts a path relative to `/api/0/`, with or without a leading slash, or
+ * a full URL, whose origin and any install prefix before `/api/0/` are kept.
+ * Leaves full URLs outside `/api/0/` alone, since they are not API requests.
+ * Drops the query string and fragment.
  *
  * `"/api/0/projects/my-org/my-project/events/abc123/"` →
- * `"/api/0/projects/{org}/{project}/events/{id}/"`
+ * `"/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/events/{event_id}/"`
  */
 export function normalizeEndpoint(endpoint: string): string {
   const origin = URL_ORIGIN_RE.exec(endpoint)?.[0] ?? "";
   const path = endpoint.slice(origin.length).split(/[?#]/, 1)[0] ?? "";
-  // The patterns match on a leading slash, which relative paths lack.
-  const hasLeadingSlash = origin !== "" || path.startsWith("/");
-  let result = path.startsWith("/") ? path : `/${path}`;
-  for (const [pattern, replacement] of ENDPOINT_PATTERNS) {
-    result = result.replace(pattern, replacement);
+  const segments = path.split("/").filter(Boolean);
+  const apiIndex = segments.findIndex(
+    (segment, index) => segment === "api" && segments[index + 1] === "0",
+  );
+  if (origin && apiIndex === -1) {
+    return origin + path;
   }
-  result = result.replace(BARE_NUMERIC_SEGMENT_RE, "/{id}");
-  return origin + (hasLeadingSlash ? result : result.slice(1));
+  // A path without /api/0 is relative to it. Keep a self-hosted install
+  // prefix before it.
+  const relative = apiIndex === -1;
+  const template = templateApiPath(
+    [API_PREFIX, ...segments.slice(relative ? 0 : apiIndex + 2)].join("/"),
+  );
+  const prefix = segments
+    .slice(0, Math.max(apiIndex, 0))
+    .map((segment) => `/${segment}`)
+    .join("");
+  let result = relative ? template.slice(API_PREFIX.length) : prefix + template;
+  if (path.endsWith("/") && !result.endsWith("/")) {
+    result += "/";
+  }
+  return origin || path.startsWith("/") ? origin + result : result.slice(1);
 }
 
 /**

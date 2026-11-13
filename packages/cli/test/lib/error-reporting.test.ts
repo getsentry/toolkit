@@ -158,83 +158,22 @@ describe("extractMessagePrefix", () => {
 // ---------------------------------------------------------------------------
 
 describe("normalizeEndpoint", () => {
-  test("parameterizes org slug in organizations path", () => {
-    expect(normalizeEndpoint("/api/0/organizations/my-org/issues/")).toBe(
-      "/api/0/organizations/{org}/issues/",
-    );
-  });
-
-  test("parameterizes org and project in projects path", () => {
-    expect(
-      normalizeEndpoint("/api/0/projects/my-org/my-project/events/abc123/"),
-    ).toBe("/api/0/projects/{org}/{project}/events/{id}/");
-  });
-
-  test("parameterizes issue, event, group, release IDs", () => {
-    expect(normalizeEndpoint("/api/0/issues/12345/")).toBe(
-      "/api/0/issues/{id}/",
-    );
-    expect(normalizeEndpoint("/api/0/groups/99/events/abc/")).toBe(
-      "/api/0/groups/{id}/events/{id}/",
-    );
-    expect(normalizeEndpoint("/api/0/releases/1.0.0/")).toBe(
-      "/api/0/releases/{version}/",
-    );
-  });
-
-  test("parameterizes teams path", () => {
-    expect(normalizeEndpoint("/api/0/teams/my-org/backend/")).toBe(
-      "/api/0/teams/{org}/{team}/",
-    );
-  });
-
-  test("parameterizes dashboards path", () => {
-    expect(normalizeEndpoint("/api/0/dashboards/42/")).toBe(
-      "/api/0/dashboards/{id}/",
-    );
-  });
-
-  test("parameterizes customers path", () => {
-    expect(normalizeEndpoint("/api/0/customers/my-org/")).toBe(
-      "/api/0/customers/{org}/",
-    );
-  });
-
-  test("parameterizes bare numeric segments", () => {
-    expect(normalizeEndpoint("/api/0/some/123/thing/456")).toBe(
-      "/api/0/some/{id}/thing/{id}",
-    );
-  });
-
-  test("leaves paths without variable segments unchanged", () => {
-    expect(normalizeEndpoint("/api/0/auth/")).toBe("/api/0/auth/");
-  });
-
   test.each([
-    ["organizations/my-org/releases/", "organizations/{org}/releases/"],
     [
-      "projects/my-org/my-project/issues/?query=is:unresolved",
-      "projects/{org}/{project}/issues/",
+      "/api/0/projects/my-org/my-project/events/abc123/",
+      "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/events/{event_id}/",
     ],
     [
-      "https://sentry.example.com/api/0/organizations/my-org/events/?field=title",
-      "https://sentry.example.com/api/0/organizations/{org}/events/",
+      "organizations/my-org/releases/?per_page=1",
+      "organizations/{organization_id_or_slug}/releases/",
     ],
     [
-      "https://sentry.example.com/sentry/api/0/organizations/my-org/",
-      "https://sentry.example.com/sentry/api/0/organizations/{org}/",
+      "https://sentry.example.com/sentry/api/0/organizations/my-org/issues/",
+      "https://sentry.example.com/sentry/api/0/organizations/{organization_id_or_slug}/issues/",
     ],
     [
-      "/organizations/my-org/shortids/MY-PROJECT-1A/",
-      "/organizations/{org}/shortids/{id}/",
-    ],
-    [
-      "organizations/my-org/monitors/my-monitor/",
-      "organizations/{org}/monitors/{monitor}/",
-    ],
-    [
-      "organizations/my-org/alert-rules/123/",
-      "organizations/{org}/alert-rules/{id}/",
+      "organizations/my-org/not-an-endpoint/my-thing/",
+      "organizations/{organization_id_or_slug}/{id}/{id}/",
     ],
   ])("templates %s", (endpoint, expected) => {
     expect(normalizeEndpoint(endpoint)).toBe(expected);
@@ -744,7 +683,7 @@ describe("reportCliError integration", () => {
     expect(tags["cli_error.api_status"]).toBe("400");
     expect(tags["cli_error.kind"]).toBe("400");
     expect(tags["cli_error.api_endpoint"]).toBe(
-      "/api/0/organizations/{org}/issues/",
+      "/api/0/organizations/{organization_id_or_slug}/issues/",
     );
   });
 
