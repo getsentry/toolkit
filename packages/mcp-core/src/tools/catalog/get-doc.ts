@@ -56,33 +56,14 @@ export default defineTool({
   title: "Get Sentry Doc",
   skills: ["inspect", "docs"], // Docs is retained for legacy docs-only grants.
   requiredScopes: [],
-  description: [
+  description:
     "Fetch the full markdown content of a Sentry documentation page.",
-    "",
-    "Use this tool when you need to:",
-    "- Read the complete documentation for a specific topic",
-    "- Get detailed implementation examples or code snippets",
-    "- Access the full context of a documentation page",
-    "- Extract specific sections from documentation",
-    "",
-    "<examples>",
-    "### Get the Next.js integration guide",
-    "",
-    "```",
-    "get_doc(path='/platforms/javascript/guides/nextjs.md')",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Use the path from search_docs results for accurate fetching",
-    "</hints>",
-  ].join("\n"),
   inputSchema: {
     path: z
       .string()
       .trim()
       .describe(
-        "The documentation path (e.g., '/platforms/javascript/guides/nextjs.md') or docs.sentry.io URL. Get this from search_docs results.",
+        "Docs page path from search_docs, or a full docs.sentry.io page URL.",
       ),
   },
   annotations: {

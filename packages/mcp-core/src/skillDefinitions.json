@@ -79,7 +79,7 @@
       },
       {
         "name": "get_doc",
-        "description": "Fetch the full markdown content of a Sentry documentation page.\n\nUse this tool when you need to:\n- Read the complete documentation for a specific topic\n- Get detailed implementation examples or code snippets\n- Access the full context of a documentation page\n- Extract specific sections from documentation\n\n<examples>\n### Get the Next.js integration guide\n\n```\nget_doc(path='/platforms/javascript/guides/nextjs.md')\n```\n</examples>\n\n<hints>\n- Use the path from search_docs results for accurate fetching\n</hints>",
+        "description": "Fetch the full markdown content of a Sentry documentation page.",
         "requiredScopes": []
       },
       {
@@ -370,7 +370,7 @@
       },
       {
         "name": "get_doc",
-        "description": "Fetch the full markdown content of a Sentry documentation page.\n\nUse this tool when you need to:\n- Read the complete documentation for a specific topic\n- Get detailed implementation examples or code snippets\n- Access the full context of a documentation page\n- Extract specific sections from documentation\n\n<examples>\n### Get the Next.js integration guide\n\n```\nget_doc(path='/platforms/javascript/guides/nextjs.md')\n```\n</examples>\n\n<hints>\n- Use the path from search_docs results for accurate fetching\n</hints>",
+        "description": "Fetch the full markdown content of a Sentry documentation page.",
         "requiredScopes": []
       },
       {
