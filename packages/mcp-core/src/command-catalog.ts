@@ -8,7 +8,7 @@
  * Do not edit it by hand.
  */
 
-import commandCatalogData from "./command-catalog.json";
+import commandCatalogData from "./command-catalog.json" with { type: "json" };
 
 /** Where agents may run a command; hidden commands are left out. */
 type CommandExposure = "exposed" | "stdio-only";
