@@ -13,6 +13,7 @@ import {
   getHumanInterventionGuidance,
   getOutputForAutofixRun,
   getSeerPaymentRequiredMessage,
+  getSeerSetupRequiredMessage,
   getSeerUnsupportedIssueMessage,
   getStatusDisplayName,
   isSeerSupportedIssue,
@@ -73,6 +74,7 @@ export default defineTool({
     "<hints>",
     "- Only use when the user explicitly requests analysis or you cannot determine the root cause from issue details alone",
     "- Seer Autofix does not support metric alert issues (issueCategory: metric); use get_issue_details and search_metrics or search_traces instead",
+    "- Starting a new analysis requires a GitHub or GitLab integration and repositories connected to the issue's project; without them the tool reports that no analysis started",
     "- If the user provides an issueUrl, extract it and use that parameter alone",
     "- The analysis includes actual code snippets and fixes, not just error descriptions",
     "- Results are cached - subsequent calls return instantly",
@@ -166,6 +168,15 @@ export default defineTool({
             output += `\nThe previous analysis (Run ID: ${previousRun.run_id}) failed before it finished. Its partial results:\n\n${previousOutput}`;
           }
           return output;
+        }
+        // Sentry answers 409 with a setup code when the org has no SCM
+        // integration or the project has no linked repositories.
+        if (error instanceof ApiError && error.status === 409) {
+          const setupMessage = getSeerSetupRequiredMessage(error.responseBody);
+          if (setupMessage) {
+            output += `## Analysis Not Started\n\n${setupMessage}\n`;
+            return output;
+          }
         }
         throw error;
       }
