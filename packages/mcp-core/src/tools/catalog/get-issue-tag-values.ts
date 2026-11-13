@@ -55,7 +55,7 @@ export default defineTool({
     "- Analyze which browsers, environments, or URLs are most impacted by an issue",
     "- View the tag distributions page data programmatically",
     "",
-    "Tag keys depend on the issue's platform, SDK, and custom tags, so keys such as `browser` or `url` are missing from many issues. The `### Tags` section of `get_issue_details` shows the tags on one of the issue's events, which is a good place to pick a key from. If the key is not on the issue, the error lists the keys it has.",
+    "Tag keys depend on the issue's platform, SDK, and custom tags, so keys such as `browser` or `url` are missing from many issues. The `event.tags` list in `get_issue_details` has the tags on one of the issue's events, which is a good place to pick a key from. If the key is not on the issue, the error lists the keys it has.",
     "",
     "<examples>",
     "### Get environment distribution for an issue",
