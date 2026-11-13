@@ -17,19 +17,16 @@ import {
 } from "@sentry/api";
 import { operations } from "@sentry/api/operations";
 import {
-  ApiError,
+  API_BASE_PATH,
   ApiNotFoundError,
   apiPath,
-  ApiRateLimitError,
   type ApiTarget,
   ApiValidationError,
-  applyStatsMixinTimeParams,
   applyTimeParams,
   createApiClientCore,
   createApiError,
   createApiTransport,
   createIdempotentOperationMatcher,
-  parseStatsPeriod,
   readJsonResponse,
   type RetryPolicy,
   selectIdempotentWrites,
@@ -99,7 +96,6 @@ import {
   isProfilesDataset,
   normalizeEventsDataset,
 } from "../utils/events-datasets";
-import { isNumericId } from "../utils/slug-validation";
 import {
   type DashboardUrlOptions,
   getAIConversationsUrl as getAIConversationsUrlUtil,
@@ -663,7 +659,7 @@ export class SentryApiService {
     this.utmSource = utmSource;
     this.host = host;
     this.protocol = protocol;
-    this.apiPrefix = `${protocol}://${host}/api/0`;
+    this.apiPrefix = `${protocol}://${host}${API_BASE_PATH}`;
   }
 
   /**
@@ -676,7 +672,7 @@ export class SentryApiService {
    */
   setHost(host: string) {
     this.host = host;
-    this.apiPrefix = `${this.protocol}://${this.host}/api/0`;
+    this.apiPrefix = `${this.protocol}://${this.host}${API_BASE_PATH}`;
   }
 
   /**
@@ -1022,7 +1018,6 @@ export class SentryApiService {
       start,
       end,
       aggregateFunctions,
-      groupByFields,
     } = params;
 
     const urlParams = new URLSearchParams();
@@ -5125,8 +5120,8 @@ export class SentryApiService {
     const response = imageUrl.startsWith("https://")
       ? await fetch(imageUrl)
       : await this.request(
-          imageUrl.startsWith("/api/0")
-            ? imageUrl.slice("/api/0".length)
+          imageUrl.startsWith(API_BASE_PATH)
+            ? imageUrl.slice(API_BASE_PATH.length)
             : imageUrl,
         );
     if (!response.ok) {

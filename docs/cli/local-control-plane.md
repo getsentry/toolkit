@@ -267,6 +267,21 @@ each span's own level, HTTP status, and SDK span status; a failed transaction do
 spans as failures. The AI workspace matches AI namespaces (`ai`, `gen_ai`,
 `llm`), including dotted origins, rather than substrings of ordinary operations.
 
+Local merges partial deliveries of the same span without losing captured fields
+or timing, and keeps cyclic or missing-parent spans reachable in the waterfall.
+AI interaction summaries reconcile step usage and pair response content with
+its captured finish reason. Profile inspection can combine retained chunks from
+one profiler while keeping each original chunk available. Sampled function rows
+in traces use observed intervals and unambiguous captured parents; gaps between
+chunks and final sample tails do not create inferred work.
+
+Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
+Invalid compression returns 400, oversized bodies 413, unsupported media or
+encoding 415, and temporary admission overload 503. Malformed envelopes remain
+available for raw inspection and byte-exact download through their receiver IDs.
+Clearing a capture invalidates pending admissions, and closing a session drains
+accepted work before its final stream event.
+
 ## Verification
 
 `pnpm --filter sentry test:e2e` builds the npm bundle and runs the CLI process

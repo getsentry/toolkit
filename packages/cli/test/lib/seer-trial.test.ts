@@ -1,15 +1,19 @@
 /**
  * Seer Trial Prompt Tests
  *
- * Tests for the interactive trial prompt flow.
- * Note: isTrialEligible tests that depend on isatty(0) mocking live in
- * test/isolated/ to avoid mock.module pollution. Tests here focus on
- * promptAndStartTrial which doesn't call isatty directly.
+ * Tests for the interactive trial prompt flow. `isatty` is mocked so the
+ * isTrialEligible tests can simulate an interactive terminal.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("../../src/lib/prompt.js", () => ({ prompt: vi.fn() }));
+vi.mock("node:tty", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:tty")>()),
+  isatty: vi.fn(() => false),
+}));
+
+import { isatty } from "node:tty";
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../src/lib/api-client.js";
@@ -23,12 +27,35 @@ import {
 } from "../../src/lib/seer-trial.js";
 
 describe("isTrialEligible", () => {
-  // Note: These tests run in a non-interactive terminal (bun test),
-  // so isatty(0) returns false. We can only test the false cases here.
-  // The positive case (isatty=true) would need mock.module in an isolated test.
+  // Simulate an interactive terminal, so a false result comes from the error
+  // itself and not from the terminal check.
+  beforeEach(() => {
+    vi.mocked(isatty).mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.mocked(isatty).mockReturnValue(false);
+  });
+
+  test.each(["no_budget", "not_enabled"] as const)(
+    "returns true for %s reason in an interactive terminal",
+    (reason) => {
+      expect(isTrialEligible(new SeerError(reason, "test-org"))).toBe(true);
+    },
+  );
+
+  test("returns false outside an interactive terminal", () => {
+    vi.mocked(isatty).mockReturnValue(false);
+    expect(isTrialEligible(new SeerError("no_budget", "test-org"))).toBe(false);
+  });
 
   test("returns false for ai_disabled reason", () => {
     const err = new SeerError("ai_disabled", "test-org");
+    expect(isTrialEligible(err)).toBe(false);
+  });
+
+  test("returns false for out_of_credits reason", () => {
+    const err = new SeerError("out_of_credits", "test-org");
     expect(isTrialEligible(err)).toBe(false);
   });
 
