@@ -859,6 +859,7 @@ describe("withAuthGuard", () => {
   });
 
   test("handles non-Error thrown values", async () => {
+    // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- exercises a non-Error rejection
     const result = await withAuthGuard(() => Promise.reject("string error"));
     expect(result.ok).toBe(false);
     if (!result.ok) {
