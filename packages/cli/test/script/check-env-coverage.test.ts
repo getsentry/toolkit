@@ -15,7 +15,7 @@ import { describe, expect, test } from "vitest";
 const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function runCheck() {
-  return spawnSync("pnpm", ["tsx", "script/check-env-coverage.ts"], {
+  return spawnSync("pnpm", ["ts", "script/check-env-coverage.ts"], {
     cwd: pkgRoot,
     encoding: "utf-8",
   });

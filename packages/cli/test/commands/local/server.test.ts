@@ -5,7 +5,6 @@
  * feedSSELine, and parsePort.
  */
 
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
 import { logger } from "../../../src/lib/logger.js";
@@ -263,7 +262,7 @@ describe("sentry local serve --open", () => {
   test("scoped serve opens the viewer with explicit session discovery", async () => {
     const daemon = await import("../../../src/commands/local/daemon.js");
     const { server, port } = await tryListen(
-      buildApp(createSpotlightBuffer(5)),
+      buildApp(createLocalRetentionBuffer(5).buffer),
       0,
       "127.0.0.1",
     );
@@ -346,7 +345,7 @@ describe("sentry local serve --open", () => {
     }
     globalThis.fetch = realFetch;
     const { server, port } = await tryListen(
-      buildApp(createSpotlightBuffer(10)),
+      buildApp(createLocalRetentionBuffer(10).buffer),
       0,
       "127.0.0.1",
     );
@@ -486,7 +485,7 @@ const TEST_ENVELOPE =
  * otherwise the subscriber misses it and the read hangs.
  */
 async function readFirstSSEEvent(streamPath: string): Promise<string> {
-  const buffer = createSpotlightBuffer(10);
+  const buffer = createLocalRetentionBuffer(10).buffer;
   const app = buildApp(buffer);
 
   const res = await app.request(streamPath, {
@@ -651,7 +650,7 @@ describe("buildApp", () => {
   });
 
   test("health endpoint returns OK", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/health");
@@ -660,7 +659,9 @@ describe("buildApp", () => {
   });
 
   test("advertises session-only UI capabilities", async () => {
-    const app = buildApp(createSpotlightBuffer(10), { uiActions: true });
+    const app = buildApp(createLocalRetentionBuffer(10).buffer, {
+      uiActions: true,
+    });
 
     const res = await app.request("/capabilities");
 
@@ -672,7 +673,7 @@ describe("buildApp", () => {
   });
 
   test("clears buffered envelopes and exposes a retained raw envelope", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer, { uiActions: true });
     await app.request("/stream", {
       method: "POST",
@@ -694,7 +695,7 @@ describe("buildApp", () => {
   });
 
   test("ingest endpoint accepts envelopes and returns 204", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const envelope =
@@ -708,7 +709,7 @@ describe("buildApp", () => {
   });
 
   test("ingest via /api/:projectId/envelope/ returns 204", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const envelope =
@@ -722,7 +723,7 @@ describe("buildApp", () => {
   });
 
   test("ingest rejects oversized payloads with 413", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -737,7 +738,7 @@ describe("buildApp", () => {
   });
 
   test("CORS allows localhost origins", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/health", {
@@ -749,7 +750,7 @@ describe("buildApp", () => {
   });
 
   test("CORS allows the hosted local UI to read the event stream", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -764,7 +765,7 @@ describe("buildApp", () => {
   });
 
   test("CORS allows the configured Sentry Local preview to read the event stream", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
     const origin =
       "https://sentry-local-git-codex-featlocal-observability-workspace.sentry.dev";
@@ -779,7 +780,7 @@ describe("buildApp", () => {
   });
 
   test("CORS allows HTTPS Sentry Local preview branches to read the event stream", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
     const origin = "https://sentry-local-git-feature-branch.sentry.dev";
 
@@ -794,7 +795,7 @@ describe("buildApp", () => {
   });
 
   test("CORS blocks unrelated Sentry-hosted origins from reading the event stream", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -808,7 +809,7 @@ describe("buildApp", () => {
   });
 
   test("CORS permits the SSE resume header from the hosted local UI", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -832,7 +833,7 @@ describe("buildApp", () => {
   });
 
   test("rejects hosted-origin writes to the local receiver", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -848,7 +849,9 @@ describe("buildApp", () => {
   });
 
   test("rejects hosted-origin receiver controls", async () => {
-    const app = buildApp(createSpotlightBuffer(10), { uiActions: true });
+    const app = buildApp(createLocalRetentionBuffer(10).buffer, {
+      uiActions: true,
+    });
 
     const res = await app.request("/capabilities", {
       headers: { Origin: "https://local.sentry.dev" },
@@ -858,7 +861,7 @@ describe("buildApp", () => {
   });
 
   test("does not expose receiver controls without loopback authorization", async () => {
-    const app = buildApp(createSpotlightBuffer(10));
+    const app = buildApp(createLocalRetentionBuffer(10).buffer);
 
     expect((await app.request("/capabilities")).status).toBe(403);
     expect((await app.request("/clear", { method: "DELETE" })).status).toBe(
@@ -867,7 +870,7 @@ describe("buildApp", () => {
   });
 
   test("CORS blocks lookalike hosted UI origins", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/health", {
@@ -877,7 +880,7 @@ describe("buildApp", () => {
   });
 
   test("CORS requires HTTPS for hosted Sentry preview origins", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -893,7 +896,9 @@ describe("buildApp", () => {
   });
 
   test("limits the configured Sentry Local preview to stream reads", async () => {
-    const app = buildApp(createSpotlightBuffer(10), { uiActions: true });
+    const app = buildApp(createLocalRetentionBuffer(10).buffer, {
+      uiActions: true,
+    });
     const origin =
       "https://sentry-local-git-codex-featlocal-observability-workspace.sentry.dev";
 
@@ -914,7 +919,7 @@ describe("buildApp", () => {
   });
 
   test("CORS blocks non-localhost origins", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/health", {
@@ -924,7 +929,7 @@ describe("buildApp", () => {
   });
 
   test("SSE stream endpoint returns event-stream content type", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -939,7 +944,7 @@ describe("buildApp", () => {
   });
 
   test("advertises itself as a Spotlight sidecar via X-Powered-By", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/health");
@@ -950,7 +955,7 @@ describe("buildApp", () => {
   });
 
   test("sets X-Powered-By on ingest responses too", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {

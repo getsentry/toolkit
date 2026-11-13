@@ -11,7 +11,6 @@ import { ORG_TARGET } from "../../lib/completion-target.js";
 import {
   buildTranscriptResult,
   formatTranscriptResult,
-  type TranscriptResult,
 } from "../../lib/formatters/conversation.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { ValidationError } from "../../lib/errors.js";

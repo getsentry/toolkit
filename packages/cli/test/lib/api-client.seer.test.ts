@@ -89,6 +89,25 @@ describe("triggerRootCauseAnalysis", () => {
     ).rejects.toThrow();
   });
 
+  test("keeps the code from a 402 body on the ApiError", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          detail:
+            "Your organization does not have enough credits to start an Autofix run.",
+          code: "seer_out_of_credits",
+        }),
+        { status: 402, headers: { "Content-Type": "application/json" } },
+      );
+
+    const error = await triggerRootCauseAnalysis("test-org", "123456789").catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 402, code: "seer_out_of_credits" });
+  });
+
   test("throws ApiError on 403 response", async () => {
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: "AI Autofix is not enabled" }), {

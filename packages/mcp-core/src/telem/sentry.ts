@@ -92,7 +92,7 @@ function scrubValue(value: unknown, depth = 0): [unknown, boolean, string[]] {
  * Sentry beforeSend hook that scrubs sensitive data from events
  * and applies custom fingerprinting for specific error types.
  */
-export function sentryBeforeSend(event: any, hint: any): any {
+export function sentryBeforeSend(event: any, _hint: any): any {
   // Custom fingerprinting for AI SDK API call errors.
   // These errors share the same stack trace but have different messages
   // (e.g., "Country, region, or territory not supported", temperature issues).
