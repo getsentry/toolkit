@@ -43,12 +43,7 @@ function toUser(user: {
 export default defineTool({
   name: "whoami",
   title: "Who Am I",
-  description: [
-    "Identify the authenticated user in Sentry.",
-    "",
-    "Use this tool when you need to:",
-    "- Get the user's name and email address.",
-  ].join("\n"),
+  description: "Identify the authenticated Sentry user: name and email.",
   inputSchema: {},
   outputSchema: whoamiOutputSchema,
   skills: ALL_SKILLS, // Foundational tool - available to all skills

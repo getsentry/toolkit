@@ -86,40 +86,17 @@ export default defineTool({
   title: "Get Event Attachment",
   skills: ["inspect"], // Only available in inspect skill
   requiredScopes: ["event:read"],
-  description: [
-    "Download attachments from a Sentry event.",
-    "",
-    "Use this tool when you need to:",
-    "- Download files attached to a specific event",
-    "- Access screenshots, log files, or other attachments uploaded with an error report",
-    "- Retrieve attachment metadata and download URLs",
-    "",
-    "<examples>",
-    "### Download a specific attachment by ID",
-    "",
-    "```",
-    "get_event_attachment(organizationSlug='my-organization', projectSlug='my-project', eventId='c49541c747cb4d8aa3efb70ca5aba243', attachmentId='12345')",
-    "```",
-    "",
-    "### List all attachments for an event",
-    "",
-    "```",
-    "get_event_attachment(organizationSlug='my-organization', projectSlug='my-project', eventId='c49541c747cb4d8aa3efb70ca5aba243')",
-    "```",
-    "",
-    "</examples>",
-    "",
-    "<hints>",
-    "- If `attachmentId` is provided, the specific attachment will be downloaded as an embedded resource",
-    "- If `attachmentId` is omitted, all attachments for the event will be listed with download information",
-    "- The `projectSlug` is required to identify which project the event belongs to",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "List or download the attachments of a Sentry event, such as screenshots, log files, and minidumps uploaded with an error report.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     projectSlug: ParamProjectSlug,
     eventId: ParamEventId,
-    attachmentId: ParamAttachmentId.nullable().default(null),
+    attachmentId: ParamAttachmentId.nullable()
+      .default(null)
+      .describe(
+        "The attachment to download. Omit to list the event's attachments.",
+      ),
     regionUrl: ParamRegionUrl.nullable().default(null),
   },
   annotations: {
