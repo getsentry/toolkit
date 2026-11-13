@@ -96,13 +96,13 @@ guidance, but it should not act like a system prompt. See "Response Formatting"
 in [common-patterns.md](common-patterns.md) for examples of acceptable response
 notes.
 
-## Degraded Data
+## Side Quests
 
-When a setup problem degrades the data, such as source maps that failed to
-apply, say so once: put the fix under `## Concerns Identified` at the end,
-since it is optional for the current task. When the problem changes how to read
-the data, add a one-line caveat where that data appears. Raise a concern only
-when Sentry's own data shows it unambiguously.
+Side quests are things that might help but may not matter for the current
+task, such as configuration issues or follow-ups. Source maps that failed to
+apply are one. List each once, at the end under `## Concerns Identified`. When
+one changes how to read the current data, add a one-line caveat where that data
+appears. Raise one only when Sentry's own data shows it unambiguously.
 
 ## Formatting Upstream Data
 
