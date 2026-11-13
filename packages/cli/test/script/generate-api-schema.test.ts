@@ -7,7 +7,7 @@ const events = {
   functionName: "listOrganizationEvents",
   operationId: "List an Organization's Events",
   method: "GET",
-  path: "/api/0/organizations/{organization_id_or_slug}/events/",
+  path: "/organizations/{organization_id_or_slug}/events/",
   summary: "Query events",
   description: "Select the dataset to query.",
   tags: ["Explore"],
@@ -57,7 +57,7 @@ describe("SDK catalog projection", () => {
       { ...events, operationId: "A", functionName: "deprecatedListEvents" },
       {
         ...events,
-        path: "/api/0/projects/{org}/{project}/alerts/{alert_id}/",
+        path: "/projects/{org}/{project}/alerts/{alert_id}/",
         operationId: "Get a project alert",
       },
     ]);
