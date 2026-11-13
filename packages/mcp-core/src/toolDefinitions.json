@@ -8,7 +8,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -85,13 +85,13 @@
   {
     "name": "add_team_to_project",
     "title": "Add Team to Project",
-    "description": "Grant a team access to an existing Sentry project.\n\nUse this tool when you need to:\n- Add another team to a project\n- Grant a team access without changing project metadata\n- Check whether a team already has project access before adding it\n\n<examples>\nadd_team_to_project(organizationSlug='my-organization', projectSlug='my-project', teamSlug='my-team')\n</examples>\n\n<hints>\n- Team access changes are separate from project metadata updates.\n- If the team is already assigned, this tool returns the current team list without making another change.\n</hints>",
+    "description": "Grant a team access to a Sentry project. Returns the project's teams; makes no change if the team already has access.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -107,7 +107,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "teamSlug": {
           "type": "string",
@@ -158,7 +158,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -200,7 +200,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -351,7 +351,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "description": "The project slug."
+            "description": "The project slug. In `org/project` notation, the part after the slash."
           }
         },
         "detectorIds": {
@@ -544,13 +544,13 @@
   {
     "name": "create_dsn",
     "title": "Create DSN",
-    "description": "Create an additional DSN for an EXISTING project.\n\nUSE THIS TOOL WHEN:\n- Project already exists and needs additional DSN\n- 'Create another DSN for project X'\n- 'I need a production DSN for existing project'\n\nDO NOT USE for new projects (use create_project instead)\n\nBe careful when using this tool!\n\n<examples>\n### Create additional DSN for existing project\n```\ncreate_dsn(organizationSlug='my-organization', projectSlug='my-project', name='Production')\n```\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.\n- If any parameter is ambiguous, you should clarify with the user what they meant.\n</hints>",
+    "description": "Create an additional DSN (client key) for an existing Sentry project, such as a separate production key. Returns the new key's ID, name, and DSN. create_project already provisions a DSN for a new project.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -566,11 +566,11 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "name": {
           "type": "string",
-          "description": "The name of the DSN to create, for example 'Production'."
+          "description": "Key name, such as `Production`."
         }
       },
       "required": ["organizationSlug", "projectSlug", "name"]
@@ -611,7 +611,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -627,7 +627,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "name": {
           "type": "string",
@@ -996,7 +996,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -1012,7 +1012,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "name": {
           "type": "string",
@@ -1211,13 +1211,13 @@
   {
     "name": "create_project",
     "title": "Create Project",
-    "description": "Create a new project in Sentry (provisions DSN automatically).\n\nUSE THIS TOOL WHEN USERS WANT TO:\n- 'Create a new project'\n- 'Set up a project for [app/service] with team [X]'\n- 'I need a new Sentry project'\n- Create project AND need DSN in one step\n- Create project and link an existing repository\n\nReturns the project and its public `dsn` (SENTRY_DSN); tell the user both. Call create_dsn only if `dsn` is null.\nA linked repository gets a root code mapping (`/` -> `/`). If `repository.linked` is false, the project exists but linking failed; ask the user to check permissions or link it in Sentry.\n\nBe careful when using this tool!\n\n<examples>\n### Create new project with team\n```\ncreate_project(organizationSlug='my-organization', teamSlug='my-team', name='my-project', platform='javascript')\n```\n### Create project with an explicit slug\n```\ncreate_project(organizationSlug='my-organization', teamSlug='my-team', name='My Project', slug='my-project', platform='javascript')\n```\n### Create project and link to a repository\n```\ncreate_project(organizationSlug='my-organization', teamSlug='my-team', name='my-project', platform='javascript', repository='getsentry/sentry')\n```\n</examples>",
+    "description": "Create a new Sentry project for an app or service and provision its DSN (client key) for SDK setup. Optionally links a connected repository with a root code mapping. Returns the project, its DSN, and whether the repository linked.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -1237,14 +1237,14 @@
         },
         "name": {
           "type": "string",
-          "description": "The name of the project to create. Typically this is the name of the application or service. It is only used as a visual label in Sentry."
+          "description": "Display name, usually the app or service name."
         },
         "slug": {
           "default": null,
           "anyOf": [
             {
               "type": "string",
-              "description": "Optional project slug to create."
+              "description": "Project slug. Sentry derives one from the name when omitted."
             },
             {
               "type": "null"
@@ -1265,7 +1265,7 @@
         },
         "repository": {
           "default": null,
-          "description": "Optional repository name to link to the project (e.g. 'getsentry/sentry'). The repo must already be connected to the organization via a VCS integration.",
+          "description": "Repository to link, as `owner/repo`. Must already be connected to the organization through a VCS integration.",
           "type": ["string", "null"]
         }
       },
@@ -1325,13 +1325,13 @@
   {
     "name": "create_team",
     "title": "Create Team",
-    "description": "Create a new team in Sentry.\n\nUSE THIS TOOL WHEN USERS WANT TO:\n- 'Create a new team'\n- 'Set up a team called [X]'\n- 'I need a team for my project'\n\nBe careful when using this tool!\n\n<examples>\n### Create a new team\n```\ncreate_team(organizationSlug='my-organization', name='the-goats')\n```\n</examples>\n\n<hints>\n- If any parameter is ambiguous, you should clarify with the user what they meant.\n</hints>",
+    "description": "Create a new team in a Sentry organization. Returns the team's ID, slug, and name.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -1388,7 +1388,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -1404,7 +1404,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "name": {
           "type": "string",
@@ -1585,7 +1585,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -1603,7 +1603,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "type": "null"
@@ -1645,7 +1645,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -1661,7 +1661,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "monitorId": {
           "type": "string",
@@ -1698,7 +1698,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -1714,7 +1714,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "monitorSlug": {
           "type": "string",
@@ -1767,7 +1767,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -1783,7 +1783,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "uptimeMonitorId": {
           "type": "string",
@@ -1823,7 +1823,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -2085,7 +2085,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -2237,7 +2237,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -2262,7 +2262,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "type": "null"
@@ -2462,13 +2462,13 @@
   {
     "name": "find_dsns",
     "title": "Find DSNs",
-    "description": "List the DSNs (client keys) for a Sentry project: the SENTRY_DSN an SDK uses to send events.\n\nUse this tool when you need to:\n- Retrieve a SENTRY_DSN for a specific project\n- Configure a Sentry SDK for an existing project\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.\n- If only one parameter is provided, and it could be either `organizationSlug` or `projectSlug`, its probably `organizationSlug`, but if you're really uncertain you might want to call `find_organizations()` first.\n</hints>",
+    "description": "List the DSNs (client keys) for a Sentry project: the SENTRY_DSN an SDK uses to send events. Returns each key's ID, name, and DSN.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -2484,7 +2484,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "fresh": {
           "description": "Bypass cached reads.",
@@ -2532,7 +2532,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -2637,7 +2637,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -2861,7 +2861,7 @@
   {
     "name": "find_organizations",
     "title": "Find Organizations",
-    "description": "List or search the Sentry organizations the user has access to.\n\nUse this tool when you need to:\n- View organizations in Sentry\n- Find an organization's slug to aid other tool requests\n- Search for specific organizations by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+    "description": "List or search the Sentry organizations the user can access. Returns each organization's slug and region URL, which other Sentry tools take, plus its web URL; 25 per page.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -2950,13 +2950,13 @@
   {
     "name": "find_projects",
     "title": "Find Projects",
-    "description": "List or search projects in a Sentry organization.\n\nUse this tool when you need to:\n- View projects in a Sentry organization\n- Find a project's slug to aid other tool requests\n- Search for specific projects by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+    "description": "List or search projects in a Sentry organization. Returns project slugs, 25 per page.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -3034,13 +3034,13 @@
   {
     "name": "find_releases",
     "title": "Find Releases",
-    "description": "List or search releases (deployed versions) in a Sentry organization or project.\n\nUse this tool when you need to:\n- Find recent releases in a Sentry organization\n- Find the most recent version released of a specific project\n- Determine when a release was deployed to an environment\n\nReturns up to 25 results. When hasMore is true, use the projectSlug or query parameter to narrow down results.\n\n<examples>\n### Find the most recent releases in the 'my-organization' organization\n\n```\nfind_releases(organizationSlug='my-organization')\n```\n\n### Find releases matching '2ce6a27' in the 'my-organization' organization\n\n```\nfind_releases(organizationSlug='my-organization', query='2ce6a27')\n```\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.\n</hints>",
+    "description": "List or search releases (deployed versions) in a Sentry organization or project. Returns each release's dates, new issue count, last commit, and last deploy. Returns at most 25 releases with no next page; narrow by project or version to see others.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -3071,7 +3071,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Search for versions which contain the provided string."
+              "description": "Substring of the release version, such as a commit SHA prefix."
             },
             {
               "type": "null"
@@ -3252,13 +3252,13 @@
   {
     "name": "find_teams",
     "title": "Find Teams",
-    "description": "List or search teams in a Sentry organization.\n\nUse this tool when you need to:\n- View teams in a Sentry organization\n- Find a team's slug and numeric ID to aid other tool requests\n- Search for specific teams by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+    "description": "List or search teams in a Sentry organization. Returns each team's slug and numeric ID, 25 per page.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -3345,7 +3345,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -3469,7 +3469,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "conversationId": {
           "type": "string",
@@ -3925,7 +3925,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "conversationId": {
           "type": "string",
@@ -4384,7 +4384,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -4739,7 +4739,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -5511,7 +5511,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -5847,11 +5847,11 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "eventId": {
           "type": "string",
@@ -5902,7 +5902,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -6181,7 +6181,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -6765,7 +6765,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -6873,7 +6873,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -6931,7 +6931,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -7024,7 +7024,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -7171,24 +7171,24 @@
   {
     "name": "get_latest_base_snapshot",
     "title": "Get Latest Base Snapshot",
-    "description": "Get the latest UI screenshots/images for an app from the preprod snapshot system.\n\nThis is the primary tool for retrieving app screenshots.\n\nUse this tool when you need to:\n- Get screenshots, screens, golden images, or reference images for an app\n- Find what the current UI looks like (latest screenshots from the main/default branch)\n- List available snapshots or browse images before requesting specific ones\n- Look up dark mode, light mode, or other variant screenshots\n- Understand what baseline images exist when investigating snapshot test or visual regression CI failures\n\nThe appId parameter is the app identifier (e.g. 'sentry-frontend', 'com.emergetools.hackernews').\nReturns compact metadata (imageFileName, displayName, description) for every image, bucketed by group.\n\n<examples>\n### Get the latest screenshots for an app\n\n```\nget_latest_base_snapshot(organizationSlug=\"sentry\", appId=\"sentry-frontend\", project=\"frontend\")\n```\n\n### Get the latest screenshots for a specific branch\n\n```\nget_latest_base_snapshot(organizationSlug=\"sentry\", appId=\"sentry-frontend\", project=\"frontend\", branch=\"main\")\n```\n</examples>\n\n<hints>\n- The response includes compact metadata per image. Scan the groups to find images matching what you need (e.g. filter by group or name containing 'button').\n- Use the Sentry tool `get_snapshot_image(organizationSlug='<organizationSlug>', snapshotId='<snapshotId>', imageIdentifier='<imageFileName>')` to view one image; pass its imageFileName as imageIdentifier.\n- If you need to investigate a specific snapshot comparison, use get_sentry_resource with the snapshot URL.\n</hints>",
+    "description": "Get an app's latest UI screenshots (baseline or golden images) from preprod snapshots, such as the current screens, dark mode variants, or the baseline behind a visual regression. Returns each image's file name, display name, and description, grouped. For a snapshot comparison by ID, use get_snapshot.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "appId": {
           "type": "string",
-          "description": "The app identifier (e.g. 'sentry-frontend', 'com.emergetools.hackernews'). Required."
+          "description": "App identifier, such as `sentry-frontend` or `com.emergetools.hackernews`."
         },
         "branch": {
           "default": null,
           "anyOf": [
             {
               "type": "string",
-              "description": "Filter by git branch (e.g. 'main'). Omit to use the app's default branch."
+              "description": "Git branch. Omit for the app's default branch."
             },
             {
               "type": "null"
@@ -7200,7 +7200,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Project slug or numeric ID for scoping (e.g. 'frontend')."
+              "description": "Project slug or numeric ID."
             },
             {
               "type": "null"
@@ -7359,7 +7359,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -7375,7 +7375,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "monitorId": {
           "type": "string",
@@ -7569,7 +7569,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -7902,7 +7902,7 @@
         },
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -8233,7 +8233,7 @@
         },
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -8577,13 +8577,13 @@
   {
     "name": "get_release_details",
     "title": "Get Release Details",
-    "description": "Get details for a Sentry release.\n\nUse this tool when you need to:\n- Inspect an exact release version\n- Scope a release lookup to a specific project\n- See deploys and environments for a release\n- See recent commits attached to a release\n- Gather release health metadata when a project is known\n\nTo find issues introduced in a release, call search_issues with query `release:<version>`.\n\n<examples>\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3')\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', projectSlugOrId='backend')\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', includeHealth=true, projectSlugOrId='backend')\n</examples>",
+    "description": "Get one Sentry release by exact version: its projects, deploys, environments, recent commits, and optionally release health (adoption stages and session bounds). To find issues introduced in a release, use search_issues with `release:<version>`.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -8607,7 +8607,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Optional project slug or numeric ID. Use this to scope release details, deploys, and commits to one project; required for health metadata unless the session is already project-constrained."
+              "description": "Project slug or numeric ID. Scopes details, deploys, and commits to one project."
             },
             {
               "type": "null"
@@ -8617,24 +8617,24 @@
         "includeHealth": {
           "default": false,
           "type": "boolean",
-          "description": "Include project-specific release health metadata. Requires projectSlugOrId unless the session is already project-constrained."
+          "description": "Include release health for one project. Requires projectSlugOrId unless the session is limited to a project."
         },
         "includeDeploys": {
           "default": true,
           "type": "boolean",
-          "description": "Include recent deploys for this release."
+          "description": "Include recent deploys."
         },
         "includeCommits": {
           "default": true,
           "type": "boolean",
-          "description": "Include recent commits attached to this release."
+          "description": "Include recent commits."
         },
         "limit": {
           "default": 10,
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 50,
-          "description": "Maximum number of deploys and commits to return, up to 50."
+          "description": "Maximum deploys and commits to return, each."
         },
         "fresh": {
           "description": "Bypass cached reads.",
@@ -8891,7 +8891,7 @@
         },
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "replayId": {
           "type": "string",
@@ -9402,7 +9402,7 @@
         },
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "packageNames": {
           "minItems": 1,
@@ -9440,23 +9440,23 @@
   {
     "name": "get_snapshot",
     "title": "Get Snapshot",
-    "description": "Get a preprod snapshot comparison summary, including metadata, counts, and changed image sections.\n\nUse this tool when you need to:\n- Investigate a failed snapshot test from CI\n- Review what changed in a specific preprod snapshot\n- Browse snapshot image file names before viewing a specific image\n\nPass organizationSlug and snapshotId. Use get_sentry_resource for snapshot URLs.\nCompact output is returned by default. Set showUnmodified=true to list unchanged and skipped images separately.\n\n<examples>\n### Browse a snapshot\n\n```\nget_snapshot(organizationSlug=\"sentry\", snapshotId=\"231949\")\n```\n\n### Include unchanged and skipped images\n\n```\nget_snapshot(organizationSlug=\"sentry\", snapshotId=\"231949\", showUnmodified=true)\n```\n</examples>\n\n<hints>\n- Use the Sentry tool `get_snapshot_image(organizationSlug='<organizationSlug>', snapshotId='<snapshotId>', imageIdentifier='<imageFileName>')` to view a specific image preview or full-resolution image bytes.\n- Use get_sentry_resource when starting from a Sentry snapshot URL.\n- The diff percent field shows what percentage of pixels changed (0-100).\n- showUnmodified=true is useful when a diff snapshot has no changed image sections.\n</hints>",
+    "description": "Get a preprod snapshot comparison by ID, such as a failed visual regression or screenshot test from CI: its metadata, image counts, and changed images with the percent of pixels that differ. For an app's latest baseline screenshots, use get_latest_base_snapshot. For a snapshot URL, use get_sentry_resource.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "snapshotId": {
           "type": "string",
           "minLength": 1,
-          "description": "The numeric snapshot artifact ID."
+          "description": "Numeric snapshot artifact ID."
         },
         "showUnmodified": {
           "default": false,
           "type": "boolean",
-          "description": "When true, include unchanged and skipped image sections. This can substantially increase response size and token usage for large snapshots."
+          "description": "Also list unchanged and skipped images. Can make large snapshots much bigger."
         },
         "regionUrl": {
           "default": null,
@@ -9900,29 +9900,29 @@
   {
     "name": "get_snapshot_image",
     "title": "Get Snapshot Image",
-    "description": "Get metadata and image content for one image in a preprod snapshot.\n\nUse this tool when you need to:\n- View the current, previous, or diff image for a snapshot entry\n- Inspect metadata and context for a specific snapshot image\n- Fetch full-resolution image bytes when preview images are insufficient; full-resolution images can substantially increase response size and token usage\n\nPass organizationSlug, snapshotId, and imageIdentifier. Use get_sentry_resource for snapshot URLs.\nPreview images are returned by default; set imageResolution=full for original bytes when needed, but expect higher response size and token usage.\n\n<examples>\n### View a preview image\n\n```\nget_snapshot_image(organizationSlug=\"sentry\", snapshotId=\"231949\", imageIdentifier=\"login_screen.png\")\n```\n\n### Fetch original full-resolution bytes\n\n```\nget_snapshot_image(organizationSlug=\"sentry\", snapshotId=\"231949\", imageIdentifier=\"login_screen.png\", imageResolution=\"full\")\n```\n</examples>\n\n<hints>\n- Use get_snapshot first if you need to discover available image file names.\n- Use get_sentry_resource when starting from a Sentry snapshot URL.\n- imageIdentifier values may include slashes; pass the full image_file_name exactly as shown by get_snapshot.\n</hints>",
+    "description": "Get one image from a preprod snapshot: the current, previous, or diff screenshot, with its metadata. Returns a preview image unless full resolution is requested. Get image file names from get_snapshot or get_latest_base_snapshot.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "snapshotId": {
           "type": "string",
           "minLength": 1,
-          "description": "The numeric snapshot artifact ID."
+          "description": "Numeric snapshot artifact ID."
         },
         "imageIdentifier": {
           "type": "string",
           "minLength": 1,
-          "description": "The snapshot image file name or identifier to fetch."
+          "description": "Image file name exactly as get_snapshot lists it, including any slashes."
         },
         "imageResolution": {
           "default": "preview",
           "type": "string",
           "enum": ["preview", "full"],
-          "description": "Return locally generated previews or original full-resolution bytes. Full-resolution images can substantially increase response size and token usage."
+          "description": "`full` returns the original bytes, which can make the response much larger."
         },
         "regionUrl": {
           "default": null,
@@ -9956,7 +9956,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -10000,7 +10000,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -10044,7 +10044,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -10060,7 +10060,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "uptimeMonitorId": {
           "type": "string",
@@ -10251,7 +10251,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -10351,13 +10351,13 @@
   {
     "name": "onboarding_status_update",
     "title": "Update Onboarding Status",
-    "description": "Update the progress shown in Sentry's agentic onboarding UI.\n\nUse this tool only when the Sentry getting started skill provides a run token. Call it at the workflow boundaries described by that skill.\n\n<hints>\n- Progress updates are operational UI state, not user analytics.\n- Keep eventNote brief and limited to context useful in the progress UI.\n- Do not include source code, repository paths, credentials, error output, or other sensitive data.\n- status is required for every update.\n- Set runStatus to completed or failed only when the entire onboarding run reaches that state.\n- A failed status requires a brief eventNote explaining the failure.\n- Stop sending updates when the result has continueUpdates: false.\n</hints>",
+    "description": "Report progress to Sentry's agentic onboarding (getting started) UI for one stage of an SDK setup run. Use only with a run token from the Sentry getting started skill, at the stage boundaries it describes. Returns whether Sentry wants further updates; stop when it does not.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -10374,7 +10374,7 @@
         "runToken": {
           "type": "string",
           "pattern": "^[A-Za-z0-9]{10}$",
-          "description": "The 10-character onboarding run token supplied by Sentry."
+          "description": "10-character run token from the Sentry getting started skill."
         },
         "update": {
           "oneOf": [
@@ -10393,12 +10393,12 @@
                   "description": "The stage's current status."
                 },
                 "runStatus": {
-                  "description": "Set only when the entire onboarding run has completed or failed.",
+                  "description": "Set only when the whole onboarding run has completed or failed.",
                   "type": "string",
                   "enum": ["completed", "failed"]
                 },
                 "eventNote": {
-                  "description": "Short context to display with this progress event. Required when status is failed.",
+                  "description": "Short note for the progress UI; required when status is failed. Never include code, file paths, credentials, or error output.",
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 256
@@ -10406,7 +10406,7 @@
                 "stage": {
                   "type": "string",
                   "enum": ["connect_agent", "connect_mcp"],
-                  "description": "Report progress while connecting to the user's Sentry account. connect_mcp is accepted as an older name."
+                  "description": "Connecting to the user's Sentry account. connect_mcp is an older name for connect_agent."
                 }
               },
               "required": ["status", "stage"],
@@ -10427,12 +10427,12 @@
                   "description": "The stage's current status."
                 },
                 "runStatus": {
-                  "description": "Set only when the entire onboarding run has completed or failed.",
+                  "description": "Set only when the whole onboarding run has completed or failed.",
                   "type": "string",
                   "enum": ["completed", "failed"]
                 },
                 "eventNote": {
-                  "description": "Short context to display with this progress event. Required when status is failed.",
+                  "description": "Short note for the progress UI; required when status is failed. Never include code, file paths, credentials, or error output.",
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 256
@@ -10440,10 +10440,10 @@
                 "stage": {
                   "type": "string",
                   "const": "create_project",
-                  "description": "Report progress while creating or selecting Sentry projects."
+                  "description": "Creating or selecting Sentry projects."
                 },
                 "extra": {
-                  "description": "Project metadata accepted only by the create_project stage.",
+                  "description": "Only for the create_project stage.",
                   "type": "object",
                   "properties": {
                     "projectSlugs": {
@@ -10454,7 +10454,7 @@
                         "type": "string",
                         "minLength": 1
                       },
-                      "description": "Sentry project slugs created or selected during onboarding. Values accumulate across updates; include each project as it becomes usable while active, then all known projects when completed."
+                      "description": "Project slugs created or selected. Values accumulate across updates: add each project as it becomes usable, then send all of them when completed."
                     }
                   },
                   "required": ["projectSlugs"],
@@ -10479,12 +10479,12 @@
                   "description": "The stage's current status."
                 },
                 "runStatus": {
-                  "description": "Set only when the entire onboarding run has completed or failed.",
+                  "description": "Set only when the whole onboarding run has completed or failed.",
                   "type": "string",
                   "enum": ["completed", "failed"]
                 },
                 "eventNote": {
-                  "description": "Short context to display with this progress event. Required when status is failed.",
+                  "description": "Short note for the progress UI; required when status is failed. Never include code, file paths, credentials, or error output.",
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 256
@@ -10492,10 +10492,10 @@
                 "stage": {
                   "type": "string",
                   "const": "receive_verification_error",
-                  "description": "Report progress while receiving the verification error in Sentry."
+                  "description": "Waiting for the verification error to arrive in Sentry."
                 },
                 "extra": {
-                  "description": "Issue metadata accepted only by the receive_verification_error stage.",
+                  "description": "Only for the receive_verification_error stage.",
                   "type": "object",
                   "properties": {
                     "issueIds": {
@@ -10506,7 +10506,7 @@
                         "type": "string",
                         "minLength": 1
                       },
-                      "description": "Sentry issue IDs observed after sending the verification error. Values accumulate across updates; include each matching issue as it is confirmed, then all known issues when completed."
+                      "description": "Issue IDs seen for the verification error. Values accumulate across updates: add each issue as it is confirmed, then send all of them when completed."
                     }
                   },
                   "required": ["issueIds"],
@@ -10531,12 +10531,12 @@
                   "description": "The stage's current status."
                 },
                 "runStatus": {
-                  "description": "Set only when the entire onboarding run has completed or failed.",
+                  "description": "Set only when the whole onboarding run has completed or failed.",
                   "type": "string",
                   "enum": ["completed", "failed"]
                 },
                 "eventNote": {
-                  "description": "Short context to display with this progress event. Required when status is failed.",
+                  "description": "Short note for the progress UI; required when status is failed. Never include code, file paths, credentials, or error output.",
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 256
@@ -10551,14 +10551,14 @@
                     "prepare_production",
                     "check_stack_trace_quality"
                   ],
-                  "description": "Report progress for a stage that does not accept extra metadata."
+                  "description": "A stage that takes no extra metadata."
                 }
               },
               "required": ["status", "stage"],
               "additionalProperties": false
             }
           ],
-          "description": "The stage-specific onboarding progress update."
+          "description": "Progress update for one onboarding stage."
         }
       },
       "required": ["organizationSlug", "runToken", "update"]
@@ -10581,13 +10581,13 @@
   {
     "name": "remove_team_from_project",
     "title": "Remove Team from Project",
-    "description": "Revoke a team's access to an existing Sentry project.\n\nUse this tool when you need to:\n- Remove a team from a project\n- Revoke team access without changing project metadata\n- Check project team assignments before removing access\n\nBe careful when using this tool because it revokes project access.\n\n<examples>\nremove_team_from_project(organizationSlug='my-organization', projectSlug='my-project', teamSlug='my-team')\n</examples>\n\n<hints>\n- The team must already be assigned to the project.\n- This tool will not remove the last team assigned to a project.\n</hints>",
+    "description": "Revoke a team's access to a Sentry project. Returns the project's remaining teams. Refuses to remove the project's last team.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -10603,7 +10603,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "teamSlug": {
           "type": "string",
@@ -10654,7 +10654,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
           "description": "Conversation query/filter string.",
@@ -10665,14 +10665,14 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "minItems": 1,
               "type": "array",
               "items": {
                 "type": "string",
-                "description": "The project slug."
+                "description": "The project slug. In `org/project` notation, the part after the slash."
               }
             }
           ]
@@ -10882,7 +10882,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
           "description": "Conversation query/filter string.",
@@ -10893,14 +10893,14 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "minItems": 1,
               "type": "array",
               "items": {
                 "type": "string",
-                "description": "The project slug."
+                "description": "The project slug. In `org/project` notation, the part after the slash."
               }
             }
           ]
@@ -11107,7 +11107,7 @@
   {
     "name": "search_docs",
     "title": "Search Sentry Docs",
-    "description": "Search Sentry documentation for SDK setup, instrumentation, and configuration guidance.\n\nUse this tool when you need to:\n- Set up Sentry SDK or framework integrations (Django, Flask, Express, Next.js, etc.)\n- Configure features like performance monitoring, error sampling, or release tracking\n- Implement custom instrumentation (spans, transactions, breadcrumbs)\n- Configure data scrubbing, filtering, or sampling rules\n\nReturns snippets only. Use the Sentry tool `get_doc` to fetch full documentation content.\n\n<examples>\n```\nsearch_docs(query='Django setup configuration SENTRY_DSN', guide='python/django')\nsearch_docs(query='source maps webpack upload', guide='javascript/nextjs')\n```\n</examples>\n\n<hints>\n- Use guide parameter to filter to specific technologies (e.g., 'javascript/nextjs')\n- Include specific feature names like 'beforeSend', 'tracesSampleRate', 'SENTRY_DSN'\n</hints>",
+    "description": "Search Sentry documentation for SDK setup, framework integrations, instrumentation, and configuration such as sampling, data scrubbing, and source maps. Returns matching page paths and snippets only. Use the Sentry tool `get_doc` to read a full page.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -11115,11 +11115,11 @@
           "type": "string",
           "minLength": 2,
           "maxLength": 200,
-          "description": "The search query in natural language. Be specific about what you're looking for."
+          "description": "Natural-language query. Name the SDK option or feature when you know it, such as `beforeSend` or `tracesSampleRate`."
         },
         "maxResults": {
           "default": 3,
-          "description": "Maximum number of results to return (1-10)",
+          "description": "Maximum results to return.",
           "type": "integer",
           "minimum": 1,
           "maximum": 10
@@ -11337,7 +11337,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
           "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
@@ -11366,7 +11366,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "type": "null"
@@ -11670,7 +11670,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "dataset": {
           "description": "Initial dataset hint: errors, logs, spans, metrics, profiles, or replays. Always pass it, including for natural language queries. The agent may correct it when configured.",
@@ -11704,7 +11704,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "type": "null"
@@ -11791,7 +11791,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The organization slug."
+              "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
             },
             {
               "type": "null"
@@ -11826,7 +11826,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "type": "null"
@@ -12097,7 +12097,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
           "default": "is:unresolved",
@@ -12340,7 +12340,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
           "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
@@ -12369,7 +12369,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "type": "null"
@@ -12676,7 +12676,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
           "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
@@ -12705,7 +12705,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "type": "null"
@@ -13009,7 +13009,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
           "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
@@ -13038,7 +13038,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "type": "null"
@@ -13345,7 +13345,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
           "description": "What to find, in natural language (preferred) or replay search syntax.",
@@ -13360,7 +13360,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "type": "null"
@@ -13655,7 +13655,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
           "description": "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
@@ -13684,7 +13684,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "type": "null"
@@ -14040,7 +14040,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -14136,7 +14136,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -14154,7 +14154,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The project slug."
+              "description": "The project slug. In `org/project` notation, the part after the slash."
             },
             {
               "type": "null"
@@ -14310,7 +14310,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "description": "The project slug."
+            "description": "The project slug. In `org/project` notation, the part after the slash."
           }
         },
         "removeProjectSlugs": {
@@ -14319,7 +14319,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "description": "The project slug."
+            "description": "The project slug. In `org/project` notation, the part after the slash."
           }
         },
         "addDetectorIds": {
@@ -14519,13 +14519,13 @@
   {
     "name": "update_dsn",
     "title": "Update DSN",
-    "description": "Update settings for an existing DSN (client key) in a project, such as name, active status, rate limit, and loader script options.\n\nUSE THIS TOOL WHEN:\n- Deactivating or activating a DSN/client key\n- Setting or removing DSN rate limits ('set rate limit of 1000 per hour on DSN X')\n- Renaming a DSN ('rename DSN X to Production')\n- Configuring Javascript SDK loader script options (session replay, performance, debug, feedback, etc.)\n\nBe careful when using this tool!\n\n<examples>\n### Rename DSN and set rate limit\n```\nupdate_dsn(organizationSlug='my-organization', projectSlug='my-project', keyId='d20df0a1ab5031c7f3c7edca9c02814d', name='Production Key', rateLimitWindow=3600, rateLimitCount=500)\n```\n\n### Deactivate a DSN\n```\nupdate_dsn(organizationSlug='my-organization', projectSlug='my-project', keyId='d20df0a1ab5031c7f3c7edca9c02814d', isActive=false)\n```\n\n### Disable rate limit entirely\n```\nupdate_dsn(organizationSlug='my-organization', projectSlug='my-project', keyId='d20df0a1ab5031c7f3c7edca9c02814d', disableRateLimit=true)\n```\n</examples>\n\n<hints>\n- Use `find_dsns()` first to find the `keyId` for the DSN you want to update.\n- Both `rateLimitWindow` (seconds) and `rateLimitCount` (error cap) must be provided together to set a rate limit.\n- Returns the settings Sentry saved after the update. Compare them with what you requested and tell the user if any field didn't change.\n</hints>",
+    "description": "Update a DSN (client key) on a Sentry project: rename it, activate or deactivate it, set or remove its rate limit, or change JavaScript Loader Script options. Returns the settings Sentry saved; tell the user if any requested setting did not change.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -14541,60 +14541,60 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "keyId": {
           "type": "string",
-          "description": "The ID of the DSN (client key) to update. Use find_dsns() to retrieve this ID first."
+          "description": "Client key ID from find_dsns."
         },
         "name": {
           "type": "string",
           "maxLength": 64,
-          "description": "The new name for the DSN."
+          "description": "New key name."
         },
         "isActive": {
           "type": "boolean",
-          "description": "Activate or deactivate the DSN."
+          "description": "False stops the key from accepting events."
         },
         "rateLimitWindow": {
           "type": "integer",
           "minimum": 0,
           "maximum": 86400,
-          "description": "The time window in seconds for the rate limit."
+          "description": "Rate limit window in seconds. Requires rateLimitCount."
         },
         "rateLimitCount": {
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991,
-          "description": "The maximum number of errors allowed within the rate limit window."
+          "description": "Maximum events accepted per window. Requires rateLimitWindow."
         },
         "disableRateLimit": {
           "type": "boolean",
-          "description": "Set to true to disable the rate limit entirely (removes the cap)."
+          "description": "True removes the rate limit. Do not combine with rateLimitWindow or rateLimitCount."
         },
         "browserSdkVersion": {
           "type": "string",
-          "description": "The Sentry Javascript SDK version to use (e.g. 'latest', '7.x')."
+          "description": "JavaScript SDK version the Loader Script serves, such as `latest` or `8.x`."
         },
         "loaderHasReplay": {
           "type": "boolean",
-          "description": "Configure Session Replay for the Javascript Loader Script."
+          "description": "Loader Script: enable Session Replay."
         },
         "loaderHasPerformance": {
           "type": "boolean",
-          "description": "Configure Performance Monitoring for the Javascript Loader Script."
+          "description": "Loader Script: enable tracing (performance monitoring)."
         },
         "loaderHasDebug": {
           "type": "boolean",
-          "description": "Configure Debug Bundles & Logging for the Javascript Loader Script."
+          "description": "Loader Script: use the debug bundle with SDK logging."
         },
         "loaderHasFeedback": {
           "type": "boolean",
-          "description": "Configure User Feedback for the Javascript Loader Script."
+          "description": "Loader Script: enable User Feedback."
         },
         "loaderHasLogsAndMetrics": {
           "type": "boolean",
-          "description": "Configure Logs and Metrics for the Javascript Loader Script (requires SDK >= 10.0.0)."
+          "description": "Loader Script: enable logs and metrics. Requires SDK 10.0.0 or later."
         }
       },
       "required": ["organizationSlug", "projectSlug", "keyId"]
@@ -14699,7 +14699,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -14993,7 +14993,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -15009,7 +15009,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "monitorId": {
           "type": "string",
@@ -15368,13 +15368,13 @@
   {
     "name": "update_project",
     "title": "Update Project",
-    "description": "Update project metadata in Sentry, such as name, slug, and platform.\n\nBe careful when using this tool!\n\nUse this tool when you need to:\n- Update a project's name or slug to fix onboarding mistakes\n- Change the platform assigned to a project\n\n<examples>\n### Update a project's name and slug\n\n```\nupdate_project(organizationSlug='my-organization', projectSlug='old-project', name='New Project Name', slug='new-project-slug')\n```\n\n### Update platform\n\n```\nupdate_project(organizationSlug='my-organization', projectSlug='my-project', platform='python')\n```\n\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, it's likely in the format of <organizationSlug>/<projectSlug>.\n- Team access changes are handled by separate project-management tools.\n- If any parameter is ambiguous, you should clarify with the user what they meant.\n- When updating the slug, the project will be accessible at the new slug after the update\n- Do not update the slug from a project-scoped session; reconnect with an organization-scoped or unconstrained session first.\n</hints>",
+    "description": "Rename a Sentry project, change its slug, or change its platform. Returns the updated project. To change which teams can access a project, use add_team_to_project or remove_team_from_project.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -15390,14 +15390,14 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "name": {
           "default": null,
           "anyOf": [
             {
               "type": "string",
-              "description": "The new name for the project"
+              "description": "New display name."
             },
             {
               "type": "null"
@@ -15409,7 +15409,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "The new slug for the project (must be unique)"
+              "description": "New slug, unique in the organization. The project moves to the new slug."
             },
             {
               "type": "null"
@@ -15470,7 +15470,7 @@
       "properties": {
         "organizationSlug": {
           "type": "string",
-          "description": "The organization slug."
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "regionUrl": {
           "default": null,
@@ -15486,7 +15486,7 @@
         },
         "projectSlug": {
           "type": "string",
-          "description": "The project slug."
+          "description": "The project slug. In `org/project` notation, the part after the slash."
         },
         "uptimeMonitorId": {
           "type": "string",
