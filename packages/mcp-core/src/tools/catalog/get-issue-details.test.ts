@@ -3794,6 +3794,8 @@ describe("concerns identified", () => {
           "title": "Allow cross-origin script errors",
         }
       `);
+      // the placeholder frame is not a stack to triage from
+      expect(await getMarkdown()).not.toContain(firstPartyNote);
     });
 
     it("raises nothing for an exception without frames and no known cause", async () => {

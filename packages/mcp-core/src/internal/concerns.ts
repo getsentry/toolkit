@@ -353,7 +353,7 @@ function hasFrames(stacktrace: unknown): boolean {
  * Python logging calls with `stack_info=True` or `attach_stacktrace` put it on
  * the current thread, so threads count too.
  */
-export function hasStackFrames(event: Event): boolean {
+function hasStackFrames(event: Event): boolean {
   return event.entries.some(({ type, data }) => {
     if (!isRecord(data)) {
       return false;
@@ -524,6 +524,18 @@ function getEventMessages(event: Event): string[] {
   );
 }
 
+function isCrossOriginScriptError(event: Event) {
+  return getEventMessages(event).some((message) => SCRIPT_ERROR.test(message));
+}
+
+/**
+ * Whether the event has a stack worth reading: frames other than the
+ * placeholder on a cross-origin `Script error.`.
+ */
+export function hasReadableStack(event: Event): boolean {
+  return hasStackFrames(event) && !isCrossOriginScriptError(event);
+}
+
 function missingStackTrace(
   title: string,
   message: string,
@@ -561,8 +573,7 @@ function detectMissingStackTrace(event: Event): PrioritizedConcern | null {
   if (event.type !== "error" && event.type !== "default") {
     return null;
   }
-  const messages = getEventMessages(event);
-  if (messages.some((message) => SCRIPT_ERROR.test(message))) {
+  if (isCrossOriginScriptError(event)) {
     return missingStackTrace(
       "Allow cross-origin script errors",
       `The browser hid this error's message and stack because the script came from another origin. Add ${inlineCode('crossorigin="anonymous"')} to its ${inlineCode("<script>")} tag and serve the script with an ${inlineCode("Access-Control-Allow-Origin")} header.`,
@@ -572,7 +583,9 @@ function detectMissingStackTrace(event: Event): PrioritizedConcern | null {
   if (hasStackFrames(event)) {
     return null;
   }
-  if (messages.some((message) => NON_ERROR_VALUE.test(message))) {
+  if (
+    getEventMessages(event).some((message) => NON_ERROR_VALUE.test(message))
+  ) {
     return missingStackTrace(
       "Throw Error objects",
       `The code threw or rejected with a value that is not an ${inlineCode("Error")}, so there was no stack to capture. Wrap the value in ${inlineCode("new Error(...)")} where it is thrown or rejected.`,

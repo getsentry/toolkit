@@ -37,7 +37,7 @@ import {
   buildConcerns,
   formatConcernCaveats,
   formatConcernsSection,
-  hasStackFrames,
+  hasReadableStack,
 } from "./concerns";
 import { selectEventPackages } from "./event-packages";
 import { formatUnknown } from "./unknown-formatting";
@@ -2574,7 +2574,7 @@ export function buildIssueResponseNotes({
         directToolNames,
       }),
     );
-  } else if (hasStackFrames(event)) {
+  } else if (hasReadableStack(event)) {
     notes.push(
       "The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.",
     );
