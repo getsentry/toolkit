@@ -146,8 +146,7 @@
     {
       "files": ["packages/cli/script/**/*.ts"],
       "rules": {
-        "sentry-cli/no-regex-markdown-parsing": "error",
-        "typescript/no-unnecessary-condition": "error"
+        "sentry-cli/no-regex-markdown-parsing": "error"
       }
     },
     {
