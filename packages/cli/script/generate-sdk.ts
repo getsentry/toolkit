@@ -161,7 +161,7 @@ function inferFlagType(def: FlagDef): {
 
 /** Extract SDK-relevant flag info from a Stricli Command's parameters. */
 function extractSdkFlags(command: Command): SdkFlagInfo[] {
-  const flagDefs = command.parameters?.flags;
+  const flagDefs = command.parameters.flags;
   if (!flagDefs) {
     return [];
   }
@@ -211,7 +211,7 @@ type PositionalInfo =
   | { name: string; variadic: true };
 
 function derivePositional(command: Command): PositionalInfo {
-  const params = command.parameters?.positional;
+  const params = command.parameters.positional;
   if (!params) {
     return null;
   }
@@ -222,7 +222,7 @@ function derivePositional(command: Command): PositionalInfo {
     return { name, variadic: true };
   }
 
-  if (params.kind === "tuple" && params.parameters.length > 0) {
+  if (params.parameters.length > 0) {
     // One param per tuple entry. A compound placeholder is a single entry whose own parser
     // splits it ("org/version" → orgVersion), but separate entries are separate argv tokens:
     // joining them into one param made every multi-positional command unusable, because the
