@@ -472,13 +472,14 @@ describe("get_issue_details", () => {
 
       Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
 
+      - **Capture errors with a stack trace**: This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.
+        - Docs: https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace
       - **Identify users in events**: This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.
         - Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
 
       ## Response Notes
 
       - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
-      - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
       - Agent conversation found in this trace: \`conv-123\`. Matching span: \`span-123\`.
       - Use the Sentry tool \`get_agent_conversation_details(organizationSlug='sentry-mcp-evals', conversationId='conv-123')\` to fetch the full transcript.
       - Issue event search: Use the Sentry tool \`search_issue_events\`
@@ -1970,7 +1971,6 @@ describe("get_issue_details", () => {
       ## Response Notes
 
       - Commit message issue reference: \`Fixes MCP-SERVER-EQE\` automatically closes the issue when the commit is merged.
-      - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
       - Issue event search: Use the Sentry tool \`search_issue_events\`
       "
     `);
@@ -2953,6 +2953,17 @@ describe("selected event package versions", () => {
         "concerns": [
           {
             "caveat": null,
+            "code": "missing_stack_trace",
+            "diagnosis": [],
+            "docsUrl": "https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace",
+            "errorTypes": [],
+            "fileCount": 0,
+            "files": [],
+            "message": "This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.",
+            "title": "Capture errors with a stack trace",
+          },
+          {
+            "caveat": null,
             "code": "missing_user_identity",
             "diagnosis": [],
             "docsUrl": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
@@ -3219,13 +3230,14 @@ describe("selected event package versions", () => {
 
       Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
 
+      - **Capture errors with a stack trace**: This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.
+        - Docs: https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace
       - **Identify users in events**: This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.
         - Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
 
       ## Response Notes
 
       - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
-      - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
       - Issue event search: Use the Sentry tool \`search_issue_events\`
       "
     `);
@@ -3579,6 +3591,17 @@ describe("concerns identified", () => {
       [
         {
           "caveat": null,
+          "code": "missing_stack_trace",
+          "diagnosis": [],
+          "docsUrl": "https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace",
+          "errorTypes": [],
+          "fileCount": 0,
+          "files": [],
+          "message": "This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.",
+          "title": "Capture errors with a stack trace",
+        },
+        {
+          "caveat": null,
           "code": "missing_user_identity",
           "diagnosis": [],
           "docsUrl": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
@@ -3621,5 +3644,242 @@ describe("concerns identified", () => {
 
     expect(await getConcernCodes("PERF-N1-001")).toEqual([]);
     expect(await getConcernCodes("MCP-SERVER-EQE")).toEqual([]);
+  });
+
+  describe("missing stack trace", () => {
+    const firstPartyNote =
+      "The stacktrace includes first-party application code";
+    const defaultTags = createDefaultEvent().tags;
+
+    async function getStackConcern() {
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const { concerns } = getStructuredContent<{
+        concerns: {
+          code: string;
+          title: string;
+          message: string;
+          docsUrl: string;
+        }[];
+      }>(result);
+      const concern = concerns.find(
+        ({ code }) => code === "missing_stack_trace",
+      );
+      return concern
+        ? {
+            title: concern.title,
+            message: concern.message,
+            docsUrl: concern.docsUrl,
+          }
+        : null;
+    }
+
+    async function getMarkdown() {
+      const result = await getIssueDetails.handler(params, baseContext);
+      return typeof result === "string" ? result : getTextContent(result);
+    }
+
+    // a Python `logger.error("...")` call captured by the logging integration
+    function pythonLogEvent(entries: unknown[] = createDefaultEvent().entries) {
+      return createDefaultEvent({
+        tags: [...defaultTags, { key: "logger", value: "myapp.tasks" }],
+        entries: entries as never,
+      });
+    }
+
+    // a browser event whose only exception has the given value
+    function jsException(value: string, stacktrace: unknown = null) {
+      return {
+        ...eventFixture,
+        user: identifiedUser,
+        errors: [],
+        title: value,
+        entries: [
+          {
+            type: "exception",
+            data: {
+              values: [
+                {
+                  type: "UnhandledRejection",
+                  value,
+                  mechanism: { type: "onunhandledrejection", handled: false },
+                  stacktrace,
+                },
+              ],
+            },
+          },
+        ],
+      };
+    }
+
+    it("suggests logging with the exception for a logging event", async () => {
+      mockLatestEvent(pythonLogEvent());
+
+      expect(await getStackConcern()).toMatchInlineSnapshot(`
+        {
+          "docsUrl": "https://docs.sentry.io/platforms/python/integrations/logging/",
+          "message": "This event came from the \`myapp.tasks\` logger with no exception attached. Log inside the \`except\` block with \`logger.exception(...)\`, or set \`attach_stacktrace=True\` in \`sentry_sdk.init\`.",
+          "title": "Log errors with their exception",
+        }
+      `);
+      // the stacktrace note does not apply to an event without one
+      expect(await getMarkdown()).not.toContain(firstPartyNote);
+    });
+
+    it("suggests passing the Error to console.error for a console event", async () => {
+      mockLatestEvent(
+        createDefaultEvent({
+          platform: "javascript",
+          tags: [...defaultTags, { key: "logger", value: "console" }],
+        }),
+      );
+
+      expect(await getStackConcern()).toMatchInlineSnapshot(`
+        {
+          "docsUrl": "https://docs.sentry.io/platforms/javascript/configuration/integrations/captureconsole/",
+          "message": "This event came from the \`console\` logger with no exception attached. Pass the \`Error\` itself to \`console.error(...)\`, or set \`attachStacktrace: true\` in \`Sentry.init\`.",
+          "title": "Log errors with their exception",
+        }
+      `);
+    });
+
+    it("suggests capturing an exception for a message event", async () => {
+      mockLatestEvent(createDefaultEvent({ platform: "node" }));
+
+      expect(await getStackConcern()).toMatchInlineSnapshot(`
+        {
+          "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/node/configuration/options/#attachStacktrace",
+          "message": "This event was captured as a message, which has no stack trace. Report caught errors with \`Sentry.captureException(err)\` instead, or set \`attachStacktrace: true\` to attach the current stack to messages.",
+          "title": "Capture errors with a stack trace",
+        }
+      `);
+    });
+
+    it("suggests throwing Error objects for a non-Error rejection", async () => {
+      mockLatestEvent(
+        jsException(
+          "Non-Error promise rejection captured with value: undefined",
+        ),
+      );
+
+      expect(await getStackConcern()).toMatchInlineSnapshot(`
+        {
+          "docsUrl": "https://docs.sentry.io/platforms/javascript/troubleshooting/#events-with-non-error-exception",
+          "message": "The code threw or rejected with a value that is not an \`Error\`, so there was no stack to capture. Wrap the value in \`new Error(...)\` where it is thrown or rejected.",
+          "title": "Throw Error objects",
+        }
+      `);
+      expect(await getMarkdown()).toContain("No stacktrace available");
+    });
+
+    it("suggests CORS headers for a cross-origin script error", async () => {
+      // the browser SDK adds a placeholder frame for the page URL
+      mockLatestEvent(
+        jsException("Script error.", {
+          frames: [
+            {
+              filename: "https://example.com/",
+              function: "?",
+              lineNo: 0,
+              colNo: 0,
+              inApp: true,
+            },
+          ],
+        }),
+      );
+
+      expect(await getStackConcern()).toMatchInlineSnapshot(`
+        {
+          "docsUrl": "https://docs.sentry.io/platforms/javascript/troubleshooting/#cors-attributes-and-headers",
+          "message": "The browser hid this error's message and stack because the script came from another origin. Add \`crossorigin="anonymous"\` to its \`<script>\` tag and serve the script with an \`Access-Control-Allow-Origin\` header.",
+          "title": "Allow cross-origin script errors",
+        }
+      `);
+      // the placeholder frame is not a stack to triage from
+      expect(await getMarkdown()).not.toContain(firstPartyNote);
+    });
+
+    it("raises nothing for an exception without frames and no known cause", async () => {
+      mockLatestEvent(
+        createDefaultEvent({
+          type: "error",
+          title: "ValueError: bad input",
+          entries: [
+            {
+              type: "exception",
+              data: { values: [{ type: "ValueError", value: "bad input" }] },
+            },
+          ] as never,
+        }),
+      );
+
+      expect(await getStackConcern()).toBeNull();
+      const markdown = await getMarkdown();
+      expect(markdown).toContain("No stacktrace available");
+      expect(markdown).not.toContain(firstPartyNote);
+    });
+
+    it("raises nothing when a thread has the stack", async () => {
+      // a native crash: the exception has no frames, the crashed thread does
+      mockLatestEvent({
+        ...eventFixture,
+        platform: "native",
+        user: identifiedUser,
+        errors: [],
+        entries: [
+          {
+            type: "exception",
+            data: { values: [{ type: "EXC_BAD_ACCESS", value: "crash" }] },
+          },
+          {
+            type: "threads",
+            data: {
+              values: [
+                {
+                  id: 1,
+                  crashed: true,
+                  stacktrace: {
+                    frames: [
+                      { function: "main", filename: "main.c", lineNo: 3 },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+      expect(await getStackConcern()).toBeNull();
+
+      // a Python logging call with `stack_info=True` puts it on the current thread
+      mockLatestEvent(
+        pythonLogEvent([
+          ...createDefaultEvent().entries,
+          {
+            type: "threads",
+            data: {
+              values: [
+                {
+                  current: true,
+                  crashed: false,
+                  stacktrace: {
+                    frames: [
+                      { function: "run", filename: "tasks.py", lineNo: 12 },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ]),
+      );
+      expect(await getStackConcern()).toBeNull();
+    });
+
+    it("raises nothing and keeps the stacktrace note when the event has a stack", async () => {
+      mockLatestEvent({ ...eventFixture, user: identifiedUser });
+
+      expect(await getStackConcern()).toBeNull();
+      expect(await getMarkdown()).toContain(firstPartyNote);
+    });
   });
 });
