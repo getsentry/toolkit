@@ -199,10 +199,10 @@ sentry schema "GET /api/0/organizations/{organization_id_or_slug}/issues/"
 # Create a release — version must match Sentry.init({ release }) exactly
 sentry release create my-org/1.0.0 --project my-project
 
-# Associate commits via repository integration (needs local git checkout)
+# Associate commits via repository integration (works without a checkout in CI)
 sentry release set-commits my-org/1.0.0 --auto
 
-# Or read commits from local git history (no integration needed)
+# Or read commits from local git history (needs a git checkout, no integration)
 sentry release set-commits my-org/1.0.0 --local
 
 # Mark the release as finalized
@@ -215,8 +215,10 @@ sentry release deploy my-org/1.0.0 production
 **Key details:**
 - The positional is `<org-slug>/<version>`. In `sentry release create sentry/1.0.0`, `sentry` is the org and `1.0.0` is the version — the slash separates org from version, it is not part of the version string.
 - The **version** must match the `release` value in `Sentry.init()`. If your SDK uses `"1.0.0"`, the command must use `org/1.0.0`.
-- `--auto` requires a Sentry repository integration (GitHub/GitLab/Bitbucket) **and** a local git checkout. It matches your `origin` remote against Sentry's repo list. Without a checkout, use `--local`.
-- With no flag, `set-commits` tries `--auto` first and falls back to `--local` on failure.
+- `--auto` requires a Sentry repository integration (GitHub/GitLab/Bitbucket). It matches your `origin` remote against Sentry's repo list. Without a git checkout, it uses the repository and commit from CI variables such as `GITHUB_REPOSITORY`/`GITHUB_SHA`, `CI_PROJECT_PATH`/`CI_COMMIT_SHA`, or `VERCEL_GIT_*` (Vercel production builds), so it works in builds without `.git`.
+- `--local` reads local git history, so it needs a git checkout. It does not need a repository integration.
+- Without a checkout or CI variables, pass the commit explicitly: `--commit owner/repo@<sha>`.
+- With no flag, `set-commits` tries `--auto` first and falls back to `--local` on failure. Without a git checkout there is nothing to fall back to, so the `--auto` error is reported.
 
 #### View Agent Conversations
 
@@ -350,7 +352,7 @@ When querying the Events API (directly or via `sentry api`), valid dataset value
 - **Fetching API schemas instead of using the CLI**: Prefer `sentry schema` to browse the API and `sentry api` to make requests — the CLI handles authentication and endpoint resolution, so there's rarely a need to download OpenAPI specs separately.
 - **Fetching Sentry docs externally**: Use `sentry docs "your question"` to query Sentry's documentation from the CLI — this returns concise answers with source links, without needing to fetch or parse documentation pages.
 - **Release version mismatch**: The `org/version` positional is `<org-slug>/<version>`, where `org/` is the org, not part of the version. `sentry release create sentry/1.0.0` creates version `1.0.0` in org `sentry`. If your `Sentry.init()` uses `release: "1.0.0"`, this is correct. Don't double-prefix like `sentry/myapp/1.0.0`.
-- **Running `set-commits --auto` without a git checkout**: `--auto` needs a local git repo to discover the origin remote URL and HEAD commit. In CI, ensure `actions/checkout` with `fetch-depth: 0` runs before `set-commits --auto`.
+- **Falling back to `--local` when there is no git checkout**: `--local` is the mode that needs a checkout, because it reads local git history. Without one, use `--auto`, which reads the repository and commit from CI variables (such as `GITHUB_REPOSITORY`), or pass `--commit owner/repo@<sha>`. Use `--local` only in a checkout with enough history (in GitHub Actions, `actions/checkout` with `fetch-depth: 0`).
 - **Using `sentry api` when CLI commands suffice**: `sentry issue list --json` and `sentry issue view --json` already include `shortId`, `title`, `count`, `userCount`, `priority`, `level`, `status`, `permalink`, and other fields at the top level. When using `--fields` to select specific fields like `count` or `userCount`, the CLI automatically ensures these fields are present in the API response. Use `--fields` to select specific fields and `--help` to see all available fields. Only fall back to `sentry api` for data the CLI doesn't expose.
 
 ## Prerequisites
