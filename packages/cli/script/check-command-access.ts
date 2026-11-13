@@ -7,14 +7,16 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Command, RouteMap } from "../src/lib/introspect.js";
-import {
-  allCommands,
-  type CommandRequests,
-  commandAccessProblems,
-} from "./lib/command-access.js";
+import type { CommandRequests } from "./lib/command-access.js";
+import { writeRouteTreeStubs } from "./lib/route-tree-stubs.js";
 import { analyzeCliSources } from "./lib/source-api-usage.js";
 import { logger } from "../src/lib/logger.js";
 
+// `lib/command-access.ts` imports `introspect.ts`, which imports generated
+// files, so it loads after the stubs, like the command modules and the tree.
+await writeRouteTreeStubs();
+const { allCommands, commandAccessProblems } =
+  await import("./lib/command-access.js");
 const { analysis } = await analyzeCliSources();
 
 // A command re-exported under another name has one entry per export.
