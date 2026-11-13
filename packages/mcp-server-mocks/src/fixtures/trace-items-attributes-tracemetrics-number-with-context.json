@@ -30,5 +30,15 @@
     "key": "payload_size",
     "name": "payload_size",
     "context": {}
+  },
+  {
+    "key": "retry.count",
+    "name": "retry.count",
+    "context": {}
+  },
+  {
+    "key": "retry.delay_ms",
+    "name": "retry.delay_ms",
+    "context": {}
   }
 ]

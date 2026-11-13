@@ -33,7 +33,11 @@ function keys(attributes: TraceItemAttribute[]): string[] {
 describe("toAttributeMatches", () => {
   it("returns the fetched attributes in the agent's order", () => {
     const matches = toAttributeMatches(
-      { best: "http.request.method", candidates: ["span.op", "http.method"] },
+      {
+        best: "http.request.method",
+        candidates: ["span.op", "http.method"],
+        reason: "",
+      },
       ATTRIBUTES,
       10,
     );
@@ -55,6 +59,7 @@ describe("toAttributeMatches", () => {
           "http.method",
           "app.tier",
         ],
+        reason: "",
       },
       ATTRIBUTES,
       3,
@@ -66,7 +71,11 @@ describe("toAttributeMatches", () => {
 
   it("gives the whole limit to candidates when there's no usable best", () => {
     const madeUpBest = toAttributeMatches(
-      { best: "http.verb", candidates: ["span.op", "app.tier", "http.method"] },
+      {
+        best: "http.verb",
+        candidates: ["span.op", "app.tier", "http.method"],
+        reason: "",
+      },
       ATTRIBUTES,
       2,
     );
@@ -74,8 +83,12 @@ describe("toAttributeMatches", () => {
     expect(keys(madeUpBest.candidates)).toEqual(["span.op", "app.tier"]);
 
     expect(
-      toAttributeMatches({ best: null, candidates: [] }, ATTRIBUTES, 2),
-    ).toEqual({ best: undefined, candidates: [] });
+      toAttributeMatches(
+        { best: null, candidates: [], reason: "" },
+        ATTRIBUTES,
+        2,
+      ),
+    ).toEqual({ best: undefined, candidates: [], reason: "" });
   });
 });
 

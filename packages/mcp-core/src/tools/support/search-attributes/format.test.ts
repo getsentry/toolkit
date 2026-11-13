@@ -31,6 +31,7 @@ describe("formatFindResult", () => {
             context: { isDeprecated: true },
           }),
           candidates: [],
+          reason: "",
         },
       }),
     ).toMatchInlineSnapshot(`
