@@ -308,6 +308,8 @@ describe("get_issue_details", () => {
       - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
         - \`/index.js\`: The deployed file has no debug ID, and the project has no uploads with debug IDs. Fix: Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.
         - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
+      - **Identify users in events**: This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque internal ID is enough.
+        - Docs: https://docs.sentry.io/platforms/javascript/enriching-events/identify-user/
 
       ## Response Notes
 
@@ -465,6 +467,13 @@ describe("get_issue_details", () => {
       **trace**
       trace_id: "11112222333344445555666677778888"
       span_id: "error-span"
+
+      ## Concerns Identified
+
+      Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+
+      - **Identify users in events**: This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.
+        - Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
 
       ## Response Notes
 
@@ -946,6 +955,8 @@ describe("get_issue_details", () => {
       - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
         - \`/index.js\`: The deployed file has no debug ID, and the project has no uploads with debug IDs. Fix: Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.
         - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
+      - **Identify users in events**: This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque internal ID is enough.
+        - Docs: https://docs.sentry.io/platforms/javascript/enriching-events/identify-user/
 
       ## Response Notes
 
@@ -1241,6 +1252,8 @@ describe("get_issue_details", () => {
       - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
         - \`/index.js\`: The deployed file has no debug ID, and the project has no uploads with debug IDs. Fix: Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.
         - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
+      - **Identify users in events**: This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque internal ID is enough.
+        - Docs: https://docs.sentry.io/platforms/javascript/enriching-events/identify-user/
 
       ## Response Notes
 
@@ -2937,7 +2950,19 @@ describe("selected event package versions", () => {
       {
         "aiConversations": null,
         "codeLocation": null,
-        "concerns": [],
+        "concerns": [
+          {
+            "caveat": null,
+            "code": "missing_user_identity",
+            "diagnosis": [],
+            "docsUrl": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
+            "errorTypes": [],
+            "fileCount": 0,
+            "files": [],
+            "message": "This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.",
+            "title": "Identify users in events",
+          },
+        ],
         "event": {
           "contexts": null,
           "crashedThread": null,
@@ -3190,6 +3215,13 @@ describe("selected event package versions", () => {
       - \`@example/client\`: \`2.0.0\`
       - \`missing\`: Not listed in this event's package metadata
 
+      ## Concerns Identified
+
+      Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+
+      - **Identify users in events**: This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.
+        - Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
+
       ## Response Notes
 
       - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
@@ -3355,13 +3387,26 @@ describe("concerns identified", () => {
   };
   const experimentalContext = { ...baseContext, experimentalMode: true };
 
-  function mockLatestEvent(errors: unknown) {
+  function mockLatestEvent(event: Record<string, unknown>) {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/latest/",
-        () => HttpResponse.json({ ...eventFixture, errors }),
+        () => HttpResponse.json(event),
       ),
     );
+  }
+
+  // the fixture's user has only an IP address; give it an id to isolate other concerns
+  const identifiedUser = { ...eventFixture.user, id: "8f3c2a" };
+
+  async function getConcernCodes(issueId = params.issueId) {
+    const result = await getIssueDetails.handler(
+      { ...params, issueId },
+      experimentalContext,
+    );
+    return getStructuredContent<{ concerns: { code: string }[] }>(
+      result,
+    ).concerns.map((concern) => concern.code);
   }
 
   afterEach(() => mswServer.resetHandlers());
@@ -3396,28 +3441,43 @@ describe("concerns identified", () => {
           "message": "Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/",
           "title": "Fix JavaScript source maps",
         },
+        {
+          "caveat": null,
+          "code": "missing_user_identity",
+          "diagnosis": [],
+          "docsUrl": "https://docs.sentry.io/platforms/javascript/enriching-events/identify-user/",
+          "errorTypes": [],
+          "fileCount": 0,
+          "files": [],
+          "message": "This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque internal ID is enough.",
+          "title": "Identify users in events",
+        },
       ]
     `);
   });
 
   it("dedupes source map errors by type and caps the files", async () => {
-    mockLatestEvent([
-      ...["a", "b", "c", "d"].map((name) => ({
-        type: "js_no_source",
-        message: "Source code was not found",
-        data: { symbolicator_type: "missing_source", url: `/${name}.js` },
-      })),
-      {
-        type: "js_invalid_sourcemap_location",
-        message: "Invalid location in sourcemap",
-        data: { column: 27, row: 7809, source: "/a.js" },
-      },
-      // not a source map problem
-      { type: "invalid_data", message: "Discarded invalid value", data: {} },
-      // malformed entries must not fail the event
-      { message: "no type" },
-      null,
-    ]);
+    mockLatestEvent({
+      ...eventFixture,
+      user: identifiedUser,
+      errors: [
+        ...["a", "b", "c", "d"].map((name) => ({
+          type: "js_no_source",
+          message: "Source code was not found",
+          data: { symbolicator_type: "missing_source", url: `/${name}.js` },
+        })),
+        {
+          type: "js_invalid_sourcemap_location",
+          message: "Invalid location in sourcemap",
+          data: { column: 27, row: 7809, source: "/a.js" },
+        },
+        // not a source map problem
+        { type: "invalid_data", message: "Discarded invalid value", data: {} },
+        // malformed entries must not fail the event
+        { message: "no type" },
+        null,
+      ],
+    });
 
     const result = await getIssueDetails.handler(params, baseContext);
     const text = typeof result === "string" ? result : getTextContent(result);
@@ -3460,14 +3520,18 @@ describe("concerns identified", () => {
     );
   });
 
-  it("omits the section and caveat when the event has no source map errors", async () => {
-    mockLatestEvent([
-      {
-        type: "native_missing_dsym",
-        message: "A required debug information file was missing.",
-        data: {},
-      },
-    ]);
+  it("omits the section and caveat when the event has no concerns", async () => {
+    mockLatestEvent({
+      ...eventFixture,
+      user: identifiedUser,
+      errors: [
+        {
+          type: "native_missing_dsym",
+          message: "A required debug information file was missing.",
+          data: {},
+        },
+      ],
+    });
     let checked = false;
     mswServer.use(
       http.get(
@@ -3489,5 +3553,73 @@ describe("concerns identified", () => {
     ).toEqual([]);
     // a healthy event needs no source map check
     expect(checked).toBe(false);
+  });
+
+  it("suggests identifying users after source maps when the user has only an IP address", async () => {
+    // the fixture's own IP-only user and js_no_source error
+    expect(await getConcernCodes()).toEqual([
+      "js_source_maps",
+      "missing_user_identity",
+    ]);
+
+    // only source maps adds a caveat; user identity is listed at the end only
+    const result = await getIssueDetails.handler(params, baseContext);
+    const text = typeof result === "string" ? result : getTextContent(result);
+    expect(text.match(/⚠️/g)).toHaveLength(1);
+  });
+
+  it("suggests identifying users when the event has no user", async () => {
+    // a Python message event with `user: null`
+    mockLatestEvent(createDefaultEvent());
+
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = getStructuredContent<{ concerns: unknown }>(result);
+
+    expect(payload.concerns).toMatchInlineSnapshot(`
+      [
+        {
+          "caveat": null,
+          "code": "missing_user_identity",
+          "diagnosis": [],
+          "docsUrl": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
+          "errorTypes": [],
+          "fileCount": 0,
+          "files": [],
+          "message": "This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.",
+          "title": "Identify users in events",
+        },
+      ]
+    `);
+  });
+
+  it("does not suggest identifying users when the event has a user id", async () => {
+    mockLatestEvent({ ...eventFixture, user: identifiedUser });
+
+    expect(await getConcernCodes()).toEqual(["js_source_maps"]);
+  });
+
+  it("does not suggest identifying users for performance or generic issues", async () => {
+    // both events have `user: null`
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
+        () => HttpResponse.json(createPerformanceIssue()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/7890123456/events/latest/",
+        () => HttpResponse.json(createPerformanceEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/MCP-SERVER-EQE/",
+        () => HttpResponse.json(createRegressedIssue()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6898891101/events/latest/",
+        () => HttpResponse.json(createGenericEvent()),
+      ),
+    );
+
+    expect(await getConcernCodes("PERF-N1-001")).toEqual([]);
+    expect(await getConcernCodes("MCP-SERVER-EQE")).toEqual([]);
   });
 });

@@ -244,7 +244,101 @@ function countDiagnosedFiles(diagnosis: Concern["diagnosis"]): number {
   return diagnosis.reduce((count, { files }) => count + files.length, 0);
 }
 
-const DETECTORS: readonly Detector[] = [detectJsSourceMapFailure];
+const JS_SET_USER = "Sentry.setUser({ id: user.id })";
+
+/**
+ * How to identify the user, by `event.platform`: the docs platform path and the
+ * SDK call. Android events report `java`, React Native `javascript`, Flutter
+ * `dart`, and Unity `csharp`, so they share those entries.
+ */
+const SET_USER_BY_PLATFORM: ReadonlyMap<
+  string,
+  { docs: string; call: string }
+> = new Map([
+  ["javascript", { docs: "javascript", call: JS_SET_USER }],
+  ["node", { docs: "javascript/guides/node", call: JS_SET_USER }],
+  ["python", { docs: "python", call: 'sentry_sdk.set_user({"id": user.id})' }],
+  ["ruby", { docs: "ruby", call: "Sentry.set_user(id: user.id)" }],
+  ["php", { docs: "php", call: "$scope->setUser(['id' => $user->id])" }],
+  ["java", { docs: "java", call: "Sentry.setUser(user)" }],
+  ["go", { docs: "go", call: "scope.SetUser(sentry.User{ID: user.ID})" }],
+  [
+    "csharp",
+    { docs: "dotnet", call: "scope.User = new SentryUser { Id = user.Id }" },
+  ],
+  ["cocoa", { docs: "apple", call: "SentrySDK.setUser(user)" }],
+  ["dart", { docs: "dart", call: "scope.setUser(SentryUser(id: user.id))" }],
+  [
+    "elixir",
+    { docs: "elixir", call: "Sentry.Context.set_user_context(%{id: user.id})" },
+  ],
+  ["native", { docs: "native", call: "sentry_set_user(user)" }],
+]);
+
+function hasValue(value: string | null | undefined) {
+  return typeof value === "string" && value.length > 0;
+}
+
+/**
+ * Warns when an error event has no user ID, email, or username.
+ *
+ * Sentry counts Users Impacted as the distinct values of the `sentry:user`
+ * tag, which it sets from the first of the user's id, username, email, or IP
+ * address (`EventUser.tag_value` in getsentry/sentry
+ * `src/sentry/utils/eventuser.py`, set in `_get_event_user_many` in
+ * `src/sentry/event_manager.py`; counted with `uniq(tags[sentry:user])` in
+ * `src/sentry/api/serializers/models/group.py`). So an event with no user is
+ * not counted at all, and an event with only an IP address is counted by IP.
+ *
+ * Only error and default (message) events are checked. Performance issues
+ * (transactions), metric, cron, uptime, and other generic issues, and CSP
+ * reports do not come from code that can identify a signed-in user.
+ */
+function detectMissingUserIdentity(event: Event): PrioritizedConcern | null {
+  if (event.type !== "error" && event.type !== "default") {
+    return null;
+  }
+  const user = event.user;
+  if (hasValue(user?.id) || hasValue(user?.email) || hasValue(user?.username)) {
+    return null;
+  }
+
+  const setUser = event.platform
+    ? SET_USER_BY_PLATFORM.get(event.platform)
+    : undefined;
+  const call = setUser
+    ? inlineCode(setUser.call)
+    : `${inlineCode(JS_SET_USER)} or your SDK's equivalent`;
+  // the generic page asks which platform to show
+  const docsUrl = setUser
+    ? `https://docs.sentry.io/platforms/${setUser.docs}/enriching-events/identify-user/`
+    : "https://docs.sentry.io/platform-redirect/?next=/enriching-events/identify-user/";
+
+  const problem =
+    hasValue(user?.ip_address) || hasValue(user?.ip)
+      ? "This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it."
+      : "This event has no user, so it doesn't count toward Users Impacted.";
+
+  return {
+    priority: 10,
+    concern: {
+      code: "missing_user_identity",
+      title: "Identify users in events",
+      message: `${problem} Call ${call} after sign-in; an opaque internal ID is enough.`,
+      docsUrl,
+      errorTypes: [],
+      files: [],
+      fileCount: 0,
+      diagnosis: [],
+      caveat: null,
+    },
+  };
+}
+
+const DETECTORS: readonly Detector[] = [
+  detectJsSourceMapFailure,
+  detectMissingUserIdentity,
+];
 
 /** The concerns an event points to, most important first. */
 export function buildConcerns(
