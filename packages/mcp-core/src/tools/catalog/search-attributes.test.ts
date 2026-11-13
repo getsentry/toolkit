@@ -217,6 +217,8 @@ describe("search_attributes", () => {
         | \`fleet.region\` | string | The region the server is currently running in. EXAMPLE VALUES: us-east-1 | yes |  |  |
         | \`http.method\` | string | The HTTP method used. EXAMPLE VALUES: GET | yes | yes | http.request.method |
         | \`payload_size\` | number |  | yes |  |  |
+        | \`retry.count\` | number |  | yes |  |  |
+        | \`retry.delay_ms\` | number |  | yes |  |  |
         | \`transaction\` | string | The sentry transaction (segment name). EXAMPLE VALUES: GET / | yes | yes | sentry.segment.name |
 
         ## Response Notes

@@ -101,6 +101,14 @@
       "types": "./dist/tools/search-issue-events/agent.d.ts",
       "default": "./dist/tools/search-issue-events/agent.js"
     },
+    "./tools/search-attributes": {
+      "types": "./dist/tools/search-attributes/index.d.ts",
+      "default": "./dist/tools/search-attributes/index.js"
+    },
+    "./tools/search-attributes/agent": {
+      "types": "./dist/tools/search-attributes/agent.d.ts",
+      "default": "./dist/tools/search-attributes/agent.js"
+    },
     "./tools/agent-tools": {
       "types": "./dist/tools/agent-tools.d.ts",
       "default": "./dist/tools/agent-tools.js"
