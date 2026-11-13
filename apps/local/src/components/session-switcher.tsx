@@ -97,6 +97,7 @@ export function SessionSwitcher({
         <PopoverTrigger asChild>
           <Button
             variant="outline"
+            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/role-has-required-aria-props -- a select-only combobox button; Radix's PopoverTrigger sets aria-controls while open
             role="combobox"
             aria-label="Session"
             aria-expanded={open}
@@ -212,9 +213,9 @@ export function SessionSwitcher({
         <RefreshCw className="size-3.5" aria-hidden="true" />
       </Button>
       {error ? (
-        <p role="status" className="w-full text-xs text-muted-foreground">
+        <output className="block w-full text-xs text-muted-foreground">
           Could not refresh sessions. Your current feed is still available.
-        </p>
+        </output>
       ) : null}
     </section>
   );

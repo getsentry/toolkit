@@ -1,17 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "strict": true,
     "lib": ["ESNext"],
     "target": "ESNext",
     "allowJs": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
-    "noEmit": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true
+    "noEmit": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]

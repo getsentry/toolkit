@@ -393,12 +393,10 @@ test("pending deletion disables Reload capture and ignores queued events until c
     "before pending reset",
   );
   expect(
-    (
-      screen.getByRole("button", {
-        name: "Reload capture",
-        exact: true,
-      }) as HTMLButtonElement
-    ).disabled,
+    screen.getByRole<HTMLButtonElement>("button", {
+      name: "Reload capture",
+      exact: true,
+    }).disabled,
   ).toBe(false);
   expect(request).toHaveBeenCalledTimes(1);
 });
@@ -585,7 +583,7 @@ test.each(["connecting", "failed"] as const)(
       ),
     );
     expect(
-      (screen.getByLabelText("Receiver endpoint") as HTMLInputElement).value,
+      screen.getByLabelText<HTMLInputElement>("Receiver endpoint").value,
     ).toBe("http://127.0.0.1:8970/stream");
     expect(ControllableEventSource.instances).toHaveLength(attempts);
   },

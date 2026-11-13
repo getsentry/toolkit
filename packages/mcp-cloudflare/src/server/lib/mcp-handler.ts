@@ -98,7 +98,7 @@ export function getRequestGrantId(request: Request): string | null {
   if (!auth) return null;
   const match = auth.match(/^Bearer\s+(.+)$/i);
   if (!match) return null;
-  const parts = match[1].split(":");
+  const parts = match[1]!.split(":");
   if (parts.length !== 3) return null;
   return parts[1] || null;
 }

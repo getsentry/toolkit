@@ -135,6 +135,7 @@ function ProfileChart({
   return (
     <div ref={container} className="overflow-auto">
       <svg
+        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no semantic grouping element
         role="group"
         aria-label={`${type} profile visualization`}
         viewBox={`0 0 ${width} ${height}`}
@@ -149,6 +150,7 @@ function ProfileChart({
           .map((box) => (
             <g
               key={box.node.id}
+              // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG shapes can't be HTML buttons
               role="button"
               tabIndex={0}
               aria-label={`Zoom to ${box.node.name}, ${box.node.samples} samples`}
@@ -439,10 +441,10 @@ function ProfileInspector({
               </div>
             </>
           ) : (
-            <p role="status" className="text-sm text-muted-foreground">
+            <output className="block text-sm text-muted-foreground">
               No usable stack samples were captured. Inspect JSON for the
               original profile payload.
-            </p>
+            </output>
           )}
         </>
       }
@@ -471,11 +473,11 @@ export function ProfileWorkspace({
     profiles.find((item) => item.id === selectedId) ?? profiles[0];
   if (!selected)
     return (
-      <p role="status" className="p-6 text-sm text-muted-foreground">
+      <output className="block p-6 text-sm text-muted-foreground">
         {query
           ? "No profiles match this filter."
           : "No profiles captured. Enable profiling in your SDK and send its envelopes to this receiver."}
-      </p>
+      </output>
     );
   return (
     <ResizableWorkspace

@@ -13,7 +13,9 @@
     "strictNullChecks": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUncheckedSideEffectImports": true
   },
   "exclude": ["tests"]
 }

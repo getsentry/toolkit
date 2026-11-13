@@ -132,9 +132,7 @@ export function CaptureHeader({
             )}
           </div>
           <Badge variant={tone} className="shrink-0 font-normal">
-            <span role="status" aria-label="Capture state">
-              {state}
-            </span>
+            <output aria-label="Capture state">{state}</output>
           </Badge>
         </div>
         {currentSession?.cwd ? (

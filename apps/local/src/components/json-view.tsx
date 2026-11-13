@@ -90,9 +90,9 @@ export function JsonView({ code }: JsonViewProps) {
       <div className="relative">
         <div className="absolute top-2 right-3 z-10">{copyButton}</div>
         {copied ? (
-          <span role="status" aria-label="JSON copied" className="sr-only">
+          <output aria-label="JSON copied" className="sr-only">
             JSON copied
-          </span>
+          </output>
         ) : null}
         <pre
           data-testid="highlighted-json"
@@ -108,9 +108,9 @@ export function JsonView({ code }: JsonViewProps) {
     <div className="relative">
       <div className="absolute top-2 right-3 z-10">{copyButton}</div>
       {copied ? (
-        <span role="status" aria-label="JSON copied" className="sr-only">
+        <output aria-label="JSON copied" className="sr-only">
           JSON copied
-        </span>
+        </output>
       ) : null}
       <div
         data-testid="highlighted-json"

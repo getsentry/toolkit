@@ -89,6 +89,7 @@ export function ResizableWorkspace({
         {list}
       </aside>
       <div
+        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- a focusable, keyboard-resizable splitter needs the interactive separator role; <hr> is static
         role="separator"
         aria-label={`Resize ${listLabel}`}
         aria-orientation="vertical"
