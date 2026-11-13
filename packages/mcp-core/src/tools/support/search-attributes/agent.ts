@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { TraceItemAttribute } from "../../../api-client";
 import { callEmbeddedAgent } from "../../../internal/agents/callEmbeddedAgent";
 import type { SearchAttributesDataset } from "./search";
-import { keyHintsSystemPrompt, systemPrompt } from "./config";
+import { keyHintsSystemPrompt, shortlistSystemPrompt } from "./config";
 import { flatten } from "./format";
 
 const MAX_KEY_HINTS = 5;
@@ -86,7 +86,7 @@ export async function shortlistAttributesAgent(
   options: ShortlistAttributesAgentOptions,
 ): Promise<AttributeMatches> {
   const { result } = await callEmbeddedAgent<ShortlistAttributesAgentOutput>({
-    system: systemPrompt,
+    system: shortlistSystemPrompt,
     prompt: buildShortlistPrompt(options),
     tools: {},
     schema: shortlistAttributesAgentOutputSchema,
