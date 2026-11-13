@@ -397,6 +397,14 @@ describe("SeerError", () => {
     expect(formatted).toContain("my-org");
   });
 
+  test("format() includes billing URL for out_of_credits with orgSlug", () => {
+    const formatted = new SeerError("out_of_credits", "my-org").format();
+    expect(formatted).toContain("Your organization is out of Seer credits.");
+    expect(formatted).toContain(
+      "https://my-org.sentry.io/settings/billing/overview/?product=seer",
+    );
+  });
+
   test("format() shows fallback message without orgSlug", () => {
     const err = new SeerError("not_enabled");
     const formatted = err.format();
@@ -778,6 +786,9 @@ describe("exit codes", () => {
     expect(new SeerError("not_enabled").exitCode).toBe(EXIT.SEER_NOT_ENABLED);
     expect(new SeerError("no_budget").exitCode).toBe(EXIT.SEER_NO_BUDGET);
     expect(new SeerError("ai_disabled").exitCode).toBe(EXIT.SEER_AI_DISABLED);
+    expect(new SeerError("out_of_credits").exitCode).toBe(
+      EXIT.SEER_OUT_OF_CREDITS,
+    );
   });
 
   test("TimeoutError has exit code TIMEOUT", () => {

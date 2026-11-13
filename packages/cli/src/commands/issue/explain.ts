@@ -74,7 +74,12 @@ async function analyzeIssue(
     return { issue: issueArg.text, org, issueId, rootCauses };
   } catch (error) {
     if (error instanceof ApiError) {
-      throw handleSeerApiError(error.status, error.detail, resolvedOrg);
+      throw handleSeerApiError(
+        error.status,
+        error.detail,
+        resolvedOrg,
+        error.code,
+      );
     }
     throw error;
   }
