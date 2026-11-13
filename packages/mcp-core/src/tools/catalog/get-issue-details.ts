@@ -13,10 +13,7 @@ import type {
 } from "../../api-client/types";
 import { ConfigurationError, UserInputError } from "../../errors";
 import type { CodeLocation } from "../../internal/code-location";
-import {
-  buildDataQualityHints,
-  dataQualityHintSchema,
-} from "../../internal/data-quality";
+import { buildConcerns, concernSchema } from "../../internal/concerns";
 import {
   dedupeReplayIds,
   getMetricAlertContext,
@@ -154,10 +151,10 @@ export const getIssueDetailsOutputSchema = z.object({
       }),
     )
     .nullable(),
-  dataQuality: z
-    .array(dataQualityHintSchema)
+  concerns: z
+    .array(concernSchema)
     .describe(
-      "Problems that make parts of the event unreliable as shown, such as missing source maps.",
+      "Setup problems, such as missing source maps, that are optional to fix but would make future issues easier to debug.",
     ),
   suggestedActions: z.array(suggestedToolActionSchema),
 });
@@ -304,7 +301,7 @@ function buildIssueDetailsPayload({
           spanId: conversation.spanId ?? null,
         }))
       : null,
-    dataQuality: buildDataQualityHints(event),
+    concerns: buildConcerns(event),
     suggestedActions: buildIssueSuggestedActions({
       organizationSlug,
       issue,

@@ -33,9 +33,10 @@ import type {
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
 import {
-  buildDataQualityHints,
-  formatDataQualitySection,
-} from "./data-quality";
+  buildConcerns,
+  formatConcernCaveats,
+  formatConcernsSection,
+} from "./concerns";
 import { selectEventPackages } from "./event-packages";
 import { formatUnknown } from "./unknown-formatting";
 import {
@@ -2372,10 +2373,13 @@ export function formatIssueOutput({
   output += `**URL**: ${apiService.getIssueUrl(organizationSlug, issue.shortId)}\n`;
   output += "\n";
 
-  // before Code Location and the stacktrace, which these hints can undermine
-  output += formatDataQualitySection(buildDataQualityHints(event));
+  const concerns = buildConcerns(event);
+  // caveats go before the first data they affect: Code Location, or else the
+  // top of Event Details, above the stacktrace
+  const caveats = formatConcernCaveats(concerns);
 
   if (codeLocation) {
+    output += caveats;
     output += formatCodeLocation(codeLocation);
   }
 
@@ -2418,6 +2422,9 @@ export function formatIssueOutput({
       output += ` and Sentry Event ID **${sentryEventId}**`;
     }
     output += " to help us add support for this event type.\n";
+    if (concerns.length > 0) {
+      output += `\n${formatConcernsSection(concerns)}`;
+    }
 
     if (aiConversations && aiConversations.length > 0) {
       output += "\n## Response Notes\n\n";
@@ -2440,6 +2447,9 @@ export function formatIssueOutput({
     return output;
   }
 
+  if (!codeLocation) {
+    output += caveats;
+  }
   output += `**Event ID**: ${event.id}\n`;
   output += `**Type**: ${formatUnknown(event.type)}\n`;
   // default: error without exception data, generic: performance/metric issue, csp: CSP violation
@@ -2494,6 +2504,8 @@ export function formatIssueOutput({
     }
     output += "\n";
   }
+
+  output += formatConcernsSection(concerns);
 
   output += "## Response Notes\n\n";
   for (const note of buildIssueResponseNotes({

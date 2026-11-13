@@ -234,11 +234,7 @@ describe("get_issue_details", () => {
       **Project**: CLOUDFLARE-MCP
       **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
 
-      ## Data Quality
-
-      - **Source maps not applied**: Sentry could not apply source maps to this event: the source file or its source map was not found. File names, line numbers, and function names in the stacktrace and Code Location may point to minified or bundled code instead of the original source. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
-        - Affected files: \`/index.js\`
-        - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
+      ⚠️ Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.
 
       ## Code Location
 
@@ -304,6 +300,14 @@ describe("get_issue_details", () => {
       status: "unknown"
       client_sample_rate: 1
       sampled: true
+
+      ## Concerns Identified
+
+      Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+
+      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
+        - Affected files: \`/index.js\`
+        - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
 
       ## Response Notes
 
@@ -875,13 +879,9 @@ describe("get_issue_details", () => {
       **Project**: CLOUDFLARE-MCP
       **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
 
-      ## Data Quality
-
-      - **Source maps not applied**: Sentry could not apply source maps to this event: the source file or its source map was not found. File names, line numbers, and function names in the stacktrace and Code Location may point to minified or bundled code instead of the original source. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
-        - Affected files: \`/index.js\`
-        - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
-
       ## Event Details
+
+      ⚠️ Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.
 
       **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
       **Type**: error
@@ -938,6 +938,14 @@ describe("get_issue_details", () => {
       status: "unknown"
       client_sample_rate: 1
       sampled: true
+
+      ## Concerns Identified
+
+      Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+
+      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
+        - Affected files: \`/index.js\`
+        - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
 
       ## Response Notes
 
@@ -1166,13 +1174,9 @@ describe("get_issue_details", () => {
       **Project**: CLOUDFLARE-MCP
       **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
 
-      ## Data Quality
-
-      - **Source maps not applied**: Sentry could not apply source maps to this event: the source file or its source map was not found. File names, line numbers, and function names in the stacktrace and Code Location may point to minified or bundled code instead of the original source. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
-        - Affected files: \`/index.js\`
-        - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
-
       ## Event Details
+
+      ⚠️ Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.
 
       **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
       **Type**: error
@@ -1229,6 +1233,14 @@ describe("get_issue_details", () => {
       status: "unknown"
       client_sample_rate: 1
       sampled: true
+
+      ## Concerns Identified
+
+      Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+
+      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
+        - Affected files: \`/index.js\`
+        - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
 
       ## Response Notes
 
@@ -2925,7 +2937,7 @@ describe("selected event package versions", () => {
       {
         "aiConversations": null,
         "codeLocation": null,
-        "dataQuality": [],
+        "concerns": [],
         "event": {
           "contexts": null,
           "crashedThread": null,
@@ -3333,7 +3345,7 @@ describe("selected event package versions", () => {
   });
 });
 
-describe("data quality", () => {
+describe("concerns identified", () => {
   const params = {
     organizationSlug: "sentry-mcp-evals",
     issueId: "CLOUDFLARE-MCP-41",
@@ -3354,14 +3366,15 @@ describe("data quality", () => {
 
   afterEach(() => mswServer.resetHandlers());
 
-  it("warns about source maps in structured output", async () => {
+  it("suggests fixing source maps in structured output", async () => {
     // the fixture's own js_no_source error, with no override
     const result = await getIssueDetails.handler(params, experimentalContext);
-    const payload = getStructuredContent<{ dataQuality: unknown }>(result);
+    const payload = getStructuredContent<{ concerns: unknown }>(result);
 
-    expect(payload.dataQuality).toMatchInlineSnapshot(`
+    expect(payload.concerns).toMatchInlineSnapshot(`
       [
         {
+          "caveat": "Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.",
           "code": "js_source_maps",
           "docsUrl": "https://docs.sentry.io/platforms/javascript/sourcemaps/",
           "errorTypes": [
@@ -3371,8 +3384,8 @@ describe("data quality", () => {
           "files": [
             "/index.js",
           ],
-          "message": "Sentry could not apply source maps to this event: the source file or its source map was not found. File names, line numbers, and function names in the stacktrace and Code Location may point to minified or bundled code instead of the original source. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/",
-          "title": "Source maps not applied",
+          "message": "Sentry could not apply source maps to this event: the source file or its source map was not found. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/",
+          "title": "Fix JavaScript source maps",
         },
       ]
     `);
@@ -3399,12 +3412,19 @@ describe("data quality", () => {
 
     const result = await getIssueDetails.handler(params, baseContext);
     const text = typeof result === "string" ? result : getTextContent(result);
-    const section = text.match(/## Data Quality\n\n[\s\S]*?\n\n/)?.[0];
+    const section = text.match(
+      /## Concerns Identified\n\n[\s\S]*?(?=## Response Notes)/,
+    )?.[0];
+
+    // one caveat for the whole event, however many error types it has
+    expect(text.match(/⚠️/g)).toHaveLength(1);
 
     expect(section).toMatchInlineSnapshot(`
-      "## Data Quality
+      "## Concerns Identified
 
-      - **Source maps not applied**: Sentry could not apply source maps to this event: the source file or its source map was not found; the source map does not match the minified file. File names, line numbers, and function names in the stacktrace and Code Location may point to minified or bundled code instead of the original source. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
+      Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+
+      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found; the source map does not match the minified file. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
         - Affected files: \`/a.js\`, \`/b.js\`, \`/c.js\` (and 1 more)
         - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
 
@@ -3412,7 +3432,7 @@ describe("data quality", () => {
     `);
   });
 
-  it("omits the section when the event has no source map errors", async () => {
+  it("omits the section and caveat when the event has no source map errors", async () => {
     mockLatestEvent([
       {
         type: "native_missing_dsym",
@@ -3422,11 +3442,12 @@ describe("data quality", () => {
     ]);
 
     const markdown = await getIssueDetails.handler(params, baseContext);
-    expect(markdown).not.toContain("## Data Quality");
+    expect(markdown).not.toContain("## Concerns Identified");
+    expect(markdown).not.toContain("⚠️");
 
     const result = await getIssueDetails.handler(params, experimentalContext);
     expect(
-      getStructuredContent<{ dataQuality: unknown }>(result).dataQuality,
+      getStructuredContent<{ concerns: unknown }>(result).concerns,
     ).toEqual([]);
   });
 });

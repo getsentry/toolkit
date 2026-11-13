@@ -3,45 +3,48 @@ import { z } from "zod";
 import type { Event } from "../api-client/types";
 
 /**
- * Data quality hints warn that part of an event cannot be trusted as shown,
- * such as a stacktrace that still points at minified code, and say how to fix
- * it. Each hint comes from data already on the event; none needs an extra API
- * call.
+ * Concerns are problems with the project's Sentry setup, such as missing
+ * source maps, that are optional to fix but would make future issues easier to
+ * debug. Each comes from data already on the event; none needs an extra API
+ * call. When the problem also changes how to read this event, the concern
+ * carries a one-line `caveat` that renders next to the affected data.
  *
- * To add a hint, write a detector that returns a `DataQualityHint` or null and
- * add it to `DETECTORS`. `buildDataQualityHints` orders hints by priority and
- * keeps the first `MAX_DATA_QUALITY_HINTS`.
+ * To add one, write a detector that returns a `Concern` or null and add it to
+ * `DETECTORS`. `buildConcerns` orders them by priority and keeps the first
+ * `MAX_CONCERNS`.
  */
-export const dataQualityHintSchema = z.object({
+export const concernSchema = z.object({
   code: z
     .string()
     .describe("Stable identifier of the problem, such as js_source_maps."),
   title: z.string(),
-  message: z
-    .string()
-    .describe("What went wrong, what it affects, and how to fix it."),
+  message: z.string().describe("What is wrong and how to fix it."),
   docsUrl: z.string(),
   errorTypes: z
     .array(z.string())
-    .describe("The Sentry event processing error types behind the hint."),
+    .describe("The Sentry event processing error types behind it."),
   files: z
     .array(z.string())
     .describe("Affected files, capped; fileCount says how many there are."),
   fileCount: z.number(),
+  caveat: z
+    .string()
+    .nullable()
+    .describe("How the problem affects reading this event, when it does."),
 });
 
-export type DataQualityHint = z.output<typeof dataQualityHintSchema>;
+export type Concern = z.output<typeof concernSchema>;
 
-const MAX_DATA_QUALITY_HINTS = 3;
-const MAX_HINT_FILES = 3;
+const MAX_CONCERNS = 3;
+const MAX_FILES = 3;
 
-interface PrioritizedHint {
+interface PrioritizedConcern {
   /** Lower comes first. */
   priority: number;
-  hint: DataQualityHint;
+  concern: Concern;
 }
 
-type Detector = (event: Event) => PrioritizedHint | null;
+type Detector = (event: Event) => PrioritizedConcern | null;
 
 const JS_SOURCE_MAPS_DOCS_URL =
   "https://docs.sentry.io/platforms/javascript/sourcemaps/";
@@ -153,7 +156,7 @@ function getErrorFile(data: Record<string, unknown> | null | undefined) {
   return typeof file === "string" && file.length > 0 ? file : null;
 }
 
-function detectJsSourceMapFailure(event: Event): PrioritizedHint | null {
+function detectJsSourceMapFailure(event: Event): PrioritizedConcern | null {
   const errorTypes = new Set<string>();
   const files = new Set<string>();
   for (const error of event.errors ?? []) {
@@ -178,53 +181,60 @@ function detectJsSourceMapFailure(event: Event): PrioritizedHint | null {
 
   return {
     priority: 0,
-    hint: {
+    concern: {
       code: "js_source_maps",
-      title: "Source maps not applied",
-      message: [
-        `Sentry could not apply source maps to this event: ${problems}.`,
-        "File names, line numbers, and function names in the stacktrace and Code Location may point to minified or bundled code instead of the original source.",
-        `Fix: ${fixes}`,
-        `Troubleshooting: ${JS_SOURCE_MAPS_TROUBLESHOOTING_URL}`,
-      ].join(" "),
+      title: "Fix JavaScript source maps",
+      message: `Sentry could not apply source maps to this event: ${problems}. Fix: ${fixes} Troubleshooting: ${JS_SOURCE_MAPS_TROUBLESHOOTING_URL}`,
       docsUrl: JS_SOURCE_MAPS_DOCS_URL,
       errorTypes: matched.map(([type]) => type),
-      files: [...files].slice(0, MAX_HINT_FILES),
+      files: [...files].slice(0, MAX_FILES),
       fileCount: files.size,
+      caveat:
+        "Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.",
     },
   };
 }
 
 const DETECTORS: readonly Detector[] = [detectJsSourceMapFailure];
 
-/** The data quality problems on an event, most important first. */
-export function buildDataQualityHints(event: Event): DataQualityHint[] {
+/** The concerns an event points to, most important first. */
+export function buildConcerns(event: Event): Concern[] {
   return DETECTORS.flatMap((detect) => {
     const result = detect(event);
     return result ? [result] : [];
   })
     .sort((a, b) => a.priority - b.priority)
-    .slice(0, MAX_DATA_QUALITY_HINTS)
-    .map((result) => result.hint);
+    .slice(0, MAX_CONCERNS)
+    .map((result) => result.concern);
 }
 
-/** The `## Data Quality` markdown section, or an empty string. */
-export function formatDataQualitySection(hints: DataQualityHint[]): string {
-  if (hints.length === 0) {
+/** One warning line per caveat, to render before the data they affect. */
+export function formatConcernCaveats(concerns: Concern[]): string {
+  const caveats = concerns.flatMap(({ caveat }) =>
+    caveat ? [`⚠️ ${caveat}\n\n`] : [],
+  );
+  return caveats.join("");
+}
+
+/** The `## Concerns Identified` markdown section, or an empty string. */
+export function formatConcernsSection(concerns: Concern[]): string {
+  if (concerns.length === 0) {
     return "";
   }
-  let output = "## Data Quality\n\n";
-  for (const hint of hints) {
+  let output = "## Concerns Identified\n\n";
+  output +=
+    "Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.\n\n";
+  for (const concern of concerns) {
     // the message is built from constants, so it needs no escaping
-    output += `- **${hint.title}**: ${hint.message}\n`;
-    if (hint.files.length > 0) {
+    output += `- **${concern.title}**: ${concern.message}\n`;
+    if (concern.files.length > 0) {
       const more =
-        hint.fileCount > hint.files.length
-          ? ` (and ${hint.fileCount - hint.files.length} more)`
+        concern.fileCount > concern.files.length
+          ? ` (and ${concern.fileCount - concern.files.length} more)`
           : "";
-      output += `  - Affected files: ${hint.files.map(inlineCode).join(", ")}${more}\n`;
+      output += `  - Affected files: ${concern.files.map(inlineCode).join(", ")}${more}\n`;
     }
-    output += `  - Docs: ${hint.docsUrl}\n`;
+    output += `  - Docs: ${concern.docsUrl}\n`;
   }
   return `${output}\n`;
 }
