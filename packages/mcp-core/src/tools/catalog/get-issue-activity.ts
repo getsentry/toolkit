@@ -322,19 +322,8 @@ export default defineTool({
   title: "Get Issue Activity",
   skills: ["inspect", "triage"],
   requiredScopes: ["event:read"],
-  description: [
-    "Get the activity feed and comments for a Sentry issue.",
-    "",
-    "Use this tool when you need to:",
-    "- Review prior comments before triaging an issue",
-    "- Understand who resolved, ignored, assigned, or commented on an issue",
-    "- See recent issue activity that is not included in `get_issue_details`",
-    "",
-    "<examples>",
-    "get_issue_activity(organizationSlug='my-organization', issueId='PROJECT-123')",
-    "get_issue_activity(issueUrl='https://my-organization.sentry.io/issues/PROJECT-123/')",
-    "</examples>",
-  ].join("\n"),
+  description:
+    "Get the activity feed and comments of a Sentry issue: who resolved, ignored, assigned, or commented on it, and when.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),

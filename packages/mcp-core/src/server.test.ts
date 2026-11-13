@@ -1545,7 +1545,7 @@ describe("buildServer", () => {
       expect(experimentalToolNames).toEqual(DEFAULT_DIRECT_TOOL_NAMES);
     });
 
-    it("advertises Sentry tool guidance for snapshot image tools", async () => {
+    it("advertises snapshot image resources", async () => {
       const server = buildServer({
         context: baseContext,
       });
@@ -1555,9 +1555,7 @@ describe("buildServer", () => {
         (tool) => tool.name === "get_sentry_resource",
       );
 
-      expect(getSentryResource?.description).toContain(
-        "Use the Sentry tool `get_snapshot_image` for full-resolution image bytes",
-      );
+      expect(getSentryResource?.description).toContain("snapshot images");
     });
 
     it("does not advertise monitor resources when inspect tools are unavailable", async () => {

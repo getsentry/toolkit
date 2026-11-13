@@ -12,14 +12,8 @@ export default defineTool({
   title: "Unlink Issue",
   skills: ["triage"],
   requiredScopes: ["event:write", "org:read"],
-  description: [
-    "Remove an external ticket or GitHub pull request reference from a Sentry issue by URL.",
-    "Removes only the Sentry association. It does not delete the external ticket or the Sentry issue, or change resolution status.",
-    "Supports native integrations and installed Sentry Apps. Repeating the request is safe: not_linked means the association is absent, whether removed by this call or already absent.",
-    "<examples>",
-    "unlink_issue(organizationSlug='my-org', issueId='PROJECT-123', externalIssueUrl='https://github.com/example/repo/issues/42')",
-    "</examples>",
-  ].join("\n"),
+  description:
+    "Remove a linked external ticket or GitHub pull request from a Sentry issue by URL. Deletes only the association, not the ticket or the issue; safe to repeat.",
   inputSchema: issueLinkInputSchema,
   outputSchema: issueLinkOutputSchema,
   annotations: {
