@@ -184,6 +184,23 @@ function pinTarget(
   const title = catalogTitle === "target" ? "org/project" : catalogTitle;
   const segments = value.split("/");
   const titleSegments = title.split("/");
+  // `<org>/<project>[/...]` that leads a target-then-ids call
+  // (`dashboard view <org>/<project> <id>`, `event view`, `span view
+  // <org>/<project> <trace-id> <span-id>`) names both, whatever the title.
+  const leadsTarget =
+    kind === "dashboard" ||
+    kind === "org/project" ||
+    (kind === "issue" && title.startsWith("org/project/"));
+  if (leadsTarget && (leading ? segments.length >= 2 : segments.length >= 3)) {
+    const [valueOrg, project] = segments;
+    if (
+      valueOrg !== session.org ||
+      (session.project && project && project !== session.project)
+    ) {
+      throw outside(entry, value, session);
+    }
+    return value;
+  }
   if (segments.length === 1) {
     const orgWord = title === "org" || (leading && titleSegments[0] === "org");
     // `<org> <id>`: the leading word of `agent-conversation view` (`org`)

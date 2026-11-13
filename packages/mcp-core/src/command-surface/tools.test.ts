@@ -61,6 +61,9 @@ function exposedToolNames(include: (entry: CommandCatalogEntry) => boolean) {
     .sort();
 }
 
+const TRACE_ID = "0123456789abcdef0123456789abcdef";
+const SPAN_ID = "0123456789abcdef";
+
 function constrained(constraints: Constraints): ServerContext {
   return createTestContext({ constraints });
 }
@@ -445,6 +448,11 @@ describe("command tools: session constraints", () => {
     ["span list", ["acme/api"], project],
     ["trace view", ["acme/api", "abc123"], project],
     ["log list", ["acme/api"], project],
+    ["dashboard view", ["acme/api", "123"], project],
+    ["dashboard revisions", ["acme/api", "123"], project],
+    ["event view", ["acme/api", "abc123"], project],
+    ["span view", ["acme/api", TRACE_ID, SPAN_ID], project],
+    ["span view", [`other/api/${TRACE_ID}`, SPAN_ID], org],
   ])(
     "refuses %s %j outside the session",
     async (command, positional, context) => {
@@ -455,6 +463,19 @@ describe("command tools: session constraints", () => {
       expect(calls).toEqual([]);
     },
   );
+
+  it("accepts a leading target in the session", async () => {
+    const { call, calls } = setup();
+    await call("dashboard view", { positional: ["acme/web", "123"] }, project);
+    await call("event view", { positional: ["acme/web", "abc123"] }, project);
+    await call(
+      "span view",
+      { positional: [`acme/web/${TRACE_ID}`, SPAN_ID] },
+      project,
+    );
+    await call("span view", { positional: [`${TRACE_ID}/${SPAN_ID}`] }, org);
+    expect(calls).toHaveLength(4);
+  });
 
   it.each([
     ["release create", ["acme/1.0.0"], "api"],
