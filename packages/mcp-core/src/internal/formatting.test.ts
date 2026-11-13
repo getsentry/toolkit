@@ -562,7 +562,9 @@ describe("formatEventOutput", () => {
       .withContexts({
         response: {
           type: "default",
-          headers: { "Set-Cookie": "session=fake-session" },
+          headers: {
+            "Set-Cookie": ["session=fake-session", "theme=fake-cookie"],
+          },
         },
       })
       .build();
@@ -573,6 +575,7 @@ describe("formatEventOutput", () => {
           "x-api-access-key": "fake-access-key-value",
         },
         method: "post",
+        auth: { username: "svc", password: "fake-password" },
       },
       request: {
         _header:
@@ -592,13 +595,15 @@ describe("formatEventOutput", () => {
       "fake-basic-auth",
       "fake-client-secret",
       "fake-session",
+      "fake-cookie",
+      "fake-password",
     ]) {
       expect(output).not.toContain(secret);
     }
     expect(output).toContain("x-api-access-key: [REDACTED]");
     expect(output).toContain("Authorization: [REDACTED]");
     expect(output).toContain('"x-api-access-key": "[REDACTED]"');
-    expect(output).toContain('"Set-Cookie": "[REDACTED]"');
+    expect(output).toContain('"Set-Cookie": [\n    "[REDACTED]",');
     expect(output).toContain("Host: api.example.com");
     expect(output).toContain('"method": "post"');
   });

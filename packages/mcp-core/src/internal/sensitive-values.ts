@@ -77,11 +77,25 @@ function redactValue(value: unknown): unknown {
     return Object.fromEntries(
       Object.entries(value).map(([key, entry]) => [
         key,
-        isSensitiveHeaderName(key) &&
-        (typeof entry === "string" || typeof entry === "number")
-          ? REDACTED_VALUE
-          : redactValue(entry),
+        isSensitiveHeaderName(key) ? redactLeaves(entry) : redactValue(entry),
       ]),
+    );
+  }
+  return value;
+}
+
+// Everything under a sensitive key is a credential, including
+// `set-cookie: ["..."]` lists and nested auth objects.
+function redactLeaves(value: unknown): unknown {
+  if (typeof value === "string" || typeof value === "number") {
+    return REDACTED_VALUE;
+  }
+  if (Array.isArray(value)) {
+    return value.map(redactLeaves);
+  }
+  if (isPlainObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, redactLeaves(entry)]),
     );
   }
   return value;
