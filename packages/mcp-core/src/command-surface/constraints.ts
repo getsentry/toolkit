@@ -167,11 +167,13 @@ function pinTarget(
     return value;
   }
   // A short ID is its project's slug, uppercased, and a counter; the CLI
-  // reads one in any case (`api-1`).
+  // reads one in any case (`api-1`). The session's own slug
+  // (`javascript-react`) is its project, not a short ID.
   const id = value.slice(value.lastIndexOf("/") + 1).toUpperCase();
   if (
     kind === "issue" &&
     session.project &&
+    id.toLowerCase() !== session.project &&
     SHORT_ID_PATTERN.test(id) &&
     id.slice(0, id.lastIndexOf("-")).toLowerCase() !== session.project
   ) {

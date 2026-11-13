@@ -489,7 +489,21 @@ describe("command tools: session constraints", () => {
     await call("issue view", { positional: ["WEB-1"] }, project);
     await call("issue view", { positional: ["acme/web-1"] }, project);
     await call("issue view", { positional: ["API-1"] }, org);
-    expect(calls).toHaveLength(10);
+    const hyphenated = constrained({
+      organizationSlug: "acme",
+      projectSlug: "javascript-react",
+    });
+    await call(
+      "event view",
+      { positional: ["acme/javascript-react", "abc123"] },
+      hyphenated,
+    );
+    await call(
+      "issue view",
+      { positional: ["JAVASCRIPT-REACT-1"] },
+      hyphenated,
+    );
+    expect(calls).toHaveLength(12);
   });
 
   it.each([
