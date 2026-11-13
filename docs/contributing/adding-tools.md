@@ -68,30 +68,18 @@ Create `packages/mcp-core/src/tools/catalog/your-tool-name.ts`:
 import { z } from "zod";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import type { ServerContext } from "../../types";
 
 export default defineTool({
   name: "your_tool_name",
   title: "Your Tool Name",
-  description: [
-    "One-line summary.",
-    "",
-    "Use this tool when you need to:",
-    "- Specific use case 1",
-    "- Specific use case 2",
-    "",
-    "<examples>",
-    "your_tool_name(organizationSlug='my-org', param='value')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Parameter interpretation hints",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "List or search widgets in an organization. Returns each widget's name, owner, and URL.",
   inputSchema: {
-    organizationSlug: z.string().describe("The organization's slug"),
-    regionUrl: z.string().optional().describe("Optional region URL"),
-    yourParam: z.string().describe("What values are expected"),
+    organizationSlug: ParamOrganizationSlug,
+    regionUrl: ParamRegionUrl.nullable().default(null),
+    yourParam: z.string().describe("Widget name or ID."),
   },
   annotations: {
     readOnlyHint: true,
@@ -162,16 +150,61 @@ tools, which do not call the Sentry API. Do not declare `fresh` yourself. A
 call with `fresh: true` runs the handler in a request scope where the shared
 transport skips cached reads, and the handler never sees the input.
 
-### Writing LLM-Friendly Descriptions
+### Descriptions and Params
 
-Critical for LLM success:
+Every tool description and param description ships in `tools/list` for every
+session. Spend those tokens only on text that changes what the model does.
 
-- Make the first line say what the tool does to which Sentry object, in the words a user would type ("List or search projects", "stack trace", "client key"). Harness tool search ranks tools by name and description (Codex uses BM25 and returns 8 matches; see docs/mcp/harnesses.md), and some harnesses cut descriptions to about 120 characters.
-- When tools have similar names, say which sibling to use instead (for example cron vs. uptime vs. metric monitors).
-- Start with "Use this tool when you need to:"
-- Include concrete examples
-- Reference related tools
-- Explain parameter formats in `.describe()`
+**Tool descriptions**
+
+- Say what the tool does to which Sentry object, and what it returns. Write it
+  in the words a user would type ("stack trace", "client key", "cron
+  monitor"). Harness tool search ranks tools by name and description (Codex
+  uses BM25 and returns 8 matches; see docs/mcp/harnesses.md), and some
+  harnesses cut descriptions to about 120 characters, so the first sentence
+  carries the search terms.
+- Name a sibling tool only when the contrast is the contract: two tools that
+  look alike, such as cron, uptime, and metric monitors, or issues versus
+  events. One short line, not a `DO NOT USE` list.
+- Do not name input fields. Field meaning lives in `describe()` on the param.
+- No `<examples>`, `<hints>`, "Use this tool when you need to:" lists, or call
+  samples. The schema already shows the call shape. Keep an example only when
+  it teaches a format the model cannot get from the schema, such as Sentry
+  search syntax, and put it on the param.
+- Do not repeat what the server instructions say
+  (`server-instructions.ts`): org defaults, `find_organizations` lookups,
+  `get_sentry_resource` routing, and issues versus events.
+- Do not narrate how the tool works inside, which API it calls, or that its
+  output is markdown.
+- At most `MAX_TOOL_DESCRIPTION_LENGTH` (512) characters.
+
+**Param descriptions**
+
+- Say what the value is, and its format or constraint. Do not repeat the type,
+  the default, the min and max, or a bare list of enum values: JSON Schema
+  already shows them. Explain an enum value only when its name does not.
+- Put a rule that ties fields together ("requires `status: resolved`", "only
+  with `ignoreMode: forDuration`") on the field that depends on the other.
+  Enforce it in the handler too.
+- Reuse the shared params in `schema.ts` for the same kind of value
+  (`ParamOrganizationSlug`, `ParamRegionUrl`, `ParamProjectSlug`, and so on).
+  Add `.optional()`, `.nullable()`, or `.default()` at the use site.
+- At most `MAX_PARAM_DESCRIPTION_LENGTH` (256) characters.
+
+**Steering lives in one place**
+
+- Prefer a schema, an enum, fixed validation, or a repairable
+  `UserInputError` over a prose rule. When the handler enforces a rule, cut
+  the prose that repeats it.
+- Give each rule one home: the param for field meaning, the tool description
+  for what the tool does, the server instructions for routing across tools,
+  and response notes for follow-ups that depend on the result.
+
+`tool-descriptions.test.ts` enforces the limits, rejects `<examples>` and
+`<hints>`, and fails when a tool description names one of its input fields.
+`tool-descriptions-baseline.json` lists the few params that still exceed the
+limit. The baseline only shrinks: a listed entry fails when it grows, and a
+stale entry fails until you delete it.
 
 ## Step 2: Implement the Handler
 
