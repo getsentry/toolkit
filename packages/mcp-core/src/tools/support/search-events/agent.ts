@@ -208,11 +208,7 @@ export async function searchEventsAgent(
     organizationSlug: options.organizationSlug,
     projectId: options.projectId,
   });
-  const otelLookupTool = createOtelLookupTool({
-    apiService: options.apiService,
-    organizationSlug: options.organizationSlug,
-    projectId: options.projectId,
-  });
+  const otelLookupTool = createOtelLookupTool();
   const replayFieldsTool = createDatasetFieldsTool({
     apiService: options.apiService,
     organizationSlug: options.organizationSlug,

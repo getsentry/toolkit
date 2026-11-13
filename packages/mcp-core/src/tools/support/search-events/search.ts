@@ -6,6 +6,7 @@ import { ApiValidationError } from "../../../api-client";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import { UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
+import { formatFeedbackSuggestion } from "../../../internal/tool-helpers/feedback-suggestion";
 import { withProviderFallback } from "../../../internal/agents/provider-fallback";
 import { apiServiceFromContext } from "../../../internal/tool-helpers/api";
 import {
@@ -73,6 +74,7 @@ import {
   isAggregateQuery,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
+  normalizeNumericIssueFilters,
   readRegexFilterValue,
   recordEventsSearchValidationTelemetry,
   validateEventsSearch,
@@ -839,6 +841,8 @@ async function executeSearchEvents(
     environmentNames.map((name) => name.toLowerCase()),
   );
 
+  // True only when Seer or the embedded agent actually rewrote the query.
+  let queryTranslated = Boolean(seerTranslation);
   if (seerTranslation) {
     dataset = inputDataset;
     sentryQuery = seerTranslation.query;
@@ -851,8 +855,12 @@ async function executeSearchEvents(
     explanation = seerTranslation.explanation;
     timeSeries = seerTranslation.timeSeries;
   } else if (willRunAgent) {
+    queryTranslated = true;
     const parsed = await withProviderFallback<SearchEventsAgentResult>({
       operation: "search_events.rewrite",
+      onFallback: () => {
+        queryTranslated = false;
+      },
       fallback: () => ({
         dataset: inputDataset,
         query: params.query ?? "",
@@ -965,6 +973,11 @@ async function executeSearchEvents(
       : null;
   }
 
+  // The errors dataset only resolves short IDs under `issue:`.
+  if (dataset === "errors") {
+    sentryQuery = normalizeNumericIssueFilters(sentryQuery);
+  }
+
   // Flag any requested environment that doesn't exist (checking both the
   // separate field and `environment:` tokens in the query) so the caller can
   // retry with a valid name instead of silently getting zero results.
@@ -992,10 +1005,25 @@ async function executeSearchEvents(
     environmentNote,
     projectSuggestionNote,
   ].filter((note): note is string => Boolean(note));
-  const notesFor = (resultCount: number): string[] =>
-    resultCount === 0 && untranslatedQueryNote
-      ? [...leadingNotes, untranslatedQueryNote]
-      : leadingNotes;
+  // An empty result after Seer or the embedded agent translated the query may
+  // be a bad translation. An unknown environment already explains it.
+  const emptyTranslationFeedbackNote =
+    queryTranslated && !environmentNote
+      ? formatFeedbackSuggestion(
+          "If this stays empty after you broaden the query and you expected matching data",
+          context,
+        )
+      : null;
+  const notesFor = (resultCount: number): string[] => {
+    if (resultCount > 0) {
+      return leadingNotes;
+    }
+    return [
+      ...leadingNotes,
+      ...(untranslatedQueryNote ? [untranslatedQueryNote] : []),
+      ...(emptyTranslationFeedbackNote ? [emptyTranslationFeedbackNote] : []),
+    ];
+  };
   const withLeadingNote = (text: string, resultCount: number): string => {
     const leadingNote = notesFor(resultCount).join("\n\n");
     return leadingNote ? `${leadingNote}\n\n${text}` : text;

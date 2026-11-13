@@ -11,7 +11,7 @@ import { triggerSolutionPlanning } from "../../lib/api-client.js";
 import { sentry } from "../../lib/app-identity.js";
 import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
-import { ApiError, CliError } from "../../lib/errors.js";
+import { ApiError, CliError, SeerError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   formatSolution,
@@ -323,6 +323,9 @@ export const planCommand = buildCommand({
       });
 
       if (finalState.status === "ERROR") {
+        if (finalState.failure_reason === "out_of_credits") {
+          throw new SeerError("out_of_credits", org);
+        }
         throw new Error(
           "Plan creation failed. Check the Sentry web UI for details.",
         );
@@ -342,7 +345,12 @@ export const planCommand = buildCommand({
       return yield new CommandOutput(buildPlanData(finalState));
     } catch (error) {
       if (error instanceof ApiError) {
-        throw handleSeerApiError(error.status, error.detail, resolvedOrg);
+        throw handleSeerApiError(
+          error.status,
+          error.detail,
+          resolvedOrg,
+          error.code,
+        );
       }
       throw error;
     }

@@ -352,12 +352,11 @@ export function compareFrameStats(
   // Compare frames that exist in both
   const comparisons: FrameComparison[] = [];
 
-  for (const [fingerprint, indices] of frameMap.entries()) {
+  for (const indices of frameMap.values()) {
     if (indices.baselineIdx === undefined || indices.currentIdx === undefined) {
       continue; // Frame only in one dataset
     }
 
-    const baselineFrame = baselineFrames[indices.baselineIdx];
     const currentFrame = currentFrames[indices.currentIdx];
     const baselineInfo =
       baselineInfos[indices.baselineIdx] || DEFAULT_FRAME_INFO;

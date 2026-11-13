@@ -159,6 +159,7 @@ function SpanRow({
             className={`max-w-full break-all font-mono text-xs font-medium ${failed ? "text-red-500 dark:text-red-400" : "text-primary"}`}
           >
             {span.operation ?? "span"}
+            {span.sampled ? " · sampled" : ""}
           </span>
           {onSelectSpan ? (
             <button
@@ -294,6 +295,15 @@ export function TraceWaterfall({
 
   return (
     <section aria-label="Trace waterfall" className="min-h-0 overflow-auto">
+      {trace.profileSpansTruncated ? (
+        <p
+          role="status"
+          className="border-b border-border px-3 py-2 text-xs text-muted-foreground"
+        >
+          Showing up to 5,000 sampled function spans. Inspect the associated
+          profile for all samples.
+        </p>
+      ) : null}
       {compact ? (
         <p
           aria-label="Trace relationship"
