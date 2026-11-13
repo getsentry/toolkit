@@ -109,7 +109,6 @@
     "@sentry/sqlish": "^1.0.1",
     "@sentry/symbolic": "14.0.0-alpha.5",
     "@sentry/toolkit-core": "workspace:*",
-    "@spotlightjs/spotlight": "^4.11.7",
     "@stricli/auto-complete": "^1.2.8",
     "@stricli/core": "1.2.8",
     "@types/http-cache-semantics": "^4.2.0",
