@@ -363,9 +363,6 @@ importers:
       '@cloudflare/workers-types':
         specifier: 'catalog:'
         version: 4.20260405.1
-      '@sentry/mcp-server-tsconfig':
-        specifier: workspace:*
-        version: link:../../packages/mcp-server-tsconfig
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -767,9 +764,6 @@ importers:
       '@sentry/mcp-server-mocks':
         specifier: workspace:*
         version: link:../mcp-server-mocks
-      '@sentry/mcp-server-tsconfig':
-        specifier: workspace:*
-        version: link:../mcp-server-tsconfig
       '@sentry/toolkit-core':
         specifier: workspace:*
         version: link:../toolkit-core
@@ -876,9 +870,6 @@ importers:
       '@sentry/mcp-server-mocks':
         specifier: workspace:*
         version: link:../mcp-server-mocks
-      '@sentry/mcp-server-tsconfig':
-        specifier: workspace:*
-        version: link:../mcp-server-tsconfig
       msw:
         specifier: 'catalog:'
         version: 2.10.2(@types/node@24.13.5)(typescript@5.9.3)
@@ -909,9 +900,6 @@ importers:
       '@sentry/mcp-server-mocks':
         specifier: workspace:*
         version: link:../mcp-server-mocks
-      '@sentry/mcp-server-tsconfig':
-        specifier: workspace:*
-        version: link:../mcp-server-tsconfig
       ai:
         specifier: 'catalog:'
         version: 6.0.64(zod@4.6.7)
@@ -944,14 +932,10 @@ importers:
         specifier: 'catalog:'
         version: 2.10.2(@types/node@24.13.5)(typescript@5.9.3)
     devDependencies:
-      '@sentry/mcp-server-tsconfig':
-        specifier: workspace:*
-        version: link:../mcp-server-tsconfig
       tsdown:
         specifier: 'catalog:'
         version: 0.12.9(typescript@5.9.3)
 
-  packages/mcp-server-tsconfig: {}
 
   packages/mcp-test-client:
     dependencies:

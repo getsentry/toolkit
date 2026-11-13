@@ -1,6 +1,8 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "skipLibCheck": true,
+    "strict": true,
+    "target": "ESNext",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "types": ["@codemod.com/jssg-types"],
@@ -8,8 +10,6 @@
     "noEmit": true,
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
-    "strict": true,
-    "strictNullChecks": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true

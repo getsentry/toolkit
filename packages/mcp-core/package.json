@@ -169,7 +169,6 @@
     "@ai-sdk/provider-utils": "^4.0.11",
     "@modelcontextprotocol/sdk": "catalog:",
     "@sentry/mcp-server-mocks": "workspace:*",
-    "@sentry/mcp-server-tsconfig": "workspace:*",
     "msw": "catalog:",
     "tiktoken": "^1.0.18",
     "yaml": "^2.8.3"
