@@ -405,6 +405,7 @@ describe("get_issue_details structuredContent for a realistic error", () => {
       {
         "aiConversations": null,
         "codeLocation": null,
+        "concerns": [],
         "event": {
           "contexts": {
             "browser": {
