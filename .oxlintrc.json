@@ -92,6 +92,12 @@
       }
     },
     {
+      "files": ["packages/cli/test/**/*.ts"],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
       "files": ["packages/cli/src/**/*.ts", "packages/cli/test/**/*.ts"],
       "rules": {
         "sentry-cli/no-silent-catch": "error",

@@ -1004,9 +1004,9 @@ describe("resolveOrgAllTarget", () => {
     const result = await resolveOrgAllTarget("acme", "abc123", "/tmp");
 
     expect(result).not.toBeNull();
-    expect(result?.org).toBe("acme");
-    expect(result?.project).toBe("frontend");
-    expect(result?.prefetchedEvent?.eventID).toBe("abc123");
+    expect(result.org).toBe("acme");
+    expect(result.project).toBe("frontend");
+    expect(result.prefetchedEvent?.eventID).toBe("abc123");
   });
 
   test("throws ResolutionError when event not found in explicit org", async () => {
