@@ -52,9 +52,9 @@ async function setUp(name) {
     logfmtReporter,
     sentryReporter,
   } = await import(ENTRY);
-  let sink;
-  const stream = { write: (chunk) => (sink = chunk) };
-  const send = (message, attributes) => (sink = attributes ?? message);
+  let _sink;
+  const stream = { write: (chunk) => (_sink = chunk) };
+  const send = (message, attributes) => (_sink = attributes ?? message);
   const sentryLogger = {
     trace: send,
     debug: send,
@@ -72,15 +72,15 @@ async function setUp(name) {
 
   switch (name) {
     case "noop": {
-      const noop = (...args) => (sink = args);
+      const noop = (...args) => (_sink = args);
       return () => noop("Logged in as %s", "jane");
     }
     case "debug": {
-      const log = logger({ log: (record) => (sink = record) });
+      const log = logger({ log: (record) => (_sink = record) });
       return () => log.debug("Logged in as %s", "jane");
     }
     case "noopReporter": {
-      const log = logger({ log: (record) => (sink = record) });
+      const log = logger({ log: (record) => (_sink = record) });
       return () => log.info("Logged in as %s", "jane");
     }
     case "formatWrite":

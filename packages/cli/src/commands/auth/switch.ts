@@ -30,10 +30,7 @@ import {
   setActiveAccount,
 } from "../../lib/db/auth.js";
 import { AuthError, ResolutionError } from "../../lib/errors.js";
-import {
-  type AccountSwitchResult,
-  formatAccountSwitch,
-} from "../../lib/formatters/accounts.js";
+import { formatAccountSwitch } from "../../lib/formatters/accounts.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { parseLoginUrl } from "./login.js";
 

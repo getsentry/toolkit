@@ -17,10 +17,7 @@ import { buildCommand } from "../../lib/command.js";
 import { parseFilePath } from "../../lib/completion-target.js";
 import { ApiError, ResolutionError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
-import {
-  formatReplayDownloadResult,
-  type ReplayDownloadData,
-} from "../../lib/formatters/replay.js";
+import { formatReplayDownloadResult } from "../../lib/formatters/replay.js";
 import {
   applyFreshFlag,
   FRESH_ALIASES,

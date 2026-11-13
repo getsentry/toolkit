@@ -7,7 +7,7 @@
  * `apps/cli-docs/public`). The single-file binary can't read the file from
  * disk at runtime, so this step writes it into a module.
  *
- * Usage:   tsx script/generate.ts init-guide
+ * Usage:   pnpm ts script/generate.ts init-guide
  * Output:  src/generated/init-guide.ts
  */
 

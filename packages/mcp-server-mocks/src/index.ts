@@ -1122,7 +1122,7 @@ export const restHandlers = buildHandlers([
           fields.length > 0 ? null : "Orderby must also be a selected field",
       }));
 
-      const environmentResults = environments.map((environment) => ({
+      const environmentResults = environments.map(() => ({
         valid: true,
         error: null,
       }));
@@ -1475,8 +1475,7 @@ export const restHandlers = buildHandlers([
   {
     method: "post",
     path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/teams/:teamSlug/",
-    fetch: async ({ request, params }) => {
-      const body = (await request.json()) as any;
+    fetch: async ({ params }) => {
       const teamSlug = params.teamSlug as string;
       return HttpResponse.json({
         ...teamFixture,
