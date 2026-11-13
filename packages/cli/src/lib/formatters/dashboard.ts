@@ -606,7 +606,7 @@ function incompleteColumns(data: TimeseriesResult, columns: number): boolean[] {
   const bucketCount = data.series[0]?.values.length ?? 0;
   const flags: boolean[] = [];
   for (let i = 0; i < bucketCount; i += 1) {
-    flags.push(data.series.some((s) => s.values[i]?.incomplete === true));
+    flags.push(bucketIncomplete(data, i));
   }
   return downsampleFlags(flags, columns);
 }
