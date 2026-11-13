@@ -73,7 +73,7 @@ export default defineTool({
             )
           ).map(({ value }) => value)
         : [toUser(await apiServiceFromContext(context).getAuthenticatedUser())];
-    const [user] = users;
+    const user = users[0]!;
 
     const constraints = context.constraints;
     const sessionConstraints =

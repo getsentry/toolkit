@@ -236,7 +236,7 @@ describe("outputSchema skip lists", () => {
       ...Object.keys(OUTPUT_SCHEMA_EXEMPT).map((name) => ["EXEMPT", name]),
       ...Object.keys(OUTPUT_SCHEMA_PENDING).map((name) => ["PENDING", name]),
     ].flatMap(([list, name]) => {
-      const tools = listings(name);
+      const tools = listings(name!);
       if (tools.length === 0) {
         return [`${name}: in OUTPUT_SCHEMA_${list} but not listed`];
       }

@@ -99,7 +99,7 @@ function extractTraceMetricFromAggregate(
     return null;
   }
 
-  const args = match[1]
+  const args = match[1]!
     .split(",")
     .map((arg) => arg.trim())
     .filter((arg) => arg.length > 0);
@@ -109,9 +109,9 @@ function extractTraceMetricFromAggregate(
   }
 
   return normalizeTraceMetric({
-    name: args[1],
-    type: args[2],
-    unit: args[3],
+    name: args[1]!,
+    type: args[2]!,
+    unit: args[3]!,
   });
 }
 
@@ -669,12 +669,12 @@ export function extractConversationIdFromSearchQuery(
   }
 
   const pattern = /gen_ai\.conversation\.id:(?:"([^"]+)"|([^\s)]+))/g;
-  const matches = [...query.matchAll(pattern)];
-  if (matches.length !== 1) {
+  const [match, ...otherMatches] = query.matchAll(pattern);
+  if (match === undefined || otherMatches.length > 0) {
     return undefined;
   }
 
-  const conversationId = matches[0].at(1) ?? matches[0][2];
+  const conversationId = match[1] ?? match[2]!;
   if (conversationId.startsWith("[")) {
     return undefined;
   }

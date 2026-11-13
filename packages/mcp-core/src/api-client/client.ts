@@ -1059,8 +1059,9 @@ export class SentryApiService {
     if (isAggregate) {
       urlParams.set("mode", "aggregate");
       // For aggregate queries in Discover, set yAxis to the first aggregate function
-      if (aggregateFunctions && aggregateFunctions.length > 0) {
-        urlParams.set("yAxis", aggregateFunctions[0]);
+      const firstAggregate = aggregateFunctions?.[0];
+      if (firstAggregate !== undefined) {
+        urlParams.set("yAxis", firstAggregate);
       }
     } else {
       urlParams.set("yAxis", "count()");
@@ -3561,7 +3562,7 @@ export class SentryApiService {
       uri: string;
       query?: string;
       projectId?: string;
-      dependentData?: Record<string, string | number>;
+      dependentData?: Record<string, string | number | undefined>;
     },
     opts?: RequestOptions,
   ): Promise<SentryAppExternalRequestOptions> {
@@ -4003,7 +4004,7 @@ export class SentryApiService {
     // the two share the same DB source but the download header reflects any
     // server-side correction (getsentry/sentry#115977) applied at request time.
     const contentType =
-      downloadResponse.headers.get("content-type")?.split(";")[0].trim() ||
+      downloadResponse.headers.get("content-type")?.split(";")[0]?.trim() ||
       attachment.mimetype ||
       "application/octet-stream";
 
@@ -5073,7 +5074,8 @@ export class SentryApiService {
       ProfileChunkResponseSchema,
     );
     // Normalize the Sentry {chunk: ...} wrapper to the internal chunks array.
-    if (response.chunks.length === 0) {
+    const [chunk] = response.chunks;
+    if (chunk === undefined) {
       throw new ApiNotFoundError(
         `No profile chunk found for profiler_id ${params.profilerId}`,
         undefined,
@@ -5082,10 +5084,10 @@ export class SentryApiService {
     }
 
     return {
-      ...response.chunks[0],
+      ...chunk,
       // Sentry's frontend does the same query-param backfill for continuous
       // profile chunks because profiling-service may omit profiler_id.
-      profiler_id: response.chunks[0].profiler_id ?? params.profilerId,
+      profiler_id: chunk.profiler_id ?? params.profilerId,
     };
   }
 

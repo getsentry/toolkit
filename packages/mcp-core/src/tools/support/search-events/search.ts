@@ -189,7 +189,7 @@ function formatEnvironmentFilter(
     return undefined;
   }
   if (environments.length === 1) {
-    return `environment:${formatSearchValue(environments[0])}`;
+    return `environment:${formatSearchValue(environments[0]!)}`;
   }
   return `environment:[${environments.map(formatSearchValue).join(",")}]`;
 }
@@ -226,11 +226,11 @@ export function collectRequestedEnvironments(
   // inside quoted text (e.g. a message value) aren't mistaken for a filter.
   const tokens = tokenizeSearchQuery(query);
   for (let i = 0; i < tokens.length; i++) {
-    const match = /^environment:(.*)$/is.exec(tokens[i]);
+    const match = /^environment:(.*)$/is.exec(tokens[i]!);
     if (!match) {
       continue;
     }
-    let value = match[1];
+    let value = match[1]!;
     // An IN-list (`environment:[a, b]`) can be split across tokens on its
     // internal spaces; rejoin following tokens until the list is closed.
     while (
@@ -287,7 +287,7 @@ function tokenizeSearchQuery(query: string): string[] {
   let escaped = false;
 
   for (let i = 0; i < query.length; i += 1) {
-    const char = query[i];
+    const char = query.charAt(i);
     if (escaped) {
       currentToken += char;
       escaped = false;

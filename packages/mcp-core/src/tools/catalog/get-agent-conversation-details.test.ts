@@ -152,7 +152,7 @@ describe("get_agent_conversation_details", () => {
     expect(structuredContent).not.toHaveProperty("messages");
     expect(structuredContent).not.toHaveProperty("spanIds");
     expect(structuredContent.title).toBe("Checkout worker timeouts");
-    expect(structuredContent.timeline[0].genAi).toMatchObject({
+    expect(structuredContent.timeline[0]?.genAi).toMatchObject({
       operationType: "ai_client",
       requestModel: "gpt-5-mini",
       responseModel: "gpt-5-mini-2026-05-01",
@@ -160,14 +160,16 @@ describe("get_agent_conversation_details", () => {
       costTotalTokens: 42,
       agentName: "triage-agent",
     });
-    expect(structuredContent.timeline[2].genAi).toMatchObject({
+    expect(structuredContent.timeline[2]?.genAi).toMatchObject({
       operationType: "tool",
     });
-    expect(structuredContent.timeline[2].genAi).not.toHaveProperty("toolName");
-    expect(structuredContent.timeline[2].genAi).not.toHaveProperty(
+    expect(structuredContent.timeline[2]!.genAi).not.toHaveProperty("toolName");
+    expect(structuredContent.timeline[2]!.genAi).not.toHaveProperty(
       "toolCallArguments",
     );
-    expect(structuredContent.timeline[2].genAi).not.toHaveProperty("toolInput");
+    expect(structuredContent.timeline[2]!.genAi).not.toHaveProperty(
+      "toolInput",
+    );
     expect(structuredContent.spanSummaries[0]).toMatchObject({
       spanId: "1111111111111111",
       spanOp: "gen_ai.chat",

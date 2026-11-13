@@ -100,10 +100,10 @@ describe("sentry", () => {
       };
 
       const result = sentryBeforeSend(event, {}) as SentryEvent;
-      expect(result.breadcrumbs?.[0].message).toBe(
+      expect(result.breadcrumbs?.[0]?.message).toBe(
         "API call with [REDACTED_OPENAI_KEY]",
       );
-      expect(result.breadcrumbs?.[0].data?.tokens).toEqual([
+      expect(result.breadcrumbs?.[0]?.data?.tokens).toEqual([
         "[REDACTED_SENTRY_TOKEN]",
         "[REDACTED_SENTRY_TOKEN]",
       ]);
@@ -126,7 +126,7 @@ describe("sentry", () => {
       };
 
       const result = sentryBeforeSend(event, {}) as SentryEvent;
-      expect(result.exception?.values?.[0].value).toBe(
+      expect(result.exception?.values?.[0]?.value).toBe(
         "Failed to authenticate with [REDACTED_OPENAI_KEY]",
       );
     });

@@ -997,7 +997,7 @@ describe("get_issue_details", () => {
 
     const performanceSection = result
       .slice(result.indexOf("### Repeated Database Queries"))
-      .split("### Tags")[0]
+      .split("### Tags")[0]!
       .trim();
 
     expect(performanceSection).toMatchInlineSnapshot(`
@@ -1087,7 +1087,7 @@ describe("get_issue_details", () => {
 
     const performanceSection = result
       .slice(result.indexOf("### Repeated Database Queries"))
-      .split("### Tags")[0]
+      .split("### Tags")[0]!
       .trim();
 
     expect(performanceSection).toMatchInlineSnapshot(`

@@ -76,7 +76,7 @@ function findRepositoryMatch(
     );
   }
 
-  return matches[0];
+  return matches[0]!;
 }
 
 function getRepositoryProvider(repository: RepositoryMatch): string | null {

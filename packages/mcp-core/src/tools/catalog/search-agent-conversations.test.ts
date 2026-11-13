@@ -201,11 +201,11 @@ describe("search_agent_conversations", () => {
     }>(result);
     const conversation = structuredContent.conversations[0];
 
-    expect(conversation.firstInputPreview).toHaveLength(240);
-    expect(conversation.firstInputPreview?.endsWith("...")).toBe(true);
-    expect(conversation.lastOutputPreview).toHaveLength(240);
-    expect(conversation.lastOutputPreview?.endsWith("...")).toBe(true);
-    expect(conversation.sampleTraceIds).toEqual([
+    expect(conversation?.firstInputPreview).toHaveLength(240);
+    expect(conversation?.firstInputPreview?.endsWith("...")).toBe(true);
+    expect(conversation?.lastOutputPreview).toHaveLength(240);
+    expect(conversation?.lastOutputPreview?.endsWith("...")).toBe(true);
+    expect(conversation?.sampleTraceIds).toEqual([
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "cccccccccccccccccccccccccccccccc",
@@ -315,7 +315,7 @@ describe("search_agent_conversations", () => {
       getServerContext(),
     );
 
-    const params = new URL(requestUrls[0]).searchParams;
+    const params = new URL(requestUrls[0]!).searchParams;
     expect(params.get("query")).toBe("failed");
     expect(params.get("sort")).toBe(null);
     expect(params.getAll("project")).toEqual(["4509109107622913"]);

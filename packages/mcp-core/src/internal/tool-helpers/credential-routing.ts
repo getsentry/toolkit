@@ -194,7 +194,7 @@ export async function mapCredentialContexts<T>(
   const results: Array<{ entry: CredentialContext; value: T }> = [];
   let firstError: unknown;
   for (const [index, result] of settled.entries()) {
-    const entry = entries[index];
+    const entry = entries[index]!;
     if (result.status === "fulfilled") {
       results.push({ entry, value: result.value });
       continue;

@@ -88,8 +88,8 @@ describe("applyDefaultOrganization", () => {
       requiredOrgTool,
       getServerContext(),
     );
-    expect(unscoped.organizationSlug.safeParse(undefined).success).toBe(true);
-    expect(unscoped.organizationSlug.safeParse("").success).toBe(false);
+    expect(unscoped.organizationSlug?.safeParse(undefined).success).toBe(true);
+    expect(unscoped.organizationSlug?.safeParse("").success).toBe(false);
 
     const scoped = getFilteredInputSchema(
       requiredOrgTool,
@@ -282,7 +282,7 @@ describe("applyDefaultOrganization", () => {
     const context = getServerContext({
       sentryHost: "sentry.io",
       credentialRouter: {
-        resolve: async () => credentials[0],
+        resolve: async () => credentials[0]!,
         list: async () => credentials,
       },
     });
@@ -317,7 +317,7 @@ describe("applyDefaultOrganization", () => {
       { id: "personal", accessToken: "personal-token" },
     ];
     const credentialRouter: CredentialRouter = {
-      resolve: async () => credentials[0],
+      resolve: async () => credentials[0]!,
       list: async () => credentials,
     };
     const context = getServerContext({
