@@ -795,6 +795,33 @@ describe("formatDashboardWithData", () => {
       expect(output).toContain("(incomplete)");
     });
 
+    test.each([2, 3])(
+      "keeps the sparkline marker inside the border at layout width %i",
+      (w) => {
+        const data = makeDashboardData({
+          widgets: [
+            makeWidget({
+              layout: { x: 0, y: 0, w, h: 1 },
+              data: makeTimeseriesData({
+                series: [
+                  {
+                    label: "p95(span.duration) long label",
+                    values: values.map((v) => ({
+                      ...v,
+                      value: v.value + 1234.56,
+                    })),
+                    unit: "millisecond",
+                  },
+                ],
+              }),
+            }),
+          ],
+        });
+        const output = formatDashboardWithData(data);
+        expect(output).toMatch(/\(incomplete\) *│/);
+      },
+    );
+
     /** Same series, but the incomplete tail has no measurement yet. */
     const unmeasuredTail = values.map((v) =>
       v.incomplete ? { ...v, value: null } : v,

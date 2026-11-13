@@ -550,7 +550,16 @@ function renderTimeseriesContent(
 
     if (isPlainOutput()) {
       const suffix = latestIncomplete ? ` ${INCOMPLETE_SUFFIX}` : "";
-      lines.push(`${label} ${graph} ${formatted}${suffix}`);
+      const tail = ` ${formatted}${suffix}`;
+      // The suffix is the only incomplete marker in plain mode. When the row
+      // is too wide, shrink the graph and then the label so it is not clipped.
+      const rowWidth = label.length + 1 + graph.length + tail.length;
+      const over = suffix ? Math.max(0, rowWidth - innerWidth) : 0;
+      const graphWidth = Math.max(1, graph.length - over);
+      const labelCut = over - (graph.length - graphWidth);
+      const fittedLabel = label.slice(0, Math.max(0, label.length - labelCut));
+      const fittedGraph = over > 0 ? sparkline(values, graphWidth) : graph;
+      lines.push(`${fittedLabel} ${fittedGraph}${tail}`);
     } else {
       const coloredGraph = colorizeByFlags(graph, incomplete, {
         normal: (text) => chalk.hex(COLORS.magenta)(text),
