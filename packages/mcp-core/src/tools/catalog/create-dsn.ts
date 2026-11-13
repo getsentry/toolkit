@@ -23,38 +23,13 @@ export default defineTool({
   title: "Create DSN",
   skills: ["project-management"], // Only available in project-management skill
   requiredScopes: ["project:write"],
-  description: [
-    "Create an additional DSN for an EXISTING project.",
-    "",
-    "USE THIS TOOL WHEN:",
-    "- Project already exists and needs additional DSN",
-    "- 'Create another DSN for project X'",
-    "- 'I need a production DSN for existing project'",
-    "",
-    "DO NOT USE for new projects (use create_project instead)",
-    "",
-    "Be careful when using this tool!",
-    "",
-    "<examples>",
-    "### Create additional DSN for existing project",
-    "```",
-    "create_dsn(organizationSlug='my-organization', projectSlug='my-project', name='Production')",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.",
-    "- If any parameter is ambiguous, you should clarify with the user what they meant.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Create an additional DSN (client key) for an existing Sentry project, such as a separate production key. Returns the new key's ID, name, and DSN. create_project already provisions a DSN for a new project.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
     projectSlug: ParamProjectSlug,
-    name: z
-      .string()
-      .trim()
-      .describe("The name of the DSN to create, for example 'Production'."),
+    name: z.string().trim().describe("Key name, such as `Production`."),
   },
   annotations: {
     readOnlyHint: false,

@@ -34,22 +34,22 @@
       },
       {
         "name": "find_organizations",
-        "description": "List or search the Sentry organizations the user has access to.\n\nUse this tool when you need to:\n- View organizations in Sentry\n- Find an organization's slug to aid other tool requests\n- Search for specific organizations by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search the Sentry organizations the user can access. Returns each organization's slug and region URL, which other Sentry tools take, plus its web URL; 25 per page.",
         "requiredScopes": ["org:read"]
       },
       {
         "name": "find_projects",
-        "description": "List or search projects in a Sentry organization.\n\nUse this tool when you need to:\n- View projects in a Sentry organization\n- Find a project's slug to aid other tool requests\n- Search for specific projects by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search projects in a Sentry organization. Returns project slugs, 25 per page.",
         "requiredScopes": ["project:read"]
       },
       {
         "name": "find_releases",
-        "description": "List or search releases (deployed versions) in a Sentry organization or project.\n\nUse this tool when you need to:\n- Find recent releases in a Sentry organization\n- Find the most recent version released of a specific project\n- Determine when a release was deployed to an environment\n\nReturns up to 25 results. When hasMore is true, use the projectSlug or query parameter to narrow down results.\n\n<examples>\n### Find the most recent releases in the 'my-organization' organization\n\n```\nfind_releases(organizationSlug='my-organization')\n```\n\n### Find releases matching '2ce6a27' in the 'my-organization' organization\n\n```\nfind_releases(organizationSlug='my-organization', query='2ce6a27')\n```\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.\n</hints>",
+        "description": "List or search releases (deployed versions) in a Sentry organization or project. Returns each release's dates, new issue count, last commit, and last deploy. Returns at most 25 releases with no next page; narrow by project or version to see others.",
         "requiredScopes": ["project:read"]
       },
       {
         "name": "find_teams",
-        "description": "List or search teams in a Sentry organization.\n\nUse this tool when you need to:\n- View teams in a Sentry organization\n- Find a team's slug and numeric ID to aid other tool requests\n- Search for specific teams by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search teams in a Sentry organization. Returns each team's slug and numeric ID, 25 per page.",
         "requiredScopes": ["team:read"]
       },
       {
@@ -119,7 +119,7 @@
       },
       {
         "name": "get_latest_base_snapshot",
-        "description": "Get the latest UI screenshots/images for an app from the preprod snapshot system.\n\nThis is the primary tool for retrieving app screenshots.\n\nUse this tool when you need to:\n- Get screenshots, screens, golden images, or reference images for an app\n- Find what the current UI looks like (latest screenshots from the main/default branch)\n- List available snapshots or browse images before requesting specific ones\n- Look up dark mode, light mode, or other variant screenshots\n- Understand what baseline images exist when investigating snapshot test or visual regression CI failures\n\nThe appId parameter is the app identifier (e.g. 'sentry-frontend', 'com.emergetools.hackernews').\nReturns compact metadata (imageFileName, displayName, description) for every image, bucketed by group.\n\n<examples>\n### Get the latest screenshots for an app\n\n```\nget_latest_base_snapshot(organizationSlug=\"sentry\", appId=\"sentry-frontend\", project=\"frontend\")\n```\n\n### Get the latest screenshots for a specific branch\n\n```\nget_latest_base_snapshot(organizationSlug=\"sentry\", appId=\"sentry-frontend\", project=\"frontend\", branch=\"main\")\n```\n</examples>\n\n<hints>\n- The response includes compact metadata per image. Scan the groups to find images matching what you need (e.g. filter by group or name containing 'button').\n- Use the Sentry tool `get_snapshot_image(organizationSlug='<organizationSlug>', snapshotId='<snapshotId>', imageIdentifier='<imageFileName>')` to view one image; pass its imageFileName as imageIdentifier.\n- If you need to investigate a specific snapshot comparison, use get_sentry_resource with the snapshot URL.\n</hints>",
+        "description": "Get an app's latest UI screenshots (baseline or golden images) from preprod snapshots, such as the current screens, dark mode variants, or the baseline behind a visual regression. Returns each image's file name, display name, and description, grouped. For a snapshot comparison by ID, use get_snapshot.",
         "requiredScopes": ["project:read"]
       },
       {
@@ -144,7 +144,7 @@
       },
       {
         "name": "get_release_details",
-        "description": "Get details for a Sentry release.\n\nUse this tool when you need to:\n- Inspect an exact release version\n- Scope a release lookup to a specific project\n- See deploys and environments for a release\n- See recent commits attached to a release\n- Gather release health metadata when a project is known\n\nTo find issues introduced in a release, call search_issues with query `release:<version>`.\n\n<examples>\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3')\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', projectSlugOrId='backend')\nget_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', includeHealth=true, projectSlugOrId='backend')\n</examples>",
+        "description": "Get one Sentry release by exact version: its projects, deploys, environments, recent commits, and optionally release health (adoption stages and session bounds). To find issues introduced in a release, use search_issues with `release:<version>`.",
         "requiredScopes": ["project:read"]
       },
       {
@@ -164,12 +164,12 @@
       },
       {
         "name": "get_snapshot",
-        "description": "Get a preprod snapshot comparison summary, including metadata, counts, and changed image sections.\n\nUse this tool when you need to:\n- Investigate a failed snapshot test from CI\n- Review what changed in a specific preprod snapshot\n- Browse snapshot image file names before viewing a specific image\n\nPass organizationSlug and snapshotId. Use get_sentry_resource for snapshot URLs.\nCompact output is returned by default. Set showUnmodified=true to list unchanged and skipped images separately.\n\n<examples>\n### Browse a snapshot\n\n```\nget_snapshot(organizationSlug=\"sentry\", snapshotId=\"231949\")\n```\n\n### Include unchanged and skipped images\n\n```\nget_snapshot(organizationSlug=\"sentry\", snapshotId=\"231949\", showUnmodified=true)\n```\n</examples>\n\n<hints>\n- Use the Sentry tool `get_snapshot_image(organizationSlug='<organizationSlug>', snapshotId='<snapshotId>', imageIdentifier='<imageFileName>')` to view a specific image preview or full-resolution image bytes.\n- Use get_sentry_resource when starting from a Sentry snapshot URL.\n- The diff percent field shows what percentage of pixels changed (0-100).\n- showUnmodified=true is useful when a diff snapshot has no changed image sections.\n</hints>",
+        "description": "Get a preprod snapshot comparison by ID, such as a failed visual regression or screenshot test from CI: its metadata, image counts, and changed images with the percent of pixels that differ. For an app's latest baseline screenshots, use get_latest_base_snapshot. For a snapshot URL, use get_sentry_resource.",
         "requiredScopes": ["project:read"]
       },
       {
         "name": "get_snapshot_image",
-        "description": "Get metadata and image content for one image in a preprod snapshot.\n\nUse this tool when you need to:\n- View the current, previous, or diff image for a snapshot entry\n- Inspect metadata and context for a specific snapshot image\n- Fetch full-resolution image bytes when preview images are insufficient; full-resolution images can substantially increase response size and token usage\n\nPass organizationSlug, snapshotId, and imageIdentifier. Use get_sentry_resource for snapshot URLs.\nPreview images are returned by default; set imageResolution=full for original bytes when needed, but expect higher response size and token usage.\n\n<examples>\n### View a preview image\n\n```\nget_snapshot_image(organizationSlug=\"sentry\", snapshotId=\"231949\", imageIdentifier=\"login_screen.png\")\n```\n\n### Fetch original full-resolution bytes\n\n```\nget_snapshot_image(organizationSlug=\"sentry\", snapshotId=\"231949\", imageIdentifier=\"login_screen.png\", imageResolution=\"full\")\n```\n</examples>\n\n<hints>\n- Use get_snapshot first if you need to discover available image file names.\n- Use get_sentry_resource when starting from a Sentry snapshot URL.\n- imageIdentifier values may include slashes; pass the full image_file_name exactly as shown by get_snapshot.\n</hints>",
+        "description": "Get one image from a preprod snapshot: the current, previous, or diff screenshot, with its metadata. Returns a preview image unless full resolution is requested. Get image file names from get_snapshot or get_latest_base_snapshot.",
         "requiredScopes": ["project:read"]
       },
       {
@@ -194,7 +194,7 @@
       },
       {
         "name": "search_docs",
-        "description": "Search Sentry documentation for SDK setup, instrumentation, and configuration guidance.\n\nUse this tool when you need to:\n- Set up Sentry SDK or framework integrations (Django, Flask, Express, Next.js, etc.)\n- Configure features like performance monitoring, error sampling, or release tracking\n- Implement custom instrumentation (spans, transactions, breadcrumbs)\n- Configure data scrubbing, filtering, or sampling rules\n\nReturns snippets only. Use the Sentry tool `get_doc` to fetch full documentation content.\n\n<examples>\n```\nsearch_docs(query='Django setup configuration SENTRY_DSN', guide='python/django')\nsearch_docs(query='source maps webpack upload', guide='javascript/nextjs')\n```\n</examples>\n\n<hints>\n- Use guide parameter to filter to specific technologies (e.g., 'javascript/nextjs')\n- Include specific feature names like 'beforeSend', 'tracesSampleRate', 'SENTRY_DSN'\n</hints>",
+        "description": "Search Sentry documentation for SDK setup, framework integrations, instrumentation, and configuration such as sampling, data scrubbing, and source maps. Returns matching page paths and snippets only. Use the Sentry tool `get_doc` to read a full page.",
         "requiredScopes": []
       },
       {
@@ -264,12 +264,12 @@
       },
       {
         "name": "find_organizations",
-        "description": "List or search the Sentry organizations the user has access to.\n\nUse this tool when you need to:\n- View organizations in Sentry\n- Find an organization's slug to aid other tool requests\n- Search for specific organizations by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search the Sentry organizations the user can access. Returns each organization's slug and region URL, which other Sentry tools take, plus its web URL; 25 per page.",
         "requiredScopes": ["org:read"]
       },
       {
         "name": "find_projects",
-        "description": "List or search projects in a Sentry organization.\n\nUse this tool when you need to:\n- View projects in a Sentry organization\n- Find a project's slug to aid other tool requests\n- Search for specific projects by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search projects in a Sentry organization. Returns project slugs, 25 per page.",
         "requiredScopes": ["project:read"]
       },
       {
@@ -360,12 +360,12 @@
     "tools": [
       {
         "name": "find_organizations",
-        "description": "List or search the Sentry organizations the user has access to.\n\nUse this tool when you need to:\n- View organizations in Sentry\n- Find an organization's slug to aid other tool requests\n- Search for specific organizations by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search the Sentry organizations the user can access. Returns each organization's slug and region URL, which other Sentry tools take, plus its web URL; 25 per page.",
         "requiredScopes": ["org:read"]
       },
       {
         "name": "find_projects",
-        "description": "List or search projects in a Sentry organization.\n\nUse this tool when you need to:\n- View projects in a Sentry organization\n- Find a project's slug to aid other tool requests\n- Search for specific projects by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search projects in a Sentry organization. Returns project slugs, 25 per page.",
         "requiredScopes": ["project:read"]
       },
       {
@@ -380,7 +380,7 @@
       },
       {
         "name": "search_docs",
-        "description": "Search Sentry documentation for SDK setup, instrumentation, and configuration guidance.\n\nUse this tool when you need to:\n- Set up Sentry SDK or framework integrations (Django, Flask, Express, Next.js, etc.)\n- Configure features like performance monitoring, error sampling, or release tracking\n- Implement custom instrumentation (spans, transactions, breadcrumbs)\n- Configure data scrubbing, filtering, or sampling rules\n\nReturns snippets only. Use the Sentry tool `get_doc` to fetch full documentation content.\n\n<examples>\n```\nsearch_docs(query='Django setup configuration SENTRY_DSN', guide='python/django')\nsearch_docs(query='source maps webpack upload', guide='javascript/nextjs')\n```\n</examples>\n\n<hints>\n- Use guide parameter to filter to specific technologies (e.g., 'javascript/nextjs')\n- Include specific feature names like 'beforeSend', 'tracesSampleRate', 'SENTRY_DSN'\n</hints>",
+        "description": "Search Sentry documentation for SDK setup, framework integrations, instrumentation, and configuration such as sampling, data scrubbing, and source maps. Returns matching page paths and snippets only. Use the Sentry tool `get_doc` to read a full page.",
         "requiredScopes": []
       },
       {
@@ -410,17 +410,17 @@
       },
       {
         "name": "find_organizations",
-        "description": "List or search the Sentry organizations the user has access to.\n\nUse this tool when you need to:\n- View organizations in Sentry\n- Find an organization's slug to aid other tool requests\n- Search for specific organizations by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search the Sentry organizations the user can access. Returns each organization's slug and region URL, which other Sentry tools take, plus its web URL; 25 per page.",
         "requiredScopes": ["org:read"]
       },
       {
         "name": "find_projects",
-        "description": "List or search projects in a Sentry organization.\n\nUse this tool when you need to:\n- View projects in a Sentry organization\n- Find a project's slug to aid other tool requests\n- Search for specific projects by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search projects in a Sentry organization. Returns project slugs, 25 per page.",
         "requiredScopes": ["project:read"]
       },
       {
         "name": "find_teams",
-        "description": "List or search teams in a Sentry organization.\n\nUse this tool when you need to:\n- View teams in a Sentry organization\n- Find a team's slug and numeric ID to aid other tool requests\n- Search for specific teams by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search teams in a Sentry organization. Returns each team's slug and numeric ID, 25 per page.",
         "requiredScopes": ["team:read"]
       },
       {
@@ -545,7 +545,7 @@
     "tools": [
       {
         "name": "add_team_to_project",
-        "description": "Grant a team access to an existing Sentry project.\n\nUse this tool when you need to:\n- Add another team to a project\n- Grant a team access without changing project metadata\n- Check whether a team already has project access before adding it\n\n<examples>\nadd_team_to_project(organizationSlug='my-organization', projectSlug='my-project', teamSlug='my-team')\n</examples>\n\n<hints>\n- Team access changes are separate from project metadata updates.\n- If the team is already assigned, this tool returns the current team list without making another change.\n</hints>",
+        "description": "Grant a team access to a Sentry project. Returns the project's teams; makes no change if the team already has access.",
         "requiredScopes": ["project:write", "team:read", "org:read"]
       },
       {
@@ -555,7 +555,7 @@
       },
       {
         "name": "create_dsn",
-        "description": "Create an additional DSN for an EXISTING project.\n\nUSE THIS TOOL WHEN:\n- Project already exists and needs additional DSN\n- 'Create another DSN for project X'\n- 'I need a production DSN for existing project'\n\nDO NOT USE for new projects (use create_project instead)\n\nBe careful when using this tool!\n\n<examples>\n### Create additional DSN for existing project\n```\ncreate_dsn(organizationSlug='my-organization', projectSlug='my-project', name='Production')\n```\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.\n- If any parameter is ambiguous, you should clarify with the user what they meant.\n</hints>",
+        "description": "Create an additional DSN (client key) for an existing Sentry project, such as a separate production key. Returns the new key's ID, name, and DSN. create_project already provisions a DSN for a new project.",
         "requiredScopes": ["project:write"]
       },
       {
@@ -570,12 +570,12 @@
       },
       {
         "name": "create_project",
-        "description": "Create a new project in Sentry (provisions DSN automatically).\n\nUSE THIS TOOL WHEN USERS WANT TO:\n- 'Create a new project'\n- 'Set up a project for [app/service] with team [X]'\n- 'I need a new Sentry project'\n- Create project AND need DSN in one step\n- Create project and link an existing repository\n\nReturns the project and its public `dsn` (SENTRY_DSN); tell the user both. Call create_dsn only if `dsn` is null.\nA linked repository gets a root code mapping (`/` -> `/`). If `repository.linked` is false, the project exists but linking failed; ask the user to check permissions or link it in Sentry.\n\nBe careful when using this tool!\n\n<examples>\n### Create new project with team\n```\ncreate_project(organizationSlug='my-organization', teamSlug='my-team', name='my-project', platform='javascript')\n```\n### Create project with an explicit slug\n```\ncreate_project(organizationSlug='my-organization', teamSlug='my-team', name='My Project', slug='my-project', platform='javascript')\n```\n### Create project and link to a repository\n```\ncreate_project(organizationSlug='my-organization', teamSlug='my-team', name='my-project', platform='javascript', repository='getsentry/sentry')\n```\n</examples>",
+        "description": "Create a new Sentry project for an app or service and provision its DSN (client key) for SDK setup. Optionally links a connected repository with a root code mapping. Returns the project, its DSN, and whether the repository linked.",
         "requiredScopes": ["project:write", "team:read", "org:read"]
       },
       {
         "name": "create_team",
-        "description": "Create a new team in Sentry.\n\nUSE THIS TOOL WHEN USERS WANT TO:\n- 'Create a new team'\n- 'Set up a team called [X]'\n- 'I need a team for my project'\n\nBe careful when using this tool!\n\n<examples>\n### Create a new team\n```\ncreate_team(organizationSlug='my-organization', name='the-goats')\n```\n</examples>\n\n<hints>\n- If any parameter is ambiguous, you should clarify with the user what they meant.\n</hints>",
+        "description": "Create a new team in a Sentry organization. Returns the team's ID, slug, and name.",
         "requiredScopes": ["team:write"]
       },
       {
@@ -605,22 +605,22 @@
       },
       {
         "name": "find_dsns",
-        "description": "List the DSNs (client keys) for a Sentry project: the SENTRY_DSN an SDK uses to send events.\n\nUse this tool when you need to:\n- Retrieve a SENTRY_DSN for a specific project\n- Configure a Sentry SDK for an existing project\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.\n- If only one parameter is provided, and it could be either `organizationSlug` or `projectSlug`, its probably `organizationSlug`, but if you're really uncertain you might want to call `find_organizations()` first.\n</hints>",
+        "description": "List the DSNs (client keys) for a Sentry project: the SENTRY_DSN an SDK uses to send events. Returns each key's ID, name, and DSN.",
         "requiredScopes": ["project:read"]
       },
       {
         "name": "find_organizations",
-        "description": "List or search the Sentry organizations the user has access to.\n\nUse this tool when you need to:\n- View organizations in Sentry\n- Find an organization's slug to aid other tool requests\n- Search for specific organizations by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search the Sentry organizations the user can access. Returns each organization's slug and region URL, which other Sentry tools take, plus its web URL; 25 per page.",
         "requiredScopes": ["org:read"]
       },
       {
         "name": "find_projects",
-        "description": "List or search projects in a Sentry organization.\n\nUse this tool when you need to:\n- View projects in a Sentry organization\n- Find a project's slug to aid other tool requests\n- Search for specific projects by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search projects in a Sentry organization. Returns project slugs, 25 per page.",
         "requiredScopes": ["project:read"]
       },
       {
         "name": "find_teams",
-        "description": "List or search teams in a Sentry organization.\n\nUse this tool when you need to:\n- View teams in a Sentry organization\n- Find a team's slug and numeric ID to aid other tool requests\n- Search for specific teams by name or slug\n\nReturns up to 25 results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.",
+        "description": "List or search teams in a Sentry organization. Returns each team's slug and numeric ID, 25 per page.",
         "requiredScopes": ["team:read"]
       },
       {
@@ -630,7 +630,7 @@
       },
       {
         "name": "remove_team_from_project",
-        "description": "Revoke a team's access to an existing Sentry project.\n\nUse this tool when you need to:\n- Remove a team from a project\n- Revoke team access without changing project metadata\n- Check project team assignments before removing access\n\nBe careful when using this tool because it revokes project access.\n\n<examples>\nremove_team_from_project(organizationSlug='my-organization', projectSlug='my-project', teamSlug='my-team')\n</examples>\n\n<hints>\n- The team must already be assigned to the project.\n- This tool will not remove the last team assigned to a project.\n</hints>",
+        "description": "Revoke a team's access to a Sentry project. Returns the project's remaining teams. Refuses to remove the project's last team.",
         "requiredScopes": ["project:write", "team:read", "org:read"]
       },
       {
@@ -645,7 +645,7 @@
       },
       {
         "name": "update_dsn",
-        "description": "Update settings for an existing DSN (client key) in a project, such as name, active status, rate limit, and loader script options.\n\nUSE THIS TOOL WHEN:\n- Deactivating or activating a DSN/client key\n- Setting or removing DSN rate limits ('set rate limit of 1000 per hour on DSN X')\n- Renaming a DSN ('rename DSN X to Production')\n- Configuring Javascript SDK loader script options (session replay, performance, debug, feedback, etc.)\n\nBe careful when using this tool!\n\n<examples>\n### Rename DSN and set rate limit\n```\nupdate_dsn(organizationSlug='my-organization', projectSlug='my-project', keyId='d20df0a1ab5031c7f3c7edca9c02814d', name='Production Key', rateLimitWindow=3600, rateLimitCount=500)\n```\n\n### Deactivate a DSN\n```\nupdate_dsn(organizationSlug='my-organization', projectSlug='my-project', keyId='d20df0a1ab5031c7f3c7edca9c02814d', isActive=false)\n```\n\n### Disable rate limit entirely\n```\nupdate_dsn(organizationSlug='my-organization', projectSlug='my-project', keyId='d20df0a1ab5031c7f3c7edca9c02814d', disableRateLimit=true)\n```\n</examples>\n\n<hints>\n- Use `find_dsns()` first to find the `keyId` for the DSN you want to update.\n- Both `rateLimitWindow` (seconds) and `rateLimitCount` (error cap) must be provided together to set a rate limit.\n- Returns the settings Sentry saved after the update. Compare them with what you requested and tell the user if any field didn't change.\n</hints>",
+        "description": "Update a DSN (client key) on a Sentry project: rename it, activate or deactivate it, set or remove its rate limit, or change JavaScript Loader Script options. Returns the settings Sentry saved; tell the user if any requested setting did not change.",
         "requiredScopes": ["project:write"]
       },
       {
@@ -655,7 +655,7 @@
       },
       {
         "name": "update_project",
-        "description": "Update project metadata in Sentry, such as name, slug, and platform.\n\nBe careful when using this tool!\n\nUse this tool when you need to:\n- Update a project's name or slug to fix onboarding mistakes\n- Change the platform assigned to a project\n\n<examples>\n### Update a project's name and slug\n\n```\nupdate_project(organizationSlug='my-organization', projectSlug='old-project', name='New Project Name', slug='new-project-slug')\n```\n\n### Update platform\n\n```\nupdate_project(organizationSlug='my-organization', projectSlug='my-project', platform='python')\n```\n\n</examples>\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, it's likely in the format of <organizationSlug>/<projectSlug>.\n- Team access changes are handled by separate project-management tools.\n- If any parameter is ambiguous, you should clarify with the user what they meant.\n- When updating the slug, the project will be accessible at the new slug after the update\n- Do not update the slug from a project-scoped session; reconnect with an organization-scoped or unconstrained session first.\n</hints>",
+        "description": "Rename a Sentry project, change its slug, or change its platform. Returns the updated project. To change which teams can access a project, use add_team_to_project or remove_team_from_project.",
         "requiredScopes": ["project:write"]
       },
       {

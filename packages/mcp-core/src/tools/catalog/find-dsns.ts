@@ -25,18 +25,8 @@ export default defineTool({
   title: "Find DSNs",
   skills: ["project-management"], // DSN management is part of project setup
   requiredScopes: ["project:read"],
-  description: [
-    "List the DSNs (client keys) for a Sentry project: the SENTRY_DSN an SDK uses to send events.",
-    "",
-    "Use this tool when you need to:",
-    "- Retrieve a SENTRY_DSN for a specific project",
-    "- Configure a Sentry SDK for an existing project",
-    "",
-    "<hints>",
-    "- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.",
-    "- If only one parameter is provided, and it could be either `organizationSlug` or `projectSlug`, its probably `organizationSlug`, but if you're really uncertain you might want to call `find_organizations()` first.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "List the DSNs (client keys) for a Sentry project: the SENTRY_DSN an SDK uses to send events. Returns each key's ID, name, and DSN.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),

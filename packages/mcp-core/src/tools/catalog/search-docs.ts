@@ -8,7 +8,7 @@ import {
   buildSuggestedToolAction,
   suggestedToolActionSchema,
 } from "../../internal/tool-helpers/suggested-actions";
-import { formatToolCallInstruction } from "../../internal/tool-helpers/tool-call-formatting";
+import { formatAvailableToolCallInstruction } from "../../internal/tool-helpers/tool-call-formatting";
 import { ParamSentryGuide } from "../../schema";
 import type { ServerContext } from "../../types";
 import type { SearchResponse } from "../types";
@@ -41,36 +41,21 @@ export default defineTool({
   title: "Search Sentry Docs",
   skills: ["inspect", "docs"], // Docs is retained for legacy docs-only grants.
   requiredScopes: [],
-  description: ({ experimentalMode, availableToolNames, directToolNames }) =>
-    [
-      "Search Sentry documentation for SDK setup, instrumentation, and configuration guidance.",
-      "",
-      "Use this tool when you need to:",
-      "- Set up Sentry SDK or framework integrations (Django, Flask, Express, Next.js, etc.)",
-      "- Configure features like performance monitoring, error sampling, or release tracking",
-      "- Implement custom instrumentation (spans, transactions, breadcrumbs)",
-      "- Configure data scrubbing, filtering, or sampling rules",
-      "",
-      `Returns snippets only. ${formatToolCallInstruction({
-        toolName: "get_doc",
-        arguments: { path: "..." },
-        experimentalMode,
-        availableToolNames,
-        directToolNames,
-      })} to fetch full documentation content.`,
-      "",
-      "<examples>",
-      "```",
-      "search_docs(query='Django setup configuration SENTRY_DSN', guide='python/django')",
-      "search_docs(query='source maps webpack upload', guide='javascript/nextjs')",
-      "```",
-      "</examples>",
-      "",
-      "<hints>",
-      "- Use guide parameter to filter to specific technologies (e.g., 'javascript/nextjs')",
-      "- Include specific feature names like 'beforeSend', 'tracesSampleRate', 'SENTRY_DSN'",
-      "</hints>",
-    ].join("\n"),
+  description: ({ experimentalMode, availableToolNames, directToolNames }) => {
+    const getDocInstruction = formatAvailableToolCallInstruction({
+      toolName: "get_doc",
+      purpose: "to read a full page.",
+      experimentalMode,
+      availableToolNames,
+      directToolNames,
+    });
+    return [
+      "Search Sentry documentation for SDK setup, framework integrations, instrumentation, and configuration such as sampling, data scrubbing, and source maps. Returns matching page paths and snippets only.",
+      getDocInstruction,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  },
   inputSchema: {
     query: z
       .string()
@@ -84,7 +69,7 @@ export default defineTool({
         "Search query is too long. Please keep your query under 200 characters.",
       )
       .describe(
-        "The search query in natural language. Be specific about what you're looking for.",
+        "Natural-language query. Name the SDK option or feature when you know it, such as `beforeSend` or `tracesSampleRate`.",
       ),
     maxResults: z
       .number()
@@ -92,7 +77,7 @@ export default defineTool({
       .min(1)
       .max(10)
       .default(3)
-      .describe("Maximum number of results to return (1-10)"),
+      .describe("Maximum results to return."),
     guide: ParamSentryGuide.optional(),
   },
   annotations: {
