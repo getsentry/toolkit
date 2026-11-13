@@ -234,8 +234,6 @@ describe("get_issue_details", () => {
       **Project**: CLOUDFLARE-MCP
       **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
 
-      ⚠️ Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.
-
       ## Code Location
 
       **Repository**: getsentry/sentry-mcp
@@ -303,13 +301,10 @@ describe("get_issue_details", () => {
 
       ## Concerns Identified
 
-      Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+      Optional; not needed for the current task.
 
-      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
-        - \`/index.js\`: The deployed file has no debug ID, and the project has no uploads with debug IDs. Fix: Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.
-        - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
-      - **Identify users in events**: This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque internal ID is enough.
-        - Docs: https://docs.sentry.io/platforms/javascript/enriching-events/identify-user/
+      - Source maps weren't applied, so frames may be minified: \`/index.js\` has no debug ID, and the project has no debug ID uploads. Inject debug IDs with the bundler plugin or \`sentry-cli sourcemaps inject\`, deploy, then upload those same files. Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
+      - The user is identified only by IP, so Users Impacted is approximate. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque ID is enough. Docs: https://docs.sentry.io/platforms/javascript/configuration/apis/
 
       ## Response Notes
 
@@ -470,12 +465,10 @@ describe("get_issue_details", () => {
 
       ## Concerns Identified
 
-      Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+      Optional; not needed for the current task.
 
-      - **Capture errors with a stack trace**: This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.
-        - Docs: https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace
-      - **Identify users in events**: This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.
-        - Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
+      - This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages. Docs: https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace
+      - The event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque ID is enough. Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
 
       ## Response Notes
 
@@ -891,8 +884,6 @@ describe("get_issue_details", () => {
 
       ## Event Details
 
-      ⚠️ Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.
-
       **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
       **Type**: error
       **Occurred At**: 2025-04-08T21:15:04.000Z
@@ -951,13 +942,10 @@ describe("get_issue_details", () => {
 
       ## Concerns Identified
 
-      Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+      Optional; not needed for the current task.
 
-      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
-        - \`/index.js\`: The deployed file has no debug ID, and the project has no uploads with debug IDs. Fix: Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.
-        - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
-      - **Identify users in events**: This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque internal ID is enough.
-        - Docs: https://docs.sentry.io/platforms/javascript/enriching-events/identify-user/
+      - Source maps weren't applied, so frames may be minified: \`/index.js\` has no debug ID, and the project has no debug ID uploads. Inject debug IDs with the bundler plugin or \`sentry-cli sourcemaps inject\`, deploy, then upload those same files. Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
+      - The user is identified only by IP, so Users Impacted is approximate. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque ID is enough. Docs: https://docs.sentry.io/platforms/javascript/configuration/apis/
 
       ## Response Notes
 
@@ -1188,8 +1176,6 @@ describe("get_issue_details", () => {
 
       ## Event Details
 
-      ⚠️ Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.
-
       **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
       **Type**: error
       **Occurred At**: 2025-04-08T21:15:04.000Z
@@ -1248,13 +1234,10 @@ describe("get_issue_details", () => {
 
       ## Concerns Identified
 
-      Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+      Optional; not needed for the current task.
 
-      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
-        - \`/index.js\`: The deployed file has no debug ID, and the project has no uploads with debug IDs. Fix: Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.
-        - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
-      - **Identify users in events**: This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque internal ID is enough.
-        - Docs: https://docs.sentry.io/platforms/javascript/enriching-events/identify-user/
+      - Source maps weren't applied, so frames may be minified: \`/index.js\` has no debug ID, and the project has no debug ID uploads. Inject debug IDs with the bundler plugin or \`sentry-cli sourcemaps inject\`, deploy, then upload those same files. Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
+      - The user is identified only by IP, so Users Impacted is approximate. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque ID is enough. Docs: https://docs.sentry.io/platforms/javascript/configuration/apis/
 
       ## Response Notes
 
@@ -2950,30 +2933,6 @@ describe("selected event package versions", () => {
       {
         "aiConversations": null,
         "codeLocation": null,
-        "concerns": [
-          {
-            "caveat": null,
-            "code": "missing_stack_trace",
-            "diagnosis": [],
-            "docsUrl": "https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace",
-            "errorTypes": [],
-            "fileCount": 0,
-            "files": [],
-            "message": "This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.",
-            "title": "Capture errors with a stack trace",
-          },
-          {
-            "caveat": null,
-            "code": "missing_user_identity",
-            "diagnosis": [],
-            "docsUrl": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
-            "errorTypes": [],
-            "fileCount": 0,
-            "files": [],
-            "message": "This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.",
-            "title": "Identify users in events",
-          },
-        ],
         "event": {
           "contexts": null,
           "crashedThread": null,
@@ -3049,6 +3008,18 @@ describe("selected event package versions", () => {
         },
         "replays": null,
         "seer": null,
+        "sideQuests": [
+          {
+            "docs": "https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace",
+            "id": "missing_stack_trace",
+            "tip": "This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.",
+          },
+          {
+            "docs": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
+            "id": "missing_user_identity",
+            "tip": "The event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque ID is enough.",
+          },
+        ],
         "suggestedActions": [
           {
             "arguments": {
@@ -3228,12 +3199,10 @@ describe("selected event package versions", () => {
 
       ## Concerns Identified
 
-      Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+      Optional; not needed for the current task.
 
-      - **Capture errors with a stack trace**: This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.
-        - Docs: https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace
-      - **Identify users in events**: This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.
-        - Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
+      - This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages. Docs: https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace
+      - The event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque ID is enough. Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
 
       ## Response Notes
 
@@ -3389,7 +3358,7 @@ describe("selected event package versions", () => {
   });
 });
 
-describe("concerns identified", () => {
+describe("side quests", () => {
   const params = {
     organizationSlug: "sentry-mcp-evals",
     issueId: "CLOUDFLARE-MCP-41",
@@ -3408,61 +3377,39 @@ describe("concerns identified", () => {
     );
   }
 
-  // the fixture's user has only an IP address; give it an id to isolate other concerns
+  // the fixture's user has only an IP address; give it an id to isolate other quests
   const identifiedUser = { ...eventFixture.user, id: "8f3c2a" };
 
-  async function getConcernCodes(issueId = params.issueId) {
+  type SideQuests = { sideQuests?: { id: string; tip: string }[] };
+
+  async function getSideQuestIds(issueId = params.issueId) {
     const result = await getIssueDetails.handler(
       { ...params, issueId },
       experimentalContext,
     );
-    return getStructuredContent<{ concerns: { code: string }[] }>(
-      result,
-    ).concerns.map((concern) => concern.code);
+    return (getStructuredContent<SideQuests>(result).sideQuests ?? []).map(
+      ({ id }) => id,
+    );
   }
 
   afterEach(() => mswServer.resetHandlers());
 
-  it("suggests fixing source maps in structured output", async () => {
-    // the fixture's own js_no_source error, with no override
+  it("suggests fixing source maps and identifying users in structured output", async () => {
+    // the fixture's own js_no_source error and IP-only user, with no override
     const result = await getIssueDetails.handler(params, experimentalContext);
-    const payload = getStructuredContent<{ concerns: unknown }>(result);
+    const payload = getStructuredContent<SideQuests>(result);
 
-    expect(payload.concerns).toMatchInlineSnapshot(`
+    expect(payload.sideQuests).toMatchInlineSnapshot(`
       [
         {
-          "caveat": "Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.",
-          "code": "js_source_maps",
-          "diagnosis": [
-            {
-              "files": [
-                "/index.js",
-              ],
-              "fix": "Inject debug IDs into the build output with the Sentry bundler plugin or \`sentry-cli sourcemaps inject\`, deploy those files, and upload the same files with \`sentry-cli sourcemaps upload\`.",
-              "problem": "The deployed file has no debug ID, and the project has no uploads with debug IDs",
-            },
-          ],
-          "docsUrl": "https://docs.sentry.io/platforms/javascript/sourcemaps/",
-          "errorTypes": [
-            "js_no_source",
-          ],
-          "fileCount": 1,
-          "files": [
-            "/index.js",
-          ],
-          "message": "Sentry could not apply source maps to this event: the source file or its source map was not found. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/",
-          "title": "Fix JavaScript source maps",
+          "docs": "https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/",
+          "id": "js_source_maps",
+          "tip": "Source maps weren't applied, so frames may be minified: \`/index.js\` has no debug ID, and the project has no debug ID uploads. Inject debug IDs with the bundler plugin or \`sentry-cli sourcemaps inject\`, deploy, then upload those same files.",
         },
         {
-          "caveat": null,
-          "code": "missing_user_identity",
-          "diagnosis": [],
-          "docsUrl": "https://docs.sentry.io/platforms/javascript/enriching-events/identify-user/",
-          "errorTypes": [],
-          "fileCount": 0,
-          "files": [],
-          "message": "This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque internal ID is enough.",
-          "title": "Identify users in events",
+          "docs": "https://docs.sentry.io/platforms/javascript/configuration/apis/",
+          "id": "missing_user_identity",
+          "tip": "The user is identified only by IP, so Users Impacted is approximate. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque ID is enough.",
         },
       ]
     `);
@@ -3497,17 +3444,14 @@ describe("concerns identified", () => {
       /## Concerns Identified\n\n[\s\S]*?(?=## Response Notes)/,
     )?.[0];
 
-    // one caveat for the whole event, however many error types it has
-    expect(text.match(/⚠️/g)).toHaveLength(1);
-
+    // the warning lives in the tip, not inline next to the stacktrace
+    expect(text).not.toContain("⚠️");
     expect(section).toMatchInlineSnapshot(`
       "## Concerns Identified
 
-      Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+      Optional; not needed for the current task.
 
-      - **Fix JavaScript source maps**: Sentry could not apply source maps to this event: the source file or its source map was not found; the source map does not match the minified file. Fix: Upload source maps for this release from the same build that was deployed. Troubleshooting: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
-        - Affected files: \`/a.js\`, \`/b.js\`, \`/c.js\` (and 1 more)
-        - Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/
+      - Source maps weren't applied to \`/a.js\`, \`/b.js\`, \`/c.js\`, and 1 more, so frames may be minified: the source file or its source map was not found; the source map does not match the minified file. Upload source maps for this release from the same build that was deployed. Docs: https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
 
       "
     `);
@@ -3522,17 +3466,16 @@ describe("concerns identified", () => {
     );
 
     const result = await getIssueDetails.handler(params, experimentalContext);
-    const [concern] = getStructuredContent<{
-      concerns: Array<{ message: string; diagnosis: unknown[] }>;
-    }>(result).concerns;
+    const [quest] = getStructuredContent<SideQuests>(result).sideQuests ?? [];
 
-    expect(concern.diagnosis).toEqual([]);
-    expect(concern.message).toContain(
-      "Fix: Upload source maps for this release from the same build that was deployed.",
-    );
+    expect(quest).toEqual({
+      id: "js_source_maps",
+      tip: "Source maps weren't applied to `/index.js`, so frames may be minified: the source file or its source map was not found. Upload source maps for this release from the same build that was deployed.",
+      docs: "https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/",
+    });
   });
 
-  it("omits the section and caveat when the event has no concerns", async () => {
+  it("omits the section and the key when the event has no side quests", async () => {
     mockLatestEvent({
       ...eventFixture,
       user: identifiedUser,
@@ -3557,27 +3500,19 @@ describe("concerns identified", () => {
 
     const markdown = await getIssueDetails.handler(params, baseContext);
     expect(markdown).not.toContain("## Concerns Identified");
-    expect(markdown).not.toContain("⚠️");
 
     const result = await getIssueDetails.handler(params, experimentalContext);
-    expect(
-      getStructuredContent<{ concerns: unknown }>(result).concerns,
-    ).toEqual([]);
+    expect(getStructuredContent(result)).not.toHaveProperty("sideQuests");
     // a healthy event needs no source map check
     expect(checked).toBe(false);
   });
 
   it("suggests identifying users after source maps when the user has only an IP address", async () => {
     // the fixture's own IP-only user and js_no_source error
-    expect(await getConcernCodes()).toEqual([
+    expect(await getSideQuestIds()).toEqual([
       "js_source_maps",
       "missing_user_identity",
     ]);
-
-    // only source maps adds a caveat; user identity is listed at the end only
-    const result = await getIssueDetails.handler(params, baseContext);
-    const text = typeof result === "string" ? result : getTextContent(result);
-    expect(text.match(/⚠️/g)).toHaveLength(1);
   });
 
   it("suggests identifying users when the event has no user", async () => {
@@ -3585,31 +3520,19 @@ describe("concerns identified", () => {
     mockLatestEvent(createDefaultEvent());
 
     const result = await getIssueDetails.handler(params, experimentalContext);
-    const payload = getStructuredContent<{ concerns: unknown }>(result);
+    const payload = getStructuredContent<SideQuests>(result);
 
-    expect(payload.concerns).toMatchInlineSnapshot(`
+    expect(payload.sideQuests).toMatchInlineSnapshot(`
       [
         {
-          "caveat": null,
-          "code": "missing_stack_trace",
-          "diagnosis": [],
-          "docsUrl": "https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace",
-          "errorTypes": [],
-          "fileCount": 0,
-          "files": [],
-          "message": "This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.",
-          "title": "Capture errors with a stack trace",
+          "docs": "https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace",
+          "id": "missing_stack_trace",
+          "tip": "This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.",
         },
         {
-          "caveat": null,
-          "code": "missing_user_identity",
-          "diagnosis": [],
-          "docsUrl": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
-          "errorTypes": [],
-          "fileCount": 0,
-          "files": [],
-          "message": "This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.",
-          "title": "Identify users in events",
+          "docs": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
+          "id": "missing_user_identity",
+          "tip": "The event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque ID is enough.",
         },
       ]
     `);
@@ -3618,7 +3541,7 @@ describe("concerns identified", () => {
   it("does not suggest identifying users when the event has a user id", async () => {
     mockLatestEvent({ ...eventFixture, user: identifiedUser });
 
-    expect(await getConcernCodes()).toEqual(["js_source_maps"]);
+    expect(await getSideQuestIds()).toEqual(["js_source_maps"]);
   });
 
   it("does not suggest identifying users for performance or generic issues", async () => {
@@ -3642,8 +3565,8 @@ describe("concerns identified", () => {
       ),
     );
 
-    expect(await getConcernCodes("PERF-N1-001")).toEqual([]);
-    expect(await getConcernCodes("MCP-SERVER-EQE")).toEqual([]);
+    expect(await getSideQuestIds("PERF-N1-001")).toEqual([]);
+    expect(await getSideQuestIds("MCP-SERVER-EQE")).toEqual([]);
   });
 
   describe("missing stack trace", () => {
@@ -3651,26 +3574,10 @@ describe("concerns identified", () => {
       "The stacktrace includes first-party application code";
     const defaultTags = createDefaultEvent().tags;
 
-    async function getStackConcern() {
+    async function getStackQuest() {
       const result = await getIssueDetails.handler(params, experimentalContext);
-      const { concerns } = getStructuredContent<{
-        concerns: {
-          code: string;
-          title: string;
-          message: string;
-          docsUrl: string;
-        }[];
-      }>(result);
-      const concern = concerns.find(
-        ({ code }) => code === "missing_stack_trace",
-      );
-      return concern
-        ? {
-            title: concern.title,
-            message: concern.message,
-            docsUrl: concern.docsUrl,
-          }
-        : null;
+      const { sideQuests } = getStructuredContent<SideQuests>(result);
+      return sideQuests?.find(({ id }) => id === "missing_stack_trace") ?? null;
     }
 
     async function getMarkdown() {
@@ -3714,11 +3621,11 @@ describe("concerns identified", () => {
     it("suggests logging with the exception for a logging event", async () => {
       mockLatestEvent(pythonLogEvent());
 
-      expect(await getStackConcern()).toMatchInlineSnapshot(`
+      expect(await getStackQuest()).toMatchInlineSnapshot(`
         {
-          "docsUrl": "https://docs.sentry.io/platforms/python/integrations/logging/",
-          "message": "This event came from the \`myapp.tasks\` logger with no exception attached. Log inside the \`except\` block with \`logger.exception(...)\`, or set \`attach_stacktrace=True\` in \`sentry_sdk.init\`.",
-          "title": "Log errors with their exception",
+          "docs": "https://docs.sentry.io/platforms/python/integrations/logging/",
+          "id": "missing_stack_trace",
+          "tip": "This event came from the \`myapp.tasks\` logger with no exception attached. Log inside the \`except\` block with \`logger.exception(...)\`, or set \`attach_stacktrace=True\` in \`sentry_sdk.init\`.",
         }
       `);
       // the stacktrace note does not apply to an event without one
@@ -3733,11 +3640,11 @@ describe("concerns identified", () => {
         }),
       );
 
-      expect(await getStackConcern()).toMatchInlineSnapshot(`
+      expect(await getStackQuest()).toMatchInlineSnapshot(`
         {
-          "docsUrl": "https://docs.sentry.io/platforms/javascript/configuration/integrations/captureconsole/",
-          "message": "This event came from the \`console\` logger with no exception attached. Pass the \`Error\` itself to \`console.error(...)\`, or set \`attachStacktrace: true\` in \`Sentry.init\`.",
-          "title": "Log errors with their exception",
+          "docs": "https://docs.sentry.io/platforms/javascript/configuration/integrations/captureconsole/",
+          "id": "missing_stack_trace",
+          "tip": "This event came from the \`console\` logger with no exception attached. Pass the \`Error\` itself to \`console.error(...)\`, or set \`attachStacktrace: true\` in \`Sentry.init\`.",
         }
       `);
     });
@@ -3745,11 +3652,11 @@ describe("concerns identified", () => {
     it("suggests capturing an exception for a message event", async () => {
       mockLatestEvent(createDefaultEvent({ platform: "node" }));
 
-      expect(await getStackConcern()).toMatchInlineSnapshot(`
+      expect(await getStackQuest()).toMatchInlineSnapshot(`
         {
-          "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/node/configuration/options/#attachStacktrace",
-          "message": "This event was captured as a message, which has no stack trace. Report caught errors with \`Sentry.captureException(err)\` instead, or set \`attachStacktrace: true\` to attach the current stack to messages.",
-          "title": "Capture errors with a stack trace",
+          "docs": "https://docs.sentry.io/platforms/javascript/guides/node/configuration/options/#attachStacktrace",
+          "id": "missing_stack_trace",
+          "tip": "This event was captured as a message, which has no stack trace. Report caught errors with \`Sentry.captureException(err)\` instead, or set \`attachStacktrace: true\` to attach the current stack to messages.",
         }
       `);
     });
@@ -3761,11 +3668,11 @@ describe("concerns identified", () => {
         ),
       );
 
-      expect(await getStackConcern()).toMatchInlineSnapshot(`
+      expect(await getStackQuest()).toMatchInlineSnapshot(`
         {
-          "docsUrl": "https://docs.sentry.io/platforms/javascript/troubleshooting/#events-with-non-error-exception",
-          "message": "The code threw or rejected with a value that is not an \`Error\`, so there was no stack to capture. Wrap the value in \`new Error(...)\` where it is thrown or rejected.",
-          "title": "Throw Error objects",
+          "docs": "https://docs.sentry.io/platforms/javascript/troubleshooting/#events-with-non-error-exception",
+          "id": "missing_stack_trace",
+          "tip": "The code threw or rejected with a value that is not an \`Error\`, so there was no stack to capture. Wrap the value in \`new Error(...)\` where it is thrown or rejected.",
         }
       `);
       expect(await getMarkdown()).toContain("No stacktrace available");
@@ -3787,11 +3694,11 @@ describe("concerns identified", () => {
         }),
       );
 
-      expect(await getStackConcern()).toMatchInlineSnapshot(`
+      expect(await getStackQuest()).toMatchInlineSnapshot(`
         {
-          "docsUrl": "https://docs.sentry.io/platforms/javascript/troubleshooting/#cors-attributes-and-headers",
-          "message": "The browser hid this error's message and stack because the script came from another origin. Add \`crossorigin="anonymous"\` to its \`<script>\` tag and serve the script with an \`Access-Control-Allow-Origin\` header.",
-          "title": "Allow cross-origin script errors",
+          "docs": "https://docs.sentry.io/platforms/javascript/troubleshooting/#cors-attributes-and-headers",
+          "id": "missing_stack_trace",
+          "tip": "The browser hid this error's message and stack because the script came from another origin. Add \`crossorigin="anonymous"\` to its \`<script>\` tag and serve the script with an \`Access-Control-Allow-Origin\` header.",
         }
       `);
       // the placeholder frame is not a stack to triage from
@@ -3812,7 +3719,7 @@ describe("concerns identified", () => {
         }),
       );
 
-      expect(await getStackConcern()).toBeNull();
+      expect(await getStackQuest()).toBeNull();
       const markdown = await getMarkdown();
       expect(markdown).toContain("No stacktrace available");
       expect(markdown).not.toContain(firstPartyNote);
@@ -3848,7 +3755,7 @@ describe("concerns identified", () => {
           },
         ],
       });
-      expect(await getStackConcern()).toBeNull();
+      expect(await getStackQuest()).toBeNull();
 
       // a Python logging call with `stack_info=True` puts it on the current thread
       mockLatestEvent(
@@ -3872,13 +3779,13 @@ describe("concerns identified", () => {
           },
         ]),
       );
-      expect(await getStackConcern()).toBeNull();
+      expect(await getStackQuest()).toBeNull();
     });
 
     it("raises nothing and keeps the stacktrace note when the event has a stack", async () => {
       mockLatestEvent({ ...eventFixture, user: identifiedUser });
 
-      expect(await getStackConcern()).toBeNull();
+      expect(await getStackQuest()).toBeNull();
       expect(await getMarkdown()).toContain(firstPartyNote);
     });
   });

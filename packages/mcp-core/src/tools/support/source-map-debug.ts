@@ -1,16 +1,16 @@
 import { ApiClientError, type SentryApiService } from "../../api-client";
 import type { Event, SourceMapDebug } from "../../api-client/types";
 import { ConfigurationError } from "../../errors";
-import { hasJsSourceMapErrors } from "../../internal/concerns";
+import { hasJsSourceMapErrors } from "../../internal/issue-side-quests";
 import { logIssue } from "../../telem/logging";
 
 // The endpoint's p99 in Sentry's own telemetry is under 3s; past that the
-// concern falls back to the fix implied by the event's error types.
+// side quest falls back to the fix implied by the event's error types.
 const SOURCE_MAP_DEBUG_TIMEOUT_MS = 3000;
 
 /**
  * Runs Sentry's source map check for an event whose source maps failed, so
- * the concern can name the cause. Skips healthy events and SDKs the check
+ * the side quest can name the cause. Skips healthy events and SDKs the check
  * does not support, and omits the result when the check fails.
  */
 export async function maybeFetchSourceMapDebug({

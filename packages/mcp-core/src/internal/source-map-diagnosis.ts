@@ -4,15 +4,22 @@ import type { Event, SourceMapDebug } from "../api-client/types";
 
 /** Why one or more files missed their source maps, and how to fix it. */
 export interface SourceMapFinding {
+  /** A sentence that names the files, such as "`/a.js` has no debug ID". */
   problem: string;
   fix: string;
   files: string[];
 }
 
+/** The rest of a problem sentence after its files; `many` for several. */
+type Predicate = (many: boolean) => string;
+
+const has = (many: boolean) => (many ? "have" : "has");
+const is = (many: boolean) => (many ? "are" : "is");
+
 type DebugFrame = SourceMapDebug["exceptions"][number]["frames"][number];
 
 const INJECT_FIX =
-  "Inject debug IDs into the build output with the Sentry bundler plugin or `sentry-cli sourcemaps inject`, deploy those files, and upload the same files with `sentry-cli sourcemaps upload`.";
+  "Inject debug IDs with the bundler plugin or `sentry-cli sourcemaps inject`, deploy, then upload those same files.";
 
 /** What each failure reason of Sentry's fetch attempts means. */
 const SCRAPING_FAILURES: ReadonlyMap<string, string> = new Map([
@@ -41,23 +48,41 @@ export function diagnoseSourceMaps({
   files: ReadonlyMap<string, ReadonlySet<string>>;
 }): SourceMapFinding[] {
   const frames = getDebugFramesByPath(event, debug);
-  const findings = new Map<string, SourceMapFinding>();
+  const findings = new Map<
+    string,
+    { predicate: Predicate; fix: string; files: string[] }
+  >();
   for (const [file, errorTypes] of files) {
     const frame = frames.get(file);
     const diagnosis = frame && diagnoseFrame(event, debug, frame, errorTypes);
     if (!diagnosis) {
       continue;
     }
-    const { problem, fix } = diagnosis;
-    const key = `${problem}\n${fix}`;
+    const { predicate, fix } = diagnosis;
+    const key = `${predicate(false)}\n${fix}`;
     const finding = findings.get(key);
     if (finding) {
       finding.files.push(file);
     } else {
-      findings.set(key, { problem, fix, files: [file] });
+      findings.set(key, { predicate, fix, files: [file] });
     }
   }
-  return [...findings.values()];
+  return [...findings.values()].map(({ predicate, fix, files }) => ({
+    problem: `${formatFileList(files)} ${predicate(files.length > 1)}`,
+    fix,
+    files,
+  }));
+}
+
+/** Files as inline code: "`a`", "`a` and `b`", or "`a`, `b`, and `c`". */
+export function formatFileList(files: string[], more = 0): string {
+  const names = files.map(inlineCode);
+  if (more > 0) {
+    names.push(`${more} more`);
+  }
+  return names.length > 2
+    ? `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`
+    : names.join(" and ");
 }
 
 /**
@@ -95,7 +120,7 @@ function diagnoseFrame(
   debug: SourceMapDebug,
   frame: DebugFrame,
   errorTypes: ReadonlySet<string>,
-): { problem: string; fix: string } | null {
+): { predicate: Predicate; fix: string } | null {
   const { debug_id_process: debugId, release_process: release } = frame;
   const scraping = frame.scraping_process;
 
@@ -118,17 +143,19 @@ function diagnoseFrame(
       return null;
     }
     return {
-      problem: `Sentry found the source file and its source map ${foundBy}, but could not apply the map to this file`,
-      fix: "Make sure the map comes from the deployed file: generate source maps in the last build step that changes the files, then upload them again.",
+      predicate: (many) =>
+        `${many ? "don't match the source maps" : "doesn't match the source map"} Sentry found ${foundBy}`,
+      fix: "Generate source maps in the last build step that changes the files, then upload them again.",
     };
   }
 
   if (debug.sdk_debug_id_support === "full") {
     if (!debugId.debug_id) {
       return {
-        problem: debug.has_uploaded_some_artifact_with_a_debug_id
-          ? "The deployed file has no debug ID"
-          : "The deployed file has no debug ID, and the project has no uploads with debug IDs",
+        predicate: (many) =>
+          debug.has_uploaded_some_artifact_with_a_debug_id
+            ? `${has(many)} no debug ID`
+            : `${has(many)} no debug ID, and the project has no debug ID uploads`,
         fix: INJECT_FIX,
       };
     }
@@ -137,10 +164,12 @@ function diagnoseFrame(
       debugId.uploaded_source_map_with_correct_debug_id ? null : "source map",
     ]
       .filter(Boolean)
-      .join(" and ");
+      .join(" or ");
+    const id = inlineCode(debugId.debug_id);
     return {
-      problem: `No ${missing} with debug ID ${inlineCode(debugId.debug_id)} was uploaded`,
-      fix: "Upload the build output that was deployed, after injecting debug IDs, with the Sentry bundler plugin or `sentry-cli sourcemaps upload`.",
+      predicate: (many) =>
+        `${has(many)} debug ID ${id}, but no ${missing} with it was uploaded`,
+      fix: "Upload the deployed build output after injecting debug IDs, with the bundler plugin or `sentry-cli sourcemaps upload`.",
     };
   }
 
@@ -154,7 +183,8 @@ function diagnoseFrame(
     const releaseName = inlineCode(debug.release);
     if (!debug.release_has_some_artifact) {
       return {
-        problem: `Nothing was uploaded for release ${releaseName}`,
+        predicate: (many) =>
+          `${has(many)} no upload, since release ${releaseName} has none`,
         fix: `Upload the build output for release ${releaseName}.${upgrade}`,
       };
     }
@@ -163,8 +193,10 @@ function diagnoseFrame(
       [release.source_map_lookup_result, "source map"],
     ] as const) {
       if (result === "wrong-dist") {
+        const dist = inlineCode(debug.dist ?? "none");
         return {
-          problem: `The uploaded ${kind} has a different dist than the event (${inlineCode(debug.dist ?? "none")})`,
+          predicate: (many) =>
+            `${has(many)} an uploaded ${kind} with a different dist than the event (${dist})`,
           fix: `Upload with the same dist that the SDK sends.${upgrade}`,
         };
       }
@@ -175,17 +207,20 @@ function diagnoseFrame(
         .map(inlineCode)
         .join(" or ");
       return {
-        problem: `No file uploaded for release ${releaseName} has the deployed file's name`,
+        predicate: (many) =>
+          `${has(many)} no upload under ${many ? "their names" : "its name"} in release ${releaseName}`,
         fix: `Upload it as ${names || "its URL"}, for example by setting the URL prefix in the upload.${upgrade}`,
       };
     }
-    return release.source_map_reference
+    const reference = release.source_map_reference;
+    return reference
       ? {
-          problem: `No uploaded source map matches the file's reference ${inlineCode(release.source_map_reference)}`,
+          predicate: (many) =>
+            `${is(many)} missing ${many ? "their" : "its"} source map ${inlineCode(reference)}`,
           fix: `Upload the source map under that name for release ${releaseName}.${upgrade}`,
         }
       : {
-          problem: "The deployed file has no `sourceMappingURL` comment",
+          predicate: (many) => `${has(many)} no \`sourceMappingURL\` comment`,
           fix: `Keep the \`sourceMappingURL\` comment in the build output, or use debug IDs.${upgrade}`,
         };
   }
@@ -196,15 +231,19 @@ function diagnoseFrame(
   if (fetched) {
     const reason =
       SCRAPING_FAILURES.get(fetched.reason ?? "") ?? "the reason is unknown";
+    const url = inlineCode(fetched.url ?? "the file");
     return {
-      problem: `Sentry could not fetch ${inlineCode(fetched.url ?? "the file")} from the web: ${reason}`,
+      predicate: (many) =>
+        fetched === scraping?.source_file
+          ? `couldn't be fetched from ${url}: ${reason}`
+          : `${has(many)} a source map at ${url} that couldn't be fetched: ${reason}`,
       fix: `Upload source maps so Sentry does not need to fetch them.${upgrade}`,
     };
   }
 
   return {
-    problem:
-      "The event has no release, so Sentry cannot look up uploaded files",
+    predicate: () =>
+      "can't be matched to uploads because the event has no release",
     fix: `Set \`release\` in \`Sentry.init\` and upload source maps for that release.${upgrade}`,
   };
 }

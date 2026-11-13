@@ -33,13 +33,9 @@ import type {
   TraceSpan,
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
-import {
-  buildConcerns,
-  formatConcernCaveats,
-  formatConcernsSection,
-  hasReadableStack,
-} from "./concerns";
+import { buildIssueSideQuests, hasReadableStack } from "./issue-side-quests";
 import { selectEventPackages } from "./event-packages";
+import { formatSideQuests } from "./side-quests";
 import { formatUnknown } from "./unknown-formatting";
 import {
   type CodeLocation,
@@ -2377,13 +2373,16 @@ export function formatIssueOutput({
   output += `**URL**: ${apiService.getIssueUrl(organizationSlug, issue.shortId)}\n`;
   output += "\n";
 
-  const concerns = buildConcerns(event, { sourceMapDebug });
-  // caveats go before the first data they affect: Code Location, or else the
-  // top of Event Details, above the stacktrace
-  const caveats = formatConcernCaveats(concerns);
+  const sideQuests = buildIssueSideQuests(
+    { event, sourceMapDebug },
+    {
+      experimentalMode: experimentalMode ?? false,
+      availableToolNames,
+      directToolNames,
+    },
+  );
 
   if (codeLocation) {
-    output += caveats;
     output += formatCodeLocation(codeLocation);
   }
 
@@ -2426,8 +2425,8 @@ export function formatIssueOutput({
       output += ` and Sentry Event ID **${sentryEventId}**`;
     }
     output += " to help us add support for this event type.\n";
-    if (concerns.length > 0) {
-      output += `\n${formatConcernsSection(concerns)}`;
+    if (sideQuests) {
+      output += `\n${formatSideQuests(sideQuests)}`;
     }
 
     if (aiConversations && aiConversations.length > 0) {
@@ -2451,9 +2450,6 @@ export function formatIssueOutput({
     return output;
   }
 
-  if (!codeLocation) {
-    output += caveats;
-  }
   output += `**Event ID**: ${event.id}\n`;
   output += `**Type**: ${formatUnknown(event.type)}\n`;
   // default: error without exception data, generic: performance/metric issue, csp: CSP violation
@@ -2509,7 +2505,7 @@ export function formatIssueOutput({
     output += "\n";
   }
 
-  output += formatConcernsSection(concerns);
+  output += formatSideQuests(sideQuests);
 
   output += "## Response Notes\n\n";
   for (const note of buildIssueResponseNotes({

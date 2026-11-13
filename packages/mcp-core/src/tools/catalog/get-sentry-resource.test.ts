@@ -1249,12 +1249,10 @@ describe("event package selection", () => {
 
         ## Concerns Identified
 
-        Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.
+        Optional; not needed for the current task.
 
-        - **Capture errors with a stack trace**: This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.
-          - Docs: https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace
-        - **Identify users in events**: This event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque internal ID is enough.
-          - Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
+        - This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages. Docs: https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace
+        - The event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque ID is enough. Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
 
         ## Response Notes
 
