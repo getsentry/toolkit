@@ -94,37 +94,19 @@ export function createExecuteTool(getTools: () => ToolRegistry) {
     title: "Execute Sentry Tool",
     skills: ALL_SKILLS,
     requiredScopes: [],
-    description: [
-      "Execute an available Sentry MCP tool discovered through search_sentry_tools.",
-      "",
-      "Use this tool when you need to:",
-      "- Call a Sentry operation returned by search_sentry_tools",
-      "- Execute a tool by name using arguments that match its returned schema",
-      "",
-      "<examples>",
-      "execute_sentry_tool(name='find_projects', arguments={ organizationSlug: 'my-org' })",
-      "execute_sentry_tool(name='whoami', arguments={})",
-      "</examples>",
-      "",
-      "<hints>",
-      "- Use search_sentry_tools first if you are not sure which name or arguments to pass.",
-      "- Arguments are validated against the target tool's schema before execution.",
-      "- Active organization, project, and region constraints are injected automatically.",
-      "</hints>",
-    ].join("\n"),
+    description:
+      "Run a Sentry tool that search_sentry_tools returned, and return its result. The server validates the arguments against that tool's schema and applies the active organization, project, and region.",
     inputSchema: {
       name: z
         .string()
         .trim()
         .min(1)
         .optional()
-        .describe("The name of the available tool to execute."),
+        .describe("Tool name from search_sentry_tools."),
       arguments: z
         .record(z.string(), z.unknown())
         .optional()
-        .describe(
-          "Arguments for the target tool, matching the schema returned by search_sentry_tools.",
-        ),
+        .describe("Arguments that match the tool's returned input schema."),
       ...Object.fromEntries(
         NAME_ALIASES.map((key) => [key, z.string().trim().min(1).optional()]),
       ),
