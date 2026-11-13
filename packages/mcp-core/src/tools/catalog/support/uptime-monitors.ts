@@ -30,9 +30,7 @@ export const ParamUptimeIntervalSeconds = z
       message: `intervalSeconds must be one of: ${UPTIME_INTERVAL_SECONDS.join(", ")}`,
     },
   )
-  .describe(
-    "Seconds between checks. Allowed values: 60, 300, 600, 1200, 1800, 3600.",
-  );
+  .describe("Seconds between checks: 60, 300, 600, 1200, 1800, or 3600.");
 
 export const ParamUptimeHttpMethod = z
   .enum(UPTIME_HTTP_METHODS)
@@ -49,7 +47,7 @@ export const ParamUptimeTimeoutMs = z
   .int()
   .min(1000)
   .max(60_000)
-  .describe("Request timeout in milliseconds (1000-60000).");
+  .describe("Request timeout in milliseconds.");
 
 /**
  * Header pairs, matching HEADERS_LIST_SCHEMA in getsentry/sentry
@@ -61,7 +59,7 @@ export const ParamUptimeTimeoutMs = z
 export const ParamUptimeHeaders = z
   .array(z.array(z.string()).length(2))
   .describe(
-    'Optional HTTP headers as an array of [name, value] pairs, e.g. [["Accept","application/json"]].',
+    'HTTP headers as [name, value] pairs, e.g. [["Accept","application/json"]].',
   );
 
 export function toUptimeHeaderPairs(
@@ -79,7 +77,7 @@ export const ParamUptimeOwner = z
     /^(user|team):.+$/,
     "owner must use `user:ID` or `team:ID` format (e.g. `user:123` or `team:456`).",
   )
-  .describe("Owner actor in `user:ID` or `team:ID` format.");
+  .describe("Owner as `user:ID` or `team:ID`.");
 
 const SENSITIVE_HEADER_NAMES = new Set([
   "authorization",

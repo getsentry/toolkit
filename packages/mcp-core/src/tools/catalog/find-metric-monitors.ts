@@ -27,11 +27,8 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [
-    "Find Sentry Metric Monitors that evaluate errors, performance, logs, metrics or crash rates.",
-    "Use this tool to find a monitor ID before inspecting its query and detection conditions with get_metric_monitor_details.",
-    "Results contain native monitor IDs, separate from legacy metric alert IDs. Alerts connected through workflowIds control notifications; inspect them with get_alert_rule(kind='issue').",
-    "Omit projectSlug to search all accessible projects. Pass nextCursor as cursor with the same filters to retrieve more results.",
-    "find_metric_monitors(organizationSlug='my-org', projectSlug='backend', query='latency')",
+    "Find Sentry Metric Monitors that alert when an error count, latency, log, metric, or crash rate crosses a threshold. Returns monitor IDs, queries, and connected Alerts.",
+    "Cron jobs: find_monitors. URL checks: find_uptime_monitors. Notifications: alert rules.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -43,12 +40,12 @@ export default defineTool({
       .min(1)
       .optional()
       .describe(
-        'Optional monitor search, such as a name or name:"latency". This searches monitor metadata, not the monitored event query. Results are always restricted to Metric Monitors.',
+        'Monitor search, such as a name or name:"latency". Matches monitor metadata, not the monitored event query.',
       ),
     cursor: z
       .string()
       .optional()
-      .describe("nextCursor from the previous page."),
+      .describe("Next cursor from the previous page, with the same filters."),
     limit: z.number().int().min(1).max(100).default(10),
   },
   outputSchema: findMetricMonitorsOutputSchema,

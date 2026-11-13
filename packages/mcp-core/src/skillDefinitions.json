@@ -9,7 +9,7 @@
     "tools": [
       {
         "name": "find_alert_rules",
-        "description": "Find Sentry alert rules.\n\nUse this tool when you need to:\n- List Alerts (workflows) for an organization or project, including Alerts without connected sources\n- List Metric Monitors using compatibility references; prefer find_metric_monitors for canonical monitor IDs\n- Find an alert rule ID by name before inspecting it\n- Check alert conditions, queries, triggers, actions, owner, or environment\n\n<examples>\nfind_alert_rules(organizationSlug='my-org')\nfind_alert_rules(organizationSlug='my-org', projectSlug='backend')\nfind_alert_rules(organizationSlug='my-org', kind='issue', projectSlug='backend', query='critical')\n</examples>\n\n<hints>\n- Omit `projectSlug` to search organization-wide. A project filter finds connected Alerts, which may also cover other projects.\n- Metric entries expose monitorId and projectId. id retains a legacy alert-rule ID when available, otherwise detector:<monitorId>. status describes enabled/disabled monitoring, not a legacy alert status.\n- Issue and metric alert rules have independent pagination state. Reuse a nextCursor only with its matching kind.\n</hints>",
+        "description": "Find Sentry alert rules: Issue Alerts (notification workflows) and Metric Monitor alerts, with their conditions, actions, owner, and environment.\nMetric entries carry legacy IDs; find_metric_monitors returns canonical monitor IDs. Cron and uptime monitors: find_monitors, find_uptime_monitors.",
         "requiredScopes": ["org:read", "project:read"]
       },
       {
@@ -24,12 +24,12 @@
       },
       {
         "name": "find_metric_monitors",
-        "description": "Find Sentry Metric Monitors that evaluate errors, performance, logs, metrics or crash rates.\nUse this tool to find a monitor ID before inspecting its query and detection conditions with get_metric_monitor_details.\nResults contain native monitor IDs, separate from legacy metric alert IDs. Alerts connected through workflowIds control notifications; inspect them with get_alert_rule(kind='issue').\nOmit projectSlug to search all accessible projects. Pass nextCursor as cursor with the same filters to retrieve more results.\nfind_metric_monitors(organizationSlug='my-org', projectSlug='backend', query='latency')",
+        "description": "Find Sentry Metric Monitors that alert when an error count, latency, log, metric, or crash rate crosses a threshold. Returns monitor IDs, queries, and connected Alerts.\nCron jobs: find_monitors. URL checks: find_uptime_monitors. Notifications: alert rules.",
         "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "find_monitors",
-        "description": "List or search Sentry cron monitors, which track scheduled jobs through check-ins.\nFor HTTP uptime checks use find_uptime_monitors; for metric thresholds use find_metric_monitors.\n\nUse this tool when you need to:\n- List cron monitors in an organization\n- Find a monitor by name or slug before getting details\n- Check monitor status, owner, project, schedule, or recent environment state\n- When `hasMore` is true, narrow the results with project, environment, owner, or query filters\n\n<examples>\nfind_monitors(organizationSlug='my-organization')\nfind_monitors(organizationSlug='my-organization', projectSlug='backend', query='billing')\n</examples>",
+        "description": "Find Sentry cron monitors, which track scheduled jobs through check-ins. Returns each monitor's status, schedule, owner, project, and recent environment state.\nUptime URL checks: find_uptime_monitors. Metric thresholds: find_metric_monitors.\nWhen more results exist, narrow by project, environment, owner, or name.",
         "requiredScopes": ["org:read"]
       },
       {
@@ -54,7 +54,7 @@
       },
       {
         "name": "find_uptime_monitors",
-        "description": "Find Sentry uptime monitors.\n\nUse this tool when you need to:\n- List HTTP uptime monitors in an organization\n- Find a monitor by name or URL before getting details\n- Check monitor status, owner, project, interval, or target URL\n- When `hasMore` is true, narrow results with project, environment, owner, or query filters\n\nThis is separate from cron monitors (`find_monitors`).\n\n<examples>\nfind_uptime_monitors(organizationSlug='my-organization')\nfind_uptime_monitors(organizationSlug='my-organization', projectSlug='backend', query='api')\n</examples>",
+        "description": "Find Sentry uptime monitors, which check a URL over HTTP. Returns each monitor's URL, status, interval, owner, and project.\nScheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.\nWhen more results exist, narrow by project, environment, owner, or name.",
         "requiredScopes": ["org:read", "project:read"]
       },
       {
@@ -64,12 +64,12 @@
       },
       {
         "name": "get_alert_options",
-        "description": "Discover available actions, conditions, or sources for a Sentry Alert (notification workflow).\n\nChoose one section per call; reuse its cursor with the same section and filters.\n- actions: installed integrations, notification services, native config/data schemas and Sentry App settings. These schemas use Sentry's internal field names and target enums; inputGuide explains the update format.\n- conditions: condition types and comparison schemas for workflow triggers or action filters.\n- sources: accessible monitors and project issue streams. Use an issue_stream source to connect all issues from its project; a source with projectId=null covers all projects.\nSlack and Teams accept channel names; Discord needs a channel ID or URL. Dynamic Sentry App fields require explicit values; this tool does not enumerate their external choices.\n\n<examples>\nget_alert_options(organizationSlug='my-org', section='actions', actionTypes=['slack', 'msteams'])\nget_alert_options(organizationSlug='my-org', section='conditions', conditionGroup='action_filter')\nget_alert_options(organizationSlug='my-org', section='sources', projectSlug='backend', sourceTypes=['issue_stream'])\n</examples>",
+        "description": "List what a Sentry Alert (notification workflow) can use: notification actions and integrations (Slack, Teams, email, PagerDuty) with their config schemas, trigger and filter conditions, or monitor and issue-stream sources.\nUse the results in create_alert_rule or update_alert_rule. Slack and Teams take channel names; Discord needs a channel ID or URL. Choices for dynamic Sentry App fields are not listed.",
         "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "get_alert_rule",
-        "description": "Get details for one Sentry alert rule by ID or exact name.\n\nUse this tool when you need to inspect an alert rule's exact conditions, query, triggers, and actions before explaining or planning changes.\nTo list or search alert rules, use find_alert_rules instead.\n\n<examples>\nget_alert_rule(organizationSlug='my-org', kind='metric', ruleIdOrName='12345')\nget_alert_rule(organizationSlug='my-org', kind='issue', projectSlug='backend', ruleIdOrName='Notify backend team')\nget_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='P95 latency')\n</examples>\n\n<hints>\n- Prefer get_metric_monitor_details for Metric Monitors. With kind=metric, numeric IDs retain their legacy alert-rule meaning; detector:123 explicitly identifies monitor 123.\n- With `kind='all'`, a digit-only `ruleIdOrName` is treated as an exact alert rule name.\n- Issue Alerts are notification workflows and may cover multiple projects or have no connected sources. Omit projectSlug to inspect organization-wide.\n- Issue details include complete conditions, notification actions, connected monitors and project scope. Inaccessible or session-restricted sources are marked explicitly.\n</hints>",
+        "description": "Get one Sentry alert rule by ID or exact name: its triggers, conditions, notification actions, connected monitors, and project scope.\nPrefer get_metric_monitor_details for Metric Monitors; cron and uptime monitors have their own get tools.",
         "requiredScopes": ["org:read", "project:read"]
       },
       {
@@ -124,12 +124,12 @@
       },
       {
         "name": "get_metric_monitor_details",
-        "description": "Inspect a Sentry Metric Monitor's query, dataset, detection mode, thresholds, resolution conditions and connected Alerts.\nUse monitorId from find_metric_monitors, not a legacy metric alert ID. Time windows and comparison deltas are in seconds.\nCondition results use 75 for critical, 50 for warning and 0 for resolved. Percent comparisons are absolute percentages (110 means 10% higher); dynamic conditions include sensitivity and direction.\nworkflowIds identify notification Alerts; inspect their actions with get_alert_rule(kind='issue').\nget_metric_monitor_details(organizationSlug='my-org', monitorId='12345')",
+        "description": "Get a Sentry Metric Monitor: its query, dataset, detection mode, thresholds, resolution conditions, and connected Alerts.\nCondition results: 75 critical, 50 warning, 0 resolved. Percent thresholds are absolute: 110 means 10% higher. Windows are in seconds.\nConnected Alerts: get_alert_rule. Cron jobs: find_monitors. URL checks: find_uptime_monitors.",
         "requiredScopes": ["org:read", "project:read"]
       },
       {
         "name": "get_monitor_details",
-        "description": "Get details and recent check-ins for a Sentry cron monitor (scheduled job).\n\nUse this tool when you need to:\n- Inspect a monitor's schedule, status, owner, project, and environments\n- Review recent check-ins for missed, failed, timeout, or OK runs\n- Check monitor stats over a recent time range\n\nTo find issues from a monitor, call `search_issues` with query `monitor.slug:<slug>`.\n\n<examples>\nget_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import')\nget_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import', projectSlugOrId='backend', environment='production', period='7d')\n</examples>",
+        "description": "Get a Sentry cron monitor (scheduled job): schedule, status, owner, environments, recent check-ins (missed, failed, timeout, OK), and check-in stats.\nUptime URL checks: find_uptime_monitors. Metric thresholds: find_metric_monitors.\nIssues for a monitor: search_issues with monitor.slug:<slug>.",
         "requiredScopes": ["project:read"]
       },
       {
@@ -184,7 +184,7 @@
       },
       {
         "name": "get_uptime_monitor_details",
-        "description": "Get details for a Sentry uptime monitor, including recent checks.\n\nUse this tool when you need to:\n- Inspect an uptime monitor's URL, interval, thresholds, and status\n- Review recent HTTP check results (success/failure, status code, duration)\n- Debug why an uptime monitor is failing\n\nThis is separate from cron monitors (`get_monitor_details`).\n\nRequest bodies are never returned. Sensitive header values are redacted.\nTo find related issues, call `search_issues` with query `uptime_rule:<id>`.\n\n<examples>\nget_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')\nget_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', period='7d', checkLimit=20)\n</examples>",
+        "description": "Get a Sentry uptime monitor: its URL, interval, thresholds, status, and recent HTTP check results (status code, duration, failures). Request bodies are never returned; sensitive headers are redacted.\nScheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.\nRelated issues: search_issues with uptime_rule:<id>.",
         "requiredScopes": ["project:read"]
       },
       {
@@ -550,7 +550,7 @@
       },
       {
         "name": "create_alert_rule",
-        "description": "Create a Sentry Alert (workflow) that sends notifications, such as Slack, email or PagerDuty, when its issue or monitor sources trigger.\nUse get_alert_options for available actions, integrations, conditions, and sources. All notification providers use their native config and data fields.\nTo copy an Alert, read get_alert_rule(kind='issue') and pass its configuration here; component IDs are discarded while integration and destination IDs are retained. New trigger groups require logicType='any-short'.\nTo reuse an existing Alert across projects, use update_alert_rule instead.\nSupply projectSlugs for project issue streams and/or detectorIds for individual monitors. Pass detectorIds=[] explicitly to create an Alert without sources; it will not send notifications until connected.\nNew Alerts default to active with a 30-minute notification interval. Use status='disabled' to configure one before enabling it.\nProject-constrained sessions require sources exclusively within that project. All-project sources require Sentry's feature and org:write in addition to alerts:write.\nAfter a timeout or error, search for the Alert before retrying: creation may already have succeeded.\n<examples>\ncreate_alert_rule(organizationSlug='my-org', name='Backend notifications', status='disabled', detectorIds=[], actionFilters=[])\n</examples>",
+        "description": "Create a Sentry Alert (notification workflow) that sends Slack, email, PagerDuty, or other notifications when its connected issue streams or monitors trigger.\nget_alert_options lists valid actions, conditions, and sources; update_alert_rule adds sources to an existing Alert.\nMonitors are separate tools: find_metric_monitors (metric thresholds), find_monitors (cron jobs), find_uptime_monitors (URL checks).\nAfter a timeout or error, search for the Alert before retrying: it may already exist.",
         "requiredScopes": ["org:read", "project:read", "alerts:write"]
       },
       {
@@ -560,12 +560,12 @@
       },
       {
         "name": "create_metric_monitor",
-        "description": "Create a Sentry Metric Monitor that detects when a metric, such as an error count or latency, crosses a threshold. Supports Static, Percent or Dynamic detection.\nProvide the complete query, detection config and conditions. Time windows and comparison deltas use seconds. Percent comparisons are absolute: 110 means 10% higher.\nTo copy a monitor, use the query, config and conditionGroup from get_metric_monitor_details. Component IDs are discarded; new condition groups use logicType='any'.\nNew monitors start ACTIVE and immediately evaluate data. Initially disabled creation is not supported. Use update_metric_monitor to disable an existing monitor.\nworkflowIds optionally connect existing notification Alerts, including shared Alerts, without modifying their configuration. Create an Alert separately with create_alert_rule if needed.\nDataset access, quota, aggregate, window and historical-data requirements are enforced by Sentry. Dynamic detection requires sufficient history and Seer availability.\nCreation can fail after persisting a monitor, especially during Dynamic setup. After an error or timeout, use find_metric_monitors with the name and project before retrying; do not assume rollback or blindly repeat creation.\ncreate_metric_monitor(organizationSlug='my-org', projectSlug='backend', name='High error count', query={dataset:'events', query:'level:error', aggregate:'count()', eventTypes:['error'], timeWindowSeconds:300}, config={detectionType:'static'}, conditionGroup={conditions:[{type:'gt', comparison:100, conditionResult:75}, {type:'lte', comparison:50, conditionResult:0}]})",
+        "description": "Create a Sentry Metric Monitor that detects when a metric, such as an error count or latency, crosses a static, percent-change, or dynamic threshold. New monitors start active.\nCopy a monitor's setup from get_metric_monitor_details. Notifications come from Alerts: create_alert_rule. Cron jobs: find_monitors. URL checks: find_uptime_monitors.\nCreation can persist before an error or timeout; check find_metric_monitors before retrying.",
         "requiredScopes": ["org:read", "project:read", "alerts:write"]
       },
       {
         "name": "create_monitor",
-        "description": "Create a Sentry cron monitor.\n\nUse this tool when you need to:\n- Monitor a scheduled job (cron job, scheduled task) for missed, failed, or slow runs\n- Set up a cron monitor before instrumenting check-ins\n\nSet `schedule` to exactly one crontab or interval schedule. Check-ins must still be sent by the job (SDK `monitor_config`/check-ins or `sentry monitor run`) using the returned slug.\nworkflowIds optionally connect existing notification Alerts without modifying them. Use find_alert_rules(kind='issue') to find workflow IDs.\nIf the returned status is `disabled` but you did not request that, the organization has no cron monitor seat available. Tell the user; the monitor ignores check-ins until a seat frees up and it is enabled.\nAfter an error or timeout, use find_monitors with the name and project before retrying; creation is not idempotent.\n\n<examples>\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Nightly Import', schedule={ type: 'crontab', crontab: '0 3 * * *' }, timezone='America/Los_Angeles', checkInMargin=5, maxRuntime=30)\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Queue Drain', schedule={ type: 'interval', value: 15, unit: 'minute' })\n</examples>",
+        "description": "Create a Sentry cron monitor that alerts on missed, failed, or slow runs of a scheduled job. Uptime URL checks: find_uptime_monitors. Metric thresholds: find_metric_monitors.\nThe job must send check-ins with the returned slug (SDK monitor config or sentry monitor run).\nA disabled status you did not request means no cron seat was free: tell the user; it ignores check-ins until enabled.\nAfter an error or timeout, check find_monitors before retrying.",
         "requiredScopes": ["org:read", "project:read", "alerts:write"]
       },
       {
@@ -580,27 +580,27 @@
       },
       {
         "name": "create_uptime_monitor",
-        "description": "Create a Sentry HTTP uptime monitor.\n\nUse this tool when you need to:\n- Start monitoring a URL for availability\n- Create a new uptime check with interval and timeout\n\nBe careful when using this tool!\n\nRequired fields match Sentry's uptime API: name, url, intervalSeconds, timeoutMs.\nAdvanced response assertions are not supported in this MVP; configure them in the Sentry UI if needed.\n\n<examples>\ncreate_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', name='API Health', url='https://api.example.com/health', intervalSeconds=60, timeoutMs=5000)\ncreate_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', name='Checkout', url='https://example.com/checkout', intervalSeconds=300, timeoutMs=10000, method='GET', environment='production')\n</examples>",
+        "description": "Create a Sentry uptime monitor that checks a URL over HTTP on an interval. Response assertions are not supported; set them in the Sentry UI.\nScheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.",
         "requiredScopes": ["project:write"]
       },
       {
         "name": "delete_alert_rule",
-        "description": "Permanently delete a Sentry Alert (workflow), preserving its connected monitors.\nUse get_alert_rule(kind='issue') to inspect the Alert and obtain its workflow ID before deletion. Metric Monitor IDs and legacy metric alert IDs are not workflow IDs.\nDeleting a shared Alert removes its notifications for every connected project and monitor. Use update_alert_rule to disconnect individual sources or disable it instead.\nA project-constrained session can only delete Alerts affecting that project exclusively.\nSentry removes the Alert from normal reads immediately and completes internal deletion in the background.\n<examples>\ndelete_alert_rule(organizationSlug='my-org', ruleId='12345')\n</examples>",
+        "description": "Permanently delete a Sentry Alert (notification workflow) and its notifications for every connected project and monitor. Connected monitors are kept.\nTo stop one source or pause it, use update_alert_rule. Metric Monitors are deleted with delete_metric_monitor.",
         "requiredScopes": ["org:read", "project:read", "alerts:write"]
       },
       {
         "name": "delete_metric_monitor",
-        "description": "Permanently delete a Sentry Metric Monitor, preserving its connected Alerts and their other monitors.\nUse get_metric_monitor_details to inspect the monitor and obtain its native monitorId. Legacy metric alert IDs are not monitor IDs.\nUse update_metric_monitor(status='disabled') to pause detection instead. Deletion also removes an associated legacy metric alert and its incident history when present.\nSentry hides the monitor from normal reads immediately and completes deletion in the background.\ndelete_metric_monitor(organizationSlug='my-org', monitorId='12345')",
+        "description": "Permanently delete a Sentry Metric Monitor, and its legacy metric alert and incident history if present. Connected Alerts are kept.\nTo pause detection instead, use update_metric_monitor. Cron jobs: find_monitors. URL checks: find_uptime_monitors.",
         "requiredScopes": ["org:read", "project:read", "alerts:write"]
       },
       {
         "name": "delete_monitor_environment",
-        "description": "Delete one environment from a Sentry cron monitor.\n\nUse find_monitors or get_monitor_details to identify the monitor and exact environment name.\n\nDeletion is irreversible and completes in the background. The monitor and its other environments are preserved. An already absent environment is treated as success.\n\n<examples>\ndelete_monitor_environment(organizationSlug='my-organization', projectSlug='backend', monitorSlug='nightly-import', environment='production')\n</examples>",
+        "description": "Delete one environment from a Sentry cron monitor, irreversibly. The monitor and its other environments are kept; an absent environment counts as success.\nTo find the monitor and exact environment name, use find_monitors or get_monitor_details.",
         "requiredScopes": ["project:write"]
       },
       {
         "name": "delete_uptime_monitor",
-        "description": "Delete a Sentry HTTP uptime monitor.\n\nUse this tool when you need to permanently remove an uptime monitor.\n\nBe careful when using this tool! Deletion cannot be undone.\n\n<examples>\ndelete_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')\n</examples>",
+        "description": "Permanently delete a Sentry uptime (HTTP URL check) monitor. To pause it, use update_uptime_monitor.\nScheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.",
         "requiredScopes": ["project:write"]
       },
       {
@@ -640,7 +640,7 @@
       },
       {
         "name": "update_alert_rule",
-        "description": "Update a Sentry Alert (workflow), including notification actions and connections.\nUse get_alert_rule with kind='issue' first to inspect the complete triggers and actionFilters configuration.\nUse get_alert_options to discover notification actions, integrations, conditions, and available sources.\nOmit fields to leave them unchanged. Pass null to clear owner or environment.\ntriggers replaces the trigger conditions. actionFilters replaces ALL action groups: copy the complete configuration, retain existing IDs, and change only the intended values. Omitted groups, conditions, and actions are removed.\nFor Slack or Microsoft Teams, change config.targetDisplay to the channel name and use integrationId for the workspace or team. Sentry resolves the channel ID. Slack also accepts an explicit new targetIdentifier; a copied old ID is cleared when the name or workspace changes.\nOther actions use their provider's config and data. For Discord, PagerDuty, Opsgenie, and email, update targetIdentifier to the channel, service, team, or recipient ID; changing only its display name does not change the destination.\nUse addProjectSlugs/removeProjectSlugs to connect/disconnect a project's issue stream. Other monitors in that project remain connected. Use addDetectorIds/removeDetectorIds for individual monitors. Unmentioned connections are preserved.\nMetric Monitor detection queries and thresholds are separate operations.\nAll-project connections require Sentry's all-project feature and an API token with org:write in addition to alerts:write.\nA project-constrained session can only edit alerts affecting that project exclusively.\nRequires alerts:write; reconnect OAuth if the existing token lacks it.\n<examples>\nupdate_alert_rule(organizationSlug='my-org', ruleIdOrName='12345', status='disabled')\nupdate_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='Notify backend team', frequencyMinutes=30)\n</examples>",
+        "description": "Update a Sentry Alert (notification workflow): name, status, owner, environment, notification frequency, triggers, notification actions, and connected projects or monitors.\nRead it with get_alert_rule first; get_alert_options lists valid actions, conditions, and sources. Omitted fields stay unchanged.\nMetric Monitor queries and thresholds change with update_metric_monitor; cron and uptime monitors have their own tools.",
         "requiredScopes": ["org:read", "project:read", "alerts:write"]
       },
       {
@@ -650,7 +650,7 @@
       },
       {
         "name": "update_metric_monitor",
-        "description": "Update a Sentry Metric Monitor's query, detection conditions, metadata, status or connected Alerts.\nUse get_metric_monitor_details first and its native monitorId, not a legacy metric alert ID. projectSlug identifies scope; it does not move the monitor.\nOmit fields to preserve them. query and config accept partial changes. conditionGroup and workflowIds replace their complete configuration; preserve IDs and entries you want to retain.\nStatic, Percent and Dynamic detection are supported. Windows and comparison deltas are in seconds. Percent thresholds are absolute (110 means 10% higher), not percentage changes.\nDynamic changes may require sufficient historical data. Dataset access, query and window constraints are enforced by Sentry.\nworkflowIds connect existing Alerts, including shared Alerts, without editing their actions or other monitors. Use update_alert_rule for notification configuration.\nRequires alerts:write; reconnect OAuth if the existing token lacks it.\nupdate_metric_monitor(organizationSlug='my-org', monitorId='12345', status='disabled')\nupdate_metric_monitor(organizationSlug='my-org', monitorId='12345', query={query:'level:error', timeWindowSeconds:300})",
+        "description": "Update a Sentry Metric Monitor: its query, detection mode and conditions, name, owner, status, or connected Alerts. Omitted fields stay unchanged.\nRead it with get_metric_monitor_details first. Alert notification actions change with update_alert_rule. Cron jobs: find_monitors. URL checks: find_uptime_monitors.",
         "requiredScopes": ["org:read", "project:read", "alerts:write"]
       },
       {
@@ -660,7 +660,7 @@
       },
       {
         "name": "update_uptime_monitor",
-        "description": "Update a Sentry HTTP uptime monitor.\n\nUse this tool when you need to:\n- Change URL, interval, timeout, method, headers, or body\n- Enable or disable a monitor (`status`)\n- Update owner, environment, or failure thresholds\n\nBe careful when using this tool!\n\nOmit a field to leave it unchanged. Pass explicit `null` to clear `owner`, `environment`, or `body`.\n\n<examples>\nupdate_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', status='disabled')\nupdate_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', intervalSeconds=300, timeoutMs=8000)\nupdate_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', owner=null)\n</examples>",
+        "description": "Update a Sentry uptime monitor: URL, interval, timeout, HTTP method, headers, body, status, owner, environment, or failure thresholds. Omitted fields stay unchanged.\nScheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.",
         "requiredScopes": ["project:write"]
       },
       {

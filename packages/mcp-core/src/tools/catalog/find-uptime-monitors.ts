@@ -26,20 +26,9 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [
-    "Find Sentry uptime monitors.",
-    "",
-    "Use this tool when you need to:",
-    "- List HTTP uptime monitors in an organization",
-    "- Find a monitor by name or URL before getting details",
-    "- Check monitor status, owner, project, interval, or target URL",
-    "- When `hasMore` is true, narrow results with project, environment, owner, or query filters",
-    "",
-    "This is separate from cron monitors (`find_monitors`).",
-    "",
-    "<examples>",
-    "find_uptime_monitors(organizationSlug='my-organization')",
-    "find_uptime_monitors(organizationSlug='my-organization', projectSlug='backend', query='api')",
-    "</examples>",
+    "Find Sentry uptime monitors, which check a URL over HTTP. Returns each monitor's URL, status, interval, owner, and project.",
+    "Scheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.",
+    "When more results exist, narrow by project, environment, owner, or name.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -50,28 +39,28 @@ export default defineTool({
       .string()
       .trim()
       .min(1)
-      .describe("Optional environment name to limit monitors.")
+      .describe("Environment to filter monitors by.")
       .optional(),
     owner: z
       .string()
       .trim()
       .min(1)
       .describe(
-        "Optional owner filter, such as `user:123`, `team:456`, `myteams`, or `unassigned`.",
+        "Owner filter: `user:123`, `team:456`, `myteams`, or `unassigned`.",
       )
       .optional(),
     query: z
       .string()
       .trim()
       .min(1)
-      .describe("Optional search query for monitor name or URL.")
+      .describe("Text to match in the monitor name or URL.")
       .optional(),
     limit: z
       .number()
       .int()
       .positive()
       .max(99)
-      .describe("Maximum number of monitors to return.")
+      .describe("Maximum monitors to return.")
       .default(10),
   },
   annotations: {

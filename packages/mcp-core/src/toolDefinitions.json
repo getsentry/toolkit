@@ -194,7 +194,7 @@
   {
     "name": "create_alert_rule",
     "title": "Create Alert Rule",
-    "description": "Create a Sentry Alert (workflow) that sends notifications, such as Slack, email or PagerDuty, when its issue or monitor sources trigger.\nUse get_alert_options for available actions, integrations, conditions, and sources. All notification providers use their native config and data fields.\nTo copy an Alert, read get_alert_rule(kind='issue') and pass its configuration here; component IDs are discarded while integration and destination IDs are retained. New trigger groups require logicType='any-short'.\nTo reuse an existing Alert across projects, use update_alert_rule instead.\nSupply projectSlugs for project issue streams and/or detectorIds for individual monitors. Pass detectorIds=[] explicitly to create an Alert without sources; it will not send notifications until connected.\nNew Alerts default to active with a 30-minute notification interval. Use status='disabled' to configure one before enabling it.\nProject-constrained sessions require sources exclusively within that project. All-project sources require Sentry's feature and org:write in addition to alerts:write.\nAfter a timeout or error, search for the Alert before retrying: creation may already have succeeded.\n<examples>\ncreate_alert_rule(organizationSlug='my-org', name='Backend notifications', status='disabled', detectorIds=[], actionFilters=[])\n</examples>",
+    "description": "Create a Sentry Alert (notification workflow) that sends Slack, email, PagerDuty, or other notifications when its connected issue streams or monitors trigger.\nget_alert_options lists valid actions, conditions, and sources; update_alert_rule adds sources to an existing Alert.\nMonitors are separate tools: find_metric_monitors (metric thresholds), find_monitors (cron jobs), find_uptime_monitors (URL checks).\nAfter a timeout or error, search for the Alert before retrying: it may already exist.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -232,6 +232,7 @@
           "maximum": 9007199254740991
         },
         "environment": {
+          "description": "Environment the Alert applies to. Null means all environments.",
           "anyOf": [
             {
               "type": "string",
@@ -243,7 +244,7 @@
           ]
         },
         "owner": {
-          "description": "Owner actor user:ID or team:ID. Pass null to clear.",
+          "description": "Owner as user:<id> or team:<id>. Null clears it.",
           "anyOf": [
             {
               "type": "string",
@@ -279,7 +280,7 @@
                 }
               },
               "required": ["logicType", "conditions"],
-              "description": "Trigger conditions. Nonempty groups require logicType='any-short' for new Alerts. Copied component IDs are discarded. Omit, pass null, or use an empty group for no trigger conditions."
+              "description": "Trigger conditions, in the shape get_alert_rule returns; copied IDs are dropped. Null or an empty group means no triggers."
             },
             {
               "type": "null"
@@ -332,7 +333,8 @@
                       "propertyNames": {
                         "type": "string"
                       },
-                      "additionalProperties": {}
+                      "additionalProperties": {},
+                      "description": "Provider config. Slack and Teams: set targetDisplay to the channel name in the integrationId workspace; Sentry resolves the ID. Discord, PagerDuty, Opsgenie, email: set targetIdentifier; a new display name alone keeps the old target."
                     },
                     "status": {
                       "type": "string"
@@ -344,10 +346,10 @@
             },
             "required": ["logicType", "conditions", "actions"]
           },
-          "description": "Action groups with conditions and notification actions, from get_alert_options or get_alert_rule. Copied component IDs are discarded; integration and destination IDs are retained. Pass [] explicitly for no notification actions."
+          "description": "Action groups with conditions and notification actions, from get_alert_options or copied from get_alert_rule. Component IDs are dropped; integration and destination IDs are kept. Pass [] for none."
         },
         "projectSlugs": {
-          "description": "Projects whose issue streams should be connected.",
+          "description": "Projects whose issue streams to connect. Set this, detector IDs, or both.",
           "type": "array",
           "items": {
             "type": "string",
@@ -355,7 +357,7 @@
           }
         },
         "detectorIds": {
-          "description": "Existing source IDs from get_alert_options. Pass [] explicitly for an Alert without sources.",
+          "description": "Monitor source IDs from get_alert_options. Pass [] for an Alert with no sources; it sends nothing until connected. An all-project source also needs org:write.",
           "type": "array",
           "items": {
             "type": "string",
@@ -430,7 +432,7 @@
                   },
                   "required": ["logicType", "conditions"],
                   "additionalProperties": false,
-                  "description": "The complete trigger group. Preserve existing condition IDs when editing; omitted conditions are removed. Use the configuration returned by get_alert_rule."
+                  "description": "Complete trigger group, copied from get_alert_rule. Keep existing condition IDs; omitted conditions are removed."
                 },
                 {
                   "type": "null"
@@ -495,7 +497,8 @@
                               "propertyNames": {
                                 "type": "string"
                               },
-                              "additionalProperties": {}
+                              "additionalProperties": {},
+                              "description": "Provider config. Slack and Teams: set targetDisplay to the channel name in the integrationId workspace; Sentry resolves the ID. Discord, PagerDuty, Opsgenie, email: set targetIdentifier; a new display name alone keeps the old target."
                             },
                             "status": {
                               "type": "string"
@@ -509,7 +512,7 @@
                     "required": ["logicType", "conditions", "actions"],
                     "additionalProperties": false
                   },
-                  "description": "The complete list of action groups, conditions, and notification actions. Preserve their IDs and all unchanged groups and actions; omitted entries are removed. Slack and Microsoft Teams resolve config.targetDisplay as a channel name within integrationId. Other providers use their native config.targetIdentifier and data fields."
+                  "description": "Complete list of action groups with their conditions and notification actions, copied from get_alert_rule. Keep IDs and unchanged entries; omitted groups, conditions, and actions are removed."
                 },
                 {
                   "type": "null"
@@ -605,7 +608,7 @@
   {
     "name": "create_metric_monitor",
     "title": "Create Metric Monitor",
-    "description": "Create a Sentry Metric Monitor that detects when a metric, such as an error count or latency, crosses a threshold. Supports Static, Percent or Dynamic detection.\nProvide the complete query, detection config and conditions. Time windows and comparison deltas use seconds. Percent comparisons are absolute: 110 means 10% higher.\nTo copy a monitor, use the query, config and conditionGroup from get_metric_monitor_details. Component IDs are discarded; new condition groups use logicType='any'.\nNew monitors start ACTIVE and immediately evaluate data. Initially disabled creation is not supported. Use update_metric_monitor to disable an existing monitor.\nworkflowIds optionally connect existing notification Alerts, including shared Alerts, without modifying their configuration. Create an Alert separately with create_alert_rule if needed.\nDataset access, quota, aggregate, window and historical-data requirements are enforced by Sentry. Dynamic detection requires sufficient history and Seer availability.\nCreation can fail after persisting a monitor, especially during Dynamic setup. After an error or timeout, use find_metric_monitors with the name and project before retrying; do not assume rollback or blindly repeat creation.\ncreate_metric_monitor(organizationSlug='my-org', projectSlug='backend', name='High error count', query={dataset:'events', query:'level:error', aggregate:'count()', eventTypes:['error'], timeWindowSeconds:300}, config={detectionType:'static'}, conditionGroup={conditions:[{type:'gt', comparison:100, conditionResult:75}, {type:'lte', comparison:50, conditionResult:0}]})",
+    "description": "Create a Sentry Metric Monitor that detects when a metric, such as an error count or latency, crosses a static, percent-change, or dynamic threshold. New monitors start active.\nCopy a monitor's setup from get_metric_monitor_details. Notifications come from Alerts: create_alert_rule. Cron jobs: find_monitors. URL checks: find_uptime_monitors.\nCreation can persist before an error or timeout; check find_metric_monitors before retrying.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -638,7 +641,7 @@
           "type": ["string", "null"]
         },
         "owner": {
-          "description": "Owner actor, e.g. team:123 or user:123. Pass null to clear.",
+          "description": "Owner as user:<id> or team:<id>. Null clears it.",
           "anyOf": [
             {
               "type": "string",
@@ -660,7 +663,8 @@
                 "generic_metrics",
                 "metrics",
                 "events_analytics_platform"
-              ]
+              ],
+              "description": "`metrics` is crash-free releases. `events_analytics_platform` covers spans, logs, and application metrics, chosen by eventTypes."
             },
             "query": {
               "type": "string"
@@ -695,7 +699,7 @@
             "eventTypes",
             "timeWindowSeconds"
           ],
-          "description": "Complete query: dataset, aggregate, filter, eventTypes and timeWindowSeconds. metrics is crash-free Releases; events_analytics_platform supports spans, logs and application metrics via eventTypes. Omitted environment means all environments."
+          "description": "Complete metric query. Omit environment for all environments."
         },
         "config": {
           "type": "object",
@@ -718,7 +722,7 @@
             }
           },
           "required": ["detectionType"],
-          "description": "Detection mode. Percent requires comparisonDeltaSeconds. Static and Dynamic do not use a comparison delta."
+          "description": "Detection mode: Static thresholds, Percent change against an earlier window (needs comparisonDeltaSeconds), or Dynamic anomaly detection (needs enough history)."
         },
         "conditionGroup": {
           "type": "object",
@@ -742,11 +746,13 @@
                         "enum": ["gt", "lt", "gte", "lte"]
                       },
                       "comparison": {
-                        "type": "number"
+                        "type": "number",
+                        "description": "Threshold value. For Percent detection it is an absolute percentage of the earlier window: 110 means 10% higher."
                       },
                       "conditionResult": {
                         "type": "number",
-                        "enum": [75, 50, 0]
+                        "enum": [75, 50, 0],
+                        "description": "75 critical, 50 warning, 0 resolved."
                       }
                     },
                     "required": ["type", "comparison", "conditionResult"]
@@ -771,7 +777,8 @@
                           },
                           "thresholdType": {
                             "type": "number",
-                            "enum": [0, 1, 2]
+                            "enum": [0, 1, 2],
+                            "description": "0 above, 1 below, 2 above or below."
                           }
                         },
                         "required": [
@@ -792,11 +799,11 @@
             }
           },
           "required": ["conditions"],
-          "description": "Complete conditions, using logicType any. Copied group and condition IDs are discarded. Static/Percent require thresholds and resolution (results 75 critical, 50 warning, 0 resolved). Percent 110 means 10% higher. Dynamic requires one anomaly_detection condition: sensitivity, seasonality:auto, thresholdType 0 above/1 below/2 both."
+          "description": "Complete detection conditions; copied IDs are dropped. Static and Percent use threshold conditions, including a resolved one. Dynamic uses one anomaly_detection condition."
         },
         "workflowIds": {
           "default": [],
-          "description": "Existing notification Alert IDs to connect. Omit or pass [] to create without connected Alerts. Use find_alert_rules(kind='issue') to find workflow IDs.",
+          "description": "Alert workflow IDs to connect, from find_alert_rules with `issue`. Omit to create with no Alerts.",
           "type": "array",
           "items": {
             "type": "string",
@@ -990,7 +997,7 @@
   {
     "name": "create_monitor",
     "title": "Create Cron Monitor",
-    "description": "Create a Sentry cron monitor.\n\nUse this tool when you need to:\n- Monitor a scheduled job (cron job, scheduled task) for missed, failed, or slow runs\n- Set up a cron monitor before instrumenting check-ins\n\nSet `schedule` to exactly one crontab or interval schedule. Check-ins must still be sent by the job (SDK `monitor_config`/check-ins or `sentry monitor run`) using the returned slug.\nworkflowIds optionally connect existing notification Alerts without modifying them. Use find_alert_rules(kind='issue') to find workflow IDs.\nIf the returned status is `disabled` but you did not request that, the organization has no cron monitor seat available. Tell the user; the monitor ignores check-ins until a seat frees up and it is enabled.\nAfter an error or timeout, use find_monitors with the name and project before retrying; creation is not idempotent.\n\n<examples>\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Nightly Import', schedule={ type: 'crontab', crontab: '0 3 * * *' }, timezone='America/Los_Angeles', checkInMargin=5, maxRuntime=30)\ncreate_monitor(organizationSlug='my-organization', projectSlug='backend', name='Queue Drain', schedule={ type: 'interval', value: 15, unit: 'minute' })\n</examples>",
+    "description": "Create a Sentry cron monitor that alerts on missed, failed, or slow runs of a scheduled job. Uptime URL checks: find_uptime_monitors. Metric thresholds: find_metric_monitors.\nThe job must send check-ins with the returned slug (SDK monitor config or sentry monitor run).\nA disabled status you did not request means no cron seat was free: tell the user; it ignores check-ins until enabled.\nAfter an error or timeout, check find_monitors before retrying.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1023,7 +1030,7 @@
         "slug": {
           "type": "string",
           "minLength": 1,
-          "description": "Optional monitor slug used by check-ins. Derived from the name when omitted."
+          "description": "Slug that check-ins use. Derived from the name when omitted."
         },
         "schedule": {
           "oneOf": [
@@ -1064,7 +1071,7 @@
               "additionalProperties": false
             }
           ],
-          "description": "Monitor schedule: exactly one of `{ type: 'crontab', crontab: '0 3 * * *' }` or `{ type: 'interval', value: 15, unit: 'minute' }`."
+          "description": "Job schedule: a crontab, or an interval such as every 15 minutes."
         },
         "timezone": {
           "type": "string",
@@ -1103,7 +1110,7 @@
         "owner": {
           "type": "string",
           "pattern": "^(user|team):\\d+$",
-          "description": "Owner actor in `user:ID` or `team:ID` format."
+          "description": "Owner as `user:ID` or `team:ID`."
         },
         "workflowIds": {
           "maxItems": 50,
@@ -1112,7 +1119,7 @@
             "type": "string",
             "pattern": "^\\d+$"
           },
-          "description": "Existing notification Alert IDs to connect."
+          "description": "Alert workflow IDs to connect, from find_alert_rules with `issue`."
         }
       },
       "required": ["organizationSlug", "projectSlug", "name", "schedule"]
@@ -1382,7 +1389,7 @@
   {
     "name": "create_uptime_monitor",
     "title": "Create Uptime Monitor",
-    "description": "Create a Sentry HTTP uptime monitor.\n\nUse this tool when you need to:\n- Start monitoring a URL for availability\n- Create a new uptime check with interval and timeout\n\nBe careful when using this tool!\n\nRequired fields match Sentry's uptime API: name, url, intervalSeconds, timeoutMs.\nAdvanced response assertions are not supported in this MVP; configure them in the Sentry UI if needed.\n\n<examples>\ncreate_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', name='API Health', url='https://api.example.com/health', intervalSeconds=60, timeoutMs=5000)\ncreate_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', name='Checkout', url='https://example.com/checkout', intervalSeconds=300, timeoutMs=10000, method='GET', environment='production')\n</examples>",
+    "description": "Create a Sentry uptime monitor that checks a URL over HTTP on an interval. Response assertions are not supported; set them in the Sentry UI.\nScheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1422,14 +1429,14 @@
           "type": "integer",
           "minimum": -9007199254740991,
           "maximum": 9007199254740991,
-          "description": "Seconds between checks. Allowed values: 60, 300, 600, 1200, 1800, 3600."
+          "description": "Seconds between checks: 60, 300, 600, 1200, 1800, or 3600."
         },
         "timeoutMs": {
           "default": 5000,
           "type": "integer",
           "minimum": 1000,
           "maximum": 60000,
-          "description": "Request timeout in milliseconds (1000-60000)."
+          "description": "Request timeout in milliseconds."
         },
         "method": {
           "type": "string",
@@ -1446,11 +1453,11 @@
               "type": "string"
             }
           },
-          "description": "Optional HTTP headers as an array of [name, value] pairs, e.g. [[\"Accept\",\"application/json\"]]."
+          "description": "HTTP headers as [name, value] pairs, e.g. [[\"Accept\",\"application/json\"]]."
         },
         "body": {
           "type": "string",
-          "description": "Optional request body for methods that support a body."
+          "description": "Request body, for methods that take one."
         },
         "status": {
           "type": "string",
@@ -1461,13 +1468,13 @@
           "type": "string",
           "minLength": 1,
           "pattern": "^(user|team):.+$",
-          "description": "Owner actor in `user:ID` or `team:ID` format."
+          "description": "Owner as `user:ID` or `team:ID`."
         },
         "environment": {
           "type": "string",
           "minLength": 1,
           "maxLength": 64,
-          "description": "Optional environment name for created uptime issues."
+          "description": "Environment for uptime issues this monitor creates."
         },
         "traceSampling": {
           "type": "boolean",
@@ -1475,7 +1482,7 @@
         },
         "responseCaptureEnabled": {
           "type": "boolean",
-          "description": "Capture response body/headers on failures."
+          "description": "Capture response body and headers on failed checks."
         },
         "recoveryThreshold": {
           "type": "integer",
@@ -1579,7 +1586,7 @@
   {
     "name": "delete_alert_rule",
     "title": "Delete Alert Rule",
-    "description": "Permanently delete a Sentry Alert (workflow), preserving its connected monitors.\nUse get_alert_rule(kind='issue') to inspect the Alert and obtain its workflow ID before deletion. Metric Monitor IDs and legacy metric alert IDs are not workflow IDs.\nDeleting a shared Alert removes its notifications for every connected project and monitor. Use update_alert_rule to disconnect individual sources or disable it instead.\nA project-constrained session can only delete Alerts affecting that project exclusively.\nSentry removes the Alert from normal reads immediately and completes internal deletion in the background.\n<examples>\ndelete_alert_rule(organizationSlug='my-org', ruleId='12345')\n</examples>",
+    "description": "Permanently delete a Sentry Alert (notification workflow) and its notifications for every connected project and monitor. Connected monitors are kept.\nTo stop one source or pause it, use update_alert_rule. Metric Monitors are deleted with delete_metric_monitor.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1613,7 +1620,7 @@
         "ruleId": {
           "type": "string",
           "pattern": "^\\d+$",
-          "description": "Workflow ID from get_alert_rule(kind='issue')."
+          "description": "Alert workflow ID from get_alert_rule with `issue`. Metric Monitor and legacy metric alert IDs are not workflow IDs."
         }
       },
       "required": ["organizationSlug", "ruleId"]
@@ -1639,7 +1646,7 @@
   {
     "name": "delete_metric_monitor",
     "title": "Delete Metric Monitor",
-    "description": "Permanently delete a Sentry Metric Monitor, preserving its connected Alerts and their other monitors.\nUse get_metric_monitor_details to inspect the monitor and obtain its native monitorId. Legacy metric alert IDs are not monitor IDs.\nUse update_metric_monitor(status='disabled') to pause detection instead. Deletion also removes an associated legacy metric alert and its incident history when present.\nSentry hides the monitor from normal reads immediately and completes deletion in the background.\ndelete_metric_monitor(organizationSlug='my-org', monitorId='12345')",
+    "description": "Permanently delete a Sentry Metric Monitor, and its legacy metric alert and incident history if present. Connected Alerts are kept.\nTo pause detection instead, use update_metric_monitor. Cron jobs: find_monitors. URL checks: find_uptime_monitors.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1666,7 +1673,7 @@
         "monitorId": {
           "type": "string",
           "pattern": "^\\d+$",
-          "description": "Native Metric Monitor ID from find_metric_monitors."
+          "description": "Metric Monitor ID from find_metric_monitors, not a legacy metric alert ID."
         }
       },
       "required": ["organizationSlug", "monitorId"]
@@ -1692,7 +1699,7 @@
   {
     "name": "delete_monitor_environment",
     "title": "Delete Cron Monitor Environment",
-    "description": "Delete one environment from a Sentry cron monitor.\n\nUse find_monitors or get_monitor_details to identify the monitor and exact environment name.\n\nDeletion is irreversible and completes in the background. The monitor and its other environments are preserved. An already absent environment is treated as success.\n\n<examples>\ndelete_monitor_environment(organizationSlug='my-organization', projectSlug='backend', monitorSlug='nightly-import', environment='production')\n</examples>",
+    "description": "Delete one environment from a Sentry cron monitor, irreversibly. The monitor and its other environments are kept; an absent environment counts as success.\nTo find the monitor and exact environment name, use find_monitors or get_monitor_details.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1761,7 +1768,7 @@
   {
     "name": "delete_uptime_monitor",
     "title": "Delete Uptime Monitor",
-    "description": "Delete a Sentry HTTP uptime monitor.\n\nUse this tool when you need to permanently remove an uptime monitor.\n\nBe careful when using this tool! Deletion cannot be undone.\n\n<examples>\ndelete_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')\n</examples>",
+    "description": "Permanently delete a Sentry uptime (HTTP URL check) monitor. To pause it, use update_uptime_monitor.\nScheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1788,7 +1795,7 @@
         "uptimeMonitorId": {
           "type": "string",
           "minLength": 1,
-          "description": "Uptime monitor ID (detector id)."
+          "description": "Uptime monitor ID from find_uptime_monitors."
         }
       },
       "required": ["organizationSlug", "projectSlug", "uptimeMonitorId"]
@@ -1817,7 +1824,7 @@
   {
     "name": "find_alert_rules",
     "title": "Find Alert Rules",
-    "description": "Find Sentry alert rules.\n\nUse this tool when you need to:\n- List Alerts (workflows) for an organization or project, including Alerts without connected sources\n- List Metric Monitors using compatibility references; prefer find_metric_monitors for canonical monitor IDs\n- Find an alert rule ID by name before inspecting it\n- Check alert conditions, queries, triggers, actions, owner, or environment\n\n<examples>\nfind_alert_rules(organizationSlug='my-org')\nfind_alert_rules(organizationSlug='my-org', projectSlug='backend')\nfind_alert_rules(organizationSlug='my-org', kind='issue', projectSlug='backend', query='critical')\n</examples>\n\n<hints>\n- Omit `projectSlug` to search organization-wide. A project filter finds connected Alerts, which may also cover other projects.\n- Metric entries expose monitorId and projectId. id retains a legacy alert-rule ID when available, otherwise detector:<monitorId>. status describes enabled/disabled monitoring, not a legacy alert status.\n- Issue and metric alert rules have independent pagination state. Reuse a nextCursor only with its matching kind.\n</hints>",
+    "description": "Find Sentry alert rules: Issue Alerts (notification workflows) and Metric Monitor alerts, with their conditions, actions, owner, and environment.\nMetric entries carry legacy IDs; find_metric_monitors returns canonical monitor IDs. Cron and uptime monitors: find_monitors, find_uptime_monitors.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1841,7 +1848,7 @@
           "default": "all",
           "type": "string",
           "enum": ["all", "issue", "metric"],
-          "description": "Which alert rule family to search. Use `all` to include Alerts (workflows) and Metric Monitors."
+          "description": "Alert family: `issue` for Alerts (workflows), `metric` for Metric Monitors."
         },
         "projectSlug": {
           "default": null,
@@ -1860,7 +1867,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Optional search query for alert rule name."
+              "description": "Text to match in the alert rule name."
             },
             {
               "type": "null"
@@ -1872,7 +1879,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Optional pagination cursor from a previous Sentry API response."
+              "description": "Next cursor from a previous result. Issue and metric families page separately; reuse a cursor only with its own kind."
             },
             {
               "type": "null"
@@ -1884,7 +1891,7 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 100,
-          "description": "Maximum number of alert rules to return per alert family."
+          "description": "Maximum rules per alert family."
         },
         "fresh": {
           "description": "Bypass cached reads.",
@@ -2526,7 +2533,7 @@
   {
     "name": "find_metric_monitors",
     "title": "Find Metric Monitors",
-    "description": "Find Sentry Metric Monitors that evaluate errors, performance, logs, metrics or crash rates.\nUse this tool to find a monitor ID before inspecting its query and detection conditions with get_metric_monitor_details.\nResults contain native monitor IDs, separate from legacy metric alert IDs. Alerts connected through workflowIds control notifications; inspect them with get_alert_rule(kind='issue').\nOmit projectSlug to search all accessible projects. Pass nextCursor as cursor with the same filters to retrieve more results.\nfind_metric_monitors(organizationSlug='my-org', projectSlug='backend', query='latency')",
+    "description": "Find Sentry Metric Monitors that alert when an error count, latency, log, metric, or crash rate crosses a threshold. Returns monitor IDs, queries, and connected Alerts.\nCron jobs: find_monitors. URL checks: find_uptime_monitors. Notifications: alert rules.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -2551,12 +2558,12 @@
           "description": "The project slug, or lowercase `all` for every project."
         },
         "query": {
-          "description": "Optional monitor search, such as a name or name:\"latency\". This searches monitor metadata, not the monitored event query. Results are always restricted to Metric Monitors.",
+          "description": "Monitor search, such as a name or name:\"latency\". Matches monitor metadata, not the monitored event query.",
           "type": "string",
           "minLength": 1
         },
         "cursor": {
-          "description": "nextCursor from the previous page.",
+          "description": "Next cursor from the previous page, with the same filters.",
           "type": "string"
         },
         "limit": {
@@ -2631,7 +2638,7 @@
   {
     "name": "find_monitors",
     "title": "Find Cron Monitors",
-    "description": "List or search Sentry cron monitors, which track scheduled jobs through check-ins.\nFor HTTP uptime checks use find_uptime_monitors; for metric thresholds use find_metric_monitors.\n\nUse this tool when you need to:\n- List cron monitors in an organization\n- Find a monitor by name or slug before getting details\n- Check monitor status, owner, project, schedule, or recent environment state\n- When `hasMore` is true, narrow the results with project, environment, owner, or query filters\n\n<examples>\nfind_monitors(organizationSlug='my-organization')\nfind_monitors(organizationSlug='my-organization', projectSlug='backend', query='billing')\n</examples>",
+    "description": "Find Sentry cron monitors, which track scheduled jobs through check-ins. Returns each monitor's status, schedule, owner, project, and recent environment state.\nUptime URL checks: find_uptime_monitors. Metric thresholds: find_metric_monitors.\nWhen more results exist, narrow by project, environment, owner, or name.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -2668,7 +2675,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Optional environment name to limit monitor state."
+              "description": "Environment to report monitor state for."
             },
             {
               "type": "null"
@@ -2680,7 +2687,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Optional owner filter, such as `user:123`, `team:456`, `myteams`, or `unassigned`."
+              "description": "Owner filter: `user:123`, `team:456`, `myteams`, or `unassigned`."
             },
             {
               "type": "null"
@@ -2692,7 +2699,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Optional search query for monitor name or slug."
+              "description": "Text to match in the monitor name or slug."
             },
             {
               "type": "null"
@@ -2704,7 +2711,7 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 99,
-          "description": "Maximum number of monitors to return."
+          "description": "Maximum monitors to return."
         },
         "fresh": {
           "description": "Bypass cached reads.",
@@ -3339,7 +3346,7 @@
   {
     "name": "find_uptime_monitors",
     "title": "Find Uptime Monitors",
-    "description": "Find Sentry uptime monitors.\n\nUse this tool when you need to:\n- List HTTP uptime monitors in an organization\n- Find a monitor by name or URL before getting details\n- Check monitor status, owner, project, interval, or target URL\n- When `hasMore` is true, narrow results with project, environment, owner, or query filters\n\nThis is separate from cron monitors (`find_monitors`).\n\n<examples>\nfind_uptime_monitors(organizationSlug='my-organization')\nfind_uptime_monitors(organizationSlug='my-organization', projectSlug='backend', query='api')\n</examples>",
+    "description": "Find Sentry uptime monitors, which check a URL over HTTP. Returns each monitor's URL, status, interval, owner, and project.\nScheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.\nWhen more results exist, narrow by project, environment, owner, or name.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -3366,24 +3373,24 @@
         "environment": {
           "type": "string",
           "minLength": 1,
-          "description": "Optional environment name to limit monitors."
+          "description": "Environment to filter monitors by."
         },
         "owner": {
           "type": "string",
           "minLength": 1,
-          "description": "Optional owner filter, such as `user:123`, `team:456`, `myteams`, or `unassigned`."
+          "description": "Owner filter: `user:123`, `team:456`, `myteams`, or `unassigned`."
         },
         "query": {
           "type": "string",
           "minLength": 1,
-          "description": "Optional search query for monitor name or URL."
+          "description": "Text to match in the monitor name or URL."
         },
         "limit": {
           "default": 10,
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 99,
-          "description": "Maximum number of monitors to return."
+          "description": "Maximum monitors to return."
         },
         "fresh": {
           "description": "Bypass cached reads.",
@@ -4378,7 +4385,7 @@
   {
     "name": "get_alert_options",
     "title": "Get Alert Options",
-    "description": "Discover available actions, conditions, or sources for a Sentry Alert (notification workflow).\n\nChoose one section per call; reuse its cursor with the same section and filters.\n- actions: installed integrations, notification services, native config/data schemas and Sentry App settings. These schemas use Sentry's internal field names and target enums; inputGuide explains the update format.\n- conditions: condition types and comparison schemas for workflow triggers or action filters.\n- sources: accessible monitors and project issue streams. Use an issue_stream source to connect all issues from its project; a source with projectId=null covers all projects.\nSlack and Teams accept channel names; Discord needs a channel ID or URL. Dynamic Sentry App fields require explicit values; this tool does not enumerate their external choices.\n\n<examples>\nget_alert_options(organizationSlug='my-org', section='actions', actionTypes=['slack', 'msteams'])\nget_alert_options(organizationSlug='my-org', section='conditions', conditionGroup='action_filter')\nget_alert_options(organizationSlug='my-org', section='sources', projectSlug='backend', sourceTypes=['issue_stream'])\n</examples>",
+    "description": "List what a Sentry Alert (notification workflow) can use: notification actions and integrations (Slack, Teams, email, PagerDuty) with their config schemas, trigger and filter conditions, or monitor and issue-stream sources.\nUse the results in create_alert_rule or update_alert_rule. Slack and Teams take channel names; Discord needs a channel ID or URL. Choices for dynamic Sentry App fields are not listed.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -4401,11 +4408,11 @@
         "section": {
           "type": "string",
           "enum": ["actions", "conditions", "sources"],
-          "description": "The kind of Alert options to discover."
+          "description": "`actions`: integrations and action config schemas. `conditions`: condition types and comparison schemas. `sources`: monitors and project issue streams to connect."
         },
         "actionTypes": {
           "default": null,
-          "description": "Actions only: restrict to action types, such as slack, msteams, email, or pagerduty.",
+          "description": "Action types to include, such as slack, msteams, email, or pagerduty. Only with `actions`.",
           "anyOf": [
             {
               "maxItems": 20,
@@ -4422,7 +4429,7 @@
         },
         "conditionGroup": {
           "default": null,
-          "description": "Required for conditions: workflow_trigger for Alert triggers, action_filter for action groups.",
+          "description": "Required with `conditions`: workflow_trigger for Alert triggers, action_filter for action group filters.",
           "anyOf": [
             {
               "type": "string",
@@ -4447,7 +4454,7 @@
         },
         "sourceTypes": {
           "default": null,
-          "description": "Sources only: restrict by monitor type, such as issue_stream or metric_issue.",
+          "description": "Monitor types to include, such as issue_stream (all issues in a project) or metric_issue. A source with no project covers all projects. Only with `sources`.",
           "anyOf": [
             {
               "maxItems": 20,
@@ -4733,7 +4740,7 @@
   {
     "name": "get_alert_rule",
     "title": "Get Alert Rule",
-    "description": "Get details for one Sentry alert rule by ID or exact name.\n\nUse this tool when you need to inspect an alert rule's exact conditions, query, triggers, and actions before explaining or planning changes.\nTo list or search alert rules, use find_alert_rules instead.\n\n<examples>\nget_alert_rule(organizationSlug='my-org', kind='metric', ruleIdOrName='12345')\nget_alert_rule(organizationSlug='my-org', kind='issue', projectSlug='backend', ruleIdOrName='Notify backend team')\nget_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='P95 latency')\n</examples>\n\n<hints>\n- Prefer get_metric_monitor_details for Metric Monitors. With kind=metric, numeric IDs retain their legacy alert-rule meaning; detector:123 explicitly identifies monitor 123.\n- With `kind='all'`, a digit-only `ruleIdOrName` is treated as an exact alert rule name.\n- Issue Alerts are notification workflows and may cover multiple projects or have no connected sources. Omit projectSlug to inspect organization-wide.\n- Issue details include complete conditions, notification actions, connected monitors and project scope. Inaccessible or session-restricted sources are marked explicitly.\n</hints>",
+    "description": "Get one Sentry alert rule by ID or exact name: its triggers, conditions, notification actions, connected monitors, and project scope.\nPrefer get_metric_monitor_details for Metric Monitors; cron and uptime monitors have their own get tools.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -4757,7 +4764,7 @@
           "default": "all",
           "type": "string",
           "enum": ["all", "issue", "metric"],
-          "description": "Which alert family to inspect. Numeric metric IDs are legacy alert-rule IDs, not monitor IDs. `all` performs an exact-name lookup."
+          "description": "Alert family: `issue` for Alerts (workflows), `metric` for Metric Monitors. `all` matches by exact name only."
         },
         "projectSlug": {
           "default": null,
@@ -4774,7 +4781,7 @@
         "ruleIdOrName": {
           "type": "string",
           "minLength": 1,
-          "description": "An Alert ID or exact name. Metric references accept legacy numeric alert-rule IDs or detector:123 for canonical monitor IDs."
+          "description": "Alert ID or exact name. With `metric`, a number is a legacy alert-rule ID; use detector:<id> for a Metric Monitor ID. With `all`, digits are matched as a name."
         },
         "fresh": {
           "description": "Bypass cached reads.",
@@ -7353,7 +7360,7 @@
   {
     "name": "get_metric_monitor_details",
     "title": "Get Metric Monitor Details",
-    "description": "Inspect a Sentry Metric Monitor's query, dataset, detection mode, thresholds, resolution conditions and connected Alerts.\nUse monitorId from find_metric_monitors, not a legacy metric alert ID. Time windows and comparison deltas are in seconds.\nCondition results use 75 for critical, 50 for warning and 0 for resolved. Percent comparisons are absolute percentages (110 means 10% higher); dynamic conditions include sensitivity and direction.\nworkflowIds identify notification Alerts; inspect their actions with get_alert_rule(kind='issue').\nget_metric_monitor_details(organizationSlug='my-org', monitorId='12345')",
+    "description": "Get a Sentry Metric Monitor: its query, dataset, detection mode, thresholds, resolution conditions, and connected Alerts.\nCondition results: 75 critical, 50 warning, 0 resolved. Percent thresholds are absolute: 110 means 10% higher. Windows are in seconds.\nConnected Alerts: get_alert_rule. Cron jobs: find_monitors. URL checks: find_uptime_monitors.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -7380,7 +7387,7 @@
         "monitorId": {
           "type": "string",
           "pattern": "^\\d+$",
-          "description": "Native Metric Monitor ID from find_metric_monitors."
+          "description": "Metric Monitor ID from find_metric_monitors, not a legacy metric alert ID."
         },
         "fresh": {
           "description": "Bypass cached reads.",
@@ -7563,7 +7570,7 @@
   {
     "name": "get_monitor_details",
     "title": "Get Cron Monitor Details",
-    "description": "Get details and recent check-ins for a Sentry cron monitor (scheduled job).\n\nUse this tool when you need to:\n- Inspect a monitor's schedule, status, owner, project, and environments\n- Review recent check-ins for missed, failed, timeout, or OK runs\n- Check monitor stats over a recent time range\n\nTo find issues from a monitor, call `search_issues` with query `monitor.slug:<slug>`.\n\n<examples>\nget_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import')\nget_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import', projectSlugOrId='backend', environment='production', period='7d')\n</examples>",
+    "description": "Get a Sentry cron monitor (scheduled job): schedule, status, owner, environments, recent check-ins (missed, failed, timeout, OK), and check-in stats.\nUptime URL checks: find_uptime_monitors. Metric thresholds: find_metric_monitors.\nIssues for a monitor: search_issues with monitor.slug:<slug>.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -7585,7 +7592,7 @@
         },
         "projectSlugOrId": {
           "default": null,
-          "description": "Optional project slug or numeric ID. Use this to disambiguate monitors with the same slug or to scope a monitor URL that includes a project segment.",
+          "description": "Project slug or numeric ID, to pick between monitors that share a slug.",
           "type": ["string", "null"]
         },
         "monitorSlug": {
@@ -7598,7 +7605,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Optional environment name to filter monitor environments, recent check-ins, and stats."
+              "description": "Environment to filter environments, check-ins, and stats by."
             },
             {
               "type": "null"
@@ -7611,7 +7618,7 @@
             {
               "type": "string",
               "pattern": "^\\d+[mhdw]$",
-              "description": "Relative time range. Defaults to `24h` when `start` and `end` are omitted."
+              "description": "Relative time range, such as 24h or 7d. Defaults to 24h without start and end."
             },
             {
               "type": "null"
@@ -7625,7 +7632,7 @@
               "type": "string",
               "format": "date-time",
               "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
-              "description": "Absolute start time. Must be provided with `end`; do not combine with `period`."
+              "description": "Absolute start time. Requires end; not with period."
             },
             {
               "type": "null"
@@ -7639,7 +7646,7 @@
               "type": "string",
               "format": "date-time",
               "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
-              "description": "Absolute end time. Must be provided with `start`; do not combine with `period`."
+              "description": "Absolute end time. Requires start; not with period."
             },
             {
               "type": "null"
@@ -7651,7 +7658,7 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 50,
-          "description": "Maximum number of recent check-ins to include."
+          "description": "Maximum recent check-ins to include."
         },
         "includeStats": {
           "default": true,
@@ -7665,7 +7672,7 @@
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991,
-              "description": "Optional stats bucket size in seconds. Omit this to let Sentry choose an appropriate rollup."
+              "description": "Stats bucket size in seconds. Omit to let Sentry choose."
             },
             {
               "type": "null"
@@ -10038,7 +10045,7 @@
   {
     "name": "get_uptime_monitor_details",
     "title": "Get Uptime Monitor Details",
-    "description": "Get details for a Sentry uptime monitor, including recent checks.\n\nUse this tool when you need to:\n- Inspect an uptime monitor's URL, interval, thresholds, and status\n- Review recent HTTP check results (success/failure, status code, duration)\n- Debug why an uptime monitor is failing\n\nThis is separate from cron monitors (`get_monitor_details`).\n\nRequest bodies are never returned. Sensitive header values are redacted.\nTo find related issues, call `search_issues` with query `uptime_rule:<id>`.\n\n<examples>\nget_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')\nget_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', period='7d', checkLimit=20)\n</examples>",
+    "description": "Get a Sentry uptime monitor: its URL, interval, thresholds, status, and recent HTTP check results (status code, duration, failures). Request bodies are never returned; sensitive headers are redacted.\nScheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.\nRelated issues: search_issues with uptime_rule:<id>.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -10065,31 +10072,31 @@
         "uptimeMonitorId": {
           "type": "string",
           "minLength": 1,
-          "description": "Uptime monitor ID (detector id)."
+          "description": "Uptime monitor ID from find_uptime_monitors."
         },
         "period": {
           "type": "string",
           "pattern": "^\\d+[mhdw]$",
-          "description": "Relative time range for recent checks. Defaults to `24h` when `start` and `end` are omitted."
+          "description": "Relative time range for recent checks, such as 24h or 7d. Defaults to 24h without start and end."
         },
         "start": {
           "type": "string",
           "format": "date-time",
           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
-          "description": "Absolute start time. Must be provided with `end`; do not combine with `period`."
+          "description": "Absolute start time. Requires end; not with period."
         },
         "end": {
           "type": "string",
           "format": "date-time",
           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
-          "description": "Absolute end time. Must be provided with `start`; do not combine with `period`."
+          "description": "Absolute end time. Requires start; not with period."
         },
         "checkLimit": {
           "default": 10,
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 50,
-          "description": "Maximum number of recent checks to include."
+          "description": "Maximum recent checks to include."
         },
         "fresh": {
           "description": "Bypass cached reads.",
@@ -14130,7 +14137,7 @@
   {
     "name": "update_alert_rule",
     "title": "Update Alert Rule",
-    "description": "Update a Sentry Alert (workflow), including notification actions and connections.\nUse get_alert_rule with kind='issue' first to inspect the complete triggers and actionFilters configuration.\nUse get_alert_options to discover notification actions, integrations, conditions, and available sources.\nOmit fields to leave them unchanged. Pass null to clear owner or environment.\ntriggers replaces the trigger conditions. actionFilters replaces ALL action groups: copy the complete configuration, retain existing IDs, and change only the intended values. Omitted groups, conditions, and actions are removed.\nFor Slack or Microsoft Teams, change config.targetDisplay to the channel name and use integrationId for the workspace or team. Sentry resolves the channel ID. Slack also accepts an explicit new targetIdentifier; a copied old ID is cleared when the name or workspace changes.\nOther actions use their provider's config and data. For Discord, PagerDuty, Opsgenie, and email, update targetIdentifier to the channel, service, team, or recipient ID; changing only its display name does not change the destination.\nUse addProjectSlugs/removeProjectSlugs to connect/disconnect a project's issue stream. Other monitors in that project remain connected. Use addDetectorIds/removeDetectorIds for individual monitors. Unmentioned connections are preserved.\nMetric Monitor detection queries and thresholds are separate operations.\nAll-project connections require Sentry's all-project feature and an API token with org:write in addition to alerts:write.\nA project-constrained session can only edit alerts affecting that project exclusively.\nRequires alerts:write; reconnect OAuth if the existing token lacks it.\n<examples>\nupdate_alert_rule(organizationSlug='my-org', ruleIdOrName='12345', status='disabled')\nupdate_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='Notify backend team', frequencyMinutes=30)\n</examples>",
+    "description": "Update a Sentry Alert (notification workflow): name, status, owner, environment, notification frequency, triggers, notification actions, and connected projects or monitors.\nRead it with get_alert_rule first; get_alert_options lists valid actions, conditions, and sources. Omitted fields stay unchanged.\nMetric Monitor queries and thresholds change with update_metric_monitor; cron and uptime monitors have their own tools.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -14164,7 +14171,7 @@
         "ruleIdOrName": {
           "type": "string",
           "minLength": 1,
-          "description": "Workflow ID or exact alert name. Digit-only values are treated as IDs. Use IDs from get_alert_rule(kind='issue')."
+          "description": "Alert workflow ID from get_alert_rule, or exact Alert name. Digits are treated as an ID."
         },
         "name": {
           "type": "string",
@@ -14182,6 +14189,7 @@
           "maximum": 9007199254740991
         },
         "environment": {
+          "description": "Environment the Alert applies to. Null means all environments.",
           "anyOf": [
             {
               "type": "string",
@@ -14193,7 +14201,7 @@
           ]
         },
         "owner": {
-          "description": "Owner actor user:ID or team:ID. Pass null to clear.",
+          "description": "Owner as user:<id> or team:<id>. Null clears it.",
           "anyOf": [
             {
               "type": "string",
@@ -14233,7 +14241,7 @@
             }
           },
           "required": ["logicType", "conditions"],
-          "description": "The complete trigger group. Preserve existing condition IDs when editing; omitted conditions are removed. Use the configuration returned by get_alert_rule."
+          "description": "Complete trigger group, copied from get_alert_rule. Keep existing condition IDs; omitted conditions are removed."
         },
         "actionFilters": {
           "type": "array",
@@ -14290,7 +14298,8 @@
                       "propertyNames": {
                         "type": "string"
                       },
-                      "additionalProperties": {}
+                      "additionalProperties": {},
+                      "description": "Provider config. Slack and Teams: set targetDisplay to the channel name in the integrationId workspace; Sentry resolves the ID. Discord, PagerDuty, Opsgenie, email: set targetIdentifier; a new display name alone keeps the old target."
                     },
                     "status": {
                       "type": "string"
@@ -14302,10 +14311,10 @@
             },
             "required": ["logicType", "conditions", "actions"]
           },
-          "description": "The complete list of action groups, conditions, and notification actions. Preserve their IDs and all unchanged groups and actions; omitted entries are removed. Slack and Microsoft Teams resolve config.targetDisplay as a channel name within integrationId. Other providers use their native config.targetIdentifier and data fields."
+          "description": "Complete list of action groups with their conditions and notification actions, copied from get_alert_rule. Keep IDs and unchanged entries; omitted groups, conditions, and actions are removed."
         },
         "addProjectSlugs": {
-          "description": "Projects whose existing issue streams should be connected.",
+          "description": "Projects whose issue streams to connect.",
           "minItems": 1,
           "type": "array",
           "items": {
@@ -14314,7 +14323,7 @@
           }
         },
         "removeProjectSlugs": {
-          "description": "Projects whose issue streams should be disconnected; other monitor connections are retained.",
+          "description": "Projects whose issue streams to disconnect. Other monitors in those projects stay connected.",
           "minItems": 1,
           "type": "array",
           "items": {
@@ -14323,7 +14332,7 @@
           }
         },
         "addDetectorIds": {
-          "description": "Existing detector IDs to connect, from get_alert_options(section='sources').",
+          "description": "Monitor source IDs to connect, from get_alert_options sources. An all-project source also needs org:write.",
           "minItems": 1,
           "type": "array",
           "items": {
@@ -14332,7 +14341,7 @@
           }
         },
         "removeDetectorIds": {
-          "description": "Detector IDs to disconnect. Other connections are retained.",
+          "description": "Monitor source IDs to disconnect.",
           "minItems": 1,
           "type": "array",
           "items": {
@@ -14408,7 +14417,7 @@
                   },
                   "required": ["logicType", "conditions"],
                   "additionalProperties": false,
-                  "description": "The complete trigger group. Preserve existing condition IDs when editing; omitted conditions are removed. Use the configuration returned by get_alert_rule."
+                  "description": "Complete trigger group, copied from get_alert_rule. Keep existing condition IDs; omitted conditions are removed."
                 },
                 {
                   "type": "null"
@@ -14473,7 +14482,8 @@
                               "propertyNames": {
                                 "type": "string"
                               },
-                              "additionalProperties": {}
+                              "additionalProperties": {},
+                              "description": "Provider config. Slack and Teams: set targetDisplay to the channel name in the integrationId workspace; Sentry resolves the ID. Discord, PagerDuty, Opsgenie, email: set targetIdentifier; a new display name alone keeps the old target."
                             },
                             "status": {
                               "type": "string"
@@ -14487,7 +14497,7 @@
                     "required": ["logicType", "conditions", "actions"],
                     "additionalProperties": false
                   },
-                  "description": "The complete list of action groups, conditions, and notification actions. Preserve their IDs and all unchanged groups and actions; omitted entries are removed. Slack and Microsoft Teams resolve config.targetDisplay as a channel name within integrationId. Other providers use their native config.targetIdentifier and data fields."
+                  "description": "Complete list of action groups with their conditions and notification actions, copied from get_alert_rule. Keep IDs and unchanged entries; omitted groups, conditions, and actions are removed."
                 },
                 {
                   "type": "null"
@@ -14987,7 +14997,7 @@
   {
     "name": "update_metric_monitor",
     "title": "Update Metric Monitor",
-    "description": "Update a Sentry Metric Monitor's query, detection conditions, metadata, status or connected Alerts.\nUse get_metric_monitor_details first and its native monitorId, not a legacy metric alert ID. projectSlug identifies scope; it does not move the monitor.\nOmit fields to preserve them. query and config accept partial changes. conditionGroup and workflowIds replace their complete configuration; preserve IDs and entries you want to retain.\nStatic, Percent and Dynamic detection are supported. Windows and comparison deltas are in seconds. Percent thresholds are absolute (110 means 10% higher), not percentage changes.\nDynamic changes may require sufficient historical data. Dataset access, query and window constraints are enforced by Sentry.\nworkflowIds connect existing Alerts, including shared Alerts, without editing their actions or other monitors. Use update_alert_rule for notification configuration.\nRequires alerts:write; reconnect OAuth if the existing token lacks it.\nupdate_metric_monitor(organizationSlug='my-org', monitorId='12345', status='disabled')\nupdate_metric_monitor(organizationSlug='my-org', monitorId='12345', query={query:'level:error', timeWindowSeconds:300})",
+    "description": "Update a Sentry Metric Monitor: its query, detection mode and conditions, name, owner, status, or connected Alerts. Omitted fields stay unchanged.\nRead it with get_metric_monitor_details first. Alert notification actions change with update_alert_rule. Cron jobs: find_monitors. URL checks: find_uptime_monitors.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -15014,7 +15024,7 @@
         "monitorId": {
           "type": "string",
           "pattern": "^\\d+$",
-          "description": "Native Metric Monitor ID from find_metric_monitors."
+          "description": "Metric Monitor ID from find_metric_monitors, not a legacy metric alert ID."
         },
         "name": {
           "type": "string",
@@ -15029,7 +15039,7 @@
           "enum": ["active", "disabled"]
         },
         "owner": {
-          "description": "Owner actor, e.g. team:123 or user:123. Pass null to clear.",
+          "description": "Owner as user:<id> or team:<id>. Null clears it.",
           "anyOf": [
             {
               "type": "string",
@@ -15041,7 +15051,7 @@
           ]
         },
         "query": {
-          "description": "Partial query changes. Omitted fields are preserved; environment:null clears its filter. metrics is crash-free Releases; events_analytics_platform supports spans, logs and application metrics via eventTypes. Dataset changes must include compatible aggregate and eventTypes.",
+          "description": "Query fields to change; omitted fields are kept and a null environment clears the filter. A new dataset needs a matching aggregate and eventTypes.",
           "type": "object",
           "properties": {
             "dataset": {
@@ -15052,7 +15062,8 @@
                 "generic_metrics",
                 "metrics",
                 "events_analytics_platform"
-              ]
+              ],
+              "description": "`metrics` is crash-free releases. `events_analytics_platform` covers spans, logs, and application metrics, chosen by eventTypes."
             },
             "query": {
               "type": "string"
@@ -15081,7 +15092,7 @@
           }
         },
         "config": {
-          "description": "Partial detection config. Percent mode requires comparisonDeltaSeconds. Selecting Static or Dynamic clears the comparison delta. Changing detectionType also requires compatible conditionGroup.",
+          "description": "Detection config fields to change. Static and Dynamic clear the comparison delta; a new detection type needs a matching condition group.",
           "type": "object",
           "properties": {
             "detectionType": {
@@ -15103,7 +15114,7 @@
           }
         },
         "conditionGroup": {
-          "description": "Replaces ALL detection conditions; preserve existing IDs. Static/Percent use numeric comparisons, results 75 critical, 50 warning, 0 resolved, including a resolution condition. Percent 110 means 10% higher. Dynamic uses anomaly_detection with sensitivity, seasonality:auto and thresholdType 0 above, 1 below, 2 both.",
+          "description": "Replaces all detection conditions; keep existing IDs. Static and Percent use threshold conditions, including a resolved one. Dynamic uses one anomaly_detection condition.",
           "type": "object",
           "properties": {
             "id": {
@@ -15129,11 +15140,13 @@
                         "enum": ["gt", "lt", "gte", "lte"]
                       },
                       "comparison": {
-                        "type": "number"
+                        "type": "number",
+                        "description": "Threshold value. For Percent detection it is an absolute percentage of the earlier window: 110 means 10% higher."
                       },
                       "conditionResult": {
                         "type": "number",
-                        "enum": [75, 50, 0]
+                        "enum": [75, 50, 0],
+                        "description": "75 critical, 50 warning, 0 resolved."
                       }
                     },
                     "required": ["type", "comparison", "conditionResult"]
@@ -15161,7 +15174,8 @@
                           },
                           "thresholdType": {
                             "type": "number",
-                            "enum": [0, 1, 2]
+                            "enum": [0, 1, 2],
+                            "description": "0 above, 1 below, 2 above or below."
                           }
                         },
                         "required": [
@@ -15184,7 +15198,7 @@
           "required": ["logicType", "conditions"]
         },
         "workflowIds": {
-          "description": "Replaces this monitor's Alert connections. Copy all IDs to retain from get_metric_monitor_details; [] disconnects all. Does not edit the Alerts themselves.",
+          "description": "Alert workflow IDs to connect; replaces the current list. Copy IDs to keep from get_metric_monitor_details; [] disconnects all. The Alerts are not edited.",
           "type": "array",
           "items": {
             "type": "string",
@@ -15464,7 +15478,7 @@
   {
     "name": "update_uptime_monitor",
     "title": "Update Uptime Monitor",
-    "description": "Update a Sentry HTTP uptime monitor.\n\nUse this tool when you need to:\n- Change URL, interval, timeout, method, headers, or body\n- Enable or disable a monitor (`status`)\n- Update owner, environment, or failure thresholds\n\nBe careful when using this tool!\n\nOmit a field to leave it unchanged. Pass explicit `null` to clear `owner`, `environment`, or `body`.\n\n<examples>\nupdate_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', status='disabled')\nupdate_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', intervalSeconds=300, timeoutMs=8000)\nupdate_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', owner=null)\n</examples>",
+    "description": "Update a Sentry uptime monitor: URL, interval, timeout, HTTP method, headers, body, status, owner, environment, or failure thresholds. Omitted fields stay unchanged.\nScheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -15491,7 +15505,7 @@
         "uptimeMonitorId": {
           "type": "string",
           "minLength": 1,
-          "description": "Uptime monitor ID (detector id)."
+          "description": "Uptime monitor ID from find_uptime_monitors."
         },
         "name": {
           "type": "string",
@@ -15507,13 +15521,13 @@
           "type": "integer",
           "minimum": -9007199254740991,
           "maximum": 9007199254740991,
-          "description": "Seconds between checks. Allowed values: 60, 300, 600, 1200, 1800, 3600."
+          "description": "Seconds between checks: 60, 300, 600, 1200, 1800, or 3600."
         },
         "timeoutMs": {
           "type": "integer",
           "minimum": 1000,
           "maximum": 60000,
-          "description": "Request timeout in milliseconds (1000-60000)."
+          "description": "Request timeout in milliseconds."
         },
         "method": {
           "type": "string",
@@ -15530,10 +15544,10 @@
               "type": "string"
             }
           },
-          "description": "Optional HTTP headers as an array of [name, value] pairs, e.g. [[\"Accept\",\"application/json\"]]."
+          "description": "HTTP headers as [name, value] pairs, e.g. [[\"Accept\",\"application/json\"]]."
         },
         "body": {
-          "description": "Request body. Pass `null` to clear the body.",
+          "description": "Request body. Null clears it.",
           "type": ["string", "null"]
         },
         "status": {
@@ -15542,13 +15556,13 @@
           "description": "Monitor status. `disabled` stops checks and does not count against quota."
         },
         "owner": {
-          "description": "Owner actor in `user:ID` or `team:ID` format. Pass `null` to clear the owner.",
+          "description": "Owner as `user:ID` or `team:ID`. Null clears it.",
           "anyOf": [
             {
               "type": "string",
               "minLength": 1,
               "pattern": "^(user|team):.+$",
-              "description": "Owner actor in `user:ID` or `team:ID` format."
+              "description": "Owner as `user:ID` or `team:ID`."
             },
             {
               "type": "null"
@@ -15556,7 +15570,7 @@
           ]
         },
         "environment": {
-          "description": "Environment name. Pass `null` to clear the environment.",
+          "description": "Environment name. Null clears it.",
           "anyOf": [
             {
               "type": "string",

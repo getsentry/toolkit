@@ -114,21 +114,10 @@ export default defineTool({
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [
-    "Create a Sentry cron monitor.",
-    "",
-    "Use this tool when you need to:",
-    "- Monitor a scheduled job (cron job, scheduled task) for missed, failed, or slow runs",
-    "- Set up a cron monitor before instrumenting check-ins",
-    "",
-    "Set `schedule` to exactly one crontab or interval schedule. Check-ins must still be sent by the job (SDK `monitor_config`/check-ins or `sentry monitor run`) using the returned slug.",
-    "workflowIds optionally connect existing notification Alerts without modifying them. Use find_alert_rules(kind='issue') to find workflow IDs.",
-    "If the returned status is `disabled` but you did not request that, the organization has no cron monitor seat available. Tell the user; the monitor ignores check-ins until a seat frees up and it is enabled.",
-    "After an error or timeout, use find_monitors with the name and project before retrying; creation is not idempotent.",
-    "",
-    "<examples>",
-    "create_monitor(organizationSlug='my-organization', projectSlug='backend', name='Nightly Import', schedule={ type: 'crontab', crontab: '0 3 * * *' }, timezone='America/Los_Angeles', checkInMargin=5, maxRuntime=30)",
-    "create_monitor(organizationSlug='my-organization', projectSlug='backend', name='Queue Drain', schedule={ type: 'interval', value: 15, unit: 'minute' })",
-    "</examples>",
+    "Create a Sentry cron monitor that alerts on missed, failed, or slow runs of a scheduled job. Uptime URL checks: find_uptime_monitors. Metric thresholds: find_metric_monitors.",
+    "The job must send check-ins with the returned slug (SDK monitor config or sentry monitor run).",
+    "A disabled status you did not request means no cron seat was free: tell the user; it ignores check-ins until enabled.",
+    "After an error or timeout, check find_monitors before retrying.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -139,9 +128,7 @@ export default defineTool({
       .string()
       .trim()
       .min(1)
-      .describe(
-        "Optional monitor slug used by check-ins. Derived from the name when omitted.",
-      )
+      .describe("Slug that check-ins use. Derived from the name when omitted.")
       .optional(),
     schedule: z
       .discriminatedUnion("type", [
@@ -166,7 +153,7 @@ export default defineTool({
           .strict(),
       ])
       .describe(
-        "Monitor schedule: exactly one of `{ type: 'crontab', crontab: '0 3 * * *' }` or `{ type: 'interval', value: 15, unit: 'minute' }`.",
+        "Job schedule: a crontab, or an interval such as every 15 minutes.",
       ),
     timezone: z
       .string()
@@ -215,12 +202,14 @@ export default defineTool({
         /^(user|team):\d+$/,
         "owner must use `user:ID` or `team:ID` format (e.g. `user:123` or `team:456`).",
       )
-      .describe("Owner actor in `user:ID` or `team:ID` format.")
+      .describe("Owner as `user:ID` or `team:ID`.")
       .optional(),
     workflowIds: z
       .array(z.string().regex(/^\d+$/))
       .max(MAX_WORKFLOW_IDS)
-      .describe("Existing notification Alert IDs to connect.")
+      .describe(
+        "Alert workflow IDs to connect, from find_alert_rules with `issue`.",
+      )
       .optional(),
   },
   annotations: {
