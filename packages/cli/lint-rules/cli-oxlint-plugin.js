@@ -163,8 +163,7 @@ function silentBody(block, parameter) {
   const statement = block.body[0];
   return (
     statement.type === "ReturnStatement" &&
-    (!parameter ||
-      parameter.type !== "Identifier" ||
+    (parameter?.type !== "Identifier" ||
       !containsIdentifier(statement.argument, parameter.name))
   );
 }
