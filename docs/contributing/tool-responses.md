@@ -456,10 +456,18 @@ result with a path.
 No matches return `results: []`. A search failure is a tool error, including
 an error reported inside a successful search response.
 
+`get_doc` takes a `search_docs` path or a docs page URL, such as
+`https://docs.sentry.io/platforms/javascript/sourcemaps/`, so other tool output
+can link plain docs URLs. It drops the query and fragment and fetches
+`<path>.md`; a section page such as `/platforms/javascript/` is served at
+`/platforms/javascript.md`. Only https URLs on docs.sentry.io and
+develop.sentry.io are accepted, and the tool follows redirects itself so that
+every hop stays on those hosts. The response shows the final markdown URL.
+
 `get_doc` returns a user input error for a missing page and points the agent to
 `search_docs`. docs.sentry.io serves missing pages with status 200 and an
 `X-Sentry-Docs-Not-Found` header, so the tool checks that header as well as
-status 404.
+status 404. A redirect off the allowed hosts is treated as a missing page.
 
 ### Cron Monitor Environment Deletion
 

@@ -2061,6 +2061,20 @@ The page \`/ai/mcp\` does not exist.
       },
     );
   }),
+  // Moved pages answer with a relative redirect to the new .md path.
+  http.get("https://docs.sentry.io/product/rate-limits.md", () => {
+    return new HttpResponse(null, {
+      status: 308,
+      headers: { Location: "/product/rate-limiting.md#quotas" },
+    });
+  }),
+  // A redirect off the docs hosts, like develop.sentry.io's login redirect.
+  http.get("https://docs.sentry.io/product/offsite.md", () => {
+    return new HttpResponse(null, {
+      status: 302,
+      headers: { Location: "https://sentry.io/auth/login/" },
+    });
+  }),
   // Catch-all for other doc paths - return 404
   http.get("https://docs.sentry.io/*.md", () => {
     return new HttpResponse(null, { status: 404 });
