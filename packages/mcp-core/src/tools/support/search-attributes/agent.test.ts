@@ -88,7 +88,7 @@ describe("toAttributeMatches", () => {
         ATTRIBUTES,
         2,
       ),
-    ).toEqual({ best: undefined, candidates: [] });
+    ).toEqual({ best: undefined, candidates: [], reason: "" });
   });
 });
 
