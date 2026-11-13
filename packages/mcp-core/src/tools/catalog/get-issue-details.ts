@@ -477,7 +477,16 @@ export default defineTool({
     openWorldHint: true,
   },
   async handler(params, context: ServerContext) {
-    if (params.packageNames && !params.eventId) {
+    // An issue-event URL (`/issues/{issueId}/events/{eventId}/`) selects that
+    // event; an explicit `eventId` still wins.
+    const urlTarget = params.issueUrl
+      ? parseIssueParams({
+          organizationSlug: params.organizationSlug,
+          issueUrl: params.issueUrl,
+        })
+      : undefined;
+    const eventId = params.eventId ?? urlTarget?.eventId;
+    if (params.packageNames && !eventId) {
       throw new UserInputError(
         "`packageNames` requires an explicit `eventId`.",
       );
@@ -486,9 +495,9 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
 
-    if (params.eventId) {
-      const orgSlug = params.organizationSlug;
-      const eventId = params.eventId; // Capture eventId for type safety
+    if (eventId) {
+      const orgSlug = urlTarget?.organizationSlug ?? params.organizationSlug;
+      const issueIdForEvent = urlTarget?.issueId ?? params.issueId;
       if (!orgSlug) {
         throw new UserInputError(
           "`organizationSlug` is required when providing `eventId`",
@@ -498,10 +507,10 @@ export default defineTool({
       setTargetTagsAndAttributes({ organizationSlug: orgSlug });
       // Use issueId directly if provided (e.g., from URL parsing), otherwise search by eventId
       let issue: Awaited<ReturnType<typeof apiService.getIssue>>;
-      if (params.issueId) {
+      if (issueIdForEvent) {
         issue = await apiService.getIssue({
           organizationSlug: orgSlug,
-          issueId: params.issueId,
+          issueId: issueIdForEvent,
         });
       } else {
         const issues = await apiService.listIssues({
@@ -590,10 +599,10 @@ export default defineTool({
     }
 
     const { organizationSlug: orgSlug, issueId: parsedIssueId } =
+      urlTarget ??
       parseIssueParams({
         organizationSlug: params.organizationSlug,
         issueId: params.issueId,
-        issueUrl: params.issueUrl,
       });
 
     setTargetTagsAndAttributes({ organizationSlug: orgSlug });

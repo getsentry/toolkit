@@ -1119,6 +1119,40 @@ describe("get_issue_details", () => {
     `);
   });
 
+  it("fetches the event selected by an issue-event URL", async () => {
+    const requestedPaths: string[] = [];
+    mswServer.events.on("request:start", ({ request }) => {
+      requestedPaths.push(new URL(request.url).pathname);
+    });
+
+    try {
+      const result = await getIssueDetails.handler(
+        {
+          organizationSlug: undefined,
+          issueId: undefined,
+          eventId: undefined,
+          issueUrl:
+            "https://sentry.io/organizations/sentry-mcp-evals/issues/6507376925/events/7ca573c0f4814912aaa9bdc77d1a7d51/",
+          regionUrl: null,
+        },
+        baseContext,
+      );
+
+      expect(result).toContain(
+        "**Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51",
+      );
+    } finally {
+      mswServer.events.removeAllListeners("request:start");
+    }
+
+    expect(requestedPaths).toContain(
+      "/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/7ca573c0f4814912aaa9bdc77d1a7d51/",
+    );
+    expect(requestedPaths).not.toContain(
+      "/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/latest/",
+    );
+  });
+
   it("serializes with eventId", async () => {
     const result = await getIssueDetails.handler(
       {
