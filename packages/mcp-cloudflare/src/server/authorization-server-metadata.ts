@@ -112,6 +112,7 @@ export async function patchRootAuthorizationServerMetadata(
     const patched = {
       ...metadata,
       prompt_values_supported: SUPPORTED_PROMPT_VALUES,
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- temporarily-off toggle; see the TODO on its declaration
       ...(ADVERTISE_AUTHORIZATION_RESPONSE_ISS_PARAMETER_SUPPORTED
         ? { authorization_response_iss_parameter_supported: true }
         : {}),
