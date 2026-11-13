@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Verify every command declares an exposure and that its permission class
  * agrees with the requests it sends (`script/lib/command-access.ts`). Uses the

@@ -10,8 +10,8 @@
  * for introspection and documentation generation.
  */
 
-import generatedCommandApi from "../generated/command-api.json";
-import generatedCommandApiAccess from "../generated/command-api-access.json";
+import generatedCommandApi from "../generated/command-api.json" with { type: "json" };
+import generatedCommandApiAccess from "../generated/command-api-access.json" with { type: "json" };
 import {
   type ApiAccess,
   type CommandExposure,
