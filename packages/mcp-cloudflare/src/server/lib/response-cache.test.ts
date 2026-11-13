@@ -173,6 +173,60 @@ describe("createResponseCache", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("invalidates the regional entries a regional mutation affects", async () => {
+    const store = createMemoryStore();
+    // The cache's base URL is the control host; requests go to a region.
+    const api = new SentryApiService({
+      host: "us.sentry.io",
+      accessToken: "token-a",
+      responseCache: createResponseCache({
+        store,
+        identity: "identity-a",
+        apiBaseUrl: "https://sentry.io",
+        waitUntil,
+      }),
+    });
+    const issue = { organizationSlug: "org", issueId: "CLOUDFLARE-MCP-41" };
+    await api.getIssue(issue);
+    await Promise.all(pending);
+    await api.getIssue(issue);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    await api.updateIssue({ ...issue, status: "resolved" });
+    fetchSpy.mockClear();
+
+    await api.getIssue(issue);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [input, init] = fetchSpy.mock.calls[0] ?? ["about:blank"];
+    expect(new URL(new Request(input, init).url).host).toBe("us.sentry.io");
+  });
+
+  it("does not let a write still in waitUntil outlive an invalidation", async () => {
+    const store = createMemoryStore();
+    const { cache } = createResponseCache({
+      store,
+      identity: "identity-a",
+      apiBaseUrl: "https://sentry.io",
+      waitUntil,
+    });
+    const url = "https://sentry.io/api/0/organizations/org/issues/1/";
+    // The GET's write is still running when the mutation invalidates.
+    const write = cache.store(
+      { url, requestHeaders: {}, identity: "identity-a" },
+      Response.json(issueFixture),
+    );
+    await cache.invalidate(url);
+    await write;
+    expect(store.stats().entries).toBe(0);
+
+    // With no mutation in between, the same write is kept.
+    await cache.store(
+      { url, requestHeaders: {}, identity: "identity-a" },
+      Response.json(issueFixture),
+    );
+    expect(store.stats().entries).toBe(1);
+  });
+
   it.each([
     ["a non-JSON body", "text/plain", "max-age=60"],
     ["a non-storable JSON body", "application/json", "no-store"],

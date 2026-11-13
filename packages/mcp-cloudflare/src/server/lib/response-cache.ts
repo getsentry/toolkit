@@ -141,6 +141,41 @@ export type ResponseCacheOptions = {
 };
 
 /**
+ * Writes still running in `waitUntil`, by store and identity. Invalidation
+ * waits for them, so a GET's write that is still running when a mutation
+ * invalidates cannot land afterwards and bring the old body back.
+ */
+const pendingWrites = new WeakMap<
+  CacheStore,
+  Map<string, Set<Promise<void>>>
+>();
+
+function trackWrite(
+  store: CacheStore,
+  identity: string,
+  write: Promise<void>,
+): void {
+  let byIdentity = pendingWrites.get(store);
+  if (!byIdentity) {
+    byIdentity = new Map();
+    pendingWrites.set(store, byIdentity);
+  }
+  let writes = byIdentity.get(identity);
+  if (!writes) {
+    writes = new Set();
+    byIdentity.set(identity, writes);
+  }
+  writes.add(write);
+  const tracked = writes;
+  void write.finally(() => {
+    tracked.delete(write);
+    if (tracked.size === 0 && byIdentity.get(identity) === tracked) {
+      byIdentity.delete(identity);
+    }
+  });
+}
+
+/**
  * A response cache over `store` for one identity, in the shape
  * `ServerContext.responseCache` takes.
  */
@@ -216,11 +251,16 @@ export function createResponseCache({
             });
           },
         );
+        trackWrite(store, identity, pending);
         waitUntil(pending);
         return pending;
       },
 
       async invalidate(url) {
+        const writes = pendingWrites.get(store)?.get(identity);
+        if (writes) {
+          await Promise.all(writes);
+        }
         for (const prefix of computeInvalidationPrefixes(url, apiBaseUrl)) {
           await store.deleteMatching(identity, prefix);
         }

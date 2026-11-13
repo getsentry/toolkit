@@ -192,6 +192,8 @@ How it works (`src/server/lib/response-cache.ts`):
   (60 s volatile, 5 minutes stable, never for autofix polling). A successful
   write invalidates the same grant's entries under the written resource.
 - **Writes** run in `ctx.waitUntil()`, so they never delay a response.
+  Invalidation first waits for the grant's writes still running, so a write
+  that started before a mutation cannot bring the old body back.
 - **Bodies** are compressed with zstd level 3 when `node:zlib` has it, and
   brotli quality 4 otherwise. Local workerd (miniflare `5.20261019.1-beta`)
   has zstd; a deployed Worker is not confirmed yet. The
