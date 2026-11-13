@@ -2,9 +2,7 @@ import type {
   AuthRequest,
   ClientInfo,
 } from "@cloudflare/workers-oauth-provider";
-import skillDefinitions, {
-  type SkillDefinition,
-} from "@sentry/mcp-core/skillDefinitions";
+import skillDefinitions from "@sentry/mcp-core/skillDefinitions";
 import { logError, logIssue, logWarn } from "@sentry/mcp-core/telem/logging";
 import {
   type OAuthState,
@@ -452,15 +450,8 @@ export async function renderApprovalDialog(
   request: Request,
   options: ApprovalDialogOptions,
 ): Promise<Response> {
-  const {
-    client,
-    server,
-    scope,
-    redirectUri,
-    state,
-    cookieSecret,
-    defaultSkills,
-  } = options;
+  const { client, scope, redirectUri, state, cookieSecret, defaultSkills } =
+    options;
   const defaultSkillIds =
     defaultSkills === undefined
       ? new Set(APPROVABLE_SKILLS.map((skill) => skill.id))
