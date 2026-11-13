@@ -75,7 +75,10 @@ describe("performDeviceFlow polling", () => {
   });
 
   test.each([
-    ["access_denied", "Authorization was denied. Please try again."],
+    [
+      "access_denied",
+      "You denied the authorization request. Y tho? Run 'sentry auth login' if you change your mind.",
+    ],
     [
       "expired_token",
       "Device code expired. Please run 'sentry auth login' again.",

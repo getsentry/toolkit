@@ -405,6 +405,28 @@ describe("SeerError", () => {
     );
   });
 
+  test("format() links source code integrations for scm_integration_required", () => {
+    const err = new SeerError("scm_integration_required", "my-org");
+    const formatted = err.format();
+    expect(formatted).toContain(
+      "Seer needs a GitHub or GitLab integration for this organization.",
+    );
+    expect(formatted).toContain(
+      "https://my-org.sentry.io/settings/integrations/?category=source%20code%20management",
+    );
+    expect(formatted).not.toContain("trial");
+  });
+
+  test("format() links Seer settings for repos_not_linked", () => {
+    const err = new SeerError("repos_not_linked", "my-org");
+    const formatted = err.format();
+    expect(formatted).toContain(
+      "Seer needs repositories connected to this project.",
+    );
+    expect(formatted).toContain("https://my-org.sentry.io/settings/seer/");
+    expect(formatted).not.toContain("trial");
+  });
+
   test("format() shows fallback message without orgSlug", () => {
     const err = new SeerError("not_enabled");
     const formatted = err.format();
@@ -788,6 +810,12 @@ describe("exit codes", () => {
     expect(new SeerError("ai_disabled").exitCode).toBe(EXIT.SEER_AI_DISABLED);
     expect(new SeerError("out_of_credits").exitCode).toBe(
       EXIT.SEER_OUT_OF_CREDITS,
+    );
+    expect(new SeerError("scm_integration_required").exitCode).toBe(
+      EXIT.SEER_SETUP_REQUIRED,
+    );
+    expect(new SeerError("repos_not_linked").exitCode).toBe(
+      EXIT.SEER_SETUP_REQUIRED,
     );
   });
 
