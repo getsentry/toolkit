@@ -572,8 +572,8 @@ export function getSdkConfig(
     : regionUrl;
 
   return {
-    // SDK functions already include /api/0/ in their URL paths,
-    // so baseUrl should be the plain region URL without /api/0.
+    // The SDK adds the API base path to its operation paths, so baseUrl
+    // is the plain region URL.
     baseUrl: normalizedBase,
     fetch: getAuthenticatedFetch(options),
     throwOnError: false as const,

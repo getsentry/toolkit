@@ -1268,7 +1268,8 @@ export async function prepareRawApiRequest(
   const isStringBody = typeof body === "string";
   const request = await createSentryClient(config).client.prepareRequest({
     method,
-    url: buildSentryApiUrl("", appendSearchParams(endpoint, params)),
+    // Relative to the API base path, which the client adds.
+    url: `/${appendSearchParams(endpoint, params).replace(/^\/+/, "")}`,
     query,
     body,
     headers: isStringBody ? { "Content-Type": null, ...headers } : headers,
