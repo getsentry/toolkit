@@ -1,15 +1,19 @@
 import { type CacheEntry, createMemoryStore } from "@sentry/api/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { logInfo, sentryMetricsCount, sentryMetricsGauge } = vi.hoisted(() => ({
-  logInfo: vi.fn(),
-  sentryMetricsCount: vi.fn(),
-  sentryMetricsGauge: vi.fn(),
-}));
+const { logInfo, logWarn, sentryMetricsCount, sentryMetricsGauge } = vi.hoisted(
+  () => ({
+    logInfo: vi.fn(),
+    logWarn: vi.fn(),
+    sentryMetricsCount: vi.fn(),
+    sentryMetricsGauge: vi.fn(),
+  }),
+);
 
 vi.mock("@sentry/mcp-core/telem/logging", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/mcp-core/telem/logging")>()),
   logInfo,
+  logWarn,
 }));
 
 vi.mock("@sentry/cloudflare", async (importOriginal) => ({
@@ -290,6 +294,7 @@ describe("createMeteredMemoryStore", () => {
 
 describe("getResponseCache", () => {
   const options = {
+    bucket: undefined,
     userId: "user-1",
     grantId: "grant-1",
     sentryHost: "sentry.io",
@@ -298,6 +303,19 @@ describe("getResponseCache", () => {
 
   it("is off unless a mode enables it", async () => {
     expect(await getResponseCache({ ...options, mode: "off" })).toBeUndefined();
+  });
+
+  it("warns once when tiered has no bucket", async () => {
+    logWarn.mockReset();
+    expect(
+      await getResponseCache({ ...options, mode: "tiered" }),
+    ).toBeDefined();
+    await getResponseCache({ ...options, mode: "tiered" });
+    expect(logWarn).toHaveBeenCalledTimes(1);
+    expect(logWarn).toHaveBeenCalledWith(
+      expect.stringContaining("without an R2 bucket"),
+      expect.anything(),
+    );
   });
 
   it("scopes the cache to the grant", async () => {

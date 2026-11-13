@@ -145,7 +145,9 @@ const result = streamText({
 - **Pages**: Static asset hosting for React app
 - **KV Namespace**: OAuth token storage
 - **AI Binding**: Access to Cloudflare AI models (AutoRAG for docs search)
-- **R2**: File storage (future)
+- **R2**: The response cache's tier for allowlisted detail endpoints
+  (`MCP_RESPONSE_CACHE_BUCKET`, see
+  [Sentry API Response Cache](#sentry-api-response-cache))
 
 ### Environment Variables
 
@@ -172,11 +174,11 @@ The MCP handler can cache Sentry API GET responses through the shared
 response cache in `@sentry/api/client`. It is
 behind `MCP_RESPONSE_CACHE`:
 
-| Value               | Behavior                                                                   |
-| ------------------- | -------------------------------------------------------------------------- |
-| unset, `off`, other | No caching. The default in every deployed environment.                     |
-| `memory`            | Caches every tier in the isolate's memory.                                 |
-| `tiered`            | Memory only for now; the R2 tier for allowlisted detail endpoints follows. |
+| Value               | Behavior                                                                     |
+| ------------------- | ---------------------------------------------------------------------------- |
+| unset, `off`, other | No caching. The default in every deployed environment.                       |
+| `memory`            | Caches every tier in the isolate's memory.                                   |
+| `tiered`            | `memory`, plus R2 for allowlisted detail endpoints (memory only without R2). |
 
 How it works (`src/server/lib/response-cache.ts`):
 
@@ -197,9 +199,53 @@ How it works (`src/server/lib/response-cache.ts`):
   has zstd; a deployed Worker is not confirmed yet. The
   `app.response_cache.write` metric records the encoding each write used.
 
+#### R2 tier
+
+`tiered` shares a few detail responses across isolates through the
+`MCP_RESPONSE_CACHE_BUCKET` R2 binding (`src/server/lib/r2-cache-store.ts`):
+
+- **Allowlist.** Only organization event details
+  (`/api/0/organizations/{org}/events/{project}:{event_id}/`) without
+  `averageColumn`, and project trace-item details
+  (`/api/0/projects/{org}/{project}/trace-items/{id}/`) without `debug`.
+  Every other URL stays in memory.
+- **Server opt-in.** An allowlisted response is written to R2 only when it
+  carries `Cache-Control: private` with a positive `max-age` (and no
+  `no-store` or `no-cache`). Until Sentry sends that header
+  (getsentry/sentry#128828), R2 stores nothing.
+- **Expiry.** Each object records an expiry, the lesser of `max-age` and 5
+  minutes, and reads treat a later object as a miss. An R2 hit is copied
+  into memory for the time it has left.
+- **Keys.** Objects are keyed `<identity>/<HMAC cache key>`, with the
+  identity hash above, and a read also checks the identity stored in the
+  entry. Authorization values the policy keeps for `Vary` are stored as
+  SHA-256 hashes, never as tokens.
+- **Writes** run in `ctx.waitUntil()`. Mutation invalidation only touches
+  memory, so a write under the same path, such as deleting the project, does
+  not clear R2. The 5-minute expiry bounds how long a deleted item can still
+  be served.
+- **Garbage collection.** A 1-day bucket lifecycle rule deletes old objects.
+  It only frees space; reads enforce the expiry.
+
+The buckets are `sentry-mcp-response-cache` (production) and
+`sentry-mcp-canary-response-cache` (canary). Deploys run with
+`--experimental-auto-create=false`, so each bucket must exist before a
+config that binds it deploys:
+
+```bash
+pnpm exec wrangler r2 bucket create sentry-mcp-response-cache
+pnpm exec wrangler r2 bucket lifecycle add sentry-mcp-response-cache \
+  expire-1d --expire-days 1 --force
+pnpm exec wrangler r2 bucket create sentry-mcp-canary-response-cache
+pnpm exec wrangler r2 bucket lifecycle add sentry-mcp-canary-response-cache \
+  expire-1d --expire-days 1 --force
+```
+
+The binding is inert while `MCP_RESPONSE_CACHE` is not `tiered`.
+
 Turning it on in production is a separate decision: revoked access or deleted
 data can still be served from the cache until the entry expires (up to 5
-minutes for stable entries). Leave `MCP_RESPONSE_CACHE` unset in production
+minutes for stable entries, including from R2). Leave `MCP_RESPONSE_CACHE` unset in production
 until that window has privacy and security sign-off. Setting it back to `off`
 restores uncached behavior. Metrics are listed in
 [Monitoring](../operations/monitoring.md#response-cache-metrics).
