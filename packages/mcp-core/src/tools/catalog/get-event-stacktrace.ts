@@ -4,6 +4,7 @@ import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
 import { ensureIssueWithinProjectConstraint } from "../../internal/tool-helpers/issue";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamEventIdOrLatest,
   ParamIssueShortId,
@@ -12,7 +13,10 @@ import {
 } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import { fetchAndFormatEventStacktrace } from "../support/event-stacktrace";
+import {
+  eventStacktraceOutputSchema,
+  fetchEventStacktrace,
+} from "../support/event-stacktrace";
 
 export default defineTool({
   name: "get_event_stacktrace",
@@ -37,6 +41,7 @@ export default defineTool({
     "- `thread` is optional. If omitted, this returns the same default thread Sentry selects: first crashed thread, then first thread with a stacktrace, then first thread.",
     "- Pass `thread` as a numeric Thread ID or exact thread Name from the issue details thread list.",
     "- If the issue details show only one useful thread, omit `thread`.",
+    "- When the selector matches no thread or several, `thread` is null and `availableThreads` lists every thread.",
     "</hints>",
   ].join("\n"),
   inputSchema: {
@@ -51,6 +56,7 @@ export default defineTool({
         "Optional thread selector. Pass a numeric thread ID, or an exact thread name string. If omitted, returns the same default thread Sentry selects: first crashed thread, then first thread with a stacktrace, then first thread.",
       ),
   },
+  outputSchema: eventStacktraceOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -71,13 +77,15 @@ export default defineTool({
         projectSlug: context.constraints.projectSlug,
       });
 
-      return await fetchAndFormatEventStacktrace({
-        apiService,
-        organizationSlug: params.organizationSlug,
-        issueId: params.issueId,
-        eventId: params.eventId,
-        thread: params.thread,
-      });
+      return structuredResult(
+        await fetchEventStacktrace({
+          apiService,
+          organizationSlug: params.organizationSlug,
+          issueId: params.issueId,
+          eventId: params.eventId,
+          thread: params.thread,
+        }),
+      );
     } catch (error) {
       if (error instanceof ApiNotFoundError) {
         throw enhanceNotFoundError(error, {

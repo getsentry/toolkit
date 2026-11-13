@@ -40,7 +40,6 @@ import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import { isAllDigits } from "../utils.js";
 
 import {
-  API_MAX_PER_PAGE,
   getOrgSdkConfig,
   type PaginatedResponse,
   paginate,

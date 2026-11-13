@@ -10,7 +10,7 @@
  */
 
 import { createRequire } from "node:module";
-import type { Metric } from "@sentry/core";
+import type { Metric, TransactionEvent } from "@sentry/core";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 
@@ -37,6 +37,7 @@ import { getEnv } from "./env.js";
 import {
   classifySilenced,
   enrichEventWithGroupingTags,
+  normalizeEndpoint,
   reportCliError,
 } from "./error-reporting.js";
 import { ApiError, isUserError } from "./errors.js";
@@ -440,9 +441,9 @@ export function isUserApiError(error: unknown): boolean {
  * `api_error.denial_reason` (401/403) or `api_error.detail` on the span. Must
  * be called before `span.end()`.
  *
- * A 401/403 detail is the CLI's own guidance rather than the server's, and
- * Sentry's data scrubbing replaces most of them with `[Filtered]`. The denial
- * reason is a fixed category that tells those failures apart instead.
+ * A 401/403 detail is the CLI's own guidance, which can name organizations,
+ * and Sentry's data scrubbing replaces most of them with `[Filtered]`. The
+ * denial reason is a fixed category that tells those failures apart instead.
  *
  * @internal Exported for testing
  */
@@ -453,6 +454,28 @@ export function recordApiErrorOnSpan(span: Span, error: ApiError): void {
     span.setAttribute("api_error.denial_reason", error.denialReason);
   } else if (error.detail) {
     span.setAttribute("api_error.detail", error.detail);
+  }
+}
+
+/** `http.client` span attributes that hold the request URL or path. */
+const HTTP_SPAN_URL_KEYS = ["url", "url.full", "http.url", "url.path"];
+
+/** Template org and project slugs out of `http.client` span URLs. */
+function normalizeHttpSpans(event: TransactionEvent): void {
+  for (const span of event.spans ?? []) {
+    if (span.op !== "http.client") {
+      continue;
+    }
+    // Descriptions are `${method} ${url}`.
+    span.description = span.description?.replace(/\S+$/, (url) =>
+      normalizeEndpoint(url),
+    );
+    for (const key of HTTP_SPAN_URL_KEYS) {
+      const value = span.data[key];
+      if (typeof value === "string") {
+        span.data[key] = normalizeEndpoint(value);
+      }
+    }
   }
 }
 
@@ -762,6 +785,7 @@ export function initSentry(
     beforeSendTransaction: (event) => {
       // Remove server_name which may contain hostname (PII)
       event.server_name = undefined;
+      normalizeHttpSpans(event);
       return event;
     },
 

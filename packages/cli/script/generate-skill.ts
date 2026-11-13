@@ -11,7 +11,7 @@
  *   - index.json: skill discovery manifest for .well-known
  *
  * Usage:
- *   tsx script/generate-skill.ts
+ *   pnpm ts script/generate-skill.ts
  *
  * Output:
  *   plugins/sentry-cli/skills/sentry-cli/SKILL.md
@@ -21,7 +21,7 @@
  *   docs/public/.well-known/skills/index.json
  */
 
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import { routes } from "../src/app.js";
 import {

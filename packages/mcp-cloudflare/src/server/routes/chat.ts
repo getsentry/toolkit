@@ -61,7 +61,7 @@ export function syncOpenRouterEnvFromBindings(
 async function refreshTokenIfNeeded(
   c: Context<{ Bindings: Env }>,
 ): Promise<{ token: string; authData: AuthData } | null> {
-  const { getCookie, setCookie, deleteCookie } = await import("hono/cookie");
+  const { getCookie, deleteCookie } = await import("hono/cookie");
 
   const authDataCookie = getCookie(c, "sentry_auth_data");
   if (!authDataCookie) {

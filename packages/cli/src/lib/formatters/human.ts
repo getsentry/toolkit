@@ -9,7 +9,12 @@
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
-import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
+import {
+  codeBlock,
+  inlineCode,
+  tableCell,
+  text,
+} from "@sentry/toolkit-core/markdown";
 import prettyMs from "pretty-ms";
 import type {
   DashboardWidget,
@@ -38,6 +43,7 @@ import { withSerializeSpan } from "../telemetry.js";
 import { tipsSuppressed } from "../tips.js";
 import { formatAccountLabel } from "./accounts.js";
 import { type FixabilityTier, muted } from "./colors.js";
+import { supportsHighlightLanguage } from "./highlight.js";
 import {
   colorTag,
   escapeMarkdownLines,
@@ -928,38 +934,167 @@ export function formatIssueDetails(issue: SentryIssue): string {
 
 // Stack Trace Formatting
 
-/**
- * Format a single stack frame as markdown.
- */
-function formatStackFrameMarkdown(frame: StackFrame): string {
-  const lines: string[] = [];
-  const fn = frame.function || "<anonymous>";
-  const file = frame.filename || frame.absPath || "<unknown>";
-  const line = frame.lineNo ?? "?";
-  const col = frame.colNo ?? "?";
-  const inAppTag = frame.inApp ? " `[in-app]`" : "";
+/** Path separators, for taking the last segment of a file or module path. */
+const PATH_SEPARATOR_RE = /[\\/]/;
 
-  lines.push(`${inlineCode(`at ${fn} (${file}:${line}:${col})`)}${inAppTag}`);
+/**
+ * Pick the highlight.js language for a frame's source context.
+ *
+ * Uses the file extension first, then the frame or event platform. Returns
+ * `plaintext` when neither is known: highlight.js auto-detection guesses a
+ * different language for each frame and colors the code (and any digits)
+ * at random.
+ */
+function frameLanguage(frame: StackFrame, eventPlatform?: string): string {
+  const file = frame.filename || frame.absPath || "";
+  const ext = file.split(PATH_SEPARATOR_RE).pop()?.split(".").slice(1).pop();
+  for (const language of [ext?.toLowerCase(), frame.platform, eventPlatform]) {
+    if (language && supportsHighlightLanguage(language)) {
+      return language;
+    }
+  }
+  return "plaintext";
+}
+
+/** Last path segment of a native module path (`/usr/lib/dyld` → `dyld`). */
+function packageBasename(pkg: string): string {
+  return pkg.split(PATH_SEPARATOR_RE).pop() || pkg;
+}
+
+/** Longest variable value shown before truncation. */
+const MAX_VAR_VALUE_LENGTH = 200;
+
+/** Render a frame variable value as one line of text. */
+function formatVarValue(value: unknown): string {
+  const raw = typeof value === "string" ? value : JSON.stringify(value);
+  return raw.length > MAX_VAR_VALUE_LENGTH
+    ? `${raw.slice(0, MAX_VAR_VALUE_LENGTH)}…`
+    : raw;
+}
+
+/** Build the `at fn (location)` heading line of a stack frame. */
+function formatStackFrameHeading(frame: StackFrame): string {
+  const fn =
+    frame.function || frame.rawFunction || frame.symbol || "<anonymous>";
+  const file = frame.filename || frame.absPath;
+  const pkg = frame.package ? packageBasename(frame.package) : undefined;
+
+  let location = file || pkg || "<unknown>";
+  if (file && typeof frame.lineNo === "number") {
+    location += `:${frame.lineNo}`;
+    if (typeof frame.colNo === "number") {
+      location += `:${frame.colNo}`;
+    }
+  }
+
+  let heading = inlineCode(`at ${fn} (${location})`);
+  if (frame.inApp) {
+    heading += " `[in-app]`";
+  }
+
+  // Native frames: name the binary (unless it's already the location) and
+  // the instruction address, like the Sentry UI does.
+  const nativeInfo = [file ? pkg : undefined, frame.instructionAddr].filter(
+    Boolean,
+  );
+  if (nativeInfo.length > 0) {
+    heading += ` ${colorTag("muted", text(nativeInfo.join(" ")))}`;
+  }
+  return heading;
+}
+
+/**
+ * Format a frame's source context as a fenced code block with a
+ * line-number gutter (see `renderCodeBlock` in markdown.ts).
+ */
+function formatStackFrameContext(
+  frame: StackFrame,
+  context: [number, string][],
+  eventPlatform?: string,
+): string {
+  const block = codeBlock(
+    context.map(([, code]) => code).join("\n"),
+    frameLanguage(frame, eventPlatform),
+  );
+  // Sentry builds `context` from consecutive pre/post context lines, so
+  // the first line number is enough to number the whole block.
+  let attrs = ` start=${context[0]?.[0]}`;
+  if (typeof frame.lineNo === "number") {
+    attrs += ` highlight=${frame.lineNo}`;
+  }
+  const infoEnd = block.indexOf("\n");
+  return `${block.slice(0, infoEnd)}${attrs}${block.slice(infoEnd)}`;
+}
+
+/**
+ * Format a single stack frame as markdown: heading, source context, and
+ * local variables.
+ */
+function formatStackFrameMarkdown(
+  frame: StackFrame,
+  eventPlatform?: string,
+): string {
+  const lines: string[] = [formatStackFrameHeading(frame)];
 
   if (frame.context && frame.context.length > 0) {
     lines.push("");
-    lines.push("```");
-    for (const [lineNo, code] of frame.context) {
-      const isCurrentLine = lineNo === frame.lineNo;
-      const prefix = isCurrentLine ? ">" : " ";
-      lines.push(`${prefix} ${String(lineNo).padStart(6)} | ${code}`);
-    }
-    lines.push("```");
-    lines.push("");
+    lines.push(formatStackFrameContext(frame, frame.context, eventPlatform));
   }
 
+  const vars = Object.entries(frame.vars ?? {});
+  if (vars.length > 0) {
+    lines.push("");
+    lines.push(colorTag("muted", "Variables:"));
+    lines.push("");
+    lines.push(
+      mdKvTable(
+        vars.map(([name, value]) => [text(name), text(formatVarValue(value))]),
+      ),
+    );
+  }
+
+  if (lines.length > 1) {
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+/** Registers shown per table row. */
+const REGISTERS_PER_ROW = 3;
+
+/** Build a compact register table for a native crash. */
+function formatRegistersMarkdown(registers: Record<string, string>): string {
+  const entries = Object.entries(registers);
+  if (entries.length === 0) {
+    return "";
+  }
+  const perRow = Math.min(REGISTERS_PER_ROW, entries.length);
+  const lines: string[] = [colorTag("muted", "Registers:"), ""];
+  lines.push(
+    mdTableHeader(Array.from({ length: perRow * 2 }, () => "")).trimEnd(),
+  );
+  for (let i = 0; i < entries.length; i += perRow) {
+    const cells = entries
+      .slice(i, i + perRow)
+      .flatMap(([name, value]) => [
+        `**${tableCell(name)}**`,
+        tableCell(String(value)),
+      ]);
+    while (cells.length < perRow * 2) {
+      cells.push("");
+    }
+    lines.push(mdRow(cells).trimEnd());
+  }
   return lines.join("\n");
 }
 
 /**
  * Format an exception value (type, message, stack trace) as markdown.
  */
-function formatExceptionValueMarkdown(exception: ExceptionValue): string {
+function formatExceptionValueMarkdown(
+  exception: ExceptionValue,
+  eventPlatform?: string,
+): string {
   const lines: string[] = [];
 
   const type = exception.type || "Error";
@@ -976,7 +1111,16 @@ function formatExceptionValueMarkdown(exception: ExceptionValue): string {
   const frames = exception.stacktrace?.frames ?? [];
   const reversedFrames = [...frames].reverse();
   for (const frame of reversedFrames) {
-    lines.push(formatStackFrameMarkdown(frame));
+    lines.push(formatStackFrameMarkdown(frame, eventPlatform));
+  }
+
+  const registers = exception.stacktrace?.registers;
+  if (registers) {
+    const registersSection = formatRegistersMarkdown(registers);
+    if (registersSection) {
+      lines.push("");
+      lines.push(registersSection);
+    }
   }
 
   return lines.join("\n");
@@ -985,14 +1129,17 @@ function formatExceptionValueMarkdown(exception: ExceptionValue): string {
 /**
  * Build the stack trace section as markdown.
  */
-function buildStackTraceMarkdown(exceptionEntry: ExceptionEntry): string {
+function buildStackTraceMarkdown(
+  exceptionEntry: ExceptionEntry,
+  eventPlatform?: string,
+): string {
   const lines: string[] = [];
   lines.push("### Stack Trace");
   lines.push("");
 
   const values = exceptionEntry.data.values ?? [];
   for (const exception of values) {
-    lines.push(formatExceptionValueMarkdown(exception));
+    lines.push(formatExceptionValueMarkdown(exception, eventPlatform));
   }
 
   return lines.join("\n");
@@ -1455,7 +1602,9 @@ export function formatEventDetails(
     const exceptionEntry = extractEntry(event, "exception");
     if (exceptionEntry) {
       sections.push("");
-      sections.push(buildStackTraceMarkdown(exceptionEntry));
+      sections.push(
+        buildStackTraceMarkdown(exceptionEntry, event.platform ?? undefined),
+      );
     }
 
     // Breadcrumbs
