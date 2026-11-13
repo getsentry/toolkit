@@ -279,7 +279,7 @@ function lastConcreteSegment(path: string): string | undefined {
 function pathNotFoundError(
   label: string,
   query: { method?: string; path: string },
-): never {
+): ResolutionError {
   const samePath = findEndpointsByPath(query.path);
   if (query.method && samePath.length > 0) {
     const methods = [...new Set(samePath.map((endpoint) => endpoint.method))]
@@ -287,7 +287,7 @@ function pathNotFoundError(
       .join(", ");
     const example =
       samePath.find((endpoint) => endpoint.method === "GET") ?? samePath[0];
-    throw new ResolutionError(
+    return new ResolutionError(
       `Endpoint '${label}'`,
       "does not exist in the schema",
       example
@@ -312,7 +312,7 @@ function pathNotFoundError(
       sentry`schema --search ${segment}    Search endpoints by keyword`,
     );
   }
-  throw new ResolutionError(
+  return new ResolutionError(
     `Endpoint '${label}'`,
     "does not exist in the schema",
     hint,
@@ -333,7 +333,7 @@ function resolvePathLookup(
   if (matches.length > 1) {
     return { kind: "endpoints", endpoints: matches };
   }
-  pathNotFoundError(queryLabel(resource, operation), query);
+  throw pathNotFoundError(queryLabel(resource, operation), query);
 }
 
 /** Resolve one exact SDK function name or OpenAPI operation ID. */
