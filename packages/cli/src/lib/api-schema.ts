@@ -7,7 +7,7 @@
  */
 
 import type { ApiOperation } from "@sentry/api/operations";
-import endpoints from "../generated/api-schema.json";
+import endpoints from "../generated/api-schema.json" with { type: "json" };
 import { fuzzyMatch } from "./fuzzy.js";
 
 /** Searchable query parameter metadata from the pinned OpenAPI specification. */

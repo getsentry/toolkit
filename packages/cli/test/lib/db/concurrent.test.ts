@@ -4,7 +4,7 @@
  * Tests that multiple CLI processes can safely access the SQLite database
  * simultaneously without SQLITE_BUSY errors or data corruption.
  *
- * These tests spawn tsx subprocesses to simulate real concurrent
+ * These tests spawn Node subprocesses that run the TypeScript sources to simulate real concurrent
  * CLI usage (e.g., multiple terminals, CI jobs, editor integrations).
  */
 
@@ -51,8 +51,7 @@ async function spawnWorker(
   const proc = spawn(
     process.execPath,
     [
-      "--import",
-      "tsx/esm",
+      "--experimental-strip-types",
       "--import",
       requireShim,
       WORKER_SCRIPT,

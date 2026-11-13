@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Generate tool and skill definitions JSON for external consumption.
  *

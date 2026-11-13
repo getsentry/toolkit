@@ -6,6 +6,7 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatErrorForUser } from "../../internal/error-handling.js";
 import analyzeIssueWithSeer from "./analyze-issue-with-seer.js";
 
 describe("analyze_issue_with_seer", () => {
@@ -499,6 +500,53 @@ describe("analyze_issue_with_seer", () => {
       expect(getCallCount).toBe(1);
     },
   );
+
+  it("names the accepted scopes when Sentry refuses the start for a missing scope", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-403/autofix/",
+        () => HttpResponse.json({ autofix: null }),
+      ),
+      http.post(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-403/autofix/",
+        () =>
+          HttpResponse.json(
+            { detail: "You do not have permission to perform this action." },
+            {
+              status: 403,
+              headers: {
+                "WWW-Authenticate":
+                  'Bearer error="insufficient_scope", scope="event:admin event:write seer:write"',
+              },
+            },
+          ),
+      ),
+    );
+
+    const error = await analyzeIssueWithSeer
+      .handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          issueId: "CLOUDFLARE-MCP-403",
+          instruction: undefined,
+        },
+        {
+          constraints: { organizationSlug: undefined },
+          accessToken: "access-token",
+          userId: "1",
+        },
+      )
+      .catch((e: unknown) => e);
+
+    expect(await formatErrorForUser(error, { transport: "http" })).toBe(
+      [
+        "**Missing Permission**",
+        "API error (403): You do not have permission to perform this action. The access token is missing the scope this endpoint requires; it needs one of: event:admin, event:write, seer:write. Retrying with the same token will not help.",
+        "Reconnect Sentry with a token or authorization that includes one of these scopes, then try again.",
+      ].join("\n\n"),
+    );
+  });
 
   const RESTART_URL =
     "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-RESTART/autofix/";
