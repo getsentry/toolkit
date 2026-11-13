@@ -80,11 +80,10 @@ function captureStderr() {
     /** Number of calls whose first argument contained the env-hint body. */
     hintCalls: () =>
       stderrSpy.mock.calls.filter((call) =>
-        String(call[0] ?? "").includes("SENTRY_FORCE_ENV_TOKEN=1"),
+        String(call[0]).includes("SENTRY_FORCE_ENV_TOKEN=1"),
       ).length,
     /** Flattened first-arg text across all calls (for substring assertions). */
-    text: () =>
-      stderrSpy.mock.calls.map((call) => String(call[0] ?? "")).join(""),
+    text: () => stderrSpy.mock.calls.map((call) => String(call[0])).join(""),
     restore: () => stderrSpy.mockRestore(),
   };
 }

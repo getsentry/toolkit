@@ -592,7 +592,7 @@ export function createLocalControlPlane({
           contentType: container.getContentType(),
           itemTypes:
             parsed?.envelope[1]
-              .map((item) =>
+              .map((item: unknown) =>
                 Array.isArray(item) && typeof item[0] === "object" && item[0]
                   ? stringifyUnknown(
                       (item[0] as { type?: unknown }).type ?? "unknown",

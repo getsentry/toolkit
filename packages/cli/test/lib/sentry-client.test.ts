@@ -773,7 +773,7 @@ describe("API request tracing", () => {
       );
       const span = getActiveSpan();
       activeSpanOp = span
-        ? spanToJSON(span).attributes?.[SEMANTIC_ATTRIBUTE_SENTRY_OP]
+        ? spanToJSON(span).attributes[SEMANTIC_ATTRIBUTE_SENTRY_OP]
         : undefined;
       return jsonResponse({ ok: true });
     });

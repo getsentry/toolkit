@@ -1147,7 +1147,7 @@ export function withTracingSpan<T>(
     { name, op, attributes, onlyIfParent: true },
     async (span) => {
       // Track if callback sets status, so we don't override it
-      let statusWasSet = false;
+      let statusWasSet = false as boolean;
       const originalSetStatus = span.setStatus.bind(span);
       span.setStatus = (...args) => {
         statusWasSet = true;

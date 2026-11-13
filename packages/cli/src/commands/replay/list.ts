@@ -107,8 +107,8 @@ function parseLimit(value: string): number {
  */
 export function parseSort(value: string): ReplaySortValue {
   const trimmed = value.trim();
-  const normalized = trimmed.toLowerCase() as ReplaySortKey;
-  const mapped = SORT_MAP[normalized];
+  const sortMap: Partial<Record<string, ReplaySortValue>> = SORT_MAP;
+  const mapped = sortMap[trimmed.toLowerCase()];
   if (mapped) {
     return mapped;
   }

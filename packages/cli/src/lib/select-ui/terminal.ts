@@ -67,7 +67,7 @@ export async function selectWithFilter(
 ): Promise<string | null> {
   const freshStdin = openFreshTty();
   const stdin = freshStdin ?? process.stdin;
-  const wasRaw = stdin.isRaw ?? false;
+  const wasRaw = stdin.isRaw;
   let picker: MountedPicker | undefined;
   let resolveSelection!: (value: string | null) => void;
   let rejectSelection!: (error: unknown) => void;
@@ -80,7 +80,7 @@ export async function selectWithFilter(
   // Surface terminal read failures instead of waiting forever for a key.
   stdin.once("error", rejectSelection);
   try {
-    stdin.setRawMode?.(true);
+    stdin.setRawMode(true);
     stdin.resume();
     picker = mountSelectPrompt(createSelectPrompt(opts, resolveSelection), {
       input: stdin,
@@ -95,7 +95,7 @@ export async function selectWithFilter(
       picker?.close();
     } finally {
       try {
-        stdin.setRawMode?.(wasRaw);
+        stdin.setRawMode(wasRaw);
       } finally {
         stdin.pause();
         freshStdin?.destroy();

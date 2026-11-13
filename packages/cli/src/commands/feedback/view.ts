@@ -181,7 +181,7 @@ export const viewCommand = buildCommand({
       : [];
 
     yield new CommandOutput({
-      org: org ?? null,
+      org,
       feedback,
       event: event ?? null,
       replayIds,

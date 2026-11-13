@@ -199,6 +199,7 @@ function createMockContext() {
       stdout: { write: stdoutWrite },
       stderr: { write: stderrWrite },
       cwd: "/tmp",
+      process: {},
     },
     stdoutWrite,
     stderrWrite,

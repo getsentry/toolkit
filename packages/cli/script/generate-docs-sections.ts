@@ -635,8 +635,8 @@ function readGrammarAnnotations(lines: string[]): GrammarAnnotation[] {
       annotations.push({
         start: index + 1,
         end: index + 1,
-        kind: annotation[1] ?? "",
-        text: annotation[2] ?? "",
+        kind: annotation[1],
+        text: annotation[2],
       });
     } else if (continuation && previous?.end === index) {
       previous.text += ` ${continuation[1]}`;

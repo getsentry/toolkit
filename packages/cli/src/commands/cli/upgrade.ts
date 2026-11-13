@@ -1360,13 +1360,15 @@ export const upgradeCommand = buildCommand({
         database,
       });
     } else {
+      // Library mode's process stand-in has no argv.
+      const argv = this.process.argv as readonly string[] | undefined;
       await executeStandardUpgrade({
         method,
         channel,
         versionArg,
         target,
         execPath: this.process.execPath,
-        entryPath: this.process.argv?.[1],
+        entryPath: argv?.[1],
         pathEnv: this.process.env.PATH,
         offline,
         json: flags.json,

@@ -470,7 +470,7 @@ export type LogEntry = {
   level?: string;
   body?: string;
   timestamp?: number;
-  attributes?: Record<string, { value?: unknown }>;
+  attributes?: Record<string, { value?: unknown } | null>;
 };
 
 /**
@@ -515,12 +515,11 @@ export function formatSingleLog(logEntry: LogEntry, source: string): string {
         ([k, v]) =>
           isUserLogAttribute(k) &&
           v !== null &&
-          v !== undefined &&
           v.value !== null &&
           v.value !== undefined,
       )
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => muted(`[${sanitize(k)}=${sanitize(String(v.value))}]`));
+      .map(([k, v]) => muted(`[${sanitize(k)}=${sanitize(String(v?.value))}]`));
     if (attrs.length > 0) {
       msg += ` ${attrs.join(" ")}`;
     }
@@ -570,7 +569,7 @@ export type StreamedSpan = {
  * `Record<string, unknown>` compatible with the semantic display pipeline.
  */
 function flattenSpanAttributes(
-  attrs: Record<string, { type?: string; value?: unknown }> | undefined,
+  attrs: Record<string, { type?: string; value?: unknown } | null> | undefined,
 ): Record<string, unknown> {
   if (!attrs) {
     return {};
@@ -919,7 +918,7 @@ function formatLogJson(
                 )
                 .map(([k, v]) => [
                   stripBidi(k),
-                  typeof v.value === "string" ? stripBidi(v.value) : v.value,
+                  typeof v?.value === "string" ? stripBidi(v.value) : v?.value,
                 ]),
             )
           : undefined,

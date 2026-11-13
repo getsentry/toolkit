@@ -191,7 +191,11 @@ describe("assemble requests", () => {
     respondWith({ state: "bogus", missingChunks: [] });
 
     await expect(
-      assembleArtifactBundle("my-org", { checksum: "abc", chunks: [] }),
+      assembleArtifactBundle("my-org", {
+        checksum: "abc",
+        chunks: [],
+        projects: [],
+      }),
     ).rejects.toThrow("Unexpected response format");
   });
 });
