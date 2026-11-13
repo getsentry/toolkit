@@ -107,7 +107,12 @@
         "scripts/**/*.{js,mjs,cjs}"
       ],
       "rules": {
-        "typescript/no-unnecessary-condition": "error"
+        "typescript/no-unnecessary-condition": [
+          "error",
+          {
+            "allowConstantLoopConditions": "only-allowed-literals"
+          }
+        ]
       }
     },
     {

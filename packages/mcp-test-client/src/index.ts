@@ -178,7 +178,7 @@ program
 
           const rl = readline.createInterface({ input, output });
 
-          for (;;) {
+          while (true) {
             try {
               const userInput = await rl.question(chalk.gray("> "));
 
