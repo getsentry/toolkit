@@ -45,6 +45,7 @@ TOOL USAGE GUIDELINES:
 9. When several fields could match the user's request, choose the field whose description best matches it if applicable, not just the closest name
 10. For non-replay datasets, call validateSearch after constructing the candidate request. If invalid, fix and validate again in this same pass
 11. NEVER replace a structured field:value filter with message/log.body/full-text matching. If an explicit field is unavailable on the dataset, keep it and let validation fail instead of inventing a weaker query
+12. Use a project: filter only for a Sentry project the user calls a project. Service, app, component, and host names are not projects; filter them with a field from datasetAttributes. Issue short IDs like PROJ-123 go in issue:. A project scope given with the request is already applied, so do not repeat it as project:
 
 CRITICAL - TOOL RESPONSE HANDLING:
 All tools return responses in this format: {error?: string, result?: data}
