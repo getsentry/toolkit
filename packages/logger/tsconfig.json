@@ -1,15 +1,11 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2023"],
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "types": ["node"],
     "strict": true,
+    "lib": ["ES2023"],
+    "types": ["node"],
     "noUncheckedIndexedAccess": true,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "isolatedModules": true
+    "noEmit": true
   },
   "include": ["src/**/*.ts", "test/*.ts"]
 }

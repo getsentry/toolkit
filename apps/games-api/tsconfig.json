@@ -1,7 +1,12 @@
 {
-  "extends": "@sentry/mcp-server-tsconfig/tsconfig.base.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["@cloudflare/workers-types"]
+    "strict": true,
+    "lib": ["ES2023", "ES2024.String"],
+    "types": ["@cloudflare/workers-types"],
+    "allowJs": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true
   },
   "include": ["src"]
 }

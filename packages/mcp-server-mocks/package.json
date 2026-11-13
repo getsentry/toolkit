@@ -26,7 +26,6 @@
     "dev": "tsdown -w"
   },
   "devDependencies": {
-    "@sentry/mcp-server-tsconfig": "workspace:*",
     "tsdown": "catalog:"
   },
   "dependencies": {

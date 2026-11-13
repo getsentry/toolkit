@@ -21,7 +21,6 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
-    "@sentry/mcp-server-tsconfig": "workspace:*",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "wrangler": "catalog:"
