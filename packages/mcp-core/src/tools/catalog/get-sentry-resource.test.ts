@@ -1151,8 +1151,6 @@ describe("get_sentry_resource", () => {
         ]),
       });
       expect(desc).toContain("dashboards");
-      expect(desc).toContain("dashboard: <dashboardId or title>");
-      expect(desc).toContain("/dashboard/542438/");
     });
 
     it("omits monitor hints when get_monitor_details is unavailable", () => {

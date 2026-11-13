@@ -46,34 +46,8 @@ export default defineTool({
   title: "Get Issue Tag Values",
   skills: ["inspect"], // Available in inspect skill for understanding issue distribution
   requiredScopes: ["event:read"],
-  description: [
-    "Get tag value distribution for a specific Sentry issue.",
-    "",
-    "Use this tool when you need to:",
-    "- Understand how an issue is distributed across different tag values",
-    "- Get aggregate counts of unique tag values (e.g., 'how many unique URLs are affected')",
-    "- Analyze which browsers, environments, or URLs are most impacted by an issue",
-    "- View the tag distributions page data programmatically",
-    "",
-    "Tag keys depend on the issue's platform, SDK, and custom tags, so keys such as `browser` or `url` are missing from many issues. The `### Tags` section of `get_issue_details` shows the tags on one of the issue's events, which is a good place to pick a key from. If the key is not on the issue, the error lists the keys it has.",
-    "",
-    "<examples>",
-    "### Get environment distribution for an issue",
-    "```",
-    "get_issue_tag_values(organizationSlug='my-organization', issueId='PROJECT-123', tagKey='environment')",
-    "```",
-    "",
-    "### Get release distribution using issue URL",
-    "```",
-    "get_issue_tag_values(issueUrl='https://sentry.io/issues/PROJECT-123/', tagKey='release')",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- If user provides a Sentry URL, pass the ENTIRE URL to issueUrl parameter unchanged",
-    "- Tag keys are case-sensitive",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Get the tag value distribution of a Sentry issue: counts of each browser, environment, release, URL, or other tag value affected. Tag keys vary by platform, SDK, and custom tags.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -87,7 +61,7 @@ export default defineTool({
         "Tag key must contain only alphanumeric characters, dots, hyphens, and underscores, and must start with an alphanumeric character",
       )
       .describe(
-        "The tag key to get values for, as listed in the issue's tags (e.g., 'environment', 'release').",
+        "Case-sensitive tag key from the issue's tags, e.g. `environment` or `release`.",
       ),
   },
   annotations: {

@@ -23,27 +23,8 @@ export default defineTool({
   title: "Get Event Stacktrace",
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read"],
-  description: [
-    "Get the full stack trace (stacktrace) for one thread of a specific Sentry event.",
-    "",
-    "Use this tool when you need to:",
-    "- Fetch the full stacktrace for a thread listed in issue details",
-    "- Inspect a non-crashed thread from an event with multiple threads",
-    "- Get Sentry's default selected thread stacktrace when no thread is specified",
-    "",
-    "<examples>",
-    "get_event_stacktrace(organizationSlug='my-org', issueId='PROJECT-123')",
-    "get_event_stacktrace(organizationSlug='my-org', issueId='PROJECT-123', eventId='c49541c747cb4d8aa3efb70ca5aba243', thread=259)",
-    "get_event_stacktrace(organizationSlug='my-org', issueId='PROJECT-123', thread='main')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- `thread` is optional. If omitted, this returns the same default thread Sentry selects: first crashed thread, then first thread with a stacktrace, then first thread.",
-    "- Pass `thread` as a numeric Thread ID or exact thread Name from the issue details thread list.",
-    "- If the issue details show only one useful thread, omit `thread`.",
-    "- When the selector matches no thread or several, `thread` is null and `availableThreads` lists every thread.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Get the full stack trace (stacktrace) of one thread in a Sentry event, such as a non-crashed thread listed in the issue details. Lists the threads when the selector matches none or several.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -53,7 +34,7 @@ export default defineTool({
       .union([z.number().int(), z.string().trim().min(1)])
       .optional()
       .describe(
-        "Optional thread selector. Pass a numeric thread ID, or an exact thread name string. If omitted, returns the same default thread Sentry selects: first crashed thread, then first thread with a stacktrace, then first thread.",
+        "Numeric thread ID or exact thread name from the issue details. Omit for Sentry's default: the crashed thread, else the first with a stack trace.",
       ),
   },
   outputSchema: eventStacktraceOutputSchema,

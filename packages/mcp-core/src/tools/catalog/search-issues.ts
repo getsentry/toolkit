@@ -84,77 +84,41 @@ export default defineTool({
   title: "Search Issues",
   skills: ["inspect", "triage", "seer"], // Available in inspect, triage, and seer skills
   requiredScopes: ["event:read"],
-  description: [
-    "Search for grouped issues/problems in Sentry - returns a LIST of issues, NOT counts or aggregations.",
-    "",
-    "Provide `query` as natural language or Sentry issue search syntax. Seer translates natural language when the organization has AI issue search; otherwise a configured embedded agent fixes query and sort while preserving explicit Sentry search syntax.",
-    "",
-    "Returns grouped issues with metadata like title, status, and user count.",
-    "",
-    "Common Query Syntax:",
-    "- is:unresolved / is:resolved / is:ignored / is:for_review / is:new / is:regressed / is:escalating",
-    "- level:error / level:warning",
-    "- firstSeen:-24h / lastSeen:-7d",
-    "- assigned:me / assigned_or_suggested:me",
-    "- release:latest",
-    "- issue.category:feedback",
-    "- issue.priority:high",
-    "- environment:production",
-    "- userCount:>100",
-    "",
-    "No AND/OR or parentheses: spaces mean AND. For OR on one field use field:[a,b]; for several statuses use status:[resolved,ignored] or substatus:[regressed,escalating].",
-    "",
-    "DO NOT USE FOR COUNTS/AGGREGATIONS → use search_errors",
-    "DO NOT USE FOR individual events with timestamps → use search_errors, search_logs, or search_traces",
-    "DO NOT USE FOR details about a specific issue → use get_sentry_resource",
-    "",
-    "<examples>",
-    "search_issues(organizationSlug='my-org', query='critical bugs from last week')",
-    "search_issues(organizationSlug='my-org', query='is:unresolved is:unassigned', sort='freq')",
-    "search_issues(organizationSlug='my-org', query='level:error firstSeen:-24h', projectSlugOrId='my-project')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- If the user passes a parameter in the form of name/otherName, it's likely in the format of <organizationSlug>/<projectSlugOrId>.",
-    "- Parse org/project notation directly without calling find_organizations or find_projects.",
-    "- The projectSlugOrId parameter accepts both project slugs (e.g., 'my-project') and numeric IDs (e.g., '123456').",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Search Sentry issues (grouped errors, crashes, and user feedback) and list them with status, occurrences, users impacted, assignee, and first and last seen. Accepts natural language or Sentry issue search syntax. For individual events, counts, or aggregates, use search_errors, search_logs, or search_traces.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     query: z
       .string()
       .trim()
       .default("is:unresolved")
-      .describe("Natural language or Sentry issue search query syntax."),
+      .describe(
+        "Natural language or Sentry issue search syntax, e.g. `is:unresolved level:error firstSeen:-24h assigned:me release:latest environment:production issue.priority:high issue.category:feedback userCount:>100`.",
+      ),
     sort: z
       .enum(["date", "freq", "new", "user", "recommended"])
       .default("date")
       .describe(
-        "Sort order: date (last seen), freq (frequency), new (first seen), user (user count), recommended (Sentry's prioritized ranking)",
+        "date: last seen; freq: event count; new: first seen; user: user count; recommended: Sentry's priority ranking.",
       ),
     projectSlugOrId: ProjectSlugOrIdSchema.nullable()
       .default(null)
-      .describe("The project's slug or numeric ID (optional)"),
+      .describe("The project slug or numeric ID."),
     regionUrl: ParamRegionUrl.nullable().default(null),
     limit: z
       .number()
       .min(1)
       .max(100)
       .default(10)
-      .describe("Maximum number of issues to return (1-100)"),
+      .describe("Maximum issues to return."),
     period: z
       .enum(SEARCH_ISSUES_PERIOD_VALUES)
       .default("30d")
-      .describe(
-        "Time window for issue search results. Controls which issues are returned based on when they had activity. Default 30d is a balance between coverage and query performance; use 1h or 24h for very recent issues or 90d for broader historical searches.",
-      ),
+      .describe("Only issues with activity in this window."),
     includeExplanation: z
       .boolean()
       .default(false)
-      .describe(
-        "Include explanation of how the query was translated or repaired",
-      ),
+      .describe("Return how the query was translated or repaired."),
   },
   outputSchema: searchIssuesOutputSchema,
   annotations: {

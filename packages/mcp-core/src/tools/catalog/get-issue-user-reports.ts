@@ -127,24 +127,8 @@ export default defineTool({
   title: "Get Issue User Reports",
   skills: ["inspect", "triage"],
   requiredScopes: ["event:read"],
-  description: [
-    "Get legacy User Reports or crash-report feedback attached to a Sentry issue.",
-    "",
-    "Use this tool when you need to:",
-    "- See what a user said happened when an error occurred",
-    "- Check if any legacy bug reports or crash-report feedback were submitted for this issue",
-    "- Get the human-provided context behind a crash, beyond the stack trace",
-    "",
-    "<examples>",
-    "get_issue_user_reports(organizationSlug='my-organization', issueId='PROJECT-123')",
-    "get_issue_user_reports(issueUrl='https://my-organization.sentry.io/issues/PROJECT-123/')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- For standalone User Feedback Widget submissions, use `search_issues(query='issue.category:feedback')`.",
-    "- Reuse pagination cursors only with the same issue scope.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Get the legacy User Reports and crash-report feedback attached to a Sentry issue: what users said happened. For User Feedback widget submissions, use search_issues.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -153,7 +137,7 @@ export default defineTool({
     cursor: z
       .string()
       .trim()
-      .describe("Optional pagination cursor from a previous response.")
+      .describe("Cursor from the previous page of this issue.")
       .nullable()
       .default(null),
     limit: z
@@ -161,7 +145,7 @@ export default defineTool({
       .int()
       .positive()
       .max(100)
-      .describe("Maximum number of user reports to return.")
+      .describe("Maximum user reports to return.")
       .default(25),
   },
   annotations: {

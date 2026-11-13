@@ -75,10 +75,10 @@ describe("submit_feedback_to_sentry_team", () => {
 
     expect(description).not.toContain("after you finish or give up");
     expect(description).toContain(
-      "Call it only when a Sentry MCP tool was missing, failed, or got in the way",
+      "only when a Sentry MCP tool was missing, failed, or got in the way",
     );
     expect(description).toContain(
-      "Skip it if the task went fine, was skipped, or did not need Sentry.",
+      "Skip it if the task went fine or did not need Sentry",
     );
   });
 
