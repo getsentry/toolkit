@@ -12,6 +12,10 @@
  *     the fixed-pixel image actually fits the current column width.
  *   - Kitty graphics query (`ESC _ G ... a=q ... ESC \`) — an `OK` reply means
  *     the terminal speaks the newer kitty protocol, preferred over sixel.
+ *   - Cursor position reports (`ESC [ 6 n`) just before and after the kitty
+ *     query, with autowrap off in between. Some terminals (macOS Terminal.app)
+ *     print an APC string's body instead of ignoring it; if the cursor moved,
+ *     the printed text is erased.
  * The probe is gated behind an interactive TTY, honors plain-output/opt-out
  * signals, has a short timeout, restores terminal state, and never throws.
  * The result is cached for the process.
@@ -21,6 +25,9 @@
  * the kitty query is only sent through DCS passthrough when `allow-passthrough`
  * is enabled, and sixel is only trusted when tmux says the attached terminal
  * supports it too (otherwise tmux replaces the image with a text placeholder).
+ * The outer terminal's cursor isn't visible through tmux, so when passthrough
+ * is on and kitty wasn't detected, the tmux client is redrawn instead, which
+ * paints over anything the outer terminal printed.
  */
 
 import { execFileSync, execSync } from "node:child_process";
@@ -163,6 +170,21 @@ const CELL_SIZE_RE = /\x1b\[6;(\d+);(\d+)t/;
  */
 const MAX_PASSTHROUGH_QUIET_READS = 4;
 
+/** Cursor position request; answered with `ESC [ <row> ; <col> R`. */
+const CPR_QUERY = "\x1b[6n";
+
+/**
+ * Turn autowrap (DECAWM) off and back on. Wrapped around the kitty query so
+ * that a terminal printing it can't wrap, and so can't scroll the screen at
+ * the last row, which would move the text away from the reported position.
+ */
+const AUTOWRAP_OFF = "\x1b[?7l";
+const AUTOWRAP_ON = "\x1b[?7h";
+
+/** Every cursor position report in a buffer. */
+// oxlint-disable-next-line no-control-regex -- parsing terminal escapes
+const CPR_GLOBAL_RE = /\x1b\[(\d+);(\d+)R/g;
+
 /** Every Primary DA reply in a buffer (tmux can produce two; see probe). */
 // oxlint-disable-next-line no-control-regex -- parsing terminal escapes
 const DA1_GLOBAL_RE = /\x1b\[\?[0-9;]*c/g;
@@ -229,8 +251,11 @@ function detectTmux(): TmuxInfo | undefined {
  * The probe queries to send, and how many Primary DA replies end the reply.
  *
  * Outside tmux the cell-size and kitty queries go first and DA1 last, so DA1 is
- * the drain sentinel. Inside tmux, tmux answers cell size and DA1 immediately,
- * while passthrough queries round-trip to the outer terminal; a second,
+ * the drain sentinel. The kitty query is bracketed by cursor position requests,
+ * with autowrap off in between, so {@link kittyQueryCleanup} can tell whether
+ * the terminal printed it.
+ * Inside tmux, tmux answers cell size and DA1 immediately, while passthrough
+ * queries round-trip to the outer terminal; a second,
  * passthrough DA1 after the kitty query is the sentinel for that round-trip.
  * Without passthrough the kitty query is not sent at all, because tmux would
  * otherwise set the pane title to the query text.
@@ -241,7 +266,10 @@ export function probeQueries(tmux: TmuxInfo | undefined): {
   sentinels: number;
 } {
   if (!tmux) {
-    return { query: `\x1b[16t${KITTY_QUERY}\x1b[c`, sentinels: 1 };
+    return {
+      query: `\x1b[16t${CPR_QUERY}${AUTOWRAP_OFF}${KITTY_QUERY}${AUTOWRAP_ON}${CPR_QUERY}\x1b[c`,
+      sentinels: 1,
+    };
   }
   if (!tmux.passthrough) {
     return { query: "\x1b[16t\x1b[c", sentinels: 1 };
@@ -250,6 +278,39 @@ export function probeQueries(tmux: TmuxInfo | undefined): {
     query: `\x1b[16t\x1b[c${wrapTmuxPassthrough(`${KITTY_QUERY}\x1b[c`)}`,
     sentinels: 2,
   };
+}
+
+/**
+ * The escape string that erases the kitty query when the terminal printed it
+ * instead of ignoring it, or `""` when it didn't. Compares the cursor position
+ * reports sent just before and after the query (see {@link probeQueries}): if
+ * the cursor moved, the query was printed from the first position, so this
+ * moves back there and clears to the end of the line. Autowrap is off while
+ * the query is sent, so the printed text stays on that line.
+ * @internal Exported for tests.
+ */
+export function kittyQueryCleanup(reply: string): string {
+  const [before, after] = [...reply.matchAll(CPR_GLOBAL_RE)];
+  if (!(before && after) || before[0] === after[0]) {
+    return "";
+  }
+  return `\x1b[${before[1]};${before[2]}H\x1b[K`;
+}
+
+/**
+ * Redraw the tmux client. A passthrough kitty query goes straight to the
+ * attached terminal, so a terminal that prints it instead of answering leaves
+ * text on screen that tmux doesn't know about; a full redraw paints over it.
+ */
+function repaintTmuxClient(): void {
+  try {
+    execFileSync("tmux", ["refresh-client"], {
+      stdio: "ignore",
+      timeout: 1000,
+    });
+  } catch (error) {
+    log.debug("Could not redraw the tmux client", error);
+  }
 }
 
 /**
@@ -423,8 +484,19 @@ function probe(): SixelCaps {
     execSync("stty -echo -icanon min 0 time 3 < /dev/tty");
     const { query, sentinels } = probeQueries(tmux);
     writeSync(fd, query);
-    const caps = parseSixelCaps(readReply(fd, sentinels));
-    return tmux ? applyTmuxCaps(caps, tmux) : caps;
+    const reply = readReply(fd, sentinels);
+    const cleanup = kittyQueryCleanup(reply);
+    if (cleanup) {
+      writeSync(fd, cleanup);
+    }
+    const caps = parseSixelCaps(reply);
+    if (!tmux) {
+      return caps;
+    }
+    if (tmux.passthrough && !caps.kitty) {
+      repaintTmuxClient();
+    }
+    return applyTmuxCaps(caps, tmux);
   } catch {
     return UNSUPPORTED;
   } finally {

@@ -25,8 +25,8 @@
  * this script edits committed files in-place between marker pairs.
  *
  * Usage:
- *   tsx script/generate.ts docs-sections           # Generate (write)
- *   tsx script/generate.ts docs-sections --check   # Dry-run, exit 1 if stale
+ *   pnpm ts script/generate.ts docs-sections           # Generate (write)
+ *   pnpm ts script/generate.ts docs-sections --check   # Dry-run, exit 1 if stale
  */
 
 import { existsSync } from "node:fs";
@@ -340,7 +340,7 @@ function extractNodeVersion(): string {
  *
  * The published package supports a lower Node.js floor than local
  * development: consumers on older Node.js use a bundled WASM SQLite driver,
- * but contributors run the sources directly (tsx) against `node:sqlite`,
+ * but contributors run the sources directly (Node type stripping) against `node:sqlite`,
  * which requires Node.js 22.15+. This keeps the two floors independent.
  */
 function extractDevNodeVersion(): string {

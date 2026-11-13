@@ -360,6 +360,76 @@ function renderInline(tokens: Token[]): string {
   return parts.join("");
 }
 
+/** `key=<digits>` attributes after the language in a code fence info string. */
+const CODE_ATTR_RE = /(\w+)=(\d+)/g;
+
+/** Whitespace separating words in a code fence info string. */
+const WHITESPACE_RE = /\s+/;
+
+/**
+ * Parse a fenced code block info string such as `c start=38 highlight=43`
+ * into the language and the line-number gutter options.
+ */
+function parseCodeInfo(info: string | undefined): {
+  language?: string;
+  start?: number;
+  highlight?: number;
+} {
+  const [language, ...rest] = (info ?? "").trim().split(WHITESPACE_RE);
+  const attrs: Record<string, number> = {};
+  for (const m of rest.join(" ").matchAll(CODE_ATTR_RE)) {
+    if (m[1] && m[2]) {
+      attrs[m[1]] = Number(m[2]);
+    }
+  }
+  return {
+    language: language || undefined,
+    start: attrs.start,
+    highlight: attrs.highlight,
+  };
+}
+
+/**
+ * Render a fenced code block.
+ *
+ * A `start=N` attribute in the info string adds a line-number gutter that
+ * sits outside the highlighted code, so the numbers can't confuse the
+ * highlighter. `highlight=N` marks one line, for example the line a stack
+ * frame points at.
+ */
+function renderCodeBlock(token: Tokens.Code): string {
+  const { language, start, highlight } = parseCodeInfo(token.lang);
+  const highlighted = highlightCode(token.text, language);
+  if (start === undefined) {
+    return highlighted
+      .split("\n")
+      .map((l) => `  ${l}`)
+      .join("\n");
+  }
+
+  // chalk closes and reopens styles at newlines, so splitting the
+  // highlighted block keeps multi-line tokens (block comments) intact.
+  // Fall back to per-line highlighting if the line count ever diverges.
+  const sourceLines = token.text.split("\n");
+  let codeLines = highlighted.split("\n");
+  if (codeLines.length !== sourceLines.length) {
+    codeLines = sourceLines.map((l) => highlightCode(l, language));
+  }
+
+  const width = String(start + codeLines.length - 1).length;
+  return codeLines
+    .map((code, i) => {
+      const lineNo = start + i;
+      const num = String(lineNo).padStart(width);
+      const gutter =
+        lineNo === highlight
+          ? `${chalk.hex(COLORS.red).bold(">")} ${chalk.bold(num)}`
+          : `  ${muted(num)}`;
+      return `  ${gutter} ${muted("|")} ${code}`;
+    })
+    .join("\n");
+}
+
 // ──────────────────────── Block token rendering ──────────────────────
 
 /**
@@ -397,10 +467,7 @@ function renderBlocks(tokens: Token[]): string {
         break;
       }
       case "code": {
-        const t = token as Tokens.Code;
-        const highlighted = highlightCode(t.text, t.lang ?? undefined);
-        const lines = highlighted.split("\n").map((l) => `  ${l}`);
-        parts.push(lines.join("\n"));
+        parts.push(renderCodeBlock(token as Tokens.Code));
         parts.push("");
         break;
       }

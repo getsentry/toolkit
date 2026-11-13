@@ -5,7 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@11.8.0",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.15"
   },
   "license": "FSL-1.1-ALv2",
   "author": "Sentry",
@@ -62,7 +62,6 @@
     "peggy": "^5.1.0",
     "simple-git-hooks": "catalog:",
     "tsdown": "catalog:",
-    "tsx": "catalog:",
     "typescript": "catalog:",
     "valibot": "catalog:",
     "vitest": "catalog:"

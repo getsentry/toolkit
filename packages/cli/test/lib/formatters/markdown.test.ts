@@ -8,6 +8,7 @@
 
 import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import { describe, expect, test } from "vitest";
+import { muted } from "../../../src/lib/formatters/colors.js";
 import {
   colorTag,
   divider,
@@ -715,6 +716,22 @@ describe("renderMarkdown blocks (rendered mode)", () => {
   test("renders code blocks without language", () => {
     const result = rendered("```\nsome code\n```");
     expect(stripAnsi(result)).toContain("some code");
+  });
+
+  test("renders a line-number gutter outside the highlighted code", () => {
+    const result = rendered(
+      "```c start=9 highlight=10\nint x = 1;\nx = 999;\nreturn x;\n```",
+    );
+    expect(stripAnsi(result).split("\n")).toEqual([
+      "     9 | int x = 1;",
+      "  > 10 | x = 999;",
+      "    11 | return x;",
+    ]);
+    // Every context line number gets the same muted style, no matter what
+    // the highlighter would make of a bare number.
+    for (const num of [" 9", "11"]) {
+      expect(result).toContain(`    ${muted(num)} ${muted("|")} `);
+    }
   });
 
   test("renders blockquotes", () => {

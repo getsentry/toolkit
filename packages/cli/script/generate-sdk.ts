@@ -13,7 +13,7 @@
  *
  * Zero manual config — all commands are auto-discovered.
  *
- * Run: tsx script/generate.ts sdk
+ * Run: pnpm ts script/generate.ts sdk
  */
 
 import { writeFile } from "node:fs/promises";

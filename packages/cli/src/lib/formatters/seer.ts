@@ -147,28 +147,33 @@ export type IssueExplainData = {
 /**
  * Build a markdown document for a single root cause.
  *
- * @param cause - Root cause to format
+ * @param rootCause - Root cause to format
  * @param index - Index for display (used as cause ID)
  * @returns Markdown string for this cause
  */
-function buildRootCauseMarkdown(cause: RootCause, index: number): string {
+function buildRootCauseMarkdown(rootCause: RootCause, index: number): string {
   const lines: string[] = [];
 
-  lines.push(`### Cause #${index}: ${text(cause.description)}`);
+  lines.push(`### Cause #${index}: ${text(rootCause.description ?? "")}`);
   lines.push("");
 
-  if (cause.relevant_repos && cause.relevant_repos.length > 0) {
-    lines.push(`**Repository:** ${cause.relevant_repos.join(", ")}`);
+  if (rootCause.cause) {
+    lines.push(text(rootCause.cause));
+    lines.push("");
+  }
+
+  if (rootCause.relevant_repos && rootCause.relevant_repos.length > 0) {
+    lines.push(`**Repository:** ${rootCause.relevant_repos.join(", ")}`);
     lines.push("");
   }
 
   if (
-    cause.root_cause_reproduction &&
-    cause.root_cause_reproduction.length > 0
+    rootCause.root_cause_reproduction &&
+    rootCause.root_cause_reproduction.length > 0
   ) {
     lines.push("**Reproduction steps:**");
     lines.push("");
-    for (const step of cause.root_cause_reproduction) {
+    for (const step of rootCause.root_cause_reproduction) {
       lines.push(`**${text(step.title)}**`);
       lines.push("");
       // code_snippet_and_analysis may itself contain markdown (code fences,
@@ -261,20 +266,32 @@ export function jsonTransformIssueExplain(
 // Error Messages
 
 /**
+ * `code` Sentry sends with a 402 when the organization is out of Seer credits.
+ * Any other 402 means no budget, including one with no code from a Sentry
+ * version that predates the codes.
+ */
+const OUT_OF_CREDITS_CODE = "seer_out_of_credits";
+
+/**
  * Create a SeerError from an API error status code and detail.
  *
  * @param status - HTTP status code
  * @param detail - Error detail from API
  * @param orgSlug - Organization slug for constructing settings URLs
+ * @param code - Machine-readable `code` from the error body
  * @returns SeerError if the status code indicates a Seer-specific error, null otherwise
  */
 export function createSeerError(
   status: number,
   detail?: string,
   orgSlug?: string,
+  code?: string,
 ): SeerError | null {
   if (status === 402) {
-    return new SeerError("no_budget", orgSlug);
+    return new SeerError(
+      code === OUT_OF_CREDITS_CODE ? "out_of_credits" : "no_budget",
+      orgSlug,
+    );
   }
   if (status === 403) {
     if (detail?.includes("not enabled")) {
@@ -301,14 +318,16 @@ export function createSeerError(
  * @param status - HTTP status code
  * @param detail - Error detail from API
  * @param orgSlug - Organization slug for constructing settings URLs
+ * @param code - Machine-readable `code` from the error body
  * @returns SeerError for Seer-specific errors, or ApiError for other API errors
  */
 export function handleSeerApiError(
   status: number,
   detail?: string,
   orgSlug?: string,
+  code?: string,
 ): Error {
-  const seerError = createSeerError(status, detail, orgSlug);
+  const seerError = createSeerError(status, detail, orgSlug, code);
   if (seerError) {
     return seerError;
   }

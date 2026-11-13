@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Environment variable documentation coverage.
  *
@@ -17,7 +16,7 @@
  * INTERNAL_ENV_VARS so their exclusion is explicit and reviewable.
  *
  * Usage:
- *   tsx script/check-env-coverage.ts
+ *   pnpm ts script/check-env-coverage.ts
  *
  * Exit codes:
  *   0 - Every user-facing env var read by the CLI or an installer is documented

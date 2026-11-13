@@ -1,45 +1,24 @@
 /**
- * ESM preload shim for tsx dev mode.
+ * ESM preload shim for running TypeScript from source.
  *
  * 1. Provides a global `require()` for ESM modules in `"type": "module"`
  *    packages. Anchored at the project root — works for `node:*` builtins
  *    and npm packages. Files that need relative `require()` must use a
  *    file-local `createRequire(import.meta.url)` instead.
  *
- * 2. Handles `with { type: "file" }` import attributes that Node.js doesn't
- *    support natively. Registers a loader hook that returns the file path
- *    as a string — matching Bun's native behaviour.
+ * 2. Installs the workspace resolve hook (`scripts/strip-types-resolve.mjs`
+ *    at the repository root), which maps the sources' `./foo.js` specifiers
+ *    to `./foo.ts`. Node's type stripping does not rewrite them.
  *
- * Usage: NODE_OPTIONS="--import ./script/require-shim.mjs" tsx script/...
- * Or in package.json scripts via the `pnpm tsx` alias.
+ * Usage: `node --experimental-strip-types --import ./script/require-shim.mjs`,
+ * or the `pnpm ts` alias in package.json scripts.
  */
 
-import { createRequire, registerHooks } from "node:module";
+import { createRequire } from "node:module";
+import "../../../scripts/strip-types-resolve.mjs";
 
 if (typeof globalThis.require === "undefined") {
   globalThis.require = createRequire(
     new URL("../package.json", import.meta.url),
   );
 }
-
-// Handle `with { type: "file" }` import attributes in Node.js dev mode.
-// Bun supports this natively; esbuild's text-import-plugin handles it at
-// build time. In tsx dev mode neither applies, so we register a synchronous
-// hook that returns the file path as a string — matching Bun's behaviour.
-// registerHooks() is available from Node 22.15+ (our minimum).
-registerHooks({
-  load(url, context, nextLoad) {
-    // require() loads pass no importAttributes, whatever the types say.
-    const importAttributes = /** @type {ImportAttributes | undefined} */ (
-      context.importAttributes
-    );
-    if (importAttributes?.type === "file") {
-      return {
-        format: "module",
-        shortCircuit: true,
-        source: `export default ${JSON.stringify(new URL(url).pathname)};`,
-      };
-    }
-    return nextLoad(url, context);
-  },
-});
