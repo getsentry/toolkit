@@ -1,5 +1,13 @@
 import * as Sentry from "@sentry/cloudflare";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  assert,
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+} from "vitest";
 import app from "./app";
 import type { Env } from "./leaderboard";
 
@@ -20,6 +28,15 @@ function makeEnv(overrides: Record<string, unknown> = {}): Env {
     SENTRY_GAMES_READ_TOKEN: TOKEN,
     ...overrides,
   };
+}
+
+function nthCall<Args extends unknown[]>(
+  mockFn: { mock: { calls: Args[] } },
+  index = 0,
+): Args {
+  const call = mockFn.mock.calls[index];
+  assert(call, `expected mock call #${index + 1}`);
+  return call;
 }
 
 function upstreamBody(rows: Array<[unknown, unknown]>) {
@@ -103,7 +120,7 @@ describe("games leaderboard route", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = nthCall(fetchMock);
     const parsed = new URL(url as string);
     expect(parsed.origin + parsed.pathname).toBe(
       "https://us.sentry.io/api/0/organizations/sentry/events/",
@@ -125,7 +142,7 @@ describe("games leaderboard route", () => {
     });
 
     expect(cachePut).toHaveBeenCalledTimes(1);
-    const [key, cachedResponse] = cachePut.mock.calls[0];
+    const [key, cachedResponse] = nthCall(cachePut);
     expect(key).toBe(CACHE_URL);
     expect((cachedResponse as Response).headers.get("Cache-Control")).toBe(
       "max-age=300",
@@ -211,7 +228,7 @@ describe("games leaderboard route", () => {
     expect(res.status).toBe(502);
     expect(text).not.toContain("secret-upstream-detail");
     expect(text).not.toContain(TOKEN);
-    const reported = vi.mocked(Sentry.captureException).mock.calls[0][0];
+    const reported = nthCall(vi.mocked(Sentry.captureException))[0];
     expect(String(reported)).toContain("Snake leaderboard upstream failed");
     expect(String(reported)).not.toContain(TOKEN);
   });
@@ -243,8 +260,9 @@ describe("games leaderboard route", () => {
   it("uses a hashed IP rate limit key", async () => {
     const limit = vi.fn().mockResolvedValue({ success: false });
     await app.request(PATH, REQ, makeEnv({ GAMES_RATE_LIMITER: { limit } }));
-    expect(limit.mock.calls[0][0].key).toMatch(/^games:ip:[a-f0-9]{16}$/);
-    expect(limit.mock.calls[0][0].key).not.toContain("192.0.2.1");
+    const [{ key }] = nthCall(limit);
+    expect(key).toMatch(/^games:ip:[a-f0-9]{16}$/);
+    expect(key).not.toContain("192.0.2.1");
   });
 
   it("fails open when the rate limiter throws", async () => {
