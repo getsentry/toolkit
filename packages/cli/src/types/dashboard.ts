@@ -820,7 +820,7 @@ function cleanQuery(
   widgetId: string | undefined,
 ): DashboardWidgetQuery {
   return {
-    // Sentry preserves omitted pipelines by ID even when the feature is disabled.
+    // Sentry preserves omitted transformations by ID even without the feature.
     ...(widgetId !== undefined && q.id !== undefined
       ? { id: q.id }
       : q.transformations !== undefined
@@ -838,8 +838,8 @@ function cleanQuery(
 
 /**
  * Prepare a widget for PUT while retaining existing widget and query identities.
- * Existing queries omit pipelines so Sentry preserves their stored configuration.
- * New queries include pipelines verbatim, keyed by aggregate position.
+ * Existing query IDs preserve omitted transformations.
+ * New queries include transformations verbatim, keyed by aggregate position.
  *
  * @param widget - Widget object from GET response
  * @returns Widget safe for PUT (only API-accepted fields)

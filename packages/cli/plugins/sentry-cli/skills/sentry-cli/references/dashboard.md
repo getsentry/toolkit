@@ -181,6 +181,13 @@ Add a widget to a dashboard
 | `<org/project/dashboard/title...>` | [&lt;org/project&gt;] &lt;dashboard&gt; &lt;title&gt; |
 
 **Flags:**
+- `--transform-aggregate <value> - Aggregate number (1-based) or all; optional for a single aggregate. Edits the first query`
+- `--transform-fill <value> - Fill gaps with zero, linear, or locf; none removes filling. Omission preserves saved filling`
+- `--transform-smooth <value> - Replace the complete smoothing configuration; none removes smoothing. Omission preserves saved smoothing`
+- `--transform-window <value> - Positive integer window for sma/ema (required), or maximum window for asap (optional)`
+- `--transform-alpha <value> - EMA factor greater than 0 and at most 1; requires explicit --transform-smooth ema. Omission uses automatic alpha`
+- `--transform-order <value> - Application order; requires both fill and smooth. Existing pairs preserve order; new pairs default to fill-first`
+- `--transform-clear - Clear both transformations on the selected aggregate(s); conflicts with other transformation settings`
 - `-d, --display <value> - Display type (big_number, line, area, bar, table, stacked_area, top_n, text, categorical_bar, details, wheel, rage_and_dead_clicks, server_tree, agents_traces_table)`
 - `--dataset <value> - Widget dataset (default: spans). Accepts canonical names and API synonyms: spans, error-events/errors, tracemetrics/metrics, logs, issue`
 - `-q, --query <value>... - Aggregate expression (e.g. count, p95:span.duration)`
@@ -205,6 +212,9 @@ Add a widget to a dashboard
 **Examples:**
 
 ```bash
+# Fill gaps and smooth a line chart
+sentry dashboard widget add my-org/12345 "Requests" --display line --query count --transform-fill linear --transform-smooth ema --transform-window 7
+
 # Add a counter widget
 sentry dashboard widget add 'My Dashboard' "Error Count" --display big_number --query count
 
@@ -241,6 +251,13 @@ Edit a widget in a dashboard
 | `<org/project/dashboard...>` | [&lt;org/project&gt;] &lt;dashboard-id-or-title&gt; |
 
 **Flags:**
+- `--transform-aggregate <value> - Aggregate number (1-based) or all; optional for a single aggregate. Edits the first query`
+- `--transform-fill <value> - Fill gaps with zero, linear, or locf; none removes filling. Omission preserves saved filling`
+- `--transform-smooth <value> - Replace the complete smoothing configuration; none removes smoothing. Omission preserves saved smoothing`
+- `--transform-window <value> - Positive integer window for sma/ema (required), or maximum window for asap (optional)`
+- `--transform-alpha <value> - EMA factor greater than 0 and at most 1; requires explicit --transform-smooth ema. Omission uses automatic alpha`
+- `--transform-order <value> - Application order; requires both fill and smooth. Existing pairs preserve order; new pairs default to fill-first`
+- `--transform-clear - Clear both transformations on the selected aggregate(s); conflicts with other transformation settings`
 - `-i, --index <value> - Widget index (0-based)`
 - `-t, --title <value> - Widget title to match`
 - `--new-title <value> - New widget title`
@@ -267,6 +284,15 @@ Edit a widget in a dashboard
 **Examples:**
 
 ```bash
+# Change filling on aggregate 2 and preserve its smoothing
+sentry dashboard widget edit my-org/12345 --title "Requests" --transform-aggregate 2 --transform-fill linear
+
+# Smooth aggregate 2 before filling its gaps
+sentry dashboard widget edit my-org/12345 --title "Requests" --transform-aggregate 2 --transform-fill linear --transform-smooth ema --transform-window 7 --transform-alpha 0.25 --transform-order smooth-first
+
+# Clear transformations while replacing aggregates
+sentry dashboard widget edit my-org/12345 --title "Requests" --query count --query p95:span.duration --transform-aggregate all --transform-clear
+
 # Change a widget's display type
 sentry dashboard widget edit 12345 --title 'Error Rate' --display bar
 
