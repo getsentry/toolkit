@@ -21,7 +21,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import type { SentryContext } from "../../context.js";
@@ -31,7 +31,6 @@ import {
   getChunkUploadOptions,
 } from "../../lib/api/chunk-upload.js";
 import {
-  DEBUG_FILES_MAX_WAIT_MS,
   type DebugFileUpload,
   type DebugFileUploadResult,
   uploadDebugFiles,
@@ -54,7 +53,7 @@ import {
   parseFilePath,
   parseText,
 } from "../../lib/completion-target.js";
-import { ContextError, ValidationError } from "../../lib/errors.js";
+import { ContextError } from "../../lib/errors.js";
 import {
   colorTag,
   mdKvTable,
@@ -64,6 +63,8 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import { resolveOrgAndProject } from "../../lib/resolve-target.js";
 import { sentry } from "../../lib/app-identity.js";
+import { readSourceFile } from "./read-file.js";
+import { resolveWaitMode, type WaitFlags } from "./wait.js";
 
 const log = logger.withTag("debug-files.upload");
 
@@ -132,7 +133,7 @@ type DebugFilesUploadResult = {
 };
 
 /** Flags accepted by the upload command. */
-type UploadFlags = {
+type UploadFlags = WaitFlags & {
   type?: string[];
   id?: string[];
   "require-all"?: boolean;
@@ -144,8 +145,6 @@ type UploadFlags = {
   "derived-data"?: boolean;
   "no-zips"?: boolean;
   "no-upload"?: boolean;
-  wait?: boolean;
-  "wait-for"?: number;
 };
 
 // ── Formatter ───────────────────────────────────────────────────────
@@ -182,19 +181,6 @@ function formatUploadResult(data: DebugFilesUploadResult): string {
 function difKey(dif: DebugFileUpload): string {
   const hash = createHash("sha1").update(dif.content).digest("hex");
   return `${dif.debugId ?? ""}:${hash}`;
-}
-
-/**
- * Read a source file from disk for source-bundle/IL2CPP resolution, returning
- * `null` (and logging at debug level) when it is not available locally.
- */
-function readSourceFile(sourcePath: string): Uint8Array | null {
-  try {
-    return readFileSync(sourcePath);
-  } catch (err) {
-    log.debug(`Source file not available, skipping: ${sourcePath}`, err);
-    return null;
-  }
 }
 
 /**
@@ -325,34 +311,6 @@ function missingRequestedIds(
   return requestedIds.filter(
     (requested) => !foundIds.some((found) => debugIdMatches(requested, found)),
   );
-}
-
-/**
- * Resolve the wait mode and deadline from `--wait` / `--wait-for`.
- *
- * @throws {ValidationError} If both flags are set, or `--wait-for` is invalid.
- */
-function resolveWaitMode(flags: UploadFlags): {
-  wait: boolean;
-  maxWaitMs: number;
-} {
-  const waitFor = flags["wait-for"];
-  if (flags.wait && waitFor !== undefined) {
-    throw new ValidationError(
-      "--wait and --wait-for cannot be combined",
-      "wait",
-    );
-  }
-  if (waitFor !== undefined) {
-    if (!Number.isFinite(waitFor) || waitFor <= 0) {
-      throw new ValidationError(
-        "--wait-for must be a positive number of seconds",
-        "wait-for",
-      );
-    }
-    return { wait: true, maxWaitMs: Math.round(waitFor * 1000) };
-  }
-  return { wait: Boolean(flags.wait), maxWaitMs: DEBUG_FILES_MAX_WAIT_MS };
 }
 
 // ── Command ─────────────────────────────────────────────────────────

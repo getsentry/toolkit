@@ -122,6 +122,57 @@ sentry debug-files upload ./build --no-upload
 sentry debug-files upload --derived-data --no-upload
 ```
 
+### `sentry debug-files wasm-upload <path...>`
+
+Split WebAssembly debug info and upload it to Sentry
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<path...>` | WebAssembly files or directories to scan |
+
+**Flags:**
+- `--dry-run - Classify modules without writing or uploading anything`
+- `--no-upload - Split modules but do not upload the companions`
+- `--require-dwarf - Fail if any scanned module lacks DWARF debug info`
+- `--out-dir <value> - Directory for *.debug.wasm companions (modules are stripped in place)`
+- `--strip-names - Also drop the name section from split modules (companion keeps it)`
+- `--build-id <value> - Use this UUID as the build id instead of a random one (one .wasm file only)`
+- `--include-sources - Also upload a source bundle for each companion`
+- `--ignore <value>... - Skip files and folders matching this glob (repeatable)`
+- `--ignore-file <value> - Skip files and folders listed in this ignore file`
+- `--wait - Wait for server-side processing and report any errors`
+- `--wait-for <value> - Wait up to this many seconds for server-side processing`
+
+**Examples:**
+
+```bash
+# Split WebAssembly debug info and upload it (scans directories recursively)
+sentry debug-files wasm-upload ./dist
+
+# Preview the split without writing or uploading anything
+sentry debug-files wasm-upload ./dist --dry-run
+
+# Split only, keeping the companions local
+sentry debug-files wasm-upload ./app.wasm --no-upload
+
+# Use an explicit build id for a single module
+sentry debug-files wasm-upload ./app.wasm --build-id <uuid>
+
+# Write companions elsewhere; modules are still stripped in place
+sentry debug-files wasm-upload ./dist --out-dir ./symbols
+
+# Fail the build if any module was compiled without DWARF
+sentry debug-files wasm-upload ./dist --require-dwarf
+
+# Also upload a source bundle for each companion
+sentry debug-files wasm-upload ./dist --include-sources
+
+# Skip vendored modules
+sentry debug-files wasm-upload ./dist --ignore 'vendor/**'
+```
+
 ### `sentry debug-files print-sources <path>`
 
 List the source files a debug file references

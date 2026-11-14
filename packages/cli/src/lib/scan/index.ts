@@ -47,7 +47,7 @@ export {
 } from "./constants.js";
 export { collectGrep, grepFiles } from "./grep.js";
 export type { IgnoreStackOptions } from "./ignore.js";
-export { IgnoreStack } from "./ignore.js";
+export { buildIgnoreMatcher, IgnoreStack } from "./ignore.js";
 export type { CompilePatternOptions } from "./regex.js";
 export {
   compilePattern,
