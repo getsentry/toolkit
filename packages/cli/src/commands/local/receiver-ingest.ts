@@ -123,10 +123,10 @@ export function ingestReceiverEnvelope(
   input: {
     body: Buffer;
     contentType?: string;
-    encoding?: string;
+    encoding?: string | undefined;
     /** URL the delivery was posted to, which identifies the receiver's own routes. */
     receiverUrl?: string;
-    userAgent?: string;
+    userAgent?: string | undefined;
   },
 ): Promise<204 | 400 | 413 | 415 | 503> {
   const contentType = input.contentType?.split(";")[0]?.trim().toLowerCase();

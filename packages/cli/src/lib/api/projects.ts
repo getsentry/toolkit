@@ -52,6 +52,7 @@ import {
   unwrapValidatedResult,
 } from "./infrastructure.js";
 import { listOrganizations } from "./organizations.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 const log = logger.withTag("api.projects");
 
@@ -82,7 +83,7 @@ export async function listProjects(orgSlug: string): Promise<SentryProject[]> {
     const result = await listOrganizationProjects({
       ...config,
       path: { organization_id_or_slug: orgSlug },
-      query: { cursor, per_page: API_MAX_PER_PAGE },
+      query: omitUndefined({ cursor, per_page: API_MAX_PER_PAGE }),
     });
     return unwrapPaginatedResult<SentryProject[]>(
       result,
@@ -121,7 +122,11 @@ export async function listProjects(orgSlug: string): Promise<SentryProject[]> {
  */
 export async function listProjectsPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number; query?: string } = {},
+  options: {
+    cursor?: string | undefined;
+    perPage?: number | undefined;
+    query?: string | undefined;
+  } = {},
 ): Promise<PaginatedResponse<SentryProject[]>> {
   const config = getOrgSdkConfig();
   const perPage = Math.min(
@@ -132,11 +137,11 @@ export async function listProjectsPaginated(
   const result = await listOrganizationProjects({
     ...config,
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       cursor: options.cursor,
       per_page: perPage,
       query: options.query,
-    },
+    }),
   });
 
   return unwrapPaginatedResult<SentryProject[]>(
@@ -184,7 +189,7 @@ export async function searchProjects(
  */
 export function listProjectsAllPages(
   orgSlug: string,
-  options: { limit: number; cursor?: string },
+  options: { limit: number; cursor?: string | undefined },
 ): Promise<PaginatedResponse<SentryProject[]>> {
   return paginate(options, (perPage, cursor) =>
     listProjectsPaginated(orgSlug, { cursor, perPage }),
@@ -760,13 +765,13 @@ function toProjectDsn(key: SdkProjectKey): ProjectDsn {
 export async function listProjectDsns(
   orgSlug: string,
   projectSlug: string,
-  options: { limit?: number; cursor?: string } = {},
+  options: { limit?: number | undefined; cursor?: string | undefined } = {},
 ): Promise<PaginatedResponse<ProjectDsn[]>> {
   const config = getOrgSdkConfig();
 
   return await paginate(options, async (perPage, cursor) => {
     // The SDK omits the shared per_page parameter supported by this endpoint.
-    const query = { cursor, per_page: perPage };
+    const query = omitUndefined({ cursor, per_page: perPage });
     const result = await listProjectKeys({
       ...config,
       path: {
@@ -794,7 +799,7 @@ export async function listProjectDsns(
  */
 export async function listOrganizationDsns(
   orgSlug: string,
-  options: { limit?: number; cursor?: string } = {},
+  options: { limit?: number | undefined; cursor?: string | undefined } = {},
 ): Promise<PaginatedResponse<(ProjectDsn & { project: string })[]>> {
   const config = getOrgSdkConfig();
   const projectLookups = new Map<number, Promise<string>>();
@@ -803,7 +808,7 @@ export async function listOrganizationDsns(
   return await paginate(options, async (perPage, cursor) => {
     // These shared query parameters are supported by the backend but absent
     // from the SDK type. -1 includes accessible projects outside the user's teams.
-    const query = { cursor, per_page: perPage, project: -1 };
+    const query = omitUndefined({ cursor, per_page: perPage, project: -1 });
     const result = await listOrganizationProjectKeys({
       ...config,
       path: { organization_id_or_slug: orgSlug },

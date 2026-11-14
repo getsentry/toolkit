@@ -147,13 +147,13 @@ describe("terminalLink", () => {
    */
   function withTTY(fn: () => void): void {
     const savedTTY = process.stdout.isTTY;
-    const savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    const savedNoColor = process.env.NO_COLOR;
-    const savedForceColor = process.env.FORCE_COLOR;
+    const savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    const savedNoColor = process.env["NO_COLOR"];
+    const savedForceColor = process.env["FORCE_COLOR"];
     process.stdout.isTTY = true;
-    delete process.env.SENTRY_PLAIN_OUTPUT;
-    delete process.env.NO_COLOR;
-    delete process.env.FORCE_COLOR;
+    delete process.env["SENTRY_PLAIN_OUTPUT"];
+    delete process.env["NO_COLOR"];
+    delete process.env["FORCE_COLOR"];
     try {
       fn();
     } finally {
@@ -195,9 +195,9 @@ describe("terminalLink", () => {
 
   test("returns plain text without OSC 8 when piped", () => {
     const savedTTY = process.stdout.isTTY;
-    const savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
+    const savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
     process.stdout.isTTY = false;
-    delete process.env.SENTRY_PLAIN_OUTPUT;
+    delete process.env["SENTRY_PLAIN_OUTPUT"];
     try {
       const result = terminalLink("click me", "https://example.com");
       expect(result).toBe("click me");
@@ -205,24 +205,24 @@ describe("terminalLink", () => {
     } finally {
       process.stdout.isTTY = savedTTY;
       if (savedPlain !== undefined) {
-        process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+        process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
       } else {
-        delete process.env.SENTRY_PLAIN_OUTPUT;
+        delete process.env["SENTRY_PLAIN_OUTPUT"];
       }
     }
   });
 
   test("returns plain text when SENTRY_PLAIN_OUTPUT=1", () => {
-    const savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    process.env.SENTRY_PLAIN_OUTPUT = "1";
+    const savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    process.env["SENTRY_PLAIN_OUTPUT"] = "1";
     try {
       const result = terminalLink("display", "https://url.com");
       expect(result).toBe("display");
     } finally {
       if (savedPlain !== undefined) {
-        process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+        process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
       } else {
-        delete process.env.SENTRY_PLAIN_OUTPUT;
+        delete process.env["SENTRY_PLAIN_OUTPUT"];
       }
     }
   });

@@ -48,7 +48,7 @@ export type LogoutResult = {
   /** Accounts that were removed */
   removed?: AccountSummary[];
   /** Account that is active after logout, if any remain */
-  activeAccount?: AccountSummary;
+  activeAccount?: AccountSummary | undefined;
   /** Set when `all` was requested */
   all?: boolean;
 };

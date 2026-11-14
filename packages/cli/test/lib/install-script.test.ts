@@ -28,6 +28,7 @@ import {
   type ServedAsset,
   toolkitDownload,
 } from "./install-scenarios.js";
+import { at } from "../helpers.js";
 
 const installScript = join(import.meta.dirname, "..", "..", "install");
 const downloadedExecutable = `#!/usr/bin/env bash
@@ -93,7 +94,7 @@ describe("install script", () => {
       TMPDIR: testDir,
     };
     applyScenario(
-      { ...INSTALL_SCENARIOS[0], name: "default" },
+      { ...at(INSTALL_SCENARIOS, 0), name: "default" },
       served,
       testDir,
       env,
@@ -216,7 +217,7 @@ esac
     },
   ])("parses $name registry metadata", ({ format }) => {
     writeFileSync(
-      env.SENTRY_TEST_REGISTRY_BODY as string,
+      env["SENTRY_TEST_REGISTRY_BODY"] as string,
       format(registryTemplate(served, {})),
     );
     const result = spawnSync("bash", [installScript, "--no-modify-path"], {
@@ -261,8 +262,8 @@ esac
     });
 
     writeFileSync(gzipPath, gzipSync(downloadedExecutable));
-    env.SENTRY_TEST_GZIP = gzipPath;
-    env.SENTRY_TEST_NIGHTLY_REDIRECT = redirect ? "1" : "0";
+    env["SENTRY_TEST_GZIP"] = gzipPath;
+    env["SENTRY_TEST_NIGHTLY_REDIRECT"] = redirect ? "1" : "0";
     writeFileSync(
       join(binDir, "curl"),
       `#!/usr/bin/env bash
@@ -523,9 +524,9 @@ process.exitCode = result.status ?? 1;
       secondPage,
       '[\n  {\n    "tag_name": "cli@0.46.0",\n    "prerelease": false\n  }\n]\n',
     );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
-    env.SENTRY_TEST_RELEASES_PAGE_2 = secondPage;
-    env.SENTRY_TEST_REGISTRY_STATUS = "503";
+    env["SENTRY_TEST_RELEASES_PAGE_1"] = firstPage;
+    env["SENTRY_TEST_RELEASES_PAGE_2"] = secondPage;
+    env["SENTRY_TEST_REGISTRY_STATUS"] = "503";
     const result = spawnSync("bash", [installScript, "--no-modify-path"], {
       env,
       encoding: "utf8",
@@ -549,8 +550,8 @@ process.exitCode = result.status ?? 1;
       firstPage,
       '[\n  {\n    "tag_name": "cli@0.47.0-dev.1",\n    "prerelease": false\n  },\n  {\n    "tag_name": "cli@0.46.0",\n    "prerelease": false\n  }\n]\n',
     );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
-    env.SENTRY_TEST_REGISTRY_STATUS = "503";
+    env["SENTRY_TEST_RELEASES_PAGE_1"] = firstPage;
+    env["SENTRY_TEST_REGISTRY_STATUS"] = "503";
     const result = spawnSync("bash", [installScript, "--no-modify-path"], {
       env,
       encoding: "utf8",
@@ -585,8 +586,8 @@ process.exitCode = result.status ?? 1;
         },
       ]),
     );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
-    env.SENTRY_TEST_REGISTRY_STATUS = "503";
+    env["SENTRY_TEST_RELEASES_PAGE_1"] = firstPage;
+    env["SENTRY_TEST_REGISTRY_STATUS"] = "503";
     const result = spawnSync("bash", [installScript, "--no-modify-path"], {
       env,
       encoding: "utf8",
@@ -615,8 +616,8 @@ process.exitCode = result.status ?? 1;
   }
 ]`,
     );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
-    env.SENTRY_TEST_REGISTRY_STATUS = "503";
+    env["SENTRY_TEST_RELEASES_PAGE_1"] = firstPage;
+    env["SENTRY_TEST_REGISTRY_STATUS"] = "503";
     const result = spawnSync("bash", [installScript, "--no-modify-path"], {
       env,
       encoding: "utf8",
@@ -875,7 +876,7 @@ exec /usr/bin/gunzip "$@"
   });
 
   test("connects setup to the controlling terminal and cleans up after setup", () => {
-    env.SENTRY_TEST_KEEP_TEMP_BINARY = "1";
+    env["SENTRY_TEST_KEEP_TEMP_BINARY"] = "1";
     const result = runInTerminal();
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("setup-tty")).toEqual([
@@ -906,15 +907,18 @@ exec /usr/bin/gunzip "$@"
       expected: ["0:false", "1:true", "2:true", "controlling:false"],
     },
   ])("skips login when $name", ({ redirect, detached, expected }) => {
-    const result = runInTerminal({ redirect, detached });
+    const result = runInTerminal({
+      ...(redirect !== undefined && { redirect }),
+      ...(detached !== undefined && { detached }),
+    });
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("setup-tty")).toEqual(expected);
     expect(recorded("post-args")).toEqual([]);
   });
 
   test("runs init after setup, which keeps the terminal, when SENTRY_INIT is set", () => {
-    env.SENTRY_INIT = "1";
-    env.SENTRY_TEST_POST_EXIT = "7";
+    env["SENTRY_INIT"] = "1";
+    env["SENTRY_TEST_POST_EXIT"] = "7";
     const result = runInTerminal();
     expect(result.status, result.stdout + result.stderr).toBe(7);
     expect(recorded("setup-tty")).toEqual([
@@ -928,7 +932,7 @@ exec /usr/bin/gunzip "$@"
   });
 
   test("runs init without a terminal when SENTRY_INIT is set", () => {
-    env.SENTRY_INIT = "1";
+    env["SENTRY_INIT"] = "1";
     const result = spawnSync("bash", [installScript, "--version", "0.31.0"], {
       env,
       encoding: "utf8",
@@ -942,12 +946,12 @@ exec /usr/bin/gunzip "$@"
   test("initializes the downloaded binary even after setup deletes it", () => {
     // A stale install that is not where setup puts the new binary must not be
     // the one that runs init.
-    const staleDir = join(env.HOME!, ".local", "bin");
+    const staleDir = join(env["HOME"]!, ".local", "bin");
     mkdirSync(staleDir, { recursive: true });
     writeFileSync(join(staleDir, "sentry"), downloadedExecutable);
     chmodSync(join(staleDir, "sentry"), 0o755);
-    env.PATH = `${staleDir}:${env.PATH}`;
-    env.SENTRY_INIT = "1";
+    env["PATH"] = `${staleDir}:${env["PATH"]}`;
+    env["SENTRY_INIT"] = "1";
 
     const result = runInTerminal();
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -963,7 +967,7 @@ exec /usr/bin/gunzip "$@"
   test.each([1, 130])(
     "preserves setup failure or interruption exit %i",
     (exitCode) => {
-      env.SENTRY_TEST_SETUP_EXIT = String(exitCode);
+      env["SENTRY_TEST_SETUP_EXIT"] = String(exitCode);
       const result = runInTerminal();
       expect(result.status, result.stdout + result.stderr).toBe(exitCode);
       expect(recorded("post-args")).toEqual([]);
@@ -972,7 +976,7 @@ exec /usr/bin/gunzip "$@"
   );
 
   test.each([1, 130])("preserves non-interactive setup exit %i", (exitCode) => {
-    env.SENTRY_TEST_SETUP_EXIT = String(exitCode);
+    env["SENTRY_TEST_SETUP_EXIT"] = String(exitCode);
     const result = spawnSync("bash", [installScript, "--version", "0.31.0"], {
       env,
       encoding: "utf8",

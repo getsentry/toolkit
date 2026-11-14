@@ -93,7 +93,7 @@ function groupConditions(
 ): Record<string, unknown>[] | undefined {
   const conditions =
     group !== null && typeof group === "object"
-      ? (group as Record<string, unknown>).conditions
+      ? (group as Record<string, unknown>)["conditions"]
       : undefined;
   return Array.isArray(conditions) ? conditions : undefined;
 }
@@ -108,23 +108,25 @@ function applyIssueEdits(
   const filters = parseJsonObjectList(flags.filter, "filter");
 
   if (flags.name !== undefined) {
-    body.name = flags.name;
+    body["name"] = flags.name;
   }
   if (flags.status !== undefined) {
     // Workflows use an `enabled` boolean rather than a status string.
-    body.enabled = flags.status === "active";
+    // Workflows use an `enabled` boolean rather than a status string.
+    body["enabled"] = flags.status === "active";
   }
   if (flags.frequency !== undefined) {
-    const config = (body.config as Record<string, unknown> | undefined) ?? {};
-    config.frequency = flags.frequency;
-    body.config = config;
+    const config =
+      (body["config"] as Record<string, unknown> | undefined) ?? {};
+    config["frequency"] = flags.frequency;
+    body["config"] = config;
   }
   if (flags.environment !== undefined) {
-    body.environment =
+    body["environment"] =
       flags.environment.trim() === "" ? null : flags.environment;
   }
   if (flags.owner !== undefined) {
-    body.owner = flags.owner.trim() === "" ? null : flags.owner;
+    body["owner"] = flags.owner.trim() === "" ? null : flags.owner;
   }
 
   // Triggers: the "when" data-condition group. Issue-alert triggers always use
@@ -132,10 +134,10 @@ function applyIssueEdits(
   // conditions change rather than exposing a trigger match flag.
   if (conditions !== undefined) {
     const triggers =
-      (body.triggers as Record<string, unknown> | undefined) ?? {};
-    triggers.conditions = conditions;
-    triggers.logicType = triggerLogicType();
-    body.triggers = triggers;
+      (body["triggers"] as Record<string, unknown> | undefined) ?? {};
+    triggers["conditions"] = conditions;
+    triggers["logicType"] = triggerLogicType();
+    body["triggers"] = triggers;
   }
 
   // Action filter: the "if" group plus its actions. Issue alerts use one filter.
@@ -144,8 +146,8 @@ function applyIssueEdits(
     filters !== undefined ||
     flags["filter-match"] !== undefined
   ) {
-    const actionFilters = Array.isArray(body.actionFilters)
-      ? (body.actionFilters as Record<string, unknown>[])
+    const actionFilters = Array.isArray(body["actionFilters"])
+      ? (body["actionFilters"] as Record<string, unknown>[])
       : [];
     const existingFilter = actionFilters[0];
     // When the rule has no action filter yet, a partial edit (e.g. only
@@ -158,25 +160,27 @@ function applyIssueEdits(
       conditions: [],
     };
     if (actions !== undefined) {
-      filter.actions = actions;
+      filter["actions"] = actions;
     }
     if (filters !== undefined) {
-      filter.conditions = filters;
+      filter["conditions"] = filters;
     }
     if (flags["filter-match"] !== undefined) {
-      filter.logicType = matchToLogicType(flags["filter-match"]);
+      filter["logicType"] = matchToLogicType(flags["filter-match"]);
     }
     actionFilters[0] = filter;
-    body.actionFilters = actionFilters;
+    body["actionFilters"] = actionFilters;
   }
 
   // Check the rule as it will be after the edit: clearing either its
   // triggers or its filters must not leave an alert on every event.
   if (conditions !== undefined || filters !== undefined) {
     validateIssueTriggers(
-      groupConditions(body.triggers),
+      groupConditions(body["triggers"]),
       groupConditions(
-        Array.isArray(body.actionFilters) ? body.actionFilters[0] : undefined,
+        Array.isArray(body["actionFilters"])
+          ? body["actionFilters"][0]
+          : undefined,
       ),
     );
   }

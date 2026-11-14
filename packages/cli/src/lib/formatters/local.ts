@@ -120,8 +120,9 @@ const TRACE_ID_SHORT_LEN = 8;
 export function extractTraceId(
   event: Record<string, unknown>,
 ): string | undefined {
-  const trace = (event.contexts as Record<string, unknown> | undefined)
-    ?.trace as { trace_id?: unknown } | undefined;
+  const trace = (event["contexts"] as Record<string, unknown> | undefined)?.[
+    "trace"
+  ] as { trace_id?: unknown } | undefined;
   const traceId = trace?.trace_id;
   if (typeof traceId === "string" && TRACE_ID_RE.test(traceId)) {
     return traceId.toLowerCase();
@@ -455,13 +456,12 @@ export function formatTransactionItem(
   event: Record<string, unknown>,
   header: Record<string, unknown>,
 ): string {
-  const trace = (event.contexts as Record<string, unknown> | undefined)
-    ?.trace as
-    | { op?: string; status?: string; description?: string }
-    | undefined;
+  const trace = (event["contexts"] as Record<string, unknown> | undefined)?.[
+    "trace"
+  ] as { op?: string; status?: string; description?: string } | undefined;
   const txnName =
-    typeof event.transaction === "string"
-      ? event.transaction
+    typeof event["transaction"] === "string"
+      ? event["transaction"]
       : (trace?.description ?? "Transaction");
 
   // Try semantic display from OTel attributes first
@@ -737,7 +737,7 @@ export function formatLogItem(
   header: Record<string, unknown>,
   showAttributes = false,
 ): string[] {
-  const items = event.items as LogEntry[] | undefined;
+  const items = event["items"] as LogEntry[] | undefined;
   if (!items?.length) {
     return [];
   }
@@ -979,7 +979,7 @@ export function formatSpanItem(
   header: Record<string, unknown>,
   showAttributes = false,
 ): string[] {
-  const items = event.items as StreamedSpan[] | undefined;
+  const items = event["items"] as StreamedSpan[] | undefined;
   if (!items?.length) {
     return [];
   }
@@ -1019,7 +1019,7 @@ export function formatSpanItem(
  * Checks all spans in the container for AI-prefixed attributes.
  */
 function spanItemHasAiActivity(payload: Record<string, unknown>): boolean {
-  const items = payload.items as StreamedSpan[] | undefined;
+  const items = payload["items"] as StreamedSpan[] | undefined;
   if (!items?.length) {
     return false;
   }
@@ -1052,6 +1052,7 @@ export function itemTypeToFilterCategory(
   if (itemType === "transaction" || itemType === "span" || itemType === "log") {
     return itemType === "span" ? "transaction" : itemType;
   }
+  return undefined;
 }
 
 /**
@@ -1117,6 +1118,7 @@ function jsonSafeIdentifier(value: unknown): string | undefined {
   } catch {
     log.debug("Could not serialize local envelope identity");
   }
+  return undefined;
 }
 
 /** Strip ANSI escapes, C1 controls, and BiDi overrides from a JSON string. */
@@ -1160,8 +1162,8 @@ function formatJsonObservation(
   return JSON.stringify(
     sanitizeJsonValue({
       schema_version: LOCAL_EVENT_SCHEMA_VERSION,
-      envelope_id: jsonSafeIdentifier(header.__spotlight_envelope_id),
-      event_id: jsonSafe(payload.event_id) ?? jsonSafe(header.event_id),
+      envelope_id: jsonSafeIdentifier(header["__spotlight_envelope_id"]),
+      event_id: jsonSafe(payload["event_id"]) ?? jsonSafe(header["event_id"]),
       ...observation,
     }),
   );
@@ -1204,8 +1206,8 @@ function formatErrorJson(
  * envelope stays compact when `--attributes` isn't requested.
  */
 function buildJsonAttributes(payload: Record<string, unknown>): {
-  user?: Record<string, string>;
-  sdk?: Record<string, string>;
+  user?: Record<string, string> | undefined;
+  sdk?: Record<string, string> | undefined;
 } {
   const merged = collectAllAttributes(payload);
   const user: Record<string, string> = {};
@@ -1233,13 +1235,14 @@ function formatTransactionJson(
   header: Record<string, unknown>,
   includeAttributes = false,
 ): string {
-  const trace = (payload.contexts as Record<string, unknown> | undefined)
-    ?.trace as Record<string, unknown> | undefined;
+  const trace = (payload["contexts"] as Record<string, unknown> | undefined)?.[
+    "trace"
+  ] as Record<string, unknown> | undefined;
   const attrs = mergeTransactionAttributes(payload);
   const semantic = formatSemanticSpanDisplay(
     attrs,
     stringifyUnknown(
-      payload.transaction ?? trace?.description ?? "Transaction",
+      payload["transaction"] ?? trace?.["description"] ?? "Transaction",
     ),
   );
   return formatJsonObservation(
@@ -1247,7 +1250,7 @@ function formatTransactionJson(
       type: "transaction",
       timestamp: parseEventTimestamp(payload.timestamp),
       trace_id: extractTraceId(payload),
-      op: inferSemanticOp(attrs) ?? trace?.op,
+      op: inferSemanticOp(attrs) ?? trace?.["op"],
       label: stripBidi(semantic.label),
       metadata:
         semantic.metadata.length > 0
@@ -1276,7 +1279,7 @@ function formatLogJson(
   header: Record<string, unknown>,
   includeAttributes = false,
 ): string[] {
-  const items = payload.items as LogEntry[] | undefined;
+  const items = payload["items"] as LogEntry[] | undefined;
   if (!items?.length) {
     return [];
   }
@@ -1319,7 +1322,7 @@ function formatSpanJson(
   header: Record<string, unknown>,
   includeAttributes = false,
 ): string[] {
-  const items = payload.items as StreamedSpan[] | undefined;
+  const items = payload["items"] as StreamedSpan[] | undefined;
   if (!items?.length) {
     return [];
   }
@@ -1586,16 +1589,16 @@ export function formatLocalControlResult(
   data: Record<string, unknown>,
 ): string {
   const daemon =
-    data.daemon &&
-    typeof data.daemon === "object" &&
-    !Array.isArray(data.daemon)
-      ? (data.daemon as Record<string, unknown>)
+    data["daemon"] &&
+    typeof data["daemon"] === "object" &&
+    !Array.isArray(data["daemon"])
+      ? (data["daemon"] as Record<string, unknown>)
       : data;
   const receiverUrl =
-    typeof data.streamUrl === "string"
-      ? data.streamUrl
-      : typeof daemon.host === "string" && typeof daemon.port === "number"
-        ? formatLocalServerUrl(daemon.host, daemon.port)
+    typeof data["streamUrl"] === "string"
+      ? data["streamUrl"]
+      : typeof daemon["host"] === "string" && typeof daemon["port"] === "number"
+        ? formatLocalServerUrl(daemon["host"], daemon["port"])
         : undefined;
   const hint = receiverUrl ? formatLocalViewerHint(receiverUrl) : undefined;
   return JSON.stringify(data, null, 2) + (hint ? `\n\n${hint}` : "");

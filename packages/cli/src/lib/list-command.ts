@@ -437,7 +437,7 @@ function getSubcommandsForRoute(routeName: string): Set<string> {
     byRoute = new Map();
     for (const entry of routes.getAllEntries()) {
       const target = entry.target as unknown as Record<string, unknown>;
-      if (typeof target.getAllEntries === "function") {
+      if (typeof target["getAllEntries"] === "function") {
         byRoute.set(
           entry.name.original,
           collectChildNames(
@@ -547,36 +547,36 @@ export function buildListCommand<
 
   // Auto-inject common flags and aliases into parameters
   const params = builderArgs.parameters ?? {};
-  const existingFlags = (params.flags ?? {}) as Record<string, unknown>;
-  const existingAliases = (params.aliases ?? {}) as Record<string, string>;
+  const existingFlags = (params["flags"] ?? {}) as Record<string, unknown>;
+  const existingAliases = (params["aliases"] ?? {}) as Record<string, string>;
 
   const mergedFlags = { ...existingFlags };
   const mergedAliases = { ...existingAliases };
 
   // Always inject --fresh unless the command already defines it
   if (!("fresh" in mergedFlags)) {
-    mergedFlags.fresh = FRESH_FLAG;
+    mergedFlags["fresh"] = FRESH_FLAG;
   }
 
   // Inject --cursor unless opted out or already defined
   if (!(options?.noCursorFlag || "cursor" in mergedFlags)) {
-    mergedFlags.cursor = LIST_CURSOR_FLAG;
+    mergedFlags["cursor"] = LIST_CURSOR_FLAG;
   }
 
   // Inject -f alias unless opted out or already defined
   if (!(options?.noFreshAlias || "f" in mergedAliases)) {
-    mergedAliases.f = "fresh";
+    mergedAliases["f"] = "fresh";
   }
 
   // Inject -c alias unless cursor is opted out or already defined
   if (!(options?.noCursorFlag || "c" in mergedAliases)) {
-    mergedAliases.c = "cursor";
+    mergedAliases["c"] = "cursor";
   }
 
   // `boundArguments` positionals parse every argument before this wrapper
   // runs, so a subcommand name is left out of that parse, before it changes
   // what the other arguments mean
-  const positional = skipLeadingArgument(params.positional, (arg) =>
+  const positional = skipLeadingArgument(params["positional"], (arg) =>
     isSubcommandName(arg, routeName),
   );
   const mergedParams = {

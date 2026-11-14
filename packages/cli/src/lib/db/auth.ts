@@ -271,9 +271,9 @@ export type AuthSource = "env:SENTRY_AUTH_TOKEN" | "env:SENTRY_TOKEN" | "oauth";
 
 export type AuthConfig = {
   token?: string;
-  refreshToken?: string;
-  expiresAt?: number;
-  issuedAt?: number;
+  refreshToken?: string | undefined;
+  expiresAt?: number | undefined;
+  issuedAt?: number | undefined;
   source: AuthSource;
 };
 
@@ -297,14 +297,14 @@ export function getRawEnvToken(): string | undefined {
 function getEnvToken(): { token: string; source: AuthSource } | undefined {
   // Preserve presence rules: whitespace is unset, but control-only credentials
   // must remain selected so validation cannot silently fall back to another identity.
-  const authToken = getEnv().SENTRY_AUTH_TOKEN?.trim();
+  const authToken = getEnv()["SENTRY_AUTH_TOKEN"]?.trim();
   if (authToken) {
     return {
       token: trimAuthToken(authToken) || authToken,
       source: "env:SENTRY_AUTH_TOKEN",
     };
   }
-  const sentryToken = getEnv().SENTRY_TOKEN?.trim();
+  const sentryToken = getEnv()["SENTRY_TOKEN"]?.trim();
   if (sentryToken) {
     return {
       token: trimAuthToken(sentryToken) || sentryToken,
@@ -339,7 +339,7 @@ export function getActiveEnvVarName(): string {
  * `true`, `yes`, `on`, ...). Negative or unrecognized values leave it off.
  */
 export function isForceEnvTokenSet(): boolean {
-  return parseBoolValue(getEnv().SENTRY_FORCE_ENV_TOKEN ?? "") === true;
+  return parseBoolValue(getEnv()["SENTRY_FORCE_ENV_TOKEN"] ?? "") === true;
 }
 
 /** Whether `SENTRY_FORCE_ENV_TOKEN` makes a set env token the only credential. */
@@ -667,8 +667,8 @@ export function resetAccountSelection(): void {
  */
 export type SetAuthTokenOptions = {
   host?: string;
-  newAccount?: boolean;
-  accountId?: string;
+  newAccount?: boolean | undefined;
+  accountId?: string | undefined;
 };
 
 /** Drop all memoized active-credential state after an account mutation. */
@@ -982,7 +982,7 @@ function followDefaultAccountHost(host: string): void {
   if (isSameServer(getConfiguredUrlOrUndefined() ?? DEFAULT_SENTRY_URL, host)) {
     return;
   }
-  getEnv().SENTRY_URL = host;
+  getEnv()["SENTRY_URL"] = host;
   markPersistedDefaultUrl(host);
 }
 
@@ -1182,14 +1182,14 @@ export function withStoredAccount<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const env: NodeJS.ProcessEnv = { ...getEnv() };
-  delete env.SENTRY_HOST;
-  env.SENTRY_URL = account.host;
+  delete env["SENTRY_HOST"];
+  env["SENTRY_URL"] = account.host;
   // Only the account's own credentials: an env token (forced or as a
   // fallback when the stored one is unusable) must never be sent to the
   // account's server.
-  delete env.SENTRY_AUTH_TOKEN;
-  delete env.SENTRY_TOKEN;
-  delete env.SENTRY_FORCE_ENV_TOKEN;
+  delete env["SENTRY_AUTH_TOKEN"];
+  delete env["SENTRY_TOKEN"];
+  delete env["SENTRY_FORCE_ENV_TOKEN"];
   return withEnv(env, () => {
     getAccountScope().accountId = account.id;
     return fn();
@@ -1211,9 +1211,9 @@ export function withEnvAccount<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const env: NodeJS.ProcessEnv = { ...getEnv() };
-  delete env.SENTRY_HOST;
-  env.SENTRY_URL = account.host;
-  env.SENTRY_FORCE_ENV_TOKEN = "1";
+  delete env["SENTRY_HOST"];
+  env["SENTRY_URL"] = account.host;
+  env["SENTRY_FORCE_ENV_TOKEN"] = "1";
   return withEnv(env, fn);
 }
 
@@ -1462,7 +1462,7 @@ export function hasStoredAuthCredentials(): boolean {
 
 export type RefreshTokenOptions = {
   /** Bypass threshold check and always refresh */
-  force?: boolean;
+  force?: boolean | undefined;
   expectedCredential?: Pick<CredentialContext, "host" | "identity">;
 };
 

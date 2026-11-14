@@ -122,7 +122,7 @@ export type FlagDef = {
 export type CommandInfo = {
   path: string;
   brief: string;
-  fullDescription?: string;
+  fullDescription?: string | undefined;
   flags: FlagInfo[];
   positional: string;
   /** Structured positional parameter metadata for documentation generation */
@@ -130,7 +130,7 @@ export type CommandInfo = {
   aliases: Record<string, string>;
   examples: string[];
   /** JSON output field metadata extracted from `OutputConfig.schema` */
-  jsonFields?: SchemaFieldInfo[];
+  jsonFields?: SchemaFieldInfo[] | undefined;
   /** Present (and `true`) when the command is destructive or irreversible */
   destructive?: true;
 };
@@ -449,7 +449,7 @@ export type CommandCompletions = Record<string, CommandCompletion>;
 function argumentCompletion(
   parse: unknown,
   enumValues?: readonly string[],
-): { kind: CompletionTarget | null; values?: readonly string[] } {
+): { kind: CompletionTarget | null; values?: readonly string[] | undefined } {
   return enumValues
     ? { kind: CHOICE_TARGET, values: enumValues }
     : {

@@ -252,21 +252,21 @@ export function lookupKnownKey<K extends string, V>(
  */
 export class ApiError extends CliError {
   readonly status: number;
-  readonly detail?: string;
-  readonly endpoint?: string;
+  readonly detail: string | undefined;
+  readonly endpoint: string | undefined;
 
   /**
    * Machine-readable `code` from the error body, when the server sent one
    * (e.g. `invalid_search_query`).
    */
-  readonly code?: string;
+  readonly code: string | undefined;
 
   /**
    * Function and argument the server rejected, sent with code
    * `invalid_function_argument` (e.g. `p75` and `cart.total`), plus its
    * `hint` when the server suggests a fix.
    */
-  readonly functionArgument?: FunctionArgument;
+  readonly functionArgument: FunctionArgument | undefined;
 
   /**
    * Set by centralized 403 enrichment in `infrastructure.ts`.
@@ -276,7 +276,7 @@ export class ApiError extends CliError {
   readonly enriched403: boolean;
 
   /** Set with the 401/403 enrichment in `infrastructure.ts`. */
-  readonly denialReason?: ApiDenialReason;
+  readonly denialReason: ApiDenialReason | undefined;
 
   constructor(
     message: string,
@@ -290,9 +290,9 @@ export class ApiError extends CliError {
       denialReason,
     }: {
       enriched403?: boolean;
-      code?: string;
-      functionArgument?: FunctionArgument;
-      denialReason?: ApiDenialReason;
+      code?: string | undefined;
+      functionArgument?: FunctionArgument | undefined;
+      denialReason?: ApiDenialReason | undefined;
     } = {},
   ) {
     super(message, EXIT.API);
@@ -329,7 +329,7 @@ export class ApiError extends CliError {
 export class RateLimitError extends ApiError {
   /** Distinct exit code so scripts and agents can back off without parsing stderr. */
   override readonly exitCode: number = EXIT.RATE_LIMITED;
-  readonly retryAfterMs?: number;
+  readonly retryAfterMs: number | undefined;
 
   constructor(endpoint: string, retryAfterMs?: number, serverDetail?: string) {
     const seconds = Math.max(1, Math.ceil((retryAfterMs ?? 0) / 1000));
@@ -410,7 +410,7 @@ export class MalformedAuthTokenError extends AuthError {
  * @param suggestion - Helpful hint for resolving the error
  */
 export class ConfigError extends CliError {
-  readonly suggestion?: string;
+  readonly suggestion: string | undefined;
 
   constructor(message: string, suggestion?: string) {
     super(message, EXIT.CONFIG);
@@ -475,7 +475,7 @@ function buildContextMessage(
   resource: string,
   command: string,
   alternatives: string[],
-  options?: { note?: string; isAutoDetect?: boolean },
+  options?: { note?: string | undefined; isAutoDetect?: boolean },
 ): string {
   const { note, isAutoDetect } = options ?? {};
   // Compound resources ("X and Y") need plural grammar
@@ -559,7 +559,7 @@ export class ContextError extends CliError {
   readonly resource: string;
   readonly command: string;
   readonly alternatives: string[];
-  readonly note?: string;
+  readonly note: string | undefined;
 
   constructor(
     resource: string,
@@ -764,7 +764,7 @@ export const PORT_HELD_BY_DAEMON_FIELD = "port.held_by_daemon";
  * @param field - Name of the invalid field
  */
 export class ValidationError extends CliError {
-  readonly field?: string;
+  readonly field: string | undefined;
 
   constructor(message: string, field?: string) {
     super(message, EXIT.VALIDATION);
@@ -880,7 +880,7 @@ export type SeerErrorReason =
  */
 export class SeerError extends CliError {
   readonly reason: SeerErrorReason;
-  readonly orgSlug?: string;
+  readonly orgSlug: string | undefined;
 
   constructor(reason: SeerErrorReason, orgSlug?: string) {
     const messages: Record<SeerErrorReason, string> = {
@@ -969,7 +969,7 @@ export class SeerError extends CliError {
  * @param hint - Actionable suggestion (e.g., "Run the command again — the analysis may finish in the background.")
  */
 export class TimeoutError extends CliError {
-  readonly hint?: string;
+  readonly hint: string | undefined;
 
   constructor(message: string, hint?: string) {
     super(message, EXIT.TIMEOUT);

@@ -181,13 +181,13 @@ function frame(body: Buffer): {
     const item: unknown = JSON.parse(itemHeaderBytes.toString("utf8"));
     if (
       !isEnvelopeObject(item) ||
-      (item.type !== undefined && typeof item.type !== "string")
+      (item["type"] !== undefined && typeof item["type"] !== "string")
     )
       return null;
     const itemHeader = item as ItemHeader;
     let bytes: Buffer;
-    if (itemHeader.length !== undefined) {
-      const length = itemHeader.length;
+    if (itemHeader["length"] !== undefined) {
+      const length = itemHeader["length"];
       if (
         typeof length !== "number" ||
         !Number.isSafeInteger(length) ||
@@ -220,10 +220,10 @@ function decode(
   const items: ParsedReceiverEnvelope["envelope"][1] = [];
   for (const { header: itemHeader, bytes } of framed.items) {
     const contentType =
-      typeof itemHeader.content_type === "string"
-        ? itemHeader.content_type
+      typeof itemHeader["content_type"] === "string"
+        ? itemHeader["content_type"]
         : "";
-    const metaLength = itemHeader.meta_length;
+    const metaLength = itemHeader["meta_length"];
     let payload: Record<string, unknown> | undefined;
     if (
       typeof metaLength === "number" &&
@@ -248,16 +248,16 @@ function decode(
       payload = parsed;
     }
     if (payload) {
-      if (itemHeader.type) payload.type = itemHeader.type;
+      if (itemHeader.type) payload["type"] = itemHeader.type;
     } else {
       // Opaque or non-JSON items stay raw; the rest of the envelope decodes.
       if (itemHeader.type === "statsd" && !contentType)
-        itemHeader.content_type = "text/plain";
+        itemHeader["content_type"] = "text/plain";
       payload = {
         data: bytes.toString(
           TEXT_CONTENT_TYPES.has(
-            typeof itemHeader.content_type === "string"
-              ? itemHeader.content_type
+            typeof itemHeader["content_type"] === "string"
+              ? itemHeader["content_type"]
               : "",
           )
             ? "utf8"
@@ -267,8 +267,8 @@ function decode(
     }
     items.push([itemHeader, payload]);
   }
-  header.__spotlight_envelope_id = id;
-  if (userAgent) header.__spotlight_sender_user_agent = userAgent;
+  header["__spotlight_envelope_id"] = id;
+  if (userAgent) header["__spotlight_sender_user_agent"] = userAgent;
   return [{ ...header, __spotlight_envelope_id: id }, items];
 }
 
@@ -351,25 +351,25 @@ function withoutOwnRequests(
   const isOwnSpan = (span: unknown) => isOwnRequestSpan(span, isOwnRoute);
   if (type === "span") {
     // Legacy standalone span, or a v2 container of spans.
-    if (!Array.isArray(payload.items)) return isOwnSpan(payload) ? null : item;
+    if (!Array.isArray(payload["items"])) return isOwnSpan(payload) ? null : item;
     if (!prune(payload, "items", isOwnSpan)) return item;
-    const { length } = payload.items as unknown[];
+    const { length } = payload["items"] as unknown[];
     if (!length) return null;
-    if (header.item_count !== undefined) header.item_count = length;
+    if (header["item_count"] !== undefined) header["item_count"] = length;
   } else {
     const isOwnCrumb = (crumb: unknown) =>
       isEnvelopeObject(crumb) &&
-      isEnvelopeObject(crumb.data) &&
-      isOwnRoute(crumb.data.url);
+      isEnvelopeObject(crumb["data"]) &&
+      isOwnRoute(crumb["data"]["url"]);
     // Breadcrumbs are a list (JavaScript) or `{ values }` (Python).
-    const crumbsPruned = isEnvelopeObject(payload.breadcrumbs)
-      ? prune(payload.breadcrumbs, "values", isOwnCrumb)
+    const crumbsPruned = isEnvelopeObject(payload["breadcrumbs"])
+      ? prune(payload["breadcrumbs"], "values", isOwnCrumb)
       : prune(payload, "breadcrumbs", isOwnCrumb);
     const spansPruned = prune(payload, "spans", isOwnSpan);
     if (!crumbsPruned && !spansPruned) return item;
   }
   const bytes = Buffer.from(JSON.stringify(payload));
-  header.length = bytes.length;
+  header["length"] = bytes.length;
   return { header, headerBytes: Buffer.from(JSON.stringify(header)), bytes };
 }
 
@@ -413,7 +413,7 @@ export function withoutOwnDeliveries(
 export function createReceiverEnvelope(input: {
   body: Buffer;
   contentType?: string;
-  userAgent?: string;
+  userAgent?: string | undefined;
 }): ReceiverEnvelope {
   const contentType =
     input.contentType?.split(";")[0]?.trim().toLowerCase() ||

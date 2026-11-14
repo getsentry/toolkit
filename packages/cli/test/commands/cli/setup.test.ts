@@ -1921,7 +1921,7 @@ describe("sentry cli setup — legacy migration records new path", () => {
       homeDir: testHome,
       env: {
         SENTRY_INSTALL_DIR: installDir,
-        SENTRY_CONFIG_DIR: process.env.SENTRY_CONFIG_DIR,
+        SENTRY_CONFIG_DIR: process.env["SENTRY_CONFIG_DIR"],
       },
     });
     restoreStderr = restore;

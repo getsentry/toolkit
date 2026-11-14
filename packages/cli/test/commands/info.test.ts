@@ -13,6 +13,7 @@ import * as users from "../../src/lib/api/users.js";
 import * as auth from "../../src/lib/db/auth.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as defaults from "../../src/lib/db/defaults.js";
+import { loadCommand } from "../helpers.js";
 
 function createContext(env: NodeJS.ProcessEnv = {}) {
   const writes: string[] = [];
@@ -50,7 +51,7 @@ describe("sentry info", () => {
 
   test("reports unauthenticated and exits 1", async () => {
     const harness = createContext();
-    const func = await infoCommand.loader();
+    const func = await loadCommand(infoCommand);
 
     await func.call(harness.context, {});
 
@@ -69,7 +70,7 @@ describe("sentry info", () => {
     vi.spyOn(defaults, "getDefaultProject").mockReturnValue("web");
 
     const harness = createContext();
-    const func = await infoCommand.loader();
+    const func = await loadCommand(infoCommand);
     await func.call(harness.context, {});
 
     expect(harness.output()).toContain("me@example.com");
@@ -80,14 +81,14 @@ describe("sentry info", () => {
     vi.spyOn(auth, "isAuthenticated").mockReturnValue(true);
     // getCurrentUser rejects (default) → successful false.
     const harness = createContext();
-    const func = await infoCommand.loader();
+    const func = await loadCommand(infoCommand);
     await func.call(harness.context, {});
     expect(harness.exitCode).toBe(1);
   });
 
   test("--config-status-json emits JSON and always exits 0", async () => {
     const harness = createContext();
-    const func = await infoCommand.loader();
+    const func = await loadCommand(infoCommand);
 
     await func.call(harness.context, { "config-status-json": true });
 
@@ -106,7 +107,7 @@ describe("sentry info", () => {
     });
 
     const harness = createContext();
-    const func = await infoCommand.loader();
+    const func = await loadCommand(infoCommand);
     await func.call(harness.context, { "no-defaults": true });
     expect(harness.exitCode ?? 0).toBe(0);
   });
@@ -117,7 +118,7 @@ describe("sentry info", () => {
       SENTRY_ORG: "envorg",
       SENTRY_DSN: "https://k@o.ingest.sentry.io/1",
     });
-    const func = await infoCommand.loader();
+    const func = await loadCommand(infoCommand);
     await func.call(harness.context, { "config-status-json": true });
 
     const parsed = JSON.parse(harness.output());

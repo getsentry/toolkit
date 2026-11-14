@@ -58,7 +58,7 @@ function getIntegrationSdkConfig(orgSlug: string) {
  */
 export async function listIntegrationsPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number } = {},
+  options: { cursor?: string | undefined; perPage?: number | undefined } = {},
 ): Promise<PaginatedResponse<SentryIntegration[]>> {
   const config = getIntegrationSdkConfig(orgSlug);
 
@@ -69,7 +69,7 @@ export async function listIntegrationsPaginated(
       ...LIST_QUERY,
       cursor: options.cursor,
       per_page: options.perPage ?? 25,
-    } as ListOrganizationIntegrationsData["query"],
+    } as NonNullable<ListOrganizationIntegrationsData["query"]>,
   });
 
   const paginated = unwrapPaginatedResult<SentryIntegration[]>(

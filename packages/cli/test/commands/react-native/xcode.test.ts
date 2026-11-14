@@ -6,16 +6,18 @@
  * release wrap+upload) can be exercised off-device.
  */
 
-import { spawnSync } from "node:child_process";
+import { type SpawnSyncOptions, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { SentryContext } from "../../../src/context.js";
 import { xcodeCommand } from "../../../src/commands/react-native/xcode.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as sourcemaps from "../../../src/lib/api/sourcemaps.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { loadCommand, at } from "../../helpers.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -44,9 +46,7 @@ function createContext(env: NodeJS.ProcessEnv) {
     cwd: dir,
     env,
     process: { ...process, execPath: "/usr/bin/sentry", exitCode: undefined },
-  } as unknown as Parameters<
-    Awaited<ReturnType<typeof xcodeCommand.loader>>
-  >[0];
+  } satisfies Partial<SentryContext>;
 }
 
 beforeEach(() => {
@@ -55,6 +55,8 @@ beforeEach(() => {
   writeFileSync(script, "#!/bin/sh\ntrue\n");
   spawnMock.mockClear();
   vi.spyOn(resolveTarget, "resolveOrgAndProject").mockResolvedValue({
+    orgDisplay: "acme",
+    projectDisplay: "mobile",
     org: "acme",
     project: "mobile",
   });
@@ -66,7 +68,7 @@ afterEach(() => {
 });
 
 async function runXcode(env: NodeJS.ProcessEnv, flags = {}): Promise<void> {
-  const func = await xcodeCommand.loader();
+  const func = await loadCommand(xcodeCommand);
   await func.call(createContext(env), { "build-script": script, ...flags });
 }
 
@@ -78,7 +80,7 @@ describe("react-native xcode", () => {
   test("debug build just runs the script (no upload)", async () => {
     await runXcode({ CONFIGURATION: "Debug" });
     expect(spawnMock).toHaveBeenCalledTimes(1);
-    expect(spawnMock.mock.calls[0][0]).toBe(script);
+    expect(at(spawnMock.mock.calls, 0)[0]).toBe(script);
     expect(sourcemaps.uploadSourcemaps).not.toHaveBeenCalled();
   });
 
@@ -90,9 +92,9 @@ describe("react-native xcode", () => {
       (
         _cmd: string,
         _args: readonly string[] | undefined,
-        spawnOpts?: { env?: NodeJS.ProcessEnv },
+        spawnOpts?: SpawnSyncOptions,
       ) => {
-        const reportPath = spawnOpts?.env?.SENTRY_RN_SOURCEMAP_REPORT;
+        const reportPath = spawnOpts?.env?.["SENTRY_RN_SOURCEMAP_REPORT"];
         if (reportPath) {
           writeFileSync(
             reportPath,
@@ -124,12 +126,12 @@ describe("react-native xcode", () => {
 
     // Non-SEA (npm) run: NODE_BINARY must re-invoke the CLI via a shim, not
     // plain node, so RN re-enters the wrapper.
-    const wrapEnv = spawnMock.mock.calls[0][2]?.env;
-    expect(wrapEnv?.NODE_BINARY).toMatch(/sentry-rn-node\.sh$/);
-    expect(wrapEnv?.__SENTRY_RN_WRAP_XCODE_CALL).toBe("1");
+    const wrapEnv = at(spawnMock.mock.calls, 0)[2]?.env;
+    expect(wrapEnv?.["NODE_BINARY"]).toMatch(/sentry-rn-node\.sh$/);
+    expect(wrapEnv?.["__SENTRY_RN_WRAP_XCODE_CALL"]).toBe("1");
 
     expect(sourcemaps.uploadSourcemaps).toHaveBeenCalledTimes(1);
-    const opts = vi.mocked(sourcemaps.uploadSourcemaps).mock.calls[0][0];
+    const opts = at(vi.mocked(sourcemaps.uploadSourcemaps).mock.calls, 0)[0];
     expect(opts).toMatchObject({
       org: "acme",
       project: "mobile",
@@ -169,9 +171,9 @@ describe("react-native xcode", () => {
         (
           _cmd: string,
           _args: readonly string[] | undefined,
-          spawnOpts?: { env?: NodeJS.ProcessEnv },
+          spawnOpts?: SpawnSyncOptions,
         ) => {
-          const reportPath = spawnOpts?.env?.SENTRY_RN_SOURCEMAP_REPORT;
+          const reportPath = spawnOpts?.env?.["SENTRY_RN_SOURCEMAP_REPORT"];
           if (reportPath) {
             if (reportState === "missing") {
               rmSync(reportPath);
@@ -191,10 +193,10 @@ describe("react-native xcode", () => {
       );
 
       const ctx = createContext({ CONFIGURATION: "Release" });
-      const func = await xcodeCommand.loader();
+      const func = await loadCommand(xcodeCommand);
       await func.call(ctx, { "build-script": script });
 
-      expect(ctx.process.exitCode).toBe(status === 0 ? undefined : status);
+      expect(ctx["process"].exitCode).toBe(status === 0 ? undefined : status);
       expect(sourcemaps.uploadSourcemaps).not.toHaveBeenCalled();
     },
   );
@@ -204,9 +206,9 @@ describe("react-native xcode", () => {
       (
         _cmd: string,
         _args: readonly string[] | undefined,
-        spawnOpts?: { env?: NodeJS.ProcessEnv },
+        spawnOpts?: SpawnSyncOptions,
       ) => {
-        const reportPath = spawnOpts?.env?.SENTRY_RN_SOURCEMAP_REPORT;
+        const reportPath = spawnOpts?.env?.["SENTRY_RN_SOURCEMAP_REPORT"];
         if (reportPath) {
           writeFileSync(reportPath, "{}");
         }

@@ -146,9 +146,9 @@ export type TraceSummary = {
   /** Project slugs involved in the trace */
   projects: string[];
   /** Root transaction name (e.g., "GET /api/users") */
-  rootTransaction?: string;
+  rootTransaction?: string | undefined;
   /** Root operation type (e.g., "http.server") */
-  rootOp?: string;
+  rootOp?: string | undefined;
   /** Trace start time as Unix timestamp (seconds) */
   startTimestamp: number;
 };
@@ -208,7 +208,7 @@ export function parseTraceFields(
 }
 
 type ProjectedTraceSpan = Partial<Omit<TraceSpan, "children">> & {
-  children?: ProjectedTraceSpan[];
+  children?: ProjectedTraceSpan[] | undefined;
 };
 
 /** Add trace-wide attributes without losing explicit selections or tree shape. */
@@ -273,8 +273,8 @@ function walkSpanTree(
     minStart: number;
     maxEnd: number;
     projects: Set<string>;
-    rootTransaction?: string;
-    rootOp?: string;
+    rootTransaction?: string | undefined;
+    rootOp?: string | undefined;
   },
 ): void {
   state.spanCount += 1;
@@ -366,7 +366,7 @@ export function formatTraceSummary(
   summary: TraceSummary,
   options: {
     /** Newest stored replay linked to the trace, or null. */
-    replayId?: string | null;
+    replayId?: string | null | undefined;
   } = {},
 ): string {
   const kvRows: [string, string][] = [];

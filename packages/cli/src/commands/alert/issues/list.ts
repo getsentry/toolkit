@@ -56,6 +56,7 @@ import { logger } from "../../../lib/logger.js";
 import {
   dispatchOrgScopedList,
   type FetchResult as FetchResultOf,
+  type GroupFetchOptions,
   jsonTransformListResult,
   type ListCommandMeta,
   type ListResult,
@@ -100,7 +101,7 @@ type AlertRuleListFetchResult = {
   target: ResolvedTarget;
   rules: IssueAlertRule[];
   hasMore?: boolean;
-  nextCursor?: string;
+  nextCursor?: string | undefined;
 };
 
 /** Success/failure wrapper for per-target fetches */
@@ -116,8 +117,8 @@ type AlertRuleRow = { rule: IssueAlertRule; target: ResolvedTarget };
 type IssueAlertListResult = ListResult<IssueAlertRule> & {
   displayRows?: AlertRuleRow[];
   title?: string;
-  moreHint?: string;
-  footer?: string;
+  moreHint?: string | undefined;
+  footer?: string | undefined;
 };
 
 const issueAlertListMeta: ListCommandMeta = {
@@ -134,7 +135,7 @@ const issueAlertListMeta: ListCommandMeta = {
  */
 async function fetchRulesForTarget(
   target: ResolvedTarget,
-  options: { limit: number; startCursor?: string },
+  options: GroupFetchOptions,
 ): Promise<FetchResult> {
   const result = await withAuthGuard(async () => {
     const { data: rules, nextCursor } = await paginate(
@@ -216,7 +217,7 @@ type ResolvedTargetsOptions = {
   parsed: ParsedOrgProject;
   flags: ListFlags;
   cwd: string;
-  projectSearchResolution?: ProjectSearchTargetResolution;
+  projectSearchResolution?: ProjectSearchTargetResolution | undefined;
 };
 
 // inherent multi-target resolution, compound cursor, error handling, and display logic

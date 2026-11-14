@@ -44,7 +44,12 @@ import {
   resetCacheState,
 } from "../../src/lib/response-cache.js";
 import { resetAuthenticatedFetch } from "../../src/lib/sentry-client.js";
-import { mintSntrysToken, mockFetch, useTestConfigDir } from "../helpers.js";
+import {
+  mintSntrysToken,
+  mockFetch,
+  must,
+  useTestConfigDir,
+} from "../helpers.js";
 
 // ============================================================================
 // Arbitraries for Property-Based Testing
@@ -212,32 +217,32 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
       async () =>
         new Response(JSON.stringify({ detail: "Not found" }), { status: 404 }),
     );
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
   });
 
   // --- resolveOrg ---
 
   test("resolveOrg: returns org from SENTRY_ORG", async () => {
-    process.env.SENTRY_ORG = "test-org";
+    process.env["SENTRY_ORG"] = "test-org";
     const result = await resolveOrg({ cwd: "/tmp" });
     expect(result?.org).toBe("test-org");
   });
 
   test("resolveOrg: SENTRY_PROJECT=org/project combo extracts org", async () => {
-    process.env.SENTRY_PROJECT = "combo-org/combo-project";
+    process.env["SENTRY_PROJECT"] = "combo-org/combo-project";
     const result = await resolveOrg({ cwd: "/tmp" });
     expect(result?.org).toBe("combo-org");
   });
 
   test("resolveOrg: CLI flag takes priority over env var", async () => {
-    process.env.SENTRY_ORG = "env-org";
+    process.env["SENTRY_ORG"] = "env-org";
     const result = await resolveOrg({ org: "flag-org", cwd: "/tmp" });
     expect(result?.org).toBe("flag-org");
   });
@@ -245,8 +250,8 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
   // --- resolveOrgAndProject ---
 
   test("resolveOrgAndProject: returns from SENTRY_ORG + SENTRY_PROJECT", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     const result = await resolveOrgAndProject({ cwd: "/tmp" });
     expect(result?.org).toBe("test-org");
     expect(result?.project).toBe("test-project");
@@ -254,7 +259,7 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
   });
 
   test("resolveOrgAndProject: SENTRY_PROJECT combo notation", async () => {
-    process.env.SENTRY_PROJECT = "my-org/my-project";
+    process.env["SENTRY_PROJECT"] = "my-org/my-project";
     const result = await resolveOrgAndProject({ cwd: "/tmp" });
     expect(result?.org).toBe("my-org");
     expect(result?.project).toBe("my-project");
@@ -262,16 +267,16 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
   });
 
   test("resolveOrgAndProject: env vars override config defaults", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
     const result = await resolveOrgAndProject({ cwd: "/tmp" });
     expect(result?.org).toBe("env-org");
     expect(result?.project).toBe("env-project");
   });
 
   test("resolveOrgAndProject: CLI flags override env vars", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
     const result = await resolveOrgAndProject({
       org: "flag-org",
       project: "flag-project",
@@ -284,8 +289,8 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
   });
 
   test("resolveOrgAndProject: ignores empty/whitespace-only values", async () => {
-    process.env.SENTRY_ORG = "  ";
-    process.env.SENTRY_PROJECT = "";
+    process.env["SENTRY_ORG"] = "  ";
+    process.env["SENTRY_PROJECT"] = "";
     // Both empty after trim — should not use env vars
     // This will fall through and return null since /tmp has no DSN
     const result = await resolveOrgAndProject({ cwd: "/tmp" });
@@ -296,7 +301,7 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
   });
 
   test("resolveOrgAndProject: SENTRY_ORG alone not enough for org+project", async () => {
-    process.env.SENTRY_ORG = "my-org";
+    process.env["SENTRY_ORG"] = "my-org";
     // No SENTRY_PROJECT — resolveFromEnvVars returns org-only
     // resolveOrgAndProject needs project, so env vars don't satisfy it
     const result = await resolveOrgAndProject({ cwd: "/tmp" });
@@ -307,8 +312,8 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
   });
 
   test("resolveOrgAndProject: trailing slash in combo is ignored (no project)", async () => {
-    process.env.SENTRY_PROJECT = "my-org/";
-    process.env.SENTRY_ORG = "other-org";
+    process.env["SENTRY_PROJECT"] = "my-org/";
+    process.env["SENTRY_ORG"] = "other-org";
     // Malformed combo — slash present but empty project
     // Should fall through; SENTRY_ORG provides org-only
     const result = await resolveOrgAndProject({ cwd: "/tmp" });
@@ -321,8 +326,8 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
   // --- resolveAllTargets ---
 
   test("resolveAllTargets: returns target from SENTRY_ORG + SENTRY_PROJECT", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     const result = await resolveAllTargets({ cwd: "/tmp" });
     expect(result.targets).toHaveLength(1);
     expect(result.targets[0]?.org).toBe("test-org");
@@ -330,15 +335,15 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
   });
 
   test("resolveAllTargets: env vars override config defaults", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
     const result = await resolveAllTargets({ cwd: "/tmp" });
     expect(result.targets[0]?.org).toBe("env-org");
   });
 
   test("resolveAllTargets: CLI flags override env vars", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
     const result = await resolveAllTargets({
       org: "flag-org",
       project: "flag-project",
@@ -353,7 +358,7 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
   // --- resolveOrgsForListing ---
 
   test("resolveOrgsForListing: returns org from env vars when no flag/defaults", async () => {
-    process.env.SENTRY_ORG = "env-org";
+    process.env["SENTRY_ORG"] = "env-org";
     const result = await resolveOrgsForListing(undefined, "/tmp");
     expect(result.orgs).toContain("env-org");
   });
@@ -377,7 +382,7 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
 
   test("resolveOrgAndProject: org auth token org + SENTRY_PROJECT", async () => {
     useOrgAuthToken("token-org");
-    process.env.SENTRY_PROJECT = "web";
+    process.env["SENTRY_PROJECT"] = "web";
     const result = await resolveOrgAndProject({ cwd: "/tmp" });
     expect(result?.org).toBe("token-org");
     expect(result?.project).toBe("web");
@@ -386,7 +391,7 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
 
   test("resolveAllTargets: org auth token org + SENTRY_PROJECT", async () => {
     useOrgAuthToken("token-org");
-    process.env.SENTRY_PROJECT = "web";
+    process.env["SENTRY_PROJECT"] = "web";
     const result = await resolveAllTargets({ cwd: "/tmp" });
     expect(result.targets).toHaveLength(1);
     expect(result.targets[0]?.org).toBe("token-org");
@@ -395,7 +400,7 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
 
   test("resolveOrg: SENTRY_ORG wins over the org auth token org", async () => {
     useOrgAuthToken("token-org");
-    process.env.SENTRY_ORG = "env-org";
+    process.env["SENTRY_ORG"] = "env-org";
     const result = await resolveOrg({ cwd: "/tmp" });
     expect(result?.org).toBe("env-org");
   });
@@ -544,8 +549,8 @@ describe("fetchProjectId", () => {
 
   test("rethrows AuthError when not authenticated", async () => {
     // No auth token set — refreshToken() will throw AuthError
-    const saved = process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_AUTH_TOKEN;
+    const saved = process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_AUTH_TOKEN"];
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 
     try {
@@ -554,7 +559,7 @@ describe("fetchProjectId", () => {
       );
     } finally {
       if (saved !== undefined) {
-        process.env.SENTRY_AUTH_TOKEN = saved;
+        process.env["SENTRY_AUTH_TOKEN"] = saved;
       }
     }
   });
@@ -728,7 +733,7 @@ describe("resolveTargetSlugs", () => {
   });
 
   test("reuses the metadata lookup performed by explicit target resolution", async () => {
-    const projectId = await fetchProjectId("test-org", "42");
+    const projectId = must(await fetchProjectId("test-org", "42"));
     expect(
       await resolveTargetSlugs({ ...makeTarget("test-org", "42"), projectId }),
     ).toEqual({ ...canonical, projectId: 42 });
@@ -841,8 +846,8 @@ describe("resolveLogProjectId", () => {
   });
 
   test("re-throws AuthError instead of swallowing it", async () => {
-    const saved = process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_AUTH_TOKEN;
+    const saved = process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_AUTH_TOKEN"];
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 
     try {
@@ -851,7 +856,7 @@ describe("resolveLogProjectId", () => {
       ).rejects.toThrow(AuthError);
     } finally {
       if (saved !== undefined) {
-        process.env.SENTRY_AUTH_TOKEN = saved;
+        process.env["SENTRY_AUTH_TOKEN"] = saved;
       }
     }
   });
@@ -904,9 +909,8 @@ describe("tryFuzzyProjectRecovery", () => {
       const req = new Request(input, init);
       const url = req.url;
       // Match /organizations/<org>/projects/
-      const orgMatch = url.match(/\/organizations\/([^/]+)\/projects/);
-      if (orgMatch) {
-        const org = orgMatch[1];
+      const [, org] = url.match(/\/organizations\/([^/]+)\/projects/) ?? [];
+      if (org) {
         const slugs = projectsByOrg[org];
         if (slugs) {
           const projects = slugs.map((slug, i) => ({
@@ -1089,14 +1093,14 @@ describe("resolveOrgOptionalTarget", () => {
       async () =>
         new Response(JSON.stringify({ detail: "Not found" }), { status: 404 }),
     );
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
   });
 
   test("org-all mode returns org without project", async () => {
@@ -1126,7 +1130,7 @@ describe("resolveOrgOptionalTarget", () => {
   });
 
   test("auto-detect mode returns org only when SENTRY_ORG is set", async () => {
-    process.env.SENTRY_ORG = "env-org";
+    process.env["SENTRY_ORG"] = "env-org";
     const parsed = parseOrgProjectArg(undefined);
     expect(parsed.type).toBe("auto-detect");
 

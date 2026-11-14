@@ -61,6 +61,7 @@ import { isSentrySaasUrl } from "../sentry-urls.js";
 import { OAUTH_SCOPES } from "../oauth.js";
 import { parseSntrysClaim } from "../token-claims.js";
 import { classifySentryToken } from "../token-type.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /** User-facing detail for a 401/403, and the reason to record for it. */
 type EnrichedDetail = {
@@ -435,7 +436,7 @@ const SEER_DENIAL_REASONS: Record<
  * `invalid_function_argument`).
  */
 function readErrorFields(body: unknown): {
-  code?: string;
+  code?: string | undefined;
   denialReason?: ApiDenialReason;
   functionArgument?: FunctionArgument;
 } {
@@ -443,27 +444,28 @@ function readErrorFields(body: unknown): {
     return {};
   }
   const fields = body as Record<string, unknown>;
-  const code = typeof fields.code === "string" ? fields.code : undefined;
+  const code =
+    typeof fields["code"] === "string" ? fields["code"] : undefined;
   // Leave the key out otherwise, so it can't clear the 401/403 denial reason.
   const seerDenialReason = lookupKnownKey(
     SEER_DENIAL_REASONS,
-    fields.denialReason,
+    fields["denialReason"],
   );
   const denialReason: { denialReason?: ApiDenialReason } = seerDenialReason
     ? { denialReason: seerDenialReason }
     : {};
   if (
-    typeof fields.function !== "string" ||
-    typeof fields.argument !== "string"
+    typeof fields["function"] !== "string" ||
+    typeof fields["argument"] !== "string"
   ) {
     return { code, ...denialReason };
   }
   const functionArgument: FunctionArgument = {
-    function: fields.function,
-    argument: fields.argument,
+    function: fields["function"],
+    argument: fields["argument"],
   };
-  if (typeof fields.hint === "string") {
-    functionArgument.hint = fields.hint;
+  if (typeof fields["hint"] === "string") {
+    functionArgument.hint = fields["hint"];
   }
   return { code, ...denialReason, functionArgument };
 }
@@ -520,7 +522,9 @@ function findNetworkCause(
  */
 function describeUrlSource(): string {
   if (getConfiguredSentryUrl()) {
-    const urlVar = getEnv().SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL";
+    const urlVar = getEnv()["SENTRY_HOST"]?.trim()
+      ? "SENTRY_HOST"
+      : "SENTRY_URL";
     return `This URL comes from ${urlVar}. If it is not your Sentry server, set ${urlVar} to the right URL.`;
   }
   return `This URL comes from your login. To use another server, run: ${getUrlLoginCommand()} <url>`;
@@ -770,7 +774,7 @@ export function getOrgSdkConfig(
  */
 export const MAX_PAGINATION_PAGES = Math.max(
   1,
-  Number(getEnv().SENTRY_MAX_PAGINATION_PAGES) || 50,
+  Number(getEnv()["SENTRY_MAX_PAGINATION_PAGES"]) || 50,
 );
 
 /**
@@ -811,6 +815,19 @@ export type PaginatedResponse<T> = {
 };
 
 /**
+ * Build a {@link PaginatedResponse}, leaving `nextCursor` out on the last page.
+ *
+ * @param data - The page's data
+ * @param nextCursor - Cursor for the next page, if any
+ */
+export function paginatedResponse<T>(
+  data: T,
+  nextCursor: string | undefined,
+): PaginatedResponse<T> {
+  return nextCursor === undefined ? { data } : { data, nextCursor };
+}
+
+/**
  * Auto-paginate across multiple API pages, accumulating results up to `limit`.
  *
  * Calls `fetchPage` repeatedly until enough rows are collected or pages are
@@ -848,7 +865,7 @@ export async function autoPaginate<T>(
       if (allRows.length > limit) {
         return { data: allRows.slice(0, limit) };
       }
-      return { data: allRows, nextCursor: result.nextCursor };
+      return paginatedResponse(allRows, result.nextCursor);
     }
 
     cursor = result.nextCursor;
@@ -880,7 +897,7 @@ export async function autoPaginate<T>(
  * @returns Up to `limit` items with optional nextCursor
  */
 export async function paginate<T>(
-  options: { limit?: number; cursor?: string },
+  options: { limit?: number | undefined; cursor?: string | undefined },
   fetchPage: (
     perPage: number,
     cursor: string | undefined,
@@ -888,12 +905,12 @@ export async function paginate<T>(
   defaultLimit = 10,
 ): Promise<PaginatedResponse<T[]>> {
   const { data, nextCursor, stoppedAtPageCap } = await paginateFrom(
-    {
+    omitUndefined({
       limit: options.limit ?? defaultLimit,
       cursor: options.cursor,
       maxPages: MAX_PAGINATION_PAGES,
-      warn: (message) => logger.warn(message),
-    },
+      warn: (message: string) => logger.warn(message),
+    }),
     fetchPage,
   );
   if (stoppedAtPageCap) {
@@ -902,7 +919,7 @@ export async function paginate<T>(
         "Use the returned cursor to continue.",
     );
   }
-  return nextCursor === undefined ? { data } : { data, nextCursor };
+  return paginatedResponse(data, nextCursor);
 }
 
 /** Error message for each way {@link fetchAllPages} can fail. */
@@ -991,7 +1008,7 @@ export async function apiRequestToRegion<T>(
   const response = await fetchFn(url, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    ...(body !== undefined && { body: JSON.stringify(body) }),
   });
 
   if (!response.ok) {
@@ -1185,7 +1202,7 @@ export async function apiRequestToRegionNoContent(
   const response = await fetchFn(url, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    ...(body ? { body: JSON.stringify(body) } : {}),
   });
 
   if (!response.ok) {
@@ -1261,9 +1278,9 @@ export function isTextualContentType(contentType: string | null): boolean {
 /** Options for a raw request, retaining the CLI's transport and body policies. */
 type RawApiRequestOptions = ApiRequestOptions & {
   /** Explicit caller headers, before authentication and proxy headers. */
-  headers?: Record<string, string>;
+  headers?: Record<string, string> | undefined;
   /** Caller-selected Sentry origin or instance prefix, checked at dispatch. */
-  baseUrl?: string;
+  baseUrl?: string | undefined;
 };
 
 /** A request snapshot and the CLI transport that will authenticate it. */
@@ -1299,7 +1316,7 @@ export async function prepareRawApiRequest(
     method,
     // Relative to the API base path, which the client adds.
     url: `/${appendSearchParams(endpoint, params).replace(/^\/+/, "")}`,
-    query,
+    ...(query !== undefined && { query }),
     body,
     headers: isStringBody ? { "Content-Type": null, ...headers } : headers,
     ...(isStringBody ? { bodySerializer: null } : {}),

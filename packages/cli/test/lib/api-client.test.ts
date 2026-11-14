@@ -20,7 +20,7 @@ import {
 import { DEFAULT_SENTRY_URL } from "../../src/lib/constants.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { setOrgRegion, setOrgRegions } from "../../src/lib/db/regions.js";
-import { useTestConfigDir } from "../helpers.js";
+import { useTestConfigDir, at, must } from "../helpers.js";
 
 useTestConfigDir("test-api-");
 
@@ -38,7 +38,8 @@ type RequestLog = {
 
 beforeEach(async () => {
   // Set required env var for OAuth refresh
-  process.env.SENTRY_CLIENT_ID = "test-client-id";
+  // Set required env var for OAuth refresh
+  process.env["SENTRY_CLIENT_ID"] = "test-client-id";
 
   // Save original fetch
   originalFetch = globalThis.fetch;
@@ -110,12 +111,12 @@ describe("401 retry behavior", () => {
 
   let savedAuthToken: string | undefined;
   beforeEach(() => {
-    savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_AUTH_TOKEN;
+    savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_AUTH_TOKEN"];
   });
   afterEach(() => {
     if (savedAuthToken !== undefined) {
-      process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+      process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
     }
   });
 
@@ -158,12 +159,12 @@ describe("401 retry behavior", () => {
     expect(oauthRequests).toHaveLength(1);
 
     // First request with initial token
-    expect(apiRequests[0].authorization).toBe("Bearer initial-token");
-    expect(apiRequests[0].isRetry).toBe(false);
+    expect(at(apiRequests, 0).authorization).toBe("Bearer initial-token");
+    expect(at(apiRequests, 0).isRetry).toBe(false);
 
     // Retry request with new token
-    expect(apiRequests[1].authorization).toBe("Bearer refreshed-token");
-    expect(apiRequests[1].isRetry).toBe(true);
+    expect(at(apiRequests, 1).authorization).toBe("Bearer refreshed-token");
+    expect(at(apiRequests, 1).isRetry).toBe(true);
   });
 
   test("does not retry on non-401 errors", async () => {
@@ -186,7 +187,7 @@ describe("401 retry behavior", () => {
       r.url.includes("/test-endpoint"),
     );
     expect(apiRequests).toHaveLength(1);
-    expect(apiRequests[0].isRetry).toBe(false);
+    expect(at(apiRequests, 0).isRetry).toBe(false);
 
     // No OAuth refresh should have been attempted
     const oauthRequests = requests.filter((r) =>
@@ -215,8 +216,8 @@ describe("401 retry behavior", () => {
       r.url.includes("/test-endpoint"),
     );
     expect(apiRequests).toHaveLength(2);
-    expect(apiRequests[0].isRetry).toBe(false);
-    expect(apiRequests[1].isRetry).toBe(true);
+    expect(at(apiRequests, 0).isRetry).toBe(false);
+    expect(at(apiRequests, 1).isRetry).toBe(true);
 
     // OAuth refresh should have been called once (after first 401)
     const oauthRequests = requests.filter((r) =>
@@ -274,7 +275,7 @@ describe("401 retry behavior", () => {
       r.url.includes("/test-endpoint"),
     );
     expect(apiRequests).toHaveLength(1);
-    expect(apiRequests[0].isRetry).toBe(false);
+    expect(at(apiRequests, 0).isRetry).toBe(false);
 
     // No OAuth refresh should have been attempted (no refresh token available)
     const oauthRequests = requests.filter((r) =>
@@ -370,7 +371,7 @@ describe("rawApiRequest", () => {
     expect(result.status).toBe(200);
     expect(result.body).toEqual([{ id: 1 }]);
     expect(requests).toHaveLength(1);
-    expect(requests[0].method).toBe("GET");
+    expect(at(requests, 0).method).toBe("GET");
   });
 
   test("sends POST request with JSON object body", async () => {
@@ -395,7 +396,7 @@ describe("rawApiRequest", () => {
 
     expect(result.status).toBe(200);
     expect(result.body).toEqual({ success: true });
-    expect(requests[0].method).toBe("POST");
+    expect(at(requests, 0).method).toBe("POST");
     expect(capturedBody).toBe('{"status":"resolved"}');
   });
 
@@ -421,13 +422,13 @@ describe("rawApiRequest", () => {
 
     expect(result.status).toBe(200);
     expect(result.body).toEqual({ updated: true });
-    expect(requests[0].method).toBe("PUT");
+    expect(at(requests, 0).method).toBe("PUT");
     // String body should be sent as-is
     expect(capturedBody).toBe('{"status":"resolved"}');
     // No explicit Content-Type header set by rawApiRequest for string bodies.
     // Node.js Request constructor auto-sets "text/plain;charset=UTF-8" for
     // string bodies; Bun leaves it null. Accept either.
-    const ct = requests[0].headers.get("Content-Type");
+    const ct = at(requests, 0).headers.get("Content-Type");
     expect(ct === null || ct === "text/plain;charset=UTF-8").toBe(true);
   });
 
@@ -451,7 +452,7 @@ describe("rawApiRequest", () => {
     });
 
     // User-provided Content-Type should be used
-    expect(requests[0].headers.get("Content-Type")).toBe("text/plain");
+    expect(at(requests, 0).headers.get("Content-Type")).toBe("text/plain");
   });
 
   test("string body with lowercase content-type header (case-insensitive)", async () => {
@@ -474,7 +475,7 @@ describe("rawApiRequest", () => {
     });
 
     // Lowercase content-type should be detected and preserved (case-insensitive check)
-    expect(requests[0].headers.get("Content-Type")).toBe("text/xml");
+    expect(at(requests, 0).headers.get("Content-Type")).toBe("text/xml");
   });
 
   test("string body with mixed case Content-TYPE header", async () => {
@@ -497,7 +498,7 @@ describe("rawApiRequest", () => {
     });
 
     // Mixed case Content-TYPE should be detected and preserved
-    expect(requests[0].headers.get("Content-Type")).toBe(
+    expect(at(requests, 0).headers.get("Content-Type")).toBe(
       "application/octet-stream",
     );
   });
@@ -519,7 +520,7 @@ describe("rawApiRequest", () => {
       params: { status: "resolved", limit: "10" },
     });
 
-    const url = new URL(requests[0].url);
+    const url = new URL(at(requests, 0).url);
     expect(url.searchParams.get("status")).toBe("resolved");
     expect(url.searchParams.get("limit")).toBe("10");
   });
@@ -541,7 +542,7 @@ describe("rawApiRequest", () => {
       headers: { "X-Custom-Header": "test-value" },
     });
 
-    expect(requests[0].headers.get("X-Custom-Header")).toBe("test-value");
+    expect(at(requests, 0).headers.get("X-Custom-Header")).toBe("test-value");
   });
 
   test("custom headers merged with string body (no default Content-Type)", async () => {
@@ -566,8 +567,8 @@ describe("rawApiRequest", () => {
     // Custom headers should be present, but no explicit Content-Type for string bodies.
     // Node.js Request constructor auto-sets "text/plain;charset=UTF-8" for
     // string bodies; Bun leaves it null. Accept either.
-    expect(requests[0].headers.get("X-Custom")).toBe("value");
-    const ct = requests[0].headers.get("Content-Type");
+    expect(at(requests, 0).headers.get("X-Custom")).toBe("value");
+    const ct = at(requests, 0).headers.get("Content-Type");
     expect(ct === null || ct === "text/plain;charset=UTF-8").toBe(true);
   });
 
@@ -666,10 +667,10 @@ describe("findProjectsBySlug", () => {
     const { projects, orgs } = await findProjectsBySlug("frontend");
 
     expect(projects).toHaveLength(2);
-    expect(projects[0].slug).toBe("frontend");
-    expect(projects[0].orgSlug).toBe("acme");
-    expect(projects[1].slug).toBe("frontend");
-    expect(projects[1].orgSlug).toBe("beta");
+    expect(at(projects, 0).slug).toBe("frontend");
+    expect(at(projects, 0).orgSlug).toBe("acme");
+    expect(at(projects, 1).slug).toBe("frontend");
+    expect(at(projects, 1).orgSlug).toBe("beta");
     expect(orgs).toHaveLength(2);
   });
 
@@ -744,7 +745,7 @@ describe("findProjectsBySlug", () => {
     const { projects } = await findProjectsBySlug("frontend");
 
     expect(projects).toHaveLength(1);
-    expect(projects[0].orgSlug).toBe("acme");
+    expect(at(projects, 0).orgSlug).toBe("acme");
   });
 
   test("resolves numeric project ID when slug differs", async () => {
@@ -784,8 +785,8 @@ describe("findProjectsBySlug", () => {
     // Numeric ID should resolve even though returned slug differs
     const { projects } = await findProjectsBySlug("7275560680");
     expect(projects).toHaveLength(1);
-    expect(projects[0].slug).toBe("frontend");
-    expect(projects[0].orgSlug).toBe("acme");
+    expect(at(projects, 0).slug).toBe("frontend");
+    expect(at(projects, 0).orgSlug).toBe("acme");
   });
 
   test("rejects non-numeric input when returned slug differs", async () => {
@@ -837,7 +838,6 @@ describe("findProjectsBySlug", () => {
 
     const requests: string[] = [];
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -861,8 +861,8 @@ describe("findProjectsBySlug", () => {
 
     // Found via cached orgs
     expect(projects).toHaveLength(1);
-    expect(projects[0].slug).toBe("frontend");
-    expect(projects[0].orgSlug).toBe("acme");
+    expect(at(projects, 0).slug).toBe("frontend");
+    expect(at(projects, 0).orgSlug).toBe("acme");
 
     // The expensive listOrganizations API calls were skipped
     expect(requests.some((r) => r.includes("/users/me/regions/"))).toBe(false);
@@ -1555,7 +1555,7 @@ describe("listTraceLogs", () => {
     );
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(1);
-    expect(result[0].severity).toBe("info");
+    expect(at(result, 0).severity).toBe("info");
   });
 
   test("passes traceId, statsPeriod, limit, and query as params", async () => {
@@ -1642,11 +1642,11 @@ describe("listTraceLogs", () => {
       "aaaa1111bbbb2222cccc3333dddd4444",
     );
     expect(result).toHaveLength(1);
-    expect(typeof result[0]["project.id"]).toBe("number");
-    expect(result[0]["project.id"]).toBe(123);
-    expect(typeof result[0].severity_number).toBe("number");
-    expect(result[0].severity_number).toBe(9);
-    expect(typeof result[0].timestamp_precise).toBe("number");
+    expect(typeof at(result, 0)["project.id"]).toBe("number");
+    expect(at(result, 0)["project.id"]).toBe(123);
+    expect(typeof at(result, 0).severity_number).toBe("number");
+    expect(at(result, 0).severity_number).toBe(9);
+    expect(typeof at(result, 0).timestamp_precise).toBe("number");
   });
 
   test("accepts responses with missing optional fields", async () => {
@@ -1679,9 +1679,9 @@ describe("listTraceLogs", () => {
       "aaaa1111bbbb2222cccc3333dddd4444",
     );
     expect(result).toHaveLength(1);
-    expect(result[0].severity_number).toBeUndefined();
-    expect(result[0].timestamp_precise).toBeUndefined();
-    expect(result[0].severity).toBe("info");
+    expect(at(result, 0).severity_number).toBeUndefined();
+    expect(at(result, 0).timestamp_precise).toBeUndefined();
+    expect(at(result, 0).severity).toBe("info");
   });
 });
 
@@ -1735,7 +1735,7 @@ describe("getLogs", () => {
 
     const result = await getLogs("my-org", "my-project", [LOG_ID_1]);
     expect(result).toHaveLength(1);
-    expect(result[0]["sentry.item_id"]).toBe(LOG_ID_1);
+    expect(at(result, 0)["sentry.item_id"]).toBe(LOG_ID_1);
   });
 
   test("passes bracket syntax and per_page in query", async () => {
@@ -1793,10 +1793,10 @@ describe("getLogs", () => {
         const url = new URL(req.url);
         const query = url.searchParams.get("query") ?? "";
         const bracketMatch = query.match(/sentry\.item_id:\[([^\]]+)\]/);
-        const batchIds = bracketMatch ? bracketMatch[1].split(",") : [];
+        const batchIds = bracketMatch ? must(bracketMatch[1]).split(",") : [];
         return new Response(
           JSON.stringify({
-            data: [makeLogEntry(batchIds[0])],
+            data: [makeLogEntry(at(batchIds, 0))],
             meta: { fields: {} },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },

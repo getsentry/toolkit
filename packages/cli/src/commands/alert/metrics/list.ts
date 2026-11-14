@@ -52,6 +52,7 @@ import { logger } from "../../../lib/logger.js";
 import {
   dispatchOrgScopedList,
   type FetchResult as FetchResultOf,
+  type GroupFetchOptions,
   jsonTransformListResult,
   type ListCommandMeta,
   type ListResult,
@@ -112,7 +113,7 @@ type MetricRuleFetchResult = {
   orgSlug: string;
   rules: MetricAlertRule[];
   hasMore?: boolean;
-  nextCursor?: string;
+  nextCursor?: string | undefined;
 };
 
 /** Success/failure wrapper for per-org fetches */
@@ -128,8 +129,8 @@ type MetricAlertRow = { rule: MetricAlertRule; orgSlug: string };
 type MetricAlertListResult = ListResult<MetricAlertRule> & {
   displayRows?: MetricAlertRow[];
   title?: string;
-  moreHint?: string;
-  footer?: string;
+  moreHint?: string | undefined;
+  footer?: string | undefined;
 };
 
 const metricAlertListMeta: ListCommandMeta = {
@@ -146,7 +147,7 @@ const metricAlertListMeta: ListCommandMeta = {
  */
 async function fetchRulesForOrg(
   orgSlug: string,
-  options: { limit: number; startCursor?: string },
+  options: GroupFetchOptions,
 ): Promise<FetchResult> {
   const result = await withAuthGuard(async () => {
     const { data: rules, nextCursor } = await paginate(
@@ -173,7 +174,7 @@ type ResolvedOrgsOptions = {
   parsed: ParsedOrgProject;
   flags: ListFlags;
   cwd: string;
-  projectSearchResolution?: ProjectSearchTargetResolution;
+  projectSearchResolution?: ProjectSearchTargetResolution | undefined;
 };
 
 /**
@@ -188,7 +189,7 @@ async function resolveOrgs(
   parsed: ParsedOrgProject,
   cwd: string,
   projectSearchResolution?: ProjectSearchTargetResolution,
-): Promise<{ orgs: string[]; footer?: string }> {
+): Promise<{ orgs: string[]; footer?: string | undefined }> {
   if (parsed.type === "explicit" || parsed.type === "org-all") {
     return { orgs: [parsed.org] };
   }

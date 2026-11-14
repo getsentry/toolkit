@@ -49,7 +49,7 @@ describe("detectFromEnv", () => {
   });
 
   test("detects canonical SENTRY_DSN", () => {
-    process.env.SENTRY_DSN = VALID_DSN;
+    process.env["SENTRY_DSN"] = VALID_DSN;
     const result = detectFromEnv();
     expect(result).not.toBeNull();
     expect(result?.raw).toBe(VALID_DSN);
@@ -58,7 +58,7 @@ describe("detectFromEnv", () => {
   });
 
   test("detects NEXT_PUBLIC_SENTRY_DSN", () => {
-    process.env.NEXT_PUBLIC_SENTRY_DSN = VALID_DSN;
+    process.env["NEXT_PUBLIC_SENTRY_DSN"] = VALID_DSN;
     const result = detectFromEnv();
     expect(result).not.toBeNull();
     expect(result?.raw).toBe(VALID_DSN);
@@ -66,44 +66,44 @@ describe("detectFromEnv", () => {
   });
 
   test("detects REACT_APP_SENTRY_DSN", () => {
-    process.env.REACT_APP_SENTRY_DSN = VALID_DSN;
+    process.env["REACT_APP_SENTRY_DSN"] = VALID_DSN;
     const result = detectFromEnv();
     expect(result?.raw).toBe(VALID_DSN);
     expect(result?.sourcePath).toBe("REACT_APP_SENTRY_DSN");
   });
 
   test("detects VITE_SENTRY_DSN", () => {
-    process.env.VITE_SENTRY_DSN = VALID_DSN;
+    process.env["VITE_SENTRY_DSN"] = VALID_DSN;
     const result = detectFromEnv();
     expect(result?.raw).toBe(VALID_DSN);
     expect(result?.sourcePath).toBe("VITE_SENTRY_DSN");
   });
 
   test("detects EXPO_PUBLIC_SENTRY_DSN", () => {
-    process.env.EXPO_PUBLIC_SENTRY_DSN = VALID_DSN;
+    process.env["EXPO_PUBLIC_SENTRY_DSN"] = VALID_DSN;
     const result = detectFromEnv();
     expect(result?.raw).toBe(VALID_DSN);
     expect(result?.sourcePath).toBe("EXPO_PUBLIC_SENTRY_DSN");
   });
 
   test("detects NUXT_PUBLIC_SENTRY_DSN", () => {
-    process.env.NUXT_PUBLIC_SENTRY_DSN = VALID_DSN;
+    process.env["NUXT_PUBLIC_SENTRY_DSN"] = VALID_DSN;
     const result = detectFromEnv();
     expect(result?.raw).toBe(VALID_DSN);
     expect(result?.sourcePath).toBe("NUXT_PUBLIC_SENTRY_DSN");
   });
 
   test("canonical SENTRY_DSN takes priority over framework-prefixed vars", () => {
-    process.env.SENTRY_DSN = VALID_DSN;
-    process.env.NEXT_PUBLIC_SENTRY_DSN = VALID_DSN_2;
+    process.env["SENTRY_DSN"] = VALID_DSN;
+    process.env["NEXT_PUBLIC_SENTRY_DSN"] = VALID_DSN_2;
     const result = detectFromEnv();
     expect(result?.raw).toBe(VALID_DSN);
     expect(result?.sourcePath).toBe(SENTRY_DSN_ENV);
   });
 
   test("skips invalid DSN in SENTRY_DSN and falls through to framework var", () => {
-    process.env.SENTRY_DSN = INVALID_DSN;
-    process.env.NEXT_PUBLIC_SENTRY_DSN = VALID_DSN;
+    process.env["SENTRY_DSN"] = INVALID_DSN;
+    process.env["NEXT_PUBLIC_SENTRY_DSN"] = VALID_DSN;
     const result = detectFromEnv();
     expect(result).not.toBeNull();
     expect(result?.raw).toBe(VALID_DSN);
@@ -111,22 +111,22 @@ describe("detectFromEnv", () => {
   });
 
   test("skips invalid DSN in framework var and continues to next", () => {
-    process.env.NEXT_PUBLIC_SENTRY_DSN = INVALID_DSN;
-    process.env.VITE_SENTRY_DSN = VALID_DSN;
+    process.env["NEXT_PUBLIC_SENTRY_DSN"] = INVALID_DSN;
+    process.env["VITE_SENTRY_DSN"] = VALID_DSN;
     const result = detectFromEnv();
     expect(result?.raw).toBe(VALID_DSN);
     expect(result?.sourcePath).toBe("VITE_SENTRY_DSN");
   });
 
   test("returns null when all set vars contain invalid DSNs", () => {
-    process.env.SENTRY_DSN = INVALID_DSN;
-    process.env.NEXT_PUBLIC_SENTRY_DSN = "also-not-valid";
+    process.env["SENTRY_DSN"] = INVALID_DSN;
+    process.env["NEXT_PUBLIC_SENTRY_DSN"] = "also-not-valid";
     expect(detectFromEnv()).toBeNull();
   });
 
   test("ignores empty string values", () => {
-    process.env.SENTRY_DSN = "";
-    process.env.NEXT_PUBLIC_SENTRY_DSN = VALID_DSN;
+    process.env["SENTRY_DSN"] = "";
+    process.env["NEXT_PUBLIC_SENTRY_DSN"] = VALID_DSN;
     const result = detectFromEnv();
     expect(result?.raw).toBe(VALID_DSN);
   });

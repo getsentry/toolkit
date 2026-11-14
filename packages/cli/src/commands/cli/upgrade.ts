@@ -115,11 +115,11 @@ type DatabasePlan = {
   /** Hand the database to a CLI that can't adapt a newer one (#1611). */
   handOff: boolean;
   /** Undo: put back the target version's own database. */
-  restore?: DatabaseBackup;
+  restore?: DatabaseBackup | undefined;
   /** Set once `restore` succeeded; the hand-off is then unnecessary. */
   restored?: boolean;
   /** This version's database, saved before the new binary's setup. */
-  backup?: DatabaseBackup;
+  backup?: DatabaseBackup | undefined;
   /** Notes about the database for the command result. */
   warnings: string[];
 };
@@ -344,9 +344,9 @@ async function resolveTargetWithFallback(opts: {
       kind: "target";
       target: string;
       offline: OfflineMode;
-      source?: UpgradeSource;
+      source?: UpgradeSource | undefined;
     }
-  | { kind: "done"; result: UpgradeResult; source?: UpgradeSource }
+  | { kind: "done"; result: UpgradeResult; source?: UpgradeSource | undefined }
 > {
   const { resolveOpts, versionArg, offline, method, persistChannelFn } = opts;
 
@@ -463,8 +463,12 @@ type ResolveTargetOptions = {
  *   (check-only mode, or already up to date)
  */
 type ResolveResult =
-  | { kind: "target"; target: string; source?: UpgradeSource }
-  | { kind: "done"; result: UpgradeResult; source?: UpgradeSource };
+  | { kind: "target"; target: string; source?: UpgradeSource | undefined }
+  | {
+      kind: "done";
+      result: UpgradeResult;
+      source?: UpgradeSource | undefined;
+    };
 
 async function resolvePinnedVersion(
   lookupMethod: InstallationMethod,
@@ -851,12 +855,12 @@ async function executeStandardUpgrade(opts: {
   versionArg: string | undefined;
   target: string;
   execPath: string;
-  entryPath?: string;
-  pathEnv?: string;
+  entryPath?: string | undefined;
+  pathEnv?: string | undefined;
   offline?: OfflineMode;
-  json?: boolean;
+  json?: boolean | undefined;
   noAgentSkills: boolean;
-  source?: UpgradeSource;
+  source?: UpgradeSource | undefined;
   database: DatabasePlan;
 }): Promise<void> {
   const {
@@ -964,8 +968,8 @@ async function migrateToStandaloneForNightly(opts: {
   target: string;
   versionArg: string | undefined;
   noAgentSkills: boolean;
-  json?: boolean;
-  source?: UpgradeSource;
+  json?: boolean | undefined;
+  source?: UpgradeSource | undefined;
   channel: ReleaseChannel;
   database: DatabasePlan;
 }): Promise<string[]> {
@@ -1100,7 +1104,7 @@ function startChangelogFetch(options: {
   currentVersion: string;
   targetVersion: string;
   offline: OfflineMode;
-  source?: UpgradeSource;
+  source?: UpgradeSource | undefined;
 }): Promise<ChangelogSummary | undefined> {
   const { channel, currentVersion, targetVersion, offline, source } = options;
   if (offline || currentVersion === targetVersion) {
@@ -1132,7 +1136,10 @@ async function buildCheckResultWithChangelog(opts: {
   if (opts.offline) {
     result.offline = true;
   }
-  result.changelog = await opts.changelogPromise;
+  const changelog = await opts.changelogPromise;
+  if (changelog) {
+    result.changelog = changelog;
+  }
   return result;
 }
 
@@ -1284,13 +1291,16 @@ export const upgradeCommand = buildCommand({
         result.action === "checked" &&
         result.currentVersion !== result.targetVersion
       ) {
-        result.changelog = await startChangelogFetch({
+        const changelog = await startChangelogFetch({
           channel: getArtifactChannel(result.targetVersion),
           currentVersion: CLI_VERSION,
           targetVersion: result.targetVersion,
           offline: false,
           source: resolved.source,
         });
+        if (changelog) {
+          result.changelog = changelog;
+        }
       }
       return yield new CommandOutput(result);
     }
@@ -1331,7 +1341,7 @@ export const upgradeCommand = buildCommand({
         channel,
         method,
         forced: false,
-        offline: offline ? true : undefined,
+        ...(offline && { offline: true }),
       } satisfies UpgradeResult);
     }
     const downgrade = isDowngrade(CLI_VERSION, target);
@@ -1369,7 +1379,7 @@ export const upgradeCommand = buildCommand({
         target,
         execPath: this.process.execPath,
         entryPath: argv?.[1],
-        pathEnv: this.process.env.PATH,
+        pathEnv: this.process.env["PATH"],
         offline,
         json: flags.json,
         noAgentSkills: flags["no-agent-skills"],
@@ -1387,10 +1397,10 @@ export const upgradeCommand = buildCommand({
       channel,
       method,
       forced: flags.force,
-      offline: offline ? true : undefined,
-      warnings: allWarnings.length > 0 ? allWarnings : undefined,
-      restoredDatabase: database.restored ? target : undefined,
-      changelog,
+      ...(offline && { offline: true }),
+      ...(allWarnings.length > 0 && { warnings: allWarnings }),
+      ...(database.restored && { restoredDatabase: target }),
+      ...(changelog && { changelog }),
     } satisfies UpgradeResult);
     return;
   },

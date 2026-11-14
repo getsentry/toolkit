@@ -9,12 +9,8 @@ import { restoreCommand } from "../../../src/commands/release/restore.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -23,22 +19,19 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRelease } from "../../../src/types/index.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 useTestConfigDir("release-archive-");
 
-function makeRelease(status: string): SentryRelease {
+function makeRelease(status: "archived" | "open"): SentryRelease {
   return {
     id: 1,
     version: "1.0.0",
@@ -57,8 +50,8 @@ function makeRelease(status: string): SentryRelease {
 }
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -89,7 +82,7 @@ describe("release archive", () => {
     updateReleaseSpy.mockResolvedValue(makeRelease("archived"));
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await archiveCommand.loader();
+    const func = await loadCommand(archiveCommand);
     await func.call(context, { "dry-run": false, json: true }, "my-org/1.0.0");
 
     expect(updateReleaseSpy).toHaveBeenCalledWith("my-org", "1.0.0", {
@@ -103,7 +96,7 @@ describe("release archive", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context } = createMockContext();
-    const func = await archiveCommand.loader();
+    const func = await loadCommand(archiveCommand);
     await func.call(context, { "dry-run": true, json: true }, "my-org/1.0.0");
 
     expect(updateReleaseSpy).not.toHaveBeenCalled();
@@ -111,7 +104,7 @@ describe("release archive", () => {
 
   test("throws when no version provided", async () => {
     const { context } = createMockContext();
-    const func = await archiveCommand.loader();
+    const func = await loadCommand(archiveCommand);
 
     await expect(
       func.call(context, { "dry-run": false, json: false }),
@@ -122,7 +115,7 @@ describe("release archive", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await archiveCommand.loader();
+    const func = await loadCommand(archiveCommand);
 
     await expect(
       func.call(context, { "dry-run": false, json: false }, "1.0.0"),
@@ -149,7 +142,7 @@ describe("release restore", () => {
     updateReleaseSpy.mockResolvedValue(makeRelease("open"));
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(context, { "dry-run": false, json: true }, "my-org/1.0.0");
 
     expect(updateReleaseSpy).toHaveBeenCalledWith("my-org", "1.0.0", {
@@ -163,7 +156,7 @@ describe("release restore", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(context, { "dry-run": true, json: true }, "my-org/1.0.0");
 
     expect(updateReleaseSpy).not.toHaveBeenCalled();
@@ -171,7 +164,7 @@ describe("release restore", () => {
 
   test("throws when no version provided", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
 
     await expect(
       func.call(context, { "dry-run": false, json: false }),
@@ -182,7 +175,7 @@ describe("release restore", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
 
     await expect(
       func.call(context, { "dry-run": false, json: false }, "1.0.0"),

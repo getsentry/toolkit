@@ -23,7 +23,7 @@ import {
 } from "../../../src/lib/db/schema.js";
 import { Database } from "../../../src/lib/db/sqlite.js";
 import { EXIT, OutputError } from "../../../src/lib/errors.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
 
 /**
  * Generate DDL for creating a database with pre-migration tables.
@@ -34,11 +34,11 @@ function createPreMigrationDatabase(db: Database): void {
   const preMigrationTables = ["dsn_cache"];
   const statements: string[] = [];
 
-  for (const tableName of Object.keys(EXPECTED_TABLES)) {
+  for (const [tableName, ddl] of Object.entries(EXPECTED_TABLES)) {
     if (preMigrationTables.includes(tableName)) {
       statements.push(generatePreMigrationTableDDL(tableName));
     } else {
-      statements.push(EXPECTED_TABLES[tableName]);
+      statements.push(ddl);
     }
   }
 
@@ -59,9 +59,9 @@ function createDatabaseWithMissingTables(
 ): void {
   const statements: string[] = [];
 
-  for (const tableName of Object.keys(EXPECTED_TABLES)) {
+  for (const [tableName, ddl] of Object.entries(EXPECTED_TABLES)) {
     if (missingTables.includes(tableName)) continue;
-    statements.push(EXPECTED_TABLES[tableName]);
+    statements.push(ddl);
   }
 
   db.exec(statements.join(";\n"));
@@ -110,7 +110,7 @@ async function runFix(dryRun: boolean) {
   let exitCode = 0;
 
   try {
-    const func = await fixCommand.loader();
+    const func = await loadCommand(fixCommand);
     await func.call(context, { "dry-run": dryRun, json: false });
     // Successful return — exitCode stays 0
   } catch (err) {
@@ -482,7 +482,7 @@ describe("sentry cli fix — ownership detection", () => {
     let exitCode = 0;
 
     try {
-      const func = await fixCommand.loader();
+      const func = await loadCommand(fixCommand);
       await func.call(context, { "dry-run": dryRun, json: false });
     } catch (err) {
       if (err instanceof OutputError) {
@@ -563,17 +563,17 @@ describe("sentry cli fix — ownership detection", () => {
     getDatabase();
     chmodSync(join(getOwnershipTestDir(), "cli.db"), 0o600);
 
-    const origSudoUser = process.env.SUDO_USER;
-    process.env.SUDO_USER = "testuser123";
+    const origSudoUser = process.env["SUDO_USER"];
+    process.env["SUDO_USER"] = "testuser123";
 
     try {
       const { output } = await runFixWithUid(false, () => 9999);
       expect(output).toContain("testuser123");
     } finally {
       if (origSudoUser === undefined) {
-        delete process.env.SUDO_USER;
+        delete process.env["SUDO_USER"];
       } else {
-        process.env.SUDO_USER = origSudoUser;
+        process.env["SUDO_USER"] = origSudoUser;
       }
     }
   });
@@ -582,20 +582,20 @@ describe("sentry cli fix — ownership detection", () => {
     getDatabase();
     chmodSync(join(getOwnershipTestDir(), "cli.db"), 0o600);
 
-    const origSudoUser = process.env.SUDO_USER;
-    const origUser = process.env.USER;
-    delete process.env.SUDO_USER;
-    process.env.USER = "fallbackuser";
+    const origSudoUser = process.env["SUDO_USER"];
+    const origUser = process.env["USER"];
+    delete process.env["SUDO_USER"];
+    process.env["USER"] = "fallbackuser";
 
     try {
       const { output } = await runFixWithUid(false, () => 9999);
       expect(output).toContain("fallbackuser");
     } finally {
-      if (origSudoUser !== undefined) process.env.SUDO_USER = origSudoUser;
+      if (origSudoUser !== undefined) process.env["SUDO_USER"] = origSudoUser;
       if (origUser !== undefined) {
-        process.env.USER = origUser;
+        process.env["USER"] = origUser;
       } else {
-        delete process.env.USER;
+        delete process.env["USER"];
       }
     }
   });
@@ -656,10 +656,10 @@ describe("sentry cli fix — ownership detection", () => {
     getDatabase();
     chmodSync(join(getOwnershipTestDir(), "cli.db"), 0o600);
 
-    const origSudoUser = process.env.SUDO_USER;
-    const origUser = process.env.USER;
-    process.env.SUDO_USER = "__nonexistent_user_xyzzy__";
-    delete process.env.USER;
+    const origSudoUser = process.env["SUDO_USER"];
+    const origUser = process.env["USER"];
+    process.env["SUDO_USER"] = "__nonexistent_user_xyzzy__";
+    delete process.env["USER"];
 
     try {
       const { output, exitCode } = await runFixWithUid(false, () => 0);
@@ -668,11 +668,11 @@ describe("sentry cli fix — ownership detection", () => {
       expect(output).toContain("Could not determine a non-root UID");
     } finally {
       if (origSudoUser !== undefined) {
-        process.env.SUDO_USER = origSudoUser;
+        process.env["SUDO_USER"] = origSudoUser;
       } else {
-        delete process.env.SUDO_USER;
+        delete process.env["SUDO_USER"];
       }
-      if (origUser !== undefined) process.env.USER = origUser;
+      if (origUser !== undefined) process.env["USER"] = origUser;
     }
   });
 });

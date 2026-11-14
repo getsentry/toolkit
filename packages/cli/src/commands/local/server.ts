@@ -235,7 +235,7 @@ export { isLoopbackHost } from "./loopback.js";
  * own `toString()`.
  */
 export function spotlightEnvelopeId(header: Record<string, unknown>): string {
-  const id = header.__spotlight_envelope_id as
+  const id = header["__spotlight_envelope_id"] as
     | { toString(): string }
     | null
     | undefined;
@@ -311,7 +311,7 @@ export function buildSSEHandler(
       }
       stream
         .writeSSE({
-          id: envelopeId || undefined,
+          ...(envelopeId ? { id: envelopeId } : {}),
           event: `${container.getContentType()}${base64Indicator}`,
           data,
         })
@@ -669,7 +669,7 @@ export function tryListen(
         const boundPort = typeof addr === "object" && addr ? addr.port : port;
         resolve({ server, port: boundPort });
       });
-      server.once("error", async (err: NodeJS.ErrnoException) => {
+      server.once("error", (err: NodeJS.ErrnoException) => {
         server.close();
         if (err.code === "EADDRINUSE") {
           attempts += 1;
@@ -680,8 +680,7 @@ export function tryListen(
           logger.warn(
             `Port ${port} is in use, retrying in ${PORT_RETRY_DELAY_MS / 1000}s (attempt ${attempts}/${retries})...`,
           );
-          await sleep(PORT_RETRY_DELAY_MS);
-          resolve(attempt());
+          resolve(sleep(PORT_RETRY_DELAY_MS).then(attempt));
           return;
         }
         reject(err);
@@ -835,7 +834,7 @@ const SSE_MAX_RETRY_MS = 30_000;
 export type ConsumeSSEOptions = {
   url: string;
   /** A full scoped stream URL, when consuming a daemon-owned session. */
-  streamUrl?: string;
+  streamUrl?: string | undefined;
   activeFilters: ReadonlySet<FilterValue>;
   signal: AbortSignal;
   quiet?: boolean;
@@ -1016,7 +1015,7 @@ async function attemptSSEConnection(
 /** Options for a single SSE connection attempt. */
 type ConsumeSSEOnceOptions = {
   url: string;
-  streamUrl?: string;
+  streamUrl?: string | undefined;
   activeFilters: ReadonlySet<FilterValue>;
   signal: AbortSignal;
   quiet: boolean;

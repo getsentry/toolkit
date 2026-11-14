@@ -304,7 +304,7 @@ async function* grepFilesInternal(
 }
 
 function shouldUseWorkers(): boolean {
-  if (process.env.SENTRY_SCAN_DISABLE_WORKERS === "1") {
+  if (process.env["SENTRY_SCAN_DISABLE_WORKERS"] === "1") {
     return false;
   }
   return isWorkerSupported();
@@ -528,7 +528,7 @@ async function* grepViaWorkers(
       await Promise.allSettled(dispatchPromises);
     }
     if (producerError !== null) {
-      // oxlint-disable-next-line no-unsafe-finally -- re-raising walker error (e.g. AbortError) so callers see it
+      // oxlint-disable-next-line no-unsafe-finally, typescript/only-throw-error -- re-raising the caught walker error (e.g. AbortError) unchanged so callers see it
       throw producerError;
     }
     // If every dispatched batch failed, the "no matches" result is

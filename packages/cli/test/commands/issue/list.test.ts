@@ -65,7 +65,12 @@ import {
 } from "../../../src/lib/errors.js";
 import type { TimeRange } from "../../../src/lib/time-range.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import {
+  mockFetch,
+  useTestConfigDir,
+  at,
+  issueProject,
+} from "../../helpers.js";
 
 type ListFlags = {
   readonly query?: string;
@@ -144,7 +149,7 @@ function mockDefaultProject(url: string): Response | null {
 }
 
 /** Build a mock issue response */
-function mockIssue(overrides?: Record<string, unknown>) {
+function mockIssue(overrides: Partial<SentryIssue> = {}): SentryIssue {
   return {
     id: "123",
     shortId: "TEST-PROJECT-1",
@@ -499,7 +504,6 @@ describe("issue list: org-as-project detection", () => {
   test("lists the organization when no project has that slug", async () => {
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [],
-      nextCursor: undefined,
     });
 
     // Two orgs returned from /organizations/, but getProject returns 404 for both.
@@ -569,7 +573,6 @@ describe("issue list: org-as-project detection", () => {
     });
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [],
-      nextCursor: undefined,
     });
     resolveCursorMock.mockReturnValue({
       cursor: undefined,
@@ -971,8 +974,8 @@ const advancePaginationStateMock = vi.mocked(
 
 describe("issue list: org-all mode (cursor pagination)", () => {
   function createOrgAllContext() {
-    const stdoutWrite = vi.fn(() => true);
-    const stderrWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+    const stderrWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
@@ -984,7 +987,7 @@ describe("issue list: org-all mode (cursor pagination)", () => {
     };
   }
 
-  const sampleIssue = {
+  const sampleIssue: SentryIssue = {
     id: "1",
     shortId: "PROJ-1",
     title: "Test Error",
@@ -996,7 +999,7 @@ describe("issue list: org-all mode (cursor pagination)", () => {
     lastSeen: "2025-01-01T00:00:00Z",
     firstSeen: "2025-01-01T00:00:00Z",
     level: "error",
-    project: { slug: "test-proj" },
+    project: issueProject("test-proj"),
   };
 
   beforeEach(async () => {
@@ -1024,7 +1027,6 @@ describe("issue list: org-all mode (cursor pagination)", () => {
 
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [],
-      nextCursor: undefined,
     });
 
     // Raw cursor passthrough: resolveCursor returns the cursor string as-is
@@ -1140,7 +1142,6 @@ describe("issue list: org-all mode (cursor pagination)", () => {
   test("human output 'No issues found' when empty org-all", async () => {
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [],
-      nextCursor: undefined,
     });
 
     const orgAllFunc = (await listCommand.loader()) as unknown as (
@@ -1273,7 +1274,7 @@ describe("issue list: cursor flag parse validation", () => {
   // Access the parse function directly from the command's flag definition.
   // This tests the validation without needing a full command invocation.
   const parseCursor = (
-    listCommand.parameters.flags!.cursor as { parse: (v: string) => string }
+    listCommand.parameters.flags!["cursor"] as { parse: (v: string) => string }
   ).parse;
 
   test('accepts "last" keyword', () => {
@@ -1298,7 +1299,7 @@ describe("issue list: cursor flag parse validation", () => {
 
 describe("issue list: query flag parse", () => {
   const parseQuery = (
-    listCommand.parameters.flags!.query as { parse: (v: string) => string }
+    listCommand.parameters.flags!["query"] as { parse: (v: string) => string }
   ).parse;
 
   test("rewrites is: OR into a status in-list for the issues endpoint", () => {
@@ -1341,7 +1342,7 @@ describe("issue list: Phase 2 budget redistribution", () => {
       firstSeen: "2025-01-01T00:00:00Z",
       level: "error",
       platform: "javascript",
-      project: { slug: "myproj" },
+      project: issueProject("myproj"),
     });
 
     globalThis.fetch = mockFetch(async (input, init) => {
@@ -1530,7 +1531,7 @@ describe("issue list: compound cursor resume", () => {
 // ---------------------------------------------------------------------------
 
 describe("issue list: collapse parameter optimization", () => {
-  const sampleIssue = {
+  const sampleIssue: SentryIssue = {
     id: "1",
     shortId: "PROJ-1",
     title: "Test Error",
@@ -1542,12 +1543,12 @@ describe("issue list: collapse parameter optimization", () => {
     lastSeen: "2025-01-01T00:00:00Z",
     firstSeen: "2025-01-01T00:00:00Z",
     level: "error",
-    project: { slug: "test-proj" },
+    project: issueProject("test-proj"),
   };
 
   function createOrgAllContext() {
-    const stdoutWrite = vi.fn(() => true);
-    const stderrWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+    const stderrWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
@@ -1596,20 +1597,20 @@ describe("issue list: collapse parameter optimization", () => {
     let savedHost: string | undefined;
 
     beforeEach(() => {
-      savedUrl = process.env.SENTRY_URL;
-      savedHost = process.env.SENTRY_HOST;
+      savedUrl = process.env["SENTRY_URL"];
+      savedHost = process.env["SENTRY_HOST"];
     });
 
     afterEach(() => {
       if (savedUrl === undefined) {
-        delete process.env.SENTRY_URL;
+        delete process.env["SENTRY_URL"];
       } else {
-        process.env.SENTRY_URL = savedUrl;
+        process.env["SENTRY_URL"] = savedUrl;
       }
       if (savedHost === undefined) {
-        delete process.env.SENTRY_HOST;
+        delete process.env["SENTRY_HOST"];
       } else {
-        process.env.SENTRY_HOST = savedHost;
+        process.env["SENTRY_HOST"] = savedHost;
       }
     });
 
@@ -1634,20 +1635,20 @@ describe("issue list: collapse parameter optimization", () => {
     }
 
     test("uses recommended on Sentry SaaS", async () => {
-      delete process.env.SENTRY_URL;
-      delete process.env.SENTRY_HOST;
+      delete process.env["SENTRY_URL"];
+      delete process.env["SENTRY_HOST"];
       const options = await runOrgAllWithoutSort();
       expect(listIssuesAllPagesMock).toHaveBeenCalled();
-      expect(options.sort).toBe("recommended");
+      expect(options["sort"]).toBe("recommended");
     });
 
     test("uses date on a self-hosted instance", async () => {
-      delete process.env.SENTRY_HOST;
-      process.env.SENTRY_URL = "https://sentry.example.com";
+      delete process.env["SENTRY_HOST"];
+      process.env["SENTRY_URL"] = "https://sentry.example.com";
       setOrgRegion("my-org", "https://sentry.example.com");
       const options = await runOrgAllWithoutSort();
       expect(listIssuesAllPagesMock).toHaveBeenCalled();
-      expect(options.sort).toBe("date");
+      expect(options["sort"]).toBe("date");
     });
   });
 
@@ -1658,7 +1659,7 @@ describe("issue list: collapse parameter optimization", () => {
       period: parsePeriod("90d"),
       json: false,
     });
-    const collapse = options.collapse as string[];
+    const collapse = options["collapse"] as string[];
     expect(collapse).toContain("filtered");
     expect(collapse).toContain("unhandled");
   });
@@ -1670,7 +1671,7 @@ describe("issue list: collapse parameter optimization", () => {
       period: parsePeriod("90d"),
       json: false,
     });
-    const collapse = options.collapse as string[];
+    const collapse = options["collapse"] as string[];
     expect(collapse).not.toContain("lifetime");
   });
 
@@ -1681,7 +1682,7 @@ describe("issue list: collapse parameter optimization", () => {
       period: parsePeriod("90d"),
       json: true,
     });
-    const collapse = options.collapse as string[];
+    const collapse = options["collapse"] as string[];
     expect(collapse).not.toContain("lifetime");
   });
 
@@ -1693,7 +1694,7 @@ describe("issue list: collapse parameter optimization", () => {
       json: true,
       fields: ["shortId", "title", "count"],
     });
-    const collapse = options.collapse as string[];
+    const collapse = options["collapse"] as string[];
     expect(collapse).not.toContain("lifetime");
   });
 
@@ -1705,7 +1706,7 @@ describe("issue list: collapse parameter optimization", () => {
       json: true,
       fields: ["shortId", "title"],
     });
-    const collapse = options.collapse as string[];
+    const collapse = options["collapse"] as string[];
     expect(collapse).toContain("lifetime");
   });
 
@@ -1723,9 +1724,9 @@ describe("issue list: collapse parameter optimization", () => {
         period: parsePeriod("90d"),
         json: false,
       });
-      const collapse = options.collapse as string[];
+      const collapse = options["collapse"] as string[];
       expect(collapse).not.toContain("stats");
-      expect(options.groupStatsPeriod).toBe("auto");
+      expect(options["groupStatsPeriod"]).toBe("auto");
     } finally {
       Object.defineProperty(process.stdout, "columns", {
         value: savedColumns,
@@ -1741,9 +1742,9 @@ describe("issue list: collapse parameter optimization", () => {
       period: parsePeriod("90d"),
       json: true,
     });
-    const collapse = options.collapse as string[];
+    const collapse = options["collapse"] as string[];
     expect(collapse).not.toContain("stats");
-    expect(options.groupStatsPeriod).toBe("auto");
+    expect(options["groupStatsPeriod"]).toBe("auto");
   });
 
   test("collapses stats in JSON mode when --fields omits seen-stats fields", async () => {
@@ -1754,7 +1755,7 @@ describe("issue list: collapse parameter optimization", () => {
       json: true,
       fields: ["shortId", "title"],
     });
-    const collapse = options.collapse as string[];
+    const collapse = options["collapse"] as string[];
     expect(collapse).toContain("stats");
   });
 
@@ -1766,7 +1767,7 @@ describe("issue list: collapse parameter optimization", () => {
       json: true,
       fields: ["shortId", "title"],
     });
-    expect(options.groupStatsPeriod).toBeUndefined();
+    expect(options["groupStatsPeriod"]).toBeUndefined();
   });
 });
 
@@ -1793,7 +1794,7 @@ describe("issue list: multi-target cursor-safe budget", () => {
     return mockIssue({
       id: `${org}-${index}`,
       shortId: `${org.toUpperCase()}-${index}`,
-      project: { slug: "myproj" },
+      project: issueProject("myproj"),
     });
   }
 
@@ -1880,7 +1881,7 @@ describe("issue list: multi-target cursor-safe budget", () => {
       mockIssue({
         id,
         shortId: id.toUpperCase(),
-        project: { slug: "myproj" },
+        project: issueProject("myproj"),
         count: String(count),
         userCount: count,
         filtered: {
@@ -1939,6 +1940,7 @@ const {
 } = __testing;
 
 import type { SentryIssue } from "../../../src/types/index.js";
+import type { Writer } from "../../../src/types/index.js";
 
 function makeIssue(overrides: Partial<SentryIssue> = {}): SentryIssue {
   return {
@@ -2015,40 +2017,40 @@ describe("defaultIssueSort", () => {
   let savedHost: string | undefined;
 
   beforeEach(() => {
-    savedUrl = process.env.SENTRY_URL;
-    savedHost = process.env.SENTRY_HOST;
+    savedUrl = process.env["SENTRY_URL"];
+    savedHost = process.env["SENTRY_HOST"];
   });
 
   afterEach(() => {
     if (savedUrl === undefined) {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     } else {
-      process.env.SENTRY_URL = savedUrl;
+      process.env["SENTRY_URL"] = savedUrl;
     }
     if (savedHost === undefined) {
-      delete process.env.SENTRY_HOST;
+      delete process.env["SENTRY_HOST"];
     } else {
-      process.env.SENTRY_HOST = savedHost;
+      process.env["SENTRY_HOST"] = savedHost;
     }
   });
 
   test("defaults to recommended on Sentry SaaS", () => {
-    delete process.env.SENTRY_URL;
-    delete process.env.SENTRY_HOST;
+    delete process.env["SENTRY_URL"];
+    delete process.env["SENTRY_HOST"];
     expect(defaultIssueSort()).toBe("recommended");
   });
 
   test("defaults to recommended for an explicit sentry.io URL", () => {
     // Clear SENTRY_HOST too: getConfiguredSentryUrl prefers SENTRY_HOST, so an
     // ambient value would mask SENTRY_URL and make this test non-hermetic.
-    delete process.env.SENTRY_HOST;
-    process.env.SENTRY_URL = DEFAULT_SENTRY_URL;
+    delete process.env["SENTRY_HOST"];
+    process.env["SENTRY_URL"] = DEFAULT_SENTRY_URL;
     expect(defaultIssueSort()).toBe("recommended");
   });
 
   test("defaults to date on a self-hosted instance", () => {
-    process.env.SENTRY_URL = "https://sentry.example.com";
-    delete process.env.SENTRY_HOST;
+    process.env["SENTRY_URL"] = "https://sentry.example.com";
+    delete process.env["SENTRY_HOST"];
     expect(defaultIssueSort()).toBe("date");
   });
 });
@@ -2073,7 +2075,6 @@ describe("parseSort", () => {
 
 describe("build400Detail", () => {
   const flags = {
-    query: undefined,
     period: parsePeriod("90d"),
     sort: "recommended" as const,
   };
@@ -2108,14 +2109,14 @@ describe("appendIssueFlags", () => {
   let savedUrl: string | undefined;
 
   beforeEach(() => {
-    savedUrl = process.env.SENTRY_URL;
+    savedUrl = process.env["SENTRY_URL"];
   });
 
   afterEach(() => {
     if (savedUrl === undefined) {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     } else {
-      process.env.SENTRY_URL = savedUrl;
+      process.env["SENTRY_URL"] = savedUrl;
     }
   });
 
@@ -2137,7 +2138,7 @@ describe("appendIssueFlags", () => {
   });
 
   test("on SaaS, recommended (the default) is omitted but date is shown", () => {
-    delete process.env.SENTRY_URL;
+    delete process.env["SENTRY_URL"];
     expect(
       appendIssueFlags("sentry issue list org/", {
         ...baseFlags,
@@ -2153,7 +2154,7 @@ describe("appendIssueFlags", () => {
   });
 
   test("on self-hosted, date (the default) is omitted but recommended is shown", () => {
-    process.env.SENTRY_URL = "https://sentry.example.com";
+    process.env["SENTRY_URL"] = "https://sentry.example.com";
     expect(
       appendIssueFlags("sentry issue list org/", {
         ...baseFlags,
@@ -2209,8 +2210,16 @@ describe("issue list: comma-separated project slugs", () => {
   test("looks up each slug and selects all IDs in one SDK request", async () => {
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [
-        mockIssue({ id: "web", shortId: "WEB-1", project: { slug: "web" } }),
-        mockIssue({ id: "api", shortId: "API-1", project: { slug: "api" } }),
+        mockIssue({
+          id: "web",
+          shortId: "WEB-1",
+          project: issueProject("web"),
+        }),
+        mockIssue({
+          id: "api",
+          shortId: "API-1",
+          project: issueProject("api"),
+        }),
       ],
       nextCursor: undefined,
     });
@@ -2233,8 +2242,8 @@ describe("issue list: comma-separated project slugs", () => {
   test("registers aliases that resolve from any directory", async () => {
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [
-        mockIssue({ id: "1", shortId: "WEB-1", project: { slug: "web" } }),
-        mockIssue({ id: "2", shortId: "API-1", project: { slug: "api" } }),
+        mockIssue({ id: "1", shortId: "WEB-1", project: issueProject("web") }),
+        mockIssue({ id: "2", shortId: "API-1", project: issueProject("api") }),
       ],
       nextCursor: undefined,
     });
@@ -2261,7 +2270,6 @@ describe("issue list: comma-separated project slugs", () => {
     setProjectAliases({ stale: { orgSlug: "old-org", projectSlug: "old" } });
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [],
-      nextCursor: undefined,
     });
 
     const { context, stdout } = createContext();
@@ -2278,7 +2286,7 @@ describe("issue list: comma-separated project slugs", () => {
   test("resumes the cursor when the slugs are retyped in another order", async () => {
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [
-        mockIssue({ id: "1", shortId: "WEB-1", project: { slug: "web" } }),
+        mockIssue({ id: "1", shortId: "WEB-1", project: issueProject("web") }),
       ],
       nextCursor: "1735689600:0:1",
     });
@@ -2336,7 +2344,7 @@ describe("issue list: comma-separated project slugs", () => {
       if (slug === "api") {
         throw new ApiError("Forbidden", 403);
       }
-      return catalog[0];
+      return at(catalog, 0);
     });
 
     const error = await func

@@ -103,8 +103,8 @@ function buildViewData(
   dashboard: {
     id: string;
     title: string;
-    dateCreated?: string;
-    environment?: string[];
+    dateCreated?: string | undefined;
+    environment?: string[] | undefined;
   },
   widgetResults: Map<number, WidgetDataResult>,
   widgets: DashboardWidget[],
@@ -129,7 +129,7 @@ function buildViewData(
       title: w.title,
       displayType: w.displayType,
       widgetType: w.widgetType,
-      description: (w as Record<string, unknown>).description as
+      description: (w as Record<string, unknown>)["description"] as
         | string
         | undefined,
       layout: w.layout,

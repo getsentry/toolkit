@@ -27,6 +27,7 @@ const events = {
     },
   ],
   deprecated: false,
+  experimental: false,
   idempotent: true,
 } as const satisfies ApiOperation;
 

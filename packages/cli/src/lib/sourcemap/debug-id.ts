@@ -432,7 +432,7 @@ function insertGeneratedLine(map: SourcemapJson, line: number): void {
 function mutateSourcemap(
   map: SourcemapJson,
   debugId: string,
-  options: { snippetLine?: number },
+  options: { snippetLine?: number | undefined },
 ): void {
   if (map.sources) {
     map.sources = map.sources.map((s) => (s ? s.replaceAll("\\", "/") : s));

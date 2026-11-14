@@ -56,7 +56,8 @@ export async function extractZipStream(
   mkdirSync(root, { recursive: true });
 
   let written = 0;
-  let failure = null as Error | null;
+  // Writes report errors from callbacks; the first one is rethrown.
+  const failures: Error[] = [];
   let completed = false;
   const writes: Promise<void>[] = [];
   const openStreams: ReturnType<typeof createWriteStream>[] = [];
@@ -84,7 +85,7 @@ export async function extractZipStream(
           resolveWrite();
         });
         stream.on("error", (err) => {
-          failure ??= err;
+          failures.push(err);
           resolveWrite();
         });
       }),
@@ -92,7 +93,7 @@ export async function extractZipStream(
 
     file.ondata = (err, data, final) => {
       if (err) {
-        failure ??= err;
+        failures.push(err);
         stream.destroy(err);
         return;
       }
@@ -140,6 +141,7 @@ export async function extractZipStream(
     }
   }
 
+  const [failure] = failures;
   if (failure) {
     throw failure;
   }

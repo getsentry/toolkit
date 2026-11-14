@@ -67,6 +67,7 @@ import {
 import { logger } from "./logger.js";
 import { clearPatchCache } from "./patch-cache.js";
 import { makeByteProgress, type SetMessage } from "./progress.js";
+import { rethrow } from "./rethrow.js";
 
 /** Scoped logger for upgrade operations */
 const log = logger.withTag("upgrade");
@@ -133,8 +134,8 @@ function extractReleaseVersions(
       (release): release is Record<string, unknown> =>
         typeof release === "object" && release !== null,
     )
-    .filter((release) => !(release.draft || release.prerelease))
-    .map((release) => release.tag_name)
+    .filter((release) => !(release["draft"] || release["prerelease"]))
+    .map((release) => release["tag_name"])
     .filter(
       (tag): tag is string =>
         typeof tag === "string" && tag.startsWith(source.tagPrefix),
@@ -200,7 +201,7 @@ export function buildKnownCurlPaths(
 ): string[] {
   const paths = KNOWN_CURL_DIRS.map((dir) => join(homeDir, dir) + sep);
   // Honor an absolute XDG_BIN_HOME, matching determineInstallDir's precedence.
-  const xdgBinHome = env.XDG_BIN_HOME;
+  const xdgBinHome = env["XDG_BIN_HOME"];
   if (xdgBinHome && isAbsolute(xdgBinHome)) {
     // join(dir, ".") strips any trailing separator so we don't emit a double
     // separator (e.g. `/custom/bin//`) that would break the startsWith checks.
@@ -513,7 +514,7 @@ export async function fetchLatestFromGitHubWithSource(
     visitedPages.add(nextPage);
     response = await fetchWithUpgradeError(
       nextPage,
-      { headers: getGitHubHeaders(), signal },
+      { headers: getGitHubHeaders(), ...(signal && { signal }) },
       "GitHub",
     );
     if (!response.ok) {
@@ -885,7 +886,7 @@ export type DownloadResult = {
   /** Path to the lock file held during download (caller must release after child exits) */
   lockPath: string;
   /** Size of delta patch in bytes, when delta upgrade was used instead of full download */
-  patchBytes?: number;
+  patchBytes?: number | undefined;
 };
 
 /**
@@ -916,7 +917,7 @@ function writeChunkSync(fd: number, chunk: Uint8Array): void {
  * this function never closes it.
  */
 async function drainBodyToFd(
-  body: ReadableStream<Uint8Array>,
+  body: ReadableStream<Uint8Array<ArrayBuffer>>,
   fd: number,
   onBytes: (n: number) => void,
 ): Promise<{ streamError: unknown; writeError: Error | undefined }> {
@@ -962,7 +963,7 @@ async function drainBodyToFd(
  * @param destPath - File path to write the decompressed output
  */
 async function streamDecompressToFile(
-  body: ReadableStream<Uint8Array>,
+  body: ReadableStream<Uint8Array<ArrayBuffer>>,
   destPath: string,
   setMessage?: SetMessage,
 ): Promise<void> {
@@ -996,7 +997,7 @@ async function streamDecompressToFile(
   }
 
   if (streamError !== undefined) {
-    throw streamError;
+    rethrow(streamError);
   }
 }
 

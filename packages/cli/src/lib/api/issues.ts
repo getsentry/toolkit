@@ -40,6 +40,8 @@ import {
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
+import { rethrow } from "../rethrow.js";
 
 const TRAILING_SLASH_RE = /\/$/;
 
@@ -181,27 +183,27 @@ export async function listIssuesPaginated(
   orgSlug: string,
   projectSlug: string,
   options: {
-    query?: string;
-    cursor?: string;
-    perPage?: number;
-    sort?: IssueSort;
-    statsPeriod?: string;
+    query?: string | undefined;
+    cursor?: string | undefined;
+    perPage?: number | undefined;
+    sort?: IssueSort | undefined;
+    statsPeriod?: string | undefined;
     /**
      * Numeric project IDs sent as the repeated `project` query param. Selects
      * projects directly, bypassing the "actively selected" requirement that
      * `project:<slug>` search syntax is subject to. IDs only: self-hosted
      * releases before 26.6 reject slugs in this param.
      */
-    projects?: readonly number[];
+    projects?: readonly number[] | undefined;
     /** Controls the time resolution of inline stats data. "auto" adapts to statsPeriod. */
-    groupStatsPeriod?: "" | "14d" | "24h" | "auto";
+    groupStatsPeriod?: "" | "14d" | "24h" | "auto" | undefined;
     /** Fields to collapse (omit) from the response for performance.
      *  @see {@link buildIssueListCollapse} */
-    collapse?: IssueCollapseField[];
+    collapse?: IssueCollapseField[] | undefined;
     /** Absolute start datetime (ISO-8601). Mutually exclusive with statsPeriod. */
-    start?: string;
+    start?: string | undefined;
     /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
-    end?: string;
+    end?: string | undefined;
   } = {},
 ): Promise<PaginatedResponse<SentryIssue[]>> {
   // Prefer the API's repeated `project` parameter. A lone slug retains the
@@ -216,7 +218,7 @@ export async function listIssuesPaginated(
   const result = await listOrganizationIssues({
     ...config,
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       project: projects,
       // Convert empty string to undefined so the SDK omits the param entirely;
       // sending `query=` causes the Sentry API to behave differently than
@@ -230,7 +232,7 @@ export async function listIssuesPaginated(
       end: options.end,
       groupStatsPeriod: options.groupStatsPeriod,
       collapse: options.collapse,
-    },
+    }),
   });
 
   return unwrapPaginatedResult<SentryIssue[]>(result, "Failed to list issues");
@@ -243,7 +245,7 @@ export type IssuesPage = {
    * Cursor for the next page of results, if more exist beyond the returned
    * issues. `undefined` when exhausted or a safe page boundary is unavailable.
    */
-  nextCursor?: string;
+  nextCursor?: string | undefined;
 };
 
 /**
@@ -263,25 +265,25 @@ export async function listIssuesAllPages(
   orgSlug: string,
   projectSlug: string,
   options: {
-    query?: string;
+    query?: string | undefined;
     limit: number;
-    sort?: IssueSort;
-    statsPeriod?: string;
+    sort?: IssueSort | undefined;
+    statsPeriod?: string | undefined;
     /** Numeric project IDs to select in one organization-scoped request. */
-    projects?: readonly number[];
+    projects?: readonly number[] | undefined;
     /** Controls the time resolution of inline stats data. "auto" adapts to statsPeriod. */
-    groupStatsPeriod?: "" | "14d" | "24h" | "auto";
+    groupStatsPeriod?: "" | "14d" | "24h" | "auto" | undefined;
     /** Resume pagination from this cursor instead of starting from the beginning. */
-    startCursor?: string;
+    startCursor?: string | undefined;
     /** Called after each page is fetched. Useful for progress indicators. */
-    onPage?: (fetched: number, limit: number) => void;
+    onPage?: ((fetched: number, limit: number) => void) | undefined;
     /** Fields to collapse (omit) from the response for performance.
      *  @see {@link buildIssueListCollapse} */
-    collapse?: IssueCollapseField[];
+    collapse?: IssueCollapseField[] | undefined;
     /** Absolute start datetime (ISO-8601). Mutually exclusive with statsPeriod. */
-    start?: string;
+    start?: string | undefined;
     /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
-    end?: string;
+    end?: string | undefined;
   },
 ): Promise<IssuesPage> {
   if (options.limit < 1) {
@@ -333,7 +335,7 @@ export async function getIssueInOrg(
   const result = await getOrganizationIssue({
     ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug, issue_id: issueId },
-    query: collapse ? { collapse } : undefined,
+    ...(collapse && { query: { collapse } }),
   });
   return unwrapResult<SentryIssue>(result, "Failed to get issue");
 }
@@ -383,7 +385,7 @@ export async function findIssueInOrgs(
     ),
   );
   if (!found && failure) {
-    throw failure;
+    rethrow(failure);
   }
   return found;
 }
@@ -410,7 +412,7 @@ export async function getIssueByShortId(
     const result = await resolveOrganizationShortId({
       ...config,
       path: { organization_id_or_slug: orgSlug, issue_id: normalizedShortId },
-      query: options?.collapse ? { collapse: options.collapse } : undefined,
+      ...(options?.collapse && { query: { collapse: options.collapse } }),
     });
     data = unwrapResult<{ group?: SentryIssue }>(
       result,
@@ -645,9 +647,9 @@ export async function updateIssueStatus(
   issueId: string,
   status: "resolved" | "unresolved" | "ignored",
   options: {
-    statusDetails?: ResolveStatusDetails | IgnoreStatusDetails;
+    statusDetails?: ResolveStatusDetails | IgnoreStatusDetails | undefined;
     /** Substatus for archive granularity. */
-    substatus?: IssueSubstatus;
+    substatus?: IssueSubstatus | undefined;
     orgSlug: string;
   },
 ): Promise<SentryIssue> {

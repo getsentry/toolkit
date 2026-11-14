@@ -45,7 +45,7 @@ type InfoStatus = {
   /** Whether a DSN is configured (via `SENTRY_DSN`). */
   have_dsn: boolean;
   /** Identity of the verified user, when available. */
-  user?: { email?: string; name?: string };
+  user?: { email?: string | undefined; name?: string | undefined } | undefined;
 };
 
 /** Flags accepted by `info`. */
@@ -64,9 +64,9 @@ function nonEmpty(value: string | null | undefined): string | null {
 /** Gather configuration + verify authentication. */
 async function gatherStatus(ctx: SentryContext): Promise<InfoStatus> {
   const url =
-    nonEmpty(ctx.env.SENTRY_URL) ?? getDefaultUrl() ?? DEFAULT_SENTRY_URL;
-  const org = nonEmpty(ctx.env.SENTRY_ORG) ?? getDefaultOrganization();
-  const project = nonEmpty(ctx.env.SENTRY_PROJECT) ?? getDefaultProject();
+    nonEmpty(ctx.env["SENTRY_URL"]) ?? getDefaultUrl() ?? DEFAULT_SENTRY_URL;
+  const org = nonEmpty(ctx.env["SENTRY_ORG"]) ?? getDefaultOrganization();
+  const project = nonEmpty(ctx.env["SENTRY_PROJECT"]) ?? getDefaultProject();
   const authenticated = isAuthenticated();
 
   let successful = false;
@@ -87,7 +87,7 @@ async function gatherStatus(ctx: SentryContext): Promise<InfoStatus> {
   return {
     config: { org, project, url },
     auth: { type: authenticated ? "token" : null, successful },
-    have_dsn: nonEmpty(ctx.env.SENTRY_DSN) !== null,
+    have_dsn: nonEmpty(ctx.env["SENTRY_DSN"]) !== null,
     user,
   };
 }

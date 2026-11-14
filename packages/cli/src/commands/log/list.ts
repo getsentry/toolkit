@@ -106,7 +106,7 @@ type LogListResult = {
   /** Whether more results are available beyond the limit */
   hasMore: boolean;
   /** Extra field names requested via `--fields`, used to render additional columns in human mode. */
-  extraFields?: string[];
+  extraFields?: string[] | undefined;
 };
 
 /** Output yielded by log list: either a batch (single-fetch) or an individual item (follow). */
@@ -152,7 +152,7 @@ function parseFollow(value: string): number {
 type LogLike = BaseLogLike & {
   /** Nanosecond-precision timestamp used for dedup in follow mode.
    * Optional because TraceLog may omit it when the API response doesn't include it. */
-  timestamp_precise?: number;
+  timestamp_precise?: number | undefined;
 };
 
 /** Result from a single fetch: logs to yield + hint for the footer. */
@@ -171,7 +171,7 @@ type LogListInput =
       readonly mode: "project";
       readonly target: ParsedOrgProject;
       /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
-      readonly baseUrl?: string;
+      readonly baseUrl?: string | undefined;
     }
   | { readonly mode: "trace"; readonly trace: TraceTargetInput };
 
@@ -183,7 +183,7 @@ type LogListTarget =
       readonly org: string;
       readonly traceId: string;
       /** Project the user named, to filter the trace's logs by */
-      readonly projectFilter?: string;
+      readonly projectFilter?: string | undefined;
     };
 
 /** The arguments of `log list`. */
@@ -243,7 +243,7 @@ async function executeSingleFetch(
   org: string,
   project: string,
   flags: ListFlags,
-  options: { timeRange: TimeRange; projectId?: number },
+  options: { timeRange: TimeRange; projectId?: number | undefined },
 ): Promise<FetchResult> {
   const { timeRange, projectId } = options;
   const logs = await listLogs(org, project, {
@@ -340,7 +340,7 @@ type FollowGeneratorConfig<T extends LogLike> = {
    * External abort signal (library mode). When aborted, the follow
    * generator stops on the next poll cycle. Complements SIGINT handling.
    */
-  abortSignal?: AbortSignal;
+  abortSignal?: AbortSignal | undefined;
 };
 
 /** Find the highest timestamp_precise in a batch, or undefined if none have it. */
@@ -543,7 +543,7 @@ type TraceFetchOptions = {
   flags: ListFlags;
   timeRange: TimeRange;
   /** Project slug for API-level filtering (from org/project/trace-id syntax) */
-  projectFilter?: string;
+  projectFilter?: string | undefined;
 };
 
 /**

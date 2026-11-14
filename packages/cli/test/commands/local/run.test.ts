@@ -52,6 +52,7 @@ import {
 } from "../../../src/lib/wrangler.js";
 import { TEST_TMP_DIR } from "../../constants.js";
 import { useTestConfigDir } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 /**
  * Records the env passed to the most recent `spawn` call so tests can assert
@@ -76,10 +77,15 @@ vi.mock("node:child_process", async (importOriginal) => {
       options?: Parameters<typeof actual.spawn>[2],
     ) => {
       spawnCapture.args = args;
-      spawnCapture.env = options?.env;
+      if (options?.env === undefined) {
+        delete spawnCapture.env;
+      } else {
+        spawnCapture.env = options.env;
+      }
       spawnCapture.stdio = options?.stdio;
-      spawnCapture.child = actual.spawn(cmd, args as string[], options);
-      return spawnCapture.child;
+      const child = actual.spawn(cmd, [...args], options);
+      spawnCapture.child = child;
+      return child;
     },
   };
 });
@@ -120,16 +126,16 @@ afterEach(async () => {
 
 function makeContext(cwd?: string) {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: cwd ?? tmpDir,
   };
 }
 
 describe("sentry local run", () => {
   beforeEach(() => {
-    spawnCapture.args = undefined;
-    spawnCapture.env = undefined;
+    delete spawnCapture.args;
+    delete spawnCapture.env;
     spawnCapture.stdio = undefined;
     spawnCapture.child = undefined;
   });
@@ -432,8 +438,8 @@ describe("sentry local run", () => {
   });
 
   test("preserves existing SENTRY_TRACES_SAMPLE_RATE", async () => {
-    const originalRate = process.env.SENTRY_TRACES_SAMPLE_RATE;
-    process.env.SENTRY_TRACES_SAMPLE_RATE = "0.5";
+    const originalRate = process.env["SENTRY_TRACES_SAMPLE_RATE"];
+    process.env["SENTRY_TRACES_SAMPLE_RATE"] = "0.5";
     try {
       const func = (await runCommand.loader()) as unknown as RunFunc;
       const ctx = makeContext();
@@ -447,9 +453,9 @@ describe("sentry local run", () => {
       );
     } finally {
       if (originalRate === undefined) {
-        delete process.env.SENTRY_TRACES_SAMPLE_RATE;
+        delete process.env["SENTRY_TRACES_SAMPLE_RATE"];
       } else {
-        process.env.SENTRY_TRACES_SAMPLE_RATE = originalRate;
+        process.env["SENTRY_TRACES_SAMPLE_RATE"] = originalRate;
       }
     }
   });
@@ -973,7 +979,7 @@ setInterval(() => {}, 1000);
     const capturedEnv = spawnCapture.env;
     expect(capturedEnv).toBeDefined();
     // Base name read by server-side SDKs.
-    expect(capturedEnv?.SENTRY_SPOTLIGHT).toBe(expectedUrl);
+    expect(capturedEnv?.["SENTRY_SPOTLIGHT"]).toBe(expectedUrl);
     // Every framework client variant points at the same URL.
     for (const prefix of CLIENT_SPOTLIGHT_PREFIXES) {
       expect(capturedEnv?.[`${prefix}SENTRY_SPOTLIGHT`]).toBe(expectedUrl);
