@@ -38,7 +38,11 @@ import {
   useTestConfigDir,
   at,
 } from "../helpers.js";
-import { createMockServer, type MockServer } from "../mocks/server.js";
+import {
+  createMockServer,
+  type MockServer,
+  routeParam,
+} from "../mocks/server.js";
 
 const TOKEN = "context-recovery-test-token";
 const QUERY = `is:unresolved message:"can't read 'name'"`;
@@ -77,34 +81,32 @@ beforeAll(async () => {
       {
         method: "GET",
         path: "/api/0/organizations/:orgSlug/projects/",
-        response: (
-          _request: Request,
-          { orgSlug }: Record<string, string>,
-          serverUrl: string,
-        ) => {
+        response: (_request, params, serverUrl) => {
+          const orgSlug = routeParam(params, "orgSlug");
           if (failedOrgs.has(orgSlug)) {
             return { status: 403, body: { detail: "Not permitted" } };
           }
+          const body = projectsByOrg.get(orgSlug) ?? [];
+          if (!paginatedOrgs.has(orgSlug)) {
+            return { body };
+          }
           return {
-            body: projectsByOrg.get(orgSlug) ?? [],
-            headers: paginatedOrgs.has(orgSlug)
-              ? {
-                  Link: `<${serverUrl}/api/0/organizations/${orgSlug}/projects/>; rel="next"; results="true"; cursor="next-page"`,
-                }
-              : undefined,
+            body,
+            headers: {
+              Link: `<${serverUrl}/api/0/organizations/${orgSlug}/projects/>; rel="next"; results="true"; cursor="next-page"`,
+            },
           };
         },
       },
       {
         method: "GET",
         path: "/api/0/projects/:orgSlug/:projectSlug/",
-        response: (
-          _request: Request,
-          { orgSlug, projectSlug }: Record<string, string>,
-        ) => ({
+        response: (_request, params) => ({
           body: projectsByOrg
-            .get(orgSlug)
-            ?.find((project) => project.slug === projectSlug),
+            .get(routeParam(params, "orgSlug"))
+            ?.find(
+              (project) => project.slug === routeParam(params, "projectSlug"),
+            ),
         }),
       },
       {
@@ -396,7 +398,7 @@ describe("bounded target guidance", () => {
 
   test("bounds discovery and still suggests accessible projects when one org fails", async () => {
     organizations = Array.from({ length: 4 }, (_, index) => ({
-      ...organizationsFixture[0],
+      ...at(organizationsFixture, 0),
       id: String(100_010 + index),
       slug: `candidate-org-${index}`,
     }));
@@ -404,7 +406,7 @@ describe("bounded target guidance", () => {
       organizations.map((org) => [
         org.slug,
         Array.from({ length: 5 }, (_, index) => ({
-          ...projectsFixture[0],
+          ...at(projectsFixture, 0),
           id: String(300_010 + index),
           slug: `candidate-project-${index}`,
         })),

@@ -27,7 +27,11 @@ import {
   TEST_PROJECT,
   TEST_TOKEN,
 } from "../mocks/routes.js";
-import { createMockServer, type MockServer } from "../mocks/server.js";
+import {
+  createMockServer,
+  type MockServer,
+  routeParam,
+} from "../mocks/server.js";
 
 let testConfigDir: string;
 let mockServer: MockServer;
@@ -162,11 +166,11 @@ describe.each([
           method: "PUT",
           path: "/api/0/organizations/:orgSlug/issues/:issueId/",
           response: (_req, params) => {
-            mutatedId = params.issueId;
+            mutatedId = routeParam(params, "issueId");
             return {
               body: {
                 ...feedbackFixture,
-                id: params.issueId,
+                id: routeParam(params, "issueId"),
                 status,
               },
             };

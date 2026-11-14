@@ -172,7 +172,7 @@ describe("compareReports", () => {
       ...baseline,
       entries: [
         {
-          ...baseline.entries[0],
+          ...at(baseline.entries, 0),
           stats: { ...at(baseline.entries, 0).stats, p50: 15 },
         },
         at(baseline.entries, 1),
@@ -190,7 +190,7 @@ describe("compareReports", () => {
       ...baseline,
       entries: [
         {
-          ...baseline.entries[0],
+          ...at(baseline.entries, 0),
           stats: { ...at(baseline.entries, 0).stats, p50: 7 },
         },
         at(baseline.entries, 1),

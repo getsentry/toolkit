@@ -14,17 +14,24 @@
 import { mkdirSync } from "node:fs";
 import { logger } from "../../../src/lib/logger.js";
 
-// Set config dir from CLI arg before importing db modules
-const configDir = process.argv[2];
-const workerId = process.argv[3];
-const operation = process.argv[4];
-
-if (!(configDir && workerId && operation)) {
-  logger.error(
-    "Usage: pnpm ts concurrent-worker.ts <config-dir> <worker-id> <operation>",
-  );
-  process.exit(1);
+/** Read the worker's CLI arguments, exiting with usage help when one is missing. */
+function readWorkerArgs(): {
+  configDir: string;
+  workerId: string;
+  operation: string;
+} {
+  const [configDir, workerId, operation] = process.argv.slice(2);
+  if (!(configDir && workerId && operation)) {
+    logger.error(
+      "Usage: pnpm ts concurrent-worker.ts <config-dir> <worker-id> <operation>",
+    );
+    process.exit(1);
+  }
+  return { configDir, workerId, operation };
 }
+
+// Set config dir from CLI arg before importing db modules
+const { configDir, workerId, operation } = readWorkerArgs();
 
 // Ensure config dir exists
 mkdirSync(configDir, { recursive: true });
@@ -58,7 +65,7 @@ async function writeDsn(): Promise<WorkerResult> {
     dsn,
     projectId: `123${workerId}`,
     orgId: "456",
-    source: "env-file",
+    source: "env_file",
   });
 
   // Verify write
@@ -122,7 +129,7 @@ async function readWrite(): Promise<WorkerResult> {
     setCachedDsn(directory, {
       dsn,
       projectId: `${workerId}${i}`,
-      source: "env-file",
+      source: "env_file",
     });
 
     const cached = getCachedDsn(directory);

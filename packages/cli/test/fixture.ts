@@ -56,7 +56,7 @@ export type CliResult = {
  * bun, which hits TDZ errors from circular imports in the db/ layer — see
  * issue #1070).
  */
-export function getCliCommand(): string[] {
+export function getCliCommand(): [string, ...string[]] {
   const binaryPath = process.env["SENTRY_CLI_BINARY"];
   if (binaryPath) {
     if (/\.[cm]?js$/i.test(binaryPath)) {
@@ -85,9 +85,6 @@ export async function runCli(
 ): Promise<CliResult> {
   const cliDir = join(import.meta.dirname, "..");
   const [cmdBin, ...cmdArgs] = getCliCommand();
-  if (cmdBin === undefined) {
-    throw new Error("getCliCommand() returned an empty command");
-  }
 
   const proc = spawn(cmdBin, [...cmdArgs, ...args], {
     cwd: options?.cwd ?? cliDir,

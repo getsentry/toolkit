@@ -1,4 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type {
+  findProjectByDsn,
+  listOrganizations,
+  listProjects,
+  resolveOrgDisplayName,
+} from "../../../src/lib/api-client.js";
+import type {
+  SentryOrganization,
+  SentryProject,
+} from "../../../src/types/index.js";
 import { createIsolatedDbContext } from "../../model-based/helpers.js";
 
 // Mock api-client module to avoid real API calls
@@ -8,11 +18,15 @@ const {
   mockFindProjectByDsn,
   mockResolveOrgDisplayName,
 } = vi.hoisted(() => ({
-  mockListOrganizations: vi.fn(() => Promise.resolve([])),
-  mockListProjects: vi.fn(() => Promise.resolve([])),
-  mockFindProjectByDsn: vi.fn(() => Promise.resolve(null)),
-  mockResolveOrgDisplayName: vi.fn(
-    (slug: string, name?: string) => name ?? slug,
+  mockListOrganizations: vi.fn<typeof listOrganizations>(() =>
+    Promise.resolve([]),
+  ),
+  mockListProjects: vi.fn<typeof listProjects>(() => Promise.resolve([])),
+  mockFindProjectByDsn: vi.fn<typeof findProjectByDsn>(() =>
+    Promise.resolve(null),
+  ),
+  mockResolveOrgDisplayName: vi.fn<typeof resolveOrgDisplayName>(
+    (slug, name) => name ?? slug,
   ),
 }));
 
@@ -236,14 +250,17 @@ describe("resolveProject", () => {
       source: "env",
     };
 
-    // API returns id as number, but DSN has it as string
-    mockListOrganizations.mockResolvedValue([
-      { id: 42, slug: "number-org", name: "Number Org" },
-    ]);
+    // API returns id as number, but DSN has it as string. The client
+    // passes the parsed JSON through, so build the fixtures the same way.
+    const orgs: SentryOrganization[] = JSON.parse(
+      '[{ "id": 42, "slug": "number-org", "name": "Number Org" }]',
+    );
+    const projects: SentryProject[] = JSON.parse(
+      '[{ "id": 100, "slug": "number-project", "name": "Number Project" }]',
+    );
+    mockListOrganizations.mockResolvedValue(orgs);
 
-    mockListProjects.mockResolvedValue([
-      { id: 100, slug: "number-project", name: "Number Project" },
-    ]);
+    mockListProjects.mockResolvedValue(projects);
 
     const result = await resolveProject("/test/path", dsn);
 

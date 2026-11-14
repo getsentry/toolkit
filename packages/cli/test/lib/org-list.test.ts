@@ -119,6 +119,9 @@ afterEach(() => {
 
 type FakeEntity = { id: string; name: string };
 type FakeWithOrg = FakeEntity & { orgSlug: string };
+type ListPaginated = NonNullable<
+  OrgListConfig<FakeEntity, FakeWithOrg>["listPaginated"]
+>;
 
 function makeConfig(
   overrides?: Partial<OrgListConfig<FakeEntity, FakeWithOrg>>,
@@ -128,8 +131,8 @@ function makeConfig(
     entityPlural: "widgets",
     commandPrefix: () => "sentry widget list",
     listForOrg: vi.fn(() => Promise.resolve([])),
-    listPaginated: vi.fn(() =>
-      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
+    listPaginated: vi.fn<ListPaginated>(() =>
+      Promise.resolve({ data: [] as FakeEntity[] }),
     ),
     withOrg: (entity, orgSlug) => ({ ...entity, orgSlug }),
     displayTable: vi.fn(() => ""),
@@ -142,11 +145,6 @@ const META_ONLY: ListCommandMeta = {
   entityPlural: "things",
   commandPrefix: () => "sentry thing list",
 };
-
-function createStdout() {
-  const write = vi.fn((_chunk: string) => true);
-  return { writer: { write }, write };
-}
 
 // ---------------------------------------------------------------------------
 // isOrgListConfig
@@ -292,7 +290,7 @@ describe("handleOrgAll", () => {
   test("returns ListResult with hasMore=true and nextCursor", async () => {
     const items: FakeEntity[] = [{ id: "1", name: "A" }];
     const config = makeConfig({
-      listPaginated: vi.fn(() =>
+      listPaginated: vi.fn<ListPaginated>(() =>
         Promise.resolve({ data: items, nextCursor: "next:123" }),
       ),
     });
@@ -314,8 +312,8 @@ describe("handleOrgAll", () => {
   });
 
   test("caps perPage at API_MAX_PER_PAGE when limit exceeds it", async () => {
-    const listPaginated = vi.fn(() =>
-      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
+    const listPaginated = vi.fn<ListPaginated>(() =>
+      Promise.resolve({ data: [] as FakeEntity[] }),
     );
     const config = makeConfig({ listPaginated });
 
@@ -335,8 +333,8 @@ describe("handleOrgAll", () => {
   });
 
   test("passes limit through as perPage when below API_MAX_PER_PAGE", async () => {
-    const listPaginated = vi.fn(() =>
-      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
+    const listPaginated = vi.fn<ListPaginated>(() =>
+      Promise.resolve({ data: [] as FakeEntity[] }),
     );
     const config = makeConfig({ listPaginated });
 
@@ -357,10 +355,9 @@ describe("handleOrgAll", () => {
 
   test("returns ListResult with hasMore=false when no nextCursor", async () => {
     const config = makeConfig({
-      listPaginated: vi.fn(() =>
+      listPaginated: vi.fn<ListPaginated>(() =>
         Promise.resolve({
           data: [{ id: "1", name: "A" }],
-          nextCursor: undefined,
         }),
       ),
     });
@@ -381,8 +378,8 @@ describe("handleOrgAll", () => {
 
   test("returns hint with 'no entities found' when empty", async () => {
     const config = makeConfig({
-      listPaginated: vi.fn(() =>
-        Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
+      listPaginated: vi.fn<ListPaginated>(() =>
+        Promise.resolve({ data: [] as FakeEntity[] }),
       ),
     });
 
@@ -401,7 +398,7 @@ describe("handleOrgAll", () => {
 
   test("returns hint with next page info when more available", async () => {
     const config = makeConfig({
-      listPaginated: vi.fn(() =>
+      listPaginated: vi.fn<ListPaginated>(() =>
         Promise.resolve({ data: [{ id: "1", name: "A" }], nextCursor: "x" }),
       ),
     });
@@ -421,7 +418,7 @@ describe("handleOrgAll", () => {
 
   test("calls advancePaginationState when nextCursor present", async () => {
     const config = makeConfig({
-      listPaginated: vi.fn(() =>
+      listPaginated: vi.fn<ListPaginated>(() =>
         Promise.resolve({
           data: [{ id: "1", name: "A" }],
           nextCursor: "cursor:abc",
@@ -448,10 +445,9 @@ describe("handleOrgAll", () => {
 
   test("calls advancePaginationState with undefined when no nextCursor", async () => {
     const config = makeConfig({
-      listPaginated: vi.fn(() =>
+      listPaginated: vi.fn<ListPaginated>(() =>
         Promise.resolve({
           data: [{ id: "1", name: "A" }],
-          nextCursor: undefined,
         }),
       ),
     });
@@ -474,24 +470,22 @@ describe("handleOrgAll", () => {
   });
 
   test("auto-paginates when limit exceeds API_MAX_PER_PAGE and never requests a larger page", async () => {
-    const listPaginated = vi.fn(
-      (_org: string, opts: { cursor?: string; perPage: number }) => {
-        expect(opts.perPage).toBeLessThanOrEqual(100);
-        // OffsetPaginator cursors: <per_page>:<page>:<is_prev>.
-        const [size = 0, page = 0] = (opts.cursor ?? "0:0:0")
-          .split(":")
-          .map(Number);
-        const offset = size * page;
-        const data = Array.from({ length: opts.perPage }, (_, i) => ({
-          id: String(offset + i),
-          name: `W${offset + i}`,
-        }));
-        return Promise.resolve({
-          data,
-          nextCursor: `${opts.perPage}:${offset / opts.perPage + 1}:0`,
-        });
-      },
-    );
+    const listPaginated = vi.fn<ListPaginated>((_org, opts) => {
+      expect(opts.perPage).toBeLessThanOrEqual(100);
+      // OffsetPaginator cursors: <per_page>:<page>:<is_prev>.
+      const [size = 0, page = 0] = (opts.cursor ?? "0:0:0")
+        .split(":")
+        .map(Number);
+      const offset = size * page;
+      const data = Array.from({ length: opts.perPage }, (_, i) => ({
+        id: String(offset + i),
+        name: `W${offset + i}`,
+      }));
+      return Promise.resolve({
+        data,
+        nextCursor: `${opts.perPage}:${offset / opts.perPage + 1}:0`,
+      });
+    });
     const config = makeConfig({ listPaginated });
 
     const result = await handleOrgAll({
@@ -522,7 +516,7 @@ describe("handleOrgAll", () => {
       org: "my-org",
       flags: { limit: 30, json: true },
       contextKey: "key",
-      cursor: result.nextCursor,
+      cursor: result.nextCursor ?? undefined,
       direction: "next",
     });
     expect(next.items.map((item) => item.id)).toEqual(
@@ -920,12 +914,10 @@ describe("dispatchOrgScopedList", () => {
 
   test("throws ValidationError when --cursor used outside org-all mode", async () => {
     const config = makeConfig();
-    const { writer } = createStdout();
 
     await expect(
       dispatchOrgScopedList({
         config,
-        stdout: writer,
         cwd: "/tmp",
         flags: { limit: 10, json: false, cursor: "some-cursor" },
         parsed: { type: "explicit", org: "my-org", project: "my-proj" },
@@ -935,12 +927,10 @@ describe("dispatchOrgScopedList", () => {
 
   test("error message includes entity plural name", async () => {
     const config = makeConfig();
-    const { writer } = createStdout();
 
     try {
       await dispatchOrgScopedList({
         config,
-        stdout: writer,
         cwd: "/tmp",
         flags: { limit: 10, json: false, cursor: "x" },
         parsed: { type: "auto-detect" },
@@ -955,15 +945,13 @@ describe("dispatchOrgScopedList", () => {
   test("delegates to handleOrgAll for org-all mode and returns ListResult", async () => {
     const items: FakeEntity[] = [{ id: "1", name: "A" }];
     const config = makeConfig({
-      listPaginated: vi.fn(() =>
-        Promise.resolve({ data: items, nextCursor: undefined }),
+      listPaginated: vi.fn<ListPaginated>(() =>
+        Promise.resolve({ data: items }),
       ),
     });
-    const { writer } = createStdout();
 
     const result = await dispatchOrgScopedList({
       config,
-      stdout: writer,
       cwd: "/tmp",
       flags: { limit: 10, json: true },
       parsed: { type: "org-all", org: "my-org" },
@@ -978,11 +966,9 @@ describe("dispatchOrgScopedList", () => {
       Promise.resolve([{ id: "1", name: "T" }]),
     );
     const config = makeConfig({ listForProject });
-    const { writer } = createStdout();
 
     const result = await dispatchOrgScopedList({
       config,
-      stdout: writer,
       cwd: "/tmp",
       flags: { limit: 10, json: true },
       parsed: { type: "explicit", org: "my-org", project: "my-proj" },
@@ -996,11 +982,9 @@ describe("dispatchOrgScopedList", () => {
   test("explicit mode falls back to org-scoped with note when no listForProject", async () => {
     const listForOrg = vi.fn(() => Promise.resolve([{ id: "1", name: "R" }]));
     const config = makeConfig({ listForOrg }); // no listForProject
-    const { writer } = createStdout();
 
     const result = await dispatchOrgScopedList({
       config,
-      stdout: writer,
       cwd: "/tmp",
       flags: { limit: 10, json: false },
       parsed: { type: "explicit", org: "my-org", project: "my-proj" },
@@ -1012,14 +996,12 @@ describe("dispatchOrgScopedList", () => {
 
   test("override replaces default handler for that mode", async () => {
     const config = makeConfig();
-    const { writer } = createStdout();
     const overrideCalled = vi.fn(() =>
       Promise.resolve({ items: [] } as ListResult<FakeWithOrg>),
     );
 
     await dispatchOrgScopedList({
       config,
-      stdout: writer,
       cwd: "/tmp",
       flags: { limit: 10, json: false },
       parsed: { type: "auto-detect" },
@@ -1034,18 +1016,16 @@ describe("dispatchOrgScopedList", () => {
   test("override does not affect other modes", async () => {
     const items: FakeEntity[] = [{ id: "1", name: "A" }];
     const config = makeConfig({
-      listPaginated: vi.fn(() =>
-        Promise.resolve({ data: items, nextCursor: undefined }),
+      listPaginated: vi.fn<ListPaginated>(() =>
+        Promise.resolve({ data: items }),
       ),
     });
-    const { writer } = createStdout();
     const autoDetectOverride = vi.fn(() =>
       Promise.resolve({ items: [] } as ListResult<FakeWithOrg>),
     );
 
     const result = await dispatchOrgScopedList({
       config,
-      stdout: writer,
       cwd: "/tmp",
       flags: { limit: 10, json: true },
       parsed: { type: "org-all", org: "my-org" },
@@ -1060,14 +1040,12 @@ describe("dispatchOrgScopedList", () => {
   });
 
   test("metadata-only config with full overrides dispatches correctly", async () => {
-    const { writer } = createStdout();
     const handler = vi.fn(() =>
       Promise.resolve({ items: [] } as ListResult<unknown>),
     );
 
     await dispatchOrgScopedList({
       config: META_ONLY,
-      stdout: writer,
       cwd: "/tmp",
       flags: { limit: 10, json: false },
       parsed: { type: "explicit", org: "my-org", project: "my-proj" },
@@ -1083,12 +1061,9 @@ describe("dispatchOrgScopedList", () => {
   });
 
   test("metadata-only config without override for invoked mode throws", async () => {
-    const { writer } = createStdout();
-
     await expect(
       dispatchOrgScopedList({
         config: META_ONLY,
-        stdout: writer,
         cwd: "/tmp",
         flags: { limit: 10, json: false },
         parsed: { type: "auto-detect" },
@@ -1125,8 +1100,8 @@ describe("dispatchOrgScopedList", () => {
 
       const items: FakeEntity[] = [{ id: "1", name: "Widget A" }];
       const config = makeConfig({
-        listPaginated: vi.fn(() =>
-          Promise.resolve({ data: items, nextCursor: undefined }),
+        listPaginated: vi.fn<ListPaginated>(() =>
+          Promise.resolve({ data: items }),
         ),
       });
 
@@ -1277,8 +1252,8 @@ describe("dispatchOrgScopedList name filter", () => {
 
   function filterConfig() {
     return makeConfig({
-      listPaginated: vi.fn(() =>
-        Promise.resolve({ data: WIDGETS, nextCursor: undefined }),
+      listPaginated: vi.fn<ListPaginated>(() =>
+        Promise.resolve({ data: WIDGETS }),
       ),
       namesOf: (widget) => [widget.name],
     });
@@ -1332,10 +1307,10 @@ describe("dispatchOrgScopedList name filter", () => {
   });
 
   test("walks every page, so matches past the first page are kept", async () => {
-    const listPaginated = vi.fn((_org: string, opts: { cursor?: string }) =>
+    const listPaginated = vi.fn<ListPaginated>((_org, opts) =>
       Promise.resolve(
         opts.cursor
-          ? { data: [{ id: "9", name: "web-late" }], nextCursor: undefined }
+          ? { data: [{ id: "9", name: "web-late" }] }
           : { data: WIDGETS, nextCursor: "page-2" },
       ),
     );
@@ -1357,7 +1332,7 @@ describe("dispatchOrgScopedList name filter", () => {
 
   test("API errors propagate instead of reading as no matches", async () => {
     const config = makeConfig({
-      listPaginated: vi.fn(() =>
+      listPaginated: vi.fn<ListPaginated>(() =>
         Promise.reject(new ApiError("Organization not found", 404)),
       ),
       namesOf: (widget) => [widget.name],

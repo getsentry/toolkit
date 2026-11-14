@@ -19,6 +19,7 @@ import {
   DeterministicZipWriter,
   FIXED_MTIME,
 } from "../../../src/lib/build/zip-writer.js";
+import { must } from "../../helpers.js";
 
 type Entry = {
   name: string;
@@ -59,8 +60,8 @@ function referenceZip(entries: Entry[]): Buffer {
 async function writeWithData(entries: Entry[]): Promise<Buffer> {
   const out = join(makeTmpDir(), "out.zip");
   const zip = await DeterministicZipWriter.create(out);
-  for (const e of entries) {
-    await zip.addData(e.name, e.data, { os: e.os, attrs: e.attrs });
+  for (const { name, data, ...options } of entries) {
+    await zip.addData(name, data, options);
   }
   await zip.finalize();
   return readFileSync(out);
@@ -72,10 +73,10 @@ async function writeWithFiles(entries: Entry[]): Promise<Buffer> {
   const out = join(dir, "out.zip");
   const zip = await DeterministicZipWriter.create(out);
   let i = 0;
-  for (const e of entries) {
+  for (const { name, data, ...options } of entries) {
     const src = join(dir, `src-${i++}`);
-    writeFileSync(src, Buffer.from(e.data));
-    await zip.addFile(e.name, src, { os: e.os, attrs: e.attrs });
+    writeFileSync(src, Buffer.from(data));
+    await zip.addFile(name, src, options);
   }
   await zip.finalize();
   return readFileSync(out);
@@ -166,7 +167,7 @@ describe("DeterministicZipWriter round-trips", () => {
     // Both entry paths must agree and extract to the original bytes.
     expect(fileZip.equals(dataZip)).toBe(true);
     expect(
-      Buffer.from(unzipSync(fileZip)["big.bin"]).equals(Buffer.from(big)),
+      Buffer.from(must(unzipSync(fileZip)["big.bin"])).equals(Buffer.from(big)),
     ).toBe(true);
   });
 });

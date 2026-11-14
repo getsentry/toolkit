@@ -486,7 +486,10 @@ describe.each(ID_COMMANDS)("$name", (entry) => {
 });
 
 /** Commands that take one issue, through `issuePositional` or alike. */
-const ISSUE_COMMANDS: readonly (readonly [string, unknown])[] = [
+const ISSUE_COMMANDS: readonly [
+  readonly [string, unknown],
+  ...(readonly [string, unknown])[],
+] = [
   ["issue resolve", issueResolveCommand],
   ["issue unresolve", issueUnresolveCommand],
   ["issue archive", archiveCommand],

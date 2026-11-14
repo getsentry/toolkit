@@ -189,9 +189,9 @@ test.each([
       );
     vi.stubGlobal("fetch", fetch);
 
-    await expect(bootstrapAuthentication({ url })).rejects.toThrow(
-      /Setup-code/,
-    );
+    await expect(
+      bootstrapAuthentication(url === undefined ? {} : { url }),
+    ).rejects.toThrow(/Setup-code/);
 
     expect(fetch).toHaveBeenCalledOnce();
     expect(at(fetch.mock.calls, 0)[1].headers.get("X-IAP-Token")).toBe(

@@ -582,20 +582,6 @@ describe("findProjectByDsn (multi-region)", () => {
     });
 
     const captureSpy = vi.spyOn(Sentry, "captureException");
-    const withScopeSpy = vi.spyOn(Sentry, "withScope");
-    withScopeSpy.mockImplementation((fn: (scope: unknown) => void) => {
-      fn({
-        setTag() {
-          /* noop */
-        },
-        setContext() {
-          /* noop */
-        },
-        setFingerprint() {
-          /* noop */
-        },
-      });
-    });
     try {
       const project = await findProjectByDsn(TEST_DSN, "abc123");
 
@@ -607,7 +593,6 @@ describe("findProjectByDsn (multi-region)", () => {
       });
     } finally {
       captureSpy.mockRestore();
-      withScopeSpy.mockRestore();
     }
   });
 

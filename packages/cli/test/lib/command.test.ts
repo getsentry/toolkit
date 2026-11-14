@@ -201,7 +201,7 @@ describe("buildCommand", () => {
         },
       },
       async *func() {
-        yield null;
+        // no-op
       },
     });
 
@@ -1157,7 +1157,8 @@ describe("buildCommand return-based output", () => {
     const command = buildCommand<
       { json: boolean; fields?: string[] },
       [],
-      TestContext
+      TestContext,
+      { name: string; role: string }
     >({
       auth: false,
       docs: { brief: "Test" },
@@ -1186,7 +1187,8 @@ describe("buildCommand return-based output", () => {
     const command = buildCommand<
       { json: boolean; fields?: string[] },
       [],
-      TestContext
+      TestContext,
+      { name: string; role: string }
     >({
       auth: false,
       docs: { brief: "Test" },
@@ -1216,7 +1218,8 @@ describe("buildCommand return-based output", () => {
     const command = buildCommand<
       { json: boolean; fields?: string[] },
       [],
-      TestContext
+      TestContext,
+      { id: number; name: string; role: string }
     >({
       auth: false,
       docs: { brief: "Test" },
@@ -1249,7 +1252,12 @@ describe("buildCommand return-based output", () => {
 
   test("shows hint in human mode, suppresses in JSON mode", async () => {
     const makeCommand = () =>
-      buildCommand<{ json: boolean; fields?: string[] }, [], TestContext>({
+      buildCommand<
+        { json: boolean; fields?: string[] },
+        [],
+        TestContext,
+        { value: number }
+      >({
         auth: false,
         docs: { brief: "Test" },
         output: {
@@ -1294,7 +1302,8 @@ describe("buildCommand return-based output", () => {
     const command = buildCommand<
       { json: boolean; fields?: string[] },
       [],
-      TestContext
+      TestContext,
+      { value: number }
     >({
       auth: false,
       docs: { brief: "Test" },
@@ -1365,7 +1374,12 @@ describe("buildCommand return-based output", () => {
   });
 
   test("data return is ignored without output config", async () => {
-    const command = buildCommand<Record<string, never>, [], TestContext>({
+    const command = buildCommand<
+      Record<string, never>,
+      [],
+      TestContext,
+      { value: number }
+    >({
       auth: false,
       docs: { brief: "Test" },
       // Deliberately no output config
@@ -1373,7 +1387,7 @@ describe("buildCommand return-based output", () => {
       async *func(this: TestContext) {
         // This returns data, but without output config
         // the wrapper should NOT render it
-        yield { value: 42 };
+        yield new CommandOutput({ value: 42 });
       },
     });
 
@@ -1394,7 +1408,8 @@ describe("buildCommand return-based output", () => {
     const command = buildCommand<
       { json: boolean; fields?: string[] },
       [],
-      TestContext
+      TestContext,
+      { name: string }
     >({
       auth: false,
       docs: { brief: "Test" },
@@ -1425,12 +1440,13 @@ describe("buildCommand return-based output", () => {
     const command = buildCommand<
       { json: boolean; fields?: string[] },
       [],
-      TestContext
+      TestContext,
+      Array<{ id: number }>
     >({
       auth: false,
       docs: { brief: "Test" },
       output: {
-        human: (d: Array<{ id: number }>) => d.map(((x) => x.id).join(", ")),
+        human: (d: Array<{ id: number }>) => d.map((x) => x.id).join(", "),
       },
       parameters: {},
       async *func(this: TestContext) {
@@ -1456,7 +1472,12 @@ describe("buildCommand return-based output", () => {
 
   test("hint shown in human mode only", async () => {
     const makeCommand = () =>
-      buildCommand<{ json: boolean; fields?: string[] }, [], TestContext>({
+      buildCommand<
+        { json: boolean; fields?: string[] },
+        [],
+        TestContext,
+        { org: string }
+      >({
         auth: false,
         docs: { brief: "Test" },
         output: {
@@ -1905,7 +1926,11 @@ describe("buildCommand --org/--project compat flags", () => {
     // contract this PR exists to deliver: LLM-generated `--org foo --project
     // bar` should make org/project resolution succeed without an explicit
     // positional arg.
-    let resolved: Awaited<ReturnType<typeof resolveOrgAndProject>> = null;
+    // A holder object, so the assignment inside the command stays visible
+    // to the assertions below.
+    const captured: {
+      resolved: Awaited<ReturnType<typeof resolveOrgAndProject>>;
+    } = { resolved: null };
 
     const command = buildCommand<Record<string, never>, [], TestContext>({
       auth: false,
@@ -1913,7 +1938,7 @@ describe("buildCommand --org/--project compat flags", () => {
       parameters: {},
       // oxlint-disable-next-line require-yield -- test command — no output to yield
       async *func(this: TestContext) {
-        resolved = await resolveOrgAndProject({ cwd: "/tmp" });
+        captured.resolved = await resolveOrgAndProject({ cwd: "/tmp" });
       },
     });
 
@@ -1930,6 +1955,7 @@ describe("buildCommand --org/--project compat flags", () => {
       ctx as TestContext,
     );
 
+    const { resolved } = captured;
     expect(resolved).not.toBeNull();
     expect(resolved?.org).toBe("flag-org");
     expect(resolved?.project).toBe("flag-proj");

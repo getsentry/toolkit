@@ -76,9 +76,6 @@ export async function verifyPlannedCommands(
     }
 
     const [cliBin, ...cliArgs] = cliCmd;
-    if (cliBin === undefined) {
-      throw new Error("CLI command is empty");
-    }
     const proc = spawn(cliBin, [...cliArgs, ...route, "-h"], {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, SENTRY_CLI_NO_TELEMETRY: "1" },

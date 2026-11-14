@@ -75,7 +75,7 @@ let actionStatus: number;
 let actionLink: AppIssueLink;
 
 function json(data: unknown, status = 200, headers?: HeadersInit): Response {
-  return Response.json(data, { status, headers });
+  return Response.json(data, { status, ...(headers && { headers }) });
 }
 
 beforeEach(async () => {

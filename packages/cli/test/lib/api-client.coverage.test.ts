@@ -966,27 +966,12 @@ describe("projects.ts", () => {
       );
 
       const captureSpy = vi.spyOn(Sentry, "captureException");
-      const withScopeSpy = vi.spyOn(Sentry, "withScope");
-      withScopeSpy.mockImplementation((fn: (scope: unknown) => void) => {
-        fn({
-          setTag() {
-            /* noop */
-          },
-          setContext() {
-            /* noop */
-          },
-          setFingerprint() {
-            /* noop */
-          },
-        });
-      });
       try {
         const dsn = await tryGetPrimaryDsn("test-org", "test-project");
         expect(dsn).toBeNull();
         expect(captureSpy).toHaveBeenCalledTimes(1);
       } finally {
         captureSpy.mockRestore();
-        withScopeSpy.mockRestore();
       }
     });
   });

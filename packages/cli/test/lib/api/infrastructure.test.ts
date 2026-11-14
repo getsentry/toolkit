@@ -199,7 +199,6 @@ describe("throwApiError", () => {
       } catch (thrown) {
         return (thrown as ApiError).detail ?? "";
       }
-      throw new Error("expected throwApiError to throw");
     }
 
     test("self-hosted ECONNREFUSED names the URL, errno, and next step", () => {
@@ -852,7 +851,6 @@ describe("org auth token org mismatch", () => {
     } catch (error) {
       return (error as ApiError).detail;
     }
-    throw new Error("expected throwApiError to throw");
   }
 
   test.each([
@@ -909,7 +907,6 @@ describe("403 scope challenge guidance", () => {
     } catch (error) {
       return (error as ApiError).detail;
     }
-    throw new Error("expected throwApiError to throw");
   }
 
   test.each([

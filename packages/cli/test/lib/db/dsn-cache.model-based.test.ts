@@ -165,9 +165,9 @@ class SetCachedDsnCommand implements AsyncCommand<CacheModel, RealCache> {
     setCachedDsn(directory, {
       dsn,
       projectId,
-      orgId,
+      ...(orgId !== undefined && { orgId }),
       source,
-      sourcePath,
+      ...(sourcePath !== undefined && { sourcePath }),
     });
 
     model.dsnCache.entries.set(directory, {

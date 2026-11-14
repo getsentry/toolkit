@@ -30,7 +30,7 @@ function helpText(): string {
     docs: { brief: "Test command", examples },
     parameters: {},
     async *func() {
-      yield null;
+      // no-op
     },
   });
   return (command as unknown as { fullDescription: string }).fullDescription;
