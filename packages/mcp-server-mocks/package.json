@@ -24,7 +24,7 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown -w",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json"
   },
   "devDependencies": {
     "@sentry/mcp-server-tsconfig": "workspace:*",

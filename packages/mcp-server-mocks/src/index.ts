@@ -22,7 +22,7 @@ import { type HttpHandler, HttpResponse, http } from "msw";
  * // Now all Sentry API calls will be intercepted
  * ```
  */
-import { type SetupServerApi, setupServer } from "msw/node";
+import { type SetupServer, setupServer } from "msw/node";
 
 import autofixStateFixture from "./fixtures/autofix-state.json" with { type: "json" };
 import autofixStateExplorerFixture from "./fixtures/autofix-state-explorer.json" with { type: "json" };
@@ -397,7 +397,7 @@ export const restHandlers: HttpHandler[] = buildHandlers([
           ? {
               Link: '<https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/?cursor=dashboard-cursor>; rel="next"; results="true"; cursor="dashboard-cursor"',
             }
-          : undefined,
+          : {},
       });
     },
   },
@@ -2119,7 +2119,7 @@ The page \`/ai/mcp\` does not exist.
  * This matches the real Sentry API behavior where user data must always be queried
  * from the main API server.
  */
-export const mswServer: SetupServerApi = setupServer(
+export const mswServer: SetupServer = setupServer(
   ...restHandlers,
   ...searchHandlers,
   ...docsHandlers,

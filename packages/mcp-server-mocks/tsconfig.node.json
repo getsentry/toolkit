@@ -1,0 +1,12 @@
+{
+  // Build tooling that runs in Node and is not part of the published package.
+  // Kept out of tsconfig.json, whose rootDir and isolatedDeclarations apply
+  // to the emitted src/ declarations only.
+  "extends": "@sentry/mcp-server-tsconfig/tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["tsdown.config.ts"]
+}
