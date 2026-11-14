@@ -423,7 +423,9 @@ describe("statusCommand.func", () => {
         source: "oauth",
       });
       isAuthenticatedSpy.mockReturnValue(true);
-      listOrgsSpy.mockResolvedValue([{ name: "My Org", slug: "my-org" }]);
+      listOrgsSpy.mockResolvedValue([
+        { id: "1", name: "My Org", slug: "my-org" },
+      ]);
 
       const { context, getOutput } = createContext();
       await func.call(context, humanFlags);
@@ -560,7 +562,9 @@ describe("statusCommand.func", () => {
       });
       getDefaultOrgSpy.mockReturnValue("my-org");
       getDefaultProjectSpy.mockReturnValue("my-project");
-      listOrgsSpy.mockResolvedValue([{ name: "My Org", slug: "my-org" }]);
+      listOrgsSpy.mockResolvedValue([
+        { id: "2", name: "My Org", slug: "my-org" },
+      ]);
 
       const { context, getOutput } = createContext();
       await func.call(context, jsonFlags);

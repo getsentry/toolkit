@@ -306,6 +306,8 @@ describe("viewCommand.func", () => {
       });
     resolveOrgAndProjectSpy = vi.spyOn(resolveTarget, "resolveOrgAndProject");
     resolveOrgAndProjectSpy.mockResolvedValue({
+      orgDisplay: "test-org",
+      projectDisplay: "test-project",
       org: "test-org",
       project: "test-project",
     });

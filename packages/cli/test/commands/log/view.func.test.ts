@@ -363,6 +363,8 @@ describe("viewCommand.func", () => {
 
     test("auto-detect resolves org/project and fetches logs", async () => {
       resolveOrgAndProjectSpy.mockResolvedValue({
+        orgDisplay: "detected-org",
+        projectDisplay: "detected-proj",
         org: "detected-org",
         project: "detected-proj",
         detectedFrom: ".env file",

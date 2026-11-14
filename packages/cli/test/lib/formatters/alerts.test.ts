@@ -23,8 +23,8 @@ const rule: MetricAlertRule = {
   conditionGroup: {
     logicType: "any",
     conditions: [
-      { type: "gte", comparison: 500, conditionResult: 75 },
-      { type: "lte", comparison: 300, conditionResult: 0 },
+      { id: "1", type: "gte", comparison: 500, conditionResult: 75 },
+      { id: "2", type: "lte", comparison: 300, conditionResult: 0 },
     ],
   },
 };
@@ -45,14 +45,21 @@ const workflow: GetOrganizationWorkflowResponse = {
   triggers: {
     logicType: "any",
     conditions: [
-      { type: "first_seen_event", comparison: true, conditionResult: true },
+      {
+        id: "3",
+        type: "first_seen_event",
+        comparison: true,
+        conditionResult: true,
+      },
     ],
     actions: [],
   },
   actionFilters: [
     {
       logicType: "all",
-      conditions: [{ type: "eq", comparison: 75, conditionResult: true }],
+      conditions: [
+        { id: "4", type: "eq", comparison: 75, conditionResult: true },
+      ],
       actions: [
         {
           id: "21",

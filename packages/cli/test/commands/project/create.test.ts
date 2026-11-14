@@ -42,7 +42,12 @@ import type { ProjectCreatedResult } from "../../../src/lib/formatters/human.js"
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { slugify } from "../../../src/lib/utils.js";
 import type { SentryProject, SentryTeam } from "../../../src/types/index.js";
-import { parseFailure, useTestConfigDir, loadCommand } from "../../helpers.js";
+import {
+  parseFailure,
+  useTestConfigDir,
+  loadCommand,
+  rejection,
+} from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 const sampleTeam: SentryTeam = {
@@ -145,8 +150,8 @@ describe("project create", () => {
       "https://abc@o123.ingest.us.sentry.io/999",
     );
     listOrgsSpy.mockResolvedValue([
-      { slug: "acme-corp", name: "Acme Corp" },
-      { slug: "other-org", name: "Other Org" },
+      { id: "1", slug: "acme-corp", name: "Acme Corp" },
+      { id: "2", slug: "other-org", name: "Other Org" },
     ]);
   });
 
@@ -220,9 +225,9 @@ describe("project create", () => {
       const { context } = createMockContext();
       const func = await loadCommand(createCommand);
 
-      const err = await func
-        .call(context, { json: false }, ...args)
-        .catch(parseFailure);
+      const err = parseFailure(
+        await rejection(func.call(context, { json: false }, ...args)),
+      );
 
       expect(err).toBeInstanceOf(ValidationError);
       expect(err.message).toContain("must use <name>:<platform> syntax");
@@ -425,9 +430,9 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = await func
-      .call(context, { json: false }, "my-app:node")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false }, "my-app:node"),
+    );
     expect(err).toBeInstanceOf(CliError);
     expect(err.message).toContain("already exists");
     expect(err.message).toContain("sentry project view");
@@ -442,9 +447,9 @@ describe("project create", () => {
     const func = await loadCommand(createCommand);
 
     // Use --team with a slug that doesn't match any team in the org
-    const err = await func
-      .call(context, { team: "nonexistent", json: false }, "my-app:node")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { team: "nonexistent", json: false }, "my-app:node"),
+    );
     expect(err).toBeInstanceOf(CliError);
     expect(err.message).toContain("Team 'nonexistent' not found");
     expect(err.message).toContain("Available teams:");
@@ -466,9 +471,9 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = await func
-      .call(context, { json: false }, "my-app:node")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false }, "my-app:node"),
+    );
     expect(err).toBeInstanceOf(CliError);
     expect(err.message).toContain("exists but the request was rejected");
     expect(err.message).toContain("permission");
@@ -488,9 +493,9 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = await func
-      .call(context, { json: false, team: "backend" }, "my-app:node")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, team: "backend" }, "my-app:node"),
+    );
     expect(err).toBeInstanceOf(CliError);
     expect(err.message).toContain("Organization 'acme-corp' not found");
     expect(err.message).toContain("Your organizations");
@@ -509,9 +514,9 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = await func
-      .call(context, { json: false, team: "backend" }, "my-app:node")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, team: "backend" }, "my-app:node"),
+    );
     expect(err).toBeInstanceOf(CliError);
     expect(err.message).toContain("could not be created");
     expect(err.message).toContain("may not exist, or you may lack access");
@@ -521,9 +526,11 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = await func
-      .call(context, { json: false }, "my-app:javascript-node")
-      .catch(parseFailure);
+    const err = parseFailure(
+      await rejection(
+        func.call(context, { json: false }, "my-app:javascript-node"),
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect((err as ValidationError).exitCode).toBe(EXIT.VALIDATION);
     expect(err.message).toContain("Invalid platform 'javascript-node'");
@@ -548,9 +555,9 @@ describe("project create", () => {
     const func = await loadCommand(createCommand);
 
     // Use a valid platform so client-side check passes, but API rejects
-    const err = await func
-      .call(context, { json: false }, "my-app:node")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false }, "my-app:node"),
+    );
     expect(err).toBeInstanceOf(CliError);
     expect(err.message).toContain("Invalid platform 'node'");
     expect(err.message).toContain("Common platforms:");
@@ -566,9 +573,9 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = (await func
-      .call(context, { json: false }, "my-app:node")
-      .catch((e: Error) => e)) as ApiError;
+    const err = (await rejection(
+      func.call(context, { json: false }, "my-app:node"),
+    )) as ApiError;
     // Stays ApiError (not a plain CliError wrapper) so 5xx errors are
     // captured for error reporting.
     expect(err).toBeInstanceOf(ApiError);
@@ -611,9 +618,9 @@ describe("project create", () => {
     );
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
-    const err = (await func
-      .call(context, { json: false }, "my-cool-app:node")
-      .catch((e: Error) => e)) as ApiError;
+    const err = (await rejection(
+      func.call(context, { json: false }, "my-cool-app:node"),
+    )) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(400);
     expect(err.detail).toContain("no more than 50 characters");
@@ -633,9 +640,9 @@ describe("project create", () => {
     );
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
-    const err = (await func
-      .call(context, { json: false }, "my-cool-app:node")
-      .catch((e: Error) => e)) as ApiError;
+    const err = (await rejection(
+      func.call(context, { json: false }, "my-cool-app:node"),
+    )) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(400);
     expect(err.message).toContain("Failed to create project 'my-cool-app'");
@@ -656,9 +663,9 @@ describe("project create", () => {
     );
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
-    const err = await func
-      .call(context, { json: false }, "my-app:node")
-      .catch((error: Error) => error);
+    const err = await rejection(
+      func.call(context, { json: false }, "my-app:node"),
+    );
 
     expect(err).toBeInstanceOf(CliError);
     expect(err.message).toContain("Invalid platform 'node'");
@@ -676,9 +683,9 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = (await func
-      .call(context, { json: false }, "my-app:node")
-      .catch((e: Error) => e)) as ApiError;
+    const err = (await rejection(
+      func.call(context, { json: false }, "my-app:node"),
+    )) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(403);
     expect(err.message).toContain("disabled project creation for members");
@@ -719,9 +726,9 @@ describe("project create", () => {
     const func = await loadCommand(createCommand);
 
     // Missing name after slash
-    const err = await func
-      .call(context, { json: false }, "acme-corp/:node")
-      .catch(parseFailure);
+    const err = parseFailure(
+      await rejection(func.call(context, { json: false }, "acme-corp/:node")),
+    );
     expect(err).toBeInstanceOf(ContextError);
   });
 
@@ -776,7 +783,9 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = await func.call(context, { json: false }).catch(parseFailure);
+    const err = parseFailure(
+      await rejection(func.call(context, { json: false })),
+    );
     expect(err).toBeInstanceOf(ContextError);
     expect(err.message).toContain("Project specification is required");
     expect(err.message).toContain(
@@ -790,9 +799,9 @@ describe("project create", () => {
       const { context } = createMockContext();
       const func = await loadCommand(createCommand);
 
-      const err = await func
-        .call(context, { json: false }, `${name}:node`)
-        .catch(parseFailure);
+      const err = parseFailure(
+        await rejection(func.call(context, { json: false }, `${name}:node`)),
+      );
       expect(err).toBeInstanceOf(ValidationError);
       expect(err.message).toContain("Project name cannot be empty");
     },
@@ -804,9 +813,9 @@ describe("project create", () => {
       const { context } = createMockContext();
       const func = await loadCommand(createCommand);
 
-      const err = await func
-        .call(context, { json: false }, projectArg)
-        .catch(parseFailure);
+      const err = parseFailure(
+        await rejection(func.call(context, { json: false }, projectArg)),
+      );
       expect(err).toBeInstanceOf(ValidationError);
       expect((err as ValidationError).exitCode).toBe(EXIT.VALIDATION);
       expect(err.message).toContain("Platform is required");
@@ -823,9 +832,11 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = await func
-      .call(context, { json: false }, "web", "api", "node")
-      .catch(parseFailure);
+    const err = parseFailure(
+      await rejection(
+        func.call(context, { json: false }, "web", "api", "node"),
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("must use <name>:<platform> syntax");
     expect(createProjectWithDsnSpy).not.toHaveBeenCalled();
@@ -839,9 +850,9 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = await func
-      .call(context, { json: false }, "my-app:node")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false }, "my-app:node"),
+    );
     expect(err).toBeInstanceOf(ResolutionError);
     expect(err.message).toContain("acme-corp");
     expect(err.message).toContain("not found");
@@ -862,9 +873,9 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = await func
-      .call(context, { json: false }, "my-app:node")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false }, "my-app:node"),
+    );
     expect(err).toBeInstanceOf(ResolutionError);
     expect(err.message).toContain("auto-detected from test/mocks/routes.ts");
     expect(err.message).toContain("123");
@@ -883,9 +894,9 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = (await func
-      .call(context, { json: false }, "my-app:node")
-      .catch((e: Error) => e)) as ApiError;
+    const err = (await rejection(
+      func.call(context, { json: false }, "my-app:node"),
+    )) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(403);
     expect(err.message).toContain("disabled project creation for members");
@@ -928,9 +939,11 @@ describe("project create", () => {
     const func = await loadCommand(createCommand);
 
     // python.django.rest → python-django-rest (not a valid platform)
-    const err = await func
-      .call(context, { json: false }, "my-app:python.django.rest")
-      .catch(parseFailure);
+    const err = parseFailure(
+      await rejection(
+        func.call(context, { json: false }, "my-app:python.django.rest"),
+      ),
+    );
     expect(err).toBeInstanceOf(CliError);
     expect(err.message).toContain("Invalid platform 'python-django-rest'");
   });
@@ -1007,9 +1020,9 @@ describe("project create", () => {
       .mockRejectedValueOnce(new ApiError("Server Error", 500));
     const { context, stdoutWrite } = createMockContext();
     const func = await loadCommand(createCommand);
-    const error = await func
-      .call(context, { json: false }, "web:node", "api:node")
-      .catch((caught: Error) => caught);
+    const error = await rejection(
+      func.call(context, { json: false }, "web:node", "api:node"),
+    );
 
     expect(error).toBeInstanceOf(ApiError);
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
@@ -1023,9 +1036,9 @@ describe("project create", () => {
       .mockRejectedValueOnce(new ApiError("Server Error", 500));
     const { context, stdoutWrite } = createMockContext();
     const func = await loadCommand(createCommand);
-    const error = await func
-      .call(context, { json: true }, "web:node", "api:node")
-      .catch((caught: Error) => caught);
+    const error = await rejection(
+      func.call(context, { json: true }, "web:node", "api:node"),
+    );
 
     expect(error).toBeInstanceOf(ApiError);
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
@@ -1036,9 +1049,16 @@ describe("project create", () => {
   test("invalid platform identifies its project pair", async () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
-    const err = await func
-      .call(context, { json: false }, "proj1:node", "proj2:not-a-platform")
-      .catch(parseFailure);
+    const err = parseFailure(
+      await rejection(
+        func.call(
+          context,
+          { json: false },
+          "proj1:node",
+          "proj2:not-a-platform",
+        ),
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("Invalid platform 'not-a-platform'");
     expect(err.message).toContain("sentry project create proj2:<platform>");
@@ -1049,9 +1069,9 @@ describe("project create", () => {
     async (_syntax, args) => {
       const { context } = createMockContext();
       const func = await loadCommand(createCommand);
-      const err = await func
-        .call(context, { json: false }, ...args)
-        .catch(parseFailure);
+      const err = parseFailure(
+        await rejection(func.call(context, { json: false }, ...args)),
+      );
 
       expect(err).toBeInstanceOf(ValidationError);
       expect(err.message).toContain(
@@ -1149,13 +1169,15 @@ describe("project create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = await func
-      .call(
-        context,
-        { json: false, "dry-run": true },
-        "my-app:invalid-platform",
-      )
-      .catch(parseFailure);
+    const err = parseFailure(
+      await rejection(
+        func.call(
+          context,
+          { json: false, "dry-run": true },
+          "my-app:invalid-platform",
+        ),
+      ),
+    );
     expect(err).toBeInstanceOf(CliError);
     expect(err.message).toContain("Invalid platform");
   });

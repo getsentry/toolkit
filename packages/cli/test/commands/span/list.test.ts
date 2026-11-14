@@ -235,6 +235,8 @@ describe("listCommand.func (trace mode)", () => {
     listSpansSpy = vi.spyOn(apiClient, "listSpans");
     resolveOrgAndProjectSpy = vi.spyOn(resolveTarget, "resolveOrgAndProject");
     resolveOrgAndProjectSpy.mockResolvedValue({
+      orgDisplay: "test-org",
+      projectDisplay: "test-project",
       org: "test-org",
       project: "test-project",
     });

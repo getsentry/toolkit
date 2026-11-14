@@ -30,7 +30,7 @@ function command(brief: string) {
     docs: { brief },
     auth: false,
     async *func() {
-      yield;
+      // no-op
     },
   });
 }

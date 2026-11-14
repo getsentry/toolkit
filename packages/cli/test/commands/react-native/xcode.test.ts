@@ -55,6 +55,8 @@ beforeEach(() => {
   writeFileSync(script, "#!/bin/sh\ntrue\n");
   spawnMock.mockClear();
   vi.spyOn(resolveTarget, "resolveOrgAndProject").mockResolvedValue({
+    orgDisplay: "acme",
+    projectDisplay: "mobile",
     org: "acme",
     project: "mobile",
   });

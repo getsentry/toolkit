@@ -648,7 +648,7 @@ describe("resolveProjectBoundSlug", () => {
   test("throws ResolutionError with org hint when slug matches an organization", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "acme-corp", name: "Acme Corp" }],
+      orgs: [{ id: "1", slug: "acme-corp", name: "Acme Corp" }],
     });
 
     try {
@@ -665,7 +665,7 @@ describe("resolveProjectBoundSlug", () => {
   test("org hint replaces <org>/<project> placeholder, not slug in command name", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "sentry", name: "Sentry" }],
+      orgs: [{ id: "2", slug: "sentry", name: "Sentry" }],
     });
 
     try {
@@ -684,7 +684,7 @@ describe("resolveProjectBoundSlug", () => {
   test("fetches full project data after fuzzy recovery", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "acme", name: "Acme" }],
+      orgs: [{ id: "3", slug: "acme", name: "Acme" }],
     });
     listProjectsSpy.mockResolvedValue([
       { id: "1", slug: "app-frontend", name: "App Frontend" },

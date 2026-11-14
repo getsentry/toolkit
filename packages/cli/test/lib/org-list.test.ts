@@ -786,7 +786,7 @@ describe("handleProjectSearch", () => {
   test("calls orgAllFallback when slug matches an org and fallback provided", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "acme-corp", name: "Acme Corp" }],
+      orgs: [{ id: "1", slug: "acme-corp", name: "Acme Corp" }],
     });
     const config = makeConfig();
     const fallback = vi.fn(() =>
@@ -804,7 +804,7 @@ describe("handleProjectSearch", () => {
   test("throws ResolutionError when slug matches an org but no fallback", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "acme-corp", name: "Acme Corp" }],
+      orgs: [{ id: "2", slug: "acme-corp", name: "Acme Corp" }],
     });
     const config = makeConfig();
 
@@ -844,8 +844,8 @@ describe("handleProjectSearch", () => {
         { orgSlug: "org-a", slug: "my-proj", id: "1", name: "My Project" },
       ],
       orgs: [
-        { slug: "org-a", name: "Org A" },
-        { slug: "org-b", name: "Org B" },
+        { id: "3", slug: "org-a", name: "Org A" },
+        { id: "4", slug: "org-b", name: "Org B" },
       ],
     });
     const listForOrg = vi.fn(() =>

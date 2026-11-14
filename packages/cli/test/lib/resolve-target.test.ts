@@ -44,7 +44,12 @@ import {
   resetCacheState,
 } from "../../src/lib/response-cache.js";
 import { resetAuthenticatedFetch } from "../../src/lib/sentry-client.js";
-import { mintSntrysToken, mockFetch, useTestConfigDir } from "../helpers.js";
+import {
+  mintSntrysToken,
+  mockFetch,
+  must,
+  useTestConfigDir,
+} from "../helpers.js";
 
 // ============================================================================
 // Arbitraries for Property-Based Testing
@@ -728,7 +733,7 @@ describe("resolveTargetSlugs", () => {
   });
 
   test("reuses the metadata lookup performed by explicit target resolution", async () => {
-    const projectId = await fetchProjectId("test-org", "42");
+    const projectId = must(await fetchProjectId("test-org", "42"));
     expect(
       await resolveTargetSlugs({ ...makeTarget("test-org", "42"), projectId }),
     ).toEqual({ ...canonical, projectId: 42 });
@@ -904,9 +909,8 @@ describe("tryFuzzyProjectRecovery", () => {
       const req = new Request(input, init);
       const url = req.url;
       // Match /organizations/<org>/projects/
-      const orgMatch = url.match(/\/organizations\/([^/]+)\/projects/);
-      if (orgMatch) {
-        const org = orgMatch[1];
+      const [, org] = url.match(/\/organizations\/([^/]+)\/projects/) ?? [];
+      if (org) {
         const slugs = projectsByOrg[org];
         if (slugs) {
           const projects = slugs.map((slug, i) => ({

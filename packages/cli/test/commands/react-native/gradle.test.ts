@@ -61,6 +61,8 @@ describe("react-native gradle", () => {
       }),
     );
     vi.spyOn(resolveTarget, "resolveOrgAndProject").mockResolvedValue({
+      orgDisplay: "acme",
+      projectDisplay: "mobile",
       org: "acme",
       project: "mobile",
     });

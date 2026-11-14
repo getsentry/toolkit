@@ -75,6 +75,8 @@ describe("snapshots upload", () => {
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "snap-up-"));
     vi.spyOn(resolveTarget, "resolveOrgAndProject").mockResolvedValue({
+      orgDisplay: "test-org",
+      projectDisplay: "test-project",
       org: "test-org",
       project: "test-project",
     });

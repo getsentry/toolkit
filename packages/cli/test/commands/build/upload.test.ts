@@ -66,7 +66,7 @@ async function writeApk(name = "app-release.apk"): Promise<string> {
  */
 async function runViaApp(
   args: string[],
-): Promise<{ stderr: string; exitCode: number | undefined }> {
+): Promise<{ stderr: string; exitCode: NodeJS.Process["exitCode"] }> {
   let stderr = "";
   const context: SentryContext = {
     process: { ...process, exitCode: undefined },
@@ -95,6 +95,8 @@ describe("build upload", () => {
     tmpDir = await mkdtemp(join(tmpdir(), "build-upload-"));
     setAuthToken("test-token", 3600);
     vi.spyOn(resolveTarget, "resolveOrgAndProject").mockResolvedValue({
+      orgDisplay: "test-org",
+      projectDisplay: "test-project",
       org: "test-org",
       project: "test-project",
     });

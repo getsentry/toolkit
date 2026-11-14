@@ -228,6 +228,8 @@ describe("resolveProjectBoundFromArg", () => {
   // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest can't intercept same-file internal calls
   test.skip("uses auto-detect when no target provided", async () => {
     resolveOrgAndProjectSpy.mockResolvedValue({
+      orgDisplay: "detected-org",
+      projectDisplay: "detected-project",
       org: "detected-org",
       project: "detected-project",
     });
