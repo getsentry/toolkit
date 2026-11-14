@@ -1,11 +1,27 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "target": "ES2022",
+    // The codemod declares no runtime capabilities (codemod.yaml) and uses
+    // no runtime globals, so the program gets only the ES lib.
+    "lib": ["ES2023"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "types": ["@codemod.com/jssg-types"],
+    // Load only the `codemod:ast-grep` module declarations (the package's
+    // `main` entry); jssg-env.d.ts adds the language modules the codemod
+    // imports. The package root also pulls in its LLRT runtime globals and
+    // its other modules, whose declarations do not check: TS1038 in
+    // modules/metrics.d.ts and modules/runtime.d.ts, TS2300/TS2717 for Intl
+    // in llrt/timezone.d.ts, TS1203 and missing Node types in llrt/*.d.ts
+    // (jssg-types 1.6.3, the latest).
+    "types": ["@codemod.com/jssg-types/main"],
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
+  "include": ["scripts", "jssg-env.d.ts"],
+  // tests/*/input.ts and expected.ts are `jssg test` fixtures: source text
+  // the codemod rewrites and the text it must produce. They import
+  // @sentry/cli v3 and `sentry`, which this package does not install, and
+  // are not meant to be a type-correct program.
   "exclude": ["tests"]
 }
