@@ -633,9 +633,15 @@ importers:
         specifier: 'catalog:'
         version: 1.4.2(typescript@7.0.2)
     devDependencies:
+      '@rolldown/plugin-babel':
+        specifier: ^0.3.1
+        version: 0.3.1(@babel/core@8.1.2)(@babel/runtime@7.28.4)(rolldown@1.3.2)(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0))
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/convert-source-map':
+        specifier: ^2.0.3
+        version: 2.0.3
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.5
@@ -646,8 +652,8 @@ importers:
         specifier: ^19.2.4
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-react':
-        specifier: ^6.1.0
-        version: 6.1.2(@rolldown/plugin-babel@0.2.3(@babel/core@8.1.2)(@babel/runtime@7.28.4)(rolldown@1.3.2)(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0)))(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0))
+        specifier: ^6.3.0
+        version: 6.3.0(@rolldown/plugin-babel@0.3.1(@babel/core@8.1.2)(@babel/runtime@7.28.4)(rolldown@1.3.2)(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0)))(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0))
       eventsource:
         specifier: ^4.1.0
         version: 4.1.1
@@ -4343,6 +4349,23 @@ packages:
       vite:
         optional: true
 
+  '@rolldown/plugin-babel@0.3.1':
+    resolution: {integrity: sha512-NVChbrs6m9iEEOqOdreNHRgmwq6KPNCrbzzQw+Eqtp3pPQgXSpiWrQwB8lUObZX+lXqmWAbpo9Q/Mp6yFgy8yg==}
+    engines: {node: '>=22.12.0 || ^24.0.0'}
+    peerDependencies:
+      '@babel/core': ^7.29.0 || ^8.0.0-rc.1
+      '@babel/plugin-transform-runtime': ^7.29.0 || ^8.0.0-rc.1
+      '@babel/runtime': ^7.27.0 || ^8.0.0-rc.1
+      rolldown: ^1.0.0-rc.5
+      vite: ^8.0.0
+    peerDependenciesMeta:
+      '@babel/plugin-transform-runtime':
+        optional: true
+      '@babel/runtime':
+        optional: true
+      vite:
+        optional: true
+
   '@rolldown/pluginutils@1.0.0-beta.19':
     resolution: {integrity: sha512-3FL3mnMbPu0muGOCaKAhhFEYmqv9eTfPSJRJmANrCwtgK8VuxpsZDGK+m0LYAGoyO8+0j5uRe4PeyPDK1yA/hA==}
 
@@ -4929,6 +4952,9 @@ packages:
   '@types/chai@5.2.2':
     resolution: {integrity: sha512-8kB30R7Hwqf40JPiKhVzodJs2Qc1ZJ5zuT3uzw5Hq/dhNCl3G3l83jfpdI1e20BP348+fV7VIL/+FxaXkqBmWg==}
 
+  '@types/convert-source-map@2.0.3':
+    resolution: {integrity: sha512-ag0BfJLZf6CQz8VIuRIEYQ5Ggwk/82uvTQf27RcpyDNbY0Vw49LIPqAxk5tqYfrCs9xDaIMvl4aj7ZopnYL8bA==}
+
   '@types/debug@4.1.12':
     resolution: {integrity: sha512-vIChWdVG3LG1SMxEvI/AK+FWJthlrqlTu7fbrlywTkkaONwk/UAGaULXRlf8vkzFBLVm0zkMdCquhL5aOjhXPQ==}
 
@@ -5254,13 +5280,13 @@ packages:
     peerDependencies:
       vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0-beta.0
 
-  '@vitejs/plugin-react@6.1.2':
-    resolution: {integrity: sha512-fhJNGUdscQa4HkI0xFxwonWyhnVReCPDbXI7FH7jmzpnVCrFQI7PRrhWecO263610vOrs9tr2Y4xcf8uAdFxbw==}
+  '@vitejs/plugin-react@6.3.0':
+    resolution: {integrity: sha512-H9E955aVvD2F4zNHCw4eIZbIfF6xKldlh7MNu+hSU7xwQzh65lI/N+CJWqmfhi0PEjDXIt/H7T7J/4wU63KJiw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
-      '@rolldown/plugin-babel': ^0.1.7 || ^0.2.0
+      '@rolldown/plugin-babel': ^0.1.7 || ^0.2.0 || ^0.3.0
       babel-plugin-react-compiler: ^1.0.0
-      oxc-transform-react: ^0.152.0
+      oxc-transform-react: '>=0.152.0 <0.157.0'
       vite: ^8.0.0
     peerDependenciesMeta:
       '@rolldown/plugin-babel':
@@ -5576,6 +5602,10 @@ packages:
 
   array-iterate@2.0.1:
     resolution: {integrity: sha512-I1jXZMjAgCMmxT4qxXfPXa6SthSoE8h6gkSI9BGGNv8mP8G/v0blc+qFnZu6K42vTOiuME596QaLO0TP3Lk0xg==}
+
+  artichokie@0.4.5:
+    resolution: {integrity: sha512-ma9643oYgSgA6CeDvKIU0zxL1eKOkbgH8/v83xFpFYB2VOPFoEmmg1iC+ooHFjLIJ3qdtfwPbEKpIW3/YxPovg==}
+    engines: {node: ^18.0.0 || >=20.0.0}
 
   asciinema-player@3.17.0:
     resolution: {integrity: sha512-JbjNJmA2TLIeYNaOEja+kVSzXadKoqpIzVVmfBGNj2DmdtE/vExBCnkE8NYEcpaQcDvUYg8Ltt0urT80frACmw==}
@@ -12059,15 +12089,15 @@ snapshots:
       '@babel/runtime': 7.28.4
       vite: 6.4.5(@types/node@22.20.3)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.20.3)(yaml@2.9.0)
 
-  '@rolldown/plugin-babel@0.2.3(@babel/core@8.1.2)(@babel/runtime@7.28.4)(rolldown@1.3.2)(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0))':
+  '@rolldown/plugin-babel@0.3.1(@babel/core@8.1.2)(@babel/runtime@7.28.4)(rolldown@1.3.2)(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0))':
     dependencies:
       '@babel/core': 8.1.2
+      artichokie: 0.4.5
       picomatch: 4.0.7
       rolldown: 1.3.2
     optionalDependencies:
       '@babel/runtime': 7.28.4
       vite: 8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0)
-    optional: true
 
   '@rolldown/pluginutils@1.0.0-beta.19': {}
 
@@ -12622,6 +12652,8 @@ snapshots:
     dependencies:
       '@types/deep-eql': 4.0.2
 
+  '@types/convert-source-map@2.0.3': {}
+
   '@types/debug@4.1.12':
     dependencies:
       '@types/ms': 2.1.0
@@ -12837,12 +12869,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitejs/plugin-react@6.1.2(@rolldown/plugin-babel@0.2.3(@babel/core@8.1.2)(@babel/runtime@7.28.4)(rolldown@1.3.2)(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0)))(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0))':
+  '@vitejs/plugin-react@6.3.0(@rolldown/plugin-babel@0.3.1(@babel/core@8.1.2)(@babel/runtime@7.28.4)(rolldown@1.3.2)(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0)))(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0)
     optionalDependencies:
-      '@rolldown/plugin-babel': 0.2.3(@babel/core@8.1.2)(@babel/runtime@7.28.4)(rolldown@1.3.2)(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0))
+      '@rolldown/plugin-babel': 0.3.1(@babel/core@8.1.2)(@babel/runtime@7.28.4)(rolldown@1.3.2)(vite@8.3.3(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.3)(yaml@2.9.0))
 
   '@vitest-evals/core@0.18.0':
     dependencies:
@@ -13134,6 +13166,8 @@ snapshots:
   array-back@6.2.2: {}
 
   array-iterate@2.0.1: {}
+
+  artichokie@0.4.5: {}
 
   asciinema-player@3.17.0:
     dependencies:
