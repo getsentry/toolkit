@@ -59,7 +59,7 @@
     "build": "pnpm --filter @sentry/mcp-core run build && node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts docs sdk && pnpm ts script/build.ts --single",
     "build:all": "pnpm --filter @sentry/mcp-core run build && node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts docs sdk && pnpm ts script/build.ts",
     "bundle": "pnpm --filter @sentry/mcp-core run build && node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts docs sdk && pnpm ts script/bundle.ts",
-    "typecheck": "pnpm --filter @sentry/mcp-core run build && node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts docs sdk && tsc --noEmit",
+    "typecheck": "pnpm --filter @sentry/mcp-core run build && node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts docs sdk && tsc --noEmit -p tsconfig.json && tsc --noEmit -p script && tsc --noEmit -p test",
     "lint": "pnpm -w exec oxlint --report-unused-disable-directives packages/cli && pnpm -w exec oxfmt --check packages/cli",
     "lint:fix": "pnpm -w exec oxlint --fix packages/cli && pnpm -w exec oxfmt --write packages/cli",
     "test": "pnpm run test:unit",
