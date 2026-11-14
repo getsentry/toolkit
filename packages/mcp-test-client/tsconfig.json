@@ -7,11 +7,7 @@
     // RequestCredentials, FileList) that @types/node does not declare.
     "lib": ["ES2023", "ES2024.String", "DOM"],
     "types": ["node"],
-    // Exception to the shared policy: the `ai` package's declarations fail
-    // their own check under exactOptionalPropertyTypes (TS2344 in
-    // ai/dist/index.d.ts, e.g. "Type 'TOOLS[NAME]' does not satisfy the
-    // constraint 'Tool<any, any>'"), in 6.0.64 through 7.0.173. Remove this
-    // when `ai` type-checks with skipLibCheck off.
+    // skipLibCheck exception: `ai` declarations fail TS2344 under exactOptionalPropertyTypes (ai@6.0.x dist/index.d.ts). Remove when they check cleanly.
     "skipLibCheck": true
   },
   // Tests and the Vite/tsdown configs are checked with the source; tsdown
