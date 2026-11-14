@@ -310,6 +310,9 @@ export function buildServer({
     tools: customTools,
     toolCallSpanAttributes,
   });
+  const instructions = buildServerInstructions(
+    new Set(registrations.map(({ name }) => name)),
+  );
   const server = new McpServer(
     {
       ...MCP_SERVER_INFO,
@@ -317,9 +320,7 @@ export function buildServer({
     },
     {
       maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
-      instructions: buildServerInstructions(
-        new Set(registrations.map(({ name }) => name)),
-      ),
+      ...(instructions !== undefined && { instructions }),
     },
   );
   server.server.onerror = (error) => {
@@ -363,8 +364,8 @@ function configureServer({
   toolCallSpanAttributes,
 }: {
   context: ServerContext;
-  experimentalMode?: boolean;
-  tools?: ToolRegistry;
+  experimentalMode?: boolean | undefined;
+  tools?: ToolRegistry | undefined;
   toolCallSpanAttributes: Record<string, SpanAttributeValue>;
 }) {
   const registrations = [];

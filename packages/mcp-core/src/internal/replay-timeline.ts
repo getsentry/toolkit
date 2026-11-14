@@ -39,7 +39,7 @@ export interface ReplayTimelineEvent {
   /** Present on dead, rage, and slow clicks and on failed requests. */
   problem?: "dead click" | "rage click" | "slow click" | "failed request";
   /** Identifies the clicked node, for deduplication. */
-  nodeId?: number;
+  nodeId?: number | undefined;
   /** Set on `navigation` breadcrumbs, which can duplicate navigation spans. */
   fromBreadcrumb?: boolean;
 }

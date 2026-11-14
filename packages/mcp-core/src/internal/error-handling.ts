@@ -153,7 +153,7 @@ export function isExpectedToolError(error: unknown): boolean {
 function formatServerConfigError(
   error: Error,
   detailedParts: string[],
-  options?: { transport?: TransportType },
+  options?: { transport?: TransportType | undefined },
 ): string {
   if (options?.transport === "http") {
     logIssue(error);
@@ -172,7 +172,7 @@ function formatServerConfigError(
 function formatAiProviderError(
   error: Error,
   detailedParts: string[],
-  options?: { transport?: TransportType },
+  options?: { transport?: TransportType | undefined },
 ): string {
   logWarn(error, {
     loggerScope: ["error-handling", "llm-provider"],
@@ -207,9 +207,9 @@ function formatAiProviderError(
 export async function formatErrorForUser(
   error: unknown,
   options?: {
-    transport?: TransportType;
+    transport?: TransportType | undefined;
     /** Tool surface of the session, used to suggest reporting likely bugs. */
-    session?: Pick<ServerContext, "availableToolNames">;
+    session?: Pick<ServerContext, "availableToolNames"> | undefined;
   },
 ): Promise<string> {
   // Only failures that point at a Sentry MCP bug suggest feedback; input,

@@ -99,9 +99,9 @@ export type ServerContext = {
   /** Whether experimental tools are enabled */
   experimentalMode?: boolean;
   /** Tool names available after mode, skill, constraint, and capability filters */
-  availableToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
   /** Tool names registered directly in the current MCP tools/list surface */
-  directToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string> | undefined;
   /** Transport type - affects error message formatting */
   transport?: TransportType;
   /**

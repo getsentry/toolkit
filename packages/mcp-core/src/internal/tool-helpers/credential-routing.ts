@@ -195,6 +195,9 @@ export async function mapCredentialContexts<T>(
   let firstError: unknown;
   for (const [index, result] of settled.entries()) {
     const entry = entries[index];
+    if (!entry) {
+      continue;
+    }
     if (result.status === "fulfilled") {
       results.push({ entry, value: result.value });
       continue;

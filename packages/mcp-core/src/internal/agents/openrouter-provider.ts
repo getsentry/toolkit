@@ -63,8 +63,9 @@ function resolveOpenRouterReasoningEffort(
  * Builds an OpenRouter chat-completions model for embedded agent calls.
  */
 export function getOpenRouterModel(model?: string): LanguageModel {
+  const apiKey = process.env["OPENROUTER_API_KEY"];
   const factory = createOpenAI({
-    apiKey: process.env["OPENROUTER_API_KEY"],
+    ...(apiKey !== undefined && { apiKey }),
     baseURL: OPENROUTER_BASE_URL,
     headers: {
       "User-Agent": getUserAgent(),

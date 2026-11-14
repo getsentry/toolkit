@@ -22,7 +22,7 @@ import type { ToolSession } from "./tool-helpers/tool-call-formatting";
 export interface IssueSideQuestInput {
   event: Event;
   /** Optional; a detector works without it. */
-  sourceMapDebug?: SourceMapDebug;
+  sourceMapDebug?: SourceMapDebug | undefined;
 }
 
 /**
@@ -212,7 +212,7 @@ function detectJsSourceMapFailure({
     return quest(`${NOT_APPLIED}${where}, ${MINIFIED}: ${fallback}`);
   }
   const [only] = diagnosis;
-  if (diagnosis.length === 1 && diagnosed.size === files.size) {
+  if (only && diagnosis.length === 1 && diagnosed.size === files.size) {
     return quest(`${NOT_APPLIED}, ${MINIFIED}: ${only.problem}. ${only.fix}`);
   }
 
