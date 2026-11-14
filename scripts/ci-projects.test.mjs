@@ -33,7 +33,12 @@ describe("workspace CI selection", () => {
     assert.ok(names.includes("sentry-cli-docs"));
     assert.ok(names.includes("sentry"));
     assert.ok(names.includes("@sentry/mcp-core"));
-    assert.ok(!names.includes("@sentry/mcp-smoke-tests"));
+    // Smoke tests need a deployed server; CI only type-checks them.
+    const smoke = matrix.include.find(
+      ({ name }) => name === "@sentry/mcp-smoke-tests",
+    );
+    assert.equal(smoke.typecheck, "typecheck");
+    assert.equal(smoke.test, "");
     assert.equal(new Set(names).size, names.length);
     const docs = matrix.include.find(({ name }) => name === "sentry-cli-docs");
     assert.equal(docs.prepare, "ci:prepare");
