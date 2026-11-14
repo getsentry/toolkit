@@ -37,7 +37,6 @@ export function createIssueEventFieldsTool(options: {
         project: projectId,
         statsPeriod: "14d",
         useCache: true,
-        useFlagsBackend: true,
       });
 
       // Build a map of available tags

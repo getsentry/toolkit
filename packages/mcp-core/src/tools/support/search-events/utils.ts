@@ -850,7 +850,6 @@ export async function fetchCustomAttributes(
       start: attributeTimeParams.start,
       end: attributeTimeParams.end,
       useCache: true,
-      useFlagsBackend: true,
     });
 
     for (const tag of tagsResponse) {
