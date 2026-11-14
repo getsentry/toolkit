@@ -27,6 +27,7 @@ import {
   type ServedAsset,
   toolkitDownload,
 } from "./install-scenarios.js";
+import { at, must } from "../helpers.js";
 
 const installScript = join(import.meta.dirname, "..", "..", "install.ps1");
 const hasPwsh =
@@ -136,7 +137,7 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
       GITHUB_PATH: join(testDir, "github-path"),
     };
     applyScenario(
-      { ...INSTALL_SCENARIOS[0], name: "default" },
+      { ...at(INSTALL_SCENARIOS, 0), name: "default" },
       served,
       testDir,
       env,
@@ -212,8 +213,8 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("post-args")).toEqual(["init"]);
-    const [initBinary] = recorded("post-binary");
-    expect(initBinary?.startsWith(join(testDir, "sentry-install-"))).toBe(true);
+    const initBinary = must(recorded("post-binary")[0], "the init binary");
+    expect(initBinary.startsWith(join(testDir, "sentry-install-"))).toBe(true);
     expect(existsSync(initBinary)).toBe(false);
   });
 

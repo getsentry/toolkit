@@ -95,9 +95,7 @@ function makeFakeConfig(
     entityPlural: "widgets",
     commandPrefix: () => "sentry widget list",
     listForOrg: vi.fn(() => Promise.resolve([])),
-    listPaginated: vi.fn(() =>
-      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
-    ),
+    listPaginated: vi.fn(() => Promise.resolve({ data: [] as FakeEntity[] })),
     withOrg: (entity, orgSlug) => ({ ...entity, orgSlug }),
     displayTable: vi.fn(() => ""),
     ...overrides,

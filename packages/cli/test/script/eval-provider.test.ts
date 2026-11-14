@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { resolveEvalProvider } from "../eval-common/anthropic-client.js";
-import { at } from "../helpers.js";
+import { at, must } from "../helpers.js";
 
 /**
  * Provider resolution drives which credential/endpoint the skill-eval suite uses.
@@ -37,7 +37,7 @@ describe("resolveEvalProvider", () => {
   });
 
   test("OpenRouter chat posts OpenAI-shaped /chat/completions with bearer key", async () => {
-    const fetchMock = vi.fn(
+    const fetchMock = vi.fn<typeof fetch>(
       async () =>
         new Response(
           JSON.stringify({ choices: [{ message: { content: "hi there" } }] }),
@@ -57,12 +57,13 @@ describe("resolveEvalProvider", () => {
     );
 
     expect(text).toBe("hi there");
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = at(fetchMock.mock.calls, 0);
     expect(url).toBe("https://openrouter.ai/api/v1/chat/completions");
-    expect((init as RequestInit).method).toBe("POST");
-    const headers = (init as RequestInit).headers as Record<string, string>;
+    const request = must(init, "the request init");
+    expect(request.method).toBe("POST");
+    const headers = request.headers as Record<string, string>;
     expect(headers["Authorization"]).toBe("Bearer or-key");
-    const body = JSON.parse((init as RequestInit).body as string);
+    const body = JSON.parse(request.body as string);
     expect(body.model).toBe("anthropic/claude-sonnet-4.6");
     expect(body.max_tokens).toBe(128);
     expect(body.messages).toHaveLength(2);
@@ -80,7 +81,7 @@ describe("resolveEvalProvider", () => {
   });
 
   test("honors OPENROUTER_BASE_URL override", async () => {
-    const fetchMock = vi.fn(
+    const fetchMock = vi.fn<typeof fetch>(
       async () =>
         new Response(JSON.stringify({ choices: [] }), { status: 200 }),
     );

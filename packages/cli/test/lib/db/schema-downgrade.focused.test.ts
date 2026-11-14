@@ -28,7 +28,7 @@ import {
   tableExists,
 } from "../../../src/lib/db/schema.js";
 import { setUserInfo } from "../../../src/lib/db/user.js";
-import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import { useEnvSandbox, useTestConfigDir, must } from "../../helpers.js";
 
 useTestConfigDir("schema-downgrade-");
 useEnvSandbox([
@@ -253,7 +253,7 @@ describe("prepareDatabaseForDowngrade", () => {
     const db = getRawDatabase();
     prepareDatabaseForDowngrade(db);
     // An older CLI between schema 16 and this one migrates forward on setup.
-    db.exec(EXPECTED_TABLES["org_regions"]);
+    db.exec(must(EXPECTED_TABLES["org_regions"]));
     db.query("UPDATE schema_version SET version = ?").run(
       CURRENT_SCHEMA_VERSION - 1,
     );

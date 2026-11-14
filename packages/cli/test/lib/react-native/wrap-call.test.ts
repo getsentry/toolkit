@@ -68,7 +68,7 @@ describe("wrapCall", () => {
     expect(report.packager_bundle_path).toBe("/build/app.jsbundle");
     expect(report.packager_sourcemap_path).toContain("app.jsbundle.map");
     // The real node was invoked with the injected --sourcemap-output.
-    const [exe, args] = spawnMock.mock.calls[0];
+    const [exe, args] = at(spawnMock.mock.calls, 0);
     expect(exe).toBe("node");
     expect(args).toContain("--sourcemap-output");
   });

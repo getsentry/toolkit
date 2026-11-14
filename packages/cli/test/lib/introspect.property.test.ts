@@ -10,7 +10,6 @@ import {
   boolean,
   constantFrom,
   assert as fcAssert,
-  oneof,
   property,
   record,
   string,
@@ -137,9 +136,7 @@ describe("property: getPositionalString", () => {
   test("tuple always produces angle-bracket placeholders", () => {
     fcAssert(
       property(
-        array(
-          record({ placeholder: oneof(string(), constantFrom(undefined)) }),
-        ),
+        array(record({ placeholder: string() }, { requiredKeys: [] })),
         (params) => {
           const result = getPositionalString({
             kind: "tuple",
@@ -160,7 +157,7 @@ describe("property: getPositionalString", () => {
       property(string(), (placeholder) => {
         const result = getPositionalString({
           kind: "array",
-          parameter: { placeholder: placeholder || undefined },
+          parameter: placeholder ? { placeholder } : {},
         });
         expect(result).toContain("...");
       }),

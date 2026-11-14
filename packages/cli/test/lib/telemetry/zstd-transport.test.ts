@@ -16,6 +16,7 @@ import { EventEmitter } from "node:events";
 import type { ClientRequest, IncomingHttpHeaders } from "node:http";
 import { gunzipSync, zstdDecompressSync } from "node:zlib";
 import { createEnvelope } from "@sentry/core";
+import type { NodeTransportOptions } from "../../../src/lib/telemetry/zstd-transport.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   hasZstdSupport,
@@ -25,6 +26,8 @@ import {
   normalizeBody,
   shouldFallbackToDefault,
 } from "../../../src/lib/telemetry/zstd-transport.js";
+
+type HttpModule = NonNullable<NodeTransportOptions["httpModule"]>;
 
 /** No-op for SDK callbacks that require a function but return nothing meaningful. */
 function noop(): void {
@@ -49,31 +52,26 @@ type CapturedRequest = {
  * the shim and the capture buffer for test assertions.
  */
 function buildMockHttpModule(response: MockResponseShape): {
-  httpModule: {
-    request: (opts: unknown, cb?: (res: unknown) => void) => ClientRequest;
-  };
+  httpModule: HttpModule;
   captured: CapturedRequest;
 } {
   const captured: CapturedRequest = { chunks: [], options: {} };
-  const httpModule = {
-    request: (opts: unknown, cb?: (res: unknown) => void) => {
-      captured.options = opts as Record<string, unknown>;
+  const httpModule: HttpModule = {
+    request: (opts, cb) => {
+      captured.options =
+        typeof opts === "object" && !(opts instanceof URL) ? { ...opts } : {};
 
       // The ClientRequest must behave as a Writable so that
       // `Readable.from(payload).pipe(req)` succeeds. We fake one from
       // an EventEmitter and expose `write`/`end` that push into the
       // captured buffer.
-      const req = new EventEmitter() as unknown as ClientRequest & {
-        write: (chunk: Buffer | string) => boolean;
-        end: (chunk?: Buffer | string) => void;
-      };
-      req.write = (chunk: Buffer | string) => {
+      const write = (chunk: Buffer | string) => {
         captured.chunks.push(
           Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
         );
         return true;
       };
-      req.end = (chunk?: Buffer | string) => {
+      const end = (chunk?: Buffer | string) => {
         if (chunk !== undefined) {
           captured.chunks.push(
             Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
@@ -97,7 +95,10 @@ function buildMockHttpModule(response: MockResponseShape): {
           });
         });
       };
-      return req;
+      return Object.assign(new EventEmitter(), {
+        write,
+        end,
+      }) as unknown as ClientRequest;
     },
   };
   return { httpModule: httpModule, captured };
@@ -287,15 +288,15 @@ describe("makeCompressedTransport", () => {
     // and records as network_error.
     const throwingMod = {
       request: (_opts: unknown, _cb?: unknown) => {
-        const req = new EventEmitter() as unknown as ClientRequest & {
-          write: (c: unknown) => boolean;
-          end: () => void;
-        };
-        req.write = () => true;
-        req.end = () => {
-          process.nextTick(() => req.emit("error", new Error("ECONNREFUSED")));
-        };
-        return req;
+        const req: EventEmitter = Object.assign(new EventEmitter(), {
+          write: () => true,
+          end: () => {
+            process.nextTick(() =>
+              req.emit("error", new Error("ECONNREFUSED")),
+            );
+          },
+        });
+        return req as unknown as ClientRequest;
       },
     };
     const transport = makeCompressedTransport({
@@ -536,7 +537,12 @@ describe("shouldFallbackToDefault", () => {
 
   beforeEach(() => {
     for (const k of PROXY_VARS) {
-      saved[k] = process.env[k];
+      const value = process.env[k];
+      if (value === undefined) {
+        delete saved[k];
+      } else {
+        saved[k] = value;
+      }
       delete process.env[k];
     }
   });

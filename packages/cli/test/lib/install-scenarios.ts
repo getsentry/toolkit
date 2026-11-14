@@ -120,8 +120,12 @@ export function applyScenario(
     body,
     scenario.registry.status === 200
       ? registryTemplate(served, {
-          tamper: scenario.registry.tamper,
-          missing: scenario.registry.missingAsset,
+          ...(scenario.registry.tamper !== undefined && {
+            tamper: scenario.registry.tamper,
+          }),
+          ...(scenario.registry.missingAsset !== undefined && {
+            missing: scenario.registry.missingAsset,
+          }),
         })
       : "",
   );

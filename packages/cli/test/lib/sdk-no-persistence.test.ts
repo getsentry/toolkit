@@ -22,7 +22,7 @@ import {
 } from "../../src/lib/db/auth.js";
 import { closeDatabase, getDbPath } from "../../src/lib/db/index.js";
 import { withEnv } from "../../src/lib/env.js";
-import { mockFetch } from "../helpers.js";
+import { mockFetch, must } from "../helpers.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
@@ -102,6 +102,26 @@ function sentryApi(requests: RecordedRequest[]): typeof fetch {
   });
 }
 
+/**
+ * The generated SDK types a list result as one item, but a list called with
+ * `limit` resolves to a page. Check that shape at runtime.
+ */
+function asPage<T>(result: T): { data: T[]; nextCursor?: string } {
+  if (
+    typeof result !== "object" ||
+    result === null ||
+    !("data" in result) ||
+    !Array.isArray(result.data)
+  ) {
+    throw new Error("Expected a paginated list result");
+  }
+  const nextCursor =
+    "nextCursor" in result && typeof result.nextCursor === "string"
+      ? result.nextCursor
+      : undefined;
+  return { data: result.data, ...(nextCursor !== undefined && { nextCursor }) };
+}
+
 describe("createSentrySDK() without persist", () => {
   let root: string;
   let configDir: string;
@@ -168,15 +188,19 @@ describe("createSentrySDK() without persist", () => {
 
   test("pages a list with the returned cursor and rejects --cursor next", async () => {
     const client = sdk();
-    const first = await client.team.list({ orgProject: "acme/", limit: 1 });
+    const first = asPage(
+      await client.team.list({ orgProject: "acme/", limit: 1 }),
+    );
     expect(first.data.map((team) => team.slug)).toEqual(["web"]);
     expect(first.nextCursor).toBeTruthy();
 
-    const second = await client.team.list({
-      orgProject: "acme/",
-      limit: 1,
-      cursor: first.nextCursor ?? undefined,
-    });
+    const second = asPage(
+      await client.team.list({
+        orgProject: "acme/",
+        limit: 1,
+        cursor: must(first.nextCursor, "a next cursor"),
+      }),
+    );
     expect(second.data.map((team) => team.slug)).toEqual(["backend"]);
 
     await expect(

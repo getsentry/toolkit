@@ -7,7 +7,7 @@ import {
   setAuthToken,
 } from "../../../src/lib/db/auth.js";
 import { ConfigError } from "../../../src/lib/errors.js";
-import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import { useEnvSandbox, useTestConfigDir, must } from "../../helpers.js";
 
 useTestConfigDir("auth-refresh-cas-");
 useEnvSandbox([
@@ -55,8 +55,7 @@ describe("OAuth refresh compare-and-swap", () => {
     setAuthToken("first-access", 3600, "first-refresh", {
       host: "https://control.example.com",
     });
-    const pinned = getCredentialContext();
-    expect(pinned).toBeDefined();
+    const pinned = must(getCredentialContext(), "the credential context");
     const requests = { count: 0 };
     globalThis.fetch = async () => {
       requests.count += 1;

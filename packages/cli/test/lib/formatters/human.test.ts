@@ -566,11 +566,16 @@ describe("writeIssueTable priority labels", () => {
     metadata: {},
   };
 
+  /** An issue as the API sends it, with a priority outside the typed enum. */
+  function issueWithPriority(priority: string): SentryIssue {
+    return JSON.parse(JSON.stringify({ ...baseMockIssue, priority }));
+  }
+
   test("critical priority renders in triage column", () => {
     const { writer, output } = capture();
     const rows: IssueTableRow[] = [
       {
-        issue: { ...baseMockIssue, priority: "critical" },
+        issue: issueWithPriority("critical"),
         orgSlug: "org",
         formatOptions: {},
       },
@@ -596,7 +601,7 @@ describe("writeIssueTable priority labels", () => {
     const { writer, output } = capture();
     const rows: IssueTableRow[] = [
       {
-        issue: { ...baseMockIssue, priority: "urgent" },
+        issue: issueWithPriority("urgent"),
         orgSlug: "org",
         formatOptions: {},
       },

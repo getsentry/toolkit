@@ -30,9 +30,9 @@ function createDatabaseWithMissingTables(
   missingTables: string[],
 ): void {
   const statements: string[] = [];
-  for (const tableName of Object.keys(EXPECTED_TABLES)) {
+  for (const [tableName, ddl] of Object.entries(EXPECTED_TABLES)) {
     if (missingTables.includes(tableName)) continue;
-    statements.push(EXPECTED_TABLES[tableName]);
+    statements.push(ddl);
   }
   db.exec(statements.join(";\n"));
   db.query("INSERT INTO schema_version (version) VALUES (?)").run(
@@ -49,11 +49,11 @@ function createPreMigrationDatabase(
   preMigrationTables: string[],
 ): void {
   const statements: string[] = [];
-  for (const tableName of Object.keys(EXPECTED_TABLES)) {
+  for (const [tableName, ddl] of Object.entries(EXPECTED_TABLES)) {
     if (preMigrationTables.includes(tableName)) {
       statements.push(generatePreMigrationTableDDL(tableName));
     } else {
-      statements.push(EXPECTED_TABLES[tableName]);
+      statements.push(ddl);
     }
   }
   db.exec(statements.join(";\n"));

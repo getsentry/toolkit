@@ -26,6 +26,7 @@ import {
   type ServedAsset,
   toolkitDownload,
 } from "./install-scenarios.js";
+import { at } from "../helpers.js";
 
 const installScript = join(import.meta.dirname, "..", "..", "install");
 const downloadedExecutable = `#!/usr/bin/env bash
@@ -89,7 +90,7 @@ describe("install script", () => {
       TMPDIR: testDir,
     };
     applyScenario(
-      { ...INSTALL_SCENARIOS[0], name: "default" },
+      { ...at(INSTALL_SCENARIOS, 0), name: "default" },
       served,
       testDir,
       env,
@@ -617,7 +618,10 @@ process.exitCode = result.status ?? 1;
       expected: ["0:false", "1:true", "2:true", "controlling:false"],
     },
   ])("skips login when $name", ({ redirect, detached, expected }) => {
-    const result = runInTerminal({ redirect, detached });
+    const result = runInTerminal({
+      ...(redirect !== undefined && { redirect }),
+      ...(detached !== undefined && { detached }),
+    });
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("setup-tty")).toEqual(expected);
     expect(recorded("post-args")).toEqual([]);

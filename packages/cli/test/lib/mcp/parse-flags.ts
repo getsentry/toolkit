@@ -47,7 +47,7 @@ export async function parseMcpArgs(args: readonly string[]): Promise<McpArgs> {
     parameters: (mcpCommand as unknown as { parameters: McpParameters })
       .parameters,
     func(flags, scope) {
-      parsed = { flags, scope };
+      parsed = { flags, ...(scope !== undefined && { scope }) };
     },
   });
   await run(

@@ -22,7 +22,7 @@ import {
   STORE_LIMITS,
   type StoreLimits,
 } from "../../../src/lib/telemetry/offline-store.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { at, useTestConfigDir } from "../../helpers.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -190,7 +190,7 @@ describe.each(["node", "wasm"] as const)(
       const { clock, store } = storeAt();
       await store.push(transactionEnvelope("a"));
       clock.now += 3 * DAY_MS;
-      const [claimed] = store.claim(1);
+      const claimed = at(store.claim(1), 0);
       await store.push(claimed);
       clock.now += 2 * DAY_MS;
 

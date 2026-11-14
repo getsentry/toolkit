@@ -228,6 +228,14 @@ describe("applyFlagDefaults: combined scenario", () => {
 // parseOutput — binary vs textual capture
 // ---------------------------------------------------------------------------
 
+/** Narrow parsed output to bytes, failing clearly when it is not binary. */
+function asBytes(value: unknown): Uint8Array {
+  if (!(value instanceof Uint8Array)) {
+    throw new Error(`Expected Uint8Array output, got ${typeof value}`);
+  }
+  return value;
+}
+
 describe("parseOutput: binary output", () => {
   test("returns raw bytes when a chunk is a Uint8Array (no comma-decimal coercion)", () => {
     // PNG signature — a byte-for-byte round-trip is required so SDK/run()
@@ -235,23 +243,20 @@ describe("parseOutput: binary output", () => {
     const png = new Uint8Array([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]);
-    const result = parseOutput<Uint8Array>(undefined, [png]);
+    const result = parseOutput(undefined, [png]);
     expect(result).toBeInstanceOf(Uint8Array);
-    expect([...result]).toEqual([
+    expect([...asBytes(result)]).toEqual([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]);
   });
 
   test("concatenates mixed string and binary chunks as bytes", () => {
-    const result = parseOutput<Uint8Array>(undefined, [
-      "AB",
-      new Uint8Array([0x00, 0xff]),
-    ]);
-    expect([...result]).toEqual([0x41, 0x42, 0x00, 0xff]);
+    const result = parseOutput(undefined, ["AB", new Uint8Array([0x00, 0xff])]);
+    expect([...asBytes(result)]).toEqual([0x41, 0x42, 0x00, 0xff]);
   });
 
   test("still JSON-parses textual chunks", () => {
-    const result = parseOutput<{ ok: boolean }>(undefined, ['{"ok":true}']);
+    const result = parseOutput(undefined, ['{"ok":true}']);
     expect(result).toEqual({ ok: true });
   });
 

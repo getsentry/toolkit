@@ -95,7 +95,8 @@ describe("dashboard sixel integration", () => {
     } else {
       process.env["SENTRY_PLAIN_OUTPUT"] = savedPlainOutput;
     }
-    process.stdout.columns = savedColumns;
+    // Non-TTY streams have no columns; restore that state as-is.
+    Reflect.set(process.stdout, "columns", savedColumns);
   });
 
   test("renders one sixel canvas for a timeseries widget when enabled", () => {

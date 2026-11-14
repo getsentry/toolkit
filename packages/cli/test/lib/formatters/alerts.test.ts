@@ -6,6 +6,16 @@ import {
   type MetricAlertViewResult,
 } from "../../../src/lib/formatters/alerts.js";
 
+/**
+ * A condition group as the API sends it, including comparison shapes that the
+ * generated types do not list.
+ */
+function apiConditionGroup(
+  group: object,
+): NonNullable<MetricAlertRule["conditionGroup"]> {
+  return JSON.parse(JSON.stringify(group));
+}
+
 const rule: MetricAlertRule = {
   id: "9",
   name: "P95 latency",
@@ -32,6 +42,7 @@ const rule: MetricAlertRule = {
 const workflow: GetOrganizationWorkflowResponse = {
   id: "12",
   name: "Notify on-call",
+  type: "alert",
   organizationId: "1",
   createdBy: null,
   dateCreated: "2026-10-20T00:00:00Z",
@@ -122,7 +133,7 @@ describe("formatMetricAlertView", () => {
       rule: {
         ...rule,
         config: { detectionType: "dynamic" },
-        conditionGroup: {
+        conditionGroup: apiConditionGroup({
           logicType: "any",
           conditions: [
             {
@@ -131,7 +142,7 @@ describe("formatMetricAlertView", () => {
               conditionResult: 50,
             },
           ],
-        },
+        }),
       },
       workflows: [
         {

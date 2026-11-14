@@ -68,7 +68,9 @@ vi.mock("../../src/lib/mcp/scope-check.js", () => ({
   assertMcpScopeExists: vi.fn(
     async (config: { organizationSlug?: string }, accessToken: string) => {
       scopeChecks.calls.push({
-        organizationSlug: config.organizationSlug,
+        ...(config.organizationSlug !== undefined && {
+          organizationSlug: config.organizationSlug,
+        }),
         accessToken,
       });
       if (scopeChecks.result) {
@@ -385,7 +387,9 @@ describe("serveMcp account pinning", () => {
 
     // Removed after the pin check but before the credential read, so the
     // CLI's account selection falls back to the remaining account.
-    refreshHooks.before = () => removeAccount(a, { promoteNext: true });
+    refreshHooks.before = async () => {
+      await removeAccount(a, { promoteNext: true });
+    };
 
     await expect(refreshStartupCredential(options)).rejects.toThrow(
       "The account this MCP server started with is no longer available",

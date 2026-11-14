@@ -561,9 +561,10 @@ describe("isEpipeError", () => {
   });
 
   test("detects EPIPE in node_system_error context", () => {
-    const event = {
+    const event: Sentry.ErrorEvent = {
+      type: undefined,
       contexts: { node_system_error: { code: "EPIPE" } },
-    } as Sentry.ErrorEvent;
+    };
     expect(isEpipeError(event)).toBe(true);
   });
 
@@ -597,9 +598,10 @@ describe("isEbadfError", () => {
   });
 
   test("detects EBADF in node_system_error context", () => {
-    const event = {
+    const event: Sentry.ErrorEvent = {
+      type: undefined,
       contexts: { node_system_error: { code: "EBADF" } },
-    } as Sentry.ErrorEvent;
+    };
     expect(isEbadfError(event)).toBe(true);
   });
 
@@ -1123,8 +1125,9 @@ describe("createTracedDatabase", () => {
     }
 
     // finalize() is bun:sqlite-specific; skip on Node.js
-    if (typeof stmt["finalize"] === "function") {
-      expect(() => stmt["finalize"]()).not.toThrow();
+    const finalize = stmt["finalize"];
+    if (typeof finalize === "function") {
+      expect(() => finalize.call(stmt)).not.toThrow();
     }
 
     db.close();

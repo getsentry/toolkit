@@ -18,6 +18,7 @@ import {
   getSdkConfig,
   resetAuthenticatedFetch,
 } from "../../src/lib/sentry-client.js";
+import type { Http1Dispatcher } from "../../src/lib/http1-dispatcher.js";
 import { initSentry } from "../../src/lib/telemetry.js";
 import { mockFetch, useEnvSandbox, useTestConfigDir } from "../helpers.js";
 
@@ -52,7 +53,7 @@ function jsonResponse(
   init: { status?: number; headers?: Record<string, string> } = {},
 ): Response {
   return new Response(JSON.stringify(body), {
-    status: init.status,
+    ...(init.status !== undefined && { status: init.status }),
     headers: { "Content-Type": "application/json", ...init.headers },
   });
 }
@@ -701,7 +702,7 @@ describe("fetchWithTimeout internal timeout classification", () => {
 
 describe("dispatcher option", () => {
   test("passes the dispatcher to every fetch", async () => {
-    const dispatcher = {} as NonNullable<RequestInit["dispatcher"]>;
+    const dispatcher = {} as Http1Dispatcher;
     const seen: unknown[] = [];
     globalThis.fetch = mockFetch(async (_input, init) => {
       seen.push((init as { dispatcher?: unknown } | undefined)?.dispatcher);
@@ -774,9 +775,10 @@ describe("API request tracing", () => {
         init?.headers ?? (input instanceof Request ? input.headers : undefined),
       );
       const span = getActiveSpan();
-      activeSpanOp = span
+      const op = span
         ? spanToJSON(span).attributes[SEMANTIC_ATTRIBUTE_SENTRY_OP]
         : undefined;
+      activeSpanOp = typeof op === "string" ? op : undefined;
       return jsonResponse({ ok: true });
     });
     await startSpan({ name: "host", op: "test" }, () =>

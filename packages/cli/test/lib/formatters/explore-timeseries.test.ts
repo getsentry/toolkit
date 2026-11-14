@@ -16,7 +16,7 @@ import {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- terminal capability boundary for vi.spyOn
 import * as terminal from "../../../src/lib/sixel.js";
 import type { DecodedImage } from "../../../src/lib/sixel-image.js";
-import { at } from "../../helpers.js";
+import { at, must } from "../../helpers.js";
 
 /** Sanitized shape of a captured spans timeseries response, including ingestion metadata. */
 function makeData(): ExploreTimeSeriesData {
@@ -284,7 +284,8 @@ describe("Explore time-series graphics", () => {
   });
 
   afterEach(() => {
-    process.stdout.columns = savedColumns;
+    // Non-TTY streams have no columns; restore that state as-is.
+    Reflect.set(process.stdout, "columns", savedColumns);
   });
 
   test.each(["kitty", "sixel"] as const)(
@@ -497,9 +498,8 @@ describe("Explore time-series graphics", () => {
     }));
 
     const output = formatExploreTimeSeriesHuman(data);
-    const [image] = kittyImages(output);
+    const image = must(kittyImages(output)[0], "a kitty image");
 
-    expect(image).toBeDefined();
     expect(textPixels(image, 0, 0, 7)).toEqual(labelPixels("0.002ms"));
     expect(alphaAt(image, 100, 22)).toBe(0);
     expect(alphaAt(image, 100, 23)).toBe(255);

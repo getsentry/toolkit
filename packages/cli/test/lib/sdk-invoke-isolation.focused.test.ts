@@ -61,7 +61,12 @@ import { useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("sdk-invoke-isolation-focused-");
 
-type InvocationResult = { header?: string; host?: string; token?: string };
+/** What the probe saw; each value is undefined when it was not set. */
+type InvocationResult = {
+  header: string | undefined;
+  host: string | undefined;
+  token: string | undefined;
+};
 
 describe("overlapping SDK invocation isolation", () => {
   beforeEach(() => {

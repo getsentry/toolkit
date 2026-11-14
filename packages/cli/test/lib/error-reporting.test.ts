@@ -624,44 +624,31 @@ describe("enrichEventWithGroupingTags", () => {
 describe("reportCliError integration", () => {
   let captureSpy: MockInstance<(typeof Sentry)["captureException"]>;
   let metricSpy: MockInstance<(typeof Sentry.metrics)["distribution"]>;
-  let withScopeSpy: MockInstance<(typeof Sentry)["withScope"]>;
 
   beforeEach(() => {
     captureSpy = vi.spyOn(Sentry, "captureException");
     metricSpy = vi.spyOn(Sentry.metrics, "distribution");
-    withScopeSpy = vi.spyOn(Sentry, "withScope");
   });
 
   afterEach(() => {
     captureSpy.mockRestore();
     metricSpy.mockRestore();
-    withScopeSpy.mockRestore();
   });
 
   /**
-   * Capture the tags that `reportCliError` would set on the scope.
-   * Intercepts `Sentry.withScope` and runs the callback with a fake scope
-   * that records `setTag`/`setContext` calls.
+   * Capture the tags and contexts that `reportCliError` sets on its scope.
+   * `captureException` runs inside that scope, so read the current scope's
+   * data when it is called.
    */
   function capturedScopeTags(error: unknown): {
-    tags: Record<string, string>;
+    tags: Record<string, unknown>;
     contexts: Record<string, unknown>;
   } {
-    const tags: Record<string, string> = {};
-    const contexts: Record<string, unknown> = {};
-    const fakeScope = {
-      setTag(k: string, v: string) {
-        tags[k] = v;
-      },
-      setContext(k: string, v: unknown) {
-        contexts[k] = v;
-      },
-      setFingerprint() {
-        /* noop */
-      },
-    };
-    withScopeSpy.mockImplementation((fn: (s: unknown) => void) => {
-      fn(fakeScope);
+    let tags: Record<string, unknown> = {};
+    let contexts: Record<string, unknown> = {};
+    captureSpy.mockImplementation(() => {
+      ({ tags, contexts } = Sentry.getCurrentScope().getScopeData());
+      return "";
     });
     reportCliError(error);
     return { tags, contexts };
@@ -1009,7 +996,8 @@ describe("reportArgumentError", () => {
 
   test("captures one info message with the parser's error class", () => {
     const error = new ArgumentParseError(
-      "period",
+      // Stricli brands flag names; it builds them from the command's flags.
+      "period" as ConstructorParameters<typeof ArgumentParseError>[0],
       "bogus",
       new ValidationError("Invalid period 'bogus'", "period"),
     );

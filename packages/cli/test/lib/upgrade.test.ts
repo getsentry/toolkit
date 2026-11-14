@@ -95,9 +95,9 @@ function fakeErrorProcess(message: string): FakeProc {
 // vi.mock() can capture the reference; tests mutate `.fn` to swap behavior.
 const { spawnImpl } = vi.hoisted(() => ({
   spawnImpl: {
-    fn: (() => {
-      // placeholder — replaced per-test
-    }) as (cmd: string, args: string[], opts: object) => FakeProc,
+    fn: (_cmd: string, _args: string[], _opts: object): FakeProc => {
+      throw new Error("spawnImpl.fn is replaced before use");
+    },
   },
 }));
 // Initialize with the real default now that fakeProcess is defined

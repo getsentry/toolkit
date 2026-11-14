@@ -1,13 +1,13 @@
 /** Verify CI and agent attribution on outgoing command telemetry. */
 
-import type { Transport } from "@sentry/core";
+import type { EnvelopeItem, Transport } from "@sentry/core";
 import { captureMessage, startSpan, withIsolationScope } from "@sentry/node";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { withEnv } from "../../src/lib/env.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- intercept the outbound transport factory
 import * as transportModule from "../../src/lib/telemetry/zstd-transport.js";
 import { initSentry } from "../../src/lib/telemetry.js";
-import { at, must } from "../helpers.js";
+import { must } from "../helpers.js";
 
 let client: ReturnType<typeof initSentry>;
 
@@ -47,8 +47,8 @@ describe("CI telemetry", () => {
         }),
       );
 
-      const items = send.mock.calls.flatMap(([envelope]) =>
-        at(must(envelope), 1),
+      const items = send.mock.calls.flatMap(
+        ([envelope]): EnvelopeItem[] => must(envelope)[1],
       );
       for (const type of ["event", "transaction"]) {
         const event = items.find(([header]) => header.type === type)?.[1];
