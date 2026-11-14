@@ -13,6 +13,7 @@ import * as Sentry from "@sentry/node";
 import chalk from "chalk";
 import { Command, Option } from "commander";
 import { config } from "dotenv";
+import { z } from "zod";
 import { runAgent } from "./agent.js";
 import { resolveAgentProvider } from "./agent-provider.js";
 import { logError, logInfo } from "./logger.js";
@@ -30,6 +31,25 @@ config(); // Try current directory first (.env in mcp-test-client)
 config({ path: path.join(rootDir, ".env") }); // Also try root directory (fallback for shared values)
 
 const program = new Command();
+
+/** The options commander parses from the flags declared below. */
+const CliOptionsSchema = z.object({
+  model: z.string().optional(),
+  accessToken: z.string().optional(),
+  transport: z.enum(["auto", "stdio", "http"]),
+  mcpHost: z.string(),
+  host: z.string().optional(),
+  sentryDsn: z.string().optional(),
+  experimental: z.boolean().optional(),
+  stdioBundle: z.boolean().optional(),
+  listTools: z.boolean().optional(),
+});
+
+function errorCode(error: unknown): unknown {
+  return typeof error === "object" && error !== null && "code" in error
+    ? error.code
+    : undefined;
+}
 
 // OAuth support for MCP server (not Sentry directly)
 
@@ -67,8 +87,9 @@ program
     "--list-tools",
     "Connect to the MCP server, list available tools, and exit without using an LLM",
   )
-  .action(async (prompt, options) => {
+  .action(async (prompt: string | undefined, rawOptions: unknown) => {
     try {
+      const options = CliOptionsSchema.parse(rawOptions);
       const agentProvider = resolveAgentProvider(process.env);
 
       // Initialize Sentry with CLI-provided DSN if available
@@ -178,15 +199,9 @@ program
 
           const rl = readline.createInterface({ input, output });
 
-          while (true) {
+          for (;;) {
             try {
               const userInput = await rl.question(chalk.gray("> "));
-
-              // Handle null input (Ctrl+D / EOF)
-              if (userInput === null) {
-                logInfo("Goodbye!");
-                break;
-              }
 
               if (
                 userInput.toLowerCase() === "exit" ||
@@ -204,8 +219,8 @@ program
             } catch (error) {
               // Handle EOF (Ctrl+D) which may throw an error
               if (
-                (error as any).code === "ERR_USE_AFTER_CLOSE" ||
-                (error instanceof Error && error.message?.includes("EOF"))
+                errorCode(error) === "ERR_USE_AFTER_CLOSE" ||
+                (error instanceof Error && error.message.includes("EOF"))
               ) {
                 logInfo("Goodbye!");
                 break;

@@ -1,15 +1,45 @@
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 
-export interface OAuthClientConfig {
-  clientId: string;
-  mcpHost: string;
+// Loose so fields written by other versions survive a save.
+const OAuthClientConfigSchema = z.looseObject({
+  clientId: z.string(),
+  mcpHost: z.string(),
   /** Redirect URI this client was registered with. */
-  redirectUri?: string;
-  registeredAt: string;
-  accessToken?: string;
-  tokenExpiresAt?: string;
+  redirectUri: z.string().optional(),
+  registeredAt: z.string(),
+  accessToken: z.string().optional(),
+  tokenExpiresAt: z.string().optional(),
+});
+
+export type OAuthClientConfig = z.infer<typeof OAuthClientConfigSchema>;
+
+const ConfigFileSchema = z.object({
+  oauthClients: z.record(z.string(), z.unknown()),
+});
+
+/** Reads a config file, dropping client entries that do not parse. */
+function parseConfigFile(value: unknown): ClientConfigFile {
+  const parsed = ConfigFileSchema.safeParse(value);
+  if (!parsed.success) {
+    return { oauthClients: {} };
+  }
+  const oauthClients: Record<string, OAuthClientConfig> = {};
+  for (const [key, entry] of Object.entries(parsed.data.oauthClients)) {
+    const client = OAuthClientConfigSchema.safeParse(entry);
+    if (client.success) {
+      oauthClients[key] = client.data;
+    }
+  }
+  return { oauthClients };
+}
+
+function errorCode(error: unknown): unknown {
+  return typeof error === "object" && error !== null && "code" in error
+    ? error.code
+    : undefined;
 }
 
 /** The client config with its cached access token and expiry removed. */
@@ -43,7 +73,7 @@ export class ConfigManager {
       await fs.mkdir(this.configDir, { recursive: true });
     } catch (error) {
       // Directory might already exist, ignore EEXIST errors
-      if ((error as any).code !== "EEXIST") {
+      if (errorCode(error) !== "EEXIST") {
         throw error;
       }
     }
@@ -55,7 +85,7 @@ export class ConfigManager {
   private async loadConfig(): Promise<ClientConfigFile> {
     try {
       const content = await fs.readFile(this.configFile, "utf-8");
-      return JSON.parse(content);
+      return parseConfigFile(JSON.parse(content));
     } catch (error) {
       // Config file doesn't exist or is invalid, return empty config
       return { oauthClients: {} };

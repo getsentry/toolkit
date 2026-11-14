@@ -2,8 +2,8 @@ import { join } from "node:path";
 import type { MCPConfig, RequestedTransportMode } from "./types.js";
 
 export function resolveTransportMode(options: {
-  requestedTransport?: RequestedTransportMode;
-  accessToken?: string;
+  requestedTransport?: RequestedTransportMode | undefined;
+  accessToken?: string | undefined;
 }): "stdio" | "http" {
   const requestedTransport = options.requestedTransport || "auto";
 
