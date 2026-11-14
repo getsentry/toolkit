@@ -39,7 +39,7 @@ overrides:
 
 catalog:
   "@ast-grep/cli": ^0.43.0
-  "@ai-sdk/anthropic": ^3.0.33
+  "@ai-sdk/anthropic": ^3.0.137
   "@ai-sdk/mcp": ^1.0.16
   "@ai-sdk/openai": ^3.0.23
   "@ai-sdk/react": ^3.0.232

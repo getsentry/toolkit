@@ -32,7 +32,7 @@ Start a local Sentry MCP server
 - `--openai-base-url <value> - OpenAI API base URL`
 - `--openai-model <value> - OpenAI model (default: gpt-5)`
 - `--anthropic-base-url <value> - Anthropic API base URL`
-- `--anthropic-model <value> - Anthropic model (default: claude-sonnet-4-5)`
+- `--anthropic-model <value> - Anthropic model (default: claude-sonnet-5-5)`
 - `--mcp-url <value> - MCP server URL reported in telemetry`
 
 **Examples:**

@@ -171,7 +171,7 @@ export const mcpCommand = buildCommand({
       "openai-model": stringFlag("OpenAI model (default: gpt-5)"),
       "anthropic-base-url": stringFlag("Anthropic API base URL"),
       "anthropic-model": stringFlag(
-        "Anthropic model (default: claude-sonnet-4-5)",
+        "Anthropic model (default: claude-sonnet-5-5)",
       ),
       "mcp-url": stringFlag("MCP server URL reported in telemetry"),
     },
